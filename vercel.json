@@ -4,6 +4,6 @@
   "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": "nextjs",
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://mali-musavir-api.up.railway.app/api/v1"
+    "NEXT_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1"
   }
 }
