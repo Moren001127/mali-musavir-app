@@ -47,54 +47,90 @@ const TR_MONTHS: Record<string, number> = {
   july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
 };
 
+/* ─── Çapraz Kontrol: Geçerli tarih aralığı ────────────────── */
+const MIN_YEAR = 2020;
+const MAX_YEAR = 2030;
+const TODAY = new Date();
+const MAX_DATE = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000); // bugün + 7 gün
+
 function parseDate(d: string, m: string | number, y: string): string | null {
   const day = parseInt(d, 10);
   const month = typeof m === 'string' ? (TR_MONTHS[m.toLowerCase()] ?? 0) : m;
   let year = parseInt(y, 10);
   if (year < 100) year += 2000;
-  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2000 || year > 2099) return null;
+
+  // Çapraz kontrol
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  if (year < MIN_YEAR || year > MAX_YEAR) return null;
+
+  // Gelecek tarih kontrolü
+  const candidate = new Date(year, month - 1, day);
+  if (candidate > MAX_DATE) return null;
+
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function extractDateFromText(raw: string): string | null {
-  // OCR gürültüsünü temizle: rakamlar arasındaki virgül/iki nokta → nokta
+  if (!raw || raw.trim().length < 5) return null;
+
+  // OCR gürültüsünü temizle
   let t = raw
-    .replace(/(\d)[,:](\d)/g, '$1.$2')
+    .replace(/(\d)[,:](\d)/g, '$1.$2')   // rakamlar arasındaki virgül/iki nokta → nokta
+    .replace(/[|\\]/g, '.')               // | veya \ → nokta (OCR yanlış okuma)
     .replace(/\s+/g, ' ');
 
-  // DD.MM.YYYY  DD/MM/YYYY  DD-MM-YYYY  (boşluklu varyant dahil)
-  let m = t.match(/\b(\d{1,2})\s*[.\/\-]\s*(\d{1,2})\s*[.\/\-]\s*(\d{4})\b/);
-  if (m) return parseDate(m[1], parseInt(m[2], 10), m[3]);
+  // ── SAAT/TIME bilgisini önceden temizle (tarihle karışmasın) ──
+  // "26.02.2026 23:08" → "26.02.2026 " (saat kısmı kaldırılır)
+  t = t.replace(/\b(\d{2}:\d{2}(:\d{2})?)\b/g, ' ');
 
-  // YYYY-MM-DD
-  m = t.match(/\b(\d{4})[.\-](\d{2})[.\-](\d{2})\b/);
-  if (m) return parseDate(m[3], parseInt(m[2], 10), m[1]);
+  // ── 1. DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY (boşluklu dahil) ──
+  let m = t.match(/(\d{1,2})\s*[.\/\-]\s*(\d{1,2})\s*[.\/\-]\s*(\d{4})/);
+  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-  // DD.MM.YY (boşluklu dahil)
-  m = t.match(/\b(\d{1,2})\s*[.\/]\s*(\d{1,2})\s*[.\/]\s*(\d{2})\b/);
-  if (m) return parseDate(m[1], parseInt(m[2], 10), m[3]);
+  // ── 2. YYYY-MM-DD ──
+  m = t.match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
+  if (m) { const r = parseDate(m[3], parseInt(m[2], 10), m[1]); if (r) return r; }
 
-  // 8 haneli birleşik DDMMYYYY
+  // ── 3. DD.MM.YY (2 haneli yıl, boşluklu dahil) ──
+  m = t.match(/(\d{1,2})\s*[.\/]\s*(\d{1,2})\s*[.\/]\s*(\d{2})(?!\d)/);
+  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
+
+  // ── 4. DDMMYYYY bitişik 8 hane ──
   m = t.match(/\b(\d{2})(\d{2})(\d{4})\b/);
-  if (m) {
-    const r = parseDate(m[1], parseInt(m[2], 10), m[3]);
-    if (r) return r;
-  }
+  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-  // DD Ocak 2025 / 5 MART 2024
-  m = t.match(/\b(\d{1,2})\s+(ocak|subat|şubat|mart|nisan|mayis|mayıs|haziran|temmuz|agustos|ağustos|eylul|eylül|ekim|kasim|kasım|aralik|aralık|january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})\b/i);
-  if (m) return parseDate(m[1], m[2].toLowerCase(), m[3]);
+  // ── 5. DD Ocak 2025 vb. ──
+  m = t.match(/(\d{1,2})\s+(ocak|subat|şubat|mart|nisan|mayis|mayıs|haziran|temmuz|agustos|ağustos|eylul|eylül|ekim|kasim|kasım|aralik|aralık|january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i);
+  if (m) { const r = parseDate(m[1], m[2].toLowerCase(), m[3]); if (r) return r; }
 
   return null;
 }
 
-/* ─── Görünmez Border Tanımı ────────────────────────────────── */
+/* ─── Görünmez Border ───────────────────────────────────────── */
 const NO_BORDER = {
   top:    { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
   bottom: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
   left:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
   right:  { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
 };
+
+/* ─── OCR Strateji Matrisi ──────────────────────────────────── */
+type OcrStrategy = {
+  zone: 'full' | 'top50' | 'mid' | 'bot40';
+  preprocess: 'normalize' | 'threshold' | 'contrast';
+  psm: '11' | '6' | '3';
+};
+
+const OCR_STRATEGIES: OcrStrategy[] = [
+  { zone: 'full',  preprocess: 'normalize',  psm: '11' }, // 1. Tam + normalize + PSM11
+  { zone: 'full',  preprocess: 'threshold',  psm: '6'  }, // 2. Tam + threshold + PSM6
+  { zone: 'top50', preprocess: 'normalize',  psm: '6'  }, // 3. Üst + normalize + PSM6
+  { zone: 'top50', preprocess: 'threshold',  psm: '11' }, // 4. Üst + threshold + PSM11
+  { zone: 'mid',   preprocess: 'normalize',  psm: '6'  }, // 5. Orta + normalize + PSM6
+  { zone: 'bot40', preprocess: 'normalize',  psm: '6'  }, // 6. Alt + normalize + PSM6
+  { zone: 'bot40', preprocess: 'threshold',  psm: '11' }, // 7. Alt + threshold + PSM11
+  { zone: 'full',  preprocess: 'contrast',   psm: '3'  }, // 8. Tam + contrast + PSM3
+];
 
 /* ─── Service ───────────────────────────────────────────────── */
 
@@ -103,61 +139,69 @@ export class FisYazdirmaService {
   private readonly logger = new Logger(FisYazdirmaService.name);
 
   /**
-   * Tek bölge + tek strateji için ön işleme uygular → PNG Buffer
+   * Bölge + strateji kombinasyonuna göre ön işleme yapar → PNG Buffer (1200px)
    */
-  private async preprocessZone(
+  private async preprocessImage(
     buffer: Buffer,
-    zone: { top: number; height: number; width: number },
-    strategy: 'normalize' | 'threshold',
+    W: number,
+    H: number,
+    strategy: OcrStrategy,
   ): Promise<Buffer> {
-    let pipeline = sharp(buffer)
-      .extract({ left: 0, top: zone.top, width: zone.width, height: zone.height })
-      .grayscale()
-      .normalize();
+    // Bölge hesapla
+    let top = 0;
+    let height = H;
+    switch (strategy.zone) {
+      case 'top50': height = Math.floor(H * 0.50); break;
+      case 'mid':   top = Math.floor(H * 0.20); height = Math.floor(H * 0.50); break;
+      case 'bot40': top = Math.floor(H * 0.60); height = Math.floor(H * 0.40); break;
+      // 'full': tüm görsel
+    }
+    // Sınır güvenliği
+    if (top + height > H) height = H - top;
+    if (height < 20) height = Math.min(40, H);
 
-    if (strategy === 'threshold') {
-      pipeline = pipeline.threshold(128);
-    } else {
-      pipeline = pipeline.sharpen();
+    let pipeline = sharp(buffer)
+      .extract({ left: 0, top, width: W, height })
+      .grayscale();
+
+    switch (strategy.preprocess) {
+      case 'normalize':
+        pipeline = pipeline.normalize().sharpen();
+        break;
+      case 'threshold':
+        pipeline = pipeline.normalize().threshold(140);
+        break;
+      case 'contrast':
+        pipeline = pipeline.linear(1.5, -40).normalize().sharpen();
+        break;
     }
 
-    return pipeline.resize({ width: 800, withoutEnlargement: false }).png().toBuffer();
+    return pipeline
+      .resize({ width: 1200, withoutEnlargement: false })
+      .png()
+      .toBuffer();
   }
 
   /**
-   * Tek görseli worker ile OCR'lar; 4 bölge × 2 strateji = 8 deneme, ilk tarihte durur.
+   * Tek görseli worker pool ile OCR'lar — 8 strateji, ilk geçerli tarihte durur.
    */
   private async ocrDateWithWorker(buffer: Buffer, worker: any): Promise<string | null> {
     const meta = await sharp(buffer).metadata();
     const W = meta.width ?? 400;
     const H = meta.height ?? 600;
 
-    // PSM 6: tek blok metin — ÖKC fişleri için ideal
-    await worker.setParameters({ tessedit_pageseg_mode: '6' });
-
-    const zones = [
-      { top: 0,                            height: Math.floor(H * 0.40), width: W }, // Üst %40
-      { top: Math.floor(H * 0.65),         height: Math.floor(H * 0.35), width: W }, // Alt %35
-      { top: Math.floor(H * 0.25),         height: Math.floor(H * 0.40), width: W }, // Orta %25-65
-      { top: 0,                            height: H,                    width: W }, // Tam görsel
-    ];
-
-    for (const zone of zones) {
-      // Güvenli yükseklik kontrolü
-      if (zone.top + zone.height > H) {
-        zone.height = H - zone.top;
-      }
-      if (zone.height < 20) continue;
-
-      for (const strategy of ['normalize', 'threshold'] as const) {
-        try {
-          const processed = await this.preprocessZone(buffer, zone, strategy);
-          const { data } = await worker.recognize(processed);
-          const date = extractDateFromText(data.text);
-          if (date) return date;
-        } catch {
-          // Bu strateji başarısız, devam et
+    for (const strategy of OCR_STRATEGIES) {
+      try {
+        await worker.setParameters({ tessedit_pageseg_mode: strategy.psm });
+        const processed = await this.preprocessImage(buffer, W, H, strategy);
+        const { data } = await worker.recognize(processed);
+        const date = extractDateFromText(data.text);
+        if (date) {
+          this.logger.debug(`Strateji ${strategy.zone}/${strategy.preprocess}/PSM${strategy.psm} → ${date}`);
+          return date;
         }
+      } catch (e: any) {
+        this.logger.debug(`Strateji ${strategy.zone}/${strategy.preprocess} hata: ${e.message}`);
       }
     }
 
@@ -165,13 +209,13 @@ export class FisYazdirmaService {
   }
 
   /**
-   * Thumbnail üret: 220px genişlik, JPEG, base64
+   * Thumbnail üret (teyit ekranı için): 240px, JPEG 75
    */
   private async makeThumbnail(buffer: Buffer): Promise<string> {
     try {
       const thumb = await sharp(buffer)
-        .resize({ width: 220, withoutEnlargement: true })
-        .jpeg({ quality: 72 })
+        .resize({ width: 240, withoutEnlargement: true })
+        .jpeg({ quality: 75 })
         .toBuffer();
       return `data:image/jpeg;base64,${thumb.toString('base64')}`;
     } catch {
@@ -180,43 +224,39 @@ export class FisYazdirmaService {
   }
 
   /**
-   * Görselleri OCR ile tarar — Worker Pool yaklaşımı (3 worker, pLimit(3))
+   * Görselleri OCR ile tarar — Worker Pool (3 worker, pLimit 3)
    */
   async scanImages(files: Express.Multer.File[]): Promise<ScanResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
     }
 
-    this.logger.log(`OCR tarama başlıyor: ${files.length} görsel, worker pool x3`);
+    this.logger.log(`OCR tarama başlıyor: ${files.length} görsel, 3 worker, 8 strateji`);
 
-    // p-limit ESM
     const { default: pLimit } = await (Function('return import("p-limit")')() as Promise<{ default: any }>);
 
-    // 3 Tesseract worker oluştur
     const POOL_SIZE = 3;
     const workers: any[] = await Promise.all(
       Array.from({ length: POOL_SIZE }, () => createWorker(['tur', 'eng'])),
     );
 
-    // Round-robin pool: her görev bir worker index alır
-    let workerIndex = 0;
+    let workerIdx = 0;
     const limit = pLimit(POOL_SIZE);
 
     const results: { file: Express.Multer.File; date: string | null }[] = [];
 
     try {
       const promises = files.map((file) => {
-        const wi = workerIndex++ % POOL_SIZE;
+        const wi = workerIdx++ % POOL_SIZE;
         return limit(async () => {
           const date = await this.ocrDateWithWorker(file.buffer, workers[wi]);
-          this.logger.log(`${file.originalname}: ${date ?? 'tarih bulunamadı'}`);
+          this.logger.log(`${file.originalname}: ${date ?? 'OKUNAMADI'}`);
           return { file, date };
         });
       });
 
       results.push(...(await Promise.all(promises)));
     } finally {
-      // Worker pool'u kapat
       await Promise.all(workers.map((w) => w.terminate().catch(() => {})));
     }
 
@@ -237,7 +277,7 @@ export class FisYazdirmaService {
     detected.sort((a, b) => a.date.localeCompare(b.date));
 
     this.logger.log(
-      `Tarama tamamlandı: ${detected.length}/${files.length} tarih okundu, ${unread.length} teyit bekliyor`,
+      `Tarama tamamlandı: ${detected.length}/${files.length} okundu, ${unread.length} teyit bekliyor`,
     );
 
     return { detected, unread, total: files.length };
@@ -245,6 +285,7 @@ export class FisYazdirmaService {
 
   /**
    * Teyit edilmiş tarihlerle Word belgesi oluştur — A4'te 3 sütun grid
+   * Görsel: max 800px embed (yüksek kalite), display: 173px (baskı kalitesinde)
    */
   async generateWord(
     files: Express.Multer.File[],
@@ -268,17 +309,15 @@ export class FisYazdirmaService {
 
     const COLS = 3;
 
-    // A4: kullanılabilir genişlik (twip) = 210mm - 2×12.7mm margin ≈ 184.6mm
-    const pageW = convertMillimetersToTwip(210);
-    const marginLR = convertMillimetersToTwip(12.7);
-    const usableW = pageW - 2 * marginLR;
-    const colW = Math.floor(usableW / COLS); // twip cinsinden hücre genişliği
+    // A4: kullanılabilir genişlik
+    const pageW  = convertMillimetersToTwip(210);
+    const marginLR = convertMillimetersToTwip(10);
+    const usableW  = pageW - 2 * marginLR;
+    const colW     = Math.floor(usableW / COLS);
 
-    // Fiş boyutu: maksimum genişlik px (A4 sütun ~61mm ≈ 230px @96dpi)
-    const FIS_MAX_W = 190;
-    const FIS_MAX_H = 260;
+    // Display boyutu (Word'de görünen px — yüksek çözünürlü embed, küçük display)
+    const DISPLAY_W = 173; // px @ Word 72dpi ≈ 61mm → tam sütun genişliği
 
-    // Hücre için görünmez border helper
     const emptyCell = () =>
       new TableCell({
         borders: NO_BORDER,
@@ -289,18 +328,23 @@ export class FisYazdirmaService {
     // Her fiş için hücre oluştur
     const cells: TableCell[] = await Promise.all(
       sorted.map(async (file) => {
-        const resized = await sharp(file.buffer)
-          .resize({ width: FIS_MAX_W, height: FIS_MAX_H, fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 85 })
+        // Yüksek kaliteli embed: max 800px genişlik, JPEG %95
+        const embedded = await sharp(file.buffer)
+          .resize({ width: 800, withoutEnlargement: true })
+          .jpeg({ quality: 95 })
           .toBuffer();
 
-        const meta = await sharp(resized).metadata();
-        const imgW = meta.width ?? FIS_MAX_W;
-        const imgH = meta.height ?? FIS_MAX_H;
+        const meta = await sharp(embedded).metadata();
+        const imgW = meta.width ?? 800;
+        const imgH = meta.height ?? 600;
+
+        // Display boyutu: 173px genişlik, orantılı yükseklik
+        const displayW = DISPLAY_W;
+        const displayH = Math.round(imgH * (DISPLAY_W / imgW));
 
         const dateStr = allDates[file.originalname] ?? '';
         let displayDate = dateStr;
-        if (dateStr && dateStr.includes('-')) {
+        if (dateStr.includes('-')) {
           const [y, mo, d] = dateStr.split('-');
           displayDate = `${d}.${mo}.${y}`;
         }
@@ -312,20 +356,20 @@ export class FisYazdirmaService {
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 40, after: 40 },
+              spacing: { before: 40, after: 30 },
               children: [
                 new ImageRun({
-                  data: resized,
-                  transformation: { width: imgW, height: imgH },
+                  data: embedded,
+                  transformation: { width: displayW, height: displayH },
                   type: 'jpg',
                 }),
               ],
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 80 },
+              spacing: { before: 20, after: 60 },
               children: [
-                new TextRun({ text: displayDate, size: 18, bold: true }),
+                new TextRun({ text: displayDate, size: 16, bold: true }),
               ],
             }),
           ],
@@ -333,14 +377,11 @@ export class FisYazdirmaService {
       }),
     );
 
-    // Hücreleri satırlara böl (3'lü gruplar)
+    // 3'lü gruplara böl
     const rows: TableRow[] = [];
     for (let i = 0; i < cells.length; i += COLS) {
       const rowCells = cells.slice(i, i + COLS);
-      // Son satırda eksik hücre varsa boş ekle
-      while (rowCells.length < COLS) {
-        rowCells.push(emptyCell());
-      }
+      while (rowCells.length < COLS) rowCells.push(emptyCell());
       rows.push(new TableRow({ children: rowCells }));
     }
 
@@ -349,10 +390,10 @@ export class FisYazdirmaService {
       width: { size: usableW, type: WidthType.DXA },
       rows,
       borders: {
-        top:            { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        bottom:         { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        left:           { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        right:          { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        top:              { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        bottom:           { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        left:             { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        right:            { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
         insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
         insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
       },
@@ -368,10 +409,10 @@ export class FisYazdirmaService {
                 height: convertMillimetersToTwip(297),
               },
               margin: {
-                top:    convertMillimetersToTwip(12.7),
-                right:  convertMillimetersToTwip(12.7),
-                bottom: convertMillimetersToTwip(12.7),
-                left:   convertMillimetersToTwip(12.7),
+                top:    convertMillimetersToTwip(10),
+                right:  convertMillimetersToTwip(10),
+                bottom: convertMillimetersToTwip(10),
+                left:   convertMillimetersToTwip(10),
               },
             },
           },
