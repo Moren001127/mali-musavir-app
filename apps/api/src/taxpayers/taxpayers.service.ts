@@ -46,7 +46,6 @@ export class TaxpayersService {
 
     if (!year || !month) return taxpayers.map(t => ({ ...t, monthlyStatus: null }));
 
-    // Aylık durumları çek
     const taxpayerIds = taxpayers.map(t => t.id);
     const statuses = await this.prisma.taxpayerMonthlyStatus.findMany({
       where: { taxpayerId: { in: taxpayerIds }, year, month },
@@ -103,8 +102,6 @@ export class TaxpayersService {
     return this.prisma.taxpayer.update({ where: { id }, data: { isActive: false } });
   }
 
-  // ── Aylık durum takibi ──────────────────────────────────────
-
   async getMonthlyStatus(taxpayerId: string, tenantId: string, year: number, month: number) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
@@ -128,32 +125,14 @@ export class TaxpayersService {
       beyannameVerildi?: boolean;
       kdvKontrolEdildi?: boolean;
     },
-    whatsappService?: any,
   ) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
 
-    const status = await this.prisma.taxpayerMonthlyStatus.upsert({
+    return this.prisma.taxpayerMonthlyStatus.upsert({
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
       create: { taxpayerId, tenantId, year, month, ...data },
       update: data,
     });
-
-    // Evraklar geldi işaretlendiyse WhatsApp mesajı gönder
-    if (data.evraklarGeldi === true && taxpayer.whatsappEvrakGeldi && whatsappService) {
-      const template = await this.prisma.smsTemplate.findUnique({ where: { tenantId } });
-      const donem = `${year}/${String(month).padStart(2, '0')}`;
-      const ad = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim();
-      const mesaj = (template?.evrakGeldiMesaji || 'Sayın {ad}, {dönem} dönemi evraklarınız ulaşmıştır.')
-        .replace('{ad}', ad)
-        .replace('{dönem}', donem);
-
-      const phones = taxpayer.phones?.length ? taxpayer.phones : (taxpayer.phone ? [taxpayer.phone] : []);
-      for (const phone of phones.filter(Boolean)) {
-        await whatsappService.sendMessage(phone, mesaj).catch(() => null);
-      }
-    }
-
-    return status;
   }
 }

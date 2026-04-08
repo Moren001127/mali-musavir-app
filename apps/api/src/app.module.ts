@@ -12,11 +12,8 @@ import { KdvControlModule } from './kdv-control/kdv-control.module';
 import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
-import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
 import { ReminderCron } from './schedule/reminder.cron';
-import { PrismaService } from './prisma/prisma.service';
-import { WhatsAppService } from './whatsapp/whatsapp.service';
 
 @Module({
   imports: [
@@ -33,9 +30,8 @@ import { WhatsAppService } from './whatsapp/whatsapp.service';
     AuditModule,
     NotificationsModule,
     FisYazdirmaModule,
-    WhatsAppModule,
     SmsTemplatesModule,
   ],
-  providers: [ReminderCron, PrismaService, WhatsAppService],
+  providers: [ReminderCron],
 })
 export class AppModule {}
