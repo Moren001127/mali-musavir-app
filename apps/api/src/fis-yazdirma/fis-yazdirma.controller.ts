@@ -1,0 +1,79 @@
+import {
+  Controller,
+  Post,
+  Body,
+  Res,
+  UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { FisYazdirmaService } from './fis-yazdirma.service';
+import { memoryStorage } from 'multer';
+
+const imageInterceptor = () =>
+  FilesInterceptor('images', 300, {
+    storage: memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new BadRequestException('Sadece görsel dosyalar kabul edilir') as any, false);
+      }
+    },
+  });
+
+@Controller('fis-yazdirma')
+@UseGuards(AuthGuard('jwt'))
+export class FisYazdirmaController {
+  constructor(private fisYazdirmaService: FisYazdirmaService) {}
+
+  /**
+   * POST /api/v1/fis-yazdirma/scan
+   * Görselleri OCR ile tarar.
+   * Dönüş: { detected: [{filename, date}], unread: [{filename, thumbnail}], total }
+   */
+  @Post('scan')
+  @UseInterceptors(imageInterceptor())
+  async scan(@UploadedFiles() files: Express.Multer.File[]) {
+    if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
+    return this.fisYazdirmaService.scanImages(files);
+  }
+
+  /**
+   * POST /api/v1/fis-yazdirma/process
+   * Teyit edilmiş tarihlerle Word belgesi oluşturur ve indirir.
+   * Body: multipart images[] + allDates (JSON string)
+   */
+  @Post('process')
+  @UseInterceptors(imageInterceptor())
+  async process(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('allDates') allDatesJson: string,
+    @Res() res: any,
+  ) {
+    if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
+
+    let allDates: Record<string, string> = {};
+    if (allDatesJson) {
+      try {
+        allDates = JSON.parse(allDatesJson);
+      } catch {
+        throw new BadRequestException('allDates geçersiz JSON');
+      }
+    }
+
+    const wordBuffer = await this.fisYazdirmaService.generateWord(files, allDates);
+    const filename = `fisler_${new Date().toISOString().slice(0, 10)}.docx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'X-Total': String(files.length),
+    });
+    return res.send(wordBuffer);
+  }
+}
