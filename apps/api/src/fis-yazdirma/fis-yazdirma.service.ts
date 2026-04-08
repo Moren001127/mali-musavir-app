@@ -26,9 +26,11 @@ export interface ScanDetected {
   date: string; // YYYY-MM-DD
   belge_no?: string;
   cari?: string;
-  kdv_haric?: string;
-  kdv_tutari?: string;
-  genel_toplam?: string;
+  vergi_no?: string;
+  kdv_1?: string;
+  kdv_10?: string;
+  kdv_20?: string;
+  toplam?: string;
 }
 
 export interface ScanUnread {
@@ -47,9 +49,11 @@ export interface ExcelRow {
   date: string;
   belge_no?: string;
   cari?: string;
-  kdv_haric?: string;
-  kdv_tutari?: string;
-  genel_toplam?: string;
+  vergi_no?: string;
+  kdv_1?: string;
+  kdv_10?: string;
+  kdv_20?: string;
+  toplam?: string;
 }
 
 /* ─── Türkçe Ay Adları (OCR gürültü toleranslı) ────────────── */
@@ -140,35 +144,47 @@ function extractFieldsFromText(text: string): Omit<ScanDetected, 'filename' | 'd
   const result: Omit<ScanDetected, 'filename' | 'date'> = {};
   if (!text) return result;
 
-  // Belge No / Fiş No / Z No
+  // Belge No / Fiş No
   const belgeMatch = text.match(
-    /(?:fi[sş]\s*no|belge\s*no|z\s*no|seri\s*no)[:\s#]*([A-Z0-9\-]{1,20})/i,
+    /(?:fi[sş]\s*no|belge\s*no|z\s*no|seri\s*no|eku\s*no)[:\s#]*([A-Z0-9\-]{1,20})/i,
   );
   if (belgeMatch) result.belge_no = belgeMatch[1].trim();
 
-  // Cari / Ünvan (Ltd, A.Ş., Tic, San içeren satır)
+  // Cari / Ünvan (şirket adı — Ltd, A.Ş., Tic, San içeren ilk satır)
   const cariMatch = text.match(
-    /^(.{5,80}(?:ltd|a\.?\s*ş|tic|san|a\.?\s*s|limited|petrol|oto|market)[^\n]*)/im,
+    /^(.{5,80}(?:ltd|a\.?\s*ş|tic\.?|san\.?|a\.?\s*s\.?|limited|petrol|oto|market|nakliyat)[^\n]*)/im,
   );
   if (cariMatch) result.cari = cariMatch[1].trim().substring(0, 80);
 
-  // Genel Toplam
+  // Vergi No (10-11 haneli sayı — VD veya No etiketiyle)
+  const vergiMatch = text.match(
+    /(?:vd|v\.d\.|vergi\s*no|vergi\s*kimlik)[:\s]*([0-9]{10,11})/i,
+  ) ?? text.match(/\b([0-9]{10,11})\b/);
+  if (vergiMatch) result.vergi_no = vergiMatch[1];
+
+  // Genel Toplam / Satış Tutarı
   const toplamMatch = text.match(
-    /(?:genel\s*toplam|toplam|total|satis\s*tutari|satış\s*tutarı)\s*[:\s*]*([0-9.,]{3,15})/i,
+    /(?:genel\s*toplam|sati[sş]\s*tutar[iı]|toplam|total)\s*[:\s*]*\*?\s*([0-9]{1,6}[.,][0-9]{2,3}(?:[.,][0-9]{2})?)/i,
   );
-  if (toplamMatch) result.genel_toplam = toplamMatch[1].replace(',', '.').trim();
+  if (toplamMatch) result.toplam = toplamMatch[1].replace(/\./g, '').replace(',', '.').trim();
 
-  // KDV Tutarı (TOPKDV veya KDV)
-  const kdvTutarMatch = text.match(
-    /(?:topkdv|kdv\s*(?:tutar|top|mik)|k\.d\.v\.?\s*(?:tutar|top))\s*[:\s*]*\*?\s*([0-9.,]{1,12})/i,
+  // KDV %20 (en yaygın)
+  const kdv20Match = text.match(
+    /(?:topkdv|kdv\s*%?20|k\.d\.v\.?\s*%?20)\s*[:\s*]*\*?\s*([0-9]{1,6}[.,][0-9]{1,3})/i,
   );
-  if (kdvTutarMatch) result.kdv_tutari = kdvTutarMatch[1].replace(',', '.').trim();
+  if (kdv20Match) result.kdv_20 = kdv20Match[1].replace(',', '.').trim();
 
-  // KDV Hariç Tutar / Matrah
-  const kdvHaricMatch = text.match(
-    /(?:kdv\s*har[iı][cç]|k\.d\.v\.?\s*har[iı][cç]|matrah|yed\.\s*parc\s*%\d+)\s*[:\s*]*\*?\s*([0-9.,]{1,12})/i,
+  // KDV %10
+  const kdv10Match = text.match(
+    /kdv\s*%?10\s*[:\s*]*\*?\s*([0-9]{1,6}[.,][0-9]{1,3})/i,
   );
-  if (kdvHaricMatch) result.kdv_haric = kdvHaricMatch[1].replace(',', '.').trim();
+  if (kdv10Match) result.kdv_10 = kdv10Match[1].replace(',', '.').trim();
+
+  // KDV %1
+  const kdv1Match = text.match(
+    /kdv\s*%?1(?!\d)\s*[:\s*]*\*?\s*([0-9]{1,6}[.,][0-9]{1,3})/i,
+  );
+  if (kdv1Match) result.kdv_1 = kdv1Match[1].replace(',', '.').trim();
 
   return result;
 }
@@ -348,24 +364,47 @@ export class FisYazdirmaService {
         displayDate = `${d}.${mo}.${y}`;
       }
       return {
-        'Dosya Adı':       r.filename,
-        'Tarih':           displayDate,
-        'Belge No':        r.belge_no ?? '',
-        'Cari':            r.cari ?? '',
-        'KDV Hariç Tutar': r.kdv_haric ?? '',
-        'KDV Tutarı':      r.kdv_tutari ?? '',
-        'Genel Toplam':    r.genel_toplam ?? '',
+        'Tarih':     displayDate,
+        'Fiş No':    r.belge_no ?? '',
+        'Cari İsmi': r.cari ?? '',
+        'Vergi No':  r.vergi_no ?? '',
+        'KDV %1':    r.kdv_1 ?? '',
+        'KDV %10':   r.kdv_10 ?? '',
+        'KDV %20':   r.kdv_20 ?? '',
+        'Toplam':    r.toplam ?? '',
       };
     });
 
     const ws = XLSX.utils.json_to_sheet(sheetData);
+
+    // Sütun genişlikleri (örneğe göre)
     ws['!cols'] = [
-      { wch: 30 }, { wch: 12 }, { wch: 15 },
-      { wch: 30 }, { wch: 16 }, { wch: 14 }, { wch: 16 },
+      { wch: 14 }, // Tarih
+      { wch: 10 }, // Fiş No
+      { wch: 40 }, // Cari İsmi
+      { wch: 16 }, // Vergi No
+      { wch: 10 }, // KDV %1
+      { wch: 10 }, // KDV %10
+      { wch: 10 }, // KDV %20
+      { wch: 18 }, // Toplam
     ];
 
+    // Başlık satırı stili — mavi arka plan, beyaz kalın yazı
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '007BFF' }, patternType: 'solid' },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    };
+
+    const headerCols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    headerCols.forEach((col) => {
+      if (ws[`${col}1`]) {
+        ws[`${col}1`].s = headerStyle;
+      }
+    });
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Fiş Raporu');
+    XLSX.utils.book_append_sheet(wb, ws, 'Excel Dokumu');
 
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
@@ -385,24 +424,38 @@ export class FisYazdirmaService {
       );
     }
 
+    // Tarihe göre sırala (eski → yeni)
     const sorted = [...files].sort((a, b) =>
       (allDates[a.originalname] ?? '').localeCompare(allDates[b.originalname] ?? ''),
     );
 
-    const COLS = 3;
-    const pageW    = convertMillimetersToTwip(210);
-    const marginLR = convertMillimetersToTwip(10);
-    const usableW  = pageW - 2 * marginLR;
-    const colW     = Math.floor(usableW / COLS);
-    const DISPLAY_W = 173;
+    // ── Sayfa & Grid Ayarları ─────────────────────────────────
+    // Letter: 21.59 × 27.94 cm, örnek docx ile birebir
+    const PAGE_W_MM  = 215.9;
+    const PAGE_H_MM  = 279.4;
+    const MARGIN_MM  = 0; // sıfır marjin — fişler sayfaya yapışık
+    const COLS       = 4; // 4 sütun × 2 satır = sayfa başına 8 fiş
+    const ROWS_PER_PAGE = 2;
+    const PER_PAGE   = COLS * ROWS_PER_PAGE; // 8
 
-    const emptyCell = () =>
+    const pageWTwip  = convertMillimetersToTwip(PAGE_W_MM);
+    const pageHTwip  = convertMillimetersToTwip(PAGE_H_MM);
+    const usableW    = convertMillimetersToTwip(PAGE_W_MM - 2 * MARGIN_MM);
+    const colW       = Math.floor(usableW / COLS);
+
+    // Görsel display genişliği: ~5.33 cm ≈ 151px @72dpi
+    const DISPLAY_W_CM = 5.33;
+    const DISPLAY_W    = Math.round((DISPLAY_W_CM / 2.54) * 96); // ≈ 201px
+
+    const emptyCell = (): TableCell =>
       new TableCell({
         borders: NO_BORDER,
         width: { size: colW, type: WidthType.DXA },
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
         children: [new Paragraph({ children: [] })],
       });
 
+    // Tüm hücreleri oluştur
     const cells: TableCell[] = await Promise.all(
       sorted.map(async (file) => {
         const embedded = await sharp(file.buffer)
@@ -410,8 +463,8 @@ export class FisYazdirmaService {
           .toBuffer();
 
         const meta = await sharp(embedded).metadata();
-        const imgW = meta.width ?? 800;
-        const imgH = meta.height ?? 600;
+        const imgW  = meta.width ?? 800;
+        const imgH  = meta.height ?? 600;
         const displayH = Math.round(imgH * (DISPLAY_W / imgW));
 
         const dateStr = allDates[file.originalname] ?? '';
@@ -424,11 +477,12 @@ export class FisYazdirmaService {
         return new TableCell({
           borders: NO_BORDER,
           width: { size: colW, type: WidthType.DXA },
-          verticalAlign: VerticalAlign.TOP,
+          verticalAlign: VerticalAlign.BOTTOM,
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 40, after: 30 },
+              spacing: { before: 0, after: 0 },
               children: [
                 new ImageRun({
                   data: embedded,
@@ -439,7 +493,7 @@ export class FisYazdirmaService {
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 60 },
+              spacing: { before: 20, after: 20 },
               children: [
                 new TextRun({ text: displayDate, size: 16, bold: true }),
               ],
@@ -449,49 +503,45 @@ export class FisYazdirmaService {
       }),
     );
 
-    const rows: TableRow[] = [];
-    for (let i = 0; i < cells.length; i += COLS) {
-      const rowCells = cells.slice(i, i + COLS);
-      while (rowCells.length < COLS) rowCells.push(emptyCell());
-      rows.push(new TableRow({ children: rowCells }));
+    // ── Sayfaları oluştur (her sayfa = PER_PAGE fiş, ayrı Section) ──
+    const sections: any[] = [];
+    const pageProps = {
+      page: {
+        size: { width: pageWTwip, height: pageHTwip },
+        margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      },
+    };
+
+    // Sayfaları PER_PAGE'lik gruplara böl
+    for (let pageStart = 0; pageStart < cells.length; pageStart += PER_PAGE) {
+      const pageCells = cells.slice(pageStart, pageStart + PER_PAGE);
+      // Dolgu hücresi ekle (son sayfa eksikse)
+      while (pageCells.length < PER_PAGE) pageCells.push(emptyCell());
+
+      const rows: TableRow[] = [];
+      for (let r = 0; r < ROWS_PER_PAGE; r++) {
+        const rowCells = pageCells.slice(r * COLS, r * COLS + COLS);
+        rows.push(new TableRow({ children: rowCells }));
+      }
+
+      const table = new Table({
+        layout: TableLayoutType.FIXED,
+        width: { size: usableW, type: WidthType.DXA },
+        rows,
+        borders: {
+          top:              { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          bottom:           { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          left:             { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          right:            { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+          insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
+        },
+      });
+
+      sections.push({ properties: pageProps, children: [table] });
     }
 
-    const table = new Table({
-      layout: TableLayoutType.FIXED,
-      width: { size: usableW, type: WidthType.DXA },
-      rows,
-      borders: {
-        top:              { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        bottom:           { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        left:             { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        right:            { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-        insideVertical:   { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' },
-      },
-    });
-
-    const doc = new Document({
-      sections: [
-        {
-          properties: {
-            page: {
-              size: {
-                width:  convertMillimetersToTwip(210),
-                height: convertMillimetersToTwip(297),
-              },
-              margin: {
-                top:    convertMillimetersToTwip(10),
-                right:  convertMillimetersToTwip(10),
-                bottom: convertMillimetersToTwip(10),
-                left:   convertMillimetersToTwip(10),
-              },
-            },
-          },
-          children: [table],
-        },
-      ],
-    });
-
+    const doc = new Document({ sections });
     return Packer.toBuffer(doc);
   }
 }

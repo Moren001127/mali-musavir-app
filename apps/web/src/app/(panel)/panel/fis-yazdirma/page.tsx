@@ -22,9 +22,11 @@ interface Detected {
   date: string; // YYYY-MM-DD
   belge_no?: string;
   cari?: string;
-  kdv_haric?: string;
-  kdv_tutari?: string;
-  genel_toplam?: string;
+  vergi_no?: string;
+  kdv_1?: string;
+  kdv_10?: string;
+  kdv_20?: string;
+  toplam?: string;
 }
 
 interface Unread {
@@ -157,12 +159,14 @@ export default function FisYazdirmaPage() {
       data.detected.forEach((d) => {
         dates[d.filename] = d.date;
         extra[d.filename] = {
-          belge_no: d.belge_no,
-          cari: d.cari,
-          kdv_haric: d.kdv_haric,
-          kdv_tutari: d.kdv_tutari,
-          genel_toplam: d.genel_toplam,
-        };
+          belge_no:  d.belge_no,
+          cari:      d.cari,
+          vergi_no:  d.vergi_no,
+          kdv_1:     d.kdv_1,
+          kdv_10:    d.kdv_10,
+          kdv_20:    d.kdv_20,
+          toplam:    d.toplam,
+        } as any;
       });
       data.unread.forEach((u) => { dates[u.filename] = ''; });
 
@@ -182,12 +186,17 @@ export default function FisYazdirmaPage() {
     if (!scanResult) return;
     setExcelLoading(true);
     try {
-      // Tüm fişleri (detected + unread) birleştir
       const rows = [
         ...scanResult.detected.map((d) => ({
           filename: d.filename,
           date: allDates[d.filename] ?? d.date,
-          ...allExtra[d.filename],
+          belge_no:  allExtra[d.filename]?.belge_no,
+          cari:      allExtra[d.filename]?.cari,
+          vergi_no:  (allExtra[d.filename] as any)?.vergi_no,
+          kdv_1:     (allExtra[d.filename] as any)?.kdv_1,
+          kdv_10:    (allExtra[d.filename] as any)?.kdv_10,
+          kdv_20:    (allExtra[d.filename] as any)?.kdv_20,
+          toplam:    (allExtra[d.filename] as any)?.toplam,
         })),
         ...scanResult.unread
           .filter((u) => allDates[u.filename])
