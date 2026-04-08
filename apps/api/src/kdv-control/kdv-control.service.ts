@@ -399,10 +399,26 @@ export class KdvControlService {
 
   /** Oturumu tamamlandı olarak işaretle */
   async completeSession(sessionId: string, tenantId: string) {
-    await this.findSession(sessionId, tenantId);
-    return this.prisma.kdvControlSession.update({
+    const session = await this.findSession(sessionId, tenantId);
+    const updated = await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
       data: { status: 'COMPLETED' },
     });
+
+    // Mükellef seçilmişse aylık KDV kontrol durumunu güncelle
+    if (session.taxpayerId && session.periodLabel) {
+      const [yearStr, monthStr] = session.periodLabel.split('/');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr);
+      if (year && month) {
+        await this.prisma.taxpayerMonthlyStatus.upsert({
+          where: { taxpayerId_year_month: { taxpayerId: session.taxpayerId, year, month } },
+          create: { taxpayerId: session.taxpayerId, tenantId, year, month, kdvKontrolEdildi: true },
+          update: { kdvKontrolEdildi: true },
+        });
+      }
+    }
+
+    return updated;
   }
 }

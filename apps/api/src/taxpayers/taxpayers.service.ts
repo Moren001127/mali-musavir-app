@@ -6,8 +6,8 @@ import { CreateTaxpayerDto } from '@mali-musavir/shared';
 export class TaxpayersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(tenantId: string, search?: string) {
-    return this.prisma.taxpayer.findMany({
+  async findAll(tenantId: string, search?: string, year?: number, month?: number) {
+    const taxpayers = await this.prisma.taxpayer.findMany({
       where: {
         tenantId,
         isActive: true,
@@ -22,7 +22,7 @@ export class TaxpayersService {
             }
           : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       select: {
         id: true,
         type: true,
@@ -32,12 +32,31 @@ export class TaxpayersService {
         taxNumber: true,
         taxOffice: true,
         email: true,
+        emails: true,
         phone: true,
+        phones: true,
+        evrakTeslimGunu: true,
+        whatsappEvrakTalep: true,
+        whatsappEvrakGeldi: true,
         isActive: true,
         createdAt: true,
         _count: { select: { taxDeclarations: true, documents: true } },
       },
     });
+
+    if (!year || !month) return taxpayers.map(t => ({ ...t, monthlyStatus: null }));
+
+    // Aylık durumları çek
+    const taxpayerIds = taxpayers.map(t => t.id);
+    const statuses = await this.prisma.taxpayerMonthlyStatus.findMany({
+      where: { taxpayerId: { in: taxpayerIds }, year, month },
+    });
+    const statusMap = new Map(statuses.map(s => [s.taxpayerId, s]));
+
+    return taxpayers.map(t => ({
+      ...t,
+      monthlyStatus: statusMap.get(t.id) ?? null,
+    }));
   }
 
   async findOne(id: string, tenantId: string) {
@@ -75,12 +94,66 @@ export class TaxpayersService {
   async update(id: string, tenantId: string, dto: Partial<CreateTaxpayerDto>) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
-    return this.prisma.taxpayer.update({ where: { id }, data: dto });
+    return this.prisma.taxpayer.update({ where: { id }, data: dto as any });
   }
 
   async softDelete(id: string, tenantId: string) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
     return this.prisma.taxpayer.update({ where: { id }, data: { isActive: false } });
+  }
+
+  // ── Aylık durum takibi ──────────────────────────────────────
+
+  async getMonthlyStatus(taxpayerId: string, tenantId: string, year: number, month: number) {
+    const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    return this.prisma.taxpayerMonthlyStatus.upsert({
+      where: { taxpayerId_year_month: { taxpayerId, year, month } },
+      create: { taxpayerId, tenantId, year, month },
+      update: {},
+    });
+  }
+
+  async updateMonthlyStatus(
+    taxpayerId: string,
+    tenantId: string,
+    year: number,
+    month: number,
+    data: {
+      evraklarGeldi?: boolean;
+      evraklarIslendi?: boolean;
+      kontrolEdildi?: boolean;
+      beyannameVerildi?: boolean;
+      kdvKontrolEdildi?: boolean;
+    },
+    whatsappService?: any,
+  ) {
+    const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    const status = await this.prisma.taxpayerMonthlyStatus.upsert({
+      where: { taxpayerId_year_month: { taxpayerId, year, month } },
+      create: { taxpayerId, tenantId, year, month, ...data },
+      update: data,
+    });
+
+    // Evraklar geldi işaretlendiyse WhatsApp mesajı gönder
+    if (data.evraklarGeldi === true && taxpayer.whatsappEvrakGeldi && whatsappService) {
+      const template = await this.prisma.smsTemplate.findUnique({ where: { tenantId } });
+      const donem = `${year}/${String(month).padStart(2, '0')}`;
+      const ad = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim();
+      const mesaj = (template?.evrakGeldiMesaji || 'Sayın {ad}, {dönem} dönemi evraklarınız ulaşmıştır.')
+        .replace('{ad}', ad)
+        .replace('{dönem}', donem);
+
+      const phones = taxpayer.phones?.length ? taxpayer.phones : (taxpayer.phone ? [taxpayer.phone] : []);
+      for (const phone of phones.filter(Boolean)) {
+        await whatsappService.sendMessage(phone, mesaj).catch(() => null);
+      }
+    }
+
+    return status;
   }
 }

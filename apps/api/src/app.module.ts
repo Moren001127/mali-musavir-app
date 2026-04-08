@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
 import { AuthModule } from './auth/auth.module';
@@ -11,11 +12,17 @@ import { KdvControlModule } from './kdv-control/kdv-control.module';
 import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
+import { ReminderCron } from './schedule/reminder.cron';
+import { PrismaService } from './prisma/prisma.service';
+import { WhatsAppService } from './whatsapp/whatsapp.service';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     StorageModule,
     AuthModule,
@@ -26,6 +33,9 @@ import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
     AuditModule,
     NotificationsModule,
     FisYazdirmaModule,
+    WhatsAppModule,
+    SmsTemplatesModule,
   ],
+  providers: [ReminderCron, PrismaService, WhatsAppService],
 })
 export class AppModule {}

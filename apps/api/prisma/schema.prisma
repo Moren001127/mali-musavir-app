@@ -27,6 +27,7 @@ model Tenant {
   dataRetentionPolicies DataRetentionPolicy[]
   notifications         Notification[]
   kdvSessions           KdvControlSession[]
+  smsTemplate           SmsTemplate?
 
   @@map("tenants")
 }
@@ -128,8 +129,16 @@ model Taxpayer {
   taxOffice   String
   email       String?
   phone       String?
+  phones      String[]     // 3 telefon numarası
+  emails      String[]     // 3 e-posta adresi
   address     String?
   notes       String?
+  startDate   DateTime?    // İşe başlama tarihi
+  endDate     DateTime?    // İşi bırakma tarihi
+  evrakTeslimGunu     Int?          // 1-30 arası, her ayın kaçında bekleniyor
+  whatsappEvrakTalep  Boolean       @default(false)
+  whatsappEvrakGeldi  Boolean       @default(false)
+  lastReminderSentAt  DateTime?
   isActive    Boolean      @default(true)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -144,6 +153,7 @@ model Taxpayer {
   employees           Employee[]
   documents           Document[]
   kdvControlSessions  KdvControlSession[]
+  monthlyStatuses     TaxpayerMonthlyStatus[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -720,4 +730,44 @@ enum MatchStatus {
   NEEDS_REVIEW    // Kullanıcı incelemesi gerekli
   CONFIRMED       // Kullanıcı tarafından teyit edildi
   REJECTED        // Kullanıcı tarafından reddedildi
+}
+
+// ============================================================
+// MÜKELLEF AYLIK DURUM TAKİBİ
+// ============================================================
+model TaxpayerMonthlyStatus {
+  id               String   @id @default(cuid())
+  taxpayerId       String
+  tenantId         String
+  year             Int
+  month            Int      // 1-12
+  evraklarGeldi    Boolean  @default(false)
+  evraklarIslendi  Boolean  @default(false)
+  kontrolEdildi    Boolean  @default(false)
+  beyannameVerildi Boolean  @default(false)
+  kdvKontrolEdildi Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([taxpayerId, year, month])
+  @@index([tenantId, year, month])
+  @@map("taxpayer_monthly_statuses")
+}
+
+// ============================================================
+// SMS / WHATSAPP ŞABLONLARI
+// ============================================================
+model SmsTemplate {
+  id               String   @id @default(cuid())
+  tenantId         String   @unique
+  evrakTalepMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınızı tarafımıza teslim etmenizi rica ederiz. Moren Mali Müşavirlik")
+  evrakGeldiMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınız tarafımıza ulaşmıştır. İşlemlerinize başlanmıştır. Moren Mali Müşavirlik")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("sms_templates")
 }

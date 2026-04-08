@@ -12,9 +12,16 @@ export const CreateTaxpayerSchema = z.object({
     .regex(/^\d+$/, 'Sadece rakam giriniz'),
   taxOffice: z.string().min(2, 'Vergi dairesi zorunludur').max(100),
   email: z.string().email('Geçerli e-posta giriniz').optional().or(z.literal('')),
+  emails: z.array(z.string().email().or(z.literal(''))).optional().default([]),
   phone: z.string().optional().or(z.literal('')),
+  phones: z.array(z.string()).optional().default([]),
   address: z.string().optional().or(z.literal('')),
   notes: z.string().optional().or(z.literal('')),
+  startDate: z.string().optional().or(z.literal('')),
+  endDate: z.string().optional().or(z.literal('')),
+  evrakTeslimGunu: z.number().int().min(1).max(30).optional().nullable(),
+  whatsappEvrakTalep: z.boolean().optional().default(false),
+  whatsappEvrakGeldi: z.boolean().optional().default(false),
 });
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;
