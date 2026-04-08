@@ -2,6 +2,7 @@ import { Controller, Get, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { WhatsAppService } from './whatsapp.service';
+import * as QRCode from 'qrcode';
 
 @Controller('whatsapp')
 @UseGuards(AuthGuard('jwt'))
@@ -19,14 +20,8 @@ export class WhatsAppController {
     if (!qr) {
       return res.status(404).json({ message: 'QR kodu mevcut değil. Zaten bağlı olabilir.' });
     }
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const QRCode = require('qrcode');
-      const pngBuffer = await QRCode.toBuffer(qr);
-      res.set('Content-Type', 'image/png');
-      return res.send(pngBuffer);
-    } catch {
-      return res.json({ qr });
-    }
+    const pngBuffer = await QRCode.toBuffer(qr);
+    res.set('Content-Type', 'image/png');
+    return res.send(pngBuffer);
   }
 }
