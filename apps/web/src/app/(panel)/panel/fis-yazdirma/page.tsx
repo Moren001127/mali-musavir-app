@@ -462,9 +462,9 @@ export default function FisYazdirmaPage() {
                             </div>
                           )}
                           {/* Ek alanlar (varsa) */}
-                          {(d.belge_no || d.cari || d.genel_toplam) && (
+                          {(d.belge_no || d.cari || d.toplam) && (
                             <p className="text-[10px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
-                              {[d.belge_no && `No: ${d.belge_no}`, d.genel_toplam && `Top: ${d.genel_toplam}`]
+                              {[d.belge_no && `No: ${d.belge_no}`, d.toplam && `Top: ${d.toplam}`]
                                 .filter(Boolean).join(' | ')}
                             </p>
                           )}
