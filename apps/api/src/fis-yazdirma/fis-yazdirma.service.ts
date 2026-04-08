@@ -73,37 +73,53 @@ function parseDate(d: string, m: string | number, y: string): string | null {
 function extractDateFromText(raw: string): string | null {
   if (!raw || raw.trim().length < 5) return null;
 
-  // OCR gürültüsünü temizle
+  // ── Ön Temizlik ──────────────────────────────────────────────
   let t = raw
-    .replace(/(\d)[,:](\d)/g, '$1.$2')   // rakamlar arasındaki virgül/iki nokta → nokta
-    .replace(/[|\\]/g, '.')               // | veya \ → nokta (OCR yanlış okuma)
+    // Unicode dash'ları → standart tire
+    .replace(/[\u2013\u2014\u2015\u2212]/g, '-')
+    // OCR yanlış okumaları
+    .replace(/[|\\]/g, '-')
+    .replace(/[oO](\d)/g, '0$1')          // "O2" → "02" (O harfi → 0 rakamı)
+    .replace(/(\d)[,;](\d)/g, '$1.$2')    // rakam arası virgül/noktalı virgül → nokta
     .replace(/\s+/g, ' ');
 
-  // ── SAAT/TIME bilgisini önceden temizle (tarihle karışmasın) ──
-  // "26.02.2026 23:08" → "26.02.2026 " (saat kısmı kaldırılır)
-  t = t.replace(/\b(\d{2}:\d{2}(:\d{2})?)\b/g, ' ');
+  // SAAT bilgisini temizle (tarihle karışmasın): "23:08" veya "23.08"
+  t = t.replace(/\b\d{2}[:.]\d{2}([:.]\d{2})?\b/g, ' ');
 
-  // ── 1. DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY (boşluklu dahil) ──
-  let m = t.match(/(\d{1,2})\s*[.\/\-]\s*(\d{1,2})\s*[.\/\-]\s*(\d{4})/);
-  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
+  // ── Separator normalizasyonu: tire → nokta (yedek kopya üret) ──
+  // Hem orijinal hem de tire→nokta versiyonu denenecek
+  const tDash = t.replace(/(\d)\s*-\s*(\d)/g, '$1.$2');
 
-  // ── 2. YYYY-MM-DD ──
-  m = t.match(/(\d{4})[.\-](\d{2})[.\-](\d{2})/);
-  if (m) { const r = parseDate(m[3], parseInt(m[2], 10), m[1]); if (r) return r; }
+  const tryAll = (text: string): string | null => {
+    // 1. DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY (separator: . - / ; boşluk toleranslı)
+    let m = text.match(/(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{4})/);
+    if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-  // ── 3. DD.MM.YY (2 haneli yıl, boşluklu dahil) ──
-  m = t.match(/(\d{1,2})\s*[.\/]\s*(\d{1,2})\s*[.\/]\s*(\d{2})(?!\d)/);
-  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
+    // 2. YYYY-MM-DD / YYYY.MM.DD
+    m = text.match(/(\d{4})\s*[.\-]\s*(\d{2})\s*[.\-]\s*(\d{2})(?!\d)/);
+    if (m) { const r = parseDate(m[3], parseInt(m[2], 10), m[1]); if (r) return r; }
 
-  // ── 4. DDMMYYYY bitişik 8 hane ──
-  m = t.match(/\b(\d{2})(\d{2})(\d{4})\b/);
-  if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
+    // 3. DD.MM.YY (2 haneli yıl)
+    m = text.match(/(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{2})(?!\d)/);
+    if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-  // ── 5. DD Ocak 2025 vb. ──
-  m = t.match(/(\d{1,2})\s+(ocak|subat|şubat|mart|nisan|mayis|mayıs|haziran|temmuz|agustos|ağustos|eylul|eylül|ekim|kasim|kasım|aralik|aralık|january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i);
-  if (m) { const r = parseDate(m[1], m[2].toLowerCase(), m[3]); if (r) return r; }
+    // 4. Separator yok: DD MM YYYY (sadece boşlukla ayrılmış 3 sayı grubu)
+    m = text.match(/\b(\d{1,2})\s+(\d{1,2})\s+(20\d{2})\b/);
+    if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-  return null;
+    // 5. DDMMYYYY bitişik 8 hane
+    m = text.match(/\b(\d{2})(\d{2})(20\d{2})\b/);
+    if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
+
+    // 6. DD Ocak 2025 vb.
+    m = text.match(/(\d{1,2})\s+(ocak|subat|şubat|mart|nisan|mayis|mayıs|haziran|temmuz|agustos|ağustos|eylul|eylül|ekim|kasim|kasım|aralik|aralık|january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i);
+    if (m) { const r = parseDate(m[1], m[2].toLowerCase(), m[3]); if (r) return r; }
+
+    return null;
+  };
+
+  // Önce orijinal metni dene, sonra tire→nokta dönüştürülmüş versiyonu
+  return tryAll(t) ?? tryAll(tDash);
 }
 
 /* ─── Görünmez Border ───────────────────────────────────────── */
@@ -328,10 +344,9 @@ export class FisYazdirmaService {
     // Her fiş için hücre oluştur
     const cells: TableCell[] = await Promise.all(
       sorted.map(async (file) => {
-        // Yüksek kaliteli embed: max 800px genişlik, JPEG %95
+        // Maksimum kalite embed: orijinal çözünürlük korunur, JPEG %98
         const embedded = await sharp(file.buffer)
-          .resize({ width: 800, withoutEnlargement: true })
-          .jpeg({ quality: 95 })
+          .jpeg({ quality: 98 })
           .toBuffer();
 
         const meta = await sharp(embedded).metadata();
