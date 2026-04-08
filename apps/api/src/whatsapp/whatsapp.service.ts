@@ -29,10 +29,9 @@ export class WhatsAppService implements OnModuleInit, OnModuleDestroy {
 
   private async initClient() {
     try {
-      // Webpack'in statik analiz yapmasını engellemek için eval kullanıyoruz
-      // whatsapp-web.js opsiyonel bağımlılıktır — yoksa servis devre dışı kalır
-      // eslint-disable-next-line no-eval
-      const wwjs = eval('require')('whatsapp-web.js');
+      // webpackIgnore: true magic comment webpack'in bu require'ı analiz etmesini engeller
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const wwjs = require(/* webpackIgnore: true */ 'whatsapp-web.js');
       const { Client, LocalAuth } = wwjs;
       
       this.client = new Client({
