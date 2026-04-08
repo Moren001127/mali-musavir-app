@@ -17,9 +17,9 @@ export const CreateTaxpayerSchema = z.object({
   phones: z.array(z.string()).optional().default([]),
   address: z.string().optional().or(z.literal('')),
   notes: z.string().optional().or(z.literal('')),
-  startDate: z.string().optional().or(z.literal('')),
-  endDate: z.string().optional().or(z.literal('')),
-  evrakTeslimGunu: z.number().int().min(1).max(30).optional().nullable(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+  evrakTeslimGunu: z.number().int().min(1).max(30).nullable().optional(),
   whatsappEvrakTalep: z.boolean().optional().default(false),
   whatsappEvrakGeldi: z.boolean().optional().default(false),
 });

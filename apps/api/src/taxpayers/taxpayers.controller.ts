@@ -46,6 +46,9 @@ export class TaxpayersController {
     const dto = Object.fromEntries(
       Object.entries(result.data).map(([k, v]) => [k, v === '' ? null : v]),
     ) as any;
+    // Tarih alanlarını Date nesnesine çevir
+    if (dto.startDate) dto.startDate = new Date(dto.startDate);
+    if (dto.endDate) dto.endDate = new Date(dto.endDate);
     return this.taxpayersService.create(req.user.tenantId, dto);
   }
 
