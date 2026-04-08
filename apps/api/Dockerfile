@@ -29,4 +29,4 @@ WORKDIR /app/apps/api
 
 EXPOSE ${PORT:-3001}
 
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node /app/apps/api/dist/main"]

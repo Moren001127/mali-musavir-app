@@ -4,7 +4,6 @@
     "dockerfilePath": "apps/api/Dockerfile"
   },
   "deploy": {
-    "startCommand": "node /app/apps/api/dist/main",
     "restartPolicyType": "ON_FAILURE"
   }
 }
