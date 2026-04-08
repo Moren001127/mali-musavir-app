@@ -1,0 +1,9 @@
+{
+  "installCommand": "npm install -g pnpm && pnpm install --no-frozen-lockfile",
+  "buildCommand": "pnpm build",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_API_URL": "https://mali-musavir-api.up.railway.app/api/v1"
+  }
+}
