@@ -1,198 +1,235 @@
 'use client';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { CreateTaxpayerSchema, CreateTaxpayerDto, TaxpayerType } from '@mali-musavir/shared';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { Building2, User } from 'lucide-react';
 
-const inputCls = 'input-base w-full';
-const labelCls = 'block text-sm font-medium mb-1.5';
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
+
+const TAXPAYER_TYPES = [
+  { value: 'TUZEL_KISI', label: 'Tüzel Kişi (Şirket)' },
+  { value: 'GERCEK_KISI', label: 'Gerçek Kişi' },
+];
 
 export default function YeniMukellefPage() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<CreateTaxpayerDto>({
-    resolver: zodResolver(CreateTaxpayerSchema),
-    defaultValues: { type: TaxpayerType.TUZEL_KISI },
+  const [form, setForm] = useState({
+    type: 'TUZEL_KISI',
+    companyName: '',
+    firstName: '',
+    lastName: '',
+    taxNumber: '',
+    taxOffice: '',
+    phones: ['', '', ''],
+    emails: ['', '', ''],
+    address: '',
+    notes: '',
+    startDate: '',
+    endDate: '',
+    evrakTeslimGunu: '' as string | number,
+    whatsappEvrakTalep: false,
+    whatsappEvrakGeldi: false,
   });
 
-  const type = watch('type');
-
-  const create = useMutation({
-    mutationFn: (data: CreateTaxpayerDto) =>
-      api.post('/taxpayers', data).then((r) => r.data),
+  const { mutate: save, isPending } = useMutation({
+    mutationFn: (data: any) => api.post('/taxpayers', data),
     onSuccess: () => {
+      toast.success('Mükellef eklendi');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
-      toast.success('Mükellef başarıyla eklendi');
       router.push('/panel/mukellefler');
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.message || 'Mükellef eklenirken hata oluştu';
-      toast.error(Array.isArray(msg) ? msg.join(', ') : msg);
+      const msg = err.response?.data?.message;
+      toast.error(Array.isArray(msg) ? msg.join('\n') : (msg || 'Kayıt hatası'));
     },
   });
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    save({
+      ...form,
+      phones: form.phones.filter(Boolean),
+      emails: form.emails.filter(Boolean),
+      evrakTeslimGunu: form.evrakTeslimGunu ? parseInt(String(form.evrakTeslimGunu)) : null,
+      startDate: form.startDate || null,
+      endDate: form.endDate || null,
+    });
+  };
+
   return (
-    <div className="max-w-2xl">
-      <PageHeader
-        title="Yeni Mükellef"
-        subtitle="Mükellef bilgilerini girin"
-        backHref="/panel/mukellefler"
-      />
+    <div className="p-6 max-w-3xl mx-auto">
+      <div className="flex items-center gap-4 mb-6">
+        <Link href="/panel/mukellefler">
+          <button className="text-gray-500 hover:text-gray-700 text-sm">← Listeye Dön</button>
+        </Link>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--navy)' }}>Yeni Mükellef</h1>
+      </div>
 
-      <form onSubmit={handleSubmit((d) => create.mutate(d))} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
 
-        {/* Tip Seçimi */}
-        <div className="card p-5">
-          <p className="text-sm font-bold mb-3" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-            Mükellef Tipi
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { value: TaxpayerType.TUZEL_KISI, label: 'Tüzel Kişi', sub: 'Ltd, A.Ş., Kooperatif vb.', icon: Building2 },
-              { value: TaxpayerType.GERCEK_KISI, label: 'Gerçek Kişi', sub: 'Şahıs, esnaf, serbest meslek', icon: User },
-            ].map(({ value, label, sub, icon: Icon }) => (
-              <label
-                key={value}
-                className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all duration-150 border-2"
-                style={{
-                  borderColor: type === value ? 'var(--gold)' : 'var(--border)',
-                  background: type === value ? 'var(--gold-pale)' : 'var(--bg)',
-                }}
-              >
-                <input {...register('type')} type="radio" value={value} className="hidden" />
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background: type === value ? 'var(--gold)' : 'var(--border)',
-                    color: type === value ? 'white' : 'var(--text-muted)',
-                  }}
-                >
-                  <Icon size={16} />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{label}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{sub}</p>
-                </div>
+        {/* Tip */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Mükellef Tipi</h2>
+          <div className="flex gap-6">
+            {TAXPAYER_TYPES.map(t => (
+              <label key={t.value} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="type" value={t.value}
+                  checked={form.type === t.value}
+                  onChange={() => setForm(f => ({ ...f, type: t.value }))}
+                  className="accent-[var(--gold)]" />
+                <span className="text-sm font-medium">{t.label}</span>
               </label>
             ))}
           </div>
         </div>
 
         {/* Temel Bilgiler */}
-        <div className="card p-5 space-y-4">
-          <p className="text-sm font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-            Temel Bilgiler
-          </p>
-
-          {type === TaxpayerType.TUZEL_KISI ? (
-            <div>
-              <label className={labelCls} style={{ color: 'var(--text)' }}>Şirket Adı *</label>
-              <input {...register('companyName')} className={`${inputCls} ${errors.companyName ? 'input-error' : ''}`} placeholder="ABC Ltd. Şti." />
-              {errors.companyName && <p className="text-red-500 text-xs mt-1">{errors.companyName.message}</p>}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelCls} style={{ color: 'var(--text)' }}>Ad *</label>
-                <input {...register('firstName')} className={`${inputCls} ${errors.firstName ? 'input-error' : ''}`} placeholder="Ahmet" />
-                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName.message}</p>}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Temel Bilgiler</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {form.type === 'TUZEL_KISI' ? (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Şirket Adı *</label>
+                <input type="text" value={form.companyName} required
+                  onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
               </div>
-              <div>
-                <label className={labelCls} style={{ color: 'var(--text)' }}>Soyad *</label>
-                <input {...register('lastName')} className={`${inputCls} ${errors.lastName ? 'input-error' : ''}`} placeholder="Yılmaz" />
-                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName.message}</p>}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ad *</label>
+                  <input type="text" value={form.firstName} required
+                    onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Soyad *</label>
+                  <input type="text" value={form.lastName} required
+                    onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                </div>
+              </>
+            )}
             <div>
-              <label className={labelCls} style={{ color: 'var(--text)' }}>
-                {type === TaxpayerType.TUZEL_KISI ? 'VKN (10 hane) *' : 'TCKN (11 hane) *'}
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {form.type === 'TUZEL_KISI' ? 'VKN (10 hane)' : 'TCKN (11 hane)'} *
               </label>
-              <input
-                {...register('taxNumber')}
-                className={`${inputCls} font-mono ${errors.taxNumber ? 'input-error' : ''}`}
-                placeholder={type === TaxpayerType.TUZEL_KISI ? '1234567890' : '12345678901'}
-                maxLength={type === TaxpayerType.TUZEL_KISI ? 10 : 11}
-              />
-              {errors.taxNumber && <p className="text-red-500 text-xs mt-1">{errors.taxNumber.message}</p>}
+              <input type="text" value={form.taxNumber} required maxLength={11}
+                onChange={e => setForm(f => ({ ...f, taxNumber: e.target.value.replace(/\D/g, '') }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
             </div>
             <div>
-              <label className={labelCls} style={{ color: 'var(--text)' }}>Vergi Dairesi *</label>
-              <input {...register('taxOffice')} className={`${inputCls} ${errors.taxOffice ? 'input-error' : ''}`} placeholder="Kadıköy VD" />
-              {errors.taxOffice && <p className="text-red-500 text-xs mt-1">{errors.taxOffice.message}</p>}
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vergi Dairesi *</label>
+              <input type="text" value={form.taxOffice} required
+                onChange={e => setForm(f => ({ ...f, taxOffice: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">İşe Başlama Tarihi</label>
+              <input type="date" value={form.startDate}
+                onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">İşi Bırakma Tarihi</label>
+              <input type="date" value={form.endDate}
+                onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+              <p className="text-xs text-gray-400 mt-1">Belirlenirse mükellef o aydan itibaren listede çıkmaz</p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Adres</label>
+              <input type="text" value={form.address}
+                onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
             </div>
           </div>
         </div>
 
         {/* İletişim */}
-        <div className="card p-5 space-y-4">
-          <p className="text-sm font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-            İletişim <span className="font-normal text-xs" style={{ color: 'var(--text-muted)' }}>(isteğe bağlı)</span>
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls} style={{ color: 'var(--text)' }}>E-posta</label>
-              <input {...register('email')} type="email" className={inputCls} placeholder="info@sirket.com" />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>İletişim Bilgileri</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700">Telefon Numaraları</label>
+              {form.phones.map((p, i) => (
+                <input key={i} type="tel" value={p}
+                  placeholder={i === 0 ? 'Telefon 1 (Ana)' : `Telefon ${i + 1}`}
+                  onChange={e => setForm(f => {
+                    const phones = [...f.phones]; phones[i] = e.target.value; return { ...f, phones };
+                  })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+              ))}
             </div>
-            <div>
-              <label className={labelCls} style={{ color: 'var(--text)' }}>Telefon</label>
-              <input {...register('phone')} className={inputCls} placeholder="+90 532 000 0000" />
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700">E-posta Adresleri</label>
+              {form.emails.map((e, i) => (
+                <input key={i} type="email" value={e}
+                  placeholder={`E-posta ${i + 1}`}
+                  onChange={ev => setForm(f => {
+                    const emails = [...f.emails]; emails[i] = ev.target.value; return { ...f, emails };
+                  })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+              ))}
             </div>
-          </div>
-          <div>
-            <label className={labelCls} style={{ color: 'var(--text)' }}>Adres</label>
-            <textarea {...register('address')} rows={2} className={`${inputCls} resize-none`} placeholder="İstanbul, Türkiye" />
-          </div>
-          <div>
-            <label className={labelCls} style={{ color: 'var(--text)' }}>Notlar</label>
-            <textarea {...register('notes')} rows={2} className={`${inputCls} resize-none`} placeholder="Mükellefle ilgili özel notlar..." />
           </div>
         </div>
 
-        {/* Hata özeti */}
-        {Object.keys(errors).length > 0 && (
-          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-            <p className="font-semibold text-red-700 mb-1">Lütfen eksik alanları doldurun:</p>
-            <ul className="list-disc pl-4 space-y-0.5 text-red-600 text-xs">
-              {Object.entries(errors).map(([f, e]: any) => (
-                <li key={f}>{e?.message ?? f}</li>
-              ))}
-            </ul>
+        {/* Evrak & SMS Ayarları */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Evrak & SMS Ayarları</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Evrak Teslim İçin Son Gün (1-30)
+              </label>
+              <input type="number" min={1} max={30}
+                value={form.evrakTeslimGunu}
+                onChange={e => setForm(f => ({ ...f, evrakTeslimGunu: e.target.value }))}
+                placeholder="Örn: 15"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+              <p className="text-xs text-gray-400 mt-1">Her ayın bu günü geldiğinde SMS hatırlatması gönderilir</p>
+            </div>
+            <div className="space-y-4 pt-2">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={form.whatsappEvrakTalep}
+                  onChange={e => setForm(f => ({ ...f, whatsappEvrakTalep: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-[var(--gold)]" />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Evrak Talebi SMS Gönderilsin</span>
+                  <p className="text-xs text-gray-400">Evrak gelme günü ve sonrasında otomatik hatırlatma</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={form.whatsappEvrakGeldi}
+                  onChange={e => setForm(f => ({ ...f, whatsappEvrakGeldi: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-[var(--gold)]" />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">İşleme Başlama SMS Gönderilsin</span>
+                  <p className="text-xs text-gray-400">Evraklar geldi işaretlendiğinde onay mesajı gönderilir</p>
+                </div>
+              </label>
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* Aksiyonlar */}
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => router.push('/panel/mukellefler')}
-            className="btn-secondary flex-1"
-          >
-            İptal
-          </button>
-          <button type="submit" disabled={create.isPending} className="btn-primary flex-1">
-            {create.isPending ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Kaydediliyor...
-              </span>
-            ) : (
-              'Mükellef Ekle'
-            )}
+        {/* Notlar */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-3" style={{ color: 'var(--navy)' }}>Notlar</h2>
+          <textarea value={form.notes} rows={3} placeholder="Mükellef hakkında notlar..."
+            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)] resize-none" />
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <Link href="/panel/mukellefler">
+            <button type="button" className="btn-secondary">İptal</button>
+          </Link>
+          <button type="submit" className="btn-primary" disabled={isPending}>
+            {isPending ? 'Kaydediliyor...' : 'Mükellef Ekle'}
           </button>
         </div>
       </form>

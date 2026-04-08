@@ -7,21 +7,33 @@ export class TaxpayersService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(tenantId: string, search?: string, year?: number, month?: number) {
+    // WHERE koşulları düzgün AND ile birleştiriliyor
+    const andConditions: any[] = [{ tenantId }, { isActive: true }];
+
+    // İşi bırakma tarihi filtresi — seçili aydan önce bırakanları gizle
+    if (year && month) {
+      andConditions.push({
+        OR: [
+          { endDate: null },
+          { endDate: { gte: new Date(year, month - 1, 1) } },
+        ],
+      });
+    }
+
+    // Arama filtresi
+    if (search) {
+      andConditions.push({
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } },
+          { companyName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
     const taxpayers = await this.prisma.taxpayer.findMany({
-      where: {
-        tenantId,
-        isActive: true,
-        ...(search
-          ? {
-              OR: [
-                { firstName: { contains: search, mode: 'insensitive' } },
-                { lastName: { contains: search, mode: 'insensitive' } },
-                { companyName: { contains: search, mode: 'insensitive' } },
-                { email: { contains: search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      },
+      where: { AND: andConditions },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       select: {
         id: true,
@@ -39,6 +51,8 @@ export class TaxpayersService {
         whatsappEvrakTalep: true,
         whatsappEvrakGeldi: true,
         isActive: true,
+        startDate: true,
+        endDate: true,
         createdAt: true,
         _count: { select: { taxDeclarations: true, documents: true } },
       },

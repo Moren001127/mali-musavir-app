@@ -126,7 +126,6 @@ export default function MukelleflerPage() {
   const [search, setSearch] = useState('');
   const [year, setYear] = useState(CURRENT_YEAR);
   const [month, setMonth] = useState(CURRENT_MONTH);
-  const [showSmsModal, setShowSmsModal] = useState(false);
 
   const { data: taxpayers = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', search, year, month],
@@ -151,7 +150,6 @@ export default function MukelleflerPage() {
 
   return (
     <div className="p-6">
-      {showSmsModal && <SmsTemplateModal onClose={() => setShowSmsModal(false)} />}
 
       {/* Başlık */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -160,12 +158,6 @@ export default function MukelleflerPage() {
           <p className="text-sm text-gray-500 mt-1">Aylık evrak ve beyanname takibi</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={() => setShowSmsModal(true)}
-            className="btn-secondary text-sm"
-          >
-            📱 SMS Şablonu
-          </button>
           <Link href="/panel/mukellefler/yeni">
             <button className="btn-primary text-sm">+ Mükellef Ekle</button>
           </Link>
