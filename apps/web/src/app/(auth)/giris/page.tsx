@@ -51,29 +51,18 @@ export default function GirisPage() {
         />
 
         {/* Logo */}
-        <div className="relative z-10 flex items-center gap-4">
+        <div className="relative z-10">
           <div
-            className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center"
+            className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center"
             style={{ border: '1px solid rgba(201,152,42,.4)', background: 'rgba(201,152,42,.12)' }}
           >
             <Image
               src="/brand/logo.jpg"
               alt="Moren Mali Müşavirlik"
-              width={52}
-              height={52}
+              width={60}
+              height={60}
               className="object-contain w-full h-full"
             />
-          </div>
-          <div>
-            <h2
-              className="font-extrabold text-lg uppercase tracking-wider"
-              style={{ color: 'var(--gold-light)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}
-            >
-              Moren
-            </h2>
-            <p className="text-xs font-medium uppercase tracking-widest" style={{ color: 'rgba(255,255,255,.4)' }}>
-              Mali Müşavirlik
-            </p>
           </div>
         </div>
 
