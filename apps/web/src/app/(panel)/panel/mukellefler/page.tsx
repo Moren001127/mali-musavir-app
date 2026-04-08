@@ -180,9 +180,9 @@ export default function MukelleflerPage() {
           {/* Tablo başlığı */}
           <div className="grid items-center px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-white/70"
             style={{ background:'linear-gradient(135deg,var(--navy),#1e3f7a)',
-              gridTemplateColumns:'minmax(200px,1fr) 110px 52px 52px 52px 52px 52px 70px 60px' }}>
+              gridTemplateColumns:'minmax(150px,1fr) 70px 44px 44px 44px 44px 44px 64px 52px' }}>
             <span>Mükellef</span>
-            <span>VKN / TC</span>
+            <span>VKN/TC</span>
             <span className="text-center">Son<br/>Gün</span>
             <span className="text-center">Evrak<br/>Geldi</span>
             <span className="text-center">Evrak<br/>İşlendi</span>
@@ -214,7 +214,7 @@ export default function MukelleflerPage() {
               return (
                 <div key={t.id}
                   className="grid items-center px-4 py-2.5 group hover:bg-slate-50/80 transition-colors duration-100"
-                  style={{ gridTemplateColumns:'minmax(200px,1fr) 110px 52px 52px 52px 52px 52px 70px 60px',
+                  style={{ gridTemplateColumns:'minmax(150px,1fr) 70px 44px 44px 44px 44px 44px 64px 52px',
                     background: done ? 'linear-gradient(90deg,#f0fdf408,transparent)' : undefined }}>
 
                   {/* Mükellef adı */}
@@ -238,8 +238,10 @@ export default function MukelleflerPage() {
                     </div>
                   </div>
 
-                  {/* VKN */}
-                  <span className="text-xs font-mono text-gray-400 truncate">{t.taxNumber}</span>
+                  {/* VKN — ilk 3 ve son 2 hane görünür */}
+                  <span className="text-[11px] font-mono text-gray-400 truncate" title={t.taxNumber}>
+                    {t.taxNumber ? t.taxNumber.slice(0,3) + '··' + t.taxNumber.slice(-2) : '—'}
+                  </span>
 
                   {/* Son gün */}
                   <div className="flex items-center justify-center">
