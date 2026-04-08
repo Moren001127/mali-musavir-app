@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { createWorker } from 'tesseract.js';
 import * as sharp from 'sharp';
+import * as XLSX from 'xlsx';
 import {
   Document,
   Packer,
@@ -23,6 +24,11 @@ import {
 export interface ScanDetected {
   filename: string;
   date: string; // YYYY-MM-DD
+  belge_no?: string;
+  cari?: string;
+  kdv_haric?: string;
+  kdv_tutari?: string;
+  genel_toplam?: string;
 }
 
 export interface ScanUnread {
@@ -34,6 +40,16 @@ export interface ScanResult {
   detected: ScanDetected[];
   unread: ScanUnread[];
   total: number;
+}
+
+export interface ExcelRow {
+  filename: string;
+  date: string;
+  belge_no?: string;
+  cari?: string;
+  kdv_haric?: string;
+  kdv_tutari?: string;
+  genel_toplam?: string;
 }
 
 /* ─── Türkçe Ay Adları (OCR gürültü toleranslı) ────────────── */
@@ -51,7 +67,7 @@ const TR_MONTHS: Record<string, number> = {
 const MIN_YEAR = 2020;
 const MAX_YEAR = 2030;
 const TODAY = new Date();
-const MAX_DATE = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000); // bugün + 7 gün
+const MAX_DATE = new Date(TODAY.getTime() + 7 * 24 * 60 * 60 * 1000);
 
 function parseDate(d: string, m: string | number, y: string): string | null {
   const day = parseInt(d, 10);
@@ -59,11 +75,9 @@ function parseDate(d: string, m: string | number, y: string): string | null {
   let year = parseInt(y, 10);
   if (year < 100) year += 2000;
 
-  // Çapraz kontrol
   if (day < 1 || day > 31 || month < 1 || month > 12) return null;
   if (year < MIN_YEAR || year > MAX_YEAR) return null;
 
-  // Gelecek tarih kontrolü
   const candidate = new Date(year, month - 1, day);
   if (candidate > MAX_DATE) return null;
 
@@ -75,23 +89,21 @@ function extractDateFromText(raw: string): string | null {
 
   // ── Ön Temizlik ──────────────────────────────────────────────
   let t = raw
-    // Unicode dash'ları → standart tire
-    .replace(/[\u2013\u2014\u2015\u2212]/g, '-')
-    // OCR yanlış okumaları
+    .replace(/[\u2013\u2014\u2015\u2212]/g, '-')   // Unicode dash → standart tire
     .replace(/[|\\]/g, '-')
-    .replace(/[oO](\d)/g, '0$1')          // "O2" → "02" (O harfi → 0 rakamı)
-    .replace(/(\d)[,;](\d)/g, '$1.$2')    // rakam arası virgül/noktalı virgül → nokta
+    .replace(/[oO](\d)/g, '0$1')                    // "O2" → "02"
+    .replace(/(\d)[,;](\d)/g, '$1.$2')              // virgül/noktalı virgül → nokta
     .replace(/\s+/g, ' ');
 
-  // SAAT bilgisini temizle (tarihle karışmasın): "23:08" veya "23.08"
-  t = t.replace(/\b\d{2}[:.]\d{2}([:.]\d{2})?\b/g, ' ');
+  // ── SAAT Temizliği: SADECE : (iki nokta üst üste) ile yazılmış saatler ──
+  // NOT: [.:] yerine sadece [:] — böylece "20.02" gibi tarih parçaları silinmez
+  t = t.replace(/\b\d{2}:\d{2}(:\d{2})?\b/g, ' ');
 
-  // ── Separator normalizasyonu: tire → nokta (yedek kopya üret) ──
-  // Hem orijinal hem de tire→nokta versiyonu denenecek
+  // ── Separator normalizasyonu: tire → nokta (yedek kopya) ──
   const tDash = t.replace(/(\d)\s*-\s*(\d)/g, '$1.$2');
 
   const tryAll = (text: string): string | null => {
-    // 1. DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY (separator: . - / ; boşluk toleranslı)
+    // 1. DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY
     let m = text.match(/(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{4})/);
     if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
@@ -103,7 +115,7 @@ function extractDateFromText(raw: string): string | null {
     m = text.match(/(\d{1,2})\s*[.\-\/]\s*(\d{1,2})\s*[.\-\/]\s*(\d{2})(?!\d)/);
     if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
-    // 4. Separator yok: DD MM YYYY (sadece boşlukla ayrılmış 3 sayı grubu)
+    // 4. DD MM YYYY (boşlukla ayrılmış)
     m = text.match(/\b(\d{1,2})\s+(\d{1,2})\s+(20\d{2})\b/);
     if (m) { const r = parseDate(m[1], parseInt(m[2], 10), m[3]); if (r) return r; }
 
@@ -118,8 +130,47 @@ function extractDateFromText(raw: string): string | null {
     return null;
   };
 
-  // Önce orijinal metni dene, sonra tire→nokta dönüştürülmüş versiyonu
   return tryAll(t) ?? tryAll(tDash);
+}
+
+/**
+ * OCR metninden ek alanları best-effort çıkar
+ */
+function extractFieldsFromText(text: string): Omit<ScanDetected, 'filename' | 'date'> {
+  const result: Omit<ScanDetected, 'filename' | 'date'> = {};
+  if (!text) return result;
+
+  // Belge No / Fiş No / Z No
+  const belgeMatch = text.match(
+    /(?:fi[sş]\s*no|belge\s*no|z\s*no|seri\s*no)[:\s#]*([A-Z0-9\-]{1,20})/i,
+  );
+  if (belgeMatch) result.belge_no = belgeMatch[1].trim();
+
+  // Cari / Ünvan (Ltd, A.Ş., Tic, San içeren satır)
+  const cariMatch = text.match(
+    /^(.{5,80}(?:ltd|a\.?\s*ş|tic|san|a\.?\s*s|limited|petrol|oto|market)[^\n]*)/im,
+  );
+  if (cariMatch) result.cari = cariMatch[1].trim().substring(0, 80);
+
+  // Genel Toplam
+  const toplamMatch = text.match(
+    /(?:genel\s*toplam|toplam|total|satis\s*tutari|satış\s*tutarı)\s*[:\s*]*([0-9.,]{3,15})/i,
+  );
+  if (toplamMatch) result.genel_toplam = toplamMatch[1].replace(',', '.').trim();
+
+  // KDV Tutarı (TOPKDV veya KDV)
+  const kdvTutarMatch = text.match(
+    /(?:topkdv|kdv\s*(?:tutar|top|mik)|k\.d\.v\.?\s*(?:tutar|top))\s*[:\s*]*\*?\s*([0-9.,]{1,12})/i,
+  );
+  if (kdvTutarMatch) result.kdv_tutari = kdvTutarMatch[1].replace(',', '.').trim();
+
+  // KDV Hariç Tutar / Matrah
+  const kdvHaricMatch = text.match(
+    /(?:kdv\s*har[iı][cç]|k\.d\.v\.?\s*har[iı][cç]|matrah|yed\.\s*parc\s*%\d+)\s*[:\s*]*\*?\s*([0-9.,]{1,12})/i,
+  );
+  if (kdvHaricMatch) result.kdv_haric = kdvHaricMatch[1].replace(',', '.').trim();
+
+  return result;
 }
 
 /* ─── Görünmez Border ───────────────────────────────────────── */
@@ -138,14 +189,14 @@ type OcrStrategy = {
 };
 
 const OCR_STRATEGIES: OcrStrategy[] = [
-  { zone: 'full',  preprocess: 'normalize',  psm: '11' }, // 1. Tam + normalize + PSM11
-  { zone: 'full',  preprocess: 'threshold',  psm: '6'  }, // 2. Tam + threshold + PSM6
-  { zone: 'top50', preprocess: 'normalize',  psm: '6'  }, // 3. Üst + normalize + PSM6
-  { zone: 'top50', preprocess: 'threshold',  psm: '11' }, // 4. Üst + threshold + PSM11
-  { zone: 'mid',   preprocess: 'normalize',  psm: '6'  }, // 5. Orta + normalize + PSM6
-  { zone: 'bot40', preprocess: 'normalize',  psm: '6'  }, // 6. Alt + normalize + PSM6
-  { zone: 'bot40', preprocess: 'threshold',  psm: '11' }, // 7. Alt + threshold + PSM11
-  { zone: 'full',  preprocess: 'contrast',   psm: '3'  }, // 8. Tam + contrast + PSM3
+  { zone: 'full',  preprocess: 'normalize',  psm: '11' },
+  { zone: 'full',  preprocess: 'threshold',  psm: '6'  },
+  { zone: 'top50', preprocess: 'normalize',  psm: '6'  },
+  { zone: 'top50', preprocess: 'threshold',  psm: '11' },
+  { zone: 'mid',   preprocess: 'normalize',  psm: '6'  },
+  { zone: 'bot40', preprocess: 'normalize',  psm: '6'  },
+  { zone: 'bot40', preprocess: 'threshold',  psm: '11' },
+  { zone: 'full',  preprocess: 'contrast',   psm: '3'  },
 ];
 
 /* ─── Service ───────────────────────────────────────────────── */
@@ -154,25 +205,19 @@ const OCR_STRATEGIES: OcrStrategy[] = [
 export class FisYazdirmaService {
   private readonly logger = new Logger(FisYazdirmaService.name);
 
-  /**
-   * Bölge + strateji kombinasyonuna göre ön işleme yapar → PNG Buffer (1200px)
-   */
   private async preprocessImage(
     buffer: Buffer,
     W: number,
     H: number,
     strategy: OcrStrategy,
   ): Promise<Buffer> {
-    // Bölge hesapla
     let top = 0;
     let height = H;
     switch (strategy.zone) {
       case 'top50': height = Math.floor(H * 0.50); break;
       case 'mid':   top = Math.floor(H * 0.20); height = Math.floor(H * 0.50); break;
       case 'bot40': top = Math.floor(H * 0.60); height = Math.floor(H * 0.40); break;
-      // 'full': tüm görsel
     }
-    // Sınır güvenliği
     if (top + height > H) height = H - top;
     if (height < 20) height = Math.min(40, H);
 
@@ -198,35 +243,35 @@ export class FisYazdirmaService {
       .toBuffer();
   }
 
-  /**
-   * Tek görseli worker pool ile OCR'lar — 8 strateji, ilk geçerli tarihte durur.
-   */
-  private async ocrDateWithWorker(buffer: Buffer, worker: any): Promise<string | null> {
+  private async ocrDateWithWorker(
+    buffer: Buffer,
+    worker: any,
+  ): Promise<{ date: string | null; fullText: string }> {
     const meta = await sharp(buffer).metadata();
     const W = meta.width ?? 400;
     const H = meta.height ?? 600;
+
+    let bestText = '';
 
     for (const strategy of OCR_STRATEGIES) {
       try {
         await worker.setParameters({ tessedit_pageseg_mode: strategy.psm });
         const processed = await this.preprocessImage(buffer, W, H, strategy);
         const { data } = await worker.recognize(processed);
+        if (!bestText && data.text) bestText = data.text;
         const date = extractDateFromText(data.text);
         if (date) {
-          this.logger.debug(`Strateji ${strategy.zone}/${strategy.preprocess}/PSM${strategy.psm} → ${date}`);
-          return date;
+          this.logger.debug(`[OCR] ${strategy.zone}/${strategy.preprocess}/PSM${strategy.psm} → ${date}`);
+          return { date, fullText: data.text };
         }
       } catch (e: any) {
-        this.logger.debug(`Strateji ${strategy.zone}/${strategy.preprocess} hata: ${e.message}`);
+        this.logger.debug(`[OCR] ${strategy.zone}/${strategy.preprocess} hata: ${e.message}`);
       }
     }
 
-    return null;
+    return { date: null, fullText: bestText };
   }
 
-  /**
-   * Thumbnail üret (teyit ekranı için): 240px, JPEG 75
-   */
   private async makeThumbnail(buffer: Buffer): Promise<string> {
     try {
       const thumb = await sharp(buffer)
@@ -239,15 +284,12 @@ export class FisYazdirmaService {
     }
   }
 
-  /**
-   * Görselleri OCR ile tarar — Worker Pool (3 worker, pLimit 3)
-   */
   async scanImages(files: Express.Multer.File[]): Promise<ScanResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
     }
 
-    this.logger.log(`OCR tarama başlıyor: ${files.length} görsel, 3 worker, 8 strateji`);
+    this.logger.log(`OCR tarama başlıyor: ${files.length} görsel`);
 
     const { default: pLimit } = await (Function('return import("p-limit")')() as Promise<{ default: any }>);
 
@@ -259,15 +301,15 @@ export class FisYazdirmaService {
     let workerIdx = 0;
     const limit = pLimit(POOL_SIZE);
 
-    const results: { file: Express.Multer.File; date: string | null }[] = [];
+    const results: { file: Express.Multer.File; date: string | null; fullText: string }[] = [];
 
     try {
       const promises = files.map((file) => {
         const wi = workerIdx++ % POOL_SIZE;
         return limit(async () => {
-          const date = await this.ocrDateWithWorker(file.buffer, workers[wi]);
+          const { date, fullText } = await this.ocrDateWithWorker(file.buffer, workers[wi]);
           this.logger.log(`${file.originalname}: ${date ?? 'OKUNAMADI'}`);
-          return { file, date };
+          return { file, date, fullText };
         });
       });
 
@@ -280,9 +322,10 @@ export class FisYazdirmaService {
     const unread: ScanUnread[] = [];
 
     await Promise.all(
-      results.map(async ({ file, date }) => {
+      results.map(async ({ file, date, fullText }) => {
         if (date) {
-          detected.push({ filename: file.originalname, date });
+          const extra = extractFieldsFromText(fullText);
+          detected.push({ filename: file.originalname, date, ...extra });
         } else {
           const thumbnail = await this.makeThumbnail(file.buffer);
           unread.push({ filename: file.originalname, thumbnail });
@@ -292,17 +335,41 @@ export class FisYazdirmaService {
 
     detected.sort((a, b) => a.date.localeCompare(b.date));
 
-    this.logger.log(
-      `Tarama tamamlandı: ${detected.length}/${files.length} okundu, ${unread.length} teyit bekliyor`,
-    );
+    this.logger.log(`Tamamlandı: ${detected.length}/${files.length} okundu, ${unread.length} teyit bekliyor`);
 
     return { detected, unread, total: files.length };
   }
 
-  /**
-   * Teyit edilmiş tarihlerle Word belgesi oluştur — A4'te 3 sütun grid
-   * Görsel: max 800px embed (yüksek kalite), display: 173px (baskı kalitesinde)
-   */
+  generateExcel(rows: ExcelRow[]): Buffer {
+    const sheetData = rows.map((r) => {
+      let displayDate = r.date;
+      if (r.date && r.date.includes('-')) {
+        const [y, mo, d] = r.date.split('-');
+        displayDate = `${d}.${mo}.${y}`;
+      }
+      return {
+        'Dosya Adı':       r.filename,
+        'Tarih':           displayDate,
+        'Belge No':        r.belge_no ?? '',
+        'Cari':            r.cari ?? '',
+        'KDV Hariç Tutar': r.kdv_haric ?? '',
+        'KDV Tutarı':      r.kdv_tutari ?? '',
+        'Genel Toplam':    r.genel_toplam ?? '',
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    ws['!cols'] = [
+      { wch: 30 }, { wch: 12 }, { wch: 15 },
+      { wch: 30 }, { wch: 16 }, { wch: 14 }, { wch: 16 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Fiş Raporu');
+
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
   async generateWord(
     files: Express.Multer.File[],
     allDates: Record<string, string>,
@@ -318,21 +385,16 @@ export class FisYazdirmaService {
       );
     }
 
-    // Tarihe göre sırala (eski → yeni)
     const sorted = [...files].sort((a, b) =>
       (allDates[a.originalname] ?? '').localeCompare(allDates[b.originalname] ?? ''),
     );
 
     const COLS = 3;
-
-    // A4: kullanılabilir genişlik
-    const pageW  = convertMillimetersToTwip(210);
+    const pageW    = convertMillimetersToTwip(210);
     const marginLR = convertMillimetersToTwip(10);
     const usableW  = pageW - 2 * marginLR;
     const colW     = Math.floor(usableW / COLS);
-
-    // Display boyutu (Word'de görünen px — yüksek çözünürlü embed, küçük display)
-    const DISPLAY_W = 173; // px @ Word 72dpi ≈ 61mm → tam sütun genişliği
+    const DISPLAY_W = 173;
 
     const emptyCell = () =>
       new TableCell({
@@ -341,10 +403,8 @@ export class FisYazdirmaService {
         children: [new Paragraph({ children: [] })],
       });
 
-    // Her fiş için hücre oluştur
     const cells: TableCell[] = await Promise.all(
       sorted.map(async (file) => {
-        // Maksimum kalite embed: orijinal çözünürlük korunur, JPEG %98
         const embedded = await sharp(file.buffer)
           .jpeg({ quality: 98 })
           .toBuffer();
@@ -352,9 +412,6 @@ export class FisYazdirmaService {
         const meta = await sharp(embedded).metadata();
         const imgW = meta.width ?? 800;
         const imgH = meta.height ?? 600;
-
-        // Display boyutu: 173px genişlik, orantılı yükseklik
-        const displayW = DISPLAY_W;
         const displayH = Math.round(imgH * (DISPLAY_W / imgW));
 
         const dateStr = allDates[file.originalname] ?? '';
@@ -375,7 +432,7 @@ export class FisYazdirmaService {
               children: [
                 new ImageRun({
                   data: embedded,
-                  transformation: { width: displayW, height: displayH },
+                  transformation: { width: DISPLAY_W, height: displayH },
                   type: 'jpg',
                 }),
               ],
@@ -392,7 +449,6 @@ export class FisYazdirmaService {
       }),
     );
 
-    // 3'lü gruplara böl
     const rows: TableRow[] = [];
     for (let i = 0; i < cells.length; i += COLS) {
       const rowCells = cells.slice(i, i + COLS);

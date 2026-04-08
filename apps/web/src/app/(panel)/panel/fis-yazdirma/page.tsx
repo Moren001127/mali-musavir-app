@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
   Upload,
@@ -10,6 +10,8 @@ import {
   AlertCircle,
   Pencil,
   Check,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -18,11 +20,16 @@ type Stage = 'upload' | 'scanning' | 'confirm' | 'generating' | 'done' | 'error'
 interface Detected {
   filename: string;
   date: string; // YYYY-MM-DD
+  belge_no?: string;
+  cari?: string;
+  kdv_haric?: string;
+  kdv_tutari?: string;
+  genel_toplam?: string;
 }
 
 interface Unread {
   filename: string;
-  thumbnail: string; // base64
+  thumbnail: string;
 }
 
 interface ScanResponse {
@@ -45,9 +52,20 @@ function isoToDisplay(iso: string) {
   return `${d}.${m}.${y}`;
 }
 
-function displayToIso(display: string) {
-  // date input'tan gelen değer zaten YYYY-MM-DD
-  return display;
+/* ─── Elapsed Timer ─────────────────────────────────────────── */
+function ElapsedTimer({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [startTime]);
+  const min = Math.floor(elapsed / 60);
+  const sec = elapsed % 60;
+  return (
+    <span className="text-xs" style={{ color: 'rgba(255,255,255,.4)' }}>
+      {min > 0 ? `${min}dk ${sec}s` : `${sec}s`} geçti
+    </span>
+  );
 }
 
 /* ─── Bileşen ───────────────────────────────────────────────── */
@@ -59,14 +77,19 @@ export default function FisYazdirmaPage() {
 
   // Scan sonuçları
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
-  // Teyit edilen tarihler (detected olanlar otomatik dolu gelir, unread için kullanıcı doldurur)
   const [allDates, setAllDates] = useState<Record<string, string>>({});
-  // Detected listesinde edit modu
+  const [allExtra, setAllExtra] = useState<Record<string, Omit<Detected, 'filename' | 'date'>>>({});
   const [editingFile, setEditingFile] = useState<string | null>(null);
+
+  // Simüle sayaç (scanning ekranı)
+  const [simScanned, setSimScanned] = useState(0);
+  const [scanStartTime, setScanStartTime] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // İstatistikler
   const [wordTotal, setWordTotal] = useState(0);
   const [error, setError] = useState('');
+  const [excelLoading, setExcelLoading] = useState(false);
 
   /* ── Dosya ekleme ── */
   const addFiles = (newFiles: FileList | File[]) => {
@@ -83,11 +106,36 @@ export default function FisYazdirmaPage() {
     addFiles(e.dataTransfer.files);
   }, []);
 
+  /* ── Simüle sayaç başlat/durdur ── */
+  const startSimCounter = (total: number) => {
+    setSimScanned(0);
+    const intervalMs = Math.max(400, Math.round((total * 4000) / total));
+    intervalRef.current = setInterval(() => {
+      setSimScanned((prev) => {
+        if (prev >= total - 1) return prev;
+        return prev + 1;
+      });
+    }, intervalMs);
+  };
+
+  const stopSimCounter = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => stopSimCounter();
+  }, []);
+
   /* ── OCR Tarama ── */
   const handleScan = async () => {
     if (!files.length) return;
     setStage('scanning');
     setError('');
+    setScanStartTime(Date.now());
+    startSimCounter(files.length);
 
     const fd = new FormData();
     files.forEach((f) => fd.append('images', f, f.name));
@@ -101,18 +149,72 @@ export default function FisYazdirmaPage() {
       if (!res.ok) throw new Error(`Sunucu hatası: ${res.status}`);
       const data: ScanResponse = await res.json();
 
-      // allDates'i doldur (detected olanlar otomatik)
+      stopSimCounter();
+
       const dates: Record<string, string> = {};
-      data.detected.forEach((d) => { dates[d.filename] = d.date; });
-      // unread için boş bırak
+      const extra: Record<string, Omit<Detected, 'filename' | 'date'>> = {};
+
+      data.detected.forEach((d) => {
+        dates[d.filename] = d.date;
+        extra[d.filename] = {
+          belge_no: d.belge_no,
+          cari: d.cari,
+          kdv_haric: d.kdv_haric,
+          kdv_tutari: d.kdv_tutari,
+          genel_toplam: d.genel_toplam,
+        };
+      });
       data.unread.forEach((u) => { dates[u.filename] = ''; });
 
       setScanResult(data);
       setAllDates(dates);
+      setAllExtra(extra);
       setStage('confirm');
     } catch (e: any) {
+      stopSimCounter();
       setError(e.message ?? 'Tarama hatası');
       setStage('error');
+    }
+  };
+
+  /* ── Excel İndir ── */
+  const handleExcelDownload = async () => {
+    if (!scanResult) return;
+    setExcelLoading(true);
+    try {
+      // Tüm fişleri (detected + unread) birleştir
+      const rows = [
+        ...scanResult.detected.map((d) => ({
+          filename: d.filename,
+          date: allDates[d.filename] ?? d.date,
+          ...allExtra[d.filename],
+        })),
+        ...scanResult.unread
+          .filter((u) => allDates[u.filename])
+          .map((u) => ({ filename: u.filename, date: allDates[u.filename] })),
+      ];
+
+      const res = await fetch(`${API}/fis-yazdirma/excel`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ data: JSON.stringify(rows) }),
+      });
+      if (!res.ok) throw new Error('Excel oluşturulamadı');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fis_rapor_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message ?? 'Excel indirme hatası');
+    } finally {
+      setExcelLoading(false);
     }
   };
 
@@ -120,7 +222,6 @@ export default function FisYazdirmaPage() {
   const handleGenerate = async () => {
     if (!scanResult) return;
 
-    // Eksik tarih var mı?
     const missing = scanResult.unread.filter((u) => !allDates[u.filename]);
     if (missing.length > 0) {
       alert(`Lütfen şu ${missing.length} fiş için tarih girin:\n${missing.map((u) => u.filename).join('\n')}`);
@@ -162,10 +263,14 @@ export default function FisYazdirmaPage() {
 
   /* ── Reset ── */
   const reset = () => {
+    stopSimCounter();
     setFiles([]);
     setScanResult(null);
     setAllDates({});
+    setAllExtra({});
     setEditingFile(null);
+    setSimScanned(0);
+    setScanStartTime(0);
     setStage('upload');
     setError('');
   };
@@ -254,20 +359,75 @@ export default function FisYazdirmaPage() {
         </div>
       )}
 
-      {/* ── SCANNING ── */}
+      {/* ── SCANNING — Animasyonlu Ekran ── */}
       {stage === 'scanning' && (
-        <div className="card flex flex-col items-center py-16 gap-5">
-          <div
-            className="w-20 h-20 rounded-full border-4 border-transparent animate-spin"
-            style={{ borderTopColor: 'var(--gold)', borderRightColor: 'var(--navy-400, #3D5A8A)' }}
-          />
-          <div className="text-center">
-            <p className="font-bold text-lg" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-              {files.length} görsel OCR ile taranıyor...
+        <div
+          className="rounded-2xl p-8 flex flex-col items-center gap-6"
+          style={{ background: 'var(--navy)', boxShadow: 'var(--shadow-lg)' }}
+        >
+          {/* Pulsing halka animasyonu */}
+          <div className="relative w-28 h-28 flex items-center justify-center">
+            <div
+              className="absolute inset-0 rounded-full opacity-20 animate-ping"
+              style={{ background: 'var(--gold)' }}
+            />
+            <div
+              className="absolute inset-2 rounded-full opacity-30 animate-ping"
+              style={{ background: 'var(--gold)', animationDelay: '0.4s' }}
+            />
+            <div
+              className="w-20 h-20 rounded-full border-4 border-transparent animate-spin"
+              style={{ borderTopColor: 'var(--gold)', borderRightColor: 'rgba(255,255,255,.15)' }}
+            />
+            <ScanLine size={28} className="absolute" style={{ color: 'var(--gold)' }} />
+          </div>
+
+          {/* Başlık */}
+          <div className="text-center space-y-1">
+            <p className="text-lg font-bold" style={{ color: 'white', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+              OCR Tarama Devam Ediyor
             </p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              Her fişten tarih okunuyor. 84 fiş için yaklaşık 1-2 dakika sürebilir.
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,.5)' }}>
+              {files.length} fiş için yaklaşık {Math.ceil(files.length * 4 / 60)} dakika sürebilir
             </p>
+            {scanStartTime > 0 && <ElapsedTimer startTime={scanStartTime} />}
+          </div>
+
+          {/* Progress Bar */}
+          <div className="w-full max-w-md">
+            <div className="flex justify-between text-xs mb-1.5" style={{ color: 'rgba(255,255,255,.4)' }}>
+              <span>İlerleme</span>
+              <span>%{Math.round((simScanned / Math.max(files.length, 1)) * 100)}</span>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.1)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${(simScanned / Math.max(files.length, 1)) * 100}%`,
+                  background: 'linear-gradient(90deg, var(--gold) 0%, #FDE68A 100%)',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* 3 Canlı Sayaç */}
+          <div className="grid grid-cols-3 gap-4 w-full max-w-md">
+            {[
+              { label: 'Toplam Fiş',  value: files.length,                             color: 'white'         },
+              { label: 'Taranan',     value: simScanned,                                color: '#6EE7B7'       },
+              { label: 'Kalan',       value: Math.max(0, files.length - simScanned),   color: 'var(--gold)'   },
+            ].map(({ label, value, color }) => (
+              <div
+                key={label}
+                className="rounded-xl py-3 text-center"
+                style={{ background: 'rgba(255,255,255,.06)' }}
+              >
+                <p className="text-2xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                  {value}
+                </p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,.4)' }}>{label}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -281,9 +441,9 @@ export default function FisYazdirmaPage() {
             style={{ background: 'var(--navy)', boxShadow: 'var(--shadow-md)' }}
           >
             {[
-              { label: 'Toplam Fiş',       value: scanResult.total,           color: 'white'               },
-              { label: 'Tarih Okundu',     value: scanResult.detected.length, color: '#6EE7B7'             },
-              { label: 'Teyit Bekliyor',   value: scanResult.unread.length,   color: 'var(--gold-light)'   },
+              { label: 'Toplam Fiş',     value: scanResult.total,           color: 'white'             },
+              { label: 'Tarih Okundu',   value: scanResult.detected.length, color: '#6EE7B7'           },
+              { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: 'var(--gold-light)' },
             ].map(({ label, value, color }) => (
               <div key={label} className="text-center">
                 <p className="text-3xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -295,7 +455,7 @@ export default function FisYazdirmaPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-            {/* SOL: Tarih Okundu Listesi */}
+            {/* SOL: Tarih Okundu */}
             {scanResult.detected.length > 0 && (
               <div className="lg:col-span-2">
                 <div className="card overflow-hidden">
@@ -308,10 +468,10 @@ export default function FisYazdirmaPage() {
                     {scanResult.detected.map((d) => (
                       <div
                         key={d.filename}
-                        className="flex items-center gap-3 px-4 py-2.5"
+                        className="flex items-start gap-3 px-4 py-2.5"
                         style={{ borderBottom: '1px solid var(--border)' }}
                       >
-                        <CheckCircle2 size={14} style={{ color: '#059669', flexShrink: 0 }} />
+                        <CheckCircle2 size={14} style={{ color: '#059669', flexShrink: 0, marginTop: 2 }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{d.filename}</p>
                           {editingFile === d.filename ? (
@@ -340,6 +500,13 @@ export default function FisYazdirmaPage() {
                               </button>
                             </div>
                           )}
+                          {/* Ek alanlar (varsa) */}
+                          {(d.belge_no || d.cari || d.genel_toplam) && (
+                            <p className="text-[10px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
+                              {[d.belge_no && `No: ${d.belge_no}`, d.genel_toplam && `Top: ${d.genel_toplam}`]
+                                .filter(Boolean).join(' | ')}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -348,7 +515,7 @@ export default function FisYazdirmaPage() {
               </div>
             )}
 
-            {/* SAĞ: Teyit Gereken Fişler */}
+            {/* SAĞ: Teyit Gereken */}
             <div className={scanResult.detected.length > 0 ? 'lg:col-span-3' : 'lg:col-span-5'}>
               {scanResult.unread.length === 0 ? (
                 <div className="card flex flex-col items-center py-12 text-center">
@@ -364,11 +531,9 @@ export default function FisYazdirmaPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                      Teyit Gereken Fişler ({scanResult.unread.length})
+                      Teyit Gereken ({scanResult.unread.length})
                     </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      Her fiş için tarih seçin
-                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Her fiş için tarih seçin</p>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto" style={{ maxHeight: '600px' }}>
                     {scanResult.unread.map((u) => (
@@ -376,31 +541,18 @@ export default function FisYazdirmaPage() {
                         key={u.filename}
                         className="rounded-xl overflow-hidden"
                         style={{
-                          border: allDates[u.filename]
-                            ? '2px solid #059669'
-                            : '2px solid var(--border)',
+                          border: allDates[u.filename] ? '2px solid #059669' : '2px solid var(--border)',
                           background: 'var(--surface)',
                           boxShadow: 'var(--shadow-sm)',
                         }}
                       >
-                        {/* Görsel */}
                         {u.thumbnail ? (
-                          <img
-                            src={u.thumbnail}
-                            alt={u.filename}
-                            className="w-full object-cover"
-                            style={{ height: 180 }}
-                          />
+                          <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={{ height: 180 }} />
                         ) : (
-                          <div
-                            className="w-full flex items-center justify-center"
-                            style={{ height: 180, background: 'var(--bg)' }}
-                          >
+                          <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'var(--bg)' }}>
                             <FileImage size={32} style={{ color: 'var(--text-muted)' }} />
                           </div>
                         )}
-
-                        {/* Dosya adı + tarih input */}
                         <div className="p-2.5 space-y-2">
                           <p className="text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
                             {u.filename}
@@ -408,13 +560,9 @@ export default function FisYazdirmaPage() {
                           <input
                             type="date"
                             value={allDates[u.filename] ?? ''}
-                            onChange={(e) =>
-                              setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))
-                            }
+                            onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
                             className="input-base w-full text-xs py-1.5"
-                            style={{
-                              borderColor: allDates[u.filename] ? '#059669' : 'var(--border)',
-                            }}
+                            style={{ borderColor: allDates[u.filename] ? '#059669' : 'var(--border)' }}
                           />
                         </div>
                       </div>
@@ -426,21 +574,23 @@ export default function FisYazdirmaPage() {
           </div>
 
           {/* Alt Butonlar */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-wrap gap-3 pt-2">
             <button onClick={reset} className="btn-secondary flex-shrink-0 px-6">
               Geri
             </button>
+            <button
+              onClick={handleExcelDownload}
+              disabled={excelLoading}
+              className="btn-secondary flex-shrink-0 px-5 flex items-center gap-2"
+            >
+              <FileSpreadsheet size={15} style={{ color: '#059669' }} />
+              {excelLoading ? 'İndiriliyor...' : 'Excel Rapor'}
+            </button>
             <button onClick={handleGenerate} className="btn-primary flex-1 py-3">
               {scanResult.unread.filter((u) => !allDates[u.filename]).length > 0 ? (
-                <>
-                  <AlertCircle size={15} />
-                  Word Oluştur ({scanResult.unread.filter((u) => !allDates[u.filename]).length} teyit bekliyor)
-                </>
+                <><AlertCircle size={15} />Word Oluştur ({scanResult.unread.filter((u) => !allDates[u.filename]).length} teyit bekliyor)</>
               ) : (
-                <>
-                  <CheckCircle2 size={15} />
-                  Word Belgesi Oluştur ({scanResult.total} fiş)
-                </>
+                <><CheckCircle2 size={15} />Word Belgesi Oluştur ({scanResult.total} fiş)</>
               )}
             </button>
           </div>
@@ -479,9 +629,19 @@ export default function FisYazdirmaPage() {
               {wordTotal} fiş tarih sırasında düzenlenerek Word'e aktarıldı.
             </p>
           </div>
-          <button onClick={reset} className="btn-primary px-8 mt-2">
-            Yeni İşlem Başlat
-          </button>
+          <div className="flex gap-3 mt-2">
+            <button
+              onClick={handleExcelDownload}
+              disabled={excelLoading}
+              className="btn-secondary px-6 flex items-center gap-2"
+            >
+              <Download size={15} />
+              {excelLoading ? 'İndiriliyor...' : 'Excel Rapor İndir'}
+            </button>
+            <button onClick={reset} className="btn-primary px-8">
+              Yeni İşlem Başlat
+            </button>
+          </div>
         </div>
       )}
     </div>

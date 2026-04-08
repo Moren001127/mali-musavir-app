@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { FisYazdirmaService } from './fis-yazdirma.service';
+import { FisYazdirmaService, ExcelRow } from './fis-yazdirma.service';
 import { memoryStorage } from 'multer';
 
 const imageInterceptor = () =>
@@ -33,8 +33,6 @@ export class FisYazdirmaController {
 
   /**
    * POST /api/v1/fis-yazdirma/scan
-   * Görselleri OCR ile tarar.
-   * Dönüş: { detected: [{filename, date}], unread: [{filename, thumbnail}], total }
    */
   @Post('scan')
   @UseInterceptors(imageInterceptor())
@@ -45,8 +43,6 @@ export class FisYazdirmaController {
 
   /**
    * POST /api/v1/fis-yazdirma/process
-   * Teyit edilmiş tarihlerle Word belgesi oluşturur ve indirir.
-   * Body: multipart images[] + allDates (JSON string)
    */
   @Post('process')
   @UseInterceptors(imageInterceptor())
@@ -75,5 +71,31 @@ export class FisYazdirmaController {
       'X-Total': String(files.length),
     });
     return res.send(wordBuffer);
+  }
+
+  /**
+   * POST /api/v1/fis-yazdirma/excel
+   * Body: { data: JSON string of ExcelRow[] }
+   */
+  @Post('excel')
+  async excel(@Body('data') dataJson: string, @Res() res: any) {
+    let rows: ExcelRow[];
+    try {
+      rows = JSON.parse(dataJson);
+    } catch {
+      throw new BadRequestException('data geçersiz JSON');
+    }
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new BadRequestException('En az bir satır gerekli');
+    }
+
+    const buffer = this.fisYazdirmaService.generateExcel(rows);
+    const filename = `fis_rapor_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return res.send(buffer);
   }
 }
