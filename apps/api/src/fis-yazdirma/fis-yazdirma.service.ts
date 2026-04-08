@@ -495,7 +495,7 @@ export class FisYazdirmaService {
               alignment: AlignmentType.CENTER,
               spacing: { before: 20, after: 20 },
               children: [
-                new TextRun({ text: displayDate, size: 16, bold: true }),
+                new TextRun({ text: displayDate, size: 22, bold: true }),
               ],
             }),
           ],

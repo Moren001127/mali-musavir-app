@@ -10,8 +10,6 @@ import {
   AlertCircle,
   Pencil,
   Check,
-  Download,
-  FileSpreadsheet,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -91,7 +89,7 @@ export default function FisYazdirmaPage() {
   // İstatistikler
   const [wordTotal, setWordTotal] = useState(0);
   const [error, setError] = useState('');
-  const [excelLoading, setExcelLoading] = useState(false);
+
 
   /* ── Dosya ekleme ── */
   const addFiles = (newFiles: FileList | File[]) => {
@@ -178,52 +176,6 @@ export default function FisYazdirmaPage() {
       stopSimCounter();
       setError(e.message ?? 'Tarama hatası');
       setStage('error');
-    }
-  };
-
-  /* ── Excel İndir ── */
-  const handleExcelDownload = async () => {
-    if (!scanResult) return;
-    setExcelLoading(true);
-    try {
-      const rows = [
-        ...scanResult.detected.map((d) => ({
-          filename: d.filename,
-          date: allDates[d.filename] ?? d.date,
-          belge_no:  allExtra[d.filename]?.belge_no,
-          cari:      allExtra[d.filename]?.cari,
-          vergi_no:  (allExtra[d.filename] as any)?.vergi_no,
-          kdv_1:     (allExtra[d.filename] as any)?.kdv_1,
-          kdv_10:    (allExtra[d.filename] as any)?.kdv_10,
-          kdv_20:    (allExtra[d.filename] as any)?.kdv_20,
-          toplam:    (allExtra[d.filename] as any)?.toplam,
-        })),
-        ...scanResult.unread
-          .filter((u) => allDates[u.filename])
-          .map((u) => ({ filename: u.filename, date: allDates[u.filename] })),
-      ];
-
-      const res = await fetch(`${API}/fis-yazdirma/excel`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getToken()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ data: JSON.stringify(rows) }),
-      });
-      if (!res.ok) throw new Error('Excel oluşturulamadı');
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `fis_rapor_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert(e.message ?? 'Excel indirme hatası');
-    } finally {
-      setExcelLoading(false);
     }
   };
 
@@ -587,14 +539,6 @@ export default function FisYazdirmaPage() {
             <button onClick={reset} className="btn-secondary flex-shrink-0 px-6">
               Geri
             </button>
-            <button
-              onClick={handleExcelDownload}
-              disabled={excelLoading}
-              className="btn-secondary flex-shrink-0 px-5 flex items-center gap-2"
-            >
-              <FileSpreadsheet size={15} style={{ color: '#059669' }} />
-              {excelLoading ? 'İndiriliyor...' : 'Excel Rapor'}
-            </button>
             <button onClick={handleGenerate} className="btn-primary flex-1 py-3">
               {scanResult.unread.filter((u) => !allDates[u.filename]).length > 0 ? (
                 <><AlertCircle size={15} />Word Oluştur ({scanResult.unread.filter((u) => !allDates[u.filename]).length} teyit bekliyor)</>
@@ -639,14 +583,6 @@ export default function FisYazdirmaPage() {
             </p>
           </div>
           <div className="flex gap-3 mt-2">
-            <button
-              onClick={handleExcelDownload}
-              disabled={excelLoading}
-              className="btn-secondary px-6 flex items-center gap-2"
-            >
-              <Download size={15} />
-              {excelLoading ? 'İndiriliyor...' : 'Excel Rapor İndir'}
-            </button>
             <button onClick={reset} className="btn-primary px-8">
               Yeni İşlem Başlat
             </button>
