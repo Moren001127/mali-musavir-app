@@ -27,6 +27,6 @@ RUN cd apps/api && pnpm run build
 
 WORKDIR /app/apps/api
 
-EXPOSE 3001
+EXPOSE ${PORT:-3001}
 
 CMD ["node", "dist/main"]
