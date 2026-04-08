@@ -10,12 +10,22 @@ export class TaxpayersService {
     // WHERE koşulları düzgün AND ile birleştiriliyor
     const andConditions: any[] = [{ tenantId }, { isActive: true }];
 
-    // İşi bırakma tarihi filtresi — seçili aydan önce bırakanları gizle
+    // İşe başlama / işi bırakma tarihi filtreleri
     if (year && month) {
+      const firstDay = new Date(year, month - 1, 1);   // Ayın 1'i
+      const lastDay = new Date(year, month, 0, 23, 59, 59); // Ayın son günü
       andConditions.push({
+        // İşe başlama: null VEYA seçili ayın son gününden önce başlayanlar
+        OR: [
+          { startDate: null },
+          { startDate: { lte: lastDay } },
+        ],
+      });
+      andConditions.push({
+        // İşi bırakma: null VEYA seçili ayın ilk gününden sonra bırakanlar
         OR: [
           { endDate: null },
-          { endDate: { gte: new Date(year, month - 1, 1) } },
+          { endDate: { gte: firstDay } },
         ],
       });
     }

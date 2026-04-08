@@ -15,10 +15,8 @@ const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
 
 type MonthlyStatus = {
-  id?: string;
   evraklarGeldi: boolean;
   evraklarIslendi: boolean;
-  kontrolEdildi: boolean;
   beyannameVerildi: boolean;
   kdvKontrolEdildi: boolean;
 };
@@ -30,85 +28,11 @@ type Taxpayer = {
   lastName?: string;
   companyName?: string;
   taxNumber: string;
-  taxOffice: string;
   evrakTeslimGunu?: number;
   monthlyStatus: MonthlyStatus | null;
 };
 
-// SMS Şablonu Modal
-function SmsTemplateModal({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ['sms-templates'],
-    queryFn: () => api.get('/sms-templates').then(r => r.data),
-  });
-  const [evrakTalep, setEvrakTalep] = useState('');
-  const [evrakGeldi, setEvrakGeldi] = useState('');
-
-  const { mutate: save, isPending } = useMutation({
-    mutationFn: (d: any) => api.patch('/sms-templates', d),
-    onSuccess: () => {
-      toast.success('Şablonlar kaydedildi');
-      qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      onClose();
-    },
-  });
-
-  const talepMsg = evrakTalep || data?.evrakTalepMesaji || '';
-  const geldiMsg = evrakGeldi || data?.evrakGeldiMesaji || '';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="card w-full max-w-xl mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--navy)' }}>
-            WhatsApp Mesaj Şablonları
-          </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
-        </div>
-        <p className="text-sm text-gray-500 mb-4">
-          Kullanılabilir değişkenler: <code className="bg-gray-100 px-1 rounded">{'{ad}'}</code>{' '}
-          <code className="bg-gray-100 px-1 rounded">{'{dönem}'}</code>
-        </p>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Evrak Talep Mesajı</label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-24 resize-none focus:outline-none focus:ring-2"
-              value={talepMsg}
-              onChange={e => setEvrakTalep(e.target.value)}
-              placeholder={data?.evrakTalepMesaji}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Evrak Geldi Mesajı</label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-24 resize-none focus:outline-none focus:ring-2"
-              value={geldiMsg}
-              onChange={e => setEvrakGeldi(e.target.value)}
-              placeholder={data?.evrakGeldiMesaji}
-            />
-          </div>
-        </div>
-        <div className="flex gap-3 justify-end mt-6">
-          <button onClick={onClose} className="btn-secondary">İptal</button>
-          <button
-            className="btn-primary"
-            disabled={isPending}
-            onClick={() => save({ evrakTalepMesaji: talepMsg, evrakGeldiMesaji: geldiMsg })}
-          >
-            {isPending ? 'Kaydediliyor...' : 'Kaydet'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Durum Checkbox bileşeni
-function StatusCheckbox({
-  checked, onChange, title,
-}: { checked: boolean; onChange: (v: boolean) => void; title: string }) {
+function StatusCheckbox({ checked, onChange, title }: { checked: boolean; onChange: (v: boolean) => void; title: string }) {
   return (
     <label className="flex items-center justify-center cursor-pointer" title={title}>
       <input
@@ -118,6 +42,21 @@ function StatusCheckbox({
         className="w-4 h-4 accent-[var(--gold)] cursor-pointer"
       />
     </label>
+  );
+}
+
+// Özet istatistik kartı
+function StatCard({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  return (
+    <div className="card flex-1 min-w-[140px]">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
+      <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+      </div>
+      <p className="text-xs text-gray-400 mt-1">{pct}% tamamlandı</p>
+    </div>
   );
 }
 
@@ -143,10 +82,16 @@ export default function MukelleflerPage() {
 
   const handleStatus = useCallback((id: string, field: string, value: boolean) => {
     updateStatus({ id, field, value });
-  }, [updateStatus, year, month]);
+  }, [updateStatus]);
 
   const getAdUnvan = (t: Taxpayer) =>
-    t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || '-';
+    t.companyName || `${(t as any).firstName || ''} ${(t as any).lastName || ''}`.trim() || '-';
+
+  const total = taxpayers.length;
+  const evraklarGeldi   = taxpayers.filter(t => t.monthlyStatus?.evraklarGeldi).length;
+  const evraklarIslendi = taxpayers.filter(t => t.monthlyStatus?.evraklarIslendi).length;
+  const beyanname       = taxpayers.filter(t => t.monthlyStatus?.beyannameVerildi).length;
+  const kdvKontrol      = taxpayers.filter(t => t.monthlyStatus?.kdvKontrolEdildi).length;
 
   return (
     <div className="p-6">
@@ -155,129 +100,115 @@ export default function MukelleflerPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--navy)' }}>Mükellef Listesi</h1>
-          <p className="text-sm text-gray-500 mt-1">Aylık evrak ve beyanname takibi</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {MONTHS[month - 1]} {year} — {total} mükellef
+          </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link href="/panel/mukellefler/yeni">
-            <button className="btn-primary text-sm">+ Mükellef Ekle</button>
-          </Link>
-        </div>
+        <Link href="/panel/mukellefler/yeni">
+          <button className="btn-primary text-sm">+ Mükellef Ekle</button>
+        </Link>
+      </div>
+
+      {/* İstatistik Kartları */}
+      <div className="flex gap-3 flex-wrap mb-6">
+        <StatCard label="Evrak Geldi"    value={evraklarGeldi}   total={total} color="#16a34a" />
+        <StatCard label="İşlem Yapıldı"  value={evraklarIslendi} total={total} color="var(--navy)" />
+        <StatCard label="Beyanname"      value={beyanname}       total={total} color="#2563eb" />
+        <StatCard label="KDV Kontrol"    value={kdvKontrol}      total={total} color="var(--gold)" />
       </div>
 
       {/* Filtreler */}
       <div className="card mb-4 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-600">Dönem:</label>
-          <select
-            value={month}
-            onChange={e => setMonth(parseInt(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
-          >
-            {MONTHS.map((m, i) => (
-              <option key={i} value={i + 1}>{m}</option>
-            ))}
+          <span className="text-sm font-medium text-gray-600">Dönem:</span>
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]">
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
-          <select
-            value={year}
-            onChange={e => setYear(parseInt(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
-          >
-            {[2024, 2025, 2026].map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
+          <select value={year} onChange={e => setYear(parseInt(e.target.value))}
+            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]">
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
-        <input
-          type="text"
-          placeholder="Mükellef ara..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[200px] focus:outline-none focus:ring-2"
-        />
+        <input type="text" placeholder="Mükellef ara..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-1 min-w-[200px] focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
       </div>
 
       {/* Tablo */}
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b-2" style={{ borderColor: 'var(--gold)' }}>
+            <tr style={{ borderBottom: '2px solid var(--gold)' }}>
               <th className="text-left py-3 px-3 font-semibold" style={{ color: 'var(--navy)' }}>Ad / Unvan</th>
-              <th className="text-left py-3 px-3 font-semibold" style={{ color: 'var(--navy)' }}>VKN/TC</th>
-              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Evrak<br/>Son Gün</th>
-              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Evraklar<br/>Geldi</th>
-              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Evraklar<br/>İşlendi</th>
-              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Kontrol<br/>Edildi</th>
-              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Beyanname<br/>Verildi</th>
+              <th className="text-left py-3 px-3 font-semibold text-xs" style={{ color: 'var(--navy)' }}>VKN/TC</th>
+              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Son<br/>Gün</th>
+              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Evrak<br/>Geldi</th>
+              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Evrak<br/>İşlendi</th>
               <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>KDV<br/>Kontrol</th>
-              <th className="text-center py-3 px-2 font-semibold" style={{ color: 'var(--navy)' }}>İşlem</th>
+              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>Beyanname<br/>Verildi</th>
+              <th className="text-center py-3 px-2 font-semibold text-xs" style={{ color: 'var(--navy)' }}>İşlem</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Yükleniyor...</td></tr>
+              <tr><td colSpan={8} className="text-center py-12 text-gray-400">Yükleniyor...</td></tr>
             ) : taxpayers.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Mükellef bulunamadı</td></tr>
+              <tr>
+                <td colSpan={8} className="text-center py-12">
+                  <div className="text-gray-400">
+                    <div className="text-3xl mb-2">📋</div>
+                    <p className="font-medium">{MONTHS[month - 1]} {year} döneminde mükellef bulunamadı</p>
+                    <p className="text-xs mt-1">Dönem seçimini kontrol edin veya yeni mükellef ekleyin</p>
+                  </div>
+                </td>
+              </tr>
             ) : taxpayers.map((t, i) => {
               const s = t.monthlyStatus;
+              const allDone = s?.evraklarGeldi && s?.evraklarIslendi && s?.beyannameVerildi && s?.kdvKontrolEdildi;
               return (
-                <tr key={t.id} className={i % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="py-3 px-3 font-medium" style={{ color: 'var(--navy)' }}>
-                    <Link href={`/panel/mukellefler/${t.id}`} className="hover:underline">
-                      {getAdUnvan(t)}
-                    </Link>
-                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded" style={{
-                      background: t.type === 'TUZEL_KISI' ? 'rgba(0,51,102,0.1)' : 'rgba(204,165,0,0.1)',
-                      color: t.type === 'TUZEL_KISI' ? 'var(--navy)' : '#a08000',
-                    }}>
-                      {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 text-gray-600 font-mono text-xs">{t.taxNumber}</td>
-                  <td className="py-3 px-2 text-center">
-                    {t.evrakTeslimGunu ? (
-                      <span className="font-medium" style={{ color: 'var(--gold)' }}>
-                        {t.evrakTeslimGunu}
+                <tr key={t.id}
+                  className={`border-b border-gray-100 transition-colors ${allDone ? 'bg-green-50' : i % 2 === 0 ? 'bg-gray-50/50' : 'bg-white'}`}>
+                  <td className="py-2.5 px-3">
+                    <div className="flex items-center gap-2">
+                      {allDone && <span className="text-green-500 text-xs">✓</span>}
+                      <Link href={`/panel/mukellefler/${t.id}`}
+                        className="font-medium hover:underline" style={{ color: 'var(--navy)' }}>
+                        {getAdUnvan(t)}
+                      </Link>
+                      <span className="text-xs px-1.5 py-0.5 rounded" style={{
+                        background: t.type === 'TUZEL_KISI' ? 'rgba(0,51,102,0.08)' : 'rgba(204,165,0,0.12)',
+                        color: t.type === 'TUZEL_KISI' ? 'var(--navy)' : '#92700a',
+                      }}>
+                        {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
                       </span>
-                    ) : '-'}
+                    </div>
                   </td>
-                  <td className="py-3 px-2 text-center">
-                    <StatusCheckbox
-                      checked={s?.evraklarGeldi ?? false}
-                      onChange={v => handleStatus(t.id, 'evraklarGeldi', v)}
-                      title="Evraklar Geldi"
-                    />
+                  <td className="py-2.5 px-3 text-gray-500 font-mono text-xs">{t.taxNumber}</td>
+                  <td className="py-2.5 px-2 text-center">
+                    {t.evrakTeslimGunu
+                      ? <span className="font-semibold text-sm" style={{ color: 'var(--gold)' }}>{t.evrakTeslimGunu}</span>
+                      : <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="py-3 px-2 text-center">
-                    <StatusCheckbox
-                      checked={s?.evraklarIslendi ?? false}
-                      onChange={v => handleStatus(t.id, 'evraklarIslendi', v)}
-                      title="Evraklar İşlendi"
-                    />
+                  <td className="py-2.5 px-2 text-center">
+                    <StatusCheckbox checked={s?.evraklarGeldi ?? false}
+                      onChange={v => handleStatus(t.id, 'evraklarGeldi', v)} title="Evraklar Geldi" />
                   </td>
-                  <td className="py-3 px-2 text-center">
-                    <StatusCheckbox
-                      checked={s?.kontrolEdildi ?? false}
-                      onChange={v => handleStatus(t.id, 'kontrolEdildi', v)}
-                      title="Kontrol Edildi"
-                    />
+                  <td className="py-2.5 px-2 text-center">
+                    <StatusCheckbox checked={s?.evraklarIslendi ?? false}
+                      onChange={v => handleStatus(t.id, 'evraklarIslendi', v)} title="Evraklar İşlendi" />
                   </td>
-                  <td className="py-3 px-2 text-center">
-                    <StatusCheckbox
-                      checked={s?.beyannameVerildi ?? false}
-                      onChange={v => handleStatus(t.id, 'beyannameVerildi', v)}
-                      title="Beyanname Verildi"
-                    />
+                  <td className="py-2.5 px-2 text-center">
+                    <StatusCheckbox checked={s?.kdvKontrolEdildi ?? false}
+                      onChange={v => handleStatus(t.id, 'kdvKontrolEdildi', v)} title="KDV Kontrol" />
                   </td>
-                  <td className="py-3 px-2 text-center">
-                    <StatusCheckbox
-                      checked={s?.kdvKontrolEdildi ?? false}
-                      onChange={v => handleStatus(t.id, 'kdvKontrolEdildi', v)}
-                      title="KDV Kontrol Edildi"
-                    />
+                  <td className="py-2.5 px-2 text-center">
+                    <StatusCheckbox checked={s?.beyannameVerildi ?? false}
+                      onChange={v => handleStatus(t.id, 'beyannameVerildi', v)} title="Beyanname Verildi" />
                   </td>
-                  <td className="py-3 px-2 text-center">
+                  <td className="py-2.5 px-2 text-center">
                     <Link href={`/panel/mukellefler/${t.id}`}>
-                      <button className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 transition">
+                      <button className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-100 transition">
                         Düzenle
                       </button>
                     </Link>
@@ -289,14 +220,11 @@ export default function MukelleflerPage() {
         </table>
       </div>
 
-      {/* Özet */}
-      {taxpayers.length > 0 && (
-        <div className="mt-4 flex gap-4 flex-wrap text-sm text-gray-500">
-          <span>Toplam: <strong>{taxpayers.length}</strong></span>
-          <span>Evrak Geldi: <strong className="text-green-600">{taxpayers.filter(t => t.monthlyStatus?.evraklarGeldi).length}</strong></span>
-          <span>Beyanname: <strong className="text-blue-600">{taxpayers.filter(t => t.monthlyStatus?.beyannameVerildi).length}</strong></span>
-          <span>KDV Kontrol: <strong style={{ color: 'var(--gold)' }}>{taxpayers.filter(t => t.monthlyStatus?.kdvKontrolEdildi).length}</strong></span>
-        </div>
+      {/* Alt Özet */}
+      {total > 0 && (
+        <p className="text-xs text-gray-400 mt-3 text-right">
+          {total} mükellef · {evraklarGeldi} evrak geldi · {beyanname} beyanname verildi · {kdvKontrol} KDV kontrol
+        </p>
       )}
     </div>
   );
