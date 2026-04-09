@@ -112,7 +112,7 @@ export class OcrService implements OnModuleInit {
     return true;
   }
 
-  // ─── Tesseract — temp dosya (en güvenilir yöntem) ───────────────────────────
+  // ─── Tesseract — temp dosya ─────────────────────────────────────────────────
   private async runTesseractFromBuffer(buffer: Buffer, lang: string): Promise<string> {
     const { writeFile, readFile, unlink } = await import('fs/promises');
     const { tmpdir } = await import('os');
@@ -127,11 +127,22 @@ export class OcrService implements OnModuleInit {
     try {
       await writeFile(inFile, buffer);
 
-      await execFileAsync(
-        'tesseract',
-        [inFile, outBase, '-l', lang, '--psm', '3', '--oem', '1'],
-        { timeout: 30000 },
-      );
+      try {
+        // Önce istenen dil ile dene (tur+eng veya tur)
+        await execFileAsync(
+          'tesseract',
+          [inFile, outBase, '-l', lang, '--psm', '3', '--oem', '1'],
+          { timeout: 30000 },
+        );
+      } catch (langErr: any) {
+        this.logger.warn(`Dil ${lang} başarısız (${langErr?.stderr?.slice(0,100) || langErr?.message?.slice(0,100)}), eng ile tekrar deneniyor...`);
+        // Türkçe dil paketi yoksa sadece eng ile dene
+        await execFileAsync(
+          'tesseract',
+          [inFile, outBase, '-l', 'eng', '--psm', '3', '--oem', '1'],
+          { timeout: 30000 },
+        );
+      }
 
       const text = await readFile(outFile, 'utf-8');
       return text;
