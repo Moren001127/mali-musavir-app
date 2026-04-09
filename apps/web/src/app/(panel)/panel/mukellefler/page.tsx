@@ -229,7 +229,7 @@ export default function MukelleflerPage() {
             <span className="text-center" title="İndirilecek KDV Kontrolü (191)">İnd.<br/>KDV</span>
             <span className="text-center" title="Hesaplanan KDV Kontrolü (391)">Hes.<br/>KDV</span>
             <span className="text-center">Beyan<br/>name</span>
-            <span>E-Arşiv<br/>Kontrol</span>
+            <span className="text-center">E-Arşiv<br/>Kontrol</span>
             <span className="text-center">İlerleme</span>
           </div>
 
@@ -275,7 +275,12 @@ export default function MukelleflerPage() {
                         {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
                       </span>
                     </div>
-                    <Link href={`/panel/mukellefler/${t.id}`} className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Link
+                      href={`/panel/mukellefler/${t.id}`}
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
                       <span className="text-[11px] px-2 py-1 rounded-md font-medium"
                         style={{ background: 'var(--navy)', color: 'white' }}>✎</span>
                     </Link>
