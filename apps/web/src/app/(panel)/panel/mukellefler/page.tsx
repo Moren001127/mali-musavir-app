@@ -106,7 +106,7 @@ export default function MukelleflerPage() {
   const pct     = total > 0 ? Math.round((allDone / total) * 100) : 0;
 
   // Grid: Mükellef | SonGün | EvrakGeldi | EvrakIşlendi | İndKDV | HesKDV | Beyanname | E-Arşiv | İlerleme | Düzenle
-  const GRID = 'minmax(130px,220px) 38px 46px 50px 46px 46px 50px 56px 62px 50px';
+  const GRID = 'minmax(130px,1fr) 38px 46px 50px 46px 46px 50px 56px 62px 50px';
 
   return (
     <div className="min-h-screen" style={{ background: '#f5f6fa' }}>
