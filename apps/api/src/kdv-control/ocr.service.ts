@@ -1,9 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { exec, execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync  = promisify(exec);
-const execFileAsync = promisify(execFile);
+import { createWorker } from 'tesseract.js';
+import { existsSync } from 'fs';
+import { join } from 'path';
 
 export interface OcrResult {
   rawText: string;
@@ -14,43 +12,34 @@ export interface OcrResult {
   confidence: number;
 }
 
+const TESSDATA_PATH = '/app/tessdata';
+
 @Injectable()
 export class OcrService implements OnModuleInit {
   private readonly logger = new Logger(OcrService.name);
-  private tesseractPath = 'tesseract';
-  private tesseractAvailable = false;
+  private turAvailable = false;
+  private engAvailable = false;
 
-  /** Servis başlarken tesseract durumunu logla */
-  async onModuleInit() {
-    try {
-      const { stdout } = await execAsync('which tesseract || where tesseract 2>/dev/null');
-      this.tesseractPath = stdout.trim().split('\n')[0];
-      const { stdout: ver } = await execAsync('tesseract --version 2>&1 | head -1');
-      this.tesseractAvailable = true;
-      this.logger.log(`✅ Tesseract bulundu: ${this.tesseractPath} | ${ver.trim()}`);
-    } catch (e) {
-      this.tesseractAvailable = false;
-      this.logger.error(`❌ Tesseract BULUNAMADI: ${e?.message}`);
-    }
+  onModuleInit() {
+    this.turAvailable = existsSync(join(TESSDATA_PATH, 'tur.traineddata'));
+    this.engAvailable = existsSync(join(TESSDATA_PATH, 'eng.traineddata'));
+    this.logger.log(
+      `Tessdata → tur: ${this.turAvailable ? '✅' : '❌'}  eng: ${this.engAvailable ? '✅' : '❌'}  (${TESSDATA_PATH})`,
+    );
   }
 
+  /**
+   * tesseract.js WASM ile OCR — dil dosyaları Docker imajına gömülü.
+   * Geçiş 1: tur+eng  |  Geçiş 2 (eksik alan varsa): eng
+   */
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
 
-    if (!this.tesseractAvailable) {
-      this.logger.warn('Tesseract mevcut değil — yalnızca dosya adından belgeNo alınıyor');
-      return {
-        rawText: '',
-        belgeNo: belgeNoFromFilename,
-        date: null, kdvTutari: null, totalTutari: null,
-        confidence: belgeNoFromFilename ? 0.35 : 0,
-      };
-    }
-
     try {
-      // Stdin pipe ile çalıştır (temp dosya yazma sorunu yok)
-      const text1 = await this.runTesseractFromBuffer(imageBuffer, 'tur+eng');
-      this.logger.debug(`OCR Geçiş-1 ham metin (ilk 200 karakter): ${text1.slice(0, 200)}`);
+      // ── Geçiş 1 ──────────────────────────────────────────────────────────
+      const lang1 = this.turAvailable ? 'tur+eng' : 'eng';
+      const text1 = await this.runOcr(imageBuffer, lang1);
+      this.logger.debug(`OCR Geçiş-1 (${lang1}): ${text1.slice(0, 120).replace(/\n/g, ' ')}`);
 
       let date    = this.extractDate(text1);
       let belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(text1);
@@ -58,19 +47,19 @@ export class OcrService implements OnModuleInit {
       let toplam  = this.extractToplam(text1);
       let rawText = text1;
 
+      // ── Geçiş 2: tarih veya KDV hâlâ eksikse ────────────────────────────
       if (!date || !kdv) {
         try {
-          const text2 = await this.runTesseractFromBuffer(imageBuffer, 'tur');
+          const text2 = await this.runOcr(imageBuffer, 'eng');
           rawText  = text1 + '\n\n--- Geçiş 2 ---\n' + text2;
           date    = date    ?? this.extractDate(text2);
           belgeNo = belgeNo ?? this.extractBelgeNo(text2);
           kdv     = kdv     ?? this.extractKdvTotal(text2);
           toplam  = toplam  ?? this.extractToplam(text2);
-        } catch (e2) {
-          this.logger.warn(`OCR Geçiş-2 hatası: ${e2?.message}`);
-        }
+        } catch { /* geçiş 2 başarısız olsa da devam */ }
       }
 
+      // ── OCR bozukluk düzeltme ─────────────────────────────────────────────
       if (!date || !kdv) {
         const fixed = this.fixOcrNoise(rawText);
         date    = date    ?? this.extractDate(fixed);
@@ -79,23 +68,23 @@ export class OcrService implements OnModuleInit {
         toplam  = toplam  ?? this.extractToplam(fixed);
       }
 
+      // ── Z-raporu: toplam → KDV ────────────────────────────────────────────
       if (!kdv && toplam) kdv = this.inferKdvFromTotal(rawText, toplam);
+
+      // Dosya adından belgeNo her zaman önceliklidir
       if (belgeNoFromFilename) belgeNo = belgeNoFromFilename;
 
       const foundFields = [date, kdv].filter(Boolean).length;
       const confidence  = belgeNoFromFilename
-        ? 0.33 + (foundFields * 0.33)
+        ? 0.33 + foundFields * 0.33
         : foundFields / 3;
 
       this.logger.log(
-        `OCR [${originalName}] → belgeNo:${belgeNo} tarih:${date} kdv:${kdv} conf:${(confidence*100).toFixed(0)}%`
+        `OCR [${originalName}] belgeNo:${belgeNo ?? '-'} tarih:${date ?? '-'} kdv:${kdv ?? '-'} conf:%${Math.round(confidence * 100)}`,
       );
 
-      return {
-        rawText: rawText.slice(0, 3000),
-        belgeNo, date, kdvTutari: kdv, totalTutari: toplam, confidence,
-      };
-    } catch (err) {
+      return { rawText: rawText.slice(0, 3000), belgeNo, date, kdvTutari: kdv, totalTutari: toplam, confidence };
+    } catch (err: any) {
       this.logger.error(`OCR hatası [${originalName}]: ${err?.message}`);
       return {
         rawText: '',
@@ -112,43 +101,17 @@ export class OcrService implements OnModuleInit {
     return true;
   }
 
-  // ─── Tesseract — temp dosya ─────────────────────────────────────────────────
-  private async runTesseractFromBuffer(buffer: Buffer, lang: string): Promise<string> {
-    const { writeFile, readFile, unlink } = await import('fs/promises');
-    const { tmpdir } = await import('os');
-    const { join } = await import('path');
-    const { randomUUID } = await import('crypto');
-
-    const id      = randomUUID();
-    const inFile  = join(tmpdir(), `ocr-in-${id}.jpg`);
-    const outBase = join(tmpdir(), `ocr-out-${id}`);
-    const outFile = `${outBase}.txt`;
-
+  // ─── tesseract.js WASM çağrısı ───────────────────────────────────────────────
+  private async runOcr(buffer: Buffer, lang: string): Promise<string> {
+    const worker = await createWorker(lang, 1, {
+      cachePath: TESSDATA_PATH,
+      logger: () => {},
+    } as any);
     try {
-      await writeFile(inFile, buffer);
-
-      try {
-        // Önce istenen dil ile dene (tur+eng veya tur)
-        await execFileAsync(
-          'tesseract',
-          [inFile, outBase, '-l', lang, '--psm', '3', '--oem', '1'],
-          { timeout: 30000 },
-        );
-      } catch (langErr: any) {
-        this.logger.warn(`Dil ${lang} başarısız (${langErr?.stderr?.slice(0,100) || langErr?.message?.slice(0,100)}), eng ile tekrar deneniyor...`);
-        // Türkçe dil paketi yoksa sadece eng ile dene
-        await execFileAsync(
-          'tesseract',
-          [inFile, outBase, '-l', 'eng', '--psm', '3', '--oem', '1'],
-          { timeout: 30000 },
-        );
-      }
-
-      const text = await readFile(outFile, 'utf-8');
-      return text;
+      const { data } = await worker.recognize(buffer);
+      return data.text || '';
     } finally {
-      unlink(inFile).catch(() => {});
-      unlink(outFile).catch(() => {});
+      await worker.terminate();
     }
   }
 
@@ -157,25 +120,28 @@ export class OcrService implements OnModuleInit {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
-    if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
+    if (/^[A-Z0-9\-_]{8,30}$/i.test(base))         return base.toUpperCase();
     return null;
   }
 
   // ─── Tarih çıkarma ───────────────────────────────────────────────────────────
   private extractDate(text: string): string | null {
+    // DD - MM - YYYY (boşluklu tire)
     for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d<=31 && +mo<=12 && +y>=2000 && +y<=2100)
+      if (+d <= 31 && +mo <= 12 && +y >= 2000 && +y <= 2100)
         return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
     }
+    // DD.MM.YYYY / DD/MM/YYYY
     for (const m of text.matchAll(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d<=31 && +mo<=12 && +y>=2000 && +y<=2100)
+      if (+d <= 31 && +mo <= 12 && +y >= 2000 && +y <= 2100)
         return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
     }
+    // YYYY-MM-DD
     for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
       const [, y, mo, d] = m;
-      if (+d<=31 && +mo<=12)
+      if (+d <= 31 && +mo <= 12)
         return `${d}.${mo}.${y}`;
     }
     return null;
@@ -196,7 +162,7 @@ export class OcrService implements OnModuleInit {
 
   // ─── KDV tutarı çıkarma ──────────────────────────────────────────────────────
   private extractKdvTotal(text: string): string | null {
-    // Hesaplanan KDV (parantez opsiyonel): "Hesaplanan KDV (%20) : 6.000,00" veya "Hesaplanan KDV : 70,00"
+    // "Hesaplanan KDV (%20) : 6.000,00" veya "Hesaplanan KDV : 70,00" (parantez opsiyonel)
     const multi = [...text.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (multi.length > 0) {
       const total = multi.reduce((s, m) => s + this.parseAmount(m[1]), 0);
@@ -238,10 +204,9 @@ export class OcrService implements OnModuleInit {
   private inferKdvFromTotal(text: string, toplamStr: string): string | null {
     const om = text.match(/%\s*(20|10|8|1)\b/);
     if (!om) return null;
-    const oran   = parseInt(om[1]);
     const toplam = this.parseAmount(toplamStr);
     if (!toplam) return null;
-    return this.formatAmount(toplam * oran / (100 + oran));
+    return this.formatAmount(toplam * +om[1] / (100 + +om[1]));
   }
 
   // ─── OCR bozukluk düzeltme ───────────────────────────────────────────────────

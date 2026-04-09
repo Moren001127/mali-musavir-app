@@ -1,11 +1,15 @@
 FROM node:20-slim
 
-RUN apt-get update && apt-get install -y \
-    openssl \
-    tesseract-ocr \
-    tesseract-ocr-tur \
-    tesseract-ocr-eng \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl wget ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Tesseract dil dosyalarını build sırasında indir (runtime indirme yok)
+RUN mkdir -p /app/tessdata \
+ && wget -q "https://github.com/tesseract-ocr/tessdata_fast/raw/main/tur.traineddata" \
+         -O /app/tessdata/tur.traineddata \
+ && wget -q "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata" \
+         -O /app/tessdata/eng.traineddata \
+ && echo "Dil dosyaları indirildi:" \
+ && ls -lh /app/tessdata/
 
 WORKDIR /app
 
