@@ -105,8 +105,8 @@ export default function MukelleflerPage() {
   const allDone = raw.filter(t => isAllDone(t)).length;
   const pct     = total > 0 ? Math.round((allDone / total) * 100) : 0;
 
-  // Grid: Mükellef | SonGün | EvrakGeldi | EvrakIşlendi | İndKDV | HesKDV | Beyanname | E-Arşiv | İlerleme | Düzenle
-  const GRID = 'minmax(130px,1fr) 38px 46px 50px 46px 46px 50px 56px 62px 50px';
+  // Grid: Mükellef | SonGün | EvrakGeldi | EvrakIşlendi | İndKDV | HesKDV | Beyanname | E-Arşiv | İlerleme
+  const GRID = '1fr 40px 48px 52px 48px 48px 52px 60px 80px';
 
   return (
     <div className="min-h-screen" style={{ background: '#f5f6fa' }}>
@@ -229,9 +229,8 @@ export default function MukelleflerPage() {
             <span className="text-center" title="İndirilecek KDV Kontrolü (191)">İnd.<br/>KDV</span>
             <span className="text-center" title="Hesaplanan KDV Kontrolü (391)">Hes.<br/>KDV</span>
             <span className="text-center">Beyan<br/>name</span>
-            <span className="text-center" style={{ color: '#93c5fd' }}>E-Arşiv<br/>Kontrol</span>
+            <span>E-Arşiv<br/>Kontrol</span>
             <span className="text-center">İlerleme</span>
-            <span></span>
           </div>
 
           {/* Satırlar */}
@@ -259,13 +258,13 @@ export default function MukelleflerPage() {
                   className="grid items-center px-4 py-2.5 group hover:bg-slate-50/80 transition-colors duration-100"
                   style={{ gridTemplateColumns: GRID, background: done ? 'linear-gradient(90deg,#f0fdf408,transparent)' : undefined }}>
 
-                  {/* Mükellef adı */}
-                  <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Mükellef adı + edit ikonu */}
+                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
                       style={{ background: done ? 'linear-gradient(135deg,#16a34a,#15803d)' : 'linear-gradient(135deg,var(--navy),#2a4ea0)' }}>
                       {initials}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <Link href={`/panel/mukellefler/${t.id}`}
                         className="text-sm font-semibold truncate block hover:underline leading-tight"
                         style={{ color: 'var(--navy)' }}>
@@ -276,6 +275,10 @@ export default function MukelleflerPage() {
                         {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
                       </span>
                     </div>
+                    <Link href={`/panel/mukellefler/${t.id}`} className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-[11px] px-2 py-1 rounded-md font-medium"
+                        style={{ background: 'var(--navy)', color: 'white' }}>✎</span>
+                    </Link>
                   </div>
 
                   {/* Son gün */}
@@ -318,16 +321,6 @@ export default function MukelleflerPage() {
                     <span className="text-[10px] font-semibold" style={{ color: done ? '#16a34a' : cnt > 0 ? 'var(--navy)' : '#d1d5db' }}>
                       {done ? '✓ Tamam' : `${cnt}/4`}
                     </span>
-                  </div>
-
-                  {/* Düzenle */}
-                  <div className="flex justify-center">
-                    <Link href={`/panel/mukellefler/${t.id}`}>
-                      <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[11px] px-2.5 py-1 rounded-lg font-medium"
-                        style={{ background: 'var(--navy)', color: 'white' }}>
-                        Düzenle
-                      </button>
-                    </Link>
                   </div>
                 </div>
               );
