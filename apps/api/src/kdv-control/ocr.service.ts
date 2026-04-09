@@ -184,15 +184,15 @@ export class OcrService {
 
   // ─── KDV tutarı çıkarma (e-Fatura + genel) ──────────────────────────────────
   private extractKdvTotal(text: string): string | null {
-    // e-Fatura çoklu oran: tüm "Hesaplanan KDV(%X): VALUE" satırlarını topla
-    const multi = [...text.matchAll(/hesaplanan\s*kdv\s*\(\s*%?\s*[\d.]+\s*\)\s*:?\s*([\d.,]+)/gi)];
+    // e-Fatura çoklu oran: "Hesaplanan KDV(%X): VALUE" VEYA "Hesaplanan KDV : VALUE" (parantez opsiyonel)
+    const multi = [...text.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (multi.length > 0) {
       const total = multi.reduce((s, m) => s + this.parseAmount(m[1]), 0);
       if (total > 0) return this.formatAmount(total);
     }
 
-    // Tek satır: "KDV(%20): 6.000,00"
-    const single = text.match(/kdv\s*\(\s*%?\s*[\d.]+\s*\)\s*:?\s*([\d.,]+)/i);
+    // Tek satır fallback (parantez opsiyonel): "KDV(%20): 6.000,00" veya "KDV : 70,00"
+    const single = text.match(/kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/i);
     if (single?.[1]) return single[1].replace(/\s/g, '');
 
     // Toplam KDV
