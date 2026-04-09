@@ -95,8 +95,9 @@ export default function KdvSessionDetailPage() {
   const { data: images, refetch: refetchImages } = useQuery({
     queryKey: ['kdv-images', id],
     queryFn: () => kdvApi.getImages(id),
-    refetchInterval: (data: any) => {
-      const anyProcessing = (data as any[])?.some((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus));
+    refetchInterval: (query: any) => {
+      const d = query?.state?.data;
+      const anyProcessing = Array.isArray(d) && d.some((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus));
       return anyProcessing ? 3000 : 8000;
     },
   });
