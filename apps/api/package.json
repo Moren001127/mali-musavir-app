@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "prisma generate && nest build",
     "start": "node dist/main",
     "lint": "eslint src --ext .ts",
     "test": "jest",
