@@ -741,12 +741,15 @@ model TaxpayerMonthlyStatus {
   tenantId         String
   year             Int
   month            Int      // 1-12
-  evraklarGeldi    Boolean  @default(false)
-  evraklarIslendi  Boolean  @default(false)
-  kontrolEdildi    Boolean  @default(false)
-  beyannameVerildi Boolean  @default(false)
-  kdvKontrolEdildi Boolean  @default(false)
-  createdAt        DateTime @default(now())
+  evraklarGeldi          Boolean  @default(false)
+  evraklarIslendi        Boolean  @default(false)
+  kontrolEdildi          Boolean  @default(false)
+  beyannameVerildi       Boolean  @default(false)
+  kdvKontrolEdildi       Boolean  @default(false)
+  indirilecekKdvKontrol  Boolean  @default(false)
+  hesaplananKdvKontrol   Boolean  @default(false)
+  eArsivKontrol          Boolean  @default(false)
+  createdAt              DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)

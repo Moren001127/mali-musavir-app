@@ -148,6 +148,9 @@ export class TaxpayersService {
       kontrolEdildi?: boolean;
       beyannameVerildi?: boolean;
       kdvKontrolEdildi?: boolean;
+      indirilecekKdvKontrol?: boolean;
+      hesaplananKdvKontrol?: boolean;
+      eArsivKontrol?: boolean;
     },
   ) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
