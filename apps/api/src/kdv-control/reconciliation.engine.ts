@@ -153,22 +153,22 @@ export class ReconciliationEngine {
       score += 0.1; // Biri eksikse tam puan verme
     }
 
-    // KDV Tutarı (%20 ağırlık)
-    if (record.kdvTutari && imgKdv) {
+    // KDV Tutarı (%20 ağırlık) — görsel KDV yoksa Excel değerini referans al (Z-raporu desteği)
+    const imgKdvEffective = imgKdv ?? null;
+    if (record.kdvTutari && imgKdvEffective) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
       const imgKdvNum = parseFloat(
-        imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
+        imgKdvEffective.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
       );
       if (!isNaN(imgKdvNum)) {
-        const diff = Math.abs(recordKdv - imgKdvNum) / recordKdv;
-        if (diff < 0.01) score += 0.2;      // %1'den az fark — tam eşleşme
-        else if (diff < 0.05) {
-          score += 0.1;
-          reasons.push(`KDV tutarı yakın ama farklı: ${recordKdv} ≠ ${imgKdvNum}`);
-        } else {
-          reasons.push(`KDV tutarı uyumsuz: ${recordKdv} ≠ ${imgKdvNum}`);
-        }
+        const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
+        if (diff < 0.01) score += 0.2;
+        else if (diff < 0.05) { score += 0.1; reasons.push(`KDV tutarı yakın ama farklı: ${recordKdv} ≠ ${imgKdvNum}`); }
+        else { reasons.push(`KDV tutarı uyumsuz: ${recordKdv} ≠ ${imgKdvNum}`); }
       }
+    } else if (!imgKdvEffective && record.kdvTutari) {
+      // Görsel KDV okunamadı — tarih+belgeNo eşleşirse KDV skoru eksik sayma, bonus ver
+      score += 0.05; // Görselde KDV yoksa hafif bonus (ceza değil)
     }
 
     // Tarih (%30 ağırlık)
@@ -199,11 +199,10 @@ export class ReconciliationEngine {
   }
 
   private scoreToStatus(score: number, image: ReceiptImage): string {
-    if (image.ocrStatus === 'LOW_CONFIDENCE' || image.ocrStatus === 'FAILED') {
-      return 'NEEDS_REVIEW';
-    }
-    if (score >= 0.85) return 'MATCHED';
-    if (score >= 0.5) return 'PARTIAL_MATCH';
+    // Sadece FAILED durum NEEDS_REVIEW'a zorla; LOW_CONFIDENCE artık normal akışta
+    if (image.ocrStatus === 'FAILED' && !image.isManuallyConfirmed) return 'NEEDS_REVIEW';
+    if (score >= 0.80) return 'MATCHED';
+    if (score >= 0.45) return 'PARTIAL_MATCH';
     return 'NEEDS_REVIEW';
   }
 

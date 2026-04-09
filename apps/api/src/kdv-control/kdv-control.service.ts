@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -114,20 +115,29 @@ export class KdvControlService {
       );
     }
 
-    await this.prisma.kdvRecord.createMany({
-      data: rows.map((r) => ({
-        sessionId,
-        rowIndex: r.rowIndex,
-        belgeNo: r.belgeNo,
-        belgeDate: r.belgeDate,
-        karsiTaraf: r.karsiTaraf,
-        kdvMatrahi: r.kdvMatrahi,
-        kdvTutari: r.kdvTutari,
-        kdvOrani: r.kdvOrani,
-        aciklama: r.aciklama,
-        rawData: r.rawData,
-      })),
-    });
+    try {
+      await this.prisma.kdvRecord.createMany({
+        data: rows.map((r) => ({
+          sessionId,
+          rowIndex:   r.rowIndex,
+          belgeNo:    r.belgeNo,
+          belgeDate:  r.belgeDate,
+          karsiTaraf: r.karsiTaraf,
+          kdvMatrahi: r.kdvMatrahi,
+          kdvTutari:  r.kdvTutari,
+          kdvOrani:   r.kdvOrani,
+          aciklama:   r.aciklama,
+          rawData:    r.rawData,
+        })),
+      });
+    } catch (err: any) {
+      this.logger.error(
+        `createMany hatası: ${err?.message} | İlk satır: ${JSON.stringify(rows[0]?.rawData ?? {})}`,
+      );
+      throw new InternalServerErrorException(
+        'Kayıt oluşturma hatası: ' + (err?.message ?? 'Bilinmeyen hata'),
+      );
+    }
 
     await this.prisma.kdvControlSession.update({
       where: { id: sessionId },

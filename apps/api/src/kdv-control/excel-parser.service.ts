@@ -109,7 +109,7 @@ export class ExcelParserService {
         kdvTutari,
         kdvOrani: extractedOran,
         aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
-        rawData: row,
+        rawData: this.sanitizeRawData(row),
       });
     }
 
@@ -203,7 +203,7 @@ export class ExcelParserService {
         kdvTutari: tutar,
         kdvOrani: null,
         aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
-        rawData: row,
+        rawData: this.sanitizeRawData(row),
       });
     }
 
@@ -235,6 +235,18 @@ export class ExcelParserService {
     };
     const suffix = kod.slice(-3);
     return map[suffix] ?? null;
+  }
+
+  /** rawData'yı Prisma JSON'una uygun hale getirir (Date, NaN, Infinity temizler) */
+  private sanitizeRawData(raw: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(raw)) {
+      if (v === null || v === undefined) out[k] = null;
+      else if (v instanceof Date) out[k] = isNaN(v.getTime()) ? null : v.toISOString();
+      else if (typeof v === 'number') out[k] = isFinite(v) ? v : null;
+      else out[k] = String(v);
+    }
+    return out;
   }
 
   private toDecimal(val: any): number | null {
