@@ -112,33 +112,33 @@ export class OcrService implements OnModuleInit {
     return true;
   }
 
-  // ─── Tesseract — stdin pipe ──────────────────────────────────────────────────
-  private runTesseractFromBuffer(buffer: Buffer, lang: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      // tesseract stdin stdout -l tur+eng --psm 3 --oem 1
-      const proc = require('child_process').spawn(
+  // ─── Tesseract — temp dosya (en güvenilir yöntem) ───────────────────────────
+  private async runTesseractFromBuffer(buffer: Buffer, lang: string): Promise<string> {
+    const { writeFile, readFile, unlink } = await import('fs/promises');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const { randomUUID } = await import('crypto');
+
+    const id      = randomUUID();
+    const inFile  = join(tmpdir(), `ocr-in-${id}.jpg`);
+    const outBase = join(tmpdir(), `ocr-out-${id}`);
+    const outFile = `${outBase}.txt`;
+
+    try {
+      await writeFile(inFile, buffer);
+
+      await execFileAsync(
         'tesseract',
-        ['stdin', 'stdout', '-l', lang, '--psm', '3', '--oem', '1'],
-        { stdio: ['pipe', 'pipe', 'pipe'] }
+        [inFile, outBase, '-l', lang, '--psm', '3', '--oem', '1'],
+        { timeout: 30000 },
       );
 
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
-      proc.on('close', (code: number) => {
-        if (code !== 0 && !stdout.trim()) {
-          reject(new Error(`tesseract exit ${code}: ${stderr.slice(0, 200)}`));
-        } else {
-          resolve(stdout);
-        }
-      });
-      proc.on('error', (e: Error) => reject(e));
-
-      // Buffer'ı stdin'e yaz ve kapat
-      proc.stdin.write(buffer);
-      proc.stdin.end();
-    });
+      const text = await readFile(outFile, 'utf-8');
+      return text;
+    } finally {
+      unlink(inFile).catch(() => {});
+      unlink(outFile).catch(() => {});
+    }
   }
 
   // ─── Dosya adından belgeNo ───────────────────────────────────────────────────
