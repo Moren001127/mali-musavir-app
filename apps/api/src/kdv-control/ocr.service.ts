@@ -106,6 +106,7 @@ export class OcrService implements OnModuleInit {
     const worker = await createWorker(lang, 1, {
       cachePath: TESSDATA_PATH,
       logger: () => {},
+      errorOnCompile: false,
     } as any);
     try {
       const { data } = await worker.recognize(buffer);

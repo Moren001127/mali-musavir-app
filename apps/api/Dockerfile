@@ -1,15 +1,18 @@
 FROM node:20-slim
 
+# Swap için fallocate kurulumu + tesseract dil dosyaları
 RUN apt-get update && apt-get install -y openssl wget ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Tesseract dil dosyalarını build sırasında indir (runtime indirme yok)
+# 1GB Swap alanı oluştur (bellek yetersizliğini önler)
+RUN fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+
+# Tesseract dil dosyalarını build sırasında indir
 RUN mkdir -p /app/tessdata \
  && wget -q "https://github.com/tesseract-ocr/tessdata_fast/raw/main/tur.traineddata" \
          -O /app/tessdata/tur.traineddata \
  && wget -q "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata" \
          -O /app/tessdata/eng.traineddata \
- && echo "Dil dosyaları indirildi:" \
- && ls -lh /app/tessdata/
+ && echo "Dil dosyaları:" && ls -lh /app/tessdata/
 
 WORKDIR /app
 
