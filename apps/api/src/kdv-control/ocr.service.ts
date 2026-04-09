@@ -1,5 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Tesseract from 'tesseract.js';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { randomUUID } from 'crypto';
+
+const execFileAsync = promisify(execFile);
 
 export interface OcrResult {
   rawText: string;
@@ -15,46 +22,44 @@ export class OcrService {
   private readonly logger = new Logger(OcrService.name);
 
   /**
-   * Çok aşamalı OCR + dosya adından belgeNo çıkarımı:
-   * 1. Dosya adından belgeNo al (en güvenilir kaynak)
-   * 2. Geçiş 1: Tesseract tur+eng
-   * 3. Geçiş 2 (eksik alan varsa): tur tek dil
-   * 4. OCR bozukluk düzeltme
-   * 5. Z-raporu toplam → KDV hesaplama
+   * Sistem Tesseract ile OCR (dil dosyaları Docker imajına gömülü):
+   * 1. Geçiş: tur+eng dili
+   * 2. Geçiş (tarih veya KDV eksikse): sadece tur
+   * 3. OCR bozukluk düzeltme
+   * 4. Z-raporu toplam → KDV hesaplama
+   *
+   * NOT: belgeNo dosya adından alınır (en güvenilir kaynak),
+   *      tarih ve KDV mutlaka OCR ile belgeden okunur.
    */
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
-    // 1. Dosya adından belgeNo çıkar — en güvenilir yöntem
+    // belgeNo: dosya adından al (en güvenilir kaynak — dosya adı = belge numarası)
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
 
+    const tmpFile = join(tmpdir(), `ocr-${randomUUID()}.jpg`);
     try {
-      // --- Geçiş 1: tur+eng ---
-      const r1 = await Tesseract.recognize(imageBuffer, 'tur+eng', { logger: () => {} });
-      const text1 = r1.data.text;
-      const conf1 = (r1.data.confidence ?? 0) / 100;
+      await writeFile(tmpFile, imageBuffer);
 
+      // --- Geçiş 1: tur+eng ---
+      const text1 = await this.runTesseract(tmpFile, 'tur+eng');
       let date    = this.extractDate(text1);
       let belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(text1);
       let kdv     = this.extractKdvTotal(text1);
       let toplam  = this.extractToplam(text1);
       let rawText = text1;
-      let bestConf = conf1;
 
-      // --- Geçiş 2: tarih veya KDV eksikse tur tek dil dene ---
+      // --- Geçiş 2: tarih veya KDV hâlâ eksikse tur diliyle tekrar ---
       if (!date || !kdv) {
         try {
-          const r2 = await Tesseract.recognize(imageBuffer, 'tur', { logger: () => {} });
-          const text2 = r2.data.text;
-          const conf2 = (r2.data.confidence ?? 0) / 100;
-          bestConf = Math.max(conf1, conf2);
+          const text2 = await this.runTesseract(tmpFile, 'tur');
           rawText  = text1 + '\n\n--- Geçiş 2 ---\n' + text2;
           date    = date    ?? this.extractDate(text2);
           belgeNo = belgeNo ?? this.extractBelgeNo(text2);
           kdv     = kdv     ?? this.extractKdvTotal(text2);
           toplam  = toplam  ?? this.extractToplam(text2);
-        } catch { /* ikinci geçiş başarısız olsa bile devam */ }
+        } catch { /* devam */ }
       }
 
-      // --- OCR bozukluk toleransı ---
+      // --- OCR bozukluk düzeltme: O→0, l→1, B→8, S→5 ---
       if (!date || !kdv) {
         const fixed = this.fixOcrNoise(rawText);
         date    = date    ?? this.extractDate(fixed);
@@ -68,11 +73,14 @@ export class OcrService {
         kdv = this.inferKdvFromTotal(rawText, toplam);
       }
 
-      // Dosya adından belgeNo varsa OCR sonucunu ezmez
+      // dosya adından gelen belgeNo OCR sonucunu ezmez (zaten daha güvenilir)
       if (belgeNoFromFilename) belgeNo = belgeNoFromFilename;
 
-      // Dosya adından belgeNo varsa minimum güven %60 say (tesseract başarısız bile olsa)
-      if (belgeNoFromFilename && bestConf < 0.3) bestConf = 0.6;
+      // Güven skoru: alan sayısına göre hesapla
+      const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
+      const confidence = belgeNoFromFilename
+        ? Math.max(0.6, foundFields / 3)   // dosya adı varsa min %60
+        : foundFields / 3;
 
       return {
         rawText: rawText.slice(0, 3000),
@@ -80,11 +88,10 @@ export class OcrService {
         date,
         kdvTutari: kdv,
         totalTutari: toplam,
-        confidence: bestConf,
+        confidence,
       };
     } catch (err) {
-      this.logger.error('OCR Tesseract hatası:', err?.message);
-      // Tesseract tamamen çökse bile dosya adından belgeNo dön
+      this.logger.error('OCR sistem hatası:', err?.message);
       return {
         rawText: '',
         belgeNo: belgeNoFromFilename,
@@ -93,76 +100,80 @@ export class OcrService {
         totalTutari: null,
         confidence: belgeNoFromFilename ? 0.5 : 0,
       };
+    } finally {
+      unlink(tmpFile).catch(() => {});
     }
   }
 
   /**
-   * Akıllı güven değerlendirmesi:
-   * - BelgeNo + tarih varsa → SUCCESS
-   * - BelgeNo varsa (dosya adından) → SUCCESS (KDV Excel'den tamamlanır)
-   * - Sadece tarih varsa → SUCCESS (KDV Excel'den tamamlanır)
-   * - Hiçbir şey yoksa → LOW_CONFIDENCE
+   * Güven değerlendirmesi:
+   * - BelgeNo (dosya adından) + tarih varsa → SUCCESS
+   * - BelgeNo veya tarih yalnız başına varsa → SUCCESS (KDV Excel'den tamamlanır)
+   * - Hiçbir alan yoksa → LOW_CONFIDENCE
    */
   isLowConfidence(result: OcrResult): boolean {
-    if (result.belgeNo) return false;  // Dosya adından geldi → güvenilir
-    if (result.date)    return false;  // Tarih bulundu → SUCCESS
-    return true;                        // Hiçbir alan yok
+    if (result.belgeNo) return false;
+    if (result.date)    return false;
+    return true;
   }
 
-  // ─── Dosya adından belgeNo çıkarma ──────────────────────────────────────────
+  // ─── Sistem Tesseract çağrısı ────────────────────────────────────────────────
+  private async runTesseract(imagePath: string, lang: string): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync(
+        'tesseract',
+        [imagePath, 'stdout', '-l', lang, '--psm', '3', '--oem', '1'],
+        { timeout: 30000, maxBuffer: 10 * 1024 * 1024 },
+      );
+      return stdout || '';
+    } catch (err: any) {
+      // tesseract stderr'e bazı uyarı mesajları yazar ama stdout çıktısı olabilir
+      if (err.stdout) return err.stdout;
+      throw err;
+    }
+  }
+
+  // ─── Dosya adından belgeNo ───────────────────────────────────────────────────
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
-    // Uzantıyı kaldır
     const base = filename.replace(/\.[^/.]+$/, '').trim();
-    // e-Fatura formatı: [A-Z0-9]{3}[0-9]{4}[0-9]{6,12}
-    // Örn: HEF2026000000269, AF02026000918027, 1E32026000000852
-    if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) {
-      return base.toUpperCase();
-    }
-    // Genel alfanumerik belge no (en az 8 karakter)
-    if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) {
-      return base.toUpperCase();
-    }
+    // e-Fatura formatı: [A-Z0-9]{3}[YYYY][6-12 rakam sıra]
+    if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
+    // Genel alfanumerik belge no (min 8 karakter)
+    if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
     return null;
   }
 
-  // ─── Tarih çıkarma ───────────────────────────────────────────────────────────
+  // ─── Tarih çıkarma (belgeden OCR ile) ───────────────────────────────────────
   private extractDate(text: string): string | null {
-    // DD - MM - YYYY (boşluklu tire — bazı e-Faturalarda kullanılıyor)
-    for (const m of text.matchAll(/\b(\d{1,2})\s*[-]\s*(\d{1,2})\s*[-]\s*(\d{4})\b/g)) {
+    // DD - MM - YYYY (boşluklu tire — bazı e-Faturalarda: "04 - 02 - 2026")
+    for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12 && +y >= 2000 && +y <= 2100) {
+      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12 && +y >= 2000 && +y <= 2100)
         return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
-      }
     }
     // DD.MM.YYYY / DD/MM/YYYY
     for (const m of text.matchAll(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12 && +y >= 2000 && +y <= 2100) {
+      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12 && +y >= 2000 && +y <= 2100)
         return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
-      }
     }
     // YYYY-MM-DD
     for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
       const [, y, mo, d] = m;
-      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12) {
+      if (+d >= 1 && +d <= 31 && +mo >= 1 && +mo <= 12)
         return `${d}.${mo}.${y}`;
-      }
     }
     return null;
   }
 
-  // ─── Belge No çıkarma (OCR metninden) ───────────────────────────────────────
+  // ─── Belge No çıkarma (OCR metninden — fallback) ─────────────────────────────
   private extractBelgeNo(text: string): string | null {
     const patterns = [
-      // e-Fatura: "Fatura No: HEF2026000000269" veya "FATURA NO : HEF2026000000269"
       /fatura\s*no\s*:?\s*([A-Z0-9]{10,20})/i,
-      // Genel etiket
-      /(?:fiş|belge|seri|evrak|makbuz|fatura|invoice)\s*(?:no|numarası|#)?[:\s#.]*([A-Z0-9]{8,20})/i,
-      // e-Fatura formatı: 3 harf/rakam + 4 rakam yıl + 6-12 rakam sıra (rakamla da başlayabilir)
+      /(?:fiş|belge|seri|evrak|makbuz)\s*(?:no|numarası)?[:\s#.]*([A-Z0-9]{8,20})/i,
+      // e-Fatura: rakam veya harf ile başlayan 3 char + yıl + sıra
       /\b([A-Z0-9]{3}20\d{2}\d{6,12})\b/i,
-      // Genel alfanumerik (fallback)
-      /\b([A-Z]{2,4}\d{8,14})\b/,
     ];
     for (const p of patterns) {
       const m = text.match(p);
@@ -171,64 +182,57 @@ export class OcrService {
     return null;
   }
 
-  // ─── KDV tutarı çıkarma — e-Fatura dahil tüm formatlar ─────────────────────
+  // ─── KDV tutarı çıkarma (e-Fatura + genel) ──────────────────────────────────
   private extractKdvTotal(text: string): string | null {
-    // Çoklu oran için tüm "Hesaplanan KDV(%X): VALUE" satırlarını topla
-    const eFaturaMulti = [...text.matchAll(/hesaplanan\s*kdv\s*\(\s*%?\s*\d+(?:[.,]\d+)?\s*\)\s*[:\s]+([\d.,]+)/gi)];
-    if (eFaturaMulti.length > 0) {
-      const total = eFaturaMulti.reduce((sum, m) => {
-        return sum + this.parseAmount(m[1]);
-      }, 0);
+    // e-Fatura çoklu oran: tüm "Hesaplanan KDV(%X): VALUE" satırlarını topla
+    const multi = [...text.matchAll(/hesaplanan\s*kdv\s*\(\s*%?\s*[\d.]+\s*\)\s*:?\s*([\d.,]+)/gi)];
+    if (multi.length > 0) {
+      const total = multi.reduce((s, m) => s + this.parseAmount(m[1]), 0);
       if (total > 0) return this.formatAmount(total);
     }
 
-    // e-Fatura tek satır: "Hesaplanan KDV: VALUE" veya "KDV(%20): VALUE"
-    const eFaturaSingle = text.match(/(?:hesaplanan\s*)?kdv\s*\(\s*%?\s*\d+(?:[.,]\d+)?\s*\)\s*[:\s]+([\d.,]+)/i);
-    if (eFaturaSingle?.[1]) return eFaturaSingle[1].replace(/\s/g,'');
+    // Tek satır: "KDV(%20): 6.000,00"
+    const single = text.match(/kdv\s*\(\s*%?\s*[\d.]+\s*\)\s*:?\s*([\d.,]+)/i);
+    if (single?.[1]) return single[1].replace(/\s/g, '');
 
     // Toplam KDV
-    const toplamKdv = text.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
-    if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g,'');
+    const toplam = text.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
+    if (toplam?.[1]) return toplam[1].replace(/\s/g, '');
 
-    // Genel KDV etiketleri
-    const patterns = [
+    // Genel etiketler
+    for (const p of [
       /k\.?d\.?v\.?\s*(?:tutarı?|miktarı?)?\s*[:=]\s*([\d.,]+)/i,
       /katma\s+de[gğ]er\s+vergisi\s*[:=]\s*([\d.,]+)/i,
-      /(?:vergi|tax)\s*(?:tutarı?|amount)?\s*[:=]\s*([\d.,]+)/i,
       /k\.?d\.?v\.?\s+%?\s*\d+\s+([\d.,]+)/i,
       /%\s*\d+\s+k\.?d\.?v\.?\s*[:=]?\s*([\d.,]+)/i,
-    ];
-    for (const p of patterns) {
+    ]) {
       const m = text.match(p);
-      if (m?.[1] && /\d/.test(m[1])) return m[1].replace(/\s/g,'');
+      if (m?.[1] && /\d/.test(m[1])) return m[1].replace(/\s/g, '');
     }
     return null;
   }
 
-  // ─── Toplam tutarı çıkarma (Z-raporu için) ───────────────────────────────────
+  // ─── Toplam tutarı (Z-raporu için) ──────────────────────────────────────────
   private extractToplam(text: string): string | null {
-    const patterns = [
+    for (const p of [
       /genel\s+toplam\s*[:=]\s*([\d.,]+)/i,
       /(?:^|\n)\s*toplam\s*[:=]?\s*([\d.,]+)/im,
       /nakit\s+(?:toplam\s+)?([\d.,]+)/i,
-      /(?:net|brut)\s+tutar\s*[:=]\s*([\d.,]+)/i,
-    ];
-    for (const p of patterns) {
+    ]) {
       const m = text.match(p);
-      if (m?.[1] && /\d/.test(m[1])) return m[1].replace(/\s/g,'');
+      if (m?.[1] && /\d/.test(m[1])) return m[1].replace(/\s/g, '');
     }
     return null;
   }
 
-  // ─── Z-raporu toplam → KDV hesaplama ────────────────────────────────────────
+  // ─── Z-raporu toplam → KDV ───────────────────────────────────────────────────
   private inferKdvFromTotal(text: string, toplamStr: string): string | null {
     const oranMatch = text.match(/%\s*(20|10|8|1)\b/);
     if (!oranMatch) return null;
     const oran   = parseInt(oranMatch[1]);
     const toplam = this.parseAmount(toplamStr);
-    if (!toplam || !oran) return null;
-    const kdv = toplam * oran / (100 + oran);
-    return this.formatAmount(kdv);
+    if (!toplam) return null;
+    return this.formatAmount(toplam * oran / (100 + oran));
   }
 
   // ─── OCR bozukluk düzeltme ───────────────────────────────────────────────────
@@ -242,16 +246,12 @@ export class OcrService {
       .replace(/(?<=\d)S(?=[^A-Za-z])/g, '5');
   }
 
-  // ─── Yardımcı: Türkçe para formatı parse ────────────────────────────────────
+  // ─── Yardımcı fonksiyonlar ───────────────────────────────────────────────────
   private parseAmount(str: string): number {
-    // "6.000,00" → 6000.00  |  "6,000.00" → 6000.00
-    const cleaned = str.replace(/\s/g, '');
-    // Türkçe format: nokta = binler ayracı, virgül = ondalık
-    if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(cleaned)) {
-      return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
-    }
-    // İngilizce format veya sade sayı
-    return parseFloat(cleaned.replace(',', '.'));
+    const c = str.replace(/\s/g, '');
+    if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(c))
+      return parseFloat(c.replace(/\./g, '').replace(',', '.'));
+    return parseFloat(c.replace(',', '.')) || 0;
   }
 
   private formatAmount(n: number): string {
