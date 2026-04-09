@@ -219,8 +219,8 @@ export class KdvControlService {
       },
     });
 
-    // OCR'u bellekteki buffer'dan çalıştır — S3'e gerek yok
-    this.runOcrForBuffer(image.id, buffer).catch((e) =>
+    // OCR'u bellekteki buffer'dan çalıştır — dosya adını da geçir (belgeNo çıkarımı için)
+    this.runOcrForBuffer(image.id, buffer, originalName).catch((e) =>
       this.logger.error(`OCR arka plan hatası [${image.id}]: ${e?.message}`),
     );
     return image;
@@ -256,14 +256,14 @@ export class KdvControlService {
   }
 
   /** OCR işlemi — buffer doğrudan (S3'e gerek yok) */
-  private async runOcrForBuffer(imageId: string, buffer: Buffer) {
+  private async runOcrForBuffer(imageId: string, buffer: Buffer, originalName?: string) {
     try {
       await this.prisma.receiptImage.update({
         where: { id: imageId },
         data: { ocrStatus: 'PROCESSING' },
       });
 
-      const ocrResult = await this.ocrService.extractFromImage(buffer);
+      const ocrResult = await this.ocrService.extractFromImage(buffer, originalName);
       const isLow = this.ocrService.isLowConfidence(ocrResult);
 
       await this.prisma.receiptImage.update({
