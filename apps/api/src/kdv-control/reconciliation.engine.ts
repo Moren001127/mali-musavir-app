@@ -231,9 +231,19 @@ export class ReconciliationEngine {
   }
 
   private parseTrDate(s: string): Date | null {
-    const m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-    if (!m) return null;
-    return new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+    // DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY
+    const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+    if (m) {
+      const d = new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    // YYYY-MM-DD
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
   }
 
   private fmtDate(d: Date): string {

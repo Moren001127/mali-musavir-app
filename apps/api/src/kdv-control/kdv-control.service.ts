@@ -104,7 +104,7 @@ export class KdvControlService {
     const session = await this.prisma.kdvControlSession.findUnique({ where: { id: sessionId } });
     const rows = this.ISLETME_TYPES.includes(session!.type)
       ? this.excelParser.parseIsletmeExcel(buffer, session!.type as 'ISLETME_GELIR' | 'ISLETME_GIDER')
-      : this.excelParser.parseKdvExcel(buffer);
+      : this.excelParser.parseKdvExcel(buffer, session!.type === 'KDV_191' ? '191' : '391');
     if (rows.length === 0) {
       throw new BadRequestException(
         'Excel dosyasında KDV satırı bulunamadı. Sütun isimlerini kontrol edin.',

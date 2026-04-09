@@ -19,9 +19,10 @@ export class ExcelParserService {
 
   /**
    * Luca'dan alınan 191/391 muavin defteri Excel dosyasını parse eder.
-   * Farklı sütun isimleri için esnek mapping uygular.
+   * type='191' → KDV tutarı BORÇ sütununda
+   * type='391' → KDV tutarı ALACAK sütununda
    */
-  parseKdvExcel(buffer: Buffer): ParsedKdvRow[] {
+  parseKdvExcel(buffer: Buffer, type?: '191' | '391'): ParsedKdvRow[] {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -30,40 +31,61 @@ export class ExcelParserService {
       defval: null,
     });
 
+    // Sütun adlarını normalize et (satır sonu, fazla boşluk kaldır)
+    const normalizedRows = rows.map((row) => {
+      const normalized: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row)) {
+        const cleanKey = k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        normalized[cleanKey] = v;
+      }
+      return normalized;
+    });
+
     const results: ParsedKdvRow[] = [];
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    // 191: BORÇ önce, 391: ALACAK önce
+    const is191 = type === '191';
+    const kdvPatterns = is191
+      ? ['borç', 'borc', 'alacak']        // 191 İndirilecek KDV → BORÇ sütunu
+      : ['alacak', 'borç', 'borc'];        // 391 Hesaplanan KDV → ALACAK sütunu
+
+    for (let i = 0; i < normalizedRows.length; i++) {
+      const row = normalizedRows[i];
       const keys = Object.keys(row);
 
       const find = (patterns: string[]): any => {
+        // Önce tam eşleşme dene
+        for (const p of patterns) {
+          const exactKey = keys.find((k) => k.toLowerCase() === p.toLowerCase());
+          if (exactKey) return row[exactKey];
+        }
+        // Sonra içerir kontrolü
         const key = keys.find((k) =>
           patterns.some((p) => k.toLowerCase().includes(p.toLowerCase())),
         );
         return key ? row[key] : null;
       };
 
-      const kdvRaw = find([
-        'kdv tutarı', 'kdv tutar', 'kdv', 'vergi tutarı',
-        'vergi', 'alacak', 'borc', 'borç',
-      ]);
+      const kdvRaw = find(kdvPatterns);
       const kdvTutari = this.toDecimal(kdvRaw);
       if (kdvTutari === null || kdvTutari === 0) continue;
 
+      // Belge No: Luca Defteri Kebir'de "EVRAK NO" kesin eşleşme önce
       const belgeNo = find([
-        'belge no', 'fiş no', 'fatura no', 'evrak no',
-        'belge numarası', 'fiş numarası', 'belge',
+        'evrak no', 'evrak numarasi', 'belge no', 'fiş no', 'fis no',
+        'fatura no', 'belge numarası', 'fiş numarası', 'belge',
       ]);
 
+      // Tarih: "EVRAK TARİHİ" ya da "TARİH"
       const dateRaw = find([
-        'tarih', 'belge tarihi', 'fiş tarihi', 'fatura tarihi', 'işlem tarihi',
+        'evrak tarihi', 'belge tarihi', 'tarih', 'fiş tarihi',
+        'fatura tarihi', 'işlem tarihi',
       ]);
-
       const belgeDate = this.parseDate(dateRaw);
 
       const karsiTaraf = find([
-        'karşı taraf', 'karsi taraf', 'cari adı', 'cari adi',
-        'firma', 'mükellef', 'açıklama 2', 'aciklama2',
+        'açıklama', 'aciklama', 'hesap adı', 'hesap adi',
+        'karşı taraf', 'karsi taraf', 'cari adı', 'cari adi', 'firma',
       ]);
 
       const kdvMatrahi = this.toDecimal(
@@ -71,12 +93,12 @@ export class ExcelParserService {
       );
 
       const kdvOrani = this.toDecimal(
-        find(['kdv oranı', 'kdv orani', 'oran', '%']),
+        find(['kdv oranı', 'kdv orani', 'oran', 'hesap kodu']),
       );
 
-      const aciklama = find([
-        'açıklama', 'aciklama', 'hesap adı', 'hesap adi', 'anlatım',
-      ]);
+      // Hesap kodu'ndan KDV oranı çıkar (Ör: "191.01.001" → %1)
+      const hesapKodu = String(find(['hesap kodu']) ?? '');
+      const extractedOran = kdvOrani ?? this.extractKdvOraniFromHesapKodu(hesapKodu);
 
       results.push({
         rowIndex: i + 2,
@@ -85,19 +107,18 @@ export class ExcelParserService {
         karsiTaraf: karsiTaraf ? String(karsiTaraf).trim() : null,
         kdvMatrahi,
         kdvTutari,
-        kdvOrani,
-        aciklama: aciklama ? String(aciklama).trim() : null,
+        kdvOrani: extractedOran,
+        aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
         rawData: row,
       });
     }
 
-    this.logger.log(`KDV Excel parse: ${results.length} satır bulundu.`);
+    this.logger.log(`KDV Excel (${type ?? 'auto'}) parse: ${results.length} satır bulundu.`);
     return results;
   }
 
   /**
    * Luca işletme defteri (Gelir/Gider sayfası) Excel parse eder.
-   * Tutar sütunu kdvTutari alanına map edilir; KDV alanları null bırakılır.
    */
   parseIsletmeExcel(
     buffer: Buffer,
@@ -106,37 +127,60 @@ export class ExcelParserService {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet, {
+    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, {
       raw: false,
       defval: null,
     });
 
+    // Sütun adlarını normalize et
+    const rows = rawRows.map((row) => {
+      const normalized: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row)) {
+        const cleanKey = k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        normalized[cleanKey] = v;
+      }
+      return normalized;
+    });
+
     const results: ParsedKdvRow[] = [];
     const isGelir = type === 'ISLETME_GELIR';
+
+    // Tam sütun adları önce, sonra kısmi eşleşme
+    const tutarPatterns = isGelir
+      ? [
+          'Hesaplanan K.D.V.', 'hesaplanan k.d.v.',
+          'hesaplanan k.d.v', 'hesaplanan kdv', 'hesaplanan',
+          'k.d.v', 'hasılat', 'hasilat', 'alacak', 'tutar', 'net tutar',
+        ]
+      : [
+          'İndirilecek K.D.V.', 'indirilecek k.d.v.',
+          'indirilecek k.d.v', 'indirilecek kdv', 'indirilecek',
+          'k.d.v', 'borç', 'borc', 'tutar', 'net tutar',
+        ];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const keys = Object.keys(row);
 
       const find = (patterns: string[]): any => {
+        // Önce büyük/küçük harf duyarsız TAM eşleşme
+        for (const p of patterns) {
+          const exactKey = keys.find((k) => k.toLowerCase() === p.toLowerCase());
+          if (exactKey) return row[exactKey];
+        }
+        // Sonra içerir
         const key = keys.find((k) =>
           patterns.some((p) => k.toLowerCase().includes(p.toLowerCase())),
         );
         return key ? row[key] : null;
       };
 
-      // Tutar sütunları — önce türe özgü, sonra genel
-      // Luca işletme defteri: Gelir → "Hesaplanan K.D.V.", Gider → "İndirilecek K.D.V."
-      const tutarPatterns = isGelir
-        ? ['hesaplanan k.d.v', 'hesaplanan kdv', 'hesaplanan', 'k.d.v', 'gelir', 'hasılat', 'hasilat', 'alacak', 'tutar', 'net tutar', 'meblağ']
-        : ['indirilecek k.d.v', 'indirilecek kdv', 'indirilecek', 'k.d.v', 'gider', 'maliyet', 'borç', 'borc', 'tutar', 'net tutar', 'meblağ'];
-
       const tutarRaw = find(tutarPatterns);
       const tutar = this.toDecimal(tutarRaw);
       if (tutar === null || tutar === 0) continue;
 
       const belgeNo = find([
-        'belge no', 'evrak no', 'fiş no', 'fatura no',
+        'evrak no', 'belge no', 'fiş no', 'fatura no',
         'sıra no', 'sira no', 'kayıt no', 'kayit no', 'no',
       ]);
 
@@ -145,13 +189,9 @@ export class ExcelParserService {
       ]);
 
       const karsiTaraf = find([
+        'açıklama', 'aciklama',
         'karşı taraf', 'karsi taraf', 'ticari unvan', 'müşteri', 'musteri',
         'tedarikçi', 'tedarikci', 'cari adı', 'cari adi', 'firma',
-      ]);
-
-      const aciklama = find([
-        'açıklama', 'aciklama', 'hesap adı', 'hesap adi',
-        'işlem açıklaması', 'islem aciklamasi', 'anlatım',
       ]);
 
       results.push({
@@ -162,7 +202,7 @@ export class ExcelParserService {
         kdvMatrahi: null,
         kdvTutari: tutar,
         kdvOrani: null,
-        aciklama: aciklama ? String(aciklama).trim() : null,
+        aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
         rawData: row,
       });
     }
@@ -177,13 +217,24 @@ export class ExcelParserService {
     return results;
   }
 
-  /** Parse edilen Excel'den tespit edilen sütun başlıklarını döner (önizleme için) */
+  /** Parse edilen Excel'den tespit edilen sütun başlıklarını döner */
   detectColumns(buffer: Buffer): string[] {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows: any[] = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: null });
     if (!rows.length) return [];
-    return Object.keys(rows[0]);
+    return Object.keys(rows[0]).map((k) =>
+      k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+    );
+  }
+
+  /** "191.01.001" → 1, "191.01.004" → 20, "191.01.005" → 10 */
+  private extractKdvOraniFromHesapKodu(kod: string): number | null {
+    const map: Record<string, number> = {
+      '001': 1, '002': 8, '003': 18, '004': 20, '005': 10,
+    };
+    const suffix = kod.slice(-3);
+    return map[suffix] ?? null;
   }
 
   private toDecimal(val: any): number | null {
@@ -198,12 +249,22 @@ export class ExcelParserService {
 
   private parseDate(val: any): Date | null {
     if (!val) return null;
-    if (val instanceof Date) return val;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
 
     const str = String(val).trim();
-    const trMatch = str.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+
+    // DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY
+    const trMatch = str.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{4})$/);
     if (trMatch) {
-      return new Date(`${trMatch[3]}-${trMatch[2].padStart(2, '0')}-${trMatch[1].padStart(2, '0')}`);
+      const d = new Date(`${trMatch[3]}-${trMatch[2].padStart(2, '0')}-${trMatch[1].padStart(2, '0')}`);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // YYYY-MM-DD (ISO)
+    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const d = new Date(str.slice(0, 10));
+      return isNaN(d.getTime()) ? null : d;
     }
 
     const d = new Date(str);
