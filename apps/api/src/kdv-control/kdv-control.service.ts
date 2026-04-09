@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class KdvControlService {
+  private readonly logger = new Logger(KdvControlService.name);
+
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
@@ -185,11 +188,15 @@ export class KdvControlService {
     const ext = originalName.split('.').pop() || 'jpg';
     const s3Key = `kdv-control/${tenantId}/${sessionId}/${randomUUID()}.${ext}`;
 
-    // Doğrudan sunucu tarafında MinIO'ya yükle
-    await this.storage.putBuffer(s3Key, buffer, mimeType, {
-      'original-name': encodeURIComponent(originalName),
-      'session-id': sessionId,
-    });
+    // S3 yüklemesini dene — hata olsa bile DB kaydı ve OCR devam eder
+    try {
+      await this.storage.putBuffer(s3Key, buffer, mimeType, {
+        'original-name': encodeURIComponent(originalName),
+        'session-id': sessionId,
+      });
+    } catch (storageErr) {
+      this.logger.warn(`S3 yükleme başarısız (OCR devam ediyor): ${storageErr?.message}`);
+    }
 
     const image = await this.prisma.receiptImage.create({
       data: {
@@ -202,8 +209,10 @@ export class KdvControlService {
       },
     });
 
-    // OCR arka planda başlat
-    this.runOcrForImage(image.id, s3Key).catch(() => {});
+    // OCR'u bellekteki buffer'dan çalıştır — S3'e gerek yok
+    this.runOcrForBuffer(image.id, buffer).catch((e) =>
+      this.logger.error(`OCR arka plan hatası [${image.id}]: ${e?.message}`),
+    );
     return image;
   }
 
@@ -236,7 +245,38 @@ export class KdvControlService {
     return image;
   }
 
-  /** OCR işlemi — arka planda çalışır */
+  /** OCR işlemi — buffer doğrudan (S3'e gerek yok) */
+  private async runOcrForBuffer(imageId: string, buffer: Buffer) {
+    try {
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: { ocrStatus: 'PROCESSING' },
+      });
+
+      const ocrResult = await this.ocrService.extractFromImage(buffer);
+      const isLow = this.ocrService.isLowConfidence(ocrResult);
+
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: {
+          ocrStatus: isLow ? 'LOW_CONFIDENCE' : 'SUCCESS',
+          ocrBelgeNo: ocrResult.belgeNo,
+          ocrDate: ocrResult.date,
+          ocrKdvTutari: ocrResult.kdvTutari,
+          ocrRawText: ocrResult.rawText?.substring(0, 2000),
+          ocrConfidence: ocrResult.confidence,
+        },
+      });
+    } catch (err) {
+      this.logger.error(`runOcrForBuffer [${imageId}]: ${err?.message}`);
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: { ocrStatus: 'FAILED' },
+      });
+    }
+  }
+
+  /** OCR işlemi — S3'ten indirerek (presigned upload sonrası kullanılır) */
   private async runOcrForImage(imageId: string, s3Key: string) {
     try {
       await this.prisma.receiptImage.update({
