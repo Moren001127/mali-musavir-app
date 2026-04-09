@@ -89,12 +89,13 @@ export class ExcelParserService {
       ]);
 
       const kdvMatrahi = this.toDecimal(
-        find(['kdv matrahı', 'kdv matrahi', 'matrah', 'tutar']),
+        find(['kdv matrahı', 'kdv matrahi', 'matrah']),
       );
 
-      const kdvOrani = this.toDecimal(
-        find(['kdv oranı', 'kdv orani', 'oran', 'hesap kodu']),
-      );
+      // 'hesap kodu' buraya dahil EDİLMEMELİ — "191.01.001" gibi değerler toDecimal ile taşar
+      const kdvOraniRaw = this.toDecimal(find(['kdv oranı', 'kdv orani', 'oran']));
+      // Oran 1-100 arasında olmalı; dışındaysa null say
+      const kdvOrani = (kdvOraniRaw !== null && kdvOraniRaw >= 1 && kdvOraniRaw <= 100) ? kdvOraniRaw : null;
 
       // Hesap kodu'ndan KDV oranı çıkar (Ör: "191.01.001" → %1)
       const hesapKodu = String(find(['hesap kodu']) ?? '');
