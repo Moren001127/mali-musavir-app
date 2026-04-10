@@ -198,6 +198,26 @@ export default function KdvSessionDetailPage() {
   const excelRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
 
+  const { data: session } = useQuery({ queryKey: ['kdv-session', id], queryFn: () => kdvApi.getSession(id) });
+  const { data: stats } = useQuery({ queryKey: ['kdv-stats', id], queryFn: () => kdvApi.getStats(id), refetchInterval: 5000 });
+  const { data: records } = useQuery({ queryKey: ['kdv-records', id], queryFn: () => kdvApi.getRecords(id) });
+  const { data: images, refetch: refetchImages } = useQuery({
+    queryKey: ['kdv-images', id],
+    queryFn: () => kdvApi.getImages(id),
+    refetchInterval: (query: any) => {
+      const d = query?.state?.data;
+      const anyProcessing = Array.isArray(d) && d.some((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus));
+      return anyProcessing ? 3000 : 8000;
+    },
+  });
+  const { data: results } = useQuery({ queryKey: ['kdv-results', id], queryFn: () => kdvApi.getResults(id), enabled: activeTab === 'results' });
+
+  // Sayaç değişkenleri
+  const needsOcrCount = images?.filter((img: any) => ['LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus) && !img.isManuallyConfirmed).length ?? 0;
+  const processingCount = images?.filter((img: any) => ['PENDING', 'PROCESSING'].includes(img.ocrStatus)).length ?? 0;
+  const completedCount = images?.filter((img: any) => ['SUCCESS', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)).length ?? 0;
+  const totalCount = images?.length ?? 0;
+
   // Modal açıldığında görseli otomatik yükle
   useEffect(() => {
     if (isModalOpen && selectedImage && !imageUrls[selectedImage.id]) {
@@ -240,26 +260,6 @@ export default function KdvSessionDetailPage() {
     const secs = (seconds % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
   };
-
-  const { data: session } = useQuery({ queryKey: ['kdv-session', id], queryFn: () => kdvApi.getSession(id) });
-  const { data: stats } = useQuery({ queryKey: ['kdv-stats', id], queryFn: () => kdvApi.getStats(id), refetchInterval: 5000 });
-  const { data: records } = useQuery({ queryKey: ['kdv-records', id], queryFn: () => kdvApi.getRecords(id) });
-  const { data: images, refetch: refetchImages } = useQuery({
-    queryKey: ['kdv-images', id],
-    queryFn: () => kdvApi.getImages(id),
-    refetchInterval: (query: any) => {
-      const d = query?.state?.data;
-      const anyProcessing = Array.isArray(d) && d.some((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus));
-      return anyProcessing ? 3000 : 8000;
-    },
-  });
-  const { data: results } = useQuery({ queryKey: ['kdv-results', id], queryFn: () => kdvApi.getResults(id), enabled: activeTab === 'results' });
-
-  // Sayaç değişkenleri (useEffect'lerden önce tanımlanmalı)
-  const needsOcrCount = images?.filter((img: any) => ['LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus) && !img.isManuallyConfirmed).length ?? 0;
-  const processingCount = images?.filter((img: any) => ['PENDING', 'PROCESSING'].includes(img.ocrStatus)).length ?? 0;
-  const completedCount = images?.filter((img: any) => ['SUCCESS', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)).length ?? 0;
-  const totalCount = images?.length ?? 0;
 
   const uploadExcel = useMutation({
     mutationFn: () => kdvApi.uploadExcel(id, excelFile!),
