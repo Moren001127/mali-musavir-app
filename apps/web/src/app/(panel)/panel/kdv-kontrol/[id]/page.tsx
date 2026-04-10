@@ -358,21 +358,17 @@ export default function KdvSessionDetailPage() {
         </button>
       </div>
 
-      {/* Sayaçlar */}
+      {/* Sayaçlar - Sade 4 kart */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-4 gap-4">
           <StatBadge label="Excel Satırı" value={stats.totalRecords} color="bg-white border-gray-200 text-gray-800" />
           <StatBadge label="Görsel" value={stats.totalImages} color="bg-white border-gray-200 text-gray-800" />
           <StatBadge label="Eşleşti" value={stats.matched} color="bg-green-50 border-green-200 text-green-800" />
-          <StatBadge label="Kısmi" value={stats.partialMatch} color="bg-amber-50 border-amber-200 text-amber-800" />
-          <StatBadge label="İnceleme" value={stats.needsReview} color="bg-orange-50 border-orange-200 text-orange-800" />
-          <StatBadge label="Eşleşmedi" value={stats.unmatched} color="bg-red-50 border-red-200 text-red-800" />
-          <StatBadge label="Teyit Edildi" value={stats.confirmed} color="bg-emerald-50 border-emerald-200 text-emerald-800" />
-          <StatBadge label="OCR Teyit Bekler" value={stats.needsOcrConfirm} color="bg-purple-50 border-purple-200 text-purple-800" />
+          <StatBadge label="Teyit Bekler" value={stats.needsOcrConfirm + stats.needsReview} color="bg-orange-50 border-orange-200 text-orange-800" />
         </div>
       )}
 
-      {/* Uyarı bantları */}
+      {/* OCR Dashboard - Sadece işlem devam ederken */}
       {processingCount > 0 && ocrStartTime && (
         <OcrDashboard 
           total={totalCount}
@@ -391,7 +387,7 @@ export default function KdvSessionDetailPage() {
           <p className="text-sm text-blue-700">OCR başlatılıyor...</p>
         </div>
       )}
-      {needsOcrCount > 0 && (
+      {needsOcrCount > 0 && processingCount === 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab('images')}>
           <AlertTriangle size={16} className="text-orange-500 flex-shrink-0" />
           <p className="text-sm text-orange-700"><span className="font-semibold">{needsOcrCount} görselde</span> teyit bekleniyor — Görseller sekmesine tıklayın</p>
