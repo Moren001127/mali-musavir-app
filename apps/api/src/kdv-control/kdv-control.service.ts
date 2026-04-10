@@ -375,23 +375,14 @@ export class KdvControlService {
     });
   }
 
-  /** Görseli sil (S3 + DB) */
+  /** Görseli sil (DB) — S3'ten silme şimdilik atlanıyor */
   async deleteImage(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
 
-    // S3'ten sil (varsa)
-    if (image.s3Key) {
-      try {
-        await this.storage.delete(image.s3Key);
-      } catch (e) {
-        this.logger.warn(`S3 silme hatası (görsel ${imageId}): ${e?.message}`);
-      }
-    }
-
-    // DB'den sil
+    // DB'den sil (S3'ten silme şimdilik devre dışı — storage.delete metodu yok)
     await this.prisma.receiptImage.delete({ where: { id: imageId } });
     return { deleted: true };
   }
