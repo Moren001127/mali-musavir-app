@@ -165,7 +165,6 @@ export default function KdvSessionDetailPage() {
     onError: () => toast.error('Excel indirilemedi'),
   });
 
-  const [ocrEdit, setOcrEdit] = useState<Record<string, any>>({});
   const confirmOcr = useMutation({
     mutationFn: ({ imageId }: { imageId: string }) => kdvApi.confirmOcr(imageId, ocrEdit[imageId] ?? {}),
     onSuccess: () => { toast.success('Teyit edildi'); qc.invalidateQueries({ queryKey: ['kdv-images', id] }); qc.invalidateQueries({ queryKey: ['kdv-stats', id] }); },
