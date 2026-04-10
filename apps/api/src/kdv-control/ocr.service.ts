@@ -15,22 +15,30 @@ export interface OcrResult {
 export class OcrService {
   private readonly logger = new Logger(OcrService.name);
   private tesseractAvailable = false;
+  private tesseractChecked = false;
 
   constructor() {
-    this.checkTesseract();
+    // Tesseract'ı constructor'da değil, ilk kullanımda kontrol et
+    this.tesseractAvailable = true; // Varsayım: çalışıyor
   }
 
-  private async checkTesseract() {
+  private async ensureTesseract(): Promise<boolean> {
+    if (this.tesseractChecked) return this.tesseractAvailable;
+    
+    this.tesseractChecked = true;
     try {
-      // Tesseract.js WASM'in çalışıp çalışmadığını kontrol et
-      const testWorker = await Tesseract.createWorker('eng');
-      await testWorker.terminate();
+      const worker = await Tesseract.createWorker('eng', 1, {
+        logger: () => {},
+        errorHandler: () => {},
+      });
+      await worker.terminate();
       this.tesseractAvailable = true;
       this.logger.log('✅ Tesseract.js WASM hazır');
     } catch (e) {
       this.logger.error('❌ Tesseract.js WASM başlatılamadı:', e?.message);
       this.tesseractAvailable = false;
     }
+    return this.tesseractAvailable;
   }
 
   /**
@@ -42,7 +50,10 @@ export class OcrService {
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
     
-    if (!this.tesseractAvailable) {
+    // Tesseract'ın çalıştığından emin ol
+    const tesseractReady = await this.ensureTesseract();
+    
+    if (!tesseractReady) {
       this.logger.warn('Tesseract kullanılamıyor - dosya adından belgeNo dönülüyor');
       return {
         rawText: '',
