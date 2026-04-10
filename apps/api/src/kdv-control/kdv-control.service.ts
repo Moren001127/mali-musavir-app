@@ -419,7 +419,7 @@ export class KdvControlService {
     });
   }
 
-  /** Eşleştirme sonuçlarını Excel olarak dışa aktar */
+  /** Eşleştirme sonuçlarını Excel olarak dışa aktar - SONUÇ formatı */
   async exportResultsToExcel(sessionId: string, tenantId: string): Promise<Buffer> {
     await this.findSession(sessionId, tenantId);
     
@@ -430,21 +430,49 @@ export class KdvControlService {
     });
 
     const xlsx = await import('xlsx');
-    const data = results.map((r: any) => ({
-      'Durum': r.status,
-      'Eşleşme Skoru': r.matchScore ? `${Math.round(r.matchScore * 100)}%` : '-',
-      'Excel Belge No': r.kdvRecord?.belgeNo || '-',
-      'Excel Tarih': r.kdvRecord?.belgeDate ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR') : '-',
-      'Excel KDV': r.kdvRecord?.kdvTutari || '-',
-      'Görsel Belge No': r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '-',
-      'Görsel Tarih': r.image?.confirmedDate || r.image?.ocrDate || '-',
-      'Görsel KDV': r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '-',
-      'Uyumsuzluk': r.mismatchReasons?.join(', ') || '-',
-    }));
+    
+    // SONUÇ formatına göre veri hazırla
+    const data = results.map((r: any) => {
+      const gorselTarih = r.image?.confirmedDate || r.image?.ocrDate || '';
+      const excelTarih = r.kdvRecord?.belgeDate ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR') : '';
+      const gorselBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '';
+      const excelBelgeNo = r.kdvRecord?.belgeNo || '';
+      const gorselKdv = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '';
+      const excelKdv = r.kdvRecord?.kdvTutari || '';
+      
+      let durum = '';
+      if (r.status === 'MATCHED') durum = '✅ Eşleşti';
+      else if (r.status === 'PARTIAL') durum = '⚠️ Kısmi Eşleşme';
+      else if (r.status === 'UNMATCHED') durum = '❌ Eşleşmedi';
+      else if (!r.image) durum = 'Görsel bulunamadı';
+      else durum = r.mismatchReasons?.join(', ') || 'Bilinmeyen';
+      
+      return {
+        'Görsel Tarih': gorselTarih,
+        'Excel Tarih': excelTarih,
+        'Görsel Belge No': gorselBelgeNo,
+        'Excel Belge No': excelBelgeNo,
+        'Görsel KDV': gorselKdv,
+        'Excel İlgili Tutar': excelKdv,
+        'Durum': durum,
+      };
+    });
 
     const ws = xlsx.utils.json_to_sheet(data);
+    
+    // Sütun genişliklerini ayarla
+    ws['!cols'] = [
+      { wch: 15 }, // Görsel Tarih
+      { wch: 15 }, // Excel Tarih
+      { wch: 20 }, // Görsel Belge No
+      { wch: 20 }, // Excel Belge No
+      { wch: 15 }, // Görsel KDV
+      { wch: 20 }, // Excel İlgili Tutar
+      { wch: 25 }, // Durum
+    ];
+    
     const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, ws, 'Sonuçlar');
+    xlsx.utils.book_append_sheet(wb, ws, 'KDV Kontrol Sonuçları');
     
     return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
