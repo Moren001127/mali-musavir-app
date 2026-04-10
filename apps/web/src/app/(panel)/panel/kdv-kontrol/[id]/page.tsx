@@ -74,6 +74,110 @@ function ConfidenceBar({ value }: { value: number | null }) {
   );
 }
 
+// Profesyonel OCR Dashboard Componentleri
+function OcrDashboard({ 
+  total, 
+  completed, 
+  processing, 
+  matched, 
+  needsReview, 
+  unmatched, 
+  elapsedSeconds, 
+  logs 
+}: { 
+  total: number; 
+  completed: number; 
+  processing: number; 
+  matched: number; 
+  needsReview: number; 
+  unmatched: number;
+  elapsedSeconds: number;
+  logs: Array<{time: string; message: string; type: 'info' | 'success' | 'warning'}>;
+}) {
+  const progress = total > 0 ? (completed / total) * 100 : 0;
+  const avgTimePerImage = completed > 0 ? elapsedSeconds / completed : 3;
+  const remainingSeconds = Math.ceil((total - completed) * avgTimePerImage);
+  
+  const formatTime = (s: number) => {
+    const mins = Math.floor(s / 60).toString().padStart(2, '0');
+    const secs = (s % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-6 space-y-6">
+      {/* Sayaç Kartları */}
+      <div className="grid grid-cols-5 gap-4">
+        <div className="bg-gray-800 rounded-xl p-4 text-center">
+          <div className="text-3xl font-bold text-white">{total}</div>
+          <div className="text-xs text-gray-400 mt-1">Toplam</div>
+        </div>
+        <div className="bg-green-900/30 rounded-xl p-4 text-center border border-green-800">
+          <div className="text-3xl font-bold text-green-400">{matched}</div>
+          <div className="text-xs text-green-500 mt-1">Eşleşti</div>
+        </div>
+        <div className="bg-orange-900/30 rounded-xl p-4 text-center border border-orange-800">
+          <div className="text-3xl font-bold text-orange-400">{needsReview}</div>
+          <div className="text-xs text-orange-500 mt-1">Teyit</div>
+        </div>
+        <div className="bg-red-900/30 rounded-xl p-4 text-center border border-red-800">
+          <div className="text-3xl font-bold text-red-400">{unmatched}</div>
+          <div className="text-xs text-red-500 mt-1">Eşleşmedi</div>
+        </div>
+        <div className="bg-gray-800 rounded-xl p-4 text-center">
+          <div className="text-2xl font-mono text-green-400">{formatTime(elapsedSeconds)}</div>
+          <div className="text-xs text-gray-400 mt-1">Süre</div>
+        </div>
+      </div>
+
+      {/* İlerleme Çubuğu */}
+      <div className="space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Kalan: ~{formatTime(remainingSeconds)}</span>
+          <span className="text-white font-bold">%{Math.round(progress)}</span>
+        </div>
+        <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* İşlemdeki Görsel */}
+      {processing > 0 && (
+        <div className="flex items-center gap-3 bg-blue-900/20 rounded-xl p-4 border border-blue-800">
+          <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+            <span className="text-blue-400 text-sm">📄</span>
+          </div>
+          <div className="flex-1">
+            <div className="text-blue-300 text-sm">{completed}/{total} Görseli Okuyor</div>
+            <div className="text-gray-400 text-xs">OCR motoru aktif...</div>
+          </div>
+          <div className="text-green-400 font-mono text-sm">{formatTime(elapsedSeconds)}</div>
+        </div>
+      )}
+
+      {/* Log Penceresi */}
+      <div className="bg-black rounded-xl p-4 font-mono text-sm max-h-[200px] overflow-y-auto">
+        {logs.length === 0 ? (
+          <div className="text-gray-600 italic">OCR henüz başlamadı...</div>
+        ) : (
+          logs.map((log, i) => (
+            <div key={i} className={`mb-1 ${
+              log.type === 'success' ? 'text-green-400' : 
+              log.type === 'warning' ? 'text-yellow-400' : 
+              'text-blue-400'
+            }`}>
+              <span className="text-gray-500">[{log.time}]</span> {log.message}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function KdvSessionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -89,6 +193,8 @@ export default function KdvSessionDetailPage() {
   const [ocrEdit, setOcrEdit] = useState<Record<string, { belgeNo: string; date: string; kdvTutari: string }>>({});
   const [selectedImage, setSelectedImage] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [ocrStartTime, setOcrStartTime] = useState<number | null>(null);
+  const [processingLogs, setProcessingLogs] = useState<Array<{time: string; message: string; type: 'info' | 'success' | 'warning'}>>([]);
   const excelRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
 
@@ -98,6 +204,42 @@ export default function KdvSessionDetailPage() {
       loadImageUrl(selectedImage.id);
     }
   }, [isModalOpen, selectedImage]);
+
+  // OCR zamanlayıcı ve log takibi
+  useEffect(() => {
+    if (processingCount > 0 && !ocrStartTime) {
+      setOcrStartTime(Date.now());
+      addLog('OCR motoru aktif: Tesseract.js', 'info');
+    }
+    if (processingCount === 0 && ocrStartTime) {
+      const elapsed = Math.floor((Date.now() - ocrStartTime) / 1000);
+      addLog(`OCR tamamlandı. Toplam süre: ${formatDuration(elapsed)}`, 'success');
+      setOcrStartTime(null);
+    }
+  }, [processingCount]);
+
+  // Her işlenen görsel için log ekle
+  useEffect(() => {
+    if (images) {
+      images.forEach((img: any) => {
+        if (img.ocrStatus === 'SUCCESS' && !processingLogs.find(l => l.message.includes(img.originalName))) {
+          const hasKdv = img.ocrKdvTutari || img.confirmedKdvTutari;
+          addLog(`${img.originalName} → ${hasKdv ? 'OK' : 'Tarih/BelgeNo OK, KDV yok'}`, hasKdv ? 'success' : 'warning');
+        }
+      });
+    }
+  }, [images]);
+
+  const addLog = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
+    const time = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+    setProcessingLogs(prev => [...prev.slice(-49), { time, message, type }]);
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+  };
 
   const { data: session } = useQuery({ queryKey: ['kdv-session', id], queryFn: () => kdvApi.getSession(id) });
   const { data: stats } = useQuery({ queryKey: ['kdv-stats', id], queryFn: () => kdvApi.getStats(id), refetchInterval: 5000 });
@@ -230,19 +372,22 @@ export default function KdvSessionDetailPage() {
       )}
 
       {/* Uyarı bantları */}
-      {processingCount > 0 && (
+      {processingCount > 0 && ocrStartTime && (
+        <OcrDashboard 
+          total={totalCount}
+          completed={completedCount}
+          processing={processingCount}
+          matched={stats?.matched || 0}
+          needsReview={stats?.needsReview || 0}
+          unmatched={stats?.unmatched || 0}
+          elapsedSeconds={Math.floor((Date.now() - ocrStartTime) / 1000)}
+          logs={processingLogs}
+        />
+      )}
+      {processingCount > 0 && !ocrStartTime && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
           <RefreshCw size={16} className="text-blue-500 animate-spin flex-shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm text-blue-700">OCR devam ediyor — {completedCount}/{totalCount} görsel işlendi</p>
-            <div className="mt-2 h-2 bg-blue-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-blue-500 transition-all duration-500" 
-                style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }} 
-              />
-            </div>
-          </div>
-          <span className="text-xs font-bold text-blue-600">%{Math.round(totalCount > 0 ? (completedCount / totalCount) * 100 : 0)}</span>
+          <p className="text-sm text-blue-700">OCR başlatılıyor...</p>
         </div>
       )}
       {needsOcrCount > 0 && (
