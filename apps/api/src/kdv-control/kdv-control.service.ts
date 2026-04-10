@@ -375,6 +375,27 @@ export class KdvControlService {
     });
   }
 
+  /** Görseli sil (S3 + DB) */
+  async deleteImage(imageId: string, tenantId: string) {
+    const image = await this.prisma.receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+    });
+    if (!image) throw new NotFoundException('Görsel bulunamadı');
+
+    // S3'ten sil (varsa)
+    if (image.s3Key) {
+      try {
+        await this.storage.delete(image.s3Key);
+      } catch (e) {
+        this.logger.warn(`S3 silme hatası (görsel ${imageId}): ${e?.message}`);
+      }
+    }
+
+    // DB'den sil
+    await this.prisma.receiptImage.delete({ where: { id: imageId } });
+    return { deleted: true };
+  }
+
   /** Eşleştirme motorunu çalıştır */
   async runReconciliation(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
@@ -392,6 +413,36 @@ export class KdvControlService {
       },
       orderBy: [{ status: 'asc' }, { matchScore: 'desc' }],
     });
+  }
+
+  /** Eşleştirme sonuçlarını Excel olarak dışa aktar */
+  async exportResultsToExcel(sessionId: string, tenantId: string): Promise<Buffer> {
+    await this.findSession(sessionId, tenantId);
+    
+    const results = await this.prisma.reconciliationResult.findMany({
+      where: { sessionId },
+      include: { kdvRecord: true, image: true },
+      orderBy: [{ status: 'asc' }, { matchScore: 'desc' }],
+    });
+
+    const xlsx = await import('xlsx');
+    const data = results.map((r: any) => ({
+      'Durum': r.status,
+      'Eşleşme Skoru': r.matchScore ? `${Math.round(r.matchScore * 100)}%` : '-',
+      'Excel Belge No': r.kdvRecord?.belgeNo || '-',
+      'Excel Tarih': r.kdvRecord?.belgeDate ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR') : '-',
+      'Excel KDV': r.kdvRecord?.kdvTutari || '-',
+      'Görsel Belge No': r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '-',
+      'Görsel Tarih': r.image?.confirmedDate || r.image?.ocrDate || '-',
+      'Görsel KDV': r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '-',
+      'Uyumsuzluk': r.mismatchReasons?.join(', ') || '-',
+    }));
+
+    const ws = xlsx.utils.json_to_sheet(data);
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Sonuçlar');
+    
+    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
   }
 
   /** Oturum özet istatistikleri (sayaç) */

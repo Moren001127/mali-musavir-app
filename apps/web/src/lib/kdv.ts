@@ -70,6 +70,9 @@ export const kdvApi = {
   confirmOcr: (imageId: string, data: { belgeNo?: string; date?: string; kdvTutari?: string }) =>
     api.patch(`/kdv-control/images/${imageId}/confirm-ocr`, data).then((r) => r.data),
 
+  deleteImage: (imageId: string) =>
+    api.delete(`/kdv-control/images/${imageId}`).then((r) => r.data),
+
   /* ── EŞLEŞTİRME ── */
   reconcile: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/reconcile`).then((r) => r.data),

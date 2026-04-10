@@ -155,6 +155,13 @@ export class KdvControlController {
     return this.kdvService.confirmImageOcr(imageId, req.user.tenantId, body);
   }
 
+  @Delete('images/:imageId')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteImage(@Req() req: any, @Param('imageId') imageId: string) {
+    return this.kdvService.deleteImage(imageId, req.user.tenantId);
+  }
+
   /* ── EŞLEŞTİRME ─────────────────────────────────── */
 
   @Post('sessions/:id/reconcile')
@@ -162,6 +169,19 @@ export class KdvControlController {
   @HttpCode(HttpStatus.OK)
   reconcile(@Req() req: any, @Param('id') id: string) {
     return this.kdvService.runReconciliation(id, req.user.tenantId);
+  }
+
+  @Get('sessions/:id/export-excel')
+  @Roles('ADMIN', 'STAFF')
+  async exportExcel(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.kdvService.exportResultsToExcel(id, req.user.tenantId);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="kdv-kontrol-${id}.xlsx"`);
+    res.send(buffer);
   }
 
   @Get('sessions/:id/results')

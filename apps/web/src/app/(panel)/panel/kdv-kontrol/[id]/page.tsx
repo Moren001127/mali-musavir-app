@@ -7,7 +7,7 @@ import {
   ArrowLeft, Upload, FileSpreadsheet, Image as ImageIcon,
   Play, CheckCircle, XCircle, AlertTriangle, Eye, RefreshCw,
   ChevronDown, ChevronUp, FileText, Hash, Calendar, BadgePercent,
-  RotateCcw, Maximize2,
+  RotateCcw, Maximize2, Trash2, X, Download,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -86,6 +86,9 @@ export default function KdvSessionDetailPage() {
   const [expandedResult, setExpandedResult] = useState<string | null>(null);
   const [expandedRaw, setExpandedRaw] = useState<string | null>(null);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+  const [ocrEdit, setOcrEdit] = useState<Record<string, { belgeNo: string; date: string; kdvTutari: string }>>({});
+  const [selectedImage, setSelectedImage] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const excelRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
 
@@ -142,10 +145,36 @@ export default function KdvSessionDetailPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['kdv-results', id] }); qc.invalidateQueries({ queryKey: ['kdv-stats', id] }); },
   });
 
+  const downloadExcel = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/kdv-control/sessions/${id}/export-excel`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!response.ok) throw new Error('İndirme başarısız');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kdv-kontrol-${session?.periodLabel}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: () => toast.success('Excel indirildi'),
+    onError: () => toast.error('Excel indirilemedi'),
+  });
+
   const [ocrEdit, setOcrEdit] = useState<Record<string, any>>({});
   const confirmOcr = useMutation({
     mutationFn: ({ imageId }: { imageId: string }) => kdvApi.confirmOcr(imageId, ocrEdit[imageId] ?? {}),
     onSuccess: () => { toast.success('Teyit edildi'); qc.invalidateQueries({ queryKey: ['kdv-images', id] }); qc.invalidateQueries({ queryKey: ['kdv-stats', id] }); },
+  });
+
+  const deleteImage = useMutation({
+    mutationFn: (imageId: string) => kdvApi.deleteImage(imageId),
+    onSuccess: () => { toast.success('Görsel silindi'); qc.invalidateQueries({ queryKey: ['kdv-images', id] }); qc.invalidateQueries({ queryKey: ['kdv-stats', id] }); },
+    onError: () => toast.error('Görsel silinemedi'),
   });
 
   const loadImageUrl = async (imgId: string) => {
@@ -315,8 +344,11 @@ export default function KdvSessionDetailPage() {
                       <p className="text-xs text-gray-400 mt-0.5">{(img.sizeBytes / 1024).toFixed(0)} KB</p>
                     </div>
                     <OcrStatusChip status={confirmed ? 'SUCCESS' : img.ocrStatus} />
-                    <button onClick={() => loadImageUrl(img.id)} className="p-2 rounded-lg hover:bg-white/70 text-gray-500 transition-colors" title="Görseli yeni sekmede aç">
+                    <button onClick={() => { setSelectedImage(img); setIsModalOpen(true); }} className="p-2 rounded-lg hover:bg-white/70 text-gray-500 transition-colors" title="Görseli büyüt">
                       <Maximize2 size={15} />
+                    </button>
+                    <button onClick={() => deleteImage.mutate(img.id)} disabled={deleteImage.isPending} className="p-2 rounded-lg hover:bg-red-100 text-red-500 transition-colors" title="Görseli sil">
+                      <Trash2 size={15} />
                     </button>
                   </div>
 
@@ -458,6 +490,16 @@ export default function KdvSessionDetailPage() {
       {/* ── SONUÇLAR SEKMESİ ── */}
       {activeTab === 'results' && (
         <div className="space-y-2">
+          {/* Excel İndirme Butonu */}
+          {results?.length > 0 && (
+            <div className="flex justify-end mb-3">
+              <button onClick={() => downloadExcel.mutate()} disabled={downloadExcel.isPending}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg font-medium"
+              >
+                <Download size={16} /> {downloadExcel.isPending ? 'İndiriliyor…' : 'Excel İndir'}
+              </button>
+            </div>
+          )}
           {!results?.length ? (
             <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
               <Play size={32} className="text-gray-200 mx-auto mb-3" />
@@ -494,6 +536,89 @@ export default function KdvSessionDetailPage() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* ── GÖRSEL MODAL ── */}
+      {isModalOpen && selectedImage && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setIsModalOpen(false)}>
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <div>
+                <p className="font-semibold text-gray-900">{selectedImage.originalName}</p>
+                <p className="text-xs text-gray-500">{(selectedImage.sizeBytes / 1024).toFixed(0)} KB</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-auto p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Görsel */}
+                <div className="bg-gray-50 rounded-xl p-4 flex items-center justify-center min-h-[400px]">
+                  {imageUrls[selectedImage.id] ? (
+                    <img src={imageUrls[selectedImage.id]} alt={selectedImage.originalName} className="max-w-full max-h-[500px] object-contain rounded-lg" />
+                  ) : (
+                    <button onClick={() => loadImageUrl(selectedImage.id)} className="text-indigo-600 hover:underline">Görseli Yükle</button>
+                  )}
+                </div>
+
+                {/* OCR Düzeltme Formu */}
+                <div className="space-y-4">
+                  <h3 className="font-semibold text-gray-900">OCR Verilerini Düzelt</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Belge No</label>
+                    <input 
+                      value={ocrEdit[selectedImage.id]?.belgeNo ?? selectedImage.ocrBelgeNo ?? ''}
+                      onChange={e => setOcrEdit(p => ({ ...p, [selectedImage.id]: { ...(p[selectedImage.id] || {}), belgeNo: e.target.value } }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Belge numarası"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Tarih</label>
+                    <input 
+                      value={ocrEdit[selectedImage.id]?.date ?? selectedImage.ocrDate ?? ''}
+                      onChange={e => setOcrEdit(p => ({ ...p, [selectedImage.id]: { ...(p[selectedImage.id] || {}), date: e.target.value } }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="GG.AA.YYYY"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">KDV Tutarı</label>
+                    <input 
+                      value={ocrEdit[selectedImage.id]?.kdvTutari ?? selectedImage.ocrKdvTutari ?? ''}
+                      onChange={e => setOcrEdit(p => ({ ...p, [selectedImage.id]: { ...(p[selectedImage.id] || {}), kdvTutari: e.target.value } }))}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      placeholder="0,00"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={() => { confirmOcr.mutate({ imageId: selectedImage.id }); setIsModalOpen(false); }}
+                    disabled={confirmOcr.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-medium"
+                  >
+                    {confirmOcr.isPending ? 'Kaydediliyor…' : '✓ Verileri Kaydet'}
+                  </button>
+
+                  {/* Ham OCR Metni */}
+                  {selectedImage.ocrRawText && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-xs font-medium text-gray-500 mb-2">Ham OCR Metni:</p>
+                      <pre className="text-[11px] text-gray-600 bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto whitespace-pre-wrap">{selectedImage.ocrRawText}</pre>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
