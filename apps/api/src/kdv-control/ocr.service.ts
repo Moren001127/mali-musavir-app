@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Tesseract from 'tesseract.js';
+import { ComputerVisionClient } from '@azure/cognitiveservices-computervision';
+import { ApiKeyCredentials } from '@azure/ms-rest-js';
 
 export interface OcrResult {
   rawText: string;
@@ -14,142 +15,54 @@ export interface OcrResult {
 @Injectable()
 export class OcrService {
   private readonly logger = new Logger(OcrService.name);
-  private tesseractAvailable = false;
-  private tesseractChecked = false;
+  private azureClient: ComputerVisionClient | null = null;
 
   constructor() {
-    // Tesseract'ı constructor'da değil, ilk kullanımda kontrol et
-    this.tesseractAvailable = true; // Varsayım: çalışıyor
+    this.initAzureVision();
   }
 
-  private async ensureTesseract(): Promise<boolean> {
-    if (this.tesseractChecked) return this.tesseractAvailable;
+  private initAzureVision() {
+    const key = process.env.AZURE_VISION_KEY;
+    const endpoint = process.env.AZURE_VISION_ENDPOINT;
     
-    this.tesseractChecked = true;
-    try {
-      const worker = await Tesseract.createWorker('eng', 1, {
-        logger: () => {},
-        errorHandler: () => {},
-      });
-      await worker.terminate();
-      this.tesseractAvailable = true;
-      this.logger.log('✅ Tesseract.js WASM hazır');
-    } catch (e) {
-      this.logger.error('❌ Tesseract.js WASM başlatılamadı:', e?.message);
-      this.tesseractAvailable = false;
+    if (key && endpoint) {
+      this.azureClient = new ComputerVisionClient(
+        new ApiKeyCredentials({ inHeader: { 'Ocp-Apim-Subscription-Key': key } }),
+        endpoint
+      );
+      this.logger.log('✅ Azure Vision API hazır');
+    } else {
+      this.logger.warn('⚠️ Azure Vision API key/endpoint tanımlı değil');
     }
-    return this.tesseractAvailable;
   }
 
   /**
-   * ÇOKLU OCR MOTORU
-   * 1. Tesseract.js (tur+eng)
-   * 2. Görsel ön işleme (kontrast, keskinlik)
-   * 3. Çapraz doğrulama
+   * Azure Vision API ile OCR
+   * Tesseract yerine bulut tabanlı OCR
    */
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
-    
-    // Tesseract'ın çalıştığından emin ol
-    const tesseractReady = await this.ensureTesseract();
-    
-    if (!tesseractReady) {
-      this.logger.warn('Tesseract kullanılamıyor - dosya adından belgeNo dönülüyor');
-      return {
-        rawText: '',
-        belgeNo: belgeNoFromFilename,
-        date: null,
-        kdvTutari: null,
-        totalTutari: null,
-        confidence: belgeNoFromFilename ? 0.3 : 0,
-        engine: 'filename-only',
-      };
+
+    // Azure Vision varsa kullan
+    if (this.azureClient) {
+      try {
+        return await this.runAzureOcr(imageBuffer, belgeNoFromFilename);
+      } catch (e) {
+        this.logger.error('Azure Vision hatası:', e?.message);
+        // Azure başarısız olursa fallback
+      }
     }
 
-    try {
-      // === GEÇİŞ 1: Orijinal görsel ===
-      const result1 = await this.runTesseract(imageBuffer, 'tur+eng');
-      const extract1 = this.extractAllFields(result1.text);
-      
-      // === GEÇİŞ 2: Kontrast artırılmış görsel ===
-      let result2: { text: string; confidence: number } = { text: '', confidence: 0 };
-      let extract2 = { belgeNo: null as string | null, date: null as string | null, kdv: null as string | null, toplam: null as string | null };
-      
-      // Eğer ilk geçişte KDV bulunamadıysa, görseli işleyip tekrar dene
-      if (!extract1.kdv) {
-        try {
-          const processedBuffer = await this.preprocessImage(imageBuffer);
-          result2 = await this.runTesseract(processedBuffer, 'tur+eng');
-          extract2 = this.extractAllFields(result2.text);
-        } catch (e) {
-          this.logger.debug('Görsel işleme başarısız:', e?.message);
-        }
-      }
-
-      // === GEÇİŞ 3: Sadece Türkçe ===
-      let result3: { text: string; confidence: number } = { text: '', confidence: 0 };
-      let extract3 = { belgeNo: null as string | null, date: null as string | null, kdv: null as string | null, toplam: null as string | null };
-      
-      if (!extract1.kdv && !extract2.kdv) {
-        try {
-          result3 = await this.runTesseract(imageBuffer, 'tur');
-          extract3 = this.extractAllFields(result3.text);
-        } catch (e) {
-          this.logger.debug('Türkçe geçiş başarısız:', e?.message);
-        }
-      }
-
-      // === ÇAPRAZ DOĞRULAMA ===
-      // En iyi sonuçları birleştir
-      const bestResult = this.mergeResults([extract1, extract2, extract3]);
-      
-      // Dosya adından belgeNo varsa, OCR sonucunu ezme
-      if (belgeNoFromFilename) {
-        bestResult.belgeNo = belgeNoFromFilename;
-      }
-
-      // Ham metin birleştir
-      const combinedText = [result1.text, result2.text, result3.text]
-        .filter(t => t.length > 0)
-        .join('\n\n--- Farklı Geçiş ---\n');
-
-      // Güven skoru hesapla
-      const foundFields = [
-        bestResult.belgeNo,
-        bestResult.date,
-        bestResult.kdv
-      ].filter(Boolean).length;
-      
-      const confidence = belgeNoFromFilename 
-        ? 0.3 + (foundFields / 3) * 0.7
-        : foundFields / 3;
-
-      this.logger.log(
-        `OCR [${originalName}] Motor:Tesseract Geçiş:3 Alan:${foundFields}/3 Conf:%${Math.round(confidence * 100)}`
-      );
-
-      return {
-        rawText: combinedText.slice(0, 3000),
-        belgeNo: bestResult.belgeNo,
-        date: bestResult.date,
-        kdvTutari: bestResult.kdv,
-        totalTutari: bestResult.toplam,
-        confidence,
-        engine: 'tesseract-multi',
-      };
-
-    } catch (err) {
-      this.logger.error(`OCR hatası [${originalName}]:`, err?.message);
-      return {
-        rawText: '',
-        belgeNo: belgeNoFromFilename,
-        date: null,
-        kdvTutari: null,
-        totalTutari: null,
-        confidence: belgeNoFromFilename ? 0.3 : 0,
-        engine: 'error-fallback',
-      };
-    }
+    // Fallback: Dosya adından belgeNo
+    return {
+      rawText: '',
+      belgeNo: belgeNoFromFilename,
+      date: null,
+      kdvTutari: null,
+      totalTutari: null,
+      confidence: belgeNoFromFilename ? 0.3 : 0,
+      engine: 'filename-only',
+    };
   }
 
   isLowConfidence(result: OcrResult): boolean {
@@ -158,68 +71,70 @@ export class OcrService {
     return true;
   }
 
-  // === TESSERACT ÇALIŞTIRMA ===
-  private async runTesseract(buffer: Buffer, lang: string): Promise<{ text: string; confidence: number }> {
-    const worker = await Tesseract.createWorker(lang);
-    try {
-      const { data } = await worker.recognize(buffer);
-      return {
-        text: data.text || '',
-        confidence: (data.confidence || 0) / 100,
-      };
-    } finally {
-      await worker.terminate();
-    }
-  }
+  // === AZURE VISION OCR ===
+  private async runAzureOcr(
+    buffer: Buffer, 
+    belgeNoFromFilename: string | null
+  ): Promise<OcrResult> {
+    if (!this.azureClient) throw new Error('Azure client yok');
 
-  // === GÖRSEL ÖN İŞLEME (Sharp ile) ===
-  private async preprocessImage(buffer: Buffer): Promise<Buffer> {
-    try {
-      const sharpModule = await import('sharp');
-      const sharp = sharpModule.default || sharpModule;
-      return await sharp(buffer)
-        .greyscale() // Siyah-beyaz
-        .normalize() // Kontrast normalize
-        .sharpen(1.5, 1, 2) // Keskinlik (sigma, flat, jagged)
-        .threshold(128) // Eşikleme
-        .toBuffer();
-    } catch {
-      // Sharp yoksa orijinali döndür
-      return buffer;
-    }
-  }
+    // Azure Read API - en iyi sonuçlar için
+    const result = await this.azureClient.readInStream(buffer);
+    const operationId = result.operationLocation?.split('/').pop();
+    
+    if (!operationId) throw new Error('Azure operation ID alınamadı');
 
-  // === SONUÇLARI BİRLEŞTİR ===
-  private mergeResults(results: Array<{ belgeNo: any; date: any; kdv: any; toplam: any }>) {
-    // Her alan için en iyi sonucu seç
-    const best = {
-      belgeNo: null as string | null,
-      date: null as string | null,
-      kdv: null as string | null,
-      toplam: null as string | null,
-    };
-
-    for (const r of results) {
-      if (r.belgeNo && !best.belgeNo) best.belgeNo = r.belgeNo;
-      if (r.date && !best.date) best.date = r.date;
-      if (r.kdv && !best.kdv) best.kdv = r.kdv;
-      if (r.toplam && !best.toplam) best.toplam = r.toplam;
+    // Sonucu bekle (polling)
+    let readResult = await this.azureClient.getReadResult(operationId);
+    let attempts = 0;
+    
+    while (readResult.status !== 'succeeded' && readResult.status !== 'failed' && attempts < 30) {
+      await new Promise(r => setTimeout(r, 500));
+      readResult = await this.azureClient.getReadResult(operationId);
+      attempts++;
     }
 
-    return best;
-  }
+    if (readResult.status !== 'succeeded') {
+      throw new Error('Azure OCR başarısız: ' + readResult.status);
+    }
 
-  // === TÜM ALANLARI ÇIKAR ===
-  private extractAllFields(text: string) {
+    // Tüm metni birleştir
+    const lines: string[] = [];
+    readResult.analyzeResult?.readResults?.forEach((page: any) => {
+      page.lines?.forEach((line: any) => {
+        lines.push(line.text);
+      });
+    });
+
+    const fullText = lines.join('\n');
+    
+    // Alanları çıkar
+    const date = this.extractDate(fullText);
+    const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
+    const kdv = this.extractKdvTotal(fullText);
+    const toplam = this.extractToplam(fullText);
+
+    const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
+    const confidence = belgeNoFromFilename 
+      ? 0.3 + (foundFields / 3) * 0.7
+      : foundFields / 3;
+
+    this.logger.log(
+      `Azure OCR [${belgeNoFromFilename || 'unknown'}] Alan:${foundFields}/3 Conf:%${Math.round(confidence * 100)}`
+    );
+
     return {
-      belgeNo: this.extractBelgeNo(text),
-      date: this.extractDate(text),
-      kdv: this.extractKdvTotal(text),
-      toplam: this.extractToplam(text),
+      rawText: fullText.slice(0, 3000),
+      belgeNo,
+      date,
+      kdvTutari: kdv,
+      totalTutari: toplam,
+      confidence,
+      engine: 'azure-vision',
     };
   }
 
-  // === DOSYA ADINDAN BELGENO ===
+  // === YARDIMCI FONKSİYONLAR ===
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
@@ -228,7 +143,6 @@ export class OcrService {
     return null;
   }
 
-  // === TARİH ÇIKARMA ===
   private extractDate(text: string): string | null {
     // DD - MM - YYYY (boşluklu tire)
     for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})\b/g)) {
@@ -251,7 +165,6 @@ export class OcrService {
     return null;
   }
 
-  // === BELGENO ÇIKARMA ===
   private extractBelgeNo(text: string): string | null {
     const patterns = [
       /fatura\s*no\s*:?\s*([A-Z0-9]{10,20})/i,
@@ -265,44 +178,32 @@ export class OcrService {
     return null;
   }
 
-  // === KDV TUTARI ÇIKARMA (Geliştirilmiş) ===
   private extractKdvTotal(text: string): string | null {
-    // 1. "Hesaplanan KDV" satırları (çoklu oran desteği)
-    const hesaplananKdvMatches = [...text.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
-    if (hesaplananKdvMatches.length > 0) {
-      const total = hesaplananKdvMatches.reduce((sum, m) => sum + this.parseAmount(m[1]), 0);
+    // Hesaplanan KDV (çoklu oran)
+    const hesaplananMatches = [...text.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
+    if (hesaplananMatches.length > 0) {
+      const total = hesaplananMatches.reduce((sum, m) => sum + this.parseAmount(m[1]), 0);
       if (total > 0) return this.formatAmount(total);
     }
 
-    // 2. "KDV" etiketli değerler
+    // KDV tutarı
     const kdvMatches = [...text.matchAll(/k\.?d\.?v\.?\s*(?:tutarı?)?\s*[:=]\s*([\d.,]+)/gi)];
     if (kdvMatches.length > 0) {
-      // En büyük KDV değerini al (genellikle toplam KDV'dir)
       const values = kdvMatches.map(m => this.parseAmount(m[1])).filter(v => v > 0);
       if (values.length > 0) return this.formatAmount(Math.max(...values));
     }
 
-    // 3. "Toplam KDV"
+    // Toplam KDV
     const toplamKdv = text.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
     if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g, '');
-
-    // 4. % işareti olan KDV değerleri
-    const percentKdv = text.match(/%\s*\d+\s+([\d.,]+)/);
-    if (percentKdv?.[1]) return percentKdv[1].replace(/\s/g, '');
-
-    // 5. Genel "vergi" veya "tax" araması
-    const vergi = text.match(/(?:vergi|tax)\s*(?:tutarı?)?\s*[:=]\s*([\d.,]+)/i);
-    if (vergi?.[1]) return vergi[1].replace(/\s/g, '');
 
     return null;
   }
 
-  // === TOPLAM TUTAR ÇIKARMA ===
   private extractToplam(text: string): string | null {
     const patterns = [
       /genel\s+toplam\s*[:=]\s*([\d.,]+)/i,
       /(?:^|\n)\s*toplam\s*[:=]?\s*([\d.,]+)/im,
-      /nakit\s+(?:toplam\s+)?([\d.,]+)/i,
     ];
     for (const p of patterns) {
       const m = text.match(p);
@@ -311,7 +212,6 @@ export class OcrService {
     return null;
   }
 
-  // === YARDIMCI FONKSİYONLAR ===
   private parseAmount(str: string): number {
     const c = str.replace(/\s/g, '');
     if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(c))
