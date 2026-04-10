@@ -255,6 +255,12 @@ export default function KdvSessionDetailPage() {
   });
   const { data: results } = useQuery({ queryKey: ['kdv-results', id], queryFn: () => kdvApi.getResults(id), enabled: activeTab === 'results' });
 
+  // Sayaç değişkenleri (useEffect'lerden önce tanımlanmalı)
+  const needsOcrCount = images?.filter((img: any) => ['LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus) && !img.isManuallyConfirmed).length ?? 0;
+  const processingCount = images?.filter((img: any) => ['PENDING', 'PROCESSING'].includes(img.ocrStatus)).length ?? 0;
+  const completedCount = images?.filter((img: any) => ['SUCCESS', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)).length ?? 0;
+  const totalCount = images?.length ?? 0;
+
   const uploadExcel = useMutation({
     mutationFn: () => kdvApi.uploadExcel(id, excelFile!),
     onSuccess: (data) => { toast.success(`${data.parsed} satır başarıyla okundu`); qc.invalidateQueries({ queryKey: ['kdv-records', id] }); qc.invalidateQueries({ queryKey: ['kdv-stats', id] }); setExcelFile(null); },
@@ -330,11 +336,6 @@ export default function KdvSessionDetailPage() {
       window.open(url, '_blank');
     } catch { toast.error('Görsel açılamadı'); }
   };
-
-  const needsOcrCount = images?.filter((img: any) => ['LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus) && !img.isManuallyConfirmed).length ?? 0;
-  const processingCount = images?.filter((img: any) => ['PENDING', 'PROCESSING'].includes(img.ocrStatus)).length ?? 0;
-  const completedCount = images?.filter((img: any) => ['SUCCESS', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)).length ?? 0;
-  const totalCount = images?.length ?? 0;
 
   return (
     <div className="space-y-5">
