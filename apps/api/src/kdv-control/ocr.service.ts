@@ -169,7 +169,7 @@ export class OcrService {
       return await sharp(buffer)
         .greyscale() // Siyah-beyaz
         .normalize() // Kontrast normalize
-        .sharpen({ sigma: 1.5, flat: 1, jagged: 2 }) // Keskinlik
+        .sharpen(1.5, 1, 2) // Keskinlik (sigma, flat, jagged)
         .threshold(128) // Eşikleme
         .toBuffer();
     } catch {
