@@ -1,11 +1,12 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
 import Link from 'next/link';
-import { Plus, FileSpreadsheet } from 'lucide-react';
+import { Plus, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { toast } from 'sonner';
 
 const STATUS_MAP: Record<string, { label: string; variant: any }> = {
   DRAFT:      { label: 'Taslak',      variant: 'default'  },
@@ -24,9 +25,19 @@ const TYPE_MAP: Record<string, { label: string; variant: any }> = {
 };
 
 export default function KdvKontrolPage() {
+  const qc = useQueryClient();
   const { data: sessions, isLoading } = useQuery({
     queryKey: ['kdv-sessions'],
     queryFn: kdvApi.getSessions,
+  });
+
+  const deleteSession = useMutation({
+    mutationFn: (id: string) => kdvApi.deleteSession(id),
+    onSuccess: () => {
+      toast.success('Kontrol oturumu silindi');
+      qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
+    },
+    onError: () => toast.error('Silme işlemi başarısız'),
   });
 
   return (
@@ -75,7 +86,7 @@ export default function KdvKontrolPage() {
           <table className="w-full">
             <thead style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
               <tr>
-                {['Dönem', 'Mükellef', 'Tür', 'Excel', 'Görsel', 'Durum', 'Tarih'].map((h) => (
+                {['Dönem', 'Mükellef', 'Tür', 'Excel', 'Görsel', 'Durum', 'Tarih', ''].map((h) => (
                   <th
                     key={h}
                     className="text-left text-2xs font-bold uppercase tracking-widest px-4 py-3"
@@ -130,6 +141,20 @@ export default function KdvKontrolPage() {
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
                       {new Date(s.createdAt).toLocaleDateString('tr-TR')}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => {
+                          if (confirm('Bu kontrol oturumunu silmek istediğinize emin misiniz?')) {
+                            deleteSession.mutate(s.id);
+                          }
+                        }}
+                        disabled={deleteSession.isPending}
+                        className="p-2 hover:bg-red-100 text-red-500 rounded-lg transition-colors"
+                        title="Sil"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 );

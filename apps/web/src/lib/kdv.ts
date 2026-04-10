@@ -4,6 +4,7 @@ export const kdvApi = {
   /* ── OTURUMLAR ── */
   getSessions: () => api.get('/kdv-control/sessions').then((r) => r.data),
   getSession: (id: string) => api.get(`/kdv-control/sessions/${id}`).then((r) => r.data),
+  deleteSession: (id: string) => api.delete(`/kdv-control/sessions/${id}`).then((r) => r.data),
   getStats: (id: string) => api.get(`/kdv-control/sessions/${id}/stats`).then((r) => r.data),
   createSession: (data: { type: string; periodLabel: string; taxpayerId?: string; notes?: string }) =>
     api.post('/kdv-control/sessions', data).then((r) => r.data),

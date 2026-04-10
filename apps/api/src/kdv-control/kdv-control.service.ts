@@ -52,6 +52,19 @@ export class KdvControlService {
     return session;
   }
 
+  /** Oturum sil */
+  async deleteSession(id: string, tenantId: string) {
+    const session = await this.findSession(id, tenantId);
+    
+    // İlişkili kayıtları sil (cascade delete yerine manuel)
+    await this.prisma.reconciliationResult.deleteMany({ where: { sessionId: id } });
+    await this.prisma.kdvRecord.deleteMany({ where: { sessionId: id } });
+    await this.prisma.receiptImage.deleteMany({ where: { sessionId: id } });
+    await this.prisma.kdvControlSession.delete({ where: { id } });
+    
+    return { deleted: true };
+  }
+
   /** Yeni oturum oluştur */
   async createSession(
     tenantId: string,

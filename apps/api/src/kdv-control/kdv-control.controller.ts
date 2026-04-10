@@ -34,6 +34,13 @@ export class KdvControlController {
     return this.kdvService.getSessionStats(id, req.user.tenantId);
   }
 
+  @Delete('sessions/:id')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteSession(@Req() req: any, @Param('id') id: string) {
+    return this.kdvService.deleteSession(id, req.user.tenantId);
+  }
+
   @Post('sessions')
   @Roles('ADMIN', 'STAFF')
   createSession(@Req() req: any, @Body() body: any) {
