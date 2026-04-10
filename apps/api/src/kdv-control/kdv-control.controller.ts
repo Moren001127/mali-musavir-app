@@ -6,7 +6,6 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { Response } from 'express';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { KdvControlService } from './kdv-control.service';
@@ -177,7 +176,7 @@ export class KdvControlController {
   async exportExcel(
     @Req() req: any,
     @Param('id') id: string,
-    @Res() res: Response,
+    @Res() res: any,
   ) {
     const buffer = await this.kdvService.exportResultsToExcel(id, req.user.tenantId);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
