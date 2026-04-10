@@ -81,6 +81,9 @@ export const kdvApi = {
   getResults: (sessionId: string) =>
     api.get(`/kdv-control/sessions/${sessionId}/results`).then((r) => r.data),
 
+  exportExcel: (sessionId: string) =>
+    api.get(`/kdv-control/sessions/${sessionId}/export-excel`, { responseType: 'arraybuffer' }).then((r) => r.data),
+
   resolveResult: (resultId: string, action: 'CONFIRMED' | 'REJECTED', notes?: string) =>
     api.patch(`/kdv-control/results/${resultId}/resolve`, { action, notes }).then((r) => r.data),
 };

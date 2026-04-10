@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
@@ -43,11 +43,11 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${map[status] ?? 'bg-gray-100 text-gray-500'}`}>{labels[status] ?? status}</span>;
 }
 
-function OcrStatusChip({ status }: { status: string }) {
+function OcrStatusChip({ status, hasKdv }: { status: string; hasKdv?: boolean }) {
   const m: Record<string, { label: string; bg: string; text: string; dot: string }> = {
     PENDING:        { label: 'Bekliyor',      bg: 'bg-gray-100',   text: 'text-gray-500',  dot: 'bg-gray-400' },
     PROCESSING:     { label: 'İşleniyor…',   bg: 'bg-blue-50',    text: 'text-blue-600',  dot: 'bg-blue-500' },
-    SUCCESS:        { label: 'Başarılı',      bg: 'bg-green-50',   text: 'text-green-700', dot: 'bg-green-500' },
+    SUCCESS:        { label: hasKdv ? 'Başarılı' : 'Tarih/BelgeNo OK', bg: 'bg-green-50',   text: 'text-green-700', dot: 'bg-green-500' },
     LOW_CONFIDENCE: { label: 'Teyit Gerekli',bg: 'bg-orange-50',  text: 'text-orange-700',dot: 'bg-orange-400' },
     FAILED:         { label: 'Başarısız',     bg: 'bg-red-50',     text: 'text-red-700',   dot: 'bg-red-500' },
   };
@@ -91,6 +91,13 @@ export default function KdvSessionDetailPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const excelRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
+
+  // Modal açıldığında görseli otomatik yükle
+  useEffect(() => {
+    if (isModalOpen && selectedImage && !imageUrls[selectedImage.id]) {
+      loadImageUrl(selectedImage.id);
+    }
+  }, [isModalOpen, selectedImage]);
 
   const { data: session } = useQuery({ queryKey: ['kdv-session', id], queryFn: () => kdvApi.getSession(id) });
   const { data: stats } = useQuery({ queryKey: ['kdv-stats', id], queryFn: () => kdvApi.getStats(id), refetchInterval: 5000 });
@@ -147,15 +154,12 @@ export default function KdvSessionDetailPage() {
 
   const downloadExcel = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/kdv-control/sessions/${id}/export-excel`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      if (!response.ok) throw new Error('İndirme başarısız');
-      const blob = await response.blob();
+      const response = await kdvApi.exportExcel(id);
+      const blob = new Blob([response], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `kdv-kontrol-${session?.periodLabel}.xlsx`;
+      a.download = `kdv-kontrol-${session?.periodLabel || id}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -187,6 +191,8 @@ export default function KdvSessionDetailPage() {
 
   const needsOcrCount = images?.filter((img: any) => ['LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus) && !img.isManuallyConfirmed).length ?? 0;
   const processingCount = images?.filter((img: any) => ['PENDING', 'PROCESSING'].includes(img.ocrStatus)).length ?? 0;
+  const completedCount = images?.filter((img: any) => ['SUCCESS', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)).length ?? 0;
+  const totalCount = images?.length ?? 0;
 
   return (
     <div className="space-y-5">
@@ -227,7 +233,16 @@ export default function KdvSessionDetailPage() {
       {processingCount > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
           <RefreshCw size={16} className="text-blue-500 animate-spin flex-shrink-0" />
-          <p className="text-sm text-blue-700">{processingCount} görsel için OCR devam ediyor — otomatik yenileniyor…</p>
+          <div className="flex-1">
+            <p className="text-sm text-blue-700">OCR devam ediyor — {completedCount}/{totalCount} görsel işlendi</p>
+            <div className="mt-2 h-2 bg-blue-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-blue-500 transition-all duration-500" 
+                style={{ width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%` }} 
+              />
+            </div>
+          </div>
+          <span className="text-xs font-bold text-blue-600">%{Math.round(totalCount > 0 ? (completedCount / totalCount) * 100 : 0)}</span>
         </div>
       )}
       {needsOcrCount > 0 && (
@@ -342,7 +357,7 @@ export default function KdvSessionDetailPage() {
                       <p className="text-sm font-semibold text-gray-800 truncate">{img.originalName}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{(img.sizeBytes / 1024).toFixed(0)} KB</p>
                     </div>
-                    <OcrStatusChip status={confirmed ? 'SUCCESS' : img.ocrStatus} />
+                    <OcrStatusChip status={confirmed ? 'SUCCESS' : img.ocrStatus} hasKdv={!!(img.confirmedKdvTutari || img.ocrKdvTutari)} />
                     <button onClick={() => { setSelectedImage(img); setIsModalOpen(true); }} className="p-2 rounded-lg hover:bg-white/70 text-gray-500 transition-colors" title="Görseli büyüt">
                       <Maximize2 size={15} />
                     </button>
