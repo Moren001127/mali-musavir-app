@@ -61,8 +61,8 @@ export class OcrService {
       const extract1 = this.extractAllFields(result1.text);
       
       // === GEÇİŞ 2: Kontrast artırılmış görsel ===
-      let result2 = { text: '', confidence: 0 };
-      let extract2 = { belgeNo: null, date: null, kdv: null, toplam: null };
+      let result2: { text: string; confidence: number } = { text: '', confidence: 0 };
+      let extract2 = { belgeNo: null as string | null, date: null as string | null, kdv: null as string | null, toplam: null as string | null };
       
       // Eğer ilk geçişte KDV bulunamadıysa, görseli işleyip tekrar dene
       if (!extract1.kdv) {
@@ -76,8 +76,8 @@ export class OcrService {
       }
 
       // === GEÇİŞ 3: Sadece Türkçe ===
-      let result3 = { text: '', confidence: 0 };
-      let extract3 = { belgeNo: null, date: null, kdv: null, toplam: null };
+      let result3: { text: string; confidence: number } = { text: '', confidence: 0 };
+      let extract3 = { belgeNo: null as string | null, date: null as string | null, kdv: null as string | null, toplam: null as string | null };
       
       if (!extract1.kdv && !extract2.kdv) {
         try {
@@ -164,7 +164,8 @@ export class OcrService {
   // === GÖRSEL ÖN İŞLEME (Sharp ile) ===
   private async preprocessImage(buffer: Buffer): Promise<Buffer> {
     try {
-      const sharp = await import('sharp');
+      const sharpModule = await import('sharp');
+      const sharp = sharpModule.default || sharpModule;
       return await sharp(buffer)
         .greyscale() // Siyah-beyaz
         .normalize() // Kontrast normalize
