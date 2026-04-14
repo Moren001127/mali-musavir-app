@@ -161,7 +161,7 @@ export default function ProfillerPage() {
                 value={talimat}
                 onChange={(e) => setTalimat(e.target.value)}
                 rows={14}
-                placeholder={`Örnek:\n- Bu mükellef nakliye firması; akaryakıt, lastik, yedek parça alışları yoğun\n- Araç bakım faturaları 740.01.002'ye yazılsın\n- Akaryakıt faturaları 740.01.001'e yazılsın\n- Fatura içeriğinde "Aytemiz" ibaresi varsa mutlaka akaryakıt kabul et\n- Tereddütte bırakma — kodlar uygunsa onayla`}
+                placeholder={`Örnek:\n- Bu mükellef nakliye firması.\n- Akaryakıt (benzin/motorin) faturaları 740.01.001'e yazılır.\n- Araç bakım/onarım 740.01.002'ye.\n- Lastik 740.01.005'e.\n- Yemek/yiyecek faturaları 770.01.030'a (mutfak/yemekhane).\n- ÖNEMLİ: Faturanın GERÇEK içeriğine bak. Sadece mükellefin sektörü "nakliye" diye her şeyi yakıt sayma.\n- Fatura içeriğini görmüyorsan emin_degil de.`}
                 className="w-full px-4 py-3 rounded-lg text-sm border outline-none font-mono leading-relaxed"
                 style={{
                   background: 'var(--bg)',

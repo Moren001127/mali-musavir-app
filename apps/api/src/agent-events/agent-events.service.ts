@@ -183,6 +183,8 @@ export class AgentEventsService {
     }
     const kodListe = input.hesapKodlari.join(', ');
     const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
+
+ÖNEMLİ BIAS UYARISI: Mükellefin sektörü ne olursa olsun, her faturanın KENDİ içeriğine bakarak karar ver. Örneğin mükellef nakliye firması olsa bile bir yemek/gıda faturası gelebilir — içerik "yiyecek" ise yakıt sayma. Görüntüde net göremediğin faturada "emin_degil" de.
 Kararın: "onay" (F2 Kaydet ve Onayla) / "atla" (İleri, kaydetme) / "emin_degil" (güvenli: atla).
 
 KURALLAR (sırayla):

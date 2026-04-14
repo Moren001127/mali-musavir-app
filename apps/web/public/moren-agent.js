@@ -223,9 +223,9 @@
       );
       if (canvases.length > 0) {
         try {
-          // Maks 2 sayfa, scale-down (payload <1MB)
-          const pages = canvases.slice(0, 2);
-          const targetW = Math.min(pages[0].width, 700);
+          // İlk sayfa yeterli (detaylar görünsün diye çözünürlük artır)
+          const pages = canvases.slice(0, 1);
+          const targetW = Math.min(pages[0].width, 1100);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
             0,
@@ -332,7 +332,19 @@
       const fid = fidMatch?.[1];
       if (initialCount === null && count > 0) initialCount = count;
       if (count === 0 || count === -1) { setStatus('count=0 bitti'); return; }
-      if (!fid) { setStatus('fid yok, editörden çıkıldı'); return; }
+      if (!fid) {
+        // Liste sayfasına dönülmüş olabilir — tekrar ilk pen'e tıkla
+        if (location.pathname === targetPath) {
+          setStatus('Liste sayfası, sonraki faturaya geçiliyor');
+          const pen = await waitFor('tbody tr button .anticon-edit', 5000);
+          if (!pen) { setStatus('Fatura kalmadı'); return; }
+          await click(pen.closest('button'));
+          await sleep(1500);
+          continue;
+        }
+        setStatus('fid yok, beklenmedik sayfa');
+        return;
+      }
       if (seenFids.has(fid)) {
         setStatus(`Fatura #${fid} zaten görüldü — döngü koruması, durduruldu`);
         return;
