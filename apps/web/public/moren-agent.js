@@ -25,7 +25,7 @@
   const panel = document.createElement('div');
   panel.id = 'moren-agent-panel';
   panel.style.cssText =
-    'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#0f0d0b;color:#fafaf9;font:13px/1.4 -apple-system,sans-serif;border-radius:10px;padding:12px 14px;box-shadow:0 8px 32px rgba(0,0,0,.4);min-width:240px;border:1px solid #b8a06f';
+    'position:fixed;top:70px;right:8px;z-index:2147483647;background:rgba(15,13,11,.92);color:#fafaf9;font:12px/1.3 -apple-system,sans-serif;border-radius:8px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:200px;border:1px solid #b8a06f;cursor:move;user-select:none';
   panel.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <div style="width:8px;height:8px;border-radius:50%;background:#10b981;animation:pulse 1.5s infinite"></div>
@@ -47,6 +47,13 @@
     window.__morenAgent.stopRequested = true;
     setStatus('Durduruluyor…');
   };
+  // Sürükle-bırak
+  (function(){
+    let dx=0,dy=0,dragging=false;
+    panel.addEventListener('mousedown',(e)=>{if(e.target.tagName==='BUTTON')return;dragging=true;const r=panel.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;e.preventDefault();});
+    document.addEventListener('mousemove',(e)=>{if(!dragging)return;panel.style.left=(e.clientX-dx)+'px';panel.style.top=(e.clientY-dy)+'px';panel.style.right='auto';panel.style.bottom='auto';});
+    document.addEventListener('mouseup',()=>{dragging=false;});
+  })();
 
   // === HELPERS ===
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
