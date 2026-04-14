@@ -194,13 +194,16 @@ export class AgentEventsController {
       hesapKodlari: string[];
       faturaTarihi?: string;
       hedefAy?: string;
+      belgeNo?: string;
+      belgeTuru?: string;
+      mukellef?: string;
     },
   ) {
-    this.resolveTenantFromToken(token);
+    const tenantId = this.resolveTenantFromToken(token);
     if (!body?.faturaImageBase64 || !Array.isArray(body?.hesapKodlari)) {
       throw new BadRequestException('faturaImageBase64 ve hesapKodlari gerekli');
     }
-    return this.service.decideFatura(body);
+    return this.service.decideFatura({ ...body, tenantId });
   }
 
   /** Mihsap'tan çekilen mükellefleri toplu upsert */

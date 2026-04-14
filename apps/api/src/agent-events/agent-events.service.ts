@@ -161,10 +161,25 @@ export class AgentEventsService {
     hesapKodlari: string[];
     faturaTarihi?: string;
     hedefAy?: string;
+    belgeNo?: string;
+    belgeTuru?: string;
+    mukellef?: string;
+    tenantId?: string;
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
+    }
+    // Mükellefe özel kural varsa sistem prompt'a ekle
+    let mukellefTalimat = '';
+    if (input.tenantId && input.mukellef) {
+      try {
+        const rule = await this.prisma.agentRule.findUnique({
+          where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
+        });
+        const talimat = (rule?.profile as any)?.talimat;
+        if (talimat) mukellefTalimat = `\n\nMÜKELLEF ÖZEL TALİMATLARI (${input.mukellef}):\n${talimat}`;
+      } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
     const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
@@ -179,10 +194,13 @@ KURALLAR (sırayla):
 6) Yukarıdaki hiçbiri değilse VE kodlar içeriğe uygunsa → onay
 7) Tereddüt varsa → emin_degil
 
-Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}`;
+Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
-    const userText = `Hesap kodları: ${kodListe || '(boş)'}
+    const userText = `Mükellef: ${input.mukellef || '?'}
+Hesap kodları: ${kodListe || '(boş)'}
 Fatura tarihi: ${input.faturaTarihi || '?'}
+Belge no: ${input.belgeNo || '?'}
+Belge türü: ${input.belgeTuru || '?'}
 Hedef ay: ${input.hedefAy || '?'}`;
 
     try {

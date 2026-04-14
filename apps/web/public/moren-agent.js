@@ -169,7 +169,7 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, mukellef }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -179,6 +179,9 @@
         hesapKodlari: codes,
         faturaTarihi: tarih,
         hedefAy,
+        belgeNo,
+        belgeTuru,
+        mukellef,
       }),
     });
   }
@@ -263,7 +266,11 @@
       }
       // LLM karar
       setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
-      const decision = await aiDecide({ codes, tarih, hedefAy });
+      const decision = await aiDecide({
+        codes, tarih, hedefAy,
+        belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru,
+        mukellef: mukellef.ad,
+      });
       const karar = decision?.karar || 'emin_degil';
       const sebep = (decision?.sebep || '').slice(0, 120);
       if (karar === 'atla' || karar === 'emin_degil') {

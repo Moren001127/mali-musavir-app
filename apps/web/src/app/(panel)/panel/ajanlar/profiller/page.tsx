@@ -1,264 +1,193 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { agentsApi, AgentRule } from '@/lib/agents';
-import { Plus, Save, Trash2, Sliders } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Save, Trash2, Bot } from 'lucide-react';
+import { toast } from 'sonner';
 
-const DEFAULT_PROFILE = {
-  faaliyet: '',
-  hesap_kod_mantigi: {
-    motorin_yakit: {
-      kod: '740.01.001',
-      kdv: '%20',
-      anahtar_kelimeler: ['motorin', 'benzin', 'mazot', 'yakıt', 'svpd'],
-    },
-    yedek_parca_bakim: {
-      kod: '740.01.002',
-      kdv: '%20',
-      anahtar_kelimeler: ['yedek parça', 'lastik', 'akü', 'bakım', 'onarım'],
-    },
-  },
-  vergi_kodu: { indirilecek_kdv: '191.01.003' },
-  cari_kodlari: { kasa: '100.01.001-KASA' },
-};
+interface Taxpayer {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  companyName?: string | null;
+}
+interface Rule {
+  id: string;
+  mukellef: string;
+  profile: { talimat?: string } | any;
+}
+
+function taxpayerName(t: Taxpayer): string {
+  return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
+}
 
 export default function ProfillerPage() {
   const qc = useQueryClient();
-  const { data: rules = [], refetch } = useQuery({
-    queryKey: ['agent-rules'],
-    queryFn: () => agentsApi.rules(),
-  });
-
   const [selected, setSelected] = useState<string | null>(null);
-  const [json, setJson] = useState<string>('');
-  const [faaliyet, setFaaliyet] = useState('');
-  const [defterTuru, setDefterTuru] = useState('');
-  const [newName, setNewName] = useState('');
+  const [talimat, setTalimat] = useState('');
+  const [search, setSearch] = useState('');
 
-  const current = rules.find((r: AgentRule) => r.mukellef === selected);
-
-  useEffect(() => {
-    if (current) {
-      setJson(JSON.stringify(current.profile, null, 2));
-      setFaaliyet(current.faaliyet ?? '');
-      setDefterTuru(current.defterTuru ?? '');
-    }
-  }, [current]);
-
-  const saveMut = useMutation({
-    mutationFn: async () => {
-      if (!selected) throw new Error('Mükellef seçin');
-      const profile = JSON.parse(json);
-      return agentsApi.upsertRule(selected, { faaliyet, defterTuru, profile });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-rules'] });
-      alert('Profil kaydedildi');
-    },
-    onError: (e: any) => alert('Hata: ' + (e?.message ?? 'bilinmeyen')),
+  const { data: taxpayers = [] } = useQuery({
+    queryKey: ['taxpayers'],
+    queryFn: () => api.get('/taxpayers').then((r) => r.data as Taxpayer[]),
+  });
+  const { data: rules = [] } = useQuery({
+    queryKey: ['agent-rules'],
+    queryFn: () => api.get('/agent/rules').then((r) => r.data as Rule[]),
   });
 
-  const deleteMut = useMutation({
-    mutationFn: async () => {
-      if (!selected) return;
-      if (!confirm(`${selected} profilini silmek istediğinize emin misiniz?`)) return;
-      return agentsApi.deleteRule(selected);
-    },
+  const upsert = useMutation({
+    mutationFn: (data: { mukellef: string; talimat: string }) =>
+      api.put(`/agent/rules/${encodeURIComponent(data.mukellef)}`, {
+        profile: { talimat: data.talimat },
+      }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-rules'] });
+      toast.success('Profil kaydedildi');
+    },
+    onError: () => toast.error('Kayıt başarısız'),
+  });
+
+  const del = useMutation({
+    mutationFn: (m: string) => api.delete(`/agent/rules/${encodeURIComponent(m)}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-rules'] });
+      toast.success('Silindi');
       setSelected(null);
-      qc.invalidateQueries({ queryKey: ['agent-rules'] });
+      setTalimat('');
     },
   });
 
-  const createNew = () => {
-    if (!newName.trim()) return;
-    setSelected(newName.trim());
-    setJson(JSON.stringify(DEFAULT_PROFILE, null, 2));
-    setFaaliyet('');
-    setDefterTuru('Bilanço');
-    setNewName('');
+  const ruleMap = new Map(rules.map((r) => [r.mukellef, r]));
+  const filtered = taxpayers.filter((t) =>
+    taxpayerName(t).toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const selectTaxpayer = (name: string) => {
+    setSelected(name);
+    setTalimat(ruleMap.get(name)?.profile?.talimat || '');
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
           Mükellef Profilleri
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          Her mükellef için hesap kodu kuralları — ajan bu kuralları kullanarak faturaları otomatik işler
+          Her mükellef için Claude'a özel talimat yazın. Fatura işlenirken bu talimatlar agent'a ek context olarak verilir.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Sol: Mükellef listesi */}
         <div
-          className="rounded-xl border p-2"
+          className="rounded-xl border p-3"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
-          <div className="flex gap-2 p-2">
-            <input
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Yeni mükellef adı..."
-              className="flex-1 px-3 py-1.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              onKeyDown={(e) => e.key === 'Enter' && createNew()}
-            />
-            <button
-              onClick={createNew}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium inline-flex items-center gap-1"
-              style={{ background: 'var(--navy-500)', color: 'white' }}
-            >
-              <Plus size={14} /> Ekle
-            </button>
-          </div>
-          <div className="max-h-[520px] overflow-y-auto">
-            {rules.length === 0 && !selected ? (
-              <div className="p-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                Henüz profil yok
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Mükellef ara…"
+            className="w-full px-3 py-2 rounded-lg text-sm border outline-none mb-2"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+          />
+          <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
+            {filtered.map((t) => {
+              const name = taxpayerName(t);
+              const has = ruleMap.has(name);
+              const active = selected === name;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => selectTaxpayer(name)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors"
+                  style={{
+                    background: active ? 'rgba(55,48,163,.1)' : 'transparent',
+                    color: active ? '#3730a3' : 'var(--text)',
+                    fontWeight: active ? 600 : 400,
+                  }}
+                >
+                  {has && <Bot size={13} style={{ color: '#059669' }} />}
+                  <span className="flex-1 truncate">{name}</span>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="text-xs p-3 text-center" style={{ color: 'var(--text-muted)' }}>
+                Sonuç yok
               </div>
-            ) : (
-              <>
-                {selected && !current && (
-                  <ProfileItem
-                    name={selected}
-                    active
-                    onClick={() => {}}
-                    badge="Yeni (kaydedilmedi)"
-                  />
-                )}
-                {rules.map((r: AgentRule) => (
-                  <ProfileItem
-                    key={r.id}
-                    name={r.mukellef}
-                    active={selected === r.mukellef}
-                    onClick={() => setSelected(r.mukellef)}
-                    badge={r.defterTuru ?? undefined}
-                  />
-                ))}
-              </>
             )}
           </div>
         </div>
 
+        {/* Sağ: Talimat editör */}
         <div
-          className="rounded-xl border p-4 flex flex-col"
+          className="md:col-span-2 rounded-xl border p-5"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           {!selected ? (
-            <div className="flex-1 flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              <div className="text-center">
-                <Sliders size={32} className="mx-auto mb-2 opacity-40" />
-                Sol listeden bir mükellef seçin veya yenisini ekleyin
-              </div>
+            <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
+              Sol listeden mükellef seç
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-2 pb-3 border-b mb-3" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <div className="font-semibold text-base" style={{ color: 'var(--text)' }}>
+                  <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                    Mükellef
+                  </div>
+                  <div className="font-semibold text-lg" style={{ color: 'var(--text)' }}>
                     {selected}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {current && (
-                    <button
-                      onClick={() => deleteMut.mutate()}
-                      className="px-3 py-1.5 rounded-lg text-sm inline-flex items-center gap-1"
-                      style={{ background: 'rgba(239,68,68,.1)', color: '#dc2626' }}
-                    >
-                      <Trash2 size={13} /> Sil
-                    </button>
-                  )}
+                {ruleMap.has(selected) && (
                   <button
-                    onClick={() => saveMut.mutate()}
-                    disabled={saveMut.isPending}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium inline-flex items-center gap-1"
-                    style={{ background: 'var(--green-500, #059669)', color: 'white' }}
+                    onClick={() => {
+                      if (confirm(`${selected} için profil silinsin mi?`)) del.mutate(selected);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm"
+                    style={{ background: 'rgba(239,68,68,.1)', color: '#dc2626' }}
                   >
-                    <Save size={13} /> {saveMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
+                    <Trash2 size={13} /> Sil
                   </button>
-                </div>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                    Faaliyet
-                  </label>
-                  <input
-                    value={faaliyet}
-                    onChange={(e) => setFaaliyet(e.target.value)}
-                    placeholder="servis turizmi"
-                    className="w-full px-3 py-1.5 rounded-lg text-sm border outline-none"
-                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                    Defter Türü
-                  </label>
-                  <select
-                    value={defterTuru}
-                    onChange={(e) => setDefterTuru(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg text-sm border outline-none"
-                    style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                  >
-                    <option value="">-</option>
-                    <option value="Bilanço">Bilanço</option>
-                    <option value="Defter Beyan">Defter Beyan</option>
-                  </select>
-                </div>
-              </div>
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                Kural JSON (hesap kodu mantığı, anahtar kelimeler, KDV oranları)
+
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>
+                Claude'a Özel Talimatlar
               </label>
               <textarea
-                value={json}
-                onChange={(e) => setJson(e.target.value)}
-                className="flex-1 min-h-[360px] p-3 rounded-lg text-xs font-mono border outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                spellCheck={false}
+                value={talimat}
+                onChange={(e) => setTalimat(e.target.value)}
+                rows={14}
+                placeholder={`Örnek:\n- Bu mükellef nakliye firması; akaryakıt, lastik, yedek parça alışları yoğun\n- Araç bakım faturaları 740.01.002'ye yazılsın\n- Akaryakıt faturaları 740.01.001'e yazılsın\n- Fatura içeriğinde "Aytemiz" ibaresi varsa mutlaka akaryakıt kabul et\n- Tereddütte bırakma — kodlar uygunsa onayla`}
+                className="w-full px-4 py-3 rounded-lg text-sm border outline-none font-mono leading-relaxed"
+                style={{
+                  background: 'var(--bg)',
+                  borderColor: 'var(--border)',
+                  color: 'var(--text)',
+                  minHeight: 300,
+                }}
               />
+
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Bu talimatlar her fatura kararında Claude'un system prompt'una eklenir.
+                </p>
+                <button
+                  onClick={() => upsert.mutate({ mukellef: selected, talimat })}
+                  disabled={!talimat.trim() || upsert.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                  style={{ background: '#059669', color: 'white' }}
+                >
+                  <Save size={14} /> Kaydet
+                </button>
+              </div>
             </>
           )}
         </div>
       </div>
     </div>
-  );
-}
-
-function ProfileItem({
-  name,
-  active,
-  onClick,
-  badge,
-}: {
-  name: string;
-  active: boolean;
-  onClick: () => void;
-  badge?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between"
-      style={{
-        background: active ? 'var(--navy-500)' : 'transparent',
-        color: active ? 'white' : 'var(--text)',
-      }}
-    >
-      <span className="truncate">{name}</span>
-      {badge && (
-        <span
-          className="text-xs px-2 py-0.5 rounded-full ml-2 flex-shrink-0"
-          style={{
-            background: active ? 'rgba(255,255,255,.2)' : 'var(--muted)',
-            color: active ? 'white' : 'var(--text-muted)',
-          }}
-        >
-          {badge}
-        </span>
-      )}
-    </button>
   );
 }
