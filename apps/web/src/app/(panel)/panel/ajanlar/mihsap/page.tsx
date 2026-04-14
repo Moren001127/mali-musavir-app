@@ -352,67 +352,107 @@ export default function MihsapAgentPage() {
       {/* MÜKELLEF PICKER MODAL */}
       {pickerOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(4px)' }}
+          className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[8vh]"
+          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
           onClick={() => setPickerOpen(false)}
         >
           <div
-            className="w-full max-w-lg rounded-xl border p-4 max-h-[80vh] flex flex-col"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: '84vh' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Mükellef Seç</h3>
-              <button onClick={() => setPickerOpen(false)} style={{ color: 'var(--text-muted)' }}>
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ borderColor: 'var(--border)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+            >
+              <div>
+                <h3 className="text-lg font-bold" style={{ color: 'var(--text)' }}>
+                  Mükellef Seç
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Mihsap ID tanımlı {mihsapTaxpayers.length} mükellef · {selectedIds.length} seçili
+                </p>
+              </div>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-black/10"
+                style={{ color: 'var(--text-muted)' }}
+              >
                 <X size={16} />
               </button>
             </div>
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border mb-3"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
-            >
-              <Search size={13} style={{ color: 'var(--text-muted)' }} />
-              <input
-                value={pickerSearch}
-                onChange={(e) => setPickerSearch(e.target.value)}
-                placeholder="Ara…"
-                autoFocus
-                className="flex-1 bg-transparent outline-none text-sm"
-                style={{ color: 'var(--text)' }}
-              />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {selectedIds.length}/{mihsapTaxpayers.length}
-              </span>
-            </div>
-            <div className="flex gap-2 mb-2 text-xs">
-              <button
-                onClick={() => setSelectedIds(filtered.map((t) => t.id))}
-                className="px-2.5 py-1 rounded"
-                style={{ background: 'rgba(184,160,111,.12)', color: '#b8a06f' }}
+
+            {/* Search + bulk actions */}
+            <div className="px-5 py-3 border-b space-y-2.5" style={{ borderColor: 'var(--border)' }}>
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
               >
-                Filtreli hepsini seç
-              </button>
-              <button
-                onClick={() => setSelectedIds([])}
-                className="px-2.5 py-1 rounded"
-                style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
-              >
-                Temizle
-              </button>
+                <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                <input
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  placeholder="Mükellef adı ara…"
+                  autoFocus
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  style={{ color: 'var(--text)' }}
+                />
+                {pickerSearch && (
+                  <button
+                    onClick={() => setPickerSearch('')}
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => setSelectedIds(filtered.map((t) => t.id))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-medium"
+                  style={{ background: 'rgba(184,160,111,.15)', color: '#b8a06f' }}
+                >
+                  ✓ Filtreli hepsini seç ({filtered.length})
+                </button>
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="px-2.5 py-1 rounded-md"
+                  style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
+                >
+                  Temizle
+                </button>
+                <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>
+                  {filtered.length} sonuç
+                </span>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-0.5">
+
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-2">
               {filtered.length === 0 ? (
-                <div className="text-xs p-4 text-center" style={{ color: 'var(--text-muted)' }}>
+                <div className="text-sm p-8 text-center" style={{ color: 'var(--text-muted)' }}>
                   Sonuç yok
                 </div>
               ) : (
                 filtered.map((t) => {
                   const checked = selectedIds.includes(t.id);
+                  const name = taxpayerName(t);
+                  const initial = name.charAt(0).toUpperCase();
                   return (
                     <label
                       key={t.id}
-                      className="flex items-center gap-2 px-2 py-1.5 text-sm rounded cursor-pointer hover:bg-black/5"
-                      style={{ color: 'var(--text)' }}
+                      className="flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg cursor-pointer transition-colors"
+                      style={{
+                        background: checked ? 'rgba(184,160,111,.08)' : 'transparent',
+                        color: 'var(--text)',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      }}
                     >
                       <input
                         type="checkbox"
@@ -421,23 +461,63 @@ export default function MihsapAgentPage() {
                           if (e.target.checked) setSelectedIds([...selectedIds, t.id]);
                           else setSelectedIds(selectedIds.filter((x) => x !== t.id));
                         }}
+                        className="w-4 h-4"
                       />
-                      <span className="flex-1 truncate">{taxpayerName(t)}</span>
-                      <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                        {t.mihsapId}
-                      </span>
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        style={{
+                          background: checked
+                            ? 'linear-gradient(135deg, #b8a06f, #8b7649)'
+                            : 'var(--muted)',
+                          color: checked ? '#0f0d0b' : 'var(--text-muted)',
+                        }}
+                      >
+                        {initial}
+                      </div>
+                      <span className="flex-1 truncate font-medium">{name}</span>
+                      {t.mihsapId && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded tabular-nums"
+                          style={{ background: 'var(--bg)', color: 'var(--text-muted)' }}
+                        >
+                          #{t.mihsapId}
+                        </span>
+                      )}
                     </label>
                   );
                 })
               )}
             </div>
-            <button
-              onClick={() => setPickerOpen(false)}
-              className="mt-3 w-full py-2 rounded-lg text-sm font-semibold"
-              style={{ background: '#b8a06f', color: '#0f0d0b' }}
+
+            {/* Footer */}
+            <div
+              className="px-5 py-3 border-t flex items-center gap-3"
+              style={{ borderColor: 'var(--border)', background: 'var(--bg)' }}
             >
-              Tamam ({selectedIds.length})
-            </button>
+              <button
+                onClick={() => {
+                  setSelectedIds([]);
+                  setPickerOpen(false);
+                }}
+                className="px-4 py-2 rounded-lg text-sm font-medium"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                İptal
+              </button>
+              <button
+                onClick={() => setPickerOpen(false)}
+                disabled={selectedIds.length === 0}
+                className="flex-1 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+                style={{
+                  background: selectedIds.length > 0
+                    ? 'linear-gradient(135deg, #b8a06f, #8b7649)'
+                    : 'var(--muted)',
+                  color: selectedIds.length > 0 ? '#0f0d0b' : 'var(--text-muted)',
+                }}
+              >
+                {selectedIds.length} Mükellef ile Devam
+              </button>
+            </div>
           </div>
         </div>
       )}
