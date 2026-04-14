@@ -5,7 +5,7 @@ import { useMe, useLogout } from '@/hooks/useAuth';
 import {
   LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
-  Zap, Sparkles, ChevronRight,
+  Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
 } from 'lucide-react';
 
 const navGroups = [
@@ -36,9 +36,15 @@ const navGroups = [
     color: '#a78bfa',
     icon: Zap,
     items: [
-      { href: '/panel/ajanlar',           label: 'Ajanlar',             icon: Bot },
-      { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
-      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
+      { href: '/panel/ajanlar',             label: 'Ajan Paneli',        icon: Cpu },
+      { href: '/panel/ajanlar/mihsap',      label: 'Mihsap Fatura',      icon: Bot },
+      { href: '/panel/ajanlar/luca',        label: 'Luca E-Arşiv',       icon: FileInput },
+      { href: '/panel/ajanlar/tebligat',    label: 'Tebligat Özet',      icon: Mailbox },
+      { href: '/panel/ajanlar/kdv-hazirlik',label: 'KDV Ön-Hazırlık',    icon: Calculator },
+      { href: '/panel/ajanlar/e-defter',    label: 'E-Defter Kontrol',   icon: BookOpen },
+      { href: '/panel/ajanlar/sgk',         label: 'SGK Bildirge',       icon: ShieldCheck },
+      { href: '/panel/ajanlar/loglar',      label: 'Yapılan İşlemler',   icon: Activity },
+      { href: '/panel/ajanlar/profiller',   label: 'Mükellef Profilleri',icon: Sliders },
     ],
   },
   {

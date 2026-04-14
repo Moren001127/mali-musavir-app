@@ -1,26 +1,47 @@
 'use client';
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { agentsApi, AGENTS, AgentStatus, AgentCommand } from '@/lib/agents';
-import { api } from '@/lib/api';
-import { Bot, Play, Square, Activity, Calendar, Users, CheckCircle2, AlertCircle, Loader2, Clock } from 'lucide-react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { agentsApi } from '@/lib/agents';
+import { api } from '@/lib/api';
+import {
+  Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
+  Activity, CheckCircle2, Clock, ArrowRight, Sparkles, TrendingUp, AlertCircle, Zap,
+} from 'lucide-react';
 
-interface Taxpayer {
-  id: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  companyName?: string | null;
-  lucaSlug?: string | null;
-  mihsapId?: string | null;
-  mihsapDefterTuru?: string | null;
-}
+const AGENTS = [
+  {
+    id: 'mihsap', href: '/panel/ajanlar/mihsap', title: 'Mihsap Fatura',
+    desc: 'Bekleyen alış/satış faturalarını OCR ile inceler',
+    icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)', aktif: true,
+  },
+  {
+    id: 'luca', href: '/panel/ajanlar/luca', title: 'Luca E-Arşiv',
+    desc: 'E-arşiv zip indir, XML ayrıştır, Drive\'a koy',
+    icon: FileInput, gradient: 'linear-gradient(135deg, #0ea5e9, #6366f1)', aktif: false,
+  },
+  {
+    id: 'tebligat', href: '/panel/ajanlar/tebligat', title: 'Tebligat Özet',
+    desc: 'Hattat tebligatları sınıflandırır, kritik olanları bildirir',
+    icon: Mailbox, gradient: 'linear-gradient(135deg, #f59e0b, #ec4899)', aktif: false,
+  },
+  {
+    id: 'kdv-hazirlik', href: '/panel/ajanlar/kdv-hazirlik', title: 'KDV Ön-Hazırlık',
+    desc: 'KDV1/KDV2 beyanname taslakları ve anomali tespiti',
+    icon: Calculator, gradient: 'linear-gradient(135deg, #10b981, #06b6d4)', aktif: false,
+  },
+  {
+    id: 'e-defter', href: '/panel/ajanlar/e-defter', title: 'E-Defter Kontrol',
+    desc: 'Berat durumları ve yevmiye mukayese',
+    icon: BookOpen, gradient: 'linear-gradient(135deg, #6366f1, #a855f7)', aktif: false,
+  },
+  {
+    id: 'sgk', href: '/panel/ajanlar/sgk', title: 'SGK Bildirge',
+    desc: 'İşe giriş/çıkış, MUHSGK takip, tahakkuk hazırlığı',
+    icon: ShieldCheck, gradient: 'linear-gradient(135deg, #dc2626, #991b1b)', aktif: false,
+  },
+];
 
-function taxpayerName(t: Taxpayer): string {
-  return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
-}
-
-export default function AjanlarPage() {
+export default function AjanlarDashboard() {
   const { data: status = [] } = useQuery({
     queryKey: ['agent-status'],
     queryFn: () => agentsApi.status(),
@@ -31,441 +52,161 @@ export default function AjanlarPage() {
     queryFn: () => agentsApi.stats(),
     refetchInterval: 10000,
   });
-  const { data: taxpayers = [] } = useQuery({
-    queryKey: ['taxpayers'],
-    queryFn: () => api.get('/taxpayers').then((r) => r.data as Taxpayer[]),
-  });
   const { data: commands = [] } = useQuery({
     queryKey: ['agent-commands'],
-    queryFn: () => agentsApi.listCommands({ limit: 20 }),
+    queryFn: () => agentsApi.listCommands({ limit: 10 }),
     refetchInterval: 3000,
   });
 
-  const statusMap = new Map(status.map((s) => [s.agent, s]));
+  const statusMap = new Map(status.map((s: any) => [s.agent, s]));
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-            Otomasyon Ajanları
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-            Mükellef seçip ajanları çalıştırın — tüm işlemler canlı loglanır
-          </p>
-        </div>
-        <Link
-          href="/panel/ajanlar/loglar"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium"
-          style={{ background: 'var(--navy-500)', color: 'white' }}
-        >
-          <Activity size={15} />
-          Yapılan İşlemler
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <StatBox label="Bu Ay İşlenen" value={stats?.buAy ?? 0} color="#059669" />
-        <StatBox label="Bugün Log" value={stats?.buGun ?? 0} color="#1e40af" />
-        <StatBox label="Hata (24 saat)" value={stats?.hataBugun ?? 0} color="#dc2626" />
-        <StatBox label="Bekleyen Komut" value={commands.filter((c) => c.status === 'pending' || c.status === 'running').length} color="#d97706" />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {AGENTS.map((a) => (
-          <AgentCard
-            key={a.id}
-            agent={a}
-            statusInfo={statusMap.get(a.id)}
-            taxpayers={taxpayers}
-          />
-        ))}
-      </div>
-
+      {/* Hero */}
       <div
-        className="rounded-xl border"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        className="relative rounded-2xl overflow-hidden p-7 border"
+        style={{
+          background: 'linear-gradient(135deg, rgba(184,160,111,.1) 0%, rgba(99,102,241,.05) 100%)',
+          borderColor: 'var(--border)',
+        }}
       >
-        <div className="p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <h2 className="font-semibold" style={{ color: 'var(--text)' }}>Son Komutlar</h2>
-        </div>
-        {commands.length === 0 ? (
-          <div className="p-6 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-            Henüz komut gönderilmedi
-          </div>
-        ) : (
-          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
-            {commands.map((c) => (
-              <CommandRow key={c.id} command={c} taxpayers={taxpayers} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AgentCard({
-  agent,
-  statusInfo,
-  taxpayers,
-}: {
-  agent: (typeof AGENTS)[number];
-  statusInfo?: AgentStatus;
-  taxpayers: Taxpayer[];
-}) {
-  const qc = useQueryClient();
-  const [ay, setAy] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [search, setSearch] = useState('');
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  const runMut = useMutation({
-    mutationFn: (action: string) =>
-      agentsApi.createCommand({
-        agent: agent.id,
-        action,
-        payload: {
-          ay,
-          mukellefIds: selectedIds,
-          mukellefler: selectedIds
-            .map((id) => taxpayers.find((t) => t.id === id))
-            .filter(Boolean)
-            .map((t: any) => ({
-              id: t.id,
-              ad: taxpayerName(t),
-              lucaSlug: t.lucaSlug,
-              mihsapId: t.mihsapId,
-              mihsapDefterTuru: t.mihsapDefterTuru,
-            })),
-        },
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-commands'] });
-    },
-  });
-
-  const calisiyor = statusInfo?.running === true;
-  const filtered = taxpayers.filter(
-    (t) =>
-      taxpayerName(t).toLowerCase().includes(search.toLowerCase()) &&
-      (agent.id === 'luca' ? t.lucaSlug : agent.id === 'mihsap' ? t.mihsapId : true),
-  );
-
-  return (
-    <div
-      className="rounded-xl p-5 border"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full opacity-25"
+          style={{ background: 'radial-gradient(circle, #b8a06f, transparent 70%)' }} />
+        <div className="relative flex items-center gap-4">
           <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            className="w-14 h-14 rounded-xl flex items-center justify-center"
             style={{
-              background: agent.aktif ? 'rgba(55,48,163,.1)' : 'var(--muted)',
-              color: agent.aktif ? '#3730a3' : 'var(--text-muted)',
+              background: 'linear-gradient(135deg, #b8a06f, #8b7649)',
+              boxShadow: '0 6px 20px rgba(184,160,111,.4)',
             }}
           >
-            <Bot size={18} />
+            <Bot size={26} style={{ color: '#0f0d0b' }} strokeWidth={2} />
           </div>
-          <div className="min-w-0">
-            <div className="font-semibold truncate" style={{ color: 'var(--text)' }}>
-              {agent.ad}
+          <div>
+            <div className="text-[10px] uppercase font-bold tracking-widest mb-0.5" style={{ color: '#b8a06f' }}>
+              <Sparkles size={10} className="inline mr-1" /> Claude Powered
             </div>
-            <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {agent.desc}
-            </div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Otomasyon Ajanları</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+              Mali müşavirlik işleyişinin tekrarlayan kısımlarını Claude ajanlarına bırakın
+            </p>
           </div>
         </div>
-        <AgentBadge calisiyor={calisiyor} aktif={agent.aktif} />
       </div>
 
-      {agent.aktif && (
-        <div className="space-y-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                <Calendar size={11} className="inline mr-1" />
-                Hedef Ay
-              </label>
-              <input
-                type="month"
-                value={ay}
-                onChange={(e) => setAy(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-lg text-sm border outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
-                <Users size={11} className="inline mr-1" />
-                Mükellef ({selectedIds.length})
-              </label>
-              <button
-                onClick={() => setPickerOpen((v) => !v)}
-                className="w-full px-3 py-1.5 rounded-lg text-sm border text-left outline-none truncate"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              >
-                {selectedIds.length === 0
-                  ? 'Mükellef seç...'
-                  : selectedIds.length === 1
-                  ? taxpayerName(taxpayers.find((t) => t.id === selectedIds[0])!)
-                  : `${selectedIds.length} mükellef seçili`}
-              </button>
-            </div>
-          </div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatBox label="Bu Ay Onaylanan" value={stats?.buAy ?? 0} color="#22c55e" icon={CheckCircle2} />
+        <StatBox label="Bugün İşlem" value={stats?.buGun ?? 0} color="#3b82f6" icon={TrendingUp} />
+        <StatBox label="Hata (24s)" value={stats?.hataBugun ?? 0} color="#ef4444" icon={AlertCircle} />
+        <StatBox
+          label="Bekleyen Komut"
+          value={commands.filter((c: any) => c.status === 'pending' || c.status === 'running').length}
+          color="#f59e0b"
+          icon={Clock}
+        />
+      </div>
 
-          {pickerOpen && (
-            <div
-              className="rounded-lg border p-2 max-h-56 overflow-y-auto"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
-            >
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Ara..."
-                className="w-full px-2 py-1 text-sm border rounded mb-2 outline-none"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-              <div className="flex items-center gap-2 mb-1 pb-1 border-b text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                <button
-                  onClick={() => setSelectedIds(filtered.map((t) => t.id))}
-                  className="px-2 py-0.5 rounded hover:opacity-80"
-                  style={{ background: 'var(--navy-50, rgba(55,48,163,.08))', color: 'var(--navy-500, #3730a3)' }}
-                >
-                  Hepsi
-                </button>
-                <button
-                  onClick={() => setSelectedIds([])}
-                  className="px-2 py-0.5 rounded hover:opacity-80"
-                  style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
-                >
-                  Temizle
-                </button>
-                <span className="ml-auto">
-                  {filtered.length} / {taxpayers.length}
-                </span>
-              </div>
-              {filtered.length === 0 ? (
-                <div className="text-xs p-2" style={{ color: 'var(--text-muted)' }}>
-                  Bu ajan için uygun mükellef yok.{' '}
-                  <Link href="/panel/mukellefler" className="underline">
-                    Mükellefler sayfasından
-                  </Link>{' '}
-                  {agent.id === 'luca' ? 'Luca slug' : 'Mihsap ID'} değerini ekleyin.
-                </div>
-              ) : (
-                filtered.map((t) => (
-                  <label
-                    key={t.id}
-                    className="flex items-center gap-2 px-2 py-1 text-sm rounded hover:bg-black/5 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(t.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedIds([...selectedIds, t.id]);
-                        else setSelectedIds(selectedIds.filter((x) => x !== t.id));
-                      }}
-                    />
-                    <span className="flex-1" style={{ color: 'var(--text)' }}>
-                      {taxpayerName(t)}
-                    </span>
-                    {agent.id === 'luca' && t.lucaSlug && (
-                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {t.lucaSlug}
-                      </span>
-                    )}
-                  </label>
-                ))
-              )}
-            </div>
-          )}
-
-          {agent.id === 'mihsap' ? (
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => runMut.mutate('isle_alis')}
-                disabled={selectedIds.length === 0 || runMut.isPending}
-                className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                style={{
-                  background: selectedIds.length > 0 ? '#059669' : 'var(--muted)',
-                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
-                }}
-              >
-                <Play size={13} />
-                Alış İşle
-              </button>
-              <button
-                onClick={() => runMut.mutate('isle_satis')}
-                disabled={selectedIds.length === 0 || runMut.isPending}
-                className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                style={{
-                  background: selectedIds.length > 0 ? '#1e40af' : 'var(--muted)',
-                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
-                }}
-              >
-                <Play size={13} />
-                Satış İşle
-              </button>
-              <button
-                onClick={() => runMut.mutate('isle_odeme')}
-                disabled={selectedIds.length === 0 || runMut.isPending}
-                className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm disabled:opacity-50"
-                style={{ background: 'var(--muted)', color: 'var(--text)' }}
-              >
-                Ödeme
-              </button>
-              <button
-                onClick={() => runMut.mutate('isle_tahsilat')}
-                disabled={selectedIds.length === 0 || runMut.isPending}
-                className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm disabled:opacity-50"
-                style={{ background: 'var(--muted)', color: 'var(--text)' }}
-              >
-                Tahsilat
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => runMut.mutate('isle')}
-                disabled={selectedIds.length === 0 || runMut.isPending}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-                style={{
-                  background: selectedIds.length > 0 ? '#059669' : 'var(--muted)',
-                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
-                }}
-              >
-                <Play size={14} />
-                Şimdi İşle
-              </button>
-              {calisiyor && (
-                <button
-                  onClick={() => runMut.mutate('durdur')}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-                  style={{ background: 'rgba(239,68,68,.1)', color: '#dc2626' }}
-                >
-                  <Square size={14} />
-                  Durdur
-                </button>
-              )}
-            </div>
-          )}
+      {/* Agents grid */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>Ajanlar</h2>
+          <Link
+            href="/panel/ajanlar/loglar"
+            className="inline-flex items-center gap-1 text-sm"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            <Activity size={13} /> Yapılan İşlemler <ArrowRight size={12} />
+          </Link>
         </div>
-      )}
-
-      <div className="flex items-center gap-4 text-xs pt-3 mt-3 border-t" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-        {statusInfo?.hedefAy && <span>Son ay: <strong>{statusInfo.hedefAy}</strong></span>}
-        {statusInfo?.lastPing && (
-          <span>
-            <Clock size={10} className="inline mr-1" />
-            {new Date(statusInfo.lastPing).toLocaleString('tr-TR')}
-          </span>
-        )}
-        {!statusInfo && <span>Yerel runner henüz ping atmadı</span>}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {AGENTS.map((a) => {
+            const info = statusMap.get(a.id) as any;
+            return <AgentTile key={a.id} agent={a} statusInfo={info} />;
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function AgentBadge({ calisiyor, aktif }: { calisiyor: boolean; aktif: boolean }) {
-  if (!aktif) {
-    return <Badge text="Yakında" bg="var(--muted)" color="var(--text-muted)" />;
-  }
-  if (calisiyor) {
-    return <Badge text="Çalışıyor" bg="rgba(16,185,129,.15)" color="#059669" icon={<Loader2 size={11} className="animate-spin" />} />;
-  }
-  return <Badge text="Hazır" bg="rgba(55,48,163,.1)" color="#3730a3" />;
-}
-
-function Badge({ text, bg, color, icon }: { text: string; bg: string; color: string; icon?: React.ReactNode }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0"
-      style={{ background: bg, color }}
-    >
-      {icon}
-      {text}
-    </span>
-  );
-}
-
-function StatBox({ label, value, color }: { label: string; value: number | string; color: string }) {
+function StatBox({ label, value, color, icon: Icon }: any) {
   return (
     <div
-      className="rounded-xl p-4 border"
+      className="rounded-xl p-4 border flex items-center gap-3"
       style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
     >
-      <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
-        {label}
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ background: `${color}15`, color }}
+      >
+        <Icon size={18} />
       </div>
-      <div className="text-2xl font-bold mt-1" style={{ color }}>
-        {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
-      </div>
-    </div>
-  );
-}
-
-function CommandRow({ command, taxpayers }: { command: AgentCommand; taxpayers: Taxpayer[] }) {
-  const { icon: Icon, color } = statusIconFor(command.status);
-  const ts = new Date(command.createdAt).toLocaleString('tr-TR');
-  const payload = command.payload || {};
-  const mukellefAds: string[] = Array.isArray(payload.mukellefler)
-    ? payload.mukellefler.map((m: any) => m.ad).filter(Boolean)
-    : Array.isArray(payload.mukellefIds)
-    ? payload.mukellefIds.map((id: string) => {
-        const t = taxpayers.find((x) => x.id === id);
-        return t ? taxpayerName(t) : id;
-      })
-    : [];
-  return (
-    <div className="flex items-start gap-3 p-3 text-sm">
-      <Icon size={18} style={{ color }} className="mt-0.5 flex-shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium" style={{ color: 'var(--text)' }}>
-            {command.agent.toUpperCase()} · {command.action}
-          </span>
-          {payload.ay && (
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}>
-              {payload.ay}
-            </span>
-          )}
-          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>
-            {command.status}
-          </span>
+      <div>
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</div>
+        <div className="text-xl font-bold tabular-nums" style={{ color }}>
+          {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
         </div>
-        {mukellefAds.length > 0 && (
-          <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            Mükellefler: {mukellefAds.slice(0, 3).join(', ')}
-            {mukellefAds.length > 3 ? ` +${mukellefAds.length - 3}` : ''}
-          </div>
-        )}
-        {command.result?.message && (
-          <div className="text-xs mt-1" style={{ color }}>
-            {command.result.message}
-          </div>
-        )}
-      </div>
-      <div className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
-        {ts}
       </div>
     </div>
   );
 }
 
-function statusIconFor(status: string) {
-  switch (status) {
-    case 'done':
-      return { icon: CheckCircle2, color: '#059669' };
-    case 'failed':
-      return { icon: AlertCircle, color: '#dc2626' };
-    case 'running':
-      return { icon: Loader2, color: '#1e40af' };
-    default:
-      return { icon: Clock, color: '#d97706' };
-  }
+function AgentTile({ agent, statusInfo }: any) {
+  const Icon = agent.icon;
+  const calisiyor = statusInfo?.running === true;
+  return (
+    <Link
+      href={agent.href}
+      className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
+      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+    >
+      {/* Gradient side bar */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-1"
+        style={{ background: agent.gradient }}
+      />
+      <div className="flex items-start gap-3 mb-3">
+        <div
+          className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
+          style={{ background: agent.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}
+        >
+          <Icon size={20} style={{ color: '#fff' }} strokeWidth={2} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold" style={{ color: 'var(--text)' }}>{agent.title}</h3>
+            {!agent.aktif && (
+              <span
+                className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
+              >
+                YAKINDA
+              </span>
+            )}
+            {agent.aktif && calisiyor && (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ background: 'rgba(16,185,129,.15)', color: '#059669' }}
+              >
+                <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#059669' }} />
+                ÇALIŞIYOR
+              </span>
+            )}
+          </div>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            {agent.desc}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+        <span style={{ color: 'var(--text-muted)' }}>
+          {agent.aktif ? (statusInfo?.lastPing ? `Son: ${new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR')}` : 'Hazır') : '—'}
+        </span>
+        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>
+          <Zap size={11} /> Aç <ArrowRight size={11} />
+        </span>
+      </div>
+    </Link>
+  );
 }
