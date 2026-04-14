@@ -1,8 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ══════════════════════════════════════════════════════════
    MOREN — Boutique Mali Müşavirlik
@@ -84,6 +84,8 @@
   --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
 }
 
+/* ─── ORTAK DEĞERLER (her temada aynı) ─── */
+:root {
   /* Başarı / uyarı / hata */
   --success:      #15803d;
   --success-soft: #f0fdf4;
@@ -94,7 +96,7 @@
   --info:         #1d4ed8;
   --info-soft:    #eff6ff;
 
-  /* Metin — sıcak charcoal */
+  /* A teması için varsayılan metin (B ve C kendi --text'ini override eder) */
   --text:           #1c1917;
   --text-primary:   #1c1917;
   --text-secondary: #44403c;
@@ -108,7 +110,7 @@
   --radius-lg: 10px;
   --radius-xl: 14px;
 
-  /* Gölgeler — çok ince */
+  /* Gölgeler */
   --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
   --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.06), 0 2px 4px -1px rgba(0,0,0,0.04);
