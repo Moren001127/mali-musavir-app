@@ -84,7 +84,7 @@
     try {
       await api('/agent/events/ingest', {
         method: 'POST',
-        body: JSON.stringify({ agent: 'mihsap', mukellef: mukellefAd, mukellefId, status, detail, meta: {} }),
+        body: JSON.stringify({ agent: 'mihsap', mukellef: mukellefAd, status, message: detail, meta: { mukellefId } }),
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
   }
@@ -113,16 +113,23 @@
     await handleDialogs();
   }
 
-  async function getFaturaTarihi(fid) {
+  async function getFaturaMeta(fid) {
     try {
       const jwt = localStorage.getItem('token');
       const r = await fetch(`/api/mali-musavir/all-faturas/getFaturaBeforeUpdate/${fid}`, {
         headers: { Authorization: `Bearer ${jwt}` },
       });
-      if (!r.ok) return null;
+      if (!r.ok) return {};
       const j = await r.json();
-      return j?.faturaTarihi || null;
-    } catch { return null; }
+      const v = j?.sonucValue || j || {};
+      return {
+        tarih: v.faturaTarihi || v.belgeTarihi || null,
+        belgeNo: v.faturaNo || v.belgeNo || null,
+        belgeTuru: v.belgeTuru || null,
+        tutar: v.genelToplam || v.tutar || null,
+        firma: v.unvan || v.firma || null,
+      };
+    } catch { return {}; }
   }
 
   async function getFaturaImageBase64() {
@@ -239,9 +246,10 @@
       if (fid === lastFid) { sameFidCount++; if (sameFidCount > 2) { setStatus('Aynı fatura tekrarı'); return; } }
       else { sameFidCount = 0; lastFid = fid; }
 
-      const tarih = await getFaturaTarihi(fid);
+      const meta = await getFaturaMeta(fid);
+      const tarih = meta.tarih;
       const hedefAy = ay; // "2026-03"
-      const ayUygun = tarih && tarih.startsWith(hedefAy);
+      const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`);
