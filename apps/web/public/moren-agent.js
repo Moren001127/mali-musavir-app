@@ -390,15 +390,25 @@
       }
       try {
         await clickKaydetOnayla();
-        counters.onay++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
-        // F2 sonrası URL değişimini bekle (Mihsap auto-next yapar)
+        // F2 sonrası URL değişimini bekle
         const t0 = Date.now();
+        let saved = false;
         while (Date.now() - t0 < 6000) {
           const m2 = location.href.match(/\/(\d+)\?count=/);
-          if (m2 && m2[1] !== fid) break;
-          if (/count=0/.test(location.href)) break;
+          if (m2 && m2[1] !== fid) { saved = true; break; }
+          if (/count=0/.test(location.href)) { saved = true; break; }
+          // Dialog varsa kapat (uyarı çıkmış olabilir)
+          if (getVisibleModals().length > 0) await handleDialogs();
           await sleep(200);
+        }
+        if (saved) {
+          counters.onay++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        } else {
+          // F2 başarısız oldu (muhtemelen eksik alan uyarısı), atla say
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `F2 sonuçlanmadı (eksik alan?) · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await clickIleri(fid);
         }
       } catch (e) {
         counters.hata++; counters.toplam++; setCount();
