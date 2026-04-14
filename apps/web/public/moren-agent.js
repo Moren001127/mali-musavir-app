@@ -122,16 +122,28 @@
       if (!r.ok) return {};
       const j = await r.json();
       const v = j?.sonucValue || j || {};
-      // Tarih fallback zinciri: faturaTarihi → faturaTarihiStr → donemYil+donemAy → insertDttm
-      let tarih = v.faturaTarihi || null;
-      if (!tarih && v.faturaTarihiStr) {
-        // "11.04.2026" → "2026-04-11"
-        const m = String(v.faturaTarihiStr).match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-        if (m) tarih = `${m[3]}-${m[2]}-${m[1]}`;
-        else tarih = v.faturaTarihiStr;
-      }
-      if (!tarih && v.donemYil && v.donemAy) {
+      // Ay kontrolü için en güvenilir kaynak: donemYil+donemAy (Mihsap'ın mantıksal dönem atamaları)
+      // Sonra faturaTarihi (ISO), sonra faturaTarihiStr (TR format), en son insertDttm
+      let tarih = null;
+      if (v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
+      }
+      if (!tarih && v.faturaTarihi) {
+        // ISO "2026-03-15T..." veya "2026-03-15"
+        const s = String(v.faturaTarihi);
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) tarih = s.slice(0, 10);
+      }
+      if (!tarih && v.faturaTarihiStr) {
+        const s = String(v.faturaTarihiStr).trim();
+        // Turkish "DD.MM.YYYY" veya "DD/MM/YYYY" veya "DD-MM-YYYY"
+        const tr = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+        if (tr) {
+          tarih = `${tr[3]}-${tr[2].padStart(2, '0')}-${tr[1].padStart(2, '0')}`;
+        } else {
+          // ISO "YYYY-MM-DD"
+          const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (iso) tarih = `${iso[1]}-${iso[2]}-${iso[3]}`;
+        }
       }
       if (!tarih && v.insertDttm) tarih = String(v.insertDttm).slice(0, 10);
       return {
@@ -250,16 +262,25 @@
       await sleep(1200);
     }
 
-    let lastFid = null;
-    let sameFidCount = 0;
-    for (let i = 0; i < 500; i++) {
+    const seenFids = new Set();
+    let initialCount = null;
+    for (let i = 0; i < 600; i++) {
       if (window.__morenAgent.stopRequested) return;
       const fidMatch = location.href.match(/\/(\d+)\?count=/);
       const count = parseInt(location.href.match(/count=(-?\d+)/)?.[1] || '1', 10);
       const fid = fidMatch?.[1];
-      if (count === 0) { setStatus('count=0 bitti'); return; }
-      if (fid === lastFid) { sameFidCount++; if (sameFidCount > 2) { setStatus('Aynı fatura tekrarı'); return; } }
-      else { sameFidCount = 0; lastFid = fid; }
+      if (initialCount === null && count > 0) initialCount = count;
+      if (count === 0 || count === -1) { setStatus('count=0 bitti'); return; }
+      if (!fid) { setStatus('fid yok, editörden çıkıldı'); return; }
+      if (seenFids.has(fid)) {
+        setStatus(`Fatura #${fid} zaten görüldü — döngü koruması, durduruldu`);
+        return;
+      }
+      seenFids.add(fid);
+      if (initialCount && seenFids.size > initialCount + 5) {
+        setStatus(`Başlangıç (${initialCount}) aşıldı, durduruldu`);
+        return;
+      }
 
       const meta = await getFaturaMeta(fid);
       const tarih = meta.tarih;
