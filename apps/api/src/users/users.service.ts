@@ -42,15 +42,15 @@ export class UsersService {
       create: { name: dto.roleName },
       update: {},
     });
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findFirst({ where: { tenantId, email: dto.email } });
     if (existing) throw new NotFoundException('Bu email zaten kayıtlı');
     const user = await this.prisma.user.create({
       data: {
         tenantId,
         email: dto.email,
         passwordHash,
-        firstName: dto.firstName || null,
-        lastName: dto.lastName || null,
+        firstName: dto.firstName || '',
+        lastName: dto.lastName || '',
         userRoles: { create: { roleId: role.id } },
       },
     });
