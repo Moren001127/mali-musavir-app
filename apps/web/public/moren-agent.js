@@ -157,15 +157,18 @@
   async function processMukellef({ ay, mukellef, action }) {
     const tipSegment = action === 'isle_alis' ? 'BILANCO/1' : action === 'isle_satis' ? 'BILANCO/2' : null;
     if (!tipSegment || !mukellef.mihsapId) return;
-    const baseList = `https://app.mihsap.com/documents/${tipSegment}/${mukellef.mihsapId}`;
-    const onList = location.pathname === `/documents/${tipSegment}/${mukellef.mihsapId}`;
-    const onEditor = location.pathname.startsWith(`/documents/${tipSegment}/${mukellef.mihsapId}/`);
-    if (!onList && !onEditor) {
-      setStatus(`${mukellef.ad} → yönlendiriliyor`);
-      location.href = baseList;
-      return; // Sayfa yüklenince tekrar komut claim olacak
+    const targetPath = `/documents/${tipSegment}/${mukellef.mihsapId}`;
+    const baseList = `https://app.mihsap.com${targetPath}`;
+    // URL uygun değilse user'ın gitmesini bekle (SPA nav, script ölmez)
+    const waitT0 = Date.now();
+    while (!location.pathname.startsWith(targetPath)) {
+      if (window.__morenAgent.stopRequested) return;
+      if (Date.now() - waitT0 > 180000) { setStatus('URL beklendi, zaman aşımı'); return; }
+      setStatus(`→ ${mukellef.ad} için bu sayfayı açın`);
+      await sleep(2000);
     }
-    if (onList) {
+    // Liste sayfasında ise ilk faturayı aç
+    if (location.pathname === targetPath) {
       const firstPen = await waitFor('tbody tr button .anticon-edit', 8000);
       if (!firstPen) { setStatus('Fatura yok'); return; }
       await click(firstPen.closest('button'));
