@@ -32,6 +32,31 @@ export class UsersService {
     return safe;
   }
 
+  async createWithPassword(
+    tenantId: string,
+    dto: { email: string; password: string; firstName?: string; lastName?: string; roleName: string },
+  ) {
+    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    const role = await this.prisma.role.upsert({
+      where: { name: dto.roleName },
+      create: { name: dto.roleName },
+      update: {},
+    });
+    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existing) throw new NotFoundException('Bu email zaten kayıtlı');
+    const user = await this.prisma.user.create({
+      data: {
+        tenantId,
+        email: dto.email,
+        passwordHash,
+        firstName: dto.firstName || null,
+        lastName: dto.lastName || null,
+        userRoles: { create: { roleId: role.id } },
+      },
+    });
+    return { userId: user.id };
+  }
+
   async invite(
     tenantId: string,
     dto: { email: string; firstName: string; lastName: string; roleName: string },

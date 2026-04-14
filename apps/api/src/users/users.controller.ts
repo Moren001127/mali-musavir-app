@@ -21,6 +21,12 @@ export class UsersController {
     return this.usersService.invite(req.user.tenantId, dto);
   }
 
+  @Post('create')
+  @Roles('ADMIN')
+  create(@Req() req: any, @Body() dto: any) {
+    return this.usersService.createWithPassword(req.user.tenantId, dto);
+  }
+
   @Delete(':id')
   @Roles('ADMIN')
   deactivate(@Req() req: any, @Param('id') id: string) {
