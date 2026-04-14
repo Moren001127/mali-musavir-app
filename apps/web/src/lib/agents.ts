@@ -71,7 +71,7 @@ export const agentsApi = {
 // Ajanlar sabit listesi (local script eşlemesi)
 export const AGENTS = [
   { id: 'luca',     ad: 'Luca E-Arşiv İndirici',       desc: "Luca'dan inen ZIP'leri Drive'a taşır, açar, XML'leri siler",                     aktif: true  },
-  { id: 'mihsap',   ad: 'Mihsap Fatura İşleyici',       desc: 'Mihsap\'ta mükellef x ay için faturaları otomatik onaylar / atlar',             aktif: false },
+  { id: 'mihsap',   ad: 'Mihsap Fatura İşleyici',       desc: 'Mihsap\'ta mükellef x ay için faturaları otomatik onaylar / atlar',             aktif: true  },
   { id: 'tebligat', ad: 'Tebligat Özet Ajanı',          desc: "Hattat'tan günlük tebligat/rapor özeti çıkarır",                                 aktif: false },
   { id: 'kdv',      ad: 'KDV Beyanname Ön-Hazırlık',    desc: 'Ay sonu KDV1/KDV2 taslaklarını hazırlar',                                        aktif: false },
   { id: 'edefter',  ad: 'E-Defter Kontrol',             desc: 'E-Defter berat durumlarını günlük kontrol eder',                                 aktif: false },

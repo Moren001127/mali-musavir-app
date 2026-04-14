@@ -68,6 +68,9 @@ export default function MukellefDetayPage() {
     evrakTeslimGunu: '' as string | number,
     whatsappEvrakTalep: false,
     whatsappEvrakGeldi: false,
+    lucaSlug: '',
+    mihsapId: '',
+    mihsapDefterTuru: 'BILANCO',
   });
 
   useEffect(() => {
@@ -90,6 +93,9 @@ export default function MukellefDetayPage() {
         evrakTeslimGunu: taxpayer.evrakTeslimGunu ?? '',
         whatsappEvrakTalep: taxpayer.whatsappEvrakTalep ?? false,
         whatsappEvrakGeldi: taxpayer.whatsappEvrakGeldi ?? false,
+        lucaSlug: taxpayer.lucaSlug ?? '',
+        mihsapId: taxpayer.mihsapId ?? '',
+        mihsapDefterTuru: taxpayer.mihsapDefterTuru ?? 'BILANCO',
       });
     }
   }, [taxpayer]);
@@ -354,6 +360,57 @@ export default function MukellefDetayPage() {
                   <p className="text-xs text-gray-500">Evraklar Geldi işaretlendiğinde onay mesajı gönderilir</p>
                 </div>
               </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Otomasyon Ajanları */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>
+            Otomasyon Ajanları
+          </h2>
+          <p className="text-xs text-gray-500 mb-4">
+            Bu mükellef için ajanların çalışması gereken dış sistem kimlikleri. Boş bırakılırsa o ajan bu mükellef için liste dışında kalır.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Luca Slug
+              </label>
+              <input
+                type="text"
+                value={form.lucaSlug}
+                onChange={e => setForm(f => ({ ...f, lucaSlug: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                placeholder="edeler_yem"
+              />
+              <p className="text-xs text-gray-400 mt-1">Luca ZIP'te görünen ad (ör. edeler_yem)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Mihsap ID
+              </label>
+              <input
+                type="text"
+                value={form.mihsapId}
+                onChange={e => setForm(f => ({ ...f, mihsapId: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                placeholder="110564"
+              />
+              <p className="text-xs text-gray-400 mt-1">Mihsap URL'indeki sayı (ör. 110564)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Mihsap Defter Türü
+              </label>
+              <select
+                value={form.mihsapDefterTuru}
+                onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+              >
+                <option value="BILANCO">Bilanço</option>
+                <option value="DEFTER_BEYAN">Defter Beyan</option>
+              </select>
             </div>
           </div>
         </div>
