@@ -322,7 +322,13 @@
               });
               await api(`/agent/commands/${cmd.id}`, {
                 method: 'PUT',
-                body: JSON.stringify({ status: 'done', result: { ...counters, message: `${counters.toplam} fatura işlendi` } }),
+                body: JSON.stringify({
+                  status: 'done',
+                  result: {
+                    ...counters,
+                    message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
+                  },
+                }),
               });
             } catch (e) {
               await api(`/agent/commands/${cmd.id}`, {
