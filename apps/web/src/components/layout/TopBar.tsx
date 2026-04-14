@@ -42,7 +42,7 @@ export default function TopBar({ user }: { user: any }) {
           {unread > 0 && (
             <span
               className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-              style={{ background: 'var(--gold)' }}
+              style={{ background: 'var(--danger)' }}
             >
               {unread > 9 ? '9+' : unread}
             </span>
@@ -55,8 +55,8 @@ export default function TopBar({ user }: { user: any }) {
           style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
         >
           <div
-            className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold"
-            style={{ background: 'var(--navy)', color: 'var(--gold-light)' }}
+            className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-semibold"
+            style={{ background: 'var(--accent)', color: '#fff' }}
           >
             {`${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? ''}`.toUpperCase() || '?'}
           </div>
