@@ -101,35 +101,73 @@
   }
 
   // === MIHSAP FATURA İŞLEME ===
+  function getVisibleModals() {
+    return [...document.querySelectorAll('.ant-modal')].filter(
+      (m) => m.offsetParent !== null && !m.classList.contains('ant-modal-hidden'),
+    );
+  }
+
   async function handleDialogs() {
-    await sleep(200);
-    const iptal = findBtnExact('İptal');
-    if (iptal && document.body.textContent.includes('Mükerrer')) { await click(iptal); return 'mukerrer'; }
-    const tamam = findBtnExact('Tamam');
-    if (tamam) { await click(tamam); }
-    const vazgec = findBtnExact('Vazgeç');
-    if (vazgec) { await click(vazgec); return 'vazgec'; }
+    await sleep(400);
+    const modals = getVisibleModals();
+    for (const modal of modals) {
+      const text = modal.textContent || '';
+      const btns = [...modal.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+      const findIn = (needle) => btns.find((b) => b.textContent.trim() === needle);
+      if (/Mükerrer/i.test(text)) {
+        const iptal = findIn('İptal');
+        if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
+      }
+      if (/Hesap kodu girilmemiş/i.test(text) || /satır mevcut/i.test(text)) {
+        const tamam = findIn('Tamam');
+        if (tamam) { await click(tamam); await sleep(300); return 'tamam'; }
+      }
+      // Genel "Vazgeç" veya "Tamam"
+      const vazgec = findIn('Vazgeç');
+      if (vazgec) { await click(vazgec); await sleep(300); return 'vazgec'; }
+      const tamam2 = findIn('Tamam');
+      if (tamam2) { await click(tamam2); await sleep(300); return 'tamam'; }
+    }
     return 'ok';
   }
 
   async function clickIleri(currentFid) {
-    const btns = [...document.querySelectorAll('button')];
-    const ileri = btns.find((b) => b.textContent.trim().startsWith('İleri') && b.offsetParent !== null);
+    // Dialog varsa önce kapat
+    if (getVisibleModals().length > 0) await handleDialogs();
+    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+    const ileri = btns.find((b) => {
+      const t = b.textContent.trim();
+      return t === 'İleri' || t === 'İleri (F9)' || t.startsWith('İleri ');
+    });
+    if (!ileri) return;
     await click(ileri);
-    // URL'in değişmesini bekle (max 5 sn)
     const t0 = Date.now();
-    while (Date.now() - t0 < 5000) {
+    while (Date.now() - t0 < 6000) {
       const m = location.href.match(/\/(\d+)\?count=/);
       if (m && m[1] !== currentFid) return;
-      if (location.href.match(/count=0/)) return;
-      await sleep(150);
+      if (/count=0/.test(location.href)) return;
+      // Yeni dialog geldiyse yine kapat
+      if (getVisibleModals().length > 0) { await handleDialogs(); }
+      await sleep(200);
     }
   }
 
   async function clickKaydetOnayla() {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', code: 'F2', keyCode: 113, which: 113, bubbles: true }));
-    await sleep(600);
-    await handleDialogs();
+    // Direkt butona tıkla (F2 key dispatch ant-design bazen yakalamıyor)
+    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+    const f2btn = btns.find((b) => b.textContent.trim().startsWith('Kaydet ve Onayla'));
+    if (f2btn) {
+      await click(f2btn);
+    } else {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', code: 'F2', keyCode: 113, which: 113, bubbles: true }));
+    }
+    await sleep(800);
+    // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, vs)
+    let tries = 0;
+    while (tries < 3 && getVisibleModals().length > 0) {
+      await handleDialogs();
+      tries++;
+    }
   }
 
   async function getFaturaMeta(fid) {
