@@ -421,3 +421,135 @@ label {
   border-bottom: 1px solid var(--border);
   padding: 12px 24px;
 }
+
+/* ── Hover-lift mikro etkileşim ───────────────────────── */
+.hover-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── İnce divider ─────────────────────────────────────── */
+.hairline {
+  height: 1px;
+  background: var(--border);
+  width: 100%;
+}
+
+/* ── Mini etiket / chip ───────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.chip-success { background: var(--success-soft); color: var(--success); border-color: transparent; }
+.chip-warning { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+.chip-danger  { background: var(--danger-soft);  color: var(--danger);  border-color: transparent; }
+.chip-info    { background: var(--info-soft);    color: var(--info);    border-color: transparent; }
+
+/* ── KPI Renkli alt çizgi ─────────────────────────────── */
+.kpi-accent {
+  position: relative;
+  overflow: hidden;
+}
+.kpi-accent::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0;
+  height: 3px;
+  width: 100%;
+  background: var(--accent-color, var(--accent));
+  opacity: 0.9;
+}
+
+/* ── Soft renkli aksanlar (gruplar için) ──────────────── */
+.accent-blue   { --accent-color: #3b82f6; }
+.accent-green  { --accent-color: #10b981; }
+.accent-purple { --accent-color: #8b5cf6; }
+.accent-amber  { --accent-color: #f59e0b; }
+.accent-rose   { --accent-color: #f43f5e; }
+.accent-slate  { --accent-color: #64748b; }
+
+/* ── Tab grup ─────────────────────────────────────────── */
+.seg-tabs {
+  display: inline-flex;
+  background: var(--surface-2);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  gap: 2px;
+}
+.seg-tabs > .seg-tab {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+}
+.seg-tabs > .seg-tab.active {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.seg-tabs > .seg-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+/* ── Liste satırı ─────────────────────────────────────── */
+.row-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  transition: background 0.1s;
+}
+.row-item:hover { background: var(--surface-2); }
+.row-item:last-child { border-bottom: none; }
+
+/* ── Subtle gradient text (logo gibi) ─────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, var(--accent), #4a5578);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Empty state ──────────────────────────────────────── */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+.empty-state-icon {
+  width: 48px; height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-light);
+}
+
+/* ── Skeleton loader ──────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -800px 0; }
+  100% { background-position: 800px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 1600px 100%;
+  animation: shimmer 1.6s linear infinite;
+  border-radius: var(--radius-md);
+}
