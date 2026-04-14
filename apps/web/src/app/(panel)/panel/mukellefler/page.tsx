@@ -407,184 +407,143 @@ export default function MukelleflerPage() {
                 <p className="text-sm font-semibold" style={{ color: '#44403c' }}>Kayıt bulunamadı</p>
                 <p className="text-xs mt-1" style={{ color: '#78716c' }}>Dönem seçimini kontrol edin</p>
               </div>
-            ) : taxpayers.map((t, rowIdx) => {
-              const s    = t.monthlyStatus;
-              const done = isAllDone(t);
-              const cnt  = doneCount(t);
-              const kDone = kdvDone(t);
-              const initials = name(t).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-              const pctRow = Math.round((cnt / 4) * 100);
-
-              // Durum adımları için renk hesapla
-              const steps = [
-                { key: 'evraklarGeldi',         label: 'Evrak Geldi',   field: 'evraklarGeldi',         done: s?.evraklarGeldi,  color: '#10b981' },
-                { key: 'evraklarIslendi',       label: 'İşlendi',        field: 'evraklarIslendi',       done: s?.evraklarIslendi, color: '#0ea5e9' },
-                { key: 'indirilecekKdvKontrol', label: 'İnd.KDV',        field: 'indirilecekKdvKontrol', done: s?.indirilecekKdvKontrol, color: '#f59e0b' },
-                { key: 'hesaplananKdvKontrol',  label: 'Hes.KDV',        field: 'hesaplananKdvKontrol',  done: s?.hesaplananKdvKontrol,  color: '#f59e0b' },
-                { key: 'beyannameVerildi',      label: 'Beyanname',     field: 'beyannameVerildi',      done: s?.beyannameVerildi, color: '#8b5cf6' },
-                { key: 'eArsivKontrol',         label: 'E-Arşiv',       field: 'eArsivKontrol',         done: s?.eArsivKontrol,    color: '#0ea5e9' },
-              ];
-
-              return (
+            ) : (
+              <>
+                {/* Tablo başlığı */}
                 <div
-                  key={t.id}
-                  className="relative group transition-all duration-200 hover:bg-[#faf8f4]"
+                  className="grid items-center px-6 py-3 text-[10px] font-bold uppercase"
                   style={{
-                    borderBottom: '1px solid #f0ebde',
-                    background: done ? 'linear-gradient(90deg, rgba(16,185,129,0.04), transparent 40%)' : undefined,
+                    gridTemplateColumns: '40px 1fr 60px repeat(6, 44px) 90px',
+                    gap: 12,
+                    background: '#faf8f4',
+                    borderBottom: '1px solid #e6e0d2',
+                    color: '#78716c',
+                    letterSpacing: '0.1em',
                   }}
                 >
-                  {/* Aktif sol şerit */}
-                  <div
-                    className="absolute left-0 top-0 bottom-0 w-1 transition-all duration-300 group-hover:w-1.5"
-                    style={{
-                      background: done
-                        ? 'linear-gradient(180deg, #10b981, #059669)'
-                        : cnt > 0
-                        ? 'linear-gradient(180deg, #b8a06f, #8b7649)'
-                        : 'transparent',
-                    }}
-                  />
+                  <span></span>
+                  <span>Mükellef</span>
+                  <span className="text-center">Son Gün</span>
+                  <span className="text-center" title="Evrak Geldi">Gel</span>
+                  <span className="text-center" title="Evrak İşlendi">İşl</span>
+                  <span className="text-center" title="İndirilecek KDV">İnd</span>
+                  <span className="text-center" title="Hesaplanan KDV">Hes</span>
+                  <span className="text-center" title="Beyanname">Bey</span>
+                  <span className="text-center" title="E-Arşiv">Arş</span>
+                  <span className="text-right pr-2">İlerleme</span>
+                </div>
 
-                  <div className="pl-5 pr-4 py-3.5 grid items-center gap-4" style={{ gridTemplateColumns: '2fr 50px 1.8fr 100px 80px' }}>
-                    {/* 1) MÜKELLEF BİLGİSİ */}
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="relative flex-shrink-0">
-                        {done && (
+                {taxpayers.map((t) => {
+                  const s    = t.monthlyStatus;
+                  const done = isAllDone(t);
+                  const cnt  = doneCount(t);
+                  const initials = name(t).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+
+                  const steps = [
+                    { field: 'evraklarGeldi',         done: s?.evraklarGeldi,          label: 'Evrak Geldi' },
+                    { field: 'evraklarIslendi',       done: s?.evraklarIslendi,        label: 'Evrak İşlendi' },
+                    { field: 'indirilecekKdvKontrol', done: s?.indirilecekKdvKontrol,  label: 'İndirilecek KDV' },
+                    { field: 'hesaplananKdvKontrol',  done: s?.hesaplananKdvKontrol,   label: 'Hesaplanan KDV' },
+                    { field: 'beyannameVerildi',      done: s?.beyannameVerildi,       label: 'Beyanname' },
+                    { field: 'eArsivKontrol',         done: s?.eArsivKontrol,          label: 'E-Arşiv' },
+                  ];
+
+                  return (
+                    <div
+                      key={t.id}
+                      className="relative group transition-colors duration-150 hover:bg-[#faf8f4]"
+                      style={{ borderBottom: '1px solid #f4f1ea' }}
+                    >
+                      {/* Ana satır */}
+                      <div
+                        className="grid items-center px-6 py-4"
+                        style={{ gridTemplateColumns: '40px 1fr 60px repeat(6, 44px) 90px', gap: 12 }}
+                      >
+                        {/* 1) Avatar */}
+                        <div className="flex-shrink-0">
                           <div
-                            className="absolute inset-0 rounded-xl blur-sm opacity-50"
-                            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-                          />
-                        )}
-                        <div
-                          className="relative w-11 h-11 rounded-xl flex items-center justify-center text-white text-sm font-bold transition-transform duration-200 group-hover:scale-105"
-                          style={{
-                            background: done
-                              ? 'linear-gradient(135deg, #10b981, #059669)'
-                              : 'linear-gradient(135deg, #1c1917 0%, #2c2520 100%)',
-                            boxShadow: done
-                              ? '0 4px 12px rgba(16,185,129,0.25)'
-                              : '0 4px 12px rgba(28,25,23,0.2)',
-                            fontFamily: 'Fraunces, Georgia, serif',
-                          }}
-                        >
-                          {initials}
-                        </div>
-                        {/* Tamamlandı badge */}
-                        {done && (
-                          <div
-                            className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
-                            style={{ background: '#10b981', boxShadow: '0 2px 6px rgba(16,185,129,0.4)', border: '2px solid #fff' }}
-                          >
-                            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                              <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <Link
-                          href={`/panel/mukellefler/${t.id}`}
-                          className="text-[14px] font-semibold truncate block hover:underline leading-tight"
-                          style={{ color: '#1c1917', letterSpacing: '-0.01em' }}
-                        >
-                          {name(t)}
-                        </Link>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span
-                            className="text-[9.5px] font-bold px-1.5 py-0.5 rounded tabular-nums uppercase"
+                            className="w-9 h-9 rounded-lg flex items-center justify-center text-[12px] font-semibold transition-all duration-200"
                             style={{
-                              background: t.type === 'TUZEL_KISI' ? 'rgba(59,130,246,0.1)' : 'rgba(202,138,4,0.1)',
-                              color: t.type === 'TUZEL_KISI' ? '#2563eb' : '#a16207',
-                              letterSpacing: '0.06em',
+                              background: done ? '#10b981' : '#1c1917',
+                              color: done ? '#fff' : '#b8a06f',
+                              fontFamily: 'Fraunces, Georgia, serif',
+                              letterSpacing: '-0.01em',
                             }}
                           >
-                            {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
-                          </span>
-                          <span className="text-[10.5px] tabular-nums" style={{ color: '#a8a29e' }}>
-                            VKN · {t.taxNumber.slice(0, 4)}****{t.taxNumber.slice(-2)}
-                          </span>
+                            {initials}
+                          </div>
                         </div>
-                      </div>
-                    </div>
 
-                    {/* 2) SON GÜN BADGE */}
-                    <div className="flex justify-center">
-                      {t.evrakTeslimGunu ? (
-                        <div
-                          className="relative w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-110"
-                          style={{
-                            background: 'linear-gradient(135deg, #fef3c7, #fde68a)',
-                            border: '1px solid #f59e0b33',
-                          }}
-                        >
-                          <span className="text-[10px] font-semibold uppercase absolute -top-1.5 left-1/2 -translate-x-1/2 px-1.5 rounded-full" style={{ background: '#f59e0b', color: '#fff', fontSize: 8, letterSpacing: '0.1em' }}>
-                            gün
-                          </span>
-                          <span className="text-[15px] font-bold tabular-nums" style={{ color: '#b45309', fontFamily: 'Fraunces, Georgia, serif' }}>
-                            {t.evrakTeslimGunu}
-                          </span>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#e7e5e4' }}>—</span>
-                      )}
-                    </div>
-
-                    {/* 3) DURUM TIMELINE (6 noktalı) */}
-                    <div className="flex items-center gap-0 relative py-1">
-                      {steps.map((step, i) => (
-                        <div key={step.key} className="flex-1 flex items-center">
-                          <button
-                            onClick={() => handleStatus(t.id, step.field, !step.done)}
-                            title={`${step.label} — ${step.done ? 'Tamamlandı' : 'Bekliyor'}`}
-                            className="relative z-10 transition-all duration-200 hover:scale-125"
+                        {/* 2) İsim */}
+                        <div className="min-w-0">
+                          <Link
+                            href={`/panel/mukellefler/${t.id}`}
+                            className="text-[14px] font-semibold truncate block leading-tight hover:underline"
+                            style={{ color: '#1c1917', letterSpacing: '-0.01em' }}
                           >
-                            <div
-                              className="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200"
-                              style={{
-                                background: step.done ? step.color : '#fff',
-                                border: step.done ? `2px solid ${step.color}` : '2px solid #e7e5e4',
-                                boxShadow: step.done ? `0 0 0 3px ${step.color}22` : 'none',
-                              }}
+                            {name(t)}
+                          </Link>
+                          <p className="text-[11px] mt-1 tabular-nums" style={{ color: '#a8a29e' }}>
+                            {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'} · {t.taxNumber}
+                          </p>
+                        </div>
+
+                        {/* 3) Son Gün */}
+                        <div className="flex justify-center">
+                          {t.evrakTeslimGunu ? (
+                            <span
+                              className="text-[13px] font-semibold tabular-nums"
+                              style={{ color: '#8b7649', fontFamily: 'Fraunces, Georgia, serif' }}
                             >
-                              {step.done && (
-                                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                                  <path d="M1 4L3.5 6.5L9 1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              )}
-                            </div>
-                            <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-[8.5px] font-semibold uppercase whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200" style={{ color: step.done ? step.color : '#a8a29e', letterSpacing: '0.05em' }}>
-                              {step.label}
+                              {String(t.evrakTeslimGunu).padStart(2, '0')}
                             </span>
-                          </button>
-                          {i < steps.length - 1 && (
-                            <div className="flex-1 h-[2px]" style={{ background: steps[i + 1].done && step.done ? step.color : '#e7e5e4' }} />
+                          ) : (
+                            <span className="text-[13px]" style={{ color: '#e7e5e4' }}>·</span>
                           )}
                         </div>
-                      ))}
-                    </div>
 
-                    {/* 4) İLERLEME GAUGE */}
-                    <div className="flex items-center gap-2">
-                      <div className="relative w-10 h-10">
-                        <svg width="40" height="40" className="-rotate-90">
-                          <circle cx="20" cy="20" r="16" strokeWidth="3" stroke="#f0ebde" fill="none" />
-                          <circle
-                            cx="20" cy="20" r="16"
-                            strokeWidth="3"
-                            stroke={done ? '#10b981' : cnt > 0 ? '#b8a06f' : '#e7e5e4'}
-                            fill="none"
-                            strokeDasharray={2 * Math.PI * 16}
-                            strokeDashoffset={2 * Math.PI * 16 * (1 - pctRow / 100)}
-                            strokeLinecap="round"
-                            style={{ transition: 'stroke-dashoffset 0.6s ease' }}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
+                        {/* 4) Durum hücreleri (6 adet) */}
+                        {steps.map((step) => (
+                          <div key={step.field} className="flex justify-center">
+                            <button
+                              onClick={() => handleStatus(t.id, step.field, !step.done)}
+                              title={`${step.label} — ${step.done ? 'Tamamlandı' : 'Tamamla'}`}
+                              className="transition-all duration-150 hover:scale-110"
+                            >
+                              {step.done ? (
+                                <div
+                                  className="w-6 h-6 rounded-md flex items-center justify-center"
+                                  style={{ background: '#1c1917' }}
+                                >
+                                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                    <path d="M1 4L3.5 6.5L9 1" stroke="#b8a06f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                  </svg>
+                                </div>
+                              ) : (
+                                <div
+                                  className="w-6 h-6 rounded-md"
+                                  style={{ background: '#faf8f4', border: '1px solid #e6e0d2' }}
+                                />
+                              )}
+                            </button>
+                          </div>
+                        ))}
+
+                        {/* 5) İlerleme */}
+                        <div className="flex items-center justify-end gap-2 pr-2">
+                          <div className="relative w-20 h-[6px] rounded-full overflow-hidden" style={{ background: '#f0ebde' }}>
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                              style={{
+                                width: `${(cnt / 4) * 100}%`,
+                                background: done ? '#10b981' : '#b8a06f',
+                              }}
+                            />
+                          </div>
                           <span
-                            className="text-[11px] font-bold tabular-nums"
+                            className="text-[11px] tabular-nums font-semibold w-7 text-right"
                             style={{
-                              color: done ? '#059669' : cnt > 0 ? '#8b7649' : '#a8a29e',
+                              color: done ? '#10b981' : cnt > 0 ? '#8b7649' : '#a8a29e',
                               fontFamily: 'Fraunces, Georgia, serif',
                             }}
                           >
@@ -592,36 +551,11 @@ export default function MukelleflerPage() {
                           </span>
                         </div>
                       </div>
-                      <span
-                        className="text-[10.5px] font-bold uppercase"
-                        style={{
-                          color: done ? '#059669' : cnt > 0 ? '#8b7649' : '#a8a29e',
-                          letterSpacing: '0.08em',
-                        }}
-                      >
-                        {done ? 'Tamam' : cnt > 0 ? 'Devam' : 'Başlamadı'}
-                      </span>
                     </div>
-
-                    {/* 5) AKSİYON */}
-                    <Link
-                      href={`/panel/mukellefler/${t.id}`}
-                      className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 ml-auto"
-                      style={{
-                        background: '#1c1917',
-                        color: '#b8a06f',
-                      }}
-                      title="Düzenle"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 20h9" />
-                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                      </svg>
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </>
+            )}
           </div>
 
           {/* Alt bilgi */}
