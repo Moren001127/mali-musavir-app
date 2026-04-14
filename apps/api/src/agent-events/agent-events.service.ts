@@ -209,12 +209,15 @@ Belge türü: ${input.belgeTuru || '?'}
 Tutar: ${input.tutar || '?'}
 Hedef ay: ${input.hedefAy || '?'}
 
-ÖNEMLİ: Satıcı firma ismini oku. Firma ismi içerik hakkında güçlü ipucu verir:
-- "PETROL", "AKARYAKIT", "OIL" → yakıt faturası
-- "GIDA", "GIDAS", "RESTORAN", "YEMEK" → yemek/gıda faturası
-- "OTOMOTIV", "OTO", "LASTİK" → araç parça/lastik
-- "TEKNİK", "TEKNOLOJI", "BİLGİSAYAR" → bilgisayar/elektronik (demirbaş olabilir)
-Firma isminden belli olan kategoriye güvenle karar ver.`;
+NASIL KARAR VERİLİR (ÖNEM SIRASIYLA):
+1) **Fatura GÖRÜNTÜSÜNÜN İÇERİĞİNE** bak — satırlarda ne yazıyor (ürün/hizmet adları)?
+   Örn: "Sprinter Ön Fren Diski", "Motorin 95", "Hamburger menü" — bu asıl kanıt
+2) Hesap kodlarını o içerikle karşılaştır. Uygunsa onay, çelişiyorsa atla.
+3) Firma adı sadece **destekleyici ipucu**. "DİNAMİK OTOMOTİV GIDA TEKSTİL" gibi çok kategorili isimler varsa firma adına değil faturanın içeriğine bak.
+4) Görüntüden içerik netse firma adıyla ufak çelişki takılma — içerik netse onay.
+5) Görüntü bulanık veya içerik seçilmiyorsa "emin_degil" de.
+
+ÖNEMLİ: Hesap kodları 153 (ticari mallar) / 191 (indirilecek KDV) / 320 (satıcılar) kombinasyonu STANDART otomotiv/ticari alış muhasebesidir. Bu kodlar + otomotiv parça içeriği = ONAY. Bu kodlar demirbaş değildir.`;
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
