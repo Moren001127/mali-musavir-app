@@ -122,12 +122,24 @@
       if (!r.ok) return {};
       const j = await r.json();
       const v = j?.sonucValue || j || {};
+      // Tarih fallback zinciri: faturaTarihi → faturaTarihiStr → donemYil+donemAy → insertDttm
+      let tarih = v.faturaTarihi || null;
+      if (!tarih && v.faturaTarihiStr) {
+        // "11.04.2026" → "2026-04-11"
+        const m = String(v.faturaTarihiStr).match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+        if (m) tarih = `${m[3]}-${m[2]}-${m[1]}`;
+        else tarih = v.faturaTarihiStr;
+      }
+      if (!tarih && v.donemYil && v.donemAy) {
+        tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
+      }
+      if (!tarih && v.insertDttm) tarih = String(v.insertDttm).slice(0, 10);
       return {
-        tarih: v.faturaTarihi || v.belgeTarihi || null,
+        tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
         belgeTuru: v.belgeTuru || null,
-        tutar: v.genelToplam || v.tutar || null,
-        firma: v.unvan || v.firma || null,
+        tutar: v.toplamTutar || v.genelToplam || null,
+        firma: v.faturaFirmaAdi || v.firmaUnvan || null,
       };
     } catch { return {}; }
   }
