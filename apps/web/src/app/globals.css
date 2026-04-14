@@ -2,33 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 /* ══════════════════════════════════════════════════════════
    MOREN — Boutique Mali Müşavirlik
    Sıcak, kurumsal, karakterli
    ══════════════════════════════════════════════════════════ */
 
-:root {
-  /* Yüzey — sıcak krem tonları */
+/* ─── TEMA A: Editorial Magazine (varsayılan) ─── */
+:root, [data-theme="A"] {
   --bg:           #faf8f4;
   --surface:      #ffffff;
   --surface-2:    #f4f1ea;
   --surface-3:    #e8e2d4;
   --card-bg:      #ffffff;
-
-  /* Kenarlık */
   --border:       #e6e0d2;
   --border-soft:  #f0ebde;
   --border-hover: #d4ccba;
-
-  /* Vurgu — derin charcoal + sıcak altın */
-  --accent:       #1c1917;
-  --accent-soft:  #292524;
-  --accent-light: #f5f5f4;
-  --accent-50:    #fafaf9;
+  --accent:       #5a1f1f;
+  --accent-soft:  #6b2828;
+  --accent-light: #f5e8e8;
+  --accent-50:    #fcf6f6;
   --gold-accent:  #b8a06f;
   --gold-deep:    #8b7649;
+  --font-heading: 'Fraunces', Georgia, serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+/* ─── TEMA B: Bloomberg Terminal Pro (Dark) ─── */
+[data-theme="B"] {
+  --bg:           #0a0e14;
+  --surface:      #11161d;
+  --surface-2:    #161c25;
+  --surface-3:    #1f2731;
+  --card-bg:      #11161d;
+  --border:       #1f2731;
+  --border-soft:  #161c25;
+  --border-hover: #2a3441;
+  --accent:       #00d084;
+  --accent-soft:  #00b873;
+  --accent-light: rgba(0,208,132,0.12);
+  --accent-50:    rgba(0,208,132,0.06);
+  --gold-accent:  #ffb454;
+  --gold-deep:    #e09b3b;
+  --text:           #e6e9ef;
+  --text-primary:   #e6e9ef;
+  --text-secondary: #a4adb8;
+  --text-muted:     #6b7585;
+  --text-light:     #495260;
+  --text-serif:     #e6e9ef;
+  --font-heading: 'JetBrains Mono', 'Roboto Mono', monospace;
+  --font-body:    'JetBrains Mono', 'Roboto Mono', monospace;
+  --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+/* ─── TEMA C: Swiss Architectural ─── */
+[data-theme="C"] {
+  --bg:           #ffffff;
+  --surface:      #ffffff;
+  --surface-2:    #f7f7f7;
+  --surface-3:    #ededed;
+  --card-bg:      #ffffff;
+  --border:       #000000;
+  --border-soft:  #d4d4d4;
+  --border-hover: #000000;
+  --accent:       #0019fb;
+  --accent-soft:  #1228e8;
+  --accent-light: rgba(0,25,251,0.08);
+  --accent-50:    #f5f6ff;
+  --gold-accent:  #0019fb;
+  --gold-deep:    #001596;
+  --text:           #000000;
+  --text-primary:   #000000;
+  --text-secondary: #1f1f1f;
+  --text-muted:     #525252;
+  --text-light:     #a3a3a3;
+  --text-serif:     #000000;
+  --font-heading: 'Inter', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Roboto Mono', monospace;
+}
 
   /* Başarı / uyarı / hata */
   --success:      #15803d;
@@ -79,15 +133,16 @@ html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body, 'Inter'), system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.55;
   letter-spacing: -0.005em;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Başlıklarda Fraunces (kurumsal serif) */
+/* Başlıklarda tema fontu */
 h1, h2, .serif {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-heading, 'Fraunces'), Georgia, serif;
   letter-spacing: -0.02em;
   font-weight: 600;
   color: var(--text-serif);
@@ -97,6 +152,8 @@ h3, h4 {
   color: var(--text);
   font-weight: 600;
 }
+.tabular { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-mono, 'JetBrains Mono'), monospace; }
 
 /* ── Scrollbar ────────────────────────────────────────── */
 ::-webkit-scrollbar        { width: 8px; height: 8px; }

@@ -96,7 +96,10 @@ export default function MukelleflerPage() {
     t.monthlyStatus?.beyannameVerildi,
   ].filter(Boolean).length;
 
-  const taxpayers = raw.filter(t => filter === 'done' ? isAllDone(t) : filter === 'pending' ? !isAllDone(t) : true);
+  const taxpayers = raw
+    .filter(t => filter === 'done' ? isAllDone(t) : filter === 'pending' ? !isAllDone(t) : true)
+    .slice()
+    .sort((a, b) => name(a).localeCompare(name(b), 'tr', { sensitivity: 'base' }));
   const total   = raw.length;
   const geldi   = raw.filter(t => t.monthlyStatus?.evraklarGeldi).length;
   const islendi = raw.filter(t => t.monthlyStatus?.evraklarIslendi).length;
@@ -200,7 +203,7 @@ export default function MukelleflerPage() {
             {([['all', 'Tümü'], ['pending', 'Bekleyenler'], ['done', 'Tamamlananlar']] as const).map(([v, l]) => (
               <button key={v} onClick={() => setFilter(v)}
                 className="px-3.5 py-2 font-medium transition-all duration-150"
-                style={{ background: filter === v ? 'var(--navy)' : 'transparent', color: filter === v ? 'white' : '#9ca3af' }}>
+                style={{ background: filter === v ? 'var(--accent)' : 'transparent', color: filter === v ? 'white' : 'var(--text-muted)' }}>
                 {l}
               </button>
             ))}
