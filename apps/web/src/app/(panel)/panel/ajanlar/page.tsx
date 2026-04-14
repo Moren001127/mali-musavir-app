@@ -285,31 +285,75 @@ function AgentCard({
             </div>
           )}
 
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => runMut.mutate('isle')}
-              disabled={selectedIds.length === 0 || runMut.isPending}
-              className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-              style={{
-                background: selectedIds.length > 0 ? '#059669' : 'var(--muted)',
-                color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
-                opacity: runMut.isPending ? 0.6 : 1,
-              }}
-            >
-              <Play size={14} />
-              {runMut.isPending ? 'Gönderiliyor...' : 'Şimdi İşle'}
-            </button>
-            {calisiyor && (
+          {agent.id === 'mihsap' ? (
+            <div className="flex gap-2 flex-wrap">
               <button
-                onClick={() => runMut.mutate('durdur')}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
-                style={{ background: 'rgba(239,68,68,.1)', color: '#dc2626' }}
+                onClick={() => runMut.mutate('isle_alis')}
+                disabled={selectedIds.length === 0 || runMut.isPending}
+                className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                style={{
+                  background: selectedIds.length > 0 ? '#059669' : 'var(--muted)',
+                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
+                }}
               >
-                <Square size={14} />
-                Durdur
+                <Play size={13} />
+                Alış İşle
               </button>
-            )}
-          </div>
+              <button
+                onClick={() => runMut.mutate('isle_satis')}
+                disabled={selectedIds.length === 0 || runMut.isPending}
+                className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                style={{
+                  background: selectedIds.length > 0 ? '#1e40af' : 'var(--muted)',
+                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
+                }}
+              >
+                <Play size={13} />
+                Satış İşle
+              </button>
+              <button
+                onClick={() => runMut.mutate('isle_odeme')}
+                disabled={selectedIds.length === 0 || runMut.isPending}
+                className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                style={{ background: 'var(--muted)', color: 'var(--text)' }}
+              >
+                Ödeme
+              </button>
+              <button
+                onClick={() => runMut.mutate('isle_tahsilat')}
+                disabled={selectedIds.length === 0 || runMut.isPending}
+                className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm disabled:opacity-50"
+                style={{ background: 'var(--muted)', color: 'var(--text)' }}
+              >
+                Tahsilat
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => runMut.mutate('isle')}
+                disabled={selectedIds.length === 0 || runMut.isPending}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                style={{
+                  background: selectedIds.length > 0 ? '#059669' : 'var(--muted)',
+                  color: selectedIds.length > 0 ? 'white' : 'var(--text-muted)',
+                }}
+              >
+                <Play size={14} />
+                Şimdi İşle
+              </button>
+              {calisiyor && (
+                <button
+                  onClick={() => runMut.mutate('durdur')}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+                  style={{ background: 'rgba(239,68,68,.1)', color: '#dc2626' }}
+                >
+                  <Square size={14} />
+                  Durdur
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
