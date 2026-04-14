@@ -164,6 +164,8 @@ export class AgentEventsService {
     belgeNo?: string;
     belgeTuru?: string;
     mukellef?: string;
+    firma?: string;
+    tutar?: number | string;
     tenantId?: string;
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -198,12 +200,21 @@ KURALLAR (sırayla):
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
-    const userText = `Mükellef: ${input.mukellef || '?'}
+    const userText = `Mükellef (faturayı alan): ${input.mukellef || '?'}
+Satıcı firma (faturayı kesen): ${input.firma || '?'}
 Hesap kodları: ${kodListe || '(boş)'}
 Fatura tarihi: ${input.faturaTarihi || '?'}
 Belge no: ${input.belgeNo || '?'}
 Belge türü: ${input.belgeTuru || '?'}
-Hedef ay: ${input.hedefAy || '?'}`;
+Tutar: ${input.tutar || '?'}
+Hedef ay: ${input.hedefAy || '?'}
+
+ÖNEMLİ: Satıcı firma ismini oku. Firma ismi içerik hakkında güçlü ipucu verir:
+- "PETROL", "AKARYAKIT", "OIL" → yakıt faturası
+- "GIDA", "GIDAS", "RESTORAN", "YEMEK" → yemek/gıda faturası
+- "OTOMOTIV", "OTO", "LASTİK" → araç parça/lastik
+- "TEKNİK", "TEKNOLOJI", "BİLGİSAYAR" → bilgisayar/elektronik (demirbaş olabilir)
+Firma isminden belli olan kategoriye güvenle karar ver.`;
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
