@@ -101,10 +101,18 @@
     return 'ok';
   }
 
-  async function clickIleri() {
+  async function clickIleri(currentFid) {
     const btns = [...document.querySelectorAll('button')];
     const ileri = btns.find((b) => b.textContent.trim().startsWith('İleri') && b.offsetParent !== null);
     await click(ileri);
+    // URL'in değişmesini bekle (max 5 sn)
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000) {
+      const m = location.href.match(/\/(\d+)\?count=/);
+      if (m && m[1] !== currentFid) return;
+      if (location.href.match(/count=0/)) return;
+      await sleep(150);
+    }
   }
 
   async function clickKaydetOnayla() {
@@ -289,13 +297,13 @@
       if (!ayUygun) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`);
-        await clickIleri(); continue;
+        await clickIleri(fid); continue;
       }
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş');
-        await clickIleri(); continue;
+        await clickIleri(fid); continue;
       }
       // LLM karar
       setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
@@ -309,7 +317,7 @@
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`);
-        await clickIleri(); continue;
+        await clickIleri(fid); continue;
       }
       try {
         await clickKaydetOnayla();
