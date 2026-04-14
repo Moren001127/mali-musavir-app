@@ -214,13 +214,18 @@ function styleFor(status: string) {
   switch (status) {
     case 'onaylandi':
     case 'basarili':
-      return { color: '#34d399', icon: '✓' };
+    case 'ok':
+      return { color: '#60a5fa', icon: '✓' }; // mavi - onay
     case 'hata':
-      return { color: '#f87171', icon: '✗' };
+    case 'error':
+      return { color: '#f87171', icon: '✗' }; // kırmızı - hata
     case 'atlandi':
-      return { color: '#fbbf24', icon: '↷' };
+    case 'skip':
+      return { color: '#fbbf24', icon: '↷' }; // sarı - atlandı
+    case 'demirbas':
+      return { color: '#c084fc', icon: '⏩' }; // mor - demirbaş
     default:
-      return { color: '#60a5fa', icon: '•' };
+      return { color: '#94a3b8', icon: '•' };
   }
 }
 

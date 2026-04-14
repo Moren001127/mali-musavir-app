@@ -80,11 +80,22 @@
     }
     return null;
   }
-  async function logEvent(mukellefId, mukellefAd, status, detail) {
+  async function logEvent(mukellefId, mukellefAd, status, detail, extra = {}) {
     try {
       await api('/agent/events/ingest', {
         method: 'POST',
-        body: JSON.stringify({ agent: 'mihsap', mukellef: mukellefAd, status, message: detail, meta: { mukellefId } }),
+        body: JSON.stringify({
+          agent: 'mihsap',
+          mukellef: mukellefAd,
+          status,
+          message: detail,
+          firma: extra.firma || null,
+          fisNo: extra.belgeNo || null,
+          tutar: extra.tutar ? Number(extra.tutar) : null,
+          hesapKodu: extra.hesapKodu || null,
+          kdv: extra.kdv || null,
+          meta: { mukellefId, ...extra },
+        }),
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
   }
@@ -219,8 +230,6 @@
   }
 
   async function readHesapKodlari() {
-    // Sadece "\\d{3}\\.\\d+" pattern'i olan (gerçek hesap kodları) al.
-    // Mükellef adı, TL, %20 gibi dropdown'ları ele.
     const t0 = Date.now();
     while (Date.now() - t0 < 15000) {
       const els = [...document.querySelectorAll('.ant-select-selection-item')];
@@ -230,6 +239,12 @@
       await sleep(500);
     }
     return [];
+  }
+
+  function readKdvOrani() {
+    const els = [...document.querySelectorAll('.ant-select-selection-item')];
+    const kdv = els.map((e) => (e.textContent || '').trim()).find((t) => /^%\d/.test(t));
+    return kdv || null;
   }
 
   function tumKodlarDolu(codes) {
@@ -296,13 +311,13 @@
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`);
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş');
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
       // LLM karar
@@ -316,17 +331,25 @@
       const sebep = (decision?.sebep || '').slice(0, 120);
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`);
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
         await clickIleri(fid); continue;
       }
       try {
         await clickKaydetOnayla();
         counters.onay++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`);
+        await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        // F2 sonrası URL değişimini bekle (Mihsap auto-next yapar)
+        const t0 = Date.now();
+        while (Date.now() - t0 < 6000) {
+          const m2 = location.href.match(/\/(\d+)\?count=/);
+          if (m2 && m2[1] !== fid) break;
+          if (/count=0/.test(location.href)) break;
+          await sleep(200);
+        }
       } catch (e) {
         counters.hata++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'error', String(e));
-        await clickIleri();
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await clickIleri(fid);
       }
     }
   }
