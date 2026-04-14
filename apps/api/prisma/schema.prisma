@@ -760,6 +760,59 @@ model TaxpayerMonthlyStatus {
 }
 
 // ============================================================
+// OTOMASYON AJANLARI (Local script → Portal bridge)
+// ============================================================
+model AgentEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  agent      String   // "luca" | "mihsap" | "tebligat" ...
+  action     String?  // "F2" | "F9" | "ZIP_MOVE" ...
+  status     String   // "onaylandi" | "atlandi" | "hata" | "basarili" | "bilgi"
+  message    String?
+  mukellef   String?
+  firma      String?
+  fisNo      String?
+  tutar      Decimal? @db.Decimal(14, 2)
+  hesapKodu  String?
+  kdv        String?
+  meta       Json?
+  ts         DateTime @default(now())
+
+  @@index([tenantId, ts])
+  @@index([tenantId, agent, ts])
+  @@index([tenantId, mukellef])
+  @@map("agent_events")
+}
+
+model AgentRule {
+  id         String   @id @default(cuid())
+  tenantId   String
+  mukellef   String
+  faaliyet   String?
+  defterTuru String?
+  profile    Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, mukellef])
+  @@index([tenantId])
+  @@map("agent_rules")
+}
+
+model AgentStatus {
+  id        String   @id @default(cuid())
+  tenantId  String
+  agent     String
+  running   Boolean  @default(false)
+  hedefAy   String?
+  lastPing  DateTime @default(now())
+  meta      Json?
+
+  @@unique([tenantId, agent])
+  @@map("agent_status")
+}
+
+// ============================================================
 // SMS / WHATSAPP ŞABLONLARI
 // ============================================================
 model SmsTemplate {

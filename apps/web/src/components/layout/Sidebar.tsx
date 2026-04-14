@@ -16,6 +16,9 @@ import {
   Printer,
   LogOut,
   ChevronRight,
+  Bot,
+  Activity,
+  Sliders,
 } from 'lucide-react';
 
 const navGroups = [
@@ -35,6 +38,14 @@ const navGroups = [
     items: [
       { href: '/panel/kdv-kontrol',  label: 'KDV Kontrol',    icon: FileCheck },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma',   icon: Printer },
+    ],
+  },
+  {
+    label: 'OTOMASYON',
+    items: [
+      { href: '/panel/ajanlar',           label: 'Ajanlar',             icon: Bot },
+      { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
+      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
     ],
   },
   {

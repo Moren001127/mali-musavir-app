@@ -13,6 +13,7 @@ import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
 import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
+import { AgentEventsModule } from './agent-events/agent-events.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -31,6 +32,7 @@ import { ReminderCron } from './schedule/reminder.cron';
     NotificationsModule,
     FisYazdirmaModule,
     SmsTemplatesModule,
+    AgentEventsModule,
   ],
   providers: [ReminderCron],
 })
