@@ -161,4 +161,59 @@ export class AgentEventsService {
       data: { ...data, finishedAt } as any,
     });
   }
+
+  /** Mihsap'tan çekilen mükellefleri toplu upsert (taxNumber ile eşle) */
+  async bulkImportTaxpayers(
+    tenantId: string,
+    taxpayers: Array<{
+      type: string;
+      taxNumber: string;
+      taxOffice?: string;
+      companyName?: string;
+      firstName?: string;
+      lastName?: string;
+      mihsapId?: string;
+      mihsapDefterTuru?: string;
+      lucaSlug?: string;
+    }>,
+  ) {
+    const created: string[] = [];
+    const updated: string[] = [];
+    const errors: Array<{ taxNumber: string; error: string }> = [];
+
+    for (const t of taxpayers) {
+      if (!t.taxNumber || t.taxNumber.length < 10) {
+        errors.push({ taxNumber: t.taxNumber || '(bos)', error: 'gecersiz vergi no' });
+        continue;
+      }
+      try {
+        const existing = await this.prisma.taxpayer.findFirst({
+          where: { tenantId, taxNumber: t.taxNumber },
+          select: { id: true },
+        });
+        const data: any = {
+          tenantId,
+          type: t.type as any,
+          taxNumber: t.taxNumber,
+          taxOffice: t.taxOffice || '-',
+          companyName: t.companyName || null,
+          firstName: t.firstName || null,
+          lastName: t.lastName || null,
+          mihsapId: t.mihsapId || null,
+          mihsapDefterTuru: t.mihsapDefterTuru || null,
+          lucaSlug: t.lucaSlug || null,
+        };
+        if (existing) {
+          await this.prisma.taxpayer.update({ where: { id: existing.id }, data });
+          updated.push(t.taxNumber);
+        } else {
+          await this.prisma.taxpayer.create({ data });
+          created.push(t.taxNumber);
+        }
+      } catch (e: any) {
+        errors.push({ taxNumber: t.taxNumber, error: e?.message ?? 'unknown' });
+      }
+    }
+    return { created: created.length, updated: updated.length, errors };
+  }
 }

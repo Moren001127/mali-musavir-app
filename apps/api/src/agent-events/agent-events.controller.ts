@@ -183,4 +183,17 @@ export class AgentEventsController {
     const tenantId = this.resolveTenantFromToken(token);
     return this.service.updateCommand(tenantId, id, body);
   }
+
+  /** Mihsap'tan çekilen mükellefleri toplu upsert */
+  @Post('taxpayers/bulk-import')
+  bulkImportTaxpayers(
+    @Headers('x-agent-token') token: string,
+    @Body() body: { taxpayers: any[] },
+  ) {
+    const tenantId = this.resolveTenantFromToken(token);
+    if (!Array.isArray(body?.taxpayers)) {
+      throw new BadRequestException('taxpayers dizisi gerekli');
+    }
+    return this.service.bulkImportTaxpayers(tenantId, body.taxpayers);
+  }
 }
