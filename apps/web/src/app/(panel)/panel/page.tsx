@@ -98,13 +98,22 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       {/* Başlık */}
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
         <div>
-          <h1 className="text-[28px] font-semibold" style={{ color: 'var(--text)', letterSpacing: '-0.025em' }}>
-            Gösterge Paneli
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-6 h-px" style={{ background: 'var(--gold-accent)' }}></span>
+            <span className="text-[10.5px] uppercase font-semibold" style={{ color: 'var(--gold-deep)', letterSpacing: '0.15em' }}>
+              Gösterge
+            </span>
+          </div>
+          <h1
+            className="serif"
+            style={{ fontSize: 34, lineHeight: 1.1, color: 'var(--text-serif)' }}
+          >
+            Ofis Paneli
           </h1>
-          <p className="text-[14px] mt-1" style={{ color: 'var(--text-muted)' }}>
-            Ofis genel durumu — güncel özet
+          <p className="text-[14px] mt-2" style={{ color: 'var(--text-muted)' }}>
+            Mükellefler · beyannameler · operasyonel durum
           </p>
         </div>
         <Link href="/panel/mukellefler/yeni" className="btn-primary">
