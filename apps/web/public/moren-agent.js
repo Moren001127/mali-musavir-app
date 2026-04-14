@@ -9,7 +9,7 @@
   }
   window.__morenAgent = { running: true, stopRequested: false };
 
-  const API = 'https://api.morenmusavirlik.com/api/v1';
+  const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
     TOKEN = prompt('Moren Agent Token:') || '';
