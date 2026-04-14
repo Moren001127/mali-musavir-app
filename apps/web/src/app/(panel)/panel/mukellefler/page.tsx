@@ -129,203 +129,106 @@ export default function MukelleflerPage() {
           </Link>
         </div>
 
-        {/* DASHBOARD — Yaratıcı Görsel Tasarım */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* DASHBOARD — Kompakt Özet Şerit */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
 
-          {/* === BÜYÜK HERO KART: Dönem İlerlemesi (5/12) === */}
+          {/* === KOMPAKT HERO: Dönem (4/12) === */}
           <div
-            className="lg:col-span-5 relative overflow-hidden rounded-2xl p-6 group transition-all duration-500 hover:shadow-2xl"
+            className="lg:col-span-4 relative overflow-hidden rounded-xl group transition-all duration-300 hover:shadow-lg"
             style={{
-              background: 'linear-gradient(135deg, #0f0d0b 0%, #1c1917 50%, #2c2520 100%)',
-              minHeight: 200,
-              boxShadow: '0 10px 40px -10px rgba(0,0,0,0.3)',
+              background: 'linear-gradient(135deg, #1c1917 0%, #2c2520 100%)',
+              boxShadow: '0 4px 16px -4px rgba(0,0,0,0.2)',
             }}
           >
-            {/* Animasyonlu radial arkaplan */}
+            {/* Hafif altın ışıltı */}
             <div
-              className="absolute inset-0 opacity-60 transition-opacity duration-700 group-hover:opacity-90"
-              style={{
-                background: `radial-gradient(circle at 20% 20%, rgba(184,160,111,0.25), transparent 45%),
-                             radial-gradient(circle at 80% 80%, rgba(184,160,111,0.12), transparent 50%)`,
-              }}
-            />
-            {/* Grid pattern overlay */}
-            <div
-              className="absolute inset-0 opacity-[0.08]"
-              style={{
-                backgroundImage: 'linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.4) 1px, transparent 1px)',
-                backgroundSize: '32px 32px',
-              }}
-            />
-            {/* Dekoratif büyük daire */}
-            <div
-              className="absolute -top-16 -right-16 w-52 h-52 rounded-full opacity-20 transition-transform duration-700 group-hover:scale-110"
-              style={{ background: 'radial-gradient(circle, #b8a06f, transparent 65%)' }}
+              className="absolute inset-0 opacity-40"
+              style={{ background: 'radial-gradient(circle at 10% 20%, rgba(184,160,111,0.2), transparent 50%)' }}
             />
 
-            <div className="relative flex flex-col h-full justify-between" style={{ minHeight: 160 }}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-6 h-px" style={{ background: '#b8a06f' }} />
-                    <span className="text-[10px] uppercase font-bold tracking-[0.2em]" style={{ color: '#b8a06f' }}>
-                      Dönem
-                    </span>
-                  </div>
-                  <h2
-                    className="text-white leading-none mb-2"
-                    style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em' }}
+            <div className="relative px-5 py-4 flex items-center gap-4">
+              {/* Mini donut */}
+              <div className="relative flex-shrink-0" style={{ width: 54, height: 54 }}>
+                <svg width="54" height="54" className="-rotate-90">
+                  <circle cx="27" cy="27" r="22" strokeWidth="3" stroke="rgba(255,255,255,0.08)" fill="none" />
+                  <circle
+                    cx="27" cy="27" r="22"
+                    strokeWidth="3"
+                    stroke="#b8a06f"
+                    fill="none"
+                    strokeDasharray={2 * Math.PI * 22}
+                    strokeDashoffset={2 * Math.PI * 22 * (1 - pct / 100)}
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span
+                    className="text-white tabular-nums"
+                    style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em' }}
                   >
-                    {MONTHS[month - 1]}
-                  </h2>
-                  <p className="text-sm tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>{year}</p>
-                </div>
-
-                {/* Sirküler % göstergesi */}
-                <div className="relative" style={{ width: 90, height: 90 }}>
-                  <svg width="90" height="90" className="-rotate-90">
-                    <circle cx="45" cy="45" r="38" strokeWidth="5" stroke="rgba(255,255,255,0.08)" fill="none" />
-                    <circle
-                      cx="45" cy="45" r="38"
-                      strokeWidth="5"
-                      stroke="url(#goldGrad)"
-                      fill="none"
-                      strokeDasharray={2 * Math.PI * 38}
-                      strokeDashoffset={2 * Math.PI * 38 * (1 - pct / 100)}
-                      strokeLinecap="round"
-                      style={{ transition: 'stroke-dashoffset 1s ease-out', filter: 'drop-shadow(0 0 6px rgba(184,160,111,0.5))' }}
-                    />
-                    <defs>
-                      <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#d4b876" />
-                        <stop offset="100%" stopColor="#8b7649" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span
-                      className="text-white leading-none tabular-nums"
-                      style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em' }}
-                    >
-                      {pct}
-                    </span>
-                    <span className="text-[10px] font-bold" style={{ color: '#b8a06f' }}>%</span>
-                  </div>
+                    %{pct}
+                  </span>
                 </div>
               </div>
 
-              {/* Alt bilgi + ilerleme çubuğu */}
-              <div className="mt-5">
-                <div className="flex items-baseline justify-between mb-2">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-bold tabular-nums" style={{ color: '#fafaf9', fontFamily: 'Fraunces, Georgia, serif' }}>
-                      {allDone}
-                    </span>
-                    <span className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>/</span>
-                    <span className="text-base tabular-nums" style={{ color: 'rgba(255,255,255,0.5)' }}>{total}</span>
-                    <span className="text-[11px] ml-2" style={{ color: 'rgba(255,255,255,0.4)' }}>mükellef tamamlandı</span>
-                  </div>
+              {/* Metin */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="w-3 h-px" style={{ background: '#b8a06f' }} />
+                  <span className="text-[9.5px] uppercase font-bold tracking-[0.2em]" style={{ color: '#b8a06f' }}>
+                    Dönem İlerlemesi
+                  </span>
                 </div>
-                <div className="relative h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-1000 ease-out"
-                    style={{
-                      width: `${pct}%`,
-                      background: 'linear-gradient(90deg, #d4b876 0%, #b8a06f 50%, #d4b876 100%)',
-                      boxShadow: '0 0 10px rgba(184,160,111,0.5)',
-                    }}
-                  />
-                  {/* Shine animation */}
-                  <div
-                    className="absolute inset-y-0 w-8 pointer-events-none"
-                    style={{
-                      left: `${Math.max(0, pct - 4)}%`,
-                      background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-                      transition: 'left 1s ease-out',
-                    }}
-                  />
-                </div>
+                <p className="text-white leading-tight" style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 17, fontWeight: 600 }}>
+                  {MONTHS[month - 1]} <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>{year}</span>
+                </p>
+                <p className="text-[11px] mt-0.5 tabular-nums" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                  {allDone} / {total} tamamlandı
+                </p>
               </div>
             </div>
           </div>
 
-          {/* === 4 KPI KUTUSU (7/12) === */}
-          <div className="lg:col-span-7 grid grid-cols-2 gap-3">
+          {/* === 4 KOMPAKT KPI (8/12) === */}
+          <div className="lg:col-span-8 grid grid-cols-4 gap-3">
             {[
-              { label: 'Evrak Geldi',    val: geldi,   tot: total, Icon: '📥', color: '#10b981', bg: '#ecfdf5', dark: '#047857' },
-              { label: 'Evrak İşlendi', val: islendi,  tot: total, Icon: '⚙️', color: '#0ea5e9', bg: '#f0f9ff', dark: '#0369a1' },
-              { label: 'KDV Kontrol',   val: kdv,      tot: total, Icon: '🔍', color: '#f59e0b', bg: '#fffbeb', dark: '#b45309' },
-              { label: 'Beyanname',     val: beyan,    tot: total, Icon: '📄', color: '#8b5cf6', bg: '#f5f3ff', dark: '#6d28d9' },
-            ].map(({ label, val, tot, Icon, color, bg, dark }, idx) => {
+              { label: 'Evrak Geldi',    val: geldi,    tot: total, color: '#10b981', dark: '#047857' },
+              { label: 'İşlendi',         val: islendi,  tot: total, color: '#0ea5e9', dark: '#0369a1' },
+              { label: 'KDV Kontrol',    val: kdv,       tot: total, color: '#f59e0b', dark: '#b45309' },
+              { label: 'Beyanname',      val: beyan,    tot: total, color: '#8b5cf6', dark: '#6d28d9' },
+            ].map(({ label, val, tot, color, dark }) => {
               const p = tot > 0 ? Math.round((val / tot) * 100) : 0;
               return (
                 <div
                   key={label}
-                  className="relative overflow-hidden rounded-2xl p-4 group transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer"
-                  style={{
-                    background: '#fff',
-                    border: `1px solid ${color}22`,
-                  }}
+                  className="relative bg-white rounded-xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group"
+                  style={{ border: '1px solid #e6e0d2' }}
                 >
-                  {/* Üst renkli çizgi */}
+                  {/* Üst renkli ince şerit */}
                   <div
-                    className="absolute top-0 left-0 right-0 h-1 transition-all duration-300 group-hover:h-1.5"
-                    style={{ background: `linear-gradient(90deg, ${color}, ${dark})` }}
-                  />
-                  {/* Dekoratif kavis */}
-                  <div
-                    className="absolute -right-8 -bottom-8 w-28 h-28 rounded-full opacity-[0.08] transition-transform duration-500 group-hover:scale-125"
+                    className="absolute top-0 left-3 right-3 h-0.5 rounded-b-full transition-all duration-200 group-hover:h-1"
                     style={{ background: color }}
                   />
-
-                  <div className="relative">
-                    {/* Üst satır: ikon + % rozet */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-transform duration-200 group-hover:scale-110 group-hover:rotate-6"
-                        style={{
-                          background: `linear-gradient(135deg, ${bg}, #fff)`,
-                          border: `1px solid ${color}22`,
-                          boxShadow: `0 2px 8px ${color}1a`,
-                        }}
-                      >
-                        {Icon}
-                      </div>
-                      <div
-                        className="px-2 py-0.5 rounded-full flex items-center gap-1"
-                        style={{ background: `${color}14` }}
-                      >
-                        <span className="w-1 h-1 rounded-full" style={{ background: color }} />
-                        <span className="text-[10.5px] font-bold tabular-nums" style={{ color: dark }}>%{p}</span>
-                      </div>
-                    </div>
-
-                    {/* Büyük sayı */}
-                    <div className="flex items-baseline gap-1.5 mb-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#78716c' }}>
+                    {label}
+                  </p>
+                  <div className="flex items-baseline justify-between">
+                    <div className="flex items-baseline gap-1">
                       <span
                         className="tabular-nums leading-none"
-                        style={{ fontSize: 28, fontFamily: 'Fraunces, Georgia, serif', fontWeight: 700, color: dark, letterSpacing: '-0.03em' }}
+                        style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 22, fontWeight: 700, color: dark, letterSpacing: '-0.02em' }}
                       >
                         {val}
                       </span>
-                      <span className="text-[11px] font-medium" style={{ color: '#94a3b8' }}>
-                        / {tot}
-                      </span>
+                      <span className="text-[11px]" style={{ color: '#a8a29e' }}>/ {tot}</span>
                     </div>
-                    <p className="text-[11.5px] font-semibold uppercase tracking-wider" style={{ color: '#64748b' }}>
-                      {label}
-                    </p>
-
-                    {/* Alt ilerleme */}
-                    <div className="mt-3 h-[5px] rounded-full overflow-hidden" style={{ background: `${color}12` }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${p}%`,
-                          background: `linear-gradient(90deg, ${color}, ${dark})`,
-                        }}
-                      />
-                    </div>
+                    <span className="text-[10.5px] font-bold tabular-nums" style={{ color: color }}>
+                      %{p}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-[3px] rounded-full overflow-hidden" style={{ background: `${color}12` }}>
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${p}%`, background: color }} />
                   </div>
                 </div>
               );
@@ -411,26 +314,22 @@ export default function MukelleflerPage() {
               <>
                 {/* Tablo başlığı */}
                 <div
-                  className="grid items-center px-6 py-3 text-[10px] font-bold uppercase"
+                  className="grid items-center px-5 py-2.5 text-[10px] font-semibold uppercase"
                   style={{
-                    gridTemplateColumns: '40px 1fr 60px repeat(6, 44px) 90px',
-                    gap: 12,
-                    background: '#faf8f4',
+                    gridTemplateColumns: '8px 1fr 44px 200px 110px 24px',
+                    gap: 16,
+                    background: 'linear-gradient(90deg, #faf8f4, #f4f1ea)',
                     borderBottom: '1px solid #e6e0d2',
                     color: '#78716c',
-                    letterSpacing: '0.1em',
+                    letterSpacing: '0.12em',
                   }}
                 >
                   <span></span>
                   <span>Mükellef</span>
-                  <span className="text-center">Son Gün</span>
-                  <span className="text-center" title="Evrak Geldi">Gel</span>
-                  <span className="text-center" title="Evrak İşlendi">İşl</span>
-                  <span className="text-center" title="İndirilecek KDV">İnd</span>
-                  <span className="text-center" title="Hesaplanan KDV">Hes</span>
-                  <span className="text-center" title="Beyanname">Bey</span>
-                  <span className="text-center" title="E-Arşiv">Arş</span>
-                  <span className="text-right pr-2">İlerleme</span>
+                  <span className="text-center">Gün</span>
+                  <span className="text-center">Durum</span>
+                  <span className="text-right">İlerleme</span>
+                  <span></span>
                 </div>
 
                 {taxpayers.map((t) => {
@@ -440,116 +339,150 @@ export default function MukelleflerPage() {
                   const initials = name(t).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
                   const steps = [
-                    { field: 'evraklarGeldi',         done: s?.evraklarGeldi,          label: 'Evrak Geldi' },
-                    { field: 'evraklarIslendi',       done: s?.evraklarIslendi,        label: 'Evrak İşlendi' },
-                    { field: 'indirilecekKdvKontrol', done: s?.indirilecekKdvKontrol,  label: 'İndirilecek KDV' },
-                    { field: 'hesaplananKdvKontrol',  done: s?.hesaplananKdvKontrol,   label: 'Hesaplanan KDV' },
+                    { field: 'evraklarGeldi',         done: s?.evraklarGeldi,          label: 'Evrak' },
+                    { field: 'evraklarIslendi',       done: s?.evraklarIslendi,        label: 'İşlendi' },
+                    { field: 'indirilecekKdvKontrol', done: s?.indirilecekKdvKontrol,  label: 'İnd.KDV' },
+                    { field: 'hesaplananKdvKontrol',  done: s?.hesaplananKdvKontrol,   label: 'Hes.KDV' },
                     { field: 'beyannameVerildi',      done: s?.beyannameVerildi,       label: 'Beyanname' },
                     { field: 'eArsivKontrol',         done: s?.eArsivKontrol,          label: 'E-Arşiv' },
                   ];
 
+                  const dotCount = steps.filter(x => x.done).length;
+
                   return (
                     <div
                       key={t.id}
-                      className="relative group transition-colors duration-150 hover:bg-[#faf8f4]"
+                      className="relative group transition-all duration-200 hover:bg-[#faf8f4]"
                       style={{ borderBottom: '1px solid #f4f1ea' }}
                     >
-                      {/* Ana satır */}
                       <div
-                        className="grid items-center px-6 py-4"
-                        style={{ gridTemplateColumns: '40px 1fr 60px repeat(6, 44px) 90px', gap: 12 }}
+                        className="grid items-center px-5 py-3"
+                        style={{ gridTemplateColumns: '8px 1fr 44px 200px 110px 24px', gap: 16 }}
                       >
-                        {/* 1) Avatar */}
-                        <div className="flex-shrink-0">
-                          <div
-                            className="w-9 h-9 rounded-lg flex items-center justify-center text-[12px] font-semibold transition-all duration-200"
+                        {/* 1) Durum çizgisi (sol) */}
+                        <div className="flex justify-center">
+                          <span
+                            className="w-[3px] h-9 rounded-full transition-all duration-300"
                             style={{
-                              background: done ? '#10b981' : '#1c1917',
-                              color: done ? '#fff' : '#b8a06f',
-                              fontFamily: 'Fraunces, Georgia, serif',
-                              letterSpacing: '-0.01em',
+                              background: done
+                                ? 'linear-gradient(180deg, #10b981, #059669)'
+                                : cnt > 0
+                                ? 'linear-gradient(180deg, #b8a06f, #8b7649)'
+                                : '#e6e0d2',
                             }}
-                          >
-                            {initials}
-                          </div>
+                          />
                         </div>
 
-                        {/* 2) İsim */}
-                        <div className="min-w-0">
-                          <Link
-                            href={`/panel/mukellefler/${t.id}`}
-                            className="text-[14px] font-semibold truncate block leading-tight hover:underline"
+                        {/* 2) İsim + meta */}
+                        <Link
+                          href={`/panel/mukellefler/${t.id}`}
+                          className="min-w-0 block"
+                        >
+                          <p
+                            className="text-[14.5px] font-semibold truncate leading-tight hover:underline"
                             style={{ color: '#1c1917', letterSpacing: '-0.01em' }}
                           >
                             {name(t)}
-                          </Link>
-                          <p className="text-[11px] mt-1 tabular-nums" style={{ color: '#a8a29e' }}>
-                            {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'} · {t.taxNumber}
                           </p>
-                        </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span
+                              className="text-[10px] font-bold uppercase"
+                              style={{
+                                color: t.type === 'TUZEL_KISI' ? '#2563eb' : '#a16207',
+                                letterSpacing: '0.08em',
+                              }}
+                            >
+                              {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
+                            </span>
+                            <span style={{ color: '#d4ccba' }}>·</span>
+                            <span className="text-[11px] tabular-nums" style={{ color: '#a8a29e' }}>
+                              {t.taxNumber}
+                            </span>
+                          </div>
+                        </Link>
 
-                        {/* 3) Son Gün */}
+                        {/* 3) Gün numarası */}
                         <div className="flex justify-center">
                           {t.evrakTeslimGunu ? (
                             <span
-                              className="text-[13px] font-semibold tabular-nums"
-                              style={{ color: '#8b7649', fontFamily: 'Fraunces, Georgia, serif' }}
+                              className="tabular-nums"
+                              style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, fontWeight: 600, color: '#8b7649' }}
                             >
                               {String(t.evrakTeslimGunu).padStart(2, '0')}
                             </span>
                           ) : (
-                            <span className="text-[13px]" style={{ color: '#e7e5e4' }}>·</span>
+                            <span style={{ color: '#e7e5e4', fontSize: 16 }}>·</span>
                           )}
                         </div>
 
-                        {/* 4) Durum hücreleri (6 adet) */}
-                        {steps.map((step) => (
-                          <div key={step.field} className="flex justify-center">
+                        {/* 4) 6 minik DOT — gazete stili */}
+                        <div className="flex items-center justify-center gap-2.5">
+                          {steps.map((step) => (
                             <button
+                              key={step.field}
                               onClick={() => handleStatus(t.id, step.field, !step.done)}
-                              title={`${step.label} — ${step.done ? 'Tamamlandı' : 'Tamamla'}`}
-                              className="transition-all duration-150 hover:scale-110"
+                              title={`${step.label} — ${step.done ? 'Tamam' : 'Bekliyor'}`}
+                              className="relative group/dot transition-transform duration-150 hover:scale-150"
+                              style={{ width: 10, height: 10 }}
                             >
-                              {step.done ? (
-                                <div
-                                  className="w-6 h-6 rounded-md flex items-center justify-center"
-                                  style={{ background: '#1c1917' }}
-                                >
-                                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                                    <path d="M1 4L3.5 6.5L9 1" stroke="#b8a06f" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                  </svg>
-                                </div>
-                              ) : (
-                                <div
-                                  className="w-6 h-6 rounded-md"
-                                  style={{ background: '#faf8f4', border: '1px solid #e6e0d2' }}
-                                />
-                              )}
+                              <span
+                                className="block rounded-full transition-all duration-200"
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  background: step.done ? '#1c1917' : 'transparent',
+                                  border: step.done ? '1.5px solid #1c1917' : '1.5px solid #d4ccba',
+                                }}
+                              />
+                              {/* Hover label */}
+                              <span
+                                className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-0.5 rounded text-[9px] font-semibold uppercase whitespace-nowrap opacity-0 group-hover/dot:opacity-100 transition-opacity pointer-events-none"
+                                style={{ background: '#1c1917', color: '#b8a06f', letterSpacing: '0.08em' }}
+                              >
+                                {step.label}
+                              </span>
                             </button>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
 
-                        {/* 5) İlerleme */}
-                        <div className="flex items-center justify-end gap-2 pr-2">
-                          <div className="relative w-20 h-[6px] rounded-full overflow-hidden" style={{ background: '#f0ebde' }}>
-                            <div
-                              className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                        {/* 5) İlerleme — sayı + mini bar */}
+                        <div className="flex items-center justify-end gap-2.5">
+                          <div className="flex items-baseline gap-1">
+                            <span
+                              className="tabular-nums leading-none"
                               style={{
-                                width: `${(cnt / 4) * 100}%`,
+                                fontFamily: 'Fraunces, Georgia, serif',
+                                fontSize: 17,
+                                fontWeight: 600,
+                                color: done ? '#059669' : cnt > 0 ? '#8b7649' : '#a8a29e',
+                                letterSpacing: '-0.02em',
+                              }}
+                            >
+                              {dotCount}
+                            </span>
+                            <span className="text-[10px]" style={{ color: '#a8a29e' }}>/6</span>
+                          </div>
+                          <div className="w-14 h-[3px] rounded-full overflow-hidden" style={{ background: '#f0ebde' }}>
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${(dotCount / 6) * 100}%`,
                                 background: done ? '#10b981' : '#b8a06f',
                               }}
                             />
                           </div>
-                          <span
-                            className="text-[11px] tabular-nums font-semibold w-7 text-right"
-                            style={{
-                              color: done ? '#10b981' : cnt > 0 ? '#8b7649' : '#a8a29e',
-                              fontFamily: 'Fraunces, Georgia, serif',
-                            }}
-                          >
-                            {cnt}/4
-                          </span>
                         </div>
+
+                        {/* 6) Ok */}
+                        <Link
+                          href={`/panel/mukellefler/${t.id}`}
+                          className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ color: '#8b7649' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round">
+                            <path d="M9 18l6-6-6-6" />
+                          </svg>
+                        </Link>
                       </div>
                     </div>
                   );
