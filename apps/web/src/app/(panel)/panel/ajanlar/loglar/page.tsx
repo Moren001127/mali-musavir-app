@@ -164,8 +164,7 @@ export default function LoglarPage() {
             Henüz log yok. Ajan ping attığında burada terminal gibi görünecek.
           </div>
         ) : (
-          <div className="p-3 space-y-0.5">
-            {/* Oldest first (terminal style) */}
+          <div className="p-3 space-y-1.5">
             {[...filtered].reverse().map((e: AgentEvent) => (
               <LogLine key={e.id} event={e} />
             ))}
@@ -179,33 +178,50 @@ export default function LoglarPage() {
 function LogLine({ event }: { event: AgentEvent }) {
   const d = new Date(event.ts);
   const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-  const { color, icon } = styleFor(event.status);
-  const parts = [event.firma, event.fisNo, event.hesapKodu, event.kdv, event.tutar ? `${event.tutar} TL` : null].filter(Boolean);
+  const { color, icon, bg, label } = styleFor(event.status);
+  const parts = [event.fisNo && `#${event.fisNo}`, event.hesapKodu, event.kdv, event.tutar ? `${Number(event.tutar).toLocaleString('tr-TR')} TL` : null].filter(Boolean);
 
   return (
-    <div className="leading-relaxed">
-      <span style={{ color: '#64748b' }}>[{t}]</span>{' '}
-      <span style={{ color }}>{icon}</span>{' '}
-      {event.agent && (
-        <span style={{ color: '#60a5fa' }}>{event.agent.toUpperCase()}</span>
-      )}
-      {event.mukellef && (
-        <>
-          {' · '}
-          <span style={{ color: '#fbbf24' }}>{event.mukellef}</span>
-        </>
-      )}
-      {event.action && (
-        <>
-          {' '}
-          <span style={{ color: '#a78bfa' }}>[{event.action}]</span>
-        </>
-      )}
-      {' — '}
-      <span style={{ color: '#e2e8f0' }}>{event.message || event.status}</span>
-      {parts.length > 0 && (
-        <span style={{ color: '#64748b' }}> ({parts.join(' · ')})</span>
-      )}
+    <div
+      className="flex items-start gap-3 px-3 py-2 rounded-md transition-colors hover:brightness-110"
+      style={{
+        background: bg,
+        borderLeft: `3px solid ${color}`,
+      }}
+    >
+      <span
+        className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold px-1.5 py-0.5"
+        style={{ background: color + '33', color, minWidth: 52 }}
+      >
+        {icon} {label}
+      </span>
+      <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#94a3b8' }}>
+        {t}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap text-[13px]">
+          {event.firma && (
+            <span className="font-semibold truncate" style={{ color: '#fafaf9' }}>
+              {event.firma}
+            </span>
+          )}
+          {parts.map((p, i) => (
+            <span key={i} className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: '#cbd5e1' }}>
+              {p}
+            </span>
+          ))}
+        </div>
+        {event.message && (
+          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8' }}>
+            {event.message}
+          </div>
+        )}
+        {event.mukellef && (
+          <div className="text-[10px] mt-0.5 truncate" style={{ color: '#64748b' }}>
+            {event.mukellef}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -215,17 +231,17 @@ function styleFor(status: string) {
     case 'onaylandi':
     case 'basarili':
     case 'ok':
-      return { color: '#60a5fa', icon: '✓' }; // mavi - onay
+      return { color: '#22c55e', icon: '✓', label: 'ONAY', bg: 'rgba(34,197,94,.08)' };
     case 'hata':
     case 'error':
-      return { color: '#f87171', icon: '✗' }; // kırmızı - hata
+      return { color: '#ef4444', icon: '✗', label: 'HATA', bg: 'rgba(239,68,68,.12)' };
     case 'atlandi':
     case 'skip':
-      return { color: '#fbbf24', icon: '↷' }; // sarı - atlandı
+      return { color: '#f59e0b', icon: '↷', label: 'ATLA', bg: 'rgba(245,158,11,.08)' };
     case 'demirbas':
-      return { color: '#c084fc', icon: '⏩' }; // mor - demirbaş
+      return { color: '#a855f7', icon: '⏩', label: 'DEMR', bg: 'rgba(168,85,247,.08)' };
     default:
-      return { color: '#94a3b8', icon: '•' };
+      return { color: '#94a3b8', icon: '•', label: 'INFO', bg: 'rgba(148,163,184,.06)' };
   }
 }
 
