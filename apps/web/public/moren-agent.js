@@ -150,14 +150,20 @@
   async function processMukellef({ ay, mukellef, action }) {
     const tipSegment = action === 'isle_alis' ? 'BILANCO/1' : action === 'isle_satis' ? 'BILANCO/2' : null;
     if (!tipSegment || !mukellef.mihsapId) return;
-    const startUrl = `https://ofis.mihsap.com.tr/dashboard/documents/${tipSegment}/${mukellef.mihsapId}`;
-    if (!location.href.startsWith(startUrl)) {
-      setStatus(`${mukellef.ad} → Mihsap'ta açın: ${startUrl}`);
-      return; // Kullanıcı manuel yönlendirecek
+    const baseList = `https://app.mihsap.com/documents/${tipSegment}/${mukellef.mihsapId}`;
+    const onList = location.pathname === `/documents/${tipSegment}/${mukellef.mihsapId}`;
+    const onEditor = location.pathname.startsWith(`/documents/${tipSegment}/${mukellef.mihsapId}/`);
+    if (!onList && !onEditor) {
+      setStatus(`${mukellef.ad} → yönlendiriliyor`);
+      location.href = baseList;
+      return; // Sayfa yüklenince tekrar komut claim olacak
     }
-    const firstPen = await waitFor('tbody tr button .anticon-edit', 5000);
-    if (!firstPen) { setStatus('Fatura yok'); return; }
-    await click(firstPen.closest('button'));
+    if (onList) {
+      const firstPen = await waitFor('tbody tr button .anticon-edit', 8000);
+      if (!firstPen) { setStatus('Fatura yok'); return; }
+      await click(firstPen.closest('button'));
+      await sleep(1200);
+    }
 
     let lastFid = null;
     let sameFidCount = 0;
