@@ -184,6 +184,25 @@ export class AgentEventsController {
     return this.service.updateCommand(tenantId, id, body);
   }
 
+  /** Claude ile fatura kararı: onay/atla/emin_degil */
+  @Post('ai/decide-fatura')
+  async decideFatura(
+    @Headers('x-agent-token') token: string,
+    @Body() body: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      hesapKodlari: string[];
+      faturaTarihi?: string;
+      hedefAy?: string;
+    },
+  ) {
+    this.resolveTenantFromToken(token);
+    if (!body?.faturaImageBase64 || !Array.isArray(body?.hesapKodlari)) {
+      throw new BadRequestException('faturaImageBase64 ve hesapKodlari gerekli');
+    }
+    return this.service.decideFatura(body);
+  }
+
   /** Mihsap'tan çekilen mükellefleri toplu upsert */
   @Post('taxpayers/bulk-import')
   bulkImportTaxpayers(

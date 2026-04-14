@@ -125,6 +125,55 @@
     } catch { return null; }
   }
 
+  async function getFaturaImageBase64() {
+    // Mihsap fatura editöründeki görüntüyü yakala.
+    // Strateji: sayfa içindeki tüm img/canvas'tan en büyüğünü al.
+    const t0 = Date.now();
+    while (Date.now() - t0 < 8000) {
+      const imgs = [...document.querySelectorAll('img')].filter((i) => i.naturalWidth > 400);
+      imgs.sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight);
+      const big = imgs[0];
+      if (big) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.min(big.naturalWidth, 1600);
+          canvas.height = Math.round(canvas.width * (big.naturalHeight / big.naturalWidth));
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(big, 0, 0, canvas.width, canvas.height);
+          const data = canvas.toDataURL('image/jpeg', 0.7);
+          return data.split(',')[1];
+        } catch (e) {
+          // CORS-tainted olabilir, fetch ile dene
+          try {
+            const r = await fetch(big.src);
+            const blob = await r.blob();
+            return await new Promise((res) => {
+              const fr = new FileReader();
+              fr.onload = () => res(String(fr.result).split(',')[1]);
+              fr.readAsDataURL(blob);
+            });
+          } catch {}
+        }
+      }
+      await sleep(500);
+    }
+    return null;
+  }
+
+  async function aiDecide({ codes, tarih, hedefAy }) {
+    const img = await getFaturaImageBase64();
+    if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
+    return await api('/agent/ai/decide-fatura', {
+      method: 'POST',
+      body: JSON.stringify({
+        faturaImageBase64: img,
+        hesapKodlari: codes,
+        faturaTarihi: tarih,
+        hedefAy,
+      }),
+    });
+  }
+
   async function readHesapKodlari() {
     // Bekle: 2+ kod gelene kadar, max 15sn
     const t0 = Date.now();
@@ -200,15 +249,20 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş');
         await clickIleri(); continue;
       }
-      if (demirbasVarMi(codes)) {
-        counters.demirbas++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'demirbaş');
+      // LLM karar
+      setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
+      const decision = await aiDecide({ codes, tarih, hedefAy });
+      const karar = decision?.karar || 'emin_degil';
+      const sebep = (decision?.sebep || '').slice(0, 120);
+      if (karar === 'atla' || karar === 'emin_degil') {
+        counters.atla++; counters.toplam++; setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`);
         await clickIleri(); continue;
       }
       try {
         await clickKaydetOnayla();
         counters.onay++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${codes.join(',')}`);
+        await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`);
       } catch (e) {
         counters.hata++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'error', String(e));

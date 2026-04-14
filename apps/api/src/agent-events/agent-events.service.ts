@@ -150,6 +150,90 @@ export class AgentEventsService {
     return pending;
   }
 
+  /**
+   * Claude Haiku 4.5 ile fatura kararı verir.
+   * Input: fatura jpeg base64 + hesap kodları
+   * Output: { karar: 'onay'|'atla'|'emin_degil', sebep: string, ocrOzet?: string }
+   */
+  async decideFatura(input: {
+    faturaImageBase64: string;
+    faturaImageMediaType?: string;
+    hesapKodlari: string[];
+    faturaTarihi?: string;
+    hedefAy?: string;
+  }) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
+    }
+    const kodListe = input.hesapKodlari.join(', ');
+    const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
+Kararın: "onay" (F2 Kaydet ve Onayla) / "atla" (İleri, kaydetme) / "emin_degil" (güvenli: atla).
+
+KURALLAR (sırayla):
+1) Faturanın tarihi hedef ay dışındaysa → atla
+2) Hesap kodları boş, eksik veya tutarsızsa → atla
+3) Hesap kodu 255 ile başlıyorsa VEYA kodların metni "demirbaş" içeriyorsa → atla
+4) Fatura içeriğinde "demirbaş, makine, teçhizat, mobilya, bilgisayar, yazıcı, kompresör, fotokopi, klima" gibi sabit kıymet ibareleri varsa → atla
+5) Hesap kodu ile fatura içeriği bariz çelişiyorsa (örn. kod 770-Genel Yönetim ama fatura akaryakıt) → atla
+6) Yukarıdaki hiçbiri değilse VE kodlar içeriğe uygunsa → onay
+7) Tereddüt varsa → emin_degil
+
+Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}`;
+
+    const userText = `Hesap kodları: ${kodListe || '(boş)'}
+Fatura tarihi: ${input.faturaTarihi || '?'}
+Hedef ay: ${input.hedefAy || '?'}`;
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          system,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: input.faturaImageMediaType || 'image/jpeg',
+                    data: input.faturaImageBase64,
+                  },
+                },
+                { type: 'text', text: userText },
+              ],
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        return { karar: 'emin_degil', sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}` };
+      }
+      const json = await res.json();
+      const text = json?.content?.[0]?.text || '';
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { karar: 'emin_degil', sebep: 'JSON parse fail', raw: text.slice(0, 200) };
+      try {
+        const parsed = JSON.parse(match[0]);
+        return parsed;
+      } catch {
+        return { karar: 'emin_degil', sebep: 'JSON parse fail', raw: text.slice(0, 200) };
+      }
+    } catch (e: any) {
+      return { karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` };
+    }
+  }
+
   async updateCommand(
     tenantId: string,
     id: string,
