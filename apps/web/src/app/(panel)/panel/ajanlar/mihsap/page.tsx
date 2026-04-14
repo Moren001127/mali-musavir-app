@@ -148,84 +148,98 @@ export default function MihsapAgentPage() {
           )}
         </div>
 
-        <div className="relative grid grid-cols-3 gap-3 mt-5">
-          <KpiMini label="Son 24s Onay" value={kpi.onay} color="#22c55e" />
-          <KpiMini label="Son 24s Atla" value={kpi.atla} color="#f59e0b" />
-          <KpiMini label="Son 24s Hata" value={kpi.hata} color="#ef4444" />
+        <div className="relative grid grid-cols-3 gap-4 mt-6">
+          <KpiMini label="Son 24s Onay" value={kpi.onay} color="#22c55e" icon="✓" />
+          <KpiMini label="Son 24s Atla" value={kpi.atla} color="#f59e0b" icon="↷" />
+          <KpiMini label="Son 24s Hata" value={kpi.hata} color="#ef4444" icon="✗" />
         </div>
       </div>
 
-      {/* KOMUT BARI (kompakt, tek satır) */}
+      {/* KOMUT BARI */}
       <div
-        className="rounded-xl border p-4"
+        className="rounded-xl border p-5"
         style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
       >
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
+          <div className="flex-shrink-0">
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <Calendar size={11} className="inline mr-1" /> Dönem
+            </label>
             <input
               type="month"
               value={ay}
               onChange={(e) => setAy(e.target.value)}
-              className="px-2.5 py-1.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              className="px-3 py-2.5 rounded-lg text-base font-semibold border outline-none"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)', minWidth: 170 }}
             />
           </div>
-          <div className="flex gap-1">
+
+          <div className="flex-shrink-0">
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              İşlem Türü
+            </label>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => setAction('isle_alis')}
+                className="px-4 py-2.5 rounded-lg text-sm font-bold border"
+                style={{
+                  background: action === 'isle_alis' ? 'rgba(5,150,105,.15)' : 'var(--bg)',
+                  borderColor: action === 'isle_alis' ? '#059669' : 'var(--border)',
+                  color: action === 'isle_alis' ? '#059669' : 'var(--text)',
+                }}
+              >
+                ALIŞ
+              </button>
+              <button
+                onClick={() => setAction('isle_satis')}
+                className="px-4 py-2.5 rounded-lg text-sm font-bold border"
+                style={{
+                  background: action === 'isle_satis' ? 'rgba(37,99,235,.15)' : 'var(--bg)',
+                  borderColor: action === 'isle_satis' ? '#2563eb' : 'var(--border)',
+                  color: action === 'isle_satis' ? '#2563eb' : 'var(--text)',
+                }}
+              >
+                SATIŞ
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-[240px]">
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
+              <Users size={11} className="inline mr-1" /> Mükellef ({selectedIds.length})
+            </label>
             <button
-              onClick={() => setAction('isle_alis')}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
-              style={{
-                background: action === 'isle_alis' ? 'rgba(5,150,105,.12)' : 'var(--bg)',
-                borderColor: action === 'isle_alis' ? '#059669' : 'var(--border)',
-                color: action === 'isle_alis' ? '#059669' : 'var(--text)',
-              }}
+              onClick={() => setPickerOpen(true)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
             >
-              ALIŞ
-            </button>
-            <button
-              onClick={() => setAction('isle_satis')}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
-              style={{
-                background: action === 'isle_satis' ? 'rgba(37,99,235,.12)' : 'var(--bg)',
-                borderColor: action === 'isle_satis' ? '#2563eb' : 'var(--border)',
-                color: action === 'isle_satis' ? '#2563eb' : 'var(--text)',
-              }}
-            >
-              SATIŞ
+              <span className="flex-1 truncate font-medium">
+                {selectedIds.length === 0
+                  ? 'Mükellef seç…'
+                  : selectedIds.length === 1
+                  ? taxpayerName(selectedNames[0])
+                  : `${selectedIds.length} mükellef seçili`}
+              </span>
+              <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
             </button>
           </div>
 
-          {/* Mükellef seçici butonu */}
-          <button
-            onClick={() => setPickerOpen(true)}
-            className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-          >
-            <Users size={13} style={{ color: 'var(--text-muted)' }} />
-            <span className="flex-1 truncate">
-              {selectedIds.length === 0
-                ? 'Mükellef seç…'
-                : selectedIds.length === 1
-                ? taxpayerName(selectedNames[0])
-                : `${selectedIds.length} mükellef`}
-            </span>
-            <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />
-          </button>
-
-          <button
-            onClick={() => runMut.mutate()}
-            disabled={selectedIds.length === 0 || runMut.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
-            style={{
-              background: selectedIds.length > 0 ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'var(--muted)',
-              color: selectedIds.length > 0 ? '#0f0d0b' : 'var(--text-muted)',
-              boxShadow: selectedIds.length > 0 ? '0 4px 12px rgba(184,160,111,.25)' : 'none',
-            }}
-          >
-            {runMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-            Çalıştır
-          </button>
+          <div className="flex-shrink-0 flex items-end">
+            <button
+              onClick={() => runMut.mutate()}
+              disabled={selectedIds.length === 0 || runMut.isPending}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+              style={{
+                background: selectedIds.length > 0 ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'var(--muted)',
+                color: selectedIds.length > 0 ? '#0f0d0b' : 'var(--text-muted)',
+                boxShadow: selectedIds.length > 0 ? '0 4px 12px rgba(184,160,111,.3)' : 'none',
+                height: 42,
+              }}
+            >
+              {runMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              Çalıştır
+            </button>
+          </div>
         </div>
 
         {/* Seçili mükellef chip'leri (1'den fazlaysa) */}
@@ -251,10 +265,53 @@ export default function MihsapAgentPage() {
 
         {/* Son komut durumu */}
         {commands[0] && (
-          <div className="text-[11px] mt-3 pt-3 border-t flex items-center gap-2" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-            <Clock size={10} />
-            Son komut: <strong>{commands[0].status}</strong> · {new Date(commands[0].createdAt).toLocaleString('tr-TR')}
-            {commands[0].result?.message && <span className="ml-2">{commands[0].result.message}</span>}
+          <div
+            className="mt-4 pt-4 border-t flex items-start gap-3 flex-wrap"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{
+                  background:
+                    commands[0].status === 'done'
+                      ? 'rgba(34,197,94,.15)'
+                      : commands[0].status === 'failed'
+                      ? 'rgba(239,68,68,.15)'
+                      : 'rgba(245,158,11,.15)',
+                  color:
+                    commands[0].status === 'done'
+                      ? '#22c55e'
+                      : commands[0].status === 'failed'
+                      ? '#ef4444'
+                      : '#f59e0b',
+                }}
+              >
+                <Clock size={14} />
+              </div>
+              <div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  Son Komut
+                </div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                  {commands[0].status === 'done'
+                    ? 'Tamamlandı'
+                    : commands[0].status === 'failed'
+                    ? 'Başarısız'
+                    : commands[0].status === 'running'
+                    ? 'Çalışıyor'
+                    : 'Beklemede'}
+                  <span className="text-xs ml-2 font-normal" style={{ color: 'var(--text-muted)' }}>
+                    {new Date(commands[0].createdAt).toLocaleString('tr-TR')}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {commands[0].result?.message && (
+              <div className="flex-1 min-w-[200px] text-sm px-3 py-2 rounded-lg" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+                {commands[0].result.message}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -388,17 +445,25 @@ export default function MihsapAgentPage() {
   );
 }
 
-function KpiMini({ label, value, color }: { label: string; value: number; color: string }) {
+function KpiMini({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
     <div
-      className="rounded-lg p-3 border"
+      className="rounded-xl p-4 border flex items-center gap-4"
       style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
     >
-      <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--text-muted)' }}>
-        {label}
+      <div
+        className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold flex-shrink-0"
+        style={{ background: color + '18', color }}
+      >
+        {icon}
       </div>
-      <div className="text-xl font-bold tabular-nums mt-1" style={{ color }}>
-        {value.toLocaleString('tr-TR')}
+      <div>
+        <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: 'var(--text-muted)' }}>
+          {label}
+        </div>
+        <div className="text-3xl font-bold tabular-nums leading-none mt-1" style={{ color }}>
+          {value.toLocaleString('tr-TR')}
+        </div>
       </div>
     </div>
   );
