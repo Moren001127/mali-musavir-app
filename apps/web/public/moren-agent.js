@@ -126,33 +126,35 @@
   }
 
   async function getFaturaImageBase64() {
-    // Mihsap fatura editöründeki görüntüyü yakala.
-    // Strateji: sayfa içindeki tüm img/canvas'tan en büyüğünü al.
+    // Mihsap fatura editöründe görsel CANVAS elementlerinde render ediliyor.
+    // Birden fazla sayfa varsa hepsini dikey birleştir.
     const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      const imgs = [...document.querySelectorAll('img')].filter((i) => i.naturalWidth > 400);
-      imgs.sort((a, b) => b.naturalWidth * b.naturalHeight - a.naturalWidth * a.naturalHeight);
-      const big = imgs[0];
-      if (big) {
+    while (Date.now() - t0 < 10000) {
+      const canvases = [...document.querySelectorAll('canvas')].filter(
+        (c) => c.width > 200 && c.height > 200,
+      );
+      if (canvases.length > 0) {
         try {
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.min(big.naturalWidth, 1600);
-          canvas.height = Math.round(canvas.width * (big.naturalHeight / big.naturalWidth));
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(big, 0, 0, canvas.width, canvas.height);
-          const data = canvas.toDataURL('image/jpeg', 0.7);
-          return data.split(',')[1];
+          // Maks 2 sayfa, scale-down (payload <1MB)
+          const pages = canvases.slice(0, 2);
+          const targetW = Math.min(pages[0].width, 700);
+          const totalH = pages.reduce(
+            (s, c) => s + Math.round(targetW * (c.height / c.width)),
+            0,
+          );
+          const out = document.createElement('canvas');
+          out.width = targetW;
+          out.height = totalH;
+          const ctx = out.getContext('2d');
+          let y = 0;
+          for (const p of pages) {
+            const h = Math.round(targetW * (p.height / p.width));
+            ctx.drawImage(p, 0, y, targetW, h);
+            y += h;
+          }
+          return out.toDataURL('image/jpeg', 0.7).split(',')[1];
         } catch (e) {
-          // CORS-tainted olabilir, fetch ile dene
-          try {
-            const r = await fetch(big.src);
-            const blob = await r.blob();
-            return await new Promise((res) => {
-              const fr = new FileReader();
-              fr.onload = () => res(String(fr.result).split(',')[1]);
-              fr.readAsDataURL(blob);
-            });
-          } catch {}
+          console.warn('[Moren] canvas merge fail', e);
         }
       }
       await sleep(500);
@@ -175,12 +177,14 @@
   }
 
   async function readHesapKodlari() {
-    // Bekle: 2+ kod gelene kadar, max 15sn
+    // Sadece "\\d{3}\\.\\d+" pattern'i olan (gerçek hesap kodları) al.
+    // Mükellef adı, TL, %20 gibi dropdown'ları ele.
     const t0 = Date.now();
     while (Date.now() - t0 < 15000) {
       const els = [...document.querySelectorAll('.ant-select-selection-item')];
-      const codes = els.map((e) => (e.textContent || '').trim()).filter(Boolean);
-      if (codes.length >= 2) return codes;
+      const all = els.map((e) => (e.textContent || '').trim()).filter(Boolean);
+      const codes = all.filter((t) => /^\d{3}\.\d/.test(t));
+      if (codes.length >= 1) return codes;
       await sleep(500);
     }
     return [];
