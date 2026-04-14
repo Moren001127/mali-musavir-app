@@ -34,6 +34,18 @@ export interface AgentRule {
   updatedAt: string;
 }
 
+export interface AgentCommand {
+  id: string;
+  agent: string;
+  action: string;
+  payload: any;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  result?: any;
+  createdAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
 export const agentsApi = {
   listEvents: (params?: { agent?: string; mukellef?: string; status?: string; limit?: number }) =>
     api.get<AgentEvent[]>('/agent/events', { params }).then((r) => r.data),
@@ -48,6 +60,12 @@ export const agentsApi = {
       .then((r) => r.data),
   deleteRule: (mukellef: string) =>
     api.delete(`/agent/rules/${encodeURIComponent(mukellef)}`).then((r) => r.data),
+
+  // Komutlar
+  createCommand: (body: { agent: string; action: string; payload: any }) =>
+    api.post<AgentCommand>('/agent/commands', body).then((r) => r.data),
+  listCommands: (params?: { agent?: string; status?: string; limit?: number }) =>
+    api.get<AgentCommand[]>('/agent/commands', { params }).then((r) => r.data),
 };
 
 // Ajanlar sabit listesi (local script eşlemesi)

@@ -126,4 +126,61 @@ export class AgentEventsController {
   deleteRule(@Req() req: any, @Param('mukellef') mukellef: string) {
     return this.service.deleteRule(req.user.tenantId, decodeURIComponent(mukellef));
   }
+
+  // ---- KOMUT KUYRUĞU ----
+
+  /** Web UI komut gönderir */
+  @Post('commands')
+  @UseGuards(AuthGuard('jwt'))
+  createCommand(
+    @Req() req: any,
+    @Body() body: { agent: string; action: string; payload: any },
+  ) {
+    if (!body?.agent || !body?.action) {
+      throw new BadRequestException('agent ve action zorunlu');
+    }
+    return this.service.createCommand(req.user.tenantId, {
+      agent: body.agent,
+      action: body.action,
+      payload: body.payload ?? {},
+      createdBy: req.user.userId,
+    });
+  }
+
+  /** Web UI komut listesi */
+  @Get('commands')
+  @UseGuards(AuthGuard('jwt'))
+  listCommands(
+    @Req() req: any,
+    @Query('agent') agent?: string,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listCommands(req.user.tenantId, {
+      agent,
+      status,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
+  }
+
+  /** Yerel runner bekleyen komutları çeker ve claim eder */
+  @Post('commands/claim')
+  claimCommands(
+    @Headers('x-agent-token') token: string,
+    @Body() body: { agent?: string } = {},
+  ) {
+    const tenantId = this.resolveTenantFromToken(token);
+    return this.service.claimPendingCommands(tenantId, body?.agent);
+  }
+
+  /** Yerel runner komutu sonucunu günceller */
+  @Put('commands/:id')
+  updateCommandLocal(
+    @Headers('x-agent-token') token: string,
+    @Param('id') id: string,
+    @Body() body: { status?: string; result?: any },
+  ) {
+    const tenantId = this.resolveTenantFromToken(token);
+    return this.service.updateCommand(tenantId, id, body);
+  }
 }

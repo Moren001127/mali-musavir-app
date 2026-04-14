@@ -110,4 +110,55 @@ export class AgentEventsService {
   async deleteRule(tenantId: string, mukellef: string) {
     return this.prisma.agentRule.delete({ where: { tenantId_mukellef: { tenantId, mukellef } } });
   }
+
+  // Komut kuyruğu
+  async createCommand(
+    tenantId: string,
+    data: { agent: string; action: string; payload: any; createdBy?: string },
+  ) {
+    return this.prisma.agentCommand.create({
+      data: { tenantId, agent: data.agent, action: data.action, payload: data.payload, createdBy: data.createdBy },
+    });
+  }
+
+  async listCommands(tenantId: string, opts: { agent?: string; status?: string; limit?: number } = {}) {
+    const { agent, status, limit = 50 } = opts;
+    const where: any = { tenantId };
+    if (agent) where.agent = agent;
+    if (status) where.status = status;
+    return this.prisma.agentCommand.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 200),
+    });
+  }
+
+  /** Yerel runner için bekleyen komutları claim eder (status=running yapar) */
+  async claimPendingCommands(tenantId: string, agent?: string) {
+    const where: any = { tenantId, status: 'pending' };
+    if (agent) where.agent = agent;
+    const pending = await this.prisma.agentCommand.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      take: 10,
+    });
+    if (pending.length === 0) return [];
+    await this.prisma.agentCommand.updateMany({
+      where: { id: { in: pending.map((p) => p.id) } },
+      data: { status: 'running', startedAt: new Date() },
+    });
+    return pending;
+  }
+
+  async updateCommand(
+    tenantId: string,
+    id: string,
+    data: { status?: string; result?: any },
+  ) {
+    const finishedAt = data.status === 'done' || data.status === 'failed' ? new Date() : undefined;
+    return this.prisma.agentCommand.update({
+      where: { id },
+      data: { ...data, finishedAt } as any,
+    });
+  }
 }

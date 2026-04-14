@@ -22,6 +22,10 @@ export const CreateTaxpayerSchema = z.object({
   evrakTeslimGunu: z.number().int().min(1).max(30).nullable().optional(),
   whatsappEvrakTalep: z.boolean().optional().default(false),
   whatsappEvrakGeldi: z.boolean().optional().default(false),
+  // Otomasyon ajanları için
+  lucaSlug: z.string().optional().nullable(),
+  mihsapId: z.string().optional().nullable(),
+  mihsapDefterTuru: z.string().optional().nullable(),
 });
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;

@@ -140,6 +140,10 @@ model Taxpayer {
   whatsappEvrakGeldi  Boolean       @default(false)
   lastReminderSentAt  DateTime?
   isActive    Boolean      @default(true)
+  // === OTOMASYON AJANLARI ===
+  lucaSlug           String?  // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
+  mihsapId           String?  // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
+  mihsapDefterTuru   String?  // "BILANCO" | "DEFTER_BEYAN"
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -810,6 +814,24 @@ model AgentStatus {
 
   @@unique([tenantId, agent])
   @@map("agent_status")
+}
+
+model AgentCommand {
+  id         String   @id @default(cuid())
+  tenantId   String
+  agent      String   // "luca" | "mihsap" | ...
+  action     String   // "basla" | "durdur" | "isle" | "ay_degistir"
+  payload    Json     // {mukellefIds: [...], ay: "2026-03", ...}
+  status     String   @default("pending") // pending | running | done | failed
+  result     Json?    // Çalıştırma sonucu / hata
+  createdAt  DateTime @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdBy  String?  // userId
+
+  @@index([tenantId, status])
+  @@index([tenantId, agent, createdAt])
+  @@map("agent_commands")
 }
 
 // ============================================================
