@@ -187,87 +187,44 @@ export class AgentEventsService {
     const kodListe = input.hesapKodlari.join(', ');
     const islemTuru = input.action === 'isle_satis' ? 'SATIŞ' : input.action === 'isle_alis' ? 'ALIŞ' : 'ALIŞ';
     const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
+Şu an ${islemTuru} faturaları işliyorsun.
 
-⚠️ ŞU AN İŞLEM TÜRÜ: ${islemTuru} FATURASI
+ARKA PLAN BİLGİ:
+Türk muhasebesinde hesap kodları değişmez bir şablona göre atanmıştır:
+• 600/601/602 = gelir hesapları → SATIŞ faturalarında kullanılır
+• 391 = hesaplanan KDV → SATIŞ faturalarında (satıcının tahsil ettiği KDV)
+• 120/121 = alıcı hesapları → SATIŞ faturalarında
+• 153/150 = stok hesapları → ALIŞ faturalarında
+• 770/740 = gider hesapları → ALIŞ faturalarında
+• 191 = indirilecek KDV → ALIŞ faturalarında (alıcının ödediği KDV)
+• 320/321 = satıcı hesapları → ALIŞ faturalarında
+• 253/255 = sabit kıymet/demirbaş → ALIŞ, ama bunlar bize atlanır
 
-╔══════════════════════════════════════════════════════════════════╗
-║ 📘 HESAP KODU TABLOSU — KESİNLİKLE UYULACAK                     ║
-║                                                                  ║
-║ Her kodun SADECE TEK BİR TÜRÜ VARDIR. Kod = Tür. Değişmez.      ║
-╠══════════════════════════════════════════════════════════════════╣
-║ SATIŞ (GELİR) KODLARI:                                           ║
-║   • 600.xx (Yurt İçi Satışlar) — HER ZAMAN SATIŞ. ASLA ALIŞ DEĞİL║
-║   • 601.xx (Yurt Dışı Satışlar) — HER ZAMAN SATIŞ                ║
-║   • 602.xx (Diğer Gelirler) — HER ZAMAN SATIŞ                    ║
-║   • 391.xx (Hesaplanan KDV) — HER ZAMAN SATIŞ. ASLA ALIŞ DEĞİL   ║
-║   • 120.xx (Alıcılar) — HER ZAMAN SATIŞ                          ║
-║   "Satış", "Gelir", "Gelirleri" kelimeleri = SATIŞ KODU          ║
-║                                                                  ║
-║ ALIŞ (GİDER/STOK) KODLARI:                                       ║
-║   • 153.xx (Ticari Mallar) — HER ZAMAN ALIŞ                      ║
-║   • 150.xx (İlk Madde) — HER ZAMAN ALIŞ                          ║
-║   • 253/255 (Sabit Kıymet) — HER ZAMAN ALIŞ                      ║
-║   • 740/770 (Hizmet/Genel Gider) — HER ZAMAN ALIŞ                ║
-║   • 191.xx (İndirilecek KDV) — HER ZAMAN ALIŞ. ASLA SATIŞ DEĞİL  ║
-║   • 320.xx (Satıcılar) — HER ZAMAN ALIŞ                          ║
-╚══════════════════════════════════════════════════════════════════╝
+Bu kodların türü kodun ilk 3 rakamıyla belirlenir, açıklamaya bakma. "ALIŞTAN İADE HESAPLANAN KDV" açıklamalı kod 391.02 olsa bile SATIŞ kodudur çünkü 391 ile başlıyor (iade faturası = mükellef açısından satış işlemi).
 
-🔴 KATI KURALLAR — İHLAL ETME:
+KARAR AKIŞI (sırayla düşün):
 
- 1. Kodun baş rakamı 600/601/602 → BU BİR SATIŞ KODUDUR.
- 2. Kodun baş rakamı 391 → BU BİR SATIŞ KODUDUR. (Hesaplanan KDV = satışta alınan KDV)
- 3. Kodun baş rakamı 120 → BU BİR SATIŞ KODUDUR.
- 4. Kodun baş rakamı 191 → BU BİR ALIŞ KODUDUR. (İndirilecek KDV)
- 5. Kodun baş rakamı 320 → BU BİR ALIŞ KODUDUR.
- 6. Kodun baş rakamı 153/150/253/255/740/770 → ALIŞ KODUDUR.
- 7. Kod adında "SATIŞ" veya "GELİR" geçiyorsa → SATIŞ KODUDUR (örn: "600.01.001-NAKLİYE GELİRLERİ" = SATIŞ).
- 8. 391 KODUNUN HER VARYANTI SATIŞ KODUDUR. Alt kodlar dahil:
-    • 391.01.xxx (Hesaplanan KDV) = SATIŞ
-    • 391.02.xxx (ALIŞTAN İADE HESAPLANAN KDV) = SATIŞ
-      (Mükellefin aldığı malı iade ettiği iade faturası. Bu İADE FATURASI = mükellef açısından SATIŞ işlemidir,
-       çünkü mükellef satıcıya ürünü geri "satıyor" gibi düşün. KDV hesaplanır, tahsil edilir.)
-    • 391.03.xxx vb. = SATIŞ
-    Kısaca: Kod 391 ile başlıyorsa SATIŞ, başka detaya bakma.
- 9. 191 KODUNUN HER VARYANTI ALIŞ KODUDUR (191.01, 191.02 "Satıştan İade İndirilecek KDV" dahil).
-10. Bu kuralların İSTİSNASI YOKTUR. Sektör, firma, tevkifat, içerik, açıklama fark etmez.
-    Açıklamada "alıştan iade" yazsa da kod 391 ise SATIŞ. Açıklamada "satıştan iade" yazsa da kod 191 ise ALIŞ.
+1. Tarih kontrolü:
+   Fatura tarihi GG-AA-YYYY formatındadır. "30-03-2026" = 30 Mart. Ay = 2. grup (03).
+   Hedef ay ${input.hedefAy || '?'}. Fatura ayı hedef ayla eşleşmiyorsa → atla.
 
-🚫 BU CÜMLELERİ ASLA YAZMA:
-  ✗ "600/391/120 alış kodları" — YANLIŞ. Bunlar SATIŞ kodları.
-  ✗ "SATIŞ faturasında ALIŞ kodları (600/391/120)" — YANLIŞ. 600/391/120 ZATEN satış kodları.
-  ✗ "391 hesaplanan KDV alış kodudur" — YANLIŞ. 391 satış kodudur.
-  ✗ "SATIŞ faturası beklenirken ALIŞ kodu (391.01.002) görüldü" — YANLIŞ. 391 satış kodu.
+2. Kod-mod uyumu:
+   Kodların ilk 3 rakamına bak. Hepsi gelir hesabı (600/601/602/391/120/121) ise SATIŞ, hepsi gider/stok (153/150/191/320/740/770/253/255) ise ALIŞ.
+   ${islemTuru} modundayız. Kod türü ${islemTuru} ile uyumlu olmalı.
+   Örnek: SATIŞ modunda 600+391+120 → UYUMLU (onay adayı). ALIŞ modunda 153+191+320 → UYUMLU.
+   Eğer mod SATIŞ ama kodlar 153/191/320 ise → atla. Mod ALIŞ ama kodlar 600/391/120 ise → atla.
 
-✅ DOĞRU ÖRNEKLER:
-  ✓ SATIŞ faturasında 600.01.002 + 391.01.002 + 120.01.A001 → DOĞRU, onay.
-  ✓ ALIŞ faturasında 153.01.001 + 191.01.001 + 320.01.001 → DOĞRU, onay.
-  ✓ ALIŞ faturasında 770.01.001 + 191.01.001 + 320.01.001 → DOĞRU, onay.
+3. Demirbaş/Sabit kıymet kontrolü:
+   Kod 253/255 ile başlıyorsa → atla. Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör" varsa → atla.
 
-🗓️ TARİH YORUMLAMA — DİKKAT:
-  • Tarih formatı Türkiye standardı: GG-AA-YYYY veya GG.AA.YYYY (gün-ay-yıl)
-  • "30-03-2026" = 30 Mart 2026 (AY = 03 = MART). Nisan DEĞİL!
-  • "05-04-2026" = 5 Nisan 2026 (AY = 04 = NİSAN)
-  • Hedef ay "2026-03" ise: ay numarası 03 yani MART — sadece 01-31 Mart tarihli faturalar uygundur.
-  • Ay karşılaştırması yaparken fatura tarihindeki 2. sayı grubunu (ay) hedef aydaki AA ile eşleştir.
-  • Tarihi yorumlamadan önce mutlaka GG-AA-YYYY olduğunu DOĞRULA.
+4. İçerik-kod uyumu:
+   Görüntüdeki ürün/hizmet ile hesap kodu mantıklı mı?
+   (Örn. kod 770 Genel Yönetim Gideri ama fatura akaryakıt = çelişki → atla)
 
-Eğer fatura türü talimata uymuyorsa (ör. satış beklerken alış görürsen) emin_degil de.
+5. Hepsi tutarlıysa → onay.
+6. Tereddüt, bulanık görüntü, okunamayan fatura → emin_degil.
 
-ÖNEMLİ BIAS UYARISI: Mükellefin sektörü ne olursa olsun, her faturanın KENDİ içeriğine bakarak karar ver. Örneğin mükellef nakliye firması olsa bile bir yemek/gıda faturası gelebilir — içerik "yiyecek" ise yakıt sayma. Görüntüde net göremediğin faturada "emin_degil" de.
-Kararın: "onay" (F2 Kaydet ve Onayla) / "atla" (İleri, kaydetme) / "emin_degil" (güvenli: atla).
-
-KURALLAR (sırayla):
-1) Fatura tarihini GG-AA-YYYY olarak oku; AA (ay numarası) hedef aydaki ay numarasıyla EŞLEŞMİYORSA → atla. Eşleşiyorsa bu kuralda atlama.
-2) Hesap kodları boş, eksik veya tutarsızsa → atla
-3) Hesap kodu 255 ile başlıyorsa VEYA kodların metni "demirbaş" içeriyorsa → atla
-4) Fatura içeriğinde "demirbaş, makine, teçhizat, mobilya, bilgisayar, yazıcı, kompresör, fotokopi, klima" gibi sabit kıymet ibareleri varsa → atla
-5) İşlem türü ile kod türü uyumsuzsa → atla. Yani:
-   • SATIŞ işleminde 191/320/153 gibi ALIŞ kodları varsa → atla
-   • ALIŞ işleminde 600/391/120 gibi SATIŞ kodları varsa → atla
-   Ancak: ${islemTuru} işleminde ${islemTuru === 'SATIŞ' ? '600/391/120' : '153/191/320 veya 770/191/320'} kodları varsa → bu DOĞRUDUR, bu kuralla atlamayacaksın.
-6) Hesap kodu ile fatura içeriği bariz çelişiyorsa (örn. kod 770-Genel Yönetim ama fatura akaryakıt stok) → atla
-7) Yukarıdaki hiçbiri değilse VE kodlar içeriğe uygunsa → onay
-8) Tereddüt varsa → emin_degil
+Sektör veya firma adı SINIRLAYICI değildir. Mükellef nakliye firması olsa bile gıda faturası gelebilir, içeriğe bak. Aynı şekilde satıcı perakendeci olsa da mükellef ona satış yapıyor olabilir — kodlar doğruysa onay.
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
