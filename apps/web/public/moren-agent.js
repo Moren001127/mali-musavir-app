@@ -424,25 +424,47 @@
         await clickIleri(fid); continue;
       }
       try {
+        // F2'yi 2 defaya kadar dene, her seferinde 10sn bekle
+        const waitSaved = async (timeoutMs) => {
+          const t0 = Date.now();
+          while (Date.now() - t0 < timeoutMs) {
+            const m2 = location.href.match(/\/(\d+)\?count=/);
+            if (m2 && m2[1] !== fid) return true;
+            if (/count=0/.test(location.href)) return true;
+            // Başarı toast'ı (ant-design "Kaydedildi" vb.)
+            const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success');
+            if (okToast) return true;
+            // Hata dialogu varsa kapat ve false dön
+            if (getVisibleModals().length > 0) {
+              await handleDialogs();
+              // Dialog kapandıktan sonra kısa bekle; URL değişmediyse başarısız
+              await sleep(400);
+              const m3 = location.href.match(/\/(\d+)\?count=/);
+              if (m3 && m3[1] !== fid) return true;
+              return false;
+            }
+            await sleep(200);
+          }
+          return false;
+        };
+
         await clickKaydetOnayla();
-        // F2 sonrası URL değişimini bekle
-        const t0 = Date.now();
-        let saved = false;
-        while (Date.now() - t0 < 6000) {
-          const m2 = location.href.match(/\/(\d+)\?count=/);
-          if (m2 && m2[1] !== fid) { saved = true; break; }
-          if (/count=0/.test(location.href)) { saved = true; break; }
-          // Dialog varsa kapat (uyarı çıkmış olabilir)
-          if (getVisibleModals().length > 0) await handleDialogs();
-          await sleep(200);
+        let saved = await waitSaved(10000);
+
+        if (!saved) {
+          // 2. deneme: bir kez daha F2
+          await sleep(500);
+          await clickKaydetOnayla();
+          saved = await waitSaved(10000);
         }
+
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
         } else {
-          // F2 başarısız oldu (muhtemelen eksik alan uyarısı), atla say
+          // F2 iki denemede de sonuçlanmadı — muhtemelen validasyon hatası
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `F2 sonuçlanmadı (eksik alan?) · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `F2 sonuçlanmadı (2 deneme, eksik alan?) · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
           await clickIleri(fid);
         }
       } catch (e) {
