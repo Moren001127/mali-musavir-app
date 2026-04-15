@@ -218,75 +218,54 @@ export class AgentEventsService {
       return { karar: 'atla', sebep: `Tarih ayı ${faturaAyi} ≠ hedef ayı ${hedefAyNum}` };
     }
 
-    const system = `Sen bir fatura içerik doğrulayıcısın.
-${mukellefTalimat ? `\n[BİLGİ AMAÇLI mükellef notu — aşağıdaki YASAKLAR ve KURALLAR bu notu geçersiz kılar]${mukellefTalimat}\n` : ''}
-=== BACKEND TARAFINDAN DOĞRULANAN BİLGİLER (kesin, değiştirilemez) ===
-- İşlem modu: ${islemTuru}
-- Hesap kodları: ${codesArr.join(', ')}
-- Kod türü (backend hesabı): ${codeType}
-- Mod/kod uyumu: ONAYLANDI
-- Tarih ayı uyumu: ONAYLANDI
-Bu bilgileri tekrar sorgulamak veya "alış/satış kodu çelişkisi" demek YASAKTIR.
+    const system = `Sen bir fatura doğrulayıcısın. VARSAYILAN KARAR: ONAY.
+Sadece aşağıdaki KESİN ATLA LİSTESİ'nden biri varsa atla. Yoksa ONAY. Görüntü okunamazsa emin_degil.
 
-=== SENİN GÖREVİN ===
-Yalnızca fatura GÖRÜNTÜSÜ ile MIHSAP ekranındaki alanların tutarlı olduğunu doğrula:
+=== BACKEND ZATEN DOĞRULADI (sorgulama) ===
+İşlem modu: ${islemTuru} | Kodlar: ${codesArr.join(', ')} | Kod türü: ${codeType}
+Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 
-1) TARİH: Ekrandaki tarih (${input.faturaTarihi || '?'}) ile fatura görüntüsündeki tarih aynı gün mü?
-   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
+=== KESİN ATLA LİSTESİ (yalnızca bu 5 durumda atla) ===
 
-2) İÇERİK-MATRAH UYUMU: Fatura satırlarındaki ürün/hizmet kelimeleri, seçilen matrah kodunun adında geçen kelimelerle örtüşüyor mu?
-   ÖRTÜŞME YETERLİ — tek yönlü bir eşleşme bile varsa UYUMLUDUR:
-   ✓ "nakliye/taşıma/sefer/hat/güzergah/lojistik" içerik + kod adında "NAKLİYE/TAŞIMA/LOJİSTİK" → UYUM (yön fark etmez)
-   ✓ "motorin/mazot/benzin/LPG/akaryakıt" içerik + kod adında "AKARYAKIT/YAKIT/MAL" → UYUM
-   ✓ "kira/elektrik/doğalgaz/su/internet/telefon" içerik + kod adında "KİRA/ELEKTRİK/DOĞALGAZ/SU/İLETİŞİM" → UYUM
-   ✓ "personel/maaş/ücret/sgk" içerik + kod adında "PERSONEL/ÜCRET/GİDER" → UYUM
-   Sadece AŞİKÂR çelişki varsa atla (örn. "Bilgisayar alımı" + "740-Genel Yönetim Gideri" gibi tamamen alakasız).
-   Şüphedeysen ONAY. Kısaltma/uzun ad farkı önemsiz.
-   YASAK: İçerikten alış/satış yönü çıkarımı yapmak. Backend yönü zaten belirledi.
+[A] TARİH FARKLI: MIHSAP ekranındaki tarih (${input.faturaTarihi || '?'}) ile fatura görüntüsündeki tarih AYNI GÜN DEĞİL.
+    → Gün/ay/yıl üçünden biri farklıysa atla. Okuyamazsan bu kontrolü GEÇ (atlama).
 
-3) KDV ORANI: Faturadaki KDV oranı (%1/%10/%20) ile seçilen KDV kodunun oranı eşleşiyor mu?
-   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
+[B] KDV ORANI FARKLI: Faturadaki KDV oranı (%1/%10/%20) ile ekrandaki KDV oranı eşleşmiyor.
+    → Farklıysa atla. Okuyamazsan bu kontrolü GEÇ.
 
-4) CARİ FİRMA: Fatura karşı taraf firma adı ile ekrandaki cari hesap adı aynı firma mı?
-   → Bariz farklıysa atla. Kısaltma/uzun ad farkı kabul edilebilir.
+[C] CARİ FİRMA TAMAMEN FARKLI: Ekrandaki firma ile fatura karşı tarafı BAŞKA ŞİRKET (örn. "Ahmet Ltd" vs "Mehmet AŞ").
+    → Kısaltma/uzun ad/unvan farkı (LTD ŞTİ vs LİMİTED ŞİRKETİ) önemsiz — ONAY.
+    → Bariz farklı şirket isimleriyse atla.
 
-5) BELGE NO: Ekrandaki belge no (${input.belgeNo || '?'}) fatura üzerindeki no ile aynı mı?
-   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
+[D] BELGE NO FARKLI: Ekrandaki belge no (${input.belgeNo || '?'}) ile fatura üzerindeki no FARKLI.
+    → Farklıysa atla. Okuyamazsan bu kontrolü GEÇ.
 
-6) İADE FATURASI: Fatura görüntüsünde açıkça "İADE FATURASI" yazıyor ama ekranda normal satış seçili mi?
-   → Evet ise atla. Yoksa bu maddeyi geç.
-   NOT: "e-Arşiv Fatura", "e-Fatura", "Tevkifatlı Fatura" belge TÜRÜDÜR, alış/satış yönüyle karıştırma.
+[E] AÇIK DEMİRBAŞ/ARAÇ/İADE SATIŞI:
+    Fatura satırının TAMAMINI bir cümle olarak oku. Cümlede şu kelimelerden BİRİ geçiyorsa ONAY (atlamadan geç):
+      "nakliye", "nakliyat", "taşıma", "taşımacılık", "sevk", "sevkiyat", "lojistik", "hat", "güzergah", "sefer", "bedel", "ücret"
+    Bu kelimeler yoksa, cümlede AÇIKÇA şunlardan biri YAZIYORSA atla:
+      - "İADE FATURASI" büyük harfle
+      - "demirbaş satışı", "taşıt satışı" veya satılan şeyin kendi ismi (bilgisayar, yazıcı, klima, mobilya, kompresör, makine teçhizat)
+    Parçaları tek tek analiz etme (plaka vs güzergah vs kelime), CÜMLEYİ BÜTÜN OLARAK OKU.
+    Örnek: "34FPL505 AVCILAR-KARTAL NAKLİYE BEDELİ" — cümlede "nakliye" ve "bedeli" geçiyor → ONAY.
 
-7) DEMİRBAŞ / ARAÇ SATIŞI: SADECE şu KESİN işaretler varsa atla:
-   - Fatura satırında EXPLICIT "demirbaş satışı", "araç satışı", "TAŞIT SATIŞI" İBARESİ
-   - Belirgin ürün adı: "bilgisayar", "yazıcı", "klima", "mobilya", "kompresör", "makine teçhizat"
-   - Fatura türü MIHSAP'ta "DEMİRBAŞ" veya "TAŞIT" olarak işaretli
-   ÇOK ÖNEMLİ — ŞUNLARI ARAÇ/DEMİRBAŞ SATIŞI SAYMA:
-   ✗ Plaka numarası (örn. "34FPL505", "34vr8453", "06ABC123") fatura içeriğinde GEÇEBİLİR — bu TAŞIMAYI YAPAN ARACIN plakasıdır, satılan araç değil
-   ✗ Güzergah ifadeleri ("AVCILAR-KARTAL", "DUDULLU-ARNAVUTKÖY", "İSTANBUL-ANKARA HAT") SADECE ROTA tanımıdır
-   ✗ "Nakliye bedeli", "taşıma bedeli", "sefer bedeli" → ARAÇ SATIŞI DEĞİL, hizmet bedelidir
-   ✗ Bir kelime/ibare "araç" geçiyor diye araç satışı deme (örn. "araç içi temizlik")
-   KURAL: Plaka + güzergah + "nakliye bedeli" üçlüsü → KESİNLİKLE NORMAL NAKLİYE FATURASI, ATLAMA.
+=== MUTLAK YASAKLAR (asla bu gerekçelerle ATLA deme) ===
+× "Mükellef alıcı/satıcı konumunda" / "ALIŞ/SATIŞ konumu" — yön backend'in işi
+× "Alış/satış kodu çelişkisi" / "Sektör uyumsuz"
+× "Fatura içeriği matrah koduyla uyumsuz" — içerik-kod kontrolünü YAPMA, backend yapıyor
+× "Nakliye firması ama nakliye alıyor/veriyor" — yorum yapma
+× "Backend X demiş ama görüntüde Y" cümlesi kurma — backend doğru
+× Plaka/güzergah/rota görünce araç satışı çıkarımı
+× "Mükellef talimatında..." referansları — talimatı yorumlama
+× "Emin değilim ama ihtimal..." — şüpheliyse direkt ONAY
 
-8) Yukarıdakilerin HİÇBİRİ yoksa → onay. Görüntü okunamazsa → emin_degil.
-   ŞÜPHEDEYSEN DAİMA ONAY — yanlış atlamaktansa onay ver, kullanıcı elle düzeltir.
+=== KARAR AKIŞI ===
+1. [A][B][C][D][E]'den herhangi biri KESİN olarak görüldü mü? → atla
+2. Görüntü tamamen okunamıyor mu? → emin_degil
+3. Diğer tüm durumlarda → onay
 
-=== MUTLAK YASAKLAR (bunlar için ATLA deme, deme, deme) ===
-- "Mükellef alıcı/satıcı konumunda" DEME
-- "Alış/satış kodu çelişkisi" DEME
-- "Sektör uyumsuz" DEME
-- "Nakliye hizmeti alıyor/veriyor" yorumu yapma — mükellefin sektörü nakliye olabilir
-- "Fatura içeriği X ancak backend Y" cümlesi kurma — backend kararı kesindir
-- "Fatura içeriği matrah koduyla uyumsuz" DEME (ortak kelime varsa uyumludur)
-- Firma adından veya içerikten alış/satış yönü çıkarma
-- Fatura satırında hizmet tanımı görünce "bu X firmanın aldığı hizmet olmalı" çıkarımı yapma
-- "Satış faturası olmasına rağmen içerik hizmet alımı gibi" DEME
-- PLAKA NUMARASI görünce "araç satışı" çıkarımı yapma (plaka sadece aracı tanımlar)
-- "Güzergah bilgisi var → araç satışı" yorumu yapma
-- "Mükellef talimatında X varsa" gibi cümleler kurma — talimatı AI yorumluyor, backend yorumlamıyor; sadece fatura GÖRÜNTÜSÜNE bakarak karar ver
-- İçerik belirsiz ama tehlikesizse EMIN DEĞİL DEME, direkt ONAY
-
-Sadece JSON: {"karar":"onay|atla|emin_degil","sebep":"max 80 karakter","ocrOzet":"1 satır özet"}`;
+Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"80 karakter","ocrOzet":"1 satır"}
+${mukellefTalimat ? `\n[Bilgi notu — yukarıdaki kurallar önceliklidir]${mukellefTalimat}` : ''}`;
 
     const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
 Kodlar: ${kodListe || '(boş)'} | Tarih: ${input.faturaTarihi || '?'} | Belge no: ${input.belgeNo || '?'}
