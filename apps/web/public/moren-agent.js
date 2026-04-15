@@ -114,19 +114,36 @@
       const text = modal.textContent || '';
       const btns = [...modal.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
       const findIn = (needle) => btns.find((b) => b.textContent.trim() === needle);
+      const findInStarts = (needle) =>
+        btns.find((b) => b.textContent.trim().toLowerCase().startsWith(needle.toLowerCase()));
+
+      // Mükerrer fatura uyarısı → İptal
       if (/Mükerrer/i.test(text)) {
-        const iptal = findIn('İptal');
+        const iptal = findIn('İptal') || findIn('Vazgeç');
         if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
       }
-      if (/Hesap kodu girilmemiş/i.test(text) || /satır mevcut/i.test(text)) {
-        const tamam = findIn('Tamam');
-        if (tamam) { await click(tamam); await sleep(300); return 'tamam'; }
+      // Hesap kodu boş uyarısı → Evet/Tamam ile devam et (atlamak için)
+      if (/Hesap kodu girilmemiş/i.test(text) ||
+          /hesap kodu.*boş/i.test(text) ||
+          /kod.*eksik/i.test(text) ||
+          /satır mevcut/i.test(text) ||
+          /kaydetme.*devam/i.test(text) ||
+          /onaylamadan/i.test(text)) {
+        const ok =
+          findIn('Evet') || findIn('Tamam') || findIn('Devam') || findIn('Devam et') ||
+          findInStarts('Evet') || findInStarts('Tamam') || findInStarts('Devam');
+        if (ok) { await click(ok); await sleep(300); return 'tamam'; }
       }
-      // Genel "Vazgeç" veya "Tamam"
-      const vazgec = findIn('Vazgeç');
+      // Onay dialog'u (genel) — "emin misiniz?" gibi. Atlama işlemi yapıyoruz, Evet/Tamam.
+      if (/emin misiniz/i.test(text) || /onaylıyor musunuz/i.test(text)) {
+        const ok = findIn('Evet') || findIn('Tamam') || findInStarts('Evet');
+        if (ok) { await click(ok); await sleep(300); return 'evet'; }
+      }
+      // Genel fallback — Tamam/Evet/Devam önceliği, sonra Vazgeç
+      const ok2 = findIn('Evet') || findIn('Tamam') || findIn('Devam') || findInStarts('Evet') || findInStarts('Tamam');
+      if (ok2) { await click(ok2); await sleep(300); return 'tamam'; }
+      const vazgec = findIn('Vazgeç') || findIn('İptal');
       if (vazgec) { await click(vazgec); await sleep(300); return 'vazgec'; }
-      const tamam2 = findIn('Tamam');
-      if (tamam2) { await click(tamam2); await sleep(300); return 'tamam'; }
     }
     return 'ok';
   }

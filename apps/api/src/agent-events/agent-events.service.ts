@@ -221,7 +221,16 @@ export class AgentEventsService {
  5. Kodun baş rakamı 320 → BU BİR ALIŞ KODUDUR.
  6. Kodun baş rakamı 153/150/253/255/740/770 → ALIŞ KODUDUR.
  7. Kod adında "SATIŞ" veya "GELİR" geçiyorsa → SATIŞ KODUDUR (örn: "600.01.001-NAKLİYE GELİRLERİ" = SATIŞ).
- 8. Bu kuralların İSTİSNASI YOKTUR. Sektör, firma, tevkifat, içerik fark etmez.
+ 8. 391 KODUNUN HER VARYANTI SATIŞ KODUDUR. Alt kodlar dahil:
+    • 391.01.xxx (Hesaplanan KDV) = SATIŞ
+    • 391.02.xxx (ALIŞTAN İADE HESAPLANAN KDV) = SATIŞ
+      (Mükellefin aldığı malı iade ettiği iade faturası. Bu İADE FATURASI = mükellef açısından SATIŞ işlemidir,
+       çünkü mükellef satıcıya ürünü geri "satıyor" gibi düşün. KDV hesaplanır, tahsil edilir.)
+    • 391.03.xxx vb. = SATIŞ
+    Kısaca: Kod 391 ile başlıyorsa SATIŞ, başka detaya bakma.
+ 9. 191 KODUNUN HER VARYANTI ALIŞ KODUDUR (191.01, 191.02 "Satıştan İade İndirilecek KDV" dahil).
+10. Bu kuralların İSTİSNASI YOKTUR. Sektör, firma, tevkifat, içerik, açıklama fark etmez.
+    Açıklamada "alıştan iade" yazsa da kod 391 ise SATIŞ. Açıklamada "satıştan iade" yazsa da kod 191 ise ALIŞ.
 
 🚫 BU CÜMLELERİ ASLA YAZMA:
   ✗ "600/391/120 alış kodları" — YANLIŞ. Bunlar SATIŞ kodları.
