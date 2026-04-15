@@ -266,7 +266,7 @@ Sen MIHSAP ekranındaki alanların fatura GÖRÜNTÜSÜ ile tutarlı olduğunu d
 10) Yukarıdakilerin HİÇBİRİ yoksa → onay.
 
 Sebep yazarken HANGİ ALANDA sorun olduğunu belirt (ör. "tarih uyuşmuyor: ekran 10-04 fatura 30-03", "matrah çelişki: kod genel gider fatura akaryakıt").
-Kod türü/mod konusunu SORGULAMA — zaten doğrulandı.`;
+Kod türü/mod konusunu SORGULAMA — zaten doğrulandı.
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
