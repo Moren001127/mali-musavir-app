@@ -190,22 +190,56 @@ export class AgentEventsService {
 
 ⚠️ ŞU AN İŞLEM TÜRÜ: ${islemTuru} FATURASI
 
-BU ÖNEMLİ: Alış ve satış farklı kurallar! Yanlış türde değerlendirme yapma.
-- ALIŞ faturası: Mükellefin SATIN ALDIĞI mal/hizmet. Gider veya stok olarak işlenir. Kodlar 153/740/770/253 gibi gider/stok hesapları + 191 (İndirilecek KDV) + 320/100 (Ödeme).
-- SATIŞ faturası: Mükellefin SATTIĞI mal/hizmet. Gelir olarak işlenir. Kodlar 600 (Yurt içi satışlar) + 391 (Hesaplanan KDV) + 120/100 (Tahsilat).
+╔══════════════════════════════════════════════════════════════════╗
+║ 📘 HESAP KODU TABLOSU — EZBERLE VE ASLA KARIŞTIRMA              ║
+╠══════════════════════════════════════════════════════════════════╣
+║ SATIŞ (GELİR) KODLARI — bunlar SATIŞ faturasında görünür:       ║
+║   • 600.xx — Yurt İçi Satışlar (ana satış geliri)               ║
+║   • 601.xx — Yurt Dışı Satışlar                                 ║
+║   • 602.xx — Diğer Gelirler                                     ║
+║   • 391.xx — Hesaplanan KDV (satışta ALINAN KDV)                ║
+║   • 120.xx — Alıcılar (satıştan doğan alacak)                   ║
+║                                                                  ║
+║ ALIŞ (GİDER/STOK) KODLARI — bunlar ALIŞ faturasında görünür:    ║
+║   • 153.xx — Ticari Mallar (stok)                               ║
+║   • 150.xx — İlk Madde ve Malzeme                               ║
+║   • 253/255 — Sabit Kıymet/Demirbaş                             ║
+║   • 740/770 — Hizmet/Genel Yönetim Gideri                       ║
+║   • 191.xx — İndirilecek KDV (alışta ÖDENEN KDV)                ║
+║   • 320.xx — Satıcılar (alıştan doğan borç)                     ║
+╚══════════════════════════════════════════════════════════════════╝
+
+🚫 YAYGIN HATA — YAPMA:
+  ✗ 600 veya 391 kodunu görünce "alış kodu" deme. BU SATIŞ KODLARIDIR.
+  ✗ 153, 191, 320 kodunu görünce "satış kodu" deme. BU ALIŞ KODLARIDIR.
+  ✗ SATIŞ faturasında 600.xx + 391.xx + 120.xx kodları görüyorsan bu TAMAMEN DOĞRUDUR → onay ver.
+  ✗ ALIŞ faturasında 153/770/740 + 191 + 320 kodları görüyorsan bu TAMAMEN DOĞRUDUR → onay ver.
+
+🗓️ TARİH YORUMLAMA — DİKKAT:
+  • Tarih formatı Türkiye standardı: GG-AA-YYYY veya GG.AA.YYYY (gün-ay-yıl)
+  • "30-03-2026" = 30 Mart 2026 (AY = 03 = MART). Nisan DEĞİL!
+  • "05-04-2026" = 5 Nisan 2026 (AY = 04 = NİSAN)
+  • Hedef ay "2026-03" ise: ay numarası 03 yani MART — sadece 01-31 Mart tarihli faturalar uygundur.
+  • Ay karşılaştırması yaparken fatura tarihindeki 2. sayı grubunu (ay) hedef aydaki AA ile eşleştir.
+  • Tarihi yorumlamadan önce mutlaka GG-AA-YYYY olduğunu DOĞRULA.
+
 Eğer fatura türü talimata uymuyorsa (ör. satış beklerken alış görürsen) emin_degil de.
 
 ÖNEMLİ BIAS UYARISI: Mükellefin sektörü ne olursa olsun, her faturanın KENDİ içeriğine bakarak karar ver. Örneğin mükellef nakliye firması olsa bile bir yemek/gıda faturası gelebilir — içerik "yiyecek" ise yakıt sayma. Görüntüde net göremediğin faturada "emin_degil" de.
 Kararın: "onay" (F2 Kaydet ve Onayla) / "atla" (İleri, kaydetme) / "emin_degil" (güvenli: atla).
 
 KURALLAR (sırayla):
-1) Faturanın tarihi hedef ay dışındaysa → atla
+1) Fatura tarihini GG-AA-YYYY olarak oku; AA (ay numarası) hedef aydaki ay numarasıyla EŞLEŞMİYORSA → atla. Eşleşiyorsa bu kuralda atlama.
 2) Hesap kodları boş, eksik veya tutarsızsa → atla
 3) Hesap kodu 255 ile başlıyorsa VEYA kodların metni "demirbaş" içeriyorsa → atla
 4) Fatura içeriğinde "demirbaş, makine, teçhizat, mobilya, bilgisayar, yazıcı, kompresör, fotokopi, klima" gibi sabit kıymet ibareleri varsa → atla
-5) Hesap kodu ile fatura içeriği bariz çelişiyorsa (örn. kod 770-Genel Yönetim ama fatura akaryakıt) → atla
-6) Yukarıdaki hiçbiri değilse VE kodlar içeriğe uygunsa → onay
-7) Tereddüt varsa → emin_degil
+5) İşlem türü ile kod türü uyumsuzsa → atla. Yani:
+   • SATIŞ işleminde 191/320/153 gibi ALIŞ kodları varsa → atla
+   • ALIŞ işleminde 600/391/120 gibi SATIŞ kodları varsa → atla
+   Ancak: ${islemTuru} işleminde ${islemTuru === 'SATIŞ' ? '600/391/120' : '153/191/320 veya 770/191/320'} kodları varsa → bu DOĞRUDUR, bu kuralla atlamayacaksın.
+6) Hesap kodu ile fatura içeriği bariz çelişiyorsa (örn. kod 770-Genel Yönetim ama fatura akaryakıt stok) → atla
+7) Yukarıdaki hiçbiri değilse VE kodlar içeriğe uygunsa → onay
+8) Tereddüt varsa → emin_degil
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
