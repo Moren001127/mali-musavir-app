@@ -187,7 +187,7 @@ export class AgentEventsService {
     const kodListe = input.hesapKodlari.join(', ');
     const islemTuru = input.action === 'isle_satis' ? 'SATIŞ' : input.action === 'isle_alis' ? 'ALIŞ' : 'ALIŞ';
 
-    // === DETERMİNİSTİK KOD KONTROLÜ (AI'ya bırakılamaz — her zaman tutarsızdı) ===
+    // === DETERMİNİSTİK KOD KONTROLÜ ===
     const SATIS_PFX = ['600', '601', '602', '120', '121', '122', '391'];
     const ALIS_PFX  = ['150', '153', '157', '253', '255', '320', '321', '322', '740', '770', '191'];
     const firstThree = (c: string) => (c.match(/^(\d{3})/)?.[1] || '');
@@ -196,17 +196,18 @@ export class AgentEventsService {
     const hasSatis = pfxs.some(p => SATIS_PFX.includes(p));
     const hasAlis  = pfxs.some(p => ALIS_PFX.includes(p));
     const demirbas = pfxs.some(p => p === '253' || p === '255');
+    const codeType = hasSatis && !hasAlis ? 'SATIŞ' : hasAlis && !hasSatis ? 'ALIŞ' : 'KARIŞIK';
 
     // Demirbaş → atla
     if (demirbas) {
       return { karar: 'atla', sebep: `Demirbaş kodu (253/255) — ${codesArr[0]}` };
     }
-    // Mod uyumsuzluğu → atla (AI'ya SORMA)
-    if (islemTuru === 'SATIŞ' && hasAlis && !hasSatis) {
-      return { karar: 'atla', sebep: `SATIŞ modu ama kodlar ALIŞ (${codesArr.slice(0,3).join('+')})` };
+    // Mod/kod uyumsuzluğu → AI'ya sormadan atla
+    if (islemTuru === 'SATIŞ' && codeType === 'ALIŞ') {
+      return { karar: 'atla', sebep: `SATIŞ modu ama kodlar ALIŞ (${codesArr.slice(0,2).join('+')})` };
     }
-    if (islemTuru === 'ALIŞ' && hasSatis && !hasAlis) {
-      return { karar: 'atla', sebep: `ALIŞ modu ama kodlar SATIŞ (${codesArr.slice(0,3).join('+')})` };
+    if (islemTuru === 'ALIŞ' && codeType === 'SATIŞ') {
+      return { karar: 'atla', sebep: `ALIŞ modu ama kodlar SATIŞ (${codesArr.slice(0,2).join('+')})` };
     }
 
     // Tarih kontrolü (deterministik)
@@ -216,79 +217,54 @@ export class AgentEventsService {
     if (faturaAyi && hedefAyNum && faturaAyi !== hedefAyNum) {
       return { karar: 'atla', sebep: `Tarih ayı ${faturaAyi} ≠ hedef ayı ${hedefAyNum}` };
     }
-    const system = `Sen bir fatura içerik doğrulayıcısın. ${islemTuru} faturası işleniyor.
 
-ÖNEMLI: Kod türü ve mod uyumu ZATEN backend'de kontrol edildi, geçti.
-Sen MIHSAP ekranındaki alanların fatura GÖRÜNTÜSÜ ile tutarlı olduğunu doğrula:
+    const system = `Sen bir fatura içerik doğrulayıcısın.
 
-1) TARİH TEYİDİ:
-   MIHSAP ekranındaki tarih: ${input.faturaTarihi || '?'}
-   Fatura görüntüsündeki tarih (sen oku) — ikisi AYNI mı?
-   Farklı ise → atla ("ekran tarihi X, fatura Y" şeklinde sebep yaz)
+=== BACKEND TARAFINDAN DOĞRULANAN BİLGİLER (kesin, değiştirilemez) ===
+- İşlem modu: ${islemTuru}
+- Hesap kodları: ${codesArr.join(', ')}
+- Kod türü (backend hesabı): ${codeType}
+- Mod/kod uyumu: ONAYLANDI
+- Tarih ayı uyumu: ONAYLANDI
+Bu bilgileri tekrar sorgulamak veya "alış/satış kodu çelişkisi" demek YASAKTIR.
 
-2) MATRAH KODU İÇERİK UYUMU:
-   Ekranda seçilen matrah kodu (ör. 600.01.001-NAKLİYE GELİRLERİ) fatura içeriğiyle uyumlu mu?
-   Uyum: matrah "Nakliye Gelirleri" + fatura nakliye hizmeti → onay
-   Çelişki: matrah "Genel Yönetim" (770) + fatura akaryakıt → atla
+=== SENİN GÖREVİN ===
+Yalnızca fatura GÖRÜNTÜSÜ ile MIHSAP ekranındaki alanların tutarlı olduğunu doğrula:
 
-3) KDV ORAN UYUMU:
-   Ekrandaki KDV kodu oranı (ör. 391.01.002 = %20) faturadaki KDV oranıyla eşleşmeli.
-   Fatura %20 ama kod %10 ise → atla.
+1) TARİH: Ekrandaki tarih (${input.faturaTarihi || '?'}) ile fatura görüntüsündeki tarih aynı gün mü?
+   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
 
-4) CARİ FİRMA UYUMU:
-   Fatura karşı firma adı ile ekrandaki cari hesap adı aynı firma mı?
-   Satıcı firma "${input.firma || '?'}" — cari adı bariz farklı ise → atla.
+2) İÇERİK-MATRAH UYUMU: Fatura satırlarındaki ürün/hizmet açıklaması, seçilen matrah kodunun adıyla mantıklı mı?
+   Uyum örnekleri: "Nakliye bedeli" + "600-Nakliye Gelirleri" ✓ | "Motorin" + "153-Ticari Mallar" ✓
+   Çelişki örneği: "Akaryakıt faturası" + "770-Genel Yönetim Gideri" ✗
+   → Açık çelişkide atla. Mantıklıysa veya emin değilsen onay.
 
-5) BELGE NUMARASI:
-   Fatura üzerindeki belge numarası ile ekrandaki belge no eşleşiyor mu?
-   Ekrandaki: ${input.belgeNo || '?'}. Fark varsa → atla.
-   Boş veya 000000 gibi anlamsız → atla.
+3) KDV ORANI: Faturadaki KDV oranı (%1/%10/%20) ile seçilen KDV kodunun oranı eşleşiyor mu?
+   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
 
-6) FATURA TÜRÜ:
-   Fatura görüntüsünde tür damgası var: "e-Arşiv Fatura", "e-Fatura", "İade Faturası", "Tevkifatlı" gibi.
-   Belge türü (ekranda): ${input.belgeTuru || '?'}
-   SADECE NET görünen uyumsuzlukta atla. Örnekler:
-   ✓ Çelişki: ekran "Normal Satış" ama fatura açıkça "İADE FATURASI" yazıyor → atla
-   ✓ Uyum: ekran "Tevkifatlı" ve faturada tevkifat var → onay
-   ✗ Yapma: Fatura türü okunmuyorsa, damga bulanıksa, "e-Arşiv" mi "e-Fatura" mı ayırt edemiyorsan → bu maddeyi ATLA (sadece emin_degil verme)
-   NOT: "e-Arşiv Fatura" ve "e-Fatura" ikisi de geçerli belge türleridir, sadece platform farkı vardır. İkisini birbiriyle çelişki sayma.
+4) CARİ FİRMA: Fatura karşı taraf firma adı ile ekrandaki cari hesap adı aynı firma mı?
+   → Bariz farklıysa atla. Kısaltma/uzun ad farkı kabul edilebilir.
 
-7) BELGE TÜRÜ (E-Fatura / E-Arşiv / Kağıt / İrsaliye):
-   Sadece AÇIK çelişki varsa atla:
-   ✓ Çelişki: ekran "Kağıt Fatura" ama görüntüde "e-Arşiv Fatura" QR kodu net görünüyor → atla
-   ✗ Yapma: Belge türü yazısı tam okunmuyorsa → bu maddeyi geç, atla verme
+5) BELGE NO: Ekrandaki belge no (${input.belgeNo || '?'}) fatura üzerindeki no ile aynı mı?
+   → Farklıysa atla. Okuyamazsan bu maddeyi geç.
 
-8) DEMİRBAŞ:
-   Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör, fotokopi" varsa → atla.
+6) İADE FATURASI: Fatura görüntüsünde açıkça "İADE FATURASI" yazıyor ama ekranda normal satış seçili mi?
+   → Evet ise atla. Yoksa bu maddeyi geç.
+   NOT: "e-Arşiv Fatura", "e-Fatura", "Tevkifatlı Fatura" belge TÜRÜDÜR, alış/satış yönüyle karıştırma.
 
-9) GÖRÜNTÜ KALİTESİ:
-   Bulanık, okunamıyor veya içerik net seçilemiyor → emin_degil.
+7) DEMİRBAŞ: Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör" varsa → atla.
 
-10) Yukarıdakilerin HİÇBİRİ yoksa → onay.
+8) Yukarıdakilerin HİÇBİRİ yoksa → onay. Görüntü okunamazsa → emin_degil.
 
-Sebep yazarken HANGİ ALANDA sorun olduğunu belirt (ör. "tarih uyuşmuyor: ekran 10-04 fatura 30-03", "matrah çelişki: kod genel gider fatura akaryakıt").
-Kod türü/mod konusunu SORGULAMA — zaten doğrulandı.
+YASAK: "mükellef alıcı/satıcı konumunda" deme. "alış/satış kodu" deme. "sektör uyumsuz" deme. Firma adından alış/satış yönü çıkarma.
 
-Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
+Sadece JSON: {"karar":"onay|atla|emin_degil","sebep":"max 80 karakter","ocrOzet":"1 satır özet"}${mukellefTalimat}`;
 
-    const userText = `Mükellef (faturayı alan): ${input.mukellef || '?'}
-Satıcı firma (faturayı kesen): ${input.firma || '?'}
-Hesap kodları: ${kodListe || '(boş)'}
-Fatura tarihi: ${input.faturaTarihi || '?'}
-Belge no: ${input.belgeNo || '?'}
-Belge türü: ${input.belgeTuru || '?'}
-Tutar: ${input.tutar || '?'}
-Hedef ay: ${input.hedefAy || '?'}
+    const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
+Kodlar: ${kodListe || '(boş)'} | Tarih: ${input.faturaTarihi || '?'} | Belge no: ${input.belgeNo || '?'}
+Belge türü: ${input.belgeTuru || '?'} | Tutar: ${input.tutar || '?'} | Hedef ay: ${input.hedefAy || '?'}
 
-NASIL KARAR VERİLİR (ÖNEM SIRASIYLA):
-1) **Fatura GÖRÜNTÜSÜNÜN İÇERİĞİNE** bak — satırlarda ne yazıyor (ürün/hizmet adları)?
-   Örn: "Sprinter Ön Fren Diski", "Motorin 95", "Hamburger menü" — bu asıl kanıt
-2) Hesap kodlarını o içerikle karşılaştır. Uygunsa onay, çelişiyorsa atla.
-3) Firma adı sadece **destekleyici ipucu**. "DİNAMİK OTOMOTİV GIDA TEKSTİL" gibi çok kategorili isimler varsa firma adına değil faturanın içeriğine bak.
-4) Görüntüden içerik netse firma adıyla ufak çelişki takılma — içerik netse onay.
-5) Görüntü bulanık veya içerik seçilmiyorsa "emin_degil" de.
-
-ÖNEMLİ: Hesap kodları 153 (ticari mallar) / 191 (indirilecek KDV) / 320 (satıcılar) kombinasyonu STANDART otomotiv/ticari alış muhasebesidir. Bu kodlar + otomotiv parça içeriği = ONAY. Bu kodlar demirbaş değildir.`;
+Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON döndür.`;
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
