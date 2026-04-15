@@ -50,6 +50,7 @@ export const agentsApi = {
   listEvents: (params?: { agent?: string; mukellef?: string; status?: string; limit?: number }) =>
     api.get<AgentEvent[]>('/agent/events', { params }).then((r) => r.data),
   stats: () => api.get('/agent/stats').then((r) => r.data),
+  aiUsageStats: () => api.get('/agent/ai/usage-stats').then((r) => r.data),
   status: () => api.get<AgentStatus[]>('/agent/status').then((r) => r.data),
   rules: () => api.get<AgentRule[]>('/agent/rules').then((r) => r.data),
   getRule: (mukellef: string) =>

@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import {
   Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
   Activity, CheckCircle2, Clock, ArrowRight, Sparkles, TrendingUp, AlertCircle, Zap,
+  Cpu, DollarSign, XCircle, HelpCircle,
 } from 'lucide-react';
 
 const AGENTS = [
@@ -57,6 +58,11 @@ export default function AjanlarDashboard() {
     queryFn: () => agentsApi.listCommands({ limit: 10 }),
     refetchInterval: 3000,
   });
+  const { data: aiUsage } = useQuery({
+    queryKey: ['agent-ai-usage'],
+    queryFn: () => agentsApi.aiUsageStats(),
+    refetchInterval: 5000,
+  });
 
   const statusMap = new Map(status.map((s: any) => [s.agent, s]));
 
@@ -107,6 +113,9 @@ export default function AjanlarDashboard() {
         />
       </div>
 
+      {/* AI Kullanım Widget'ı */}
+      <AiUsageWidget data={aiUsage} />
+
       {/* Agents grid */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -125,6 +134,122 @@ export default function AjanlarDashboard() {
             return <AgentTile key={a.id} agent={a} statusInfo={info} />;
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function AiUsageWidget({ data }: { data: any }) {
+  if (!data) {
+    return (
+      <div
+        className="rounded-2xl p-5 border"
+        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      >
+        <div className="text-sm" style={{ color: 'var(--text-muted)' }}>AI kullanımı yükleniyor…</div>
+      </div>
+    );
+  }
+
+  // USD → TL kuru backend'den TCMB canlı verisiyle geliyor
+  const USD_TO_TL = Number(data.usdTry) > 0 ? Number(data.usdTry) : 40;
+
+  const formatUsd = (v: number) => `$${(v || 0).toFixed(4)}`;
+  const formatTl = (v: number) => `₺${((v || 0) * USD_TO_TL).toFixed(2)}`;
+  const formatToken = (v: number) => (v || 0).toLocaleString('tr-TR');
+
+  const Kart = ({ title, d, accent }: { title: string; d: any; accent: string }) => (
+    <div
+      className="rounded-xl p-4 border"
+      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs uppercase font-bold tracking-wider" style={{ color: accent }}>
+          {title}
+        </div>
+        <Cpu size={14} style={{ color: accent }} />
+      </div>
+
+      {/* Sorgu sayısı büyük */}
+      <div className="mb-3">
+        <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+          {formatToken(d?.sorguSayisi ?? 0)}
+        </div>
+        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>API sorgusu</div>
+      </div>
+
+      {/* Karar dağılımı */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="flex items-center gap-1">
+          <CheckCircle2 size={12} style={{ color: '#22c55e' }} />
+          <div>
+            <div className="text-xs font-semibold" style={{ color: '#22c55e' }}>
+              {formatToken(d?.onaySayisi ?? 0)}
+            </div>
+            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>onay</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <XCircle size={12} style={{ color: '#f59e0b' }} />
+          <div>
+            <div className="text-xs font-semibold" style={{ color: '#f59e0b' }}>
+              {formatToken(d?.atlaSayisi ?? 0)}
+            </div>
+            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>atla</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <HelpCircle size={12} style={{ color: '#94a3b8' }} />
+          <div>
+            <div className="text-xs font-semibold" style={{ color: '#94a3b8' }}>
+              {formatToken(d?.eminDegilSayisi ?? 0)}
+            </div>
+            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>?</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Token + Maliyet */}
+      <div className="pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span style={{ color: 'var(--text-muted)' }}>Token</span>
+          <span className="tabular-nums font-semibold" style={{ color: 'var(--text)' }}>
+            {formatToken(d?.toplamToken ?? 0)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span style={{ color: 'var(--text-muted)' }}>Maliyet</span>
+          <span className="tabular-nums font-semibold" style={{ color: accent }}>
+            {formatUsd(d?.maliyetUsd ?? 0)} · {formatTl(d?.maliyetUsd ?? 0)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }}
+        >
+          <DollarSign size={15} style={{ color: '#fff' }} />
+        </div>
+        <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+          AI Kullanım & Maliyet
+        </h2>
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          · Claude Haiku 4.5
+        </span>
+        <span className="text-xs ml-auto tabular-nums" style={{ color: 'var(--text-muted)' }}>
+          TCMB USD: ₺{USD_TO_TL.toFixed(4)}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Kart title="Bugün" d={data.bugun} accent="#3b82f6" />
+        <Kart title="Bu Ay" d={data.buAy} accent="#8b5cf6" />
+        <Kart title="Toplam" d={data.toplam} accent="#b8a06f" />
       </div>
     </div>
   );

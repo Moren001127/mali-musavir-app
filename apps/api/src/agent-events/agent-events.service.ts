@@ -317,6 +317,53 @@ Belge türü: ${input.belgeTuru || '?'} | Tutar: ${input.tutar || '?'} | Hedef a
 
 Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON döndür.`;
 
+    const startMs = Date.now();
+    const MODEL = 'claude-haiku-4-5-20251001';
+    // Anthropic fiyatları (USD / milyon token) — Haiku 4.5
+    const PRICE_IN_USD_PER_MTOK = 1.0;
+    const PRICE_OUT_USD_PER_MTOK = 5.0;
+    const PRICE_CACHE_READ_PER_MTOK = 0.1;
+    const PRICE_CACHE_WRITE_PER_MTOK = 1.25;
+
+    const logUsage = async (params: {
+      karar?: string;
+      sebep?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadTokens?: number;
+      cacheWriteTokens?: number;
+    }) => {
+      try {
+        const inT = params.inputTokens || 0;
+        const outT = params.outputTokens || 0;
+        const cR = params.cacheReadTokens || 0;
+        const cW = params.cacheWriteTokens || 0;
+        const costUsd =
+          (inT / 1_000_000) * PRICE_IN_USD_PER_MTOK +
+          (outT / 1_000_000) * PRICE_OUT_USD_PER_MTOK +
+          (cR / 1_000_000) * PRICE_CACHE_READ_PER_MTOK +
+          (cW / 1_000_000) * PRICE_CACHE_WRITE_PER_MTOK;
+        await (this.prisma as any).aiUsageLog.create({
+          data: {
+            tenantId: input.tenantId || 'unknown',
+            mukellef: input.mukellef || null,
+            model: MODEL,
+            inputTokens: inT,
+            outputTokens: outT,
+            cacheReadTokens: cR,
+            cacheWriteTokens: cW,
+            costUsd,
+            karar: params.karar || null,
+            sebep: (params.sebep || '').slice(0, 200) || null,
+            belgeNo: input.belgeNo || null,
+            durationMs: Date.now() - startMs,
+          },
+        });
+      } catch {
+        // Log hatasını sessizce geç — ana akışı bozma
+      }
+    };
+
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -326,7 +373,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: MODEL,
           max_tokens: 600,
           system,
           messages: [
@@ -349,41 +396,147 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
       if (!res.ok) {
         const errText = await res.text();
+        await logUsage({ karar: 'emin_degil', sebep: `API ${res.status}` });
         return { karar: 'emin_degil', sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}` };
       }
       const json = await res.json();
       const text = json?.content?.[0]?.text || '';
+      const usage = json?.usage || {};
+      const tokenParams = {
+        inputTokens: usage.input_tokens || 0,
+        outputTokens: usage.output_tokens || 0,
+        cacheReadTokens: usage.cache_read_input_tokens || 0,
+        cacheWriteTokens: usage.cache_creation_input_tokens || 0,
+      };
 
-      // 1) Kod bloğu ``` içindeki JSON'u çıkar
+      // JSON parse (çok katmanlı)
       const codeBlock = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
       const candidates: string[] = [];
       if (codeBlock) candidates.push(codeBlock[1]);
-
-      // 2) Greedy + non-greedy JSON match (truncated cevaplar için)
       const greedy = text.match(/\{[\s\S]*\}/);
       if (greedy) candidates.push(greedy[0]);
       const nonGreedy = text.match(/\{[\s\S]*?"karar"[\s\S]*?\}/);
       if (nonGreedy) candidates.push(nonGreedy[0]);
 
-      // 3) Sırayla parse dene
       for (const c of candidates) {
         try {
           const parsed = JSON.parse(c);
-          if (parsed?.karar) return parsed;
+          if (parsed?.karar) {
+            await logUsage({ ...tokenParams, karar: parsed.karar, sebep: parsed.sebep });
+            return parsed;
+          }
         } catch {}
       }
 
-      // 4) Parse başarısız: regex ile karar+sebep'i yakalamayı dene
       const kararM = text.match(/"karar"\s*:\s*"(onay|atla|emin_degil)"/);
       const sebepM = text.match(/"sebep"\s*:\s*"([^"]{0,200})"/);
       if (kararM) {
+        await logUsage({ ...tokenParams, karar: kararM[1], sebep: sebepM?.[1] || 'partial parse' });
         return { karar: kararM[1], sebep: sebepM?.[1] || 'partial parse', raw: text.slice(0, 200) };
       }
 
+      await logUsage({ ...tokenParams, karar: 'emin_degil', sebep: 'JSON parse fail' });
       return { karar: 'emin_degil', sebep: 'JSON parse fail', raw: text.slice(0, 200) };
     } catch (e: any) {
+      await logUsage({ karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` });
       return { karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` };
     }
+  }
+
+  // USD/TRY kur cache'i — TCMB'den günde 1 kez çekilir
+  private usdTryCache: { rate: number; fetchedAt: Date } | null = null;
+
+  private async getUsdTryRate(): Promise<number> {
+    const now = new Date();
+    // 6 saatten eski ise yeniden çek
+    if (
+      this.usdTryCache &&
+      now.getTime() - this.usdTryCache.fetchedAt.getTime() < 6 * 60 * 60 * 1000
+    ) {
+      return this.usdTryCache.rate;
+    }
+    try {
+      const res = await fetch('https://www.tcmb.gov.tr/kurlar/today.xml', {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (res.ok) {
+        const xml = await res.text();
+        // <Currency Kod="USD"> ... <ForexSelling>X.XXXX</ForexSelling>
+        const usdBlock = xml.match(/<Currency[^>]*Kod="USD"[\s\S]*?<\/Currency>/);
+        if (usdBlock) {
+          const sell = usdBlock[0].match(/<ForexSelling>([\d.]+)<\/ForexSelling>/);
+          const rate = sell ? parseFloat(sell[1]) : NaN;
+          if (!isNaN(rate) && rate > 0) {
+            this.usdTryCache = { rate, fetchedAt: now };
+            return rate;
+          }
+        }
+      }
+    } catch {
+      // TCMB erişilmezse (hafta sonu / tatil) önceki cache varsa kullan
+    }
+    if (this.usdTryCache) return this.usdTryCache.rate;
+    // Hiç değer yoksa makul bir fallback (env'den de okunur)
+    return parseFloat(process.env.USD_TRY_FALLBACK || '40');
+  }
+
+  /**
+   * AI kullanım istatistikleri — panel widget'ı için.
+   * Bugün / Bu ay / Toplam istatistikleri döner.
+   */
+  async getAiUsageStats(tenantId: string) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const aggregate = async (since?: Date) => {
+      const where: any = { tenantId };
+      if (since) where.createdAt = { gte: since };
+      const rows = await (this.prisma as any).aiUsageLog.findMany({
+        where,
+        select: {
+          inputTokens: true,
+          outputTokens: true,
+          cacheReadTokens: true,
+          cacheWriteTokens: true,
+          costUsd: true,
+          karar: true,
+        },
+      });
+      const acc = {
+        sorguSayisi: rows.length,
+        onaySayisi: 0,
+        atlaSayisi: 0,
+        eminDegilSayisi: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        toplamToken: 0,
+        maliyetUsd: 0,
+      };
+      for (const r of rows) {
+        if (r.karar === 'onay') acc.onaySayisi++;
+        else if (r.karar === 'atla') acc.atlaSayisi++;
+        else acc.eminDegilSayisi++;
+        acc.inputTokens += r.inputTokens || 0;
+        acc.outputTokens += r.outputTokens || 0;
+        acc.cacheReadTokens += r.cacheReadTokens || 0;
+        acc.cacheWriteTokens += r.cacheWriteTokens || 0;
+        acc.maliyetUsd += r.costUsd || 0;
+      }
+      acc.toplamToken = acc.inputTokens + acc.outputTokens + acc.cacheReadTokens + acc.cacheWriteTokens;
+      return acc;
+    };
+
+    const [bugun, buAy, toplam, usdTry] = await Promise.all([
+      aggregate(todayStart),
+      aggregate(monthStart),
+      aggregate(),
+      this.getUsdTryRate(),
+    ]);
+
+    return { bugun, buAy, toplam, usdTry, updatedAt: now };
   }
 
   async updateCommand(
