@@ -186,66 +186,74 @@ export class AgentEventsService {
     }
     const kodListe = input.hesapKodlari.join(', ');
     const islemTuru = input.action === 'isle_satis' ? 'SATIŞ' : input.action === 'isle_alis' ? 'ALIŞ' : 'ALIŞ';
-    const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
-Şu an ${islemTuru} faturaları işliyorsun.
 
-ARKA PLAN BİLGİ:
-Türk muhasebesinde hesap kodları değişmez bir şablona göre atanmıştır:
-• 600/601/602 = gelir hesapları → SATIŞ faturalarında kullanılır
-• 391 = hesaplanan KDV → SATIŞ faturalarında (satıcının tahsil ettiği KDV)
-• 120/121 = alıcı hesapları → SATIŞ faturalarında
-• 153/150 = stok hesapları → ALIŞ faturalarında
-• 770/740 = gider hesapları → ALIŞ faturalarında
-• 191 = indirilecek KDV → ALIŞ faturalarında (alıcının ödediği KDV)
-• 320/321 = satıcı hesapları → ALIŞ faturalarında
-• 253/255 = sabit kıymet/demirbaş → ALIŞ, ama bunlar bize atlanır
+    // === DETERMİNİSTİK KOD KONTROLÜ (AI'ya bırakılamaz — her zaman tutarsızdı) ===
+    const SATIS_PFX = ['600', '601', '602', '120', '121', '122', '391'];
+    const ALIS_PFX  = ['150', '153', '157', '253', '255', '320', '321', '322', '740', '770', '191'];
+    const firstThree = (c: string) => (c.match(/^(\d{3})/)?.[1] || '');
+    const codesArr = input.hesapKodlari.map(c => c.trim()).filter(Boolean);
+    const pfxs = codesArr.map(firstThree).filter(Boolean);
+    const hasSatis = pfxs.some(p => SATIS_PFX.includes(p));
+    const hasAlis  = pfxs.some(p => ALIS_PFX.includes(p));
+    const demirbas = pfxs.some(p => p === '253' || p === '255');
 
-Bu kodların türü kodun ilk 3 rakamıyla belirlenir, açıklamaya bakma. "ALIŞTAN İADE HESAPLANAN KDV" açıklamalı kod 391.02 olsa bile SATIŞ kodudur çünkü 391 ile başlıyor (iade faturası = mükellef açısından satış işlemi).
+    // Demirbaş → atla
+    if (demirbas) {
+      return { karar: 'atla', sebep: `Demirbaş kodu (253/255) — ${codesArr[0]}` };
+    }
+    // Mod uyumsuzluğu → atla (AI'ya SORMA)
+    if (islemTuru === 'SATIŞ' && hasAlis && !hasSatis) {
+      return { karar: 'atla', sebep: `SATIŞ modu ama kodlar ALIŞ (${codesArr.slice(0,3).join('+')})` };
+    }
+    if (islemTuru === 'ALIŞ' && hasSatis && !hasAlis) {
+      return { karar: 'atla', sebep: `ALIŞ modu ama kodlar SATIŞ (${codesArr.slice(0,3).join('+')})` };
+    }
 
-KARAR AKIŞI — MIHSAP ekranındaki TÜM alanları fatura görüntüsüyle teyit et:
+    // Tarih kontrolü (deterministik)
+    const tarihM = (input.faturaTarihi || '').match(/^(\d{2})[-.\/](\d{2})[-.\/](\d{4})/);
+    const faturaAyi = tarihM ? tarihM[2] : '';
+    const hedefAyNum = (input.hedefAy || '').match(/-(\d{2})$/)?.[1] || '';
+    if (faturaAyi && hedefAyNum && faturaAyi !== hedefAyNum) {
+      return { karar: 'atla', sebep: `Tarih ayı ${faturaAyi} ≠ hedef ayı ${hedefAyNum}` };
+    }
+    const system = `Sen bir fatura içerik doğrulayıcısın. ${islemTuru} faturası işleniyor.
 
-1. Tarih:
-   Ekrandaki "Fatura Tarihi" fatura görüntüsündeki tarihle aynı mı?
-   Tarih GG-AA-YYYY formatındadır. "30-03-2026" = 30 Mart. Ay = 2. grup (03).
-   Hedef ay ${input.hedefAy || '?'} — fatura ayı hedef ayla eşleşmiyorsa → atla.
+ÖNEMLI: Kod türü ve mod uyumu ZATEN backend'de kontrol edildi, geçti.
+Sen MIHSAP ekranındaki alanların fatura GÖRÜNTÜSÜ ile tutarlı olduğunu doğrula:
 
-2. Matrah (Muhasebe) Hesap Kodu:
-   Seçilen matrah kodu fatura içeriğiyle uyumlu mu?
-   Örnek: Akaryakıt faturasında matrah 153.02 (stok-yakıt) olmalı, 770 (genel gider) değil.
-   SATIŞ modunda matrah 600/601/602 olmalı; ALIŞ modunda 153/150/770/740/253 olmalı.
+1) TARİH TEYİDİ:
+   MIHSAP ekranındaki tarih: ${input.faturaTarihi || '?'}
+   Fatura görüntüsündeki tarih (sen oku) — ikisi AYNI mı?
+   Farklı ise → atla ("ekran tarihi X, fatura Y" şeklinde sebep yaz)
 
-3. KDV Hesap Kodu:
-   SATIŞ modunda → 391.xx (Hesaplanan KDV) olmalı.
-   ALIŞ modunda → 191.xx (İndirilecek KDV) olmalı.
-   KDV oranı fatura üzerindeki oranla eşleşmeli (%1, %10, %20).
-   Mod ile KDV kodu çelişirse (SATIŞ modunda 191 vs.) → atla.
+2) MATRAH KODU İÇERİK UYUMU:
+   Ekranda seçilen matrah kodu (ör. 600.01.001-NAKLİYE GELİRLERİ) fatura içeriğiyle uyumlu mu?
+   Uyum: matrah "Nakliye Gelirleri" + fatura nakliye hizmeti → onay
+   Çelişki: matrah "Genel Yönetim" (770) + fatura akaryakıt → atla
 
-4. Cari Hesap Kodu (Alıcılar/Satıcılar):
-   SATIŞ modunda → 120.xx (Alıcılar) veya 121 olmalı.
-   ALIŞ modunda → 320.xx (Satıcılar) veya 321 olmalı.
-   Cari hesap ADI fatura karşı firma adıyla uyumlu mu? (Ör. satıcı firma "HİLAL PETROL" ise cari "HİLAL PETROL LTD" benzeri olmalı).
+3) KDV ORAN UYUMU:
+   Ekrandaki KDV kodu oranı (ör. 391.01.002 = %20) faturadaki KDV oranıyla eşleşmeli.
+   Fatura %20 ama kod %10 ise → atla.
 
-5. Fatura Türü / Belge Türü:
-   Seçilen belge türü fatura üzerindeki belge türüyle aynı mı? (E-Fatura / E-Arşiv / Kağıt / İrsaliye / İade / Tevkifatlı vs.)
-   Fatura üzerinde "İADE FATURASI" yazıyorsa belge türü de iade olmalı.
-   Tevkifatlı fatura ise tevkifat oranı/kodu doldurulmuş olmalı.
+4) CARİ FİRMA UYUMU:
+   Fatura karşı firma adı ile ekrandaki cari hesap adı aynı firma mı?
+   Satıcı firma "${input.firma || '?'}" — cari adı bariz farklı ise → atla.
 
-6. Belge Numarası / Evrak Numarası / Fiş Numarası:
-   Fatura üzerindeki belge numarası (ör. YRG2026000000260) ekrana doğru girilmiş mi?
-   Numaralar boş veya anlamsız (000000, XXX) ise → atla.
+5) BELGE NUMARASI:
+   Fatura üzerindeki belge numarası ile ekrandaki belge no eşleşiyor mu?
+   Ekrandaki: ${input.belgeNo || '?'}. Fark varsa → atla.
+   Boş veya 000000 gibi anlamsız → atla.
 
-7. Demirbaş / Sabit Kıymet:
-   Kod 253/255 ile başlıyorsa → atla. Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör" → atla.
+6) DEMİRBAŞ:
+   Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör, fotokopi" varsa → atla.
 
-8. Genel içerik uyumu:
-   Görüntüdeki ürün/hizmet kategorisi ile matrah kodu mantıklı mı?
+7) GÖRÜNTÜ KALİTESİ:
+   Bulanık, okunamıyor veya içerik net seçilemiyor → emin_degil.
 
-KARAR:
-• Yukarıdaki her maddede TÜM alanlar teyit edildiyse VE uyumlu ise → **onay**
-• Herhangi bir maddede açık bir uyumsuzluk tespit edildiyse → **atla** (sebep olarak hangi alanda uyumsuzluk var açıkla)
-• Alanlardan biri okunamıyor/bulanık/eksik veriyorsa → **emin_degil**
+8) Yukarıdakilerin HİÇBİRİ yoksa → onay.
 
-Sektör veya firma adı SINIRLAYICI değildir. Mükellef nakliye firması olsa bile gıda faturası gelebilir — içeriğe ve kodlara bak. Kodların ilk 3 rakamı değişmez muhasebe mantığıdır: 600=satış geliri, 391=hesaplanan KDV (satış), 191=indirilecek KDV (alış), 320=satıcı (alış), 120=alıcı (satış), 153=stok (alış).
+Sebep yazarken HANGİ ALANDA sorun olduğunu belirt (ör. "tarih uyuşmuyor: ekran 10-04 fatura 30-03", "matrah çelişki: kod genel gider fatura akaryakıt").
+Kod türü/mod konusunu SORGULAMA — zaten doğrulandı.`;
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
