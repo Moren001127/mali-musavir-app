@@ -327,20 +327,42 @@
     return codes.length > 0 && codes.every((c) => c && /^\d/.test(c));
   }
 
-  // MIHSAP ekranında görünür herhangi bir hesap kodu/KDV/cari select'i BOŞ mu?
-  // Ant-design boş select için ".ant-select-selection-placeholder" render eder.
-  // En az bir boş placeholder görünüyorsa doldurulmamış alan var demektir.
+  // MIHSAP ekranında fatura formundaki herhangi bir select BOŞ mu?
+  // Ant-design: dolu select → .ant-select-selection-item, boş select → .ant-select-selection-placeholder
+  // Her .ant-select elementinde selection-item yoksa VE placeholder görünüyorsa BOŞ demektir.
   function bosSelectVarMi() {
-    const phs = [...document.querySelectorAll('.ant-select-selection-placeholder')];
-    const gorunur = phs.filter((p) => {
-      // Görünür ve boş text değilse doldurulmamış select demektir
-      if (p.offsetParent === null) return false;
-      const text = (p.textContent || '').trim();
-      // Placeholder metinleri: "Seçiniz", "Hesap Kodu", "KDV", "Cari Hesap" vs.
-      // Doluysa .ant-select-selection-item üstünde yazar, placeholder gizli olur.
-      return text.length > 0;
-    });
-    return gorunur.length > 0;
+    // Form container'ını bul — fatura editörü table + form kombinasyonu
+    // Tüm ant-select'leri al ama sadece fatura detay bölümündekileri kontrol et
+    const allSelects = [...document.querySelectorAll('.ant-select')];
+    const bosAlanlar = [];
+
+    for (const sel of allSelects) {
+      // Görünmez ise atla
+      if (sel.offsetParent === null) continue;
+      // Disabled ise atla
+      if (sel.classList.contains('ant-select-disabled')) continue;
+      // Search/combobox değilse (mukellef filtresi gibi top bar) gerekmedikçe
+      // geç — ama safe side: her görünür select'i say
+
+      const item = sel.querySelector('.ant-select-selection-item');
+      const ph = sel.querySelector('.ant-select-selection-placeholder');
+
+      // Selection-item VARSA → dolu, geç
+      if (item && (item.textContent || '').trim().length > 0) continue;
+
+      // Selection-item YOK ve görünür placeholder VAR → BOŞ
+      if (ph && ph.offsetParent !== null) {
+        const phText = (ph.textContent || '').trim();
+        if (phText.length > 0) {
+          bosAlanlar.push(phText);
+        }
+      }
+    }
+
+    if (bosAlanlar.length > 0) {
+      console.log('[Moren] Boş select alanları:', bosAlanlar);
+    }
+    return bosAlanlar.length > 0;
   }
 
   function demirbasVarMi(codes) {

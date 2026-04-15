@@ -1,0 +1,28 @@
+-- CreateTable
+CREATE TABLE "ai_usage_logs" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "mukellef" TEXT,
+    "model" TEXT NOT NULL,
+    "inputTokens" INTEGER NOT NULL DEFAULT 0,
+    "outputTokens" INTEGER NOT NULL DEFAULT 0,
+    "cacheReadTokens" INTEGER NOT NULL DEFAULT 0,
+    "cacheWriteTokens" INTEGER NOT NULL DEFAULT 0,
+    "costUsd" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "karar" TEXT,
+    "sebep" VARCHAR(200),
+    "belgeNo" TEXT,
+    "durationMs" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ai_usage_logs_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE INDEX "ai_usage_logs_tenantId_createdAt_idx" ON "ai_usage_logs"("tenantId", "createdAt");
+
+-- CreateIndex
+CREATE INDEX "ai_usage_logs_tenantId_karar_idx" ON "ai_usage_logs"("tenantId", "karar");
+
+-- CreateIndex
+CREATE INDEX "ai_usage_logs_tenantId_mukellef_createdAt_idx" ON "ai_usage_logs"("tenantId", "mukellef", "createdAt");
