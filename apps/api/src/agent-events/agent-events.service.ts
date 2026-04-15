@@ -244,13 +244,26 @@ Sen MIHSAP ekranındaki alanların fatura GÖRÜNTÜSÜ ile tutarlı olduğunu d
    Ekrandaki: ${input.belgeNo || '?'}. Fark varsa → atla.
    Boş veya 000000 gibi anlamsız → atla.
 
-6) DEMİRBAŞ:
+6) FATURA TÜRÜ:
+   Fatura görüntüsünde türü yazıyor (ör. "e-Arşiv Fatura", "e-Fatura", "İade Faturası", "Tevkifatlı Fatura", "Satış Faturası", "Alış Faturası").
+   Ekranda seçilen fatura türü fatura üzerindekiyle uyumlu mu?
+   Örnek çelişki: ekran "Normal Satış" ama fatura üzerinde "İADE FATURASI" yazıyor → atla.
+   Örnek uyum: ekran "Tevkifatlı Satış" ve fatura "TEVKİFATLI FATURA" → onay.
+   Belge türü (ekranda): ${input.belgeTuru || '?'}
+
+7) BELGE TÜRÜ (E-Fatura / E-Arşiv / Kağıt / İrsaliye):
+   Fatura üzerinde belge türü açıkça yazar (e-Arşiv Fatura / e-Fatura / e-İrsaliye / Kağıt fatura).
+   Ekranda seçilen belge türü ile fatura üzerindeki tür eşleşiyor mu?
+   Örnek çelişki: ekran "Kağıt Fatura" ama görüntüde "e-Arşiv Fatura" QR kodu var → atla.
+   Eşleşiyor ise → devam.
+
+8) DEMİRBAŞ:
    Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör, fotokopi" varsa → atla.
 
-7) GÖRÜNTÜ KALİTESİ:
+9) GÖRÜNTÜ KALİTESİ:
    Bulanık, okunamıyor veya içerik net seçilemiyor → emin_degil.
 
-8) Yukarıdakilerin HİÇBİRİ yoksa → onay.
+10) Yukarıdakilerin HİÇBİRİ yoksa → onay.
 
 Sebep yazarken HANGİ ALANDA sorun olduğunu belirt (ör. "tarih uyuşmuyor: ekran 10-04 fatura 30-03", "matrah çelişki: kod genel gider fatura akaryakıt").
 Kod türü/mod konusunu SORGULAMA — zaten doğrulandı.`;
