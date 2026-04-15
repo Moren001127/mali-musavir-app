@@ -191,29 +191,48 @@ export class AgentEventsService {
 ⚠️ ŞU AN İŞLEM TÜRÜ: ${islemTuru} FATURASI
 
 ╔══════════════════════════════════════════════════════════════════╗
-║ 📘 HESAP KODU TABLOSU — EZBERLE VE ASLA KARIŞTIRMA              ║
-╠══════════════════════════════════════════════════════════════════╣
-║ SATIŞ (GELİR) KODLARI — bunlar SATIŞ faturasında görünür:       ║
-║   • 600.xx — Yurt İçi Satışlar (ana satış geliri)               ║
-║   • 601.xx — Yurt Dışı Satışlar                                 ║
-║   • 602.xx — Diğer Gelirler                                     ║
-║   • 391.xx — Hesaplanan KDV (satışta ALINAN KDV)                ║
-║   • 120.xx — Alıcılar (satıştan doğan alacak)                   ║
+║ 📘 HESAP KODU TABLOSU — KESİNLİKLE UYULACAK                     ║
 ║                                                                  ║
-║ ALIŞ (GİDER/STOK) KODLARI — bunlar ALIŞ faturasında görünür:    ║
-║   • 153.xx — Ticari Mallar (stok)                               ║
-║   • 150.xx — İlk Madde ve Malzeme                               ║
-║   • 253/255 — Sabit Kıymet/Demirbaş                             ║
-║   • 740/770 — Hizmet/Genel Yönetim Gideri                       ║
-║   • 191.xx — İndirilecek KDV (alışta ÖDENEN KDV)                ║
-║   • 320.xx — Satıcılar (alıştan doğan borç)                     ║
+║ Her kodun SADECE TEK BİR TÜRÜ VARDIR. Kod = Tür. Değişmez.      ║
+╠══════════════════════════════════════════════════════════════════╣
+║ SATIŞ (GELİR) KODLARI:                                           ║
+║   • 600.xx (Yurt İçi Satışlar) — HER ZAMAN SATIŞ. ASLA ALIŞ DEĞİL║
+║   • 601.xx (Yurt Dışı Satışlar) — HER ZAMAN SATIŞ                ║
+║   • 602.xx (Diğer Gelirler) — HER ZAMAN SATIŞ                    ║
+║   • 391.xx (Hesaplanan KDV) — HER ZAMAN SATIŞ. ASLA ALIŞ DEĞİL   ║
+║   • 120.xx (Alıcılar) — HER ZAMAN SATIŞ                          ║
+║   "Satış", "Gelir", "Gelirleri" kelimeleri = SATIŞ KODU          ║
+║                                                                  ║
+║ ALIŞ (GİDER/STOK) KODLARI:                                       ║
+║   • 153.xx (Ticari Mallar) — HER ZAMAN ALIŞ                      ║
+║   • 150.xx (İlk Madde) — HER ZAMAN ALIŞ                          ║
+║   • 253/255 (Sabit Kıymet) — HER ZAMAN ALIŞ                      ║
+║   • 740/770 (Hizmet/Genel Gider) — HER ZAMAN ALIŞ                ║
+║   • 191.xx (İndirilecek KDV) — HER ZAMAN ALIŞ. ASLA SATIŞ DEĞİL  ║
+║   • 320.xx (Satıcılar) — HER ZAMAN ALIŞ                          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-🚫 YAYGIN HATA — YAPMA:
-  ✗ 600 veya 391 kodunu görünce "alış kodu" deme. BU SATIŞ KODLARIDIR.
-  ✗ 153, 191, 320 kodunu görünce "satış kodu" deme. BU ALIŞ KODLARIDIR.
-  ✗ SATIŞ faturasında 600.xx + 391.xx + 120.xx kodları görüyorsan bu TAMAMEN DOĞRUDUR → onay ver.
-  ✗ ALIŞ faturasında 153/770/740 + 191 + 320 kodları görüyorsan bu TAMAMEN DOĞRUDUR → onay ver.
+🔴 KATI KURALLAR — İHLAL ETME:
+
+ 1. Kodun baş rakamı 600/601/602 → BU BİR SATIŞ KODUDUR.
+ 2. Kodun baş rakamı 391 → BU BİR SATIŞ KODUDUR. (Hesaplanan KDV = satışta alınan KDV)
+ 3. Kodun baş rakamı 120 → BU BİR SATIŞ KODUDUR.
+ 4. Kodun baş rakamı 191 → BU BİR ALIŞ KODUDUR. (İndirilecek KDV)
+ 5. Kodun baş rakamı 320 → BU BİR ALIŞ KODUDUR.
+ 6. Kodun baş rakamı 153/150/253/255/740/770 → ALIŞ KODUDUR.
+ 7. Kod adında "SATIŞ" veya "GELİR" geçiyorsa → SATIŞ KODUDUR (örn: "600.01.001-NAKLİYE GELİRLERİ" = SATIŞ).
+ 8. Bu kuralların İSTİSNASI YOKTUR. Sektör, firma, tevkifat, içerik fark etmez.
+
+🚫 BU CÜMLELERİ ASLA YAZMA:
+  ✗ "600/391/120 alış kodları" — YANLIŞ. Bunlar SATIŞ kodları.
+  ✗ "SATIŞ faturasında ALIŞ kodları (600/391/120)" — YANLIŞ. 600/391/120 ZATEN satış kodları.
+  ✗ "391 hesaplanan KDV alış kodudur" — YANLIŞ. 391 satış kodudur.
+  ✗ "SATIŞ faturası beklenirken ALIŞ kodu (391.01.002) görüldü" — YANLIŞ. 391 satış kodu.
+
+✅ DOĞRU ÖRNEKLER:
+  ✓ SATIŞ faturasında 600.01.002 + 391.01.002 + 120.01.A001 → DOĞRU, onay.
+  ✓ ALIŞ faturasında 153.01.001 + 191.01.001 + 320.01.001 → DOĞRU, onay.
+  ✓ ALIŞ faturasında 770.01.001 + 191.01.001 + 320.01.001 → DOĞRU, onay.
 
 🗓️ TARİH YORUMLAMA — DİKKAT:
   • Tarih formatı Türkiye standardı: GG-AA-YYYY veya GG.AA.YYYY (gün-ay-yıl)
