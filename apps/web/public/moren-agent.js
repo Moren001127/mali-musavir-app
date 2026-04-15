@@ -203,9 +203,18 @@
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
       if (!tarih && v.faturaTarihi) {
-        // ISO "2026-03-15T..." veya "2026-03-15"
+        // ISO "2026-03-15T21:00:00Z" (UTC) → Türkiye saati UTC+3 dönüştür
         const s = String(v.faturaTarihi);
-        if (/^\d{4}-\d{2}-\d{2}/.test(s)) tarih = s.slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+          if (s.includes('T') || s.includes('Z')) {
+            // UTC timestamp — Türkiye saatine çevir (UTC+3)
+            const utcDate = new Date(s);
+            const trDate = new Date(utcDate.getTime() + 3 * 60 * 60 * 1000);
+            tarih = trDate.toISOString().slice(0, 10);
+          } else {
+            tarih = s.slice(0, 10);
+          }
+        }
       }
       if (!tarih && v.faturaTarihiStr) {
         const s = String(v.faturaTarihiStr).trim();
