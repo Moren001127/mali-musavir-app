@@ -326,6 +326,23 @@
   function tumKodlarDolu(codes) {
     return codes.length > 0 && codes.every((c) => c && /^\d/.test(c));
   }
+
+  // MIHSAP ekranında görünür herhangi bir hesap kodu/KDV/cari select'i BOŞ mu?
+  // Ant-design boş select için ".ant-select-selection-placeholder" render eder.
+  // En az bir boş placeholder görünüyorsa doldurulmamış alan var demektir.
+  function bosSelectVarMi() {
+    const phs = [...document.querySelectorAll('.ant-select-selection-placeholder')];
+    const gorunur = phs.filter((p) => {
+      // Görünür ve boş text değilse doldurulmamış select demektir
+      if (p.offsetParent === null) return false;
+      const text = (p.textContent || '').trim();
+      // Placeholder metinleri: "Seçiniz", "Hesap Kodu", "KDV", "Cari Hesap" vs.
+      // Doluysa .ant-select-selection-item üstünde yazar, placeholder gizli olur.
+      return text.length > 0;
+    });
+    return gorunur.length > 0;
+  }
+
   function demirbasVarMi(codes) {
     return codes.some((c) => /^255/.test(c) || /demirbaş/i.test(c));
   }
@@ -405,7 +422,13 @@
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await clickIleri(fid); continue;
+      }
+      // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari) → F2 denemeden atla
+      if (bosSelectVarMi()) {
+        counters.atla++; counters.toplam++; setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'matrah/KDV/cari boş alan var', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
       // LLM karar
