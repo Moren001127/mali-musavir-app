@@ -816,10 +816,12 @@ model AgentStatus {
   @@map("agent_status")
 }
 
-// AI API kullanım takibi — her fatura decideFatura çağrısında bir kayıt
+// AI API kullanım takibi — tüm Claude çağrılarında bir kayıt
+// source: "mihsap-fatura" | "fis-yazdirma" | diğer modüller
 model AiUsageLog {
   id            String   @id @default(cuid())
   tenantId      String
+  source        String   @default("mihsap-fatura") // hangi modül çağırdı
   mukellef      String?  // İşlem yapılan mükellef adı
   model         String   // "claude-haiku-4-5-20251001"
   inputTokens   Int      @default(0)
@@ -827,7 +829,7 @@ model AiUsageLog {
   cacheReadTokens  Int   @default(0)
   cacheWriteTokens Int   @default(0)
   costUsd       Float    @default(0) // Hesaplanan USD maliyet
-  karar         String?  // "onay" | "atla" | "emin_degil"
+  karar         String?  // "onay" | "atla" | "emin_degil" | "ok" | "error"
   sebep         String?  @db.VarChar(200)
   belgeNo       String?
   durationMs    Int?     // API çağrı süresi
@@ -835,8 +837,22 @@ model AiUsageLog {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, karar])
+  @@index([tenantId, source, createdAt])
   @@index([tenantId, mukellef, createdAt])
   @@map("ai_usage_logs")
+}
+
+// Anthropic kontör (credit) yüklemeleri — kalan bakiye hesabı için
+model AiCreditTopup {
+  id         String   @id @default(cuid())
+  tenantId   String
+  amountUsd  Float    // Yüklenen tutar (USD)
+  note       String?  // Kullanıcı notu (ör. "Nisan yüklemesi")
+  addedAt    DateTime @default(now())
+  addedBy    String?  // userId
+
+  @@index([tenantId, addedAt])
+  @@map("ai_credit_topups")
 }
 
 model AgentCommand {

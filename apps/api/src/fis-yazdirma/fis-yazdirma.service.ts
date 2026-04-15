@@ -1,4 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { logAiUsage } from '../common/ai-usage-logger';
 import { createWorker } from 'tesseract.js';
 import * as sharp from 'sharp';
 import * as XLSX from 'xlsx';
@@ -228,6 +230,8 @@ const OCR_STRATEGIES: OcrStrategy[] = [
 export class FisYazdirmaService {
   private readonly logger = new Logger(FisYazdirmaService.name);
 
+  constructor(private readonly prisma: PrismaService) {}
+
   private async preprocessImage(
     buffer: Buffer,
     W: number,
@@ -308,9 +312,24 @@ export class FisYazdirmaService {
   }
 
   /** Claude Haiku 4.5 ile tarih okuma — Tesseract'tan çok daha iyi bulanık/termal fişlerde */
-  private async claudeExtractDate(buffer: Buffer): Promise<{ date: string | null; fields: any }> {
+  private async claudeExtractDate(
+    buffer: Buffer,
+    tenantId?: string,
+  ): Promise<{ date: string | null; fields: any }> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {} };
+    const MODEL = 'claude-haiku-4-5-20251001';
+    const startMs = Date.now();
+    const logUsage = (karar: string, sebep: string, usage?: any) =>
+      logAiUsage(this.prisma, {
+        tenantId: tenantId || 'unknown',
+        source: 'fis-yazdirma',
+        model: MODEL,
+        karar,
+        sebep,
+        durationMs: Date.now() - startMs,
+        usage,
+      });
     try {
       // Fotoğrafı küçült + auto-rotate + jpeg (payload ≤1MB)
       const processed = await sharp(buffer)
@@ -327,7 +346,7 @@ export class FisYazdirmaService {
           'anthropic-version': '2023-06-01',
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: MODEL,
           max_tokens: 250,
           system:
             'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir asistansın. Sadece JSON döndür: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}. Tarih net değilse null. Tahmin yapma.',
@@ -348,12 +367,20 @@ export class FisYazdirmaService {
           ],
         }),
       });
-      if (!res.ok) return { date: null, fields: {} };
+      if (!res.ok) {
+        await logUsage('error', `API ${res.status}`);
+        return { date: null, fields: {} };
+      }
       const j: any = await res.json();
       const text = j?.content?.[0]?.text || '';
+      const usage = j?.usage || {};
       const match = text.match(/\{[\s\S]*\}/);
-      if (!match) return { date: null, fields: {} };
+      if (!match) {
+        await logUsage('error', 'JSON parse fail', usage);
+        return { date: null, fields: {} };
+      }
       const parsed = JSON.parse(match[0]);
+      await logUsage('ok', parsed.tarih ? 'tarih okundu' : 'tarih yok', usage);
       return {
         date: parsed.tarih && /^\d{4}-\d{2}-\d{2}$/.test(parsed.tarih) ? parsed.tarih : null,
         fields: {
@@ -364,11 +391,12 @@ export class FisYazdirmaService {
       };
     } catch (e: any) {
       this.logger.warn(`Claude OCR hata: ${e.message}`);
+      await logUsage('error', `Network: ${e?.message || '?'}`);
       return { date: null, fields: {} };
     }
   }
 
-  async scanImages(files: Express.Multer.File[]): Promise<ScanResult> {
+  async scanImages(files: Express.Multer.File[], tenantId?: string): Promise<ScanResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
     }
@@ -387,7 +415,7 @@ export class FisYazdirmaService {
       const results = await Promise.all(
         files.map((file) =>
           limit(async () => {
-            const r = await this.claudeExtractDate(file.buffer);
+            const r = await this.claudeExtractDate(file.buffer, tenantId);
             return { file, ...r };
           }),
         ),

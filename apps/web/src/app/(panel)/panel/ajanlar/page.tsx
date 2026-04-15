@@ -1,12 +1,13 @@
 'use client';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/agents';
 import { api } from '@/lib/api';
 import {
   Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
   Activity, CheckCircle2, Clock, ArrowRight, Sparkles, TrendingUp, AlertCircle, Zap,
-  Cpu, DollarSign, XCircle, HelpCircle,
+  Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
 
 const AGENTS = [
@@ -140,6 +141,21 @@ export default function AjanlarDashboard() {
 }
 
 function AiUsageWidget({ data }: { data: any }) {
+  const qc = useQueryClient();
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [topupAmount, setTopupAmount] = useState('');
+  const [topupNote, setTopupNote] = useState('');
+
+  const topupMut = useMutation({
+    mutationFn: (body: { amountUsd: number; note?: string }) => agentsApi.aiCreditTopup(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-ai-usage'] });
+      setTopupOpen(false);
+      setTopupAmount('');
+      setTopupNote('');
+    },
+  });
+
   if (!data) {
     return (
       <div
@@ -153,6 +169,12 @@ function AiUsageWidget({ data }: { data: any }) {
 
   // USD → TL kuru backend'den TCMB canlı verisiyle geliyor
   const USD_TO_TL = Number(data.usdTry) > 0 ? Number(data.usdTry) : 40;
+  const bakiye = data.bakiye || { toplamYuklenenUsd: 0, toplamHarcananUsd: 0, kalanBakiyeUsd: 0 };
+  const kalanTl = bakiye.kalanBakiyeUsd * USD_TO_TL;
+  const yuzde =
+    bakiye.toplamYuklenenUsd > 0
+      ? Math.min(100, (bakiye.toplamHarcananUsd / bakiye.toplamYuklenenUsd) * 100)
+      : 0;
 
   const formatUsd = (v: number) => `$${(v || 0).toFixed(4)}`;
   const formatTl = (v: number) => `₺${((v || 0) * USD_TO_TL).toFixed(2)}`;
@@ -246,11 +268,150 @@ function AiUsageWidget({ data }: { data: any }) {
           TCMB USD: ₺{USD_TO_TL.toFixed(4)}
         </span>
       </div>
+
+      {/* Bakiye Kartı */}
+      <div
+        className="rounded-xl p-4 border mb-3 relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(135deg, rgba(16,185,129,.08), rgba(59,130,246,.05))',
+          borderColor: 'var(--border)',
+        }}
+      >
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-lg flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)' }}
+            >
+              <Wallet size={18} style={{ color: '#fff' }} />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider font-bold" style={{ color: '#10b981' }}>
+                Kalan Kontör Bakiyesi
+              </div>
+              <div className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+                ${bakiye.kalanBakiyeUsd.toFixed(4)}
+                <span className="text-sm font-normal ml-2" style={{ color: 'var(--text-muted)' }}>
+                  (₺{kalanTl.toFixed(2)})
+                </span>
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Yüklenen: ${bakiye.toplamYuklenenUsd.toFixed(2)} · Harcanan: ${bakiye.toplamHarcananUsd.toFixed(4)}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setTopupOpen(true)}
+            className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition"
+            style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' }}
+          >
+            <Plus size={14} /> Kontör Ekle
+          </button>
+        </div>
+        {/* Progress bar */}
+        <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,.08)' }}>
+          <div
+            className="h-full transition-all"
+            style={{
+              width: `${yuzde}%`,
+              background: yuzde > 90 ? '#ef4444' : yuzde > 75 ? '#f59e0b' : '#10b981',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* 3'lü dönem kartları */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Kart title="Bugün" d={data.bugun} accent="#3b82f6" />
         <Kart title="Bu Ay" d={data.buAy} accent="#8b5cf6" />
         <Kart title="Toplam" d={data.toplam} accent="#b8a06f" />
       </div>
+
+      {/* Kontör Ekle Dialog */}
+      {topupOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,.5)' }}
+          onClick={() => setTopupOpen(false)}
+        >
+          <div
+            className="rounded-xl p-5 border w-full max-w-md"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Wallet size={18} style={{ color: '#10b981' }} />
+              <h3 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+                Kontör Yükleme Kaydı
+              </h3>
+            </div>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+              Anthropic hesabınıza yaptığınız yüklemeyi burada kaydedin. Sistem bu tutardan harcamaları düşerek
+              bakiyenizi takip eder.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text)' }}>
+                  Yüklenen Tutar (USD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  placeholder="50.00"
+                  className="w-full px-3 py-2 rounded-lg border text-sm tabular-nums"
+                  style={{
+                    background: 'var(--bg)',
+                    borderColor: 'var(--border)',
+                    color: 'var(--text)',
+                  }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text)' }}>
+                  Not (opsiyonel)
+                </label>
+                <input
+                  type="text"
+                  value={topupNote}
+                  onChange={(e) => setTopupNote(e.target.value)}
+                  placeholder="Nisan 2026 yüklemesi"
+                  className="w-full px-3 py-2 rounded-lg border text-sm"
+                  style={{
+                    background: 'var(--bg)',
+                    borderColor: 'var(--border)',
+                    color: 'var(--text)',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5 justify-end">
+              <button
+                onClick={() => setTopupOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm"
+                style={{ background: 'transparent', color: 'var(--text-muted)' }}
+              >
+                İptal
+              </button>
+              <button
+                disabled={!topupAmount || Number(topupAmount) <= 0 || topupMut.isPending}
+                onClick={() =>
+                  topupMut.mutate({
+                    amountUsd: Number(topupAmount),
+                    note: topupNote || undefined,
+                  })
+                }
+                className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                style={{ background: 'linear-gradient(135deg, #10b981, #0ea5e9)', color: '#fff' }}
+              >
+                <Plus size={14} /> {topupMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

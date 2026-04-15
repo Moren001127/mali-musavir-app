@@ -51,6 +51,9 @@ export const agentsApi = {
     api.get<AgentEvent[]>('/agent/events', { params }).then((r) => r.data),
   stats: () => api.get('/agent/stats').then((r) => r.data),
   aiUsageStats: () => api.get('/agent/ai/usage-stats').then((r) => r.data),
+  aiCreditTopup: (body: { amountUsd: number; note?: string }) =>
+    api.post('/agent/ai/credit-topup', body).then((r) => r.data),
+  aiCreditTopups: () => api.get('/agent/ai/credit-topups').then((r) => r.data),
   status: () => api.get<AgentStatus[]>('/agent/status').then((r) => r.data),
   rules: () => api.get<AgentRule[]>('/agent/rules').then((r) => r.data),
   getRule: (mukellef: string) =>

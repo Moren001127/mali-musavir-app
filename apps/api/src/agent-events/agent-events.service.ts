@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { logAiUsage } from '../common/ai-usage-logger';
 
 export interface AgentEventInput {
   agent: string;
@@ -319,50 +320,23 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
 
     const startMs = Date.now();
     const MODEL = 'claude-haiku-4-5-20251001';
-    // Anthropic fiyatları (USD / milyon token) — Haiku 4.5
-    const PRICE_IN_USD_PER_MTOK = 1.0;
-    const PRICE_OUT_USD_PER_MTOK = 5.0;
-    const PRICE_CACHE_READ_PER_MTOK = 0.1;
-    const PRICE_CACHE_WRITE_PER_MTOK = 1.25;
 
-    const logUsage = async (params: {
-      karar?: string;
-      sebep?: string;
-      inputTokens?: number;
-      outputTokens?: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-    }) => {
-      try {
-        const inT = params.inputTokens || 0;
-        const outT = params.outputTokens || 0;
-        const cR = params.cacheReadTokens || 0;
-        const cW = params.cacheWriteTokens || 0;
-        const costUsd =
-          (inT / 1_000_000) * PRICE_IN_USD_PER_MTOK +
-          (outT / 1_000_000) * PRICE_OUT_USD_PER_MTOK +
-          (cR / 1_000_000) * PRICE_CACHE_READ_PER_MTOK +
-          (cW / 1_000_000) * PRICE_CACHE_WRITE_PER_MTOK;
-        await (this.prisma as any).aiUsageLog.create({
-          data: {
-            tenantId: input.tenantId || 'unknown',
-            mukellef: input.mukellef || null,
-            model: MODEL,
-            inputTokens: inT,
-            outputTokens: outT,
-            cacheReadTokens: cR,
-            cacheWriteTokens: cW,
-            costUsd,
-            karar: params.karar || null,
-            sebep: (params.sebep || '').slice(0, 200) || null,
-            belgeNo: input.belgeNo || null,
-            durationMs: Date.now() - startMs,
-          },
-        });
-      } catch {
-        // Log hatasını sessizce geç — ana akışı bozma
-      }
-    };
+    const logUsage = (
+      karar: string | undefined,
+      sebep: string | undefined,
+      usage?: any,
+    ) =>
+      logAiUsage(this.prisma, {
+        tenantId: input.tenantId || 'unknown',
+        source: 'mihsap-fatura',
+        model: MODEL,
+        mukellef: input.mukellef,
+        belgeNo: input.belgeNo,
+        karar,
+        sebep,
+        durationMs: Date.now() - startMs,
+        usage,
+      });
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -396,18 +370,12 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
       if (!res.ok) {
         const errText = await res.text();
-        await logUsage({ karar: 'emin_degil', sebep: `API ${res.status}` });
+        await logUsage('emin_degil', `API ${res.status}`);
         return { karar: 'emin_degil', sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}` };
       }
       const json = await res.json();
       const text = json?.content?.[0]?.text || '';
       const usage = json?.usage || {};
-      const tokenParams = {
-        inputTokens: usage.input_tokens || 0,
-        outputTokens: usage.output_tokens || 0,
-        cacheReadTokens: usage.cache_read_input_tokens || 0,
-        cacheWriteTokens: usage.cache_creation_input_tokens || 0,
-      };
 
       // JSON parse (çok katmanlı)
       const codeBlock = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
@@ -422,7 +390,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         try {
           const parsed = JSON.parse(c);
           if (parsed?.karar) {
-            await logUsage({ ...tokenParams, karar: parsed.karar, sebep: parsed.sebep });
+            await logUsage(parsed.karar, parsed.sebep, usage);
             return parsed;
           }
         } catch {}
@@ -431,14 +399,14 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       const kararM = text.match(/"karar"\s*:\s*"(onay|atla|emin_degil)"/);
       const sebepM = text.match(/"sebep"\s*:\s*"([^"]{0,200})"/);
       if (kararM) {
-        await logUsage({ ...tokenParams, karar: kararM[1], sebep: sebepM?.[1] || 'partial parse' });
+        await logUsage(kararM[1], sebepM?.[1] || 'partial parse', usage);
         return { karar: kararM[1], sebep: sebepM?.[1] || 'partial parse', raw: text.slice(0, 200) };
       }
 
-      await logUsage({ ...tokenParams, karar: 'emin_degil', sebep: 'JSON parse fail' });
+      await logUsage('emin_degil', 'JSON parse fail', usage);
       return { karar: 'emin_degil', sebep: 'JSON parse fail', raw: text.slice(0, 200) };
     } catch (e: any) {
-      await logUsage({ karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` });
+      await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
       return { karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` };
     }
   }
@@ -529,14 +497,61 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       return acc;
     };
 
-    const [bugun, buAy, toplam, usdTry] = await Promise.all([
+    // Topup toplamı (yüklenmiş kontör)
+    const topupAgg = async () => {
+      const rows = await (this.prisma as any).aiCreditTopup.findMany({
+        where: { tenantId },
+        select: { amountUsd: true },
+      });
+      return rows.reduce((s: number, r: any) => s + (r.amountUsd || 0), 0);
+    };
+
+    const [bugun, buAy, toplam, usdTry, toplamYuklenenUsd] = await Promise.all([
       aggregate(todayStart),
       aggregate(monthStart),
       aggregate(),
       this.getUsdTryRate(),
+      topupAgg(),
     ]);
 
-    return { bugun, buAy, toplam, usdTry, updatedAt: now };
+    const kalanBakiyeUsd = Math.max(0, toplamYuklenenUsd - toplam.maliyetUsd);
+
+    return {
+      bugun,
+      buAy,
+      toplam,
+      usdTry,
+      bakiye: {
+        toplamYuklenenUsd,
+        toplamHarcananUsd: toplam.maliyetUsd,
+        kalanBakiyeUsd,
+      },
+      updatedAt: now,
+    };
+  }
+
+  /** Kontör yükleme kaydı ekle */
+  async addCreditTopup(tenantId: string, userId: string | null, amountUsd: number, note?: string) {
+    if (!amountUsd || amountUsd <= 0) {
+      throw new Error('amountUsd > 0 olmalı');
+    }
+    return (this.prisma as any).aiCreditTopup.create({
+      data: {
+        tenantId,
+        amountUsd,
+        note: note || null,
+        addedBy: userId,
+      },
+    });
+  }
+
+  /** Kontör yükleme geçmişi */
+  async listCreditTopups(tenantId: string, limit = 50) {
+    return (this.prisma as any).aiCreditTopup.findMany({
+      where: { tenantId },
+      orderBy: { addedAt: 'desc' },
+      take: limit,
+    });
   }
 
   async updateCommand(

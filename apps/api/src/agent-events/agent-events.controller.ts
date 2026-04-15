@@ -93,6 +93,38 @@ export class AgentEventsController {
     return this.service.stats(req.user.tenantId);
   }
 
+  /** AI kullanım istatistikleri (bugün / bu ay / toplam + bakiye) */
+  @Get('ai/usage-stats')
+  @UseGuards(AuthGuard('jwt'))
+  aiUsageStats(@Req() req: any) {
+    return this.service.getAiUsageStats(req.user.tenantId);
+  }
+
+  /** Kontör yükleme kaydet */
+  @Post('ai/credit-topup')
+  @UseGuards(AuthGuard('jwt'))
+  addCreditTopup(
+    @Req() req: any,
+    @Body() body: { amountUsd: number; note?: string },
+  ) {
+    if (!body?.amountUsd || body.amountUsd <= 0) {
+      throw new BadRequestException('amountUsd > 0 olmalı');
+    }
+    return this.service.addCreditTopup(
+      req.user.tenantId,
+      req.user.userId || null,
+      body.amountUsd,
+      body.note,
+    );
+  }
+
+  /** Kontör yükleme geçmişi */
+  @Get('ai/credit-topups')
+  @UseGuards(AuthGuard('jwt'))
+  listCreditTopups(@Req() req: any) {
+    return this.service.listCreditTopups(req.user.tenantId);
+  }
+
   @Get('status')
   @UseGuards(AuthGuard('jwt'))
   statusList(@Req() req: any) {
