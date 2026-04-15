@@ -327,42 +327,87 @@
     return codes.length > 0 && codes.every((c) => c && /^\d/.test(c));
   }
 
-  // MIHSAP ekranında fatura formundaki herhangi bir select BOŞ mu?
-  // Ant-design: dolu select → .ant-select-selection-item, boş select → .ant-select-selection-placeholder
-  // Her .ant-select elementinde selection-item yoksa VE placeholder görünüyorsa BOŞ demektir.
+  // Select doldurulmuş mu?
+  function selectDolu(sel) {
+    if (!sel || sel.offsetParent === null) return false;
+    const item = sel.querySelector('.ant-select-selection-item');
+    const itemText = (item?.textContent || '').trim();
+    // Seçim yapıldıysa .ant-select-selection-item içinde değer olur
+    // "Hesap Kodu" placeholder text'i değilse dolu kabul et
+    return itemText.length > 0 && !/hesap kodu/i.test(itemText) && !/seçiniz/i.test(itemText);
+  }
+
+  // Bir etiketten (örn. "Matrah", "Vergi", "Cari Hesap") sonraki
+  // ilk "Hesap Kodu" select'ini bul ve dolu olup olmadığını kontrol et.
+  // İlgili bölüm DOM'da bulunmazsa (yoksa) — "yok say" → dolu kabul (NaN).
+  function bolumHesapKoduDolu(etiketRegex) {
+    // Etiket elementini bul
+    const all = [...document.querySelectorAll('div, span, td, label, th, h3, h4')];
+    const header = all.find((el) => {
+      if (el.offsetParent === null) return false;
+      const txt = (el.textContent || '').trim();
+      // Etiket sadece kısa olmalı, çok uzun container'ları atla
+      if (txt.length > 50) return false;
+      return etiketRegex.test(txt);
+    });
+    if (!header) return null; // bölüm yok
+
+    // Bu header'dan sonraki en yakın "Hesap Kodu" placeholder'lı select
+    // DOM walking: aynı parent veya kardeş container
+    let container = header.parentElement;
+    // Üst container'da birkaç seviye yukarı bakabiliriz
+    for (let i = 0; i < 5 && container; i++) {
+      const selects = [...container.querySelectorAll('.ant-select')].filter(
+        (s) => s.offsetParent !== null,
+      );
+      // İlk "Hesap Kodu" placeholder'lı select
+      const hk = selects.find((s) => {
+        const ph = s.querySelector('.ant-select-selection-placeholder');
+        const phTxt = (ph?.textContent || '').trim();
+        const it = s.querySelector('.ant-select-selection-item');
+        const itTxt = (it?.textContent || '').trim();
+        return /hesap kodu/i.test(phTxt) || /hesap kodu/i.test(itTxt) || /^\d{3}\.\d/.test(itTxt);
+      });
+      if (hk) return selectDolu(hk);
+      container = container.parentElement;
+    }
+    return null; // bulunamadı
+  }
+
+  // Matrah / Vergi(KDV) / Cari Hesap hesap kodlarından herhangi biri BOŞ mu?
   function bosSelectVarMi() {
-    // Form container'ını bul — fatura editörü table + form kombinasyonu
-    // Tüm ant-select'leri al ama sadece fatura detay bölümündekileri kontrol et
-    const allSelects = [...document.querySelectorAll('.ant-select')];
-    const bosAlanlar = [];
+    const sonuc = {
+      matrah: bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i),
+      vergi: bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i),
+      cari: bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i),
+    };
+    const bosBolumler = [];
+    if (sonuc.matrah === false) bosBolumler.push('Matrah');
+    if (sonuc.vergi === false) bosBolumler.push('Vergi/KDV');
+    if (sonuc.cari === false) bosBolumler.push('Cari Hesap');
 
-    for (const sel of allSelects) {
-      // Görünmez ise atla
-      if (sel.offsetParent === null) continue;
-      // Disabled ise atla
-      if (sel.classList.contains('ant-select-disabled')) continue;
-      // Search/combobox değilse (mukellef filtresi gibi top bar) gerekmedikçe
-      // geç — ama safe side: her görünür select'i say
+    if (bosBolumler.length > 0) {
+      console.log('[Moren] BOS BOLUMLER:', bosBolumler, sonuc);
+    }
+    return bosBolumler.length > 0;
+  }
 
-      const item = sel.querySelector('.ant-select-selection-item');
-      const ph = sel.querySelector('.ant-select-selection-placeholder');
-
-      // Selection-item VARSA → dolu, geç
-      if (item && (item.textContent || '').trim().length > 0) continue;
-
-      // Selection-item YOK ve görünür placeholder VAR → BOŞ
-      if (ph && ph.offsetParent !== null) {
-        const phText = (ph.textContent || '').trim();
-        if (phText.length > 0) {
-          bosAlanlar.push(phText);
-        }
+  // F2 sonrası validation uyarısı kontrolü
+  // "Tahsilat/Ödeme hesabı seçilmemiş", "Hesap kodu girilmemiş" gibi
+  function validationDialogVarMi() {
+    const modals = getVisibleModals();
+    for (const m of modals) {
+      const text = (m.textContent || '').trim();
+      if (/seçilmemiş/i.test(text) ||
+          /girilmemiş/i.test(text) ||
+          /eksik/i.test(text) ||
+          /zorunlu/i.test(text) ||
+          /boş bırakılamaz/i.test(text) ||
+          /tahsilat.*ödeme/i.test(text)) {
+        return text.slice(0, 100);
       }
     }
-
-    if (bosAlanlar.length > 0) {
-      console.log('[Moren] Boş select alanları:', bosAlanlar);
-    }
-    return bosAlanlar.length > 0;
+    return null;
   }
 
   function demirbasVarMi(codes) {
@@ -471,20 +516,30 @@
         await clickIleri(fid); continue;
       }
       try {
-        // F2'yi 2 defaya kadar dene, her seferinde 10sn bekle
+        let validationFailed = null;
+
+        // F2 sonrası URL değişti mi + validation dialog geldi mi kontrolü
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
           while (Date.now() - t0 < timeoutMs) {
             const m2 = location.href.match(/\/(\d+)\?count=/);
             if (m2 && m2[1] !== fid) return true;
             if (/count=0/.test(location.href)) return true;
-            // Başarı toast'ı (ant-design "Kaydedildi" vb.)
             const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success');
             if (okToast) return true;
-            // Hata dialogu varsa kapat ve false dön
+
+            // VALIDATION DIALOG kontrolü — "seçilmemiş", "girilmemiş" vb.
+            const validationMsg = validationDialogVarMi();
+            if (validationMsg) {
+              validationFailed = validationMsg;
+              // Dialog'u kapat ama başarısız dön
+              await handleDialogs();
+              return false;
+            }
+
+            // Diğer dialog varsa (mükerrer vb.) kapat
             if (getVisibleModals().length > 0) {
               await handleDialogs();
-              // Dialog kapandıktan sonra kısa bekle; URL değişmediyse başarısız
               await sleep(400);
               const m3 = location.href.match(/\/(\d+)\?count=/);
               if (m3 && m3[1] !== fid) return true;
@@ -498,8 +553,8 @@
         await clickKaydetOnayla();
         let saved = await waitSaved(10000);
 
-        if (!saved) {
-          // 2. deneme: bir kez daha F2
+        // Validation hatası varsa retry YAPMA (zaten alan eksik)
+        if (!saved && !validationFailed) {
           await sleep(500);
           await clickKaydetOnayla();
           saved = await waitSaved(10000);
@@ -509,9 +564,11 @@
           counters.onay++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
         } else {
-          // F2 iki denemede de sonuçlanmadı — muhtemelen validasyon hatası
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `F2 sonuçlanmadı (2 deneme, eksik alan?) · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          const atlamaSebebi = validationFailed
+            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+            : `F2 sonuçlanmadı · ${sebep}`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
           await clickIleri(fid);
         }
       } catch (e) {
