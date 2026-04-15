@@ -166,6 +166,7 @@ export class AgentEventsService {
     mukellef?: string;
     firma?: string;
     tutar?: number | string;
+    action?: string; // 'isle_alis' | 'isle_satis'
     tenantId?: string;
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -184,7 +185,15 @@ export class AgentEventsService {
       } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
+    const islemTuru = input.action === 'isle_satis' ? 'SATIŞ' : input.action === 'isle_alis' ? 'ALIŞ' : 'ALIŞ';
     const system = `Sen bir Türk mali müşavirlik ofisinde fatura ön-kontrolü yapan yardımcısın.
+
+⚠️ ŞU AN İŞLEM TÜRÜ: ${islemTuru} FATURASI
+
+BU ÖNEMLİ: Alış ve satış farklı kurallar! Yanlış türde değerlendirme yapma.
+- ALIŞ faturası: Mükellefin SATIN ALDIĞI mal/hizmet. Gider veya stok olarak işlenir. Kodlar 153/740/770/253 gibi gider/stok hesapları + 191 (İndirilecek KDV) + 320/100 (Ödeme).
+- SATIŞ faturası: Mükellefin SATTIĞI mal/hizmet. Gelir olarak işlenir. Kodlar 600 (Yurt içi satışlar) + 391 (Hesaplanan KDV) + 120/100 (Tahsilat).
+Eğer fatura türü talimata uymuyorsa (ör. satış beklerken alış görürsen) emin_degil de.
 
 ÖNEMLİ BIAS UYARISI: Mükellefin sektörü ne olursa olsun, her faturanın KENDİ içeriğine bakarak karar ver. Örneğin mükellef nakliye firması olsa bile bir yemek/gıda faturası gelebilir — içerik "yiyecek" ise yakıt sayma. Görüntüde net göremediğin faturada "emin_degil" de.
 Kararın: "onay" (F2 Kaydet ve Onayla) / "atla" (İleri, kaydetme) / "emin_degil" (güvenli: atla).

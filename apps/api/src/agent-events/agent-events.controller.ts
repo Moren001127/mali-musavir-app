@@ -197,6 +197,9 @@ export class AgentEventsController {
       belgeNo?: string;
       belgeTuru?: string;
       mukellef?: string;
+      firma?: string;
+      tutar?: number | string;
+      action?: string;
     },
   ) {
     const tenantId = this.resolveTenantFromToken(token);
