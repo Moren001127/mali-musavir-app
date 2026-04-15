@@ -90,6 +90,29 @@ export default function FisYazdirmaPage() {
   const [wordTotal, setWordTotal] = useState(0);
   const [error, setError] = useState('');
 
+  // Yeni: Mükellef + dönem + sayfa/fiş
+  const [mukellefName, setMukellefName] = useState('');
+  const [donem, setDonem] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [pagesPerSheet, setPagesPerSheet] = useState<4 | 8 | 12>(8);
+  const [taxpayers, setTaxpayers] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch(`${API}/taxpayers`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then((r) => r.json())
+      .then((list: any[]) =>
+        setTaxpayers(
+          (list || []).map((t: any) => ({
+            id: t.id,
+            name: t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)',
+          })),
+        ),
+      )
+      .catch(() => {});
+  }, []);
+
 
   /* ── Dosya ekleme ── */
   const addFiles = (newFiles: FileList | File[]) => {
@@ -194,6 +217,9 @@ export default function FisYazdirmaPage() {
     const fd = new FormData();
     files.forEach((f) => fd.append('images', f, f.name));
     fd.append('allDates', JSON.stringify(allDates));
+    if (mukellefName) fd.append('mukellef', mukellefName);
+    if (donem) fd.append('donem', donem);
+    fd.append('pagesPerSheet', String(pagesPerSheet));
 
     try {
       const res = await fetch(`${API}/fis-yazdirma/process`, {
@@ -247,6 +273,70 @@ export default function FisYazdirmaPage() {
       {/* ── UPLOAD ── */}
       {(stage === 'upload' || stage === 'error') && (
         <div className="space-y-4">
+          {/* Kapak bilgileri kartı */}
+          <div
+            className="rounded-xl border p-4"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          >
+            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>
+              📋 Kapak Sayfası Bilgileri (opsiyonel)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Mükellef
+                </label>
+                <input
+                  list="fis-taxpayers"
+                  value={mukellefName}
+                  onChange={(e) => setMukellefName(e.target.value)}
+                  placeholder="Mükellef adı ya da boş bırakın"
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                />
+                <datalist id="fis-taxpayers">
+                  {taxpayers.map((t) => (
+                    <option key={t.id} value={t.name} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Dönem
+                </label>
+                <input
+                  type="month"
+                  value={donem}
+                  onChange={(e) => setDonem(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Sayfa Başına Fiş
+                </label>
+                <div className="flex gap-1">
+                  {[4, 8, 12].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPagesPerSheet(n as any)}
+                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium border"
+                      style={{
+                        background: pagesPerSheet === n ? 'rgba(184,160,111,.15)' : 'var(--bg)',
+                        borderColor: pagesPerSheet === n ? '#b8a06f' : 'var(--border)',
+                        color: pagesPerSheet === n ? '#b8a06f' : 'var(--text)',
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div
             onDrop={onDrop}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
@@ -494,40 +584,97 @@ export default function FisYazdirmaPage() {
                     <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                       Teyit Gereken ({scanResult.unread.length})
                     </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Her fiş için tarih seçin</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      Her fiş için tarih seçin · "Öncekinden kopyala" ile hızlandırın
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 mb-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Tüm boş teyit fişlerine donem'in 1. günü doldur
+                        const base = donem ? `${donem}-01` : '';
+                        if (!base) return;
+                        setAllDates((prev) => {
+                          const next = { ...prev };
+                          scanResult.unread.forEach((u) => {
+                            if (!next[u.filename]) next[u.filename] = base;
+                          });
+                          return next;
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: 'rgba(184,160,111,.12)', color: '#b8a06f' }}
+                    >
+                      Hepsine Dönem Başı ({donem}-01)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Son dolu tarihi bul, boşları onunla doldur
+                        const dates = scanResult.unread.map((u) => allDates[u.filename]).filter(Boolean);
+                        const last = dates[dates.length - 1];
+                        if (!last) return;
+                        setAllDates((prev) => {
+                          const next = { ...prev };
+                          scanResult.unread.forEach((u) => {
+                            if (!next[u.filename]) next[u.filename] = last;
+                          });
+                          return next;
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: 'var(--muted)', color: 'var(--text)' }}
+                    >
+                      Boşları Son Tarihle Doldur
+                    </button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 overflow-y-auto" style={{ maxHeight: '600px' }}>
-                    {scanResult.unread.map((u) => (
-                      <div
-                        key={u.filename}
-                        className="rounded-xl overflow-hidden"
-                        style={{
-                          border: allDates[u.filename] ? '2px solid #059669' : '2px solid var(--border)',
-                          background: 'var(--surface)',
-                          boxShadow: 'var(--shadow-sm)',
-                        }}
-                      >
-                        {u.thumbnail ? (
-                          <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={{ height: 180 }} />
-                        ) : (
-                          <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'var(--bg)' }}>
-                            <FileImage size={32} style={{ color: 'var(--text-muted)' }} />
+                    {scanResult.unread.map((u, idx) => {
+                      const prev = idx > 0 ? scanResult.unread[idx - 1] : null;
+                      const prevDate = prev ? allDates[prev.filename] : '';
+                      return (
+                        <div
+                          key={u.filename}
+                          className="rounded-xl overflow-hidden"
+                          style={{
+                            border: allDates[u.filename] ? '2px solid #059669' : '2px solid var(--border)',
+                            background: 'var(--surface)',
+                            boxShadow: 'var(--shadow-sm)',
+                          }}
+                        >
+                          {u.thumbnail ? (
+                            <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={{ height: 180 }} />
+                          ) : (
+                            <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'var(--bg)' }}>
+                              <FileImage size={32} style={{ color: 'var(--text-muted)' }} />
+                            </div>
+                          )}
+                          <div className="p-2.5 space-y-2">
+                            <p className="text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
+                              {u.filename}
+                            </p>
+                            <input
+                              type="date"
+                              value={allDates[u.filename] ?? ''}
+                              onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
+                              className="input-base w-full text-xs py-1.5"
+                              style={{ borderColor: allDates[u.filename] ? '#059669' : 'var(--border)' }}
+                            />
+                            {prevDate && !allDates[u.filename] && (
+                              <button
+                                type="button"
+                                onClick={() => setAllDates((p) => ({ ...p, [u.filename]: prevDate }))}
+                                className="w-full text-[10px] py-1 rounded"
+                                style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
+                              >
+                                ⬆ Önceki: {isoToDisplay(prevDate)}
+                              </button>
+                            )}
                           </div>
-                        )}
-                        <div className="p-2.5 space-y-2">
-                          <p className="text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
-                            {u.filename}
-                          </p>
-                          <input
-                            type="date"
-                            value={allDates[u.filename] ?? ''}
-                            onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
-                            className="input-base w-full text-xs py-1.5"
-                            style={{ borderColor: allDates[u.filename] ? '#059669' : 'var(--border)' }}
-                          />
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

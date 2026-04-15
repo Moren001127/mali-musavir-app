@@ -56,6 +56,13 @@ export interface ExcelRow {
   toplam?: string;
 }
 
+function isoDisplay(iso: string): string {
+  if (!iso) return '';
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
 /* ─── Türkçe Ay Adları (OCR gürültü toleranslı) ────────────── */
 const TR_MONTHS: Record<string, number> = {
   ocak: 1, subat: 2, şubat: 2, mart: 3, nisan: 4,
@@ -300,12 +307,107 @@ export class FisYazdirmaService {
     }
   }
 
+  /** Claude Haiku 4.5 ile tarih okuma — Tesseract'tan çok daha iyi bulanık/termal fişlerde */
+  private async claudeExtractDate(buffer: Buffer): Promise<{ date: string | null; fields: any }> {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return { date: null, fields: {} };
+    try {
+      // Fotoğrafı küçült + auto-rotate + jpeg (payload ≤1MB)
+      const processed = await sharp(buffer)
+        .rotate() // EXIF auto-orient
+        .resize({ width: 1000, withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+      const b64 = processed.toString('base64');
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 250,
+          system:
+            'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir asistansın. Sadece JSON döndür: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}. Tarih net değilse null. Tahmin yapma.',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+                },
+                {
+                  type: 'text',
+                  text: 'Bu fişin/faturanın tarihini, belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. JSON döndür.',
+                },
+              ],
+            },
+          ],
+        }),
+      });
+      if (!res.ok) return { date: null, fields: {} };
+      const j: any = await res.json();
+      const text = j?.content?.[0]?.text || '';
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) return { date: null, fields: {} };
+      const parsed = JSON.parse(match[0]);
+      return {
+        date: parsed.tarih && /^\d{4}-\d{2}-\d{2}$/.test(parsed.tarih) ? parsed.tarih : null,
+        fields: {
+          belge_no: parsed.belgeNo || undefined,
+          cari: parsed.cari || undefined,
+          toplam: parsed.toplam || undefined,
+        },
+      };
+    } catch (e: any) {
+      this.logger.warn(`Claude OCR hata: ${e.message}`);
+      return { date: null, fields: {} };
+    }
+  }
+
   async scanImages(files: Express.Multer.File[]): Promise<ScanResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
     }
 
-    this.logger.log(`OCR tarama başlıyor: ${files.length} görsel`);
+    const useClaude = !!process.env.ANTHROPIC_API_KEY;
+    this.logger.log(
+      `OCR tarama başlıyor: ${files.length} görsel (${useClaude ? 'Claude Haiku' : 'Tesseract'})`,
+    );
+
+    if (useClaude) {
+      // Claude path: paralel 5'er 5'er işle (rate limit dostu)
+      const { default: pLimit } = await (Function('return import("p-limit")')() as Promise<{ default: any }>);
+      const limit = pLimit(5);
+      const detected: ScanDetected[] = [];
+      const unread: ScanUnread[] = [];
+      const results = await Promise.all(
+        files.map((file) =>
+          limit(async () => {
+            const r = await this.claudeExtractDate(file.buffer);
+            return { file, ...r };
+          }),
+        ),
+      );
+      await Promise.all(
+        results.map(async ({ file, date, fields }) => {
+          if (date) {
+            detected.push({ filename: file.originalname, date, ...fields });
+          } else {
+            const thumbnail = await this.makeThumbnail(file.buffer);
+            unread.push({ filename: file.originalname, thumbnail });
+          }
+        }),
+      );
+      detected.sort((a, b) => a.date.localeCompare(b.date));
+      this.logger.log(`Claude OCR bitti: ${detected.length}/${files.length}, ${unread.length} teyit`);
+      return { detected, unread, total: files.length };
+    }
+
+    // Fallback: Tesseract (eski yol)
 
     const { default: pLimit } = await (Function('return import("p-limit")')() as Promise<{ default: any }>);
 
@@ -412,6 +514,7 @@ export class FisYazdirmaService {
   async generateWord(
     files: Express.Multer.File[],
     allDates: Record<string, string>,
+    opts: { mukellef?: string; donem?: string; pagesPerSheet?: number } = {},
   ): Promise<Buffer> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
@@ -430,22 +533,24 @@ export class FisYazdirmaService {
     );
 
     // ── Sayfa & Grid Ayarları ─────────────────────────────────
-    // Letter: 21.59 × 27.94 cm, örnek docx ile birebir
     const PAGE_W_MM  = 215.9;
     const PAGE_H_MM  = 279.4;
-    const MARGIN_MM  = 0; // sıfır marjin — fişler sayfaya yapışık
-    const COLS       = 4; // 4 sütun × 2 satır = sayfa başına 8 fiş
-    const ROWS_PER_PAGE = 2;
-    const PER_PAGE   = COLS * ROWS_PER_PAGE; // 8
+    const MARGIN_MM  = 0;
+    // pagesPerSheet: 4 (2x2 büyük) / 8 (4x2 - default) / 12 (4x3 küçük)
+    const perPage = opts.pagesPerSheet && [4, 8, 12].includes(opts.pagesPerSheet) ? opts.pagesPerSheet : 8;
+    const COLS = perPage === 4 ? 2 : 4;
+    const ROWS_PER_PAGE = perPage / COLS;
+    const PER_PAGE = perPage;
 
     const pageWTwip  = convertMillimetersToTwip(PAGE_W_MM);
     const pageHTwip  = convertMillimetersToTwip(PAGE_H_MM);
     const usableW    = convertMillimetersToTwip(PAGE_W_MM - 2 * MARGIN_MM);
     const colW       = Math.floor(usableW / COLS);
 
-    // Görsel display genişliği: ~5.33 cm ≈ 151px @72dpi
-    const DISPLAY_W_CM = 5.33;
-    const DISPLAY_W    = Math.round((DISPLAY_W_CM / 2.54) * 96); // ≈ 201px
+    // Görsel display genişliği: sütun sayısına göre ayarlanır
+    const usableCM = (PAGE_W_MM - 2 * MARGIN_MM) / 10;
+    const DISPLAY_W_CM = (usableCM / COLS) - 0.2;
+    const DISPLAY_W    = Math.round((DISPLAY_W_CM / 2.54) * 96);
 
     const emptyCell = (): TableCell =>
       new TableCell({
@@ -459,7 +564,8 @@ export class FisYazdirmaService {
     const cells: TableCell[] = await Promise.all(
       sorted.map(async (file) => {
         const embedded = await sharp(file.buffer)
-          .jpeg({ quality: 98 })
+          .rotate() // EXIF auto-orient
+          .jpeg({ quality: 95 })
           .toBuffer();
 
         const meta = await sharp(embedded).metadata();
@@ -511,6 +617,89 @@ export class FisYazdirmaService {
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
       },
     };
+
+    // ── Kapak Sayfası (mükellef veya dönem verildiyse) ──
+    if (opts.mukellef || opts.donem) {
+      const dates = sorted.map((f) => allDates[f.originalname]).filter(Boolean).sort();
+      const ilkTarih = dates[0] ? isoDisplay(dates[0]) : '—';
+      const sonTarih = dates[dates.length - 1] ? isoDisplay(dates[dates.length - 1]) : '—';
+      const coverChildren: any[] = [
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 4000, after: 400 },
+          children: [
+            new TextRun({ text: 'MOREN', bold: true, size: 72, color: '8B7649' }),
+          ],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 800 },
+          children: [
+            new TextRun({ text: 'MALİ MÜŞAVİRLİK', bold: true, size: 28, color: '8B7649' }),
+          ],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+          children: [new TextRun({ text: '—— FİŞ DÖKÜMÜ ——', size: 24, color: '666666' })],
+        }),
+      ];
+      if (opts.mukellef) {
+        coverChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 600, after: 100 },
+            children: [new TextRun({ text: 'MÜKELLEF', size: 18, color: '999999' })],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 400 },
+            children: [new TextRun({ text: opts.mukellef.toUpperCase(), bold: true, size: 32 })],
+          }),
+        );
+      }
+      if (opts.donem) {
+        coverChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 100 },
+            children: [new TextRun({ text: 'DÖNEM', size: 18, color: '999999' })],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 800 },
+            children: [new TextRun({ text: opts.donem, bold: true, size: 28 })],
+          }),
+        );
+      }
+      coverChildren.push(
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 600, after: 100 },
+          children: [new TextRun({ text: 'TOPLAM FİŞ', size: 18, color: '999999' })],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 600 },
+          children: [new TextRun({ text: `${files.length} adet`, bold: true, size: 26 })],
+        }),
+        new Paragraph({
+          alignment: AlignmentType.CENTER,
+          children: [
+            new TextRun({ text: `İlk Tarih: ${ilkTarih}   ·   Son Tarih: ${sonTarih}`, size: 20, color: '666666' }),
+          ],
+        }),
+      );
+      sections.push({
+        properties: {
+          page: {
+            size: { width: pageWTwip, height: pageHTwip },
+            margin: { top: 720, right: 720, bottom: 720, left: 720 },
+          },
+        },
+        children: coverChildren,
+      });
+    }
 
     // Sayfaları PER_PAGE'lik gruplara böl
     for (let pageStart = 0; pageStart < cells.length; pageStart += PER_PAGE) {

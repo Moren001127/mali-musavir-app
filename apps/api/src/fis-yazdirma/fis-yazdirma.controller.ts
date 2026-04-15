@@ -49,6 +49,9 @@ export class FisYazdirmaController {
   async process(
     @UploadedFiles() files: Express.Multer.File[],
     @Body('allDates') allDatesJson: string,
+    @Body('mukellef') mukellef: string | undefined,
+    @Body('donem') donem: string | undefined,
+    @Body('pagesPerSheet') pagesPerSheetStr: string | undefined,
     @Res() res: any,
   ) {
     if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
@@ -62,8 +65,15 @@ export class FisYazdirmaController {
       }
     }
 
-    const wordBuffer = await this.fisYazdirmaService.generateWord(files, allDates);
-    const filename = `fisler_${new Date().toISOString().slice(0, 10)}.docx`;
+    const pagesPerSheet = pagesPerSheetStr ? parseInt(pagesPerSheetStr, 10) : undefined;
+    const wordBuffer = await this.fisYazdirmaService.generateWord(files, allDates, {
+      mukellef: mukellef || undefined,
+      donem: donem || undefined,
+      pagesPerSheet,
+    });
+    const safeMukellef = (mukellef || 'fisler').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const datePart = donem || new Date().toISOString().slice(0, 10);
+    const filename = `${safeMukellef}_${datePart}.docx`;
 
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
