@@ -196,14 +196,30 @@
       if (!r.ok) return {};
       const j = await r.json();
       const v = j?.sonucValue || j || {};
-      // Ay kontrolü için en güvenilir kaynak: donemYil+donemAy (Mihsap'ın mantıksal dönem atamaları)
-      // Sonra faturaTarihi (ISO), sonra faturaTarihiStr (TR format), en son insertDttm
+      // Tarih okuma önceliği (MIHSAP API cevabına göre):
+      //  1) v.tarih            → "DD-MM-YYYY" TR formatı (en güvenilir, MIHSAP ekranıyla aynı)
+      //  2) v.tarihler[]       → FATURA_TARIHI türünde olan ilk kayıt
+      //  3) v.faturaTarihi     → ISO/UTC timestamp (UTC+3 dönüşümü)
+      //  4) v.faturaTarihiStr  → TR format fallback
+      //  5) v.donemYil+donemAy → mantıksal dönem (ayın 1'i)
+      // NOT: v.insertDttm KULLANILMAZ — bu "MIHSAP'a ekleme tarihi"dir, fatura tarihi DEĞİLDİR.
       let tarih = null;
-      if (v.donemYil && v.donemAy) {
-        tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
+
+      // TR formatını "YYYY-MM-DD"ye çeviren yardımcı
+      const parseTr = (s) => {
+        const m = String(s || '').trim().match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+        if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+        const iso = String(s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+        return null;
+      };
+
+      if (!tarih && v.tarih) tarih = parseTr(v.tarih);
+      if (!tarih && Array.isArray(v.tarihler)) {
+        const ft = v.tarihler.find(t => t?.tarihTuru === 'FATURA_TARIHI') || v.tarihler[0];
+        if (ft?.tarih) tarih = parseTr(ft.tarih);
       }
       if (!tarih && v.faturaTarihi) {
-        // ISO "2026-03-15T21:00:00Z" (UTC) → Türkiye saati UTC+3 dönüştür
         const s = String(v.faturaTarihi);
         if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
           if (s.includes('T') || s.includes('Z')) {
@@ -216,19 +232,10 @@
           }
         }
       }
-      if (!tarih && v.faturaTarihiStr) {
-        const s = String(v.faturaTarihiStr).trim();
-        // Turkish "DD.MM.YYYY" veya "DD/MM/YYYY" veya "DD-MM-YYYY"
-        const tr = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
-        if (tr) {
-          tarih = `${tr[3]}-${tr[2].padStart(2, '0')}-${tr[1].padStart(2, '0')}`;
-        } else {
-          // ISO "YYYY-MM-DD"
-          const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-          if (iso) tarih = `${iso[1]}-${iso[2]}-${iso[3]}`;
-        }
+      if (!tarih && v.faturaTarihiStr) tarih = parseTr(v.faturaTarihiStr);
+      if (!tarih && v.donemYil && v.donemAy) {
+        tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
-      if (!tarih && v.insertDttm) tarih = String(v.insertDttm).slice(0, 10);
       return {
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
