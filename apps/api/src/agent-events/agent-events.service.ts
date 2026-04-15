@@ -202,29 +202,50 @@ Türk muhasebesinde hesap kodları değişmez bir şablona göre atanmıştır:
 
 Bu kodların türü kodun ilk 3 rakamıyla belirlenir, açıklamaya bakma. "ALIŞTAN İADE HESAPLANAN KDV" açıklamalı kod 391.02 olsa bile SATIŞ kodudur çünkü 391 ile başlıyor (iade faturası = mükellef açısından satış işlemi).
 
-KARAR AKIŞI (sırayla düşün):
+KARAR AKIŞI — MIHSAP ekranındaki TÜM alanları fatura görüntüsüyle teyit et:
 
-1. Tarih kontrolü:
-   Fatura tarihi GG-AA-YYYY formatındadır. "30-03-2026" = 30 Mart. Ay = 2. grup (03).
-   Hedef ay ${input.hedefAy || '?'}. Fatura ayı hedef ayla eşleşmiyorsa → atla.
+1. Tarih:
+   Ekrandaki "Fatura Tarihi" fatura görüntüsündeki tarihle aynı mı?
+   Tarih GG-AA-YYYY formatındadır. "30-03-2026" = 30 Mart. Ay = 2. grup (03).
+   Hedef ay ${input.hedefAy || '?'} — fatura ayı hedef ayla eşleşmiyorsa → atla.
 
-2. Kod-mod uyumu:
-   Kodların ilk 3 rakamına bak. Hepsi gelir hesabı (600/601/602/391/120/121) ise SATIŞ, hepsi gider/stok (153/150/191/320/740/770/253/255) ise ALIŞ.
-   ${islemTuru} modundayız. Kod türü ${islemTuru} ile uyumlu olmalı.
-   Örnek: SATIŞ modunda 600+391+120 → UYUMLU (onay adayı). ALIŞ modunda 153+191+320 → UYUMLU.
-   Eğer mod SATIŞ ama kodlar 153/191/320 ise → atla. Mod ALIŞ ama kodlar 600/391/120 ise → atla.
+2. Matrah (Muhasebe) Hesap Kodu:
+   Seçilen matrah kodu fatura içeriğiyle uyumlu mu?
+   Örnek: Akaryakıt faturasında matrah 153.02 (stok-yakıt) olmalı, 770 (genel gider) değil.
+   SATIŞ modunda matrah 600/601/602 olmalı; ALIŞ modunda 153/150/770/740/253 olmalı.
 
-3. Demirbaş/Sabit kıymet kontrolü:
-   Kod 253/255 ile başlıyorsa → atla. Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör" varsa → atla.
+3. KDV Hesap Kodu:
+   SATIŞ modunda → 391.xx (Hesaplanan KDV) olmalı.
+   ALIŞ modunda → 191.xx (İndirilecek KDV) olmalı.
+   KDV oranı fatura üzerindeki oranla eşleşmeli (%1, %10, %20).
+   Mod ile KDV kodu çelişirse (SATIŞ modunda 191 vs.) → atla.
 
-4. İçerik-kod uyumu:
-   Görüntüdeki ürün/hizmet ile hesap kodu mantıklı mı?
-   (Örn. kod 770 Genel Yönetim Gideri ama fatura akaryakıt = çelişki → atla)
+4. Cari Hesap Kodu (Alıcılar/Satıcılar):
+   SATIŞ modunda → 120.xx (Alıcılar) veya 121 olmalı.
+   ALIŞ modunda → 320.xx (Satıcılar) veya 321 olmalı.
+   Cari hesap ADI fatura karşı firma adıyla uyumlu mu? (Ör. satıcı firma "HİLAL PETROL" ise cari "HİLAL PETROL LTD" benzeri olmalı).
 
-5. Hepsi tutarlıysa → onay.
-6. Tereddüt, bulanık görüntü, okunamayan fatura → emin_degil.
+5. Fatura Türü / Belge Türü:
+   Seçilen belge türü fatura üzerindeki belge türüyle aynı mı? (E-Fatura / E-Arşiv / Kağıt / İrsaliye / İade / Tevkifatlı vs.)
+   Fatura üzerinde "İADE FATURASI" yazıyorsa belge türü de iade olmalı.
+   Tevkifatlı fatura ise tevkifat oranı/kodu doldurulmuş olmalı.
 
-Sektör veya firma adı SINIRLAYICI değildir. Mükellef nakliye firması olsa bile gıda faturası gelebilir, içeriğe bak. Aynı şekilde satıcı perakendeci olsa da mükellef ona satış yapıyor olabilir — kodlar doğruysa onay.
+6. Belge Numarası / Evrak Numarası / Fiş Numarası:
+   Fatura üzerindeki belge numarası (ör. YRG2026000000260) ekrana doğru girilmiş mi?
+   Numaralar boş veya anlamsız (000000, XXX) ise → atla.
+
+7. Demirbaş / Sabit Kıymet:
+   Kod 253/255 ile başlıyorsa → atla. Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör" → atla.
+
+8. Genel içerik uyumu:
+   Görüntüdeki ürün/hizmet kategorisi ile matrah kodu mantıklı mı?
+
+KARAR:
+• Yukarıdaki her maddede TÜM alanlar teyit edildiyse VE uyumlu ise → **onay**
+• Herhangi bir maddede açık bir uyumsuzluk tespit edildiyse → **atla** (sebep olarak hangi alanda uyumsuzluk var açıkla)
+• Alanlardan biri okunamıyor/bulanık/eksik veriyorsa → **emin_degil**
+
+Sektör veya firma adı SINIRLAYICI değildir. Mükellef nakliye firması olsa bile gıda faturası gelebilir — içeriğe ve kodlara bak. Kodların ilk 3 rakamı değişmez muhasebe mantığıdır: 600=satış geliri, 391=hesaplanan KDV (satış), 191=indirilecek KDV (alış), 320=satıcı (alış), 120=alıcı (satış), 153=stok (alış).
 
 Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"kısa gerekçe (max 80 karakter)","ocrOzet":"faturanın 1 satır özeti"}${mukellefTalimat}`;
 
