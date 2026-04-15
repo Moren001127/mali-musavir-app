@@ -163,6 +163,7 @@ export class AgentEventsService {
     hedefAy?: string;
     belgeNo?: string;
     belgeTuru?: string;
+    faturaTuru?: string;
     mukellef?: string;
     firma?: string;
     tutar?: number | string;
@@ -173,7 +174,9 @@ export class AgentEventsService {
     if (!apiKey) {
       return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
     }
-    // Mükellefe özel kural varsa sistem prompt'a ekle
+    // Mükellef talimatı — panelden girilen özel kural. AI ana 6 kuralı uyguladıktan
+    // SONRA, sadece açık uyumsuzluk varsa talimatı ek referans olarak kullanır.
+    // Ana kuralları (özellikle [E] nakliye bedeli = ONAY) geçersiz kılmaz.
     let mukellefTalimat = '';
     if (input.tenantId && input.mukellef) {
       try {
@@ -181,7 +184,7 @@ export class AgentEventsService {
           where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
         });
         const talimat = (rule?.profile as any)?.talimat;
-        if (talimat) mukellefTalimat = `\n\nMÜKELLEF ÖZEL TALİMATLARI (${input.mukellef}):\n${talimat}`;
+        if (talimat) mukellefTalimat = String(talimat);
       } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
@@ -223,9 +226,10 @@ Sadece aşağıdaki KESİN ATLA LİSTESİ'nden biri varsa atla. Yoksa ONAY. Gör
 
 === BACKEND ZATEN DOĞRULADI (sorgulama) ===
 İşlem modu: ${islemTuru} | Kodlar: ${codesArr.join(', ')} | Kod türü: ${codeType}
+Ekrandaki fatura türü: ${input.faturaTuru || '?'} | Belge türü: ${input.belgeTuru || '?'}
 Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 
-=== KESİN ATLA LİSTESİ (yalnızca bu 5 durumda atla) ===
+=== KESİN ATLA LİSTESİ (yalnızca bu 6 durumda atla) ===
 
 [A] TARİH FARKLI: MIHSAP ekranındaki tarih (${input.faturaTarihi || '?'}) ile fatura görüntüsündeki tarih AYNI GÜN DEĞİL.
     → Gün/ay/yıl üçünden biri farklıysa atla. Okuyamazsan bu kontrolü GEÇ (atlama).
@@ -249,6 +253,18 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
     Parçaları tek tek analiz etme (plaka vs güzergah vs kelime), CÜMLEYİ BÜTÜN OLARAK OKU.
     Örnek: "34FPL505 AVCILAR-KARTAL NAKLİYE BEDELİ" — cümlede "nakliye" ve "bedeli" geçiyor → ONAY.
 
+[F] FATURA TÜRÜ / BELGE TÜRÜ UYUMU:
+    Ekrandaki fatura türü: ${input.faturaTuru || '?'}  (örn. NORMAL_SATIS, TEVKIFATLI_SATIS, NORMAL_ALIS, IADE, İHRACAT)
+    Ekrandaki belge türü: ${input.belgeTuru || '?'}  (örn. E_FATURA, E_ARSIV, FIS, IRSALIYE)
+    Görüntüye bak:
+    • Fatura üzerinde "TEVKİFATLI FATURA" / "TEVKİFAT UYGULANIR" yazıyor ama ekrandaki faturaTuru TEVKIFAT içermiyorsa → atla
+    • Fatura üzerinde TEVKİFAT YOK ama ekranda TEVKIFATLI seçiliyse → atla
+    • Fatura üzerinde "İADE FATURASI" yazıyor ama ekran faturaTuru IADE değilse → atla
+    • Fatura "e-Arşiv Fatura" yazıyor ama belgeTuru E_FATURA ise veya tam tersi → atla
+    • Fatura "e-Fatura" yazıyor ama belgeTuru E_ARSIV ise → atla
+    • Fatura üzerinde "İHRACAT / EXPORT" yazıyor ama faturaTuru normal satışsa → atla
+    NOT: Okuyamadığın madde için atlama, GEÇ. Sadece KESİN gördüğün uyumsuzlukta atla.
+
 === MUTLAK YASAKLAR (asla bu gerekçelerle ATLA deme) ===
 × "Mükellef alıcı/satıcı konumunda" / "ALIŞ/SATIŞ konumu" — yön backend'in işi
 × "Alış/satış kodu çelişkisi" / "Sektör uyumsuz"
@@ -264,8 +280,27 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 2. Görüntü tamamen okunamıyor mu? → emin_degil
 3. Diğer tüm durumlarda → onay
 
-Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"80 karakter","ocrOzet":"1 satır"}
-${mukellefTalimat ? `\n[Bilgi notu — yukarıdaki kurallar önceliklidir]${mukellefTalimat}` : ''}`;
+${mukellefTalimat ? `
+=== MÜKELLEF ÖZEL TALİMATI (${input.mukellef}) ===
+${mukellefTalimat}
+
+[TALİMAT YORUM KURALLARI — ÇOK ÖNEMLİ]
+Yukarıdaki talimatta "araç satışı" geçiyor. Bunu UYGULAMAK için şu ŞART'ı ara:
+  Fatura satırında AÇIKÇA şunlardan biri yazıyor olmalı:
+    • "ARAÇ SATIŞ BEDELİ" / "TAŞIT SATIŞ BEDELİ" / "OTO SATIŞ BEDELİ"
+    • "aracın satış bedeli" / "aracın satışı"
+    • "DEMİRBAŞ SATIŞI" + araç modeli/şasisi
+
+ŞUNLAR "ARAÇ SATIŞI" DEĞİLDİR — TALİMATI TETİKLEMEZ:
+  ✗ "plakalı aracın X nakliye bedeli" → taşımayı yapan aracın nakliye ücreti (ONAY)
+  ✗ "34ABC123 PLAKALI ARAÇ [güzergah] NAKLIYE" → nakliye hizmeti (ONAY)
+  ✗ Plaka + güzergah + "bedel/ücret/nakliye" kombinasyonu → hizmet faturası (ONAY)
+  ✗ İçerikte "araç" kelimesi geçiyor olması tek başına araç satışı DEĞİL
+
+Cümlede "nakliye/taşıma/sevk/lojistik/sefer" kelimesi geçiyorsa, içerikte plaka veya "araç" kelimesi de olsa DAHİ → ONAY.
+` : ''}
+
+Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"80 karakter","ocrOzet":"1 satır"}`;
 
     const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
 Kodlar: ${kodListe || '(boş)'} | Tarih: ${input.faturaTarihi || '?'} | Belge no: ${input.belgeNo || '?'}

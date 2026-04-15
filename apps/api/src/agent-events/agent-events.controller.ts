@@ -196,6 +196,7 @@ export class AgentEventsController {
       hedefAy?: string;
       belgeNo?: string;
       belgeTuru?: string;
+      faturaTuru?: string;
       mukellef?: string;
       firma?: string;
       tutar?: number | string;

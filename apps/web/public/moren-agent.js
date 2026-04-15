@@ -240,6 +240,7 @@
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
         belgeTuru: v.belgeTuru || null,
+        faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
         firma: v.faturaFirmaAdi || v.firmaUnvan || null,
       };
@@ -283,7 +284,7 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, mukellef, firma, tutar, action }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, action }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -295,6 +296,7 @@
         hedefAy,
         belgeNo,
         belgeTuru,
+        faturaTuru,
         mukellef,
         firma,
         tutar,
@@ -410,7 +412,7 @@
       setStatus(`${mukellef.ad} · #${fid} Claude inceliyor…`);
       const decision = await aiDecide({
         codes, tarih, hedefAy,
-        belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru,
+        belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
         mukellef: mukellef.ad,
         firma: meta.firma,
         tutar: meta.tutar,
