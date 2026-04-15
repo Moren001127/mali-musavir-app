@@ -245,17 +245,18 @@ Sen MIHSAP ekranındaki alanların fatura GÖRÜNTÜSÜ ile tutarlı olduğunu d
    Boş veya 000000 gibi anlamsız → atla.
 
 6) FATURA TÜRÜ:
-   Fatura görüntüsünde türü yazıyor (ör. "e-Arşiv Fatura", "e-Fatura", "İade Faturası", "Tevkifatlı Fatura", "Satış Faturası", "Alış Faturası").
-   Ekranda seçilen fatura türü fatura üzerindekiyle uyumlu mu?
-   Örnek çelişki: ekran "Normal Satış" ama fatura üzerinde "İADE FATURASI" yazıyor → atla.
-   Örnek uyum: ekran "Tevkifatlı Satış" ve fatura "TEVKİFATLI FATURA" → onay.
+   Fatura görüntüsünde tür damgası var: "e-Arşiv Fatura", "e-Fatura", "İade Faturası", "Tevkifatlı" gibi.
    Belge türü (ekranda): ${input.belgeTuru || '?'}
+   SADECE NET görünen uyumsuzlukta atla. Örnekler:
+   ✓ Çelişki: ekran "Normal Satış" ama fatura açıkça "İADE FATURASI" yazıyor → atla
+   ✓ Uyum: ekran "Tevkifatlı" ve faturada tevkifat var → onay
+   ✗ Yapma: Fatura türü okunmuyorsa, damga bulanıksa, "e-Arşiv" mi "e-Fatura" mı ayırt edemiyorsan → bu maddeyi ATLA (sadece emin_degil verme)
+   NOT: "e-Arşiv Fatura" ve "e-Fatura" ikisi de geçerli belge türleridir, sadece platform farkı vardır. İkisini birbiriyle çelişki sayma.
 
 7) BELGE TÜRÜ (E-Fatura / E-Arşiv / Kağıt / İrsaliye):
-   Fatura üzerinde belge türü açıkça yazar (e-Arşiv Fatura / e-Fatura / e-İrsaliye / Kağıt fatura).
-   Ekranda seçilen belge türü ile fatura üzerindeki tür eşleşiyor mu?
-   Örnek çelişki: ekran "Kağıt Fatura" ama görüntüde "e-Arşiv Fatura" QR kodu var → atla.
-   Eşleşiyor ise → devam.
+   Sadece AÇIK çelişki varsa atla:
+   ✓ Çelişki: ekran "Kağıt Fatura" ama görüntüde "e-Arşiv Fatura" QR kodu net görünüyor → atla
+   ✗ Yapma: Belge türü yazısı tam okunmuyorsa → bu maddeyi geç, atla verme
 
 8) DEMİRBAŞ:
    Fatura içeriğinde "demirbaş, makine, bilgisayar, yazıcı, klima, mobilya, kompresör, fotokopi" varsa → atla.
