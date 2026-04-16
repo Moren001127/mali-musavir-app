@@ -349,6 +349,7 @@ export class FisYazdirmaService {
     b64: string,
     tenantId: string | undefined,
     logSuffix: string,
+    opts?: { aggressive?: boolean },
   ): Promise<{ date: string | null; fields: any; rawDate: string | null }> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {}, rawDate: null };
@@ -364,6 +365,27 @@ export class FisYazdirmaService {
         usage,
       });
 
+    // 1. Çağrı (Haiku): sade, muhafazakâr
+    // 2. Çağrı retry (Sonnet): agresif — görünür tarihi çıkarmaya zorla
+    const systemPrompt = opts?.aggressive
+      ? 'Sen Türk fiş/fatura görsellerinden BİLGİ ÇIKARMA UZMANISIN. ' +
+        'Bu görsel daha önce başka bir modelle denendi ve BAŞARISIZ oldu. Bu yüzden dikkatli ol. ' +
+        'Türk ÖKC/yazarkasa fişlerinde tarih GENELDE üst kısımda "TARİH:" etiketinin yanında, ' +
+        'DD-MM-YYYY / DD.MM.YYYY / DD/MM/YYYY formatında yazılır (örn: 08-03-2026). ' +
+        'Termal fişler soluk olabilir; rakamların çoğunu görebiliyorsan tarihi oku. ' +
+        'SADECE tamamen okunamayan / tamamen silik tarih durumunda null dön. ' +
+        'Rakamlardan en az bir tanesi seçilemezse o zaman null. ' +
+        'Yanıt SADECE JSON: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}'
+      : 'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir asistansın. ' +
+        'Sadece JSON döndür: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}. ' +
+        'Tarih net değilse null.';
+
+    const userText = opts?.aggressive
+      ? 'Bu fişin tarihini (YYYY-MM-DD), belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. ' +
+        'Fişin üstüne dikkatle bak — tarih orada olmalı. Rakamları gör ve YYYY-MM-DD olarak dön. ' +
+        'Örn: görselde "08-03-2026" yazıyorsa "tarih":"2026-03-08".'
+      : 'Bu fişin/faturanın tarihini, belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. JSON döndür.';
+
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -374,11 +396,8 @@ export class FisYazdirmaService {
         },
         body: JSON.stringify({
           model,
-          max_tokens: 250,
-          system:
-            'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir asistansın. ' +
-            'Sadece JSON döndür: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}. ' +
-            'Tarih net değilse null.',
+          max_tokens: 300,
+          system: systemPrompt,
           messages: [
             {
               role: 'user',
@@ -387,10 +406,7 @@ export class FisYazdirmaService {
                   type: 'image',
                   source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
                 },
-                {
-                  type: 'text',
-                  text: 'Bu fişin/faturanın tarihini, belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. JSON döndür.',
-                },
+                { type: 'text', text: userText },
               ],
             },
           ],
@@ -450,15 +466,15 @@ export class FisYazdirmaService {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {} };
 
-    // Görseli hazırla (tek sefer)
-    let b64: string;
+    // Görseli hazırla — Haiku için orta çözünürlük
+    let b64Haiku: string;
     try {
       const processed = await sharp(buffer)
         .rotate()
         .resize({ width: 1200, withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toBuffer();
-      b64 = processed.toString('base64');
+      b64Haiku = processed.toString('base64');
     } catch (e: any) {
       this.logger.warn(`Görsel hazırlama hatası: ${e?.message}`);
       return { date: null, fields: {} };
@@ -467,18 +483,32 @@ export class FisYazdirmaService {
     // 1. Haiku — hızlı ve ucuz
     const haiku = await this.claudeOcrOnce(
       'claude-haiku-4-5-20251001',
-      b64,
+      b64Haiku,
       tenantId,
       '',
     );
     if (haiku.date) return { date: haiku.date, fields: haiku.fields };
 
-    // 2. Haiku null döndürdü → Sonnet ile retry (daha güçlü, bulanık termal fişlerde çok daha iyi)
+    // 2. Haiku null → Sonnet ile retry (daha güçlü + agresif prompt + daha yüksek çözünürlük)
+    let b64Sonnet = b64Haiku;
+    try {
+      const hi = await sharp(buffer)
+        .rotate()
+        .resize({ width: 1800, withoutEnlargement: true })
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      // Payload kontrolü: base64 sonrası ~4/3 artar; 5MB üzerine çıkıyorsa 1200'de kal
+      if (hi.length < 3_500_000) b64Sonnet = hi.toString('base64');
+    } catch {
+      /* fallback: b64Haiku */
+    }
+
     const sonnet = await this.claudeOcrOnce(
-      'claude-sonnet-4-5-20250929',
-      b64,
+      'claude-sonnet-4-5',
+      b64Sonnet,
       tenantId,
       '-retry',
+      { aggressive: true },
     );
     if (sonnet.date) {
       return { date: sonnet.date, fields: { ...haiku.fields, ...sonnet.fields } };
