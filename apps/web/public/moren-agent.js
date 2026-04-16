@@ -529,6 +529,147 @@
   // === İŞLETME DEFTERİ: Kayıt Türü + K. Alt Türü blok kontrolü ===
   // Her blok için 2 Ant Design Select var: "Kayıt Türü" ve "K. Alt Türü".
   // Bir blokta herhangi biri boşsa (placeholder / "Seçiniz") → bu fatura atla.
+
+  // Hardcoded: Kayıt Türü → K. Alt Türü listesi (MIHSAP canlıdan toplandı, 2026-04)
+  // Alt Türü AI kararını bu listeye göre sınırlandırıyoruz, dropdown okumaya gerek kalmıyor.
+  const ISLETME_KAYIT_ALT_MAP = {
+    'Mal Alışı': ['Dönem Başı Emtia', 'Mal Alışı'],
+    'Sabit Kıymet Alışı': [
+      'Amortisman Giderleri (40/7)- Binek İkinci El Araç',
+      'Amortisman Giderleri (40/7)- Binek Sıfır Araç (KDV-ÖTV Dâhil)',
+      'Amortisman Giderleri (40/7)- Binek Sıfır Araç (KDV-ÖTV Hariç)',
+      'Amortisman Giderleri (GVK 40/7)',
+      'Amortisman Giderleri (GVK 57/6)',
+      'İşletmenin Esas Faaliyet Konusu İle İlgili Olmayan Vasıtalara Ait Amortismanlar (4008 Md.25)',
+      'Kiralama Yoluyla Edinilen veya İşletmede Kayıtlı Olan Yat, Kotra, Tekne, Sürat Teknesi Gibi Motorlu Deniz, Uçak ve Helikopter Gibi Hava Taşıtlarından İşletmenin Esas Faaliyet Konusu İle İlgili Olmayanların Amortismanları',
+      'VUK Hükümlerine Aykırı Olarak Ayrılan Amortismanlar',
+      'Zirai Faaliyet Yanında İşletme Sahiplerinin Şahsi veya Ailevi İhtiyaçları İçinde Kullanılan Taşıtların Amortismanlarının Tamamı (GVK 57/11)',
+    ],
+    'Sabit Kıymet Ek Maliyet': [
+      'Diğer',
+      'Faiz Giderleri',
+      'Gümrükleme ve Antrepo Giderleri',
+      'Kur Farkı Giderleri',
+      'Nakliye Giderleri',
+      'Navlun ve Sigorta Giderleri',
+      'Sabit Kıymetin Ekonomik Faydasını Artıran Bakım Onarım ve Ek Harcamalar',
+      'Sabit Kıymetin Ekonomik Ömrünü Uzatan Bakım Onarım ve Ek Harcamalar',
+      'Tapu Harcı',
+      'Vade Farkı Giderleri',
+    ],
+    'Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)': [
+      'Basın yoluyla işlenen fiillerden veya radyo ve televizyon yayınlarından doğacak maddî ve manevî zararlardan dolayı ödenen tazminat giderleri.(4756 Md.28)',
+      'Bağış ve Yardımlar',
+      'Binek otomobillerin MTV\'si',
+      'Brüt Ücret',
+      'Diğer K.K.E.G.',
+      'Faiz, komisyon, vade farkı, kâr payı, kur farkı ve benzeri adlar altında yapılan gider ve maliyetler (Öz sermayeyi aşan yabancı kaynaklar için)',
+      'Hazine Tarafından Karşılanan Özürlü Personelin Sigorta Primi',
+      'Her türlü alkol ve alkollü içkiler ile tütün ve tütün mamullerine ait ilan ve reklâm giderlerinin % 50\'si(3571 Md.8)',
+      'Her türlü para cezaları ve vergi cezaları ile teşebbüs sahibinin suçlarından doğan tazminatlar .',
+      'İkramiye Ödemeleri',
+      'İlişkili kişilerle emsallere uygunluk ilkesine aykırı olarak oluşan giderler(5615 Sy. Md. 3).',
+      'İşletmenin esas faaliyet konusu ile ilgili olmayan vasıta giderleri (4008 Md.25)',
+      'İşletmenin Esas Faaliyet Konusu İle İlgili Olmayan Vasıtalara Ait Amortismanlar (4008 Md.25)',
+      'İşsizlik İşveren Payı',
+      'İşsizlik Sigortası Fonu’ndan Karşılanan Sigorta Primleri',
+      'Kayıp ve Zayi Olan Mallara Ait Giderler',
+      'KDV Kanunu Md. 30/d Uyarınca İndirilemeyen KDV Tutarı',
+      'Kiralama Yoluyla Edinilen veya İşletmede Kayıtlı Olan Yat, Kotra, Tekne, Sürat Teknesi Gibi Motorlu Deniz, Uçak ve Helikopter Gibi Hava Taşıtlarından İşletmenin Esas Faaliyet Konusu İle İlgili Olmayanların  Amortismanları',
+      'Kiralama Yoluyla Edinilen veya İşletmede Kayıtlı Olan Yat, Kotra, Tekne, Sürat Teknesi Gibi Motorlu Deniz, Uçak ve Helikopter Gibi Hava Taşıtlarından İşletmenin Esas Faaliyet Konusu İle İlgili Olmayanların Giderleri',
+      'Prim Ödemeleri',
+      'Sgk İşveren Payı',
+      'Teşebbüs sahibi ile eşinin ve çocuklarının işletmeden çektikleri paralar veya aynen aldıkları sair değerler.',
+      'Teşebbüs sahibinin işletmeye koyduğu sermaye için yürütülecek faizler.',
+      'Teşebbüs sahibinin kendisine, eşine, küçük çocuklarına işletmeden ödenen aylıklar, ücretler, ikramiyeler, komisyonlar ve tazminatlar.',
+      'Teşebbüs sahibinin, eşinin ve küçük çocuklarının işletmede cari hesap veya diğer şekillerdeki alacakları üzerinden yürütülecek faizler.',
+      'VUK hükümlerine aykırı olarak ayrılan amortismanlar',
+      'Özel iletişim vergisi',
+    ],
+    'İndirilecek Giderler (GVK Md. 40)': [
+      'Temsil ve Ağırlama Gideri (İş yemeği vb.) (GVK 40/1)',
+      'Taşıt Akaryakıt Giderleri (GVK 40/1-40/5)',
+      'Taşıt Bakım Onarım Giderleri ( GVK 40/5)',
+      'Diğer (GVK 40/1)',
+      'Otopark Gideri (GVK Md. 40/5)',
+      'Kırtasiye Harcamaları (GVK 40/1)',
+      'Amortisman Giderleri (GVK 40/7)',
+      'Araç Kiralama Giderleri ( GVK 40/1)',
+      'Araç Sigorta Giderleri (Zorunlu Trafik, Kasko vb) (GVK 40/5)',
+      'Avukatlık, Hukuk ve Müşavirlik Giderleri (  GVK 40/1)',
+      'Bankacılık İşlem Giderleri  (  GVK 40/1)',
+      'Beyanname/Bildirge Damga Vergisi Giderleri(GVK 40/6)',
+      'Beyannameye Konu Olan Damga Vergisi Giderleri ( GVK 40/1 ) (Vergi Kodu 0040)',
+      'Dernek ve Vakıflara Yapılan Gıda, Temizlik, Giyecek ve Yakacak Bağışları ( GVK 40/10 )',
+      'Değersiz Hale Gelen Alacağa İlişkin Giderler',
+      'Diğer Haberleşme Giderleri (Faks,internet vb) (GVK 40/1)',
+      'Diğer Hizmet Giderleri ( GVK 40/1 )',
+      'Diğer Sarf Malzeme Giderleri ( GVK 40/1)',
+      'Diğer Vergi Resim ve Harçlar ( GVK 40/6 )',
+      'Dışarıdan Sağlanan Fayda ve Hizmetler ( GVK 40/1)',
+      'Doğalgaz Giderleri (GVK 40/1)',
+      'Doğrudan Gider Yazılan Demirbaş ( GVK 40/1)',
+      'Elektrik Giderleri (GVK 40/1)',
+      'Faiz ve Finansman Giderleri ( GVK 40/1 - 40/3- 40/9)',
+      'Gıda Harcamaları (GVK 40/1-40/2)',
+      'Giyim Giderleri (GVK 40/2)',
+      'Götürü Gider ( GVK 40/1)',
+      'Güvenlik Harcamaları (GVK 40/1)',
+      'Hal Komisyoncusu Alımı',
+      'Hasılat Esaslı Ödenen KDV',
+      'Hizmetli ve İşçilerin GVK 27 nci Maddede Yazılı Giyim Giderleri ( GVK 40/2)',
+      'İkinci El Motorlu Kara Taşıtlarının Ticareti ( KDV Düzeltmesi )',
+      'İnternet Reklam Hizmet Alım Giderleri (GVK 40/1)',
+      'İnternet Reklam Hizmetlerine Aracilik Giderleri (GVK 40/1)',
+      'Isı yalıtımı ve Enerji Tassarufu Giderleri (GVK 40/7)',
+      'İş Güvenliği ve İş Sağlığı Hizmet Alımları (GVK 40/1)',
+      'İşle İlgili Olmak Şartıyla Mukavelenameye Bağlı veya İlama veya Kanun Emrine İstinaden Ödenen Zarar, Ziyan ve Tazminat (GVK 40/3)',
+      'İşverenlerce Sendikalara Ödenen Aidatlar (GVK 40/8)',
+      'İşyeri Aidat Gideri (GVK 40/1)',
+      'İşyeri Sigorta Giderleri (GVK 40/1)',
+      'Kargo ve Posta Giderleri ( GVK 40/1)',
+      'Kira Gideri (GVK 40/1)',
+      'Komisyon Giderleri ( GVK 40/1)',
+      'Konaklama Giderleri (GVK 40/4)',
+      'Motorlu Taşıtlar Vergisi (GVK/40/5)',
+      'Muhasebe/Mali Müşavirlik Giderleri (GVK 40/1)',
+      'Nakliye Giderleri ( GVK 40/1 )',
+      'Normal Bakım Onarım Giderleri ( GVK 40/1 - 40/7 )',
+      'Noter Makbuzları ( GVK 40/1 )',
+      'Ofis Giderleri(Çay, Kahve, Şeker, Temizlik vb.) (GVK 40/1)',
+      'Otoyol ve Gişe (OGS, HGS vb.) (GVK 40/4-5)',
+      'Pazarlama Satış Dağıtım Giderleri (GVK 40/1)',
+      'Seyahat ve Ulaşım Giderleri (Oto Kiralama, Otobüs, Taksi, Uçak vb) (GVK 40/4-5)',
+      'Sıfır Araçlara Ait KDV Gideri (GVK 40/1)',
+      'Sıfır Araçlara Ait ÖTV (GVK 40/1)',
+      'Su Giderleri (GVK 40/1)',
+      'Sözleşme/yargı/kanun emri gereği doğan zarar/ziyan/tazminatlar (GVK 40/3)',
+      'Tek Başına Alınabilen Damga Vergisi (GVK 40/1) (Vergi Kodu 9047)',
+      'Telefon Giderleri (GVK 40/1)',
+      'Ulaşım Giderleri (Oto Kiralama, Taksi, Uçak vb) (GVK 40/4-5)',
+      'Yıllara Yaygın İnşaat Maliyetleri',
+      'Çalışan Tedavi ve İlaç Gideri (GVK 40/2)',
+    ],
+  };
+  const ISLETME_KAYIT_TURU_LIST_ALIS = Object.keys(ISLETME_KAYIT_ALT_MAP);
+  // ALIŞ (ISLETME/1) için sabit üst liste — Fatura Türü hep "Gider"
+  const ISLETME_ALIS_SATIS_TURU_ALIS = ['Normal Alım', 'Satıştan İade'];
+  // SATIŞ (ISLETME/2) için tahmini — runtime'da dropdown'dan doğrulanır
+  const ISLETME_ALIS_SATIS_TURU_SATIS = ['Normal Satış', 'Alıştan İade'];
+  const ISLETME_BELGE_TURU_LIST = [
+    'Diğer',
+    'e-Arşiv Fatura',
+    'e-Bilet',
+    'e-Fatura',
+    'e-Serbest Meslek Makbuzu',
+    'Fatura',
+    'Gider Pusulası',
+    'Perakende Satış Fişi',
+    'Serbest Meslek Makbuzu',
+    'Yolcu Taşıma Bileti',
+    'ÖKC Fişi',
+  ];
+
   function isAntSelectFilled(antSelectEl) {
     if (!antSelectEl) return false;
     const item = antSelectEl.querySelector('.ant-select-selection-item');
@@ -611,62 +752,111 @@
   }
 
   // === Ant Select açma / seçenek listesi / seçim ===
-  // Dropdown body'e portal olarak eklenir, :visible olan son açık dropdown alınır.
+  // Dropdown body'e portal olarak eklenir.
+  // aria-controls üzerinden dropdown<->input eşleşmesi yapıyoruz, "yanlış dropdown" hatası olmaz.
+
+  async function closeAllAntDropdowns() {
+    document.body.click();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(200);
+    document.body.click();
+    await sleep(200);
+  }
+
   async function openAntSelect(antSelectEl) {
     if (!antSelectEl) return null;
-    // Zaten açıksa
-    const already = antSelectEl.querySelector('.ant-select-open');
-    if (already) return already;
+    await closeAllAntDropdowns();
     antSelectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await sleep(80);
-    const clicker = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
-    clicker.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    clicker.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    clicker.click();
-    // Dropdown belirmesini bekle
+    await sleep(100);
+    const input = antSelectEl.querySelector('input');
+    const selector = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
+    selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    selector.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    selector.click();
+    if (input) try { input.focus(); } catch {}
+    // aria-controls ile ilişkili dropdown'u bekle
     const t0 = Date.now();
-    while (Date.now() - t0 < 2000) {
-      const dd = findOpenDropdown();
+    while (Date.now() - t0 < 2500) {
+      const dd = findDropdownForSelect(antSelectEl);
       if (dd) return dd;
       await sleep(80);
     }
     return null;
   }
 
-  function findOpenDropdown() {
+  function findDropdownForSelect(antSelectEl) {
+    if (!antSelectEl) return null;
+    // 1) aria-controls üzerinden kesin eşleşme
+    const input = antSelectEl.querySelector('input');
+    const ctrl = input?.getAttribute('aria-controls');
+    if (ctrl) {
+      const dd = document.getElementById(ctrl);
+      if (dd && !dd.classList.contains('ant-select-dropdown-hidden')) {
+        const st = getComputedStyle(dd);
+        if (st.display !== 'none' && st.visibility !== 'hidden') return dd;
+      }
+    }
+    // 2) Fallback: son görünür dropdown
     const all = Array.from(document.querySelectorAll('.ant-select-dropdown'));
-    // Görünür olan (display != none) + rdm-hidden değil
     return all.reverse().find((d) => {
-      const st = getComputedStyle(d);
-      if (st.display === 'none' || st.visibility === 'hidden') return false;
       if (d.classList.contains('ant-select-dropdown-hidden')) return false;
-      return true;
+      const st = getComputedStyle(d);
+      return st.display !== 'none' && st.visibility !== 'hidden';
     }) || null;
+  }
+
+  // findOpenDropdown eski uyumluluk: fallback olarak kalıyor
+  function findOpenDropdown() {
+    return findDropdownForSelect(null);
   }
 
   async function readAntSelectOptions(antSelectEl) {
     const dd = await openAntSelect(antSelectEl);
     if (!dd) return { opened: false, options: [] };
-    // Virtualized list olabilir — önce scroll aşağı yukarı deyip toplamaya çalış
     const opts = new Set();
     const collect = () => {
-      const items = dd.querySelectorAll('.ant-select-item-option-content');
-      items.forEach((el) => {
+      dd.querySelectorAll('.ant-select-item-option-content').forEach((el) => {
         const t = (el.textContent || '').trim();
         if (t) opts.add(t);
       });
     };
     collect();
-    // Virtualized kaydırma: listenin scroll container'ını bul
-    const scroller = dd.querySelector('.rc-virtual-list-holder, .ant-select-dropdown .rc-virtual-list-holder') || dd;
-    for (let i = 0; i < 20 && scroller; i++) {
-      const prevSize = opts.size;
-      scroller.scrollTop += 200;
+    const scroller = dd.querySelector('.rc-virtual-list-holder') || dd;
+    if (scroller && scroller !== dd) {
+      let last = -1;
+      for (let i = 0; i < 80; i++) {
+        scroller.scrollTop += 160;
+        await sleep(60);
+        collect();
+        if (scroller.scrollTop === last) break;
+        last = scroller.scrollTop;
+      }
+      scroller.scrollTop = scroller.scrollHeight;
+      await sleep(80);
+      collect();
+      scroller.scrollTop = 0;
       await sleep(60);
       collect();
-      if (opts.size === prevSize && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) break;
     }
+    await closeAllAntDropdowns();
     return { opened: true, options: Array.from(opts) };
+  }
+
+  // Ant Select'ten bir değer ID'ye göre seç (faturaTuru, defterData_belgeTuru vb.)
+  async function openAntSelectById(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return null;
+    const sel = input.closest('.ant-select');
+    return await openAntSelect(sel);
+  }
+
+  function getAntSelectValueById(inputId) {
+    const input = document.getElementById(inputId);
+    if (!input) return '';
+    const sel = input.closest('.ant-select');
+    if (!sel) return '';
+    const item = sel.querySelector('.ant-select-selection-item');
+    return item ? (item.textContent || '').trim() : '';
   }
 
   async function pickAntSelectOption(antSelectEl, target) {
@@ -674,7 +864,6 @@
     if (!dd) return false;
     const clean = (s) => (s || '').trim();
     const targetNorm = clean(target);
-    // Önce birebir eşleşme ara, yoksa içeren, yoksa case-insensitive
     const tryFind = () => {
       const items = Array.from(dd.querySelectorAll('.ant-select-item-option'));
       let hit = items.find((el) => clean(el.textContent) === targetNorm);
@@ -683,10 +872,9 @@
     };
     let hit = tryFind();
     if (!hit) {
-      // Virtualized: input varsa yaz (arama filtresi tetiklenir), yoksa scroll
+      // Arama filtresi ile dene
       const searchInput = antSelectEl.querySelector('input.ant-select-selection-search-input');
       if (searchInput) {
-        // nativeInputValueSetter ile set et
         const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
         nativeSetter.call(searchInput, targetNorm.slice(0, 18));
         searchInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -699,26 +887,46 @@
       }
     }
     if (!hit) {
-      // Scroll ile ara
+      // Virtualized scroll ile ara
       const scroller = dd.querySelector('.rc-virtual-list-holder') || dd;
-      for (let i = 0; i < 30 && scroller; i++) {
-        scroller.scrollTop += 120;
-        await sleep(50);
-        hit = tryFind();
-        if (hit) break;
+      if (scroller) {
+        scroller.scrollTop = 0;
+        await sleep(60);
+        for (let i = 0; i < 80; i++) {
+          scroller.scrollTop += 160;
+          await sleep(60);
+          hit = tryFind();
+          if (hit) break;
+        }
       }
     }
     if (!hit) {
-      // Kapat ve vazgeç
-      document.body.click();
+      await closeAllAntDropdowns();
       return false;
     }
     hit.scrollIntoView({ block: 'center' });
     hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     hit.click();
-    await sleep(150);
+    await sleep(200);
     return isAntSelectFilled(antSelectEl);
+  }
+
+  async function pickAntSelectById(inputId, target) {
+    const input = document.getElementById(inputId);
+    if (!input) return false;
+    const sel = input.closest('.ant-select');
+    return await pickAntSelectOption(sel, target);
+  }
+
+  // === İşletme Defteri: Üst alan durumu oku (Fatura Türü / Belge Türü / Alış-Satış Türü) ===
+  function isletmeUstAlanDurumu() {
+    const read = (id) => getAntSelectValueById(id);
+    return {
+      faturaTuru: read('faturaTuru'),
+      belgeTuru: read('defterData_belgeTuru'),
+      alisSatisTuru: read('defterData_alisSatisTuru'),
+    };
   }
 
   async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
@@ -820,12 +1028,78 @@
 
       // ==========================================================
       // İŞLETME DEFTERİ DALI (ISLETME/1 · ISLETME/2)
-      // Kod ile çalışmaz: Kayıt Türü + K. Alt Türü zorunlu
-      // Herhangi bir blokta boş alan varsa → F9 atla (ileri)
-      // Tüm bloklar dolu ise → F2 kaydet (aynı bilanço save makinesi)
+      // 1) Üst 3 alan: Fatura Türü / Belge Türü / Alış-Satış Türü
+      // 2) Blok kontrolü: Kayıt Türü + K. Alt Türü + Matrah + KDV
+      // 3) Dolu blok doğrulama (bilanço gibi 6-kural)
+      // 4) Boş bloklar AI ile doldurulur
       // ==========================================================
       const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
       if (isIsletme) {
+        // --- 1) ÜST 3 ALAN: Fatura Türü / Belge Türü / Alış-Satış Türü ---
+        const isAlis = action === 'isle_alis_isletme';
+        const ust = isletmeUstAlanDurumu();
+        let ustAiKullanildi = false;
+        let ustOzet = [];
+
+        // Fatura Türü: deterministik — Alış→Gider, Satış→Gelir
+        const beklenenFaturaTuru = isAlis ? 'Gider' : 'Gelir';
+        if (!ust.faturaTuru) {
+          const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
+          if (!ok) {
+            counters.atla++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await clickIleri(fid); continue;
+          }
+          ustOzet.push(`FatT:${beklenenFaturaTuru}`);
+          ust.faturaTuru = beklenenFaturaTuru;
+        } else if (ust.faturaTuru !== beklenenFaturaTuru) {
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+          await clickIleri(fid); continue;
+        }
+
+        // Belge Türü: boşsa AI ile karar ver
+        if (!ust.belgeTuru) {
+          ustAiKullanildi = true;
+          setStatus(`${mukellef.ad} · #${fid} Belge Türü AI…`);
+          const kararBelge = await aiDecideIsletme({
+            kayitOptions: ISLETME_BELGE_TURU_LIST,
+            altOptions: [],
+            tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: '', faturaTuru: ust.faturaTuru,
+            mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+            action, blokIndex: 0, blokToplam: 0,
+          });
+          if (kararBelge?.emin && kararBelge.kayitTuru) {
+            const ok = await pickAntSelectById('defterData_belgeTuru', kararBelge.kayitTuru);
+            if (ok) {
+              ust.belgeTuru = kararBelge.kayitTuru;
+              ustOzet.push(`BT:${kararBelge.kayitTuru}`);
+            }
+          }
+          if (!ust.belgeTuru) {
+            counters.atla++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await clickIleri(fid); continue;
+          }
+        }
+
+        // Alış/Satış Türü: boşsa AI ile karar ver
+        if (!ust.alisSatisTuru) {
+          const astOpts = isAlis ? ISLETME_ALIS_SATIS_TURU_ALIS : ISLETME_ALIS_SATIS_TURU_SATIS;
+          // Çoğu fatura "Normal Alım" / "Normal Satış" — kısa yol
+          const varsayilan = isAlis ? 'Normal Alım' : 'Normal Satış';
+          const ok = await pickAntSelectById('defterData_alisSatisTuru', varsayilan);
+          if (ok) {
+            ust.alisSatisTuru = varsayilan;
+            ustOzet.push(`AST:${varsayilan}`);
+          } else {
+            counters.atla++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await clickIleri(fid); continue;
+          }
+        }
+
+        // --- 2) BLOK KONTROLÜ ---
         let blok = isletmeBlokDurumu();
         if (!blok.varMi) {
           counters.atla++; counters.toplam++; setCount();
@@ -835,9 +1109,37 @@
           await clickIleri(fid); continue;
         }
 
-        // --- Boş blokları AI ile doldurmayı dene ---
-        let aiKullanildi = false;
-        let aiOzet = [];
+        // --- 3) DOLU BLOK DOĞRULAMA (bilanço benzeri) ---
+        // Dolu bloklar için logda detay göster: tarih/firma/belge no vb.
+        // Matrah veya KDV 0 ise uyar ama atlamaz (geçerli olabilir)
+        let doluKontrolHata = null;
+        for (let bi = 0; bi < blok.detay.length; bi++) {
+          const d = blok.detay[bi];
+          if (d.kayitDolu && d.altDolu) {
+            // Doğrulama: Kayıt Türü bilinen listede mi?
+            if (!ISLETME_KAYIT_ALT_MAP[d.kayitDeger]) {
+              doluKontrolHata = `B${bi + 1} bilinmeyen Kayıt Türü: ${d.kayitDeger}`;
+              break;
+            }
+            // Doğrulama: K. Alt Türü, ilgili Kayıt Türü'nün listesinde mi?
+            const gecerliAltlar = ISLETME_KAYIT_ALT_MAP[d.kayitDeger] || [];
+            if (gecerliAltlar.length > 0 && !gecerliAltlar.includes(d.altDeger)) {
+              doluKontrolHata = `B${bi + 1} K.Alt Türü eşleşmez: ${d.altDeger} ∉ ${d.kayitDeger}`;
+              break;
+            }
+          }
+        }
+        if (doluKontrolHata) {
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `Doğrulama: ${doluKontrolHata}`, {
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+          });
+          await clickIleri(fid); continue;
+        }
+
+        // --- 4) BOŞ BLOKLARI AI İLE DOLDUR ---
+        let aiKullanildi = ustAiKullanildi;
+        let aiOzet = [...ustOzet];
         if (blok.bosBlokVar) {
           aiKullanildi = true;
           let aiHata = null;
@@ -846,31 +1148,18 @@
             const d = blok.detay[bi];
             if (d.kayitDolu && d.altDolu) continue;
 
-            // Kayıt Türü seçenekleri
-            let kayitOptions = [];
-            if (!d.kayitDolu) {
-              const r = await readAntSelectOptions(d.kayitSelect);
-              kayitOptions = r.options;
-              // Dropdown'ı kapat
-              document.body.click();
-              await sleep(120);
-            } else {
-              kayitOptions = [d.kayitDeger];
-            }
-
-            // AI için K. Alt Türü'nün mevcut seçeneklerini okumak için Kayıt Türü'nü önce seçmek gerekebilir.
-            // Ama AI kararı olmadan seçemiyoruz → hepsini birden soralım: K. Alt Türü'nü boş varsay.
-            // Kayıt Türü seçildikten sonra alt liste filtrelenir. O yüzden 2 aşamalı gidelim:
-            //   1) Kayıt Türü kararı (alt listesi boş gönder)
-            //   2) Kayıt Türü uygulandıktan sonra alt seçenekleri oku → 2. AI çağrısı
-            const kararKayit = d.kayitDolu ? { emin: true, kayitTuru: d.kayitDeger, altTuru: null } : await aiDecideIsletme({
-              kayitOptions,
-              altOptions: [],
-              tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
-              mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
-              matrah: d.matrah, kdv: d.kdv,
-              action, blokIndex: bi + 1, blokToplam: blok.detay.length,
-            });
+            // Kayıt Türü: hardcoded listeden AI karar versin
+            const kayitOptions = ISLETME_KAYIT_TURU_LIST_ALIS;
+            const kararKayit = d.kayitDolu
+              ? { emin: true, kayitTuru: d.kayitDeger, altTuru: null }
+              : await aiDecideIsletme({
+                  kayitOptions,
+                  altOptions: [],
+                  tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
+                  mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                  matrah: d.matrah, kdv: d.kdv,
+                  action, blokIndex: bi + 1, blokToplam: blok.detay.length,
+                });
 
             if (!kararKayit?.emin || !kararKayit.kayitTuru) {
               aiHata = `Kayıt Türü emin_degil: ${(kararKayit?.sebep || '').slice(0, 60)}`;
@@ -883,24 +1172,21 @@
                 aiHata = `Kayıt Türü seçilemedi: ${kararKayit.kayitTuru}`;
                 break;
               }
-              aiOzet.push(`B${bi + 1} K:${kararKayit.kayitTuru}`);
-              await sleep(300); // Alt listenin yenilenmesini bekle
+              aiOzet.push(`B${bi + 1}K:${kararKayit.kayitTuru}`);
+              await sleep(300);
             }
 
-            // K. Alt Türü için seçenekleri oku
+            // K. Alt Türü: hardcoded map'ten oku, dropdown'ı açma
             if (!d.altDolu) {
-              const rAlt = await readAntSelectOptions(d.altSelect);
-              const altOptions = rAlt.options;
-              document.body.click();
-              await sleep(120);
+              const altOptions = ISLETME_KAYIT_ALT_MAP[kararKayit.kayitTuru] || [];
               if (!altOptions.length) {
-                aiHata = 'K. Alt Türü listesi boş';
+                aiHata = `K. Alt Türü listesi boş (${kararKayit.kayitTuru})`;
                 break;
               }
               const kararAlt = await aiDecideIsletme({
                 kayitOptions: [kararKayit.kayitTuru],
                 altOptions,
-                tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
+                tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
                 mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
@@ -914,7 +1200,7 @@
                 aiHata = `K. Alt Türü seçilemedi: ${kararAlt.altTuru}`;
                 break;
               }
-              aiOzet.push(`B${bi + 1} A:${kararAlt.altTuru}`);
+              aiOzet.push(`B${bi + 1}A:${kararAlt.altTuru}`);
               await sleep(200);
             }
           }
@@ -936,7 +1222,11 @@
             await clickIleri(fid); continue;
           }
         }
-        // Tüm bloklar dolu → F2 ile kaydet. Bilanço'daki waitSaved makinesini aynen kullan.
+
+        // --- Detaylı log formatı ---
+        const blokLog = blok.detay.map((d, i) => `B${i + 1}:${(d.kayitDeger || '?').slice(0, 20)}/${(d.altDeger || '?').slice(0, 20)}`).join(' ');
+
+        // --- 5) F2 ile kaydet ---
         try {
           let validationFailed = null;
           const waitSavedIsletme = async (timeoutMs) => {
@@ -995,9 +1285,11 @@
           }
           if (saved) {
             counters.onay++; counters.toplam++; setCount();
-            const aiNot = aiKullanildi ? ` · AI[${aiOzet.join(' · ').slice(0, 80)}]` : '';
-            await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · İşletme ${blok.toplam} blok${aiNot}`, {
+            const aiNot = aiKullanildi ? ` · AI` : '';
+            const logMsg = `F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
+            await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
           } else {
             counters.atla++; counters.toplam++; setCount();
