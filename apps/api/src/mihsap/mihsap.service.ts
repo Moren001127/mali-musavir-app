@@ -374,55 +374,86 @@ export class MihsapService {
 
   /** Bir faturanın binary içeriğini getir (proxy — CORS bypass).
    *  Frontend `fetch()` MIHSAP CDN'e direkt gidemez; backend aracı olur.
+   *  Başarısızsa reason ile birlikte exception atar — 404 yerine 502 dönülür.
    */
   async getInvoiceFile(
     tenantId: string,
     invoiceId: string,
-  ): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
-    if (!inv || inv.tenantId !== tenantId) return null;
-
-    // Önce URL'yi hazırla
-    let url: string | null = null;
-    if (inv.storageKey) {
-      try {
-        url = await this.storage.getPresignedDownloadUrl(inv.storageKey, inv.faturaNo || 'file');
-      } catch {
-        /* fallback */
-      }
+    if (!inv || inv.tenantId !== tenantId) {
+      throw new BadRequestException(`Fatura kaydı bulunamadı (${invoiceId})`);
     }
-    if (!url && inv.mihsapFileLink) {
-      // Relative path gelirse MIHSAP base ile birleştir
+
+    // URL'yi hazırla — S3 artık kullanılmıyor, doğrudan MIHSAP CDN link'ini kullan.
+    // (Eski kayıtlarda `storageKey` dolu olabilir ama S3 bucket erişilemez; o yüzden atla.)
+    let url: string | null = null;
+    if (inv.mihsapFileLink) {
       url = inv.mihsapFileLink.startsWith('http')
         ? inv.mihsapFileLink
         : `${MIHSAP_BASE}${inv.mihsapFileLink.startsWith('/') ? '' : '/'}${inv.mihsapFileLink}`;
     }
     if (!url) {
-      this.logger.warn(`Fatura ${invoiceId}: mihsapFileLink yok, storageKey yok`);
-      return null;
+      throw new BadRequestException(
+        `Fatura ${invoiceId} için MIHSAP indirme bağlantısı yok (mihsapFileLink boş). Faturaları yeniden çekmeniz gerekebilir.`,
+      );
     }
 
-    // MIHSAP CDN'den indir — user-agent ve accept header ekle (bazı CDN'ler bloklar)
-    this.logger.log(`Fatura ${invoiceId} indiriliyor: ${url.slice(0, 100)}`);
+    this.logger.log(`Fatura ${invoiceId} indiriliyor: ${url.slice(0, 150)}`);
+
+    // MIHSAP token'ı varsa auth header olarak dene
+    let mihsapToken: string | null = null;
+    try {
+      mihsapToken = await this.getToken(tenantId);
+    } catch {
+      /* token yoksa auth'suz dene */
+    }
+
+    const tryFetch = async (headers: Record<string, string>): Promise<Response> => {
+      return fetch(url!, { headers });
+    };
+
+    const baseHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      Referer: `${MIHSAP_BASE}/`,
+      Origin: MIHSAP_BASE,
+    };
+
     let res: Response;
     try {
-      res = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (compatible; MoreMaliBackend/1.0) Chrome/120.0 Safari/537.36',
-          Accept: 'image/*,application/pdf,application/xml,*/*',
-          Referer: MIHSAP_BASE,
-        },
-      });
+      // 1. Deneme: auth'suz
+      res = await tryFetch(baseHeaders);
+      if (!res.ok && mihsapToken) {
+        // 2. Deneme: Bearer token ile
+        this.logger.log(`Fatura ${invoiceId}: auth'suz ${res.status}, Bearer token ile deneniyor`);
+        res = await tryFetch({
+          ...baseHeaders,
+          Authorization: `Bearer ${mihsapToken}`,
+          Cookie: `jwt=${mihsapToken}; Auth=${mihsapToken}`,
+        });
+      }
     } catch (e: any) {
-      this.logger.error(`Fatura ${invoiceId} fetch hatasi: ${e?.message}`);
-      return null;
-    }
-    if (!res.ok) {
-      this.logger.warn(
-        `Fatura ${invoiceId} indirilemedi: HTTP ${res.status} ${res.statusText} - URL: ${url.slice(0, 120)}`,
+      throw new BadRequestException(
+        `MIHSAP'a bağlanılamadı: ${e?.message || 'network hatası'}`,
       );
-      return null;
+    }
+
+    if (!res.ok) {
+      // Yanıt gövdesinden ipucu al
+      let body = '';
+      try {
+        body = (await res.text()).slice(0, 200);
+      } catch {
+        /* ignore */
+      }
+      this.logger.warn(
+        `Fatura ${invoiceId} HTTP ${res.status}: ${body.slice(0, 100)}`,
+      );
+      throw new BadRequestException(
+        `MIHSAP CDN ${res.status} döndü (${res.statusText}). URL: ${url.slice(0, 80)}. Body: ${body.slice(0, 80)}`,
+      );
     }
     const arrayBuffer = await res.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -454,29 +485,13 @@ export class MihsapService {
   }
 
   /** Bir faturanın görüntüleme URL'ini döndür.
-   *  Öncelik: 1) S3 presigned URL (eğer arşivlenmişse)
-   *           2) MIHSAP CDN direkt URL'i (fallback — auth gerektirmez)
+   *  S3 artık kullanılmıyor; doğrudan MIHSAP CDN link'i döndürülür.
    */
   async getInvoiceDownloadUrl(tenantId: string, invoiceId: string): Promise<string | null> {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) return null;
 
-    if (inv.storageKey) {
-      // storageKey sonunda gerçek dosya uzantısı (jpg/pdf/xml) mevcut — onu kullan
-      const keyExt = (inv.storageKey.split('.').pop() || 'jpg').toLowerCase();
-      const safeExt = ['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(keyExt) ? keyExt : 'jpg';
-      try {
-        return await this.storage.getPresignedDownloadUrl(
-          inv.storageKey,
-          `${inv.faturaNo}.${safeExt}`,
-        );
-      } catch (e: any) {
-        // S3 erişilemez durumdaysa fallback'e düş
-        this.logger.warn(`Presigned URL üretilemedi, MIHSAP fallback: ${e?.message}`);
-      }
-    }
-
-    // Fallback: MIHSAP CDN URL'i (auth gerektirmez, path hash ile korumalı)
+    // MIHSAP CDN URL'i (auth gerektirmez, path hash ile korumalı)
     if (inv.mihsapFileLink) {
       return inv.mihsapFileLink;
     }
