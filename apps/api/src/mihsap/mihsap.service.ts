@@ -356,12 +356,14 @@ export class MihsapService {
     mukellefId?: string;
     donem?: string;
     faturaTuru?: string;
+    belgeTuru?: string;
     limit?: number;
   }) {
     const where: any = { tenantId: params.tenantId };
     if (params.mukellefId) where.mukellefId = params.mukellefId;
     if (params.donem) where.donem = params.donem;
     if (params.faturaTuru) where.faturaTuru = params.faturaTuru;
+    if (params.belgeTuru) where.belgeTuru = params.belgeTuru;
 
     return (this.prisma as any).mihsapInvoice.findMany({
       where,

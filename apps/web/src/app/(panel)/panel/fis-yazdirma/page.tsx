@@ -10,6 +10,9 @@ import {
   AlertCircle,
   Pencil,
   Check,
+  Download,
+  X,
+  Loader2,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -99,6 +102,17 @@ export default function FisYazdirmaPage() {
   const [pagesPerSheet, setPagesPerSheet] = useState<4 | 8 | 12>(8);
   const [taxpayers, setTaxpayers] = useState<Array<{ id: string; name: string }>>([]);
 
+  // Faturalardan çek modal
+  const [showFetchModal, setShowFetchModal] = useState(false);
+  const [fetchMukellefId, setFetchMukellefId] = useState('');
+  const [fetchDonem, setFetchDonem] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [fetchLoading, setFetchLoading] = useState(false);
+  const [fetchStatus, setFetchStatus] = useState('');
+  const [fetchProgress, setFetchProgress] = useState<{ current: number; total: number } | null>(null);
+
   useEffect(() => {
     fetch(`${API}/taxpayers`, { headers: { Authorization: `Bearer ${getToken()}` } })
       .then((r) => r.json())
@@ -121,6 +135,118 @@ export default function FisYazdirmaPage() {
       const existing = new Set(prev.map((f) => f.name));
       return [...prev, ...arr.filter((f) => !existing.has(f.name))];
     });
+  };
+
+  /* ── Faturalardan Çek: mükellef+dönem fiş JPEG'lerini otomatik yükle ── */
+  const handleFetchFromInvoices = async () => {
+    if (!fetchMukellefId) {
+      alert('Lütfen mükellef seçin');
+      return;
+    }
+    if (!fetchDonem) {
+      alert('Lütfen dönem seçin');
+      return;
+    }
+
+    setFetchLoading(true);
+    setFetchStatus('Fişler listeleniyor...');
+    setFetchProgress(null);
+
+    try {
+      // 1) Mükellefin o dönemdeki FIS türü faturalarını listele
+      const listUrl = `${API}/agent/mihsap/invoices?mukellefId=${encodeURIComponent(
+        fetchMukellefId,
+      )}&donem=${encodeURIComponent(fetchDonem)}&belgeTuru=FIS&limit=500`;
+
+      const listRes = await fetch(listUrl, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!listRes.ok) throw new Error(`Liste alınamadı: ${listRes.status}`);
+      const invoices: any[] = await listRes.json();
+
+      if (!invoices.length) {
+        setFetchStatus(`Bu dönemde FIS bulunamadı. Önce "Faturalar" sayfasından MIHSAP'tan çekin.`);
+        setFetchLoading(false);
+        return;
+      }
+
+      // Sadece resim uzantılı olanları al (jpg/jpeg/png)
+      const imageInvoices = invoices.filter((inv) => {
+        const ext = (inv.orjDosyaTuru || '').toLowerCase();
+        const linkExt = (inv.mihsapFileLink || '').split('.').pop()?.toLowerCase() || '';
+        return (
+          ['jpg', 'jpeg', 'png'].includes(ext) ||
+          ['jpg', 'jpeg', 'png'].includes(linkExt)
+        );
+      });
+
+      if (!imageInvoices.length) {
+        setFetchStatus(`Bu dönemdeki ${invoices.length} fişin hiçbiri JPEG/PNG değil.`);
+        setFetchLoading(false);
+        return;
+      }
+
+      setFetchProgress({ current: 0, total: imageInvoices.length });
+      setFetchStatus(`${imageInvoices.length} fiş indiriliyor...`);
+
+      const fetched: File[] = [];
+      for (let i = 0; i < imageInvoices.length; i++) {
+        const inv = imageInvoices[i];
+        setFetchProgress({ current: i + 1, total: imageInvoices.length });
+
+        try {
+          // 2) Download URL al
+          const dlRes = await fetch(
+            `${API}/agent/mihsap/invoices/${inv.id}/download`,
+            { headers: { Authorization: `Bearer ${getToken()}` } },
+          );
+          if (!dlRes.ok) continue;
+          const dlJson = await dlRes.json();
+          const url = dlJson.url;
+          if (!url) continue;
+
+          // 3) Dosyayı indir (blob)
+          const imgRes = await fetch(url);
+          if (!imgRes.ok) continue;
+          const blob = await imgRes.blob();
+
+          // 4) File objesi yap
+          const ext = (inv.orjDosyaTuru || url.split('.').pop() || 'jpg')
+            .toLowerCase()
+            .replace(/[^a-z0-9]/g, '')
+            .slice(0, 4) || 'jpg';
+          const safeName = `${(inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_')}.${ext}`;
+          const file = new File([blob], safeName, { type: blob.type || 'image/jpeg' });
+          fetched.push(file);
+        } catch (e) {
+          // Tek fiş hatası tüm süreci bozmasın
+          continue;
+        }
+      }
+
+      if (!fetched.length) {
+        setFetchStatus('Hiçbir fiş indirilemedi.');
+        setFetchLoading(false);
+        return;
+      }
+
+      // 5) Dosyaları mevcut listeye ekle + kapak bilgilerini doldur
+      addFiles(fetched);
+      const selected = taxpayers.find((t) => t.id === fetchMukellefId);
+      if (selected) setMukellefName(selected.name);
+      setDonem(fetchDonem);
+
+      setFetchStatus(`${fetched.length} fiş başarıyla yüklendi.`);
+      setTimeout(() => {
+        setShowFetchModal(false);
+        setFetchLoading(false);
+        setFetchProgress(null);
+        setFetchStatus('');
+      }, 900);
+    } catch (e: any) {
+      setFetchStatus(`Hata: ${e.message ?? 'bilinmeyen'}`);
+      setFetchLoading(false);
+    }
   };
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -273,6 +399,33 @@ export default function FisYazdirmaPage() {
       {/* ── UPLOAD ── */}
       {(stage === 'upload' || stage === 'error') && (
         <div className="space-y-4">
+          {/* Faturalardan Çek butonu */}
+          <div
+            className="rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+            style={{
+              background: 'linear-gradient(135deg, rgba(184,160,111,.08) 0%, rgba(184,160,111,.03) 100%)',
+              borderColor: 'rgba(184,160,111,.3)',
+            }}
+          >
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                📥 Faturalardan Otomatik Çek
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Mükellef ve dönem seçip daha önce MIHSAP'tan indirilmiş fişleri otomatik yükleyin.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFetchModal(true)}
+              className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 flex-shrink-0"
+              style={{ background: '#b8a06f', color: 'white' }}
+            >
+              <Download size={15} />
+              Faturalardan Çek
+            </button>
+          </div>
+
           {/* Kapak bilgileri kartı */}
           <div
             className="rounded-xl border p-4"
@@ -733,6 +886,138 @@ export default function FisYazdirmaPage() {
             <button onClick={reset} className="btn-primary px-8">
               Yeni İşlem Başlat
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── FATURALARDAN ÇEK MODAL ── */}
+      {showFetchModal && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,.7)' }}
+          onClick={() => !fetchLoading && setShowFetchModal(false)}
+        >
+          <div
+            className="rounded-2xl max-w-lg w-full p-6 space-y-4"
+            style={{ background: 'var(--card)', boxShadow: 'var(--shadow-lg)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                  Faturalardan Fiş Çek
+                </h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Seçtiğiniz mükellefin ilgili dönemindeki JPEG fişler yüklenir.
+                </p>
+              </div>
+              <button
+                onClick={() => !fetchLoading && setShowFetchModal(false)}
+                disabled={fetchLoading}
+                className="p-1 rounded hover:bg-black/5"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Mükellef *
+                </label>
+                <select
+                  value={fetchMukellefId}
+                  onChange={(e) => setFetchMukellefId(e.target.value)}
+                  disabled={fetchLoading}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                >
+                  <option value="">— mükellef seçin —</option>
+                  {taxpayers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  Dönem *
+                </label>
+                <input
+                  type="month"
+                  value={fetchDonem}
+                  onChange={(e) => setFetchDonem(e.target.value)}
+                  disabled={fetchLoading}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                />
+              </div>
+            </div>
+
+            {fetchStatus && (
+              <div
+                className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
+                style={{
+                  background: fetchStatus.startsWith('Hata') ? '#FEF2F2' : 'rgba(184,160,111,.08)',
+                  color: fetchStatus.startsWith('Hata') ? '#DC2626' : 'var(--text)',
+                }}
+              >
+                {fetchLoading && <Loader2 size={14} className="animate-spin flex-shrink-0" />}
+                <span>{fetchStatus}</span>
+              </div>
+            )}
+
+            {fetchProgress && (
+              <div>
+                <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                  <span>İndiriliyor</span>
+                  <span>
+                    {fetchProgress.current} / {fetchProgress.total}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--muted)' }}>
+                  <div
+                    className="h-full transition-all duration-300"
+                    style={{
+                      width: `${(fetchProgress.current / Math.max(fetchProgress.total, 1)) * 100}%`,
+                      background: '#b8a06f',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setShowFetchModal(false)}
+                disabled={fetchLoading}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-medium border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleFetchFromInvoices}
+                disabled={fetchLoading || !fetchMukellefId || !fetchDonem}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ background: '#b8a06f', color: 'white' }}
+              >
+                {fetchLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Çekiliyor
+                  </>
+                ) : (
+                  <>
+                    <Download size={14} />
+                    Fişleri Çek
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

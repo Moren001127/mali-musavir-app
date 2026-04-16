@@ -93,6 +93,7 @@ export class MihsapController {
     @Query('mukellefId') mukellefId?: string,
     @Query('donem') donem?: string,
     @Query('faturaTuru') faturaTuru?: string,
+    @Query('belgeTuru') belgeTuru?: string,
     @Query('limit') limit?: string,
   ) {
     return this.service.listStoredInvoices({
@@ -100,6 +101,7 @@ export class MihsapController {
       mukellefId,
       donem,
       faturaTuru,
+      belgeTuru,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
