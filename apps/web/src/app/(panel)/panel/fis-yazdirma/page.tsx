@@ -13,6 +13,9 @@ import {
   Download,
   X,
   Loader2,
+  FileText,
+  Clock,
+  Trash2,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -112,6 +115,94 @@ export default function FisYazdirmaPage() {
   const [fetchLoading, setFetchLoading] = useState(false);
   const [fetchStatus, setFetchStatus] = useState('');
   const [fetchProgress, setFetchProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Geçmiş çıktılar (Word arşivi)
+  interface OutputRec {
+    id: string;
+    mukellefName: string | null;
+    donem: string | null;
+    fileCount: number;
+    pagesPerSheet: number | null;
+    filename: string;
+    fileSize: number;
+    createdAt: string;
+  }
+  const [outputs, setOutputs] = useState<OutputRec[]>([]);
+  const [outputsLoading, setOutputsLoading] = useState(false);
+  const [showOutputs, setShowOutputs] = useState(false);
+
+  const loadOutputs = async () => {
+    setOutputsLoading(true);
+    try {
+      const res = await fetch(`${API}/fis-yazdirma/outputs?limit=100`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const list = await res.json();
+        setOutputs(Array.isArray(list) ? list : []);
+      }
+    } catch {
+      /* sessiz */
+    } finally {
+      setOutputsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOutputs();
+  }, []);
+
+  const downloadOutput = async (id: string, filename: string) => {
+    try {
+      const res = await fetch(`${API}/fis-yazdirma/outputs/${id}/download`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error('İndirilemedi');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`İndirme hatası: ${e.message ?? 'bilinmeyen'}`);
+    }
+  };
+
+  const removeOutput = async (id: string) => {
+    if (!confirm('Bu arşiv kaydını silmek istediğinizden emin misiniz?')) return;
+    try {
+      const res = await fetch(`${API}/fis-yazdirma/outputs/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error('Silinemedi');
+      setOutputs((prev) => prev.filter((o) => o.id !== id));
+    } catch (e: any) {
+      alert(`Silme hatası: ${e.message ?? 'bilinmeyen'}`);
+    }
+  };
+
+  const formatSize = (b: number) => {
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  };
+
+  const formatDateTime = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(
+        2,
+        '0',
+      )}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(
+        d.getMinutes(),
+      ).padStart(2, '0')}`;
+    } catch {
+      return iso;
+    }
+  };
 
   useEffect(() => {
     fetch(`${API}/taxpayers`, { headers: { Authorization: `Bearer ${getToken()}` } })
@@ -368,6 +459,8 @@ export default function FisYazdirmaPage() {
 
       setWordTotal(parseInt(res.headers.get('X-Total') ?? String(files.length)));
       setStage('done');
+      // Arşiv listesini yenile
+      loadOutputs();
     } catch (e: any) {
       setError(e.message ?? 'Word oluşturma hatası');
       setStage('error');
@@ -560,6 +653,116 @@ export default function FisYazdirmaPage() {
             <ScanLine size={16} />
             OCR ile Tara ({files.length} görsel)
           </button>
+
+          {/* Geçmiş Çıktılar */}
+          <div
+            className="rounded-xl border mt-2"
+            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowOutputs((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3"
+            >
+              <div className="flex items-center gap-2">
+                <Clock size={15} style={{ color: 'var(--text-muted)' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                  Geçmiş Word Çıktıları
+                </span>
+                <span
+                  className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                  style={{ background: 'rgba(184,160,111,.15)', color: '#b8a06f' }}
+                >
+                  {outputs.length}
+                </span>
+              </div>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {showOutputs ? 'Gizle' : 'Göster'}
+              </span>
+            </button>
+
+            {showOutputs && (
+              <div style={{ borderTop: '1px solid var(--border)' }}>
+                {outputsLoading ? (
+                  <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Yükleniyor...
+                  </div>
+                ) : outputs.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <FileText
+                      size={28}
+                      className="mx-auto mb-2"
+                      style={{ color: 'var(--text-muted)' }}
+                    />
+                    <p className="text-sm" style={{ color: 'var(--text)' }}>
+                      Henüz arşivlenmiş Word çıktısı yok.
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Oluşturduğunuz her Word belgesi buraya otomatik kaydedilir.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-96 overflow-y-auto">
+                    {outputs.map((o) => (
+                      <div
+                        key={o.id}
+                        className="px-4 py-3 flex items-center gap-3"
+                        style={{ borderBottom: '1px solid var(--border)' }}
+                      >
+                        <div
+                          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ background: 'rgba(184,160,111,.12)' }}
+                        >
+                          <FileText size={16} style={{ color: '#b8a06f' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-sm font-medium truncate"
+                            style={{ color: 'var(--text)' }}
+                          >
+                            {o.mukellefName || '(mükellef yok)'}
+                            {o.donem && (
+                              <span
+                                className="ml-2 text-xs font-normal"
+                                style={{ color: 'var(--text-muted)' }}
+                              >
+                                · {o.donem}
+                              </span>
+                            )}
+                          </p>
+                          <p
+                            className="text-[11px] mt-0.5 truncate"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            {o.fileCount} fiş · {formatSize(o.fileSize)} ·{' '}
+                            {formatDateTime(o.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => downloadOutput(o.id, o.filename)}
+                            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
+                            title="İndir"
+                            style={{ color: '#b8a06f' }}
+                          >
+                            <Download size={15} />
+                          </button>
+                          <button
+                            onClick={() => removeOutput(o.id)}
+                            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
+                            title="Sil"
+                            style={{ color: 'var(--danger)' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

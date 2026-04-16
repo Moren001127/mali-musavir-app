@@ -926,6 +926,26 @@ model MihsapFetchJob {
   @@map("mihsap_fetch_jobs")
 }
 
+// Fiş Yazdırma: oluşturulan Word çıktılarının arşivi
+model FisYazdirmaOutput {
+  id            String   @id @default(cuid())
+  tenantId      String
+  mukellefId    String?  // Seçili mükellef (varsa)
+  mukellefName  String?  // Snapshot — görüntüleme için
+  donem         String?  // "2026-02" (varsa)
+  fileCount     Int      @default(0)
+  pagesPerSheet Int?
+  filename      String   // İndirme sırasında kullanılan orijinal ad
+  fileBytes     Bytes    // Word belgesinin ikili içeriği
+  fileSize      Int      @default(0)
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, mukellefId, donem])
+  @@map("fis_yazdirma_outputs")
+}
+
 model AgentCommand {
   id         String   @id @default(cuid())
   tenantId   String

@@ -539,6 +539,83 @@ export class FisYazdirmaService {
     return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
+  /* ─── Word Çıktı Arşivi ─────────────────────────────────────── */
+
+  /** Oluşturulan Word belgesini DB'ye kaydeder */
+  async saveOutput(params: {
+    tenantId: string;
+    buffer: Buffer;
+    filename: string;
+    fileCount: number;
+    mukellefName?: string;
+    donem?: string;
+    pagesPerSheet?: number;
+    createdBy?: string;
+  }) {
+    return (this.prisma as any).fisYazdirmaOutput.create({
+      data: {
+        tenantId: params.tenantId,
+        mukellefName: params.mukellefName || null,
+        donem: params.donem || null,
+        fileCount: params.fileCount,
+        pagesPerSheet: params.pagesPerSheet || null,
+        filename: params.filename,
+        fileBytes: params.buffer,
+        fileSize: params.buffer.length,
+        createdBy: params.createdBy || null,
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        mukellefName: true,
+        donem: true,
+        fileCount: true,
+        pagesPerSheet: true,
+        filename: true,
+        fileSize: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /** Tenant'a ait tüm çıktıları listeler (bayt içeriği hariç) */
+  async listOutputs(tenantId: string, limit = 100) {
+    return (this.prisma as any).fisYazdirmaOutput.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        mukellefName: true,
+        donem: true,
+        fileCount: true,
+        pagesPerSheet: true,
+        filename: true,
+        fileSize: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /** Bir çıktıyı (içeriğiyle birlikte) getirir */
+  async getOutput(tenantId: string, outputId: string) {
+    const rec = await (this.prisma as any).fisYazdirmaOutput.findUnique({
+      where: { id: outputId },
+    });
+    if (!rec || rec.tenantId !== tenantId) return null;
+    return rec;
+  }
+
+  /** Bir çıktıyı siler */
+  async deleteOutput(tenantId: string, outputId: string) {
+    const rec = await (this.prisma as any).fisYazdirmaOutput.findUnique({
+      where: { id: outputId },
+    });
+    if (!rec || rec.tenantId !== tenantId) return { deleted: 0 };
+    await (this.prisma as any).fisYazdirmaOutput.delete({ where: { id: outputId } });
+    return { deleted: 1 };
+  }
+
   async generateWord(
     files: Express.Multer.File[],
     allDates: Record<string, string>,
