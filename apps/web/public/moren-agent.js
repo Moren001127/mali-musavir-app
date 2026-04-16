@@ -526,6 +526,72 @@
     return codes.some((c) => /^255/.test(c) || /demirbaş/i.test(c));
   }
 
+  // === İŞLETME DEFTERİ: Kayıt Türü + K. Alt Türü blok kontrolü ===
+  // Her blok için 2 Ant Design Select var: "Kayıt Türü" ve "K. Alt Türü".
+  // Bir blokta herhangi biri boşsa (placeholder / "Seçiniz") → bu fatura atla.
+  function isAntSelectFilled(antSelectEl) {
+    if (!antSelectEl) return false;
+    const item = antSelectEl.querySelector('.ant-select-selection-item');
+    if (!item) return false;
+    const text = (item.textContent || '').trim();
+    if (!text) return false;
+    if (/seçiniz|lütfen|select/i.test(text)) return false;
+    return true;
+  }
+
+  function isletmeBlokDurumu() {
+    // Ekrandaki tüm "Kayıt Türü" label'lerini bul; her biri için komşu "K. Alt Türü" selectini tespit et.
+    const result = { varMi: false, toplam: 0, bosBlokVar: false, detay: [] };
+    const labels = Array.from(document.querySelectorAll('label, span, div'))
+      .filter((el) => {
+        const t = (el.textContent || '').trim();
+        if (!t) return false;
+        // Tam eşleşme: "Kayıt Türü" (çocukları dahil değil, kendi metni kısa olmalı)
+        if (t.length > 24) return false;
+        return /^kay[ıi]t t[üu]r[üu]/i.test(t);
+      });
+
+    // Aynı container'ın birden fazla label/span ile yakalanmasını önlemek için unique container'lara in
+    const seenContainers = new Set();
+    for (const lbl of labels) {
+      // En yakın form-item / row / block container'ını bul (2 select içermeli)
+      let node = lbl;
+      let container = null;
+      for (let i = 0; i < 8 && node; i++) {
+        node = node.parentElement;
+        if (!node) break;
+        const selects = node.querySelectorAll('.ant-select');
+        // Aynı row içinde Kayıt Türü + K. Alt Türü = 2 select olmalı (bazı ekranlarda +matrah/kdv =4)
+        if (selects.length >= 2) {
+          const txt = (node.textContent || '').toLowerCase();
+          if (txt.includes('kayıt türü') && txt.includes('alt türü')) {
+            container = node;
+            break;
+          }
+        }
+      }
+      if (!container) continue;
+      if (seenContainers.has(container)) continue;
+      seenContainers.add(container);
+
+      // Container içinde ilk iki select: [0]=Kayıt Türü, [1]=K. Alt Türü varsayımı
+      const selects = Array.from(container.querySelectorAll('.ant-select'));
+      if (selects.length < 2) continue;
+
+      // Daha güvenli: label'ın DOM sırasına bakarak eşleştir
+      const kayitSelect = selects[0];
+      const altSelect = selects[1];
+      const kayitDolu = isAntSelectFilled(kayitSelect);
+      const altDolu = isAntSelectFilled(altSelect);
+
+      result.toplam++;
+      result.detay.push({ kayitDolu, altDolu });
+      if (!kayitDolu || !altDolu) result.bosBlokVar = true;
+    }
+    result.varMi = result.toplam > 0;
+    return result;
+  }
+
   async function processBatch({ ay, mukellefler, action }) {
     setStatus(`${mukellefler.length} mükellef / ${ay} · ${action}`);
     for (const m of mukellefler) {
@@ -605,6 +671,110 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
+
+      // ==========================================================
+      // İŞLETME DEFTERİ DALI (ISLETME/1 · ISLETME/2)
+      // Kod ile çalışmaz: Kayıt Türü + K. Alt Türü zorunlu
+      // Herhangi bir blokta boş alan varsa → F9 atla (ileri)
+      // Tüm bloklar dolu ise → F2 kaydet (aynı bilanço save makinesi)
+      // ==========================================================
+      const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
+      if (isIsletme) {
+        const blok = isletmeBlokDurumu();
+        if (!blok.varMi || blok.bosBlokVar) {
+          counters.atla++; counters.toplam++; setCount();
+          const sebep = !blok.varMi
+            ? 'İşletme: blok bulunamadı'
+            : `İşletme: ${blok.toplam} blokta boş Kayıt/K.Alt Türü var`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip', sebep, {
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+          });
+          await clickIleri(fid); continue;
+        }
+        // Tüm bloklar dolu → F2 ile kaydet. Bilanço'daki waitSaved makinesini aynen kullan.
+        try {
+          let validationFailed = null;
+          const waitSavedIsletme = async (timeoutMs) => {
+            const t0 = Date.now();
+            const minWaitMs = 5000;
+            while (Date.now() - t0 < minWaitMs) {
+              const validationMsg = validationDialogVarMi();
+              if (validationMsg) {
+                validationFailed = validationMsg;
+                await handleDialogs();
+                return false;
+              }
+              if (getVisibleModals().length > 0) {
+                const r = await handleDialogs();
+                if (r === 'resubmit') {
+                  const res = await onaylaSonrasiF2(fid);
+                  if (res === 'already-advanced') break;
+                }
+              }
+              await sleep(250);
+            }
+            while (Date.now() - t0 < timeoutMs) {
+              const m2 = location.href.match(/\/(\d+)\?count=/);
+              if (m2 && m2[1] !== fid) return true;
+              if (/count=0/.test(location.href)) return true;
+              const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info');
+              if (okToast) return true;
+              const validationMsg = validationDialogVarMi();
+              if (validationMsg) {
+                validationFailed = validationMsg;
+                await handleDialogs();
+                return false;
+              }
+              if (getVisibleModals().length > 0) {
+                const r = await handleDialogs();
+                if (r === 'resubmit') {
+                  const res = await onaylaSonrasiF2(fid);
+                  if (res === 'already-advanced') continue;
+                  continue;
+                }
+                await sleep(400);
+                const m3 = location.href.match(/\/(\d+)\?count=/);
+                if (m3 && m3[1] !== fid) return true;
+              }
+              await sleep(250);
+            }
+            return false;
+          };
+
+          await clickKaydetOnayla();
+          let saved = await waitSavedIsletme(12000);
+          if (!saved && !validationFailed) {
+            await sleep(800);
+            await clickKaydetOnayla();
+            saved = await waitSavedIsletme(12000);
+          }
+          if (saved) {
+            counters.onay++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · İşletme ${blok.toplam} blok dolu`, {
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            });
+          } else {
+            counters.atla++; counters.toplam++; setCount();
+            const atlamaSebebi = validationFailed
+              ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+              : 'İşletme F2 sonuçlanmadı';
+            await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            });
+            await clickIleri(fid);
+          }
+        } catch (e) {
+          counters.hata++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'error', String(e), {
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+          });
+          await clickIleri(fid);
+        }
+        continue;
+      }
+      // ==========================================================
+      // BİLANÇO DALI (BILANCO/1 · BILANCO/2) — mevcut akış
+      // ==========================================================
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
         counters.atla++; counters.toplam++; setCount();
