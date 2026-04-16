@@ -34,7 +34,7 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + TOKEN,
+          'X-Agent-Token': TOKEN,
         },
         body: JSON.stringify({ token: mihsapToken, email }),
       });
@@ -647,8 +647,14 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
-        setStatus('API hatası, yeniden deneniyor');
-        console.error('[Moren]', e);
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
+        const msg = String(e?.message || e);
+        if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+          setStatus('Bağlantı bekleniyor…');
+        } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
       }
       await sleep(5000);
     }

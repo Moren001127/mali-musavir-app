@@ -6,8 +6,10 @@ import {
   Query,
   Param,
   Req,
+  Headers,
   UseGuards,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MihsapService } from './mihsap.service';
@@ -16,19 +18,33 @@ import { MihsapService } from './mihsap.service';
 export class MihsapController {
   constructor(private readonly service: MihsapService) {}
 
-  /** Eklenti / kullanıcı MIHSAP token'ını gönderir */
+  /** Tenant'ı agent token'dan çöz (eklenti kullanımı için) */
+  private resolveTenantFromAgentToken(token?: string): string {
+    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
+    const raw = process.env.AGENT_INGEST_TOKENS || '';
+    const map: Record<string, string> = {};
+    for (const pair of raw.split(',')) {
+      const [tid, tok] = pair.split(':');
+      if (tid && tok) map[tok.trim()] = tid.trim();
+    }
+    const tenantId = map[token.trim()];
+    if (!tenantId) throw new UnauthorizedException('Invalid agent token');
+    return tenantId;
+  }
+
+  /** Eklenti MIHSAP token'ını gönderir (X-Agent-Token ile kimlik doğrulama) */
   @Post('token')
-  @UseGuards(AuthGuard('jwt'))
   async saveToken(
-    @Req() req: any,
+    @Headers('x-agent-token') agentToken: string,
     @Body() body: { token: string; email?: string },
   ) {
     if (!body?.token) throw new BadRequestException('token gerekli');
+    const tenantId = this.resolveTenantFromAgentToken(agentToken);
     await this.service.saveToken(
-      req.user.tenantId,
+      tenantId,
       body.token,
       body.email,
-      req.user.userId || 'panel',
+      'extension',
     );
     return { ok: true };
   }
