@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { agentsApi } from '@/lib/agents';
@@ -597,21 +598,31 @@ function InvoicePreviewModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ESC ile kapat + body scroll kilitle (listenin altındayken modal
-  // görünmez kalmasın diye scroll'u engelle ve modal'ı viewport'a sabitle)
+  // ESC ile kapat + body scroll kilitle (listenin altından açıldığında
+  // modal viewport'a sabitlensin, scroll konumu nerede olursa olsun)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    // Body scroll kilitle
-    const prev = document.body.style.overflow;
+    // Body scroll'u kilitle — mevcut scroll pozisyonunu koru
+    const scrollY = window.scrollY;
+    const prevOverflow = document.body.style.overflow;
+    const prevPosition = document.body.style.position;
+    const prevTop = document.body.style.top;
+    const prevWidth = document.body.style.width;
     document.body.style.overflow = 'hidden';
-    // Scroll pozisyonunu sıfırla — parent transform varsa fixed bozulabilir
-    window.scrollTo({ top: 0 });
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevOverflow;
+      document.body.style.position = prevPosition;
+      document.body.style.top = prevTop;
+      document.body.style.width = prevWidth;
+      // Modal kapandıktan sonra scroll pozisyonunu geri yükle
+      window.scrollTo(0, scrollY);
     };
   }, [onClose]);
 
@@ -641,10 +652,24 @@ function InvoicePreviewModal({
   const isAlis = invoice.faturaTuru.includes('ALIS');
   const date = new Date(invoice.faturaTarihi);
 
-  return (
+  // Portal için mount kontrolü (SSR uyumluluğu)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) return null;
+
+  const modalContent = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,.85)' }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      style={{
+        background: 'rgba(0,0,0,.85)',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+      }}
       onClick={onClose}
     >
       <div
@@ -772,4 +797,8 @@ function InvoicePreviewModal({
       </div>
     </div>
   );
+
+  // Modal'ı document.body'ye render et — parent transform'lar fixed positioning'i
+  // bozmasın ve scroll pozisyonundan bağımsız olarak viewport'ta göründüğü gibi açılsın.
+  return createPortal(modalContent, document.body);
 }
