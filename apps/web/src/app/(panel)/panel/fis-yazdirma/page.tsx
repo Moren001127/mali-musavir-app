@@ -308,7 +308,15 @@ export default function FisYazdirmaPage() {
           }
 
           const ext = blob.type.split('/')[1]?.split(';')[0] || 'jpg';
-          const safeName = `${(inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_')}.${ext}`;
+          // ÖNEMLİ: Aynı mükellef içinde farklı tedarikçilerden gelen faturaların
+          // faturaNo'ları çakışabilir (örn. iki farklı tedarikçinin "0070" fatura numarası).
+          // Dosya ismini sadece faturaNo ile oluşturursak, knownDates ve allDates
+          // sözlüklerinde son indirilen tarih diğerlerini ezer ve Word'de hepsi aynı
+          // tarihte görünür. Bu nedenle invoice.id'nin son 8 karakterini sonuna ekleyip
+          // dosya ismini GARANTİLİ olarak unique yapıyoruz.
+          const idTail = String(inv.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-8) || Math.random().toString(36).slice(2, 10);
+          const baseNo = (inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_');
+          const safeName = `${baseNo}_${idTail}.${ext}`;
           const file = new File([blob], safeName, { type: blob.type });
           fetched.push(file);
 
