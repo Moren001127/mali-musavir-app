@@ -1,13 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { agentsApi } from '@/lib/agents';
-import { useEffect } from 'react';
 import {
   Download, RefreshCw, FileText, Calendar, Users, CheckCircle2, XCircle,
-  Loader2, AlertCircle, Receipt, Building2, Search, Trash2, Info,
+  Loader2, AlertCircle, Receipt, Search,
 } from 'lucide-react';
 
 type Taxpayer = {
@@ -93,6 +92,7 @@ export default function FaturalarPage() {
       mukellefId: string;
       mukellefMihsapId: string;
       donem: string;
+      faturaTuru?: 'ALIS' | 'SATIS';
       forceRefresh?: boolean;
     }) => agentsApi.mihsapFetch(body),
     onSuccess: () => {
