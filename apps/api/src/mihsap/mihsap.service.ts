@@ -392,14 +392,36 @@ export class MihsapService {
       }
     }
     if (!url && inv.mihsapFileLink) {
-      url = inv.mihsapFileLink;
+      // Relative path gelirse MIHSAP base ile birleştir
+      url = inv.mihsapFileLink.startsWith('http')
+        ? inv.mihsapFileLink
+        : `${MIHSAP_BASE}${inv.mihsapFileLink.startsWith('/') ? '' : '/'}${inv.mihsapFileLink}`;
     }
-    if (!url) return null;
+    if (!url) {
+      this.logger.warn(`Fatura ${invoiceId}: mihsapFileLink yok, storageKey yok`);
+      return null;
+    }
 
-    // MIHSAP CDN'den indir
-    const res = await fetch(url);
+    // MIHSAP CDN'den indir — user-agent ve accept header ekle (bazı CDN'ler bloklar)
+    this.logger.log(`Fatura ${invoiceId} indiriliyor: ${url.slice(0, 100)}`);
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (compatible; MoreMaliBackend/1.0) Chrome/120.0 Safari/537.36',
+          Accept: 'image/*,application/pdf,application/xml,*/*',
+          Referer: MIHSAP_BASE,
+        },
+      });
+    } catch (e: any) {
+      this.logger.error(`Fatura ${invoiceId} fetch hatasi: ${e?.message}`);
+      return null;
+    }
     if (!res.ok) {
-      this.logger.warn(`Fatura indirilemedi (${invoiceId}): ${res.status}`);
+      this.logger.warn(
+        `Fatura ${invoiceId} indirilemedi: HTTP ${res.status} ${res.statusText} - URL: ${url.slice(0, 120)}`,
+      );
       return null;
     }
     const arrayBuffer = await res.arrayBuffer();

@@ -268,6 +268,7 @@ export default function FisYazdirmaPage() {
 
       const fetched: File[] = [];
       let skippedNonImage = 0;
+      let firstError: { status: number; message: string } | null = null;
       for (let i = 0; i < invoices.length; i++) {
         const inv = invoices[i];
         setFetchProgress({ current: i + 1, total: invoices.length });
@@ -278,7 +279,19 @@ export default function FisYazdirmaPage() {
             `${API}/agent/mihsap/invoices/${inv.id}/file`,
             { headers: { Authorization: `Bearer ${getToken()}` } },
           );
-          if (!imgRes.ok) continue;
+          if (!imgRes.ok) {
+            if (!firstError) {
+              let msg = imgRes.statusText || '';
+              try {
+                const j = await imgRes.clone().json();
+                msg = j.message || msg;
+              } catch {
+                /* ignore */
+              }
+              firstError = { status: imgRes.status, message: msg };
+            }
+            continue;
+          }
           const blob = await imgRes.blob();
 
           // Sadece image türündekileri al
@@ -291,8 +304,8 @@ export default function FisYazdirmaPage() {
           const safeName = `${(inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_')}.${ext}`;
           const file = new File([blob], safeName, { type: blob.type });
           fetched.push(file);
-        } catch (e) {
-          // Tek fiş hatası tüm süreci bozmasın
+        } catch (e: any) {
+          if (!firstError) firstError = { status: 0, message: e?.message || 'network' };
           continue;
         }
       }
@@ -302,8 +315,20 @@ export default function FisYazdirmaPage() {
           setFetchStatus(
             `${invoices.length} fişin hiçbiri görsel değil (XML/PDF). Fiş yazdırma sadece JPEG/PNG destekler.`,
           );
+        } else if (firstError) {
+          const hint =
+            firstError.status === 404
+              ? ' — backend henüz deploy olmamış olabilir (proxy endpoint eksik).'
+              : firstError.status === 401 || firstError.status === 403
+              ? ' — yetki sorunu (oturum süresi dolmuş olabilir).'
+              : firstError.status === 0
+              ? ' — ağ hatası / backend erişilemiyor.'
+              : '';
+          setFetchStatus(
+            `Hata: backend ${firstError.status} döndü: ${firstError.message}${hint}`,
+          );
         } else {
-          setFetchStatus('Hiçbir fiş indirilemedi. Backend loglarını kontrol edin.');
+          setFetchStatus('Hiçbir fiş indirilemedi. Sebep belirsiz.');
         }
         setFetchLoading(false);
         return;
