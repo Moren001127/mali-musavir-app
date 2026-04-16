@@ -358,7 +358,15 @@ export default function MihsapAgentPage() {
         >
           <div
             className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)', maxHeight: '84vh' }}
+            style={{
+              // --card alias'ı globals.css'te tanımlı olsa da, herhangi bir
+              // build sırasında CSS'in gelmesinden önce modal render edilirse
+              // transparan görünüyordu. İki katmanlı fallback: önce --card-bg
+              // (her temada tanımlı solid renk), sonra --card, sonra beyaz.
+              background: 'var(--card-bg, var(--card, #ffffff))',
+              borderColor: 'var(--border)',
+              maxHeight: '84vh',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

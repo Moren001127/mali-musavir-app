@@ -125,6 +125,10 @@
   --gold-light:    var(--accent-soft);
   --gold-dark:     var(--accent);
   --muted:         var(--surface-2);
+  /* Modal/panel arka plan alias — var(--card) kullanımları için.
+     Tanımsız olduğunda modal arka planı transparan kalıp backdrop blur'un altından
+     arkadaki sayfa içeriği süzülüyordu (Mükellef Seç modal'ında başlık üst üste binmesi). */
+  --card:          var(--card-bg);
 }
 
 /* ── Base ─────────────────────────────────────────────── */
