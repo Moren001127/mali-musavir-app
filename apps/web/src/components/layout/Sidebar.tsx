@@ -84,96 +84,14 @@ export default function Sidebar() {
       />
 
       {/* === LOGO === */}
-      <div className="relative px-4 pt-5 pb-5" style={{ borderBottom: '1px solid #1f1a15' }}>
-        <Link href="/panel" className="flex items-center gap-3 group">
-          <div className="relative">
-            {/* Glow efekti */}
-            <div
-              className="absolute inset-0 rounded-xl blur-md opacity-60 group-hover:opacity-100 transition-opacity duration-300"
-              style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)' }}
-            />
-            <div
-              className="relative w-11 h-11 flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3"
-              style={{
-                background: 'linear-gradient(135deg, #d4b876 0%, #8b7649 100%)',
-                borderRadius: '10px',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 12px rgba(0,0,0,0.3)',
-              }}
-            >
-              <span
-                style={{
-                  color: '#0f0d0b',
-                  fontFamily: 'Fraunces, Georgia, serif',
-                  fontWeight: 700,
-                  fontSize: 22,
-                  lineHeight: 1,
-                  letterSpacing: '-0.04em',
-                }}
-              >
-                M
-              </span>
-            </div>
-          </div>
-          <div className="min-w-0">
-            <p
-              className="leading-none mb-1"
-              style={{
-                color: '#fafaf9',
-                fontFamily: 'Fraunces, Georgia, serif',
-                fontWeight: 600,
-                fontSize: 18,
-                letterSpacing: '-0.025em',
-              }}
-            >
-              Moren
-            </p>
-            <p className="text-[10px] uppercase font-semibold flex items-center gap-1.5" style={{ color: '#b8a06f', letterSpacing: '0.15em' }}>
-              <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#b8a06f' }} />
-              Mali Müşavirlik
-            </p>
-          </div>
-        </Link>
-      </div>
-
-      {/* === QUICK ACTION KARTI === */}
-      <div className="relative px-3 pt-3">
-        <Link
-          href="/panel/mukellefler/yeni"
-          className="block relative overflow-hidden rounded-xl p-3 group transition-all duration-300 hover:scale-[1.02]"
-          style={{
-            background: 'linear-gradient(135deg, rgba(184,160,111,0.18), rgba(139,118,73,0.08))',
-            border: '1px solid rgba(184,160,111,0.25)',
-          }}
-        >
-          {/* Decorative circle */}
-          <div
-            className="absolute -top-6 -right-6 w-20 h-20 rounded-full opacity-30 group-hover:opacity-50 transition-opacity duration-500"
-            style={{ background: 'radial-gradient(circle, #b8a06f, transparent 70%)' }}
+      <div className="relative px-4 pt-4 pb-4 flex justify-center" style={{ borderBottom: '1px solid #1f1a15' }}>
+        <Link href="/panel" className="block group">
+          <img
+            src="/brand/moren-logo-gold.png"
+            alt="Moren Mali Müşavirlik"
+            className="transition-transform duration-300 group-hover:scale-105"
+            style={{ width: 140, height: 'auto', objectFit: 'contain' }}
           />
-          <div className="relative flex items-start gap-2.5">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{
-                background: 'linear-gradient(135deg, #b8a06f, #8b7649)',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-              }}
-            >
-              <Zap size={13} style={{ color: '#0f0d0b' }} strokeWidth={2.5} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-semibold leading-tight" style={{ color: '#fafaf9' }}>
-                Yeni Mükellef
-              </p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                Hızlı kayıt ekle
-              </p>
-            </div>
-            <ChevronRight
-              size={13}
-              className="flex-shrink-0 transition-transform duration-300 group-hover:translate-x-0.5"
-              style={{ color: '#b8a06f', marginTop: 2 }}
-            />
-          </div>
         </Link>
       </div>
 
