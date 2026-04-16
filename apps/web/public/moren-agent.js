@@ -151,6 +151,20 @@
         const iptal = findIn('İptal') || findIn('Vazgeç');
         if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
       }
+      // "Tutar/toplam farklıdır, onaylıyor musunuz?" uyarısı (özellikle Z Raporu'nda
+      // kredi toplam tutarı ile onaylanan tutar farklı olduğunda çıkar) →
+      // Onayla ama sonra TEKRAR F2 gerekli. MIHSAP bu onaydan sonra otomatik
+      // kaydetmez, seni editöre geri döndürür. Kullanıcı talimatı: "Onayla dedikten
+      // sonra hiç beklemeden tekrar F2 Kaydet diyorsun."
+      if (/toplam.*farklı/i.test(text) ||
+          /tutar.*farklı/i.test(text) ||
+          /farklı.*onayl/i.test(text) ||
+          /kredi.*farklı/i.test(text)) {
+        const onayla =
+          findIn('Onayla') || findIn('Evet') || findIn('Tamam') ||
+          findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
+        if (onayla) { await click(onayla); await sleep(300); return 'resubmit'; }
+      }
       // Hesap kodu boş uyarısı → Evet/Tamam ile devam et (atlamak için)
       if (/Hesap kodu girilmemiş/i.test(text) ||
           /hesap kodu.*boş/i.test(text) ||
@@ -226,7 +240,7 @@
     }
   }
 
-  async function clickKaydetOnayla() {
+  async function pressF2Once() {
     // Direkt butona tıkla (F2 key dispatch ant-design bazen yakalamıyor)
     const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
     const f2btn = btns.find((b) => b.textContent.trim().startsWith('Kaydet ve Onayla'));
@@ -235,11 +249,52 @@
     } else {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', code: 'F2', keyCode: 113, which: 113, bubbles: true }));
     }
-    await sleep(800);
-    // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, vs)
+  }
+
+  // URL'den mevcut fatura ID'sini oku (örn. "/documents/BILANCO/1/123/456789?count=12" → "456789")
+  function getCurrentFid() {
+    const m = location.href.match(/\/(\d+)\?count=/);
+    return m ? m[1] : null;
+  }
+  function isZeroCount() {
+    return /count=0/.test(location.href);
+  }
+
+  // Onayla sonrası 5 sn bekle; fid değişmediyse F2 bas. Değiştiyse MIHSAP zaten
+  // kaydedip sonraki faturaya geçmiş — F2 basma (sonraki faturayı istenmeden tetikler,
+  // işlem log'suz atlanmış gibi görünür).
+  // Dönüş: 'f2' (F2 basıldı) | 'already-advanced' (URL değişti, F2 gereksiz)
+  async function onaylaSonrasiF2(fidBefore) {
+    await sleep(5000);
+    const fidNow = getCurrentFid();
+    if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
+      // MIHSAP 5 sn içinde kendisi kaydedip ilerledi — F2 basma
+      return 'already-advanced';
+    }
+    await pressF2Once();
+    await sleep(1500);
+    return 'f2';
+  }
+
+  async function clickKaydetOnayla() {
+    const fidAtStart = getCurrentFid();
+    await pressF2Once();
+    // F2 sonrası MIHSAP'ın modal/onay üretmesi için ilk kısa bekleme
+    await sleep(1200);
+    // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
+    // "resubmit" dönerse (tutar farkı onayı) — onayladıktan sonra F2'yi tekrar basıp
+    // sonra yeniden dialog kontrolü yap. Aksi halde kaydetme tamamlanmaz.
     let tries = 0;
-    while (tries < 3 && getVisibleModals().length > 0) {
-      await handleDialogs();
+    while (tries < 4 && getVisibleModals().length > 0) {
+      const result = await handleDialogs();
+      if (result === 'resubmit') {
+        // Onayla'dan önceki fid'i referans al (fidAtStart — bu fonksiyonun girişindeki fid).
+        // 5 sn bekle + URL kontrolü; hâlâ aynı faturadaysak F2 bas, değilse bırak.
+        const r = await onaylaSonrasiF2(fidAtStart);
+        if (r === 'already-advanced') break; // sonraki faturaya geçtik, döngüden çık
+      } else {
+        await sleep(300);
+      }
       tries++;
     }
   }
@@ -576,45 +631,80 @@
         let validationFailed = null;
 
         // F2 sonrası URL değişti mi + validation dialog geldi mi kontrolü
+        // Kullanıcı talebi: MIHSAP ekranının kendine gelmesi için asgari 5 sn bekleyelim —
+        // aksi halde hızlı ardışık F2 basımlarında DOM güncellenmeden "sonuçlanmadı" sanıyoruz
+        // (özellikle Z Raporu / Petravet gibi yoğun satış akışında).
+        // Ayrıca "tutar farkı onay" dialog'u (resubmit) gelirse Onayla + tekrar F2 yapıyoruz.
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
+          const minWaitMs = 5000;
+          // 1) Asgari bekleme penceresi — bu sürede sadece validation / dialog işle,
+          //    URL değişimine "saved" denip hemen dönme. Ekran gerçekten oturduktan sonra karar ver.
+          while (Date.now() - t0 < minWaitMs) {
+            const validationMsg = validationDialogVarMi();
+            if (validationMsg) {
+              validationFailed = validationMsg;
+              await handleDialogs();
+              return false;
+            }
+            if (getVisibleModals().length > 0) {
+              const r = await handleDialogs();
+              if (r === 'resubmit') {
+                // Onayla → 5 sn bekle → fid değişmediyse F2 (aksi halde F2
+                // sonraki faturayı tetikler ve mevcut işlem log'suz kalır).
+                const res = await onaylaSonrasiF2(fid);
+                if (res === 'already-advanced') {
+                  // Kaydedilip ilerlendi; phase 2 URL kontrolünde saved=true dönecek
+                  break;
+                }
+              }
+            }
+            await sleep(250);
+          }
+          // 2) Asgari süre sonrası saved kriterlerini kontrol et
           while (Date.now() - t0 < timeoutMs) {
             const m2 = location.href.match(/\/(\d+)\?count=/);
             if (m2 && m2[1] !== fid) return true;
             if (/count=0/.test(location.href)) return true;
-            const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success');
+            const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info');
             if (okToast) return true;
 
-            // VALIDATION DIALOG kontrolü — "seçilmemiş", "girilmemiş" vb.
             const validationMsg = validationDialogVarMi();
             if (validationMsg) {
               validationFailed = validationMsg;
-              // Dialog'u kapat ama başarısız dön
               await handleDialogs();
               return false;
             }
 
-            // Diğer dialog varsa (mükerrer vb.) kapat
             if (getVisibleModals().length > 0) {
-              await handleDialogs();
+              const r = await handleDialogs();
+              if (r === 'resubmit') {
+                // Onayla → 5 sn bekle → fid değişmediyse F2.
+                // URL değiştiyse ana loop zaten sonraki turda saved=true görür.
+                const res = await onaylaSonrasiF2(fid);
+                if (res === 'already-advanced') {
+                  // URL değişti sayılmalı — bir sonraki turda m2 kontrolü saved=true dönecek
+                  continue;
+                }
+                continue;
+              }
               await sleep(400);
               const m3 = location.href.match(/\/(\d+)\?count=/);
               if (m3 && m3[1] !== fid) return true;
-              return false;
             }
-            await sleep(200);
+            await sleep(250);
           }
           return false;
         };
 
         await clickKaydetOnayla();
-        let saved = await waitSaved(10000);
+        let saved = await waitSaved(12000);
 
         // Validation hatası varsa retry YAPMA (zaten alan eksik)
         if (!saved && !validationFailed) {
-          await sleep(500);
+          await sleep(800);
           await clickKaydetOnayla();
-          saved = await waitSaved(10000);
+          saved = await waitSaved(12000);
         }
 
         if (saved) {
