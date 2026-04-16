@@ -187,13 +187,41 @@
     });
     if (!ileri) return;
     await click(ileri);
+
+    // 1) URL değişimini bekle (yeni faturaya geçildi mi?)
     const t0 = Date.now();
+    let urlChanged = false;
     while (Date.now() - t0 < 6000) {
       const m = location.href.match(/\/(\d+)\?count=/);
-      if (m && m[1] !== currentFid) return;
-      if (/count=0/.test(location.href)) return;
+      if (m && m[1] !== currentFid) { urlChanged = true; break; }
+      if (/count=0/.test(location.href)) { urlChanged = true; break; }
       // Yeni dialog geldiyse yine kapat
       if (getVisibleModals().length > 0) { await handleDialogs(); }
+      await sleep(200);
+    }
+    if (!urlChanged) return;
+
+    // 2) URL değişti — ama MIHSAP editör DOM'u (hesap kodu select'leri, matrah alanları)
+    //    henüz render olmamış olabilir. Ekran tamamen güncellenmeden bir sonraki
+    //    iterasyonda "kod boş" görülüp hızlıca F9'a basılıyor ve boş faturalar atlanıyordu.
+    //    Bu yüzden editör DOM'unun hazır olmasını bekliyoruz: asgari 5 sn, max 8 sn.
+    //    count=0 durumunda editör yok, direk return.
+    if (/count=0/.test(location.href)) { await sleep(500); return; }
+
+    const minWaitMs = 5000; // kullanıcı talebi: ekran güncellensin diye asgari 5 sn
+    const maxWaitMs = 8000;
+    const tStart = Date.now();
+    // Asgari bekleme süresince DOM stabilize olmasını bekle
+    while (Date.now() - tStart < minWaitMs) {
+      if (getVisibleModals().length > 0) { await handleDialogs(); }
+      await sleep(200);
+    }
+    // Asgari süre doldu — şimdi editör DOM'u gerçekten hazır mı diye bak; değilse max'e kadar bekle
+    while (Date.now() - tStart < maxWaitMs) {
+      if (getVisibleModals().length > 0) { await handleDialogs(); }
+      // Hesap kodu / matrah select'leri sayfaya yüklendiyse hazırız
+      const hasEditor = document.querySelector('.ant-select-selector, input[placeholder*="Hesap"], input[placeholder*="Matrah"]');
+      if (hasEditor) break;
       await sleep(200);
     }
   }
