@@ -42,9 +42,14 @@ export class FisYazdirmaController {
    */
   @Post('scan')
   @UseInterceptors(imageInterceptor())
-  async scan(@UploadedFiles() files: Express.Multer.File[], @Req() req: any) {
+  async scan(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('donem') donem: string | undefined,
+    @Req() req: any,
+  ) {
     if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
-    return this.fisYazdirmaService.scanImages(files, req.user?.tenantId);
+    const hintDonem = donem && /^\d{4}-\d{2}$/.test(donem) ? donem : undefined;
+    return this.fisYazdirmaService.scanImages(files, req.user?.tenantId, hintDonem);
   }
 
   /**

@@ -393,6 +393,8 @@ export default function FisYazdirmaPage() {
 
     const fd = new FormData();
     files.forEach((f) => fd.append('images', f, f.name));
+    // Dönem ipucu: Claude OCR'a "bu fişler YYYY-MM dönemi" bilgisi — belirsiz tarihlerde isabet artar
+    if (donem && /^\d{4}-\d{2}$/.test(donem)) fd.append('donem', donem);
 
     try {
       const res = await fetch(`${API}/fis-yazdirma/scan`, {

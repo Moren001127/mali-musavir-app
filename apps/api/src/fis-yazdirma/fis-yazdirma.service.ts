@@ -311,10 +311,43 @@ export class FisYazdirmaService {
     }
   }
 
+  /** Claude'un döndürdüğü herhangi bir tarih string'ini YYYY-MM-DD'ye normalize et.
+   *  Kabul edilen formatlar: YYYY-MM-DD, DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY,
+   *  D.M.YYYY, DD.MM.YY, 24 Mart 2026, 2026.03.24, vs.
+   */
+  private normalizeDateString(raw: any): string | null {
+    if (!raw || typeof raw !== 'string') return null;
+    const s = raw.trim();
+    if (!s) return null;
+
+    // Zaten YYYY-MM-DD formatında mı?
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (m) return parseDate(m[3], parseInt(m[2], 10), m[1]);
+
+    // DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY (en yaygın TR fiş formatı)
+    m = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$/);
+    if (m) return parseDate(m[1], parseInt(m[2], 10), m[3]);
+
+    // YYYY.MM.DD veya YYYY/MM/DD
+    m = s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+    if (m) return parseDate(m[3], parseInt(m[2], 10), m[1]);
+
+    // 24 Mart 2026
+    m = s.match(/^(\d{1,2})\s+([A-Za-zÇĞİÖŞÜçğıöşü]+)\s+(\d{2,4})$/);
+    if (m) {
+      const mon = TR_MONTHS[m[2].toLowerCase()] ?? 0;
+      if (mon) return parseDate(m[1], mon, m[3]);
+    }
+
+    // Metin içinde tarih ara (fallback)
+    return extractDateFromText(s);
+  }
+
   /** Claude Haiku 4.5 ile tarih okuma — Tesseract'tan çok daha iyi bulanık/termal fişlerde */
   private async claudeExtractDate(
     buffer: Buffer,
     tenantId?: string,
+    hintDonem?: string, // "YYYY-MM" formatında — Claude'a context ipucu
   ): Promise<{ date: string | null; fields: any }> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {} };
@@ -330,6 +363,19 @@ export class FisYazdirmaService {
         durationMs: Date.now() - startMs,
         usage,
       });
+
+    // Dönem ipucu: fişler belirli bir ayın fişleri — Claude bu bilgiyle daha iyi okuyabilir
+    let donemHint = '';
+    if (hintDonem && /^\d{4}-\d{2}$/.test(hintDonem)) {
+      const [y, mo] = hintDonem.split('-');
+      const monthNamesTr = [
+        '', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+        'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+      ];
+      const monthName = monthNamesTr[parseInt(mo, 10)] || mo;
+      donemHint = ` Bu fişlerin büyük çoğunluğu ${monthName} ${y} (${y}-${mo}) dönemine aittir; belirsizlik durumunda bu döneme yakın tarihleri tercih et.`;
+    }
+
     try {
       // Fotoğrafı küçült + auto-rotate + jpeg (payload ≤1MB)
       const processed = await sharp(buffer)
@@ -347,9 +393,17 @@ export class FisYazdirmaService {
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 250,
+          max_tokens: 300,
           system:
-            'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir asistansın. Sadece JSON döndür: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}. Tarih net değilse null. Tahmin yapma.',
+            'Sen Türk fiş/fatura görsellerinden bilgi çıkaran bir OCR asistanısın. ' +
+            'Termal fişler genellikle soluk veya yamuktur — tarihi bulmak için: ' +
+            '"TARİH", "FİŞ NO", "SAAT" etiketlerinin yanına bak. ' +
+            'Tarih genelde fişin üst kısmındadır. Günü/ayı/yılı ayrı ayrı seçebiliyorsan birleştir. ' +
+            'Türk fiş tarih formatı: DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY. ' +
+            'Cevabı MUTLAKA YYYY-MM-DD formatında ver (örn: 2026-03-24). ' +
+            'SADECE okunan tarihi dön — tahmin etme ama kısmen okunabilen rakamları context ile tamamlayabilirsin. ' +
+            'Sadece JSON dön: {"tarih":"YYYY-MM-DD" veya null,"belgeNo":"...","cari":"...","toplam":"..."}.' +
+            donemHint,
           messages: [
             {
               role: 'user',
@@ -360,7 +414,10 @@ export class FisYazdirmaService {
                 },
                 {
                   type: 'text',
-                  text: 'Bu fişin/faturanın tarihini, belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. JSON döndür.',
+                  text:
+                    'Bu fişin tarihini (YYYY-MM-DD), belge numarasını, satıcı/cari firmayı ve toplam tutarı çıkar. ' +
+                    'Görselde tarih "24-03-2026" gibi görünüyorsa "tarih":"2026-03-24" olarak dön. ' +
+                    'Yanıt SADECE JSON olsun, açıklama yazma.',
                 },
               ],
             },
@@ -368,7 +425,8 @@ export class FisYazdirmaService {
         }),
       });
       if (!res.ok) {
-        await logUsage('error', `API ${res.status}`);
+        const body = await res.text().catch(() => '');
+        await logUsage('error', `API ${res.status}: ${body.slice(0, 100)}`);
         return { date: null, fields: {} };
       }
       const j: any = await res.json();
@@ -376,15 +434,29 @@ export class FisYazdirmaService {
       const usage = j?.usage || {};
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) {
-        await logUsage('error', 'JSON parse fail', usage);
+        await logUsage('error', `JSON parse fail: ${text.slice(0, 80)}`, usage);
         return { date: null, fields: {} };
       }
-      const parsed = JSON.parse(match[0]);
-      await logUsage('ok', parsed.tarih ? 'tarih okundu' : 'tarih yok', usage);
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        await logUsage('error', `JSON.parse fail: ${match[0].slice(0, 80)}`, usage);
+        return { date: null, fields: {} };
+      }
+      // Tarihi normalize et (DD.MM.YYYY gibi formatlar da kabul)
+      const normalizedDate = this.normalizeDateString(parsed.tarih);
+      await logUsage(
+        'ok',
+        normalizedDate
+          ? `tarih okundu: ${normalizedDate}`
+          : `tarih yok (ham: ${String(parsed.tarih ?? 'null').slice(0, 20)})`,
+        usage,
+      );
       return {
-        date: parsed.tarih && /^\d{4}-\d{2}-\d{2}$/.test(parsed.tarih) ? parsed.tarih : null,
+        date: normalizedDate,
         fields: {
-          belge_no: parsed.belgeNo || undefined,
+          belge_no: parsed.belgeNo || parsed.belge_no || undefined,
           cari: parsed.cari || undefined,
           toplam: parsed.toplam || undefined,
         },
@@ -396,14 +468,18 @@ export class FisYazdirmaService {
     }
   }
 
-  async scanImages(files: Express.Multer.File[], tenantId?: string): Promise<ScanResult> {
+  async scanImages(
+    files: Express.Multer.File[],
+    tenantId?: string,
+    hintDonem?: string, // "YYYY-MM" — fişlerin bulunduğu dönem
+  ): Promise<ScanResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException('En az bir görsel gerekli');
     }
 
     const useClaude = !!process.env.ANTHROPIC_API_KEY;
     this.logger.log(
-      `OCR tarama başlıyor: ${files.length} görsel (${useClaude ? 'Claude Haiku' : 'Tesseract'})`,
+      `OCR tarama başlıyor: ${files.length} görsel (${useClaude ? 'Claude Haiku' : 'Tesseract'})${hintDonem ? ` [dönem ipucu: ${hintDonem}]` : ''}`,
     );
 
     if (useClaude) {
@@ -415,7 +491,7 @@ export class FisYazdirmaService {
       const results = await Promise.all(
         files.map((file) =>
           limit(async () => {
-            const r = await this.claudeExtractDate(file.buffer, tenantId);
+            const r = await this.claudeExtractDate(file.buffer, tenantId, hintDonem);
             return { file, ...r };
           }),
         ),
