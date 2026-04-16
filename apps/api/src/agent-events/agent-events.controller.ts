@@ -242,6 +242,36 @@ export class AgentEventsController {
     return this.service.decideFatura({ ...body, tenantId });
   }
 
+  /** Claude ile İşletme Defteri Kayıt Türü + K. Alt Türü kararı */
+  @Post('ai/decide-isletme')
+  async decideIsletme(
+    @Headers('x-agent-token') token: string,
+    @Body() body: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      kayitTuruOptions: string[];
+      altTuruOptions: string[];
+      faturaTarihi?: string;
+      belgeNo?: string;
+      belgeTuru?: string;
+      faturaTuru?: string;
+      mukellef?: string;
+      firma?: string;
+      tutar?: number | string;
+      action?: string;
+      matrah?: string | number;
+      kdv?: string;
+      blokIndex?: number;
+      blokToplam?: number;
+    },
+  ) {
+    const tenantId = this.resolveTenantFromToken(token);
+    if (!body?.faturaImageBase64 || !Array.isArray(body?.kayitTuruOptions)) {
+      throw new BadRequestException('faturaImageBase64 ve kayitTuruOptions gerekli');
+    }
+    return this.service.decideIsletme({ ...body, tenantId });
+  }
+
   /** Mihsap'tan çekilen mükellefleri toplu upsert */
   @Post('taxpayers/bulk-import')
   bulkImportTaxpayers(

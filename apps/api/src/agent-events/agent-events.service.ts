@@ -462,6 +462,193 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     }
   }
 
+  /**
+   * Claude ile İşletme Defteri bloğu için Kayıt Türü + K. Alt Türü seçimi.
+   * Input: fatura görüntüsü + ekranda mevcut seçenekler.
+   * Output: { kayitTuru?, altTuru?, emin: true|false, sebep }
+   * Emin değilse (kayitTuru veya altTuru eşleşmezse) karar=atla.
+   */
+  async decideIsletme(input: {
+    faturaImageBase64: string;
+    faturaImageMediaType?: string;
+    kayitTuruOptions: string[];
+    altTuruOptions: string[];
+    faturaTarihi?: string;
+    belgeNo?: string;
+    belgeTuru?: string;
+    faturaTuru?: string;
+    mukellef?: string;
+    firma?: string;
+    tutar?: number | string;
+    action?: string;
+    matrah?: string | number;
+    kdv?: string;
+    blokIndex?: number;
+    blokToplam?: number;
+    tenantId?: string;
+  }) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return { emin: false, sebep: 'ANTHROPIC_API_KEY yok' };
+    }
+
+    const SATIS_ACTIONS = ['isle_satis', 'isle_satis_isletme'];
+    const ALIS_ACTIONS = ['isle_alis', 'isle_alis_isletme'];
+    const islemTuru = SATIS_ACTIONS.includes(input.action || '')
+      ? 'SATIŞ'
+      : ALIS_ACTIONS.includes(input.action || '')
+      ? 'ALIŞ'
+      : 'ALIŞ';
+
+    // Mükellef özel talimatı
+    let mukellefTalimat = '';
+    if (input.tenantId && input.mukellef) {
+      try {
+        const rule = await this.prisma.agentRule.findUnique({
+          where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
+        });
+        const talimat = (rule?.profile as any)?.talimat;
+        if (talimat) mukellefTalimat = String(talimat);
+      } catch {}
+    }
+
+    const kayitListe = input.kayitTuruOptions.filter(Boolean).join(' | ');
+    const altListe = input.altTuruOptions.filter(Boolean).join(' | ');
+
+    const system = `Sen bir işletme defteri kayıt kategorisi seçicisin. Fatura görüntüsüne bakıp bir blok için Kayıt Türü ve K. Alt Türü karar vereceksin.
+
+### İŞLEM BAĞLAMI ###
+İşlem yönü: ${islemTuru}  (ALIŞ = alış/gider, SATIŞ = satış/gelir)
+Blok: ${input.blokIndex || 1}/${input.blokToplam || 1}
+Ekrandaki fatura türü: ${input.faturaTuru || '?'} | Belge türü: ${input.belgeTuru || '?'}
+Ekrandaki blok matrah: ${input.matrah ?? '?'} | KDV: ${input.kdv || '?'}
+
+### MEVCUT SEÇENEKLER (sadece bu listeden seç, eşleştiremezsen emin_degil) ###
+Kayıt Türü seçenekleri: ${kayitListe || '(boş)'}
+K. Alt Türü seçenekleri: ${altListe || '(boş)'}
+
+### KURALLAR ###
+1. ALIŞ modunda: fatura satırı MAL ise → Kayıt Türü = "Mal Alışı". Gider/hizmet ise → "İndirilecek Giderler" (veya ALIŞ listesinden uygunu).
+2. SATIŞ modunda: mal satışı → "Mal Satışı", hizmet ise → "Hizmet Satışı".
+3. K. Alt Türü: fatura içeriğini oku ve alt liste ile eşleştir.
+   - Mal alışı/satışında K. Alt Türü genellikle aynı isimdedir ("Mal Alışı"/"Mal Satışı") — alt listede yoksa en yakını seç.
+   - Gider kaleminde: elektrik faturasıysa "Elektrik", kırtasiye ise "Kırtasiye", ofis kirası yoksa "Ofis Giderleri", telefon faturası "Telefon" vb. Liste dışı seçme.
+4. HER İKİ liste de boş ya da eşleşme kesin değilse → emin:false dön. Tahmin yapma.
+5. Emin olduğun değerler MEVCUT SEÇENEKLER'de birebir var olmalı (karakter karakter). Yoksa emin:false.
+6. Fatura görüntüsü okunamıyorsa emin:false.
+
+### YASAK ###
+× Listede olmayan değer üretme
+× "Belki", "muhtemelen" ile emin=true deme
+× Demirbaş kodu/araç satışı algılarsan emin:false + sebep="demirbaş/araç"
+
+${mukellefTalimat ? `### MÜKELLEF ÖZEL TALİMATI ###\n${mukellefTalimat}\n` : ''}
+
+### ÇIKTI ###
+Sadece JSON: {"emin":true,"kayitTuru":"<liste değeri>","altTuru":"<liste değeri>","sebep":"60 karakter"}
+veya: {"emin":false,"sebep":"60 karakter"}`;
+
+    const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
+Belge no: ${input.belgeNo || '?'} | Tarih: ${input.faturaTarihi || '?'} | Tutar: ${input.tutar || '?'}
+Blok matrah: ${input.matrah ?? '?'} | KDV: ${input.kdv || '?'}
+
+Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü + K. Alt Türü seç ya da emin:false dön.`;
+
+    const startMs = Date.now();
+    const MODEL = 'claude-haiku-4-5-20251001';
+
+    const logUsage = (
+      karar: string | undefined,
+      sebep: string | undefined,
+      usage?: any,
+    ) =>
+      logAiUsage(this.prisma, {
+        tenantId: input.tenantId || 'unknown',
+        source: 'mihsap-isletme',
+        model: MODEL,
+        mukellef: input.mukellef,
+        belgeNo: input.belgeNo,
+        karar,
+        sebep,
+        durationMs: Date.now() - startMs,
+        usage,
+      });
+
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 500,
+          system,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: input.faturaImageMediaType || 'image/jpeg',
+                    data: input.faturaImageBase64,
+                  },
+                },
+                { type: 'text', text: userText },
+              ],
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        await logUsage('emin_degil', `API ${res.status}`);
+        return { emin: false, sebep: `Claude API ${res.status}: ${errText.slice(0, 80)}` };
+      }
+      const json = await res.json();
+      const text = json?.content?.[0]?.text || '';
+      const usage = json?.usage || {};
+
+      const codeBlock = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      const candidates: string[] = [];
+      if (codeBlock) candidates.push(codeBlock[1]);
+      const greedy = text.match(/\{[\s\S]*\}/);
+      if (greedy) candidates.push(greedy[0]);
+
+      for (const c of candidates) {
+        try {
+          const parsed = JSON.parse(c);
+          if (typeof parsed?.emin === 'boolean') {
+            // Sanity: seçilen değerler gerçekten listede mi?
+            if (parsed.emin) {
+              const inKayit = input.kayitTuruOptions.includes(parsed.kayitTuru);
+              const inAlt = input.altTuruOptions.includes(parsed.altTuru);
+              if (!inKayit || !inAlt) {
+                await logUsage('emin_degil', `liste dışı: kayit=${inKayit} alt=${inAlt}`, usage);
+                return {
+                  emin: false,
+                  sebep: `AI liste dışı değer döndü (kayit=${parsed.kayitTuru}, alt=${parsed.altTuru})`,
+                };
+              }
+            }
+            await logUsage(parsed.emin ? 'onay' : 'emin_degil', parsed.sebep, usage);
+            return parsed;
+          }
+        } catch {}
+      }
+
+      await logUsage('emin_degil', 'JSON parse fail', usage);
+      return { emin: false, sebep: 'JSON parse fail', raw: text.slice(0, 200) };
+    } catch (e: any) {
+      await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
+      return { emin: false, sebep: `Network: ${e?.message || 'unknown'}` };
+    }
+  }
+
   // USD/TRY kur cache'i — TCMB'den günde 1 kez çekilir
   private usdTryCache: { rate: number; fetchedAt: Date } | null = null;
 

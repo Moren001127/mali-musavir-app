@@ -541,27 +541,24 @@
 
   function isletmeBlokDurumu() {
     // Ekrandaki tüm "Kayıt Türü" label'lerini bul; her biri için komşu "K. Alt Türü" selectini tespit et.
+    // Returns detay[i] = { kayitDolu, altDolu, kayitSelect, altSelect, kayitDeger, altDeger, matrah, kdv }
     const result = { varMi: false, toplam: 0, bosBlokVar: false, detay: [] };
     const labels = Array.from(document.querySelectorAll('label, span, div'))
       .filter((el) => {
         const t = (el.textContent || '').trim();
         if (!t) return false;
-        // Tam eşleşme: "Kayıt Türü" (çocukları dahil değil, kendi metni kısa olmalı)
         if (t.length > 24) return false;
         return /^kay[ıi]t t[üu]r[üu]/i.test(t);
       });
 
-    // Aynı container'ın birden fazla label/span ile yakalanmasını önlemek için unique container'lara in
     const seenContainers = new Set();
     for (const lbl of labels) {
-      // En yakın form-item / row / block container'ını bul (2 select içermeli)
       let node = lbl;
       let container = null;
       for (let i = 0; i < 8 && node; i++) {
         node = node.parentElement;
         if (!node) break;
         const selects = node.querySelectorAll('.ant-select');
-        // Aynı row içinde Kayıt Türü + K. Alt Türü = 2 select olmalı (bazı ekranlarda +matrah/kdv =4)
         if (selects.length >= 2) {
           const txt = (node.textContent || '').toLowerCase();
           if (txt.includes('kayıt türü') && txt.includes('alt türü')) {
@@ -574,22 +571,171 @@
       if (seenContainers.has(container)) continue;
       seenContainers.add(container);
 
-      // Container içinde ilk iki select: [0]=Kayıt Türü, [1]=K. Alt Türü varsayımı
       const selects = Array.from(container.querySelectorAll('.ant-select'));
       if (selects.length < 2) continue;
-
-      // Daha güvenli: label'ın DOM sırasına bakarak eşleştir
       const kayitSelect = selects[0];
       const altSelect = selects[1];
       const kayitDolu = isAntSelectFilled(kayitSelect);
       const altDolu = isAntSelectFilled(altSelect);
+      const readVal = (s) => (s?.querySelector('.ant-select-selection-item')?.textContent || '').trim();
+
+      // Matrah & KDV oku (container içindeki input/number alanları)
+      let matrah = null;
+      let kdv = null;
+      try {
+        const inputs = Array.from(container.querySelectorAll('input'));
+        for (const inp of inputs) {
+          const v = (inp.value || '').trim();
+          if (!v) continue;
+          if (/^\d+[.,]?\d*$/.test(v) && matrah === null) matrah = v;
+        }
+        const spans = Array.from(container.querySelectorAll('.ant-select-selection-item'));
+        for (const sp of spans) {
+          const t = (sp.textContent || '').trim();
+          if (/^%\d/.test(t)) { kdv = t; break; }
+        }
+      } catch {}
 
       result.toplam++;
-      result.detay.push({ kayitDolu, altDolu });
+      result.detay.push({
+        kayitDolu, altDolu,
+        kayitSelect, altSelect,
+        kayitDeger: kayitDolu ? readVal(kayitSelect) : null,
+        altDeger: altDolu ? readVal(altSelect) : null,
+        matrah, kdv,
+      });
       if (!kayitDolu || !altDolu) result.bosBlokVar = true;
     }
     result.varMi = result.toplam > 0;
     return result;
+  }
+
+  // === Ant Select açma / seçenek listesi / seçim ===
+  // Dropdown body'e portal olarak eklenir, :visible olan son açık dropdown alınır.
+  async function openAntSelect(antSelectEl) {
+    if (!antSelectEl) return null;
+    // Zaten açıksa
+    const already = antSelectEl.querySelector('.ant-select-open');
+    if (already) return already;
+    antSelectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+    await sleep(80);
+    const clicker = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
+    clicker.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    clicker.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    clicker.click();
+    // Dropdown belirmesini bekle
+    const t0 = Date.now();
+    while (Date.now() - t0 < 2000) {
+      const dd = findOpenDropdown();
+      if (dd) return dd;
+      await sleep(80);
+    }
+    return null;
+  }
+
+  function findOpenDropdown() {
+    const all = Array.from(document.querySelectorAll('.ant-select-dropdown'));
+    // Görünür olan (display != none) + rdm-hidden değil
+    return all.reverse().find((d) => {
+      const st = getComputedStyle(d);
+      if (st.display === 'none' || st.visibility === 'hidden') return false;
+      if (d.classList.contains('ant-select-dropdown-hidden')) return false;
+      return true;
+    }) || null;
+  }
+
+  async function readAntSelectOptions(antSelectEl) {
+    const dd = await openAntSelect(antSelectEl);
+    if (!dd) return { opened: false, options: [] };
+    // Virtualized list olabilir — önce scroll aşağı yukarı deyip toplamaya çalış
+    const opts = new Set();
+    const collect = () => {
+      const items = dd.querySelectorAll('.ant-select-item-option-content');
+      items.forEach((el) => {
+        const t = (el.textContent || '').trim();
+        if (t) opts.add(t);
+      });
+    };
+    collect();
+    // Virtualized kaydırma: listenin scroll container'ını bul
+    const scroller = dd.querySelector('.rc-virtual-list-holder, .ant-select-dropdown .rc-virtual-list-holder') || dd;
+    for (let i = 0; i < 20 && scroller; i++) {
+      const prevSize = opts.size;
+      scroller.scrollTop += 200;
+      await sleep(60);
+      collect();
+      if (opts.size === prevSize && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) break;
+    }
+    return { opened: true, options: Array.from(opts) };
+  }
+
+  async function pickAntSelectOption(antSelectEl, target) {
+    const dd = await openAntSelect(antSelectEl);
+    if (!dd) return false;
+    const clean = (s) => (s || '').trim();
+    const targetNorm = clean(target);
+    // Önce birebir eşleşme ara, yoksa içeren, yoksa case-insensitive
+    const tryFind = () => {
+      const items = Array.from(dd.querySelectorAll('.ant-select-item-option'));
+      let hit = items.find((el) => clean(el.textContent) === targetNorm);
+      if (!hit) hit = items.find((el) => clean(el.textContent).toLowerCase() === targetNorm.toLowerCase());
+      return hit || null;
+    };
+    let hit = tryFind();
+    if (!hit) {
+      // Virtualized: input varsa yaz (arama filtresi tetiklenir), yoksa scroll
+      const searchInput = antSelectEl.querySelector('input.ant-select-selection-search-input');
+      if (searchInput) {
+        // nativeInputValueSetter ile set et
+        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        nativeSetter.call(searchInput, targetNorm.slice(0, 18));
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        const t0 = Date.now();
+        while (Date.now() - t0 < 1500) {
+          await sleep(80);
+          hit = tryFind();
+          if (hit) break;
+        }
+      }
+    }
+    if (!hit) {
+      // Scroll ile ara
+      const scroller = dd.querySelector('.rc-virtual-list-holder') || dd;
+      for (let i = 0; i < 30 && scroller; i++) {
+        scroller.scrollTop += 120;
+        await sleep(50);
+        hit = tryFind();
+        if (hit) break;
+      }
+    }
+    if (!hit) {
+      // Kapat ve vazgeç
+      document.body.click();
+      return false;
+    }
+    hit.scrollIntoView({ block: 'center' });
+    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    hit.click();
+    await sleep(150);
+    return isAntSelectFilled(antSelectEl);
+  }
+
+  async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
+    const img = await getFaturaImageBase64();
+    if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
+    return await api('/agent/ai/decide-isletme', {
+      method: 'POST',
+      body: JSON.stringify({
+        faturaImageBase64: img,
+        kayitTuruOptions: kayitOptions,
+        altTuruOptions: altOptions,
+        faturaTarihi: tarih,
+        belgeNo, belgeTuru, faturaTuru,
+        mukellef, firma, tutar, matrah, kdv,
+        action, blokIndex, blokToplam,
+      }),
+    });
   }
 
   async function processBatch({ ay, mukellefler, action }) {
@@ -680,16 +826,115 @@
       // ==========================================================
       const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
       if (isIsletme) {
-        const blok = isletmeBlokDurumu();
-        if (!blok.varMi || blok.bosBlokVar) {
+        let blok = isletmeBlokDurumu();
+        if (!blok.varMi) {
           counters.atla++; counters.toplam++; setCount();
-          const sebep = !blok.varMi
-            ? 'İşletme: blok bulunamadı'
-            : `İşletme: ${blok.toplam} blokta boş Kayıt/K.Alt Türü var`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', sebep, {
+          await logEvent(mukellef.id, mukellef.ad, 'skip', 'İşletme: blok bulunamadı', {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
           });
           await clickIleri(fid); continue;
+        }
+
+        // --- Boş blokları AI ile doldurmayı dene ---
+        let aiKullanildi = false;
+        let aiOzet = [];
+        if (blok.bosBlokVar) {
+          aiKullanildi = true;
+          let aiHata = null;
+          setStatus(`${mukellef.ad} · #${fid} İşletme · AI dolduruyor…`);
+          for (let bi = 0; bi < blok.detay.length; bi++) {
+            const d = blok.detay[bi];
+            if (d.kayitDolu && d.altDolu) continue;
+
+            // Kayıt Türü seçenekleri
+            let kayitOptions = [];
+            if (!d.kayitDolu) {
+              const r = await readAntSelectOptions(d.kayitSelect);
+              kayitOptions = r.options;
+              // Dropdown'ı kapat
+              document.body.click();
+              await sleep(120);
+            } else {
+              kayitOptions = [d.kayitDeger];
+            }
+
+            // AI için K. Alt Türü'nün mevcut seçeneklerini okumak için Kayıt Türü'nü önce seçmek gerekebilir.
+            // Ama AI kararı olmadan seçemiyoruz → hepsini birden soralım: K. Alt Türü'nü boş varsay.
+            // Kayıt Türü seçildikten sonra alt liste filtrelenir. O yüzden 2 aşamalı gidelim:
+            //   1) Kayıt Türü kararı (alt listesi boş gönder)
+            //   2) Kayıt Türü uygulandıktan sonra alt seçenekleri oku → 2. AI çağrısı
+            const kararKayit = d.kayitDolu ? { emin: true, kayitTuru: d.kayitDeger, altTuru: null } : await aiDecideIsletme({
+              kayitOptions,
+              altOptions: [],
+              tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
+              mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+              matrah: d.matrah, kdv: d.kdv,
+              action, blokIndex: bi + 1, blokToplam: blok.detay.length,
+            });
+
+            if (!kararKayit?.emin || !kararKayit.kayitTuru) {
+              aiHata = `Kayıt Türü emin_degil: ${(kararKayit?.sebep || '').slice(0, 60)}`;
+              break;
+            }
+
+            if (!d.kayitDolu) {
+              const ok = await pickAntSelectOption(d.kayitSelect, kararKayit.kayitTuru);
+              if (!ok) {
+                aiHata = `Kayıt Türü seçilemedi: ${kararKayit.kayitTuru}`;
+                break;
+              }
+              aiOzet.push(`B${bi + 1} K:${kararKayit.kayitTuru}`);
+              await sleep(300); // Alt listenin yenilenmesini bekle
+            }
+
+            // K. Alt Türü için seçenekleri oku
+            if (!d.altDolu) {
+              const rAlt = await readAntSelectOptions(d.altSelect);
+              const altOptions = rAlt.options;
+              document.body.click();
+              await sleep(120);
+              if (!altOptions.length) {
+                aiHata = 'K. Alt Türü listesi boş';
+                break;
+              }
+              const kararAlt = await aiDecideIsletme({
+                kayitOptions: [kararKayit.kayitTuru],
+                altOptions,
+                tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
+                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                matrah: d.matrah, kdv: d.kdv,
+                action, blokIndex: bi + 1, blokToplam: blok.detay.length,
+              });
+              if (!kararAlt?.emin || !kararAlt.altTuru) {
+                aiHata = `K. Alt Türü emin_degil: ${(kararAlt?.sebep || '').slice(0, 60)}`;
+                break;
+              }
+              const ok2 = await pickAntSelectOption(d.altSelect, kararAlt.altTuru);
+              if (!ok2) {
+                aiHata = `K. Alt Türü seçilemedi: ${kararAlt.altTuru}`;
+                break;
+              }
+              aiOzet.push(`B${bi + 1} A:${kararAlt.altTuru}`);
+              await sleep(200);
+            }
+          }
+
+          if (aiHata) {
+            counters.atla++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `AI: ${aiHata}`, {
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            });
+            await clickIleri(fid); continue;
+          }
+          // Doldurma bitti — güncel durumu oku
+          blok = isletmeBlokDurumu();
+          if (!blok.varMi || blok.bosBlokVar) {
+            counters.atla++; counters.toplam++; setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', 'AI sonrası hâlâ boş blok var', {
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            });
+            await clickIleri(fid); continue;
+          }
         }
         // Tüm bloklar dolu → F2 ile kaydet. Bilanço'daki waitSaved makinesini aynen kullan.
         try {
@@ -750,7 +995,8 @@
           }
           if (saved) {
             counters.onay++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · İşletme ${blok.toplam} blok dolu`, {
+            const aiNot = aiKullanildi ? ` · AI[${aiOzet.join(' · ').slice(0, 80)}]` : '';
+            await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · İşletme ${blok.toplam} blok${aiNot}`, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
             });
           } else {
