@@ -537,7 +537,14 @@
   }
 
   async function processMukellef({ ay, mukellef, action }) {
-    const tipSegment = action === 'isle_alis' ? 'BILANCO/1' : action === 'isle_satis' ? 'BILANCO/2' : null;
+    // Bilanço: BILANCO/1 alış, BILANCO/2 satış
+    // İşletme Defteri: ISLETME/1 alış, ISLETME/2 satış
+    const tipSegment =
+      action === 'isle_alis' ? 'BILANCO/1' :
+      action === 'isle_satis' ? 'BILANCO/2' :
+      action === 'isle_alis_isletme' ? 'ISLETME/1' :
+      action === 'isle_satis_isletme' ? 'ISLETME/2' :
+      null;
     if (!tipSegment || !mukellef.mihsapId) return;
     const targetPath = `/documents/${tipSegment}/${mukellef.mihsapId}`;
     const baseList = `https://app.mihsap.com${targetPath}`;

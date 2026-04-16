@@ -54,6 +54,16 @@ export default function FaturalarPage() {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'all' | 'ALIS' | 'SATIS'>('all');
   const [previewInvoice, setPreviewInvoice] = useState<MihsapInvoice | null>(null);
+  // Toplu (tüm mükellefler) çekim durumu
+  const [bulkProgress, setBulkProgress] = useState<{
+    running: boolean;
+    current: number;
+    total: number;
+    currentName: string;
+    errors: string[];
+  } | null>(null);
+
+  const ALL_SENTINEL = '__ALL__';
 
   const donem = `${year}-${month}`;
 
@@ -75,7 +85,11 @@ export default function FaturalarPage() {
     queryKey: ['mihsap-invoices', selectedMukellef, donem],
     queryFn: () =>
       agentsApi.mihsapInvoices({
-        mukellefId: selectedMukellef || undefined,
+        // "__ALL__" seçiliyse mukellef filtresini gönderme → tüm mükelleflerin faturaları
+        mukellefId:
+          selectedMukellef && selectedMukellef !== ALL_SENTINEL
+            ? selectedMukellef
+            : undefined,
         donem,
         limit: 500,
       }),
@@ -120,7 +134,58 @@ export default function FaturalarPage() {
     );
   }, [taxpayers, search]);
 
+  // Tüm mükellefler için sıralı toplu çekim
+  const handleFetchAll = async (
+    faturaTuru?: 'ALIS' | 'SATIS',
+    forceRefresh = false,
+  ) => {
+    const eligible = taxpayers.filter((t) => !!t.mihsapId);
+    if (eligible.length === 0) {
+      alert('MIHSAP ID tanımlı mükellef bulunamadı.');
+      return;
+    }
+    const label =
+      faturaTuru === 'ALIS' ? 'alış' : faturaTuru === 'SATIS' ? 'satış' : 'alış + satış';
+    const confirmMsg = forceRefresh
+      ? `${eligible.length} mükellef için ${donem} dönemindeki ${label} faturaları SİLİNİP yeniden indirilecek. Emin misiniz?`
+      : `${eligible.length} mükellef için ${donem} dönemindeki ${label} faturaları çekilecek. Başlansın mı?`;
+    if (!confirm(confirmMsg)) return;
+
+    const errors: string[] = [];
+    setBulkProgress({ running: true, current: 0, total: eligible.length, currentName: '', errors: [] });
+    for (let i = 0; i < eligible.length; i++) {
+      const t = eligible[i];
+      const name = taxpayerName(t);
+      setBulkProgress((prev) => prev && { ...prev, current: i + 1, currentName: name });
+      try {
+        await agentsApi.mihsapFetch({
+          mukellefId: t.id,
+          mukellefMihsapId: t.mihsapId!,
+          donem,
+          faturaTuru,
+          forceRefresh,
+        });
+      } catch (e: any) {
+        errors.push(`${name}: ${e?.message || 'bilinmeyen hata'}`);
+        setBulkProgress((prev) => prev && { ...prev, errors: [...prev.errors, `${name}: ${e?.message || 'hata'}`] });
+      }
+      // Peş peşe istek MIHSAP'ı yormasın diye küçük gecikme
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    setBulkProgress((prev) => prev && { ...prev, running: false });
+    qc.invalidateQueries({ queryKey: ['mihsap-invoices'] });
+    qc.invalidateQueries({ queryKey: ['mihsap-jobs'] });
+    if (errors.length > 0) {
+      alert(`Toplu çekim bitti · ${errors.length} hata:\n\n${errors.slice(0, 10).join('\n')}`);
+    }
+  };
+
   const handleFetch = (faturaTuru?: 'ALIS' | 'SATIS', forceRefresh = false) => {
+    // "Tümü" modu → toplu çekime yönlendir
+    if (selectedMukellef === ALL_SENTINEL) {
+      handleFetchAll(faturaTuru, forceRefresh);
+      return;
+    }
     if (!selectedTaxpayer) return;
     if (!selectedTaxpayer.mihsapId) {
       alert(
@@ -214,6 +279,9 @@ export default function FaturalarPage() {
               }}
             >
               <option value="">-- Mükellef seçin --</option>
+              <option value={ALL_SENTINEL}>
+                ✓ TÜMÜNÜ SEÇ ({taxpayers.filter((t) => t.mihsapId).length} mükellef)
+              </option>
               {filteredTaxpayers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {taxpayerName(t)} {t.mihsapId ? '' : '(MIHSAP ID yok!)'}
@@ -278,7 +346,7 @@ export default function FaturalarPage() {
           <div className="md:col-span-2 flex flex-col gap-1.5 justify-end">
             <div className="flex gap-1.5">
               <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch('ALIS', false)}
                 className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
                 style={{ background: 'rgba(59,130,246,.15)', color: '#2563eb', border: '1px solid rgba(59,130,246,.3)' }}
@@ -287,7 +355,7 @@ export default function FaturalarPage() {
                 <Download size={12} /> Alış Çek
               </button>
               <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch('SATIS', false)}
                 className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
                 style={{ background: 'rgba(34,197,94,.15)', color: '#16a34a', border: '1px solid rgba(34,197,94,.3)' }}
@@ -298,17 +366,21 @@ export default function FaturalarPage() {
             </div>
             <div className="flex gap-1.5">
               <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch(undefined, false)}
                 className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' }}
                 title="Alış + Satış hepsini çek"
               >
                 <Download size={12} />
-                {fetchMut.isPending ? 'Çekiliyor…' : 'Hepsini Çek'}
+                {bulkProgress?.running
+                  ? `${bulkProgress.current}/${bulkProgress.total}…`
+                  : fetchMut.isPending
+                  ? 'Çekiliyor…'
+                  : 'Hepsini Çek'}
               </button>
               <button
-                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
                 className="px-2 py-1.5 rounded-lg text-xs border disabled:opacity-50"
                 style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
@@ -320,6 +392,62 @@ export default function FaturalarPage() {
           </div>
         </div>
       </div>
+
+      {/* Toplu (tüm mükellefler) çekim progress */}
+      {bulkProgress && (
+        <div
+          className="rounded-xl p-4 border"
+          style={{
+            background: bulkProgress.running ? 'rgba(184,160,111,.08)' : 'rgba(34,197,94,.08)',
+            borderColor: bulkProgress.running ? '#b8a06f' : '#22c55e',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            {bulkProgress.running ? (
+              <Loader2 size={18} className="animate-spin" style={{ color: '#b8a06f' }} />
+            ) : (
+              <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
+            )}
+            <div className="flex-1">
+              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                Toplu fatura çekimi · {bulkProgress.current} / {bulkProgress.total}
+                {!bulkProgress.running && ' · TAMAMLANDI'}
+              </div>
+              {bulkProgress.running && bulkProgress.currentName && (
+                <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                  → {bulkProgress.currentName}
+                </div>
+              )}
+              {bulkProgress.errors.length > 0 && (
+                <div className="text-xs mt-1" style={{ color: '#ef4444' }}>
+                  {bulkProgress.errors.length} hata
+                </div>
+              )}
+            </div>
+            {!bulkProgress.running && (
+              <button
+                onClick={() => setBulkProgress(null)}
+                className="text-xs px-2 py-1 rounded"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                Kapat
+              </button>
+            )}
+          </div>
+          {/* Progress bar */}
+          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,.08)' }}>
+            <div
+              className="h-full transition-all"
+              style={{
+                width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
+                background: bulkProgress.running
+                  ? 'linear-gradient(90deg, #b8a06f, #8b7649)'
+                  : '#22c55e',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Aktif Job progress */}
       {activeJob && (

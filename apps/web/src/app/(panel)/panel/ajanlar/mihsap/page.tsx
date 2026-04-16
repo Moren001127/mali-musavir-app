@@ -29,7 +29,9 @@ export default function MihsapAgentPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [action, setAction] = useState<'isle_alis' | 'isle_satis'>('isle_alis');
+  const [action, setAction] = useState<
+    'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
+  >('isle_alis');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
@@ -176,30 +178,52 @@ export default function MihsapAgentPage() {
 
           <div className="flex-shrink-0">
             <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'var(--text-muted)' }}>
-              İşlem Türü
+              Defter / İşlem
             </label>
-            <div className="flex gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 onClick={() => setAction('isle_alis')}
-                className="px-4 py-2.5 rounded-lg text-sm font-bold border"
+                className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
                   background: action === 'isle_alis' ? 'rgba(5,150,105,.15)' : 'var(--bg)',
                   borderColor: action === 'isle_alis' ? '#059669' : 'var(--border)',
                   color: action === 'isle_alis' ? '#059669' : 'var(--text)',
                 }}
               >
-                ALIŞ
+                BİLANÇO · ALIŞ
               </button>
               <button
                 onClick={() => setAction('isle_satis')}
-                className="px-4 py-2.5 rounded-lg text-sm font-bold border"
+                className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
                   background: action === 'isle_satis' ? 'rgba(37,99,235,.15)' : 'var(--bg)',
                   borderColor: action === 'isle_satis' ? '#2563eb' : 'var(--border)',
                   color: action === 'isle_satis' ? '#2563eb' : 'var(--text)',
                 }}
               >
-                SATIŞ
+                BİLANÇO · SATIŞ
+              </button>
+              <button
+                onClick={() => setAction('isle_alis_isletme')}
+                className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
+                style={{
+                  background: action === 'isle_alis_isletme' ? 'rgba(168,85,247,.15)' : 'var(--bg)',
+                  borderColor: action === 'isle_alis_isletme' ? '#a855f7' : 'var(--border)',
+                  color: action === 'isle_alis_isletme' ? '#a855f7' : 'var(--text)',
+                }}
+              >
+                İŞLETME · ALIŞ
+              </button>
+              <button
+                onClick={() => setAction('isle_satis_isletme')}
+                className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
+                style={{
+                  background: action === 'isle_satis_isletme' ? 'rgba(234,88,12,.15)' : 'var(--bg)',
+                  borderColor: action === 'isle_satis_isletme' ? '#ea580c' : 'var(--border)',
+                  color: action === 'isle_satis_isletme' ? '#ea580c' : 'var(--text)',
+                }}
+              >
+                İŞLETME · SATIŞ
               </button>
             </div>
           </div>
