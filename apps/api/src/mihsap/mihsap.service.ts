@@ -199,30 +199,80 @@ export class MihsapService {
     let storageUrl: string | undefined;
     if (fileUrl) {
       try {
-        const token = await this.getToken(tenantId);
-        const r = await fetch(fileUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (r.ok) {
-          const buf = Buffer.from(await r.arrayBuffer());
-          const ext = (fileUrl.split('.').pop() || 'jpg').split('?')[0].toLowerCase();
-          storageKey = this.buildStorageKey(
-            tenantId,
-            mukellefId,
-            donem,
-            item.faturaNo,
-            ext,
-            item.faturaTuru,
-            item.id,
+        // MIHSAP fatura CDN'i (invoice.mihsap.com) Bearer auth BEKLEMEZ.
+        // Path'teki tenant hash'i güvenlik olarak yeterli. Header gönderirsek
+        // bazı proxy'ler HTML redirect/error döndürebiliyor — o yüzden auth'suz
+        // fetch atıyoruz.
+        const r = await fetch(fileUrl, { redirect: 'follow' });
+
+        // Content-type kontrolü: gelen dosya gerçekten bir görsel/PDF/XML mi?
+        const ctype = (r.headers.get('content-type') || '').toLowerCase();
+        const isValidContent =
+          ctype.startsWith('image/') ||
+          ctype.includes('pdf') ||
+          ctype.includes('xml') ||
+          ctype.includes('octet-stream');
+
+        if (!r.ok) {
+          this.logger.warn(
+            `MIHSAP file download failed ${r.status} for ${item.faturaNo} (${fileUrl})`,
           );
-          const mime = ext === 'xml' ? 'application/xml' : ext === 'pdf' ? 'application/pdf' : 'image/jpeg';
-          await this.storage.putBuffer(storageKey, buf, mime, {
-            'mihsap-id': String(item.id),
-            'belge-no': item.faturaNo,
-          });
-          storageUrl = storageKey; // Presigned URL istendiğinde üretilir
+        } else if (!isValidContent) {
+          // HTML login sayfası veya redirect body — kaydetme
+          this.logger.warn(
+            `MIHSAP file returned non-file content-type "${ctype}" for ${item.faturaNo}; skipping storage`,
+          );
         } else {
-          this.logger.warn(`MIHSAP file download failed ${r.status} for ${item.faturaNo}`);
+          const buf = Buffer.from(await r.arrayBuffer());
+          // Ek sanity check: dosya çok küçükse (<512B) muhtemelen hata sayfasıdır
+          if (buf.length < 512) {
+            this.logger.warn(
+              `MIHSAP file too small (${buf.length}B) for ${item.faturaNo}; skipping storage`,
+            );
+          } else {
+            // URL her zaman .jpg uzantılı geliyor (MIHSAP e-fatura XML'i bile
+            // JPEG render eder). Ama orjDosyaTuru farklıysa onu da saklayalım.
+            const urlExt = (fileUrl.split('.').pop() || 'jpg').split('?')[0].toLowerCase();
+            const orjType = (item.orjDosyaTuru || '').toUpperCase();
+            // Gerçek dosya tipi: önce content-type, sonra URL uzantısı
+            let ext: string;
+            let mime: string;
+            if (ctype.startsWith('image/')) {
+              ext = ctype.includes('png') ? 'png' : 'jpg';
+              mime = ctype;
+            } else if (ctype.includes('pdf')) {
+              ext = 'pdf';
+              mime = 'application/pdf';
+            } else if (ctype.includes('xml')) {
+              ext = 'xml';
+              mime = 'application/xml';
+            } else {
+              // octet-stream fallback → URL uzantısına bak
+              ext = urlExt;
+              mime =
+                urlExt === 'xml'
+                  ? 'application/xml'
+                  : urlExt === 'pdf'
+                    ? 'application/pdf'
+                    : 'image/jpeg';
+            }
+
+            storageKey = this.buildStorageKey(
+              tenantId,
+              mukellefId,
+              donem,
+              item.faturaNo,
+              ext,
+              item.faturaTuru,
+              item.id,
+            );
+            await this.storage.putBuffer(storageKey, buf, mime, {
+              'mihsap-id': String(item.id),
+              'belge-no': item.faturaNo,
+              'orj-dosya-turu': orjType || 'UNKNOWN',
+            });
+            storageUrl = storageKey; // Presigned URL istendiğinde üretilir
+          }
         }
       } catch (e: any) {
         this.logger.warn(`MIHSAP file download exception: ${e?.message}`);
@@ -416,10 +466,12 @@ export class MihsapService {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) return null;
     if (!inv.storageKey) return null;
-    const ext = (inv.orjDosyaTuru || 'jpg').toLowerCase();
+    // storageKey sonunda gerçek dosya uzantısı (jpg/pdf/xml) mevcut — onu kullan
+    const keyExt = (inv.storageKey.split('.').pop() || 'jpg').toLowerCase();
+    const safeExt = ['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(keyExt) ? keyExt : 'jpg';
     return this.storage.getPresignedDownloadUrl(
       inv.storageKey,
-      `${inv.faturaNo}.${ext === 'xml' ? 'xml' : 'jpg'}`,
+      `${inv.faturaNo}.${safeExt}`,
     );
   }
 

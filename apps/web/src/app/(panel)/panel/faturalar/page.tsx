@@ -694,23 +694,40 @@ function InvoicePreviewModal({
               <p className="text-sm">{error}</p>
             </div>
           )}
-          {url && !loading && !error && (
-            // XML dosyaları için <iframe>, diğerleri için <img>
-            (invoice.orjDosyaTuru || '').toUpperCase() === 'XML' ? (
-              <iframe
-                src={url}
-                className="w-full h-full bg-white"
-                title={invoice.faturaNo}
-              />
-            ) : (
+          {url && !loading && !error && (() => {
+            // Presigned URL query string içerebilir; uzantıyı gerçek path'ten al.
+            // MIHSAP her faturayı (XML e-fatura dahil) JPEG'e render ettiği için
+            // çoğu durumda dosya tipi "jpg" olur.
+            const cleanPath = url.split('?')[0].toLowerCase();
+            const urlExt = cleanPath.split('.').pop() || '';
+            if (urlExt === 'pdf') {
+              return (
+                <iframe
+                  src={url}
+                  className="w-full h-full bg-white"
+                  title={invoice.faturaNo}
+                />
+              );
+            }
+            if (urlExt === 'xml') {
+              return (
+                <iframe
+                  src={url}
+                  className="w-full h-full bg-white"
+                  title={invoice.faturaNo}
+                />
+              );
+            }
+            // Default: JPEG/PNG
+            return (
               <img
                 src={url}
                 alt={invoice.faturaNo}
                 className="max-w-full max-h-full object-contain"
-                onError={() => setError('Görüntü yüklenemedi')}
+                onError={() => setError('Görüntü yüklenemedi (dosya bozuk olabilir — yeniden çekin)')}
               />
-            )
-          )}
+            );
+          })()}
         </div>
       </div>
     </div>
