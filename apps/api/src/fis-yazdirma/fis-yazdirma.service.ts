@@ -457,65 +457,85 @@ export class FisYazdirmaService {
     }
   }
 
-  /** Claude ile tarih okuma — Haiku ile başlar, başarısızsa Sonnet ile retry eder. */
+  /** Görseli OCR için hazırla: auto-rotate + grayscale + kontrast + sharpen + resize. */
+  private async prepareOcrImage(buffer: Buffer, width: number, quality: number): Promise<string> {
+    const processed = await sharp(buffer)
+      .rotate() // EXIF auto-orient
+      .resize({ width, withoutEnlargement: true })
+      .grayscale() // renk gürültüsü yok, OCR daha iyi
+      .normalize() // histogram stretch — soluk termal için kontrast boost
+      .sharpen({ sigma: 1.0 }) // kenarları keskinleştir — rakamlar daha belirgin
+      .jpeg({ quality })
+      .toBuffer();
+    return processed.toString('base64');
+  }
+
+  /** Claude ile tarih okuma — Sonnet 4.6 primary, başarısızsa farklı prompt ile 2. deneme. */
   private async claudeExtractDate(
     buffer: Buffer,
     tenantId?: string,
-    _hintDonem?: string, // şu an kullanılmıyor — modelin serbest yorumu daha iyi sonuç veriyor
+    _hintDonem?: string,
   ): Promise<{ date: string | null; fields: any }> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return { date: null, fields: {} };
 
-    // Görseli hazırla — Haiku için orta çözünürlük
-    let b64Haiku: string;
+    // Pre-processed hi-res görsel (grayscale+kontrast+sharpen) — Sonnet için optimize
+    let b64: string;
     try {
-      const processed = await sharp(buffer)
-        .rotate()
-        .resize({ width: 1200, withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toBuffer();
-      b64Haiku = processed.toString('base64');
+      b64 = await this.prepareOcrImage(buffer, 1600, 85);
     } catch (e: any) {
       this.logger.warn(`Görsel hazırlama hatası: ${e?.message}`);
       return { date: null, fields: {} };
     }
 
-    // 1. Haiku — hızlı ve ucuz
-    const haiku = await this.claudeOcrOnce(
-      'claude-haiku-4-5-20251001',
-      b64Haiku,
+    // 1. Sonnet 4.6 — agresif prompt ile direkt
+    const first = await this.claudeOcrOnce(
+      'claude-sonnet-4-6',
+      b64,
       tenantId,
       '',
-    );
-    if (haiku.date) return { date: haiku.date, fields: haiku.fields };
-
-    // 2. Haiku null → Sonnet ile retry (daha güçlü + agresif prompt + daha yüksek çözünürlük)
-    let b64Sonnet = b64Haiku;
-    try {
-      const hi = await sharp(buffer)
-        .rotate()
-        .resize({ width: 1800, withoutEnlargement: true })
-        .jpeg({ quality: 88 })
-        .toBuffer();
-      // Payload kontrolü: base64 sonrası ~4/3 artar; 5MB üzerine çıkıyorsa 1200'de kal
-      if (hi.length < 3_500_000) b64Sonnet = hi.toString('base64');
-    } catch {
-      /* fallback: b64Haiku */
-    }
-
-    const sonnet = await this.claudeOcrOnce(
-      'claude-sonnet-4-5',
-      b64Sonnet,
-      tenantId,
-      '-retry',
       { aggressive: true },
     );
-    if (sonnet.date) {
-      return { date: sonnet.date, fields: { ...haiku.fields, ...sonnet.fields } };
+    if (first.date) return { date: first.date, fields: first.fields };
+
+    // 2. Hala null — farklı bir açı dene (zoom: üst kısma odaklan, daha yüksek kalite)
+    try {
+      const meta = await sharp(buffer).metadata();
+      const W = meta.width ?? 1200;
+      const H = meta.height ?? 1600;
+      // Fişin üst %40'ını crop et — tarih genelde üstte
+      const topCrop = await sharp(buffer)
+        .rotate()
+        .extract({
+          left: 0,
+          top: 0,
+          width: W,
+          height: Math.floor(H * 0.4),
+        })
+        .resize({ width: 1400, withoutEnlargement: true })
+        .grayscale()
+        .normalize()
+        .sharpen({ sigma: 1.2 })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      const b64Top = topCrop.toString('base64');
+
+      const retry = await this.claudeOcrOnce(
+        'claude-sonnet-4-6',
+        b64Top,
+        tenantId,
+        '-retry',
+        { aggressive: true },
+      );
+      if (retry.date) {
+        return { date: retry.date, fields: { ...first.fields, ...retry.fields } };
+      }
+    } catch (e: any) {
+      this.logger.debug(`Top-crop retry hatası: ${e?.message}`);
     }
 
-    // İkisi de null → Haiku'nun alan bilgilerini koru (bazen tarih yok ama belgeNo var)
-    return { date: null, fields: haiku.fields };
+    // İkisi de null — alan bilgilerini yine de döndür
+    return { date: null, fields: first.fields };
   }
 
   async scanImages(
@@ -533,9 +553,9 @@ export class FisYazdirmaService {
     );
 
     if (useClaude) {
-      // Claude path: paralel 5'er 5'er işle (rate limit dostu)
+      // Claude path: paralel 3'er işle (Sonnet daha pahalı/yavaş — rate limit dostu)
       const { default: pLimit } = await (Function('return import("p-limit")')() as Promise<{ default: any }>);
-      const limit = pLimit(5);
+      const limit = pLimit(3);
       const detected: ScanDetected[] = [];
       const unread: ScanUnread[] = [];
       const results = await Promise.all(
