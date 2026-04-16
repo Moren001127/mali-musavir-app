@@ -179,105 +179,27 @@ export class MihsapService {
     return `${tenantId}/mihsap-invoices/${mukellefId}/${donem}/${side}/${safeBelgeNo}_${mihsapId}.${ext}`;
   }
 
-  /** Tek bir faturanın JPEG'ini MIHSAP'tan indir + S3'e koy + DB'ye yaz */
+  /** Fatura metadata'sını DB'ye yaz. Görüntü MIHSAP CDN'inden (mihsapFileLink)
+   *  direkt sunulur — S3'e kopyalamaya gerek yok. S3 yapılandırılırsa
+   *  ileride burada arşiv kopyası eklenebilir. */
   private async downloadAndStore(
     tenantId: string,
     mukellefId: string,
     item: MihsapInvoiceSummary,
     donem: string,
   ): Promise<{ stored: boolean; skipped?: boolean; reason?: string }> {
-    // Daha önce yüklenmiş mi? mihsapId unique
+    // Daha önce kaydedilmiş mi? mihsapId unique
     const existing = await (this.prisma as any).mihsapInvoice.findUnique({
       where: { mihsapId: String(item.id) },
     });
-    if (existing?.storageKey) {
+    if (existing?.mihsapFileLink) {
       return { stored: false, skipped: true, reason: 'already-stored' };
     }
 
-    const fileUrl = item.fileDownloadLink || item.fileLink;
-    let storageKey: string | undefined;
-    let storageUrl: string | undefined;
-    if (fileUrl) {
-      try {
-        // MIHSAP fatura CDN'i (invoice.mihsap.com) Bearer auth BEKLEMEZ.
-        // Path'teki tenant hash'i güvenlik olarak yeterli. Header gönderirsek
-        // bazı proxy'ler HTML redirect/error döndürebiliyor — o yüzden auth'suz
-        // fetch atıyoruz.
-        const r = await fetch(fileUrl, { redirect: 'follow' });
-
-        // Content-type kontrolü: gelen dosya gerçekten bir görsel/PDF/XML mi?
-        const ctype = (r.headers.get('content-type') || '').toLowerCase();
-        const isValidContent =
-          ctype.startsWith('image/') ||
-          ctype.includes('pdf') ||
-          ctype.includes('xml') ||
-          ctype.includes('octet-stream');
-
-        if (!r.ok) {
-          this.logger.warn(
-            `MIHSAP file download failed ${r.status} for ${item.faturaNo} (${fileUrl})`,
-          );
-        } else if (!isValidContent) {
-          // HTML login sayfası veya redirect body — kaydetme
-          this.logger.warn(
-            `MIHSAP file returned non-file content-type "${ctype}" for ${item.faturaNo}; skipping storage`,
-          );
-        } else {
-          const buf = Buffer.from(await r.arrayBuffer());
-          // Ek sanity check: dosya çok küçükse (<512B) muhtemelen hata sayfasıdır
-          if (buf.length < 512) {
-            this.logger.warn(
-              `MIHSAP file too small (${buf.length}B) for ${item.faturaNo}; skipping storage`,
-            );
-          } else {
-            // URL her zaman .jpg uzantılı geliyor (MIHSAP e-fatura XML'i bile
-            // JPEG render eder). Ama orjDosyaTuru farklıysa onu da saklayalım.
-            const urlExt = (fileUrl.split('.').pop() || 'jpg').split('?')[0].toLowerCase();
-            const orjType = (item.orjDosyaTuru || '').toUpperCase();
-            // Gerçek dosya tipi: önce content-type, sonra URL uzantısı
-            let ext: string;
-            let mime: string;
-            if (ctype.startsWith('image/')) {
-              ext = ctype.includes('png') ? 'png' : 'jpg';
-              mime = ctype;
-            } else if (ctype.includes('pdf')) {
-              ext = 'pdf';
-              mime = 'application/pdf';
-            } else if (ctype.includes('xml')) {
-              ext = 'xml';
-              mime = 'application/xml';
-            } else {
-              // octet-stream fallback → URL uzantısına bak
-              ext = urlExt;
-              mime =
-                urlExt === 'xml'
-                  ? 'application/xml'
-                  : urlExt === 'pdf'
-                    ? 'application/pdf'
-                    : 'image/jpeg';
-            }
-
-            storageKey = this.buildStorageKey(
-              tenantId,
-              mukellefId,
-              donem,
-              item.faturaNo,
-              ext,
-              item.faturaTuru,
-              item.id,
-            );
-            await this.storage.putBuffer(storageKey, buf, mime, {
-              'mihsap-id': String(item.id),
-              'belge-no': item.faturaNo,
-              'orj-dosya-turu': orjType || 'UNKNOWN',
-            });
-            storageUrl = storageKey; // Presigned URL istendiğinde üretilir
-          }
-        }
-      } catch (e: any) {
-        this.logger.warn(`MIHSAP file download exception: ${e?.message}`);
-      }
-    }
+    // S3 upload atlanıyor — MIHSAP CDN (invoice.mihsap.com) auth gerektirmez,
+    // frontend mihsapFileLink'i doğrudan <img> src olarak kullanır.
+    const storageKey: string | undefined = undefined;
+    const storageUrl: string | undefined = undefined;
 
     const faturaTarihi = item.faturaTarihi
       ? new Date(item.faturaTarihi)
@@ -331,7 +253,8 @@ export class MihsapService {
       },
     });
 
-    return { stored: !!storageKey };
+    // mihsapFileLink varsa fatura görüntülenebilir — "stored" olarak say
+    return { stored: !!(storageKey || item.fileLink || item.fileDownloadLink) };
   }
 
   private parseTrDate(s: string): Date {
@@ -340,23 +263,9 @@ export class MihsapService {
     return new Date();
   }
 
-  /** Belirli bir dönemin tüm MIHSAP fatura kayıtlarını + S3 dosyalarını siler (yeniden indirme öncesi) */
+  /** Belirli bir dönemin tüm MIHSAP fatura kayıtlarını siler (yeniden çekme öncesi) */
   async clearPeriod(tenantId: string, mukellefId: string, donem: string) {
-    const existing = await (this.prisma as any).mihsapInvoice.findMany({
-      where: { tenantId, mukellefId, donem },
-      select: { id: true, storageKey: true },
-    });
-    // S3/MinIO'dan sil
-    for (const inv of existing) {
-      if (inv.storageKey) {
-        try {
-          await this.storage.deleteObject(inv.storageKey);
-        } catch (e) {
-          this.logger.warn(`S3 delete failed: ${inv.storageKey}`);
-        }
-      }
-    }
-    // DB'den sil
+    // DB'den sil (S3 kullanılmıyor — dosyalar MIHSAP CDN'inde)
     const { count } = await (this.prisma as any).mihsapInvoice.deleteMany({
       where: { tenantId, mukellefId, donem },
     });
