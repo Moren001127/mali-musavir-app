@@ -855,6 +855,77 @@ model AiCreditTopup {
   @@map("ai_credit_topups")
 }
 
+// ============================================================
+// MIHSAP ENTEGRASYONU
+// ============================================================
+
+// MIHSAP oturum token'ı — eklenti tarafından otomatik senkronize edilir
+model MihsapSession {
+  id           String   @id @default(cuid())
+  tenantId     String   @unique  // Her tenant için tek token
+  token        String   @db.Text // JWT (şifreli saklanır — AES-GCM)
+  email        String?  // Bilgi amaçlı (hangi hesap)
+  updatedBy    String?  // userId / "extension"
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@map("mihsap_sessions")
+}
+
+// MIHSAP'tan çekilen faturalar — metadata + storage path
+model MihsapInvoice {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  mukellefId         String   // Kendi sistemimizdeki mükellef ID
+  mukellefMihsapId   String   // MIHSAP'taki userFirmaBilgisiId
+  donem              String   // "2026-03" formatı (yıl-ay)
+  faturaTuru         String   // "ALIS" | "SATIS" | "TEVKIFATLI_ALIS" vb.
+  belgeTuru          String   // "E_FATURA" | "FIS" | "E_ARSIV" vb.
+  faturaNo           String
+  firmaKimlikNo      String?  // Karşı firma VKN/TCKN
+  firmaUnvan         String?  // Karşı firma adı
+  faturaTarihi       DateTime
+  toplamTutar        Float
+  onayDurumu         String?  // "ONAYLANMIS" vb.
+  mihsapId           String   @unique  // MIHSAP'taki id (duplicate koruma)
+  mihsapFileId       String?
+  mihsapFaturaId     String?
+  orjDosyaTuru       String?  // "XML" | "JPEG" vb.
+  storageKey         String?  // Railway volume / S3 path: {tenant}/{mukellef}/{ay}/{belgeNo}.jpg
+  storageUrl         String?  // Download URL (presigned veya internal)
+  mihsapFileLink     String?  // Orijinal MIHSAP link (fallback)
+  downloadedAt       DateTime?
+  raw                Json?    // Orijinal MIHSAP payload
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([tenantId, mukellefId, donem])
+  @@index([tenantId, donem, faturaTuru])
+  @@index([tenantId, firmaKimlikNo])
+  @@map("mihsap_invoices")
+}
+
+// Toplu çekme komutları — async çalıştırma + progress takibi
+model MihsapFetchJob {
+  id          String   @id @default(cuid())
+  tenantId    String
+  mukellefId  String
+  donem       String   // "2026-03"
+  faturaTuru  String?  // "ALIS" | "SATIS" | null (ikisi birden)
+  status      String   @default("pending") // pending | running | done | failed
+  totalCount  Int      @default(0)
+  fetchedCount Int     @default(0)
+  errorMsg    String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@map("mihsap_fetch_jobs")
+}
+
 model AgentCommand {
   id         String   @id @default(cuid())
   tenantId   String

@@ -70,6 +70,26 @@ export const agentsApi = {
     api.post<AgentCommand>('/agent/commands', body).then((r) => r.data),
   listCommands: (params?: { agent?: string; status?: string; limit?: number }) =>
     api.get<AgentCommand[]>('/agent/commands', { params }).then((r) => r.data),
+
+  // MIHSAP entegrasyonu
+  mihsapSession: () => api.get('/agent/mihsap/session').then((r) => r.data),
+  mihsapFetch: (body: {
+    mukellefId: string;
+    mukellefMihsapId: string;
+    donem: string;
+    faturaTuru?: 'ALIS' | 'SATIS';
+    forceRefresh?: boolean;
+  }) => api.post('/agent/mihsap/fetch', body).then((r) => r.data),
+  mihsapInvoices: (params?: {
+    mukellefId?: string;
+    donem?: string;
+    faturaTuru?: string;
+    limit?: number;
+  }) => api.get('/agent/mihsap/invoices', { params }).then((r) => r.data),
+  mihsapDownloadUrl: (id: string) =>
+    api.get(`/agent/mihsap/invoices/${id}/download`).then((r) => r.data),
+  mihsapJobs: (limit?: number) =>
+    api.get('/agent/mihsap/jobs', { params: { limit } }).then((r) => r.data),
 };
 
 // Ajanlar sabit listesi (local script eşlemesi)

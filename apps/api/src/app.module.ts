@@ -14,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { FisYazdirmaModule } from './fis-yazdirma/fis-yazdirma.module';
 import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
 import { AgentEventsModule } from './agent-events/agent-events.module';
+import { MihsapModule } from './mihsap/mihsap.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -33,6 +34,7 @@ import { ReminderCron } from './schedule/reminder.cron';
     FisYazdirmaModule,
     SmsTemplatesModule,
     AgentEventsModule,
+    MihsapModule,
   ],
   providers: [ReminderCron],
 })

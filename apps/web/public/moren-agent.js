@@ -21,6 +21,35 @@
     localStorage.setItem('moren_agent_token', TOKEN);
   }
 
+  // === MIHSAP TOKEN SENKRONİZASYONU ===
+  // MIHSAP JWT'sini backend'e gönder (fatura çekme için gerekli)
+  let lastSyncedMihsapToken = '';
+  async function syncMihsapToken() {
+    try {
+      const mihsapToken = localStorage.getItem('token');
+      if (!mihsapToken || mihsapToken.length < 20) return;
+      if (mihsapToken === lastSyncedMihsapToken) return; // değişmemiş
+      const email = localStorage.getItem('rememberedEmail') || '';
+      const r = await fetch(API + '/agent/mihsap/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + TOKEN,
+        },
+        body: JSON.stringify({ token: mihsapToken, email }),
+      });
+      if (r.ok) {
+        lastSyncedMihsapToken = mihsapToken;
+        console.log('[Moren] MIHSAP token backend ile senkronize edildi');
+      }
+    } catch (e) {
+      console.warn('[Moren] MIHSAP token sync hata:', e?.message);
+    }
+  }
+  // İlk açılışta ve 60 saniyede bir kontrol et
+  syncMihsapToken();
+  setInterval(syncMihsapToken, 60000);
+
   // === UI ===
   const panel = document.createElement('div');
   panel.id = 'moren-agent-panel';
