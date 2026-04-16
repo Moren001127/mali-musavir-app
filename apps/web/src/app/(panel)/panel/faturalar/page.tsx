@@ -32,6 +32,8 @@ type MihsapInvoice = {
   toplamTutar: number;
   storageKey?: string | null;
   downloadedAt?: string | null;
+  orjDosyaTuru?: string | null;
+  mihsapFileLink?: string | null;
 };
 
 const MONTHS = [
