@@ -499,6 +499,31 @@ export class MihsapService {
     return null;
   }
 
+  /** DEBUG — DB kayıt + ham MIHSAP payload'u. Hangi tarih alanı kabul tarihi
+   *  onu anlamak için. */
+  async getInvoiceRaw(tenantId: string, invoiceId: string) {
+    const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
+    if (!inv || inv.tenantId !== tenantId) return { error: 'bulunamadı' };
+    // Ham payload içindeki tüm tarih benzeri alanları öne çıkar
+    const raw = inv.raw || {};
+    const dateFields: Record<string, any> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, any>)) {
+      if (/tarih|date|time/i.test(k)) dateFields[k] = v;
+    }
+    return {
+      db: {
+        id: inv.id,
+        faturaNo: inv.faturaNo,
+        faturaTarihi: inv.faturaTarihi,
+        donem: inv.donem,
+        createdAt: inv.createdAt,
+        downloadedAt: inv.downloadedAt,
+      },
+      rawDateFields: dateFields,
+      rawFull: raw,
+    };
+  }
+
   /** Son çekme işlerini listele (progress gösterimi için) */
   async listFetchJobs(tenantId: string, limit = 20) {
     // Stale job'ları temizle: 5 dk'dan uzun süredir "running" olan job'ları fail yap

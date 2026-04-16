@@ -117,6 +117,14 @@ export class MihsapController {
     return { url };
   }
 
+  /** DEBUG — bir faturanın tüm DB alanlarını ve MIHSAP ham payload'unu döndürür.
+   *  Hangi tarih alanı "kabul tarihi"dir onu tespit için. */
+  @Get('invoices/:id/raw')
+  @UseGuards(AuthGuard('jwt'))
+  async raw(@Req() req: any, @Param('id') id: string) {
+    return this.service.getInvoiceRaw(req.user.tenantId, id);
+  }
+
   /** Fatura dosyası proxy — CORS olmadan binary stream eder */
   @Get('invoices/:id/file')
   @UseGuards(AuthGuard('jwt'))
