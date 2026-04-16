@@ -1147,64 +1147,85 @@
           aiKullanildi = true;
           let aiHata = null;
           setStatus(`${mukellef.ad} · #${fid} İşletme · AI dolduruyor…`);
+
+          // Tüm alt türleri birleştir — tek seferde AI'ya gönder
+          const tumAltOptions = [];
+          for (const vals of Object.values(ISLETME_KAYIT_ALT_MAP)) {
+            for (const v of vals) { if (!tumAltOptions.includes(v)) tumAltOptions.push(v); }
+          }
+
           for (let bi = 0; bi < blok.detay.length; bi++) {
             const d = blok.detay[bi];
             if (d.kayitDolu && d.altDolu) continue;
 
-            // Kayıt Türü: hardcoded listeden AI karar versin
+            // TEK AŞAMALI AI: Kayıt Türü + K. Alt Türü birlikte sorulur
             const kayitOptions = ISLETME_KAYIT_TURU_LIST_ALIS;
-            const kararKayit = d.kayitDolu
-              ? { emin: true, kayitTuru: d.kayitDeger, altTuru: null }
-              : await aiDecideIsletme({
-                  kayitOptions,
-                  altOptions: [],
-                  tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
-                  mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
-                  matrah: d.matrah, kdv: d.kdv,
-                  action, blokIndex: bi + 1, blokToplam: blok.detay.length,
-                });
-
-            if (!kararKayit?.emin || !kararKayit.kayitTuru) {
-              aiHata = `Kayıt Türü emin_degil: ${(kararKayit?.sebep || '').slice(0, 60)}`;
-              break;
-            }
-
-            if (!d.kayitDolu) {
-              const ok = await pickAntSelectOption(d.kayitSelect, kararKayit.kayitTuru);
-              if (!ok) {
-                aiHata = `Kayıt Türü seçilemedi: ${kararKayit.kayitTuru}`;
-                break;
-              }
-              aiOzet.push(`B${bi + 1}K:${kararKayit.kayitTuru}`);
-              await sleep(300);
-            }
-
-            // K. Alt Türü: hardcoded map'ten oku, dropdown'ı açma
-            if (!d.altDolu) {
-              const altOptions = ISLETME_KAYIT_ALT_MAP[kararKayit.kayitTuru] || [];
-              if (!altOptions.length) {
-                aiHata = `K. Alt Türü listesi boş (${kararKayit.kayitTuru})`;
-                break;
-              }
-              const kararAlt = await aiDecideIsletme({
-                kayitOptions: [kararKayit.kayitTuru],
+            let karar;
+            if (d.kayitDolu && !d.altDolu) {
+              // Kayıt Türü zaten seçili, sadece alt türü sor
+              const altOptions = ISLETME_KAYIT_ALT_MAP[d.kayitDeger] || tumAltOptions;
+              karar = await aiDecideIsletme({
+                kayitOptions: [d.kayitDeger],
                 altOptions,
                 tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
                 mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
               });
-              if (!kararAlt?.emin || !kararAlt.altTuru) {
-                aiHata = `K. Alt Türü emin_degil: ${(kararAlt?.sebep || '').slice(0, 60)}`;
+              if (karar?.emin) karar.kayitTuru = d.kayitDeger;
+            } else {
+              // Her ikisi de boş — tek çağrıda ikisini birden sor
+              karar = await aiDecideIsletme({
+                kayitOptions,
+                altOptions: tumAltOptions,
+                tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
+                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                matrah: d.matrah, kdv: d.kdv,
+                action, blokIndex: bi + 1, blokToplam: blok.detay.length,
+              });
+            }
+
+            if (!karar?.emin || !karar.kayitTuru) {
+              aiHata = `Kayıt Türü emin_degil: ${(karar?.sebep || '').slice(0, 80)}`;
+              break;
+            }
+
+            // Client-side doğrulama: altTuru, seçilen kayitTuru'nun listesinde mi?
+            const gecerliAltlar = ISLETME_KAYIT_ALT_MAP[karar.kayitTuru] || [];
+            if (karar.altTuru && gecerliAltlar.length > 0 && !gecerliAltlar.includes(karar.altTuru)) {
+              // Eşleşme yok — en yakın eşleşmeyi dene (case-insensitive)
+              const hit = gecerliAltlar.find(a => a.toLowerCase() === karar.altTuru.toLowerCase());
+              if (hit) {
+                karar.altTuru = hit;
+              } else {
+                aiHata = `K.Alt Türü eşleşmez: "${karar.altTuru}" ∉ ${karar.kayitTuru}`;
                 break;
               }
-              const ok2 = await pickAntSelectOption(d.altSelect, kararAlt.altTuru);
+            }
+
+            // Kayıt Türü seç
+            if (!d.kayitDolu) {
+              const ok = await pickAntSelectOption(d.kayitSelect, karar.kayitTuru);
+              if (!ok) {
+                aiHata = `Kayıt Türü seçilemedi: ${karar.kayitTuru}`;
+                break;
+              }
+              aiOzet.push(`B${bi + 1}K:${karar.kayitTuru}`);
+              await sleep(400);
+            }
+
+            // K. Alt Türü seç
+            if (!d.altDolu && karar.altTuru) {
+              const ok2 = await pickAntSelectOption(d.altSelect, karar.altTuru);
               if (!ok2) {
-                aiHata = `K. Alt Türü seçilemedi: ${kararAlt.altTuru}`;
+                aiHata = `K. Alt Türü seçilemedi: ${karar.altTuru}`;
                 break;
               }
-              aiOzet.push(`B${bi + 1}A:${kararAlt.altTuru}`);
+              aiOzet.push(`B${bi + 1}A:${karar.altTuru}`);
               await sleep(200);
+            } else if (!d.altDolu) {
+              aiHata = `K. Alt Türü AI tarafından belirlenmedi (kayıt: ${karar.kayitTuru})`;
+              break;
             }
           }
 
