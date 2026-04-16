@@ -212,7 +212,7 @@ export class AgentEventsService {
     mukellef?: string;
     firma?: string;
     tutar?: number | string;
-    action?: string; // 'isle_alis' | 'isle_satis'
+    action?: string; // 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
     tenantId?: string;
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -233,7 +233,14 @@ export class AgentEventsService {
       } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
-    const islemTuru = input.action === 'isle_satis' ? 'SATIŞ' : input.action === 'isle_alis' ? 'ALIŞ' : 'ALIŞ';
+    // Hem Bilanço hem İşletme Defteri için alış/satış ayrımı aynı — URL farklı, işlem mantığı aynı.
+    const SATIS_ACTIONS = ['isle_satis', 'isle_satis_isletme'];
+    const ALIS_ACTIONS = ['isle_alis', 'isle_alis_isletme'];
+    const islemTuru = SATIS_ACTIONS.includes(input.action || '')
+      ? 'SATIŞ'
+      : ALIS_ACTIONS.includes(input.action || '')
+      ? 'ALIŞ'
+      : 'ALIŞ';
 
     // === DETERMİNİSTİK KOD KONTROLÜ ===
     const SATIS_PFX = ['600', '601', '602', '120', '121', '122', '391'];
