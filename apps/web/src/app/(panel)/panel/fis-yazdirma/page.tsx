@@ -314,11 +314,21 @@ export default function FisYazdirmaPage() {
 
           // DB'deki faturaTarihi = muhasebede işlendiği kabul tarihi.
           // Fiş geç gelmiş olsa bile bu tarih yasal/muhasebe açısından doğrudur.
+          // ÖNEMLİ: Postgres UTC olarak saklıyor, .slice(0,10) UTC gününü verir.
+          // Türkiye saatinde (UTC+3) günü almak için toLocaleDateString / getDate kullanmak gerekir.
+          // Aksi halde Postgres "2026-02-28T21:00:00.000Z" = TR 01.03.2026 gibi kayıtlar
+          // Word çıktısında 28.02.2026 gibi yanlış güne kayar.
           const rawDate = inv.faturaTarihi || inv.belgeTarihi || inv.tarih;
-          if (rawDate && typeof rawDate === 'string') {
-            const iso = rawDate.slice(0, 10);
-            if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-              datesFromDb[safeName] = iso;
+          if (rawDate) {
+            const d = new Date(rawDate as any);
+            if (!isNaN(d.getTime())) {
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              const iso = `${y}-${m}-${day}`;
+              if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+                datesFromDb[safeName] = iso;
+              }
             }
           }
         } catch (e: any) {
