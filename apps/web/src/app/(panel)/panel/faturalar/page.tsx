@@ -597,13 +597,22 @@ function InvoicePreviewModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ESC ile kapat
+  // ESC ile kapat + body scroll kilitle (listenin altındayken modal
+  // görünmez kalmasın diye scroll'u engelle ve modal'ı viewport'a sabitle)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Body scroll kilitle
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    // Scroll pozisyonunu sıfırla — parent transform varsa fixed bozulabilir
+    window.scrollTo({ top: 0 });
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
   }, [onClose]);
 
   useEffect(() => {
