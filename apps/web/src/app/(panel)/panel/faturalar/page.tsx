@@ -607,6 +607,14 @@ function InvoicePreviewModal({
   }, [onClose]);
 
   useEffect(() => {
+    // Öncelik 1: MIHSAP CDN URL'i (auth gerektirmez, direkt açılır)
+    // Öncelik 2: Backend presigned URL (S3 arşivlenmiş dosyalar için)
+    if (invoice.mihsapFileLink) {
+      setUrl(invoice.mihsapFileLink);
+      setLoading(false);
+      return;
+    }
+    // Fallback: S3 presigned URL (backend'e sor)
     (async () => {
       try {
         setLoading(true);
@@ -619,7 +627,7 @@ function InvoicePreviewModal({
         setLoading(false);
       }
     })();
-  }, [invoice.id]);
+  }, [invoice.id, invoice.mihsapFileLink]);
 
   const isAlis = invoice.faturaTuru.includes('ALIS');
   const date = new Date(invoice.faturaTarihi);
@@ -661,15 +669,37 @@ function InvoicePreviewModal({
           </div>
           <div className="flex items-center gap-2">
             {url && (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener"
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
-              >
-                <Download size={12} /> İndir
-              </a>
+              <>
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                  style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+                >
+                  <FileText size={12} /> Yeni Sekmede Aç
+                </a>
+                <button
+                  onClick={() => {
+                    // Cross-origin blob indirme: fetch → blob → download link
+                    fetch(url)
+                      .then(r => r.blob())
+                      .then(blob => {
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${invoice.faturaNo || 'fatura'}.jpg`;
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 100);
+                      })
+                      .catch(() => window.open(url, '_blank'));
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                  style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+                >
+                  <Download size={12} /> İndir
+                </button>
+              </>
             )}
             <button
               onClick={onClose}
