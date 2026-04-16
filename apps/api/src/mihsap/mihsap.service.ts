@@ -461,18 +461,35 @@ export class MihsapService {
     });
   }
 
-  /** Bir faturanın presigned download URL'ini döndür */
+  /** Bir faturanın görüntüleme URL'ini döndür.
+   *  Öncelik: 1) S3 presigned URL (eğer arşivlenmişse)
+   *           2) MIHSAP CDN direkt URL'i (fallback — auth gerektirmez)
+   */
   async getInvoiceDownloadUrl(tenantId: string, invoiceId: string): Promise<string | null> {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) return null;
-    if (!inv.storageKey) return null;
-    // storageKey sonunda gerçek dosya uzantısı (jpg/pdf/xml) mevcut — onu kullan
-    const keyExt = (inv.storageKey.split('.').pop() || 'jpg').toLowerCase();
-    const safeExt = ['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(keyExt) ? keyExt : 'jpg';
-    return this.storage.getPresignedDownloadUrl(
-      inv.storageKey,
-      `${inv.faturaNo}.${safeExt}`,
-    );
+
+    if (inv.storageKey) {
+      // storageKey sonunda gerçek dosya uzantısı (jpg/pdf/xml) mevcut — onu kullan
+      const keyExt = (inv.storageKey.split('.').pop() || 'jpg').toLowerCase();
+      const safeExt = ['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(keyExt) ? keyExt : 'jpg';
+      try {
+        return await this.storage.getPresignedDownloadUrl(
+          inv.storageKey,
+          `${inv.faturaNo}.${safeExt}`,
+        );
+      } catch (e: any) {
+        // S3 erişilemez durumdaysa fallback'e düş
+        this.logger.warn(`Presigned URL üretilemedi, MIHSAP fallback: ${e?.message}`);
+      }
+    }
+
+    // Fallback: MIHSAP CDN URL'i (auth gerektirmez, path hash ile korumalı)
+    if (inv.mihsapFileLink) {
+      return inv.mihsapFileLink;
+    }
+
+    return null;
   }
 
   /** Son çekme işlerini listele (progress gösterimi için) */

@@ -523,7 +523,8 @@ function InvoiceRow({
 }) {
   const isAlis = invoice.faturaTuru.includes('ALIS');
   const date = new Date(invoice.faturaTarihi);
-  const canPreview = !!invoice.storageKey;
+  // S3'e arşivlenmiş veya MIHSAP'ın CDN linki varsa önizle
+  const canPreview = !!invoice.storageKey || !!invoice.mihsapFileLink;
   return (
     <tr
       className="border-t hover:bg-black/[.02] cursor-pointer"
