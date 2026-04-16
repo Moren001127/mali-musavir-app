@@ -527,20 +527,51 @@ Ekrandaki blok matrah: ${input.matrah ?? '?'} | KDV: ${input.kdv || '?'}
 Kayıt Türü seçenekleri: ${kayitListe || '(boş)'}
 K. Alt Türü seçenekleri: ${altListe || '(boş)'}
 
-### KURALLAR ###
-1. ALIŞ modunda: fatura satırı MAL ise → Kayıt Türü = "Mal Alışı". Gider/hizmet ise → "İndirilecek Giderler" (veya ALIŞ listesinden uygunu).
-2. SATIŞ modunda: mal satışı → "Mal Satışı", hizmet ise → "Hizmet Satışı".
-3. K. Alt Türü: fatura içeriğini oku ve alt liste ile eşleştir.
-   - Mal alışı/satışında K. Alt Türü genellikle aynı isimdedir ("Mal Alışı"/"Mal Satışı") — alt listede yoksa en yakını seç.
-   - Gider kaleminde: elektrik faturasıysa "Elektrik", kırtasiye ise "Kırtasiye", ofis kirası yoksa "Ofis Giderleri", telefon faturası "Telefon" vb. Liste dışı seçme.
-4. HER İKİ liste de boş ya da eşleşme kesin değilse → emin:false dön. Tahmin yapma.
-5. Emin olduğun değerler MEVCUT SEÇENEKLER'de birebir var olmalı (karakter karakter). Yoksa emin:false.
-6. Fatura görüntüsü okunamıyorsa emin:false.
+### KAYIT TÜRÜ SEÇİM KURALLARI (ÇOK ÖNEMLİ) ###
+
+**VARSAYILAN: "İndirilecek Giderler (GVK Md. 40)"**
+İşletme defterinde faturaların büyük çoğunluğu (%80+) "İndirilecek Giderler" kategorisindedir.
+Emin değilsen her zaman "İndirilecek Giderler (GVK Md. 40)" seç.
+
+**"Mal Alışı" SADECE şu durumlarda kullanılır:**
+- Mükellef bir MARKET, BÜFE, BAKKAL, TOPTAN SATIŞ veya PERAKENDE TİCARET işletmesiyse VE
+- Faturadaki ürünler mükellefin SATIŞ AMAÇLI aldığı TİCARİ EMTIA ise (raftan satacağı ürünler)
+- Örnek: Büfe sahibi → toptancıdan çikolata/içecek alışı = Mal Alışı
+- Örnek: Büfe sahibi → elektrik faturası = İndirilecek Giderler (Mal Alışı DEĞİL!)
+
+**"Mal Alışı" KULLANILMAZ şu durumlarda:**
+- Mağazadan/marketten kendi kullanım için alışveriş (ofis malzemesi, temizlik vb.)
+- Akaryakıt, kira, telefon, internet, sigorta, muhasebe ücreti
+- Yemek, konaklama, ulaşım giderleri
+- Herhangi bir HİZMET faturası
+- İçeriği net anlaşılamayan ÖKC fişleri → "İndirilecek Giderler" kullan
+
+**"Sabit Kıymet Alışı":** Bilgisayar, araç, makine, ofis mobilyası gibi uzun ömürlü varlıklar
+**"Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)":** Cezalar, bağışlar, kişisel harcamalar
+
+### K. ALT TÜRÜ SEÇİM KURALLARI ###
+- Fatura içeriğine göre en uygun alt kategoriyi seç
+- Akaryakıt/benzin → "Taşıt Akaryakıt Giderleri (GVK 40/1-40/5)"
+- Telefon → "Telefon Giderleri (GVK 40/1)"
+- Elektrik → "Elektrik Giderleri (GVK 40/1)"
+- Kırtasiye → "Kırtasiye Harcamaları (GVK 40/1)"
+- Yemek/gıda → "Gıda Harcamaları (GVK 40/1-40/2)" veya "Temsil ve Ağırlama Gideri (İş yemeği vb.) (GVK 40/1)"
+- Ofis temizlik/çay/kahve → "Ofis Giderleri(Çay, Kahve, Şeker, Temizlik vb.) (GVK 40/1)"
+- Muhasebe → "Muhasebe/Mali Müşavirlik Giderleri (GVK 40/1)"
+- İçeriği belirsiz ama gider olduğu kesin → "Diğer (GVK 40/1)"
+- Mal Alışı için alt tür genellikle "Mal Alışı" (aynı isim)
+- Liste dışı değer üretme, eşleşme yoksa en yakını seç
+
+### GENEL KURALLAR ###
+1. Emin olduğun değerler MEVCUT SEÇENEKLER'de birebir var olmalı (karakter karakter). Yoksa emin:false.
+2. Fatura görüntüsü okunamıyorsa → emin:false
+3. ÖKC fişi / perakende satış fişi okunamıyorsa bile gider olduğu kesinse → İndirilecek Giderler + "Diğer (GVK 40/1)"
+4. Tahmin yapma ama makul çıkarım yapabilirsin (OPET = akaryakıt, TURKCELL = telefon gibi)
 
 ### YASAK ###
 × Listede olmayan değer üretme
 × "Belki", "muhtemelen" ile emin=true deme
-× Demirbaş kodu/araç satışı algılarsan emin:false + sebep="demirbaş/araç"
+× İçerik okunamıyorsa Mal Alışı deme — İndirilecek Giderler / Diğer kullan
 
 ${mukellefTalimat ? `### MÜKELLEF ÖZEL TALİMATI ###\n${mukellefTalimat}\n` : ''}
 
