@@ -1035,6 +1035,9 @@
       // ==========================================================
       const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
       if (isIsletme) {
+        // Tüm loglara tarih/firma/belge no ekleyen kısayol
+        const mTag = `${meta.tarih || '?'} · ${(meta.firma || '?').slice(0, 30)} · #${meta.belgeNo || '?'} · ${meta.tutar || '?'}`;
+
         // --- 1) ÜST 3 ALAN: Fatura Türü / Belge Türü / Alış-Satış Türü ---
         const isAlis = action === 'isle_alis_isletme';
         const ust = isletmeUstAlanDurumu();
@@ -1047,14 +1050,14 @@
           const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
           if (!ok) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
             await clickIleri(fid); continue;
           }
           ustOzet.push(`FatT:${beklenenFaturaTuru}`);
           ust.faturaTuru = beklenenFaturaTuru;
         } else if (ust.faturaTuru !== beklenenFaturaTuru) {
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
           await clickIleri(fid); continue;
         }
 
@@ -1078,7 +1081,7 @@
           }
           if (!ust.belgeTuru) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
             await clickIleri(fid); continue;
           }
         }
@@ -1094,7 +1097,7 @@
             ustOzet.push(`AST:${varsayilan}`);
           } else {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
             await clickIleri(fid); continue;
           }
         }
@@ -1103,7 +1106,7 @@
         let blok = isletmeBlokDurumu();
         if (!blok.varMi) {
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', 'İşletme: blok bulunamadı', {
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · İşletme: blok bulunamadı`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
           });
           await clickIleri(fid); continue;
@@ -1131,7 +1134,7 @@
         }
         if (doluKontrolHata) {
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `Doğrulama: ${doluKontrolHata}`, {
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Doğrulama: ${doluKontrolHata}`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
           });
           await clickIleri(fid); continue;
@@ -1207,7 +1210,7 @@
 
           if (aiHata) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `AI: ${aiHata}`, {
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI: ${aiHata}`, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
             });
             await clickIleri(fid); continue;
@@ -1216,7 +1219,7 @@
           blok = isletmeBlokDurumu();
           if (!blok.varMi || blok.bosBlokVar) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', 'AI sonrası hâlâ boş blok var', {
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI sonrası hâlâ boş blok var`, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
             });
             await clickIleri(fid); continue;
@@ -1286,7 +1289,7 @@
           if (saved) {
             counters.onay++; counters.toplam++; setCount();
             const aiNot = aiKullanildi ? ` · AI` : '';
-            const logMsg = `F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
+            const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
@@ -1294,8 +1297,8 @@
           } else {
             counters.atla++; counters.toplam++; setCount();
             const atlamaSebebi = validationFailed
-              ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : 'İşletme F2 sonuçlanmadı';
+              ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+              : `${mTag} · İşletme F2 sonuçlanmadı`;
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
             });
@@ -1303,7 +1306,7 @@
           }
         } catch (e) {
           counters.hata++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'error', String(e), {
+          await logEvent(mukellef.id, mukellef.ad, 'error', `${mTag} · ${String(e)}`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
           });
           await clickIleri(fid);

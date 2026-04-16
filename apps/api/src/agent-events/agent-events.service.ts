@@ -625,8 +625,11 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
           if (typeof parsed?.emin === 'boolean') {
             // Sanity: seçilen değerler gerçekten listede mi?
             if (parsed.emin) {
-              const inKayit = input.kayitTuruOptions.includes(parsed.kayitTuru);
-              const inAlt = input.altTuruOptions.includes(parsed.altTuru);
+              // 2-aşamalı yaklaşım: ilk çağrıda altTuruOptions boş gönderilir (sadece kayıt kararı).
+              // Bu durumda altTuru validasyonunu atla.
+              const inKayit = input.kayitTuruOptions.length === 0 || input.kayitTuruOptions.includes(parsed.kayitTuru);
+              const altListeVar = input.altTuruOptions && input.altTuruOptions.length > 0;
+              const inAlt = !altListeVar || input.altTuruOptions.includes(parsed.altTuru);
               if (!inKayit || !inAlt) {
                 await logUsage('emin_degil', `liste dışı: kayit=${inKayit} alt=${inAlt}`, usage);
                 return {
