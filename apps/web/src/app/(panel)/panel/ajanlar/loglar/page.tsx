@@ -51,9 +51,11 @@ export default function LoglarPage() {
   };
 
   const total = filtered.length;
-  const onaylandi = filtered.filter((e) => e.status === 'onaylandi' || e.status === 'basarili').length;
-  const atlandi = filtered.filter((e) => e.status === 'atlandi').length;
-  const hata = filtered.filter((e) => e.status === 'hata').length;
+  // Eski ajan ('ok'/'skip'/'error') ve yeni ajan ('onaylandi'/'atlandi'/'hata') kayıtları
+  // veritabanında karışık olabilir — her iki değeri de say.
+  const onaylandi = filtered.filter((e) => e.status === 'onaylandi' || e.status === 'basarili' || e.status === 'ok').length;
+  const atlandi = filtered.filter((e) => e.status === 'atlandi' || e.status === 'skip').length;
+  const hata = filtered.filter((e) => e.status === 'hata' || e.status === 'error').length;
 
   return (
     <div className="space-y-4 h-full flex flex-col">

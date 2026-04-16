@@ -22,17 +22,44 @@ export class AgentEventsService {
   constructor(private prisma: PrismaService) {}
 
   async createEvent(tenantId: string, input: AgentEventInput) {
+    // Status normalizasyonu — ajan tarafı eski sürümlerde 'ok'/'skip'/'error' gönderiyordu.
+    // DB şeması ve UI filter 'onaylandi'/'atlandi'/'hata' değerlerini bekliyor.
+    // Hem eski hem yeni ajanlardan gelen kayıtlar aynı kanonik değere map edilsin ki
+    // "Yapılan İşlemler" sayfasındaki filtreler ve sayaçlar doğru çalışsın.
+    const STATUS_MAP: Record<string, string> = {
+      ok: 'onaylandi',
+      onay: 'onaylandi',
+      onaylandi: 'onaylandi',
+      basarili: 'basarili',
+      skip: 'atlandi',
+      atla: 'atlandi',
+      atlandi: 'atlandi',
+      error: 'hata',
+      hata: 'hata',
+      info: 'bilgi',
+      bilgi: 'bilgi',
+    };
+    const rawStatus = String(input.status || '').toLowerCase();
+    const normalizedStatus = STATUS_MAP[rawStatus] || input.status;
+
+    // tutar boş string veya NaN gelirse null yap
+    let normalizedTutar: number | null = null;
+    if (input.tutar != null && input.tutar !== ('' as any)) {
+      const n = Number(input.tutar);
+      if (Number.isFinite(n)) normalizedTutar = n;
+    }
+
     return this.prisma.agentEvent.create({
       data: {
         tenantId,
         agent: input.agent,
         action: input.action,
-        status: input.status,
+        status: normalizedStatus,
         message: input.message,
         mukellef: input.mukellef,
         firma: input.firma,
         fisNo: input.fisNo,
-        tutar: input.tutar,
+        tutar: normalizedTutar,
         hesapKodu: input.hesapKodu,
         kdv: input.kdv,
         meta: input.meta ?? undefined,
@@ -49,7 +76,19 @@ export class AgentEventsService {
     const where: any = { tenantId };
     if (agent) where.agent = agent;
     if (mukellef) where.mukellef = { contains: mukellef, mode: 'insensitive' };
-    if (status) where.status = status;
+    if (status) {
+      // Eski ajan kayıtlarıyla uyum için status alternatiflerini de kapsa
+      const STATUS_ALIAS: Record<string, string[]> = {
+        onaylandi: ['onaylandi', 'ok', 'basarili'],
+        atlandi: ['atlandi', 'skip'],
+        hata: ['hata', 'error'],
+        basarili: ['basarili', 'onaylandi', 'ok'],
+        bilgi: ['bilgi', 'info'],
+      };
+      const aliases = STATUS_ALIAS[status.toLowerCase()];
+      if (aliases && aliases.length > 1) where.status = { in: aliases };
+      else where.status = status;
+    }
     if (since) where.ts = { gte: new Date(since) };
     return this.prisma.agentEvent.findMany({
       where,
@@ -66,8 +105,13 @@ export class AgentEventsService {
     const [toplam, buGun, buAy, hata] = await Promise.all([
       this.prisma.agentEvent.count({ where: { tenantId } }),
       this.prisma.agentEvent.count({ where: { tenantId, ts: { gte: bugun } } }),
-      this.prisma.agentEvent.count({ where: { tenantId, status: 'onaylandi', ts: { gte: ayBas } } }),
-      this.prisma.agentEvent.count({ where: { tenantId, status: 'hata', ts: { gte: bugun } } }),
+      // Eski ajan 'ok' gönderdiği için 'onaylandi' ve 'ok' ikisi de onay sayılsın
+      this.prisma.agentEvent.count({
+        where: { tenantId, status: { in: ['onaylandi', 'basarili', 'ok'] }, ts: { gte: ayBas } },
+      }),
+      this.prisma.agentEvent.count({
+        where: { tenantId, status: { in: ['hata', 'error'] }, ts: { gte: bugun } },
+      }),
     ]);
 
     const perMukellef = await this.prisma.agentEvent.groupBy({
