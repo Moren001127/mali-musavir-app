@@ -4,9 +4,10 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { agentsApi } from '@/lib/agents';
+import { useEffect } from 'react';
 import {
   Download, RefreshCw, FileText, Calendar, Users, CheckCircle2, XCircle,
-  Loader2, AlertCircle, Receipt, Building2, Search, Trash2,
+  Loader2, AlertCircle, Receipt, Building2, Search, Trash2, Info,
 } from 'lucide-react';
 
 type Taxpayer = {
@@ -49,6 +50,8 @@ export default function FaturalarPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<'all' | 'ALIS' | 'SATIS'>('all');
+  const [previewInvoice, setPreviewInvoice] = useState<MihsapInvoice | null>(null);
 
   const donem = `${year}-${month}`;
 
@@ -114,7 +117,7 @@ export default function FaturalarPage() {
     );
   }, [taxpayers, search]);
 
-  const handleFetch = (forceRefresh = false) => {
+  const handleFetch = (faturaTuru?: 'ALIS' | 'SATIS', forceRefresh = false) => {
     if (!selectedTaxpayer) return;
     if (!selectedTaxpayer.mihsapId) {
       alert(
@@ -122,13 +125,15 @@ export default function FaturalarPage() {
       );
       return;
     }
+    const label = faturaTuru === 'ALIS' ? 'alış' : faturaTuru === 'SATIS' ? 'satış' : 'tüm';
     if (forceRefresh) {
-      if (!confirm(`${donem} dönemindeki mevcut tüm kayıtlar silinip yeniden indirilecek. Emin misiniz?`)) return;
+      if (!confirm(`${donem} dönemindeki ${label} faturaları silinip yeniden indirilecek. Emin misiniz?`)) return;
     }
     fetchMut.mutate({
       mukellefId: selectedTaxpayer.id,
       mukellefMihsapId: selectedTaxpayer.mihsapId,
       donem,
+      faturaTuru,
       forceRefresh,
     });
   };
@@ -139,6 +144,12 @@ export default function FaturalarPage() {
   const satisInvoices = invoices.filter((i) => i.faturaTuru.includes('SATIS'));
   const totalAlis = alisInvoices.reduce((s, i) => s + (i.toplamTutar || 0), 0);
   const totalSatis = satisInvoices.reduce((s, i) => s + (i.toplamTutar || 0), 0);
+
+  // Tab filtresi
+  const filteredInvoices = invoices.filter((i) => {
+    if (tab === 'all') return true;
+    return i.faturaTuru.includes(tab);
+  });
 
   return (
     <div className="space-y-4">
@@ -261,29 +272,48 @@ export default function FaturalarPage() {
           </div>
 
           {/* Butonlar */}
-          <div className="md:col-span-2 flex items-end gap-2">
-            <button
-              disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
-              onClick={() => handleFetch(false)}
-              className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-center gap-1.5 disabled:opacity-50"
-              style={{
-                background: 'linear-gradient(135deg, #b8a06f, #8b7649)',
-                color: '#0f0d0b',
-              }}
-              title="Yeni faturaları indirir, mevcutları atlar"
-            >
-              <Download size={14} />
-              {fetchMut.isPending ? 'Çekiliyor…' : "MIHSAP'tan Çek"}
-            </button>
-            <button
-              disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
-              onClick={() => handleFetch(true)}
-              className="px-2 py-2 rounded-lg text-sm border disabled:opacity-50"
-              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-              title="Dönemi sıfırla ve baştan indir"
-            >
-              <RefreshCw size={14} />
-            </button>
+          <div className="md:col-span-2 flex flex-col gap-1.5 justify-end">
+            <div className="flex gap-1.5">
+              <button
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                onClick={() => handleFetch('ALIS', false)}
+                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                style={{ background: 'rgba(59,130,246,.15)', color: '#2563eb', border: '1px solid rgba(59,130,246,.3)' }}
+                title="Alış faturalarını çek"
+              >
+                <Download size={12} /> Alış Çek
+              </button>
+              <button
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                onClick={() => handleFetch('SATIS', false)}
+                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                style={{ background: 'rgba(34,197,94,.15)', color: '#16a34a', border: '1px solid rgba(34,197,94,.3)' }}
+                title="Satış faturalarını çek"
+              >
+                <Download size={12} /> Satış Çek
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                onClick={() => handleFetch(undefined, false)}
+                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' }}
+                title="Alış + Satış hepsini çek"
+              >
+                <Download size={12} />
+                {fetchMut.isPending ? 'Çekiliyor…' : 'Hepsini Çek'}
+              </button>
+              <button
+                disabled={!selectedMukellef || fetchMut.isPending || !!activeJob}
+                onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
+                className="px-2 py-1.5 rounded-lg text-xs border disabled:opacity-50"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                title={tab === 'all' ? 'Dönemi sıfırla (tümü)' : `${tab === 'ALIS' ? 'Alış' : 'Satış'} yeniden indir`}
+              >
+                <RefreshCw size={12} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -350,16 +380,39 @@ export default function FaturalarPage() {
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <div
-            className="px-4 py-3 border-b text-sm font-semibold"
-            style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+            className="px-4 py-2 border-b flex items-center justify-between flex-wrap gap-2"
+            style={{ borderColor: 'var(--border)' }}
           >
-            {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
+            <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
+            </div>
+            {/* Tab filtreleri */}
+            <div className="flex gap-1">
+              {(['all', 'ALIS', 'SATIS'] as const).map((t) => {
+                const count = t === 'all' ? invoices.length : invoices.filter(i => i.faturaTuru.includes(t)).length;
+                const active = tab === t;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+                    style={{
+                      background: active ? (t === 'ALIS' ? '#3b82f6' : t === 'SATIS' ? '#22c55e' : '#b8a06f') : 'transparent',
+                      color: active ? '#fff' : 'var(--text-muted)',
+                      border: active ? 'none' : '1px solid var(--border)',
+                    }}
+                  >
+                    {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
+                  </button>
+                );
+              })}
+            </div>
           </div>
           {invLoading ? (
             <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
               Yükleniyor…
             </div>
-          ) : invoices.length === 0 ? (
+          ) : filteredInvoices.length === 0 ? (
             <div className="p-10 text-center">
               <AlertCircle
                 size={32}
@@ -367,7 +420,7 @@ export default function FaturalarPage() {
                 style={{ color: 'var(--text-muted)' }}
               />
               <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                Bu dönem için kayıtlı fatura yok. "MIHSAP'tan Çek" butonuna basın.
+                Bu dönem için {tab === 'all' ? 'kayıtlı fatura' : tab === 'ALIS' ? 'alış faturası' : 'satış faturası'} yok.
               </p>
             </div>
           ) : (
@@ -386,18 +439,26 @@ export default function FaturalarPage() {
                     <th className="px-4 py-2">Karşı Firma</th>
                     <th className="px-4 py-2">Tarih</th>
                     <th className="px-4 py-2 text-right">Tutar</th>
-                    <th className="px-4 py-2 text-center">Dosya</th>
+                    <th className="px-4 py-2 text-center">Görüntüle</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.map((inv) => (
-                    <InvoiceRow key={inv.id} invoice={inv} />
+                  {filteredInvoices.map((inv) => (
+                    <InvoiceRow key={inv.id} invoice={inv} onPreview={setPreviewInvoice} />
                   ))}
                 </tbody>
               </table>
             </div>
           )}
         </div>
+      )}
+
+      {/* Fatura görüntü önizleme modal (lightbox) */}
+      {previewInvoice && (
+        <InvoicePreviewModal
+          invoice={previewInvoice}
+          onClose={() => setPreviewInvoice(null)}
+        />
       )}
     </div>
   );
@@ -451,24 +512,21 @@ function StatBox({ label, value, sub, color, icon: Icon }: any) {
   );
 }
 
-function InvoiceRow({ invoice }: { invoice: MihsapInvoice }) {
-  const [loading, setLoading] = useState(false);
-  const handleDownload = async () => {
-    if (!invoice.storageKey) return;
-    try {
-      setLoading(true);
-      const { url } = await agentsApi.mihsapDownloadUrl(invoice.id);
-      if (url) window.open(url, '_blank');
-    } finally {
-      setLoading(false);
-    }
-  };
+function InvoiceRow({
+  invoice,
+  onPreview,
+}: {
+  invoice: MihsapInvoice;
+  onPreview: (inv: MihsapInvoice) => void;
+}) {
   const isAlis = invoice.faturaTuru.includes('ALIS');
   const date = new Date(invoice.faturaTarihi);
+  const canPreview = !!invoice.storageKey;
   return (
     <tr
-      className="border-t hover:bg-black/[.02]"
+      className="border-t hover:bg-black/[.02] cursor-pointer"
       style={{ borderColor: 'var(--border)' }}
+      onClick={() => canPreview && onPreview(invoice)}
     >
       <td className="px-4 py-2">
         <span
@@ -502,18 +560,17 @@ function InvoiceRow({ invoice }: { invoice: MihsapInvoice }) {
         ₺{invoice.toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
       </td>
       <td className="px-4 py-2 text-center">
-        {invoice.storageKey ? (
+        {canPreview ? (
           <button
-            onClick={handleDownload}
-            disabled={loading}
-            className="p-1.5 rounded hover:bg-black/10"
-            title="İndir"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPreview(invoice);
+            }}
+            className="p-1.5 rounded hover:bg-black/10 inline-flex items-center gap-1 text-xs"
+            style={{ color: '#3b82f6' }}
+            title="Görüntüle"
           >
-            {loading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Download size={14} style={{ color: '#3b82f6' }} />
-            )}
+            <FileText size={14} /> Aç
           </button>
         ) : (
           <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
@@ -522,5 +579,138 @@ function InvoiceRow({ invoice }: { invoice: MihsapInvoice }) {
         )}
       </td>
     </tr>
+  );
+}
+
+/** Fatura görüntü önizleme modalı — sayfayı kaplayan lightbox */
+function InvoicePreviewModal({
+  invoice,
+  onClose,
+}: {
+  invoice: MihsapInvoice;
+  onClose: () => void;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ESC ile kapat
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const r = await agentsApi.mihsapDownloadUrl(invoice.id);
+        if (r?.url) setUrl(r.url);
+        else setError(r?.error || 'Dosya bulunamadı');
+      } catch (e: any) {
+        setError(e?.message || 'Görüntü alınamadı');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [invoice.id]);
+
+  const isAlis = invoice.faturaTuru.includes('ALIS');
+  const date = new Date(invoice.faturaTarihi);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,.85)' }}
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Üst bar */}
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-xl"
+          style={{ background: 'rgba(15,13,11,.95)', color: '#fff' }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span
+              className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+              style={{
+                background: isAlis ? 'rgba(59,130,246,.2)' : 'rgba(34,197,94,.2)',
+                color: isAlis ? '#60a5fa' : '#4ade80',
+              }}
+            >
+              {isAlis ? 'ALIŞ' : 'SATIŞ'} · {invoice.belgeTuru}
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">
+                {invoice.firmaUnvan || '—'}
+              </div>
+              <div className="text-xs opacity-70">
+                #{invoice.faturaNo} · {date.toLocaleDateString('tr-TR')} · ₺
+                {invoice.toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+              >
+                <Download size={12} /> İndir
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+              title="Kapat (ESC)"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+        </div>
+        {/* İçerik */}
+        <div
+          className="flex-1 rounded-b-xl overflow-auto flex items-center justify-center"
+          style={{ background: 'rgba(15,13,11,.85)' }}
+        >
+          {loading && (
+            <Loader2 size={32} className="animate-spin" style={{ color: '#fff' }} />
+          )}
+          {error && (
+            <div className="text-center p-8" style={{ color: '#fca5a5' }}>
+              <AlertCircle size={32} className="mx-auto mb-2" />
+              <p className="text-sm">{error}</p>
+            </div>
+          )}
+          {url && !loading && !error && (
+            // XML dosyaları için <iframe>, diğerleri için <img>
+            (invoice.orjDosyaTuru || '').toUpperCase() === 'XML' ? (
+              <iframe
+                src={url}
+                className="w-full h-full bg-white"
+                title={invoice.faturaNo}
+              />
+            ) : (
+              <img
+                src={url}
+                alt={invoice.faturaNo}
+                className="max-w-full max-h-full object-contain"
+                onError={() => setError('Görüntü yüklenemedi')}
+              />
+            )
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

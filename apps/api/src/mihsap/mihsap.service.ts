@@ -170,9 +170,13 @@ export class MihsapService {
     donem: string,
     belgeNo: string,
     ext: string,
+    faturaTuru: string,
+    mihsapId: string | number,
   ): string {
-    const safeBelgeNo = belgeNo.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
-    return `${tenantId}/mihsap-invoices/${mukellefId}/${donem}/${safeBelgeNo}.${ext}`;
+    // belgeNo boş/hatalı olabilir — MIHSAP internal id ile birleştirip unique garantile
+    const safeBelgeNo = (belgeNo || 'fatura').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
+    const side = /ALIS|ALIŞ/i.test(faturaTuru) ? 'ALIS' : 'SATIS';
+    return `${tenantId}/mihsap-invoices/${mukellefId}/${donem}/${side}/${safeBelgeNo}_${mihsapId}.${ext}`;
   }
 
   /** Tek bir faturanın JPEG'ini MIHSAP'tan indir + S3'e koy + DB'ye yaz */
@@ -202,7 +206,15 @@ export class MihsapService {
         if (r.ok) {
           const buf = Buffer.from(await r.arrayBuffer());
           const ext = (fileUrl.split('.').pop() || 'jpg').split('?')[0].toLowerCase();
-          storageKey = this.buildStorageKey(tenantId, mukellefId, donem, item.faturaNo, ext);
+          storageKey = this.buildStorageKey(
+            tenantId,
+            mukellefId,
+            donem,
+            item.faturaNo,
+            ext,
+            item.faturaTuru,
+            item.id,
+          );
           const mime = ext === 'xml' ? 'application/xml' : ext === 'pdf' ? 'application/pdf' : 'image/jpeg';
           await this.storage.putBuffer(storageKey, buf, mime, {
             'mihsap-id': String(item.id),
