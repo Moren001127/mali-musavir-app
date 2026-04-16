@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moren Mobil Uygulama — Tasarım Önizleme</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(ellipse at top, #1a1612 0%, #0a0906 100%);
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: #fafaf9;
+    padding: 40px 20px;
+    min-height: 100vh;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .header h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 42px;
+    font-weight: 600;
+    color: #b8a06f;
+    letter-spacing: -0.03em;
+    margin-bottom: 8px;
+  }
+  .header p {
+    color: rgba(250,250,249,.6);
+    font-size: 14px;
+  }
+  .phone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 360px));
+    gap: 40px 24px;
+    justify-content: center;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  .phone {
+    width: 360px;
+    height: 760px;
+    background: #000;
+    border-radius: 48px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 2px #2a2320,
+      0 0 0 6px #1a1510,
+      0 20px 50px rgba(184,160,111,.15),
+      0 30px 80px rgba(0,0,0,.5);
+    position: relative;
+    margin: 0 auto;
+  }
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 28px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 10;
+  }
+  .screen {
+    width: 100%;
+    height: 100%;
+    background: #0f0d0b;
+    border-radius: 38px;
+    overflow: hidden;
+    position: relative;
+  }
+  .screen-label {
+    text-align: center;
+    margin-top: 12px;
+    color: #b8a06f;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .status-bar {
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px 0 30px;
+    padding-top: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fafaf9;
+  }
+  .status-bar .right { display: flex; gap: 5px; align-items: center; font-size: 12px; }
+  .status-bar .battery {
+    width: 22px; height: 10px;
+    border: 1px solid #fafaf9;
+    border-radius: 2px;
+    position: relative;
+    padding: 1px;
+  }
+  .status-bar .battery::after {
+    content: '';
+    position: absolute;
+    right: -3px; top: 3px;
+    width: 1.5px; height: 4px;
+    background: #fafaf9;
+    border-radius: 1px;
+  }
+  .status-bar .battery-fill {
+    width: 80%; height: 100%;
+    background: #fafaf9;
+    border-radius: 1px;
+  }
+
+  /* ========== LOGIN ========== */
+  .login-screen {
+    padding: 50px 32px 32px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(184,160,111,.15), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(184,160,111,.08), transparent 40%),
+      #0f0d0b;
+  }
+  .logo-wrap {
+    text-align: center;
+    margin-top: 80px;
+    margin-bottom: 60px;
+  }
+  .logo-box {
+    width: 80px; height: 80px;
+    margin: 0 auto 20px;
+    background: linear-gradient(135deg, #d4b876 0%, #8b7649 100%);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 8px 24px rgba(184,160,111,.4);
+  }
+  .logo-box span {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 44px;
+    color: #0f0d0b;
+    letter-spacing: -0.04em;
+  }
+  .brand-name {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    font-weight: 600;
+    color: #fafaf9;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .brand-sub {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b8a06f;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .input-group { margin-bottom: 16px; }
+  .input-label {
+    font-size: 11px; font-weight: 600;
+    color: rgba(250,250,249,.5);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .input-field {
+    width: 100%;
+    padding: 14px 16px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px;
+    color: #fafaf9;
+    font-size: 14px;
+    font-family: inherit;
+  }
+  .input-field.focused {
+    border-color: #b8a06f;
+    background: rgba(184,160,111,.06);
+  }
+  .biometric-row {
+    display: flex; justify-content: center;
+    margin: 16px 0;
+  }
+  .biometric-btn {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    background: rgba(184,160,111,.1);
+    border: 1px solid rgba(184,160,111,.3);
+    display: flex; align-items: center; justify-content: center;
+    color: #b8a06f;
+    font-size: 24px;
+  }
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    color: #0f0d0b;
+    border: none;
+    border-radius: 14px;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(184,160,111,.3);
+  }
+  .login-footer {
+    margin-top: auto;
+    text-align: center;
+    font-size: 12px;
+    color: rgba(250,250,249,.4);
+  }
+
+  /* ========== DASHBOARD ========== */
+  .app-screen {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #0f0d0b;
+  }
+  .top-bar {
+    padding: 0 20px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .top-greet { }
+  .top-greet .hi {
+    font-size: 12px; color: rgba(250,250,249,.5);
+  }
+  .top-greet .name {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 600;
+    color: #fafaf9;
+  }
+  .avatar {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #0f0d0b;
+    font-size: 15px;
+  }
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px 100px;
+  }
+  .kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .kpi {
+    background: linear-gradient(135deg, rgba(184,160,111,.08), rgba(184,160,111,.02));
+    border: 1px solid rgba(184,160,111,.15);
+    padding: 14px;
+    border-radius: 14px;
+  }
+  .kpi.green {
+    background: linear-gradient(135deg, rgba(34,197,94,.08), rgba(34,197,94,.02));
+    border-color: rgba(34,197,94,.15);
+  }
+  .kpi.blue {
+    background: linear-gradient(135deg, rgba(59,130,246,.08), rgba(59,130,246,.02));
+    border-color: rgba(59,130,246,.15);
+  }
+  .kpi.red {
+    background: linear-gradient(135deg, rgba(239,68,68,.08), rgba(239,68,68,.02));
+    border-color: rgba(239,68,68,.15);
+  }
+  .kpi-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(250,250,249,.55);
+    margin-bottom: 4px;
+  }
+  .kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: 'Fraunces', serif;
+    letter-spacing: -0.02em;
+  }
+  .kpi.gold .kpi-value { color: #d4b876; }
+  .kpi.green .kpi-value { color: #22c55e; }
+  .kpi.blue .kpi-value { color: #60a5fa; }
+  .kpi.red .kpi-value { color: #ef4444; }
+  .kpi-delta {
+    font-size: 10px;
+    color: rgba(250,250,249,.4);
+    margin-top: 2px;
+  }
+  .section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgba(250,250,249,.4);
+    margin: 20px 0 10px;
+    font-weight: 600;
+  }
+  .quick-actions {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .qa-btn {
+    aspect-ratio: 1;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 10px;
+    color: rgba(250,250,249,.8);
+    font-weight: 500;
+  }
+  .qa-btn .emoji { font-size: 22px; }
+  .qa-btn.accent {
+    background: linear-gradient(135deg, rgba(184,160,111,.18), rgba(184,160,111,.05));
+    border-color: rgba(184,160,111,.3);
+    color: #d4b876;
+  }
+  .activity-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(255,255,255,.03);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    border-left: 3px solid transparent;
+  }
+  .activity-item.ok { border-color: #22c55e; }
+  .activity-item.skip { border-color: #f59e0b; }
+  .activity-item.err { border-color: #ef4444; }
+  .activity-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.05);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .activity-body { flex: 1; min-width: 0; }
+  .activity-title {
+    font-size: 12px; font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 2px;
+  }
+  .activity-meta {
+    font-size: 10px;
+    color: rgba(250,250,249,.4);
+  }
+  .activity-amount {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b8a06f;
+  }
+
+  /* Bottom Tab Bar */
+  .tab-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 82px;
+    background: rgba(15,13,11,.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255,255,255,.06);
+    display: flex;
+    padding: 0 8px;
+    padding-bottom: 24px;
+    padding-top: 8px;
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: rgba(250,250,249,.4);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .tab-item.active { color: #b8a06f; }
+  .tab-item.active .tab-icon { color: #b8a06f; }
+  .tab-icon { font-size: 20px; }
+  .tab-fab {
+    flex: 0 0 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .fab {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    color: #0f0d0b;
+    font-size: 26px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 20px rgba(184,160,111,.5);
+    margin-top: -24px;
+    font-weight: 300;
+  }
+
+  /* ========== MUKELLEF LIST ========== */
+  .search-bar {
+    padding: 10px 14px;
+    background: rgba(255,255,255,.05);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    color: rgba(250,250,249,.5);
+    font-size: 13px;
+  }
+  .mukellef-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    background: rgba(255,255,255,.03);
+    border-radius: 14px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(255,255,255,.04);
+  }
+  .mukellef-avatar {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #0f0d0b;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .mukellef-avatar.alt {
+    background: linear-gradient(135deg, #64748b, #475569);
+    color: #fafaf9;
+  }
+  .mukellef-avatar.alt2 {
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    color: #fafaf9;
+  }
+  .mukellef-info { flex: 1; min-width: 0; }
+  .mukellef-name {
+    font-size: 13px; font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mukellef-meta {
+    font-size: 10px;
+    color: rgba(250,250,249,.45);
+    display: flex;
+    gap: 8px;
+  }
+  .dot-green { color: #22c55e; }
+  .dot-yellow { color: #f59e0b; }
+  .mukellef-chip {
+    font-size: 9px;
+    background: rgba(184,160,111,.15);
+    color: #b8a06f;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  /* ========== FATURA DETAY ========== */
+  .fatura-preview {
+    background: #fff;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+    aspect-ratio: 0.7;
+    color: #222;
+    font-family: 'Courier New', monospace;
+    font-size: 8.5px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  .fatura-preview .title {
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .fatura-preview .divider {
+    border-top: 1px dashed #999;
+    margin: 6px 0;
+  }
+  .fatura-preview .row {
+    display: flex;
+    justify-content: space-between;
+  }
+  .field-card {
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.05);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .field-label {
+    font-size: 10px;
+    color: rgba(250,250,249,.5);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .field-value {
+    font-size: 14px;
+    color: #fafaf9;
+    font-weight: 500;
+  }
+  .field-value.big {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: #b8a06f;
+  }
+  .back-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  /* ========== AJAN KART ========== */
+  .agent-card {
+    padding: 16px;
+    border-radius: 16px;
+    margin-bottom: 10px;
+    border-left: 4px solid;
+    background: rgba(255,255,255,.04);
+  }
+  .agent-card.mihsap { border-color: #d4b876; background: linear-gradient(135deg, rgba(212,184,118,.12), rgba(212,184,118,.02)); }
+  .agent-card.luca { border-color: #60a5fa; background: linear-gradient(135deg, rgba(96,165,250,.12), rgba(96,165,250,.02)); }
+  .agent-card.tebligat { border-color: #f59e0b; background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.02)); }
+  .agent-card.kdv { border-color: #22c55e; background: linear-gradient(135deg, rgba(34,197,94,.12), rgba(34,197,94,.02)); }
+  .agent-top {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+  }
+  .agent-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .agent-title {
+    font-size: 14px; font-weight: 600; color: #fafaf9;
+  }
+  .agent-status {
+    font-size: 10px; color: rgba(250,250,249,.5);
+  }
+  .agent-status.running {
+    color: #22c55e;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .agent-status.running::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%; background: #22c55e;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .agent-run-btn {
+    width: 100%;
+    padding: 10px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    color: #fafaf9;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .agent-card.mihsap .agent-run-btn {
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    color: #0f0d0b;
+    border: none;
+  }
+
+  /* ========== KAMERA FIŞ ========== */
+  .camera-screen {
+    background: #000;
+    height: 100%;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .camera-view {
+    flex: 1;
+    background:
+      radial-gradient(circle at center, #2a2a2a, #000),
+      #1a1a1a;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .camera-frame {
+    width: 75%;
+    aspect-ratio: 0.7;
+    border: 2px solid rgba(184,160,111,.8);
+    border-radius: 16px;
+    position: relative;
+    box-shadow: 0 0 0 9999px rgba(0,0,0,.5);
+  }
+  .camera-frame::before,
+  .camera-frame::after {
+    content: '';
+    position: absolute;
+    width: 24px; height: 24px;
+    border: 3px solid #d4b876;
+  }
+  .camera-frame::before { top: -3px; left: -3px; border-right: none; border-bottom: none; border-radius: 16px 0 0 0; }
+  .camera-frame::after { bottom: -3px; right: -3px; border-left: none; border-top: none; border-radius: 0 0 16px 0; }
+  .camera-hint {
+    position: absolute;
+    top: 80px;
+    left: 0; right: 0;
+    text-align: center;
+    color: rgba(255,255,255,.8);
+    font-size: 13px;
+    padding: 10px 20px;
+  }
+  .camera-controls {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .cam-btn {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.12);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 18px;
+  }
+  .cam-shoot {
+    width: 74px; height: 74px;
+    border-radius: 50%;
+    background: #fff;
+    border: 4px solid rgba(184,160,111,.8);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cam-shoot .inner {
+    width: 62px; height: 62px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+  }
+
+  /* ========== KDV KONTROL ========== */
+  .setup-card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 12px;
+  }
+  .setup-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(250,250,249,.5);
+    margin-bottom: 10px;
+    font-weight: 600;
+  }
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    padding: 6px 12px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px;
+    font-size: 11px;
+    color: rgba(250,250,249,.75);
+  }
+  .chip.active {
+    background: rgba(184,160,111,.18);
+    border-color: rgba(184,160,111,.5);
+    color: #d4b876;
+  }
+  .ready-check {
+    background: rgba(34,197,94,.08);
+    border: 1px solid rgba(34,197,94,.2);
+    border-radius: 12px;
+    padding: 12px;
+    font-size: 12px;
+    color: #22c55e;
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 14px;
+  }
+  .huge-btn {
+    width: 100%;
+    padding: 18px;
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    color: #0f0d0b;
+    border-radius: 16px;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+    box-shadow: 0 10px 30px rgba(184,160,111,.35);
+    text-align: center;
+  }
+
+  /* ========== CHAT ========== */
+  .chat-msg {
+    padding: 10px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    max-width: 80%;
+    margin-bottom: 8px;
+    line-height: 1.45;
+  }
+  .chat-msg.user {
+    background: linear-gradient(135deg, #d4b876, #8b7649);
+    color: #0f0d0b;
+    align-self: flex-end;
+    margin-left: auto;
+    border-bottom-right-radius: 4px;
+  }
+  .chat-msg.ai {
+    background: rgba(255,255,255,.06);
+    color: #fafaf9;
+    align-self: flex-start;
+    border-bottom-left-radius: 4px;
+  }
+  .chat-input {
+    position: absolute;
+    bottom: 90px; left: 16px; right: 16px;
+    padding: 12px 16px;
+    background: rgba(255,255,255,.08);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: rgba(250,250,249,.5);
+    backdrop-filter: blur(10px);
+  }
+
+  /* ========== NOTIFICATION ========== */
+  .notif-card {
+    background: rgba(255,255,255,.04);
+    border-left: 4px solid #b8a06f;
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 12px;
+  }
+  .notif-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(184,160,111,.15);
+    color: #b8a06f;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .notif-title {
+    font-size: 13px; font-weight: 600; color: #fafaf9;
+    margin-bottom: 3px;
+  }
+  .notif-desc {
+    font-size: 11px; color: rgba(250,250,249,.55);
+    margin-bottom: 4px;
+  }
+  .notif-time {
+    font-size: 10px; color: rgba(250,250,249,.35);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Moren Mobil</h1>
+  <p>iOS & Android · Portalin tüm özellikleri cebinizde</p>
+</div>
+
+<div class="phone-grid">
+
+  <!-- ========== 1. GİRİŞ ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right">
+            <span>●●●●●</span>
+            <span>100%</span>
+            <div class="battery"><div class="battery-fill"></div></div>
+          </div>
+        </div>
+        <div class="login-screen">
+          <div class="logo-wrap">
+            <div class="logo-box"><span>M</span></div>
+            <div class="brand-name">Moren</div>
+            <div class="brand-sub">● Mali Müşavirlik</div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">E-POSTA</label>
+            <input class="input-field" value="admin@morenmusavirlik.com" readonly>
+          </div>
+          <div class="input-group">
+            <label class="input-label">ŞİFRE</label>
+            <input type="password" class="input-field focused" value="••••••••••" readonly>
+          </div>
+          <div class="biometric-row">
+            <div class="biometric-btn">👤</div>
+          </div>
+          <button class="btn-primary">GİRİŞ YAP</button>
+          <div class="login-footer">
+            FaceID ile hızlı giriş · v0.1.0
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">1 · Giriş · FaceID</div>
+  </div>
+
+  <!-- ========== 2. DASHBOARD ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div class="top-bar">
+            <div class="top-greet">
+              <div class="hi">Hoşgeldin,</div>
+              <div class="name">Muzaffer</div>
+            </div>
+            <div class="avatar">MÖ</div>
+          </div>
+          <div class="content">
+            <div class="kpi-row">
+              <div class="kpi gold"><div class="kpi-label">Mükellef</div><div class="kpi-value">154</div><div class="kpi-delta">Aktif takip</div></div>
+              <div class="kpi green"><div class="kpi-label">Bu Ay Onay</div><div class="kpi-value">3.4K</div><div class="kpi-delta">+124 bugün</div></div>
+              <div class="kpi blue"><div class="kpi-label">Bekleyen</div><div class="kpi-value">1.373</div><div class="kpi-delta">7 mükellef</div></div>
+              <div class="kpi red"><div class="kpi-label">Hata (24s)</div><div class="kpi-value">0</div><div class="kpi-delta">Temiz</div></div>
+            </div>
+            <div class="section-title">Hızlı Erişim</div>
+            <div class="quick-actions">
+              <div class="qa-btn accent"><span class="emoji">📸</span><span>Fiş Çek</span></div>
+              <div class="qa-btn"><span class="emoji">🤖</span><span>Ajanlar</span></div>
+              <div class="qa-btn"><span class="emoji">📄</span><span>Faturalar</span></div>
+              <div class="qa-btn"><span class="emoji">💬</span><span>Asistan</span></div>
+            </div>
+            <div class="section-title">Son İşlemler</div>
+            <div class="activity-item ok">
+              <div class="activity-icon">✓</div>
+              <div class="activity-body">
+                <div class="activity-title">YORGUN NAKLİYAT · F2</div>
+                <div class="activity-meta">740.01.001 · Yakıt · 4.556,36 TL</div>
+              </div>
+            </div>
+            <div class="activity-item ok">
+              <div class="activity-icon">✓</div>
+              <div class="activity-body">
+                <div class="activity-title">ÖZ ELA TURİZM · F2</div>
+                <div class="activity-meta">740.01.001 · 2 dk önce</div>
+              </div>
+            </div>
+            <div class="activity-item skip">
+              <div class="activity-icon">↷</div>
+              <div class="activity-body">
+                <div class="activity-title">İLGİ OTO YEDEK · Atla</div>
+                <div class="activity-meta">Tarih ≠ 2026-03</div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item active"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">+</div></div>
+            <div class="tab-item"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">2 · Ana Panel</div>
+  </div>
+
+  <!-- ========== 3. MÜKELLEF LİSTE ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div class="top-bar">
+            <div class="top-greet">
+              <div class="hi">154 kayıt</div>
+              <div class="name">Mükellefler</div>
+            </div>
+            <div class="avatar" style="background: rgba(255,255,255,.06); color: #b8a06f;">+</div>
+          </div>
+          <div class="content">
+            <div class="search-bar">🔍 Mükellef ara…</div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar">YN</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">YORGUN NAKLİYAT LOJİSTİK</div>
+                <div class="mukellef-meta"><span>📄 87</span><span class="dot-green">● Hazır</span></div>
+              </div>
+              <div class="mukellef-chip">BİLANÇO</div>
+            </div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar alt2">ÖE</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">ÖZ ELA TURİZM TAŞIMACILIK</div>
+                <div class="mukellef-meta"><span>📄 143</span><span class="dot-yellow">● Eksik 2</span></div>
+              </div>
+              <div class="mukellef-chip">BİLANÇO</div>
+            </div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar">İO</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">İLGİ OTO YEDEK PARÇA</div>
+                <div class="mukellef-meta"><span>📄 62</span><span class="dot-green">● Hazır</span></div>
+              </div>
+              <div class="mukellef-chip">BİLANÇO</div>
+            </div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar alt">WC</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">WASH CLEAN OTO YIKAMA</div>
+                <div class="mukellef-meta"><span>📄 104</span><span class="dot-green">● Tamam</span></div>
+              </div>
+              <div class="mukellef-chip">İŞLETME</div>
+            </div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar alt2">HS</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">HÜSEYİN SALI MOBİLYA</div>
+                <div class="mukellef-meta"><span>📄 38</span><span class="dot-yellow">● İnceleme</span></div>
+              </div>
+              <div class="mukellef-chip">İŞLETME</div>
+            </div>
+            <div class="mukellef-row">
+              <div class="mukellef-avatar">DN</div>
+              <div class="mukellef-info">
+                <div class="mukellef-name">DİNAMİK OTOMOTİV GIDA</div>
+                <div class="mukellef-meta"><span>📄 91</span><span class="dot-green">● Hazır</span></div>
+              </div>
+              <div class="mukellef-chip">BİLANÇO</div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item active"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">+</div></div>
+            <div class="tab-item"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">3 · Mükellef Listesi</div>
+  </div>
+
+  <!-- ========== 4. AJANLAR ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div class="top-bar">
+            <div class="top-greet">
+              <div class="hi">Claude Powered</div>
+              <div class="name">Ajanlar</div>
+            </div>
+            <div class="avatar" style="background: rgba(184,160,111,.15); color: #b8a06f;">🤖</div>
+          </div>
+          <div class="content">
+            <div class="kpi-row">
+              <div class="kpi green"><div class="kpi-label">24s Onay</div><div class="kpi-value">124</div></div>
+              <div class="kpi gold"><div class="kpi-label">Aktif</div><div class="kpi-value">1</div></div>
+            </div>
+            <div class="section-title">Çalışan Ajanlar</div>
+            <div class="agent-card mihsap">
+              <div class="agent-top">
+                <div class="agent-icon">🧾</div>
+                <div style="flex:1">
+                  <div class="agent-title">Mihsap Fatura</div>
+                  <div class="agent-status running">Çalışıyor · ÖZ ELA</div>
+                </div>
+              </div>
+              <div class="agent-run-btn">▶ Yeni Komut</div>
+            </div>
+            <div class="agent-card luca">
+              <div class="agent-top">
+                <div class="agent-icon">📊</div>
+                <div style="flex:1">
+                  <div class="agent-title">Luca E-Arşiv</div>
+                  <div class="agent-status">Hazır · Son: dün 23:45</div>
+                </div>
+              </div>
+              <div class="agent-run-btn">▶ Muavin Çek</div>
+            </div>
+            <div class="agent-card kdv">
+              <div class="agent-top">
+                <div class="agent-icon">📋</div>
+                <div style="flex:1">
+                  <div class="agent-title">KDV Kontrol</div>
+                  <div class="agent-status">Tek tuş kontrol</div>
+                </div>
+              </div>
+              <div class="agent-run-btn">▶ Kontrol Başlat</div>
+            </div>
+            <div class="agent-card tebligat">
+              <div class="agent-top">
+                <div class="agent-icon">📬</div>
+                <div style="flex:1">
+                  <div class="agent-title">Tebligat Özet</div>
+                  <div class="agent-status">Yakında</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">🤖</div></div>
+            <div class="tab-item active"><span class="tab-icon">📄</span><span>Ajanlar</span></div>
+            <div class="tab-item"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">4 · Ajanlar</div>
+  </div>
+
+  <!-- ========== 5. FATURA DETAY ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div style="padding: 0 20px 12px; display: flex; align-items: center; gap: 14px;">
+            <div class="back-btn">‹</div>
+            <div style="flex:1">
+              <div style="font-size: 11px; color: rgba(250,250,249,.5);">ÖZ ELA TURİZM · Mart 2026</div>
+              <div style="font-family: Fraunces, serif; font-size: 18px; font-weight: 600;">Fatura #E152026000005355</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="fatura-preview">
+              <div class="title">ŞEKERCİ PETROL ÜRÜNLERİ</div>
+              <div style="font-size: 8px; text-align: center; color: #555;">PAZARLAMA SAN. VE TİC. LTD. ŞTİ</div>
+              <div style="font-size: 7.5px; text-align: center; color: #555;">İSTANBUL V.D. — 7841234567</div>
+              <div class="divider"></div>
+              <div class="row"><span>TARİH</span><span>12.03.2026</span></div>
+              <div class="row"><span>FATURA NO</span><span>E152026000005355</span></div>
+              <div class="row"><span>SAAT</span><span>14:22</span></div>
+              <div class="divider"></div>
+              <div class="row"><span>MOTORİN</span><span>3.798,63</span></div>
+              <div class="row" style="color:#888; font-size: 7.5px;"><span>85.22 lt x 44.57</span><span></span></div>
+              <div class="divider"></div>
+              <div class="row"><span>MATRAH</span><span>3.165,53</span></div>
+              <div class="row"><span>KDV %20</span><span>633,11</span></div>
+              <div class="row" style="font-weight: bold; margin-top: 4px;"><span>TOPLAM</span><span>3.798,63 TL</span></div>
+              <div class="divider"></div>
+              <div style="text-align: center; font-size: 7px; color: #666;">Teşekkürler · Yeniden Bekleriz</div>
+            </div>
+            <div class="field-card" style="border: 1px solid rgba(34,197,94,.3); background: rgba(34,197,94,.05);">
+              <div class="field-label" style="color: #22c55e;">✓ CLAUDE KARARI</div>
+              <div class="field-value" style="color: #fafaf9; margin-top: 6px; font-size: 12px;">Yakıt gideri. 740.01.001 doğru kod. KDV %20 uygun. F2 ile onaylandı.</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="field-card" style="margin-bottom:0">
+                <div class="field-label">HESAP KODU</div>
+                <div class="field-value" style="font-size: 13px;">740.01.001</div>
+              </div>
+              <div class="field-card" style="margin-bottom:0">
+                <div class="field-label">KDV</div>
+                <div class="field-value big">633,11</div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">+</div></div>
+            <div class="tab-item active"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">5 · Fatura Detay + AI</div>
+  </div>
+
+  <!-- ========== 6. KAMERA FİŞ ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="camera-screen">
+          <div class="camera-view">
+            <div class="camera-hint">Fişi çerçeveye sığdırın · Claude otomatik okuyacak</div>
+            <div class="camera-frame"></div>
+          </div>
+          <div class="camera-controls">
+            <div class="cam-btn">⚡</div>
+            <div class="cam-shoot"><div class="inner"></div></div>
+            <div class="cam-btn">📁</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">6 · Anlık Fiş Yakala</div>
+  </div>
+
+  <!-- ========== 7. KDV KONTROL ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div style="padding: 0 20px 12px; display: flex; align-items: center; gap: 14px;">
+            <div class="back-btn">‹</div>
+            <div style="flex:1">
+              <div style="font-size: 11px; color: rgba(250,250,249,.5);">Tek tuş kontrol</div>
+              <div style="font-family: Fraunces, serif; font-size: 22px; font-weight: 600;">KDV Kontrol</div>
+            </div>
+          </div>
+          <div class="content">
+            <div class="setup-card">
+              <div class="setup-title">Mükellef</div>
+              <div style="font-size: 15px; font-weight: 600; margin-bottom: 3px;">YORGUN NAKLİYAT</div>
+              <div style="font-size: 11px; color: rgba(250,250,249,.5);">Lojistik ve Depolama Tic. Ltd. Şti.</div>
+            </div>
+            <div class="setup-card">
+              <div class="setup-title">Dönem</div>
+              <div class="chip-row">
+                <div class="chip">Ocak</div>
+                <div class="chip">Şubat</div>
+                <div class="chip active">Mart 2026</div>
+                <div class="chip">Nisan</div>
+              </div>
+            </div>
+            <div class="setup-card">
+              <div class="setup-title">Kontrol Türü</div>
+              <div class="chip-row">
+                <div class="chip active">✓ 191 Alış</div>
+                <div class="chip active">✓ 391 Satış</div>
+                <div class="chip">İşletme</div>
+              </div>
+            </div>
+            <div class="ready-check">
+              <span>✓</span>
+              <div>
+                <strong>Hazır</strong> · 87 fatura + 92 Luca kaydı
+              </div>
+            </div>
+            <div class="huge-btn">🚀 KONTROLÜ BAŞLAT</div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">+</div></div>
+            <div class="tab-item"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item active"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">7 · KDV Kontrol Tek Tuş</div>
+  </div>
+
+  <!-- ========== 8. CHAT ASISTAN ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div style="padding: 0 20px 12px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.04); padding-bottom: 16px;">
+            <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #d4b876, #8b7649); display: flex; align-items: center; justify-content: center; font-size: 18px;">✨</div>
+            <div style="flex:1">
+              <div style="font-size: 15px; font-weight: 600;">Moren AI</div>
+              <div style="font-size: 10px; color: #22c55e;">● Çevrimiçi · Claude Sonnet</div>
+            </div>
+            <div style="color: rgba(255,255,255,.5);">⋯</div>
+          </div>
+          <div class="content" style="display: flex; flex-direction: column;">
+            <div class="chat-msg ai">Merhaba Muzaffer, nasıl yardımcı olabilirim?</div>
+            <div class="chat-msg user">YORGUN NAKLİYAT'ın Mart KDV'si ne kadar çıkar</div>
+            <div class="chat-msg ai">
+              <strong>YORGUN NAKLİYAT - Mart 2026:</strong><br>
+              • İndirilecek KDV (191): <b>12.450 TL</b><br>
+              • Hesaplanan KDV (391): <b>8.320 TL</b><br>
+              • Devreden KDV: <b>4.130 TL</b><br><br>
+              Önceki aya göre %12 artış var. Yakıt alımı arttığı için normal.
+            </div>
+            <div class="chat-msg user">Bu fatura hangi koda yazılır<br>📎 foto_fatura.jpg</div>
+            <div class="chat-msg ai">
+              Görüntüye baktım. Bu ETİLER GIDA faturası (yemek), <b>770.01.030</b> - Mutfak ve Yemekhane Giderleri'ne yazılmalı. KDV %10.<br><br>
+              Not: KDV indirilebilir değil (personel yemeği).
+            </div>
+          </div>
+          <div class="chat-input">
+            <span>💬 Sorunu yaz…</span>
+            <div style="margin-left: auto; color: #b8a06f;">🎙️</div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">✨</div></div>
+            <div class="tab-item"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item"><span class="tab-icon">⋯</span><span>Daha</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">8 · Moren AI Asistan</div>
+  </div>
+
+  <!-- ========== 9. BİLDİRİMLER ========== -->
+  <div>
+    <div class="phone">
+      <div class="screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <div class="right"><span>●●●●●</span><div class="battery"><div class="battery-fill"></div></div></div>
+        </div>
+        <div class="app-screen">
+          <div class="top-bar">
+            <div class="top-greet">
+              <div class="hi">Son 7 gün</div>
+              <div class="name">Bildirimler</div>
+            </div>
+            <div class="avatar" style="background: rgba(239,68,68,.15); color: #ef4444; font-size: 12px;">12</div>
+          </div>
+          <div class="content">
+            <div class="section-title">Bugün</div>
+            <div class="notif-card">
+              <div class="notif-icon">🤖</div>
+              <div style="flex:1">
+                <div class="notif-title">Mihsap Ajanı Tamamlandı</div>
+                <div class="notif-desc">ÖZ ELA TURİZM · 124 fatura onaylandı, 8 atlandı</div>
+                <div class="notif-time">5 dk önce</div>
+              </div>
+            </div>
+            <div class="notif-card" style="border-color: #ef4444;">
+              <div class="notif-icon" style="background: rgba(239,68,68,.15); color: #ef4444;">📬</div>
+              <div style="flex:1">
+                <div class="notif-title">Yeni Tebligat — Kritik</div>
+                <div class="notif-desc">WASH CLEAN için vergi dairesinden uyarı</div>
+                <div class="notif-time">2 saat önce</div>
+              </div>
+            </div>
+            <div class="notif-card" style="border-color: #22c55e;">
+              <div class="notif-icon" style="background: rgba(34,197,94,.15); color: #22c55e;">✓</div>
+              <div style="flex:1">
+                <div class="notif-title">KDV Kontrol Bitti</div>
+                <div class="notif-desc">YORGUN NAKLİYAT · 76/87 eşleşti</div>
+                <div class="notif-time">3 saat önce</div>
+              </div>
+            </div>
+            <div class="section-title">Dün</div>
+            <div class="notif-card" style="border-color: #f59e0b;">
+              <div class="notif-icon" style="background: rgba(245,158,11,.15); color: #f59e0b;">⏰</div>
+              <div style="flex:1">
+                <div class="notif-title">KDV Son Gün Yaklaşıyor</div>
+                <div class="notif-desc">15 Nisan'a 3 gün · 7 mükellef hazır değil</div>
+                <div class="notif-time">dün 14:30</div>
+              </div>
+            </div>
+            <div class="notif-card">
+              <div class="notif-icon">💬</div>
+              <div style="flex:1">
+                <div class="notif-title">Yeni Mesaj</div>
+                <div class="notif-desc">HÜSEYİN SALI: "Yeni vekaletnamemi..."</div>
+                <div class="notif-time">dün 10:15</div>
+              </div>
+            </div>
+          </div>
+          <div class="tab-bar">
+            <div class="tab-item"><span class="tab-icon">🏠</span><span>Ana</span></div>
+            <div class="tab-item"><span class="tab-icon">👥</span><span>Mükellef</span></div>
+            <div class="tab-fab"><div class="fab">+</div></div>
+            <div class="tab-item"><span class="tab-icon">📄</span><span>Faturalar</span></div>
+            <div class="tab-item active"><span class="tab-icon">🔔</span><span>Bildirim</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">9 · Push Bildirimler</div>
+  </div>
+
+</div>
+
+<div style="text-align: center; margin-top: 50px; color: rgba(250,250,249,.4); font-size: 12px;">
+  <p>Tüm ekranlar aynı Next.js kod tabanından üretilir · PWA + Capacitor</p>
+  <p style="margin-top: 8px;">iOS App Store · Google Play Store · Tarayıcı</p>
+</div>
+
+</body>
+</html>

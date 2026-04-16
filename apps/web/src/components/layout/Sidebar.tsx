@@ -8,10 +8,11 @@ import {
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
 } from 'lucide-react';
 
+const GOLD = '#d4b876';
 const navGroups = [
   {
     label: 'Ana Modüller',
-    color: '#b8a06f',
+    color: GOLD,
     icon: Sparkles,
     items: [
       { href: '/panel',             label: 'Gösterge Paneli',  icon: LayoutDashboard },
@@ -24,7 +25,7 @@ const navGroups = [
   },
   {
     label: 'Kontrol',
-    color: '#10b981',
+    color: GOLD,
     icon: FileCheck,
     items: [
       { href: '/panel/kdv-kontrol',  label: 'KDV Kontrol',     icon: FileCheck },
@@ -32,11 +33,11 @@ const navGroups = [
     ],
   },
   {
-    label: 'Otomasyon',
-    color: '#a78bfa',
+    label: 'Ajanlar',
+    color: GOLD,
     icon: Zap,
     items: [
-      { href: '/panel/ajanlar',             label: 'Ajan Paneli',        icon: Cpu },
+      { href: '/panel/ajanlar',             label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajanlar/mihsap',      label: 'Mihsap Fatura',      icon: Bot },
       { href: '/panel/ajanlar/luca',        label: 'Luca E-Arşiv',       icon: FileInput },
       { href: '/panel/ajanlar/tebligat',    label: 'Tebligat Özet',      icon: Mailbox },
@@ -49,7 +50,7 @@ const navGroups = [
   },
   {
     label: 'Sistem',
-    color: '#64748b',
+    color: GOLD,
     icon: Settings,
     items: [
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: Bell },
@@ -84,13 +85,18 @@ export default function Sidebar() {
       />
 
       {/* === LOGO === */}
-      <div className="relative px-4 pt-4 pb-4 flex justify-center" style={{ borderBottom: '1px solid #1f1a15' }}>
+      <div className="relative px-4 pt-5 pb-5 flex justify-center" style={{ borderBottom: '1px solid #1f1a15' }}>
         <Link href="/panel" className="block group">
           <img
             src="/brand/moren-logo-gold.png"
             alt="Moren Mali Müşavirlik"
             className="transition-transform duration-300 group-hover:scale-105"
-            style={{ width: 140, height: 'auto', objectFit: 'contain' }}
+            style={{
+              height: 56,
+              width: 'auto',
+              objectFit: 'contain',
+              filter: 'drop-shadow(0 4px 14px rgba(212,184,118,0.28))',
+            }}
           />
         </Link>
       </div>
@@ -134,9 +140,10 @@ export default function Sidebar() {
                       onMouseEnter={(e) => {
                         if (!active) {
                           const el = e.currentTarget as HTMLElement;
-                          el.style.background = 'rgba(255,255,255,0.04)';
+                          el.style.background = 'rgba(184,160,111,0.08)';
                           el.style.color = '#fafaf9';
-                          el.style.transform = 'translateX(2px)';
+                          el.style.transform = 'translateX(4px) scale(1.02)';
+                          el.style.boxShadow = '0 2px 12px rgba(0,0,0,0.2)';
                         }
                       }}
                       onMouseLeave={(e) => {
@@ -144,7 +151,8 @@ export default function Sidebar() {
                           const el = e.currentTarget as HTMLElement;
                           el.style.background = 'transparent';
                           el.style.color = 'rgba(250,250,249,0.55)';
-                          el.style.transform = 'translateX(0)';
+                          el.style.transform = 'translateX(0) scale(1)';
+                          el.style.boxShadow = 'none';
                         }
                       }}
                     >
