@@ -88,6 +88,11 @@ export default function FisYazdirmaPage() {
   const [allExtra, setAllExtra] = useState<Record<string, Omit<Detected, 'filename' | 'date'>>>({});
   const [editingFile, setEditingFile] = useState<string | null>(null);
 
+  // MIHSAP faturaTarihi = muhasebede işlendiği kabul tarihi (fişin üzerindeki
+  // fiziksel tarih değil). Bu tarih yasal/muhasebe açısından doğru olandır,
+  // o yüzden OCR'a gerek yok — DB'den direkt kullan.
+  const [knownDates, setKnownDates] = useState<Record<string, string>>({});
+
 
   // Simüle sayaç (scanning ekranı)
   const [simScanned, setSimScanned] = useState(0);
@@ -268,6 +273,7 @@ export default function FisYazdirmaPage() {
       setFetchStatus(`${invoices.length} fiş indiriliyor...`);
 
       const fetched: File[] = [];
+      const datesFromDb: Record<string, string> = {};
       let skippedNonImage = 0;
       let firstError: { status: number; message: string } | null = null;
       for (let i = 0; i < invoices.length; i++) {
@@ -305,8 +311,16 @@ export default function FisYazdirmaPage() {
           const safeName = `${(inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_')}.${ext}`;
           const file = new File([blob], safeName, { type: blob.type });
           fetched.push(file);
-          // NOT: inv.faturaTarihi = e-arşiv fatura kesim tarihi, fişin üzerindeki
-          // satış tarihi değil. O yüzden buradan tarih çekmiyoruz — OCR okur.
+
+          // DB'deki faturaTarihi = muhasebede işlendiği kabul tarihi.
+          // Fiş geç gelmiş olsa bile bu tarih yasal/muhasebe açısından doğrudur.
+          const rawDate = inv.faturaTarihi || inv.belgeTarihi || inv.tarih;
+          if (rawDate && typeof rawDate === 'string') {
+            const iso = rawDate.slice(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+              datesFromDb[safeName] = iso;
+            }
+          }
         } catch (e: any) {
           if (!firstError) firstError = { status: 0, message: e?.message || 'network' };
           continue;
@@ -339,12 +353,18 @@ export default function FisYazdirmaPage() {
 
       // 5) Dosyaları mevcut listeye ekle + kapak bilgilerini doldur
       addFiles(fetched);
+      // DB'den gelen muhasebe kabul tarihlerini merge et (handleScan OCR'ı atlar)
+      if (Object.keys(datesFromDb).length) {
+        setKnownDates((prev) => ({ ...prev, ...datesFromDb }));
+      }
       const selected = taxpayers.find((t) => t.id === fetchMukellefId);
       if (selected) setMukellefName(selected.name);
       setDonem(fetchDonem);
 
+      const withDate = Object.keys(datesFromDb).length;
       const skipNote = skippedNonImage > 0 ? ` (${skippedNonImage} adet görsel olmayan atlandı)` : '';
-      setFetchStatus(`${fetched.length} fiş başarıyla yüklendi${skipNote}.`);
+      const dateNote = withDate > 0 ? ` — ${withDate} tanesinin kabul tarihi DB'den hazır, OCR'a girmez.` : '';
+      setFetchStatus(`${fetched.length} fiş başarıyla yüklendi${skipNote}.${dateNote}`);
       setTimeout(() => {
         setShowFetchModal(false);
         setFetchLoading(false);
@@ -387,19 +407,47 @@ export default function FisYazdirmaPage() {
   }, []);
 
   /* ── OCR Tarama ──
-   * NOT: MIHSAP'tan gelen faturaTarihi, fişin üzerindeki gerçek satış tarihi
-   * DEĞİL — e-arşiv fatura kesim tarihidir (satıcı batch halinde basar).
-   * Bu yüzden DB tarihini kullanmayız; her fişin üzerindeki tarihi OCR okur.
+   * Akıllı: MIHSAP'tan DB tarihi bilinen fişler OCR'a girmez (ücretsiz + anında).
+   * DB'deki faturaTarihi = muhasebede işlendiği kabul tarihidir — yasal olarak doğrudur.
+   * Sadece manuel yüklenen / DB tarihi olmayanlar Claude'a gönderilir.
    */
   const handleScan = async () => {
     if (!files.length) return;
     setStage('scanning');
     setError('');
     setScanStartTime(Date.now());
-    startSimCounter(files.length);
 
+    // Dosyaları ikiye ayır: DB tarihi olanlar vs OCR gerekenler
+    const filesNeedOcr = files.filter((f) => !knownDates[f.name]);
+    const filesFromDb = files.filter((f) => !!knownDates[f.name]);
+
+    const dates: Record<string, string> = {};
+    const extra: Record<string, Omit<Detected, 'filename' | 'date'>> = {};
+    const detectedAll: Detected[] = [];
+
+    filesFromDb.forEach((f) => {
+      const iso = knownDates[f.name];
+      dates[f.name] = iso;
+      detectedAll.push({ filename: f.name, date: iso });
+    });
+
+    // Hiç OCR gereken dosya yoksa API'yi hiç çağırma — anında confirm ekranına geç
+    if (!filesNeedOcr.length) {
+      setScanResult({
+        detected: detectedAll,
+        unread: [],
+        total: files.length,
+      });
+      setAllDates(dates);
+      setAllExtra(extra);
+      setStage('confirm');
+      return;
+    }
+
+    // Sadece OCR gereken dosyaları backend'e yolla
+    startSimCounter(filesNeedOcr.length);
     const fd = new FormData();
-    files.forEach((f) => fd.append('images', f, f.name));
+    filesNeedOcr.forEach((f) => fd.append('images', f, f.name));
     if (donem && /^\d{4}-\d{2}$/.test(donem)) fd.append('donem', donem);
 
     try {
@@ -413,9 +461,6 @@ export default function FisYazdirmaPage() {
 
       stopSimCounter();
 
-      const dates: Record<string, string> = {};
-      const extra: Record<string, Omit<Detected, 'filename' | 'date'>> = {};
-
       data.detected.forEach((d) => {
         dates[d.filename] = d.date;
         extra[d.filename] = {
@@ -427,10 +472,15 @@ export default function FisYazdirmaPage() {
           kdv_20:    d.kdv_20,
           toplam:    d.toplam,
         } as any;
+        detectedAll.push(d);
       });
       data.unread.forEach((u) => { dates[u.filename] = ''; });
 
-      setScanResult(data);
+      setScanResult({
+        detected: detectedAll,
+        unread: data.unread,
+        total: files.length,
+      });
       setAllDates(dates);
       setAllExtra(extra);
       setStage('confirm');
@@ -496,6 +546,7 @@ export default function FisYazdirmaPage() {
     setScanResult(null);
     setAllDates({});
     setAllExtra({});
+    setKnownDates({});
     setEditingFile(null);
     setSimScanned(0);
     setScanStartTime(0);
@@ -917,13 +968,22 @@ export default function FisYazdirmaPage() {
                               </button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1 mt-0.5">
+                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                               <span
                                 className="text-xs font-semibold px-1.5 py-0.5 rounded"
                                 style={{ background: '#ECFDF5', color: '#059669' }}
                               >
                                 {isoToDisplay(allDates[d.filename] ?? d.date)}
                               </span>
+                              {knownDates[d.filename] && (
+                                <span
+                                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                  style={{ background: '#EFF6FF', color: '#1D4ED8' }}
+                                  title="MIHSAP'ta işlendiği kabul tarihi (muhasebe açısından doğru olan)"
+                                >
+                                  DB
+                                </span>
+                              )}
                               <button onClick={() => setEditingFile(d.filename)}>
                                 <Pencil size={10} style={{ color: 'var(--text-muted)' }} />
                               </button>
