@@ -372,6 +372,65 @@ export class MihsapService {
     });
   }
 
+  /** Bir faturanın binary içeriğini getir (proxy — CORS bypass).
+   *  Frontend `fetch()` MIHSAP CDN'e direkt gidemez; backend aracı olur.
+   */
+  async getInvoiceFile(
+    tenantId: string,
+    invoiceId: string,
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+    const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
+    if (!inv || inv.tenantId !== tenantId) return null;
+
+    // Önce URL'yi hazırla
+    let url: string | null = null;
+    if (inv.storageKey) {
+      try {
+        url = await this.storage.getPresignedDownloadUrl(inv.storageKey, inv.faturaNo || 'file');
+      } catch {
+        /* fallback */
+      }
+    }
+    if (!url && inv.mihsapFileLink) {
+      url = inv.mihsapFileLink;
+    }
+    if (!url) return null;
+
+    // MIHSAP CDN'den indir
+    const res = await fetch(url);
+    if (!res.ok) {
+      this.logger.warn(`Fatura indirilemedi (${invoiceId}): ${res.status}`);
+      return null;
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType =
+      res.headers.get('content-type') ||
+      this.guessContentType(inv.orjDosyaTuru || url) ||
+      'application/octet-stream';
+
+    const ext = this.extFromUrlOrType(url, inv.orjDosyaTuru);
+    const filename = `${inv.faturaNo || invoiceId}.${ext}`;
+    return { buffer, contentType, filename };
+  }
+
+  private extFromUrlOrType(url: string, orjType?: string | null): string {
+    const fromType = (orjType || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(fromType)) return fromType;
+    const linkExt = (url.split('?')[0].split('.').pop() || '').toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'pdf', 'xml'].includes(linkExt)) return linkExt;
+    return 'bin';
+  }
+
+  private guessContentType(hint: string): string | null {
+    const s = hint.toLowerCase();
+    if (s.endsWith('.jpg') || s.endsWith('.jpeg') || s === 'jpeg' || s === 'jpg') return 'image/jpeg';
+    if (s.endsWith('.png') || s === 'png') return 'image/png';
+    if (s.endsWith('.pdf') || s === 'pdf') return 'application/pdf';
+    if (s.endsWith('.xml') || s === 'xml') return 'application/xml';
+    return null;
+  }
+
   /** Bir faturanın görüntüleme URL'ini döndür.
    *  Öncelik: 1) S3 presigned URL (eğer arşivlenmişse)
    *           2) MIHSAP CDN direkt URL'i (fallback — auth gerektirmez)

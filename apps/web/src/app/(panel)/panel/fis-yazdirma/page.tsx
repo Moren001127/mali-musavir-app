@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
   Upload,
@@ -261,53 +262,34 @@ export default function FisYazdirmaPage() {
         return;
       }
 
-      // Sadece resim uzantılı olanları al (jpg/jpeg/png)
-      const imageInvoices = invoices.filter((inv) => {
-        const ext = (inv.orjDosyaTuru || '').toLowerCase();
-        const linkExt = (inv.mihsapFileLink || '').split('.').pop()?.toLowerCase() || '';
-        return (
-          ['jpg', 'jpeg', 'png'].includes(ext) ||
-          ['jpg', 'jpeg', 'png'].includes(linkExt)
-        );
-      });
-
-      if (!imageInvoices.length) {
-        setFetchStatus(`Bu dönemdeki ${invoices.length} fişin hiçbiri JPEG/PNG değil.`);
-        setFetchLoading(false);
-        return;
-      }
-
-      setFetchProgress({ current: 0, total: imageInvoices.length });
-      setFetchStatus(`${imageInvoices.length} fiş indiriliyor...`);
+      // Hepsini dene — backend proxy ve blob mime type'a göre resim olup olmadığı anlaşılacak
+      setFetchProgress({ current: 0, total: invoices.length });
+      setFetchStatus(`${invoices.length} fiş indiriliyor...`);
 
       const fetched: File[] = [];
-      for (let i = 0; i < imageInvoices.length; i++) {
-        const inv = imageInvoices[i];
-        setFetchProgress({ current: i + 1, total: imageInvoices.length });
+      let skippedNonImage = 0;
+      for (let i = 0; i < invoices.length; i++) {
+        const inv = invoices[i];
+        setFetchProgress({ current: i + 1, total: invoices.length });
 
         try {
-          // 2) Download URL al
-          const dlRes = await fetch(
-            `${API}/agent/mihsap/invoices/${inv.id}/download`,
+          // Backend proxy üzerinden direkt binary al (CORS yok, JWT var)
+          const imgRes = await fetch(
+            `${API}/agent/mihsap/invoices/${inv.id}/file`,
             { headers: { Authorization: `Bearer ${getToken()}` } },
           );
-          if (!dlRes.ok) continue;
-          const dlJson = await dlRes.json();
-          const url = dlJson.url;
-          if (!url) continue;
-
-          // 3) Dosyayı indir (blob)
-          const imgRes = await fetch(url);
           if (!imgRes.ok) continue;
           const blob = await imgRes.blob();
 
-          // 4) File objesi yap
-          const ext = (inv.orjDosyaTuru || url.split('.').pop() || 'jpg')
-            .toLowerCase()
-            .replace(/[^a-z0-9]/g, '')
-            .slice(0, 4) || 'jpg';
+          // Sadece image türündekileri al
+          if (!blob.type.startsWith('image/')) {
+            skippedNonImage++;
+            continue;
+          }
+
+          const ext = blob.type.split('/')[1]?.split(';')[0] || 'jpg';
           const safeName = `${(inv.faturaNo || inv.id).toString().replace(/[^\w.-]/g, '_')}.${ext}`;
-          const file = new File([blob], safeName, { type: blob.type || 'image/jpeg' });
+          const file = new File([blob], safeName, { type: blob.type });
           fetched.push(file);
         } catch (e) {
           // Tek fiş hatası tüm süreci bozmasın
@@ -316,7 +298,13 @@ export default function FisYazdirmaPage() {
       }
 
       if (!fetched.length) {
-        setFetchStatus('Hiçbir fiş indirilemedi.');
+        if (skippedNonImage === invoices.length) {
+          setFetchStatus(
+            `${invoices.length} fişin hiçbiri görsel değil (XML/PDF). Fiş yazdırma sadece JPEG/PNG destekler.`,
+          );
+        } else {
+          setFetchStatus('Hiçbir fiş indirilemedi. Backend loglarını kontrol edin.');
+        }
         setFetchLoading(false);
         return;
       }
@@ -327,7 +315,8 @@ export default function FisYazdirmaPage() {
       if (selected) setMukellefName(selected.name);
       setDonem(fetchDonem);
 
-      setFetchStatus(`${fetched.length} fiş başarıyla yüklendi.`);
+      const skipNote = skippedNonImage > 0 ? ` (${skippedNonImage} adet görsel olmayan atlandı)` : '';
+      setFetchStatus(`${fetched.length} fiş başarıyla yüklendi${skipNote}.`);
       setTimeout(() => {
         setShowFetchModal(false);
         setFetchLoading(false);
@@ -1093,16 +1082,27 @@ export default function FisYazdirmaPage() {
         </div>
       )}
 
-      {/* ── FATURALARDAN ÇEK MODAL ── */}
-      {showFetchModal && (
+      {/* ── FATURALARDAN ÇEK MODAL — Portal ile body'ye ── */}
+      {showFetchModal && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,.7)' }}
+          style={{
+            background: 'rgba(0,0,0,.85)',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
           onClick={() => !fetchLoading && setShowFetchModal(false)}
         >
           <div
             className="rounded-2xl max-w-lg w-full p-6 space-y-4"
-            style={{ background: 'var(--card)', boxShadow: 'var(--shadow-lg)' }}
+            style={{
+              background: '#ffffff',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,.5)',
+              color: '#0f172a',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between">
@@ -1222,7 +1222,8 @@ export default function FisYazdirmaPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

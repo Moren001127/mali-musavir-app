@@ -6,10 +6,12 @@ import {
   Query,
   Param,
   Req,
+  Res,
   Headers,
   UseGuards,
   BadRequestException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MihsapService } from './mihsap.service';
@@ -113,6 +115,21 @@ export class MihsapController {
     const url = await this.service.getInvoiceDownloadUrl(req.user.tenantId, id);
     if (!url) return { error: 'dosya bulunamadı' };
     return { url };
+  }
+
+  /** Fatura dosyası proxy — CORS olmadan binary stream eder */
+  @Get('invoices/:id/file')
+  @UseGuards(AuthGuard('jwt'))
+  async file(@Req() req: any, @Param('id') id: string, @Res() res: any) {
+    const data = await this.service.getInvoiceFile(req.user.tenantId, id);
+    if (!data) throw new NotFoundException('Dosya bulunamadı');
+    res.set({
+      'Content-Type': data.contentType,
+      'Content-Disposition': `inline; filename="${data.filename}"`,
+      'Content-Length': String(data.buffer.length),
+      'Cache-Control': 'private, max-age=3600',
+    });
+    return res.send(data.buffer);
   }
 
   /** Son çekme job'larını listele */
