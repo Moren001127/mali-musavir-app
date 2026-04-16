@@ -403,6 +403,21 @@ export class MihsapService {
 
   /** Son çekme işlerini listele (progress gösterimi için) */
   async listFetchJobs(tenantId: string, limit = 20) {
+    // Stale job'ları temizle: 5 dk'dan uzun süredir "running" olan job'ları fail yap
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    await (this.prisma as any).mihsapFetchJob.updateMany({
+      where: {
+        tenantId,
+        status: 'running',
+        startedAt: { lt: fiveMinAgo },
+      },
+      data: {
+        status: 'failed',
+        errorMsg: 'Zaman aşımı – sunucu yeniden başlatıldı',
+        finishedAt: new Date(),
+      },
+    });
+
     return (this.prisma as any).mihsapFetchJob.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
