@@ -222,13 +222,16 @@ export default function FaturalarPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-            <Receipt className="inline mr-2" size={22} />
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>YÖNETIM</span>
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
             Fatura Yönetimi
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
             MIHSAP'tan fatura çekme ve arşiv yönetimi
           </p>
         </div>
@@ -237,8 +240,8 @@ export default function FaturalarPage() {
 
       {/* Mükellef & Dönem seçici */}
       <div
-        className="rounded-xl p-4 border"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        className="rounded-2xl p-4 border"
+        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
           {/* Mükellef arama + seç */}
@@ -396,15 +399,15 @@ export default function FaturalarPage() {
       {/* Toplu (tüm mükellefler) çekim progress */}
       {bulkProgress && (
         <div
-          className="rounded-xl p-4 border"
+          className="rounded-2xl p-4 border"
           style={{
-            background: bulkProgress.running ? 'rgba(184,160,111,.08)' : 'rgba(34,197,94,.08)',
-            borderColor: bulkProgress.running ? '#b8a06f' : '#22c55e',
+            background: bulkProgress.running ? 'rgba(212,184,118,.08)' : 'rgba(34,197,94,.08)',
+            borderColor: bulkProgress.running ? '#d4b876' : '#22c55e',
           }}
         >
           <div className="flex items-center gap-3">
             {bulkProgress.running ? (
-              <Loader2 size={18} className="animate-spin" style={{ color: '#b8a06f' }} />
+              <Loader2 size={18} className="animate-spin" style={{ color: '#d4b876' }} />
             ) : (
               <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
             )}
@@ -435,13 +438,13 @@ export default function FaturalarPage() {
             )}
           </div>
           {/* Progress bar */}
-          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,.08)' }}>
+          <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
             <div
               className="h-full transition-all"
               style={{
                 width: `${(bulkProgress.current / bulkProgress.total) * 100}%`,
                 background: bulkProgress.running
-                  ? 'linear-gradient(90deg, #b8a06f, #8b7649)'
+                  ? 'linear-gradient(90deg, #d4b876, #b8a06f)'
                   : '#22c55e',
               }}
             />
@@ -452,13 +455,13 @@ export default function FaturalarPage() {
       {/* Aktif Job progress */}
       {activeJob && (
         <div
-          className="rounded-xl p-4 border flex items-center gap-3"
+          className="rounded-2xl p-4 border flex items-center gap-3"
           style={{
-            background: 'rgba(59,130,246,.08)',
-            borderColor: '#3b82f6',
+            background: 'rgba(212,184,118,.08)',
+            borderColor: '#d4b876',
           }}
         >
-          <Loader2 size={18} className="animate-spin" style={{ color: '#3b82f6' }} />
+          <Loader2 size={18} className="animate-spin" style={{ color: '#d4b876' }} />
           <div className="flex-1">
             <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
               Fatura çekiliyor ({activeJob.donem})
@@ -477,28 +480,28 @@ export default function FaturalarPage() {
             label="Alış Faturası"
             value={alisInvoices.length}
             sub={`₺${totalAlis.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#3b82f6"
+            color="#d4b876"
             icon={FileText}
           />
           <StatBox
             label="Satış Faturası"
             value={satisInvoices.length}
             sub={`₺${totalSatis.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#22c55e"
+            color="#d4b876"
             icon={FileText}
           />
           <StatBox
             label="Toplam"
             value={invoices.length}
             sub={`₺${(totalAlis + totalSatis).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#b8a06f"
+            color="#d4b876"
             icon={Receipt}
           />
           <StatBox
             label="İndirilmiş Dosya"
             value={invoices.filter((i) => i.storageKey).length}
             sub={`/ ${invoices.length}`}
-            color="#8b5cf6"
+            color="#d4b876"
             icon={Download}
           />
         </div>
@@ -507,12 +510,12 @@ export default function FaturalarPage() {
       {/* Fatura listesi */}
       {selectedMukellef && (
         <div
-          className="rounded-xl border overflow-hidden"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          className="rounded-2xl border overflow-hidden"
+          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
           <div
             className="px-4 py-2 border-b flex items-center justify-between flex-wrap gap-2"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'rgba(255,255,255,0.05)' }}
           >
             <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
               {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
@@ -528,9 +531,9 @@ export default function FaturalarPage() {
                     onClick={() => setTab(t)}
                     className="px-3 py-1 rounded-lg text-xs font-semibold transition"
                     style={{
-                      background: active ? (t === 'ALIS' ? '#3b82f6' : t === 'SATIS' ? '#22c55e' : '#b8a06f') : 'transparent',
-                      color: active ? '#fff' : 'var(--text-muted)',
-                      border: active ? 'none' : '1px solid var(--border)',
+                      background: active ? '#d4b876' : 'transparent',
+                      color: active ? '#0f0d0b' : 'rgba(250,250,249,0.5)',
+                      border: active ? 'none' : '1px solid rgba(255,255,255,0.08)',
                     }}
                   >
                     {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
@@ -561,8 +564,8 @@ export default function FaturalarPage() {
                   <tr
                     className="text-left text-xs font-semibold"
                     style={{
-                      background: 'rgba(0,0,0,.03)',
-                      color: 'var(--text-muted)',
+                      background: 'rgba(255,255,255,0.015)',
+                      color: 'rgba(250,250,249,0.4)',
                     }}
                   >
                     <th className="px-4 py-2">Tür</th>
@@ -601,8 +604,8 @@ function MihsapConnectionBadge({ session }: { session: any }) {
     <div
       className="px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2"
       style={{
-        background: connected ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)',
-        color: connected ? '#16a34a' : '#dc2626',
+        background: connected ? 'rgba(34,197,94,.12)' : 'rgba(244,63,94,.12)',
+        color: connected ? '#22c55e' : '#f43f5e',
       }}
     >
       {connected ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
@@ -617,24 +620,24 @@ function MihsapConnectionBadge({ session }: { session: any }) {
 function StatBox({ label, value, sub, color, icon: Icon }: any) {
   return (
     <div
-      className="rounded-xl p-4 border flex items-center gap-3"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      className="rounded-2xl p-4 border flex items-center gap-3"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: `${color}15`, color }}
+        style={{ background: 'rgba(212,184,118,0.08)', color: '#d4b876' }}
       >
         <Icon size={18} />
       </div>
       <div className="min-w-0">
-        <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+        <div className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
           {label}
         </div>
-        <div className="text-xl font-bold tabular-nums" style={{ color }}>
+        <div className="text-xl font-bold tabular-nums" style={{ color: '#d4b876' }}>
           {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
         </div>
         {sub && (
-          <div className="text-xs tabular-nums truncate" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-xs tabular-nums truncate" style={{ color: 'rgba(250,250,249,0.35)' }}>
             {sub}
           </div>
         )}
@@ -656,16 +659,16 @@ function InvoiceRow({
   const canPreview = !!invoice.storageKey || !!invoice.mihsapFileLink;
   return (
     <tr
-      className="border-t hover:bg-black/[.02] cursor-pointer"
-      style={{ borderColor: 'var(--border)' }}
+      className="border-t cursor-pointer"
+      style={{ borderColor: 'rgba(255,255,255,0.03)' }}
       onClick={() => canPreview && onPreview(invoice)}
     >
       <td className="px-4 py-2">
         <span
           className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
           style={{
-            background: isAlis ? 'rgba(59,130,246,.1)' : 'rgba(34,197,94,.1)',
-            color: isAlis ? '#3b82f6' : '#22c55e',
+            background: 'rgba(212,184,118,.12)',
+            color: '#d4b876',
           }}
         >
           {isAlis ? 'ALIŞ' : 'SATIŞ'}
@@ -698,8 +701,8 @@ function InvoiceRow({
               e.stopPropagation();
               onPreview(invoice);
             }}
-            className="p-1.5 rounded hover:bg-black/10 inline-flex items-center gap-1 text-xs"
-            style={{ color: '#3b82f6' }}
+            className="p-1.5 rounded inline-flex items-center gap-1 text-xs transition"
+            style={{ color: '#d4b876' }}
             title="Görüntüle"
           >
             <FileText size={14} /> Aç

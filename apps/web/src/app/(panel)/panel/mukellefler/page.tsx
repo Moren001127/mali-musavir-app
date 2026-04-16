@@ -112,20 +112,25 @@ export default function MukelleflerPage() {
   const GRID = '1fr 40px 48px 52px 48px 48px 52px 60px 80px';
 
   return (
-    <div className="min-h-screen" style={{ background: '#f5f6fa' }}>
+    <div className="min-h-screen" style={{ background: '#0a0906' }}>
       <div className="max-w-[1400px] mx-auto p-6 space-y-5">
 
         {/* HEADER */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div>
-            <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--navy)' }}>Mükellef Takip Paneli</h1>
-            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+              <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>TAKIP PANELİ</span>
+            </div>
+            <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+              Mükellef Takip
+            </h1>
+            <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
               {MONTHS[month - 1]} {year} · {total} aktif mükellef
             </p>
           </div>
           <Link href="/panel/mukellefler/yeni">
-            <button className="btn-primary text-sm px-4 py-2">+ Mükellef Ekle</button>
+            <button className="text-sm px-5 py-2.5 rounded-[10px] font-bold transition-all" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b' }}>+ Mükellef Ekle</button>
           </Link>
         </div>
 
@@ -134,15 +139,15 @@ export default function MukelleflerPage() {
 
           {/* === KOMPAKT HERO: Dönem (4/12) === */}
           <div
-            className="lg:col-span-4 relative overflow-hidden rounded-xl group transition-all duration-300 hover:shadow-lg"
+            className="lg:col-span-4 relative overflow-hidden rounded-2xl group transition-all duration-300"
             style={{
-              background: 'linear-gradient(135deg, #1c1917 0%, #2c2520 100%)',
-              boxShadow: '0 4px 16px -4px rgba(0,0,0,0.2)',
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.05)',
             }}
           >
             {/* Hafif altın ışıltı */}
             <div
-              className="absolute inset-0 opacity-40"
+              className="absolute inset-0 opacity-20"
               style={{ background: 'radial-gradient(circle at 10% 20%, rgba(184,160,111,0.2), transparent 50%)' }}
             />
 
@@ -193,42 +198,37 @@ export default function MukelleflerPage() {
           {/* === 4 KOMPAKT KPI (8/12) === */}
           <div className="lg:col-span-8 grid grid-cols-4 gap-3">
             {[
-              { label: 'Evrak Geldi',    val: geldi,    tot: total, color: '#10b981', dark: '#047857' },
-              { label: 'İşlendi',         val: islendi,  tot: total, color: '#0ea5e9', dark: '#0369a1' },
-              { label: 'KDV Kontrol',    val: kdv,       tot: total, color: '#f59e0b', dark: '#b45309' },
-              { label: 'Beyanname',      val: beyan,    tot: total, color: '#8b5cf6', dark: '#6d28d9' },
-            ].map(({ label, val, tot, color, dark }) => {
+              { label: 'Evrak Geldi',    val: geldi,    tot: total },
+              { label: 'İşlendi',         val: islendi,  tot: total },
+              { label: 'KDV Kontrol',    val: kdv,       tot: total },
+              { label: 'Beyanname',      val: beyan,    tot: total },
+            ].map(({ label, val, tot }) => {
               const p = tot > 0 ? Math.round((val / tot) * 100) : 0;
               return (
                 <div
                   key={label}
-                  className="relative bg-white rounded-xl px-4 py-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md group"
-                  style={{ border: '1px solid #e6e0d2' }}
+                  className="relative rounded-2xl px-4 py-3 transition-all duration-200 group"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
                 >
-                  {/* Üst renkli ince şerit */}
-                  <div
-                    className="absolute top-0 left-3 right-3 h-0.5 rounded-b-full transition-all duration-200 group-hover:h-1"
-                    style={{ background: color }}
-                  />
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#78716c' }}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
                     {label}
                   </p>
                   <div className="flex items-baseline justify-between">
                     <div className="flex items-baseline gap-1">
                       <span
                         className="tabular-nums leading-none"
-                        style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 22, fontWeight: 700, color: dark, letterSpacing: '-0.02em' }}
+                        style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 22, fontWeight: 700, color: '#d4b876', letterSpacing: '-0.02em' }}
                       >
                         {val}
                       </span>
-                      <span className="text-[11px]" style={{ color: '#a8a29e' }}>/ {tot}</span>
+                      <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.35)' }}>/ {tot}</span>
                     </div>
-                    <span className="text-[10.5px] font-bold tabular-nums" style={{ color: color }}>
+                    <span className="text-[10.5px] font-bold tabular-nums" style={{ color: '#d4b876' }}>
                       %{p}
                     </span>
                   </div>
-                  <div className="mt-2 h-[3px] rounded-full overflow-hidden" style={{ background: `${color}12` }}>
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${p}%`, background: color }} />
+                  <div className="mt-2 h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(212,184,118,0.1)' }}>
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${p}%`, background: '#d4b876' }} />
                   </div>
                 </div>
               );
@@ -238,77 +238,76 @@ export default function MukelleflerPage() {
 
         {/* FİLTRE ÇUBUĞU */}
         <div className="flex flex-wrap gap-2.5 items-center">
-          <div className="flex items-center gap-1 bg-white rounded-xl border border-gray-200 px-3 py-2 shadow-sm text-sm"
-            style={{ color: 'var(--navy)' }}>
+          <div className="flex items-center gap-1 rounded-xl px-3 py-2 text-sm" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}>
             <select value={month} onChange={e => setMonth(parseInt(e.target.value))}
-              className="font-semibold border-none outline-none bg-transparent cursor-pointer text-sm">
+              className="font-semibold border-none outline-none cursor-pointer text-sm" style={{ background: 'transparent', color: '#fafaf9' }}>
               {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
             </select>
-            <span className="text-gray-300 px-0.5">/</span>
+            <span className="px-0.5" style={{ color: 'rgba(250,250,249,0.3)' }}>/</span>
             <select value={year} onChange={e => setYear(parseInt(e.target.value))}
-              className="font-semibold border-none outline-none bg-transparent cursor-pointer text-sm">
+              className="font-semibold border-none outline-none cursor-pointer text-sm" style={{ background: 'transparent', color: '#fafaf9' }}>
               {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
 
-          <div className="flex bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden text-xs">
+          <div className="flex rounded-xl overflow-hidden text-xs" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
             {([['all', 'Tümü'], ['pending', 'Bekleyenler'], ['done', 'Tamamlananlar']] as const).map(([v, l]) => (
               <button key={v} onClick={() => setFilter(v)}
                 className="px-3.5 py-2 font-medium transition-all duration-150"
-                style={{ background: filter === v ? 'var(--accent)' : 'transparent', color: filter === v ? 'white' : 'var(--text-muted)' }}>
+                style={{ background: filter === v ? 'rgba(212,184,118,0.15)' : 'transparent', color: filter === v ? '#d4b876' : 'rgba(250,250,249,0.5)' }}>
                 {l}
               </button>
             ))}
           </div>
 
           <div className="flex-1 min-w-[180px] relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="rgba(250,250,249,0.4)" strokeWidth="2">
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
             <input type="text" placeholder="Mükellef ara..."
               value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]/40 focus:border-[var(--gold)]/50 transition-all" />
+              className="w-full pl-8 pr-3 py-2 text-sm rounded-xl outline-none transition-all" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
           </div>
         </div>
 
         {/* TABLO - Yeni Yaratıcı Kurumsal Tasarım */}
-        <div className="rounded-2xl overflow-hidden border border-gray-200/80 bg-white" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.03), 0 4px 20px rgba(0,0,0,0.04)' }}>
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
 
           {/* Üstte bilgi şeridi */}
-          <div className="px-5 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(90deg, #faf8f4 0%, #ffffff 100%)', borderBottom: '1px solid #e6e0d2' }}>
+          <div className="px-5 py-3 flex items-center justify-between" style={{ background: 'rgba(255,255,255,0.015)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex items-center gap-3">
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10.5px] font-bold uppercase tabular-nums"
-                style={{ background: '#1c1917', color: '#b8a06f', letterSpacing: '0.1em' }}
+                style={{ background: 'rgba(212,184,118,0.15)', color: '#d4b876', letterSpacing: '0.1em' }}
               >
-                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#b8a06f' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#d4b876' }} />
                 {taxpayers.length} kayıt
               </span>
-              <span className="text-[11px]" style={{ color: '#78716c' }}>
+              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 Alfabetik sıralı · {MONTHS[month - 1]} {year} dönemi
               </span>
             </div>
-            <div className="flex items-center gap-2 text-[10.5px] font-semibold" style={{ color: '#78716c' }}>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#10b981' }} /> Tamam</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#b8a06f' }} /> Devam</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#e5e7eb' }} /> Bekliyor</span>
+            <div className="flex items-center gap-2 text-[10.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#22c55e' }} /> Tamam</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#d4b876' }} /> Devam</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }} /> Bekliyor</span>
             </div>
           </div>
 
           {/* Satırlar */}
-          <div className="bg-white">
+          <div>
             {isLoading ? (
-              <div className="py-16 flex flex-col items-center gap-3" style={{ color: '#78716c' }}>
-                <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid #e6e0d2', borderTopColor: '#b8a06f' }} />
+              <div className="py-16 flex flex-col items-center gap-3" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#d4b876' }} />
                 <span className="text-sm">Yükleniyor...</span>
               </div>
             ) : taxpayers.length === 0 ? (
               <div className="py-20 text-center">
-                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: '#f4f1ea' }}>
+                <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
                   <span className="text-2xl">📋</span>
                 </div>
-                <p className="text-sm font-semibold" style={{ color: '#44403c' }}>Kayıt bulunamadı</p>
-                <p className="text-xs mt-1" style={{ color: '#78716c' }}>Dönem seçimini kontrol edin</p>
+                <p className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Kayıt bulunamadı</p>
+                <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem seçimini kontrol edin</p>
               </div>
             ) : (
               <>
@@ -318,9 +317,9 @@ export default function MukelleflerPage() {
                   style={{
                     gridTemplateColumns: '8px 1fr 44px 200px 110px 24px',
                     gap: 16,
-                    background: 'linear-gradient(90deg, #faf8f4, #f4f1ea)',
-                    borderBottom: '1px solid #e6e0d2',
-                    color: '#78716c',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    color: 'rgba(250,250,249,0.4)',
                     letterSpacing: '0.12em',
                   }}
                 >
@@ -352,8 +351,8 @@ export default function MukelleflerPage() {
                   return (
                     <div
                       key={t.id}
-                      className="relative group transition-all duration-200 hover:bg-[#faf8f4]"
-                      style={{ borderBottom: '1px solid #f4f1ea' }}
+                      className="relative group transition-all duration-200"
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                     >
                       <div
                         className="grid items-center px-5 py-3"
@@ -365,10 +364,10 @@ export default function MukelleflerPage() {
                             className="w-[3px] h-9 rounded-full transition-all duration-300"
                             style={{
                               background: done
-                                ? 'linear-gradient(180deg, #10b981, #059669)'
+                                ? '#22c55e'
                                 : cnt > 0
-                                ? 'linear-gradient(180deg, #b8a06f, #8b7649)'
-                                : '#e6e0d2',
+                                ? '#d4b876'
+                                : 'rgba(255,255,255,0.1)',
                             }}
                           />
                         </div>
@@ -380,7 +379,7 @@ export default function MukelleflerPage() {
                         >
                           <p
                             className="text-[14.5px] font-semibold truncate leading-tight hover:underline"
-                            style={{ color: '#1c1917', letterSpacing: '-0.01em' }}
+                            style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}
                           >
                             {name(t)}
                           </p>
@@ -388,14 +387,14 @@ export default function MukelleflerPage() {
                             <span
                               className="text-[10px] font-bold uppercase"
                               style={{
-                                color: t.type === 'TUZEL_KISI' ? '#2563eb' : '#a16207',
+                                color: t.type === 'TUZEL_KISI' ? '#60a5fa' : '#fbbf24',
                                 letterSpacing: '0.08em',
                               }}
                             >
                               {t.type === 'TUZEL_KISI' ? 'Tüzel' : 'Gerçek'}
                             </span>
-                            <span style={{ color: '#d4ccba' }}>·</span>
-                            <span className="text-[11px] tabular-nums" style={{ color: '#a8a29e' }}>
+                            <span style={{ color: 'rgba(250,250,249,0.2)' }}>·</span>
+                            <span className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.35)' }}>
                               {t.taxNumber}
                             </span>
                           </div>
@@ -406,12 +405,12 @@ export default function MukelleflerPage() {
                           {t.evrakTeslimGunu ? (
                             <span
                               className="tabular-nums"
-                              style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, fontWeight: 600, color: '#8b7649' }}
+                              style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, fontWeight: 600, color: '#d4b876' }}
                             >
                               {String(t.evrakTeslimGunu).padStart(2, '0')}
                             </span>
                           ) : (
-                            <span style={{ color: '#e7e5e4', fontSize: 16 }}>·</span>
+                            <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: 16 }}>·</span>
                           )}
                         </div>
 
@@ -430,14 +429,14 @@ export default function MukelleflerPage() {
                                 style={{
                                   width: 10,
                                   height: 10,
-                                  background: step.done ? '#1c1917' : 'transparent',
-                                  border: step.done ? '1.5px solid #1c1917' : '1.5px solid #d4ccba',
+                                  background: step.done ? '#d4b876' : 'transparent',
+                                  border: step.done ? '1.5px solid #d4b876' : '1.5px solid rgba(255,255,255,0.2)',
                                 }}
                               />
                               {/* Hover label */}
                               <span
                                 className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-0.5 rounded text-[9px] font-semibold uppercase whitespace-nowrap opacity-0 group-hover/dot:opacity-100 transition-opacity pointer-events-none"
-                                style={{ background: '#1c1917', color: '#b8a06f', letterSpacing: '0.08em' }}
+                                style={{ background: 'rgba(212,184,118,0.15)', color: '#d4b876', letterSpacing: '0.08em' }}
                               >
                                 {step.label}
                               </span>
@@ -454,20 +453,20 @@ export default function MukelleflerPage() {
                                 fontFamily: 'Fraunces, Georgia, serif',
                                 fontSize: 17,
                                 fontWeight: 600,
-                                color: done ? '#059669' : cnt > 0 ? '#8b7649' : '#a8a29e',
+                                color: done ? '#22c55e' : cnt > 0 ? '#d4b876' : 'rgba(250,250,249,0.35)',
                                 letterSpacing: '-0.02em',
                               }}
                             >
                               {dotCount}
                             </span>
-                            <span className="text-[10px]" style={{ color: '#a8a29e' }}>/6</span>
+                            <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.35)' }}>/6</span>
                           </div>
-                          <div className="w-14 h-[3px] rounded-full overflow-hidden" style={{ background: '#f0ebde' }}>
+                          <div className="w-14 h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                             <div
                               className="h-full rounded-full transition-all duration-500"
                               style={{
                                 width: `${(dotCount / 6) * 100}%`,
-                                background: done ? '#10b981' : '#b8a06f',
+                                background: done ? '#22c55e' : '#d4b876',
                               }}
                             />
                           </div>
@@ -477,7 +476,7 @@ export default function MukelleflerPage() {
                         <Link
                           href={`/panel/mukellefler/${t.id}`}
                           className="flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ color: '#8b7649' }}
+                          style={{ color: '#d4b876' }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round">
                             <path d="M9 18l6-6-6-6" />
@@ -493,9 +492,9 @@ export default function MukelleflerPage() {
 
           {/* Alt bilgi */}
           {!isLoading && taxpayers.length > 0 && (
-            <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between bg-gray-50/80">
-              <span className="text-[11px] text-gray-400">{taxpayers.length} kayıt · E-Arşiv sütunu ilerleme sayacına dahil değil</span>
-              <span className="text-[11px] text-gray-400">{MONTHS[month - 1]} {year} dönemi</span>
+            <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.01)' }}>
+              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{taxpayers.length} kayıt · E-Arşiv sütunu ilerleme sayacına dahil değil</span>
+              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.35)' }}>{MONTHS[month - 1]} {year} dönemi</span>
             </div>
           )}
         </div>
