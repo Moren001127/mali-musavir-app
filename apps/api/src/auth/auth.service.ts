@@ -117,6 +117,9 @@ export class AuthService {
   }
 
   async refreshTokens(token: string) {
+    if (!token || typeof token !== 'string') {
+      throw new UnauthorizedException('Refresh token gereklidir');
+    }
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
     const stored = await this.prisma.refreshToken.findUnique({ where: { tokenHash } });
