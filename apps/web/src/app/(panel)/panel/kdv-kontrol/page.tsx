@@ -165,6 +165,18 @@ export default function KdvKontrolPage() {
     },
   });
 
+  /** Mükellef yoksa picker'ı aç, varsa action'ı çalıştır. Butonları
+   *  "her zaman aktif" yapmak için aksiyon mutation'larını bu guard'dan
+   *  geçiriyoruz. */
+  const requireMukellef = (run: () => void) => {
+    if (!taxpayerId) {
+      toast.message('Önce mükellef seçin');
+      setPickerOpen(true);
+      return;
+    }
+    run();
+  };
+
   const runLuca = useMutation({
     mutationFn: async () => {
       pushFeed({ kind: 'info', title: 'Luca çekim işi oluşturuluyor…', detail: `${TYPE_LABEL[type]} · ${periodLabel}` });
@@ -434,22 +446,20 @@ export default function KdvKontrolPage() {
           <ActionBtn
             icon={FileSpreadsheet}
             label="Luca'dan Veri Çek"
-            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : 'Luca muavin dosyası'}
+            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Luca muavin dosyası'}
             color="#2563eb"
             done={hasRecords}
-            onClick={() => runLuca.mutate()}
+            onClick={() => requireMukellef(() => runLuca.mutate())}
             loading={runLuca.isPending || ensureSession.isPending}
-            disabled={!taxpayerId}
           />
           <ActionBtn
             icon={ImageIcon}
             label="Faturaları Çek"
-            sub={hasImages ? `${stats?.totalImages} fatura bağlı` : 'Portaldaki faturalar'}
+            sub={hasImages ? `${stats?.totalImages} fatura bağlı` : !taxpayerId ? 'Önce mükellef seçin' : 'Portaldaki mevcut faturalar'}
             color="#a855f7"
             done={hasImages}
-            onClick={() => runFaturalar.mutate()}
+            onClick={() => requireMukellef(() => runFaturalar.mutate())}
             loading={runFaturalar.isPending || ensureSession.isPending}
-            disabled={!taxpayerId}
           />
           <ActionBtn
             icon={ScanLine}
@@ -457,13 +467,18 @@ export default function KdvKontrolPage() {
             sub={
               hasImages && ocrDone ? 'OCR tamam'
               : processingCount > 0 ? `${processingCount} okunuyor…`
+              : !hasImages ? 'Önce faturaları çekin'
               : 'Fatura üzerinde tarih/belge/KDV oku'
             }
             color="#f59e0b"
             done={hasImages && ocrDone}
-            onClick={() => runOcr.mutate()}
+            onClick={() => {
+              if (!taxpayerId) return requireMukellef(() => runOcr.mutate());
+              if (!hasImages) return toast.error('Önce "Faturaları Çek" ile faturaları bağlayın');
+              if (pendingOcrCount === 0) return toast.message('Bekleyen OCR yok');
+              runOcr.mutate();
+            }}
             loading={runOcr.isPending}
-            disabled={!hasImages || pendingOcrCount === 0}
           />
           <ActionBtn
             icon={Play}
@@ -471,9 +486,14 @@ export default function KdvKontrolPage() {
             sub={(results as any[]).length > 0 ? `${(results as any[]).length} sonuç` : 'Luca ↔ Fatura eşleştirme'}
             color={GOLD}
             filled
-            onClick={() => runReconcile.mutate()}
+            onClick={() => {
+              if (!taxpayerId) return requireMukellef(() => runReconcile.mutate());
+              if (!hasRecords) return toast.error('Önce Luca\'dan veri çekin');
+              if (!hasImages) return toast.error('Önce faturaları bağlayın');
+              if (!ocrDone) return toast.error('Önce OCR\'ı bitirin');
+              runReconcile.mutate();
+            }}
             loading={runReconcile.isPending}
-            disabled={!hasRecords || !hasImages || !ocrDone}
           />
         </div>
       </div>
