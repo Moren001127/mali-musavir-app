@@ -278,8 +278,23 @@ export class LucaAutoScraperService {
     if (!cred) throw new BadRequestException('Luca hesabı kaydedilmemiş');
     if (!cred.isActive) throw new BadRequestException('Luca hesabı devre dışı');
 
-    // Playwright'ı dinamik import et
-    const { chromium } = await import('playwright-core' as any);
+    // Playwright'ı yükle — webpack externalization bypass:
+    // eval('require') native Node require'ı çağırır, main.js lokasyonuna göre resolve eder
+    let chromium: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const nativeRequire: NodeRequire = (0, eval)('require');
+      const pw = nativeRequire('playwright-core');
+      chromium = pw.chromium;
+      this.logger.log(`[LUCA] playwright-core yüklendi: ${nativeRequire.resolve('playwright-core')}`);
+    } catch (e: any) {
+      this.logger.error(`[LUCA] playwright-core yüklenemedi: ${e?.message}`);
+      this.logger.error(`[LUCA] __dirname: ${__dirname} · cwd: ${process.cwd()} · NODE_PATH: ${process.env.NODE_PATH || '-'}`);
+      throw new Error(
+        `Playwright yüklenemedi: ${e?.message}. ` +
+        `Bu hata Railway image'inde playwright-core node_modules'ta olmadığını gösterir.`,
+      );
+    }
     const browser: PwBrowser = await chromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
       headless: true,
