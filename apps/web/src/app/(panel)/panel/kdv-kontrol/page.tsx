@@ -93,6 +93,11 @@ export default function KdvKontrolPage() {
   const [pendingRestoreSessionId, setPendingRestoreSessionId] = useState<string | null>(
     () => searchParams?.get('s') || null,
   );
+  // URL param'ı her değiştiğinde (Next Link soft-nav dahil) state'i yenile
+  useEffect(() => {
+    const sParam = searchParams?.get('s');
+    if (sParam) setPendingRestoreSessionId(sParam);
+  }, [searchParams]);
 
   // ── Canlı akış için state ───────────────────────────
   const [feed, setFeed] = useState<FeedItem[]>([]);
