@@ -217,11 +217,30 @@ export class LucaAutoScraperService {
       page = await context.newPage();
 
       this.logger.log('[LUCA] Login akışı başlatıldı');
-      // `domcontentloaded` — Luca sayfası sürekli network aktivitesi yaptığı
-      // için `networkidle` hiç tetiklenmeyebilir. DOM hazır olunca devam et,
-      // input selector'lar görününce form doldur.
-      await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      await page.waitForSelector(SELECTORS.loginPassword, { timeout: 15_000 }).catch(() => {});
+
+      // ÖN TEŞHİS: Luca URL'sine basit HTTP HEAD/GET yapılabiliyor mu?
+      try {
+        const probeStart = Date.now();
+        const probe = await fetch(LUCA_URLS.login, {
+          method: 'GET',
+          signal: AbortSignal.timeout(15_000),
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          },
+        });
+        this.logger.log(
+          `[LUCA] HTTP probe: ${probe.status} ${probe.statusText || ''} · ${Date.now() - probeStart}ms · content-length=${probe.headers.get('content-length') || '?'}`,
+        );
+      } catch (probeErr: any) {
+        this.logger.error(`[LUCA] HTTP probe başarısız: ${probeErr?.message}`);
+        // Devam et — Playwright belki yine de geçer
+      }
+
+      // `commit` — en liberal bekleme: navigation committing (ilk byte) yeterli.
+      // `domcontentloaded` bile ağır SPA'larda tetiklenmeyebiliyor.
+      await page.goto(LUCA_URLS.login, { waitUntil: 'commit', timeout: 45_000 });
+      await page.waitForSelector(SELECTORS.loginPassword, { timeout: 20_000 }).catch(() => {});
       this.logger.log(`[LUCA] Login sayfası yüklendi · url=${page.url()}`);
 
       // Credential doldur
