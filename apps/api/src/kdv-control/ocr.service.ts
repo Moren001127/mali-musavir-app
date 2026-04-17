@@ -37,23 +37,42 @@ export class OcrService {
   }
 
   /**
-   * Azure Vision API ile OCR
-   * Tesseract yerine bulut tabanlı OCR
+   * Fatura/fiş görselinden yapısal veri çıkarır.
+   *
+   * Öncelik sırası:
+   *   1. Claude Haiku 4.5 Vision — LLM tabanlı, en yüksek doğruluk
+   *   2. Azure Vision Read API + regex — fallback
+   *   3. Dosya adından belgeNo — son çare
+   *
+   * PRENSİP: Hiçbir dış sistemden (Mihsap, Luca vs.) gelen ham veriye
+   * güvenmeyiz. Doğrulama daima GÖRÜNTÜNÜN KENDİSİNDEN yapılır.
    */
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
 
-    // Azure Vision varsa kullan
+    // 1. Tercih: Claude Haiku 4.5 Vision (eğer API key varsa)
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
+        if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
+          return claudeResult;
+        }
+        // Claude boş döndü → Azure fallback
+      } catch (e: any) {
+        this.logger.warn(`Claude Vision hatası, Azure'a geçiliyor: ${e?.message}`);
+      }
+    }
+
+    // 2. Fallback: Azure Vision Read API
     if (this.azureClient) {
       try {
         return await this.runAzureOcr(imageBuffer, belgeNoFromFilename);
       } catch (e) {
         this.logger.error('Azure Vision hatası:', e?.message);
-        // Azure başarısız olursa fallback
       }
     }
 
-    // Fallback: Dosya adından belgeNo
+    // 3. Son çare: dosya adından belgeNo
     return {
       rawText: '',
       belgeNo: belgeNoFromFilename,
@@ -63,6 +82,136 @@ export class OcrService {
       confidence: belgeNoFromFilename ? 0.3 : 0,
       engine: 'filename-only',
     };
+  }
+
+  // === CLAUDE HAIKU 4.5 VISION OCR ===
+  /**
+   * Claude Haiku 4.5'i vision mode'da çağırır; Türk fatura/fiş görselinden
+   * tarih, belge no, KDV tutarı ve toplam tutarı yapısal JSON olarak alır.
+   * Regex'e oranla çok daha doğru çalışır (özellikle KDV tutarı için).
+   */
+  private async runClaudeVisionOcr(buffer: Buffer): Promise<OcrResult> {
+    const apiKey = process.env.ANTHROPIC_API_KEY!;
+    const MODEL = 'claude-haiku-4-5-20251001';
+
+    // Büyük görselleri 2000px'e küçült (Claude limit + hız)
+    let b64: string;
+    try {
+      const sharp = (await import('sharp')).default;
+      const resized = await sharp(buffer)
+        .rotate() // EXIF
+        .resize({ width: 2000, withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      b64 = resized.toString('base64');
+    } catch {
+      // sharp yoksa ham buffer'ı kullan
+      b64 = buffer.toString('base64');
+    }
+
+    const systemPrompt =
+      'Sen Türk fatura ve fişlerinden yapısal veri çıkaran bir OCR uzmanısın. ' +
+      'Görseli dikkatle incele ve şu alanları JSON olarak döndür: ' +
+      '{"tarih":"YYYY-MM-DD" veya null, "belgeNo":"...", "kdvTutari":"123,45", "toplam":"345,67", "satici":"...", "kdvOrani": 20}. ' +
+      'Tarih: fatura tarihi / belge tarihi / fiş tarihi. Net okunamıyorsa null. ' +
+      'Belge no: fatura numarası, fiş numarası, seri-sıra no kombinasyonu. ' +
+      'KDV tutarı: "KDV", "K.D.V.", "Hesaplanan KDV", "KDV Tutarı" satırındaki TUTAR. Birden fazla KDV oranı varsa TOPLAM KDV tutarı. ' +
+      'Toplam: genel toplam / ödenecek tutar / fatura toplamı. ' +
+      'Tutarları Türk formatında ver: "1.234,56" → "1234,56" (noktasız, virgüllü). ' +
+      'Sadece geçerli JSON dön, açıklama yok.';
+
+    const userText =
+      'Bu fatura/fişin tarih, belge no, KDV tutarı, toplam ve satıcı bilgilerini JSON olarak çıkar. ' +
+      'KDV tutarı KRİTİK — birden fazla kalem varsa hepsini topla. ' +
+      'Örnek: görselde "KDV %20: 456,00" yazıyorsa "kdvTutari":"456,00".';
+
+    const startMs = Date.now();
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 400,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+              { type: 'text', text: userText },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Claude API ${res.status}: ${body.slice(0, 120)}`);
+    }
+
+    const payload: any = await res.json();
+    const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
+    const raw = textBlock?.text?.trim() || '';
+
+    // JSON block'unu çıkar (Claude bazen markdown içine sararken)
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      this.logger.warn(`Claude beklenen JSON döndürmedi: ${raw.slice(0, 100)}`);
+      return {
+        rawText: raw.slice(0, 2000),
+        belgeNo: null,
+        date: null,
+        kdvTutari: null,
+        totalTutari: null,
+        confidence: 0,
+        engine: 'claude-haiku-4-5',
+      };
+    }
+
+    let parsed: any = {};
+    try {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      /* JSON parse başarısız — boş dön */
+    }
+
+    // Tarihi TR formatına çevir: YYYY-MM-DD → DD.MM.YYYY
+    const date = this.formatIsoToTr(parsed.tarih) ?? null;
+
+    const belgeNo = parsed.belgeNo ? String(parsed.belgeNo).toUpperCase().trim() : null;
+    const kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
+    const toplam = parsed.toplam ? String(parsed.toplam).replace(/\s/g, '') : null;
+
+    // Güven skoru: kaç alan doldu?
+    const foundFields = [belgeNo, date, kdvTutari].filter(Boolean).length;
+    const confidence = Math.min(0.5 + (foundFields / 3) * 0.5, 1); // Claude baseline: 0.5
+
+    this.logger.log(
+      `Claude OCR ✓ Alan:${foundFields}/3 (${belgeNo?.slice(0, 12) || '—'} · ${date || '—'} · KDV ${kdvTutari || '—'}) ${Date.now() - startMs}ms`,
+    );
+
+    return {
+      rawText: JSON.stringify(parsed).slice(0, 2000),
+      belgeNo,
+      date,
+      kdvTutari,
+      totalTutari: toplam,
+      confidence,
+      engine: 'claude-haiku-4-5',
+    };
+  }
+
+  /** "2026-03-08" → "08.03.2026" */
+  private formatIsoToTr(iso?: string | null): string | null {
+    if (!iso || typeof iso !== 'string') return null;
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return `${m[3]}.${m[2]}.${m[1]}`;
   }
 
   isLowConfidence(result: OcrResult): boolean {

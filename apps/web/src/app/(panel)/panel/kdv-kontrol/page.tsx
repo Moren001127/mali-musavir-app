@@ -20,6 +20,8 @@ type FeedItem = {
   title: string;
   detail?: string;
   resultId?: string;
+  /** Stale hata temizleme için: "luca" | "faturalar" | "ocr" | "kontrol" */
+  group?: string;
 };
 
 /** Kullanıcının istediği terminoloji */
@@ -91,6 +93,15 @@ export default function KdvKontrolPage() {
     setFeed((prev) => [...prev.slice(-199), { ...it, ts: Date.now() }]);
   };
 
+  /**
+   * Aynı "group" (ör. "luca", "faturalar", "ocr") içinde başarılı bir
+   * olay geldiğinde o gruba ait önceki HATA kayıtlarını feed'den
+   * temizler — böylece stale hatalar "Sorun" sayacını şişirmez.
+   */
+  const clearFeedErrorsInGroup = (group: string) => {
+    setFeed((prev) => prev.filter((f) => !(f.group === group && f.kind === 'err')));
+  };
+
   // ── DATA ────────────────────────────────────────────
   const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers'],
@@ -147,6 +158,10 @@ export default function KdvKontrolPage() {
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
   const processingCount = images.filter((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus)).length;
   const pendingOcrCount = images.filter((i: any) => i.ocrStatus === 'PENDING').length;
+  /** OCR'ı başarıyla tamamlanmış (veya teyit edilmiş) fatura sayısı */
+  const readCount = images.filter(
+    (i: any) => i.ocrStatus === 'SUCCESS' || i.ocrStatus === 'LOW_CONFIDENCE' || i.isManuallyConfirmed,
+  ).length;
   const hasRecords = (stats?.totalRecords ?? 0) > 0;
   const hasImages = (stats?.totalImages ?? 0) > 0;
   const ocrDone = hasImages && pendingOcrCount === 0 && processingCount === 0;
@@ -179,77 +194,100 @@ export default function KdvKontrolPage() {
 
   const runLuca = useMutation({
     mutationFn: async () => {
-      pushFeed({ kind: 'info', title: 'Luca çekim işi oluşturuluyor…', detail: `${TYPE_LABEL[type]} · ${periodLabel}` });
-      const s = activeSession ?? (await ensureSession.mutateAsync());
+      // Session'ı daima güncel periodLabel/taxpayer/tip ile çek — cache stale olmasın
+      const s = await ensureSession.mutateAsync();
+      pushFeed({ group: 'luca', kind: 'info', title: 'Luca çekim işi oluşturuluyor…', detail: `${TYPE_LABEL[type]} · ${periodLabel}` });
       return kdvApi.importFromLuca(s.id);
     },
     onSuccess: () => {
-      pushFeed({ kind: 'ok', title: 'Luca çekim işi oluşturuldu', detail: 'Luca sekmesinde açık runner bu işi alacak' });
+      clearFeedErrorsInGroup('luca');
+      pushFeed({ group: 'luca', kind: 'ok', title: 'Luca çekim işi oluşturuldu', detail: 'Luca sekmesinde açık runner bu işi alacak' });
       toast.success('Luca çekim işi oluşturuldu');
       qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
       qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'Luca çekim başlatılamadı';
-      pushFeed({ kind: 'err', title: 'Luca çekim hatası', detail: msg });
+      pushFeed({ group: 'luca', kind: 'err', title: 'Luca çekim hatası', detail: msg });
       toast.error(msg);
     },
   });
 
+  /**
+   * Faturaları Çek → linkMihsapInvoices, ardından otomatik OCR başlat.
+   * Tek tıklamayla iki iş zincirlenir; kullanıcı ayrı OCR butonuna
+   * basmak zorunda kalmaz.
+   */
   const runFaturalar = useMutation({
     mutationFn: async () => {
-      pushFeed({ kind: 'info', title: 'Portaldaki faturalar bağlanıyor…', detail: `${periodLabel} · ${TYPE_LABEL[type]}` });
-      const s = activeSession ?? (await ensureSession.mutateAsync());
-      return kdvApi.linkMihsapInvoices(s.id);
+      const s = await ensureSession.mutateAsync();
+      pushFeed({ group: 'faturalar', kind: 'info', title: 'Portaldaki faturalar bağlanıyor…', detail: `${periodLabel} · ${TYPE_LABEL[type]}` });
+      const linkResult: any = await kdvApi.linkMihsapInvoices(s.id);
+      clearFeedErrorsInGroup('faturalar');
+      pushFeed({ group: 'faturalar', kind: 'ok', title: `${linkResult.linked} fatura bağlandı`, detail: `Toplam ${linkResult.total} · yeni eklenen ${linkResult.linked}` });
+
+      // Zincir: OCR otomatik başlasın
+      pushFeed({ group: 'ocr', kind: 'info', title: 'OCR başlatılıyor…', detail: 'Fatura görsellerinden tarih / belge no / KDV okunuyor' });
+      try {
+        const ocrResult: any = await kdvApi.startOcr(s.id);
+        clearFeedErrorsInGroup('ocr');
+        pushFeed({ group: 'ocr', kind: 'ok', title: `${ocrResult.queued} OCR işi başladı`, detail: 'Faturalar sırayla okunuyor, sayaç güncellenecek' });
+      } catch (ocrErr: any) {
+        pushFeed({ group: 'ocr', kind: 'err', title: 'OCR başlatılamadı', detail: ocrErr?.response?.data?.message || ocrErr?.message || 'bilinmeyen hata' });
+      }
+
+      return linkResult;
     },
     onSuccess: (d: any) => {
-      pushFeed({ kind: 'ok', title: `${d.linked} fatura bağlandı`, detail: `Toplam ${d.total} · yeni eklenen ${d.linked}` });
-      toast.success(`${d.linked} fatura bağlandı`);
+      toast.success(`${d.linked} fatura bağlandı · OCR başladı`);
       qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
       qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
       qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'Faturalar bağlanamadı';
-      pushFeed({ kind: 'err', title: 'Fatura bağlama hatası', detail: msg });
+      pushFeed({ group: 'faturalar', kind: 'err', title: 'Fatura bağlama hatası', detail: msg });
       toast.error(msg);
     },
   });
 
-  const runOcr = useMutation({
+  /** Manuel "Tekrar OCR'la" — OCR sayacının yanındaki küçük link için. */
+  const runOcrAgain = useMutation({
     mutationFn: async () => {
-      pushFeed({ kind: 'info', title: 'OCR başlatılıyor…', detail: `${pendingOcrCount} fatura kuyruğa alınıyor` });
-      const s = activeSession ?? (await ensureSession.mutateAsync());
+      const s = await ensureSession.mutateAsync();
+      pushFeed({ group: 'ocr', kind: 'info', title: 'OCR yeniden başlatılıyor…', detail: `${pendingOcrCount} bekleyen fatura` });
       return kdvApi.startOcr(s.id);
     },
     onSuccess: (d: any) => {
-      pushFeed({ kind: 'ok', title: `${d.queued} OCR işi başladı`, detail: 'Faturalar sırayla okunuyor' });
+      clearFeedErrorsInGroup('ocr');
+      pushFeed({ group: 'ocr', kind: 'ok', title: `${d.queued} OCR işi başladı`, detail: 'Faturalar yeniden okunuyor' });
       toast.success(`${d.queued} OCR başlatıldı`);
       qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'OCR başlatılamadı';
-      pushFeed({ kind: 'err', title: 'OCR hatası', detail: msg });
+      pushFeed({ group: 'ocr', kind: 'err', title: 'OCR hatası', detail: msg });
       toast.error(msg);
     },
   });
 
   const runReconcile = useMutation({
     mutationFn: async () => {
-      pushFeed({ kind: 'info', title: 'Eşleştirme başladı', detail: `Luca × Fatura karşılaştırması` });
+      const s = await ensureSession.mutateAsync();
+      pushFeed({ group: 'kontrol', kind: 'info', title: 'Eşleştirme başladı', detail: `Luca × Fatura karşılaştırması` });
       seenResultIdsRef.current.clear();
-      const s = activeSession ?? (await ensureSession.mutateAsync());
       return kdvApi.reconcile(s.id);
     },
     onSuccess: (d: any) => {
-      pushFeed({ kind: 'ok', title: 'Kontrol tamamlandı', detail: `${d.matched} eşleşti · ${d.unmatched} eşleşmedi · ${d.needsReview} inceleme` });
+      clearFeedErrorsInGroup('kontrol');
+      pushFeed({ group: 'kontrol', kind: 'ok', title: 'Kontrol tamamlandı', detail: `${d.matched} eşleşti · ${d.unmatched} eşleşmedi · ${d.needsReview} inceleme` });
       toast.success(`Eşleştirme: ${d.matched} ✓  ${d.unmatched} ✗`);
       qc.invalidateQueries({ queryKey: ['kdv-results', sessionId] });
       qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'Eşleştirme başarısız';
-      pushFeed({ kind: 'err', title: 'Eşleştirme hatası', detail: msg });
+      pushFeed({ group: 'kontrol', kind: 'err', title: 'Eşleştirme hatası', detail: msg });
       toast.error(msg);
     },
   });
@@ -441,8 +479,8 @@ export default function KdvKontrolPage() {
           </div>
         </div>
 
-        {/* AKSİYON BUTONLARI */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        {/* AKSİYON BUTONLARI (3 adım — OCR otomatik) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           <ActionBtn
             icon={FileSpreadsheet}
             label="Luca'dan Veri Çek"
@@ -455,30 +493,17 @@ export default function KdvKontrolPage() {
           <ActionBtn
             icon={ImageIcon}
             label="Faturaları Çek"
-            sub={hasImages ? `${stats?.totalImages} fatura bağlı` : !taxpayerId ? 'Önce mükellef seçin' : 'Portaldaki mevcut faturalar'}
+            sub={
+              hasImages && ocrDone ? `${stats?.totalImages} fatura · OCR tamam`
+              : processingCount > 0 ? `${readCount}/${stats?.totalImages} okunuyor…`
+              : hasImages ? `${stats?.totalImages} fatura bağlı · OCR başladı`
+              : !taxpayerId ? 'Önce mükellef seçin'
+              : 'Portaldaki faturalar + otomatik OCR'
+            }
             color="#a855f7"
-            done={hasImages}
+            done={hasImages && ocrDone}
             onClick={() => requireMukellef(() => runFaturalar.mutate())}
             loading={runFaturalar.isPending || ensureSession.isPending}
-          />
-          <ActionBtn
-            icon={ScanLine}
-            label="OCR Başlat"
-            sub={
-              hasImages && ocrDone ? 'OCR tamam'
-              : processingCount > 0 ? `${processingCount} okunuyor…`
-              : !hasImages ? 'Önce faturaları çekin'
-              : 'Fatura üzerinde tarih/belge/KDV oku'
-            }
-            color="#f59e0b"
-            done={hasImages && ocrDone}
-            onClick={() => {
-              if (!taxpayerId) return requireMukellef(() => runOcr.mutate());
-              if (!hasImages) return toast.error('Önce "Faturaları Çek" ile faturaları bağlayın');
-              if (pendingOcrCount === 0) return toast.message('Bekleyen OCR yok');
-              runOcr.mutate();
-            }}
-            loading={runOcr.isPending}
           />
           <ActionBtn
             icon={Play}
@@ -490,7 +515,7 @@ export default function KdvKontrolPage() {
               if (!taxpayerId) return requireMukellef(() => runReconcile.mutate());
               if (!hasRecords) return toast.error('Önce Luca\'dan veri çekin');
               if (!hasImages) return toast.error('Önce faturaları bağlayın');
-              if (!ocrDone) return toast.error('Önce OCR\'ı bitirin');
+              if (!ocrDone) return toast.error('OCR devam ediyor, birazdan tekrar deneyin');
               runReconcile.mutate();
             }}
             loading={runReconcile.isPending}
@@ -523,16 +548,30 @@ export default function KdvKontrolPage() {
             </div>
           </div>
           <div className="p-5">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
-                { label: 'Luca Satırı',   val: stats.totalRecords, color: GOLD,       icon: FileText },
-                { label: 'Bağlı Fatura',  val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
-                { label: 'Eşleşen',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
-                { label: 'Teyit Bekler',  val: (stats.needsOcrConfirm ?? 0) + (stats.needsReview ?? 0), color: '#f59e0b', icon: AlertTriangle },
-              ].map(({ label, val, color, icon: Icon }) => (
-                <div key={label} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center gap-1.5 mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                    <Icon size={12} style={{ color }} /> {label}
+                { key: 'luca',    label: 'Luca Satırı',     val: stats.totalRecords, color: GOLD,       icon: FileText },
+                { key: 'uploaded',label: 'Yüklenen Fatura', val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
+                { key: 'read',    label: 'Okunan Fatura',   val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
+                { key: 'matched', label: 'Eşleşen',         val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
+                { key: 'pending', label: 'Teyit Bekler',    val: (stats.needsOcrConfirm ?? 0) + (stats.needsReview ?? 0), color: '#f59e0b', icon: AlertTriangle },
+              ].map(({ key, label, val, color, icon: Icon, showRerun }) => (
+                <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="flex items-center justify-between mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                    <span className="flex items-center gap-1.5">
+                      <Icon size={12} style={{ color }} /> {label}
+                    </span>
+                    {showRerun && (
+                      <button
+                        onClick={() => runOcrAgain.mutate()}
+                        disabled={runOcrAgain.isPending}
+                        title="OCR'ı tekrar çalıştır"
+                        className="text-[10px] normal-case font-semibold px-1.5 py-0.5 rounded hover:brightness-125 transition"
+                        style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa' }}
+                      >
+                        {runOcrAgain.isPending ? '…' : '⟳'}
+                      </button>
+                    )}
                   </div>
                   <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: '#fafaf9' }}>
                     {val ?? 0}

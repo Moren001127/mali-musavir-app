@@ -32,6 +32,24 @@ export class ReconciliationEngine {
       this.prisma.receiptImage.findMany({ where: { sessionId } }),
     ]);
 
+    // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
+    // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
+    // "Mihsap bu faturaya belge tarihi olarak ne atamış?" sorusunun yanıtı.
+    const mihsapBelgeTarihleri: Record<string, Date | null> = {};
+    const mihsapInvoiceIds: string[] = images
+      .filter((img) => img.s3Key?.startsWith('mihsap://'))
+      .map((img) => img.s3Key!.slice('mihsap://'.length));
+    if (mihsapInvoiceIds.length > 0) {
+      const invoices = await (this.prisma as any).mihsapInvoice.findMany({
+        where: { id: { in: mihsapInvoiceIds } },
+        select: { id: true, faturaTarihi: true },
+      });
+      for (const inv of invoices) {
+        mihsapBelgeTarihleri[`mihsap://${inv.id}`] =
+          inv.faturaTarihi ? new Date(inv.faturaTarihi) : null;
+      }
+    }
+
     const usedImageIds = new Set<string>();
     const usedRecordIds = new Set<string>();
     const createData: any[] = [];
@@ -42,7 +60,8 @@ export class ReconciliationEngine {
 
       for (const image of images) {
         if (usedImageIds.has(image.id)) continue;
-        const { score, reasons } = this.calculateScore(record, image);
+        const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
+        const { score, reasons } = this.calculateScore(record, image, mihsapBelgeTarihi);
         if (score > 0.3) {
           candidates.push({ kdvRecord: record, image, score, reasons });
         }
@@ -122,80 +141,126 @@ export class ReconciliationEngine {
 
   /**
    * KDV kaydı ile görsel arasındaki eşleşme skorunu hesaplar.
-   * Üç kritere bakılır: Tarih (%30) + Belge No (%50) + KDV Tutarı (%20)
+   *
+   * İki farklı belge kategorisi var:
+   *
+   * A) E-FATURA / E-ARŞİV (belge no ≥ 10 hane, ör: "E152026000005355"):
+   *    Belge no benzersiz olduğundan tarih kriteri GEREKSIZ.
+   *    Belge no + KDV tutarı yeterli. Mükellef fişi geç getirdiyse
+   *    Mihsap kayıt dönemine göre zaten doğru aya bağlanır — tarih
+   *    karşılaştırılmaz.
+   *
+   * B) ÖKC FİŞİ (belge no ≤ 6 hane, ör: "0014", "0316"):
+   *    Belge no benzersiz DEĞİL (aynı seri farklı günlerde tekrar
+   *    eder). Bu yüzden tarih karşılaştırılmak ZORUNDA. Tarih
+   *    uyumsuzsa MATCHED olmaz.
    */
   private calculateScore(
     record: KdvRecord,
     image: ReceiptImage,
+    mihsapBelgeTarihi: Date | null = null,
   ): { score: number; reasons: string[] } {
-    // Kullanıcı onaylı değerleri tercih et
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
     const imgKdv = image.confirmedKdvTutari || image.ocrKdvTutari;
 
+    // Belge kategorisi: uzun belge no → e-fatura/e-arşiv; kısa → ÖKC fiş
+    const belgeNoLen = (record.belgeNo || imgBelgeNo || '').replace(/[^A-Z0-9]/gi, '').length;
+    const isOkcFisi = belgeNoLen > 0 && belgeNoLen <= 6;
+    const isUzunBelge = belgeNoLen >= 10;
+
     let score = 0;
     const reasons: string[] = [];
+    let belgeNoExact = false;
 
-    // Belge No (%50 ağırlık) — en önemli kriter
+    // ── Belge No ağırlığı (kategoriye göre değişir)
+    const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
+
     if (record.belgeNo && imgBelgeNo) {
       const similarity = this.stringSimilarity(
         record.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, ''),
         imgBelgeNo.toUpperCase().replace(/[^A-Z0-9]/g, ''),
       );
-      if (similarity >= 0.9) score += 0.5;
-      else if (similarity >= 0.7) {
-        score += 0.3;
-        reasons.push(`Belge no kısmi eşleşme: ${record.belgeNo} ≠ ${imgBelgeNo}`);
+      if (similarity >= 0.9) {
+        score += belgeNoWeight;
+        belgeNoExact = true;
+      } else if (similarity >= 0.7) {
+        score += belgeNoWeight * 0.55;
+        reasons.push(`Belge no kısmi: ${record.belgeNo} ≠ ${imgBelgeNo}`);
       } else {
         reasons.push(`Belge no uyumsuz: ${record.belgeNo} ≠ ${imgBelgeNo}`);
       }
     } else if (!record.belgeNo || !imgBelgeNo) {
-      score += 0.1; // Biri eksikse tam puan verme
+      score += 0.15;
+      reasons.push(!imgBelgeNo ? 'Görselde belge no okunamadı' : 'Luca kaydında belge no yok');
     }
 
-    // KDV Tutarı (%20 ağırlık) — görsel KDV yoksa Excel değerini referans al (Z-raporu desteği)
-    const imgKdvEffective = imgKdv ?? null;
-    if (record.kdvTutari && imgKdvEffective) {
+    // ── KDV Tutarı (%30 ağırlık) — her iki kategoride de doğrulama
+    if (record.kdvTutari && imgKdv) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
       const imgKdvNum = parseFloat(
-        imgKdvEffective.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
+        imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
       );
       if (!isNaN(imgKdvNum)) {
         const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
-        if (diff < 0.01) score += 0.2;
-        else if (diff < 0.05) { score += 0.1; reasons.push(`KDV tutarı yakın ama farklı: ${recordKdv} ≠ ${imgKdvNum}`); }
-        else { reasons.push(`KDV tutarı uyumsuz: ${recordKdv} ≠ ${imgKdvNum}`); }
+        if (diff < 0.01) {
+          score += 0.3;
+        } else if (diff < 0.05) {
+          score += 0.15;
+          reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
+        } else {
+          reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
+        }
       }
-    } else if (!imgKdvEffective && record.kdvTutari) {
-      // Görsel KDV okunamadı — tarih+belgeNo eşleşirse KDV skoru eksik sayma, bonus ver
-      score += 0.05; // Görselde KDV yoksa hafif bonus (ceza değil)
+    } else if (!imgKdv && record.kdvTutari) {
+      score += 0.1;
+      reasons.push('Görselden KDV tutarı okunamadı');
     }
 
-    // Tarih (%30 ağırlık)
+    // ── Tarih kontrolü — birebir
+    //    1) Luca.belgeDate == OCR fiş tarihi → ✓
+    //    2) Değilse → Luca.belgeDate == Mihsap'ın belge tarihi → ✓
+    //    3) İkisi de eşit değilse → uyuşmazlık
     if (record.belgeDate && imgDate) {
       const recordDate = new Date(record.belgeDate);
       const parsedImgDate = this.parseTrDate(imgDate);
-      if (parsedImgDate) {
-        const sameDay =
-          recordDate.toDateString() === parsedImgDate.toDateString();
-        if (sameDay) {
-          score += 0.3;
-        } else {
-          // Aynı ay mı?
-          const sameMonth =
-            recordDate.getMonth() === parsedImgDate.getMonth() &&
-            recordDate.getFullYear() === parsedImgDate.getFullYear();
-          if (sameMonth) {
-            score += 0.1;
-            reasons.push(`Tarih aynı ay ama farklı gün: ${this.fmtDate(recordDate)} ≠ ${imgDate}`);
-          } else {
-            reasons.push(`Tarih uyumsuz: ${this.fmtDate(recordDate)} ≠ ${imgDate}`);
-          }
-        }
+
+      if (parsedImgDate && this.sameDay(recordDate, parsedImgDate)) {
+        // Luca tarihi = OCR tarihi
+        score += 0.25;
+      } else if (mihsapBelgeTarihi && this.sameDay(recordDate, mihsapBelgeTarihi)) {
+        // Luca tarihi ≠ OCR ama Luca tarihi = Mihsap'ın kayıtlı belge tarihi → kabul
+        score += 0.25;
+      } else if (parsedImgDate || mihsapBelgeTarihi) {
+        // Hiçbir tarih Luca ile birebir eşleşmiyor
+        const parts: string[] = [`Luca: ${this.fmtDate(recordDate)}`];
+        if (parsedImgDate) parts.push(`Fiş: ${this.fmtDate(parsedImgDate)}`);
+        if (mihsapBelgeTarihi) parts.push(`Mihsap: ${this.fmtDate(mihsapBelgeTarihi)}`);
+        reasons.push(`Tarih uyumsuz: ${parts.join(' · ')}`);
       }
     }
 
+    // ── MATCHED zorlama: Uzun belge no (e-fatura/e-arşiv) birebir
+    //    eşleşiyorsa MATCHED kabul edilir. Fiş tarihi farklı olsa bile
+    //    (geç kayıt senaryosu) — bu normal muhasebe pratiği.
+    if (belgeNoExact && isUzunBelge) {
+      score = Math.max(score, 0.85);
+    }
+
     return { score: Math.min(score, 1), reasons };
+  }
+
+  private fmtAmt(n: number): string {
+    return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** İki tarihi aynı gün mü karşılaştırır (saat farkını yok sayar) */
+  private sameDay(a: Date, b: Date): boolean {
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
   }
 
   private scoreToStatus(score: number, image: ReceiptImage): string {

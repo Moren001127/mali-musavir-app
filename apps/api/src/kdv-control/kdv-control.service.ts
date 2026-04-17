@@ -890,11 +890,11 @@ export class KdvControlService {
       if (!res.ok) throw new Error(`Mihsap CDN ${res.status}`);
       const buffer = Buffer.from(await res.arrayBuffer());
 
-      const ocrResult = await this.ocrService.extractFromImage(buffer, inv.faturaNo);
+      // PRENSİP: Mihsap'ın ham verisine (faturaNo, faturaTarihi vb.) güvenme.
+      // Tek doğru kaynak FATURA GÖRÜNTÜSÜ. Tüm alanlar görselden OCR ile okunur.
+      const ocrResult = await this.ocrService.extractFromImage(buffer);
       const isLow = this.ocrService.isLowConfidence(ocrResult);
 
-      // Mihsap'ta zaten yapısal veri var — OCR'ı tamamla ama Mihsap'ın
-      // kesin verilerini (tarih, fatura no) confirmed alanlara doldur
       await this.prisma.receiptImage.update({
         where: { id: imageId },
         data: {
@@ -904,11 +904,8 @@ export class KdvControlService {
           ocrKdvTutari: ocrResult.kdvTutari,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
-          confirmedBelgeNo: inv.faturaNo, // Mihsap kesin veri
-          confirmedDate: inv.faturaTarihi
-            ? new Date(inv.faturaTarihi).toLocaleDateString('tr-TR')
-            : null,
-          isManuallyConfirmed: true, // Mihsap'tan geldiği için "teyit edilmiş" say
+          // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
+          // Kullanıcı düşük güvenli sonuçları elle teyit edebilir.
         },
       });
     } catch (err: any) {
