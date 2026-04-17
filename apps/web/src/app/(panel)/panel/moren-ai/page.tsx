@@ -400,6 +400,11 @@ export default function MorenAIPage() {
         <div className="p-3" style={{ borderTop: '1px solid rgba(184,160,111,0.15)' }}>
           <div className="flex items-end gap-2">
             <textarea
+              name="moren-ai-question"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -411,11 +416,14 @@ export default function MorenAIPage() {
               placeholder={recorder.recording ? 'Dinleniyor...' : 'Soru sor... (Enter ile gönder)'}
               disabled={sendMutation.isPending || recorder.recording}
               rows={1}
-              className="flex-1 px-3 py-2 rounded-lg text-sm resize-none"
+              className="moren-ai-input flex-1 px-3 py-2 rounded-lg text-sm resize-none"
               style={{
                 background: 'rgba(255,255,255,0.04)',
+                backgroundColor: 'rgba(255,255,255,0.04)',
                 border: '1px solid rgba(184,160,111,0.2)',
                 color: '#fafaf9',
+                WebkitTextFillColor: '#fafaf9',
+                caretColor: '#d4b876',
                 minHeight: 40,
                 maxHeight: 160,
               }}

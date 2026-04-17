@@ -538,7 +538,17 @@ export default function KdvKontrolPage() {
       document.body.removeChild(a);
       qc.invalidateQueries({ queryKey: ['kdv-outputs'] });
     },
-    onError: () => toast.error('Excel indirilemedi'),
+    onError: async (e: any) => {
+      // arraybuffer responseType'ında hata da Blob/ArrayBuffer olarak gelir — JSON'a çevir
+      let msg = e?.message || 'Excel indirilemedi';
+      const data = e?.response?.data;
+      if (data instanceof ArrayBuffer) {
+        try { msg = JSON.parse(new TextDecoder().decode(data))?.message || msg; } catch {}
+      } else if (data?.message) {
+        msg = data.message;
+      }
+      toast.error(`Excel: ${msg}`);
+    },
   });
 
   const deleteSessionMut = useMutation({
@@ -561,6 +571,14 @@ export default function KdvKontrolPage() {
       a.click();
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
+    },
+    onError: async (e: any) => {
+      let msg = e?.message || 'İndirme başarısız';
+      const data = e?.response?.data;
+      if (data instanceof ArrayBuffer) {
+        try { msg = JSON.parse(new TextDecoder().decode(data))?.message || msg; } catch {}
+      }
+      toast.error(`İndirme: ${msg}`);
     },
   });
 

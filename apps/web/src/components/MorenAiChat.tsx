@@ -258,12 +258,31 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
 
         {/* INPUT */}
         <div className="px-4 py-4" style={{ borderTop: '1px solid rgba(184,160,111,0.12)' }}>
+          {/* Chrome autofill override — input beyazlaşmasın */}
+          <style>{`
+            .moren-ai-input:-webkit-autofill,
+            .moren-ai-input:-webkit-autofill:hover,
+            .moren-ai-input:-webkit-autofill:focus,
+            .moren-ai-input:-webkit-autofill:active {
+              -webkit-text-fill-color: #fafaf9 !important;
+              -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+              transition: background-color 5000s ease-in-out 0s;
+              caret-color: #fafaf9;
+            }
+            .moren-ai-input::placeholder { color: rgba(250,250,249,0.35); }
+            .moren-ai-input { caret-color: #d4b876; }
+          `}</style>
           <div
             className="flex items-center gap-2 px-4 py-2.5 rounded-[24px]"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
           >
             <input
               type="text"
+              name="moren-ai-question"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -274,8 +293,13 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
               }}
               placeholder={recording ? 'Dinleniyor...' : 'Sorunu yaz... (Enter: gönder)'}
               disabled={loading || recording}
-              className="flex-1 bg-transparent outline-none text-[13.5px] disabled:opacity-60"
-              style={{ color: '#fafaf9' }}
+              className="moren-ai-input flex-1 outline-none text-[13.5px] disabled:opacity-60"
+              style={{
+                color: '#fafaf9',
+                backgroundColor: 'transparent',
+                background: 'transparent',
+                WebkitTextFillColor: '#fafaf9',
+              }}
             />
             {input.trim() && !recording ? (
               <button
