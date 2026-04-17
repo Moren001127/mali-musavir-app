@@ -14,8 +14,9 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encrypt, decrypt, tryDecrypt } from '../common/crypto';
-import { createRequire } from 'node:module';
-import * as path from 'node:path';
+// Static import — webpack-node-externals bunu externalize edip runtime'da native require ile yükler
+// Dynamic import'ta webpack 5'in externals bug'ı vardı, static import stabil çalışır
+import { chromium as pwChromium } from 'playwright-core';
 
 // Dinamik import — Playwright kurulu değilse servis başlatılabilsin
 type PwBrowser = any;
@@ -37,6 +38,12 @@ const SELECTORS = {
   loginUsername: 'input[name="kullaniciAdi"], input[name="username"], input#username, input[placeholder*="Kullan" i]',
   loginPassword: 'input[name="sifre"], input[name="password"], input#password, input[type="password"]',
   loginSubmit: 'button[type="submit"], input[type="submit"], button:has-text("Giri\u015f")',
+  // CAPTCHA ekranı
+  captchaImage: 'img[src*="captcha" i], img[src*="Captcha"], .captcha img, #captcha img, img[alt*="captcha" i], img[alt*="g\u00fcvenlik" i]',
+  captchaInput: 'input[name*="captcha" i], input[placeholder*="captcha" i], input[type="text"]:not([name="uyeNo"]):not([name="kullaniciAdi"]):not([name="username"])',
+  captchaSubmit: 'button:has-text("Tamam"), button[type="submit"]:visible',
+  captchaRefresh: 'button[title*="Yenile" i], a[title*="Yenile" i], .captcha-refresh',
+  // Login sonrası doğrulama: URL değişmesi veya login formunun kaybolması
   mukellefSelect: 'select[name="mukellef"], #mukellefSelect, select:has-text("Mükellef")',
   donemSelect: 'select[name="donem"], #donemSelect',
   hesapInput: 'input[name="hesap"], input[placeholder*="hesap" i]',
@@ -44,11 +51,28 @@ const SELECTORS = {
   excelButton: 'button:has-text("Excel"), a[href*=".xlsx"], a:has-text("Excel"), .excel-icon, button[title*="Excel" i]',
 };
 
+/** In-memory CAPTCHA relay state — browser/context/page CAPTCHA çözülene kadar saklanır */
+interface PendingLogin {
+  browser: any;
+  context: any;
+  page: any;
+  captchaImageBase64: string;
+  createdAt: number;
+  expiresAt: number; // ms epoch
+}
+
 @Injectable()
 export class LucaAutoScraperService {
   private readonly logger = new Logger(LucaAutoScraperService.name);
 
-  constructor(private prisma: PrismaService) {}
+  /** tenantId → bekleyen CAPTCHA login oturumu (kullanıcı CAPTCHA çözene kadar) */
+  private pendingLogins = new Map<string, PendingLogin>();
+  private readonly PENDING_TTL_MS = 3 * 60 * 1000; // 3 dakika
+
+  constructor(private prisma: PrismaService) {
+    // Periyodik temizlik: süresi dolmuş pending login'leri kapat
+    setInterval(() => this.cleanupExpiredPending(), 30_000).unref();
+  }
 
   // ==================== CREDENTIAL YÖNETİMİ ====================
 
@@ -130,14 +154,228 @@ export class LucaAutoScraperService {
   /**
    * Yalnızca login dener, başarılı olursa cookie'leri cache'ler.
    * UI'daki "Bağlantıyı Test Et" butonu bunu çağırır.
+   *
+   * Luca CAPTCHA zorunlu kıldığı için iki olası cevap var:
+   *   - ok: true → login başarılı, cookie cache'lendi
+   *   - ok: false, needsCaptcha: true, captchaImage: "data:image/..." → kullanıcı çözmeli
+   *   - ok: false, error: "..." → başka bir sorun (selector, network, credential)
    */
-  async testLogin(tenantId: string): Promise<{ ok: boolean; error?: string }> {
+  async testLogin(tenantId: string): Promise<{
+    ok: boolean;
+    needsCaptcha?: boolean;
+    captchaImage?: string;
+    expiresInSec?: number;
+    error?: string;
+  }> {
+    return this.startLogin(tenantId);
+  }
+
+  /**
+   * Yeni login akışı başlat.
+   * Varsa bekleyen eski oturumu kapat, yeni browser/context aç, login formunu doldur,
+   * submit → CAPTCHA sayfasına düş → CAPTCHA resmini yakala → base64 olarak dön.
+   */
+  async startLogin(tenantId: string): Promise<{
+    ok: boolean;
+    needsCaptcha?: boolean;
+    captchaImage?: string;
+    expiresInSec?: number;
+    error?: string;
+  }> {
+    // Varsa eski pending'i kapat
+    await this.cancelPending(tenantId).catch(() => {});
+
+    const cred = await (this.prisma as any).lucaCredential.findUnique({ where: { tenantId } });
+    if (!cred) {
+      return { ok: false, error: 'Luca hesabı kaydedilmemiş' };
+    }
+    if (!cred.isActive) {
+      return { ok: false, error: 'Luca hesabı devre dışı' };
+    }
+
+    let browser: any;
+    let context: any;
+    let page: any;
     try {
-      await this.ensureSession(tenantId);
+      browser = await pwChromium.launch({
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+        headless: true,
+        args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      });
+      context = await browser.newContext({
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        viewport: { width: 1400, height: 900 },
+      });
+      page = await context.newPage();
+
+      this.logger.log('[LUCA] Login akışı başlatıldı');
+      await page.goto(LUCA_URLS.login, { waitUntil: 'networkidle', timeout: 30_000 });
+
+      // Credential doldur
+      const password = decrypt(cred.encryptedPassword);
+      await page.fill(SELECTORS.loginUyeNo, cred.uyeNo).catch(() => {});
+      await page.fill(SELECTORS.loginUsername, cred.username);
+      await page.fill(SELECTORS.loginPassword, password);
+      await page.click(SELECTORS.loginSubmit).catch(() => {});
+
+      // Navigasyon veya ekran değişimi bekle
+      await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+
+      // CAPTCHA görseli var mı?
+      const captchaImg = await page.$(SELECTORS.captchaImage).catch(() => null);
+      if (captchaImg) {
+        // CAPTCHA'yı base64 olarak yakala
+        const buffer = await captchaImg.screenshot({ type: 'png' });
+        const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
+        const now = Date.now();
+        this.pendingLogins.set(tenantId, {
+          browser,
+          context,
+          page,
+          captchaImageBase64: base64,
+          createdAt: now,
+          expiresAt: now + this.PENDING_TTL_MS,
+        });
+        this.logger.log('[LUCA] CAPTCHA ekranı yakalandı, kullanıcı çözümü bekleniyor');
+        return {
+          ok: false,
+          needsCaptcha: true,
+          captchaImage: base64,
+          expiresInSec: Math.round(this.PENDING_TTL_MS / 1000),
+        };
+      }
+
+      // CAPTCHA yoksa login başarılı olmuş olabilir → URL kontrol et
+      const currentUrl = page.url();
+      if (currentUrl.includes('/login') || currentUrl === LUCA_URLS.login) {
+        const errText = (await page.textContent('body').catch(() => '')) || '';
+        const msg = /yanl\u0131\u015f|hatal\u0131|ge\u00e7ersiz/i.test(errText)
+          ? 'Kullanıcı adı/şifre yanlış'
+          : 'Login başarısız (CAPTCHA veya sayfa değişimi algılanamadı)';
+        await this.cleanup(browser, context, page);
+        await this.markError(tenantId, msg);
+        return { ok: false, error: msg };
+      }
+
+      // Login başarılı — cookies kaydet, cleanup
+      await this.persistCookies(tenantId, context);
+      await (this.prisma as any).lucaCredential.update({
+        where: { tenantId },
+        data: { lastLoginAt: new Date(), lastError: null },
+      });
+      await this.cleanup(browser, context, page);
+      this.logger.log('[LUCA] Login başarılı (CAPTCHA istenmedi)');
       return { ok: true };
     } catch (e: any) {
-      await this.markError(tenantId, e?.message || 'Login başarısız');
-      return { ok: false, error: e?.message || 'Login başarısız' };
+      this.logger.error(`[LUCA] startLogin hatası: ${e?.message}`);
+      await this.cleanup(browser, context, page);
+      const msg = e?.message || 'Login başarısız';
+      await this.markError(tenantId, msg);
+      return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * Kullanıcı CAPTCHA'yı çözüp gönderdiğinde çağrılır.
+   * Pending browser bulunmuyorsa hata. Doğruysa cookie'ler kaydedilir.
+   * Yanlışsa yeni CAPTCHA resmi döner (aynı browser üzerinden).
+   */
+  async submitCaptcha(tenantId: string, captchaText: string): Promise<{
+    ok: boolean;
+    needsCaptcha?: boolean;
+    captchaImage?: string;
+    error?: string;
+  }> {
+    const pending = this.pendingLogins.get(tenantId);
+    if (!pending) {
+      return { ok: false, error: 'Bekleyen login bulunamadı — lütfen baştan başlayın' };
+    }
+    if (Date.now() > pending.expiresAt) {
+      await this.cancelPending(tenantId).catch(() => {});
+      return { ok: false, error: 'Oturum zaman aşımına uğradı — baştan başlayın' };
+    }
+    if (!captchaText || captchaText.trim().length < 3) {
+      return { ok: false, error: 'CAPTCHA kodu geçersiz' };
+    }
+
+    const { page, context, browser } = pending;
+    try {
+      await page.fill(SELECTORS.captchaInput, captchaText.trim());
+      await page.click(SELECTORS.captchaSubmit).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+
+      // Hâlâ CAPTCHA ekranındaysak yanlış çözmüş demektir → yeni CAPTCHA resmi gönder
+      const stillCaptcha = await page.$(SELECTORS.captchaImage).catch(() => null);
+      if (stillCaptcha) {
+        const buffer = await stillCaptcha.screenshot({ type: 'png' });
+        const base64 = `data:image/png;base64,${buffer.toString('base64')}`;
+        pending.captchaImageBase64 = base64;
+        pending.expiresAt = Date.now() + this.PENDING_TTL_MS; // uzat
+        this.logger.log('[LUCA] CAPTCHA yanlış — yeni CAPTCHA kullanıcıya gönderildi');
+        return {
+          ok: false,
+          needsCaptcha: true,
+          captchaImage: base64,
+          error: 'CAPTCHA yanlış — tekrar deneyin',
+        };
+      }
+
+      // URL login sayfasında değilse başarılı
+      const currentUrl = page.url();
+      if (currentUrl.includes('/login') || currentUrl === LUCA_URLS.login) {
+        await this.cancelPending(tenantId).catch(() => {});
+        const msg = 'CAPTCHA doğru ama login başarısız (credential hatalı olabilir)';
+        await this.markError(tenantId, msg);
+        return { ok: false, error: msg };
+      }
+
+      // Başarılı — cookies persist, pending temizle
+      await this.persistCookies(tenantId, context);
+      await (this.prisma as any).lucaCredential.update({
+        where: { tenantId },
+        data: { lastLoginAt: new Date(), lastError: null },
+      });
+      this.pendingLogins.delete(tenantId);
+      await this.cleanup(browser, context, page);
+      this.logger.log('[LUCA] CAPTCHA çözüldü, login başarılı');
+      return { ok: true };
+    } catch (e: any) {
+      this.logger.error(`[LUCA] submitCaptcha hatası: ${e?.message}`);
+      await this.cancelPending(tenantId).catch(() => {});
+      const msg = e?.message || 'CAPTCHA gönderilirken hata';
+      await this.markError(tenantId, msg);
+      return { ok: false, error: msg };
+    }
+  }
+
+  /** Bekleyen login oturumunu iptal et (kullanıcı vazgeçti veya zaman aşımı). */
+  async cancelLogin(tenantId: string): Promise<{ ok: boolean }> {
+    await this.cancelPending(tenantId).catch(() => {});
+    return { ok: true };
+  }
+
+  private async cancelPending(tenantId: string): Promise<void> {
+    const pending = this.pendingLogins.get(tenantId);
+    if (!pending) return;
+    this.pendingLogins.delete(tenantId);
+    await this.cleanup(pending.browser, pending.context, pending.page);
+  }
+
+  private async cleanup(browser?: any, context?: any, page?: any): Promise<void> {
+    try { if (page) await page.close().catch(() => {}); } catch { /* noop */ }
+    try { if (context) await context.close().catch(() => {}); } catch { /* noop */ }
+    try { if (browser) await browser.close().catch(() => {}); } catch { /* noop */ }
+  }
+
+  private cleanupExpiredPending(): void {
+    const now = Date.now();
+    for (const [tenantId, p] of this.pendingLogins.entries()) {
+      if (now > p.expiresAt) {
+        this.logger.warn(`[LUCA] Pending login timeout tenant=${tenantId}`);
+        this.pendingLogins.delete(tenantId);
+        this.cleanup(p.browser, p.context, p.page).catch(() => {});
+      }
     }
   }
 
@@ -272,120 +510,54 @@ export class LucaAutoScraperService {
   // ==================== INTERNAL ====================
 
   /**
-   * Credential'ı oku → browser aç → gerekirse login ol → cached cookie
-   * geçerliyse direkt kullan. Döndür: { browser, context }
+   * Credential'ı oku → cached cookies varsa yeni browser aç ve cookie'leri yükle → döndür.
+   * Cache yoksa/expired ise `LucaNeedLoginError` fırlatır — caller kullanıcıyı
+   * CAPTCHA login akışına yönlendirmeli (startLogin + submitCaptcha).
+   *
+   * Not: Bu metod artık Luca'da CAPTCHA zorunluluğu yüzünden otomatik login
+   * yapamaz. CAPTCHA çözümü kullanıcı müdahalesi gerektirir, bu yüzden scraping
+   * sadece geçerli bir session cache'iyle çalışır.
    */
   private async ensureSession(tenantId: string): Promise<{ browser: PwBrowser; context: PwContext }> {
     const cred = await (this.prisma as any).lucaCredential.findUnique({ where: { tenantId } });
     if (!cred) throw new BadRequestException('Luca hesabı kaydedilmemiş');
     if (!cred.isActive) throw new BadRequestException('Luca hesabı devre dışı');
 
-    // Playwright'ı yükle — createRequire ile native Node require
-    // (webpack-node-externals dynamic import'u bundle ederken require'ı kaybediyor;
-    //  createRequire(path) ile bilinen bir path'ten yeni bir native require oluşturuyoruz)
-    let chromium: any;
-    try {
-      // __filename webpack bundle'da dist/main.js path'ini verir.
-      // Yoksa olası konumları dene.
-      const candidatePaths = [
-        typeof __filename !== 'undefined' ? __filename : null,
-        path.join(process.cwd(), 'dist', 'main.js'),
-        path.join(process.cwd(), 'package.json'),
-        '/app/apps/api/dist/main.js',
-        '/app/apps/api/package.json',
-      ].filter(Boolean) as string[];
-
-      let lastError: any;
-      let resolvedVia: string | null = null;
-      for (const p of candidatePaths) {
-        try {
-          const nativeRequire = createRequire(p);
-          const pw = nativeRequire('playwright-core');
-          chromium = pw.chromium;
-          resolvedVia = `${p} → ${nativeRequire.resolve('playwright-core')}`;
-          break;
-        } catch (e: any) {
-          lastError = e;
-        }
-      }
-
-      if (!chromium) throw lastError || new Error('playwright-core hiçbir yoldan yüklenemedi');
-      this.logger.log(`[LUCA] playwright-core yüklendi · ${resolvedVia}`);
-    } catch (e: any) {
-      this.logger.error(`[LUCA] playwright-core yüklenemedi: ${e?.message}`);
-      this.logger.error(`[LUCA] __dirname: ${typeof __dirname !== 'undefined' ? __dirname : '?'} · cwd: ${process.cwd()} · NODE_PATH: ${process.env.NODE_PATH || '-'}`);
-      throw new Error(
-        `Playwright yüklenemedi: ${e?.message}. ` +
-        `Bu hata Railway image'inde playwright-core node_modules'ta olmadığını gösterir.`,
+    // Cache zorunlu — CAPTCHA nedeniyle otomatik login yapamıyoruz
+    if (
+      !cred.encryptedCookies ||
+      !cred.cookiesExpiresAt ||
+      new Date(cred.cookiesExpiresAt) <= new Date()
+    ) {
+      throw new BadRequestException(
+        'Luca oturumu yok veya süresi dolmuş — Ayarlar > Luca Hesabı > Bağlantıyı Test Et ile CAPTCHA çözüp oturum açın',
       );
     }
-    const browser: PwBrowser = await chromium.launch({
+
+    const browser: PwBrowser = await pwChromium.launch({
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
       headless: true,
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
     });
-
     const context: PwContext = await browser.newContext({
       userAgent:
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
       viewport: { width: 1400, height: 900 },
     });
 
-    // Cached cookie varsa yükle
-    if (
-      cred.encryptedCookies &&
-      cred.cookiesExpiresAt &&
-      new Date(cred.cookiesExpiresAt) > new Date()
-    ) {
-      try {
-        const cookieJson = tryDecrypt(cred.encryptedCookies);
-        if (cookieJson) {
-          const cookies = JSON.parse(cookieJson);
-          await context.addCookies(cookies);
-          this.logger.log('Luca: cached session kullanılıyor');
-          return { browser, context };
-        }
-      } catch (e: any) {
-        this.logger.warn('Cached cookie yüklenemedi: ' + e.message);
-      }
-    }
-
-    // Yeni login ol — Luca 3 alanlı: Üye No + Kullanıcı Adı + Şifre
-    const password = decrypt(cred.encryptedPassword);
-    const page = await context.newPage();
     try {
-      await page.goto(LUCA_URLS.login, { waitUntil: 'networkidle', timeout: 30_000 });
-      await page.fill(SELECTORS.loginUyeNo, cred.uyeNo).catch(() => {});
-      await page.fill(SELECTORS.loginUsername, cred.username);
-      await page.fill(SELECTORS.loginPassword, password);
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30_000 }).catch(() => null),
-        page.click(SELECTORS.loginSubmit),
-      ]);
-
-      // Login başarısını kontrol et: URL login sayfasından değişmiş mi?
-      const currentUrl = page.url();
-      if (currentUrl.includes('/login') || currentUrl === LUCA_URLS.login) {
-        // Hata mesajı ara
-        const errText = await page.textContent('body').catch(() => '');
-        throw new Error('Login başarısız — kullanıcı adı/şifre yanlış olabilir');
-      }
-
-      await this.persistCookies(tenantId, context);
-      await (this.prisma as any).lucaCredential.update({
-        where: { tenantId },
-        data: { lastLoginAt: new Date(), lastError: null },
-      });
-
-      this.logger.log('Luca: yeni login başarılı');
+      const cookieJson = tryDecrypt(cred.encryptedCookies);
+      if (!cookieJson) throw new Error('Cookie decrypt edilemedi');
+      const cookies = JSON.parse(cookieJson);
+      await context.addCookies(cookies);
+      this.logger.log('[LUCA] cached session kullanılıyor');
       return { browser, context };
-    } catch (e) {
-      await page.close().catch(() => {});
+    } catch (e: any) {
       await context.close().catch(() => {});
       await browser.close().catch(() => {});
-      throw e;
-    } finally {
-      await page.close().catch(() => {});
+      throw new BadRequestException(
+        'Luca oturumu bozuk — tekrar login olun (Ayarlar > Luca Hesabı)',
+      );
     }
   }
 

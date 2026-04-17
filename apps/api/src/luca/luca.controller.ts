@@ -73,13 +73,47 @@ export class LucaController {
     await this.autoScraper.deleteCredential(req.user.tenantId);
   }
 
-  /** Luca'ya login denemesi yap — UI'daki "Bağlantıyı Test Et" butonu */
+  /**
+   * Luca'ya login başlat — UI'daki "Bağlantıyı Test Et" butonu.
+   *
+   * Cevap:
+   *  { ok: true }                                               → hemen başarılı (CAPTCHA istenmedi)
+   *  { ok: false, needsCaptcha: true, captchaImage, expiresInSec } → CAPTCHA ekranı var, çöz ve /captcha endpoint'ine gönder
+   *  { ok: false, error }                                        → başka bir hata
+   */
   @Post('luca/credential/test')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
   async testCredential(@Req() req: any) {
     return this.autoScraper.testLogin(req.user.tenantId);
+  }
+
+  /**
+   * CAPTCHA çözümü gönder — bekleyen login oturumunun CAPTCHA alanını doldurur,
+   * submit eder. Sonuç: { ok } veya { ok: false, needsCaptcha, captchaImage } (yanlış çözümde yeni CAPTCHA)
+   */
+  @Post('luca/credential/captcha')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async submitLucaCaptcha(
+    @Req() req: any,
+    @Body() body: { captchaText: string },
+  ) {
+    if (!body?.captchaText) {
+      throw new BadRequestException('CAPTCHA kodu boş olamaz');
+    }
+    return this.autoScraper.submitCaptcha(req.user.tenantId, body.captchaText);
+  }
+
+  /** Bekleyen CAPTCHA login oturumunu iptal et (kullanıcı vazgeçti) */
+  @Post('luca/credential/cancel')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async cancelLuca(@Req() req: any) {
+    return this.autoScraper.cancelLogin(req.user.tenantId);
   }
 
   // ==================== PORTAL UI → /luca/* ====================

@@ -4,8 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { lucaCredentialApi } from '@/lib/kdv';
-import { CheckCircle2, XCircle, Loader2, KeyRound, Eye, EyeOff, Trash2 } from 'lucide-react';
+import { lucaCredentialApi, LucaLoginResult } from '@/lib/kdv';
+import { CheckCircle2, XCircle, Loader2, KeyRound, Eye, EyeOff, Trash2, RefreshCw, X } from 'lucide-react';
 
 function LucaAccountSection() {
   const qc = useQueryClient();
@@ -21,6 +21,12 @@ function LucaAccountSection() {
   const [showPassword, setShowPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+
+  // CAPTCHA relay state
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [captchaText, setCaptchaText] = useState('');
+  const [captchaSubmitting, setCaptchaSubmitting] = useState(false);
+  const [captchaError, setCaptchaError] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: () => lucaCredentialApi.save(uyeNo, username, password),
@@ -44,19 +50,80 @@ function LucaAccountSection() {
     },
   });
 
+  const handleLoginResult = (r: LucaLoginResult) => {
+    if (r.ok) {
+      setTestResult({ ok: true });
+      setCaptchaImage(null);
+      setCaptchaText('');
+      setCaptchaError(null);
+      toast.success('Luca\'ya login başarılı — oturum açıldı');
+      qc.invalidateQueries({ queryKey: ['luca-credential'] });
+      return;
+    }
+    if (r.needsCaptcha && r.captchaImage) {
+      setCaptchaImage(r.captchaImage);
+      setCaptchaText('');
+      setCaptchaError(r.error || null); // önceki CAPTCHA yanlışsa hata göster
+      setTestResult(null);
+      return;
+    }
+    // Hata
+    setTestResult({ ok: false, error: r.error });
+    setCaptchaImage(null);
+    toast.error(r.error || 'Login başarısız');
+    qc.invalidateQueries({ queryKey: ['luca-credential'] });
+  };
+
   const runTest = async () => {
     setTesting(true);
     setTestResult(null);
+    setCaptchaImage(null);
+    setCaptchaError(null);
     try {
       const r = await lucaCredentialApi.test();
-      setTestResult(r);
-      if (r.ok) toast.success('Luca\'ya login başarılı');
-      else toast.error(r.error || 'Login başarısız');
-      qc.invalidateQueries({ queryKey: ['luca-credential'] });
+      handleLoginResult(r);
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Bağlantı testi yapılamadı');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const submitCaptcha = async () => {
+    if (!captchaText.trim()) {
+      setCaptchaError('CAPTCHA kodunu girin');
+      return;
+    }
+    setCaptchaSubmitting(true);
+    setCaptchaError(null);
+    try {
+      const r = await lucaCredentialApi.submitCaptcha(captchaText.trim());
+      handleLoginResult(r);
+    } catch (e: any) {
+      setCaptchaError(e?.response?.data?.message || 'CAPTCHA gönderilemedi');
+    } finally {
+      setCaptchaSubmitting(false);
+    }
+  };
+
+  const cancelCaptcha = async () => {
+    try {
+      await lucaCredentialApi.cancel();
+    } catch { /* ignore */ }
+    setCaptchaImage(null);
+    setCaptchaText('');
+    setCaptchaError(null);
+  };
+
+  const refreshCaptcha = async () => {
+    // Yeni CAPTCHA almak için login'i yeniden başlat
+    setCaptchaSubmitting(true);
+    try {
+      await lucaCredentialApi.cancel().catch(() => {});
+      const r = await lucaCredentialApi.test();
+      handleLoginResult(r);
+    } finally {
+      setCaptchaSubmitting(false);
     }
   };
 
@@ -216,6 +283,90 @@ function LucaAccountSection() {
       ) : (
         <div className="text-sm text-gray-400">
           Luca hesabı kayıtlı değil. "Ekle" butonu ile kullanıcı adı ve şifrenizi girin — portal Luca'dan muavin defteri otomatik indirecek.
+        </div>
+      )}
+
+      {/* CAPTCHA Modal */}
+      {captchaImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+        >
+          <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ background: '#1a1a19', border: '1px solid rgba(212,184,118,0.25)' }}>
+            <button
+              onClick={cancelCaptcha}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-300"
+              aria-label="Kapat"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="text-base font-semibold mb-1" style={{ color: '#d4b876' }}>
+              Luca CAPTCHA Doğrulaması
+            </h3>
+            <p className="text-xs text-gray-400 mb-4">
+              Luca güvenlik doğrulaması istedi. Aşağıdaki resimdeki karakterleri girin — portal CAPTCHA'yı Luca'ya gönderip login'i tamamlayacak.
+            </p>
+
+            <div className="flex flex-col items-center gap-3 mb-4">
+              <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <img src={captchaImage} alt="CAPTCHA" className="block max-w-full" style={{ minHeight: 90 }} />
+              </div>
+              <button
+                onClick={refreshCaptcha}
+                disabled={captchaSubmitting}
+                className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1.5"
+              >
+                <RefreshCw size={12} className={captchaSubmitting ? 'animate-spin' : ''} />
+                Yeni CAPTCHA al
+              </button>
+            </div>
+
+            <input
+              type="text"
+              value={captchaText}
+              onChange={(e) => setCaptchaText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitCaptcha(); }}
+              placeholder="Resimdeki kodu yazın"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              disabled={captchaSubmitting}
+              className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none mb-3"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                borderColor: 'rgba(255,255,255,0.12)',
+                color: '#fafaf9',
+                letterSpacing: '0.2em',
+                textAlign: 'center',
+                fontFamily: 'monospace',
+                fontSize: '16px',
+              }}
+            />
+
+            {captchaError && (
+              <div className="rounded-lg p-2 text-xs mb-3" style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#fda4af' }}>
+                {captchaError}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={submitCaptcha}
+                disabled={captchaSubmitting || !captchaText.trim()}
+                className="btn-primary flex-1 text-sm flex items-center justify-center gap-1.5"
+              >
+                {captchaSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Doğrula ve Giriş Yap
+              </button>
+              <button
+                onClick={cancelCaptcha}
+                disabled={captchaSubmitting}
+                className="btn-secondary text-sm"
+              >
+                İptal
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

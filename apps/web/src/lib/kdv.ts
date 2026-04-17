@@ -1,6 +1,13 @@
 import { api } from './api';
 
 /** Luca otomatik scraper (backend Playwright) için credential API */
+export interface LucaLoginResult {
+  ok: boolean;
+  needsCaptcha?: boolean;
+  captchaImage?: string; // "data:image/png;base64,..."
+  expiresInSec?: number;
+  error?: string;
+}
 export const lucaCredentialApi = {
   /** Kayıtlı Luca hesabı var mı + son login durumu */
   status: () => api.get('/luca/credential').then((r) => r.data),
@@ -9,9 +16,14 @@ export const lucaCredentialApi = {
     api.post('/luca/credential', { uyeNo, username, password }).then((r) => r.data),
   /** Kayıtlı hesabı sil */
   remove: () => api.delete('/luca/credential').then((r) => r.data),
-  /** Luca'ya login denemesi yap (bağlantı testi) */
+  /** Luca'ya login başlat — backend Playwright açar, CAPTCHA varsa resmini döner */
   test: () =>
-    api.post('/luca/credential/test').then((r) => r.data as { ok: boolean; error?: string }),
+    api.post('/luca/credential/test').then((r) => r.data as LucaLoginResult),
+  /** CAPTCHA çözümünü gönder — yanlışsa yeni CAPTCHA resmi döner */
+  submitCaptcha: (captchaText: string) =>
+    api.post('/luca/credential/captcha', { captchaText }).then((r) => r.data as LucaLoginResult),
+  /** Bekleyen CAPTCHA login oturumunu iptal et */
+  cancel: () => api.post('/luca/credential/cancel').then((r) => r.data),
 };
 
 export const kdvApi = {
