@@ -183,23 +183,39 @@ export class KdvControlService {
     const columns = Object.keys(firstRow).map((k) =>
       k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
     );
+    // Türkçe karakterleri normalize et — "İ" / "ı" / "Ş" / "ğ" vs. toLowerCase()
+    // combining karakterler üretiyor, direkt string karşılaştırması başarısız oluyor.
+    const normalizeTr = (s: string) =>
+      s
+        .replace(/İ/g, 'I').replace(/ı/g, 'i')
+        .replace(/Ğ/g, 'G').replace(/ğ/g, 'g')
+        .replace(/Ş/g, 'S').replace(/ş/g, 's')
+        .replace(/Ç/g, 'C').replace(/ç/g, 'c')
+        .replace(/Ö/g, 'O').replace(/ö/g, 'o')
+        .replace(/Ü/g, 'U').replace(/ü/g, 'u')
+        .toLowerCase()
+        .trim();
+
     // Keyword tabanlı otomatik önermesi
-    const lower = columns.map((c) => c.toLowerCase());
+    const normalizedCols = columns.map(normalizeTr);
     const findBy = (patterns: string[]): string | undefined => {
-      for (const p of patterns) {
-        const idx = lower.findIndex((c) => c === p.toLowerCase());
+      const normPatterns = patterns.map(normalizeTr);
+      // Önce tam eşleşme
+      for (const p of normPatterns) {
+        const idx = normalizedCols.findIndex((c) => c === p);
         if (idx >= 0) return columns[idx];
       }
-      for (const p of patterns) {
-        const idx = lower.findIndex((c) => c.includes(p.toLowerCase()));
+      // Sonra içerir
+      for (const p of normPatterns) {
+        const idx = normalizedCols.findIndex((c) => c.includes(p));
         if (idx >= 0) return columns[idx];
       }
       return undefined;
     };
     const suggestedMapping = {
-      tarihCol: findBy(['evrak tarihi', 'tarih', 'belge tarihi', 'fiş tarihi']),
-      belgeNoCol: findBy(['evrak no', 'belge no', 'fatura no', 'fiş no', 'belge numarası']),
-      kdvCol: findBy(['kdv tutarı', 'kdv', 'borç', 'alacak', 'hesaplanan kdv']),
+      tarihCol: findBy(['evrak tarihi', 'belge tarihi', 'fiş tarihi', 'tarih']),
+      belgeNoCol: findBy(['evrak no', 'belge no', 'fatura no', 'fiş no', 'belge numarası', 'evrak']),
+      kdvCol: findBy(['kdv tutarı', 'hesaplanan kdv', 'indirilecek kdv', 'kdv', 'borç', 'alacak']),
     };
     // İlk 10 satırı örnek olarak döndür
     const sampleRows = rows.slice(0, 10).map((row) => {
@@ -248,12 +264,25 @@ export class KdvControlService {
       defval: null,
     });
 
-    // Sütun başlıklarını normalize edip orijinal key'le eşle
-    const normalize = (s: string) => s.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    // Sütun başlıklarını normalize edip orijinal key'le eşle.
+    // Türkçe karakterleri de ASCII'ye indirgeyerek karşılaştır — aksi halde
+    // "İ" / "ı" / "Ş" vs toLowerCase'de combining karakter üretip eşleşmiyor.
+    const normalize = (s: string) =>
+      s
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/İ/g, 'I').replace(/ı/g, 'i')
+        .replace(/Ğ/g, 'G').replace(/ğ/g, 'g')
+        .replace(/Ş/g, 'S').replace(/ş/g, 's')
+        .replace(/Ç/g, 'C').replace(/ç/g, 'c')
+        .replace(/Ö/g, 'O').replace(/ö/g, 'o')
+        .replace(/Ü/g, 'U').replace(/ü/g, 'u')
+        .toLowerCase();
     const findKeyInRow = (row: Record<string, any>, target: string): string | null => {
-      const t = normalize(target).toLowerCase();
+      const t = normalize(target);
       for (const k of Object.keys(row)) {
-        if (normalize(k).toLowerCase() === t) return k;
+        if (normalize(k) === t) return k;
       }
       return null;
     };
