@@ -1,6 +1,19 @@
 FROM node:20-slim
 
-RUN apt-get update && apt-get install -y openssl wget ca-certificates && rm -rf /var/lib/apt/lists/*
+# Sistem paketleri + Chromium (Playwright headless ile Luca scraping için)
+RUN apt-get update && apt-get install -y \
+    openssl wget ca-certificates \
+    chromium \
+    fonts-liberation fonts-noto-color-emoji fonts-noto-cjk \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
+    libxrandr2 libasound2 libpango-1.0-0 libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Playwright'ın kendi Chromium'unu indirmesini engelle — sistem Chromium'u kullan
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Tesseract dil dosyalarını build sırasında indir (runtime indirme yok)
 RUN mkdir -p /app/tessdata \

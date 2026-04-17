@@ -1,5 +1,19 @@
 import { api } from './api';
 
+/** Luca otomatik scraper (backend Playwright) için credential API */
+export const lucaCredentialApi = {
+  /** Kayıtlı Luca hesabı var mı + son login durumu */
+  status: () => api.get('/luca/credential').then((r) => r.data),
+  /** Username + password kaydet (backend AES-GCM ile şifreler) */
+  save: (username: string, password: string) =>
+    api.post('/luca/credential', { username, password }).then((r) => r.data),
+  /** Kayıtlı hesabı sil */
+  remove: () => api.delete('/luca/credential').then((r) => r.data),
+  /** Luca'ya login denemesi yap (bağlantı testi) */
+  test: () =>
+    api.post('/luca/credential/test').then((r) => r.data as { ok: boolean; error?: string }),
+};
+
 export const kdvApi = {
   /* ── OTURUMLAR ── */
   getSessions: () => api.get('/kdv-control/sessions').then((r) => r.data),

@@ -930,7 +930,28 @@ model MihsapFetchJob {
 // LUCA ENTEGRASYONU
 // ============================================================
 
+// Luca kullanıcı adı + şifresi — backend Playwright ile otomatik login olur.
+// Şifre AES-256-GCM ile şifrelenmiş saklanır; ENCRYPTION_KEY env'den okunur.
+model LucaCredential {
+  id                String    @id @default(cuid())
+  tenantId          String    @unique
+  username          String    // Luca kullanıcı adı (mali müşavirin hesabı)
+  encryptedPassword String    @db.Text  // AES-GCM şifrelenmiş
+  // Cache edilmiş session cookies — her istek için yeniden login olmasın
+  encryptedCookies  String?   @db.Text  // AES-GCM şifrelenmiş JSON
+  cookiesExpiresAt  DateTime?
+  lastLoginAt       DateTime?
+  lastError         String?   // Son login denemesinde hata varsa
+  isActive          Boolean   @default(true)
+  updatedBy         String?
+  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+
+  @@map("luca_credentials")
+}
+
 // Luca oturum token/cookie'si — tarayıcı eklentisi tarafından senkronize edilir
+// (Eski bookmarklet akışı için; credential tablosu varsa kullanılmaz)
 model LucaSession {
   id          String   @id @default(cuid())
   tenantId    String   @unique   // Her tenant için tek oturum

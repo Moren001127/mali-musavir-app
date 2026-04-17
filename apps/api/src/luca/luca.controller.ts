@@ -17,6 +17,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { LucaService } from './luca.service';
+import { LucaAutoScraperService } from './luca-auto-scraper.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -30,8 +31,55 @@ import { PrismaService } from '../prisma/prisma.service';
 export class LucaController {
   constructor(
     private readonly luca: LucaService,
+    private readonly autoScraper: LucaAutoScraperService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ==================== LUCA CREDENTIAL (AUTO SCRAPER) ====================
+
+  /** Luca hesap bilgisinin kayıtlı olup olmadığını döndür */
+  @Get('luca/credential')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  getCredential(@Req() req: any) {
+    return this.autoScraper.getCredentialStatus(req.user.tenantId);
+  }
+
+  /** Luca username + password kaydet (AES-GCM ile şifrelenmiş) */
+  @Post('luca/credential')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  async saveCredential(
+    @Req() req: any,
+    @Body() body: { username: string; password: string },
+  ) {
+    if (!body?.username || !body?.password) {
+      throw new BadRequestException('Kullanıcı adı ve şifre zorunlu');
+    }
+    return this.autoScraper.saveCredential(
+      req.user.tenantId,
+      body.username.trim(),
+      body.password,
+      req.user.sub,
+    );
+  }
+
+  /** Kayıtlı Luca hesabını sil */
+  @Delete('luca/credential')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteCredential(@Req() req: any) {
+    await this.autoScraper.deleteCredential(req.user.tenantId);
+  }
+
+  /** Luca'ya login denemesi yap — UI'daki "Bağlantıyı Test Et" butonu */
+  @Post('luca/credential/test')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async testCredential(@Req() req: any) {
+    return this.autoScraper.testLogin(req.user.tenantId);
+  }
 
   // ==================== PORTAL UI → /luca/* ====================
 

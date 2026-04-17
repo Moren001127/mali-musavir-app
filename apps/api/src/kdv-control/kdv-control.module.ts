@@ -14,6 +14,6 @@ import { LucaModule } from '../luca/luca.module';
   ],
   providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine],
   controllers: [KdvControlController],
-  exports: [KdvControlService, OcrService],
+  exports: [KdvControlService, OcrService, ExcelParserService],
 })
 export class KdvControlModule {}

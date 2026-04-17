@@ -13,6 +13,7 @@ import { ExcelParserService } from './excel-parser.service';
 import { OcrService } from './ocr.service';
 import { ReconciliationEngine } from './reconciliation.engine';
 import { LucaService } from '../luca/luca.service';
+import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -27,6 +28,8 @@ export class KdvControlService {
     private reconciliation: ReconciliationEngine,
     @Inject(forwardRef(() => LucaService))
     private luca: LucaService,
+    @Inject(forwardRef(() => LucaAutoScraperService))
+    private lucaAutoScraper: LucaAutoScraperService,
   ) {}
 
   private readonly VALID_TYPES = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'] as const;
@@ -692,11 +695,41 @@ export class KdvControlService {
     // Mevcut KDV kayıtlarını temizle (yeniden çekim)
     await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
 
-    // Luca session var mı kontrol et — yoksa runner bağlanmalı
-    const luca = await this.luca.getSession(tenantId);
-    if (!luca) {
+    // Mükellef bilgisini çek (Luca'da arama için)
+    const taxpayer = await this.prisma.taxpayer.findUnique({
+      where: { id: session.taxpayerId },
+    });
+    const mukellefAdi =
+      taxpayer?.companyName ||
+      [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
+      taxpayer?.taxNumber ||
+      '';
+
+    const donem = this.toDashDonem(session.periodLabel);
+
+    // 1. ÖNCELİK: Portala kaydedilmiş Luca hesabı varsa → direkt Playwright scrape
+    const credStatus = await this.lucaAutoScraper.getCredentialStatus(tenantId);
+    if (credStatus.connected && credStatus.isActive) {
+      // Async çalıştır — kullanıcıyı bekletmeyelim
+      this.runAutoScrapeBackground(sessionId, tenantId, {
+        tip: session.type,
+        donem,
+        mukellefAdi,
+        createdBy: userId,
+      }).catch((e) => this.logger.error(`Auto scrape arka plan hata: ${e?.message}`));
+
+      await this.prisma.kdvControlSession.update({
+        where: { id: sessionId },
+        data: { status: 'PROCESSING' },
+      });
+      return { status: 'auto-scraping', method: 'playwright' };
+    }
+
+    // 2. FALLBACK: Bookmarklet akışı (Luca sekmesi + moren-agent.js)
+    const lucaSession = await this.luca.getSession(tenantId);
+    if (!lucaSession) {
       throw new BadRequestException(
-        'Luca oturumu bulunamadı. Luca sayfasını açın ve Moren Agent bookmarklet\'ini çalıştırın.',
+        'Luca hesabı kayıtlı değil. Ayarlar → Luca Hesabı\'ndan kullanıcı adı/şifre girin, ya da Luca sayfasını açıp Moren Agent bookmarklet\'ini çalıştırın.',
       );
     }
 
@@ -704,7 +737,7 @@ export class KdvControlService {
       tenantId,
       sessionId,
       mukellefId: session.taxpayerId,
-      donem: this.toDashDonem(session.periodLabel), // YYYY/MM → YYYY-MM
+      donem,
       tip: session.type,
       createdBy: userId,
     });
@@ -714,7 +747,43 @@ export class KdvControlService {
       data: { status: 'PROCESSING' },
     });
 
-    return { jobId: job.id, status: 'queued' };
+    return { jobId: job.id, status: 'queued', method: 'bookmarklet' };
+  }
+
+  /**
+   * Arka planda Playwright ile Luca'ya login olup Excel'i indirir ve
+   * parse eder. `queueLucaImport`'tan fire-and-forget olarak çağrılır.
+   */
+  private async runAutoScrapeBackground(
+    sessionId: string,
+    tenantId: string,
+    params: { tip: string; donem: string; mukellefAdi: string; createdBy?: string },
+  ): Promise<void> {
+    const job = await this.luca.createFetchJob({
+      tenantId,
+      sessionId,
+      mukellefId: '',
+      donem: params.donem,
+      tip: params.tip,
+      createdBy: params.createdBy,
+    });
+    await this.luca.markJobRunning(job.id);
+
+    try {
+      const buffer = await this.lucaAutoScraper.fetchMuavinExcel({
+        tenantId,
+        tip: params.tip,
+        donem: params.donem,
+        mukellefAdi: params.mukellefAdi,
+      });
+      const result = await this.uploadExcel(sessionId, tenantId, buffer);
+      await this.luca.markJobDone(job.id, result.parsed);
+      this.logger.log(`Luca auto-scrape tamamlandı: ${result.parsed} satır`);
+    } catch (e: any) {
+      const msg = e?.message || 'bilinmeyen hata';
+      this.logger.error(`Luca auto-scrape hata: ${msg}`);
+      await this.luca.markJobFailed(job.id, msg);
+    }
   }
 
   /**
