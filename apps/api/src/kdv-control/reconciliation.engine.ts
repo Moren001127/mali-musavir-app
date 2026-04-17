@@ -7,6 +7,7 @@ export interface MatchCandidate {
   image: ReceiptImage;
   score: number;
   reasons: string[];
+  strictMatch: boolean;
 }
 
 @Injectable()
@@ -61,20 +62,24 @@ export class ReconciliationEngine {
       for (const image of images) {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
-        const { score, reasons } = this.calculateScore(record, image, mihsapBelgeTarihi);
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
         if (score > 0.3) {
-          candidates.push({ kdvRecord: record, image, score, reasons });
+          candidates.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
 
-      candidates.sort((a, b) => b.score - a.score);
+      // Strict eşleşenler öne; sonra skor
+      candidates.sort((a, b) => {
+        if (a.strictMatch !== b.strictMatch) return a.strictMatch ? -1 : 1;
+        return b.score - a.score;
+      });
       const best = candidates[0];
 
       if (best) {
         usedImageIds.add(best.image.id);
         usedRecordIds.add(record.id);
 
-        const status = this.scoreToStatus(best.score, best.image);
+        const status = this.scoreToStatus(best.score, best.image, best.strictMatch);
         createData.push({
           sessionId,
           kdvRecordId: record.id,
@@ -159,7 +164,7 @@ export class ReconciliationEngine {
     record: KdvRecord,
     image: ReceiptImage,
     mihsapBelgeTarihi: Date | null = null,
-  ): { score: number; reasons: string[] } {
+  ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
     const imgKdv = image.confirmedKdvTutari || image.ocrKdvTutari;
@@ -167,15 +172,15 @@ export class ReconciliationEngine {
     // Belge kategorisi: uzun belge no → e-fatura/e-arşiv; kısa → ÖKC fiş
     const belgeNoLen = (record.belgeNo || imgBelgeNo || '').replace(/[^A-Z0-9]/gi, '').length;
     const isOkcFisi = belgeNoLen > 0 && belgeNoLen <= 6;
-    const isUzunBelge = belgeNoLen >= 10;
 
     let score = 0;
     const reasons: string[] = [];
     let belgeNoExact = false;
+    let kdvExact = false;
+    let dateExact = false;
 
-    // ── Belge No ağırlığı (kategoriye göre değişir)
+    // ── BELGE NO ─────────────────────────────────────────────
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
-
     if (record.belgeNo && imgBelgeNo) {
       const similarity = this.stringSimilarity(
         record.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, ''),
@@ -195,7 +200,7 @@ export class ReconciliationEngine {
       reasons.push(!imgBelgeNo ? 'Görselde belge no okunamadı' : 'Luca kaydında belge no yok');
     }
 
-    // ── KDV Tutarı (%30 ağırlık) — her iki kategoride de doğrulama
+    // ── KDV TUTARI ─────────────────────────────────────────
     if (record.kdvTutari && imgKdv) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
       const imgKdvNum = parseFloat(
@@ -205,6 +210,7 @@ export class ReconciliationEngine {
         const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
         if (diff < 0.01) {
           score += 0.3;
+          kdvExact = true;
         } else if (diff < 0.05) {
           score += 0.15;
           reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
@@ -217,37 +223,33 @@ export class ReconciliationEngine {
       reasons.push('Görselden KDV tutarı okunamadı');
     }
 
-    // ── Tarih kontrolü — birebir
-    //    1) Luca.belgeDate == OCR fiş tarihi → ✓
-    //    2) Değilse → Luca.belgeDate == Mihsap'ın belge tarihi → ✓
-    //    3) İkisi de eşit değilse → uyuşmazlık
+    // ── TARİH ──────────────────────────────────────────────
     if (record.belgeDate && imgDate) {
       const recordDate = new Date(record.belgeDate);
       const parsedImgDate = this.parseTrDate(imgDate);
 
       if (parsedImgDate && this.sameDay(recordDate, parsedImgDate)) {
-        // Luca tarihi = OCR tarihi
         score += 0.25;
+        dateExact = true;
       } else if (mihsapBelgeTarihi && this.sameDay(recordDate, mihsapBelgeTarihi)) {
-        // Luca tarihi ≠ OCR ama Luca tarihi = Mihsap'ın kayıtlı belge tarihi → kabul
         score += 0.25;
+        dateExact = true; // Mihsap'ın belge tarihi Luca ile eşleşiyor → tarih doğrulandı
       } else if (parsedImgDate || mihsapBelgeTarihi) {
-        // Hiçbir tarih Luca ile birebir eşleşmiyor
         const parts: string[] = [`Luca: ${this.fmtDate(recordDate)}`];
         if (parsedImgDate) parts.push(`Fiş: ${this.fmtDate(parsedImgDate)}`);
         if (mihsapBelgeTarihi) parts.push(`Mihsap: ${this.fmtDate(mihsapBelgeTarihi)}`);
         reasons.push(`Tarih uyumsuz: ${parts.join(' · ')}`);
       }
+    } else if (!imgDate && record.belgeDate) {
+      reasons.push('Görselden tarih okunamadı');
     }
 
-    // ── MATCHED zorlama: Uzun belge no (e-fatura/e-arşiv) birebir
-    //    eşleşiyorsa MATCHED kabul edilir. Fiş tarihi farklı olsa bile
-    //    (geç kayıt senaryosu) — bu normal muhasebe pratiği.
-    if (belgeNoExact && isUzunBelge) {
-      score = Math.max(score, 0.85);
-    }
+    // ── STRICT MATCH KURALI ─────────────────────────────────
+    // User: "tarih + evrak no + KDV üçü aynı anda eşleşmezse kabul edilmeyecek"
+    // Bu yüzden MATCHED sadece üç alan da exact eşleştiğinde verilir.
+    const strictMatch = belgeNoExact && kdvExact && dateExact;
 
-    return { score: Math.min(score, 1), reasons };
+    return { score: Math.min(score, 1), reasons, strictMatch };
   }
 
   private fmtAmt(n: number): string {
@@ -263,10 +265,13 @@ export class ReconciliationEngine {
     );
   }
 
-  private scoreToStatus(score: number, image: ReceiptImage): string {
+  private scoreToStatus(score: number, image: ReceiptImage, strictMatch: boolean): string {
     // Sadece FAILED durum NEEDS_REVIEW'a zorla; LOW_CONFIDENCE artık normal akışta
     if (image.ocrStatus === 'FAILED' && !image.isManuallyConfirmed) return 'NEEDS_REVIEW';
-    if (score >= 0.80) return 'MATCHED';
+    // MATCHED sadece 3 alan (tarih + belge no + KDV) EXACT eşleşirse verilir.
+    // Herhangi biri tutmuyorsa PARTIAL_MATCH veya NEEDS_REVIEW.
+    if (strictMatch) return 'MATCHED';
+    if (score >= 0.65) return 'PARTIAL_MATCH';
     if (score >= 0.45) return 'PARTIAL_MATCH';
     return 'NEEDS_REVIEW';
   }

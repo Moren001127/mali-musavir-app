@@ -17,7 +17,17 @@ export interface OcrResult {
     kdvTutari: number | null;
   };
   engine: string;
+  /** Claude API response'undan gelen token kullanımı — maliyet hesabı için. */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    /** USD cinsinden tahmini maliyet (input $1/M + output $5/M Haiku 4.5 fiyat) */
+    costUsd: number;
+  };
 }
+
+/** Claude Haiku 4.5 fiyat ($/M token) */
+const CLAUDE_HAIKU_PRICE = { input: 1, output: 5 };
 
 /** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
 export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
@@ -204,6 +214,14 @@ export class OcrService {
     const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
     const raw = textBlock?.text?.trim() || '';
 
+    // Token kullanımı + maliyet (Haiku 4.5)
+    const inputTokens = Number(payload?.usage?.input_tokens || 0);
+    const outputTokens = Number(payload?.usage?.output_tokens || 0);
+    const costUsd =
+      (inputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE.input +
+      (outputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE.output;
+    const usage = { inputTokens, outputTokens, costUsd };
+
     // JSON block'unu çıkar (Claude bazen markdown içine sararken)
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -217,6 +235,7 @@ export class OcrService {
         confidence: 0,
         fieldConfidence: { belgeNo: null, date: null, kdvTutari: null },
         engine: 'claude-haiku-4-5',
+        usage,
       };
     }
 

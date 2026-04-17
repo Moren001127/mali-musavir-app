@@ -35,6 +35,17 @@ export class KdvControlService {
   private readonly VALID_TYPES = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'] as const;
   private readonly ISLETME_TYPES = ['ISLETME_GELIR', 'ISLETME_GIDER'];
 
+  /** KDV type → Excel başlığı için okunur isim */
+  private kdvTypeLabel(type?: string | null): string {
+    switch (type) {
+      case 'KDV_191':       return 'Bilanço — Alış (İndirilecek KDV 191)';
+      case 'KDV_391':       return 'Bilanço — Satış (Hesaplanan KDV 391)';
+      case 'ISLETME_GELIR': return 'İşletme Defteri — Satış / Gelir';
+      case 'ISLETME_GIDER': return 'İşletme Defteri — Alış / Gider';
+      default:              return type || '—';
+    }
+  }
+
   /** Oturum listesi */
   async findSessions(tenantId: string) {
     return this.prisma.kdvControlSession.findMany({
@@ -735,49 +746,147 @@ export class KdvControlService {
     });
 
     const xlsx = await import('xlsx');
-    
-    // SONUÇ formatına göre veri hazırla
-    const data = results.map((r: any) => {
-      const gorselTarih = r.image?.confirmedDate || r.image?.ocrDate || '';
-      const excelTarih = r.kdvRecord?.belgeDate ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR') : '';
-      const gorselBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '';
-      const excelBelgeNo = r.kdvRecord?.belgeNo || '';
-      const gorselKdv = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '';
-      const excelKdv = r.kdvRecord?.kdvTutari || '';
-      
+
+    // Mükellef + dönem bilgileri
+    const mukellefName = session.taxpayer
+      ? session.taxpayer.companyName ||
+        `${session.taxpayer.firstName ?? ''} ${session.taxpayer.lastName ?? ''}`.trim()
+      : 'Mükellef yok';
+    const taxNo = session.taxpayer?.taxNumber || '—';
+    const typeLabel = this.kdvTypeLabel(session.type);
+    const periodLabel = session.periodLabel || '—';
+    const now = new Date();
+    const tarihStr = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+
+    const matchedCount = results.filter((r) => r.status === 'MATCHED').length;
+    const partialCount = results.filter((r) => r.status === 'PARTIAL_MATCH').length;
+    const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED' || r.status === 'NEEDS_REVIEW').length;
+    const totalKdvLuca = results.reduce(
+      (s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0),
+      0,
+    );
+    const totalKdvOcr = results.reduce((s, r: any) => {
+      const v = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari;
+      if (!v) return s;
+      const parsed = parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
+      return s + (Number.isFinite(parsed) ? parsed : 0);
+    }, 0);
+    const kdvFark = totalKdvLuca - totalKdvOcr;
+    const fmtTl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // AOA (array of arrays) — header + data + summary tek sheet'te
+    const aoa: any[][] = [];
+
+    // ─── BAŞLIK BLOĞU ─────────────────────────────────────
+    aoa.push(['MOREN MALİ MÜŞAVİRLİK']);
+    aoa.push(['KDV Kontrol Raporu']);
+    aoa.push([]);
+    aoa.push(['Mükellef', mukellefName]);
+    aoa.push(['Vergi No', taxNo]);
+    aoa.push(['Dönem', periodLabel]);
+    aoa.push(['Kontrol Türü', typeLabel]);
+    aoa.push(['Rapor Tarihi', tarihStr]);
+    aoa.push([]);
+    aoa.push(['ÖZET']);
+    aoa.push(['Toplam Satır', results.length]);
+    aoa.push(['Eşleşen', matchedCount]);
+    aoa.push(['Kısmi Eşleşme', partialCount]);
+    aoa.push(['Eşleşmeyen / İnceleme', unmatchedCount]);
+    aoa.push(['Luca Toplam KDV', fmtTl(totalKdvLuca) + ' ₺']);
+    aoa.push(['Fatura Toplam KDV', fmtTl(totalKdvOcr) + ' ₺']);
+    aoa.push(['Fark', fmtTl(kdvFark) + ' ₺']);
+    aoa.push([]);
+
+    // ─── TABLO BAŞLIĞI ────────────────────────────────────
+    const headerRowIdx = aoa.length;
+    aoa.push([
+      '#',
+      'LUCA TARİHİ',
+      'LUCA EVRAK NO',
+      'LUCA HESAP ADI',
+      'LUCA KDV (₺)',
+      'FATURA TARİHİ',
+      'FATURA BELGE NO',
+      'FATURA KDV (₺)',
+      'DURUM',
+      'AÇIKLAMA / UYUMSUZLUK',
+    ]);
+
+    // ─── VERİ SATIRLARI ───────────────────────────────────
+    results.forEach((r: any, idx) => {
+      const lucaTarih = r.kdvRecord?.belgeDate
+        ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR')
+        : '—';
+      const lucaEvrak = r.kdvRecord?.belgeNo || '—';
+      const lucaAciklama = r.kdvRecord?.karsiTaraf || r.kdvRecord?.aciklama || '—';
+      const lucaKdv = r.kdvRecord?.kdvTutari ? fmtTl(Number(r.kdvRecord.kdvTutari)) : '—';
+
+      const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
+      const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
+      const faturaKdvRaw = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari;
+      const faturaKdv = faturaKdvRaw
+        ? fmtTl(parseFloat(String(faturaKdvRaw).replace(/\./g, '').replace(',', '.')) || 0)
+        : '—';
+
       let durum = '';
-      if (r.status === 'MATCHED') durum = '✅ Eşleşti';
-      else if (r.status === 'PARTIAL') durum = '⚠️ Kısmi Eşleşme';
-      else if (r.status === 'UNMATCHED') durum = '❌ Eşleşmedi';
-      else if (!r.image) durum = 'Görsel bulunamadı';
-      else durum = r.mismatchReasons?.join(', ') || 'Bilinmeyen';
-      
-      return {
-        'Görsel Tarih': gorselTarih,
-        'Excel Tarih': excelTarih,
-        'Görsel Belge No': gorselBelgeNo,
-        'Excel Belge No': excelBelgeNo,
-        'Görsel KDV': gorselKdv,
-        'Excel İlgili Tutar': excelKdv,
-        'Durum': durum,
-      };
+      if (r.status === 'MATCHED') durum = '✓ EŞLEŞTİ';
+      else if (r.status === 'PARTIAL_MATCH') durum = '⚠ KISMİ';
+      else if (r.status === 'UNMATCHED') durum = '✗ EŞLEŞMEDİ';
+      else if (r.status === 'NEEDS_REVIEW') durum = '⚠ İNCELE';
+      else durum = r.status;
+
+      const aciklama = !r.image
+        ? 'Fatura görseli yok'
+        : !r.kdvRecord
+          ? 'Luca kaydı yok'
+          : (r.mismatchReasons || []).join(' · ') || '';
+
+      aoa.push([
+        idx + 1,
+        lucaTarih,
+        lucaEvrak,
+        lucaAciklama,
+        lucaKdv,
+        faturaTarih,
+        faturaBelgeNo,
+        faturaKdv,
+        durum,
+        aciklama,
+      ]);
     });
 
-    const ws = xlsx.utils.json_to_sheet(data);
-    
-    // Sütun genişliklerini ayarla
+    // ─── SHEET OLUŞTUR + BİÇİMLENDİR ──────────────────────
+    const ws = xlsx.utils.aoa_to_sheet(aoa);
+
+    // Sütun genişlikleri — Luca Excel formatına benzer
     ws['!cols'] = [
-      { wch: 15 }, // Görsel Tarih
-      { wch: 15 }, // Excel Tarih
-      { wch: 20 }, // Görsel Belge No
-      { wch: 20 }, // Excel Belge No
-      { wch: 15 }, // Görsel KDV
-      { wch: 20 }, // Excel İlgili Tutar
-      { wch: 25 }, // Durum
+      { wch: 5 },   // #
+      { wch: 13 },  // Luca Tarih
+      { wch: 22 },  // Luca Evrak No
+      { wch: 42 },  // Luca Hesap Adı
+      { wch: 14 },  // Luca KDV
+      { wch: 13 },  // Fatura Tarih
+      { wch: 22 },  // Fatura Belge No
+      { wch: 14 },  // Fatura KDV
+      { wch: 13 },  // Durum
+      { wch: 55 },  // Açıklama
     ];
-    
+
+    // Merge'ler: başlık bloğunda 2. sütuna kadar yay
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }, // MOREN
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } }, // KDV Kontrol Raporu
+      { s: { r: 9, c: 0 }, e: { r: 9, c: 9 } }, // ÖZET
+    ];
+
+    // Satır yüksekliği — başlık biraz daha yüksek
+    ws['!rows'] = [
+      { hpt: 28 },  // MOREN
+      { hpt: 20 },  // Rapor başlığı
+    ];
+
     const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, ws, 'KDV Kontrol Sonuçları');
+    xlsx.utils.book_append_sheet(wb, ws, 'KDV Kontrol');
 
     const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 

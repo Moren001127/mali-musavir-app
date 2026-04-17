@@ -21,6 +21,8 @@ type FeedItem = {
   title: string;
   detail?: string;
   resultId?: string;
+  /** Aynı faturanın duplicate sayılmaması için event kaynağı imageId */
+  imageId?: string;
   /** Stale hata temizleme için: "luca" | "faturalar" | "ocr" | "kontrol" */
   group?: string;
 };
@@ -428,6 +430,7 @@ export default function KdvKontrolPage() {
           kind: 'ok',
           title: `✓ ${short} · 3/3`,
           detail: parts.join(' · ') || 'Tüm alanlar okundu',
+          imageId: img.id,
         });
       } else if (curr === 'NEEDS_REVIEW') {
         const issues: string[] = [];
@@ -439,6 +442,7 @@ export default function KdvKontrolPage() {
           kind: 'warn',
           title: `⚠ ${short} · teyit bekler`,
           detail: issues.length > 0 ? `düşük: ${issues.join(' · ')}` : 'bir alan eşik altı',
+          imageId: img.id,
         });
       } else if (curr === 'LOW_CONFIDENCE') {
         pushFeed({
@@ -446,6 +450,7 @@ export default function KdvKontrolPage() {
           kind: 'err',
           title: `✗ ${short} · hiç okunamadı`,
           detail: `OCR hiçbir alan çıkaramadı${img.ocrEngine ? ` (${img.ocrEngine})` : ''} — elle teyit gerek`,
+          imageId: img.id,
         });
       } else if (curr === 'FAILED') {
         pushFeed({
@@ -453,6 +458,7 @@ export default function KdvKontrolPage() {
           kind: 'err',
           title: `✗ ${short} · OCR hatası`,
           detail: 'Görsel indirilemedi veya işleme hatası (Railway logları kontrol edin)',
+          imageId: img.id,
         });
       }
 
@@ -761,10 +767,11 @@ export default function KdvKontrolPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <FeedCount kind="ok" label="OCR ✓" count={feed.filter((f) => f.kind === 'ok' && f.group === 'ocr' && !f.resultId).length} />
+              {/* Sayaçlar imageId bazında unique — aynı fatura birkaç status geçişi yapsa bile tek sayılır */}
+              <FeedCount kind="ok" label="OCR ✓" count={new Set(feed.filter((f) => f.kind === 'ok' && f.group === 'ocr' && f.imageId).map((f) => f.imageId!)).size} />
               <FeedCount kind="ok" label="Eşleşti" count={feed.filter((f) => f.kind === 'ok' && f.resultId).length} />
-              <FeedCount kind="warn" label="İnceleme" count={feed.filter((f) => f.kind === 'warn').length} />
-              <FeedCount kind="err" label="Sorun" count={feed.filter((f) => f.kind === 'err').length} />
+              <FeedCount kind="warn" label="İnceleme" count={new Set(feed.filter((f) => f.kind === 'warn' && f.imageId).map((f) => f.imageId!)).size + feed.filter((f) => f.kind === 'warn' && !f.imageId).length} />
+              <FeedCount kind="err" label="Sorun" count={new Set(feed.filter((f) => f.kind === 'err' && f.imageId).map((f) => f.imageId!)).size + feed.filter((f) => f.kind === 'err' && !f.imageId).length} />
               {feed.length > 0 && (
                 <button
                   onClick={() => { setFeed([]); seenResultIdsRef.current.clear(); }}
