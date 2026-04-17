@@ -38,7 +38,7 @@ function SmsTemplateSection() {
         <div className="flex items-center gap-3">
           <span className="text-2xl">💬</span>
           <div>
-            <h3 className="text-base font-semibold" style={{ color: 'var(--navy)' }}>SMS / WhatsApp Şablonları</h3>
+            <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>SMS / WhatsApp Şablonları</h3>
             <p className="text-xs text-gray-500">Mükellef evrak hatırlatma mesaj şablonları</p>
           </div>
         </div>
@@ -61,7 +61,7 @@ function SmsTemplateSection() {
               Evrak Talebi SMS (Hatırlatma)
             </label>
             <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               value={evrakTalep}
               onChange={e => setEvrakTalep(e.target.value)}
             />
@@ -71,7 +71,7 @@ function SmsTemplateSection() {
               İşleme Başlama SMS (Onay)
             </label>
             <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               value={evrakGeldi}
               onChange={e => setEvrakGeldi(e.target.value)}
             />
@@ -107,7 +107,7 @@ export default function AyarlarPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--navy)' }}>Ayarlar</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>Ayarlar</h1>
         <p className="text-sm text-gray-500 mt-1">Sistem ve entegrasyon ayarları</p>
       </div>
 
@@ -116,7 +116,7 @@ export default function AyarlarPage() {
       <div className="card">
         <div className="flex items-center gap-3 mb-3">
           <span className="text-2xl">📱</span>
-          <h3 className="text-base font-semibold" style={{ color: 'var(--navy)' }}>WhatsApp Otomasyonu</h3>
+          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>WhatsApp Otomasyonu</h3>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
           WhatsApp entegrasyonu yakında aktif edilecek. Mükellef listesinde telefon numaralarını ve SMS tercihlerinizi şimdiden ayarlayabilirsiniz.
@@ -124,7 +124,7 @@ export default function AyarlarPage() {
       </div>
 
       <div className="card opacity-60">
-        <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--navy)' }}>Diğer Ayarlar</h3>
+        <h3 className="text-base font-semibold mb-2" style={{ color: '#d4b876' }}>Diğer Ayarlar</h3>
         <p className="text-sm text-gray-400">Yakında eklenecek: Ofis bilgileri, logo, bildirim tercihleri...</p>
       </div>
     </div>

@@ -69,28 +69,35 @@ export default function ProfillerPage() {
   };
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-          Mükellef Profilleri
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          Her mükellef için Claude'a özel talimat yazın. Fatura işlenirken bu talimatlar agent'a ek context olarak verilir.
-        </p>
+    <div className="space-y-5 max-w-7xl">
+      {/* HEADER */}
+      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ajan</span>
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+            Mükellef Profilleri
+          </h1>
+          <p className="text-[13px] mt-1.5 max-w-2xl" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Her mükellef için Claude'a özel talimat yazın. Fatura işlenirken bu talimatlar agent'a ek context olarak verilir.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Sol: Mükellef listesi */}
         <div
           className="rounded-xl border p-3"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Mükellef ara…"
             className="w-full px-3 py-2 rounded-lg text-sm border outline-none mb-2"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
           />
           <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
             {filtered.map((t) => {
@@ -104,7 +111,7 @@ export default function ProfillerPage() {
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors"
                   style={{
                     background: active ? 'rgba(55,48,163,.1)' : 'transparent',
-                    color: active ? '#3730a3' : 'var(--text)',
+                    color: active ? '#3730a3' : '#fafaf9',
                     fontWeight: active ? 600 : 400,
                   }}
                 >
@@ -114,7 +121,7 @@ export default function ProfillerPage() {
               );
             })}
             {filtered.length === 0 && (
-              <div className="text-xs p-3 text-center" style={{ color: 'var(--text-muted)' }}>
+              <div className="text-xs p-3 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 Sonuç yok
               </div>
             )}
@@ -124,20 +131,20 @@ export default function ProfillerPage() {
         {/* Sağ: Talimat editör */}
         <div
           className="md:col-span-2 rounded-xl border p-5"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
           {!selected ? (
-            <div className="text-center py-16" style={{ color: 'var(--text-muted)' }}>
+            <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Sol listeden mükellef seç
             </div>
           ) : (
             <>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <div className="text-xs uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                  <div className="text-xs uppercase tracking-wide" style={{ color: 'rgba(250,250,249,0.45)' }}>
                     Mükellef
                   </div>
-                  <div className="font-semibold text-lg" style={{ color: 'var(--text)' }}>
+                  <div className="font-semibold text-lg" style={{ color: '#fafaf9' }}>
                     {selected}
                   </div>
                 </div>
@@ -154,7 +161,7 @@ export default function ProfillerPage() {
                 )}
               </div>
 
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text)' }}>
+              <label className="block text-sm font-medium mb-2" style={{ color: '#fafaf9' }}>
                 Claude'a Özel Talimatlar
               </label>
               <textarea
@@ -164,15 +171,15 @@ export default function ProfillerPage() {
                 placeholder={`Örnek:\n- Bu mükellef nakliye firması.\n- Akaryakıt (benzin/motorin) faturaları 740.01.001'e yazılır.\n- Araç bakım/onarım 740.01.002'ye.\n- Lastik 740.01.005'e.\n- Yemek/yiyecek faturaları 770.01.030'a (mutfak/yemekhane).\n- ÖNEMLİ: Faturanın GERÇEK içeriğine bak. Sadece mükellefin sektörü "nakliye" diye her şeyi yakıt sayma.\n- Fatura içeriğini görmüyorsan emin_degil de.`}
                 className="w-full px-4 py-3 rounded-lg text-sm border outline-none font-mono leading-relaxed"
                 style={{
-                  background: 'var(--bg)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderColor: 'rgba(255,255,255,0.05)',
+                  color: '#fafaf9',
                   minHeight: 300,
                 }}
               />
 
               <div className="flex items-center justify-between mt-3">
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Bu talimatlar her fatura kararında Claude'un system prompt'una eklenir.
                 </p>
                 <button

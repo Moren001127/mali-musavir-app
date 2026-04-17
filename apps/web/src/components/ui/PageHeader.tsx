@@ -17,7 +17,7 @@ export function PageHeader({ title, subtitle, backHref, action }: PageHeaderProp
           <Link
             href={backHref}
             className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-white border"
-            style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            style={{ border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}
           >
             <ArrowLeft size={16} />
           </Link>

@@ -4,12 +4,15 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ExcelParserService } from './excel-parser.service';
 import { OcrService } from './ocr.service';
 import { ReconciliationEngine } from './reconciliation.engine';
+import { LucaService } from '../luca/luca.service';
 import { randomUUID } from 'crypto';
 
 @Injectable()
@@ -22,6 +25,8 @@ export class KdvControlService {
     private excelParser: ExcelParserService,
     private ocrService: OcrService,
     private reconciliation: ReconciliationEngine,
+    @Inject(forwardRef(() => LucaService))
+    private luca: LucaService,
   ) {}
 
   private readonly VALID_TYPES = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'] as const;
@@ -63,6 +68,42 @@ export class KdvControlService {
     await this.prisma.kdvControlSession.delete({ where: { id } });
     
     return { deleted: true };
+  }
+
+  /**
+   * Mükellef + dönem + tip kombinasyonu için var olan seansı bul;
+   * yoksa yenisini oluştur. Ana akışta kullanılır (Mihsap deseni gibi
+   * tek ekrandan iş yaparken).
+   */
+  async findOrCreateSession(
+    tenantId: string,
+    userId: string,
+    dto: {
+      type: 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER';
+      periodLabel: string;
+      taxpayerId?: string;
+      notes?: string;
+    },
+  ) {
+    if (!this.VALID_TYPES.includes(dto.type as any)) {
+      throw new BadRequestException(`Geçersiz kontrol türü: ${dto.type}`);
+    }
+    const existing = await this.prisma.kdvControlSession.findFirst({
+      where: {
+        tenantId,
+        type: dto.type as any,
+        periodLabel: dto.periodLabel,
+        taxpayerId: dto.taxpayerId || null,
+      },
+      include: {
+        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
+        _count: { select: { kdvRecords: true, images: true, results: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) return { session: existing, created: false };
+    const created = await this.createSession(tenantId, userId, dto);
+    return { session: created, created: true };
   }
 
   /** Yeni oturum oluştur */
@@ -419,9 +460,17 @@ export class KdvControlService {
     });
   }
 
-  /** Eşleştirme sonuçlarını Excel olarak dışa aktar - SONUÇ formatı */
-  async exportResultsToExcel(sessionId: string, tenantId: string): Promise<Buffer> {
-    await this.findSession(sessionId, tenantId);
+  /**
+   * Eşleştirme sonuçlarını Excel olarak dışa aktar — SONUÇ formatı.
+   * `autoArchive=true` (default) ise indirilen dosya otomatik olarak
+   * `kdvControlOutput` tablosuna arşivlenir.
+   */
+  async exportResultsToExcel(
+    sessionId: string,
+    tenantId: string,
+    opts: { autoArchive?: boolean; createdBy?: string } = {},
+  ): Promise<Buffer> {
+    const session = await this.findSession(sessionId, tenantId);
     
     const results = await this.prisma.reconciliationResult.findMany({
       where: { sessionId },
@@ -473,8 +522,99 @@ export class KdvControlService {
     
     const wb = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(wb, ws, 'KDV Kontrol Sonuçları');
-    
-    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    // Arşive kaydet (fiş yazdırmadaki gibi — geriye dönük erişim)
+    if (opts.autoArchive !== false) {
+      try {
+        const session = await this.prisma.kdvControlSession.findUnique({
+          where: { id: sessionId },
+          include: { taxpayer: true },
+        });
+        const matchedCount = results.filter((r) => r.status === 'MATCHED').length;
+        const partialCount = results.filter((r) => r.status === 'PARTIAL_MATCH').length;
+        const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED' || r.status === 'NEEDS_REVIEW').length;
+        const mukellefName = session?.taxpayer
+          ? session.taxpayer.companyName ||
+            `${session.taxpayer.firstName ?? ''} ${session.taxpayer.lastName ?? ''}`.trim()
+          : null;
+
+        const filename = `kdv-kontrol-${session?.periodLabel?.replace('/', '-') || sessionId}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        await (this.prisma as any).kdvControlOutput.create({
+          data: {
+            tenantId,
+            sessionId,
+            taxpayerId: session?.taxpayerId || null,
+            mukellefName,
+            donem: session?.periodLabel || null,
+            tip: session?.type || null,
+            matchedCount,
+            partialCount,
+            unmatchedCount,
+            totalRecords: await this.prisma.kdvRecord.count({ where: { sessionId } }),
+            totalImages: await this.prisma.receiptImage.count({ where: { sessionId } }),
+            filename,
+            fileBytes: buffer,
+            fileSize: buffer.length,
+            createdBy: opts.createdBy || null,
+          },
+        });
+      } catch (e: any) {
+        this.logger.warn(`KDV çıktı arşive yazılamadı: ${e?.message}`);
+      }
+    }
+
+    return buffer;
+  }
+
+  // ============================================================
+  // ÇIKTI ARŞİVİ (fiş yazdırmadaki gibi)
+  // ============================================================
+
+  /** Tenant'a ait tüm KDV kontrol çıktılarını listeler (bayt içeriği hariç). */
+  async listOutputs(tenantId: string, limit = 100) {
+    return (this.prisma as any).kdvControlOutput.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        sessionId: true,
+        taxpayerId: true,
+        mukellefName: true,
+        donem: true,
+        tip: true,
+        matchedCount: true,
+        partialCount: true,
+        unmatchedCount: true,
+        totalRecords: true,
+        totalImages: true,
+        filename: true,
+        fileSize: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /** Bir çıktıyı (içeriğiyle birlikte) getirir. */
+  async getOutput(tenantId: string, outputId: string) {
+    const rec = await (this.prisma as any).kdvControlOutput.findUnique({
+      where: { id: outputId },
+    });
+    if (!rec || rec.tenantId !== tenantId) return null;
+    return rec;
+  }
+
+  /** Bir çıktıyı siler. */
+  async deleteOutput(tenantId: string, outputId: string) {
+    const rec = await (this.prisma as any).kdvControlOutput.findUnique({
+      where: { id: outputId },
+    });
+    if (!rec || rec.tenantId !== tenantId) return { deleted: 0 };
+    await (this.prisma as any).kdvControlOutput.delete({ where: { id: outputId } });
+    return { deleted: 1 };
   }
 
   /** Oturum özet istatistikleri (sayaç) */
@@ -528,6 +668,264 @@ export class KdvControlService {
       where: { id: resultId },
       data: { status: action, resolvedBy: userId, resolvedAt: new Date(), notes },
     });
+  }
+
+  // ============================================================
+  // OTOMATİK ÇEKİM AKIŞI (Luca + Mihsap)
+  // ============================================================
+
+  /**
+   * Luca'dan muavin/işletme defteri verisini otomatik çekmek için
+   * bir Luca fetch job oluşturur. Runner (moren-agent.js) bu job'u
+   * Luca sayfasında çalıştırır — Excel indirip buraya yollar.
+   *
+   * Döndürülen `jobId` ile frontend durumu polll edebilir.
+   */
+  async queueLucaImport(sessionId: string, tenantId: string, userId: string) {
+    const session = await this.findSession(sessionId, tenantId);
+    if (!session.taxpayerId) {
+      throw new BadRequestException(
+        'Bu oturuma Luca\'dan otomatik çekim için önce mükellef atanmalı',
+      );
+    }
+
+    // Mevcut KDV kayıtlarını temizle (yeniden çekim)
+    await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
+
+    // Luca session var mı kontrol et — yoksa runner bağlanmalı
+    const luca = await this.luca.getSession(tenantId);
+    if (!luca) {
+      throw new BadRequestException(
+        'Luca oturumu bulunamadı. Luca sayfasını açın ve Moren Agent bookmarklet\'ini çalıştırın.',
+      );
+    }
+
+    const job = await this.luca.createFetchJob({
+      tenantId,
+      sessionId,
+      mukellefId: session.taxpayerId,
+      donem: this.toDashDonem(session.periodLabel), // YYYY/MM → YYYY-MM
+      tip: session.type,
+      createdBy: userId,
+    });
+
+    await this.prisma.kdvControlSession.update({
+      where: { id: sessionId },
+      data: { status: 'PROCESSING' },
+    });
+
+    return { jobId: job.id, status: 'queued' };
+  }
+
+  /**
+   * Runner Luca'dan Excel'i indirdikten sonra bu endpoint ile yükler.
+   * `uploadExcel` ile aynı ama ayrı bir `jobId` ile job durumunu
+   * "done" olarak işaretler.
+   */
+  async uploadExcelFromRunner(
+    sessionId: string,
+    tenantId: string,
+    jobId: string,
+    buffer: Buffer,
+  ) {
+    try {
+      const result = await this.uploadExcel(sessionId, tenantId, buffer);
+      await this.luca.markJobDone(jobId, result.parsed);
+      return result;
+    } catch (e: any) {
+      await this.luca.markJobFailed(jobId, e?.message || 'Excel parse hatası');
+      throw e;
+    }
+  }
+
+  /**
+   * Mevcut Mihsap fatura kayıtlarını bu KDV Kontrol oturumuna
+   * görsel (`receiptImage`) olarak bağlar. Hiçbir dosya yüklenmez —
+   * zaten Mihsap CDN'de duran görseller `mihsapFileLink` üstünden
+   * OCR'a verilir.
+   *
+   * `session.taxpayerId` + `session.periodLabel` ile `mihsapInvoice`
+   * tablosu filtrelenir. `KDV_191 / ISLETME_GIDER` → ALIS faturaları,
+   * `KDV_391 / ISLETME_GELIR` → SATIS faturaları.
+   */
+  async linkMihsapInvoices(sessionId: string, tenantId: string) {
+    const session = await this.findSession(sessionId, tenantId);
+    if (!session.taxpayerId) {
+      throw new BadRequestException(
+        'Fatura bağlama için önce mükellef atanmalı',
+      );
+    }
+
+    const donem = this.toDashDonem(session.periodLabel); // YYYY-MM
+    const faturaTuru =
+      session.type === 'KDV_391' || session.type === 'ISLETME_GELIR'
+        ? 'SATIS'
+        : 'ALIS';
+
+    const invoices = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        mukellefId: session.taxpayerId,
+        donem,
+        faturaTuru,
+      },
+      orderBy: { faturaTarihi: 'asc' },
+    });
+
+    if (invoices.length === 0) {
+      throw new BadRequestException(
+        `Bu mükellefin ${donem} döneminde (${faturaTuru}) Mihsap'tan çekilmiş faturası yok. Önce Mihsap'tan faturaları çekin.`,
+      );
+    }
+
+    // Daha önce bu oturuma aynı fatura bağlanmışsa atla (mihsap s3Key bazlı)
+    const existingKeys = new Set(
+      (
+        await this.prisma.receiptImage.findMany({
+          where: { sessionId },
+          select: { s3Key: true },
+        })
+      ).map((r) => r.s3Key),
+    );
+
+    let linked = 0;
+    for (const inv of invoices) {
+      const s3Key = `mihsap://${inv.id}`; // sanal key — storage'a fiziksel yüklemiyoruz
+      if (existingKeys.has(s3Key)) continue;
+
+      await this.prisma.receiptImage.create({
+        data: {
+          sessionId,
+          s3Key,
+          originalName: `${inv.faturaNo || inv.id}.${(inv.orjDosyaTuru || 'jpg').toLowerCase()}`,
+          mimeType:
+            inv.orjDosyaTuru?.toLowerCase().includes('pdf')
+              ? 'application/pdf'
+              : 'image/jpeg',
+          sizeBytes: 0,
+          ocrStatus: 'PENDING',
+        },
+      });
+      linked++;
+    }
+
+    await this.prisma.kdvControlSession.update({
+      where: { id: sessionId },
+      data: { status: 'PROCESSING' },
+    });
+
+    return { linked, total: invoices.length, alreadyLinked: invoices.length - linked };
+  }
+
+  /**
+   * Session'a bağlanmış (genelde Mihsap kaynaklı) PENDING durumdaki tüm
+   * görsellerin OCR'ını toplu başlatır. Tek tek asenkron tetiklenir;
+   * çağıran beklemez. Frontend polling ile durumu izler.
+   */
+  async startOcrForSession(sessionId: string, tenantId: string) {
+    await this.findSession(sessionId, tenantId);
+
+    const pending = await this.prisma.receiptImage.findMany({
+      where: { sessionId, ocrStatus: 'PENDING' },
+    });
+
+    if (pending.length === 0) {
+      return { queued: 0, message: 'Bekleyen görsel yok' };
+    }
+
+    let queued = 0;
+    for (const img of pending) {
+      // Mihsap bağlı görsellerde s3Key `mihsap://<invoiceId>` deseni
+      if (img.s3Key?.startsWith('mihsap://')) {
+        const invoiceId = img.s3Key.slice('mihsap://'.length);
+        this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId).catch((e) =>
+          this.logger.error(`OCR mihsap hata [${img.id}]: ${e?.message}`),
+        );
+      } else {
+        this.runOcrForImage(img.id, img.s3Key).catch((e) =>
+          this.logger.error(`OCR hata [${img.id}]: ${e?.message}`),
+        );
+      }
+      queued++;
+    }
+
+    return { queued, total: pending.length };
+  }
+
+  /**
+   * Mihsap kaynaklı fatura için OCR çalıştır:
+   * 1) Mihsap CDN'den görseli indir
+   * 2) OcrService'e ver
+   * 3) receiptImage kaydını güncelle
+   */
+  private async runOcrForMihsapInvoice(
+    imageId: string,
+    mihsapInvoiceId: string,
+    tenantId: string,
+  ) {
+    try {
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: { ocrStatus: 'PROCESSING' },
+      });
+
+      const inv = await (this.prisma as any).mihsapInvoice.findUnique({
+        where: { id: mihsapInvoiceId },
+      });
+      if (!inv || inv.tenantId !== tenantId) {
+        throw new Error('Mihsap invoice kaydı bulunamadı');
+      }
+
+      const url = inv.mihsapFileLink;
+      if (!url) throw new Error('mihsapFileLink boş — görsel çekilmemiş');
+
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0',
+          Accept: 'image/*',
+          Referer: 'https://app.mihsap.com/',
+        },
+      });
+      if (!res.ok) throw new Error(`Mihsap CDN ${res.status}`);
+      const buffer = Buffer.from(await res.arrayBuffer());
+
+      const ocrResult = await this.ocrService.extractFromImage(buffer, inv.faturaNo);
+      const isLow = this.ocrService.isLowConfidence(ocrResult);
+
+      // Mihsap'ta zaten yapısal veri var — OCR'ı tamamla ama Mihsap'ın
+      // kesin verilerini (tarih, fatura no) confirmed alanlara doldur
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: {
+          ocrStatus: isLow ? 'LOW_CONFIDENCE' : 'SUCCESS',
+          ocrBelgeNo: ocrResult.belgeNo,
+          ocrDate: ocrResult.date,
+          ocrKdvTutari: ocrResult.kdvTutari,
+          ocrRawText: ocrResult.rawText?.substring(0, 2000),
+          ocrConfidence: ocrResult.confidence,
+          confirmedBelgeNo: inv.faturaNo, // Mihsap kesin veri
+          confirmedDate: inv.faturaTarihi
+            ? new Date(inv.faturaTarihi).toLocaleDateString('tr-TR')
+            : null,
+          isManuallyConfirmed: true, // Mihsap'tan geldiği için "teyit edilmiş" say
+        },
+      });
+    } catch (err: any) {
+      this.logger.error(`runOcrForMihsapInvoice [${imageId}]: ${err?.message}`);
+      await this.prisma.receiptImage.update({
+        where: { id: imageId },
+        data: { ocrStatus: 'FAILED' },
+      });
+    }
+  }
+
+  /** "2026/03" → "2026-03" */
+  private toDashDonem(periodLabel: string): string {
+    if (/^\d{4}-\d{2}$/.test(periodLabel)) return periodLabel;
+    const m = periodLabel.match(/^(\d{4})[\/\-](\d{1,2})$/);
+    if (m) return `${m[1]}-${m[2].padStart(2, '0')}`;
+    return periodLabel;
   }
 
   /** Oturumu tamamlandı olarak işaretle */

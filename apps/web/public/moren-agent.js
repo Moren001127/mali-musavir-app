@@ -50,6 +50,177 @@
   syncMihsapToken();
   setInterval(syncMihsapToken, 60000);
 
+  // === LUCA TOKEN SENKRONİZASYONU ===
+  // Sayfa Luca (web.luca.com.tr / muhasebe.luca.com.tr / vb.) üzerindeyse,
+  // document.cookie + localStorage içinden session anahtarı yakalanır ve
+  // backend'e gönderilir. Luca'nın authorization deseni klasik .NET
+  // cookie tabanlı; bütün cookie header'ı + localStorage["auth"] gibi
+  // anahtarlarını toplu aktarıp backend filtreler.
+  let lastSyncedLucaKey = '';
+  function isLucaOrigin() {
+    return /luca\.com\.tr|luca\.net\.tr/i.test(location.hostname);
+  }
+  async function syncLucaSession() {
+    try {
+      if (!isLucaOrigin()) return; // sadece Luca sayfasındaysa çalış
+      // Tüm cookie + Luca'nın muhtemel JWT anahtarlarını topla
+      const cookies = document.cookie || '';
+      const lucaAuth =
+        localStorage.getItem('token') ||
+        localStorage.getItem('accessToken') ||
+        localStorage.getItem('authToken') ||
+        localStorage.getItem('luca_token') ||
+        '';
+      const signature = cookies + '|' + lucaAuth;
+      if (!signature || signature.length < 10) return;
+      if (signature === lastSyncedLucaKey) return;
+
+      const email =
+        localStorage.getItem('userEmail') ||
+        localStorage.getItem('email') ||
+        '';
+      const r = await fetch(API + '/agent/luca/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Agent-Token': TOKEN,
+        },
+        body: JSON.stringify({
+          token: lucaAuth || cookies.slice(0, 400), // en az cookie header
+          cookies,
+          origin: location.hostname,
+          email,
+        }),
+      });
+      if (r.ok) {
+        lastSyncedLucaKey = signature;
+        console.log('[Moren] Luca oturumu backend ile senkronize edildi');
+      }
+    } catch (e) {
+      console.warn('[Moren] Luca sync hata:', e?.message);
+    }
+  }
+  syncLucaSession();
+  setInterval(syncLucaSession, 60000);
+
+  // === LUCA MUAVİN İŞ İŞLEYİCİSİ ===
+  // Backend'den bekleyen job'ları çeker ve Luca sayfasında Excel
+  // indirme butonuna tıklayarak muavin dosyasını yakalar, backend'e
+  // geri yükler.
+  async function processLucaJobs() {
+    try {
+      if (!isLucaOrigin()) return;
+      if (window.__morenAgent.stopRequested) return;
+      if (window.__lucaJobRunning) return;
+
+      const r = await fetch(API + '/agent/luca/jobs/pending', {
+        headers: { 'X-Agent-Token': TOKEN },
+      });
+      if (!r.ok) return;
+      const jobs = await r.json();
+      if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+      window.__lucaJobRunning = true;
+      for (const job of jobs) {
+        try {
+          setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
+          await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
+            method: 'POST',
+            headers: { 'X-Agent-Token': TOKEN },
+          });
+
+          const blob = await fetchLucaMuavinExcel(job);
+          if (!blob) throw new Error('Excel yakalanamadı');
+
+          // Backend'e gönder — uploadExcelFromRunner
+          const fd = new FormData();
+          fd.append('file', blob, `luca-${job.tip}-${job.donem}.xlsx`);
+          const uploadRes = await fetch(
+            API + `/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`,
+            {
+              method: 'POST',
+              headers: { 'X-Agent-Token': TOKEN },
+              body: fd,
+            },
+          );
+          if (!uploadRes.ok) {
+            throw new Error(`Upload HTTP ${uploadRes.status}`);
+          }
+          setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
+        } catch (e) {
+          console.error('[Moren] Luca job hata:', e);
+          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Agent-Token': TOKEN,
+            },
+            body: JSON.stringify({ error: e?.message || 'bilinmeyen hata' }),
+          });
+        }
+      }
+      window.__lucaJobRunning = false;
+    } catch (e) {
+      window.__lucaJobRunning = false;
+      console.warn('[Moren] processLucaJobs:', e?.message);
+    }
+  }
+  setInterval(processLucaJobs, 15000);
+
+  /**
+   * Luca sayfasında mevcut muavin/işletme defteri Excel'ini yakalar.
+   * DOM'da `a[href*=".xlsx"]` veya "Excel" yazan butonu arar; bir
+   * click fetch interceptor ile indirilen blob yakalanır.
+   *
+   * NOT: Luca DOM'u her sürümde değişebilir — bu fonksiyon first-cut
+   * implementasyondur. Keşif sonucu kesinleştirilir.
+   */
+  async function fetchLucaMuavinExcel(job) {
+    // 1) Sayfa hazır mı? Mükellef + dönem + hesap seçili mi? (kullanıcı
+    //    manuel açmış olmalı — runner sadece indirir).
+    const excelBtn =
+      [...document.querySelectorAll('button,a')].find((el) =>
+        /excel|xlsx/i.test(el.textContent || ''),
+      ) || document.querySelector('a[href*=".xlsx"]');
+    if (!excelBtn) {
+      throw new Error(
+        'Luca muavin ekranında Excel indirme butonu bulunamadı — ekranı açıp tekrar deneyin',
+      );
+    }
+
+    // 2) Fetch interceptor: sonraki indirilecek blob'u yakala
+    const originalFetch = window.fetch;
+    let captured = null;
+    window.fetch = async function (...args) {
+      const res = await originalFetch.apply(this, args);
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if (
+          ct.includes('spreadsheet') ||
+          ct.includes('excel') ||
+          (typeof args[0] === 'string' && args[0].includes('.xlsx'))
+        ) {
+          const clone = res.clone();
+          captured = await clone.blob();
+        }
+      } catch {}
+      return res;
+    };
+
+    // 3) Butona tıkla
+    try {
+      excelBtn.click();
+      // 4) Blob yakalanana kadar bekle (max 20 sn)
+      const t0 = Date.now();
+      while (!captured && Date.now() - t0 < 20000) {
+        await sleep(250);
+      }
+    } finally {
+      window.fetch = originalFetch;
+    }
+    return captured;
+  }
+
   // === UI ===
   const panel = document.createElement('div');
   panel.id = 'moren-agent-panel';

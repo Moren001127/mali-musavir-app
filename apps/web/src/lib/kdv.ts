@@ -8,6 +8,8 @@ export const kdvApi = {
   getStats: (id: string) => api.get(`/kdv-control/sessions/${id}/stats`).then((r) => r.data),
   createSession: (data: { type: string; periodLabel: string; taxpayerId?: string; notes?: string }) =>
     api.post('/kdv-control/sessions', data).then((r) => r.data),
+  findOrCreateSession: (data: { type: string; periodLabel: string; taxpayerId?: string; notes?: string }) =>
+    api.post('/kdv-control/sessions/find-or-create', data).then((r) => r.data as { session: any; created: boolean }),
   completeSession: (id: string) =>
     api.patch(`/kdv-control/sessions/${id}/complete`).then((r) => r.data),
 
@@ -74,6 +76,21 @@ export const kdvApi = {
   deleteImage: (imageId: string) =>
     api.delete(`/kdv-control/images/${imageId}`).then((r) => r.data),
 
+  /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ── */
+  /** Luca'dan 191/391 veya işletme defteri verisini otomatik çekmek için
+   *  bir fetch job oluşturur. Luca sayfasında açık runner bu job'u işler. */
+  importFromLuca: (sessionId: string) =>
+    api.post(`/kdv-control/sessions/${sessionId}/import-from-luca`).then((r) => r.data),
+
+  /** Portal veritabanında kayıtlı (daha önce Mihsap'tan çekilmiş) faturaları
+   *  bu kontrol oturumuna görsel olarak bağlar. Mihsap'a yeniden gitmez. */
+  linkMihsapInvoices: (sessionId: string) =>
+    api.post(`/kdv-control/sessions/${sessionId}/link-mihsap-invoices`).then((r) => r.data),
+
+  /** Oturumdaki bekleyen tüm görsellerin OCR'ını başlatır. */
+  startOcr: (sessionId: string) =>
+    api.post(`/kdv-control/sessions/${sessionId}/start-ocr`).then((r) => r.data),
+
   /* ── EŞLEŞTİRME ── */
   reconcile: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/reconcile`).then((r) => r.data),
@@ -86,4 +103,17 @@ export const kdvApi = {
 
   resolveResult: (resultId: string, action: 'CONFIRMED' | 'REJECTED', notes?: string) =>
     api.patch(`/kdv-control/results/${resultId}/resolve`, { action, notes }).then((r) => r.data),
+
+  /* ── ÇIKTI ARŞİVİ ── */
+  /** Tüm KDV kontrol çıktıları (bayt içeriği hariç) */
+  listOutputs: () =>
+    api.get('/kdv-control/outputs').then((r) => r.data),
+
+  /** Kayıtlı bir çıktıyı indir (arraybuffer) */
+  downloadOutput: (outputId: string) =>
+    api.get(`/kdv-control/outputs/${outputId}/download`, { responseType: 'arraybuffer' }).then((r) => r.data),
+
+  /** Kayıtlı bir çıktıyı sil */
+  deleteOutput: (outputId: string) =>
+    api.delete(`/kdv-control/outputs/${outputId}`).then((r) => r.data),
 };

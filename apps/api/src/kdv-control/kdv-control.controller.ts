@@ -50,6 +50,19 @@ export class KdvControlController {
     return this.kdvService.createSession(req.user.tenantId, req.user.sub, body);
   }
 
+  /**
+   * Mükellef + dönem + tip kombinasyonu için aktif seans varsa onu
+   * döndür, yoksa oluştur. Ana ekrandan direkt akış için kullanılır.
+   */
+  @Post('sessions/find-or-create')
+  @Roles('ADMIN', 'STAFF')
+  findOrCreateSession(@Req() req: any, @Body() body: any) {
+    if (!body.type || !VALID_KDV_TYPES.includes(body.type)) {
+      throw new BadRequestException(`Geçersiz kontrol türü. Geçerli türler: ${VALID_KDV_TYPES.join(', ')}`);
+    }
+    return this.kdvService.findOrCreateSession(req.user.tenantId, req.user.sub, body);
+  }
+
   @Patch('sessions/:id/complete')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
@@ -169,6 +182,59 @@ export class KdvControlController {
     return this.kdvService.deleteImage(imageId, req.user.tenantId);
   }
 
+  /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
+
+  /**
+   * Luca'dan muavin/işletme defteri otomatik çekimi başlat.
+   * Arka planda bir Luca fetch job yaratır; runner Luca sayfasında
+   * Excel'i indirip /excel endpoint'ine gönderir.
+   */
+  @Post('sessions/:id/import-from-luca')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  importFromLuca(@Req() req: any, @Param('id') id: string) {
+    return this.kdvService.queueLucaImport(id, req.user.tenantId, req.user.sub);
+  }
+
+  /**
+   * Mevcut (portal DB'sindeki) Mihsap fatura kayıtlarını bu oturuma
+   * görsel olarak bağlar. Mihsap'a yeniden gitmez.
+   */
+  @Post('sessions/:id/link-mihsap-invoices')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  linkMihsap(@Req() req: any, @Param('id') id: string) {
+    return this.kdvService.linkMihsapInvoices(id, req.user.tenantId);
+  }
+
+  /**
+   * Oturumdaki bekleyen (PENDING) tüm görsellerin OCR'ını başlat.
+   * Mihsap kaynaklı görseller Mihsap CDN'den indirilir, diğerleri S3'ten.
+   */
+  @Post('sessions/:id/start-ocr')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  startOcr(@Req() req: any, @Param('id') id: string) {
+    return this.kdvService.startOcrForSession(id, req.user.tenantId);
+  }
+
+  /**
+   * Runner Luca Excel'ini yüklerken bu endpoint'i kullanır —
+   * uploadExcel ile aynı ama jobId parametresi ile job kapatılır.
+   */
+  @Post('sessions/:id/excel-from-runner/:jobId')
+  @Roles('ADMIN', 'STAFF')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  uploadExcelFromRunner(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Param('jobId') jobId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Dosya gerekli');
+    return this.kdvService.uploadExcelFromRunner(id, req.user.tenantId, jobId, file.buffer);
+  }
+
   /* ── EŞLEŞTİRME ─────────────────────────────────── */
 
   @Post('sessions/:id/reconcile')
@@ -185,10 +251,39 @@ export class KdvControlController {
     @Param('id') id: string,
     @Res() res: any,
   ) {
-    const buffer = await this.kdvService.exportResultsToExcel(id, req.user.tenantId);
+    const buffer = await this.kdvService.exportResultsToExcel(id, req.user.tenantId, {
+      autoArchive: true,
+      createdBy: req.user.sub,
+    });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="kdv-kontrol-${id}.xlsx"`);
     res.send(buffer);
+  }
+
+  /* ── ÇIKTI ARŞİVİ (fiş yazdırmadaki gibi) ────────────────── */
+
+  @Get('outputs')
+  listOutputs(@Req() req: any) {
+    return this.kdvService.listOutputs(req.user.tenantId);
+  }
+
+  @Get('outputs/:id/download')
+  async downloadOutput(@Req() req: any, @Param('id') id: string, @Res() res: any) {
+    const rec = await this.kdvService.getOutput(req.user.tenantId, id);
+    if (!rec) throw new BadRequestException('Çıktı bulunamadı');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${rec.filename}"`);
+    res.send(rec.fileBytes);
+  }
+
+  @Delete('outputs/:id')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteOutput(@Req() req: any, @Param('id') id: string) {
+    await this.kdvService.deleteOutput(req.user.tenantId, id);
   }
 
   @Get('sessions/:id/results')

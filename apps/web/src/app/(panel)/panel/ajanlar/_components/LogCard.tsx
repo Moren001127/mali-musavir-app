@@ -62,7 +62,7 @@ export function LogCard({ event }: { event: LogEvent }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap text-[13px]">
           {event.firma && (
-            <span className="font-semibold truncate" style={{ color: 'var(--text)' }}>
+            <span className="font-semibold truncate" style={{ color: '#fafaf9' }}>
               {event.firma}
             </span>
           )}
@@ -70,19 +70,19 @@ export function LogCard({ event }: { event: LogEvent }) {
             <span
               key={i}
               className="text-[11px] px-1.5 py-0.5 rounded"
-              style={{ background: 'rgba(255,255,255,.06)', color: 'var(--text-secondary, #cbd5e1)' }}
+              style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,0.7)' }}
             >
               {p as any}
             </span>
           ))}
         </div>
         {event.message && (
-          <div className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-[12px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
             {event.message}
           </div>
         )}
         {event.mukellef && (
-          <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+          <div className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.45)', opacity: 0.7 }}>
             {event.mukellef}
           </div>
         )}

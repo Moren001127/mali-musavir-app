@@ -68,37 +68,29 @@ export default function AjanlarDashboard() {
   const statusMap = new Map(status.map((s: any) => [s.agent, s]));
 
   return (
-    <div className="space-y-5">
-      {/* Hero */}
-      <div
-        className="relative rounded-2xl overflow-hidden p-7 border"
-        style={{
-          background: 'linear-gradient(135deg, rgba(184,160,111,.1) 0%, rgba(99,102,241,.05) 100%)',
-          borderColor: 'var(--border)',
-        }}
-      >
-        <div className="absolute -top-8 -right-8 w-40 h-40 rounded-full opacity-25"
-          style={{ background: 'radial-gradient(circle, #b8a06f, transparent 70%)' }} />
-        <div className="relative flex items-center gap-4">
-          <div
-            className="w-14 h-14 rounded-xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, #b8a06f, #8b7649)',
-              boxShadow: '0 6px 20px rgba(184,160,111,.4)',
-            }}
-          >
-            <Bot size={26} style={{ color: '#0f0d0b' }} strokeWidth={2} />
-          </div>
-          <div>
-            <div className="text-[10px] uppercase font-bold tracking-widest mb-0.5" style={{ color: '#b8a06f' }}>
+    <div className="space-y-5 max-w-7xl">
+      {/* HEADER */}
+      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
               <Sparkles size={10} className="inline mr-1" /> Claude Powered
-            </div>
-            <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Otomasyon Ajanları</h1>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              Mali müşavirlik işleyişinin tekrarlayan kısımlarını Claude ajanlarına bırakın
-            </p>
+            </span>
           </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+            Otomasyon Ajanları
+          </h1>
+          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Mali müşavirlik işleyişinin tekrarlayan kısımlarını Claude ajanlarına bırakın
+          </p>
         </div>
+        <Link href="/panel/ajanlar/loglar" className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.08)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; e.currentTarget.style.color = '#fafaf9'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(250,250,249,0.75)'; }}>
+          <Activity size={14} /> Yapılan İşlemler <ArrowRight size={12} />
+        </Link>
       </div>
 
       {/* Stats */}
@@ -120,11 +112,11 @@ export default function AjanlarDashboard() {
       {/* Agents grid */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>Ajanlar</h2>
+          <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>Ajanlar</h2>
           <Link
             href="/panel/ajanlar/loglar"
             className="inline-flex items-center gap-1 text-sm"
-            style={{ color: 'var(--text-muted)' }}
+            style={{ color: 'rgba(250,250,249,0.45)' }}
           >
             <Activity size={13} /> Yapılan İşlemler <ArrowRight size={12} />
           </Link>
@@ -160,9 +152,9 @@ function AiUsageWidget({ data }: { data: any }) {
     return (
       <div
         className="rounded-2xl p-5 border"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
-        <div className="text-sm" style={{ color: 'var(--text-muted)' }}>AI kullanımı yükleniyor…</div>
+        <div className="text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>AI kullanımı yükleniyor…</div>
       </div>
     );
   }
@@ -183,7 +175,7 @@ function AiUsageWidget({ data }: { data: any }) {
   const Kart = ({ title, d, accent }: { title: string; d: any; accent: string }) => (
     <div
       className="rounded-xl p-4 border"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs uppercase font-bold tracking-wider" style={{ color: accent }}>
@@ -194,10 +186,10 @@ function AiUsageWidget({ data }: { data: any }) {
 
       {/* Sorgu sayısı büyük */}
       <div className="mb-3">
-        <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+        <div className="text-3xl font-bold tabular-nums" style={{ color: '#fafaf9' }}>
           {formatToken(d?.sorguSayisi ?? 0)}
         </div>
-        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>API sorgusu</div>
+        <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>API sorgusu</div>
       </div>
 
       {/* Karar dağılımı */}
@@ -208,7 +200,7 @@ function AiUsageWidget({ data }: { data: any }) {
             <div className="text-xs font-semibold" style={{ color: '#22c55e' }}>
               {formatToken(d?.onaySayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>onay</div>
+            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>onay</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -217,7 +209,7 @@ function AiUsageWidget({ data }: { data: any }) {
             <div className="text-xs font-semibold" style={{ color: '#f59e0b' }}>
               {formatToken(d?.atlaSayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>atla</div>
+            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>atla</div>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -226,21 +218,21 @@ function AiUsageWidget({ data }: { data: any }) {
             <div className="text-xs font-semibold" style={{ color: '#94a3b8' }}>
               {formatToken(d?.eminDegilSayisi ?? 0)}
             </div>
-            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>?</div>
+            <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>?</div>
           </div>
         </div>
       </div>
 
       {/* Token + Maliyet */}
-      <div className="pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+      <div className="pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         <div className="flex items-center justify-between text-xs mb-1">
-          <span style={{ color: 'var(--text-muted)' }}>Token</span>
-          <span className="tabular-nums font-semibold" style={{ color: 'var(--text)' }}>
+          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Token</span>
+          <span className="tabular-nums font-semibold" style={{ color: '#fafaf9' }}>
             {formatToken(d?.toplamToken ?? 0)}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span style={{ color: 'var(--text-muted)' }}>Maliyet</span>
+          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Maliyet</span>
           <span className="tabular-nums font-semibold" style={{ color: accent }}>
             {formatUsd(d?.maliyetUsd ?? 0)} · {formatTl(d?.maliyetUsd ?? 0)}
           </span>
@@ -258,13 +250,13 @@ function AiUsageWidget({ data }: { data: any }) {
         >
           <DollarSign size={15} style={{ color: '#fff' }} />
         </div>
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+        <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>
           AI Kullanım & Maliyet
         </h2>
-        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
           · Claude Haiku 4.5
         </span>
-        <span className="text-xs ml-auto tabular-nums" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-xs ml-auto tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
           TCMB USD: ₺{USD_TO_TL.toFixed(4)}
         </span>
       </div>
@@ -274,7 +266,7 @@ function AiUsageWidget({ data }: { data: any }) {
         className="rounded-xl p-4 border mb-3 relative overflow-hidden"
         style={{
           background: 'linear-gradient(135deg, rgba(16,185,129,.08), rgba(59,130,246,.05))',
-          borderColor: 'var(--border)',
+          borderColor: 'rgba(255,255,255,0.05)',
         }}
       >
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -289,13 +281,13 @@ function AiUsageWidget({ data }: { data: any }) {
               <div className="text-xs uppercase tracking-wider font-bold" style={{ color: '#10b981' }}>
                 Kalan Kontör Bakiyesi
               </div>
-              <div className="text-2xl font-bold tabular-nums" style={{ color: 'var(--text)' }}>
+              <div className="text-2xl font-bold tabular-nums" style={{ color: '#fafaf9' }}>
                 ${bakiye.kalanBakiyeUsd.toFixed(4)}
-                <span className="text-sm font-normal ml-2" style={{ color: 'var(--text-muted)' }}>
+                <span className="text-sm font-normal ml-2" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   (₺{kalanTl.toFixed(2)})
                 </span>
               </div>
-              <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              <div className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 Yüklenen: ${bakiye.toplamYuklenenUsd.toFixed(2)} · Harcanan: ${bakiye.toplamHarcananUsd.toFixed(4)}
               </div>
             </div>
@@ -336,22 +328,22 @@ function AiUsageWidget({ data }: { data: any }) {
         >
           <div
             className="rounded-xl p-5 border w-full max-w-md"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-2 mb-4">
               <Wallet size={18} style={{ color: '#10b981' }} />
-              <h3 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+              <h3 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>
                 Kontör Yükleme Kaydı
               </h3>
             </div>
-            <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-xs mb-4" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Anthropic hesabınıza yaptığınız yüklemeyi burada kaydedin. Sistem bu tutardan harcamaları düşerek
               bakiyenizi takip eder.
             </p>
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text)' }}>
+                <label className="text-xs font-semibold block mb-1" style={{ color: '#fafaf9' }}>
                   Yüklenen Tutar (USD)
                 </label>
                 <input
@@ -363,14 +355,14 @@ function AiUsageWidget({ data }: { data: any }) {
                   placeholder="50.00"
                   className="w-full px-3 py-2 rounded-lg border text-sm tabular-nums"
                   style={{
-                    background: 'var(--bg)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--text)',
+                    background: 'rgba(255,255,255,0.03)',
+                    borderColor: 'rgba(255,255,255,0.05)',
+                    color: '#fafaf9',
                   }}
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold block mb-1" style={{ color: 'var(--text)' }}>
+                <label className="text-xs font-semibold block mb-1" style={{ color: '#fafaf9' }}>
                   Not (opsiyonel)
                 </label>
                 <input
@@ -380,9 +372,9 @@ function AiUsageWidget({ data }: { data: any }) {
                   placeholder="Nisan 2026 yüklemesi"
                   className="w-full px-3 py-2 rounded-lg border text-sm"
                   style={{
-                    background: 'var(--bg)',
-                    borderColor: 'var(--border)',
-                    color: 'var(--text)',
+                    background: 'rgba(255,255,255,0.03)',
+                    borderColor: 'rgba(255,255,255,0.05)',
+                    color: '#fafaf9',
                   }}
                 />
               </div>
@@ -391,7 +383,7 @@ function AiUsageWidget({ data }: { data: any }) {
               <button
                 onClick={() => setTopupOpen(false)}
                 className="px-4 py-2 rounded-lg text-sm"
-                style={{ background: 'transparent', color: 'var(--text-muted)' }}
+                style={{ background: 'transparent', color: 'rgba(250,250,249,0.45)' }}
               >
                 İptal
               </button>
@@ -420,7 +412,7 @@ function StatBox({ label, value, color, icon: Icon }: any) {
   return (
     <div
       className="rounded-xl p-4 border flex items-center gap-3"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -429,7 +421,7 @@ function StatBox({ label, value, color, icon: Icon }: any) {
         <Icon size={18} />
       </div>
       <div>
-        <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</div>
+        <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
         <div className="text-xl font-bold tabular-nums" style={{ color }}>
           {typeof value === 'number' ? value.toLocaleString('tr-TR') : value}
         </div>
@@ -445,7 +437,7 @@ function AgentTile({ agent, statusInfo }: any) {
     <Link
       href={agent.href}
       className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
-      style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       {/* Gradient side bar */}
       <div
@@ -461,11 +453,11 @@ function AgentTile({ agent, statusInfo }: any) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold" style={{ color: 'var(--text)' }}>{agent.title}</h3>
+            <h3 className="font-semibold" style={{ color: '#fafaf9' }}>{agent.title}</h3>
             {!agent.aktif && (
               <span
                 className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
               >
                 YAKINDA
               </span>
@@ -480,13 +472,13 @@ function AgentTile({ agent, statusInfo }: any) {
               </span>
             )}
           </div>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
             {agent.desc}
           </p>
         </div>
       </div>
-      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
-        <span style={{ color: 'var(--text-muted)' }}>
+      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <span style={{ color: 'rgba(250,250,249,0.45)' }}>
           {agent.aktif ? (statusInfo?.lastPing ? `Son: ${new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR')}` : 'Hazır') : '—'}
         </span>
         <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>

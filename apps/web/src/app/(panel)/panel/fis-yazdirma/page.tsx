@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
 import {
@@ -17,6 +17,8 @@ import {
   FileText,
   Clock,
   Trash2,
+  Search,
+  ChevronDown,
 } from 'lucide-react';
 
 /* ─── Tipler ────────────────────────────────────────────────── */
@@ -111,6 +113,9 @@ export default function FisYazdirmaPage() {
   });
   const [pagesPerSheet, setPagesPerSheet] = useState<4 | 8 | 12>(8);
   const [taxpayers, setTaxpayers] = useState<Array<{ id: string; name: string }>>([]);
+  // Kapak mükellef picker (KDV Kontrol / Mihsap deseni)
+  const [mukellefPickerOpen, setMukellefPickerOpen] = useState(false);
+  const [mukellefPickerSearch, setMukellefPickerSearch] = useState('');
 
   // Faturalardan çek modal
   const [showFetchModal, setShowFetchModal] = useState(false);
@@ -574,11 +579,20 @@ export default function FisYazdirmaPage() {
 
   /* ── RENDER ── */
   return (
-    <div className="max-w-6xl space-y-5">
-      <PageHeader
-        title="Fiş Yazdırma"
-        subtitle="ÖKC fişi görsellerini yükleyin — OCR ile tarih okunur, Word belgesi oluşturulur"
-      />
+    <div className="max-w-7xl space-y-5">
+      {/* HEADER */}
+      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Kontrol</span>
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Fiş Yazdırma</h1>
+          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            ÖKC fişi görsellerini yükleyin — OCR ile tarih okunur, Word belgesi oluşturulur
+          </p>
+        </div>
+      </div>
 
       {/* ── UPLOAD ── */}
       {(stage === 'upload' || stage === 'error') && (
@@ -592,10 +606,10 @@ export default function FisYazdirmaPage() {
             }}
           >
             <div className="flex-1">
-              <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              <p className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
                 📥 Faturalardan Otomatik Çek
               </p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 Mükellef ve dönem seçip daha önce MIHSAP'tan indirilmiş fişleri otomatik yükleyin.
               </p>
             </div>
@@ -613,32 +627,39 @@ export default function FisYazdirmaPage() {
           {/* Kapak bilgileri kartı */}
           <div
             className="rounded-xl border p-4"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
           >
-            <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--text)' }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: '#fafaf9' }}>
               📋 Kapak Sayfası Bilgileri (opsiyonel)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Mükellef
                 </label>
-                <input
-                  list="fis-taxpayers"
-                  value={mukellefName}
-                  onChange={(e) => setMukellefName(e.target.value)}
-                  placeholder="Mükellef adı ya da boş bırakın"
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-                />
-                <datalist id="fis-taxpayers">
-                  {taxpayers.map((t) => (
-                    <option key={t.id} value={t.name} />
-                  ))}
-                </datalist>
+                <button
+                  type="button"
+                  onClick={() => setMukellefPickerOpen(true)}
+                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none flex items-center gap-2 text-left hover:brightness-110 transition"
+                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+                >
+                  <span className="flex-1 truncate" style={{ color: mukellefName ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+                    {mukellefName || 'Mükellef seç ya da boş bırakın'}
+                  </span>
+                  {mukellefName && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setMukellefName(''); }}
+                      className="p-0.5 rounded hover:bg-white/10"
+                      style={{ color: 'rgba(250,250,249,0.5)' }}
+                    >
+                      <X size={13} />
+                    </span>
+                  )}
+                  <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                </button>
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Dönem
                 </label>
                 <input
@@ -646,11 +667,11 @@ export default function FisYazdirmaPage() {
                   value={donem}
                   onChange={(e) => setDonem(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
                 />
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Sayfa Başına Fiş
                 </label>
                 <div className="flex gap-1">
@@ -661,9 +682,9 @@ export default function FisYazdirmaPage() {
                       onClick={() => setPagesPerSheet(n as any)}
                       className="flex-1 px-3 py-2 rounded-lg text-sm font-medium border"
                       style={{
-                        background: pagesPerSheet === n ? 'rgba(184,160,111,.15)' : 'var(--bg)',
-                        borderColor: pagesPerSheet === n ? '#b8a06f' : 'var(--border)',
-                        color: pagesPerSheet === n ? '#b8a06f' : 'var(--text)',
+                        background: pagesPerSheet === n ? 'rgba(184,160,111,.15)' : 'rgba(255,255,255,0.03)',
+                        borderColor: pagesPerSheet === n ? '#b8a06f' : 'rgba(255,255,255,0.05)',
+                        color: pagesPerSheet === n ? '#b8a06f' : '#fafaf9',
                       }}
                     >
                       {n}
@@ -681,21 +702,21 @@ export default function FisYazdirmaPage() {
             onClick={() => inputRef.current?.click()}
             className="rounded-xl border-2 border-dashed p-12 text-center cursor-pointer transition-all duration-200"
             style={{
-              borderColor: dragging ? 'var(--gold)' : 'var(--border)',
-              background: dragging ? 'var(--gold-pale)' : 'var(--surface)',
+              borderColor: dragging ? '#d4b876' : 'rgba(255,255,255,0.05)',
+              background: dragging ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
             }}
           >
             <div
               className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-              style={{ background: dragging ? 'var(--gold)' : 'var(--bg)' }}
+              style={{ background: dragging ? '#d4b876' : 'rgba(255,255,255,0.03)' }}
             >
-              <Upload size={28} style={{ color: dragging ? 'white' : 'var(--text-muted)' }} />
+              <Upload size={28} style={{ color: dragging ? 'white' : 'rgba(250,250,249,0.45)' }} />
             </div>
-            <p className="font-bold text-sm" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="font-bold text-sm" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               Fiş görsellerini buraya sürükleyin
             </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              ya da <span style={{ color: 'var(--gold)', fontWeight: 600 }}>tıklayarak seçin</span> — JPEG, PNG · Çoklu seçim
+            <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              ya da <span style={{ color: '#d4b876', fontWeight: 600 }}>tıklayarak seçin</span> — JPEG, PNG · Çoklu seçim
             </p>
             <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
               onChange={(e) => e.target.files && addFiles(e.target.files)} />
@@ -705,23 +726,23 @@ export default function FisYazdirmaPage() {
             <div className="card p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <FileImage size={15} style={{ color: 'var(--gold)' }} />
-                  <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                  <FileImage size={15} style={{ color: '#d4b876' }} />
+                  <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
                     {files.length} görsel seçildi
                   </span>
                 </div>
-                <button onClick={reset} className="text-xs" style={{ color: 'var(--danger)' }}>Temizle</button>
+                <button onClick={reset} className="text-xs" style={{ color: '#f43f5e' }}>Temizle</button>
               </div>
               <div className="grid grid-cols-6 gap-2 max-h-48 overflow-y-auto">
                 {files.map((f, i) => (
                   <div key={i} className="text-center">
                     <div
                       className="w-full h-16 rounded-lg flex items-center justify-center"
-                      style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
                     >
-                      <FileImage size={20} style={{ color: 'var(--text-muted)' }} />
+                      <FileImage size={20} style={{ color: 'rgba(250,250,249,0.45)' }} />
                     </div>
-                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>{f.name}</p>
+                    <p className="text-[10px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>{f.name}</p>
                   </div>
                 ))}
               </div>
@@ -748,7 +769,7 @@ export default function FisYazdirmaPage() {
           {/* Geçmiş Çıktılar */}
           <div
             className="rounded-xl border mt-2"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
           >
             <button
               type="button"
@@ -756,8 +777,8 @@ export default function FisYazdirmaPage() {
               className="w-full flex items-center justify-between px-4 py-3"
             >
               <div className="flex items-center gap-2">
-                <Clock size={15} style={{ color: 'var(--text-muted)' }} />
-                <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+                <Clock size={15} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
                   Geçmiş Word Çıktıları
                 </span>
                 <span
@@ -767,15 +788,15 @@ export default function FisYazdirmaPage() {
                   {outputs.length}
                 </span>
               </div>
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 {showOutputs ? 'Gizle' : 'Göster'}
               </span>
             </button>
 
             {showOutputs && (
-              <div style={{ borderTop: '1px solid var(--border)' }}>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                 {outputsLoading ? (
-                  <div className="px-4 py-8 text-center text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <div className="px-4 py-8 text-center text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                     Yükleniyor...
                   </div>
                 ) : outputs.length === 0 ? (
@@ -783,12 +804,12 @@ export default function FisYazdirmaPage() {
                     <FileText
                       size={28}
                       className="mx-auto mb-2"
-                      style={{ color: 'var(--text-muted)' }}
+                      style={{ color: 'rgba(250,250,249,0.45)' }}
                     />
-                    <p className="text-sm" style={{ color: 'var(--text)' }}>
+                    <p className="text-sm" style={{ color: '#fafaf9' }}>
                       Henüz arşivlenmiş Word çıktısı yok.
                     </p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                       Oluşturduğunuz her Word belgesi buraya otomatik kaydedilir.
                     </p>
                   </div>
@@ -798,7 +819,7 @@ export default function FisYazdirmaPage() {
                       <div
                         key={o.id}
                         className="px-4 py-3 flex items-center gap-3"
-                        style={{ borderBottom: '1px solid var(--border)' }}
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                       >
                         <div
                           className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
@@ -809,13 +830,13 @@ export default function FisYazdirmaPage() {
                         <div className="flex-1 min-w-0">
                           <p
                             className="text-sm font-medium truncate"
-                            style={{ color: 'var(--text)' }}
+                            style={{ color: '#fafaf9' }}
                           >
                             {o.mukellefName || '(mükellef yok)'}
                             {o.donem && (
                               <span
                                 className="ml-2 text-xs font-normal"
-                                style={{ color: 'var(--text-muted)' }}
+                                style={{ color: 'rgba(250,250,249,0.45)' }}
                               >
                                 · {o.donem}
                               </span>
@@ -823,7 +844,7 @@ export default function FisYazdirmaPage() {
                           </p>
                           <p
                             className="text-[11px] mt-0.5 truncate"
-                            style={{ color: 'var(--text-muted)' }}
+                            style={{ color: 'rgba(250,250,249,0.45)' }}
                           >
                             {o.fileCount} fiş · {formatSize(o.fileSize)} ·{' '}
                             {formatDateTime(o.createdAt)}
@@ -842,7 +863,7 @@ export default function FisYazdirmaPage() {
                             onClick={() => removeOutput(o.id)}
                             className="p-2 rounded-lg hover:bg-black/5 transition-colors"
                             title="Sil"
-                            style={{ color: 'var(--danger)' }}
+                            style={{ color: '#f43f5e' }}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -861,23 +882,23 @@ export default function FisYazdirmaPage() {
       {stage === 'scanning' && (
         <div
           className="rounded-2xl p-8 flex flex-col items-center gap-6"
-          style={{ background: 'var(--navy)', boxShadow: 'var(--shadow-lg)' }}
+          style={{ background: '#d4b876', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}
         >
           {/* Pulsing halka animasyonu */}
           <div className="relative w-28 h-28 flex items-center justify-center">
             <div
               className="absolute inset-0 rounded-full opacity-20 animate-ping"
-              style={{ background: 'var(--gold)' }}
+              style={{ background: '#d4b876' }}
             />
             <div
               className="absolute inset-2 rounded-full opacity-30 animate-ping"
-              style={{ background: 'var(--gold)', animationDelay: '0.4s' }}
+              style={{ background: '#d4b876', animationDelay: '0.4s' }}
             />
             <div
               className="w-20 h-20 rounded-full border-4 border-transparent animate-spin"
-              style={{ borderTopColor: 'var(--gold)', borderRightColor: 'rgba(255,255,255,.15)' }}
+              style={{ borderTopColor: '#d4b876', borderRightColor: 'rgba(255,255,255,.15)' }}
             />
-            <ScanLine size={28} className="absolute" style={{ color: 'var(--gold)' }} />
+            <ScanLine size={28} className="absolute" style={{ color: '#d4b876' }} />
           </div>
 
           {/* Başlık */}
@@ -902,7 +923,7 @@ export default function FisYazdirmaPage() {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${(simScanned / Math.max(files.length, 1)) * 100}%`,
-                  background: 'linear-gradient(90deg, var(--gold) 0%, #FDE68A 100%)',
+                  background: 'linear-gradient(90deg, #d4b876 0%, #FDE68A 100%)',
                 }}
               />
             </div>
@@ -913,7 +934,7 @@ export default function FisYazdirmaPage() {
             {[
               { label: 'Toplam Fiş',  value: files.length,                             color: 'white'         },
               { label: 'Taranan',     value: simScanned,                                color: '#6EE7B7'       },
-              { label: 'Kalan',       value: Math.max(0, files.length - simScanned),   color: 'var(--gold)'   },
+              { label: 'Kalan',       value: Math.max(0, files.length - simScanned),   color: '#d4b876'   },
             ].map(({ label, value, color }) => (
               <div
                 key={label}
@@ -936,12 +957,12 @@ export default function FisYazdirmaPage() {
           {/* Özet Bandı */}
           <div
             className="grid grid-cols-3 gap-4 rounded-xl p-5"
-            style={{ background: 'var(--navy)', boxShadow: 'var(--shadow-md)' }}
+            style={{ background: '#d4b876', boxShadow: '0 4px 14px rgba(0,0,0,0.2)' }}
           >
             {[
               { label: 'Toplam Fiş',     value: scanResult.total,           color: 'white'             },
               { label: 'Tarih Okundu',   value: scanResult.detected.length, color: '#6EE7B7'           },
-              { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: 'var(--gold-light)' },
+              { label: 'Teyit Bekliyor', value: scanResult.unread.length,   color: '#d4b876' },
             ].map(({ label, value, color }) => (
               <div key={label} className="text-center">
                 <p className="text-3xl font-extrabold" style={{ color, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -957,8 +978,8 @@ export default function FisYazdirmaPage() {
             {scanResult.detected.length > 0 && (
               <div className="lg:col-span-2">
                 <div className="card overflow-hidden">
-                  <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
-                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' }}>
+                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(250,250,249,0.45)' }}>
                       Tarih Okundu ({scanResult.detected.length})
                     </p>
                   </div>
@@ -967,11 +988,11 @@ export default function FisYazdirmaPage() {
                       <div
                         key={d.filename}
                         className="flex items-start gap-3 px-4 py-2.5"
-                        style={{ borderBottom: '1px solid var(--border)' }}
+                        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                       >
                         <CheckCircle2 size={14} style={{ color: '#059669', flexShrink: 0, marginTop: 2 }} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{d.filename}</p>
+                          <p className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.7)' }}>{d.filename}</p>
                           {editingFile === d.filename ? (
                             <div className="flex items-center gap-1 mt-0.5">
                               <input
@@ -1003,13 +1024,13 @@ export default function FisYazdirmaPage() {
                                 </span>
                               )}
                               <button onClick={() => setEditingFile(d.filename)}>
-                                <Pencil size={10} style={{ color: 'var(--text-muted)' }} />
+                                <Pencil size={10} style={{ color: 'rgba(250,250,249,0.45)' }} />
                               </button>
                             </div>
                           )}
                           {/* Ek alanlar (varsa) */}
                           {(d.belge_no || d.cari || d.toplam) && (
-                            <p className="text-[10px] mt-1 truncate" style={{ color: 'var(--text-muted)' }}>
+                            <p className="text-[10px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
                               {[d.belge_no && `No: ${d.belge_no}`, d.toplam && `Top: ${d.toplam}`]
                                 .filter(Boolean).join(' | ')}
                             </p>
@@ -1027,20 +1048,20 @@ export default function FisYazdirmaPage() {
               {scanResult.unread.length === 0 ? (
                 <div className="card flex flex-col items-center py-12 text-center">
                   <CheckCircle2 size={40} style={{ color: '#059669' }} />
-                  <p className="font-bold mt-3" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                  <p className="font-bold mt-3" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                     Tüm fişlerden tarih okundu!
                   </p>
-                  <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                  <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                     Doğrudan Word belgesi oluşturabilirsiniz.
                   </p>
                 </div>
               ) : (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(250,250,249,0.45)' }}>
                       Teyit Gereken ({scanResult.unread.length})
                     </p>
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                       Her fiş için tarih seçin · "Öncekinden kopyala" ile hızlandırın
                     </p>
                   </div>
@@ -1080,7 +1101,7 @@ export default function FisYazdirmaPage() {
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: 'var(--muted)', color: 'var(--text)' }}
+                      style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
                     >
                       Boşları Son Tarihle Doldur
                     </button>
@@ -1094,20 +1115,20 @@ export default function FisYazdirmaPage() {
                           key={u.filename}
                           className="rounded-xl overflow-hidden"
                           style={{
-                            border: allDates[u.filename] ? '2px solid #059669' : '2px solid var(--border)',
-                            background: 'var(--surface)',
-                            boxShadow: 'var(--shadow-sm)',
+                            border: allDates[u.filename] ? '2px solid #059669' : '2px solid rgba(255,255,255,0.05)',
+                            background: 'rgba(255,255,255,0.03)',
+                            boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
                           }}
                         >
                           {u.thumbnail ? (
                             <img src={u.thumbnail} alt={u.filename} className="w-full object-cover" style={{ height: 180 }} />
                           ) : (
-                            <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'var(--bg)' }}>
-                              <FileImage size={32} style={{ color: 'var(--text-muted)' }} />
+                            <div className="w-full flex items-center justify-center" style={{ height: 180, background: 'rgba(255,255,255,0.03)' }}>
+                              <FileImage size={32} style={{ color: 'rgba(250,250,249,0.45)' }} />
                             </div>
                           )}
                           <div className="p-2.5 space-y-2">
-                            <p className="text-xs font-medium truncate" style={{ color: 'var(--text-secondary)' }}>
+                            <p className="text-xs font-medium truncate" style={{ color: 'rgba(250,250,249,0.7)' }}>
                               {u.filename}
                             </p>
                             <input
@@ -1115,14 +1136,14 @@ export default function FisYazdirmaPage() {
                               value={allDates[u.filename] ?? ''}
                               onChange={(e) => setAllDates((prev) => ({ ...prev, [u.filename]: e.target.value }))}
                               className="input-base w-full text-xs py-1.5"
-                              style={{ borderColor: allDates[u.filename] ? '#059669' : 'var(--border)' }}
+                              style={{ borderColor: allDates[u.filename] ? '#059669' : 'rgba(255,255,255,0.05)' }}
                             />
                             {prevDate && !allDates[u.filename] && (
                               <button
                                 type="button"
                                 onClick={() => setAllDates((p) => ({ ...p, [u.filename]: prevDate }))}
                                 className="w-full text-[10px] py-1 rounded"
-                                style={{ background: 'var(--muted)', color: 'var(--text-muted)' }}
+                                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}
                               >
                                 ⬆ Önceki: {isoToDisplay(prevDate)}
                               </button>
@@ -1158,13 +1179,13 @@ export default function FisYazdirmaPage() {
         <div className="card flex flex-col items-center py-16 gap-5">
           <div
             className="w-16 h-16 rounded-full border-4 border-transparent animate-spin"
-            style={{ borderTopColor: 'var(--gold)', borderRightColor: 'var(--navy-400, #3D5A8A)' }}
+            style={{ borderTopColor: '#d4b876', borderRightColor: '#d4b876' }}
           />
           <div className="text-center">
-            <p className="font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <p className="font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               Word belgesi hazırlanıyor...
             </p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Fişler tarihe göre sıralanıyor ve belgeye aktarılıyor.
             </p>
           </div>
@@ -1178,10 +1199,10 @@ export default function FisYazdirmaPage() {
             <CheckCircle2 size={36} style={{ color: '#059669' }} />
           </div>
           <div>
-            <h2 className="text-xl font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+            <h2 className="text-xl font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
               Word Belgesi İndirildi!
             </h2>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
               {wordTotal} fiş tarih sırasında düzenlenerek Word'e aktarıldı.
             </p>
           </div>
@@ -1218,10 +1239,10 @@ export default function FisYazdirmaPage() {
           >
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="text-lg font-bold" style={{ color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                <h3 className="text-lg font-bold" style={{ color: '#fafaf9', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
                   Faturalardan Fiş Çek
                 </h3>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Seçtiğiniz mükellefin ilgili dönemindeki JPEG fişler yüklenir.
                 </p>
               </div>
@@ -1229,7 +1250,7 @@ export default function FisYazdirmaPage() {
                 onClick={() => !fetchLoading && setShowFetchModal(false)}
                 disabled={fetchLoading}
                 className="p-1 rounded hover:bg-black/5"
-                style={{ color: 'var(--text-muted)' }}
+                style={{ color: 'rgba(250,250,249,0.45)' }}
               >
                 <X size={18} />
               </button>
@@ -1237,7 +1258,7 @@ export default function FisYazdirmaPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Mükellef *
                 </label>
                 <select
@@ -1245,7 +1266,7 @@ export default function FisYazdirmaPage() {
                   onChange={(e) => setFetchMukellefId(e.target.value)}
                   disabled={fetchLoading}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
                 >
                   <option value="">— mükellef seçin —</option>
                   {taxpayers.map((t) => (
@@ -1257,7 +1278,7 @@ export default function FisYazdirmaPage() {
               </div>
 
               <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Dönem *
                 </label>
                 <input
@@ -1266,7 +1287,7 @@ export default function FisYazdirmaPage() {
                   onChange={(e) => setFetchDonem(e.target.value)}
                   disabled={fetchLoading}
                   className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
                 />
               </div>
             </div>
@@ -1276,7 +1297,7 @@ export default function FisYazdirmaPage() {
                 className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
                 style={{
                   background: fetchStatus.startsWith('Hata') ? '#FEF2F2' : 'rgba(184,160,111,.08)',
-                  color: fetchStatus.startsWith('Hata') ? '#DC2626' : 'var(--text)',
+                  color: fetchStatus.startsWith('Hata') ? '#DC2626' : '#fafaf9',
                 }}
               >
                 {fetchLoading && <Loader2 size={14} className="animate-spin flex-shrink-0" />}
@@ -1286,13 +1307,13 @@ export default function FisYazdirmaPage() {
 
             {fetchProgress && (
               <div>
-                <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+                <div className="flex justify-between text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   <span>İndiriliyor</span>
                   <span>
                     {fetchProgress.current} / {fetchProgress.total}
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--muted)' }}>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
                   <div
                     className="h-full transition-all duration-300"
                     style={{
@@ -1309,7 +1330,7 @@ export default function FisYazdirmaPage() {
                 onClick={() => setShowFetchModal(false)}
                 disabled={fetchLoading}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-medium border"
-                style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+                style={{ borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
               >
                 İptal
               </button>
@@ -1331,6 +1352,100 @@ export default function FisYazdirmaPage() {
                   </>
                 )}
               </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {/* KAPAK MÜKELLEF PICKER MODAL (KDV Kontrol / Mihsap deseni) */}
+      {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
+          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setMukellefPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
+            style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+            >
+              <div>
+                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  {taxpayers.length} mükellef · kapak sayfası için
+                </p>
+              </div>
+              <button
+                onClick={() => setMukellefPickerOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5"
+                style={{ color: 'rgba(250,250,249,0.45)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
+                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}
+              >
+                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <input
+                  value={mukellefPickerSearch}
+                  onChange={(e) => setMukellefPickerSearch(e.target.value)}
+                  placeholder="Mükellef adı ara…"
+                  autoFocus
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  style={{ color: '#fafaf9' }}
+                />
+                {mukellefPickerSearch && (
+                  <button onClick={() => setMukellefPickerSearch('')} style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {taxpayers.filter((t) => t.name.toLowerCase().includes(mukellefPickerSearch.toLowerCase())).length === 0 ? (
+                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç yok</div>
+              ) : (
+                taxpayers
+                  .filter((t) => t.name.toLowerCase().includes(mukellefPickerSearch.toLowerCase()))
+                  .map((t) => {
+                    const checked = mukellefName === t.name;
+                    const initial = t.name.charAt(0).toUpperCase();
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setMukellefName(t.name);
+                          setMukellefPickerOpen(false);
+                          setMukellefPickerSearch('');
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors"
+                        style={{ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
+                        onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
+                        onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                          style={{
+                            background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
+                            color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
+                          }}
+                        >
+                          {initial}
+                        </div>
+                        <span className="flex-1 truncate font-medium">{t.name}</span>
+                      </button>
+                    );
+                  })
+              )}
             </div>
           </div>
         </div>,

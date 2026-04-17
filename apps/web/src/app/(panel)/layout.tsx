@@ -15,13 +15,13 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.03)' }}>
         <div className="text-center">
           <div
             className="w-10 h-10 rounded-full border-2 border-transparent animate-spin mx-auto"
-            style={{ borderTopColor: 'var(--gold)', borderRightColor: 'var(--navy-400)' }}
+            style={{ borderTopColor: '#d4b876', borderRightColor: '#d4b876' }}
           />
-          <p className="text-sm mt-3" style={{ color: 'var(--text-muted)' }}>Yükleniyor...</p>
+          <p className="text-sm mt-3" style={{ color: 'rgba(250,250,249,0.45)' }}>Yükleniyor...</p>
         </div>
       </div>
     );
@@ -30,7 +30,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+    <div className="flex h-screen overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)' }}>
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar user={user} />

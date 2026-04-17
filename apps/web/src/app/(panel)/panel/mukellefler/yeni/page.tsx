@@ -68,21 +68,21 @@ export default function YeniMukellefPage() {
         <Link href="/panel/mukellefler">
           <button className="text-gray-500 hover:text-gray-700 text-sm">← Listeye Dön</button>
         </Link>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--navy)' }}>Yeni Mükellef</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>Yeni Mükellef</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
 
         {/* Tip */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Mükellef Tipi</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Mükellef Tipi</h2>
           <div className="flex gap-6">
             {TAXPAYER_TYPES.map(t => (
               <label key={t.value} className="flex items-center gap-2 cursor-pointer">
                 <input type="radio" name="type" value={t.value}
                   checked={form.type === t.value}
                   onChange={() => setForm(f => ({ ...f, type: t.value }))}
-                  className="accent-[var(--gold)]" />
+                  className="accent-[#d4b876]" />
                 <span className="text-sm font-medium">{t.label}</span>
               </label>
             ))}
@@ -91,14 +91,14 @@ export default function YeniMukellefPage() {
 
         {/* Temel Bilgiler */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Temel Bilgiler</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Temel Bilgiler</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {form.type === 'TUZEL_KISI' ? (
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Şirket Adı *</label>
                 <input type="text" value={form.companyName} required
                   onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               </div>
             ) : (
               <>
@@ -106,13 +106,13 @@ export default function YeniMukellefPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ad *</label>
                   <input type="text" value={form.firstName} required
                     onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Soyad *</label>
                   <input type="text" value={form.lastName} required
                     onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
                 </div>
               </>
             )}
@@ -122,39 +122,39 @@ export default function YeniMukellefPage() {
               </label>
               <input type="text" value={form.taxNumber} required maxLength={11}
                 onChange={e => setForm(f => ({ ...f, taxNumber: e.target.value.replace(/\D/g, '') }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vergi Dairesi *</label>
               <input type="text" value={form.taxOffice} required
                 onChange={e => setForm(f => ({ ...f, taxOffice: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">İşe Başlama Tarihi</label>
               <input type="date" value={form.startDate}
                 onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">İşi Bırakma Tarihi</label>
               <input type="date" value={form.endDate}
                 onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               <p className="text-xs text-gray-400 mt-1">Belirlenirse mükellef o aydan itibaren listede çıkmaz</p>
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Adres</label>
               <input type="text" value={form.address}
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
             </div>
           </div>
         </div>
 
         {/* İletişim */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>İletişim Bilgileri</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>İletişim Bilgileri</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-gray-700">Telefon Numaraları</label>
@@ -164,7 +164,7 @@ export default function YeniMukellefPage() {
                   onChange={e => setForm(f => {
                     const phones = [...f.phones]; phones[i] = e.target.value; return { ...f, phones };
                   })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               ))}
             </div>
             <div className="space-y-2">
@@ -175,7 +175,7 @@ export default function YeniMukellefPage() {
                   onChange={ev => setForm(f => {
                     const emails = [...f.emails]; emails[i] = ev.target.value; return { ...f, emails };
                   })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               ))}
             </div>
           </div>
@@ -183,7 +183,7 @@ export default function YeniMukellefPage() {
 
         {/* Evrak & SMS Ayarları */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Evrak & SMS Ayarları</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Evrak & SMS Ayarları</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -193,14 +193,14 @@ export default function YeniMukellefPage() {
                 value={form.evrakTeslimGunu}
                 onChange={e => setForm(f => ({ ...f, evrakTeslimGunu: e.target.value }))}
                 placeholder="Örn: 15"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               <p className="text-xs text-gray-400 mt-1">Her ayın bu günü geldiğinde SMS hatırlatması gönderilir</p>
             </div>
             <div className="space-y-4 pt-2">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={form.whatsappEvrakTalep}
                   onChange={e => setForm(f => ({ ...f, whatsappEvrakTalep: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 accent-[var(--gold)]" />
+                  className="mt-0.5 w-4 h-4 accent-[#d4b876]" />
                 <div>
                   <span className="text-sm font-medium text-gray-700">Evrak Talebi SMS Gönderilsin</span>
                   <p className="text-xs text-gray-400">Evrak gelme günü ve sonrasında otomatik hatırlatma</p>
@@ -209,7 +209,7 @@ export default function YeniMukellefPage() {
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={form.whatsappEvrakGeldi}
                   onChange={e => setForm(f => ({ ...f, whatsappEvrakGeldi: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 accent-[var(--gold)]" />
+                  className="mt-0.5 w-4 h-4 accent-[#d4b876]" />
                 <div>
                   <span className="text-sm font-medium text-gray-700">İşleme Başlama SMS Gönderilsin</span>
                   <p className="text-xs text-gray-400">Evraklar geldi işaretlendiğinde onay mesajı gönderilir</p>
@@ -221,7 +221,7 @@ export default function YeniMukellefPage() {
 
         {/* Otomasyon Ajanları */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-3" style={{ color: 'var(--navy)' }}>Otomasyon Ajanları</h2>
+          <h2 className="text-base font-semibold mb-3" style={{ color: '#d4b876' }}>Otomasyon Ajanları</h2>
           <p className="text-xs text-gray-500 mb-4">Bu mükellef için ajanların kullanacağı dış sistem kimlikleri.</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -229,7 +229,7 @@ export default function YeniMukellefPage() {
               <input type="text" value={form.lucaSlug}
                 onChange={e => setForm(f => ({ ...f, lucaSlug: e.target.value }))}
                 placeholder="edeler_yem"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               <p className="text-xs text-gray-400 mt-1">Luca ZIP slug (ör. edeler_yem)</p>
             </div>
             <div>
@@ -237,14 +237,14 @@ export default function YeniMukellefPage() {
               <input type="text" value={form.mihsapId}
                 onChange={e => setForm(f => ({ ...f, mihsapId: e.target.value }))}
                 placeholder="110564"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]" />
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]" />
               <p className="text-xs text-gray-400 mt-1">Mihsap URL'indeki sayı</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mihsap Defter Türü</label>
               <select value={form.mihsapDefterTuru}
                 onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]">
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]">
                 <option value="BILANCO">Bilanço</option>
                 <option value="DEFTER_BEYAN">Defter Beyan</option>
               </select>
@@ -254,10 +254,10 @@ export default function YeniMukellefPage() {
 
         {/* Notlar */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-3" style={{ color: 'var(--navy)' }}>Notlar</h2>
+          <h2 className="text-base font-semibold mb-3" style={{ color: '#d4b876' }}>Notlar</h2>
           <textarea value={form.notes} rows={3} placeholder="Mükellef hakkında notlar..."
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)] resize-none" />
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876] resize-none" />
         </div>
 
         <div className="flex gap-3 justify-end">

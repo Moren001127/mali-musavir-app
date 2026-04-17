@@ -58,26 +58,33 @@ export default function LoglarPage() {
   const hata = filtered.filter((e) => e.status === 'hata' || e.status === 'error').length;
 
   return (
-    <div className="space-y-4 h-full flex flex-col">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>
-          Yapılan İşlemler
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-          Canlı terminal akışı — ajan her işlem yaptığında anında görünür
-        </p>
+    <div className="space-y-5 h-full flex flex-col max-w-7xl">
+      {/* HEADER */}
+      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div>
+          <div className="flex items-center gap-2.5 mb-2">
+            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ajan</span>
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+            Yapılan İşlemler
+          </h1>
+          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Canlı terminal akışı — ajan her işlem yaptığında anında görünür
+          </p>
+        </div>
       </div>
 
       <div
         className="rounded-xl p-3 border flex-shrink-0"
-        style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
         <div className="flex flex-wrap gap-2 items-center">
           <select
             value={agent}
             onChange={(e) => setAgent(e.target.value)}
             className="px-3 py-1.5 rounded-lg text-sm border"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
           >
             <option value="">Tüm ajanlar</option>
             {AGENTS.map((a) => (
@@ -90,7 +97,7 @@ export default function LoglarPage() {
             value={status}
             onChange={(e) => setStatus(e.target.value)}
             className="px-3 py-1.5 rounded-lg text-sm border"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
           >
             <option value="">Tüm durumlar</option>
             <option value="onaylandi">✓ Onaylandı</option>
@@ -101,29 +108,29 @@ export default function LoglarPage() {
           </select>
           <div
             className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg border min-w-[220px]"
-            style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+            style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
           >
-            <Search size={14} style={{ color: 'var(--text-muted)' }} />
+            <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Mükellef, firma, fiş no ara..."
               className="flex-1 bg-transparent outline-none text-sm"
-              style={{ color: 'var(--text)' }}
+              style={{ color: '#fafaf9' }}
             />
           </div>
           <button
             onClick={() => setPaused(!paused)}
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm"
             style={{
-              background: paused ? 'rgba(16,185,129,.15)' : 'var(--muted)',
-              color: paused ? '#059669' : 'var(--text-muted)',
+              background: paused ? 'rgba(16,185,129,.15)' : 'rgba(255,255,255,0.05)',
+              color: paused ? '#059669' : 'rgba(250,250,249,0.45)',
             }}
           >
             {paused ? <Play size={13} /> : <Pause size={13} />}
             {paused ? 'Devam' : 'Duraklat'}
           </button>
-          <label className="inline-flex items-center gap-1 text-xs px-2" style={{ color: 'var(--text-muted)' }}>
+          <label className="inline-flex items-center gap-1 text-xs px-2" style={{ color: 'rgba(250,250,249,0.45)' }}>
             <input
               type="checkbox"
               checked={autoScroll}
@@ -134,13 +141,13 @@ export default function LoglarPage() {
           <button
             onClick={exportLog}
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm"
-            style={{ background: 'var(--muted)', color: 'var(--text)' }}
+            style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
           >
             <Download size={13} /> Dışa aktar
           </button>
         </div>
-        <div className="flex gap-4 mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-          <span>Toplam: <strong style={{ color: 'var(--text)' }}>{total}</strong></span>
+        <div className="flex gap-4 mt-2 text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <span>Toplam: <strong style={{ color: '#fafaf9' }}>{total}</strong></span>
           <span>Onaylandı: <strong style={{ color: '#059669' }}>{onaylandi}</strong></span>
           <span>Atlandı: <strong style={{ color: '#d97706' }}>{atlandi}</strong></span>
           <span>Hata: <strong style={{ color: '#dc2626' }}>{hata}</strong></span>
@@ -156,7 +163,7 @@ export default function LoglarPage() {
         className="rounded-xl border flex-1 overflow-y-auto font-mono text-xs"
         style={{
           background: '#0a0e1a',
-          borderColor: 'var(--border)',
+          borderColor: 'rgba(255,255,255,0.05)',
           color: '#cbd5e1',
           minHeight: '400px',
         }}

@@ -226,67 +226,78 @@ export default function FaturalarPage() {
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>YÖNETIM</span>
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Belge Yönetimi</span>
           </div>
           <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-            Fatura Yönetimi
+            Faturalar
           </h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            MIHSAP'tan fatura çekme ve arşiv yönetimi
+            {selectedMukellef && invoices.length > 0
+              ? `${invoices.length} fatura · ${MONTH_NAMES[Number(month) - 1]} ${year} · ${selectedTaxpayer ? taxpayerName(selectedTaxpayer) : ''}`
+              : 'MIHSAP\'tan fatura çekme ve arşiv yönetimi'}
           </p>
         </div>
         <MihsapConnectionBadge session={mihsapSession} />
       </div>
 
+      {/* KPI Özet — her zaman görünür */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        {[
+          { label: 'Toplam Fatura', value: selectedMukellef ? invoices.length : 0, sub: selectedMukellef ? `${MONTH_NAMES[Number(month)-1]} ${year}` : 'Mükellef seçin', icon: Receipt },
+          { label: 'Alış Faturası', value: selectedMukellef ? alisInvoices.length : 0, sub: selectedMukellef ? `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}` : '—', icon: FileText },
+          { label: 'Satış Faturası', value: selectedMukellef ? satisInvoices.length : 0, sub: selectedMukellef ? `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}` : '—', icon: FileText },
+          { label: 'İndirilmiş Dosya', value: selectedMukellef ? invoices.filter(i=>i.storageKey).length : 0, sub: selectedMukellef ? `/ ${invoices.length} fatura` : '—', icon: Download },
+        ].map(({ label, value, sub, icon: Icon }) => (
+          <div key={label} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: '#d4b876' }}>
+                <Icon size={17} />
+              </div>
+            </div>
+            <p className="text-[11px] uppercase font-semibold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</p>
+            <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, letterSpacing: '-0.03em', color: '#d4b876' }}>{typeof value === 'number' ? value.toLocaleString('tr-TR') : value}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.32)' }}>{sub}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Mükellef & Dönem seçici */}
-      <div
-        className="rounded-2xl p-4 border"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="flex items-center gap-2.5">
+            <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
+            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Mükellef & Dönem Seçimi</h3>
+          </div>
+        </div>
+        <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-3">
           {/* Mükellef arama + seç */}
           <div className="md:col-span-6">
-            <label
-              className="text-xs font-semibold block mb-1"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              <Users size={12} className="inline mr-1" /> Mükellef
+            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <Users size={11} className="inline mr-1" /> Mükellef
             </label>
             <div className="relative">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--text-muted)' }}
-              />
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
               <input
                 type="text"
                 placeholder="Mükellef ara…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
-                style={{
-                  background: 'var(--bg)',
-                  borderColor: 'var(--border)',
-                  color: 'var(--text)',
-                }}
+                className="w-full pl-9 pr-3 py-2.5 rounded-[10px] text-[13px] outline-none"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
               />
             </div>
             <select
               value={selectedMukellef}
               onChange={(e) => setSelectedMukellef(e.target.value)}
-              className="w-full mt-2 px-3 py-2 rounded-lg border text-sm"
-              style={{
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-                color: 'var(--text)',
-              }}
+              className="w-full mt-2 px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
-              <option value="">-- Mükellef seçin --</option>
-              <option value={ALL_SENTINEL}>
+              <option value="" style={{ background: '#0f0d0b' }}>— Mükellef seçin —</option>
+              <option value={ALL_SENTINEL} style={{ background: '#0f0d0b' }}>
                 ✓ TÜMÜNÜ SEÇ ({taxpayers.filter((t) => t.mihsapId).length} mükellef)
               </option>
               {filteredTaxpayers.map((t) => (
-                <option key={t.id} value={t.id}>
+                <option key={t.id} value={t.id} style={{ background: '#0f0d0b' }}>
                   {taxpayerName(t)} {t.mihsapId ? '' : '(MIHSAP ID yok!)'}
                 </option>
               ))}
@@ -295,52 +306,32 @@ export default function FaturalarPage() {
 
           {/* Yıl */}
           <div className="md:col-span-2">
-            <label
-              className="text-xs font-semibold block mb-1"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              <Calendar size={12} className="inline mr-1" /> Yıl
+            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <Calendar size={11} className="inline mr-1" /> Yıl
             </label>
             <select
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full px-3 py-2 rounded-lg border text-sm"
-              style={{
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-                color: 'var(--text)',
-              }}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
               {[2024, 2025, 2026, 2027].map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
+                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
               ))}
             </select>
           </div>
 
           {/* Ay */}
           <div className="md:col-span-2">
-            <label
-              className="text-xs font-semibold block mb-1"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Ay
-            </label>
+            <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>Ay</label>
             <select
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border text-sm"
-              style={{
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-                color: 'var(--text)',
-              }}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
               {MONTHS.map((m, i) => (
-                <option key={m} value={m}>
-                  {MONTH_NAMES[i]}
-                </option>
+                <option key={m} value={m} style={{ background: '#0f0d0b' }}>{MONTH_NAMES[i]}</option>
               ))}
             </select>
           </div>
@@ -351,8 +342,10 @@ export default function FaturalarPage() {
               <button
                 disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch('ALIS', false)}
-                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
-                style={{ background: 'rgba(59,130,246,.15)', color: '#2563eb', border: '1px solid rgba(59,130,246,.3)' }}
+                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                style={{ background: 'rgba(59,130,246,0.22)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.55)', textShadow: '0 0 8px rgba(59,130,246,0.3)' }}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(59,130,246,0.35)'; e.currentTarget.style.color = '#dbeafe'; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(59,130,246,0.22)'; e.currentTarget.style.color = '#93c5fd'; }}
                 title="Alış faturalarını çek"
               >
                 <Download size={12} /> Alış Çek
@@ -360,8 +353,10 @@ export default function FaturalarPage() {
               <button
                 disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch('SATIS', false)}
-                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
-                style={{ background: 'rgba(34,197,94,.15)', color: '#16a34a', border: '1px solid rgba(34,197,94,.3)' }}
+                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                style={{ background: 'rgba(34,197,94,0.22)', color: '#86efac', border: '1px solid rgba(74,222,128,0.55)', textShadow: '0 0 8px rgba(34,197,94,0.3)' }}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.background = 'rgba(34,197,94,0.35)'; e.currentTarget.style.color = '#dcfce7'; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.22)'; e.currentTarget.style.color = '#86efac'; }}
                 title="Satış faturalarını çek"
               >
                 <Download size={12} /> Satış Çek
@@ -371,8 +366,10 @@ export default function FaturalarPage() {
               <button
                 disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch(undefined, false)}
-                className="flex-1 px-2 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' }}
+                className="flex-1 px-2 py-2 rounded-[9px] text-[11.5px] font-bold flex items-center justify-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' }}
+                onMouseEnter={(e) => { if (!e.currentTarget.disabled) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(212,184,118,0.55)'; } }}
+                onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(212,184,118,0.35)'; }}
                 title="Alış + Satış hepsini çek"
               >
                 <Download size={12} />
@@ -385,8 +382,8 @@ export default function FaturalarPage() {
               <button
                 disabled={!selectedMukellef || fetchMut.isPending || !!activeJob || bulkProgress?.running}
                 onClick={() => handleFetch(tab === 'all' ? undefined : tab, true)}
-                className="px-2 py-1.5 rounded-lg text-xs border disabled:opacity-50"
-                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                className="px-2.5 py-2 rounded-[9px] text-[11.5px] disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(250,250,249,0.85)' }}
                 title={tab === 'all' ? 'Dönemi sıfırla (tümü)' : `${tab === 'ALIS' ? 'Alış' : 'Satış'} yeniden indir`}
               >
                 <RefreshCw size={12} />
@@ -412,12 +409,12 @@ export default function FaturalarPage() {
               <CheckCircle2 size={18} style={{ color: '#22c55e' }} />
             )}
             <div className="flex-1">
-              <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+              <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
                 Toplu fatura çekimi · {bulkProgress.current} / {bulkProgress.total}
                 {!bulkProgress.running && ' · TAMAMLANDI'}
               </div>
               {bulkProgress.running && bulkProgress.currentName && (
-                <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                <div className="text-xs truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   → {bulkProgress.currentName}
                 </div>
               )}
@@ -431,7 +428,7 @@ export default function FaturalarPage() {
               <button
                 onClick={() => setBulkProgress(null)}
                 className="text-xs px-2 py-1 rounded"
-                style={{ color: 'var(--text-muted)' }}
+                style={{ color: 'rgba(250,250,249,0.45)' }}
               >
                 Kapat
               </button>
@@ -463,47 +460,13 @@ export default function FaturalarPage() {
         >
           <Loader2 size={18} className="animate-spin" style={{ color: '#d4b876' }} />
           <div className="flex-1">
-            <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
+            <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
               Fatura çekiliyor ({activeJob.donem})
             </div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
               {activeJob.fetchedCount} / {activeJob.totalCount} fatura
             </div>
           </div>
-        </div>
-      )}
-
-      {/* İstatistikler */}
-      {selectedMukellef && invoices.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatBox
-            label="Alış Faturası"
-            value={alisInvoices.length}
-            sub={`₺${totalAlis.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#d4b876"
-            icon={FileText}
-          />
-          <StatBox
-            label="Satış Faturası"
-            value={satisInvoices.length}
-            sub={`₺${totalSatis.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#d4b876"
-            icon={FileText}
-          />
-          <StatBox
-            label="Toplam"
-            value={invoices.length}
-            sub={`₺${(totalAlis + totalSatis).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`}
-            color="#d4b876"
-            icon={Receipt}
-          />
-          <StatBox
-            label="İndirilmiş Dosya"
-            value={invoices.filter((i) => i.storageKey).length}
-            sub={`/ ${invoices.length}`}
-            color="#d4b876"
-            icon={Download}
-          />
         </div>
       )}
 
@@ -514,11 +477,14 @@ export default function FaturalarPage() {
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
           <div
-            className="px-4 py-2 border-b flex items-center justify-between flex-wrap gap-2"
-            style={{ borderColor: 'rgba(255,255,255,0.05)' }}
+            className="px-5 py-4 flex items-center justify-between flex-wrap gap-2"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
           >
-            <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>
-              {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
+            <div className="flex items-center gap-2.5">
+              <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
+              <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+                {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
+              </h3>
             </div>
             {/* Tab filtreleri */}
             <div className="flex gap-1">
@@ -529,11 +495,11 @@ export default function FaturalarPage() {
                   <button
                     key={t}
                     onClick={() => setTab(t)}
-                    className="px-3 py-1 rounded-lg text-xs font-semibold transition"
+                    className="px-3.5 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition-all"
                     style={{
-                      background: active ? '#d4b876' : 'transparent',
-                      color: active ? '#0f0d0b' : 'rgba(250,250,249,0.5)',
-                      border: active ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                      background: active ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)',
+                      color: active ? '#d4b876' : 'rgba(250,250,249,0.55)',
+                      border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
                     }}
                   >
                     {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
@@ -543,37 +509,38 @@ export default function FaturalarPage() {
             </div>
           </div>
           {invLoading ? (
-            <div className="p-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-              Yükleniyor…
+            <div className="py-12 flex flex-col items-center gap-3" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              <div className="w-8 h-8 rounded-full animate-spin" style={{ border: '2px solid rgba(255,255,255,0.08)', borderTopColor: '#d4b876' }} />
+              <span className="text-sm">Yükleniyor...</span>
             </div>
           ) : filteredInvoices.length === 0 ? (
-            <div className="p-10 text-center">
-              <AlertCircle
-                size={32}
-                className="mx-auto mb-2"
-                style={{ color: 'var(--text-muted)' }}
-              />
-              <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-                Bu dönem için {tab === 'all' ? 'kayıtlı fatura' : tab === 'ALIS' ? 'alış faturası' : 'satış faturası'} yok.
+            <div className="py-12 text-center">
+              <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <Receipt size={24} style={{ color: 'rgba(250,250,249,0.35)' }} />
+              </div>
+              <p className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                Bu dönem için {tab === 'all' ? 'kayıtlı fatura' : tab === 'ALIS' ? 'alış faturası' : 'satış faturası'} yok
               </p>
+              <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>MIHSAP'tan çekim yapın veya başka bir dönem seçin</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr
-                    className="text-left text-xs font-semibold"
+                    className="text-left text-[10px] font-semibold uppercase"
                     style={{
                       background: 'rgba(255,255,255,0.015)',
                       color: 'rgba(250,250,249,0.4)',
+                      letterSpacing: '0.12em',
                     }}
                   >
-                    <th className="px-4 py-2">Tür</th>
-                    <th className="px-4 py-2">Belge No</th>
-                    <th className="px-4 py-2">Karşı Firma</th>
-                    <th className="px-4 py-2">Tarih</th>
-                    <th className="px-4 py-2 text-right">Tutar</th>
-                    <th className="px-4 py-2 text-center">Görüntüle</th>
+                    <th className="px-5 py-3">Tür</th>
+                    <th className="px-5 py-3">Belge No</th>
+                    <th className="px-5 py-3">Karşı Firma</th>
+                    <th className="px-5 py-3">Tarih</th>
+                    <th className="px-5 py-3 text-right">Tutar</th>
+                    <th className="px-5 py-3 text-center">Görüntüle</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -659,56 +626,59 @@ function InvoiceRow({
   const canPreview = !!invoice.storageKey || !!invoice.mihsapFileLink;
   return (
     <tr
-      className="border-t cursor-pointer"
-      style={{ borderColor: 'rgba(255,255,255,0.03)' }}
+      className="cursor-pointer transition-colors"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
       onClick={() => canPreview && onPreview(invoice)}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.04)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
     >
-      <td className="px-4 py-2">
+      <td className="px-5 py-3">
         <span
-          className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+          className="inline-block px-2 py-[2px] rounded-md text-[10px] font-bold uppercase"
           style={{
-            background: 'rgba(212,184,118,.12)',
-            color: '#d4b876',
+            background: isAlis ? 'rgba(96,165,250,0.12)' : 'rgba(74,222,128,0.12)',
+            color: isAlis ? '#60a5fa' : '#4ade80',
+            letterSpacing: '0.05em',
           }}
         >
           {isAlis ? 'ALIŞ' : 'SATIŞ'}
         </span>
-        <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+        <div className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
           {invoice.belgeTuru}
         </div>
       </td>
-      <td className="px-4 py-2 font-mono text-xs">{invoice.faturaNo}</td>
-      <td className="px-4 py-2">
-        <div className="truncate max-w-[240px]" style={{ color: 'var(--text)' }}>
+      <td className="px-5 py-3 text-[12px] font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' }}>{invoice.faturaNo}</td>
+      <td className="px-5 py-3">
+        <div className="truncate max-w-[240px] text-[13px] font-medium" style={{ color: '#fafaf9' }}>
           {invoice.firmaUnvan || '—'}
         </div>
         {invoice.firmaKimlikNo && (
-          <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>
             {invoice.firmaKimlikNo}
           </div>
         )}
       </td>
-      <td className="px-4 py-2 text-xs tabular-nums">
+      <td className="px-5 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>
         {date.toLocaleDateString('tr-TR')}
       </td>
-      <td className="px-4 py-2 text-right tabular-nums font-semibold">
+      <td className="px-5 py-3 text-right text-[13px] tabular-nums font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#d4b876' }}>
         ₺{invoice.toplamTutar.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
       </td>
-      <td className="px-4 py-2 text-center">
+      <td className="px-5 py-3 text-center">
         {canPreview ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onPreview(invoice);
             }}
-            className="p-1.5 rounded inline-flex items-center gap-1 text-xs transition"
-            style={{ color: '#d4b876' }}
+            className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
+            style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
             title="Görüntüle"
           >
-            <FileText size={14} /> Aç
+            <FileText size={12} /> Aç
           </button>
         ) : (
-          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
             —
           </span>
         )}

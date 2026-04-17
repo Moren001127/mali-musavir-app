@@ -21,7 +21,7 @@ function PhoneInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder || '05xx xxx xx xx'}
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
     />
   );
 }
@@ -35,7 +35,7 @@ function EmailInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder="ornek@email.com"
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
     />
   );
 }
@@ -151,7 +151,7 @@ export default function MukellefDetayPage() {
           <button className="text-gray-500 hover:text-gray-700 text-sm">← Listeye Dön</button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--navy)' }}>
+          <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>
             {isNew ? 'Yeni Mükellef' : 'Mükellef Düzenle'}
           </h1>
         </div>
@@ -170,7 +170,7 @@ export default function MukellefDetayPage() {
 
         {/* Tip Seçimi */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Mükellef Tipi</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Mükellef Tipi</h2>
           <div className="flex gap-4">
             {TAXPAYER_TYPES.map(t => (
               <label key={t.value} className="flex items-center gap-2 cursor-pointer">
@@ -180,7 +180,7 @@ export default function MukellefDetayPage() {
                   value={t.value}
                   checked={form.type === t.value}
                   onChange={() => setForm(f => ({ ...f, type: t.value }))}
-                  className="accent-[var(--gold)]"
+                  className="accent-[#d4b876]"
                 />
                 <span className="text-sm font-medium">{t.label}</span>
               </label>
@@ -190,7 +190,7 @@ export default function MukellefDetayPage() {
 
         {/* Temel Bilgiler */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Temel Bilgiler</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Temel Bilgiler</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {form.type === 'TUZEL_KISI' ? (
               <div className="md:col-span-2">
@@ -199,7 +199,7 @@ export default function MukellefDetayPage() {
                   type="text"
                   value={form.companyName}
                   onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                   required
                 />
               </div>
@@ -211,7 +211,7 @@ export default function MukellefDetayPage() {
                     type="text"
                     value={form.firstName}
                     onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                     required
                   />
                 </div>
@@ -221,7 +221,7 @@ export default function MukellefDetayPage() {
                     type="text"
                     value={form.lastName}
                     onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                     required
                   />
                 </div>
@@ -236,7 +236,7 @@ export default function MukellefDetayPage() {
                 value={form.taxNumber}
                 onChange={e => setForm(f => ({ ...f, taxNumber: e.target.value.replace(/\D/g, '') }))}
                 maxLength={11}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 required
               />
             </div>
@@ -246,7 +246,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.taxOffice}
                 onChange={e => setForm(f => ({ ...f, taxOffice: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 required
               />
             </div>
@@ -256,7 +256,7 @@ export default function MukellefDetayPage() {
                 type="date"
                 value={form.startDate}
                 onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
             <div>
@@ -265,7 +265,7 @@ export default function MukellefDetayPage() {
                 type="date"
                 value={form.endDate}
                 onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
             <div className="md:col-span-2">
@@ -274,7 +274,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.address}
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
           </div>
@@ -282,7 +282,7 @@ export default function MukellefDetayPage() {
 
         {/* İletişim Bilgileri */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>İletişim Bilgileri</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>İletişim Bilgileri</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-gray-700">Telefon Numaraları</label>
@@ -318,7 +318,7 @@ export default function MukellefDetayPage() {
 
         {/* Evrak & WhatsApp Ayarları */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Evrak & WhatsApp Ayarları</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Evrak & WhatsApp Ayarları</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -331,7 +331,7 @@ export default function MukellefDetayPage() {
                 value={form.evrakTeslimGunu}
                 onChange={e => setForm(f => ({ ...f, evrakTeslimGunu: e.target.value }))}
                 placeholder="Örn: 15"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
               <p className="text-xs text-gray-500 mt-1">Her ayın bu günü geldiğinde WhatsApp hatırlatması gönderilir</p>
             </div>
@@ -341,7 +341,7 @@ export default function MukellefDetayPage() {
                   type="checkbox"
                   checked={form.whatsappEvrakTalep}
                   onChange={e => setForm(f => ({ ...f, whatsappEvrakTalep: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 accent-[var(--gold)] cursor-pointer"
+                  className="mt-0.5 w-4 h-4 accent-[#d4b876] cursor-pointer"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">Evrak Talep Mesajı Gönderilsin</span>
@@ -353,7 +353,7 @@ export default function MukellefDetayPage() {
                   type="checkbox"
                   checked={form.whatsappEvrakGeldi}
                   onChange={e => setForm(f => ({ ...f, whatsappEvrakGeldi: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 accent-[var(--gold)] cursor-pointer"
+                  className="mt-0.5 w-4 h-4 accent-[#d4b876] cursor-pointer"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">Evrak Geldi Mesajı Gönderilsin</span>
@@ -366,7 +366,7 @@ export default function MukellefDetayPage() {
 
         {/* Otomasyon Ajanları */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>
             Otomasyon Ajanları
           </h2>
           <p className="text-xs text-gray-500 mb-4">
@@ -381,7 +381,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.lucaSlug}
                 onChange={e => setForm(f => ({ ...f, lucaSlug: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 placeholder="edeler_yem"
               />
               <p className="text-xs text-gray-400 mt-1">Luca ZIP'te görünen ad (ör. edeler_yem)</p>
@@ -394,7 +394,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.mihsapId}
                 onChange={e => setForm(f => ({ ...f, mihsapId: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 placeholder="110564"
               />
               <p className="text-xs text-gray-400 mt-1">Mihsap URL'indeki sayı (ör. 110564)</p>
@@ -406,7 +406,7 @@ export default function MukellefDetayPage() {
               <select
                 value={form.mihsapDefterTuru}
                 onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               >
                 <option value="BILANCO">Bilanço</option>
                 <option value="DEFTER_BEYAN">Defter Beyan</option>
@@ -417,12 +417,12 @@ export default function MukellefDetayPage() {
 
         {/* Notlar */}
         <div className="card">
-          <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--navy)' }}>Notlar</h2>
+          <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Notlar</h2>
           <textarea
             value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
             rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--gold)] resize-none"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876] resize-none"
             placeholder="Mükellef hakkında notlar..."
           />
         </div>

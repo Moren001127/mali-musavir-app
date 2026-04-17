@@ -926,6 +926,73 @@ model MihsapFetchJob {
   @@map("mihsap_fetch_jobs")
 }
 
+// ============================================================
+// LUCA ENTEGRASYONU
+// ============================================================
+
+// Luca oturum token/cookie'si — tarayıcı eklentisi tarafından senkronize edilir
+model LucaSession {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique   // Her tenant için tek oturum
+  token       String   @db.Text  // JWT ya da cookie header değeri
+  cookies     String?  @db.Text  // Luca için ek cookie header (PHPSESSID vs.)
+  origin      String?            // "web.luca.com.tr" gibi
+  email       String?            // Luca hesabı (bilgi amaçlı)
+  updatedBy   String?            // userId / "extension"
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@map("luca_sessions")
+}
+
+// KDV Kontrol çıktılarının arşivi — fiş yazdırmadaki gibi geriye dönük erişim
+model KdvControlOutput {
+  id            String   @id @default(cuid())
+  tenantId      String
+  sessionId     String?  // Hangi KDV kontrol oturumundan üretildi
+  taxpayerId    String?
+  mukellefName  String?  // Snapshot — görüntüleme için
+  donem         String?  // "2026-02"
+  tip           String?  // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER"
+  matchedCount  Int      @default(0)
+  partialCount  Int      @default(0)
+  unmatchedCount Int     @default(0)
+  totalRecords  Int      @default(0)
+  totalImages   Int      @default(0)
+  filename      String   // İndirme adı
+  fileBytes     Bytes    // Excel dosyasının ikili içeriği
+  fileSize      Int      @default(0)
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, taxpayerId, donem])
+  @@index([sessionId])
+  @@map("kdv_control_outputs")
+}
+
+// Luca'dan çekilen komutlar — hangi mükellef/dönem için ne tür muavin alındı
+model LucaFetchJob {
+  id            String    @id @default(cuid())
+  tenantId      String
+  sessionId     String?   // Bağlı KDV kontrol oturumu (varsa)
+  mukellefId    String
+  donem         String    // "2026-03"
+  tip           String    // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER"
+  status        String    @default("pending") // pending | running | done | failed
+  recordCount   Int       @default(0)
+  errorMsg      String?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([sessionId])
+  @@map("luca_fetch_jobs")
+}
+
 // Fiş Yazdırma: oluşturulan Word çıktılarının arşivi
 model FisYazdirmaOutput {
   id            String   @id @default(cuid())
