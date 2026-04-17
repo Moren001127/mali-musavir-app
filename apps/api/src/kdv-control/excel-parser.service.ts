@@ -250,14 +250,71 @@ export class ExcelParserService {
     return out;
   }
 
+  /**
+   * Excel hücresinden para tutarı parse eder.
+   *
+   * ☠️ KRİTİK BUG FIX:
+   * xlsx library raw:false ile bazen number bazen string döndürür. Eski kod
+   * daima String(val) yapıp noktaları siliyordu:
+   *   1436.02 (number) → "1436.02" → "143602" → 143602  ☠ 100x şişirme
+   *
+   * Yeni yaklaşım:
+   *  - val number ise direkt kullan (noktaları sil deme).
+   *  - val string ise TR/EN format'ını son ayırıcıdan tespit et:
+   *      "1.234,56" TR  → son ayırıcı "," → binlik=. decimal=,
+   *      "1,234.56" EN  → son ayırıcı "." → binlik=, decimal=.
+   *      "1,44"     TR  → sadece ","      → decimal=,
+   *      "39.230"   TR  → tek nokta+3basamak → binlik (39230)
+   *      "1.44"     EN  → tek nokta+2basamak → decimal (1.44)
+   */
   toDecimal(val: any): number | null {
     if (val === null || val === undefined || val === '') return null;
-    const str = String(val)
-      .replace(/\./g, '')
-      .replace(',', '.')
-      .replace(/[^\d.-]/g, '');
-    const num = parseFloat(str);
-    return isNaN(num) ? null : Math.abs(num);
+
+    if (typeof val === 'number') {
+      return Number.isFinite(val) ? Math.abs(val) : null;
+    }
+
+    const raw = String(val).trim();
+    if (!raw) return null;
+
+    const hasDot = raw.includes('.');
+    const hasComma = raw.includes(',');
+    let cleaned: string;
+
+    if (hasDot && hasComma) {
+      const lastDot = raw.lastIndexOf('.');
+      const lastComma = raw.lastIndexOf(',');
+      if (lastComma > lastDot) {
+        // TR: 1.234,56
+        cleaned = raw.replace(/\./g, '').replace(',', '.');
+      } else {
+        // EN: 1,234.56
+        cleaned = raw.replace(/,/g, '');
+      }
+    } else if (hasComma) {
+      // TR ondalık: "1,44" → 1.44
+      cleaned = raw.replace(',', '.');
+    } else if (hasDot) {
+      // Tek nokta: binlik mi ondalık mı? Heuristik.
+      const m = raw.match(/^(\d+)\.(\d+)$/);
+      if (m && m[2].length === 3 && m[1].length <= 3 && !raw.includes('-')) {
+        // "39.230", "1.436" → binlik
+        cleaned = m[1] + m[2];
+      } else {
+        // "1.44", "1436.02" → ondalık
+        cleaned = raw;
+      }
+    } else {
+      cleaned = raw;
+    }
+
+    cleaned = cleaned.replace(/[^\d.-]/g, '');
+    const num = parseFloat(cleaned);
+    if (isNaN(num)) {
+      this.logger.warn(`toDecimal parse hata: "${raw}" → "${cleaned}"`);
+      return null;
+    }
+    return Math.abs(num);
   }
 
   parseDate(val: any): Date | null {
