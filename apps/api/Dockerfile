@@ -43,8 +43,16 @@ COPY apps/api ./apps/api
 RUN pnpm install --no-frozen-lockfile
 
 # Fallback: playwright-core kesin olarak yüklensin (lockfile/cache sorunlarına karşı)
-RUN cd /app/apps/api && (test -d node_modules/playwright-core || pnpm add playwright-core@^1.47.2) \
- && ls -la node_modules/playwright-core/package.json
+# Hem root hem apps/api altında node_modules/playwright-core kontrolü
+RUN cd /app/apps/api \
+ && if [ ! -d node_modules/playwright-core ] && [ ! -d /app/node_modules/playwright-core ]; then \
+      echo ">> playwright-core bulunamadı, npm ile ekleniyor..."; \
+      npm install --no-save --prefix /app/apps/api playwright-core@^1.47.2; \
+    fi \
+ && echo ">> playwright-core durumu:" \
+ && ls -la /app/apps/api/node_modules/playwright-core/package.json 2>/dev/null \
+    || ls -la /app/node_modules/playwright-core/package.json 2>/dev/null \
+    || (echo "HATA: playwright-core hâlâ yok!" && exit 1)
 
 # Prisma generate
 RUN cd apps/api && pnpm exec prisma generate
