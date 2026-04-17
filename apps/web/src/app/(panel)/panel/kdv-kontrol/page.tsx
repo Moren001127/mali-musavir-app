@@ -89,6 +89,8 @@ export default function KdvKontrolPage() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const feedScrollRef = useRef<HTMLDivElement>(null);
   const seenResultIdsRef = useRef<Set<string>>(new Set());
+  /** imageId → son görülen ocrStatus. Status değişince bir feed satırı üretilir. */
+  const seenImageStatusRef = useRef<Map<string, string>>(new Map());
 
   const pushFeed = (it: Omit<FeedItem, 'ts'>) => {
     setFeed((prev) => [...prev.slice(-199), { ...it, ts: Date.now() }]);
@@ -386,6 +388,77 @@ export default function KdvKontrolPage() {
       }, i * 80);
     });
   }, [results]);
+
+  /**
+   * OCR canlı akışı — her fatura için durum değişimlerini log'a akıt.
+   *  - PENDING/PROCESSING → SUCCESS = "✓ OZT...62 · 3/3 · %92"
+   *  - PENDING/PROCESSING → NEEDS_REVIEW = "⚠ OZT...62 · tarih düşük güvenli (%45)"
+   *  - PENDING/PROCESSING → LOW_CONFIDENCE = "✗ OZT...62 · hiç okunamadı"
+   *  - PENDING/PROCESSING → FAILED = "✗ OZT...62 · sistem hatası"
+   */
+  useEffect(() => {
+    if (!Array.isArray(images) || images.length === 0) return;
+
+    const TH = 0.7;
+    const pct = (v?: number | null) => (typeof v === 'number' ? `%${Math.round(v * 100)}` : '—');
+
+    for (const img of images as any[]) {
+      const prevStatus = seenImageStatusRef.current.get(img.id);
+      const curr = img.ocrStatus as string;
+      // Sadece son durum değişimini bir kere logla
+      if (prevStatus === curr) continue;
+
+      // İlk defa görüyorsak ve hâlâ işleniyorsa, sessiz kayıt ama logla
+      if (!prevStatus && (curr === 'PENDING' || curr === 'PROCESSING')) {
+        seenImageStatusRef.current.set(img.id, curr);
+        continue;
+      }
+
+      // Son durumlar için feed satırı üret
+      const base = (img.originalName || img.id).replace(/\.[^/.]+$/, '');
+      const short = base.length > 22 ? '…' + base.slice(-20) : base;
+
+      if (curr === 'SUCCESS') {
+        const parts: string[] = [];
+        if (img.ocrDate) parts.push(`Tarih ${img.ocrDate} ${pct(img.ocrDateConfidence)}`);
+        if (img.ocrBelgeNo) parts.push(`Belge ${String(img.ocrBelgeNo).slice(0, 18)} ${pct(img.ocrBelgeNoConfidence)}`);
+        if (img.ocrKdvTutari) parts.push(`KDV ${img.ocrKdvTutari} ${pct(img.ocrKdvConfidence)}`);
+        pushFeed({
+          group: 'ocr',
+          kind: 'ok',
+          title: `✓ ${short} · 3/3`,
+          detail: parts.join(' · ') || 'Tüm alanlar okundu',
+        });
+      } else if (curr === 'NEEDS_REVIEW') {
+        const issues: string[] = [];
+        if (!img.ocrDate || (img.ocrDateConfidence ?? 1) < TH) issues.push(`tarih ${pct(img.ocrDateConfidence) || 'yok'}`);
+        if (!img.ocrBelgeNo || (img.ocrBelgeNoConfidence ?? 1) < TH) issues.push(`belge no ${pct(img.ocrBelgeNoConfidence) || 'yok'}`);
+        if (!img.ocrKdvTutari || (img.ocrKdvConfidence ?? 1) < TH) issues.push(`KDV ${pct(img.ocrKdvConfidence) || 'yok'}`);
+        pushFeed({
+          group: 'ocr',
+          kind: 'warn',
+          title: `⚠ ${short} · teyit bekler`,
+          detail: issues.length > 0 ? `düşük: ${issues.join(' · ')}` : 'bir alan eşik altı',
+        });
+      } else if (curr === 'LOW_CONFIDENCE') {
+        pushFeed({
+          group: 'ocr',
+          kind: 'err',
+          title: `✗ ${short} · hiç okunamadı`,
+          detail: `OCR hiçbir alan çıkaramadı${img.ocrEngine ? ` (${img.ocrEngine})` : ''} — elle teyit gerek`,
+        });
+      } else if (curr === 'FAILED') {
+        pushFeed({
+          group: 'ocr',
+          kind: 'err',
+          title: `✗ ${short} · OCR hatası`,
+          detail: 'Görsel indirilemedi veya işleme hatası (Railway logları kontrol edin)',
+        });
+      }
+
+      seenImageStatusRef.current.set(img.id, curr);
+    }
+  }, [images]);
 
   // Feed değiştikçe aşağı kaydır
   useEffect(() => {
