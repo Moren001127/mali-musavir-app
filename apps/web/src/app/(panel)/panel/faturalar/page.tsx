@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { agentsApi } from '@/lib/agents';
 import {
   Download, RefreshCw, FileText, Calendar, Users, CheckCircle2, XCircle,
-  Loader2, AlertCircle, Receipt, Search,
+  Loader2, AlertCircle, Receipt, Search, ChevronDown, X,
 } from 'lucide-react';
 
 type Taxpayer = {
@@ -52,6 +52,8 @@ export default function FaturalarPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [search, setSearch] = useState('');
+  // Mükellef picker modal (KDV Kontrol / Mihsap deseni)
+  const [mukellefPickerOpen, setMukellefPickerOpen] = useState(false);
   const [tab, setTab] = useState<'all' | 'ALIS' | 'SATIS'>('all');
   const [previewInvoice, setPreviewInvoice] = useState<MihsapInvoice | null>(null);
   // Toplu (tüm mükellefler) çekim durumu
@@ -270,38 +272,35 @@ export default function FaturalarPage() {
           </div>
         </div>
         <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-3">
-          {/* Mükellef arama + seç */}
+          {/* Mükellef picker butonu (KDV Kontrol / Mihsap deseni) */}
           <div className="md:col-span-6">
             <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
               <Users size={11} className="inline mr-1" /> Mükellef
             </label>
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
-              <input
-                type="text"
-                placeholder="Mükellef ara…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 rounded-[10px] text-[13px] outline-none"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-              />
-            </div>
-            <select
-              value={selectedMukellef}
-              onChange={(e) => setSelectedMukellef(e.target.value)}
-              className="w-full mt-2 px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
+            <button
+              type="button"
+              onClick={() => setMukellefPickerOpen(true)}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none flex items-center gap-2 text-left hover:brightness-110 transition"
               style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             >
-              <option value="" style={{ background: '#0f0d0b' }}>— Mükellef seçin —</option>
-              <option value={ALL_SENTINEL} style={{ background: '#0f0d0b' }}>
-                ✓ TÜMÜNÜ SEÇ ({taxpayers.filter((t) => t.mihsapId).length} mükellef)
-              </option>
-              {filteredTaxpayers.map((t) => (
-                <option key={t.id} value={t.id} style={{ background: '#0f0d0b' }}>
-                  {taxpayerName(t)} {t.mihsapId ? '' : '(MIHSAP ID yok!)'}
-                </option>
-              ))}
-            </select>
+              <span className="flex-1 truncate" style={{ color: selectedMukellef ? '#fafaf9' : 'rgba(250,250,249,0.45)' }}>
+                {selectedMukellef === ALL_SENTINEL
+                  ? `✓ Tümü (${taxpayers.filter((t) => t.mihsapId).length} mükellef)`
+                  : selectedMukellef
+                  ? taxpayerName(taxpayers.find((t) => t.id === selectedMukellef)!) || 'Mükellef'
+                  : 'Mükellef seç…'}
+              </span>
+              {selectedMukellef && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setSelectedMukellef(''); }}
+                  className="p-0.5 rounded hover:bg-white/10"
+                  style={{ color: 'rgba(250,250,249,0.5)' }}
+                >
+                  <X size={13} />
+                </span>
+              )}
+              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+            </button>
           </div>
 
           {/* Yıl */}
@@ -560,6 +559,122 @@ export default function FaturalarPage() {
           invoice={previewInvoice}
           onClose={() => setPreviewInvoice(null)}
         />
+      )}
+
+      {/* MÜKELLEF PICKER MODAL (KDV Kontrol / Mihsap / Fiş Yazdırma deseni) */}
+      {mukellefPickerOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center p-4 pt-[8vh]"
+          style={{ background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setMukellefPickerOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl rounded-2xl border shadow-2xl flex flex-col overflow-hidden"
+            style={{ background: 'rgba(17,14,12,0.98)', borderColor: 'rgba(255,255,255,0.05)', maxHeight: '84vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-5 py-4 border-b"
+              style={{ borderColor: 'rgba(255,255,255,0.05)', background: 'linear-gradient(135deg, rgba(184,160,111,.08), transparent)' }}
+            >
+              <div>
+                <h3 className="text-lg font-bold" style={{ color: '#fafaf9' }}>Mükellef Seç</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  MIHSAP ID tanımlı {taxpayers.filter((t) => t.mihsapId).length} mükellef · {taxpayers.length} toplam
+                </p>
+              </div>
+              <button
+                onClick={() => setMukellefPickerOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/5"
+                style={{ color: 'rgba(250,250,249,0.45)' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              <div
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border"
+                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}
+              >
+                <Search size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Mükellef adı ara…"
+                  autoFocus
+                  className="flex-1 bg-transparent outline-none text-sm"
+                  style={{ color: '#fafaf9' }}
+                />
+                {search && (
+                  <button onClick={() => setSearch('')} style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {/* Tümünü Seç satırı */}
+              <button
+                type="button"
+                onClick={() => { setSelectedMukellef(ALL_SENTINEL); setMukellefPickerOpen(false); setSearch(''); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors mb-1"
+                style={{
+                  background: selectedMukellef === ALL_SENTINEL ? 'rgba(184,160,111,.15)' : 'rgba(184,160,111,.05)',
+                  color: '#fafaf9',
+                  border: '1px dashed rgba(184,160,111,0.35)',
+                }}
+              >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg, #b8a06f, #8b7649)', color: '#0f0d0b' }}>
+                  ✓
+                </div>
+                <span className="flex-1 truncate font-semibold" style={{ color: '#b8a06f' }}>
+                  TÜMÜNÜ SEÇ ({taxpayers.filter((t) => t.mihsapId).length} mükellef)
+                </span>
+              </button>
+
+              {filteredTaxpayers.length === 0 ? (
+                <div className="text-sm p-8 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç yok</div>
+              ) : (
+                filteredTaxpayers.map((t: Taxpayer) => {
+                  const checked = selectedMukellef === t.id;
+                  const name = taxpayerName(t);
+                  const initial = name.charAt(0).toUpperCase();
+                  const disabled = !t.mihsapId;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => { setSelectedMukellef(t.id); setMukellefPickerOpen(false); setSearch(''); }}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: checked ? 'rgba(184,160,111,.08)' : 'transparent', color: '#fafaf9' }}
+                      onMouseEnter={(e) => { if (!checked && !disabled) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,.03)'; }}
+                      onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
+                        style={{
+                          background: checked ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
+                          color: checked ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
+                        }}
+                      >
+                        {initial}
+                      </div>
+                      <span className="flex-1 truncate font-medium">{name}</span>
+                      {disabled && (
+                        <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: 'rgba(244,63,94,0.15)', color: '#fda4af' }}>
+                          MIHSAP ID yok
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
