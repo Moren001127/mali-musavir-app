@@ -44,19 +44,20 @@ export class LucaController {
     return this.autoScraper.getCredentialStatus(req.user.tenantId);
   }
 
-  /** Luca username + password kaydet (AES-GCM ile şifrelenmiş) */
+  /** Luca üye no + kullanıcı adı + şifre kaydet (AES-GCM ile şifrelenmiş) */
   @Post('luca/credential')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN', 'STAFF')
   async saveCredential(
     @Req() req: any,
-    @Body() body: { username: string; password: string },
+    @Body() body: { uyeNo: string; username: string; password: string },
   ) {
-    if (!body?.username || !body?.password) {
-      throw new BadRequestException('Kullanıcı adı ve şifre zorunlu');
+    if (!body?.uyeNo || !body?.username || !body?.password) {
+      throw new BadRequestException('Üye No, kullanıcı adı ve şifre zorunlu');
     }
     return this.autoScraper.saveCredential(
       req.user.tenantId,
+      body.uyeNo.trim(),
       body.username.trim(),
       body.password,
       req.user.sub,

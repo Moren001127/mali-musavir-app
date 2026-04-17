@@ -1,4 +1,5 @@
 'use client';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMe, useLogout } from '@/hooks/useAuth';
@@ -6,6 +7,7 @@ import {
   LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
+  Scale, TrendingUp, Table2,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -28,8 +30,11 @@ const navGroups = [
     color: GOLD,
     icon: FileCheck,
     items: [
-      { href: '/panel/kdv-kontrol',  label: 'KDV Kontrol',     icon: FileCheck },
-      { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma',    icon: Printer },
+      { href: '/panel/kdv-kontrol',    label: 'KDV Kontrol',     icon: FileCheck },
+      { href: '/panel/fis-yazdirma',   label: 'Fiş Yazdırma',    icon: Printer },
+      { href: '/panel/mizan',          label: 'Mizan',           icon: Table2 },
+      { href: '/panel/gelir-tablosu',  label: 'Gelir Tablosu',   icon: TrendingUp },
+      { href: '/panel/bilanco',        label: 'Bilanço',         icon: Scale },
     ],
   },
   {

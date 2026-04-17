@@ -16,6 +16,7 @@ import { SmsTemplatesModule } from './sms-templates/sms-templates.module';
 import { AgentEventsModule } from './agent-events/agent-events.module';
 import { MihsapModule } from './mihsap/mihsap.module';
 import { LucaModule } from './luca/luca.module';
+import { MizanModule } from './mizan/mizan.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -37,6 +38,7 @@ import { ReminderCron } from './schedule/reminder.cron';
     AgentEventsModule,
     MihsapModule,
     LucaModule,
+    MizanModule,
   ],
   providers: [ReminderCron],
 })

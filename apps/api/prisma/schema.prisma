@@ -935,6 +935,7 @@ model MihsapFetchJob {
 model LucaCredential {
   id                String    @id @default(cuid())
   tenantId          String    @unique
+  uyeNo             String    // Luca üye numarası (müşavir no)
   username          String    // Luca kullanıcı adı (mali müşavirin hesabı)
   encryptedPassword String    @db.Text  // AES-GCM şifrelenmiş
   // Cache edilmiş session cookies — her istek için yeniden login olmasın
@@ -964,6 +965,169 @@ model LucaSession {
   createdAt   DateTime @default(now())
 
   @@map("luca_sessions")
+}
+
+// ============================================================
+// MİZAN / GELİR TABLOSU / BİLANÇO
+// ============================================================
+
+// Luca'dan çekilen mizan snapshot'ı (tek dönem için tüm hesap kodları)
+model Mizan {
+  id          String        @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  donem       String        // "2026-03"
+  donemTipi   String        @default("AYLIK") // AYLIK | GECICI_Q1 | GECICI_Q2 | GECICI_Q3 | GECICI_Q4 | YILLIK
+  kaynak      String        @default("LUCA")  // LUCA | MANUEL | EXCEL
+  status      String        @default("READY") // PENDING | READY | FAILED
+  notes       String?
+  rawExcelKey String?       // Mizan Excel orijinali (arşiv için)
+  // Kesin Kayıt (lock) — kilitlendiğinde değişiklik/silme reddedilir
+  locked      Boolean       @default(false)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lockNote    String?
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  hesaplar    MizanHesap[]
+  gelirTablolari GelirTablosu[]
+  bilancolar  Bilanco[]
+  anomaliler  MizanAnomali[]
+
+  @@index([tenantId, taxpayerId, donem])
+  @@index([tenantId, createdAt])
+  @@map("mizanlar")
+}
+
+// Mizan içindeki her hesap kodu satırı
+model MizanHesap {
+  id              String   @id @default(cuid())
+  mizanId         String
+  hesapKodu       String   // "600", "600.01", "120.01.001" gibi
+  hesapAdi        String
+  // Alt kırılım seviyesi (kaç nokta var): 0 = ana hesap, 1 = alt, 2 = detay
+  seviye          Int      @default(0)
+  borcToplami     Decimal  @default(0) @db.Decimal(18, 2)
+  alacakToplami   Decimal  @default(0) @db.Decimal(18, 2)
+  borcBakiye      Decimal  @default(0) @db.Decimal(18, 2)
+  alacakBakiye    Decimal  @default(0) @db.Decimal(18, 2)
+  rowIndex        Int      @default(0)
+
+  mizan           Mizan    @relation(fields: [mizanId], references: [id], onDelete: Cascade)
+
+  @@index([mizanId, hesapKodu])
+  @@map("mizan_hesaplar")
+}
+
+// Mizan denetim sonucu — hesap kodu anomalileri
+model MizanAnomali {
+  id           String   @id @default(cuid())
+  mizanId      String
+  hesapKodu    String?
+  tip          String   // "TDHP_DISI" | "ZIT_BAKIYE" | "EKSIK_HESAP" | "NET_OLMAYAN"
+  seviye       String   @default("WARN") // INFO | WARN | ERROR
+  mesaj        String
+  detay        Json?
+
+  mizan        Mizan    @relation(fields: [mizanId], references: [id], onDelete: Cascade)
+
+  @@index([mizanId])
+  @@map("mizan_anomaliler")
+}
+
+// Mizandan üretilen gelir tablosu snapshot'ı
+model GelirTablosu {
+  id           String   @id @default(cuid())
+  tenantId     String
+  taxpayerId   String
+  mizanId      String?  // Hangi mizandan üretildi
+  donem        String   // "2026-Q1" | "2026-03" | "2026-YILLIK"
+  donemTipi    String   @default("GECICI_Q1")
+  donemBaslangic DateTime?
+  donemBitis   DateTime?
+
+  // Standart gelir tablosu kalemleri (TDHP)
+  brutSatislar       Decimal  @default(0) @db.Decimal(18, 2)
+  satisIndirimleri   Decimal  @default(0) @db.Decimal(18, 2)
+  netSatislar        Decimal  @default(0) @db.Decimal(18, 2)
+  satisMaliyeti      Decimal  @default(0) @db.Decimal(18, 2)
+  brutSatisKari      Decimal  @default(0) @db.Decimal(18, 2)
+  faaliyetGiderleri  Decimal  @default(0) @db.Decimal(18, 2)
+  faaliyetKari       Decimal  @default(0) @db.Decimal(18, 2)
+  digerGelirler      Decimal  @default(0) @db.Decimal(18, 2)
+  digerGiderler      Decimal  @default(0) @db.Decimal(18, 2)
+  finansmanGiderleri Decimal  @default(0) @db.Decimal(18, 2)
+  olaganKar          Decimal  @default(0) @db.Decimal(18, 2)
+  olaganDisiGelir    Decimal  @default(0) @db.Decimal(18, 2)
+  olaganDisiGider    Decimal  @default(0) @db.Decimal(18, 2)
+  donemKari          Decimal  @default(0) @db.Decimal(18, 2)
+  vergiKarsiligi     Decimal  @default(0) @db.Decimal(18, 2)
+  donemNetKari       Decimal  @default(0) @db.Decimal(18, 2)
+
+  // Detay: hangi hesap kodundan hangi tutar geldi (audit için)
+  detay        Json?
+  // Manuel düzeltmeler: kullanıcı 2. dönem için mizana kaydetmeden önce
+  // maliyet/gider tahmini yapabilsin diye — her kalem için ek tutar
+  duzeltmeler  Json?
+  // Kesin Kayıt — kilitlendiğinde değişiklik/silme reddedilir
+  locked       Boolean  @default(false)
+  lockedAt     DateTime?
+  lockedBy     String?
+  lockNote     String?
+  notes        String?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  mizan        Mizan?   @relation(fields: [mizanId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, taxpayerId, donem])
+  @@index([tenantId, createdAt])
+  @@map("gelir_tablolari")
+}
+
+// Mizandan üretilen bilanço snapshot'ı
+model Bilanco {
+  id           String   @id @default(cuid())
+  tenantId     String
+  taxpayerId   String
+  mizanId      String?
+  donem        String   // "2026-03"
+  donemTipi    String   @default("AYLIK")
+  tarih        DateTime?
+
+  // Aktif toplamları (Dönen + Duran = Aktif Toplamı)
+  donenVarliklar    Decimal @default(0) @db.Decimal(18, 2)
+  duranVarliklar    Decimal @default(0) @db.Decimal(18, 2)
+  aktifToplami      Decimal @default(0) @db.Decimal(18, 2)
+
+  // Pasif toplamları (KVYK + UVYK + Özkaynak = Pasif Toplamı)
+  kvYabanciKaynak   Decimal @default(0) @db.Decimal(18, 2)
+  uvYabanciKaynak   Decimal @default(0) @db.Decimal(18, 2)
+  ozkaynaklar       Decimal @default(0) @db.Decimal(18, 2)
+  pasifToplami      Decimal @default(0) @db.Decimal(18, 2)
+
+  // Detaylı kırılım (aktif + pasif tam hesap kodu bazlı)
+  aktif        Json     // {"10": {...}, "12": {...}, ...}
+  pasif        Json
+  detay        Json?
+  // Kesin Kayıt — kilitlendiğinde değişiklik/silme reddedilir
+  locked       Boolean  @default(false)
+  lockedAt     DateTime?
+  lockedBy     String?
+  lockNote     String?
+  notes        String?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  mizan        Mizan?   @relation(fields: [mizanId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, taxpayerId, donem])
+  @@index([tenantId, createdAt])
+  @@map("bilancolar")
 }
 
 // KDV Kontrol çıktılarının arşivi — fiş yazdırmadaki gibi geriye dönük erişim

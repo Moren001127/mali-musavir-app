@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Moren — Mizan / Gelir Tablosu / Bilanço Tasarım</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #d4b876;
+    --gold-soft: #b8a06f;
+    --gold-deep: #8b7649;
+    --bg: #0f0d0b;
+    --bg-2: #141110;
+    --card: rgba(255,255,255,0.02);
+    --card-2: rgba(255,255,255,0.03);
+    --border: rgba(255,255,255,0.05);
+    --border-strong: rgba(255,255,255,0.08);
+    --text: #fafaf9;
+    --text-muted: rgba(250,250,249,0.55);
+    --text-faint: rgba(250,250,249,0.4);
+    --text-dim: rgba(250,250,249,0.7);
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #f43f5e;
+    --blue: #60a5fa;
+    --purple: #a855f7;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif; font-size: 14px; }
+  .app { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  .sidebar { background: var(--bg-2); border-right: 1px solid var(--border); padding: 22px 14px; }
+  .logo { text-align: center; padding: 16px 0 26px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .logo .m { font-family: 'Fraunces', serif; font-size: 44px; font-weight: 700; background: linear-gradient(135deg, var(--gold), var(--gold-soft)); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: -0.03em; }
+  .logo .b { font-size: 10px; letter-spacing: 0.16em; color: var(--gold-soft); text-transform: uppercase; margin-top: 2px; }
+  .nav-group { margin-top: 18px; }
+  .nav-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--text-faint); padding: 0 10px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 8px; color: var(--text-dim); cursor: pointer; font-size: 13px; font-weight: 500; }
+  .nav-item:hover { background: rgba(255,255,255,0.02); }
+  .nav-item.active { background: rgba(184,160,111,0.1); color: var(--gold); }
+  .nav-item .ico { width: 16px; text-align: center; opacity: 0.7; }
+
+  .main { padding: 28px 34px; max-width: 1400px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 18px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .date { font-size: 13px; color: var(--text-faint); }
+  .theme-pill { background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 7px 14px; border-radius: 10px; font-size: 12px; color: var(--text-dim); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 2px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 4px; margin-bottom: 22px; max-width: 560px; }
+  .tab { flex: 1; padding: 10px 14px; border-radius: 8px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); transition: all 0.2s; }
+  .tab.active { background: linear-gradient(135deg, var(--gold), var(--gold-soft)); color: #0f0d0b; box-shadow: 0 4px 12px rgba(184,160,111,.22); }
+  .tab:hover:not(.active) { background: rgba(255,255,255,0.03); color: var(--text); }
+
+  /* Header */
+  .h1 { font-family: 'Fraunces', serif; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; margin: 0 0 6px; }
+  .sub { font-size: 13px; color: var(--text-faint); margin: 0 0 24px; }
+  .tag-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .tag-row .line { width: 26px; height: 1px; background: var(--gold); }
+  .tag-row .tag { font-size: 10px; font-weight: 700; letter-spacing: .18em; color: var(--gold-soft); text-transform: uppercase; }
+
+  /* Command bar */
+  .cmd-bar { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+  .field { flex: 1; min-width: 180px; }
+  .field label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); margin-bottom: 6px; }
+  .field .control, .field input, .field select { width: 100%; background: var(--card-2); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; font-family: inherit; }
+  .field .control:hover { background: rgba(255,255,255,0.05); }
+  .chev { float: right; color: var(--text-faint); }
+  .btn { padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary { background: linear-gradient(135deg, var(--gold), var(--gold-soft)); color: #0f0d0b; box-shadow: 0 4px 12px rgba(184,160,111,.3); }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-secondary { background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border-strong); }
+  .btn-secondary:hover { background: rgba(255,255,255,0.06); }
+  .btn-ghost { background: transparent; color: var(--text-muted); }
+  .btn-ghost:hover { color: var(--text); }
+
+  /* KPI cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 22px; }
+  .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .kpi .label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--text-muted); margin-bottom: 10px; }
+  .kpi .val { font-family: 'Fraunces', serif; font-size: 30px; font-weight: 700; line-height: 1; }
+  .kpi.sm .val { font-size: 22px; }
+
+  /* Section heading */
+  .section-h { display: flex; align-items: center; gap: 10px; margin: 30px 0 12px; }
+  .section-h .bar { width: 3px; height: 16px; background: var(--gold); border-radius: 2px; }
+  .section-h h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  .section-h .count { font-size: 11px; color: var(--gold); background: rgba(184,160,111,0.12); padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: 4px; }
+
+  /* Table */
+  .table { width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; border-collapse: collapse; }
+  .table thead th { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  .table tbody td { padding: 11px 14px; border-top: 1px solid rgba(255,255,255,0.03); font-size: 13px; }
+  .table tbody tr:first-child td { border-top: none; }
+  .table tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .tnum { font-variant-numeric: tabular-nums; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+  .code { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--gold); }
+  .level-0 { font-weight: 700; }
+  .level-1 { padding-left: 22px !important; color: var(--text-dim); }
+  .level-2 { padding-left: 38px !important; color: var(--text-muted); font-size: 12.5px; }
+
+  /* Badges */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 5px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .b-warn { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .b-err { background: rgba(244,63,94,0.12); color: var(--red); }
+  .b-ok { background: rgba(34,197,94,0.12); color: var(--green); }
+  .b-info { background: rgba(96,165,250,0.12); color: var(--blue); }
+
+  /* Anomali cards */
+  .anom-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 10px; }
+  .anom { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; display: flex; gap: 12px; }
+  .anom .icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700; }
+  .anom.warn .icon { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .anom.err .icon { background: rgba(244,63,94,0.15); color: var(--red); }
+  .anom .title { font-size: 13px; font-weight: 600; margin: 0 0 3px; }
+  .anom .desc { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
+
+  /* Gelir Tablosu — Excel tarzı 3 dönem yan yana */
+  .gt-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; overflow-x: auto; }
+  .gt-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .gt-table thead th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text-faint); padding: 12px 14px; text-align: center; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.02); }
+  .gt-table thead th.donem { color: var(--gold); font-size: 13px; letter-spacing: 0; padding-bottom: 4px; }
+  .gt-table thead th.sub { border-top: 1px solid rgba(255,255,255,0.02); padding-top: 6px; padding-bottom: 10px; font-size: 10.5px; }
+  .gt-table thead th.kod, .gt-table thead th.kalem { text-align: left; }
+  .gt-table tbody td { padding: 9px 14px; border-top: 1px solid rgba(255,255,255,0.03); font-size: 13px; vertical-align: middle; }
+  .gt-table tbody tr:first-child td { border-top: none; }
+  .gt-table td.kod { color: var(--text-faint); font-family: 'JetBrains Mono', monospace; font-size: 11px; width: 54px; text-align: right; }
+  .gt-table td.kalem { color: var(--text-dim); width: 42%; }
+  .gt-table td.amt { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; width: 130px; font-variant-numeric: tabular-nums; }
+  .gt-table td.pct { font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: right; width: 86px; color: var(--blue); background: rgba(96,165,250,0.06); font-weight: 600; }
+  .gt-table td.pct.empty { background: transparent; }
+  .gt-table tr.group td { background: rgba(255,255,255,0.02); }
+  .gt-table tr.group td.kalem { color: var(--text); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 12.5px; }
+  .gt-table tr.group td.amt { font-weight: 700; color: var(--text); }
+  .gt-table tr.total td { background: rgba(184,160,111,0.05); border-top: 1px solid rgba(184,160,111,0.15); border-bottom: 1px solid rgba(184,160,111,0.15); padding: 12px 14px; }
+  .gt-table tr.total td.kalem { color: var(--gold); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 12.5px; font-style: italic; }
+  .gt-table tr.total td.amt { color: var(--gold); font-weight: 700; font-size: 13.5px; }
+  .gt-table tr.total td.pct { color: var(--blue); font-weight: 700; background: rgba(96,165,250,0.12); }
+  .gt-table tr.final td { background: linear-gradient(135deg, rgba(184,160,111,0.14), rgba(184,160,111,0.06)); padding: 14px; }
+  .gt-table tr.final td.kalem { font-family: 'Fraunces', serif; font-weight: 600; font-size: 15px; color: var(--gold); text-transform: none; letter-spacing: -0.01em; }
+  .gt-table tr.final td.amt { font-family: 'Fraunces', serif; font-weight: 700; font-size: 17px; color: var(--gold); }
+  .gt-table td.neg { color: var(--red); }
+  .gt-table td.zero { color: var(--text-faint); }
+  .col-sep { width: 1px; background: var(--border); padding: 0 !important; }
+
+  /* Finansal Oranlar paneli */
+
+  .ratio-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .ratio { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: relative; overflow: hidden; }
+  .ratio .label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; line-height: 1.3; }
+  .ratio .val { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .ratio .formula { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--text-faint); margin-top: 6px; line-height: 1.4; }
+  .ratio .bar { margin-top: 10px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; }
+  .ratio .bar > div { height: 100%; border-radius: 2px; }
+  .ratio.good .val { color: var(--green); }
+  .ratio.good .bar > div { background: var(--green); }
+  .ratio.neutral .val { color: var(--gold); }
+  .ratio.neutral .bar > div { background: var(--gold); }
+  .ratio.warn .val { color: var(--amber); }
+  .ratio.warn .bar > div { background: var(--amber); }
+  .ratio.bad .val { color: var(--red); }
+  .ratio.bad .bar > div { background: var(--red); }
+  .ratio .trend { position: absolute; top: 14px; right: 16px; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; }
+  .ratio .trend.up { color: var(--green); background: rgba(34,197,94,0.1); }
+  .ratio .trend.down { color: var(--red); background: rgba(244,63,94,0.1); }
+
+  /* Bilanço */
+  .bilanco { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .bilanco-col { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .bilanco-col .col-header { display: flex; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .bilanco-col h4 { margin: 0; font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: var(--gold); letter-spacing: -0.01em; }
+  .bilanco-col .total { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bil-row { display: grid; grid-template-columns: 1fr 130px; gap: 12px; padding: 9px 18px; font-size: 13px; border-top: 1px solid rgba(255,255,255,0.02); align-items: center; }
+  .bil-row:first-child { border-top: none; }
+  .bil-row .amt { font-family: 'JetBrains Mono', monospace; text-align: right; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .bil-group { padding: 12px 18px; background: rgba(184,160,111,0.04); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--gold); }
+  .bil-sub { padding-left: 32px !important; color: var(--text-dim); }
+  .bil-sub-2 { padding-left: 48px !important; color: var(--text-muted); font-size: 12px; }
+  .bil-balance { margin-top: 18px; padding: 16px 20px; background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .bil-balance.err { background: rgba(244,63,94,0.06); border-color: rgba(244,63,94,0.2); }
+
+  /* History */
+  .history { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .history-row { display: grid; grid-template-columns: 120px 1fr 100px 140px 100px 120px; gap: 12px; align-items: center; padding: 12px 18px; border-top: 1px solid rgba(255,255,255,0.03); font-size: 13px; }
+  .history-row:first-child { border-top: none; }
+  .history-row.head { background: rgba(255,255,255,0.02); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-faint); padding: 10px 18px; }
+  .history-row .mukellef { font-weight: 600; }
+  .history-row .donem { font-family: 'JetBrains Mono', monospace; color: var(--text-dim); }
+  .history-row .amt { font-family: 'JetBrains Mono', monospace; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--gold); }
+  .history-row .actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .icon-btn { width: 28px; height: 28px; border-radius: 6px; background: rgba(184,160,111,0.08); color: var(--gold); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; border: none; font-size: 13px; }
+  .icon-btn:hover { background: rgba(184,160,111,0.16); }
+  .icon-btn.danger { background: rgba(244,63,94,0.08); color: var(--red); }
+
+  /* Hide / show tabs */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* Empty state */
+  .empty { padding: 42px 20px; text-align: center; color: var(--text-faint); }
+  .empty-icon { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 12px; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+
+  /* Utility */
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .dim { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="m">MORΞN</div>
+      <div class="b">Mali Müşavirlik</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Ana Modüller</div>
+      <div class="nav-item"><span class="ico">▦</span>Gösterge Paneli</div>
+      <div class="nav-item"><span class="ico">◌</span>Mükellefler</div>
+      <div class="nav-item"><span class="ico">◇</span>Beyannameler</div>
+      <div class="nav-item"><span class="ico">◈</span>Faturalar</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-label">Kontrol</div>
+      <div class="nav-item"><span class="ico">✓</span>KDV Kontrol</div>
+      <div class="nav-item"><span class="ico">◆</span>Fiş Yazdırma</div>
+      <div class="nav-item active"><span class="ico">≡</span>Mizan</div>
+      <div class="nav-item"><span class="ico">▲</span>Gelir Tablosu</div>
+      <div class="nav-item"><span class="ico">▩</span>Bilanço</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="date">17 Nisan 2026 Cuma</div>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="theme-pill">🎨 Tema A</span>
+        <span class="theme-pill">🔔</span>
+        <span class="theme-pill">?</span>
+      </div>
+    </div>
+
+    <!-- ANA SEKMELER -->
+    <div class="tabs">
+      <div class="tab active" data-tab="mizan">Mizan</div>
+      <div class="tab" data-tab="gelir">Gelir Tablosu</div>
+      <div class="tab" data-tab="bilanco">Bilanço</div>
+    </div>
+
+    <!-- ==================== MİZAN SAYFASI ==================== -->
+    <section class="page active" id="page-mizan">
+      <div class="tag-row"><span class="line"></span><span class="tag">📊 Kontrol</span></div>
+      <h1 class="h1">Mizan</h1>
+      <p class="sub">Luca'dan tek tuşla mizan çek, hesap kodu denetimlerini otomatik yap. Geçmiş dönemleri arşivden görüntüle.</p>
+
+      <!-- Komut barı -->
+      <div class="cmd-bar">
+        <div class="field" style="flex:2">
+          <label>👤 Mükellef</label>
+          <div class="control">YORGUN NAKLİYAT LOJİSTİK VE DEPOLAMA TİCARET LTD. ŞTİ. <span class="chev">▾</span></div>
+        </div>
+        <div class="field">
+          <label>📅 Dönem</label>
+          <input type="month" value="2026-03" />
+        </div>
+        <div class="field" style="max-width:200px">
+          <label>Tür</label>
+          <select>
+            <option>Aylık Mizan</option>
+            <option>Geçici Q1 (Oca-Mar)</option>
+            <option>Geçici Q2 (Nis-Haz)</option>
+            <option>Geçici Q3 (Tem-Eyl)</option>
+            <option>Yıllık Mizan</option>
+          </select>
+        </div>
+        <button class="btn btn-primary">⬇  Luca'dan Mizan Çek</button>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">📂 Toplam Hesap</div>
+          <div class="val">127</div>
+        </div>
+        <div class="kpi">
+          <div class="label">⚖ Toplam Borç</div>
+          <div class="val" style="color:var(--gold);">12.845.567,80</div>
+        </div>
+        <div class="kpi">
+          <div class="label">⚖ Toplam Alacak</div>
+          <div class="val" style="color:var(--gold);">12.845.567,80</div>
+        </div>
+        <div class="kpi">
+          <div class="label">⚠ Denetim Uyarısı</div>
+          <div class="val" style="color:var(--amber);">4</div>
+        </div>
+        <div class="kpi">
+          <div class="label">🕒 Son Güncelleme</div>
+          <div class="val sm" style="font-size:14px;color:var(--text-dim);font-family:Plus Jakarta Sans;">17.04.2026 06:12</div>
+        </div>
+      </div>
+
+      <!-- Hesap Kodu Denetimi -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Hesap Kodu Denetimi</h3><span class="count">4 uyarı</span>
+      </div>
+      <div class="anom-grid">
+        <div class="anom warn">
+          <div class="icon">⚠</div>
+          <div>
+            <p class="title">TDHP Dışı Hesap Kodu</p>
+            <p class="desc"><span class="code">799.99</span> — Tek Düzen Hesap Planı'nda yer almayan hesap. Aktarım hatası olabilir. <strong>Borç: 12.450,00 TL</strong></p>
+          </div>
+        </div>
+        <div class="anom warn">
+          <div class="icon">⚠</div>
+          <div>
+            <p class="title">Zıt Bakiye</p>
+            <p class="desc"><span class="code">120.01.003</span> "ALICILAR" normalde borç bakiyesi verir ama alacak bakiyesi var: <strong class="neg">3.240,50 TL</strong></p>
+          </div>
+        </div>
+        <div class="anom err">
+          <div class="icon">✗</div>
+          <div>
+            <p class="title">Net Olmayan Bakiye</p>
+            <p class="desc"><span class="code">335</span> "Personele Borçlar" hem borç (12.000) hem alacak (9.500) bakiye veriyor. Mutabakat gerekli.</p>
+          </div>
+        </div>
+        <div class="anom warn">
+          <div class="icon">⚠</div>
+          <div>
+            <p class="title">Eksik Hesap</p>
+            <p class="desc">Beklenen <span class="code">391</span> "Hesaplanan KDV" hesabı mizanda bulunamadı. Satış faturası yok mu?</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hesap Listesi -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Hesap Listesi</h3><span class="count">127 kayıt</span>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:130px">Hesap Kodu</th>
+            <th>Hesap Adı</th>
+            <th class="tnum" style="width:140px">Borç</th>
+            <th class="tnum" style="width:140px">Alacak</th>
+            <th class="tnum" style="width:140px">Borç Bakiye</th>
+            <th class="tnum" style="width:140px">Alacak Bakiye</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="code level-0">100</td><td class="level-0">KASA</td><td class="tnum">45.230,00</td><td class="tnum">38.120,50</td><td class="tnum pos">7.109,50</td><td class="tnum">—</td></tr>
+          <tr><td class="code">100.01</td><td class="level-1">TL Kasası</td><td class="tnum">45.230,00</td><td class="tnum">38.120,50</td><td class="tnum pos">7.109,50</td><td class="tnum">—</td></tr>
+          <tr><td class="code level-0">102</td><td class="level-0">BANKALAR</td><td class="tnum">678.500,00</td><td class="tnum">642.300,00</td><td class="tnum pos">36.200,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code">102.01.001</td><td class="level-2">Garanti BBVA — TL</td><td class="tnum">412.500,00</td><td class="tnum">398.450,00</td><td class="tnum pos">14.050,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code">102.01.002</td><td class="level-2">İş Bankası — TL</td><td class="tnum">266.000,00</td><td class="tnum">243.850,00</td><td class="tnum pos">22.150,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code level-0">120</td><td class="level-0">ALICILAR</td><td class="tnum">345.620,80</td><td class="tnum">289.112,30</td><td class="tnum pos">56.508,50</td><td class="tnum">—</td></tr>
+          <tr><td class="code">120.01.003</td><td class="level-2">ABC Tekstil A.Ş.</td><td class="tnum">45.000,00</td><td class="tnum">48.240,50</td><td class="tnum">—</td><td class="tnum neg">3.240,50 ⚠</td></tr>
+          <tr><td class="code level-0">191</td><td class="level-0">İNDİRİLECEK KDV</td><td class="tnum">58.420,00</td><td class="tnum">—</td><td class="tnum pos">58.420,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code level-0">600</td><td class="level-0">YURTİÇİ SATIŞLAR</td><td class="tnum">—</td><td class="tnum">824.600,00</td><td class="tnum">—</td><td class="tnum pos">824.600,00</td></tr>
+          <tr><td class="code level-0">621</td><td class="level-0">SATILAN TİCARİ MALLAR MALİYETİ</td><td class="tnum">512.300,00</td><td class="tnum">—</td><td class="tnum pos">512.300,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code level-0">632</td><td class="level-0">GENEL YÖNETİM GİDERLERİ</td><td class="tnum">78.400,00</td><td class="tnum">—</td><td class="tnum pos">78.400,00</td><td class="tnum">—</td></tr>
+          <tr><td class="code level-0">799.99</td><td class="level-0" style="color:var(--amber);">⚠ TANIMSIZ HESAP</td><td class="tnum">12.450,00</td><td class="tnum">—</td><td class="tnum neg">12.450,00</td><td class="tnum">—</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Geçmiş Mizanlar -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Geçmiş Mizanlar</h3><span class="count">12 kayıt</span>
+      </div>
+      <div class="history">
+        <div class="history-row head">
+          <div>Tarih</div><div>Mükellef</div><div>Dönem</div><div>Tür</div><div>Uyarı</div><div>İşlem</div>
+        </div>
+        <div class="history-row">
+          <div class="donem">17.04.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD. ŞTİ.</div>
+          <div class="donem">2026-03</div>
+          <div><span class="badge b-info">Aylık</span></div>
+          <div><span class="badge b-warn">4</span></div>
+          <div class="actions">
+            <button class="icon-btn" title="Görüntüle">👁</button>
+            <button class="icon-btn" title="Excel İndir">⬇</button>
+            <button class="icon-btn danger" title="Sil">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">15.03.2026</div>
+          <div class="mukellef">ÖZ ELA TURİZM TİC. LTD. ŞTİ.</div>
+          <div class="donem">2026-02</div>
+          <div><span class="badge b-info">Aylık</span></div>
+          <div><span class="badge b-ok">0</span></div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">10.03.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD. ŞTİ.</div>
+          <div class="donem">2026-Q1</div>
+          <div><span class="badge b-warn">Geçici Q1</span></div>
+          <div><span class="badge b-warn">2</span></div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== GELİR TABLOSU SAYFASI ==================== -->
+    <section class="page" id="page-gelir">
+      <div class="tag-row"><span class="line"></span><span class="tag">💰 Mali Rapor</span></div>
+      <h1 class="h1">Gelir Tablosu</h1>
+      <p class="sub">Mizan hesap kodlarından otomatik üretilen gelir tablosu. Geçici vergi beyannameleri için hazır format, geçmiş dönemler karşılaştırmalı.</p>
+
+      <!-- Komut barı -->
+      <div class="cmd-bar">
+        <div class="field" style="flex:2">
+          <label>👤 Mükellef</label>
+          <div class="control">YORGUN NAKLİYAT LOJİSTİK VE DEPOLAMA TİCARET LTD. ŞTİ. <span class="chev">▾</span></div>
+        </div>
+        <div class="field" style="max-width:230px">
+          <label>📅 Dönem</label>
+          <select>
+            <option selected>2026 Geçici Q1 (Oca–Mar)</option>
+            <option>2026 Geçici Q2 (Nis–Haz)</option>
+            <option>2026 Geçici Q3 (Tem–Eyl)</option>
+            <option>2026 Yıllık</option>
+            <option>2026 Mart Aylık</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:200px">
+          <label>Kaynak Mizan</label>
+          <div class="control">2026-03 · ✓ Hazır <span class="chev">▾</span></div>
+        </div>
+        <button class="btn btn-primary">⚡ Mizandan Oluştur</button>
+        <button class="btn btn-secondary">⬇ Excel</button>
+        <button class="btn btn-secondary">⬇ PDF</button>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">📈 Net Satışlar</div>
+          <div class="val" style="color:var(--green);">8.441.567,27</div>
+        </div>
+        <div class="kpi">
+          <div class="label">📊 Brüt Kar</div>
+          <div class="val" style="color:var(--green);">3.450.271,31</div>
+          <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Marj %40,87</div>
+        </div>
+        <div class="kpi">
+          <div class="label">💼 Faaliyet Karı</div>
+          <div class="val" style="color:var(--gold);">2.702.541,12</div>
+          <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Marj %32,01</div>
+        </div>
+        <div class="kpi">
+          <div class="label">💰 Dönem Net Karı</div>
+          <div class="val" style="color:var(--gold);">2.485.930,79</div>
+          <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Marj %29,45</div>
+        </div>
+      </div>
+
+      <!-- Gelir Tablosu Detay — Excel tarzı 3 dönem yan yana -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Gelir Tablosu · Dönemsel Karşılaştırma</h3>
+      </div>
+      <div class="gt-wrap">
+        <table class="gt-table">
+          <thead>
+            <tr>
+              <th class="kod"></th>
+              <th class="kalem"></th>
+              <th class="donem" colspan="2">2026 / 03</th>
+              <th class="col-sep"></th>
+              <th class="donem" colspan="2">2026 / 02</th>
+              <th class="col-sep"></th>
+              <th class="donem" colspan="2">2026 / 01</th>
+            </tr>
+            <tr>
+              <th class="kod">Kod</th>
+              <th class="kalem">Kalem</th>
+              <th class="sub">Cari Dönem</th>
+              <th class="sub">Oran</th>
+              <th class="col-sep"></th>
+              <th class="sub">Cari Dönem</th>
+              <th class="sub">Oran</th>
+              <th class="col-sep"></th>
+              <th class="sub">Cari Dönem</th>
+              <th class="sub">Oran</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- A. BRÜT SATIŞLAR -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">A. BRÜT SATIŞLAR</td>
+              <td class="amt">8.441.567,27</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">6.142.502,07</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">3.781.187,32</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">600</td>
+              <td class="kalem">1. Yurtiçi Satışlar</td>
+              <td class="amt">8.419.722,63</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">6.120.657,43</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">3.759.342,68</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">601</td>
+              <td class="kalem">2. Yurtdışı Satışlar</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">602</td>
+              <td class="kalem">3. Diğer Gelirler</td>
+              <td class="amt">21.844,64</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">21.844,64</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">21.844,64</td><td class="pct empty"></td>
+            </tr>
+
+            <!-- B. SATIŞ İNDİRİMLERİ -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">B. SATIŞ İNDİRİMLERİ (-)</td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">610</td>
+              <td class="kalem">1. Satıştan İadeler (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">611</td>
+              <td class="kalem">2. Satış İskontoları (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">612</td>
+              <td class="kalem">3. Diğer İndirimler (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+
+            <!-- C. NET SATIŞLAR -->
+            <tr class="total">
+              <td class="kod"></td>
+              <td class="kalem">C. NET SATIŞLAR</td>
+              <td class="amt">8.441.567,27</td><td class="pct">%100,00</td>
+              <td class="col-sep"></td>
+              <td class="amt">6.142.502,07</td><td class="pct">%100,00</td>
+              <td class="col-sep"></td>
+              <td class="amt">3.781.187,32</td><td class="pct">%100,00</td>
+            </tr>
+
+            <!-- D. SATIŞLARIN MALİYETİ -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">D. SATIŞLARIN MALİYETİ (-)</td>
+              <td class="amt">4.991.295,96</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">3.485.975,37</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">2.307.014,20</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">620</td>
+              <td class="kalem">1. Satılan Mamuller Maliyeti (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">621</td>
+              <td class="kalem">2. Satılan Ticari Mallar Maliyeti (-)</td>
+              <td class="amt">3.115.504,43</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">2.068.909,97</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">1.356.598,56</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">622</td>
+              <td class="kalem">3. Satılan Hizmet Maliyeti (-)</td>
+              <td class="amt">1.875.791,53</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">1.417.065,40</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">950.415,64</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">740</td>
+              <td class="kalem">3. Satılan Hizmet Maliyeti (7/A)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">623</td>
+              <td class="kalem">4. Diğer Satışların Maliyeti (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+
+            <!-- BRÜT SATIŞ KARI -->
+            <tr class="total">
+              <td class="kod"></td>
+              <td class="kalem">BRÜT SATIŞ KARI VEYA ZARARI</td>
+              <td class="amt">3.450.271,31</td><td class="pct">%40,87</td>
+              <td class="col-sep"></td>
+              <td class="amt">2.656.526,70</td><td class="pct">%43,25</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.474.173,12</td><td class="pct">%38,99</td>
+            </tr>
+
+            <!-- E. FAALİYET GİDERLERİ -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">E. FAALİYET GİDERLERİ (-)</td>
+              <td class="amt">747.730,19</td><td class="pct">%8,86</td>
+              <td class="col-sep"></td>
+              <td class="amt">525.228,90</td><td class="pct">%8,55</td>
+              <td class="col-sep"></td>
+              <td class="amt">332.600,32</td><td class="pct">%8,80</td>
+            </tr>
+            <tr>
+              <td class="kod">750</td>
+              <td class="kalem">1. Araştırma ve Geliştirme Giderleri (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">760</td>
+              <td class="kalem">2. Pazarlama Satış ve Dağıtım Giderleri (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">631</td>
+              <td class="kalem">2. Pazarlama Satış ve Dağıtım Giderleri (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">770</td>
+              <td class="kalem">3. Genel Yönetim Giderleri (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr>
+              <td class="kod">632</td>
+              <td class="kalem">3. Genel Yönetim Giderleri (-)</td>
+              <td class="amt">747.730,19</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">525.228,90</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">332.600,32</td><td class="pct empty"></td>
+            </tr>
+
+            <!-- FAALİYET KARI -->
+            <tr class="total">
+              <td class="kod"></td>
+              <td class="kalem">FAALİYET KARI VEYA ZARARI</td>
+              <td class="amt">2.702.541,12</td><td class="pct">%32,01</td>
+              <td class="col-sep"></td>
+              <td class="amt">2.131.297,80</td><td class="pct">%34,70</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.141.572,80</td><td class="pct">%30,19</td>
+            </tr>
+
+            <!-- F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR</td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr><td class="kod">640</td><td class="kalem">1. İştiraklerden Temettü Gelirleri</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">641</td><td class="kalem">2. Bağlı Ortaklıklardan Temettü Gelirleri</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">642</td><td class="kalem">3. Faiz Gelirleri</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">643</td><td class="kalem">4. Komisyon Gelirleri</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">644</td><td class="kalem">5. Konusu Kalmayan Karşılıklar</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">645</td><td class="kalem">6. Menkul Kıymet Satış Karları</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">646</td><td class="kalem">7. Kambiyo Karları</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">647</td><td class="kalem">8. Reeskont Faiz Gelirleri</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">648</td><td class="kalem">9. Enflasyon Düzeltmesi Karları</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">649</td><td class="kalem">10. Diğer Olağan Gelir ve Karlar</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+
+            <!-- G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)</td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr><td class="kod">653</td><td class="kalem">1. Komisyon Giderleri (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">654</td><td class="kalem">2. Karşılık Giderleri (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">655</td><td class="kalem">3. Menkul Kıymet Satış Zararları (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">656</td><td class="kalem">4. Kambiyo Zararları (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">657</td><td class="kalem">5. Reeskont Faiz Giderleri (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">658</td><td class="kalem">6. Enflasyon Düzeltmesi Zararları</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">659</td><td class="kalem">7. Diğer Olağan Gider ve Zararlar (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+
+            <!-- H. FİNANSMAN GİDERLERİ -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">H. FİNANSMAN GİDERLERİ (-)</td>
+              <td class="amt">216.608,92</td><td class="pct">%2,57</td>
+              <td class="col-sep"></td>
+              <td class="amt">167.259,67</td><td class="pct">%2,72</td>
+              <td class="col-sep"></td>
+              <td class="amt">127.260,70</td><td class="pct">%3,37</td>
+            </tr>
+            <tr><td class="kod">660</td><td class="kalem">1. Kısa Vadeli Borçlanma Giderleri (-)</td><td class="amt">216.608,92</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt">167.259,67</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt">127.260,70</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">780</td><td class="kalem">1. Kısa Vadeli Borçlanma Giderleri (7/A)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">661</td><td class="kalem">2. Uzun Vadeli Borçlanma Giderleri (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+
+            <!-- OLAĞAN KAR -->
+            <tr class="total">
+              <td class="kod"></td>
+              <td class="kalem">OLAĞAN KAR VEYA ZARAR</td>
+              <td class="amt">2.485.932,20</td><td class="pct">%29,45</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.964.038,13</td><td class="pct">%31,97</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.014.312,10</td><td class="pct">%26,83</td>
+            </tr>
+
+            <!-- I. OLAĞANDIŞI GELİR VE KARLAR -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">I. OLAĞANDIŞI GELİR VE KARLAR</td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">0,00</td><td class="pct empty"></td>
+            </tr>
+            <tr><td class="kod">671</td><td class="kalem">1. Önceki Dönem Gelir ve Karları</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">679</td><td class="kalem">2. Diğer Olağandışı Gelir ve Karlar</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+
+            <!-- J. OLAĞANDIŞI GİDER VE ZARARLAR -->
+            <tr class="group">
+              <td class="kod"></td>
+              <td class="kalem">J. OLAĞANDIŞI GİDER VE ZARARLAR (-)</td>
+              <td class="amt">1,41</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">1,27</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt">1,22</td><td class="pct empty"></td>
+            </tr>
+            <tr><td class="kod">680</td><td class="kalem">1. Çalışmayan Kısım Gider ve Zararları (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">681</td><td class="kalem">2. Önceki Dönem Gider ve Zararları (-)</td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt zero">0,00</td><td class="pct empty"></td></tr>
+            <tr><td class="kod">689</td><td class="kalem">3. Diğer Olağandışı Gider ve Zararlar (-)</td><td class="amt">1,41</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt">1,27</td><td class="pct empty"></td><td class="col-sep"></td><td class="amt">1,22</td><td class="pct empty"></td></tr>
+
+            <!-- DÖNEM KARI VEYA ZARARI -->
+            <tr class="total">
+              <td class="kod"></td>
+              <td class="kalem">DÖNEM KARI VEYA ZARARI</td>
+              <td class="amt">2.485.930,79</td><td class="pct">%29,45</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.964.036,86</td><td class="pct">%31,97</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.014.310,88</td><td class="pct">%26,83</td>
+            </tr>
+            <tr>
+              <td class="kod"></td>
+              <td class="kalem">K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)</td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+              <td class="col-sep"></td>
+              <td class="amt zero">0,00</td><td class="pct empty"></td>
+            </tr>
+
+            <!-- DÖNEM NET KARI -->
+            <tr class="final">
+              <td class="kod"></td>
+              <td class="kalem">DÖNEM NET KARI VEYA ZARARI</td>
+              <td class="amt">2.485.930,79</td><td class="pct">%29,45</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.964.036,86</td><td class="pct">%31,97</td>
+              <td class="col-sep"></td>
+              <td class="amt">1.014.310,88</td><td class="pct">%26,83</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Finansal Oranlar -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Finansal Oranlar</h3><span class="count">2026 / 03</span>
+      </div>
+      <div class="ratio-grid">
+        <div class="ratio good">
+          <span class="trend up">▲ 1,88</span>
+          <div class="label">Brüt Kar Marjı</div>
+          <div class="val">%40,87</div>
+          <div class="formula">Brüt Satış Karı / Net Satışlar</div>
+          <div class="bar"><div style="width:40.87%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend down">▼ 2,69</span>
+          <div class="label">Faaliyet Kar Marjı</div>
+          <div class="val">%32,01</div>
+          <div class="formula">Faaliyet Karı / Net Satışlar</div>
+          <div class="bar"><div style="width:32.01%"></div></div>
+        </div>
+        <div class="ratio neutral">
+          <span class="trend up">▲ 0,31</span>
+          <div class="label">Faaliyet Gider Oranı</div>
+          <div class="val">%8,86</div>
+          <div class="formula">Faaliyet Giderleri / Net Satışlar</div>
+          <div class="bar"><div style="width:8.86%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend up">▲ 0,31</span>
+          <div class="label">Genel Yönetim Gider Yoğunluğu</div>
+          <div class="val">%8,86</div>
+          <div class="formula">Hesap 632 / Net Satışlar</div>
+          <div class="bar"><div style="width:8.86%"></div></div>
+        </div>
+        <div class="ratio warn">
+          <span class="trend down">▼ 0,15</span>
+          <div class="label">Finansman Gider Oranı</div>
+          <div class="val">%2,57</div>
+          <div class="formula">Finansman Giderleri / Net Satışlar</div>
+          <div class="bar"><div style="width:25.7%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend down">▼ 2,52</span>
+          <div class="label">Olağan Kar Marjı</div>
+          <div class="val">%29,45</div>
+          <div class="formula">Olağan Kar / Net Satışlar</div>
+          <div class="bar"><div style="width:29.45%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend down">▼ 2,52</span>
+          <div class="label">Net Kar Marjı</div>
+          <div class="val">%29,45</div>
+          <div class="formula">Dönem Net Karı / Net Satışlar</div>
+          <div class="bar"><div style="width:29.45%"></div></div>
+        </div>
+        <div class="ratio neutral">
+          <span class="trend up">▲ 37,44</span>
+          <div class="label">Satış Büyümesi (MoM)</div>
+          <div class="val">%37,43</div>
+          <div class="formula">(NetSatış<sub>ŞU</sub> − NetSatış<sub>ÖC</sub>) / NetSatış<sub>ÖC</sub></div>
+          <div class="bar"><div style="width:75%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend up">▲ 26,61</span>
+          <div class="label">Net Kar Büyümesi (MoM)</div>
+          <div class="val">%26,57</div>
+          <div class="formula">(NetKar<sub>ŞU</sub> − NetKar<sub>ÖC</sub>) / NetKar<sub>ÖC</sub></div>
+          <div class="bar"><div style="width:70%"></div></div>
+        </div>
+        <div class="ratio neutral">
+          <div class="label">Maliyet / Ciro</div>
+          <div class="val">%59,13</div>
+          <div class="formula">Satışların Maliyeti / Net Satışlar</div>
+          <div class="bar"><div style="width:59.13%"></div></div>
+        </div>
+        <div class="ratio good">
+          <span class="trend up">▲ %15,4</span>
+          <div class="label">Vergi Öncesi Kar</div>
+          <div class="val">2.485.930,79</div>
+          <div class="formula">Dönem Karı (K öncesi)</div>
+        </div>
+        <div class="ratio neutral">
+          <div class="label">Efektif Vergi Oranı</div>
+          <div class="val">%0,00</div>
+          <div class="formula">Vergi Karşılığı / Dönem Karı</div>
+          <div class="bar"><div style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Geçmiş Gelir Tabloları -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Kayıtlı Gelir Tabloları</h3><span class="count">8</span>
+      </div>
+      <div class="history">
+        <div class="history-row head">
+          <div>Oluşturma</div><div>Mükellef</div><div>Dönem</div><div>Tür</div><div>Net Kar</div><div>İşlem</div>
+        </div>
+        <div class="history-row">
+          <div class="donem">17.04.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">2026 / 03</div>
+          <div><span class="badge b-info">Aylık</span></div>
+          <div class="amt">2.485.930,79</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">17.04.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">2026-Q1</div>
+          <div><span class="badge b-warn">Geçici Q1</span></div>
+          <div class="amt">5.464.277,53</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">12.01.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">2025-YIL</div>
+          <div><span class="badge b-ok">Yıllık</span></div>
+          <div class="amt">7.295.416,24</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== BİLANÇO SAYFASI ==================== -->
+    <section class="page" id="page-bilanco">
+      <div class="tag-row"><span class="line"></span><span class="tag">⚖ Mali Rapor</span></div>
+      <h1 class="h1">Bilanço</h1>
+      <p class="sub">Aktif ve Pasif hesap kalemlerini mizandan otomatik türet. Geçmiş dönemlerle karşılaştırma + PDF export.</p>
+
+      <!-- Komut barı -->
+      <div class="cmd-bar">
+        <div class="field" style="flex:2">
+          <label>👤 Mükellef</label>
+          <div class="control">YORGUN NAKLİYAT LOJİSTİK VE DEPOLAMA TİCARET LTD. ŞTİ. <span class="chev">▾</span></div>
+        </div>
+        <div class="field" style="max-width:200px">
+          <label>📅 Bilanço Tarihi</label>
+          <input type="date" value="2026-03-31" />
+        </div>
+        <div class="field" style="max-width:200px">
+          <label>Kaynak Mizan</label>
+          <div class="control">2026-03 · ✓ Hazır <span class="chev">▾</span></div>
+        </div>
+        <button class="btn btn-primary">⚡ Mizandan Oluştur</button>
+        <button class="btn btn-secondary">⬇ Excel</button>
+        <button class="btn btn-secondary">⬇ PDF</button>
+      </div>
+
+      <!-- KPI -->
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">➕ Aktif Toplam</div>
+          <div class="val" style="color:var(--gold);">1.487.320,00</div>
+        </div>
+        <div class="kpi">
+          <div class="label">➖ Pasif Toplam</div>
+          <div class="val" style="color:var(--gold);">1.487.320,00</div>
+        </div>
+        <div class="kpi">
+          <div class="label">💎 Özkaynaklar</div>
+          <div class="val" style="color:var(--green);">892.450,00</div>
+        </div>
+        <div class="kpi">
+          <div class="label">📊 Cari Oran</div>
+          <div class="val" style="color:var(--green);">2,34</div>
+          <div style="font-size:11px;color:var(--text-faint);margin-top:4px;">Dönen / KVYK</div>
+        </div>
+      </div>
+
+      <!-- Bilanço İki Sütun -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Bilanço · 31.03.2026</h3>
+      </div>
+
+      <div class="bilanco">
+        <!-- AKTİF -->
+        <div class="bilanco-col">
+          <div class="col-header">
+            <h4>AKTİF (VARLIKLAR)</h4>
+            <div class="total">1.487.320,00</div>
+          </div>
+
+          <div class="bil-group">I — DÖNEN VARLIKLAR · 897.420,50</div>
+          <div class="bil-row"><div>10 Hazır Değerler</div><div class="amt">44.309,50</div></div>
+          <div class="bil-row"><div class="bil-sub">100 Kasa</div><div class="amt">7.109,50</div></div>
+          <div class="bil-row"><div class="bil-sub">102 Bankalar</div><div class="amt">36.200,00</div></div>
+          <div class="bil-row"><div class="bil-sub">103 Verilen Çekler ve Öd. Emirleri (-)</div><div class="amt">(1.000,00)</div></div>
+          <div class="bil-row"><div>12 Ticari Alacaklar</div><div class="amt">528.680,00</div></div>
+          <div class="bil-row"><div class="bil-sub">120 Alıcılar</div><div class="amt">56.508,50</div></div>
+          <div class="bil-row"><div class="bil-sub">121 Alacak Senetleri</div><div class="amt">472.171,50</div></div>
+          <div class="bil-row"><div>15 Stoklar</div><div class="amt">266.011,00</div></div>
+          <div class="bil-row"><div class="bil-sub">153 Ticari Mallar</div><div class="amt">266.011,00</div></div>
+          <div class="bil-row"><div>19 Diğer Dönen Varlıklar</div><div class="amt">58.420,00</div></div>
+          <div class="bil-row"><div class="bil-sub">191 İndirilecek KDV</div><div class="amt">58.420,00</div></div>
+
+          <div class="bil-group">II — DURAN VARLIKLAR · 589.899,50</div>
+          <div class="bil-row"><div>25 Maddi Duran Varlıklar</div><div class="amt">589.899,50</div></div>
+          <div class="bil-row"><div class="bil-sub">252 Binalar</div><div class="amt">420.000,00</div></div>
+          <div class="bil-row"><div class="bil-sub">254 Taşıtlar</div><div class="amt">128.500,00</div></div>
+          <div class="bil-row"><div class="bil-sub">255 Demirbaşlar</div><div class="amt">78.400,00</div></div>
+          <div class="bil-row"><div class="bil-sub">257 Birikmiş Amortismanlar (-)</div><div class="amt">(37.000,50)</div></div>
+        </div>
+
+        <!-- PASİF -->
+        <div class="bilanco-col">
+          <div class="col-header">
+            <h4>PASİF (KAYNAKLAR)</h4>
+            <div class="total">1.487.320,00</div>
+          </div>
+
+          <div class="bil-group">III — KISA VADELİ YABANCI KAYNAKLAR · 383.870,00</div>
+          <div class="bil-row"><div>32 Ticari Borçlar</div><div class="amt">248.900,00</div></div>
+          <div class="bil-row"><div class="bil-sub">320 Satıcılar</div><div class="amt">198.450,00</div></div>
+          <div class="bil-row"><div class="bil-sub">321 Borç Senetleri</div><div class="amt">50.450,00</div></div>
+          <div class="bil-row"><div>33 Diğer Borçlar</div><div class="amt">21.500,00</div></div>
+          <div class="bil-row"><div class="bil-sub">335 Personele Borçlar</div><div class="amt">2.500,00</div></div>
+          <div class="bil-row"><div class="bil-sub">336 Diğer Muhtelif Borçlar</div><div class="amt">19.000,00</div></div>
+          <div class="bil-row"><div>36 Ödenecek Vergi ve Diğer Yük.</div><div class="amt">113.470,00</div></div>
+          <div class="bil-row"><div class="bil-sub">360 Ödenecek Vergi ve Fonlar</div><div class="amt">76.470,00</div></div>
+          <div class="bil-row"><div class="bil-sub">361 Ödenecek Sosyal Güvenlik</div><div class="amt">37.000,00</div></div>
+
+          <div class="bil-group">IV — UZUN VADELİ YABANCI KAYNAKLAR · 211.000,00</div>
+          <div class="bil-row"><div>40 Mali Borçlar</div><div class="amt">211.000,00</div></div>
+          <div class="bil-row"><div class="bil-sub">400 Banka Kredileri</div><div class="amt">211.000,00</div></div>
+
+          <div class="bil-group">V — ÖZKAYNAKLAR · 892.450,00</div>
+          <div class="bil-row"><div>50 Ödenmiş Sermaye</div><div class="amt">500.000,00</div></div>
+          <div class="bil-row"><div class="bil-sub">500 Sermaye</div><div class="amt">500.000,00</div></div>
+          <div class="bil-row"><div>54 Kar Yedekleri</div><div class="amt">205.330,00</div></div>
+          <div class="bil-row"><div class="bil-sub">540 Yasal Yedekler</div><div class="amt">48.230,00</div></div>
+          <div class="bil-row"><div class="bil-sub">542 Olağanüstü Yedekler</div><div class="amt">157.100,00</div></div>
+          <div class="bil-row"><div>59 Dönem Net Kar/Zararı</div><div class="amt">187.120,00</div></div>
+          <div class="bil-row"><div class="bil-sub">590 Dönem Net Karı</div><div class="amt">187.120,00</div></div>
+        </div>
+      </div>
+
+      <!-- Denklik Kontrol -->
+      <div class="bil-balance">
+        <div><strong style="color:var(--green);">✓ Bilanço Denk</strong> · Aktif Toplamı (1.487.320,00) = Pasif Toplamı (1.487.320,00)</div>
+        <div class="amt" style="color:var(--green);font-weight:700;">Fark: 0,00</div>
+      </div>
+
+      <!-- Geçmiş Karşılaştırma -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Dönemsel Karşılaştırma</h3>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Bilanço Kalemi</th>
+            <th class="tnum">31.12.2024</th>
+            <th class="tnum">31.12.2025</th>
+            <th class="tnum">31.03.2026</th>
+            <th class="tnum">Değişim (YoY)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="level-0">Dönen Varlıklar</td><td class="tnum">624.300,00</td><td class="tnum">812.500,00</td><td class="tnum">897.420,50</td><td class="tnum pos">+%10,45</td></tr>
+          <tr><td class="level-0">Duran Varlıklar</td><td class="tnum">548.200,00</td><td class="tnum">590.300,00</td><td class="tnum">589.899,50</td><td class="tnum">-%0,07</td></tr>
+          <tr><td class="level-0"><strong>Aktif Toplamı</strong></td><td class="tnum">1.172.500,00</td><td class="tnum">1.402.800,00</td><td class="tnum" style="color:var(--gold);">1.487.320,00</td><td class="tnum pos">+%6,02</td></tr>
+          <tr><td class="level-0">KV Yabancı Kaynak</td><td class="tnum">301.200,00</td><td class="tnum">362.100,00</td><td class="tnum">383.870,00</td><td class="tnum pos">+%6,01</td></tr>
+          <tr><td class="level-0">UV Yabancı Kaynak</td><td class="tnum">180.000,00</td><td class="tnum">218.700,00</td><td class="tnum">211.000,00</td><td class="tnum neg">-%3,52</td></tr>
+          <tr><td class="level-0">Özkaynaklar</td><td class="tnum">691.300,00</td><td class="tnum">822.000,00</td><td class="tnum">892.450,00</td><td class="tnum pos">+%8,57</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Geçmiş Bilançolar -->
+      <div class="section-h">
+        <span class="bar"></span><h3>Kayıtlı Bilançolar</h3><span class="count">6</span>
+      </div>
+      <div class="history">
+        <div class="history-row head">
+          <div>Tarih</div><div>Mükellef</div><div>Dönem</div><div>Aktif/Pasif</div><div>Özkaynak</div><div>İşlem</div>
+        </div>
+        <div class="history-row">
+          <div class="donem">17.04.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">31.03.2026</div>
+          <div><span class="badge b-ok">Denk</span></div>
+          <div class="amt">892.450,00</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">12.01.2026</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">31.12.2025</div>
+          <div><span class="badge b-ok">Denk</span></div>
+          <div class="amt">822.000,00</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+        <div class="history-row">
+          <div class="donem">15.10.2025</div>
+          <div class="mukellef">YORGUN NAKLİYAT LTD.</div>
+          <div class="donem">30.09.2025</div>
+          <div><span class="badge b-warn">Fark: 0,50</span></div>
+          <div class="amt">758.200,00</div>
+          <div class="actions">
+            <button class="icon-btn">👁</button>
+            <button class="icon-btn">⬇</button>
+            <button class="icon-btn danger">✕</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+  // Tab geçişi
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+      document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
+      t.classList.add('active');
+      document.getElementById('page-' + t.dataset.tab).classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Sidebar seçimi
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach((x) => x.classList.remove('active'));
+      item.classList.add('active');
+      const text = item.textContent.trim();
+      if (text === 'Mizan') document.querySelector('[data-tab=mizan]').click();
+      else if (text === 'Gelir Tablosu') document.querySelector('[data-tab=gelir]').click();
+      else if (text === 'Bilanço') document.querySelector('[data-tab=bilanco]').click();
+    });
+  });
+</script>
+</body>
+</html>

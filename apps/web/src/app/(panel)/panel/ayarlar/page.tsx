@@ -15,6 +15,7 @@ function LucaAccountSection() {
   });
 
   const [editing, setEditing] = useState(false);
+  const [uyeNo, setUyeNo] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -22,11 +23,12 @@ function LucaAccountSection() {
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
 
   const save = useMutation({
-    mutationFn: () => lucaCredentialApi.save(username, password),
+    mutationFn: () => lucaCredentialApi.save(uyeNo, username, password),
     onSuccess: () => {
       toast.success('Luca hesabı kaydedildi');
       qc.invalidateQueries({ queryKey: ['luca-credential'] });
       setEditing(false);
+      setUyeNo('');
       setUsername('');
       setPassword('');
     },
@@ -85,7 +87,20 @@ function LucaAccountSection() {
         <div className="space-y-3">
           <div>
             <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.7)' }}>
-              Luca Kullanıcı Adı
+              Üye No
+            </label>
+            <input
+              type="text"
+              value={uyeNo}
+              onChange={(e) => setUyeNo(e.target.value)}
+              placeholder="Luca üye / müşavir numaranız"
+              className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.7)' }}>
+              Kullanıcı Adı
             </label>
             <input
               type="text"
@@ -125,13 +140,13 @@ function LucaAccountSection() {
           <div className="flex gap-2">
             <button
               onClick={() => save.mutate()}
-              disabled={save.isPending || !username || !password}
+              disabled={save.isPending || !uyeNo || !username || !password}
               className="btn-primary text-sm disabled:opacity-50"
             >
               {save.isPending ? 'Kaydediliyor…' : 'Kaydet'}
             </button>
             <button
-              onClick={() => { setEditing(false); setUsername(''); setPassword(''); }}
+              onClick={() => { setEditing(false); setUyeNo(''); setUsername(''); setPassword(''); }}
               className="btn-secondary text-sm"
             >
               İptal
@@ -144,7 +159,14 @@ function LucaAccountSection() {
             <div className="flex items-center gap-2">
               <KeyRound size={15} style={{ color: '#d4b876' }} />
               <div>
-                <p className="text-sm font-medium" style={{ color: '#fafaf9' }}>{status.username}</p>
+                <p className="text-sm font-medium" style={{ color: '#fafaf9' }}>
+                  {status.username}
+                  {status.uyeNo && (
+                    <span className="text-xs ml-2 font-normal" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                      · Üye No: {status.uyeNo}
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-500">
                   {status.lastLoginAt
                     ? `Son login: ${new Date(status.lastLoginAt).toLocaleString('tr-TR')}`

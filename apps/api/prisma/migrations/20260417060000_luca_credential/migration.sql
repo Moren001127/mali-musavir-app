@@ -2,6 +2,7 @@
 CREATE TABLE "luca_credentials" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
+    "uyeNo" TEXT NOT NULL,
     "username" TEXT NOT NULL,
     "encryptedPassword" TEXT NOT NULL,
     "encryptedCookies" TEXT,

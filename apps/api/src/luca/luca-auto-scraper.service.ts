@@ -24,13 +24,17 @@ const LUCA_URLS = {
   login: 'https://web.luca.net.tr/',
   // Muavin defter ekranı — Luca tarafında keşfedilecek
   muavin: 'https://web.luca.net.tr/Muhasebe/MuavinDefter',
+  // Mizan ekranı
+  mizan: 'https://web.luca.net.tr/Muhasebe/Mizan',
 };
 
 // Luca DOM selector'ları — keşifle kesinleştirilecek
 const SELECTORS = {
-  loginUsername: 'input[name="username"], input#username, input[type="text"]:first-of-type',
-  loginPassword: 'input[name="password"], input#password, input[type="password"]',
-  loginSubmit: 'button[type="submit"], input[type="submit"], button:has-text("Giriş")',
+  // Luca login üçlü alan: Üye No + Kullanıcı Adı + Şifre
+  loginUyeNo: 'input[name="uyeNo"], input[name="musteriNo"], input#uyeNo, input[placeholder*="\u00dcye" i]',
+  loginUsername: 'input[name="kullaniciAdi"], input[name="username"], input#username, input[placeholder*="Kullan" i]',
+  loginPassword: 'input[name="sifre"], input[name="password"], input#password, input[type="password"]',
+  loginSubmit: 'button[type="submit"], input[type="submit"], button:has-text("Giri\u015f")',
   mukellefSelect: 'select[name="mukellef"], #mukellefSelect, select:has-text("Mükellef")',
   donemSelect: 'select[name="donem"], #donemSelect',
   hesapInput: 'input[name="hesap"], input[placeholder*="hesap" i]',
@@ -46,14 +50,21 @@ export class LucaAutoScraperService {
 
   // ==================== CREDENTIAL YÖNETİMİ ====================
 
-  async saveCredential(tenantId: string, username: string, password: string, updatedBy?: string) {
-    if (!username || !password) {
-      throw new BadRequestException('Kullanıcı adı ve şifre zorunlu');
+  async saveCredential(
+    tenantId: string,
+    uyeNo: string,
+    username: string,
+    password: string,
+    updatedBy?: string,
+  ) {
+    if (!uyeNo || !username || !password) {
+      throw new BadRequestException('Üye No, kullanıcı adı ve şifre zorunlu');
     }
     const encryptedPassword = encrypt(password);
     return (this.prisma as any).lucaCredential.upsert({
       where: { tenantId },
       update: {
+        uyeNo,
         username,
         encryptedPassword,
         // Yeni şifre geldiğinde cache'lenmiş cookie'leri sıfırla
@@ -64,12 +75,14 @@ export class LucaAutoScraperService {
       },
       create: {
         tenantId,
+        uyeNo,
         username,
         encryptedPassword,
         updatedBy: updatedBy || null,
       },
       select: {
         id: true,
+        uyeNo: true,
         username: true,
         isActive: true,
         lastLoginAt: true,
@@ -83,6 +96,7 @@ export class LucaAutoScraperService {
     const c = await (this.prisma as any).lucaCredential.findUnique({
       where: { tenantId },
       select: {
+        uyeNo: true,
         username: true,
         isActive: true,
         lastLoginAt: true,
@@ -96,6 +110,7 @@ export class LucaAutoScraperService {
       c.cookiesExpiresAt && new Date(c.cookiesExpiresAt) > new Date();
     return {
       connected: true,
+      uyeNo: c.uyeNo,
       username: c.username,
       isActive: c.isActive,
       lastLoginAt: c.lastLoginAt,
@@ -190,6 +205,68 @@ export class LucaAutoScraperService {
     }
   }
 
+  /**
+   * Luca mizan ekranından Excel indirir.
+   * @param donem "2026-03" (aylık) | "2026-Q1" (geçici) | "2026-YILLIK"
+   */
+  async fetchMizanExcel(params: {
+    tenantId: string;
+    donem: string;
+    donemTipi?: string;
+    mukellefAdi: string;
+  }): Promise<Buffer> {
+    const { browser, context } = await this.ensureSession(params.tenantId);
+    const page = await context.newPage();
+    try {
+      this.logger.log(`Luca mizan çekiliyor: ${params.mukellefAdi} · ${params.donem}`);
+      await page.goto(LUCA_URLS.mizan, { waitUntil: 'networkidle', timeout: 30_000 });
+
+      // Mükellef seçimi
+      await page.fill(SELECTORS.mukellefSelect, params.mukellefAdi).catch(() => {});
+
+      // Dönem: aylık için ay.yil, çeyrek için tarih aralığı
+      if (/^\d{4}-\d{2}$/.test(params.donem)) {
+        const [year, month] = params.donem.split('-');
+        await page
+          .selectOption(SELECTORS.donemSelect, { label: `${month}.${year}` })
+          .catch(() => {});
+      } else if (/^\d{4}-Q(\d)$/.test(params.donem)) {
+        // Çeyrek ay aralığı: Q1=01-03, Q2=04-06, Q3=07-09, Q4=10-12
+        const m = params.donem.match(/^(\d{4})-Q(\d)$/)!;
+        const year = m[1];
+        const q = Number(m[2]);
+        const startMonth = String((q - 1) * 3 + 1).padStart(2, '0');
+        const endMonth = String(q * 3).padStart(2, '0');
+        await page.fill('input[name="baslangic"], input#baslangic', `01.${startMonth}.${year}`).catch(() => {});
+        await page.fill('input[name="bitis"], input#bitis', `${new Date(Number(year), q * 3, 0).getDate()}.${endMonth}.${year}`).catch(() => {});
+      }
+
+      await page.click(SELECTORS.raporListele).catch(() => {});
+      await page.waitForLoadState('networkidle');
+
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 30_000 }),
+        page.click(SELECTORS.excelButton),
+      ]);
+
+      const buffer = await download.createReadStream().then((stream: any) => {
+        return new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          stream.on('data', (c: Buffer) => chunks.push(c));
+          stream.on('end', () => resolve(Buffer.concat(chunks)));
+          stream.on('error', reject);
+        });
+      });
+
+      await this.persistCookies(params.tenantId, context);
+      return buffer;
+    } finally {
+      await page.close().catch(() => {});
+      await context.close().catch(() => {});
+      await browser.close().catch(() => {});
+    }
+  }
+
   // ==================== INTERNAL ====================
 
   /**
@@ -234,11 +311,12 @@ export class LucaAutoScraperService {
       }
     }
 
-    // Yeni login ol
+    // Yeni login ol — Luca 3 alanlı: Üye No + Kullanıcı Adı + Şifre
     const password = decrypt(cred.encryptedPassword);
     const page = await context.newPage();
     try {
       await page.goto(LUCA_URLS.login, { waitUntil: 'networkidle', timeout: 30_000 });
+      await page.fill(SELECTORS.loginUyeNo, cred.uyeNo).catch(() => {});
       await page.fill(SELECTORS.loginUsername, cred.username);
       await page.fill(SELECTORS.loginPassword, password);
       await Promise.all([

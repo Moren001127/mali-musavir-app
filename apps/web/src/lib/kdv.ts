@@ -4,9 +4,9 @@ import { api } from './api';
 export const lucaCredentialApi = {
   /** Kayıtlı Luca hesabı var mı + son login durumu */
   status: () => api.get('/luca/credential').then((r) => r.data),
-  /** Username + password kaydet (backend AES-GCM ile şifreler) */
-  save: (username: string, password: string) =>
-    api.post('/luca/credential', { username, password }).then((r) => r.data),
+  /** Üye No + Kullanıcı Adı + Şifre kaydet (backend AES-GCM ile şifreler) */
+  save: (uyeNo: string, username: string, password: string) =>
+    api.post('/luca/credential', { uyeNo, username, password }).then((r) => r.data),
   /** Kayıtlı hesabı sil */
   remove: () => api.delete('/luca/credential').then((r) => r.data),
   /** Luca'ya login denemesi yap (bağlantı testi) */

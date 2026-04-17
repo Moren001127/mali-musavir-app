@@ -1,0 +1,319 @@
+/**
+ * Gelir Tablosu Servisi — mizan hesap kodlarından TDHP standart gelir
+ * tablosunu üretir.
+ *
+ * TDHP 6XX grubu (gelir tablosu):
+ *   - 600/601/602     → Brüt Satışlar
+ *   - 610/611/612     → Satış İndirimleri (-)
+ *   - 620/621/622/623 → Satışların Maliyeti (-) (7/B)
+ *   - 740             → Hizmet Üretim Maliyeti (7/A) → maliyet olarak yansır
+ *   - 631/632/633     → Faaliyet Giderleri (-) (7/B)
+ *   - 750/760/770/780 → Faaliyet Giderleri (-) (7/A)
+ *   - 640-649         → Diğer Olağan Gelir ve Karlar
+ *   - 653-659         → Diğer Olağan Gider ve Zararlar (-)
+ *   - 660/661/780     → Finansman Giderleri (-)
+ *   - 671/672/679     → Olağandışı Gelir ve Karlar
+ *   - 680/681/689     → Olağandışı Gider ve Zararlar (-)
+ *   - 690             → Dönem Kar/Zarar
+ *   - 691             → Dönem Karı Vergi Karşılığı (-)
+ *   - 692             → Dönem Net Kar/Zarar
+ */
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { MizanService } from './mizan.service';
+
+type KalemHesap = { kod: string; tutar: number; hesapAdi: string };
+
+@Injectable()
+export class GelirTablosuService {
+  private readonly logger = new Logger(GelirTablosuService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => MizanService))
+    private mizanService: MizanService,
+  ) {}
+
+  /**
+   * Mizandan gelir tablosu üret. Mizan'ın aynı dönem için mevcut gelir
+   * tablosu varsa üstüne yazılır.
+   */
+  async generateFromMizan(params: {
+    mizanId: string;
+    tenantId: string;
+    donemTipi?: string;
+    createdBy?: string;
+  }) {
+    const mizan = await (this.prisma as any).mizan.findFirst({
+      where: { id: params.mizanId, tenantId: params.tenantId },
+    });
+    if (!mizan) throw new NotFoundException('Mizan bulunamadı');
+
+    const map = await this.mizanService.getHesaplarMap(params.mizanId);
+
+    // Hesap bakiyeleri toplayıcı: alacak bakiyesi (satışlar) / borç bakiyesi (maliyet/gider)
+    // TDHP mantığı:
+    //   Gelir hesapları (6XX satışlar, 64X gelirler) → alacak bakiyesi pozitif kar getirir
+    //   Gider/maliyet hesapları (62X, 63X, 65X, 66X, 7XX) → borç bakiyesi pozitif gider getirir
+    const gelirBy = (prefixler: string[]): { toplam: number; detay: KalemHesap[] } => {
+      let toplam = 0;
+      const detay: KalemHesap[] = [];
+      for (const [kod, h] of map.entries()) {
+        if (h.seviye !== 0) continue; // sadece ana hesaplar
+        if (!prefixler.some((p) => kod.startsWith(p))) continue;
+        // Net: alacak bakiyesi - borç bakiyesi
+        const net = h.alacakBakiye - h.borcBakiye;
+        if (net !== 0) {
+          toplam += net;
+          detay.push({ kod, tutar: net, hesapAdi: h.hesapAdi });
+        }
+      }
+      return { toplam, detay };
+    };
+    const giderBy = (prefixler: string[]): { toplam: number; detay: KalemHesap[] } => {
+      let toplam = 0;
+      const detay: KalemHesap[] = [];
+      for (const [kod, h] of map.entries()) {
+        if (h.seviye !== 0) continue;
+        if (!prefixler.some((p) => kod.startsWith(p))) continue;
+        // Gider: borç bakiyesi - alacak bakiyesi
+        const net = h.borcBakiye - h.alacakBakiye;
+        if (net !== 0) {
+          toplam += net;
+          detay.push({ kod, tutar: net, hesapAdi: h.hesapAdi });
+        }
+      }
+      return { toplam, detay };
+    };
+
+    // A. Brüt Satışlar (600, 601, 602)
+    const brutSatis = gelirBy(['600', '601', '602']);
+    // B. Satış İndirimleri (610, 611, 612) — bunlar (-) hesap olmasına rağmen borç bakiyesi pozitif kaydedilir
+    const satisInd = giderBy(['610', '611', '612']);
+    // C. Net Satışlar = A - B
+    const netSatis = brutSatis.toplam - satisInd.toplam;
+    // D. Satışların Maliyeti (620, 621, 622, 623 + 740 7/A)
+    const satisMal = giderBy(['620', '621', '622', '623', '740']);
+    // Brüt Satış Karı = C - D
+    const brutKar = netSatis - satisMal.toplam;
+    // E. Faaliyet Giderleri (631, 632, 633 + 750, 760, 770)
+    const faalGid = giderBy(['631', '632', '633', '750', '760', '770']);
+    // Faaliyet Karı
+    const faalKar = brutKar - faalGid.toplam;
+    // F. Diğer Olağan Gelir (640-649)
+    const digerGelir = gelirBy(['640', '641', '642', '643', '644', '645', '646', '647', '648', '649']);
+    // G. Diğer Olağan Gider (653-659)
+    const digerGider = giderBy(['653', '654', '655', '656', '657', '658', '659']);
+    // H. Finansman Giderleri (660, 661, 780)
+    const finansman = giderBy(['660', '661', '780']);
+    // Olağan Kar
+    const olaganKar = faalKar + digerGelir.toplam - digerGider.toplam - finansman.toplam;
+    // I. Olağandışı Gelir (671, 672, 679)
+    const olDisiGelir = gelirBy(['671', '672', '679']);
+    // J. Olağandışı Gider (680, 681, 689)
+    const olDisiGider = giderBy(['680', '681', '689']);
+    // Dönem Karı
+    const donemKar = olaganKar + olDisiGelir.toplam - olDisiGider.toplam;
+    // K. Vergi Karşılığı (691)
+    const vergi = giderBy(['691']);
+    // Dönem Net Karı
+    const donemNetKar = donemKar - vergi.toplam;
+
+    const detay = {
+      brutSatis,
+      satisInd,
+      satisMal,
+      faalGid,
+      digerGelir,
+      digerGider,
+      finansman,
+      olDisiGelir,
+      olDisiGider,
+      vergi,
+    };
+
+    // Eski kaydı sil — kesin kayıtlı ise reddet
+    const existing = await (this.prisma as any).gelirTablosu.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        taxpayerId: mizan.taxpayerId,
+        mizanId: params.mizanId,
+      },
+    });
+    if (existing?.locked) {
+      throw new BadRequestException('Bu mizandan üretilmiş kesin kayıtlı gelir tablosu var. Yeniden oluşturmak için önce kilidi açın.');
+    }
+    if (existing) {
+      await (this.prisma as any).gelirTablosu.delete({ where: { id: existing.id } });
+    }
+
+    const gt = await (this.prisma as any).gelirTablosu.create({
+      data: {
+        tenantId: params.tenantId,
+        taxpayerId: mizan.taxpayerId,
+        mizanId: params.mizanId,
+        donem: mizan.donem,
+        donemTipi: params.donemTipi || mizan.donemTipi || 'GECICI_Q1',
+        brutSatislar: brutSatis.toplam,
+        satisIndirimleri: satisInd.toplam,
+        netSatislar: netSatis,
+        satisMaliyeti: satisMal.toplam,
+        brutSatisKari: brutKar,
+        faaliyetGiderleri: faalGid.toplam,
+        faaliyetKari: faalKar,
+        digerGelirler: digerGelir.toplam,
+        digerGiderler: digerGider.toplam,
+        finansmanGiderleri: finansman.toplam,
+        olaganKar: olaganKar,
+        olaganDisiGelir: olDisiGelir.toplam,
+        olaganDisiGider: olDisiGider.toplam,
+        donemKari: donemKar,
+        vergiKarsiligi: vergi.toplam,
+        donemNetKari: donemNetKar,
+        detay: detay as any,
+        createdBy: params.createdBy || null,
+      },
+    });
+
+    return gt;
+  }
+
+  async listGelirTablolari(tenantId: string, taxpayerId?: string) {
+    return (this.prisma as any).gelirTablosu.findMany({
+      where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
+      },
+      take: 100,
+    });
+  }
+
+  async getGelirTablosu(id: string, tenantId: string) {
+    const gt = await (this.prisma as any).gelirTablosu.findFirst({
+      where: { id, tenantId },
+      include: {
+        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
+        mizan: { select: { id: true, donem: true, donemTipi: true } },
+      },
+    });
+    if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    return gt;
+  }
+
+  async deleteGelirTablosu(id: string, tenantId: string) {
+    const gt = await (this.prisma as any).gelirTablosu.findFirst({ where: { id, tenantId } });
+    if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    if (gt.locked) throw new BadRequestException('Kesin kayıtlı gelir tablosu silinemez, önce kilidi açın');
+    await (this.prisma as any).gelirTablosu.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  async lockGelirTablosu(id: string, tenantId: string, userId: string, note?: string) {
+    const gt = await (this.prisma as any).gelirTablosu.findFirst({ where: { id, tenantId } });
+    if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    if (gt.locked) throw new BadRequestException('Zaten kesin kayıtlı');
+    return (this.prisma as any).gelirTablosu.update({
+      where: { id },
+      data: {
+        locked: true,
+        lockedAt: new Date(),
+        lockedBy: userId,
+        lockNote: note?.slice(0, 500) || null,
+      },
+    });
+  }
+
+  async unlockGelirTablosu(id: string, tenantId: string, userId: string, reason?: string) {
+    const gt = await (this.prisma as any).gelirTablosu.findFirst({ where: { id, tenantId } });
+    if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    if (!gt.locked) throw new BadRequestException('Zaten açık');
+    if (!reason || reason.trim().length < 5) {
+      throw new BadRequestException('Kilidi açmak için sebep belirtmelisiniz (en az 5 karakter)');
+    }
+    return (this.prisma as any).gelirTablosu.update({
+      where: { id },
+      data: {
+        locked: false,
+        lockedAt: null,
+        lockedBy: null,
+        lockNote: `Kilit açıldı (${new Date().toLocaleString('tr-TR')}): ${reason}`.slice(0, 500),
+      },
+    });
+  }
+
+  /**
+   * Manuel düzeltmeleri kaydet. Örnek: 2. dönem için mizana henüz
+   * kaydedilmemiş maliyet/gider tahmini.
+   * Format:
+   *   {
+   *     "satisMaliyeti": 150000,
+   *     "faaliyetGiderleri": 20000,
+   *     "digerGelirler": 0,
+   *     ...
+   *   }
+   */
+  async updateDuzeltmeler(
+    id: string,
+    tenantId: string,
+    duzeltmeler: Record<string, number>,
+  ) {
+    const gt = await (this.prisma as any).gelirTablosu.findFirst({ where: { id, tenantId } });
+    if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    if (gt.locked) throw new BadRequestException('Kesin kayıtlı gelir tablosunda düzeltme yapılamaz');
+
+    // Temizle: boş/sıfır/geçersiz değerleri at
+    const cleaned: Record<string, number> = {};
+    for (const [k, v] of Object.entries(duzeltmeler || {})) {
+      const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
+      if (isFinite(n) && n !== 0) cleaned[k] = n;
+    }
+
+    return (this.prisma as any).gelirTablosu.update({
+      where: { id },
+      data: { duzeltmeler: cleaned },
+    });
+  }
+
+  /** Excel export — standart gelir tablosu formatı (3 dönem yan yana hazır değil, tek dönem) */
+  async exportToExcel(id: string, tenantId: string): Promise<Buffer> {
+    const gt = await this.getGelirTablosu(id, tenantId);
+    const xlsx = await import('xlsx');
+
+    const netSatis = Number(gt.netSatislar) || 1;
+    const pct = (x: number) => (x / netSatis) * 100;
+
+    const rows: any[] = [
+      ['Kod', 'Kalem', 'Cari Dönem', 'Oran %'],
+      ['', 'A. BRÜT SATIŞLAR', Number(gt.brutSatislar), ''],
+      ['', 'B. SATIŞ İNDİRİMLERİ (-)', Number(gt.satisIndirimleri), ''],
+      ['', 'C. NET SATIŞLAR', Number(gt.netSatislar), 100],
+      ['', 'D. SATIŞLARIN MALİYETİ (-)', Number(gt.satisMaliyeti), ''],
+      ['', 'BRÜT SATIŞ KARI VEYA ZARARI', Number(gt.brutSatisKari), pct(Number(gt.brutSatisKari))],
+      ['', 'E. FAALİYET GİDERLERİ (-)', Number(gt.faaliyetGiderleri), pct(Number(gt.faaliyetGiderleri))],
+      ['', 'FAALİYET KARI VEYA ZARARI', Number(gt.faaliyetKari), pct(Number(gt.faaliyetKari))],
+      ['', 'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR', Number(gt.digerGelirler), ''],
+      ['', 'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)', Number(gt.digerGiderler), ''],
+      ['', 'H. FİNANSMAN GİDERLERİ (-)', Number(gt.finansmanGiderleri), pct(Number(gt.finansmanGiderleri))],
+      ['', 'OLAĞAN KAR VEYA ZARAR', Number(gt.olaganKar), pct(Number(gt.olaganKar))],
+      ['', 'I. OLAĞANDIŞI GELİR VE KARLAR', Number(gt.olaganDisiGelir), ''],
+      ['', 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', Number(gt.olaganDisiGider), ''],
+      ['', 'DÖNEM KARI VEYA ZARARI', Number(gt.donemKari), pct(Number(gt.donemKari))],
+      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.vergiKarsiligi), ''],
+      ['', 'DÖNEM NET KARI VEYA ZARARI', Number(gt.donemNetKari), pct(Number(gt.donemNetKari))],
+    ];
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 52 }, { wch: 18 }, { wch: 10 }];
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Gelir Tablosu');
+    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+}

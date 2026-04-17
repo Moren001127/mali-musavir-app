@@ -554,7 +554,7 @@ export default function KdvKontrolPage() {
                 { key: 'uploaded',label: 'Yüklenen Fatura', val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
                 { key: 'read',    label: 'Okunan Fatura',   val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
                 { key: 'matched', label: 'Eşleşen',         val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
-                { key: 'pending', label: 'Teyit Bekler',    val: (stats.needsOcrConfirm ?? 0) + (stats.needsReview ?? 0), color: '#f59e0b', icon: AlertTriangle },
+                { key: 'pending', label: 'OCR Teyit Bekler', val: (stats.needsOcrConfirm ?? 0) + (stats.needsReview ?? 0), color: '#f59e0b', icon: AlertTriangle },
               ].map(({ key, label, val, color, icon: Icon, showRerun }) => (
                 <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <div className="flex items-center justify-between mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
