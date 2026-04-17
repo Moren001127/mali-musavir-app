@@ -25,6 +25,11 @@ async function bootstrap() {
       /\.mihsap\.com$/,
       /\.mihsap\.com\.tr$/,
       /\.vercel\.app$/,
+      // Moren Agent bookmarklet — Luca domain'lerinden direkt API çağrısı
+      /\.luca\.com\.tr$/,
+      /\.luca\.net\.tr$/,
+      'https://luca.com.tr',
+      'https://luca.net.tr',
     ],
     credentials: true,
   });
