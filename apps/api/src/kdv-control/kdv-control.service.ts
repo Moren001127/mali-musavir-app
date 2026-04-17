@@ -530,17 +530,26 @@ export class KdvControlService {
       });
 
       const ocrResult = await this.ocrService.extractFromImage(buffer, originalName);
-      const isLow = this.ocrService.isLowConfidence(ocrResult);
+      const review = this.ocrService.needsReview(ocrResult);
+      const status = review.needs
+        ? review.reason === 'empty'
+          ? 'LOW_CONFIDENCE'
+          : 'NEEDS_REVIEW'
+        : 'SUCCESS';
 
       await this.prisma.receiptImage.update({
         where: { id: imageId },
         data: {
-          ocrStatus: isLow ? 'LOW_CONFIDENCE' : 'SUCCESS',
+          ocrStatus: status,
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
+          ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
+          ocrDateConfidence: ocrResult.fieldConfidence.date,
+          ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
+          ocrEngine: ocrResult.engine,
         },
       });
     } catch (err) {
@@ -570,17 +579,26 @@ export class KdvControlService {
       const buffer = Buffer.concat(chunks);
 
       const ocrResult = await this.ocrService.extractFromImage(buffer);
-      const isLow = this.ocrService.isLowConfidence(ocrResult);
+      const review = this.ocrService.needsReview(ocrResult);
+      const status = review.needs
+        ? review.reason === 'empty'
+          ? 'LOW_CONFIDENCE'
+          : 'NEEDS_REVIEW'
+        : 'SUCCESS';
 
       await this.prisma.receiptImage.update({
         where: { id: imageId },
         data: {
-          ocrStatus: isLow ? 'LOW_CONFIDENCE' : 'SUCCESS',
+          ocrStatus: status,
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
+          ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
+          ocrDateConfidence: ocrResult.fieldConfidence.date,
+          ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
+          ocrEngine: ocrResult.engine,
         },
       });
     } catch {
@@ -847,7 +865,11 @@ export class KdvControlService {
     results.forEach((r) => (statusMap[r.status] = r._count.status));
 
     const needsConfirm = await this.prisma.receiptImage.count({
-      where: { sessionId, ocrStatus: { in: ['LOW_CONFIDENCE', 'FAILED'] }, isManuallyConfirmed: false },
+      where: {
+        sessionId,
+        ocrStatus: { in: ['LOW_CONFIDENCE', 'NEEDS_REVIEW', 'FAILED'] },
+        isManuallyConfirmed: false,
+      },
     });
 
     return {
@@ -1154,17 +1176,26 @@ export class KdvControlService {
       // PRENSİP: Mihsap'ın ham verisine (faturaNo, faturaTarihi vb.) güvenme.
       // Tek doğru kaynak FATURA GÖRÜNTÜSÜ. Tüm alanlar görselden OCR ile okunur.
       const ocrResult = await this.ocrService.extractFromImage(buffer);
-      const isLow = this.ocrService.isLowConfidence(ocrResult);
+      const review = this.ocrService.needsReview(ocrResult);
+      const status = review.needs
+        ? review.reason === 'empty'
+          ? 'LOW_CONFIDENCE'
+          : 'NEEDS_REVIEW'
+        : 'SUCCESS';
 
       await this.prisma.receiptImage.update({
         where: { id: imageId },
         data: {
-          ocrStatus: isLow ? 'LOW_CONFIDENCE' : 'SUCCESS',
+          ocrStatus: status,
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
+          ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
+          ocrDateConfidence: ocrResult.fieldConfidence.date,
+          ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
+          ocrEngine: ocrResult.engine,
           // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
           // Kullanıcı düşük güvenli sonuçları elle teyit edebilir.
         },

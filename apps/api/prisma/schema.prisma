@@ -681,7 +681,12 @@ model ReceiptImage {
   ocrDate      String?
   ocrKdvTutari String?
   ocrRawText   String?   // Ham OCR çıktısı
-  ocrConfidence Float?   // 0-1 arası güven skoru
+  ocrConfidence Float?   // 0-1 arası genel güven skoru
+  // Alan-bazlı güven skorları (null = alan okunamadı)
+  ocrBelgeNoConfidence Float?
+  ocrDateConfidence    Float?
+  ocrKdvConfidence     Float?
+  ocrEngine    String?   // claude-haiku-4-5 | azure-vision | filename-only
   // Kullanıcı düzeltmesi
   confirmedBelgeNo   String?
   confirmedDate      String?
@@ -697,11 +702,12 @@ model ReceiptImage {
 }
 
 enum OcrStatus {
-  PENDING     // Henüz işlenmedi
-  PROCESSING  // OCR çalışıyor
-  SUCCESS     // Başarılı
-  LOW_CONFIDENCE // Düşük güven - kullanıcı onayı gerekli
-  FAILED      // Başarısız
+  PENDING         // Henüz işlenmedi
+  PROCESSING      // OCR çalışıyor
+  SUCCESS         // Tüm alanlar yüksek güvenle okundu
+  NEEDS_REVIEW    // Bir veya daha fazla alan eşik altında — kullanıcı teyidi bekler
+  LOW_CONFIDENCE  // Hiçbir alan okunamadı
+  FAILED          // OCR teknik olarak başarısız
 }
 
 // Eşleştirme sonuçları

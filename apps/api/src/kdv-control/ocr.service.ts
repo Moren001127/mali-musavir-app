@@ -8,9 +8,23 @@ export interface OcrResult {
   date: string | null;
   kdvTutari: string | null;
   totalTutari: string | null;
+  /** Genel güven skoru (geriye dönük uyumluluk) */
   confidence: number;
+  /** Alan-bazlı güven skorları (0–1). Null ise alan bulunamadı. */
+  fieldConfidence: {
+    belgeNo: number | null;
+    date: number | null;
+    kdvTutari: number | null;
+  };
   engine: string;
 }
+
+/** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
+export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
+
+/** Log için confidence'ı kısa yazı — %84 veya "—" */
+const fmtConf = (v: number | null | undefined): string =>
+  typeof v === 'number' ? `%${Math.round(v * 100)}` : '—';
 
 @Injectable()
 export class OcrService {
@@ -80,6 +94,11 @@ export class OcrService {
       kdvTutari: null,
       totalTutari: null,
       confidence: belgeNoFromFilename ? 0.3 : 0,
+      fieldConfidence: {
+        belgeNo: belgeNoFromFilename ? 0.3 : null,
+        date: null,
+        kdvTutari: null,
+      },
       engine: 'filename-only',
     };
   }
@@ -112,18 +131,25 @@ export class OcrService {
     const systemPrompt =
       'Sen Türk fatura ve fişlerinden yapısal veri çıkaran bir OCR uzmanısın. ' +
       'Görseli dikkatle incele ve şu alanları JSON olarak döndür: ' +
-      '{"tarih":"YYYY-MM-DD" veya null, "belgeNo":"...", "kdvTutari":"123,45", "toplam":"345,67", "satici":"...", "kdvOrani": 20}. ' +
+      '{"tarih":"YYYY-MM-DD" veya null, "belgeNo":"...", "kdvTutari":"123,45", "toplam":"345,67", "satici":"...", "kdvOrani": 20, ' +
+      '"confidence":{"tarih":0.95,"belgeNo":0.88,"kdvTutari":0.72}}. ' +
       'Tarih: fatura tarihi / belge tarihi / fiş tarihi. Net okunamıyorsa null. ' +
       'Belge no: fatura numarası, fiş numarası, seri-sıra no kombinasyonu. ' +
       'KDV tutarı: "KDV", "K.D.V.", "Hesaplanan KDV", "KDV Tutarı" satırındaki TUTAR. Birden fazla KDV oranı varsa TOPLAM KDV tutarı. ' +
       'Toplam: genel toplam / ödenecek tutar / fatura toplamı. ' +
       'Tutarları Türk formatında ver: "1.234,56" → "1234,56" (noktasız, virgüllü). ' +
+      'ZORUNLU: confidence objesinde her alan için 0.0–1.0 arası gerçekçi güven skoru ver. ' +
+      'Netlik kriterleri: 0.95+ = karakterler tam net, tek bir yorum var; 0.80–0.94 = okunaklı ama küçük belirsizlik; ' +
+      '0.60–0.79 = okunabiliyor ama şüphe var (bulanık, kısmen kapalı, el yazısı); ' +
+      '<0.60 = tahmine dayalı; alan yoksa veya hiç okunmuyorsa 0. ' +
+      'KDV tutarı için: birden fazla kalem topladıysan ve hepsi netse yüksek; bir kalem bile şüpheliyse düşür. ' +
       'Sadece geçerli JSON dön, açıklama yok.';
 
     const userText =
       'Bu fatura/fişin tarih, belge no, KDV tutarı, toplam ve satıcı bilgilerini JSON olarak çıkar. ' +
+      'Her alan için gerçekçi confidence skoru ver — okunamayan/şüpheli alanlara düşük skor. ' +
       'KDV tutarı KRİTİK — birden fazla kalem varsa hepsini topla. ' +
-      'Örnek: görselde "KDV %20: 456,00" yazıyorsa "kdvTutari":"456,00".';
+      'Örnek: görselde "KDV %20: 456,00" yazıyorsa "kdvTutari":"456,00", net okunuyorsa confidence 0.95.';
 
     const startMs = Date.now();
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -169,6 +195,7 @@ export class OcrService {
         kdvTutari: null,
         totalTutari: null,
         confidence: 0,
+        fieldConfidence: { belgeNo: null, date: null, kdvTutari: null },
         engine: 'claude-haiku-4-5',
       };
     }
@@ -187,12 +214,26 @@ export class OcrService {
     const kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
     const toplam = parsed.toplam ? String(parsed.toplam).replace(/\s/g, '') : null;
 
-    // Güven skoru: kaç alan doldu?
-    const foundFields = [belgeNo, date, kdvTutari].filter(Boolean).length;
-    const confidence = Math.min(0.5 + (foundFields / 3) * 0.5, 1); // Claude baseline: 0.5
+    // Claude'un verdiği alan-bazlı confidence'ı parse et
+    const cf = parsed.confidence || {};
+    const fieldConfidence = {
+      belgeNo: belgeNo ? this.clampConfidence(cf.belgeNo) : null,
+      date: date ? this.clampConfidence(cf.tarih) : null,
+      kdvTutari: kdvTutari ? this.clampConfidence(cf.kdvTutari) : null,
+    };
+
+    // Genel confidence: alan-bazlı ortalama (bulunan alanların), yoksa klasik hesap
+    const fieldScores = [fieldConfidence.belgeNo, fieldConfidence.date, fieldConfidence.kdvTutari]
+      .filter((v): v is number => typeof v === 'number');
+    const foundFields = fieldScores.length;
+    const confidence = foundFields > 0
+      ? fieldScores.reduce((a, b) => a + b, 0) / foundFields
+      : 0;
 
     this.logger.log(
-      `Claude OCR ✓ Alan:${foundFields}/3 (${belgeNo?.slice(0, 12) || '—'} · ${date || '—'} · KDV ${kdvTutari || '—'}) ${Date.now() - startMs}ms`,
+      `Claude OCR ✓ Alan:${foundFields}/3 · Conf:%${Math.round(confidence * 100)} ` +
+        `(belgeNo:${fmtConf(fieldConfidence.belgeNo)} · tarih:${fmtConf(fieldConfidence.date)} · kdv:${fmtConf(fieldConfidence.kdvTutari)}) ` +
+        `${Date.now() - startMs}ms`,
     );
 
     return {
@@ -202,8 +243,18 @@ export class OcrService {
       kdvTutari,
       totalTutari: toplam,
       confidence,
+      fieldConfidence,
       engine: 'claude-haiku-4-5',
     };
+  }
+
+  /** Claude'dan gelen confidence değerini 0–1 aralığına sıkıştır (geçersizse 0.5) */
+  private clampConfidence(v: any): number {
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    if (!Number.isFinite(n)) return 0.5; // Claude vermemişse nötr baseline
+    if (n < 0) return 0;
+    if (n > 1) return n > 1 && n <= 100 ? n / 100 : 1; // bazen yüzde verirse düzelt
+    return n;
   }
 
   /** "2026-03-08" → "08.03.2026" */
@@ -214,10 +265,31 @@ export class OcrService {
     return `${m[3]}.${m[2]}.${m[1]}`;
   }
 
+  /**
+   * Geriye dönük uyumluluk — hiçbir alan okunmadıysa "low" kabul edilir.
+   * Bu fonksiyon sadece "hiç okuyamadık" durumunu yakalar.
+   * Review gerekip gerekmediği için `needsReview` kullan.
+   */
   isLowConfidence(result: OcrResult): boolean {
     if (result.belgeNo) return false;
     if (result.date) return false;
     return true;
+  }
+
+  /**
+   * Kullanıcı teyidi gerekip gerekmediğini belirler:
+   *  - Hiç alan okunmadıysa  → true (LOW_CONFIDENCE)
+   *  - Herhangi bir alan FIELD_CONFIDENCE_THRESHOLD altındaysa → true (NEEDS_REVIEW)
+   *  - Aksi halde → false (SUCCESS)
+   */
+  needsReview(result: OcrResult): { needs: boolean; reason: 'none' | 'empty' | 'low_field' } {
+    if (this.isLowConfidence(result)) return { needs: true, reason: 'empty' };
+    const { belgeNo, date, kdvTutari } = result.fieldConfidence;
+    const scores = [belgeNo, date, kdvTutari].filter((v): v is number => typeof v === 'number');
+    if (scores.some((s) => s < FIELD_CONFIDENCE_THRESHOLD)) {
+      return { needs: true, reason: 'low_field' };
+    }
+    return { needs: false, reason: 'none' };
   }
 
   // === AZURE VISION OCR ===
@@ -272,6 +344,15 @@ export class OcrService {
       `Azure OCR [${belgeNoFromFilename || 'unknown'}] Alan:${foundFields}/3 Conf:%${Math.round(confidence * 100)}`
     );
 
+    // Azure baseline: regex eşleşmeleri için orta güven (0.6)
+    // Filename fallback belgeNo için daha düşük (0.4)
+    const azureBaseline = 0.6;
+    const fieldConfidence = {
+      belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.4 : azureBaseline) : null,
+      date: date ? azureBaseline : null,
+      kdvTutari: kdv ? azureBaseline : null,
+    };
+
     return {
       rawText: fullText.slice(0, 3000),
       belgeNo,
@@ -279,6 +360,7 @@ export class OcrService {
       kdvTutari: kdv,
       totalTutari: toplam,
       confidence,
+      fieldConfidence,
       engine: 'azure-vision',
     };
   }

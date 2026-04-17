@@ -10,6 +10,7 @@ import {
   ImageIcon, ScanLine, ChevronDown, X, Sparkles, Download, Trash2, Archive,
   ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap, Upload,
 } from 'lucide-react';
+import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
 
 const GOLD = '#d4b876';
 
@@ -160,7 +161,11 @@ export default function KdvKontrolPage() {
   const pendingOcrCount = images.filter((i: any) => i.ocrStatus === 'PENDING').length;
   /** OCR'ı başarıyla tamamlanmış (veya teyit edilmiş) fatura sayısı */
   const readCount = images.filter(
-    (i: any) => i.ocrStatus === 'SUCCESS' || i.ocrStatus === 'LOW_CONFIDENCE' || i.isManuallyConfirmed,
+    (i: any) =>
+      i.ocrStatus === 'SUCCESS' ||
+      i.ocrStatus === 'NEEDS_REVIEW' ||
+      i.ocrStatus === 'LOW_CONFIDENCE' ||
+      i.isManuallyConfirmed,
   ).length;
   const hasRecords = (stats?.totalRecords ?? 0) > 0;
   const hasImages = (stats?.totalImages ?? 0) > 0;
@@ -656,6 +661,11 @@ export default function KdvKontrolPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* OCR TEYİT PANELİ — düşük güvenli alanlar için kullanıcı incelemesi */}
+      {activeSession?.id && (
+        <OcrReviewPanel sessionId={activeSession.id} images={images as any} />
       )}
 
       {/* CANLI KONTROL AKIŞI — her zaman görünür */}
