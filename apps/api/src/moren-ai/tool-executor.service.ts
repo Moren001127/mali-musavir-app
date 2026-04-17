@@ -586,10 +586,8 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   private async comparePeriods(input: any, ctx: { tenantId: string }) {
     const kaynak = input.kaynak;
-    const [d1, d2] = await Promise.all([
-      this.fetchPeriodData(kaynak, input.taxpayerId, input.donem1, ctx),
-      this.fetchPeriodData(kaynak, input.taxpayerId, input.donem2, ctx),
-    ]);
+    const d1: any = await this.fetchPeriodData(kaynak, input.taxpayerId, input.donem1, ctx);
+    const d2: any = await this.fetchPeriodData(kaynak, input.taxpayerId, input.donem2, ctx);
 
     if (d1?.error || d2?.error) {
       return { error: d1?.error || d2?.error };
@@ -630,19 +628,21 @@ export class ToolExecutorService {
   // FİNANSAL RASYOLAR
   // ------------------------------------------------------------
   private async calculateFinancialRatios(input: any, ctx: { tenantId: string }) {
-    const [b, gt] = await Promise.all([
-      this.getBilanco(input, ctx),
-      this.getGelirTablosu(input, ctx),
-    ]);
+    const bResult: any = await this.getBilanco(input, ctx);
+    const gtResult: any = await this.getGelirTablosu(input, ctx);
 
-    if (b?.error && gt?.error) {
+    const bOk = !bResult?.error;
+    const gtOk = !gtResult?.error;
+
+    if (!bOk && !gtOk) {
       return { error: 'Bu dönem için ne bilanço ne gelir tablosu bulundu' };
     }
 
     const ratios: any = {};
     const notes: string[] = [];
 
-    if (!b?.error) {
+    if (bOk) {
+      const b: any = bResult;
       const dv = b.aktif.donenVarliklar;
       const kv = b.pasif.kvYabanciKaynak;
       const at = b.aktif.aktifToplami;
@@ -663,18 +663,18 @@ export class ToolExecutorService {
       }
     }
 
-    if (!gt?.error) {
-      const k = gt.kalemler;
+    if (gtOk) {
+      const k: any = gtResult.kalemler;
       if (k.netSatislar > 0) {
         ratios.brutKarMarji = { deger: k.brutSatisKari / k.netSatislar, formul: 'Brüt Satış Kârı / Net Satışlar' };
         ratios.faaliyetKarMarji = { deger: k.faaliyetKari / k.netSatislar, formul: 'Faaliyet Kârı / Net Satışlar' };
         ratios.netKarMarji = { deger: k.donemNetKari / k.netSatislar, formul: 'Dönem Net Kârı / Net Satışlar' };
       }
-      if (!b?.error && b.pasif.ozkaynaklar > 0) {
-        ratios.roe = { deger: k.donemNetKari / b.pasif.ozkaynaklar, formul: 'Dönem Net Kârı / Özkaynak (ROE)' };
+      if (bOk && (bResult as any).pasif.ozkaynaklar > 0) {
+        ratios.roe = { deger: k.donemNetKari / (bResult as any).pasif.ozkaynaklar, formul: 'Dönem Net Kârı / Özkaynak (ROE)' };
       }
-      if (!b?.error && b.aktif.aktifToplami > 0) {
-        ratios.roa = { deger: k.donemNetKari / b.aktif.aktifToplami, formul: 'Dönem Net Kârı / Aktif Toplamı (ROA)' };
+      if (bOk && (bResult as any).aktif.aktifToplami > 0) {
+        ratios.roa = { deger: k.donemNetKari / (bResult as any).aktif.aktifToplami, formul: 'Dönem Net Kârı / Aktif Toplamı (ROA)' };
       }
     }
 

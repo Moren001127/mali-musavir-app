@@ -177,6 +177,13 @@ export default function KdvKontrolPage() {
 
   const sessionId: string | undefined = activeSession?.id;
 
+  // Seans değişince canlı akış buffer'ını sıfırla — önceki seansın event'leri yeni seansa
+  // sızmasın (aksi halde "Eşleşti: 126" gibi kümülatif sayıları görürsün).
+  useEffect(() => {
+    setFeed([]);
+    seenResultIdsRef.current.clear();
+  }, [sessionId]);
+
   const { data: stats } = useQuery<any>({
     queryKey: ['kdv-stats', sessionId],
     queryFn: () => kdvApi.getStats(sessionId!),

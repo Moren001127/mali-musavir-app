@@ -105,7 +105,7 @@ export class MorenAiService {
     if (!userMessage) throw new BadRequestException('Mesaj boş olamaz');
 
     // Konuşmayı getir ya da oluştur
-    let conversation = body.conversationId
+    let conversation: any = body.conversationId
       ? await this.prisma.aiConversation.findFirst({
           where: { id: body.conversationId, tenantId },
           include: { messages: { orderBy: { createdAt: 'asc' } } },
@@ -247,22 +247,23 @@ export class MorenAiService {
     });
 
     // Assistant mesajını kaydet
-    await this.prisma.aiMessage.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'assistant',
-        content: finalText || '(Cevap boş)',
-        toolCalls: toolUsesLog.length > 0 ? (toolUsesLog.map((t) => ({ name: t.name, input: t.input })) as any) : null,
-        toolResults: toolUsesLog.length > 0 ? (toolUsesLog as any) : null,
-        inputTokens: totalInput,
-        outputTokens: totalOutput,
-        cacheReadTokens: totalCacheR,
-        cacheWriteTokens: totalCacheW,
-        costUsd,
-        model,
-        durationMs,
-      },
-    });
+    const aiMessageData: any = {
+      conversationId: conversation.id,
+      role: 'assistant',
+      content: finalText || '(Cevap boş)',
+      inputTokens: totalInput,
+      outputTokens: totalOutput,
+      cacheReadTokens: totalCacheR,
+      cacheWriteTokens: totalCacheW,
+      costUsd,
+      model,
+      durationMs,
+    };
+    if (toolUsesLog.length > 0) {
+      aiMessageData.toolCalls = toolUsesLog.map((t) => ({ name: t.name, input: t.input }));
+      aiMessageData.toolResults = toolUsesLog;
+    }
+    await this.prisma.aiMessage.create({ data: aiMessageData });
 
     // Konuşma totalini güncelle
     await this.prisma.aiConversation.update({
