@@ -23,12 +23,19 @@ type PwBrowser = any;
 type PwContext = any;
 type PwPage = any;
 
+// Luca gerçek URL'leri — env var ile override edilebilir.
+// Ana giriş: SSO sayfası. Muavin/Mizan login sonrası Luca web paneli içinden
+// keşfedilecek (muhtemelen `https://luca.com.tr/...` altında dinamik path).
 const LUCA_URLS = {
-  login: 'https://web.luca.net.tr/',
-  // Muavin defter ekranı — Luca tarafında keşfedilecek
-  muavin: 'https://web.luca.net.tr/Muhasebe/MuavinDefter',
-  // Mizan ekranı
-  mizan: 'https://web.luca.net.tr/Muhasebe/Mizan',
+  login:
+    process.env.LUCA_LOGIN_URL ||
+    'https://agiris.luca.com.tr/LUCASSO/giris.erp',
+  muavin:
+    process.env.LUCA_MUAVIN_URL ||
+    'https://agiris.luca.com.tr/LUCASSO/giris.erp', // placeholder — login sonrası gerçek URL kullanılır
+  mizan:
+    process.env.LUCA_MIZAN_URL ||
+    'https://agiris.luca.com.tr/LUCASSO/giris.erp',
 };
 
 // Luca DOM selector'ları — keşifle kesinleştirilecek
