@@ -148,6 +148,186 @@ export class KdvControlService {
   }
 
   /**
+   * Excel'i preview eder — sütun başlıkları + örnek satırlar döner.
+   * Kullanıcı mapping modalında hangi sütun hangi alan olduğunu seçecek.
+   */
+  async previewExcel(
+    sessionId: string,
+    tenantId: string,
+    buffer: Buffer,
+  ): Promise<{
+    sheetName: string;
+    sheetNames: string[];
+    columns: string[];
+    rowCount: number;
+    sampleRows: Record<string, any>[];
+    suggestedMapping: { tarihCol?: string; belgeNoCol?: string; kdvCol?: string };
+  }> {
+    await this.findSession(sessionId, tenantId);
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      throw new BadRequestException('Excel dosyası okunamadı — boş veya bozuk');
+    }
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet, {
+      raw: false,
+      defval: null,
+    });
+    if (rows.length === 0) {
+      throw new BadRequestException('Excel\'de veri satırı yok');
+    }
+    // Sütun başlıklarını ilk satırdan al + normalize et
+    const firstRow = rows[0];
+    const columns = Object.keys(firstRow).map((k) =>
+      k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim(),
+    );
+    // Keyword tabanlı otomatik önermesi
+    const lower = columns.map((c) => c.toLowerCase());
+    const findBy = (patterns: string[]): string | undefined => {
+      for (const p of patterns) {
+        const idx = lower.findIndex((c) => c === p.toLowerCase());
+        if (idx >= 0) return columns[idx];
+      }
+      for (const p of patterns) {
+        const idx = lower.findIndex((c) => c.includes(p.toLowerCase()));
+        if (idx >= 0) return columns[idx];
+      }
+      return undefined;
+    };
+    const suggestedMapping = {
+      tarihCol: findBy(['evrak tarihi', 'tarih', 'belge tarihi', 'fiş tarihi']),
+      belgeNoCol: findBy(['evrak no', 'belge no', 'fatura no', 'fiş no', 'belge numarası']),
+      kdvCol: findBy(['kdv tutarı', 'kdv', 'borç', 'alacak', 'hesaplanan kdv']),
+    };
+    // İlk 10 satırı örnek olarak döndür
+    const sampleRows = rows.slice(0, 10).map((row) => {
+      const clean: Record<string, any> = {};
+      for (const [k, v] of Object.entries(row)) {
+        const ck = k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        clean[ck] = v;
+      }
+      return clean;
+    });
+    return {
+      sheetName,
+      sheetNames: workbook.SheetNames,
+      columns,
+      rowCount: rows.length,
+      sampleRows,
+      suggestedMapping,
+    };
+  }
+
+  /**
+   * Kullanıcının belirttiği sütun mapping'i ile Excel import eder.
+   * tarihCol / belgeNoCol / kdvCol — her birisi Excel'deki sütun başlığı adı.
+   */
+  async importExcelWithMapping(
+    sessionId: string,
+    tenantId: string,
+    buffer: Buffer,
+    mapping: {
+      tarihCol: string;
+      belgeNoCol: string;
+      kdvCol: string;
+      sheetName?: string;
+    },
+  ): Promise<{ imported: number; skipped: number }> {
+    await this.findSession(sessionId, tenantId);
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = mapping.sheetName || workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      throw new BadRequestException(`Sheet bulunamadı: ${sheetName}`);
+    }
+    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, {
+      raw: false,
+      defval: null,
+    });
+
+    // Sütun başlıklarını normalize edip orijinal key'le eşle
+    const normalize = (s: string) => s.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const findKeyInRow = (row: Record<string, any>, target: string): string | null => {
+      const t = normalize(target).toLowerCase();
+      for (const k of Object.keys(row)) {
+        if (normalize(k).toLowerCase() === t) return k;
+      }
+      return null;
+    };
+
+    // Mevcut kayıtları temizle
+    await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
+
+    const parsed: Array<{
+      rowIndex: number;
+      belgeNo: string | null;
+      belgeDate: Date | null;
+      kdvTutari: number;
+      rawData: any;
+    }> = [];
+    let skipped = 0;
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const tarihKey = findKeyInRow(row, mapping.tarihCol);
+      const belgeKey = findKeyInRow(row, mapping.belgeNoCol);
+      const kdvKey = findKeyInRow(row, mapping.kdvCol);
+
+      const rawKdv = kdvKey ? row[kdvKey] : null;
+      const kdvTutari = this.excelParser.toDecimal(rawKdv);
+      if (kdvTutari === null || kdvTutari === 0) {
+        skipped++;
+        continue;
+      }
+
+      const rawBelgeNo = belgeKey ? row[belgeKey] : null;
+      const belgeNo = rawBelgeNo ? String(rawBelgeNo).trim() : null;
+
+      const rawDate = tarihKey ? row[tarihKey] : null;
+      const belgeDate = this.excelParser.parseDate(rawDate);
+
+      parsed.push({
+        rowIndex: i + 2, // +2: header + 1-based
+        belgeNo,
+        belgeDate,
+        kdvTutari,
+        rawData: row,
+      });
+    }
+
+    if (parsed.length === 0) {
+      throw new BadRequestException(
+        'Seçilen sütunlardan hiç geçerli KDV satırı okunamadı. Sütun seçimlerini kontrol edin.',
+      );
+    }
+
+    await this.prisma.kdvRecord.createMany({
+      data: parsed.map((r) => ({
+        sessionId,
+        rowIndex: r.rowIndex,
+        belgeNo: r.belgeNo,
+        belgeDate: r.belgeDate,
+        karsiTaraf: null,
+        kdvMatrahi: null,
+        kdvTutari: r.kdvTutari,
+        kdvOrani: null,
+        aciklama: null,
+        rawData: r.rawData,
+      })),
+    });
+
+    await this.prisma.kdvControlSession.update({
+      where: { id: sessionId },
+      data: { status: 'PROCESSING' },
+    });
+
+    return { imported: parsed.length, skipped };
+  }
+
+  /**
    * Excel dosyasını yükle ve parse et.
    * Multipart/form-data yerine buffer + meta alır.
    */

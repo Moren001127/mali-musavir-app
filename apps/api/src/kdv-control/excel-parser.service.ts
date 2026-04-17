@@ -250,7 +250,7 @@ export class ExcelParserService {
     return out;
   }
 
-  private toDecimal(val: any): number | null {
+  toDecimal(val: any): number | null {
     if (val === null || val === undefined || val === '') return null;
     const str = String(val)
       .replace(/\./g, '')
@@ -260,7 +260,7 @@ export class ExcelParserService {
     return isNaN(num) ? null : Math.abs(num);
   }
 
-  private parseDate(val: any): Date | null {
+  parseDate(val: any): Date | null {
     if (!val) return null;
     if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
 

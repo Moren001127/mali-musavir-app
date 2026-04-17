@@ -108,6 +108,50 @@ export const kdvApi = {
   importFromLuca: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/import-from-luca`).then((r) => r.data),
 
+  /** Excel dosyasını preview et — sütun başlıkları + örnek satırlar döner. */
+  previewExcel: (sessionId: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api
+      .post(`/kdv-control/sessions/${sessionId}/excel-preview`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(
+        (r) =>
+          r.data as {
+            sheetName: string;
+            sheetNames: string[];
+            columns: string[];
+            rowCount: number;
+            sampleRows: Record<string, any>[];
+            suggestedMapping: {
+              tarihCol?: string;
+              belgeNoCol?: string;
+              kdvCol?: string;
+            };
+          },
+      );
+  },
+
+  /** Seçilen sütun mapping'i ile Excel import et. */
+  importExcelMapped: (
+    sessionId: string,
+    file: File,
+    mapping: { tarihCol: string; belgeNoCol: string; kdvCol: string; sheetName?: string },
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('tarihCol', mapping.tarihCol);
+    fd.append('belgeNoCol', mapping.belgeNoCol);
+    fd.append('kdvCol', mapping.kdvCol);
+    if (mapping.sheetName) fd.append('sheetName', mapping.sheetName);
+    return api
+      .post(`/kdv-control/sessions/${sessionId}/excel-import-mapped`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data as { imported: number; skipped: number });
+  },
+
   /** Portal veritabanında kayıtlı (daha önce Mihsap'tan çekilmiş) faturaları
    *  bu kontrol oturumuna görsel olarak bağlar. Mihsap'a yeniden gitmez. */
   linkMihsapInvoices: (sessionId: string) =>

@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import {
   Play, Calendar, Users, Search, CheckCircle2, Loader2, Clock, FileSpreadsheet,
   ImageIcon, ScanLine, ChevronDown, X, Sparkles, Download, Trash2, Archive,
-  ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap,
+  ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap, Upload,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -192,26 +192,82 @@ export default function KdvKontrolPage() {
     run();
   };
 
-  const runLuca = useMutation({
-    mutationFn: async () => {
-      // Session'ı daima güncel periodLabel/taxpayer/tip ile çek — cache stale olmasın
-      const s = await ensureSession.mutateAsync();
-      pushFeed({ group: 'luca', kind: 'info', title: 'Luca çekim işi oluşturuluyor…', detail: `${TYPE_LABEL[type]} · ${periodLabel}` });
-      return kdvApi.importFromLuca(s.id);
-    },
-    onSuccess: () => {
+  // === EXCEL UPLOAD + KOLON MAPPING ===
+  const excelFileInputRef = useRef<HTMLInputElement>(null);
+  const [mappingModal, setMappingModal] = useState<null | {
+    file: File;
+    preview: {
+      sheetName: string;
+      sheetNames: string[];
+      columns: string[];
+      rowCount: number;
+      sampleRows: Record<string, any>[];
+      suggestedMapping: {
+        tarihCol?: string;
+        belgeNoCol?: string;
+        kdvCol?: string;
+      };
+    };
+    tarihCol: string;
+    belgeNoCol: string;
+    kdvCol: string;
+  }>(null);
+  const [mappingSubmitting, setMappingSubmitting] = useState(false);
+
+  const openExcelPicker = () => excelFileInputRef.current?.click();
+
+  const handleExcelSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // aynı dosyayı tekrar seçebilmek için
+    if (!file) return;
+    const s = await ensureSession.mutateAsync();
+    pushFeed({ group: 'luca', kind: 'info', title: 'Excel yükleniyor…', detail: file.name });
+    try {
+      const preview = await kdvApi.previewExcel(s.id, file);
+      setMappingModal({
+        file,
+        preview,
+        tarihCol: preview.suggestedMapping.tarihCol || '',
+        belgeNoCol: preview.suggestedMapping.belgeNoCol || '',
+        kdvCol: preview.suggestedMapping.kdvCol || '',
+      });
+      pushFeed({ group: 'luca', kind: 'info', title: 'Sütunlar tespit edildi', detail: `${preview.columns.length} sütun · ${preview.rowCount} satır` });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Excel okunamadı';
+      pushFeed({ group: 'luca', kind: 'err', title: 'Excel preview hatası', detail: msg });
+      toast.error(msg);
+    }
+  };
+
+  const submitMapping = async () => {
+    if (!mappingModal || !sessionId) return;
+    if (!mappingModal.tarihCol || !mappingModal.belgeNoCol || !mappingModal.kdvCol) {
+      toast.error('Üç sütunu da seç');
+      return;
+    }
+    setMappingSubmitting(true);
+    try {
+      const r = await kdvApi.importExcelMapped(sessionId, mappingModal.file, {
+        tarihCol: mappingModal.tarihCol,
+        belgeNoCol: mappingModal.belgeNoCol,
+        kdvCol: mappingModal.kdvCol,
+        sheetName: mappingModal.preview.sheetName,
+      });
       clearFeedErrorsInGroup('luca');
-      pushFeed({ group: 'luca', kind: 'ok', title: 'Luca çekim işi oluşturuldu', detail: 'Luca sekmesinde açık runner bu işi alacak' });
-      toast.success('Luca çekim işi oluşturuldu');
+      pushFeed({ group: 'luca', kind: 'ok', title: `${r.imported} satır yüklendi`, detail: r.skipped > 0 ? `${r.skipped} satır atlandı (KDV boş/0)` : undefined });
+      toast.success(`${r.imported} satır yüklendi`);
+      setMappingModal(null);
       qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
       qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
-    },
-    onError: (e: any) => {
-      const msg = e?.response?.data?.message || e?.message || 'Luca çekim başlatılamadı';
-      pushFeed({ group: 'luca', kind: 'err', title: 'Luca çekim hatası', detail: msg });
+      qc.invalidateQueries({ queryKey: ['kdv-records', sessionId] });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Import hatası';
       toast.error(msg);
-    },
-  });
+      pushFeed({ group: 'luca', kind: 'err', title: 'Import hatası', detail: msg });
+    } finally {
+      setMappingSubmitting(false);
+    }
+  };
 
   /**
    * Faturaları Çek → linkMihsapInvoices, ardından otomatik OCR başlat.
@@ -482,13 +538,20 @@ export default function KdvKontrolPage() {
         {/* AKSİYON BUTONLARI (3 adım — OCR otomatik) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           <ActionBtn
-            icon={FileSpreadsheet}
-            label="Luca'dan Veri Çek"
-            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Luca muavin dosyası'}
+            icon={Upload}
+            label="Luca Excel Yükle"
+            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Muavin defter .xlsx'}
             color="#2563eb"
             done={hasRecords}
-            onClick={() => requireMukellef(() => runLuca.mutate())}
-            loading={runLuca.isPending || ensureSession.isPending}
+            onClick={() => requireMukellef(openExcelPicker)}
+            loading={ensureSession.isPending}
+          />
+          <input
+            ref={excelFileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            style={{ display: 'none' }}
+            onChange={handleExcelSelected}
           />
           <ActionBtn
             icon={ImageIcon}
@@ -850,6 +913,138 @@ export default function KdvKontrolPage() {
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === EXCEL KOLON MAPPING MODALI === */}
+      {mappingModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        >
+          <div
+            className="w-full max-w-4xl rounded-2xl p-6 relative max-h-[92vh] overflow-y-auto"
+            style={{ background: '#1a1a19', border: '1px solid rgba(212,184,118,0.25)' }}
+          >
+            <button
+              onClick={() => !mappingSubmitting && setMappingModal(null)}
+              className="absolute top-3 right-3 text-gray-500 hover:text-gray-300"
+              aria-label="Kapat"
+            >
+              <X size={18} />
+            </button>
+            <h3 className="text-lg font-semibold mb-1" style={{ color: GOLD }}>
+              Excel Sütun Eşleştirme
+            </h3>
+            <p className="text-xs text-gray-400 mb-4">
+              <strong>{mappingModal.file.name}</strong> · {mappingModal.preview.rowCount} satır · {mappingModal.preview.columns.length} sütun
+              {mappingModal.preview.sheetNames.length > 1 && ` · Sheet: ${mappingModal.preview.sheetName}`}
+            </p>
+
+            {/* 3 sütun seçici */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+              {([
+                ['tarihCol', 'TARİH sütunu', 'Evrak/belge tarihi'],
+                ['belgeNoCol', 'EVRAK NO sütunu', 'Fatura/fiş numarası'],
+                ['kdvCol', 'KDV sütunu', 'KDV tutarı (borç/alacak)'],
+              ] as const).map(([key, label, hint]) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.75)' }}>
+                    {label}
+                  </label>
+                  <select
+                    value={mappingModal[key]}
+                    onChange={(e) => setMappingModal({ ...mappingModal, [key]: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      borderColor: 'rgba(255,255,255,0.12)',
+                      color: '#fafaf9',
+                    }}
+                  >
+                    <option value="">— sütun seç —</option>
+                    {mappingModal.preview.columns.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-gray-500 mt-1">{hint}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Örnek satırlar */}
+            <div className="mb-5">
+              <p className="text-xs font-semibold mb-2" style={{ color: GOLD }}>
+                Örnek Satırlar (ilk {Math.min(mappingModal.preview.sampleRows.length, 5)})
+              </p>
+              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
+                      {mappingModal.preview.columns.map((c) => {
+                        const highlight =
+                          c === mappingModal.tarihCol
+                            ? { bg: 'rgba(59,130,246,0.12)', tag: 'TARİH' }
+                            : c === mappingModal.belgeNoCol
+                              ? { bg: 'rgba(168,85,247,0.12)', tag: 'EVRAK NO' }
+                              : c === mappingModal.kdvCol
+                                ? { bg: 'rgba(212,184,118,0.12)', tag: 'KDV' }
+                                : null;
+                        return (
+                          <th
+                            key={c}
+                            className="px-2 py-1.5 text-left font-semibold whitespace-nowrap"
+                            style={{
+                              color: highlight ? GOLD : 'rgba(250,250,249,0.6)',
+                              background: highlight?.bg,
+                              borderBottom: '1px solid rgba(255,255,255,0.08)',
+                            }}
+                          >
+                            {highlight && <span className="mr-1 text-[9px] px-1 rounded" style={{ background: GOLD, color: '#1a1a19' }}>{highlight.tag}</span>}
+                            {c}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mappingModal.preview.sampleRows.slice(0, 5).map((row, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        {mappingModal.preview.columns.map((c) => (
+                          <td key={c} className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.75)' }}>
+                            {row[c] != null ? String(row[c]).slice(0, 30) : <span style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setMappingModal(null)}
+                disabled={mappingSubmitting}
+                className="btn-secondary text-sm"
+              >
+                İptal
+              </button>
+              <button
+                onClick={submitMapping}
+                disabled={
+                  mappingSubmitting ||
+                  !mappingModal.tarihCol ||
+                  !mappingModal.belgeNoCol ||
+                  !mappingModal.kdvCol
+                }
+                className="btn-primary text-sm flex items-center gap-1.5"
+              >
+                {mappingSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Yükle ve Kaydet
+              </button>
             </div>
           </div>
         </div>

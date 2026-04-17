@@ -84,6 +84,59 @@ export class KdvControlController {
     return this.kdvService.uploadExcel(id, req.user.tenantId, file.buffer);
   }
 
+  /**
+   * Excel dosyasını preview eder — sütun başlıkları + ilk 10 satır döner.
+   * Kullanıcı bu bilgiyle TARİH / EVRAK NO / KDV sütunlarını eşleştirir,
+   * sonra /excel-import-mapped endpoint'iyle gerçek import yapılır.
+   */
+  @Post('sessions/:id/excel-preview')
+  @Roles('ADMIN', 'STAFF')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  previewExcel(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Dosya gerekli');
+    return this.kdvService.previewExcel(id, req.user.tenantId, file.buffer);
+  }
+
+  /**
+   * Kullanıcının seçtiği sütun mapping'i ile Excel'i import eder.
+   * Body: { tarihCol, belgeNoCol, kdvCol, sheetName? } — her birisi sütun index'i veya başlık adı.
+   * File: multipart `file` alanı.
+   */
+  @Post('sessions/:id/excel-import-mapped')
+  @Roles('ADMIN', 'STAFF')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  importExcelMapped(
+    @Req() req: any,
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: {
+      tarihCol: string;
+      belgeNoCol: string;
+      kdvCol: string;
+      sheetName?: string;
+    },
+  ) {
+    if (!file) throw new BadRequestException('Dosya gerekli');
+    if (!body?.tarihCol || !body?.belgeNoCol || !body?.kdvCol) {
+      throw new BadRequestException('tarihCol, belgeNoCol, kdvCol zorunlu');
+    }
+    return this.kdvService.importExcelWithMapping(
+      id,
+      req.user.tenantId,
+      file.buffer,
+      {
+        tarihCol: body.tarihCol,
+        belgeNoCol: body.belgeNoCol,
+        kdvCol: body.kdvCol,
+        sheetName: body.sheetName,
+      },
+    );
+  }
+
   @Get('sessions/:id/records')
   getRecords(@Req() req: any, @Param('id') id: string) {
     return this.kdvService.getKdvRecords(id, req.user.tenantId);
