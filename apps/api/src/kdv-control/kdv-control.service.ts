@@ -306,6 +306,8 @@ export class KdvControlService {
       belgeNo: string | null;
       belgeDate: Date | null;
       kdvTutari: number;
+      karsiTaraf: string | null;
+      hesapKodu: string | null;
       rawData: any;
     }> = [];
     let skipped = 0;
@@ -384,11 +386,11 @@ export class KdvControlService {
         rowIndex: r.rowIndex,
         belgeNo: r.belgeNo,
         belgeDate: r.belgeDate,
-        karsiTaraf: null,
+        karsiTaraf: r.karsiTaraf,
         kdvMatrahi: null,
         kdvTutari: r.kdvTutari,
         kdvOrani: null,
-        aciklama: null,
+        aciklama: r.hesapKodu,
         rawData: r.rawData,
       })),
     });
