@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
-  Scale, TrendingUp, Table2,
+  Scale, TrendingUp, Table2, MessageSquare,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -18,6 +18,7 @@ const navGroups = [
     icon: Sparkles,
     items: [
       { href: '/panel',             label: 'Gösterge Paneli',  icon: LayoutDashboard },
+      { href: '/panel/moren-ai',    label: 'Moren AI',          icon: MessageSquare },
       { href: '/panel/mukellefler', label: 'Mükellefler',       icon: Users },
       { href: '/panel/beyannameler',label: 'Beyannameler',      icon: FileText },
       { href: '/panel/faturalar',   label: 'Faturalar',         icon: Receipt },

@@ -1237,3 +1237,58 @@ model SmsTemplate {
 
   @@map("sms_templates")
 }
+
+// ============================================================
+// MOREN AI — Mali Müşavir AI Asistanı
+// ============================================================
+// Her konuşma (thread), tenant başına izole.
+model AiConversation {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?  // Konuşmayı başlatan kullanıcı
+  title      String   @default("Yeni Konuşma")
+  // Konuşmanın odaklandığı mükellef (varsa) — tool çağrıları bunu default alır
+  taxpayerId String?
+  // İstatistik — kümüle token/maliyet
+  totalInputTokens     Int    @default(0)
+  totalOutputTokens    Int    @default(0)
+  totalCacheReadTokens Int    @default(0)
+  totalCostUsd         Float  @default(0)
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  messages   AiMessage[]
+
+  @@index([tenantId, updatedAt])
+  @@index([tenantId, taxpayerId])
+  @@map("ai_conversations")
+}
+
+// Konuşma içindeki her mesaj — user/assistant/tool roller
+model AiMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String   // "user" | "assistant" | "tool"
+  // Ham metin (markdown destekli). Sesli mesajlarda transcript burada.
+  content        String   @db.Text
+  // Tool-use mesajlarında: hangi tool, hangi input, hangi output (JSON)
+  toolCalls      Json?    // [{ id, name, input }]
+  toolResults    Json?    // [{ toolUseId, content }]
+  // Sesli giriş/çıkış için
+  audioKey       String?  // Storage key (opsiyonel, uzun saklama)
+  // Token maliyeti (assistant mesajları için)
+  inputTokens    Int?
+  outputTokens  Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+  costUsd       Float?
+  model         String?  // "claude-sonnet-4-5"
+  durationMs    Int?
+  createdAt     DateTime @default(now())
+
+  conversation  AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("ai_messages")
+}
