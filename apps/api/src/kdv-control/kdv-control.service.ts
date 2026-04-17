@@ -569,6 +569,12 @@ export class KdvControlService {
         data: { ocrStatus: 'PROCESSING' },
       });
 
+      // Original name'i DB'den çek ki filename fallback çalışsın
+      const imgRec = await this.prisma.receiptImage.findUnique({
+        where: { id: imageId },
+        select: { originalName: true },
+      });
+
       // S3'ten görseli indir
       const { GetObjectCommand } = await import('@aws-sdk/client-s3');
       const s3 = (this.storage as any).s3;
@@ -578,7 +584,7 @@ export class KdvControlService {
       for await (const chunk of res.Body as any) chunks.push(chunk);
       const buffer = Buffer.concat(chunks);
 
-      const ocrResult = await this.ocrService.extractFromImage(buffer);
+      const ocrResult = await this.ocrService.extractFromImage(buffer, imgRec?.originalName);
       const review = this.ocrService.needsReview(ocrResult);
       const status = review.needs
         ? review.reason === 'empty'
@@ -619,12 +625,32 @@ export class KdvControlService {
     });
   }
 
-  /** Görsel indirme URL'i */
+  /** Görsel indirme URL'i
+   *  — `mihsap://<invoiceId>` deseninde s3Key ise, Faturalar sayfasındaki
+   *  "Aç" butonunun kullandığı Mihsap CDN link'i döndürülür (auth'suz açılır).
+   *  — Değilse klasik S3 presigned URL.
+   */
   async getImageDownloadUrl(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
+
+    // Mihsap kaynaklı görsel → CDN link
+    if (image.s3Key?.startsWith('mihsap://')) {
+      const invoiceId = image.s3Key.slice('mihsap://'.length);
+      const inv = await (this.prisma as any).mihsapInvoice.findUnique({
+        where: { id: invoiceId },
+      });
+      if (!inv || inv.tenantId !== tenantId) {
+        throw new NotFoundException('Mihsap faturası bulunamadı');
+      }
+      if (!inv.mihsapFileLink) {
+        throw new BadRequestException('Mihsap CDN link boş — fatura henüz çekilmemiş');
+      }
+      return { url: inv.mihsapFileLink as string };
+    }
+
     const url = await this.storage.getPresignedDownloadUrl(
       image.s3Key,
       image.originalName,
@@ -1108,12 +1134,30 @@ export class KdvControlService {
   async startOcrForSession(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
 
+    // PENDING + önceki denemelerde başarısız olanlar (LOW_CONFIDENCE, FAILED).
+    // NEEDS_REVIEW olanlara dokunmayız — kullanıcı teyit sırasında; değerler
+    // zaten doldurulmuş durumda.
     const pending = await this.prisma.receiptImage.findMany({
-      where: { sessionId, ocrStatus: 'PENDING' },
+      where: {
+        sessionId,
+        ocrStatus: { in: ['PENDING', 'LOW_CONFIDENCE', 'FAILED'] },
+        isManuallyConfirmed: false,
+      },
     });
 
     if (pending.length === 0) {
       return { queued: 0, message: 'Bekleyen görsel yok' };
+    }
+
+    // Failed/LOW_CONFIDENCE olanları PENDING'e çek (tekrar denenecek)
+    const toReset = pending
+      .filter((p) => p.ocrStatus !== 'PENDING')
+      .map((p) => p.id);
+    if (toReset.length > 0) {
+      await this.prisma.receiptImage.updateMany({
+        where: { id: { in: toReset } },
+        data: { ocrStatus: 'PENDING' },
+      });
     }
 
     let queued = 0;
@@ -1166,16 +1210,22 @@ export class KdvControlService {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0',
-          Accept: 'image/*',
+          Accept: 'image/*,application/pdf,application/xml,*/*',
           Referer: 'https://app.mihsap.com/',
         },
+        redirect: 'follow',
       });
       if (!res.ok) throw new Error(`Mihsap CDN ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
       const buffer = Buffer.from(await res.arrayBuffer());
+      this.logger.log(
+        `Mihsap OCR [${imageId}] CDN: ${res.status} · ${contentType} · ${buffer.byteLength}B · ${inv.faturaNo || inv.id}`,
+      );
 
       // PRENSİP: Mihsap'ın ham verisine (faturaNo, faturaTarihi vb.) güvenme.
       // Tek doğru kaynak FATURA GÖRÜNTÜSÜ. Tüm alanlar görselden OCR ile okunur.
-      const ocrResult = await this.ocrService.extractFromImage(buffer);
+      const filenameHint = `${inv.faturaNo || inv.id}.${(inv.orjDosyaTuru || 'jpg').toLowerCase()}`;
+      const ocrResult = await this.ocrService.extractFromImage(buffer, filenameHint);
       const review = this.ocrService.needsReview(ocrResult);
       const status = review.needs
         ? review.reason === 'empty'

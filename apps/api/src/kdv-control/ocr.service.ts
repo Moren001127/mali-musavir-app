@@ -63,17 +63,24 @@ export class OcrService {
    */
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
+    const hasClaudeKey = !!process.env.ANTHROPIC_API_KEY;
+    this.logger.log(
+      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'}`,
+    );
 
     // 1. Tercih: Claude Haiku 4.5 Vision (eğer API key varsa)
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (hasClaudeKey) {
       try {
         const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
         if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
           return claudeResult;
         }
+        this.logger.warn(
+          `Claude boş döndü: ${originalName || '—'} · raw:${claudeResult.rawText?.slice(0, 120)}`,
+        );
         // Claude boş döndü → Azure fallback
       } catch (e: any) {
-        this.logger.warn(`Claude Vision hatası, Azure'a geçiliyor: ${e?.message}`);
+        this.logger.warn(`Claude Vision hatası (${originalName || '—'}): ${e?.message}`);
       }
     }
 
