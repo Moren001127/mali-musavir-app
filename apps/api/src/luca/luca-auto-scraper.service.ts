@@ -14,6 +14,8 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encrypt, decrypt, tryDecrypt } from '../common/crypto';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
 
 // Dinamik import — Playwright kurulu değilse servis başlatılabilsin
 type PwBrowser = any;
@@ -278,18 +280,40 @@ export class LucaAutoScraperService {
     if (!cred) throw new BadRequestException('Luca hesabı kaydedilmemiş');
     if (!cred.isActive) throw new BadRequestException('Luca hesabı devre dışı');
 
-    // Playwright'ı yükle — webpack externalization bypass:
-    // eval('require') native Node require'ı çağırır, main.js lokasyonuna göre resolve eder
+    // Playwright'ı yükle — createRequire ile native Node require
+    // (webpack-node-externals dynamic import'u bundle ederken require'ı kaybediyor;
+    //  createRequire(path) ile bilinen bir path'ten yeni bir native require oluşturuyoruz)
     let chromium: any;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const nativeRequire: NodeRequire = (0, eval)('require');
-      const pw = nativeRequire('playwright-core');
-      chromium = pw.chromium;
-      this.logger.log(`[LUCA] playwright-core yüklendi: ${nativeRequire.resolve('playwright-core')}`);
+      // __filename webpack bundle'da dist/main.js path'ini verir.
+      // Yoksa olası konumları dene.
+      const candidatePaths = [
+        typeof __filename !== 'undefined' ? __filename : null,
+        path.join(process.cwd(), 'dist', 'main.js'),
+        path.join(process.cwd(), 'package.json'),
+        '/app/apps/api/dist/main.js',
+        '/app/apps/api/package.json',
+      ].filter(Boolean) as string[];
+
+      let lastError: any;
+      let resolvedVia: string | null = null;
+      for (const p of candidatePaths) {
+        try {
+          const nativeRequire = createRequire(p);
+          const pw = nativeRequire('playwright-core');
+          chromium = pw.chromium;
+          resolvedVia = `${p} → ${nativeRequire.resolve('playwright-core')}`;
+          break;
+        } catch (e: any) {
+          lastError = e;
+        }
+      }
+
+      if (!chromium) throw lastError || new Error('playwright-core hiçbir yoldan yüklenemedi');
+      this.logger.log(`[LUCA] playwright-core yüklendi · ${resolvedVia}`);
     } catch (e: any) {
       this.logger.error(`[LUCA] playwright-core yüklenemedi: ${e?.message}`);
-      this.logger.error(`[LUCA] __dirname: ${__dirname} · cwd: ${process.cwd()} · NODE_PATH: ${process.env.NODE_PATH || '-'}`);
+      this.logger.error(`[LUCA] __dirname: ${typeof __dirname !== 'undefined' ? __dirname : '?'} · cwd: ${process.cwd()} · NODE_PATH: ${process.env.NODE_PATH || '-'}`);
       throw new Error(
         `Playwright yüklenemedi: ${e?.message}. ` +
         `Bu hata Railway image'inde playwright-core node_modules'ta olmadığını gösterir.`,
