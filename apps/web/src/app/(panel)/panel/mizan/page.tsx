@@ -25,13 +25,20 @@ function taxpayerName(t: Taxpayer): string {
 }
 
 const DONEM_TIPLERI = [
-  { value: 'AYLIK', label: 'Aylık' },
-  { value: 'GECICI_Q1', label: 'Geçici Q1 (Oca-Mar)' },
-  { value: 'GECICI_Q2', label: 'Geçici Q2 (Nis-Haz)' },
-  { value: 'GECICI_Q3', label: 'Geçici Q3 (Tem-Eyl)' },
-  { value: 'GECICI_Q4', label: 'Geçici Q4 (Eki-Ara)' },
-  { value: 'YILLIK', label: 'Yıllık' },
+  { value: 'AYLIK',     label: 'Aylık' },
+  { value: 'GECICI_Q1', label: '1. Dönem (Ocak – Mart)' },
+  { value: 'GECICI_Q2', label: '2. Dönem (Nisan – Haziran)' },
+  { value: 'GECICI_Q3', label: '3. Dönem (Temmuz – Eylül)' },
+  { value: 'GECICI_Q4', label: '4. Dönem (Ekim – Aralık)' },
+  { value: 'YILLIK',    label: 'Yıllık' },
 ] as const;
+
+const AYLAR = [
+  { v: '01', l: 'Ocak' }, { v: '02', l: 'Şubat' }, { v: '03', l: 'Mart' },
+  { v: '04', l: 'Nisan' }, { v: '05', l: 'Mayıs' }, { v: '06', l: 'Haziran' },
+  { v: '07', l: 'Temmuz' }, { v: '08', l: 'Ağustos' }, { v: '09', l: 'Eylül' },
+  { v: '10', l: 'Ekim' }, { v: '11', l: 'Kasım' }, { v: '12', l: 'Aralık' },
+];
 
 export default function MizanPage() {
   const qc = useQueryClient();
@@ -40,7 +47,8 @@ export default function MizanPage() {
 
   const now = new Date();
   const [taxpayerId, setTaxpayerId] = useState('');
-  const [ay, setAy] = useState(() => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [donemTipi, setDonemTipi] = useState<any>('AYLIK');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -60,7 +68,7 @@ export default function MizanPage() {
 
   // Aktif: URL'deki id varsa onu getir, yoksa en son import
   const effectiveId = viewId ||
-    mizanList.find((m) => m.taxpayerId === taxpayerId && m.donem === toDonem(ay, donemTipi))?.id ||
+    mizanList.find((m) => m.taxpayerId === taxpayerId && m.donem === toDonem(year, month, donemTipi))?.id ||
     (mizanList[0]?.id ?? null);
 
   const { data: mizan } = useQuery<any>({
@@ -73,7 +81,7 @@ export default function MizanPage() {
     mutationFn: () =>
       mizanApi.importFromLuca({
         taxpayerId,
-        donem: toDonem(ay, donemTipi),
+        donem: toDonem(year, month, donemTipi),
         donemTipi,
       }),
     onSuccess: (d: any) => {
@@ -177,32 +185,53 @@ export default function MizanPage() {
 
           <div>
             <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Calendar size={11} className="inline mr-1" /> Dönem
-            </label>
-            <input
-              type="month"
-              value={ay}
-              onChange={(e) => setAy(e.target.value)}
-              className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 170 }}
-            />
-          </div>
-
-          <div>
-            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
               Tür
             </label>
             <select
               value={donemTipi}
               onChange={(e) => setDonemTipi(e.target.value)}
               className="px-3 py-2.5 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 220 }}
             >
               {DONEM_TIPLERI.map((t) => (
                 <option key={t.value} value={t.value} style={{ background: '#0f0d0b' }}>{t.label}</option>
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              <Calendar size={11} className="inline mr-1" /> Yıl
+            </label>
+            <select
+              value={year}
+              onChange={(e) => setYear(parseInt(e.target.value))}
+              className="px-3 py-2.5 rounded-lg text-sm border outline-none"
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 110 }}
+            >
+              {Array.from({ length: 6 }, (_, i) => now.getFullYear() + 1 - i).map((y) => (
+                <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
+              ))}
+            </select>
+          </div>
+
+          {donemTipi === 'AYLIK' && (
+            <div>
+              <label className="text-[11px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                Ay
+              </label>
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="px-3 py-2.5 rounded-lg text-sm border outline-none"
+                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 140 }}
+              >
+                {AYLAR.map((a) => (
+                  <option key={a.v} value={a.v} style={{ background: '#0f0d0b' }}>{a.l}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button
             onClick={() => {
@@ -470,12 +499,12 @@ function Kpi({ label, val, color, small, icon: Icon }: { label: string; val: str
   );
 }
 
-function toDonem(ay: string, donemTipi: string): string {
-  if (donemTipi === 'AYLIK') return ay; // "2026-03"
-  if (donemTipi === 'YILLIK') return `${ay.slice(0, 4)}-YILLIK`;
+function toDonem(year: number, month: string, donemTipi: string): string {
+  if (donemTipi === 'AYLIK') return `${year}-${month}`; // "2026-03"
+  if (donemTipi === 'YILLIK') return `${year}-YILLIK`;
   if (donemTipi.startsWith('GECICI_Q')) {
     const q = donemTipi.slice(-1);
-    return `${ay.slice(0, 4)}-Q${q}`;
+    return `${year}-Q${q}`;
   }
-  return ay;
+  return `${year}-${month}`;
 }
