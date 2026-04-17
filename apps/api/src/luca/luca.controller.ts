@@ -35,7 +35,29 @@ export class LucaController {
     private readonly prisma: PrismaService,
   ) {}
 
-  // ==================== LUCA CREDENTIAL (AUTO SCRAPER) ====================
+  // ==================== AGENT TOKEN (BOOKMARKLET KURULUMU) ====================
+
+  /**
+   * Mevcut tenant'ın Moren Agent token'ı — bookmarklet kurulumu için.
+   * Basit: tenant.slug (resolveTenantFromAgentToken bunu kabul eder).
+   */
+  @Get('agent/me/token')
+  @UseGuards(AuthGuard('jwt'))
+  async getAgentToken(@Req() req: any) {
+    const tenant = await (this.prisma as any).tenant.findUnique({
+      where: { id: req.user.tenantId },
+      select: { slug: true, name: true },
+    });
+    return {
+      token: tenant?.slug || req.user.tenantId,
+      tenantName: tenant?.name || null,
+    };
+  }
+
+  // ==================== LUCA CREDENTIAL (DEPRECATED - PLAYWRIGHT) ====================
+  // Aşağıdaki endpoint'ler Railway Playwright yoluyla login denemek için yazıldı;
+  // Luca cloud IP'lerini bloklayınca artık kullanılmıyor. Dormant bırakılıyor
+  // (ileride proxy ile yeniden aktive edilebilir).
 
   /** Luca hesap bilgisinin kayıtlı olup olmadığını döndür */
   @Get('luca/credential')

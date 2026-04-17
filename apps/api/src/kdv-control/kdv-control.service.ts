@@ -707,32 +707,10 @@ export class KdvControlService {
 
     const donem = this.toDashDonem(session.periodLabel);
 
-    // 1. ÖNCELİK: Portala kaydedilmiş Luca hesabı varsa → direkt Playwright scrape
-    const credStatus = await this.lucaAutoScraper.getCredentialStatus(tenantId);
-    if (credStatus.connected && credStatus.isActive) {
-      // Async çalıştır — kullanıcıyı bekletmeyelim
-      this.runAutoScrapeBackground(sessionId, tenantId, {
-        tip: session.type,
-        donem,
-        mukellefAdi,
-        createdBy: userId,
-      }).catch((e) => this.logger.error(`Auto scrape arka plan hata: ${e?.message}`));
-
-      await this.prisma.kdvControlSession.update({
-        where: { id: sessionId },
-        data: { status: 'PROCESSING' },
-      });
-      return { status: 'auto-scraping', method: 'playwright' };
-    }
-
-    // 2. FALLBACK: Bookmarklet akışı (Luca sekmesi + moren-agent.js)
-    const lucaSession = await this.luca.getSession(tenantId);
-    if (!lucaSession) {
-      throw new BadRequestException(
-        'Luca hesabı kayıtlı değil. Ayarlar → Luca Hesabı\'ndan kullanıcı adı/şifre girin, ya da Luca sayfasını açıp Moren Agent bookmarklet\'ini çalıştırın.',
-      );
-    }
-
+    // Luca Moren Agent (bookmarklet) akışı — Railway cloud IP'leri Luca tarafından
+    // bloklandığı için backend Playwright yolu kullanılamıyor. Bunun yerine
+    // kullanıcının tarayıcısındaki Luca sekmesinde çalışan bookmarklet iş
+    // yapacak: job queue'lanır, sonraki polling turunda agent alıp indirir.
     const job = await this.luca.createFetchJob({
       tenantId,
       sessionId,
@@ -747,12 +725,17 @@ export class KdvControlService {
       data: { status: 'PROCESSING' },
     });
 
-    return { jobId: job.id, status: 'queued', method: 'bookmarklet' };
+    return {
+      jobId: job.id,
+      status: 'queued',
+      method: 'bookmarklet',
+      message: 'Luca sekmesini açıp Moren Agent bookmarklet\'ine tıkla — agent job\'u alıp Excel\'i indirecek',
+    };
   }
 
   /**
-   * Arka planda Playwright ile Luca'ya login olup Excel'i indirir ve
-   * parse eder. `queueLucaImport`'tan fire-and-forget olarak çağrılır.
+   * DEPRECATED: Arka planda Playwright ile Luca'ya login olup Excel'i indirir.
+   * Railway IP'leri Luca tarafından bloklandığı için artık kullanılmıyor.
    */
   private async runAutoScrapeBackground(
     sessionId: string,

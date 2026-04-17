@@ -4,374 +4,199 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { lucaCredentialApi, LucaLoginResult } from '@/lib/kdv';
-import { CheckCircle2, XCircle, Loader2, KeyRound, Eye, EyeOff, Trash2, RefreshCw, X } from 'lucide-react';
+import { Loader2, Copy, Check, ExternalLink } from 'lucide-react';
 
-function LucaAccountSection() {
-  const qc = useQueryClient();
-  const { data: status, isLoading } = useQuery({
-    queryKey: ['luca-credential'],
-    queryFn: () => lucaCredentialApi.status(),
+/**
+ * Moren Agent = tarayıcıda çalışan bookmarklet.
+ *
+ * Kullanıcı bu bookmarklet'i tarayıcı sık kullanılanlarına ekler, Luca veya
+ * Mihsap sekmesindeyken tıklar, agent sayfada aktif olur ve portalın
+ * queue'ladığı işleri (muavin/mizan Excel indirme, fatura sınıflandırma)
+ * tarayıcı üzerinden yürütür.
+ *
+ * Neden bu yol? Railway cloud IP'leri Luca tarafından bloklandığı için
+ * backend Playwright yolu çalışmıyor. Kullanıcının tarayıcısı zaten Luca'da
+ * giriş yapmış durumda — o oturumu kullanıyoruz.
+ */
+function MorenAgentSection() {
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedBookmarklet, setCopiedBookmarklet] = useState(false);
+
+  const { data: info, isLoading } = useQuery({
+    queryKey: ['agent-me-token'],
+    queryFn: () =>
+      api.get('/agent/me/token').then(
+        (r) => r.data as { token: string; tenantName: string | null },
+      ),
   });
 
-  const [editing, setEditing] = useState(false);
-  const [uyeNo, setUyeNo] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  // Portal'ın üzerinde çalıştığı origin — bookmarklet script'ini buradan çeker
+  const portalOrigin =
+    typeof window !== 'undefined' ? window.location.origin : '';
+  const scriptUrl = `${portalOrigin}/moren-agent.js`;
 
-  // CAPTCHA relay state
-  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
-  const [captchaText, setCaptchaText] = useState('');
-  const [captchaSubmitting, setCaptchaSubmitting] = useState(false);
-  const [captchaError, setCaptchaError] = useState<string | null>(null);
+  const bookmarkletCode =
+    `javascript:(function(){if(window.__morenAgent)return alert('Moren Agent zaten açık');` +
+    `var s=document.createElement('script');` +
+    `s.src='${scriptUrl}?v='+Date.now();` +
+    `document.head.appendChild(s);})();`;
 
-  const save = useMutation({
-    mutationFn: () => lucaCredentialApi.save(uyeNo, username, password),
-    onSuccess: () => {
-      toast.success('Luca hesabı kaydedildi');
-      qc.invalidateQueries({ queryKey: ['luca-credential'] });
-      setEditing(false);
-      setUyeNo('');
-      setUsername('');
-      setPassword('');
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kayıt hatası'),
-  });
-
-  const remove = useMutation({
-    mutationFn: () => lucaCredentialApi.remove(),
-    onSuccess: () => {
-      toast.success('Luca hesabı silindi');
-      qc.invalidateQueries({ queryKey: ['luca-credential'] });
-      setTestResult(null);
-    },
-  });
-
-  const handleLoginResult = (r: LucaLoginResult) => {
-    if (r.ok) {
-      setTestResult({ ok: true });
-      setCaptchaImage(null);
-      setCaptchaText('');
-      setCaptchaError(null);
-      toast.success('Luca\'ya login başarılı — oturum açıldı');
-      qc.invalidateQueries({ queryKey: ['luca-credential'] });
-      return;
-    }
-    if (r.needsCaptcha && r.captchaImage) {
-      setCaptchaImage(r.captchaImage);
-      setCaptchaText('');
-      setCaptchaError(r.error || null); // önceki CAPTCHA yanlışsa hata göster
-      setTestResult(null);
-      return;
-    }
-    // Hata
-    setTestResult({ ok: false, error: r.error });
-    setCaptchaImage(null);
-    toast.error(r.error || 'Login başarısız');
-    qc.invalidateQueries({ queryKey: ['luca-credential'] });
-  };
-
-  const runTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    setCaptchaImage(null);
-    setCaptchaError(null);
+  const copy = async (text: string, which: 'token' | 'bookmarklet') => {
     try {
-      const r = await lucaCredentialApi.test();
-      handleLoginResult(r);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Bağlantı testi yapılamadı');
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const submitCaptcha = async () => {
-    if (!captchaText.trim()) {
-      setCaptchaError('CAPTCHA kodunu girin');
-      return;
-    }
-    setCaptchaSubmitting(true);
-    setCaptchaError(null);
-    try {
-      const r = await lucaCredentialApi.submitCaptcha(captchaText.trim());
-      handleLoginResult(r);
-    } catch (e: any) {
-      setCaptchaError(e?.response?.data?.message || 'CAPTCHA gönderilemedi');
-    } finally {
-      setCaptchaSubmitting(false);
-    }
-  };
-
-  const cancelCaptcha = async () => {
-    try {
-      await lucaCredentialApi.cancel();
-    } catch { /* ignore */ }
-    setCaptchaImage(null);
-    setCaptchaText('');
-    setCaptchaError(null);
-  };
-
-  const refreshCaptcha = async () => {
-    // Yeni CAPTCHA almak için login'i yeniden başlat
-    setCaptchaSubmitting(true);
-    try {
-      await lucaCredentialApi.cancel().catch(() => {});
-      const r = await lucaCredentialApi.test();
-      handleLoginResult(r);
-    } finally {
-      setCaptchaSubmitting(false);
+      await navigator.clipboard.writeText(text);
+      if (which === 'token') {
+        setCopiedToken(true);
+        setTimeout(() => setCopiedToken(false), 1500);
+      } else {
+        setCopiedBookmarklet(true);
+        setTimeout(() => setCopiedBookmarklet(false), 1500);
+      }
+      toast.success('Kopyalandı');
+    } catch {
+      toast.error('Kopyalanamadı — elle seçip kopyalayın');
     }
   };
 
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">🔐</span>
-          <div>
-            <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>Luca Hesabı</h3>
-            <p className="text-xs text-gray-500">
-              Portal otomatik login olup muavin defterini indirir. Şifre AES-256-GCM ile şifrelenmiş saklanır.
-            </p>
-          </div>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="text-2xl">🤖</span>
+        <div>
+          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>
+            Moren Agent Bookmarklet
+          </h3>
+          <p className="text-xs text-gray-500">
+            Luca / Mihsap sekmesinde açık kalır, portalın queue'ladığı
+            muavin/mizan indirme gibi işleri yürütür.
+          </p>
         </div>
-        {!editing && !isLoading && (
-          <button onClick={() => setEditing(true)} className="btn-secondary text-sm">
-            {status?.connected ? 'Değiştir' : 'Ekle'}
-          </button>
-        )}
       </div>
 
       {isLoading ? (
         <div className="text-sm text-gray-400 flex items-center gap-2">
           <Loader2 size={14} className="animate-spin" /> Yükleniyor…
         </div>
-      ) : editing ? (
-        <div className="space-y-3">
+      ) : (
+        <div className="space-y-4">
+          {/* Token */}
           <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.7)' }}>
-              Üye No
+            <label
+              className="block text-xs font-medium mb-1"
+              style={{ color: 'rgba(250,250,249,0.7)' }}
+            >
+              Agent Token (ilk kurulumda bir kez istenir)
             </label>
-            <input
-              type="text"
-              value={uyeNo}
-              onChange={(e) => setUyeNo(e.target.value)}
-              placeholder="Luca üye / müşavir numaranız"
-              className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.7)' }}>
-              Kullanıcı Adı
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Luca'ya giriş yaparken kullandığınız kullanıcı adı"
-              className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1" style={{ color: 'rgba(250,250,249,0.7)' }}>
-              Şifre
-            </label>
-            <div className="relative">
+            <div className="flex gap-2">
               <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Luca şifreniz"
-                className="w-full px-3 py-2 pr-10 rounded-lg text-sm border outline-none"
-                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                type="text"
+                readOnly
+                value={info?.token || ''}
+                className="flex-1 px-3 py-2 rounded-lg text-sm border outline-none font-mono"
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  borderColor: 'rgba(255,255,255,0.08)',
+                  color: '#fafaf9',
+                }}
+                onFocus={(e) => e.currentTarget.select()}
               />
               <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 opacity-60 hover:opacity-100"
+                onClick={() => copy(info?.token || '', 'token')}
+                className="btn-secondary text-sm flex items-center gap-1.5"
               >
-                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                {copiedToken ? <Check size={13} /> : <Copy size={13} />}
+                {copiedToken ? 'Tamam' : 'Kopyala'}
               </button>
             </div>
-          </div>
-          <div className="rounded-lg p-3 text-xs" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#fbbf24' }}>
-            <strong>Uyarı:</strong> 2FA açıksa kapatmanız gerekir. Captcha çıkarsa otomatik giriş başarısız olur.
-            Şifreniz AES-256-GCM ile şifrelenmiş olarak sadece bu portalın veritabanında saklanır.
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => save.mutate()}
-              disabled={save.isPending || !uyeNo || !username || !password}
-              className="btn-primary text-sm disabled:opacity-50"
-            >
-              {save.isPending ? 'Kaydediliyor…' : 'Kaydet'}
-            </button>
-            <button
-              onClick={() => { setEditing(false); setUyeNo(''); setUsername(''); setPassword(''); }}
-              className="btn-secondary text-sm"
-            >
-              İptal
-            </button>
-          </div>
-        </div>
-      ) : status?.connected ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <KeyRound size={15} style={{ color: '#d4b876' }} />
-              <div>
-                <p className="text-sm font-medium" style={{ color: '#fafaf9' }}>
-                  {status.username}
-                  {status.uyeNo && (
-                    <span className="text-xs ml-2 font-normal" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                      · Üye No: {status.uyeNo}
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {status.lastLoginAt
-                    ? `Son login: ${new Date(status.lastLoginAt).toLocaleString('tr-TR')}`
-                    : 'Henüz login denenmedi'}
-                  {status.hasCachedSession && ' · Session aktif'}
-                </p>
-              </div>
-            </div>
-            {status.isActive && (
-              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>
-                <CheckCircle2 size={12} /> Aktif
-              </span>
-            )}
-          </div>
-          {status.lastError && (
-            <div className="rounded-lg p-2 text-xs" style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#fda4af' }}>
-              <strong>Son hata:</strong> {status.lastError}
-            </div>
-          )}
-          {testResult && (
-            <div className="rounded-lg p-2 text-xs flex items-center gap-2"
-              style={testResult.ok
-                ? { background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', color: '#86efac' }
-                : { background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#fda4af' }}>
-              {testResult.ok ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
-              {testResult.ok ? 'Login başarılı — Luca oturumu açıldı' : `Login başarısız: ${testResult.error}`}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={runTest}
-              disabled={testing}
-              className="btn-secondary text-sm flex items-center gap-1.5"
-            >
-              {testing ? <Loader2 size={13} className="animate-spin" /> : null}
-              Bağlantıyı Test Et
-            </button>
-            <button
-              onClick={() => { if (confirm('Luca hesabını silmek istediğinize emin misiniz?')) remove.mutate(); }}
-              disabled={remove.isPending}
-              className="text-sm text-red-400 hover:text-red-300 flex items-center gap-1.5 px-3 py-2"
-            >
-              <Trash2 size={13} /> Sil
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="text-sm text-gray-400">
-          Luca hesabı kayıtlı değil. "Ekle" butonu ile kullanıcı adı ve şifrenizi girin — portal Luca'dan muavin defteri otomatik indirecek.
-        </div>
-      )}
-
-      {/* CAPTCHA Modal */}
-      {captchaImage && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
-        >
-          <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ background: '#1a1a19', border: '1px solid rgba(212,184,118,0.25)' }}>
-            <button
-              onClick={cancelCaptcha}
-              className="absolute top-3 right-3 text-gray-500 hover:text-gray-300"
-              aria-label="Kapat"
-            >
-              <X size={18} />
-            </button>
-            <h3 className="text-base font-semibold mb-1" style={{ color: '#d4b876' }}>
-              Luca CAPTCHA Doğrulaması
-            </h3>
-            <p className="text-xs text-gray-400 mb-4">
-              Luca güvenlik doğrulaması istedi. Aşağıdaki resimdeki karakterleri girin — portal CAPTCHA'yı Luca'ya gönderip login'i tamamlayacak.
+            <p className="text-[11px] text-gray-500 mt-1">
+              Bookmarklet ilk çalıştığında bu token'ı soracak. Bir kez
+              yapıştırdıktan sonra tarayıcıda saklanır.
             </p>
+          </div>
 
-            <div className="flex flex-col items-center gap-3 mb-4">
-              <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-                <img src={captchaImage} alt="CAPTCHA" className="block max-w-full" style={{ minHeight: 90 }} />
-              </div>
-              <button
-                onClick={refreshCaptcha}
-                disabled={captchaSubmitting}
-                className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1.5"
-              >
-                <RefreshCw size={12} className={captchaSubmitting ? 'animate-spin' : ''} />
-                Yeni CAPTCHA al
-              </button>
-            </div>
-
-            <input
-              type="text"
-              value={captchaText}
-              onChange={(e) => setCaptchaText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') submitCaptcha(); }}
-              placeholder="Resimdeki kodu yazın"
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              disabled={captchaSubmitting}
-              className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none mb-3"
+          {/* Bookmarklet */}
+          <div>
+            <label
+              className="block text-xs font-medium mb-1"
+              style={{ color: 'rgba(250,250,249,0.7)' }}
+            >
+              Bookmarklet
+            </label>
+            <div className="rounded-lg border p-3"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                borderColor: 'rgba(255,255,255,0.12)',
-                color: '#fafaf9',
-                letterSpacing: '0.2em',
-                textAlign: 'center',
-                fontFamily: 'monospace',
-                fontSize: '16px',
-              }}
-            />
-
-            {captchaError && (
-              <div className="rounded-lg p-2 text-xs mb-3" style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#fda4af' }}>
-                {captchaError}
-              </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                onClick={submitCaptcha}
-                disabled={captchaSubmitting || !captchaText.trim()}
-                className="btn-primary flex-1 text-sm flex items-center justify-center gap-1.5"
+                background: 'rgba(255,255,255,0.02)',
+                borderColor: 'rgba(255,255,255,0.08)',
+              }}>
+              <a
+                href={bookmarkletCode}
+                onClick={(e) => e.preventDefault()}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold"
+                style={{
+                  background: '#d4b876',
+                  color: '#1a1a19',
+                  textDecoration: 'none',
+                }}
               >
-                {captchaSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                Doğrula ve Giriş Yap
-              </button>
+                <ExternalLink size={13} />
+                Moren Agent'ı Başlat
+              </a>
+              <p className="text-[11px] text-gray-500 mt-2">
+                Yukarıdaki düğmeyi tarayıcının sık kullanılanlar çubuğuna{' '}
+                <strong style={{ color: '#d4b876' }}>sürükle-bırak</strong> →
+                bookmark oluşur. Sürüklemek yerine kodu kopyalayıp yeni
+                bookmark olarak da ekleyebilirsin.
+              </p>
+            </div>
+            <div className="flex gap-2 mt-2">
               <button
-                onClick={cancelCaptcha}
-                disabled={captchaSubmitting}
-                className="btn-secondary text-sm"
+                onClick={() => copy(bookmarkletCode, 'bookmarklet')}
+                className="btn-secondary text-sm flex items-center gap-1.5"
               >
-                İptal
+                {copiedBookmarklet ? <Check size={13} /> : <Copy size={13} />}
+                {copiedBookmarklet ? 'Kopyalandı' : 'Kodu Kopyala'}
               </button>
             </div>
+          </div>
+
+          {/* Kullanım */}
+          <div
+            className="rounded-lg p-3 text-xs leading-relaxed"
+            style={{
+              background: 'rgba(212,184,118,0.06)',
+              border: '1px solid rgba(212,184,118,0.18)',
+              color: 'rgba(250,250,249,0.85)',
+            }}
+          >
+            <div className="font-semibold mb-1.5" style={{ color: '#d4b876' }}>
+              Nasıl kullanılır?
+            </div>
+            <ol className="space-y-1 list-decimal list-inside">
+              <li>
+                Luca veya Mihsap'a giriş yap (CAPTCHA/2FA'yı kendin geç).
+              </li>
+              <li>
+                İlgili ekrana gel — muavin için <em>Muavin Defter</em>, mizan
+                için <em>Mizan</em>.
+              </li>
+              <li>
+                Sık kullanılanlardaki <strong>Moren Agent'ı Başlat</strong>{' '}
+                bookmarklet'ine tıkla.
+              </li>
+              <li>
+                Sayfanın sağ üstünde bir panel çıkar ("MOREN AGENT · Bekleniyor").
+              </li>
+              <li>
+                Portaldan "Luca'dan veri çek" / "Mizan çek" butonuna bas.
+                Agent 15 saniye içinde işi alıp Excel'i indirecek ve portala
+                yollayacak.
+              </li>
+            </ol>
           </div>
         </div>
       )}
     </div>
   );
 }
+
 
 function SmsTemplateSection() {
   const qc = useQueryClient();
@@ -479,7 +304,7 @@ export default function AyarlarPage() {
         <p className="text-sm text-gray-500 mt-1">Sistem ve entegrasyon ayarları</p>
       </div>
 
-      <LucaAccountSection />
+      <MorenAgentSection />
 
       <SmsTemplateSection />
 
