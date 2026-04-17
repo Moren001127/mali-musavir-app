@@ -761,6 +761,7 @@ export default function KdvKontrolPage() {
               </div>
             </div>
             <div className="flex items-center gap-1.5">
+              <FeedCount kind="ok" label="OCR ✓" count={feed.filter((f) => f.kind === 'ok' && f.group === 'ocr' && !f.resultId).length} />
               <FeedCount kind="ok" label="Eşleşti" count={feed.filter((f) => f.kind === 'ok' && f.resultId).length} />
               <FeedCount kind="warn" label="İnceleme" count={feed.filter((f) => f.kind === 'warn').length} />
               <FeedCount kind="err" label="Sorun" count={feed.filter((f) => f.kind === 'err').length} />

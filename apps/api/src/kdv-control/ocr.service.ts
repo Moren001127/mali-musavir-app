@@ -159,32 +159,45 @@ export class OcrService {
       'Örnek: görselde "KDV %20: 456,00" yazıyorsa "kdvTutari":"456,00", net okunuyorsa confidence 0.95.';
 
     const startMs = Date.now();
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
-              { type: 'text', text: userText },
-            ],
-          },
-        ],
-      }),
-    });
+    // 429 retry — Anthropic rate limit'e takıldığımızda exponential backoff ile tekrar dene.
+    // retry-after header'ı varsa ona saygı göster; yoksa 15s, 30s, 60s bekle.
+    const MAX_RETRIES = 4;
+    let res: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+                { type: 'text', text: userText },
+              ],
+            },
+          ],
+        }),
+      });
+      if (res.status !== 429 && res.status !== 529) break;
+      if (attempt === MAX_RETRIES) break;
+      const retryAfter = Number(res.headers.get('retry-after')) || [15, 30, 60, 120][attempt] || 30;
+      this.logger.warn(
+        `Claude rate-limit (${res.status}), ${retryAfter}s bekleniyor… (attempt ${attempt + 1}/${MAX_RETRIES})`,
+      );
+      await new Promise((r) => setTimeout(r, retryAfter * 1000));
+    }
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`Claude API ${res.status}: ${body.slice(0, 120)}`);
+    if (!res || !res.ok) {
+      const body = res ? await res.text().catch(() => '') : '';
+      throw new Error(`Claude API ${res?.status}: ${body.slice(0, 120)}`);
     }
 
     const payload: any = await res.json();

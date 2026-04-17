@@ -1160,23 +1160,40 @@ export class KdvControlService {
       });
     }
 
-    let queued = 0;
-    for (const img of pending) {
-      // Mihsap bağlı görsellerde s3Key `mihsap://<invoiceId>` deseni
-      if (img.s3Key?.startsWith('mihsap://')) {
-        const invoiceId = img.s3Key.slice('mihsap://'.length);
-        this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId).catch((e) =>
-          this.logger.error(`OCR mihsap hata [${img.id}]: ${e?.message}`),
-        );
-      } else {
-        this.runOcrForImage(img.id, img.s3Key).catch((e) =>
-          this.logger.error(`OCR hata [${img.id}]: ${e?.message}`),
-        );
-      }
-      queued++;
-    }
+    // Concurrency limit — Claude rate limit'ine takılmamak için aynı anda
+    // max CLAUDE_OCR_CONCURRENCY işlem (default 3). Kuyrukta sırayla dönüyoruz;
+    // her slot boşaldığında bir sonraki OCR başlar.
+    const CONCURRENCY = Math.max(1, Number(process.env.CLAUDE_OCR_CONCURRENCY) || 3);
+    this.logger.log(
+      `OCR kuyruğu başlatılıyor: ${pending.length} fatura · concurrency=${CONCURRENCY}`,
+    );
 
-    return { queued, total: pending.length };
+    const queue = [...pending];
+    let queued = 0;
+    const workers = Array.from({ length: CONCURRENCY }, async (_, workerIdx) => {
+      while (queue.length > 0) {
+        const img = queue.shift();
+        if (!img) break;
+        try {
+          if (img.s3Key?.startsWith('mihsap://')) {
+            const invoiceId = img.s3Key.slice('mihsap://'.length);
+            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId);
+          } else {
+            await this.runOcrForImage(img.id, img.s3Key);
+          }
+        } catch (e: any) {
+          this.logger.error(`OCR worker ${workerIdx} hata [${img.id}]: ${e?.message}`);
+        }
+        queued++;
+      }
+    });
+
+    // Workers'ları arkaplanda çalıştır, HTTP yanıtını hemen döndür
+    Promise.all(workers).then(() =>
+      this.logger.log(`OCR kuyruğu bitti: ${queued} fatura işlendi`),
+    );
+
+    return { queued: pending.length, total: pending.length };
   }
 
   /**

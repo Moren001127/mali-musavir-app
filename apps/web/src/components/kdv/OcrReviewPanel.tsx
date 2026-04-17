@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 const GOLD = '#b8a06f';
 const THRESHOLD = 0.7;
 
+type FilterMode = 'needsReview' | 'success' | 'confirmed' | 'lowConf' | 'failed' | 'all';
+
 export interface ReviewImage {
   id: string;
   originalName: string;
@@ -54,20 +56,34 @@ export function OcrReviewPanel({
     date: '',
     kdvTutari: '',
   });
+  /** Hangi durumdaki faturalar listelensin? Chip'lere tıklayınca değişir. */
+  const [filter, setFilter] = useState<FilterMode>('needsReview');
 
-  // Review bekleyen görseller (önce eski tarihliler, sonra düşük confidence)
-  const pending = useMemo(
-    () =>
-      images
-        .filter(
-          (i) =>
-            !i.isManuallyConfirmed &&
-            ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(i.ocrStatus),
-        )
-        // Düşük confidence'a sahip olanlar önce gelsin
-        .sort((a, b) => (avgConf(a) ?? 0) - (avgConf(b) ?? 0)),
-    [images],
-  );
+  /** Filtreye göre gösterilecek görseller. */
+  const filtered = useMemo(() => {
+    const list = images.filter((i) => {
+      switch (filter) {
+        case 'needsReview':
+          return !i.isManuallyConfirmed &&
+            ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(i.ocrStatus);
+        case 'success':
+          return !i.isManuallyConfirmed && i.ocrStatus === 'SUCCESS';
+        case 'confirmed':
+          return i.isManuallyConfirmed;
+        case 'lowConf':
+          return !i.isManuallyConfirmed && i.ocrStatus === 'LOW_CONFIDENCE';
+        case 'failed':
+          return !i.isManuallyConfirmed && i.ocrStatus === 'FAILED';
+        case 'all':
+          return true;
+      }
+    });
+    // Düşük confidence'a sahip olanlar önce gelsin (needsReview filter için mantıklı)
+    return [...list].sort((a, b) => (avgConf(a) ?? 0) - (avgConf(b) ?? 0));
+  }, [images, filter]);
+
+  /** Geriye dönük uyumluluk için pending adı — mevcut kullanım yerleri bozulmasın */
+  const pending = filtered;
 
   /** Kısa özet: kaç fatura hangi durumda (başlıkta gösterilir) */
   const summary = useMemo(() => {
@@ -170,14 +186,63 @@ export function OcrReviewPanel({
             </p>
           </div>
         </div>
-        {/* Özet chips: dağılım */}
+        {/* Özet chips: tıklayınca filtre değişir */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {summary.confirmed > 0 && <SummaryChip label="Teyit edildi" count={summary.confirmed} color="#22c55e" />}
-          {summary.success > 0 && <SummaryChip label="Yüksek güven" count={summary.success} color="#22c55e" />}
-          {summary.needsReview > 0 && <SummaryChip label="İnceleme" count={summary.needsReview} color="#f59e0b" />}
-          {summary.lowConf > 0 && <SummaryChip label="Okunamadı" count={summary.lowConf} color="#f43f5e" />}
-          {summary.failed > 0 && <SummaryChip label="Hata" count={summary.failed} color="#f43f5e" />}
-          {summary.processing > 0 && <SummaryChip label="İşleniyor" count={summary.processing} color="#60a5fa" />}
+          {summary.needsReview > 0 && (
+            <SummaryChip
+              label="İnceleme"
+              count={summary.needsReview}
+              color="#f59e0b"
+              active={filter === 'needsReview'}
+              onClick={() => { setFilter('needsReview'); setActiveId(null); }}
+            />
+          )}
+          {summary.success > 0 && (
+            <SummaryChip
+              label="Yüksek güven"
+              count={summary.success}
+              color="#22c55e"
+              active={filter === 'success'}
+              onClick={() => { setFilter('success'); setActiveId(null); }}
+            />
+          )}
+          {summary.confirmed > 0 && (
+            <SummaryChip
+              label="Teyit edildi"
+              count={summary.confirmed}
+              color="#22c55e"
+              active={filter === 'confirmed'}
+              onClick={() => { setFilter('confirmed'); setActiveId(null); }}
+            />
+          )}
+          {summary.lowConf > 0 && (
+            <SummaryChip
+              label="Okunamadı"
+              count={summary.lowConf}
+              color="#f43f5e"
+              active={filter === 'lowConf'}
+              onClick={() => { setFilter('lowConf'); setActiveId(null); }}
+            />
+          )}
+          {summary.failed > 0 && (
+            <SummaryChip
+              label="Hata"
+              count={summary.failed}
+              color="#f43f5e"
+              active={filter === 'failed'}
+              onClick={() => { setFilter('failed'); setActiveId(null); }}
+            />
+          )}
+          {summary.processing > 0 && (
+            <SummaryChip label="İşleniyor" count={summary.processing} color="#60a5fa" />
+          )}
+          <SummaryChip
+            label="Hepsi"
+            count={summary.total}
+            color="#a855f7"
+            active={filter === 'all'}
+            onClick={() => { setFilter('all'); setActiveId(null); }}
+          />
           <div className="text-[11px] font-bold uppercase tracking-wider ml-1" style={{ color: '#f59e0b' }}>
             Eşik %{Math.round(THRESHOLD * 100)}
           </div>
@@ -187,10 +252,16 @@ export function OcrReviewPanel({
       {pending.length === 0 ? (
         <div
           className="flex items-center justify-center gap-3 py-10 text-[13px]"
-          style={{ color: '#22c55e' }}
+          style={{ color: filter === 'needsReview' ? '#22c55e' : 'rgba(250,250,249,0.55)' }}
         >
-          <CheckCircle2 size={18} />
-          <span className="font-semibold">Tüm faturalar incelendi — teyit bekleyen yok</span>
+          {filter === 'needsReview' ? (
+            <>
+              <CheckCircle2 size={18} />
+              <span className="font-semibold">Tüm faturalar incelendi — teyit bekleyen yok</span>
+            </>
+          ) : (
+            <span>Bu durumda fatura yok</span>
+          )}
         </div>
       ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-[460px]">
@@ -640,14 +711,38 @@ function LightboxModal({
   return createPortal(content, document.body);
 }
 
-function SummaryChip({ label, count, color }: { label: string; count: number; color: string }) {
+function SummaryChip({
+  label,
+  count,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  color: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const clickable = !!onClick;
+  const bg = active ? color + '33' : color + '1a';
+  const border = active ? color : 'transparent';
   return (
-    <span
-      className="inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded"
-      style={{ background: color + '1a', color }}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      className={`inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded transition ${
+        clickable ? 'hover:brightness-125 cursor-pointer' : 'cursor-default'
+      }`}
+      style={{
+        background: bg,
+        color,
+        border: `1px solid ${border}`,
+      }}
     >
       {label}: {count}
-    </span>
+    </button>
   );
 }
 
