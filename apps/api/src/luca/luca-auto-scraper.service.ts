@@ -217,7 +217,12 @@ export class LucaAutoScraperService {
       page = await context.newPage();
 
       this.logger.log('[LUCA] Login akışı başlatıldı');
-      await page.goto(LUCA_URLS.login, { waitUntil: 'networkidle', timeout: 30_000 });
+      // `domcontentloaded` — Luca sayfası sürekli network aktivitesi yaptığı
+      // için `networkidle` hiç tetiklenmeyebilir. DOM hazır olunca devam et,
+      // input selector'lar görününce form doldur.
+      await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForSelector(SELECTORS.loginPassword, { timeout: 15_000 }).catch(() => {});
+      this.logger.log(`[LUCA] Login sayfası yüklendi · url=${page.url()}`);
 
       // Credential doldur
       const password = decrypt(cred.encryptedPassword);
@@ -226,8 +231,13 @@ export class LucaAutoScraperService {
       await page.fill(SELECTORS.loginPassword, password);
       await page.click(SELECTORS.loginSubmit).catch(() => {});
 
-      // Navigasyon veya ekran değişimi bekle
-      await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+      // Submit sonrası ekran değişimi bekle — CAPTCHA veya ana panele geçiş
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      // CAPTCHA veya logout linki görünmesini bekle (hangisi önce çıkarsa)
+      await Promise.race([
+        page.waitForSelector(SELECTORS.captchaImage, { timeout: 10_000 }).catch(() => null),
+        page.waitForSelector('a[href*="cikis" i], a:has-text("Çıkış"), nav', { timeout: 10_000 }).catch(() => null),
+      ]);
 
       // CAPTCHA görseli var mı?
       const captchaImg = await page.$(SELECTORS.captchaImage).catch(() => null);
@@ -310,7 +320,12 @@ export class LucaAutoScraperService {
     try {
       await page.fill(SELECTORS.captchaInput, captchaText.trim());
       await page.click(SELECTORS.captchaSubmit).catch(() => {});
-      await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+      await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      // Sonraki ekranın (ana panel veya yeni CAPTCHA) yüklenmesi için kısa bekleme
+      await Promise.race([
+        page.waitForSelector(SELECTORS.captchaImage, { timeout: 8_000 }).catch(() => null),
+        page.waitForSelector('a[href*="cikis" i], a:has-text("Çıkış"), nav', { timeout: 8_000 }).catch(() => null),
+      ]);
 
       // Hâlâ CAPTCHA ekranındaysak yanlış çözmüş demektir → yeni CAPTCHA resmi gönder
       const stillCaptcha = await page.$(SELECTORS.captchaImage).catch(() => null);
