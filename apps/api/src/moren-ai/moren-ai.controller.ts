@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Response } from 'express';
 import { MorenAiService } from './moren-ai.service';
 import { VoiceService } from './voice.service';
 
@@ -60,7 +59,7 @@ export class MorenAiController {
 
   // -------- SESLİ ÇIKIŞ (OpenAI TTS) --------
   @Post('voice/speak')
-  async speak(@Body() body: { text: string; voice?: string }, @Res() res: Response) {
+  async speak(@Body() body: { text: string; voice?: string }, @Res() res: any) {
     if (!body?.text?.trim()) throw new BadRequestException('text zorunlu');
     const result = await this.voice.synthesize(body.text.trim(), body.voice);
     res.setHeader('Content-Type', result.contentType);
@@ -76,7 +75,7 @@ export class MorenAiController {
     @Req() req: any,
     @UploadedFile() file: any,
     @Body() body: { conversationId?: string; taxpayerId?: string; speakResponse?: string },
-    @Res() res: Response,
+    @Res() res: any,
   ) {
     if (!file) throw new BadRequestException('audio dosyası eksik');
 
