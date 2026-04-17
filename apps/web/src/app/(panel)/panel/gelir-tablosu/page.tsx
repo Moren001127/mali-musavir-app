@@ -40,66 +40,79 @@ type RowType = {
 
 const TDHP_ROWS: RowType[] = [
   // A. BRÜT SATIŞLAR
-  { k: 'brutSatislar',  label: 'A. BRÜT SATIŞLAR',         kod: '600, 601, 602', group: true },
-  { sub: '600', subLabel: 'Yurtiçi Satışlar',              label: 'Yurtiçi Satışlar' },
-  { sub: '601', subLabel: 'Yurtdışı Satışlar',             label: 'Yurtdışı Satışlar' },
-  { sub: '602', subLabel: 'Diğer Gelirler',                label: 'Diğer Gelirler' },
+  { k: 'brutSatislar', label: 'A. BRÜT SATIŞLAR', group: true },
+  { sub: '600', subLabel: '1. Yurtiçi Satışlar',        label: '1. Yurtiçi Satışlar' },
+  { sub: '601', subLabel: '2. Yurtdışı Satışlar',       label: '2. Yurtdışı Satışlar' },
+  { sub: '602', subLabel: '3. Diğer Gelirler',          label: '3. Diğer Gelirler' },
   // B. SATIŞ İNDİRİMLERİ
-  { k: 'satisIndirimleri', label: 'B. SATIŞ İNDİRİMLERİ (-)', kod: '610, 611, 612', group: true, negative: true },
-  { sub: '610', subLabel: 'Satıştan İadeler (-)',          label: 'Satıştan İadeler (-)' },
-  { sub: '611', subLabel: 'Satış İskontoları (-)',         label: 'Satış İskontoları (-)' },
-  { sub: '612', subLabel: 'Diğer İndirimler (-)',          label: 'Diğer İndirimler (-)' },
+  { k: 'satisIndirimleri', label: 'B. SATIŞ İNDİRİMLERİ (-)', group: true, negative: true },
+  { sub: '610', subLabel: '1. Satıştan İadeler (-)',     label: '1. Satıştan İadeler (-)' },
+  { sub: '611', subLabel: '2. Satış İskontoları (-)',    label: '2. Satış İskontoları (-)' },
+  { sub: '612', subLabel: '3. Diğer İndirimler (-)',     label: '3. Diğer İndirimler (-)' },
   // C. NET SATIŞLAR
   { k: 'netSatislar', label: 'C. NET SATIŞLAR', total: true },
   // D. SATIŞLARIN MALİYETİ
-  { k: 'satisMaliyeti', label: 'D. SATIŞLARIN MALİYETİ (-)', kod: '620, 621, 622, 623, 740', group: true, negative: true },
-  { sub: '620', subLabel: 'Satılan Mamuller Maliyeti (-)',  label: 'Satılan Mamuller Maliyeti (-)' },
-  { sub: '621', subLabel: 'Satılan Ticari Mallar Maliyeti (-)', label: 'Satılan Ticari Mallar Maliyeti (-)' },
-  { sub: '622', subLabel: 'Satılan Hizmet Maliyeti (-)',    label: 'Satılan Hizmet Maliyeti (-)' },
-  { sub: '740', subLabel: 'Satılan Hizmet Maliyeti (7/A)',  label: 'Satılan Hizmet Maliyeti (7/A)' },
-  { sub: '623', subLabel: 'Diğer Satışların Maliyeti (-)',  label: 'Diğer Satışların Maliyeti (-)' },
-  // Manuel düzeltme (maliyet için)
-  { manual: 'satisMaliyeti', label: 'Manuel Düzeltme (Maliyet)' },
+  { k: 'satisMaliyeti', label: 'D. SATIŞLARIN MALİYETİ (-)', group: true, negative: true },
+  { sub: '620', subLabel: '1. Satılan Mamuller Maliyeti (-)',          label: '1. Satılan Mamuller Maliyeti (-)' },
+  { sub: '621', subLabel: '2. Satılan Ticari Mallar Maliyeti (-)',     label: '2. Satılan Ticari Mallar Maliyeti (-)' },
+  // Manuel düzeltme — SADECE burada (2. Satılan Ticari Mallar Maliyeti altında)
+  { manual: 'satisMaliyeti', label: '2. Satılan Ticari Mallar Maliyeti (-)' },
+  { sub: '622', subLabel: '3. Satılan Hizmet Maliyeti (-)',            label: '3. Satılan Hizmet Maliyeti (-)' },
+  { sub: '740', subLabel: '3. Satılan Hizmet Maliyeti (7/A)',          label: '3. Satılan Hizmet Maliyeti (7/A)' },
+  { sub: '623', subLabel: '4. Diğer Satışların Maliyeti (-)',          label: '4. Diğer Satışların Maliyeti (-)' },
   // BRÜT SATIŞ KARI
   { k: 'brutSatisKari', label: 'BRÜT SATIŞ KARI VEYA ZARARI', total: true },
-  // E. FAALİYET GİDERLERİ
-  { k: 'faaliyetGiderleri', label: 'E. FAALİYET GİDERLERİ (-)', kod: '631-633, 750-780', group: true, negative: true },
-  // 7/B hesapları (6XX)
-  { sub: '631', subLabel: 'Pazarlama, Satış ve Dağıtım Gid. (-)', label: 'Pazarlama, Satış ve Dağıtım Gid. (-)' },
-  { sub: '632', subLabel: 'Genel Yönetim Giderleri (-)',    label: 'Genel Yönetim Giderleri (-)' },
-  { sub: '633', subLabel: 'Araştırma ve Geliştirme Gid. (-)', label: 'Araştırma ve Geliştirme Gid. (-)' },
-  // 7/A hesapları (7XX)
-  { sub: '750', subLabel: 'Araştırma ve Geliştirme Gid. (7/A)', label: 'Araştırma ve Geliştirme Gid. (7/A)' },
-  { sub: '760', subLabel: 'Pazarlama, Satış ve Dağıtım Gid. (7/A)', label: 'Pazarlama, Satış ve Dağıtım Gid. (7/A)' },
-  { sub: '770', subLabel: 'Genel Yönetim Giderleri (7/A)',  label: 'Genel Yönetim Giderleri (7/A)' },
-  { sub: '780', subLabel: 'Finansman Giderleri (7/A)',      label: 'Finansman Giderleri (7/A)' },
-  // Manuel düzeltme (faaliyet)
-  { manual: 'faaliyetGiderleri', label: 'Manuel Düzeltme (Faaliyet)' },
+  // E. FAALİYET GİDERLERİ — 7/A ve 7/B çiftli (Ar-Ge, Pazarlama, Genel Yönetim)
+  { k: 'faaliyetGiderleri', label: 'E. FAALİYET GİDERLERİ (-)', group: true, negative: true },
+  { sub: '750', subLabel: '1. Araştırma ve Geliştirme Giderleri (-)',  label: '1. Araştırma ve Geliştirme Giderleri (-)' },
+  { sub: '633', subLabel: '1. Araştırma ve Geliştirme Giderleri (-)',  label: '1. Araştırma ve Geliştirme Giderleri (-)' },
+  { sub: '760', subLabel: '2. Pazarlama Satış ve Dağıtım Giderleri (-)', label: '2. Pazarlama Satış ve Dağıtım Giderleri (-)' },
+  { sub: '631', subLabel: '2. Pazarlama Satış ve Dağıtım Giderleri (-)', label: '2. Pazarlama Satış ve Dağıtım Giderleri (-)' },
+  { sub: '770', subLabel: '3. Genel Yönetim Giderleri (-)',              label: '3. Genel Yönetim Giderleri (-)' },
+  { sub: '632', subLabel: '3. Genel Yönetim Giderleri (-)',              label: '3. Genel Yönetim Giderleri (-)' },
   // FAALİYET KARI
   { k: 'faaliyetKari', label: 'FAALİYET KARI VEYA ZARARI', total: true },
   // F. DİĞER OLAĞAN GELİR
-  { k: 'digerGelirler', label: 'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR', kod: '640-649', group: true },
+  { k: 'digerGelirler', label: 'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR', group: true },
+  { sub: '640', subLabel: '1. İştiraklerden Temettü Gelirleri',         label: '1. İştiraklerden Temettü Gelirleri' },
+  { sub: '641', subLabel: '2. Bağlı Ortaklıklardan Temettü Gelirleri',  label: '2. Bağlı Ortaklıklardan Temettü Gelirleri' },
+  { sub: '642', subLabel: '3. Faiz Gelirleri',                          label: '3. Faiz Gelirleri' },
+  { sub: '643', subLabel: '4. Komisyon Gelirleri',                      label: '4. Komisyon Gelirleri' },
+  { sub: '644', subLabel: '5. Konusu Kalmayan Karşılıklar',             label: '5. Konusu Kalmayan Karşılıklar' },
+  { sub: '645', subLabel: '6. Menkul Kıymet Satış Karları',             label: '6. Menkul Kıymet Satış Karları' },
+  { sub: '646', subLabel: '7. Kambiyo Karları',                         label: '7. Kambiyo Karları' },
+  { sub: '647', subLabel: '8. Reeskont Faiz Gelirleri',                 label: '8. Reeskont Faiz Gelirleri' },
+  { sub: '648', subLabel: '9. Enflasyon Düzeltmesi Karları',            label: '9. Enflasyon Düzeltmesi Karları' },
+  { sub: '649', subLabel: '10. Diğer Olağan Gelir ve Karlar',           label: '10. Diğer Olağan Gelir ve Karlar' },
   // G. DİĞER OLAĞAN GİDER
-  { k: 'digerGiderler', label: 'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)', kod: '653-659', group: true, negative: true },
-  { manual: 'digerGiderler', label: 'Manuel Düzeltme (Diğer Gider)' },
+  { k: 'digerGiderler', label: 'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)', group: true, negative: true },
+  { sub: '653', subLabel: '1. Komisyon Giderleri (-)',                  label: '1. Komisyon Giderleri (-)' },
+  { sub: '654', subLabel: '2. Karşılık Giderleri (-)',                  label: '2. Karşılık Giderleri (-)' },
+  { sub: '655', subLabel: '3. Menkul Kıymet Satış Zararları (-)',       label: '3. Menkul Kıymet Satış Zararları (-)' },
+  { sub: '656', subLabel: '4. Kambiyo Zararları (-)',                   label: '4. Kambiyo Zararları (-)' },
+  { sub: '657', subLabel: '5. Reeskont Faiz Giderleri (-)',             label: '5. Reeskont Faiz Giderleri (-)' },
+  { sub: '658', subLabel: '6. Enflasyon Düzeltmesi Zararları',          label: '6. Enflasyon Düzeltmesi Zararları' },
+  { sub: '659', subLabel: '7. Diğer Olağan Gider ve Zararlar (-)',      label: '7. Diğer Olağan Gider ve Zararlar (-)' },
   // H. FİNANSMAN GİDERLERİ
-  { k: 'finansmanGiderleri', label: 'H. FİNANSMAN GİDERLERİ (-)', kod: '660, 661, 780', group: true, negative: true },
-  { sub: '660', subLabel: 'Kısa Vadeli Borçlanma Gid. (-)', label: 'Kısa Vadeli Borçlanma Gid. (-)' },
-  { sub: '661', subLabel: 'Uzun Vadeli Borçlanma Gid. (-)', label: 'Uzun Vadeli Borçlanma Gid. (-)' },
-  { sub: '780', subLabel: 'Finansman Giderleri (7/A)',      label: 'Finansman Giderleri (7/A)' },
-  { manual: 'finansmanGiderleri', label: 'Manuel Düzeltme (Finansman)' },
+  { k: 'finansmanGiderleri', label: 'H. FİNANSMAN GİDERLERİ (-)', group: true, negative: true },
+  { sub: '660', subLabel: '1. Kısa Vadeli Borçlanma Giderleri (-)',     label: '1. Kısa Vadeli Borçlanma Giderleri (-)' },
+  { sub: '780', subLabel: '1. Kısa Vadeli Borçlanma Giderleri (7/A)',   label: '1. Kısa Vadeli Borçlanma Giderleri (7/A)' },
+  { sub: '661', subLabel: '2. Uzun Vadeli Borçlanma Giderleri (-)',     label: '2. Uzun Vadeli Borçlanma Giderleri (-)' },
   // OLAĞAN KAR
   { k: 'olaganKar', label: 'OLAĞAN KAR VEYA ZARAR', total: true },
   // I. OLAĞANDIŞI GELİR
-  { k: 'olaganDisiGelir', label: 'I. OLAĞANDIŞI GELİR VE KARLAR', kod: '671, 672, 679', group: true },
+  { k: 'olaganDisiGelir', label: 'I. OLAĞANDIŞI GELİR VE KARLAR', group: true },
+  { sub: '671', subLabel: '1. Önceki Dönem Gelir ve Karları',           label: '1. Önceki Dönem Gelir ve Karları' },
+  { sub: '679', subLabel: '2. Diğer Olağandışı Gelir ve Karlar',        label: '2. Diğer Olağandışı Gelir ve Karlar' },
   // J. OLAĞANDIŞI GİDER
-  { k: 'olaganDisiGider', label: 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', kod: '680, 681, 689', group: true, negative: true },
-  { manual: 'olaganDisiGider', label: 'Manuel Düzeltme (Olağandışı Gider)' },
+  { k: 'olaganDisiGider', label: 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', group: true, negative: true },
+  { sub: '680', subLabel: '1. Çalışmayan Kısım Gider ve Zararları (-)', label: '1. Çalışmayan Kısım Gider ve Zararları (-)' },
+  { sub: '681', subLabel: '2. Önceki Dönem Gider ve Zararları (-)',     label: '2. Önceki Dönem Gider ve Zararları (-)' },
+  { sub: '689', subLabel: '3. Diğer Olağandışı Gider ve Zararlar (-)',  label: '3. Diğer Olağandışı Gider ve Zararlar (-)' },
   // DÖNEM KARI
   { k: 'donemKari', label: 'DÖNEM KARI VEYA ZARARI', total: true },
   // K. VERGİ
-  { k: 'vergiKarsiligi', label: 'K. DÖNEM KARI VERGİ VE YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', kod: '691', negative: true },
-  { manual: 'vergiKarsiligi', label: 'Manuel Düzeltme (Vergi)' },
+  { k: 'vergiKarsiligi', label: 'K. DÖNEM KARI VERGİ VE YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', negative: true },
   // DÖNEM NET KARI
   { k: 'donemNetKari', label: 'DÖNEM NET KARI VEYA ZARARI', final: true },
 ];
