@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, AlertTriangle, XCircle, Eye, Loader2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Eye, Loader2, ZoomIn, ZoomOut, X as XIcon, Maximize2 } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
 import { toast } from 'sonner';
 
@@ -68,6 +69,25 @@ export function OcrReviewPanel({
     [images],
   );
 
+  /** Kısa özet: kaç fatura hangi durumda (başlıkta gösterilir) */
+  const summary = useMemo(() => {
+    let success = 0;
+    let confirmed = 0;
+    let processing = 0;
+    let needsReview = 0;
+    let lowConf = 0;
+    let failed = 0;
+    for (const i of images) {
+      if (i.isManuallyConfirmed) confirmed++;
+      else if (['PENDING', 'PROCESSING'].includes(i.ocrStatus)) processing++;
+      else if (i.ocrStatus === 'SUCCESS') success++;
+      else if (i.ocrStatus === 'NEEDS_REVIEW') needsReview++;
+      else if (i.ocrStatus === 'LOW_CONFIDENCE') lowConf++;
+      else if (i.ocrStatus === 'FAILED') failed++;
+    }
+    return { total: images.length, success, confirmed, processing, needsReview, lowConf, failed };
+  }, [images]);
+
   const activeImg = pending.find((i) => i.id === activeId) ?? pending[0] ?? null;
 
   // Aktif görsel değişince formu doldur
@@ -121,7 +141,7 @@ export function OcrReviewPanel({
     });
   }
 
-  if (pending.length === 0) return null;
+  if (pending.length === 0 && summary.total === 0) return null;
 
   return (
     <div
@@ -132,7 +152,7 @@ export function OcrReviewPanel({
       }}
     >
       <div
-        className="flex items-center justify-between px-5 py-4"
+        className="flex items-center justify-between px-5 py-4 flex-wrap gap-3"
         style={{ borderBottom: '1px solid rgba(245,158,11,0.15)' }}
       >
         <div className="flex items-center gap-2.5">
@@ -146,15 +166,33 @@ export function OcrReviewPanel({
               <span className="font-semibold" style={{ color: '#f59e0b' }}>
                 {pending.length}
               </span>{' '}
-              fatura bekliyor
+              / {summary.total} fatura bekliyor
             </p>
           </div>
         </div>
-        <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#f59e0b' }}>
-          Eşik %{Math.round(THRESHOLD * 100)}
+        {/* Özet chips: dağılım */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {summary.confirmed > 0 && <SummaryChip label="Teyit edildi" count={summary.confirmed} color="#22c55e" />}
+          {summary.success > 0 && <SummaryChip label="Yüksek güven" count={summary.success} color="#22c55e" />}
+          {summary.needsReview > 0 && <SummaryChip label="İnceleme" count={summary.needsReview} color="#f59e0b" />}
+          {summary.lowConf > 0 && <SummaryChip label="Okunamadı" count={summary.lowConf} color="#f43f5e" />}
+          {summary.failed > 0 && <SummaryChip label="Hata" count={summary.failed} color="#f43f5e" />}
+          {summary.processing > 0 && <SummaryChip label="İşleniyor" count={summary.processing} color="#60a5fa" />}
+          <div className="text-[11px] font-bold uppercase tracking-wider ml-1" style={{ color: '#f59e0b' }}>
+            Eşik %{Math.round(THRESHOLD * 100)}
+          </div>
         </div>
       </div>
 
+      {pending.length === 0 ? (
+        <div
+          className="flex items-center justify-center gap-3 py-10 text-[13px]"
+          style={{ color: '#22c55e' }}
+        >
+          <CheckCircle2 size={18} />
+          <span className="font-semibold">Tüm faturalar incelendi — teyit bekleyen yok</span>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] min-h-[460px]">
         {/* Sol: liste */}
         <div
@@ -203,27 +241,8 @@ export function OcrReviewPanel({
         {/* Sağ: detay */}
         {activeImg ? (
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Fatura görseli */}
-            <div
-              className="rounded-lg overflow-hidden flex items-center justify-center min-h-[260px]"
-              style={{
-                background: 'rgba(0,0,0,0.3)',
-                border: '1px solid rgba(255,255,255,0.05)',
-              }}
-            >
-              {previewUrl ? (
-                <a href={previewUrl} target="_blank" rel="noreferrer" className="block w-full h-full">
-                  <img
-                    src={previewUrl}
-                    alt={activeImg.originalName}
-                    className="w-full h-full object-contain"
-                    style={{ maxHeight: 420 }}
-                  />
-                </a>
-              ) : (
-                <Loader2 size={20} className="animate-spin" style={{ color: GOLD }} />
-              )}
-            </div>
+            {/* Fatura görseli — büyüteçli */}
+            <ZoomableImage src={previewUrl} alt={activeImg.originalName} />
 
             {/* Alan inputları */}
             <div className="space-y-4">
@@ -301,6 +320,7 @@ export function OcrReviewPanel({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -365,6 +385,269 @@ function FieldInput({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Hover'da büyüteç lensi, tıklayınca tam-ekran lightbox.
+ *  - Fareyi görselin üstünde gezdirince yuvarlak lupe açılır (default 2.5x)
+ *  - Wheel ile zoom değişir (1.5x–5x)
+ *  - Görsele tıklayınca fullscreen modal; +/– ve scroll ile zoom, drag ile pan
+ */
+function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+  const [zoom, setZoom] = useState(2.5);
+  const [lightbox, setLightbox] = useState(false);
+
+  const LENS = 200; // lens çapı (px)
+
+  function handleMove(e: React.MouseEvent<HTMLDivElement>) {
+    const r = containerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    if (x < 0 || y < 0 || x > r.width || y > r.height) {
+      setHoverPos(null);
+      return;
+    }
+    setHoverPos({ x, y });
+  }
+
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    if (!hoverPos) return;
+    e.preventDefault();
+    setZoom((z) => {
+      const next = z + (e.deltaY < 0 ? 0.25 : -0.25);
+      return Math.max(1.5, Math.min(5, next));
+    });
+  }
+
+  return (
+    <>
+      <div
+        ref={containerRef}
+        className="relative rounded-lg overflow-hidden flex items-center justify-center min-h-[260px] group cursor-zoom-in"
+        style={{
+          background: 'rgba(0,0,0,0.3)',
+          border: '1px solid rgba(255,255,255,0.05)',
+        }}
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHoverPos(null)}
+        onWheel={handleWheel}
+        onClick={() => src && setLightbox(true)}
+      >
+        {src ? (
+          <>
+            <img
+              ref={imgRef}
+              src={src}
+              alt={alt}
+              className="w-full h-full object-contain select-none"
+              style={{ maxHeight: 420, pointerEvents: 'none' }}
+              draggable={false}
+            />
+
+            {/* Lupe (büyüteç lensi) */}
+            {hoverPos && imgRef.current && containerRef.current && (
+              <div
+                className="pointer-events-none absolute rounded-full shadow-2xl"
+                style={{
+                  width: LENS,
+                  height: LENS,
+                  left: hoverPos.x - LENS / 2,
+                  top: hoverPos.y - LENS / 2,
+                  border: `2px solid ${GOLD}`,
+                  boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.6)',
+                  backgroundImage: `url(${src})`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: `${imgRef.current.offsetWidth * zoom}px ${imgRef.current.offsetHeight * zoom}px`,
+                  backgroundPosition: `${-(
+                    ((hoverPos.x - (containerRef.current.clientWidth - imgRef.current.offsetWidth) / 2) * zoom) -
+                    LENS / 2
+                  )}px ${-(
+                    ((hoverPos.y - (containerRef.current.clientHeight - imgRef.current.offsetHeight) / 2) * zoom) -
+                    LENS / 2
+                  )}px`,
+                }}
+              />
+            )}
+
+            {/* Zoom indikatörü */}
+            {hoverPos && (
+              <div
+                className="pointer-events-none absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-bold tabular-nums"
+                style={{ background: 'rgba(0,0,0,0.7)', color: GOLD }}
+              >
+                {zoom.toFixed(1)}× · wheel
+              </div>
+            )}
+
+            {/* Fullscreen hint */}
+            <div
+              className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold opacity-0 group-hover:opacity-100 transition"
+              style={{ background: 'rgba(0,0,0,0.7)', color: '#fafaf9' }}
+            >
+              <Maximize2 size={10} /> Tam ekran için tıkla
+            </div>
+          </>
+        ) : (
+          <Loader2 size={20} className="animate-spin" style={{ color: GOLD }} />
+        )}
+      </div>
+
+      {lightbox && src && (
+        <LightboxModal src={src} alt={alt} onClose={() => setLightbox(false)} />
+      )}
+    </>
+  );
+}
+
+/** Tam ekran lightbox: scroll = zoom, drag = pan, ESC/tık = kapat, +/– butonları */
+function LightboxModal({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragging = useRef<{ x: number; y: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === '+' || e.key === '=') setScale((s) => Math.min(8, s + 0.25));
+      if (e.key === '-') setScale((s) => Math.max(0.5, s - 0.25));
+      if (e.key === '0') {
+        setScale(1);
+        setOffset({ x: 0, y: 0 });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  if (!mounted) return null;
+
+  const content = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.92)' }}
+      onClick={onClose}
+      onWheel={(e) => {
+        e.preventDefault();
+        setScale((s) => Math.max(0.5, Math.min(8, s + (e.deltaY < 0 ? 0.25 : -0.25))));
+      }}
+    >
+      {/* Toolbar */}
+      <div
+        className="absolute top-4 right-4 flex items-center gap-2 z-10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
+          className="p-2 rounded-lg hover:brightness-125 transition"
+          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          title="Uzaklaş (−)"
+        >
+          <ZoomOut size={16} />
+        </button>
+        <span
+          className="px-3 py-1.5 rounded-lg text-[12px] font-bold tabular-nums min-w-[60px] text-center"
+          style={{ background: 'rgba(255,255,255,0.08)', color: GOLD }}
+        >
+          {Math.round(scale * 100)}%
+        </span>
+        <button
+          onClick={() => setScale((s) => Math.min(8, s + 0.25))}
+          className="p-2 rounded-lg hover:brightness-125 transition"
+          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          title="Yaklaş (+)"
+        >
+          <ZoomIn size={16} />
+        </button>
+        <button
+          onClick={() => {
+            setScale(1);
+            setOffset({ x: 0, y: 0 });
+          }}
+          className="px-3 py-2 rounded-lg text-[11px] font-semibold hover:brightness-125 transition"
+          style={{ background: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
+          title="Sıfırla (0)"
+        >
+          1:1
+        </button>
+        <button
+          onClick={onClose}
+          className="p-2 rounded-lg hover:brightness-125 transition"
+          style={{ background: 'rgba(244,63,94,0.2)', color: '#f43f5e' }}
+          title="Kapat (Esc)"
+        >
+          <XIcon size={16} />
+        </button>
+      </div>
+
+      {/* Görsel */}
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          dragging.current = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+        }}
+        onMouseMove={(e) => {
+          if (!dragging.current) return;
+          setOffset({
+            x: e.clientX - dragging.current.x,
+            y: e.clientY - dragging.current.y,
+          });
+        }}
+        onMouseUp={() => (dragging.current = null)}
+        onMouseLeave={() => (dragging.current = null)}
+        style={{
+          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+          maxWidth: '92vw',
+          maxHeight: '92vh',
+          cursor: dragging.current ? 'grabbing' : scale > 1 ? 'grab' : 'zoom-in',
+          transition: dragging.current ? 'none' : 'transform 0.1s ease-out',
+          userSelect: 'none',
+        }}
+      />
+
+      {/* Kısayol ipucu */}
+      <div
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-[11px]"
+        style={{ background: 'rgba(0,0,0,0.6)', color: 'rgba(250,250,249,0.7)' }}
+      >
+        Scroll: zoom · Drag: kaydır · + / −: zoom · 0: sıfırla · Esc: kapat
+      </div>
+    </div>
+  );
+
+  return createPortal(content, document.body);
+}
+
+function SummaryChip({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10.5px] font-bold tabular-nums px-2 py-0.5 rounded"
+      style={{ background: color + '1a', color }}
+    >
+      {label}: {count}
+    </span>
   );
 }
 
