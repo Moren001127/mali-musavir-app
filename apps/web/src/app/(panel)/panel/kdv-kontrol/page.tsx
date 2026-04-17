@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
 import { api } from '@/lib/api';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Play, Calendar, Users, Search, CheckCircle2, Loader2, Clock, FileSpreadsheet,
@@ -78,6 +79,8 @@ function fmtDate(iso?: string): string {
 
 export default function KdvKontrolPage() {
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // ── STATE ───────────────────────────────────────────
   const now = new Date();
@@ -86,6 +89,10 @@ export default function KdvKontrolPage() {
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
+  /** Geçmiş Kontroller'den Detay tıklayınca ?s=<sessionId> gelir — o seansa zıplarız */
+  const [pendingRestoreSessionId, setPendingRestoreSessionId] = useState<string | null>(
+    () => searchParams?.get('s') || null,
+  );
 
   // ── Canlı akış için state ───────────────────────────
   const [feed, setFeed] = useState<FeedItem[]>([]);
@@ -117,6 +124,37 @@ export default function KdvKontrolPage() {
     queryFn: kdvApi.getSessions,
     refetchInterval: 5000,
   });
+
+  /**
+   * Geçmiş Kontroller'den "Detay" tıklanınca URL'de ?s=<sessionId> gelir.
+   * Session listesi yüklendiğinde o seansın taxpayer + dönem + tip bilgilerini
+   * state'e yaz → ilgili seans aktif olur. Sonra URL'i temizle.
+   */
+  useEffect(() => {
+    if (!pendingRestoreSessionId || allSessions.length === 0) return;
+    const target = allSessions.find((s: any) => s.id === pendingRestoreSessionId);
+    if (!target) return;
+    // type → action
+    const typeToAction: Record<string, KdvAction> = {
+      KDV_191: 'BILANCO_ALIS',
+      KDV_391: 'BILANCO_SATIS',
+      ISLETME_GELIR: 'ISLETME_SATIS',
+      ISLETME_GIDER: 'ISLETME_ALIS',
+    };
+    if (target.taxpayerId) setTaxpayerId(target.taxpayerId);
+    if (target.type && typeToAction[target.type]) setAction(typeToAction[target.type]);
+    if (target.periodLabel) {
+      // "2026/03" → "2026-03"
+      const parts = String(target.periodLabel).split('/');
+      if (parts.length === 2) setAy(`${parts[0]}-${parts[1].padStart(2, '0')}`);
+    }
+    setPendingRestoreSessionId(null);
+    // URL'den ?s='i temizle
+    router.replace('/panel/kdv-kontrol');
+    toast.success('Detay yüklendi');
+    // Sayfanın üstüne kaydır
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [pendingRestoreSessionId, allSessions, router]);
   const { data: outputs = [] } = useQuery<any[]>({
     queryKey: ['kdv-outputs'],
     queryFn: kdvApi.listOutputs,
@@ -726,18 +764,46 @@ export default function KdvKontrolPage() {
                 </div>
               ))}
             </div>
-            <div className="flex items-center justify-end gap-2 mt-4">
-              {(results as any[]).length > 0 && (
-                <button
-                  onClick={() => exportExcel.mutate()}
-                  disabled={exportExcel.isPending}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold rounded-[9px]"
-                  style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
-                >
-                  <Download size={12} /> Excel İndir
-                </button>
-              )}
-            </div>
+            {/* OCR maliyet tahmini — Claude Haiku 4.5 ≈ $0.0025/fatura */}
+            {(() => {
+              const successCount = images.filter((i: any) =>
+                (i.ocrEngine || '').startsWith('claude') && !(i.ocrEngine || '').includes('cached')
+              ).length;
+              const cachedCount = images.filter((i: any) =>
+                (i.ocrEngine || '').includes('cached')
+              ).length;
+              const costUsd = successCount * 0.0025;  // avg per-fatura tahmini
+              const usdToTry = 40;  // yaklaşık kur (değişken)
+              const costTl = costUsd * usdToTry;
+              const savedUsd = cachedCount * 0.0025;
+              const savedTl = savedUsd * usdToTry;
+              return (
+                <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <div className="flex items-center gap-4 text-[11.5px] tabular-nums flex-wrap">
+                    <span style={{ color: 'rgba(250,250,249,0.5)' }}>OCR Maliyet Tahmini:</span>
+                    <span style={{ color: '#60a5fa', fontWeight: 600 }}>
+                      {successCount} fatura × ~${'0,0025'} ≈ <span style={{ color: '#fafaf9' }}>${costUsd.toFixed(4)}</span>
+                      <span style={{ color: 'rgba(250,250,249,0.4)' }}> (~{costTl.toFixed(2)} ₺)</span>
+                    </span>
+                    {cachedCount > 0 && (
+                      <span style={{ color: '#22c55e', fontWeight: 600 }}>
+                        💾 Cache'den: {cachedCount} fatura (~{savedTl.toFixed(2)} ₺ tasarruf)
+                      </span>
+                    )}
+                  </div>
+                  {(results as any[]).length > 0 && (
+                    <button
+                      onClick={() => exportExcel.mutate()}
+                      disabled={exportExcel.isPending}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-[12.5px] font-semibold rounded-[9px]"
+                      style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
+                    >
+                      <Download size={12} /> Excel İndir
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -835,8 +901,38 @@ export default function KdvKontrolPage() {
                     <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s._count?.images ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={async () => {
+                            try {
+                              toast.loading('Excel hazırlanıyor…', { id: `dl-${s.id}` });
+                              const ab = await kdvApi.exportExcel(s.id);
+                              const blob = new Blob([ab], {
+                                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              const name = s.taxpayer?.companyName ||
+                                `${s.taxpayer?.firstName ?? ''} ${s.taxpayer?.lastName ?? ''}`.trim() ||
+                                'kdv-kontrol';
+                              a.download = `${name}-${(s.periodLabel || '').replace('/', '-')}-${s.type || 'kontrol'}.xlsx`;
+                              document.body.appendChild(a);
+                              a.click();
+                              URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+                              toast.success('Excel indirildi', { id: `dl-${s.id}` });
+                            } catch (e: any) {
+                              toast.error(e?.message || 'Excel indirilemedi', { id: `dl-${s.id}` });
+                            }
+                          }}
+                          className="p-1.5 rounded-md"
+                          style={{ color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}
+                          title="Excel İndir"
+                        >
+                          <Download size={14} />
+                        </button>
                         <Link
-                          href={`/panel/kdv-kontrol/${s.id}`}
+                          href={`/panel/kdv-kontrol?s=${s.id}`}
                           className="p-1.5 rounded-md"
                           style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
                           title="Detay"
