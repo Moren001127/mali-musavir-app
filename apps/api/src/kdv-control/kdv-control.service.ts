@@ -1269,15 +1269,76 @@ export class KdvControlService {
       });
     }
 
+    // ═══════════════ OCR CACHE (mükerrer OCR'ı önler) ═══════════════
+    // Maliyet optimizasyonu: aynı Mihsap faturası daha önce başka bir
+    // session'da başarıyla OCR edilmişse, yeni OCR çağrısı YAPMA — önceki
+    // sonucu kopyala. Faturalar modülündeki "aynı belgeleri tekrar çekme"
+    // mantığının OCR versiyonu. Claude token'ı boşa harcanmaz.
+    let cacheHits = 0;
+    const toQueue: typeof pending = [];
+    for (const img of pending) {
+      if (!img.s3Key?.startsWith('mihsap://')) {
+        toQueue.push(img);
+        continue;
+      }
+
+      // Aynı Mihsap invoice daha önce OCR edildi mi? (aynı tenant, farklı image kaydı)
+      const cached = await this.prisma.receiptImage.findFirst({
+        where: {
+          s3Key: img.s3Key,
+          id: { not: img.id },
+          session: { tenantId },
+          ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW'] },
+          OR: [
+            { ocrBelgeNo: { not: null } },
+            { ocrDate: { not: null } },
+            { ocrKdvTutari: { not: null } },
+          ],
+        },
+        orderBy: { uploadedAt: 'desc' }, // en yeni OCR
+      });
+
+      if (cached) {
+        // Önceki OCR sonucunu direkt kopyala — yeni Claude çağrısı yok
+        await this.prisma.receiptImage.update({
+          where: { id: img.id },
+          data: {
+            ocrStatus: cached.ocrStatus,
+            ocrBelgeNo: cached.ocrBelgeNo,
+            ocrDate: cached.ocrDate,
+            ocrKdvTutari: cached.ocrKdvTutari,
+            ocrRawText: cached.ocrRawText,
+            ocrConfidence: cached.ocrConfidence,
+            ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,
+            ocrDateConfidence: cached.ocrDateConfidence,
+            ocrKdvConfidence: cached.ocrKdvConfidence,
+            ocrEngine: (cached.ocrEngine || 'claude-haiku-4-5') + ' (cached)',
+          },
+        });
+        cacheHits++;
+        this.logger.log(`OCR cache HIT: ${img.originalName} ← önceki başarılı OCR kopyalandı`);
+      } else {
+        toQueue.push(img);
+      }
+    }
+
+    if (cacheHits > 0) {
+      this.logger.log(`OCR cache: ${cacheHits} fatura için Claude çağrısı atlandı (mükerrer OCR önlendi)`);
+    }
+
+    if (toQueue.length === 0) {
+      return { queued: 0, cacheHits, message: 'Tüm faturalar önceden OCR edilmişti' };
+    }
+
     // Concurrency limit — Claude rate limit'ine takılmamak için aynı anda
     // max CLAUDE_OCR_CONCURRENCY işlem (default 3). Kuyrukta sırayla dönüyoruz;
     // her slot boşaldığında bir sonraki OCR başlar.
     const CONCURRENCY = Math.max(1, Number(process.env.CLAUDE_OCR_CONCURRENCY) || 3);
     this.logger.log(
-      `OCR kuyruğu başlatılıyor: ${pending.length} fatura · concurrency=${CONCURRENCY}`,
+      `OCR kuyruğu başlatılıyor: ${toQueue.length} fatura (${cacheHits} önceden cached) · concurrency=${CONCURRENCY}`,
     );
 
-    const queue = [...pending];
+    const queue = [...toQueue];
     let queued = 0;
     const workers = Array.from({ length: CONCURRENCY }, async (_, workerIdx) => {
       while (queue.length > 0) {
@@ -1299,10 +1360,17 @@ export class KdvControlService {
 
     // Workers'ları arkaplanda çalıştır, HTTP yanıtını hemen döndür
     Promise.all(workers).then(() =>
-      this.logger.log(`OCR kuyruğu bitti: ${queued} fatura işlendi`),
+      this.logger.log(`OCR kuyruğu bitti: ${queued} fatura işlendi · ${cacheHits} cached`),
     );
 
-    return { queued: pending.length, total: pending.length };
+    return {
+      queued: toQueue.length,
+      total: pending.length,
+      cacheHits,
+      message: cacheHits > 0
+        ? `${toQueue.length} yeni OCR · ${cacheHits} fatura önceden OCR edilmişti, atlandı`
+        : undefined,
+    };
   }
 
   /**

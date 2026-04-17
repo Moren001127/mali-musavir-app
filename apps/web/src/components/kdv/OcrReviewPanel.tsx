@@ -252,9 +252,23 @@ export function OcrReviewPanel({
       {pending.length === 0 ? (
         <div
           className="flex items-center justify-center gap-3 py-10 text-[13px]"
-          style={{ color: filter === 'needsReview' ? '#22c55e' : 'rgba(250,250,249,0.55)' }}
+          style={{
+            color:
+              summary.processing > 0
+                ? '#60a5fa'
+                : filter === 'needsReview'
+                  ? '#22c55e'
+                  : 'rgba(250,250,249,0.55)',
+          }}
         >
-          {filter === 'needsReview' ? (
+          {summary.processing > 0 && filter === 'needsReview' ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span className="font-semibold">
+                OCR devam ediyor — {summary.processing} fatura işleniyor, bittikçe burada görünecek
+              </span>
+            </>
+          ) : filter === 'needsReview' ? (
             <>
               <CheckCircle2 size={18} />
               <span className="font-semibold">Tüm faturalar incelendi — teyit bekleyen yok</span>
