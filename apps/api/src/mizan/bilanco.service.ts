@@ -378,6 +378,198 @@ export class BilancoService {
       : null;
     b.otomatikKaynak = otomatikKaynak;
 
+    // ── FİNANSAL ORANLAR ve YORUMLAMA ────────────────────────────────
+    // Aktif/pasif JSON'dan temel grup toplamlarını al
+    const aktifJ: any = b.aktif || {};
+    const pasifJ: any = b.pasif || {};
+    const hazirDeg = Number(aktifJ.hazirDegerler?.toplam || 0);
+    const ticariAlacak = Number(aktifJ.ticariAlacaklar?.toplam || 0);
+    const digerAlacak = Number(aktifJ.digerAlacaklar?.toplam || 0);
+    const stoklar = Number(aktifJ.stoklar?.toplam || 0);
+    const donenVar = Number(b.donenVarliklar || 0);
+    const duranVar = Number(b.duranVarliklar || 0);
+    const aktifT = Number(b.aktifToplami || 0);
+    const kvyk = Number(b.kvYabanciKaynak || 0);
+    const uvyk = Number(b.uvYabanciKaynak || 0);
+    const ozk = Number(b.ozkaynaklar || 0) + (duzeltmeEtkisi || 0); // düzeltme etkisi dahil
+    const pasifT = Number(b.pasifToplami || 0) + (duzeltmeEtkisi || 0);
+    const yabanciK = kvyk + uvyk;
+    const netSatis = gelirTablosu ? await this.getNetSatis(gelirTablosu.id) : 0;
+    const netKar = gelirNet; // gelir tablosundan
+    const safeDiv = (a: number, b: number) => (b > 0 ? a / b : 0);
+
+    const oran = (value: number, format: 'x' | '%' = 'x', decimals = 2): string => {
+      if (!isFinite(value)) return '—';
+      if (format === '%') return `%${(value * 100).toFixed(decimals)}`;
+      return value.toFixed(decimals);
+    };
+
+    const oranlar = {
+      // ─── LİKİDİTE ──────────────────────────────────
+      likidite: [
+        {
+          ad: 'Cari Oran',
+          kod: 'cari',
+          deger: safeDiv(donenVar, kvyk),
+          format: 'x' as const,
+          ideal: '1.5 – 2.0',
+          yorum: (v: number) =>
+            v >= 1.5 && v <= 2.5
+              ? '✓ İdeal aralıkta — kısa vadeli borçları rahat karşılıyor.'
+              : v > 2.5
+                ? '⚠ Çok yüksek — atıl dönen varlık olasılığı, yatırım düşünülebilir.'
+                : v >= 1
+                  ? '⚠ Sınırda — likidite riskine dikkat, işletme sermayesi zayıf.'
+                  : '✗ Düşük — kısa vadeli borçları karşılamakta güçlük, acil önlem gerek.',
+        },
+        {
+          ad: 'Asit-Test (Hızlı)',
+          kod: 'asitTest',
+          deger: safeDiv(donenVar - stoklar, kvyk),
+          format: 'x' as const,
+          ideal: '≥ 1.0',
+          yorum: (v: number) =>
+            v >= 1
+              ? '✓ İdeal — stoksuz bile kısa vadeli borçları karşılayabiliyor.'
+              : v >= 0.7
+                ? '⚠ Sınırda — stok satılmazsa borç ödeme sıkıntısı olabilir.'
+                : '✗ Düşük — stoğa bağımlı likidite, risk yüksek.',
+        },
+        {
+          ad: 'Nakit Oran',
+          kod: 'nakit',
+          deger: safeDiv(hazirDeg, kvyk),
+          format: 'x' as const,
+          ideal: '0.2 – 0.5',
+          yorum: (v: number) =>
+            v >= 0.2 && v <= 0.5
+              ? '✓ Sağlıklı nakit tamponu mevcut.'
+              : v > 0.5
+                ? '⚠ Aşırı nakit bekletiliyor — değerlendirilebilir.'
+                : '⚠ Nakit tamponu düşük — kritik ödeme günlerinde sıkıntı olabilir.',
+        },
+      ],
+      // ─── MALİ YAPI ─────────────────────────────────
+      maliYapi: [
+        {
+          ad: 'Finansal Kaldıraç',
+          kod: 'kaldirac',
+          deger: safeDiv(yabanciK, aktifT),
+          format: '%' as const,
+          ideal: '≤ %50',
+          yorum: (v: number) =>
+            v <= 0.5
+              ? '✓ Sağlıklı — varlıkların yarıdan azı borçla finanse edilmiş.'
+              : v <= 0.7
+                ? '⚠ Orta risk — borç yükü artıyor, faiz giderleri izlenmeli.'
+                : '✗ Yüksek borçluluk — finansman riski yüksek, özkaynak güçlendirilmeli.',
+        },
+        {
+          ad: 'Özkaynak Oranı',
+          kod: 'ozkaynak',
+          deger: safeDiv(ozk, pasifT),
+          format: '%' as const,
+          ideal: '≥ %50',
+          yorum: (v: number) =>
+            v >= 0.5
+              ? '✓ Güçlü özkaynak yapısı — dışa bağımlılık düşük.'
+              : v >= 0.3
+                ? '⚠ Orta — özkaynak payı artırılabilir.'
+                : '✗ Düşük özkaynak — mali yapı zayıf, sermaye artırımı düşünülmeli.',
+        },
+        {
+          ad: 'Borç / Özkaynak',
+          kod: 'borcOzk',
+          deger: safeDiv(yabanciK, ozk),
+          format: 'x' as const,
+          ideal: '≤ 1.0',
+          yorum: (v: number) =>
+            v <= 1
+              ? '✓ Sağlıklı — özkaynak borçtan fazla.'
+              : v <= 2
+                ? '⚠ Borç özkaynağın üzerinde — risk artıyor.'
+                : '✗ Borç özkaynağın 2 katından fazla — kritik kaldıraç seviyesi.',
+        },
+      ],
+      // ─── KÂRLILIK ─────────────────────────────────
+      karlilik: [
+        {
+          ad: 'ROA (Aktif Kârlılığı)',
+          kod: 'roa',
+          deger: safeDiv(netKar, aktifT),
+          format: '%' as const,
+          ideal: '≥ %5',
+          yorum: (v: number) =>
+            !gelirTablosu
+              ? 'Gelir tablosu oluşturulmamış — ROA hesaplanamıyor.'
+              : v >= 0.05
+                ? '✓ Varlıklar verimli kullanılıyor.'
+                : v >= 0.02
+                  ? '⚠ Düşük verimlilik — operasyon iyileştirilmeli.'
+                  : v >= 0
+                    ? '✗ Aktif verimliliği çok düşük.'
+                    : '✗ Zarar — varlıkların finansal dönüşü negatif.',
+        },
+        {
+          ad: 'ROE (Özkaynak Kârlılığı)',
+          kod: 'roe',
+          deger: safeDiv(netKar, ozk),
+          format: '%' as const,
+          ideal: '≥ %15',
+          yorum: (v: number) =>
+            !gelirTablosu
+              ? 'Gelir tablosu oluşturulmamış — ROE hesaplanamıyor.'
+              : v >= 0.15
+                ? '✓ Ortakların sermayesi iyi getiri sağlıyor.'
+                : v >= 0.08
+                  ? '⚠ Sektör ortalamasına göre düşük — karlılık iyileştirilmeli.'
+                  : v >= 0
+                    ? '✗ Özkaynak getirisi yetersiz.'
+                    : '✗ Zarar — ortakların sermayesi eriyor.',
+        },
+        ...(netSatis > 0
+          ? [
+              {
+                ad: 'Net Kâr Marjı',
+                kod: 'karMarji',
+                deger: safeDiv(netKar, netSatis),
+                format: '%' as const,
+                ideal: 'Sektöre göre',
+                yorum: (v: number) =>
+                  v >= 0.1
+                    ? '✓ Güçlü kâr marjı (>%10).'
+                    : v >= 0.05
+                      ? '⚠ Orta kâr marjı — maliyet kontrolü izlenmeli.'
+                      : v >= 0
+                        ? '⚠ İnce kâr marjı — fiyatlama/maliyet rekabetçiliği gözden geçirilmeli.'
+                        : '✗ Zarar — gider yapısı acil incelensin.',
+              },
+            ]
+          : []),
+      ],
+    };
+    // Her oranı format'la ve yorumunu çalıştır
+    const formatlanmisOranlar = {
+      likidite: oranlar.likidite.map((o) => ({
+        ...o,
+        degerFmt: oran(o.deger, o.format),
+        yorum: o.yorum(o.deger),
+      })),
+      maliYapi: oranlar.maliYapi.map((o) => ({
+        ...o,
+        degerFmt: oran(o.deger, o.format),
+        yorum: o.yorum(o.deger),
+      })),
+      karlilik: oranlar.karlilik.map((o: any) => ({
+        ...o,
+        degerFmt: oran(o.deger, o.format),
+        yorum: o.yorum(o.deger),
+      })),
+    };
+    b.finansalOranlar = formatlanmisOranlar;
+    // Genel yorumlama özet
+    b.finansalOzet = this.genelYorum(b, formatlanmisOranlar);
+
     const duzeltmeEtkisi = netKari - netZarari; // + kar, - zarar
     if (duzeltmeEtkisi !== 0) {
       // Pasif JSON içinde 59 Dönem Kar/Zarar grubunu güncelle:
@@ -465,6 +657,45 @@ export class BilancoService {
       where: { id },
       data: { detay: newDetay as any },
     });
+  }
+
+  // ─── Finansal oran helper'ları ───────────────────────────
+  private async getNetSatis(gelirTablosuId: string): Promise<number> {
+    try {
+      const gt = await (this.prisma as any).gelirTablosu.findUnique({
+        where: { id: gelirTablosuId },
+        select: { netSatislar: true },
+      });
+      return gt ? Number(gt.netSatislar || 0) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Genel finansal sağlık yorumu — en önemli oranları birleştirip özet verir */
+  private genelYorum(bilanco: any, oranlar: any): string {
+    const kvyk = Number(bilanco.kvYabanciKaynak || 0);
+    const donenVar = Number(bilanco.donenVarliklar || 0);
+    const ozk = Number(bilanco.ozkaynaklar || 0);
+    const aktif = Number(bilanco.aktifToplami || 0);
+    const yabanciK = kvyk + Number(bilanco.uvYabanciKaynak || 0);
+
+    const cariOran = kvyk > 0 ? donenVar / kvyk : 0;
+    const ozkaynakOrani = aktif > 0 ? ozk / aktif : 0;
+    const kaldirac = aktif > 0 ? yabanciK / aktif : 0;
+
+    const notlar: string[] = [];
+    if (cariOran >= 1.5 && cariOran <= 2.5) notlar.push('Likidite dengeli');
+    else if (cariOran < 1) notlar.push('Likidite riskli — kısa vadeli borç baskısı var');
+    else if (cariOran > 3) notlar.push('Aşırı likit — atıl varlık olasılığı');
+
+    if (ozkaynakOrani >= 0.5) notlar.push('Güçlü özkaynak yapısı');
+    else if (ozkaynakOrani < 0.3) notlar.push('Özkaynak zayıf — sermaye artırımı düşünülmeli');
+
+    if (kaldirac > 0.7) notlar.push('Yüksek borçluluk — finansman riski');
+
+    if (notlar.length === 0) return 'Finansal yapı sağlıklı görünüyor.';
+    return notlar.join(' · ') + '.';
   }
 
   async deleteBilanco(id: string, tenantId: string) {

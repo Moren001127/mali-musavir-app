@@ -273,6 +273,95 @@ export class GelirTablosuService {
       select: { id: true, firstName: true, lastName: true, companyName: true },
     });
     gt.taxpayer = tp || null;
+
+    // ── STOK & MALİYET (backend tarafında detay JSON'a kayıt edildi) ─────
+    const detay = (gt.detay as any) || {};
+    const duzeltmeler = (gt.duzeltmeler as any) || {};
+    const stokHesaplari = Array.isArray(detay.stokHesaplari) ? detay.stokHesaplari : [];
+    const maliyetHesaplari = Array.isArray(detay.maliyetHesaplari) ? detay.maliyetHesaplari : [];
+    const toplamStok = Number(detay.toplamStok || 0);
+    const satisMaliyeti = Number(gt.satisMaliyeti || 0);
+    const kalanStok = toplamStok - satisMaliyeti;
+    const kkeg = Number(detay.kkeg || 0);
+
+    // ── GEÇİCİ VERGİ MATRAHI HESAPLAMASI ──────────────────────────────────
+    const donemNetKari = Number(gt.donemNetKari || 0);
+    const gecmisYilZarari = Number(duzeltmeler.gecmisYilZarari || 0); // manuel giriş
+
+    // Önceki dönem ödenen geçici vergi: kümülatif toplam
+    //   Q1 → 0 (ilk dönem)
+    //   Q2 → Q1.odenecekGeciciVergi
+    //   Q3 → Q1 + Q2 ödenecek toplamı
+    //   Q4 → Q1 + Q2 + Q3 ödenecek toplamı
+    const DONEM_SIRASI: Record<string, number> = {
+      GECICI_Q1: 1, GECICI_Q2: 2, GECICI_Q3: 3, GECICI_Q4: 4, YILLIK: 5,
+    };
+    const mevcutSira = DONEM_SIRASI[String(gt.donemTipi || '')] || 0;
+    const yilMatch = String(gt.donem || '').match(/^(\d{4})/);
+    const yil = yilMatch ? yilMatch[1] : null;
+    let oncekiDonemOtomatikToplam = 0;
+    if (mevcutSira >= 2 && yil) {
+      const oncekiTipler = Object.keys(DONEM_SIRASI).filter(
+        (t) => DONEM_SIRASI[t] < mevcutSira,
+      );
+      const oncekiTablolar = await (this.prisma as any).gelirTablosu.findMany({
+        where: {
+          tenantId,
+          taxpayerId: gt.taxpayerId,
+          donem: { startsWith: yil },
+          donemTipi: { in: oncekiTipler },
+          id: { not: gt.id },
+        },
+      });
+      // Her bir önceki döneminin ödenecek vergisini tekrar hesapla ve topla
+      for (const o of oncekiTablolar) {
+        const dDetay = (o.detay as any) || {};
+        const dDuz = (o.duzeltmeler as any) || {};
+        const dKkeg = Number(dDetay.kkeg || 0);
+        const dToplamKar = Number(o.donemNetKari || 0) + dKkeg;
+        const dGecmisYil = Number(dDuz.gecmisYilZarari || 0);
+        const dMatrah = Math.max(0, dToplamKar - dGecmisYil);
+        const dHesap = dMatrah * 0.25;
+        // O dönemin "önceki ödenen" değerini de dikkate al (kümülatif zincir)
+        const dOncekiOdenen = Number(dDuz.oncekiDonemOdenenGeciciVergi || 0);
+        const dOdenecek = Math.max(0, dHesap - dOncekiOdenen);
+        oncekiDonemOtomatikToplam += dOdenecek;
+      }
+    }
+
+    // Manuel override varsa onu kullan, yoksa otomatik kümülatif toplamı
+    const manuelOncekiOdenen = Number(duzeltmeler.oncekiDonemOdenenGeciciVergi || 0);
+    const oncekiDonemOdenenGeciciVergi =
+      manuelOncekiOdenen > 0 ? manuelOncekiOdenen : oncekiDonemOtomatikToplam;
+
+    const toplamKar = donemNetKari + kkeg;
+    const gecicVergiMatrahi = Math.max(0, toplamKar - gecmisYilZarari);
+    const gecicVergiOrani = 0.25; // %25 kurumlar vergisi oranı (2026)
+    const hesaplananGeciciVergi = gecicVergiMatrahi * gecicVergiOrani;
+    const odenecekGeciciVergi = Math.max(0, hesaplananGeciciVergi - oncekiDonemOdenenGeciciVergi);
+
+    gt.stokMaliyetOzet = {
+      stokHesaplari,
+      maliyetHesaplari,
+      toplamStok,
+      satisMaliyeti,
+      kalanStok,
+    };
+    gt.geciciVergiHesabi = {
+      kkeg,
+      donemNetKari,
+      toplamKar,
+      gecmisYilZarari,
+      gecicVergiMatrahi,
+      gecicVergiOrani,
+      hesaplananGeciciVergi,
+      oncekiDonemOdenenGeciciVergi,
+      oncekiDonemOtomatikToplam,
+      oncekiDonemKaynak: manuelOncekiOdenen > 0 ? 'manuel' : 'otomatik',
+      odenecekGeciciVergi,
+      donemSirasi: mevcutSira, // 1=Q1, 2=Q2, 3=Q3, 4=Q4, 5=Yıllık
+    };
+
     return gt;
   }
 
@@ -337,11 +426,17 @@ export class GelirTablosuService {
     if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
     if (gt.locked) throw new BadRequestException('Kesin kayıtlı gelir tablosunda düzeltme yapılamaz');
 
-    // Temizle: boş/sıfır/geçersiz değerleri at
-    const cleaned: Record<string, number> = {};
+    // Mevcut düzeltmeleri koru, üstüne yeni gelenleri yaz (partial update).
+    // İzinli alanlar: gelir tablosu kalemleri + vergi matrahı manuel alanları.
+    const cleaned: Record<string, number> = { ...((gt.duzeltmeler as any) || {}) };
     for (const [k, v] of Object.entries(duzeltmeler || {})) {
       const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
-      if (isFinite(n) && n !== 0) cleaned[k] = n;
+      if (!isFinite(n)) continue;
+      if (n === 0) {
+        delete cleaned[k]; // sıfır gelirse o key'i temizle
+      } else {
+        cleaned[k] = n;
+      }
     }
 
     return (this.prisma as any).gelirTablosu.update({

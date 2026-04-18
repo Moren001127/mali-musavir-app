@@ -361,9 +361,24 @@ export class MizanService {
 
     const mevcutAnaHesaplar = new Set<string>();
 
+    // ── LEAF NODE tespiti ───────────────────────────────────────
+    // Bir hesap "leaf" ise altında daha detay hesap YOKTUR.
+    // Örn: 108, 108.01, 108.01.001 hepsi mizandaysa → sadece 108.01.001 leaf.
+    // Düzeltme/müdahale en detay seviyede yapılır, ana hesabı uyarmak gereksiz
+    // tekrar yaratır. Bu set ZIT_BAKIYE ve NET_OLMAYAN uyarılarını filtreler.
+    const tumKodlar = new Set<string>(hesaplar.map((h: any) => h.hesapKodu));
+    const isLeaf = (kod: string): boolean => {
+      const prefix = kod + '.';
+      for (const k of tumKodlar) {
+        if (k !== kod && k.startsWith(prefix)) return false;
+      }
+      return true;
+    };
+
     for (const h of hesaplar) {
       const anaKod = h.hesapKodu.split('.')[0];
       mevcutAnaHesaplar.add(anaKod);
+      const leaf = isLeaf(h.hesapKodu);
 
       // 1) TDHP dışı
       if (h.seviye === 0 && !TDHP_ANA_HESAPLAR.has(anaKod)) {
@@ -376,8 +391,10 @@ export class MizanService {
         });
       }
 
-      // 2) Net olmayan bakiye — hem borç hem alacak bakiye var (sadece detay hesaplar)
-      if (h.seviye >= 1 && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) > 0) {
+      // 2) Net olmayan bakiye — hem borç hem alacak bakiye var (sadece LEAF hesaplar)
+      // Ana/grup hesaplarında doğal olarak hem borç hem alacak bakiye görünür.
+      // Gerçek problem en detay seviyede tespit edilir.
+      if (leaf && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) > 0) {
         anomaliler.push({
           hesapKodu: h.hesapKodu,
           tip: 'NET_OLMAYAN',
@@ -388,12 +405,13 @@ export class MizanService {
       }
 
       // 3) Zıt bakiye — 120 (alıcılar) alacak bakiye verirse yanlış, 320 (satıcılar) borç bakiye verirse yanlış
-      // Tek istisna: TDHP'deki KONTRA hesaplar (amortisman, karşılık, sermaye
-      // düzeltmeleri vb.) — bunlar tanım gereği zıt bakiye verir, normal.
-      // Bireysel cari hesaplar (320.01.XXX gibi alt kırılımlar) uyarı versin
-      // ki müşavir tek tek görüp düzeltebilsin.
+      // Filtreler:
+      //   a) KONTRA hesaplar (amortisman, karşılık, sermaye düzeltmeleri) muaf
+      //   b) Sadece LEAF hesap kontrol edilir — 108, 108.01, 108.01.001 hepsi
+      //      problemliyse düzeltme 108.01.001'de yapılır, ana satırlarda tekrar
+      //      uyarı vermek anlamsız (aynı hata 3 yerde görünür).
       const isKontra = KONTRA_HESAPLAR.has(anaKod);
-      if (!isKontra) {
+      if (!isKontra && leaf) {
         const beklenen = this.beklenenBakiyeTipi(anaKod);
         if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
           anomaliler.push({
