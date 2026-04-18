@@ -760,10 +760,35 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
-  const [zoom, setZoom] = useState(2.5);
-  const [lensSize, setLensSize] = useState(200); // lens çapı (px) — kullanıcı kontrolü
+
+  // localStorage persist — her belgede sıfırlanmasın
+  const [zoom, setZoom] = useState(() => {
+    if (typeof window === 'undefined') return 3.5;
+    const v = parseFloat(window.localStorage.getItem('ocr.lens.zoom') || '');
+    return Number.isFinite(v) && v >= 1.5 && v <= 8 ? v : 3.5;
+  });
+  const [lensSize, setLensSize] = useState(() => {
+    if (typeof window === 'undefined') return 280;
+    const v = parseInt(window.localStorage.getItem('ocr.lens.size') || '', 10);
+    return Number.isFinite(v) && v >= 120 && v <= 500 ? v : 280;
+  });
+  const [showSidePanel, setShowSidePanel] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.localStorage.getItem('ocr.lens.sidepanel') !== '0';
+  });
   const [controlsOpen, setControlsOpen] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+
+  // Persist on change
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('ocr.lens.zoom', String(zoom));
+  }, [zoom]);
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('ocr.lens.size', String(lensSize));
+  }, [lensSize]);
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem('ocr.lens.sidepanel', showSidePanel ? '1' : '0');
+  }, [showSidePanel]);
 
   function handleMove(e: React.MouseEvent<HTMLDivElement>) {
     const r = containerRef.current?.getBoundingClientRect();
@@ -782,12 +807,14 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
     e.preventDefault();
     // Shift + wheel → lens boyutunu değiştirir
     if (e.shiftKey) {
-      setLensSize((s) => Math.max(100, Math.min(400, s + (e.deltaY < 0 ? 20 : -20))));
+      setLensSize((s) => Math.max(120, Math.min(500, s + (e.deltaY < 0 ? 30 : -30))));
       return;
     }
     setZoom((z) => {
-      const next = z + (e.deltaY < 0 ? 0.25 : -0.25);
-      return Math.max(1.2, Math.min(6, next));
+      // Zoom step zoom'a oranlı: düşükse 0.3, yüksekse 0.7
+      const step = z < 3 ? 0.3 : z < 5 ? 0.5 : 0.7;
+      const next = z + (e.deltaY < 0 ? step : -step);
+      return Math.max(1.5, Math.min(8, next));
     });
   }
 
@@ -803,6 +830,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverPos(null)}
         onWheel={handleWheel}
+        onClick={() => src && setLightbox(true)}
       >
         {src ? (
           <>
@@ -813,7 +841,6 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               className="w-full h-full object-contain select-none"
               style={{ maxHeight: 420, pointerEvents: 'none' }}
               draggable={false}
-              onClick={() => src && setLightbox(true)}
             />
 
             {/* Lupe (büyüteç lensi) — NETLEŞTİRME:
@@ -837,21 +864,38 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               const relY = hoverPos.y - (container.clientHeight - offsetH) / 2;
               const bgX = -(relX * effectiveZoom - lensSize / 2);
               const bgY = -(relY * effectiveZoom - lensSize / 2);
+              // Yazı okumak için KARE lens (daire yazıyı keser). Genişlik biraz fazla.
+              const lensW = Math.round(lensSize * 1.4);
+              const lensH = lensSize;
+              // Lens kenara yapışmasın — imleçten yukarıda gösterilebilir kontainer kenarlarına göre
+              let lx = hoverPos.x - lensW / 2;
+              let ly = hoverPos.y - lensH / 2;
+              // Container içinde kalması için clamp
+              if (container) {
+                const maxX = container.clientWidth - lensW;
+                const maxY = container.clientHeight - lensH;
+                if (lx < 0) lx = 0;
+                else if (lx > maxX) lx = maxX;
+                if (ly < 0) ly = 0;
+                else if (ly > maxY) ly = maxY;
+              }
+              const lensBgX = -(relX * effectiveZoom - lensW / 2);
+              const lensBgY = -(relY * effectiveZoom - lensH / 2);
               return (
                 <div
-                  className="pointer-events-none absolute rounded-full shadow-2xl"
+                  className="pointer-events-none absolute rounded-md shadow-2xl"
                   style={{
-                    width: lensSize,
-                    height: lensSize,
-                    left: hoverPos.x - lensSize / 2,
-                    top: hoverPos.y - lensSize / 2,
+                    width: lensW,
+                    height: lensH,
+                    left: lx,
+                    top: ly,
                     border: `2px solid ${GOLD}`,
-                    boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.6)',
+                    boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.8)',
+                    backgroundColor: '#fff',
                     backgroundImage: `url(${src})`,
                     backgroundRepeat: 'no-repeat',
                     backgroundSize: `${bgW}px ${bgH}px`,
-                    backgroundPosition: `${bgX}px ${bgY}px`,
-                    // Render hint — keskin kenar yerine optimize edilmiş bilinear
+                    backgroundPosition: `${lensBgX}px ${lensBgY}px`,
                     imageRendering: 'crisp-edges' as any,
                     WebkitImageRendering: '-webkit-optimize-contrast',
                   } as any}
@@ -936,15 +980,29 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                     />
                   </div>
 
+                  {/* Yan panel toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <input
+                      type="checkbox"
+                      checked={showSidePanel}
+                      onChange={(e) => { e.stopPropagation(); setShowSidePanel(e.target.checked); }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ accentColor: GOLD }}
+                    />
+                    <span className="text-[10px] font-semibold" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                      Sabit Yan Panel (görsel kapanmaz)
+                    </span>
+                  </label>
+
                   {/* Sıfırla + hint */}
                   <div className="flex items-center gap-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setZoom(2.5); setLensSize(200); }}
+                      onClick={(e) => { e.stopPropagation(); setZoom(3.5); setLensSize(280); }}
                       className="flex-1 px-2 py-1 rounded text-[10px] font-semibold"
                       style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.7)' }}
                     >
-                      Sıfırla
+                      Sıfırla (3.5× · 280px)
                     </button>
                     <span className="text-[9px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
                       Wheel: zoom · Shift+Wheel: çap

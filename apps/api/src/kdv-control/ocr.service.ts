@@ -806,6 +806,85 @@ export class OcrService {
   }
 
   /**
+   * Z RAPORU özel parser — Azure ham metninden TOPKDV / TOPKDV %X satırlarını çıkarır.
+   * Çıktı: { kdvTutari, breakdown }
+   *
+   * KRİTİK: "KUM TOPKDV" / "KUM TOPLAM" satırları KÜMÜLATİF — ASLA ALMA.
+   * Sadece o anki Z raporu için "TOPKDV" / "TOPKDV %X" satırlarını al.
+   */
+  private extractZRaporuKdvFromAzure(text: string): {
+    kdvTutari: string | null;
+    breakdown: KdvBreakdownItem[];
+    matrahByOran: Record<number, number>;
+  } {
+    const result = {
+      kdvTutari: null as string | null,
+      breakdown: [] as KdvBreakdownItem[],
+      matrahByOran: {} as Record<number, number>,
+    };
+    if (!text) return result;
+
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+    // 1) TOPLAM %X satırlarından MATRAH'ları topla
+    //    "TOPLAM %20  *140,00" gibi satırları yakala
+    const matrahRegex = /^TOPLAM\s*[%/]\s*(\d{1,2})\b\s*[\*:]?\s*([\d.,]+)/i;
+    for (const line of lines) {
+      // KUM içeren satırları atla (kümülatif)
+      if (/\bKUM\b/i.test(line)) continue;
+      const m = line.match(matrahRegex);
+      if (m) {
+        const oran = parseInt(m[1], 10);
+        const matrah = this.parseAmount(m[2]);
+        if (oran > 0 && oran <= 30 && matrah > 0) {
+          result.matrahByOran[oran] = matrah;
+        }
+      }
+    }
+
+    // 2) TOPKDV %X satırlarından her oran için KDV tutarını al
+    //    "TOPKDV %20  *23,33" / "TOPKDV /20 *23.33" gibi
+    const breakdownRegex = /^TOPKDV\s*[%/]\s*(\d{1,2})\b\s*[\*:]?\s*([\d.,]+)/i;
+    for (const line of lines) {
+      if (/\bKUM\b/i.test(line)) continue; // kümülatifi atla
+      const m = line.match(breakdownRegex);
+      if (m) {
+        const oran = parseInt(m[1], 10);
+        const tutar = this.parseAmount(m[2]);
+        if (oran > 0 && oran <= 30 && tutar > 0) {
+          // matrahByOran'dan ilgili matrahı al
+          const matrah = result.matrahByOran[oran] ?? null;
+          result.breakdown.push({ oran, tutar, matrah });
+        }
+      }
+    }
+
+    // 3) Toplam TOPKDV — breakdown varsa toplamını al, yoksa "TOPKDV ..." satırını ara
+    if (result.breakdown.length > 0) {
+      const sum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
+      result.kdvTutari = this.formatAmount(sum);
+    } else {
+      // Tek oranlı / sadece TOPKDV var — "TOPKDV  *344,56" gibi
+      // KUM içermeyen, %X içermeyen sade TOPKDV satırı
+      const simpleTopkdvRegex = /^TOPKDV\s*[\*:]?\s*([\d.,]+)\s*$/i;
+      for (const line of lines) {
+        if (/\bKUM\b/i.test(line)) continue;
+        if (/[%/]\s*\d/.test(line)) continue; // %X olan satır
+        const m = line.match(simpleTopkdvRegex);
+        if (m) {
+          const tutar = this.parseAmount(m[1]);
+          if (tutar > 0) {
+            result.kdvTutari = this.formatAmount(tutar);
+            break;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Claude'un verdiği değeri Azure'un ham metninde ara — TANIK DOĞRULAMA.
    * Amaç: Claude halüsinasyon yaparsa (286,36'yı 631,43 gibi) Azure "bunu görmedim" der.
    * Tutar için ±1 kuruş tolerans; belge no için case-insensitive; tarih için format-insensitive.
@@ -866,6 +945,41 @@ export class OcrService {
     originalName?: string,
   ): void {
     if (!azureText || azureText.length < 10) return;
+
+    // ─── Z RAPORU AUTO-CORRECT — Azure metninden direkt çıkar ───
+    // Z raporları yapısal: TOPLAM %X / TOPKDV %X / TOPKDV satırları sabit format.
+    // Claude halüsinasyon yapsa bile Azure regex'i doğru değeri çıkarır.
+    if (result.belgeTipi === 'Z_RAPORU') {
+      const zParsed = this.extractZRaporuKdvFromAzure(azureText);
+      if (zParsed.kdvTutari) {
+        const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+        const azureKdv = this.parseAmount(zParsed.kdvTutari);
+        // Eğer farklılarsa Azure'un değerini kullan (regex parse daha güvenilir)
+        if (Math.abs(claudeKdv - azureKdv) > 0.05) {
+          this.logger.warn(
+            `Z_RAPORU KDV auto-correct: Claude=${result.kdvTutari} → Azure=${zParsed.kdvTutari} (${originalName})`,
+          );
+          result.kdvTutari = zParsed.kdvTutari;
+          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match → yüksek güven
+        } else {
+          // Eşleşiyorsa zaten doğruydu — confidence boost
+          result.fieldConfidence.kdvTutari = Math.max(
+            result.fieldConfidence.kdvTutari ?? 0,
+            0.95,
+          );
+        }
+      }
+      // Breakdown'u Azure'dan al (Claude vermediyse veya yanlışsa)
+      if (zParsed.breakdown.length > 0) {
+        const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
+        if (claudeBreakdownCount === 0 || claudeBreakdownCount !== zParsed.breakdown.length) {
+          this.logger.warn(
+            `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${zParsed.breakdown.length} oran (${originalName})`,
+          );
+          result.kdvBreakdown = zParsed.breakdown;
+        }
+      }
+    }
 
     const checks: { field: 'belgeNo' | 'date' | 'amount'; value: string | null; key: 'belgeNo' | 'date' | 'kdvTutari' }[] = [
       { field: 'belgeNo', value: result.belgeNo, key: 'belgeNo' },
