@@ -879,26 +879,136 @@ export class OcrService {
    *
    * KDV DIŞI vergi satırları (ÖİV, Telsiz, ÖTV, BSMV, KKDF) atlanır.
    */
+  /**
+   * Telekom faturasından SADECE "Katma Değer Vergisi" satırının tutarını çıkar.
+   * ÖİV ve Telsiz Kullanım tutarları atlanır.
+   *
+   * Azure metni tipik formatta:
+   *   "Katma Değer Vergisi     %20   (Matrah: 1.260,01 TRY)    252,00"
+   *   "Özel İletişim Vergisi   %10   (Matrah: 1.260,01 TRY)    126,00"
+   * Veya label ve amount ayrı satırlarda:
+   *   "Katma Değer Vergisi"
+   *   "%20"
+   *   "(Matrah: 1.260,01 TRY)"
+   *   "252,00"
+   */
+  private extractKdvOnlyFromTelekomAzure(text: string): number | null {
+    if (!text) return null;
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
+    const kdvLabelRe = /KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]/i;
+    // Satır başka bir vergi etiketi mi?
+    const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN|ÖTV\b|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!kdvLabelRe.test(line)) continue;
+
+      // 1) Aynı satırda "Katma Değer Vergisi ... 252,00" olabilir
+      const afterLabel = line.replace(kdvLabelRe, '');
+      // Matrah parantezini atla (Matrah içindeki tutar KDV değil)
+      const noMatrah = afterLabel.replace(/\(\s*Matrah[^)]*\)/i, '');
+      const inlineAmount = noMatrah.match(amountRe);
+      if (inlineAmount) {
+        const val = this.parseAmount(inlineAmount[1]);
+        if (val > 0 && val < 10_000_000) return val;
+      }
+
+      // 2) Sonraki 1-5 satıra bak, başka vergi etiketi gelene kadar amount ara
+      for (let j = 1; j <= 5 && i + j < lines.length; j++) {
+        const nextLine = lines[i + j];
+        if (kdvLabelRe.test(nextLine)) break; // başka KDV satırı
+        if (otherTaxRe.test(nextLine)) break; // başka vergi türü → dur
+        // Matrah parantezini skip et
+        const cleaned = nextLine.replace(/\(\s*Matrah[^)]*\)/i, '').trim();
+        if (!cleaned) continue;
+        // "%20", "(Matrah...)" gibi pure marker satırı atla
+        if (/^[%]\s*\d/.test(cleaned)) continue;
+        const m = cleaned.match(amountRe);
+        if (m) {
+          const val = this.parseAmount(m[1]);
+          // Matrah değerlerini (genelde daha büyük) KDV sanmamaya dikkat
+          // KDV genelde matrah * oran / (100+oran) = KDV. Ama emin olamayız.
+          // Yine de ilk bulunan tutarı al — label'dan hemen sonra geldi.
+          if (val > 0 && val < 10_000_000) return val;
+        }
+      }
+    }
+
+    return null;
+  }
+
   private extractMultiRateKdvFromAzure(text: string): KdvBreakdownItem[] {
     if (!text) return [];
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const breakdown: KdvBreakdownItem[] = [];
     const seen = new Set<number>();
 
-    // "Hesaplanan KDV (%20,00)  1.006,00" veya "KDV (%10)  42,00"
-    // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 iş bulunur") önler
-    const re = /(?:HESAPLANAN\s+)?KDV\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)\s*[:*]?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/i;
+    // Label regex: "Hesaplanan KDV (% 20,00 )" veya "KDV (%10)"
+    // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 ibaresi" gibi) önler
+    const labelRe = /(?:HESAPLANAN\s+)?KDV\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
+    // Amount regex: "1.006,00" / "42,00" / "320,15" (opsiyonel TL/TRY/₺)
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       // KDV DIŞI vergi satırlarını atla (Turkcell faturası gibi)
       if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i.test(line)) {
         continue;
       }
-      const m = line.match(re);
-      if (!m) continue;
-      const oran = parseInt(m[1], 10);
-      const tutar = this.parseAmount(m[2]);
-      if (oran > 0 && oran <= 30 && tutar > 0 && tutar < 10_000_000 && !seen.has(oran)) {
+
+      const labelMatch = line.match(labelRe);
+      if (!labelMatch) continue;
+
+      const oran = parseInt(labelMatch[1], 10);
+      if (!(oran > 0 && oran <= 30) || seen.has(oran)) continue;
+
+      // 1) Aynı satırda label'den SONRA amount ara
+      let tutar: number | null = null;
+      const afterLabel = line.slice(labelMatch.index! + labelMatch[0].length);
+      const inlineAmountMatch = afterLabel.match(amountRe);
+      if (inlineAmountMatch) {
+        const parsed = this.parseAmount(inlineAmountMatch[1]);
+        if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+      }
+
+      // 2) Aynı satırda bulunamadıysa SONRAKİ 1-3 satıra bak (tablo layout için)
+      if (tutar == null) {
+        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+          const nextLine = lines[i + j];
+          // Sonraki satır başka bir KDV label'ı ise kes
+          if (labelRe.test(nextLine)) break;
+          // ÖİV/Telsiz vb. satırı varsa kes
+          if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(nextLine)) break;
+          const m = nextLine.match(amountRe);
+          if (m) {
+            const parsed = this.parseAmount(m[1]);
+            if (parsed > 0 && parsed < 10_000_000) {
+              tutar = parsed;
+              break;
+            }
+          }
+        }
+      }
+
+      // 3) Yine yoksa ÖNCEKİ 1-2 satıra bak (bazen amount label'ın üstünde)
+      if (tutar == null) {
+        for (let j = 1; j <= 2 && i - j >= 0; j++) {
+          const prevLine = lines[i - j];
+          if (labelRe.test(prevLine)) break;
+          if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
+          const m = prevLine.match(amountRe);
+          if (m) {
+            const parsed = this.parseAmount(m[1]);
+            if (parsed > 0 && parsed < 10_000_000) {
+              tutar = parsed;
+              break;
+            }
+          }
+        }
+      }
+
+      if (tutar != null) {
         breakdown.push({ oran, tutar, matrah: null });
         seen.add(oran);
       }
@@ -1158,6 +1268,31 @@ export class OcrService {
       }
     }
 
+    // ─── TELEKOM FATURASI KDV SADECE-KDV OVERRIDE ───
+    // Telekom faturaları (Turkcell, Vodafone, TT) 4 farklı vergi türü içerir:
+    //   Katma Değer Vergisi (%20)  252,00  ← SADECE BU KDV
+    //   Özel İletişim Vergisi (%10) 126,00  ← DEĞİL
+    //   Telsiz Kullanım Aylık Taksit (%0) 26,98  ← DEĞİL
+    // Claude bunları bazen topluyor. Azure metninde "Özel İletişim" varsa
+    // bu telekom faturasıdır — "Katma Değer Vergisi" satırını özel
+    // parse edip kdvTutari'yi defansif olarak override et.
+    const isTelekomFatura = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN/i.test(azureText);
+    if (isTelekomFatura) {
+      const kdvOnlyAmount = this.extractKdvOnlyFromTelekomAzure(azureText);
+      if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
+        const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+        if (Math.abs(claudeKdv - kdvOnlyAmount) > 0.05) {
+          this.logger.warn(
+            `Telekom fatura KDV override: Claude=${result.kdvTutari} → Azure "Katma Değer Vergisi" satırı=${this.formatAmount(kdvOnlyAmount)} (${originalName})`,
+          );
+          result.kdvTutari = this.formatAmount(kdvOnlyAmount);
+          result.fieldConfidence.kdvTutari = 0.92;
+          // Breakdown'u da tek oran olarak yeniden yaz
+          result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
+        }
+      }
+    }
+
     // ─── E-FATURA / E-ARŞİV ÇOK ORANLI KDV AUTO-FILL ───
     // Z_RAPORU dışındaki belge tipleri için: Claude breakdown'u boş dönerse veya
     // eksik dönerse, Azure metninden "Hesaplanan KDV (%X) ..." satırlarını parse et.
@@ -1180,8 +1315,14 @@ export class OcrService {
             `E-fatura KDV toplam düzelt: Claude=${result.kdvTutari} → Azure breakdown toplamı=${this.formatAmount(sum)} (${originalName})`,
           );
           result.kdvTutari = this.formatAmount(sum);
-          result.fieldConfidence.kdvTutari = 0.92;
         }
+        // Azure breakdown ile Claude toplamı uyumluysa bile KDV confidence'ı yüksek —
+        // çünkü 2 ayrı tanık (Claude + Azure) aynı sonucu veriyor. Cross-check'in
+        // kdvTutari field'ını bulup bulmadığına bakma, %92 ver.
+        result.fieldConfidence.kdvTutari = Math.max(
+          result.fieldConfidence.kdvTutari ?? 0,
+          0.92,
+        );
       }
     }
 
