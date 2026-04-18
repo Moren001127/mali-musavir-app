@@ -378,6 +378,9 @@ export class BilancoService {
       : null;
     b.otomatikKaynak = otomatikKaynak;
 
+    // Düzeltme etkisini önceden hesapla (oran hesabında özkaynak için gerekli)
+    const duzeltmeEtkisi = netKari - netZarari; // + kar, - zarar
+
     // ── FİNANSAL ORANLAR ve YORUMLAMA ────────────────────────────────
     // Aktif/pasif JSON'dan temel grup toplamlarını al
     const aktifJ: any = b.aktif || {};
@@ -414,26 +417,21 @@ export class BilancoService {
           format: 'x' as const,
           ideal: '1.5 – 2.0',
           yorum: (v: number) =>
-            v >= 1.5 && v <= 2.5
-              ? '✓ İdeal aralıkta — kısa vadeli borçları rahat karşılıyor.'
-              : v > 2.5
-                ? '⚠ Çok yüksek — atıl dönen varlık olasılığı, yatırım düşünülebilir.'
-                : v >= 1
-                  ? '⚠ Sınırda — likidite riskine dikkat, işletme sermayesi zayıf.'
-                  : '✗ Düşük — kısa vadeli borçları karşılamakta güçlük, acil önlem gerek.',
+            v >= 1.5 && v <= 2.5 ? '✓ İdeal'
+            : v > 2.5 ? '⚠ Atıl varlık'
+            : v >= 1 ? '⚠ Sınırda'
+            : '✗ Borç baskısı',
         },
         {
-          ad: 'Asit-Test (Hızlı)',
+          ad: 'Asit-Test',
           kod: 'asitTest',
           deger: safeDiv(donenVar - stoklar, kvyk),
           format: 'x' as const,
           ideal: '≥ 1.0',
           yorum: (v: number) =>
-            v >= 1
-              ? '✓ İdeal — stoksuz bile kısa vadeli borçları karşılayabiliyor.'
-              : v >= 0.7
-                ? '⚠ Sınırda — stok satılmazsa borç ödeme sıkıntısı olabilir.'
-                : '✗ Düşük — stoğa bağımlı likidite, risk yüksek.',
+            v >= 1 ? '✓ Güçlü'
+            : v >= 0.7 ? '⚠ Sınırda'
+            : '✗ Stoğa bağımlı',
         },
         {
           ad: 'Nakit Oran',
@@ -442,11 +440,9 @@ export class BilancoService {
           format: 'x' as const,
           ideal: '0.2 – 0.5',
           yorum: (v: number) =>
-            v >= 0.2 && v <= 0.5
-              ? '✓ Sağlıklı nakit tamponu mevcut.'
-              : v > 0.5
-                ? '⚠ Aşırı nakit bekletiliyor — değerlendirilebilir.'
-                : '⚠ Nakit tamponu düşük — kritik ödeme günlerinde sıkıntı olabilir.',
+            v >= 0.2 && v <= 0.5 ? '✓ Sağlıklı'
+            : v > 0.5 ? '⚠ Aşırı nakit'
+            : '⚠ Nakit düşük',
         },
       ],
       // ─── MALİ YAPI ─────────────────────────────────
@@ -458,11 +454,9 @@ export class BilancoService {
           format: '%' as const,
           ideal: '≤ %50',
           yorum: (v: number) =>
-            v <= 0.5
-              ? '✓ Sağlıklı — varlıkların yarıdan azı borçla finanse edilmiş.'
-              : v <= 0.7
-                ? '⚠ Orta risk — borç yükü artıyor, faiz giderleri izlenmeli.'
-                : '✗ Yüksek borçluluk — finansman riski yüksek, özkaynak güçlendirilmeli.',
+            v <= 0.5 ? '✓ Sağlıklı'
+            : v <= 0.7 ? '⚠ Orta risk'
+            : '✗ Yüksek borç',
         },
         {
           ad: 'Özkaynak Oranı',
@@ -471,11 +465,9 @@ export class BilancoService {
           format: '%' as const,
           ideal: '≥ %50',
           yorum: (v: number) =>
-            v >= 0.5
-              ? '✓ Güçlü özkaynak yapısı — dışa bağımlılık düşük.'
-              : v >= 0.3
-                ? '⚠ Orta — özkaynak payı artırılabilir.'
-                : '✗ Düşük özkaynak — mali yapı zayıf, sermaye artırımı düşünülmeli.',
+            v >= 0.5 ? '✓ Güçlü'
+            : v >= 0.3 ? '⚠ Orta'
+            : '✗ Zayıf',
         },
         {
           ad: 'Borç / Özkaynak',
@@ -484,48 +476,38 @@ export class BilancoService {
           format: 'x' as const,
           ideal: '≤ 1.0',
           yorum: (v: number) =>
-            v <= 1
-              ? '✓ Sağlıklı — özkaynak borçtan fazla.'
-              : v <= 2
-                ? '⚠ Borç özkaynağın üzerinde — risk artıyor.'
-                : '✗ Borç özkaynağın 2 katından fazla — kritik kaldıraç seviyesi.',
+            v <= 1 ? '✓ Sağlıklı'
+            : v <= 2 ? '⚠ Risk artıyor'
+            : '✗ Kritik kaldıraç',
         },
       ],
       // ─── KÂRLILIK ─────────────────────────────────
       karlilik: [
         {
-          ad: 'ROA (Aktif Kârlılığı)',
+          ad: 'ROA',
           kod: 'roa',
           deger: safeDiv(netKar, aktifT),
           format: '%' as const,
           ideal: '≥ %5',
           yorum: (v: number) =>
-            !gelirTablosu
-              ? 'Gelir tablosu oluşturulmamış — ROA hesaplanamıyor.'
-              : v >= 0.05
-                ? '✓ Varlıklar verimli kullanılıyor.'
-                : v >= 0.02
-                  ? '⚠ Düşük verimlilik — operasyon iyileştirilmeli.'
-                  : v >= 0
-                    ? '✗ Aktif verimliliği çok düşük.'
-                    : '✗ Zarar — varlıkların finansal dönüşü negatif.',
+            !gelirTablosu ? '— Gelir tablosu yok'
+            : v >= 0.05 ? '✓ Verimli'
+            : v >= 0.02 ? '⚠ Düşük verim'
+            : v >= 0 ? '✗ Yetersiz'
+            : '✗ Zarar',
         },
         {
-          ad: 'ROE (Özkaynak Kârlılığı)',
+          ad: 'ROE',
           kod: 'roe',
           deger: safeDiv(netKar, ozk),
           format: '%' as const,
           ideal: '≥ %15',
           yorum: (v: number) =>
-            !gelirTablosu
-              ? 'Gelir tablosu oluşturulmamış — ROE hesaplanamıyor.'
-              : v >= 0.15
-                ? '✓ Ortakların sermayesi iyi getiri sağlıyor.'
-                : v >= 0.08
-                  ? '⚠ Sektör ortalamasına göre düşük — karlılık iyileştirilmeli.'
-                  : v >= 0
-                    ? '✗ Özkaynak getirisi yetersiz.'
-                    : '✗ Zarar — ortakların sermayesi eriyor.',
+            !gelirTablosu ? '— Gelir tablosu yok'
+            : v >= 0.15 ? '✓ İyi getiri'
+            : v >= 0.08 ? '⚠ Düşük getiri'
+            : v >= 0 ? '✗ Yetersiz'
+            : '✗ Zarar',
         },
         ...(netSatis > 0
           ? [
@@ -536,13 +518,10 @@ export class BilancoService {
                 format: '%' as const,
                 ideal: 'Sektöre göre',
                 yorum: (v: number) =>
-                  v >= 0.1
-                    ? '✓ Güçlü kâr marjı (>%10).'
-                    : v >= 0.05
-                      ? '⚠ Orta kâr marjı — maliyet kontrolü izlenmeli.'
-                      : v >= 0
-                        ? '⚠ İnce kâr marjı — fiyatlama/maliyet rekabetçiliği gözden geçirilmeli.'
-                        : '✗ Zarar — gider yapısı acil incelensin.',
+                  v >= 0.1 ? '✓ Güçlü'
+                  : v >= 0.05 ? '⚠ Orta'
+                  : v >= 0 ? '⚠ İnce marj'
+                  : '✗ Zarar',
               },
             ]
           : []),
@@ -566,11 +545,89 @@ export class BilancoService {
         yorum: o.yorum(o.deger),
       })),
     };
+    // ── ÖNCEKİ DÖNEM KARŞILAŞTIRMASI ─────────────────────────
+    // Aynı mükellefin önceki dönem bilançosunu bul, oranları hesapla ve
+    // her orana trend/değişim bilgisi ekle. Önce aynı yıl önceki dönemi,
+    // yoksa geçen yıl aynı dönemi tercih et.
+    let oncekiBilanco: any = null;
+    try {
+      const DONEM_SIRASI: Record<string, number> = {
+        AYLIK: 0, GECICI_Q1: 1, GECICI_Q2: 2, GECICI_Q3: 3, GECICI_Q4: 4, YILLIK: 5,
+      };
+      const mevcutSira = DONEM_SIRASI[String(b.donemTipi || '')] || 0;
+      const yilMatch = String(b.donem || '').match(/^(\d{4})/);
+      const yil = yilMatch ? yilMatch[1] : null;
+
+      if (yil && mevcutSira >= 1) {
+        // 1. tercih: aynı yıl, önceki dönem
+        const oncekiTipler = Object.keys(DONEM_SIRASI).filter(
+          (t) => DONEM_SIRASI[t] < mevcutSira && DONEM_SIRASI[t] >= 1,
+        );
+        if (oncekiTipler.length > 0) {
+          oncekiBilanco = await (this.prisma as any).bilanco.findFirst({
+            where: {
+              tenantId, taxpayerId: b.taxpayerId,
+              donem: { startsWith: yil },
+              donemTipi: { in: oncekiTipler },
+              id: { not: b.id },
+            },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+      }
+      // 2. tercih: geçen yıl aynı dönem
+      if (!oncekiBilanco && yil) {
+        const oncekiYil = String(Number(yil) - 1);
+        oncekiBilanco = await (this.prisma as any).bilanco.findFirst({
+          where: {
+            tenantId, taxpayerId: b.taxpayerId,
+            donem: { startsWith: oncekiYil },
+            donemTipi: b.donemTipi,
+            id: { not: b.id },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+    } catch {
+      oncekiBilanco = null;
+    }
+
+    // Önceki bilançonun oran değerlerini hesapla (ve mevcut oranlarla karşılaştır)
+    if (oncekiBilanco) {
+      const oncekiVals = this.hesaplaOranDegerleri(oncekiBilanco);
+      const applyKarsilastir = (arr: any[]) =>
+        arr.map((o: any) => {
+          const eski = oncekiVals[o.kod];
+          if (eski === undefined || !isFinite(eski)) return o;
+          const degisim = o.deger - eski;
+          const degisimYuzde = Math.abs(eski) > 0.0001 ? (degisim / Math.abs(eski)) * 100 : 0;
+          const trend: 'up' | 'down' | 'flat' =
+            Math.abs(degisimYuzde) < 1 ? 'flat' : degisimYuzde > 0 ? 'up' : 'down';
+          return {
+            ...o,
+            onceki: eski,
+            oncekiFmt: o.format === '%' ? `%${(eski * 100).toFixed(2)}` : eski.toFixed(2),
+            degisim,
+            degisimYuzde,
+            trend,
+          };
+        });
+      formatlanmisOranlar.likidite = applyKarsilastir(formatlanmisOranlar.likidite);
+      formatlanmisOranlar.maliYapi = applyKarsilastir(formatlanmisOranlar.maliYapi);
+      formatlanmisOranlar.karlilik = applyKarsilastir(formatlanmisOranlar.karlilik);
+    }
+
     b.finansalOranlar = formatlanmisOranlar;
+    b.oncekiDonemBilgi = oncekiBilanco
+      ? {
+          id: oncekiBilanco.id,
+          donem: oncekiBilanco.donem,
+          donemTipi: oncekiBilanco.donemTipi,
+        }
+      : null;
     // Genel yorumlama özet
     b.finansalOzet = this.genelYorum(b, formatlanmisOranlar);
 
-    const duzeltmeEtkisi = netKari - netZarari; // + kar, - zarar
     if (duzeltmeEtkisi !== 0) {
       // Pasif JSON içinde 59 Dönem Kar/Zarar grubunu güncelle:
       //   - toplam'a düzeltme etkisini ekle
@@ -660,6 +717,33 @@ export class BilancoService {
   }
 
   // ─── Finansal oran helper'ları ───────────────────────────
+  /** Bilanço objesinden oran değerlerini hesaplar (sadece sayısal sonuç) — karşılaştırma için */
+  private hesaplaOranDegerleri(b: any): Record<string, number> {
+    const aktifJ: any = b.aktif || {};
+    const hazirDeg = Number(aktifJ.hazirDegerler?.toplam || 0);
+    const stoklar = Number(aktifJ.stoklar?.toplam || 0);
+    const donenVar = Number(b.donenVarliklar || 0);
+    const aktifT = Number(b.aktifToplami || 0);
+    const kvyk = Number(b.kvYabanciKaynak || 0);
+    const uvyk = Number(b.uvYabanciKaynak || 0);
+    const ozk = Number(b.ozkaynaklar || 0);
+    const pasifT = Number(b.pasifToplami || 0);
+    const yabanciK = kvyk + uvyk;
+    const safeDiv = (a: number, c: number) => (c > 0 ? a / c : 0);
+    return {
+      cari: safeDiv(donenVar, kvyk),
+      asitTest: safeDiv(donenVar - stoklar, kvyk),
+      nakit: safeDiv(hazirDeg, kvyk),
+      kaldirac: safeDiv(yabanciK, aktifT),
+      ozkaynak: safeDiv(ozk, pasifT),
+      borcOzk: safeDiv(yabanciK, ozk),
+      // ROA/ROE/karMarji gelir tablosuna bağlı, geçmiş bilanço için uygulanmaz
+      roa: 0,
+      roe: 0,
+      karMarji: 0,
+    };
+  }
+
   private async getNetSatis(gelirTablosuId: string): Promise<number> {
     try {
       const gt = await (this.prisma as any).gelirTablosu.findUnique({
