@@ -867,6 +867,46 @@ export class OcrService {
    * KRİTİK: "KUM TOPKDV" / "KUM TOPLAM" satırları KÜMÜLATİF — ASLA ALMA.
    * Sadece o anki Z raporu için "TOPKDV" / "TOPKDV %X" satırlarını al.
    */
+  /**
+   * E-Fatura/E-Arşiv için çok oranlı KDV breakdown'u Azure metninden çıkar.
+   * Standart Türk fatura formatı: "Hesaplanan KDV (%20)  116,00 TL"
+   * Claude breakdown'u boş dönerse veya eksik dönerse bu fonksiyon devreye girer.
+   *
+   * ÖRNEK Azure metin parçası:
+   *   "Hesaplanan KDV (% 20,00 )   1.006,00 TL"
+   *   "Hesaplanan KDV (% 10,00 )      15,00 TL"
+   * → [{oran:20, tutar:1006, matrah:null}, {oran:10, tutar:15, matrah:null}]
+   *
+   * KDV DIŞI vergi satırları (ÖİV, Telsiz, ÖTV, BSMV, KKDF) atlanır.
+   */
+  private extractMultiRateKdvFromAzure(text: string): KdvBreakdownItem[] {
+    if (!text) return [];
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const breakdown: KdvBreakdownItem[] = [];
+    const seen = new Set<number>();
+
+    // "Hesaplanan KDV (%20,00)  1.006,00" veya "KDV (%10)  42,00"
+    // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 iş bulunur") önler
+    const re = /(?:HESAPLANAN\s+)?KDV\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)\s*[:*]?\s*([\d]{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)/i;
+
+    for (const line of lines) {
+      // KDV DIŞI vergi satırlarını atla (Turkcell faturası gibi)
+      if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i.test(line)) {
+        continue;
+      }
+      const m = line.match(re);
+      if (!m) continue;
+      const oran = parseInt(m[1], 10);
+      const tutar = this.parseAmount(m[2]);
+      if (oran > 0 && oran <= 30 && tutar > 0 && tutar < 10_000_000 && !seen.has(oran)) {
+        breakdown.push({ oran, tutar, matrah: null });
+        seen.add(oran);
+      }
+    }
+
+    return breakdown;
+  }
+
   private extractZRaporuKdvFromAzure(text: string): {
     kdvTutari: string | null;
     breakdown: KdvBreakdownItem[];
@@ -1061,6 +1101,28 @@ export class OcrService {
       }
     }
 
+    // ─── E-FATURA / E-ARŞİV TRUST GUARD ───
+    // Elektrik/telekom faturalarında filename ≠ OCR belge no olabilir
+    // (Filename: "BEF2026000958878", OCR: "EFA2026000000878" — farklı kodlama).
+    // Bu durumda Levenshtein fix devreye giremez ve Azure metninde de
+    // belge no küçük/soluk yazı nedeniyle bulunamayabilir → cross-check FAIL → %20.
+    //
+    // YENI KURAL: Claude'un belgeNo confidence'ı ≥ %85 ve OCR sonucu
+    // geçerli e-fatura format'ında ise (3 harf + 13 rakam = 16 char),
+    // Claude'un sonucuna güven, cross-check'i atla.
+    // Gerçek FALSE POSITIVE değil, Azure'un okuyamadığı küçük yazı hatası.
+    if (!skipBelgeNoCheck && result.belgeNo && result.fieldConfidence.belgeNo != null) {
+      const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const isValidEFaturaFormat = /^[A-Z]{3}\d{13}$/.test(bn); // EFA/ESR/BEF/GB1/IRU/KMI + yıl + sıra
+      const claudeBelgeNoConf = result.fieldConfidence.belgeNo ?? 0;
+      if (isValidEFaturaFormat && claudeBelgeNoConf >= 0.85) {
+        this.logger.log(
+          `E-fatura trust guard: belge no "${bn}" geçerli format + Claude conf ${Math.round(claudeBelgeNoConf * 100)}% → cross-check skip (${originalName})`,
+        );
+        skipBelgeNoCheck = true;
+      }
+    }
+
     // ─── Z RAPORU AUTO-CORRECT — Azure metninden direkt çıkar ───
     // Z raporları yapısal: TOPLAM %X / TOPKDV %X / TOPKDV satırları sabit format.
     // Claude halüsinasyon yapsa bile Azure regex'i doğru değeri çıkarır.
@@ -1092,6 +1154,33 @@ export class OcrService {
             `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${zParsed.breakdown.length} oran (${originalName})`,
           );
           result.kdvBreakdown = zParsed.breakdown;
+        }
+      }
+    }
+
+    // ─── E-FATURA / E-ARŞİV ÇOK ORANLI KDV AUTO-FILL ───
+    // Z_RAPORU dışındaki belge tipleri için: Claude breakdown'u boş dönerse veya
+    // eksik dönerse, Azure metninden "Hesaplanan KDV (%X) ..." satırlarını parse et.
+    // ÖRNEK: ESR2026000001204 gibi karma fatura — %20 + %10 ayrı satır, breakdown
+    // boş gelmiş olabilir. UI'da KDV Kırılımı boş kalıyor → bu fix doldurur.
+    if (result.belgeTipi !== 'Z_RAPORU') {
+      const azureBreakdown = this.extractMultiRateKdvFromAzure(azureText);
+      const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
+      // Sadece Azure 2+ oran bulduysa anlamlı (tek oran zaten kdvTutari'dir)
+      if (azureBreakdown.length >= 2 && azureBreakdown.length > claudeBreakdownCount) {
+        this.logger.warn(
+          `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${azureBreakdown.length} oran (${originalName})`,
+        );
+        result.kdvBreakdown = azureBreakdown;
+        // KDV toplamını breakdown'a göre güncelle
+        const sum = azureBreakdown.reduce((s, b) => s + b.tutar, 0);
+        const claudeTotal = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+        if (Math.abs(sum - claudeTotal) > 0.05) {
+          this.logger.warn(
+            `E-fatura KDV toplam düzelt: Claude=${result.kdvTutari} → Azure breakdown toplamı=${this.formatAmount(sum)} (${originalName})`,
+          );
+          result.kdvTutari = this.formatAmount(sum);
+          result.fieldConfidence.kdvTutari = 0.92;
         }
       }
     }

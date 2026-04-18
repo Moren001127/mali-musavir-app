@@ -823,7 +823,7 @@ export default function KdvKontrolPage() {
                   { key: 'luca',    label: 'Luca Satırı',       val: stats.totalRecords, color: GOLD,       icon: FileText },
                   { key: 'uploaded',label: 'Yüklenen Fatura',   val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
                   { key: 'read',    label: 'OCR Fatura Okuma',  val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
-                  { key: 'pending', label: 'OCR Teyit Bekler',  val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle },
+                  { key: 'pending', label: 'OCR Teyit Bekler',  val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle, showRerun: (stats.needsOcrConfirm ?? 0) > 0 },
                   { key: 'matched', label: 'Tam Eşleşme',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
                   { key: 'review',  label: 'Eşleşme İncele',    val: _review, color: '#fb923c', icon: AlertTriangle },
                   { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
@@ -838,11 +838,17 @@ export default function KdvKontrolPage() {
                       <button
                         onClick={() => runOcrAgain.mutate()}
                         disabled={runOcrAgain.isPending}
-                        title="OCR'ı tekrar çalıştır"
-                        className="text-[10px] normal-case font-semibold px-1.5 py-0.5 rounded hover:brightness-125 transition"
-                        style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa' }}
+                        title={key === 'pending'
+                          ? 'Bekleyen faturaları yeniden OCR\'la (başarılılara dokunulmaz)'
+                          : 'OCR\'ı tekrar çalıştır'}
+                        className="text-[10px] normal-case font-semibold px-2 py-0.5 rounded hover:brightness-125 transition flex items-center gap-1"
+                        style={{
+                          background: key === 'pending' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.12)',
+                          color: key === 'pending' ? '#f59e0b' : '#60a5fa',
+                        }}
                       >
-                        {runOcrAgain.isPending ? '…' : '⟳'}
+                        <span>{runOcrAgain.isPending ? '…' : '⟳'}</span>
+                        {key === 'pending' && !runOcrAgain.isPending && <span>Yenile</span>}
                       </button>
                     )}
                   </div>
@@ -1004,168 +1010,192 @@ export default function KdvKontrolPage() {
           </div>
         </div>
 
-      {/* GEÇMİŞ KONTROLLER */}
-      {allSessions.length > 0 && (
-        <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-            Geçmiş Kontroller
-          </h3>
-          <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <table className="w-full text-left">
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tip</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Luca</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Fatura</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allSessions.slice(0, 15).map((s: any, idx: number) => (
-                  <tr key={s.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(s.createdAt)}</td>
-                    <td className="px-4 py-3 text-[12.5px] font-medium" style={{ color: '#fafaf9' }}>
-                      {s.taxpayer ? (s.taxpayer.companyName || `${s.taxpayer.firstName ?? ''} ${s.taxpayer.lastName ?? ''}`.trim()) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.65)' }}>{s.periodLabel ?? '—'}</td>
-                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TYPE_LABEL[s.type] || s.type}</td>
-                    <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s._count?.kdvRecords ?? 0}</td>
-                    <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{s._count?.images ?? 0}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          onClick={async () => {
-                            try {
-                              toast.loading('Excel hazırlanıyor…', { id: `dl-${s.id}` });
-                              const ab = await kdvApi.exportExcel(s.id);
-                              const blob = new Blob([ab], {
-                                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                              });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              const name = s.taxpayer?.companyName ||
-                                `${s.taxpayer?.firstName ?? ''} ${s.taxpayer?.lastName ?? ''}`.trim() ||
-                                'kdv-kontrol';
-                              a.download = `${name}-${(s.periodLabel || '').replace('/', '-')}-${s.type || 'kontrol'}.xlsx`;
-                              document.body.appendChild(a);
-                              a.click();
-                              URL.revokeObjectURL(url);
-                              document.body.removeChild(a);
-                              toast.success('Excel indirildi', { id: `dl-${s.id}` });
-                            } catch (e: any) {
-                              toast.error(e?.message || 'Excel indirilemedi', { id: `dl-${s.id}` });
-                            }
-                          }}
-                          className="p-1.5 rounded-md"
-                          style={{ color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}
-                          title="Excel İndir"
-                        >
-                          <Download size={14} />
-                        </button>
-                        <Link
-                          href={`/panel/kdv-kontrol?s=${s.id}`}
-                          className="p-1.5 rounded-md"
-                          style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
-                          title="Detay"
-                        >
-                          <ArrowRight size={14} />
-                        </Link>
-                        <button
-                          onClick={() => {
-                            if (confirm('Bu seansı silmek istediğinize emin misiniz?')) deleteSessionMut.mutate(s.id);
-                          }}
-                          className="p-1.5 rounded-md"
-                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
-                          title="Sil"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* KONTROLLER — birleştirilmiş tablo (Geçmiş Kontroller + Kayıtlı Çıktılar) */}
+      {(allSessions.length > 0 || outputs.length > 0) && (() => {
+        // Output'ları mükellef+dönem+tip bazında session'larla join et.
+        // Output olmayan session'lar: "—" gösterilir (henüz Excel indirilmemiş).
+        const outByKey = new Map<string, any>();
+        for (const o of outputs) {
+          const key = `${(o.mukellefName || '').trim()}|${o.donem || ''}|${o.tip || ''}`;
+          // Aynı key için en son (createdAt en yeni) output'u sakla
+          const prev = outByKey.get(key);
+          if (!prev || new Date(o.createdAt) > new Date(prev.createdAt)) {
+            outByKey.set(key, o);
+          }
+        }
+        const getTaxpayerName = (s: any) =>
+          s.taxpayer
+            ? s.taxpayer.companyName ||
+              `${s.taxpayer.firstName ?? ''} ${s.taxpayer.lastName ?? ''}`.trim()
+            : '—';
 
-      {/* KAYITLI ÇIKTILAR */}
-      <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          Kayıtlı Çıktılar
-          {outputs.length > 0 && (
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
-              {outputs.length}
-            </span>
-          )}
-        </h3>
-        {outputs.length === 0 ? (
-          <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="w-12 h-12 mx-auto mb-2 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <Archive size={20} style={{ color: 'rgba(250,250,249,0.35)' }} />
-            </div>
-            <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Henüz kayıtlı Excel çıktısı yok</p>
-            <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.35)' }}>Bir kontrol Excel'i indirildiğinde burada arşivlenir</p>
-          </div>
-        ) : (
-          <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <table className="w-full text-left">
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tip</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşen</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>İncele</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşmedi</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outputs.map((o: any, idx: number) => (
-                  <tr key={o.id} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(o.createdAt)}</td>
-                    <td className="px-4 py-3 text-[12.5px] font-medium" style={{ color: '#fafaf9' }}>{o.mukellefName ?? '—'}</td>
-                    <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.65)' }}>{o.donem ?? '—'}</td>
-                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TYPE_LABEL[o.tip] || o.tip || '—'}</td>
-                    <td className="px-4 py-3 text-center tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 16, fontWeight: 600, color: '#22c55e' }}>{o.matchedCount}</td>
-                    <td className="px-4 py-3 text-center tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 16, fontWeight: 600, color: o.unmatchedCount > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{o.unmatchedCount}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center gap-1.5">
-                        <button
-                          onClick={() => downloadOutput.mutate({ id: o.id, filename: o.filename })}
-                          disabled={downloadOutput.isPending}
-                          className="p-1.5 rounded-md"
-                          style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
-                          title="Excel indir"
-                        >
-                          <Download size={14} />
-                        </button>
-                        <button
-                          onClick={() => { if (confirm('Bu çıktıyı silmek istediğinize emin misiniz?')) deleteOutput.mutate(o.id); }}
-                          className="p-1.5 rounded-md"
-                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
-                          title="Sil"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
+        // Merged list: sessions ekstra varsa o + onlara denk gelen output
+        const merged = allSessions.slice(0, 20).map((s: any) => {
+          const tname = getTaxpayerName(s);
+          const key = `${tname}|${s.periodLabel || ''}|${s.type || ''}`;
+          return { session: s, output: outByKey.get(key) || null };
+        });
+        // Session'ı silinmiş ama archive'da duran output'ları da sona ekle
+        const sessionKeys = new Set(
+          allSessions.map((s: any) => `${getTaxpayerName(s)}|${s.periodLabel || ''}|${s.type || ''}`),
+        );
+        const orphanOutputs = outputs
+          .filter((o: any) => {
+            const key = `${(o.mukellefName || '').trim()}|${o.donem || ''}|${o.tip || ''}`;
+            return !sessionKeys.has(key);
+          })
+          .map((o: any) => ({ session: null, output: o }));
+
+        const allRows = [...merged, ...orphanOutputs];
+
+        return (
+          <div>
+            <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+              Kontroller
+              {allRows.length > 0 && (
+                <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                  {allRows.length}
+                </span>
+              )}
+            </h3>
+            <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <table className="w-full text-left">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tip</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Luca</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Fatura</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşen</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşmedi</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {allRows.map(({ session: s, output: o }: any, idx: number) => {
+                    const date = s?.createdAt || o?.createdAt;
+                    const tname = s ? getTaxpayerName(s) : (o?.mukellefName ?? '—');
+                    const donem = s?.periodLabel ?? o?.donem ?? '—';
+                    const tip = s?.type ?? o?.tip ?? '—';
+                    const luca = s?._count?.kdvRecords ?? '—';
+                    const fatura = s?._count?.images ?? '—';
+                    const matched = o?.matchedCount ?? null;
+                    const unmatched = o?.unmatchedCount ?? null;
+                    const rowKey = s?.id || o?.id || idx;
+                    return (
+                      <tr key={rowKey} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
+                        <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(date)}</td>
+                        <td className="px-4 py-3 text-[12.5px] font-medium" style={{ color: '#fafaf9' }}>{tname}</td>
+                        <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.65)' }}>{donem}</td>
+                        <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TYPE_LABEL[tip] || tip}</td>
+                        <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{luca}</td>
+                        <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fatura}</td>
+                        <td
+                          className="px-4 py-3 text-center tabular-nums"
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: 15,
+                            fontWeight: 600,
+                            color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.3)',
+                          }}
+                        >
+                          {matched ?? '—'}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-center tabular-nums"
+                          style={{
+                            fontFamily: 'Fraunces, serif',
+                            fontSize: 15,
+                            fontWeight: 600,
+                            color: unmatched == null
+                              ? 'rgba(250,250,249,0.3)'
+                              : unmatched > 0
+                                ? '#f43f5e'
+                                : 'rgba(250,250,249,0.35)',
+                          }}
+                        >
+                          {unmatched ?? '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            {/* Excel indir — önce archive'daki snapshot, yoksa session'dan canlı üret */}
+                            <button
+                              onClick={async () => {
+                                if (o) {
+                                  // Kayıtlı çıktı varsa onu indir
+                                  downloadOutput.mutate({ id: o.id, filename: o.filename });
+                                  return;
+                                }
+                                // Yoksa session'dan canlı Excel üret
+                                if (!s) return;
+                                try {
+                                  toast.loading('Excel hazırlanıyor…', { id: `dl-${s.id}` });
+                                  const ab = await kdvApi.exportExcel(s.id);
+                                  const blob = new Blob([ab], {
+                                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                  });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  const name = s.taxpayer?.companyName ||
+                                    `${s.taxpayer?.firstName ?? ''} ${s.taxpayer?.lastName ?? ''}`.trim() ||
+                                    'kdv-kontrol';
+                                  a.download = `${name}-${(s.periodLabel || '').replace('/', '-')}-${s.type || 'kontrol'}.xlsx`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                  document.body.removeChild(a);
+                                  toast.success('Excel indirildi', { id: `dl-${s.id}` });
+                                } catch (e: any) {
+                                  toast.error(e?.message || 'Excel indirilemedi', { id: `dl-${s?.id}` });
+                                }
+                              }}
+                              className="p-1.5 rounded-md"
+                              style={{ color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}
+                              title={o ? 'Arşivlenmiş Excel indir' : 'Excel üret ve indir'}
+                            >
+                              <Download size={14} />
+                            </button>
+                            {/* Detay — sadece session varsa */}
+                            {s && (
+                              <Link
+                                href={`/panel/kdv-kontrol?s=${s.id}`}
+                                className="p-1.5 rounded-md"
+                                style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
+                                title="Detay"
+                              >
+                                <ArrowRight size={14} />
+                              </Link>
+                            )}
+                            {/* Sil — session varsa session'ı, yoksa output'u sil */}
+                            <button
+                              onClick={() => {
+                                if (s) {
+                                  if (confirm('Bu seansı silmek istediğinize emin misiniz? (Kayıtlı Excel arşivi korunacak)')) deleteSessionMut.mutate(s.id);
+                                } else if (o) {
+                                  if (confirm('Bu arşivlenmiş çıktıyı silmek istediğinize emin misiniz?')) deleteOutput.mutate(o.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-md"
+                              style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                              title="Sil"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        )}
-      </div>
+        );
+      })()}
 
       {/* MÜKELLEF PICKER MODAL */}
       {pickerOpen && (
