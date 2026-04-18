@@ -661,7 +661,11 @@ model KdvRecord {
   createdAt   DateTime   @default(now())
 
   session     KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  result      ReconciliationResult?
+  // Çok oranlı KDV: aynı Luca kaydı birden fazla eşleşme sonucuna sahip OLAMAZ,
+  // ama ReconciliationResult tarafında imageId artık non-unique olduğu için
+  // one-to-many ilişki (dizi) olarak tanımlanmalı. UI'da bir kaydın result'u
+  // results[0] olarak alınır.
+  results     ReconciliationResult[]
 
   @@index([sessionId])
   @@map("kdv_records")
@@ -701,7 +705,9 @@ model ReceiptImage {
   uploadedAt   DateTime  @default(now())
 
   session      KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  result       ReconciliationResult?
+  // Çok oranlı fatura: bir image birden fazla Luca kaydıyla (ayrı orandaki
+  // satırlarla) eşleşir → one-to-many.
+  results      ReconciliationResult[]
 
   @@index([sessionId, ocrStatus])
   @@map("receipt_images")

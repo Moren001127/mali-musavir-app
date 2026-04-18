@@ -517,11 +517,16 @@ export class KdvControlService {
   /** KDV kayıtları listesi */
   async getKdvRecords(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
-    return this.prisma.kdvRecord.findMany({
+    const records = await this.prisma.kdvRecord.findMany({
       where: { sessionId },
-      include: { result: true },
+      include: { results: true },
       orderBy: { rowIndex: 'asc' },
     });
+    // Backward-compat: UI "result" tekil bekliyordu, results[0] map et
+    return records.map((r) => ({
+      ...r,
+      result: r.results[0] ?? null,
+    }));
   }
 
   /**
@@ -723,11 +728,16 @@ export class KdvControlService {
   /** Görseller listesi */
   async getImages(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
-    return this.prisma.receiptImage.findMany({
+    const images = await this.prisma.receiptImage.findMany({
       where: { sessionId },
-      include: { result: true },
+      include: { results: true },
       orderBy: { uploadedAt: 'asc' },
     });
+    // Backward-compat: UI "result" tekil bekliyordu, results[0] map et
+    return images.map((i) => ({
+      ...i,
+      result: i.results[0] ?? null,
+    }));
   }
 
   /** Görsel indirme URL'i
