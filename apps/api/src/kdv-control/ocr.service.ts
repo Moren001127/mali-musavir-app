@@ -2072,10 +2072,22 @@ export class OcrService {
     // de olabilir (ÖİV, Telsiz Kullanım, ÖTV, Damga, BSMV, KKDF, Konaklama vb.).
     // TaxCategory > TaxScheme > Name/TaxTypeCode alanına bakarak SADECE KDV'yi al.
     // KDV için standart kodlar: "KDV" (Name) veya "0015" (TaxTypeCode).
+    //
+    // ÖNEMLİ: UBL e-Fatura yapısında cac:TaxSubtotal HEM invoice-level
+    // cac:TaxTotal içinde HEM DE her cac:InvoiceLine'ın kendi cac:TaxTotal'i
+    // içinde bulunur. Ham XML üzerinde regex çalıştırırsak hepsini topluyoruz
+    // → KDV 2-N× fazla görünüyor (UKF123'te 16.054,88 = 2 × 8.027,44 bug'ı).
+    // Fix: cac:InvoiceLine bloklarını parse'tan önce maskele, kalan XML'de
+    // sadece invoice-level TaxTotal kalır.
+    const xmlInvoiceLevelOnly = xml.replace(
+      /<cac:InvoiceLine>[\s\S]*?<\/cac:InvoiceLine>/gi,
+      '',
+    );
+
     const kdvBreakdown: KdvBreakdownItem[] = [];
     const subtotalRegex = /<cac:TaxSubtotal>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
     let m: RegExpExecArray | null;
-    while ((m = subtotalRegex.exec(xml)) !== null) {
+    while ((m = subtotalRegex.exec(xmlInvoiceLevelOnly)) !== null) {
       const block = m[1];
       // Tax türü belirleme — KDV dışındaki vergileri atla
       const taxSchemeName = block.match(/<cbc:Name>([^<]+)<\/cbc:Name>/i)?.[1]?.trim().toUpperCase() || '';
