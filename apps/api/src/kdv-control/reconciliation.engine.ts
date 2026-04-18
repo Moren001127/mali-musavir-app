@@ -28,10 +28,27 @@ export class ReconciliationEngine {
     // Mevcut sonuçları temizle
     await this.prisma.reconciliationResult.deleteMany({ where: { sessionId } });
 
-    const [records, images] = await Promise.all([
+    const [rawRecords, images] = await Promise.all([
       this.prisma.kdvRecord.findMany({ where: { sessionId } }),
       this.prisma.receiptImage.findMany({ where: { sessionId } }),
     ]);
+
+    // ═══════════════════════════════════════════════════════
+    // ÇOK ORANLI KDV AGGREGATE — Luca'dan gelen kontrol verisinde
+    // aynı belge için farklı KDV oranları ayrı satırlar olarak gelir
+    // (ör: aynı faturada %20 + %10). Fatura görselinde ise KDV tek
+    // toplam olarak çıkar. Matching'i doğru yapmak için aynı
+    // (belge no + tarih) kombinasyonundaki satırları sanal olarak
+    // TOPLAYIP tek "virtual record" üretiyoruz; match sonucunu
+    // orijinal satırların hepsine fan-out ediyoruz.
+    //
+    // ÖRNEK:
+    //   Luca: [ESR...1204/2026-03-23/kdv=116, ESR...1204/2026-03-23/kdv=42]
+    //   Fatura: ESR...1204/2026-03-23/kdv=158
+    //   → Virtual: ESR...1204/2026-03-23/kdv=158 → Fatura ile eşleşir
+    //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
+    // ═══════════════════════════════════════════════════════
+    const { records, virtualGroups } = this.aggregateMultiRateRecords(rawRecords);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
     // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
@@ -55,6 +72,30 @@ export class ReconciliationEngine {
     const usedRecordIds = new Set<string>();
     const createData: any[] = [];
 
+    // Virtual record match sonucunu orijinal satırların hepsine fan-out et.
+    // Tek imageId, birden çok kdvRecordId — her biri ayrı ReconciliationResult
+    // satırı olarak oluşturulur (status/score/reasons hepsine aynı).
+    const fanOutMatch = (
+      record: KdvRecord,
+      imageId: string,
+      status: string,
+      score: number,
+      reasons: string[],
+    ) => {
+      const originalIds = virtualGroups.get(record.id) ?? [record.id];
+      for (const origId of originalIds) {
+        usedRecordIds.add(origId);
+        createData.push({
+          sessionId,
+          kdvRecordId: origId,
+          imageId,
+          status,
+          matchScore: score,
+          mismatchReasons: reasons,
+        });
+      }
+    };
+
     // ═══════════════════════════════════════════════════════
     // PASS 1 — STRICT EŞLEŞMELER (belge no + KDV + tarih tam aynı)
     // ═══════════════════════════════════════════════════════
@@ -71,15 +112,7 @@ export class ReconciliationEngine {
         const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
         if (strictMatch) {
           usedImageIds.add(image.id);
-          usedRecordIds.add(record.id);
-          createData.push({
-            sessionId,
-            kdvRecordId: record.id,
-            imageId: image.id,
-            status: 'MATCHED',
-            matchScore: score,
-            mismatchReasons: reasons,
-          });
+          fanOutMatch(record, image.id, 'MATCHED', score, reasons);
           break; // bu kayıt eşleşti, sıradakine geç
         }
       }
@@ -120,20 +153,13 @@ export class ReconciliationEngine {
       if (usedRecordIds.has(pair.kdvRecord.id)) continue;
       if (usedImageIds.has(pair.image.id)) continue;
       usedImageIds.add(pair.image.id);
-      usedRecordIds.add(pair.kdvRecord.id);
       const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch);
-      createData.push({
-        sessionId,
-        kdvRecordId: pair.kdvRecord.id,
-        imageId: pair.image.id,
-        status,
-        matchScore: pair.score,
-        mismatchReasons: pair.reasons,
-      });
+      fanOutMatch(pair.kdvRecord, pair.image.id, status, pair.score, pair.reasons);
     }
 
-    // Kalan recordlar — eşleşen görsel bulunamadı
-    for (const record of records) {
+    // Kalan ORIJINAL recordlar — eşleşen görsel bulunamadı.
+    // Virtual record kullandığımız için rawRecords üzerinden yürüyoruz.
+    for (const record of rawRecords) {
       if (usedRecordIds.has(record.id)) continue;
       createData.push({
         sessionId,
@@ -407,6 +433,77 @@ export class ReconciliationEngine {
           ? dp[i - 1][j - 1]
           : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
     return dp[m][n];
+  }
+
+  /**
+   * Luca satırlarını (belge no + tarih) kombinasyonuna göre gruplar.
+   * Aynı belge için farklı KDV oranları (ör: %20 + %10) 2 satır gelir;
+   * bunları tek virtual record olarak aggregate ediyoruz.
+   *
+   * Dönüş:
+   *   records: reconciliation'ın kullanacağı liste (tek-oranlı + aggregated virtual)
+   *   virtualGroups: virtualRecord.id → [origRecordId, origRecordId, ...]
+   *     (match sonucunu orijinallere fan-out etmek için)
+   *
+   * NOT: Sadece belge no ≥ 4 karakter olan satırlar gruplanır. Kısa belge no
+   * (ör. ÖKC fiş "0014") farklı günlerde aynı numara alabileceğinden
+   * (belge_no + tarih) bile unique değil, aggregate etmiyoruz.
+   */
+  private aggregateMultiRateRecords(rawRecords: KdvRecord[]): {
+    records: KdvRecord[];
+    virtualGroups: Map<string, string[]>;
+  } {
+    const groups = new Map<string, KdvRecord[]>();
+    const unaggregated: KdvRecord[] = [];
+
+    for (const rec of rawRecords) {
+      const bn = this.normalizeBelgeNo(rec.belgeNo || '');
+      if (bn.length < 4 || !rec.belgeDate) {
+        unaggregated.push(rec);
+        continue;
+      }
+      const dateKey = new Date(rec.belgeDate).toISOString().slice(0, 10);
+      const key = `${bn}|${dateKey}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(rec);
+    }
+
+    const result: KdvRecord[] = [...unaggregated];
+    const virtualGroups = new Map<string, string[]>();
+
+    for (const [key, group] of groups) {
+      if (group.length === 1) {
+        // Tek satır, aggregate etmeye gerek yok
+        result.push(group[0]);
+        continue;
+      }
+      // Çok satırlı grup → KDV ve matrah toplayıp virtual record üret.
+      // KdvTutari/KdvMatrahi Prisma Decimal tipinde — toString() string-safe,
+      // parseFloat ile topla, sonra number olarak geri yerleştir.
+      // calculateScore sadece parseFloat(record.kdvTutari.toString()) yapıyor,
+      // number'ın .toString()'i zaten sayısal string döndüğü için bu güvenli.
+      let kdvToplam = 0;
+      let matrahToplam = 0;
+      for (const r of group) {
+        kdvToplam += parseFloat(r.kdvTutari?.toString() || '0');
+        matrahToplam += parseFloat(r.kdvMatrahi?.toString() || '0');
+      }
+      const base = group[0];
+      const virtualId = `__virtual__:${key}`;
+      const virtual: KdvRecord = {
+        ...base,
+        id: virtualId,
+        kdvTutari: kdvToplam as any,
+        ...(matrahToplam > 0 ? { kdvMatrahi: matrahToplam as any } : {}),
+      };
+      result.push(virtual);
+      virtualGroups.set(virtualId, group.map((r) => r.id));
+      this.logger.log(
+        `Çok oranlı KDV aggregate: belge=${base.belgeNo} · ${group.length} satır → toplam KDV=${kdvToplam.toFixed(2)}`,
+      );
+    }
+
+    return { records: result, virtualGroups };
   }
 
   private parseTrDate(s: string): Date | null {

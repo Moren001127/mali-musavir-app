@@ -929,15 +929,22 @@ export class OcrService {
     }
 
     if (field === 'date') {
-      // "08.03.2026" → 08, 03, 2026 parçalarını ayrı ayrı yakalaya
+      // "08.03.2026" → 08, 03, 2026 parçalarını ayrı ayrı yakala
       const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       if (!m) return false;
       const [, dd, mo, yy] = m;
-      // Azure metninde DD?MM?YYYY (herhangi ayraçla) veya DD MM YYYY var mı?
-      const dateRegex = new RegExp(
-        `\\b${dd}[\\s.\\-\\/]?${mo}[\\s.\\-\\/]?${yy}\\b`,
-      );
-      return dateRegex.test(text);
+      // Azure metninde DD<sep>MM<sep>YYYY biçiminde ara — separator esnek.
+      // Gerçek örnekler: "18.03.2026", "18-03-2026", "18/03/2026", "18 03 2026",
+      // "18- 03- 2026" (tire+boşluk), "18. 03. 2026", "18 . 03 . 2026".
+      // Separator olarak 0-3 karakter (boşluk/nokta/tire/slash kombinasyonu) kabul.
+      const sep = `[\\s.\\-\\/]{0,3}`;
+      const dateRegex = new RegExp(`\\b${dd}${sep}${mo}${sep}${yy}\\b`);
+      if (dateRegex.test(text)) return true;
+      // Fallback: tarihin canonical formunu (ddmmyyyy) tüm non-digit temizlendikten
+      // sonra Azure text'inde ara — separator ne olursa olsun yakalar
+      const canonical = `${dd}${mo}${yy}`;
+      const normalizedText = text.replace(/[^0-9]/g, '');
+      return normalizedText.includes(canonical);
     }
 
     if (field === 'amount') {
@@ -969,21 +976,37 @@ export class OcrService {
   ): void {
     if (!azureText || azureText.length < 10) return;
 
-    // Filename ile belge no eşleşiyorsa, belge no cross-check'ini ATLA.
-    // Filename %100 güvenilir kaynak — Azure render kalitesi düşükse FAIL verebilir
-    // ama bu false positive'dir. SRD2026000000760.xml + OCR=SRD2026000000760 → kesin doğru.
+    // Filename ile belge no eşleşiyorsa (veya yakın — OCR 1-2 karakter hata yapmış),
+    // belge no cross-check'ini ATLA. Filename %100 güvenilir kaynak — Azure render
+    // kalitesi düşükse FAIL verebilir ama bu false positive'dir.
+    // ÖRNEKLER:
+    //   SRD2026000000760.xml + OCR=SRD2026000000760 → TAM eşleşme
+    //   ESR2026000001162.xml + OCR=ESR20260000011162 → 1 karakter farklı (OCR digit eklemiş)
+    //   ESR2026000001204.xml + OCR=ESR20260000001204 → 1 karakter farklı (OCR digit eklemiş)
+    // Edit distance ≤ 2 ve ≥10 karakter uzunluğunda ise filename'i otorite kabul et.
     let skipBelgeNoCheck = false;
     if (belgeNoFromFilename && result.belgeNo) {
       const fn = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const ocr = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (fn === ocr && fn.length >= 4) {
+      const exactMatch = fn === ocr && fn.length >= 4;
+      const nearMatch = fn.length >= 10 && this.editDistance(fn, ocr) <= 2;
+      if (exactMatch || nearMatch) {
         skipBelgeNoCheck = true;
+        // Near match durumda filename'i otorite kabul et — OCR digit eklemiş/atlatmış
+        if (nearMatch && !exactMatch) {
+          this.logger.warn(
+            `Belge no Levenshtein override: OCR="${ocr}" → filename="${fn}" (edit distance ≤ 2, ${originalName})`,
+          );
+          result.belgeNo = belgeNoFromFilename;
+        }
         // Filename match → belge no zaten %95 confidence
         if (result.fieldConfidence.belgeNo != null) {
           result.fieldConfidence.belgeNo = Math.max(
             result.fieldConfidence.belgeNo ?? 0,
             0.95,
           );
+        } else {
+          result.fieldConfidence.belgeNo = 0.95;
         }
       }
     }
@@ -1134,15 +1157,22 @@ export class OcrService {
       //   a) OCR belge no yok, filename var → kullan
       //   b) OCR belge no çok kısa (<10 char) ama filename uzun (≥10) → kullan
       //   c) OCR belge no filename'in prefix'i ile eşleşiyor ama kısa kalmış → kullan
-      //   d) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
+      //   d) OCR belge no ≥10 char ve filename ile edit distance ≤ 2 → kullan
+      //      (OCR 1-2 karakter hatası yapmış: fazladan digit eklemiş/atlamış)
+      //   e) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
+      const editDist =
+        fnClean.length >= 10 && ocrClean.length >= 10
+          ? this.editDistance(fnClean, ocrClean)
+          : Infinity;
       const shouldOverride =
         !ocrClean ||
         (ocrClean.length < 10 && fnClean.length >= 10) ||
-        (fnClean.length > ocrClean.length && fnClean.startsWith(ocrClean.slice(0, 3)));
+        (fnClean.length > ocrClean.length && fnClean.startsWith(ocrClean.slice(0, 3))) ||
+        (fnClean.length >= 10 && editDist <= 2);
 
       if (shouldOverride && fnClean !== ocrClean) {
         this.logger.warn(
-          `Belge no filename override: "${ocrClean}" → "${fnClean}" (${originalName})`,
+          `Belge no filename override: "${ocrClean}" → "${fnClean}" (editDist=${editDist === Infinity ? 'n/a' : editDist}, ${originalName})`,
         );
         result.belgeNo = belgeNoFromFilename;
         if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.9;
@@ -1438,5 +1468,30 @@ export class OcrService {
       },
       engine: 'ubl-xml-direct',
     };
+  }
+
+  /**
+   * Levenshtein edit distance — iki string arasındaki en az
+   * ekleme/silme/değiştirme sayısı. OCR hatası toleransı için kullanılır.
+   * ESR2026000001162 ↔ ESR20260000011162 → 1 (fazladan "1")
+   * ESR2026000001204 ↔ ESR20260000001204 → 1 (fazladan "0")
+   */
+  private editDistance(a: string, b: string): number {
+    const m = a.length;
+    const n = b.length;
+    if (m === 0) return n;
+    if (n === 0) return m;
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+    );
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] =
+          a[i - 1] === b[j - 1]
+            ? dp[i - 1][j - 1]
+            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+    return dp[m][n];
   }
 }
