@@ -581,9 +581,9 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [zoom, setZoom] = useState(2.5);
+  const [lensSize, setLensSize] = useState(200); // lens çapı (px) — kullanıcı kontrolü
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [lightbox, setLightbox] = useState(false);
-
-  const LENS = 200; // lens çapı (px)
 
   function handleMove(e: React.MouseEvent<HTMLDivElement>) {
     const r = containerRef.current?.getBoundingClientRect();
@@ -600,9 +600,14 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
   function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
     if (!hoverPos) return;
     e.preventDefault();
+    // Shift + wheel → lens boyutunu değiştirir
+    if (e.shiftKey) {
+      setLensSize((s) => Math.max(100, Math.min(400, s + (e.deltaY < 0 ? 20 : -20))));
+      return;
+    }
     setZoom((z) => {
       const next = z + (e.deltaY < 0 ? 0.25 : -0.25);
-      return Math.max(1.5, Math.min(5, next));
+      return Math.max(1.2, Math.min(6, next));
     });
   }
 
@@ -618,7 +623,6 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverPos(null)}
         onWheel={handleWheel}
-        onClick={() => src && setLightbox(true)}
       >
         {src ? (
           <>
@@ -629,6 +633,7 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               className="w-full h-full object-contain select-none"
               style={{ maxHeight: 420, pointerEvents: 'none' }}
               draggable={false}
+              onClick={() => src && setLightbox(true)}
             />
 
             {/* Lupe (büyüteç lensi) */}
@@ -636,10 +641,10 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               <div
                 className="pointer-events-none absolute rounded-full shadow-2xl"
                 style={{
-                  width: LENS,
-                  height: LENS,
-                  left: hoverPos.x - LENS / 2,
-                  top: hoverPos.y - LENS / 2,
+                  width: lensSize,
+                  height: lensSize,
+                  left: hoverPos.x - lensSize / 2,
+                  top: hoverPos.y - lensSize / 2,
                   border: `2px solid ${GOLD}`,
                   boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.6)',
                   backgroundImage: `url(${src})`,
@@ -647,31 +652,116 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
                   backgroundSize: `${imgRef.current.offsetWidth * zoom}px ${imgRef.current.offsetHeight * zoom}px`,
                   backgroundPosition: `${-(
                     ((hoverPos.x - (containerRef.current.clientWidth - imgRef.current.offsetWidth) / 2) * zoom) -
-                    LENS / 2
+                    lensSize / 2
                   )}px ${-(
                     ((hoverPos.y - (containerRef.current.clientHeight - imgRef.current.offsetHeight) / 2) * zoom) -
-                    LENS / 2
+                    lensSize / 2
                   )}px`,
                 }}
               />
             )}
 
-            {/* Zoom indikatörü */}
-            {hoverPos && (
-              <div
-                className="pointer-events-none absolute top-2 right-2 px-2 py-1 rounded text-[10px] font-bold tabular-nums"
-                style={{ background: 'rgba(0,0,0,0.7)', color: GOLD }}
+            {/* Büyüteç kontrolleri — sağ üst köşede kompakt panel */}
+            <div
+              className="absolute top-2 right-2 flex flex-col items-end gap-1.5"
+              onMouseEnter={() => setControlsOpen(true)}
+              onMouseLeave={() => setControlsOpen(false)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setControlsOpen((v) => !v); }}
+                className="px-2 py-1 rounded text-[10px] font-bold tabular-nums flex items-center gap-1 transition-all"
+                style={{ background: 'rgba(0,0,0,0.75)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}
+                title="Büyüteç kontrolleri"
               >
-                {zoom.toFixed(1)}× · wheel
-              </div>
-            )}
+                <ZoomIn size={11} />
+                {zoom.toFixed(1)}× · {lensSize}px
+              </button>
+
+              {controlsOpen && (
+                <div
+                  className="rounded-lg p-2.5 flex flex-col gap-2 text-[10.5px]"
+                  style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid rgba(184,160,111,0.3)', minWidth: 200, backdropFilter: 'blur(4px)' }}
+                >
+                  {/* Zoom slider + butonları */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      <span>Yakınlık</span>
+                      <span className="font-bold tabular-nums" style={{ color: GOLD }}>{zoom.toFixed(1)}×</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.max(1.2, z - 0.25)); }}
+                        className="w-6 h-6 flex items-center justify-center rounded"
+                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}
+                      >
+                        <ZoomOut size={12} />
+                      </button>
+                      <input
+                        type="range"
+                        min={1.2}
+                        max={6}
+                        step={0.1}
+                        value={zoom}
+                        onChange={(e) => setZoom(parseFloat(e.target.value))}
+                        className="flex-1"
+                        style={{ accentColor: GOLD }}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setZoom((z) => Math.min(6, z + 0.25)); }}
+                        className="w-6 h-6 flex items-center justify-center rounded"
+                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}
+                      >
+                        <ZoomIn size={12} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lens boyut slider */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[9.5px] uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      <span>Büyüteç Çapı</span>
+                      <span className="font-bold tabular-nums" style={{ color: GOLD }}>{lensSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={100}
+                      max={400}
+                      step={10}
+                      value={lensSize}
+                      onChange={(e) => setLensSize(parseInt(e.target.value, 10))}
+                      className="w-full"
+                      style={{ accentColor: GOLD }}
+                    />
+                  </div>
+
+                  {/* Sıfırla + hint */}
+                  <div className="flex items-center gap-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setZoom(2.5); setLensSize(200); }}
+                      className="flex-1 px-2 py-1 rounded text-[10px] font-semibold"
+                      style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.7)' }}
+                    >
+                      Sıfırla
+                    </button>
+                    <span className="text-[9px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                      Wheel: zoom · Shift+Wheel: çap
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Fullscreen hint */}
             <div
               className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold opacity-0 group-hover:opacity-100 transition"
               style={{ background: 'rgba(0,0,0,0.7)', color: '#fafaf9' }}
             >
-              <Maximize2 size={10} /> Tam ekran için tıkla
+              <Maximize2 size={10} /> Görsele tıkla → tam ekran
             </div>
           </>
         ) : (

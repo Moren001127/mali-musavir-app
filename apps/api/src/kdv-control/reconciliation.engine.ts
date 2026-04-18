@@ -86,52 +86,63 @@ export class ReconciliationEngine {
     }
 
     // ═══════════════════════════════════════════════════════
-    // PASS 2 — GEVŞEK EŞLEŞMELER (kalan kayıtlar için)
+    // PASS 2 — GEVŞEK EŞLEŞMELER (GLOBAL GREEDY — drift-proof)
     // ═══════════════════════════════════════════════════════
-    // Strict eşleşmeleri bağladıktan sonra kalan kayıtlar için en iyi
-    // aday bulunur. Artık güçlü pairler "taken" durumunda, zayıf skorlular
-    // onları çalamaz.
+    // ÖNCEKİ (hatalı) yaklaşım: her record sırayla gelir, kalan görsellerden
+    // en yüksek skorluyu kapardı. Sorun: Record A için skor 0.39 olan
+    // Image X atanırken, aslında Record B onu 0.85'le bulacakken Record B
+    // sırası gelince zaten X kullanılmış olurdu → "drift" — her Luca kaydı
+    // bir sonraki kaydın fişine bağlanırdı.
+    //
+    // YENİ yaklaşım: TÜM (record × image) çiftlerinin skorunu hesapla,
+    // en yüksekten aşağıya doğru bağla. Hem record hem image kullanılmamışsa
+    // eşleştir. Böylece en güvenli pairler ÖNCE sabitlenir, zayıflar
+    // güçlüleri çalamaz.
+    const MIN_PAIR_SCORE = 0.4; // 0.3 çok düşüktü — drift yaratıyordu
+    const allPairs: MatchCandidate[] = [];
     for (const record of records) {
       if (usedRecordIds.has(record.id)) continue;
-      const candidates: MatchCandidate[] = [];
-
       for (const image of images) {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
-        if (score > 0.3) {
-          candidates.push({ kdvRecord: record, image, score, reasons, strictMatch });
+        if (score >= MIN_PAIR_SCORE) {
+          allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
+    }
 
-      // En yüksek skorlu aday seçilir (strict pass 1'de zaten alındı)
-      candidates.sort((a, b) => b.score - a.score);
-      const best = candidates[0];
+    // En yüksek skorlu çiftten aşağıya. Eşit skor durumunda: belge no benzerliği
+    // yüksek olan, sonra KDV tutarı eşleşmesi olan öncelikli — drift yerine
+    // doğru eşleşmeyi tercih eder.
+    allPairs.sort((a, b) => b.score - a.score);
+    for (const pair of allPairs) {
+      if (usedRecordIds.has(pair.kdvRecord.id)) continue;
+      if (usedImageIds.has(pair.image.id)) continue;
+      usedImageIds.add(pair.image.id);
+      usedRecordIds.add(pair.kdvRecord.id);
+      const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch);
+      createData.push({
+        sessionId,
+        kdvRecordId: pair.kdvRecord.id,
+        imageId: pair.image.id,
+        status,
+        matchScore: pair.score,
+        mismatchReasons: pair.reasons,
+      });
+    }
 
-      if (best) {
-        usedImageIds.add(best.image.id);
-        usedRecordIds.add(record.id);
-
-        const status = this.scoreToStatus(best.score, best.image, best.strictMatch);
-        createData.push({
-          sessionId,
-          kdvRecordId: record.id,
-          imageId: best.image.id,
-          status,
-          matchScore: best.score,
-          mismatchReasons: best.reasons,
-        });
-      } else {
-        // Eşleşme bulunamadı
-        createData.push({
-          sessionId,
-          kdvRecordId: record.id,
-          imageId: null,
-          status: 'UNMATCHED',
-          matchScore: 0,
-          mismatchReasons: ['Eşleşen görsel bulunamadı'],
-        });
-      }
+    // Kalan recordlar — eşleşen görsel bulunamadı
+    for (const record of records) {
+      if (usedRecordIds.has(record.id)) continue;
+      createData.push({
+        sessionId,
+        kdvRecordId: record.id,
+        imageId: null,
+        status: 'UNMATCHED',
+        matchScore: 0,
+        mismatchReasons: ['Eşleşen görsel bulunamadı (skor eşiği altında)'],
+      });
     }
 
     // ═══════════════════════════════════════════════════════
