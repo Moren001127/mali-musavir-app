@@ -1604,7 +1604,10 @@ export class KdvControlService {
         tenantId,
         mukellefId: session.taxpayerId,
         donem,
-        faturaTuru,
+        // Faturalar sayfası .includes() ile filtreliyor çünkü MIHSAP bazı kayıtları
+        // "SATIS_FATURA" / "ALIS_EARSIV" gibi bileşik değerle döndürüyor.
+        // Tam eşleşme ("SATIS") bu kayıtları kaçırıyordu — substring match yapıyoruz.
+        faturaTuru: { contains: faturaTuru },
       },
       orderBy: { faturaTarihi: 'asc' },
     });
