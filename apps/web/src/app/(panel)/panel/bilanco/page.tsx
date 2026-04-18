@@ -301,108 +301,94 @@ export default function BilancoPage() {
             };
             return (
               <div
-                className="rounded-xl p-5 space-y-3"
+                className="rounded-lg px-3 py-2 flex items-center flex-wrap gap-2 text-[12px]"
                 style={{
                   background: 'rgba(184,160,111,0.04)',
-                  border: '1px solid rgba(184,160,111,0.22)',
+                  border: '1px solid rgba(184,160,111,0.18)',
                 }}
               >
-                <div className="flex items-center gap-2 text-[13px] flex-wrap">
-                  <Scale size={14} style={{ color: GOLD }} />
-                  <strong style={{ color: GOLD }}>59 Dönem Net Kâr / Zarar — Manuel Düzeltme</strong>
+                {/* Başlık + rozetler */}
+                <div className="flex items-center gap-1.5">
+                  <Scale size={12} style={{ color: GOLD }} />
+                  <strong className="text-[12px]" style={{ color: GOLD }}>59 Net Kâr/Zarar</strong>
                   {isGecici && (
-                    <span className="text-[10.5px] font-bold px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, letterSpacing: '.08em' }}>
-                      GEÇİCİ VERGİ DÖNEMİ
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, letterSpacing: '.06em' }}>
+                      GEÇ.VERGİ
                     </span>
                   )}
                   {otomatikKaynak && !manuelVar && (
-                    <span className="text-[10.5px] font-bold px-2 py-[2px] rounded-md flex items-center gap-1" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', letterSpacing: '.08em' }}>
-                      <CheckCircle2 size={10} /> GELİR TABLOSUNDAN OTOMATİK
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded flex items-center gap-0.5" style={{ background: 'rgba(34,197,94,0.14)', color: '#22c55e' }}>
+                      <CheckCircle2 size={9} /> OTOMATİK
                     </span>
+                  )}
+                  {manuelVar && (
+                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD }}>MANUEL</span>
                   )}
                 </div>
 
-                {/* Gelir tablosu bağlantı rozeti */}
-                {gelirBagli ? (
-                  <div className="rounded-lg px-3 py-2 text-[12px] flex items-center justify-between gap-3 flex-wrap" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.22)' }}>
-                    <div className="flex items-center gap-2" style={{ color: '#fafaf9' }}>
-                      <Zap size={12} style={{ color: '#22c55e' }} />
-                      <span>Bağlı gelir tablosu bulundu</span>
-                      <span className="font-mono font-bold" style={{ color: gelirBagli.donemNetKari >= 0 ? '#22c55e' : '#f43f5e' }}>
-                        {gelirBagli.donemNetKari >= 0 ? 'Kâr' : 'Zarar'}: {fmtTRY(Math.abs(gelirBagli.donemNetKari))}
-                      </span>
-                    </div>
+                {/* Gelir tablosu link — inline */}
+                {gelirBagli && (
+                  <>
+                    <span className="text-[11.5px] font-mono font-bold flex items-center gap-1" style={{ color: gelirBagli.donemNetKari >= 0 ? '#22c55e' : '#f43f5e' }}>
+                      <Zap size={10} />
+                      {gelirBagli.donemNetKari >= 0 ? 'Kâr' : 'Zarar'}: {fmtTRY(Math.abs(gelirBagli.donemNetKari))}
+                    </span>
                     <button
                       onClick={getirGelirTablosu}
                       disabled={bilanco.locked}
-                      className="px-3 py-1 rounded-md text-[11.5px] font-semibold transition-all"
+                      className="px-2 py-0.5 rounded text-[10.5px] font-semibold"
                       style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
                     >
-                      ↓ Gelir Tablosundan Getir
+                      ↓ Getir
                     </button>
-                  </div>
-                ) : (
-                  <p className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                    Bu bilanço için henüz gelir tablosu üretilmemiş. Geçici vergi döneminde 590/591 otomatik gelsin için önce gelir tablosunu oluşturun veya aşağıya manuel giriş yapın.
-                  </p>
+                  </>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                  <div>
-                    <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                      590 Dönem Net Kârı
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={mevcutKar > 0 ? fmtTRY(mevcutKar) : (gelirBagli?.onerilenKar > 0 ? `Öneri: ${fmtTRY(gelirBagli.onerilenKar)}` : '0,00')}
-                      value={manuelKar}
-                      onChange={(e) => setManuelKar(e.target.value)}
-                      disabled={bilanco.locked || duzeltmelerMut.isPending}
-                      className="w-full px-3 py-2 rounded-lg text-[14px] border outline-none font-mono"
-                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(34,197,94,0.25)', color: '#22c55e' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                      591 Dönem Net Zararı
-                    </label>
-                    <input
-                      type="text"
-                      placeholder={mevcutZarar > 0 ? fmtTRY(mevcutZarar) : (gelirBagli?.onerilenZarar > 0 ? `Öneri: ${fmtTRY(gelirBagli.onerilenZarar)}` : '0,00')}
-                      value={manuelZarar}
-                      onChange={(e) => setManuelZarar(e.target.value)}
-                      disabled={bilanco.locked || duzeltmelerMut.isPending}
-                      className="w-full px-3 py-2 rounded-lg text-[14px] border outline-none font-mono"
-                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => duzeltmelerMut.mutate({
-                      id: bilanco.id,
-                      donemNetKari: parseLocale(manuelKar),
-                      donemNetZarari: parseLocale(manuelZarar),
-                    })}
+                {/* Ayraç */}
+                <span className="flex-1 min-w-[8px]" />
+
+                {/* 590 input */}
+                <label className="flex items-center gap-1">
+                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.5)' }}>590</span>
+                  <input
+                    type="text"
+                    placeholder={mevcutKar > 0 ? fmtTRY(mevcutKar) : (gelirBagli?.onerilenKar > 0 ? fmtTRY(gelirBagli.onerilenKar) : '0,00')}
+                    value={manuelKar}
+                    onChange={(e) => setManuelKar(e.target.value)}
                     disabled={bilanco.locked || duzeltmelerMut.isPending}
-                    className="px-4 py-2 rounded-lg text-[13px] font-semibold transition-all"
-                    style={{ background: GOLD, color: '#0a0906', opacity: bilanco.locked ? 0.5 : 1 }}
-                  >
-                    {duzeltmelerMut.isPending ? (
-                      <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Kaydediliyor…</span>
-                    ) : 'Kaydet & Yeniden Hesapla'}
-                  </button>
-                </div>
-                {(mevcutKar > 0 || mevcutZarar > 0) && (
-                  <div className="text-[11.5px] flex items-center gap-2" style={{ color: '#22c55e' }}>
-                    <CheckCircle2 size={12} />
-                    Kayıtlı düzeltme: Kâr {fmtTRY(mevcutKar)} · Zarar {fmtTRY(mevcutZarar)} · Net Etki {fmtTRY(mevcutKar - mevcutZarar)}
-                  </div>
-                )}
-                {otomatikKaynak && !manuelVar && (
-                  <div className="text-[11.5px] flex items-center gap-2" style={{ color: '#22c55e' }}>
-                    <CheckCircle2 size={12} />
-                    Otomatik: Gelir tablosundaki <strong>{fmtTRY(Math.abs(otomatikKaynak.donemNetKari))}</strong> {otomatikKaynak.donemNetKari >= 0 ? 'kâr' : 'zarar'} değeri bilançoya uygulandı. Manuel giriş varsa o önceliklidir.
-                  </div>
-                )}
+                    className="w-28 px-2 py-1 rounded text-[12px] border outline-none font-mono text-right"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(34,197,94,0.25)', color: '#22c55e' }}
+                  />
+                </label>
+
+                {/* 591 input */}
+                <label className="flex items-center gap-1">
+                  <span className="text-[9.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.5)' }}>591</span>
+                  <input
+                    type="text"
+                    placeholder={mevcutZarar > 0 ? fmtTRY(mevcutZarar) : (gelirBagli?.onerilenZarar > 0 ? fmtTRY(gelirBagli.onerilenZarar) : '0,00')}
+                    value={manuelZarar}
+                    onChange={(e) => setManuelZarar(e.target.value)}
+                    disabled={bilanco.locked || duzeltmelerMut.isPending}
+                    className="w-28 px-2 py-1 rounded text-[12px] border outline-none font-mono text-right"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
+                  />
+                </label>
+
+                {/* Kaydet — kompakt buton */}
+                <button
+                  onClick={() => duzeltmelerMut.mutate({
+                    id: bilanco.id,
+                    donemNetKari: parseLocale(manuelKar),
+                    donemNetZarari: parseLocale(manuelZarar),
+                  })}
+                  disabled={bilanco.locked || duzeltmelerMut.isPending}
+                  className="px-3 py-1 rounded text-[11.5px] font-semibold"
+                  style={{ background: GOLD, color: '#0a0906', opacity: bilanco.locked ? 0.5 : 1 }}
+                  title="Kaydet & Yeniden Hesapla"
+                >
+                  {duzeltmelerMut.isPending ? <Loader2 size={12} className="animate-spin" /> : 'Kaydet'}
+                </button>
               </div>
             );
           })()}
