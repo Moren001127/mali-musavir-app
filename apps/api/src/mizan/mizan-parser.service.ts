@@ -28,17 +28,72 @@ export class MizanParserService {
   parse(buffer: Buffer): ParsedMizanRow[] {
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: false });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-    const raw: any[] = XLSX.utils.sheet_to_json(sheet, { raw: false, defval: null });
 
-    // Başlıkları normalize et
-    const rows = raw.map((r) => {
-      const out: Record<string, any> = {};
-      for (const [k, v] of Object.entries(r)) {
-        const cleanK = String(k).replace(/\s+/g, ' ').trim().toLowerCase();
-        out[cleanK] = v;
-      }
-      return out;
+    // Ham 2D grid olarak al — başlık satırı tespiti için
+    const grid: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      raw: false,
+      defval: null,
     });
+
+    // ── BAŞLIK SATIRI OTOMATİK TESPİT ──────────────────────────
+    // Luca ve diğer programların Excel'leri genelde üstte firma bilgisi,
+    // dönem, kapak satırları içerir. Gerçek başlık 2-10. satır arasında
+    // olabilir. İçinde hem "hesap/kod" hem "borç/alacak" geçen ilk satırı
+    // başlık olarak kabul ederiz.
+    const MAX_SCAN = Math.min(20, grid.length);
+    let headerRowIdx = -1;
+    for (let i = 0; i < MAX_SCAN; i++) {
+      const row = grid[i];
+      if (!row || row.length === 0) continue;
+      const cells = row.map((c) => String(c ?? '').toLowerCase());
+      const hasKod = cells.some((c) => /hesap|kod/.test(c));
+      const hasBorc = cells.some((c) => /bor[çc]/.test(c));
+      const hasAlacak = cells.some((c) => /alacak/.test(c));
+      if (hasKod && (hasBorc || hasAlacak)) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+      // Hiçbir başlık satırı bulunamadı — detaylı hata ver
+      const firstFewRows = grid
+        .slice(0, 5)
+        .map((r, i) => `Satır ${i + 1}: ${(r || []).slice(0, 6).join(' | ')}`)
+        .join('\n');
+      this.logger.warn(
+        `Mizan başlık satırı bulunamadı. İlk 5 satır:\n${firstFewRows}`,
+      );
+      throw new Error(
+        'Mizan Excel dosyasında başlık satırı bulunamadı. ' +
+          'Beklenen sütunlar: "Hesap Kodu", "Hesap Adı", "Borç Toplamı", "Alacak Toplamı". ' +
+          'Dosyanın Luca\'dan standart mizan formatında indirildiğinden emin olun.',
+      );
+    }
+
+    // Başlığı normalize et
+    const headers = (grid[headerRowIdx] || []).map((h) =>
+      String(h ?? '').replace(/\s+/g, ' ').trim().toLowerCase(),
+    );
+
+    // Başlıktan sonraki satırları obje olarak dönüştür
+    const rows: Record<string, any>[] = [];
+    for (let i = headerRowIdx + 1; i < grid.length; i++) {
+      const row = grid[i];
+      if (!row || row.every((c) => c == null || String(c).trim() === '')) {
+        continue; // boş satırları atla
+      }
+      const obj: Record<string, any> = {};
+      headers.forEach((h, j) => {
+        if (h) obj[h] = row[j];
+      });
+      rows.push(obj);
+    }
+
+    this.logger.log(
+      `Mizan başlık ${headerRowIdx + 1}. satırda bulundu. Sütunlar: ${headers.filter(Boolean).join(' · ')}`,
+    );
 
     const results: ParsedMizanRow[] = [];
     let skipped = 0;

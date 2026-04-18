@@ -170,8 +170,19 @@ export class MizanService {
     buffer: Buffer;
     createdBy?: string;
   }) {
-    const rows = this.parser.parse(params.buffer);
-    if (rows.length === 0) throw new BadRequestException('Excel parse edilemedi');
+    let rows;
+    try {
+      rows = this.parser.parse(params.buffer);
+    } catch (err: any) {
+      // Parser'ın detaylı hata mesajını kullanıcıya ilet
+      throw new BadRequestException(err?.message || 'Excel parse edilemedi');
+    }
+    if (rows.length === 0) {
+      throw new BadRequestException(
+        'Excel başlık bulundu ama hiç geçerli hesap satırı okunamadı. ' +
+          'Dosyada "Hesap Kodu" sütunu altında rakamla başlayan hesap kodları olmalı (örn: 100, 120.01).',
+      );
+    }
 
     await (this.prisma as any).mizan.deleteMany({
       where: {
