@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useMemo } from 'react';
 // useMemo zaten import edildi
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, gelirTablosuApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -165,17 +165,23 @@ export default function GelirTablosuPage() {
   const latestIndex = quarterSlots.findIndex((s) => s === latestQuarter);
   const prevQuarter = latestIndex > 0 ? quarterSlots[latestIndex - 1] : null;
 
-  // Latest çeyreğin TAM detayı (stokMaliyetOzet + geciciVergiHesabi backend'den)
-  const { data: latestFull } = useQuery<any>({
-    queryKey: ['gt-detail', latestQuarter?.id],
-    queryFn: () => gelirTablosuApi.get(latestQuarter.id),
-    enabled: !!latestQuarter?.id,
-    refetchInterval: 0,
+  // 4 çeyreğin TAM detayı — her dönemin stokMaliyetOzet + geciciVergiHesabi backend'den
+  const quarterDetails = useQueries({
+    queries: quarterSlots.map((q, i) => ({
+      queryKey: ['gt-detail', q?.id || `empty-${i}`],
+      queryFn: () => (q?.id ? gelirTablosuApi.get(q.id) : Promise.resolve(null)),
+      enabled: !!q?.id,
+      refetchInterval: 0,
+    })),
   });
+  // Backwards-compat: eski latestFull referansı — son dolu dönemin detayı
+  const latestFull = quarterDetails[latestIndex]?.data || null;
 
-  // Manuel düzeltme inputları (geçmiş yıl zararı + önceki dönem ödenen override)
-  const [manuelGecmisYil, setManuelGecmisYil] = useState('');
-  const [manuelOncekiOdenen, setManuelOncekiOdenen] = useState('');
+  // Manuel düzeltme inputları — her dönem için ayrı
+  const [manuelInputs, setManuelInputs] = useState<Record<string, { gecmisYil: string; oncekiOdenen: string }>>({});
+  const getManuel = (id: string) => manuelInputs[id] || { gecmisYil: '', oncekiOdenen: '' };
+  const setManuel = (id: string, patch: Partial<{ gecmisYil: string; oncekiOdenen: string }>) =>
+    setManuelInputs((prev) => ({ ...prev, [id]: { ...getManuel(id), ...patch } }));
   const parseLocale = (s: string): number => {
     const c = String(s || '').trim();
     if (!c) return 0;
@@ -188,12 +194,11 @@ export default function GelirTablosuPage() {
         gecmisYilZarari: args.gecmisYilZarari,
         oncekiDonemOdenenGeciciVergi: args.oncekiDonemOdenenGeciciVergi,
       }),
-    onSuccess: () => {
+    onSuccess: (_d, vars) => {
       toast.success('Vergi matrahı düzeltmesi kaydedildi');
       qc.invalidateQueries({ queryKey: ['gt-detail'] });
       qc.invalidateQueries({ queryKey: ['gt-list'] });
-      setManuelGecmisYil('');
-      setManuelOncekiOdenen('');
+      setManuelInputs((prev) => ({ ...prev, [vars.id]: { gecmisYil: '', oncekiOdenen: '' } }));
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydedilemedi'),
   });
@@ -688,169 +693,189 @@ export default function GelirTablosuPage() {
         </div>
       </div>
 
-      {/* Stok ve Satılan Malın Maliyeti */}
-      {latestFull?.stokMaliyetOzet && (
-        <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-            Stok ve Satılan Malın Maliyeti
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
-              {latestFull.donem}
-            </span>
-          </h3>
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Ad</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Bakiye</th>
-                </tr>
-              </thead>
-              <tbody>
-                {latestFull.stokMaliyetOzet.stokHesaplari.map((h: any) => (
-                  <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-2 font-mono" style={{ color: GOLD }}>{h.kod}</td>
-                    <td className="px-4 py-2" style={{ color: 'rgba(250,250,249,0.7)' }}>{h.hesapAdi || '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono" style={{ color: Number(h.bakiye) > 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.bakiye) !== 0 ? fmtTRY(h.bakiye) : '0,00'}
-                    </td>
-                  </tr>
-                ))}
-                {latestFull.stokMaliyetOzet.maliyetHesaplari.map((h: any) => (
-                  <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-2 font-mono" style={{ color: GOLD }}>{h.kod}</td>
-                    <td className="px-4 py-2" style={{ color: 'rgba(250,250,249,0.7)' }}>{h.hesapAdi || '—'}</td>
-                    <td className="px-4 py-2 text-right font-mono" style={{ color: Number(h.bakiye) > 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.bakiye) !== 0 ? fmtTRY(h.bakiye) : '0,00'}
-                    </td>
-                  </tr>
-                ))}
-                <tr style={{ borderTop: '2px solid rgba(184,160,111,0.3)', background: 'rgba(184,160,111,0.04)' }}>
-                  <td colSpan={2} className="px-4 py-3 font-semibold text-[13px]" style={{ color: GOLD }}>Toplam Stok</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: GOLD }}>{fmtTRY(latestFull.stokMaliyetOzet.toplamStok)}</td>
-                </tr>
-                <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
-                  <td colSpan={2} className="px-4 py-3 font-semibold text-[13px]" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti (gelir tablosundan)</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: '#f43f5e' }}>−{fmtTRY(latestFull.stokMaliyetOzet.satisMaliyeti)}</td>
-                </tr>
-                <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
-                  <td colSpan={2} className="px-4 py-3 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold text-[14px]" style={{ color: '#22c55e' }}>{fmtTRY(latestFull.stokMaliyetOzet.kalanStok)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Her dönem için ayrı Stok/SMM + Geçici Vergi Matrahı blokları */}
+      {quarterDetails.map((qd, idx) => {
+        const gt = qd?.data as any;
+        if (!gt || (!gt.stokMaliyetOzet && !gt.geciciVergiHesabi)) return null;
+        const donemEtiket = `Q${idx + 1} ${year}`;
+        const manuel = getManuel(gt.id);
+        return (
+          <div key={gt.id} className="space-y-5 pt-4" style={{ borderTop: idx > 0 ? '1px dashed rgba(184,160,111,0.25)' : 'none' }}>
+            {/* Dönem ayıraç başlığı */}
+            <div className="flex items-center gap-2 pt-2">
+              <span className="font-bold text-[13px] uppercase tracking-[.2em] px-3 py-1 rounded-md" style={{ background: 'rgba(184,160,111,0.10)', border: '1px solid rgba(184,160,111,0.25)', color: GOLD }}>
+                {donemEtiket}
+              </span>
+              <span className="flex-1 h-px" style={{ background: 'linear-gradient(90deg, rgba(184,160,111,0.25), transparent)' }} />
+            </div>
 
-      {/* Geçici Vergi Matrahı Hesaplama */}
-      {latestFull?.geciciVergiHesabi && (
-        <div>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
-            <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-            Geçici Vergi Matrahı Hesaplama
-            <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
-              {latestFull.donem} · %{(latestFull.geciciVergiHesabi.gecicVergiOrani * 100).toFixed(0)} oran
-            </span>
-          </h3>
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' }}>
-            <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-              <tbody>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Kanunen Kabul Edilmeyen Gider</td>
-                  <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(latestFull.geciciVergiHesabi.kkeg)}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Dönem Net Kârı (gelir tablosu)</td>
-                  <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(latestFull.geciciVergiHesabi.donemNetKari)}</td>
-                </tr>
-                <tr style={{ borderBottom: '2px solid rgba(184,160,111,0.25)', background: 'rgba(184,160,111,0.04)' }}>
-                  <td className="px-4 py-3 font-semibold" style={{ color: GOLD }}>Toplam Kâr = Net Kâr + KKEG</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: GOLD }}>{fmtTRY(latestFull.geciciVergiHesabi.toplamKar)}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span style={{ color: 'rgba(250,250,249,0.65)' }}>Geçmiş Yıl Zararı (-)</span>
-                      <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>MANUEL</span>
+            {/* Geçici Vergi Matrahı Hesaplama (önce) */}
+            {gt.geciciVergiHesabi && (
+              <div>
+                <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+                  <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+                  Geçici Vergi Matrahı Hesaplama
+                  <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                    {gt.donem} · %{(gt.geciciVergiHesabi.gecicVergiOrani * 100).toFixed(0)} oran
+                  </span>
+                </h3>
+                <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' }}>
+                  <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <tbody>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Kanunen Kabul Edilmeyen Gider</td>
+                        <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(gt.geciciVergiHesabi.kkeg)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Dönem Net Kârı (gelir tablosu)</td>
+                        <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(gt.geciciVergiHesabi.donemNetKari)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '2px solid rgba(184,160,111,0.25)', background: 'rgba(184,160,111,0.04)' }}>
+                        <td className="px-4 py-3 font-semibold" style={{ color: GOLD }}>Toplam Kâr = Net Kâr + KKEG</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: GOLD }}>{fmtTRY(gt.geciciVergiHesabi.toplamKar)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span style={{ color: 'rgba(250,250,249,0.65)' }}>Geçmiş Yıl Zararı (-)</span>
+                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>MANUEL</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <input
+                            type="text"
+                            placeholder={gt.geciciVergiHesabi.gecmisYilZarari > 0 ? fmtTRY(gt.geciciVergiHesabi.gecmisYilZarari) : '0,00'}
+                            value={manuel.gecmisYil}
+                            onChange={(e) => setManuel(gt.id, { gecmisYil: e.target.value })}
+                            disabled={gt.locked}
+                            className="px-3 py-1.5 rounded-md text-[13px] text-right font-mono border outline-none w-40"
+                            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
+                          />
+                        </td>
+                      </tr>
+                      <tr style={{ borderBottom: '2px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.04)' }}>
+                        <td className="px-4 py-3 font-semibold" style={{ color: '#22c55e' }}>Geçici Vergi Matrahı</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: '#22c55e' }}>{fmtTRY(gt.geciciVergiHesabi.gecicVergiMatrahi)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Hesaplanan Geçici Vergi (%{(gt.geciciVergiHesabi.gecicVergiOrani * 100).toFixed(0)})</td>
+                        <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(gt.geciciVergiHesabi.hesaplananGeciciVergi)}</td>
+                      </tr>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span style={{ color: 'rgba(250,250,249,0.65)' }}>Önceki Dönem Ödenen Geçici Vergi (-)</span>
+                            {gt.geciciVergiHesabi.oncekiDonemKaynak === 'manuel' ? (
+                              <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>MANUEL</span>
+                            ) : (
+                              <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>KÜMÜLATİF OTOMATİK</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {gt.geciciVergiHesabi.donemSirasi === 1 ? (
+                            <span className="font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>— (ilk dönem)</span>
+                          ) : (
+                            <input
+                              type="text"
+                              placeholder={`Otomatik: ${fmtTRY(gt.geciciVergiHesabi.oncekiDonemOtomatikToplam)}`}
+                              value={manuel.oncekiOdenen}
+                              onChange={(e) => setManuel(gt.id, { oncekiOdenen: e.target.value })}
+                              disabled={gt.locked}
+                              className="px-3 py-1.5 rounded-md text-[13px] text-right font-mono border outline-none w-48"
+                              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                      <tr style={{ background: 'linear-gradient(135deg, rgba(184,160,111,0.08), rgba(184,160,111,0.02))' }}>
+                        <td className="px-4 py-4 font-bold text-[14px]" style={{ color: GOLD }}>ÖDENECEK GEÇİCİ VERGİ</td>
+                        <td className="px-4 py-4 text-right font-mono font-bold text-[16px]" style={{ color: GOLD, fontFamily: 'Fraunces, serif' }}>{fmtTRY(gt.geciciVergiHesabi.odenecekGeciciVergi)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {!gt.locked && (
+                    <div className="px-4 py-3 border-t flex justify-between items-center gap-3" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                      <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                        Geçmiş yıl zararı veya önceki dönem ödenen geçici vergi için manuel giriş yapabilirsin.
+                      </span>
+                      <button
+                        onClick={() => vergiDuzeltmeMut.mutate({
+                          id: gt.id,
+                          gecmisYilZarari: parseLocale(manuel.gecmisYil),
+                          oncekiDonemOdenenGeciciVergi: parseLocale(manuel.oncekiOdenen),
+                        })}
+                        disabled={vergiDuzeltmeMut.isPending}
+                        className="px-4 py-1.5 rounded-md text-[12.5px] font-semibold transition-all"
+                        style={{ background: GOLD, color: '#0a0906' }}
+                      >
+                        {vergiDuzeltmeMut.isPending ? '…' : 'Kaydet & Yeniden Hesapla'}
+                      </button>
                     </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <input
-                      type="text"
-                      placeholder={latestFull.geciciVergiHesabi.gecmisYilZarari > 0 ? fmtTRY(latestFull.geciciVergiHesabi.gecmisYilZarari) : '0,00'}
-                      value={manuelGecmisYil}
-                      onChange={(e) => setManuelGecmisYil(e.target.value)}
-                      disabled={latestFull.locked}
-                      className="px-3 py-1.5 rounded-md text-[13px] text-right font-mono border outline-none w-40"
-                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
-                    />
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '2px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.04)' }}>
-                  <td className="px-4 py-3 font-semibold" style={{ color: '#22c55e' }}>Geçici Vergi Matrahı</td>
-                  <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: '#22c55e' }}>{fmtTRY(latestFull.geciciVergiHesabi.gecicVergiMatrahi)}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td className="px-4 py-2.5" style={{ color: 'rgba(250,250,249,0.65)' }}>Hesaplanan Geçici Vergi (%{(latestFull.geciciVergiHesabi.gecicVergiOrani * 100).toFixed(0)})</td>
-                  <td className="px-4 py-2.5 text-right font-mono" style={{ color: '#fafaf9' }}>{fmtTRY(latestFull.geciciVergiHesabi.hesaplananGeciciVergi)}</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <span style={{ color: 'rgba(250,250,249,0.65)' }}>Önceki Dönem Ödenen Geçici Vergi (-)</span>
-                      {latestFull.geciciVergiHesabi.oncekiDonemKaynak === 'manuel' ? (
-                        <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>MANUEL</span>
-                      ) : (
-                        <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}>KÜMÜLATİF OTOMATİK</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    {latestFull.geciciVergiHesabi.donemSirasi === 1 ? (
-                      <span className="font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>— (ilk dönem)</span>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder={`Otomatik: ${fmtTRY(latestFull.geciciVergiHesabi.oncekiDonemOtomatikToplam)}`}
-                        value={manuelOncekiOdenen}
-                        onChange={(e) => setManuelOncekiOdenen(e.target.value)}
-                        disabled={latestFull.locked}
-                        className="px-3 py-1.5 rounded-md text-[13px] text-right font-mono border outline-none w-48"
-                        style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
-                      />
-                    )}
-                  </td>
-                </tr>
-                <tr style={{ background: 'linear-gradient(135deg, rgba(184,160,111,0.08), rgba(184,160,111,0.02))' }}>
-                  <td className="px-4 py-4 font-bold text-[14px]" style={{ color: GOLD }}>ÖDENECEK GEÇİCİ VERGİ</td>
-                  <td className="px-4 py-4 text-right font-mono font-bold text-[16px]" style={{ color: GOLD, fontFamily: 'Fraunces, serif' }}>{fmtTRY(latestFull.geciciVergiHesabi.odenecekGeciciVergi)}</td>
-                </tr>
-              </tbody>
-            </table>
-            {!latestFull.locked && (
-              <div className="px-4 py-3 border-t flex justify-between items-center gap-3" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-                <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Geçmiş yıl zararı veya önceki dönem ödenen geçici vergi için manuel giriş yapabilirsin.
-                </span>
-                <button
-                  onClick={() => vergiDuzeltmeMut.mutate({
-                    id: latestFull.id,
-                    gecmisYilZarari: parseLocale(manuelGecmisYil),
-                    oncekiDonemOdenenGeciciVergi: parseLocale(manuelOncekiOdenen),
-                  })}
-                  disabled={vergiDuzeltmeMut.isPending}
-                  className="px-4 py-1.5 rounded-md text-[12.5px] font-semibold transition-all"
-                  style={{ background: GOLD, color: '#0a0906' }}
-                >
-                  {vergiDuzeltmeMut.isPending ? '…' : 'Kaydet & Yeniden Hesapla'}
-                </button>
+                  )}
+                </div>
               </div>
             )}
+
+            {/* Stok ve Satılan Malın Maliyeti (sonra) */}
+            {gt.stokMaliyetOzet && (
+              <div>
+                <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+                  <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+                  Stok ve Satılan Malın Maliyeti
+                  <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                    {gt.donem}
+                  </span>
+                </h3>
+                <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap</th>
+                        <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Ad</th>
+                        <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Bakiye</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gt.stokMaliyetOzet.stokHesaplari.map((h: any) => (
+                        <tr key={'s-' + h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td className="px-4 py-2 font-mono" style={{ color: GOLD }}>{h.kod}</td>
+                          <td className="px-4 py-2" style={{ color: 'rgba(250,250,249,0.7)' }}>{h.hesapAdi || '—'}</td>
+                          <td className="px-4 py-2 text-right font-mono" style={{ color: Number(h.bakiye) !== 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
+                            {Number(h.bakiye) !== 0 ? fmtTRY(h.bakiye) : '0,00'}
+                          </td>
+                        </tr>
+                      ))}
+                      {gt.stokMaliyetOzet.maliyetHesaplari.map((h: any) => (
+                        <tr key={'m-' + h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td className="px-4 py-2 font-mono" style={{ color: GOLD }}>{h.kod}</td>
+                          <td className="px-4 py-2" style={{ color: 'rgba(250,250,249,0.7)' }}>{h.hesapAdi || '—'}</td>
+                          <td className="px-4 py-2 text-right font-mono" style={{ color: Number(h.bakiye) !== 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
+                            {Number(h.bakiye) !== 0 ? fmtTRY(h.bakiye) : '0,00'}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr style={{ borderTop: '2px solid rgba(184,160,111,0.3)', background: 'rgba(184,160,111,0.04)' }}>
+                        <td colSpan={2} className="px-4 py-3 font-semibold text-[13px]" style={{ color: GOLD }}>Toplam Stok</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: GOLD }}>{fmtTRY(gt.stokMaliyetOzet.toplamStok)}</td>
+                      </tr>
+                      <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
+                        <td colSpan={2} className="px-4 py-3 font-semibold text-[13px]" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti (gelir tablosundan)</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold" style={{ color: '#f43f5e' }}>−{fmtTRY(gt.stokMaliyetOzet.satisMaliyeti)}</td>
+                      </tr>
+                      <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
+                        <td colSpan={2} className="px-4 py-3 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-[14px]" style={{ color: '#22c55e' }}>{fmtTRY(gt.stokMaliyetOzet.kalanStok)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
           </div>
-        </div>
-      )}
+        );
+      })}
 
       {/* Finansal Oranlar — son dolu çeyreğe göre */}
       {latestQuarter && (

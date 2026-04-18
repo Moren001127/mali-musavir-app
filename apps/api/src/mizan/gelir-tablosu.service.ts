@@ -141,17 +141,38 @@ export class GelirTablosuService {
       }
       return out;
     };
-    // Tek hesap için net bakiye (ilk eşleşen seviye 0)
+    // Hesap kodu ve TÜM ALT KIRILIMLARI için net bakiye toplamı.
+    // 153 hesabında kendi satırında bakiye 0 gözükse bile alt kırılımlarında
+    // (153.01, 153.01.001 gibi) değer olabilir. Ana hesap adı seviye 0'dan,
+    // bakiye = en düşük seviyeli (leaf) hesapların toplamı.
     const tekHesap = (kod: string): { kod: string; hesapAdi: string; bakiye: number } => {
-      const h = map.get(kod);
-      if (h && h.seviye === 0) {
-        return {
-          kod,
-          hesapAdi: h.hesapAdi,
-          bakiye: Number(h.borcBakiye) - Number(h.alacakBakiye),
-        };
+      const anaH = map.get(kod);
+      const prefix = kod + '.';
+      let toplam = 0;
+      let leafCount = 0;
+      // Leaf hesapları tespit et ve topla
+      for (const [k, h] of map.entries()) {
+        if (k !== kod && !k.startsWith(prefix)) continue;
+        // Leaf: altında başka detay yok
+        const altPrefix = k + '.';
+        let isLeaf = true;
+        for (const kk of map.keys()) {
+          if (kk !== k && kk.startsWith(altPrefix)) { isLeaf = false; break; }
+        }
+        if (isLeaf) {
+          toplam += Number(h.borcBakiye) - Number(h.alacakBakiye);
+          leafCount++;
+        }
       }
-      return { kod, hesapAdi: '', bakiye: 0 };
+      // Leaf yoksa (sadece ana hesap kaydı) direkt ana hesabın bakiyesi
+      if (leafCount === 0 && anaH) {
+        toplam = Number(anaH.borcBakiye) - Number(anaH.alacakBakiye);
+      }
+      return {
+        kod,
+        hesapAdi: anaH?.hesapAdi || '',
+        bakiye: toplam,
+      };
     };
 
     const stokHesaplari = [
