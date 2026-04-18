@@ -1081,31 +1081,87 @@ export class OcrService {
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const sumByOran = new Map<number, number>();
-    // Pattern: "% NN,NN" (veya "% NN") + whitespace + "X.XXX,XX" (+ ops. TL/TRY/₺)
-    // Ondalıklı oran: "% 20,00", tutar ise "1.006,00 TL" veya "15,00"
-    const pairRe = /%\s*(\d{1,2})(?:[,.]\d{1,2})?\s+([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})(?:\s*(?:TL|TRY|₺))?/gi;
+
+    // Oran markörü: "% 20,00" / "% 20" / "%20,00" / "%20"
+    const rateMarkerRe = /%\s*(\d{1,2})(?:[,.]\d{1,2})?/gi;
+    // Tutar: "1.006,00" / "15,00" / "60.84" (+ opsiyonel TL/TRY/₺)
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
     const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
-    // Discount/iskonto satırlarını atla — "İsk %" kolonu da "%" içerir, yanlış yakalanmasın
+    // Discount satırı — "İsk %" kolonu KDV değil. Ama tablo satırında hem İsk
+    // hem KDV birlikte olabilir; o durumda satır "KDV" içerir → atlama.
     const discountRowRe = /İSKONTO|ISKONTO|\bİSK\s*%|\bISK\s*%|İNDİRİM|INDIRIM/i;
 
-    for (const line of lines) {
+    // İki aşamalı scan: önce rate markerları topla, sonra her marker için
+    // aynı satır veya sonraki 3 satırdan ilk geçerli amount'u eşleştir.
+    // Bu yapı Azure'ın tablo satırını satırlara böldüğü durumu handle eder:
+    //   "% 20,00"
+    //   "1.006,00 TL"
+    //   "5.030,00 TL"
+    // → ilk amount (1.006) %20'nin KDV'si.
+    type Marker = { oran: number; lineIdx: number; afterLabel: string };
+    const markers: Marker[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       if (skipTaxRe.test(line)) continue;
-      // Satır TAMAMEN iskonto/discount odaklı mı?
-      // "Toplam İskonto" satırı varsa atla (discount total, KDV kaleminin bir
-      // parçası gibi görünebilir). Ama "İsk % 0 ... KDV % 20 ... 1.006,00"
-      // gibi tablo satırı geçerli — o satırda hem İsk hem KDV var, ilk
-      // eşleşme 0 zaten (tutar=0 → filter).
       if (discountRowRe.test(line) && !/KDV/i.test(line)) continue;
 
+      // Önceki 2 satırda non-KDV vergi label'ı varsa bu "% N,NN" markörü ÖİV'ye
+      // / Telsize / ÖTV'ye ait olabilir (label + oran + amount 3 ayrı satırda).
+      // Örnek Turkcell: "Özel İletişim Vergisi" / "% 10,00" / "126,00 TL"
+      // Bu markörü atla. İskontola karıştırma: KDV satırı varsa saydan çıkar.
+      let prevHasNonKdvTax = false;
+      for (let p = 1; p <= 2 && i - p >= 0; p++) {
+        const prev = lines[i - p];
+        if (skipTaxRe.test(prev)) { prevHasNonKdvTax = true; break; }
+        // "Katma Değer Vergisi" / "KDV" önceki satırda bulunduysa temiz say
+        if (/KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\b/i.test(prev)) break;
+      }
+      if (prevHasNonKdvTax) continue;
+
+      rateMarkerRe.lastIndex = 0;
       let m: RegExpExecArray | null;
-      pairRe.lastIndex = 0;
-      while ((m = pairRe.exec(line)) !== null) {
+      while ((m = rateMarkerRe.exec(line)) !== null) {
         const oran = parseInt(m[1], 10);
-        const tutar = this.parseAmount(m[2]);
-        // Sıfır tutarlı "İsk % 0 0,00" veya "%0" eşleşmelerini atla
         if (!(oran > 0 && oran <= 30)) continue;
-        if (!(tutar > 0 && tutar < 10_000_000)) continue;
-        sumByOran.set(oran, (sumByOran.get(oran) || 0) + tutar);
+        const afterLabel = line.slice(m.index + m[0].length);
+        markers.push({ oran, lineIdx: i, afterLabel });
+      }
+    }
+
+    // Bir satırda birden fazla "% NN" varsa (header row gibi — "KDV % 20")
+    // hepsini işlemek yerine kalanını akıllıca çöz. Önce aynı satırda
+    // amount var mı? Yoksa sonraki satırları tara.
+    for (const marker of markers) {
+      let tutar: number | null = null;
+
+      // 1) Aynı satır, label'den sonra amount var mı?
+      const afterLabelMatch = marker.afterLabel.match(amountRe);
+      if (afterLabelMatch) {
+        const parsed = this.parseAmount(afterLabelMatch[1]);
+        if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+      }
+
+      // 2) Yoksa sonraki 3 satırdan ilk geçerli amount'u al (tablo cell gibi
+      //    bölünmüş layout için). skipTax/discount satırlarına takılma.
+      if (tutar == null) {
+        for (let j = 1; j <= 3 && marker.lineIdx + j < lines.length; j++) {
+          const nextLine = lines[marker.lineIdx + j];
+          if (skipTaxRe.test(nextLine)) break;
+          // Sonraki rate marker satırına girdiysek dur
+          if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
+          const am = nextLine.match(amountRe);
+          if (am) {
+            const parsed = this.parseAmount(am[1]);
+            if (parsed > 0 && parsed < 10_000_000) {
+              tutar = parsed;
+              break;
+            }
+          }
+        }
+      }
+
+      if (tutar != null) {
+        sumByOran.set(marker.oran, (sumByOran.get(marker.oran) || 0) + tutar);
       }
     }
 
@@ -1115,7 +1171,7 @@ export class OcrService {
       .sort((a, b) => b[0] - a[0]) // %20, %10, %1 sırayla
       .map(([oran, tutar]) => ({
         oran,
-        tutar: Math.round(tutar * 100) / 100, // float precision
+        tutar: Math.round(tutar * 100) / 100,
         matrah: null,
       }));
   }
