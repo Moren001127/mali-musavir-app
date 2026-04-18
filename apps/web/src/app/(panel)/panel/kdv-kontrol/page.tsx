@@ -405,8 +405,18 @@ export default function KdvKontrolPage() {
     },
     onSuccess: (d: any) => {
       clearFeedErrorsInGroup('kontrol');
-      pushFeed({ group: 'kontrol', kind: 'ok', title: 'Kontrol tamamlandı', detail: `${d.matched} eşleşti · ${d.unmatched} eşleşmedi · ${d.needsReview} inceleme` });
-      toast.success(`Eşleştirme: ${d.matched} ✓  ${d.unmatched} ✗`);
+      const inceleCount = (d.needsReview ?? 0) + (d.partial ?? 0);
+      const tamCount = d.matched ?? 0;
+      const hataliCount = d.unmatched ?? 0;
+      pushFeed({
+        group: 'kontrol',
+        kind: 'ok',
+        title: 'Kontrol tamamlandı',
+        detail: `${tamCount} tam eşleşme · ${inceleCount} incele · ${hataliCount} hatalı`,
+      });
+      toast.success(
+        `Eşleştirme tamam — ${tamCount} ✓ tam · ${inceleCount} ⚠ incele · ${hataliCount} ✗ hatalı`,
+      );
       qc.invalidateQueries({ queryKey: ['kdv-results', sessionId] });
       qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
     },

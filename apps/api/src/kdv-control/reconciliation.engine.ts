@@ -55,8 +55,44 @@ export class ReconciliationEngine {
     const usedRecordIds = new Set<string>();
     const createData: any[] = [];
 
-    // Her kayıt için en iyi görsel eşleşmesini bul
+    // ═══════════════════════════════════════════════════════
+    // PASS 1 — STRICT EŞLEŞMELER (belge no + KDV + tarih tam aynı)
+    // ═══════════════════════════════════════════════════════
+    // Greedy sıra bazlı eşleştirmenin klasik sorunu: zayıf skorlu eşleşmeler
+    // (örn. Luca 0025/676,04 ↔ Fatura 0002/669,83, sadece KDV benzer)
+    // güçlü strict eşleşmeleri çalıyor. Çözüm: önce tüm strict eşleşmeleri
+    // sabitle — belge no + KDV + tarih hepsi tam aynıysa bu belge AYNI belge,
+    // başka hiçbir şeye bakma.
     for (const record of records) {
+      if (usedRecordIds.has(record.id)) continue;
+      for (const image of images) {
+        if (usedImageIds.has(image.id)) continue;
+        const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
+        if (strictMatch) {
+          usedImageIds.add(image.id);
+          usedRecordIds.add(record.id);
+          createData.push({
+            sessionId,
+            kdvRecordId: record.id,
+            imageId: image.id,
+            status: 'MATCHED',
+            matchScore: score,
+            mismatchReasons: reasons,
+          });
+          break; // bu kayıt eşleşti, sıradakine geç
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // PASS 2 — GEVŞEK EŞLEŞMELER (kalan kayıtlar için)
+    // ═══════════════════════════════════════════════════════
+    // Strict eşleşmeleri bağladıktan sonra kalan kayıtlar için en iyi
+    // aday bulunur. Artık güçlü pairler "taken" durumunda, zayıf skorlular
+    // onları çalamaz.
+    for (const record of records) {
+      if (usedRecordIds.has(record.id)) continue;
       const candidates: MatchCandidate[] = [];
 
       for (const image of images) {
@@ -68,11 +104,8 @@ export class ReconciliationEngine {
         }
       }
 
-      // Strict eşleşenler öne; sonra skor
-      candidates.sort((a, b) => {
-        if (a.strictMatch !== b.strictMatch) return a.strictMatch ? -1 : 1;
-        return b.score - a.score;
-      });
+      // En yüksek skorlu aday seçilir (strict pass 1'de zaten alındı)
+      candidates.sort((a, b) => b.score - a.score);
       const best = candidates[0];
 
       if (best) {
@@ -101,7 +134,9 @@ export class ReconciliationEngine {
       }
     }
 
-    // Görsel var ama kayıt yok olanlar
+    // ═══════════════════════════════════════════════════════
+    // PASS 3 — ORPHAN GÖRSELLER (Luca'da karşılığı olmayan faturalar)
+    // ═══════════════════════════════════════════════════════
     for (const image of images) {
       if (!usedImageIds.has(image.id)) {
         createData.push({

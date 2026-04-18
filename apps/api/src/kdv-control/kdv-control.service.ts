@@ -14,6 +14,7 @@ import { OcrService } from './ocr.service';
 import { ReconciliationEngine } from './reconciliation.engine';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
+import { AgentEventsService } from '../agent-events/agent-events.service';
 import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
@@ -33,7 +34,36 @@ export class KdvControlService {
     private luca: LucaService,
     @Inject(forwardRef(() => LucaAutoScraperService))
     private lucaAutoScraper: LucaAutoScraperService,
+    private agentEvents: AgentEventsService,
   ) {}
+
+  /**
+   * KDV işlemleri gösterge panelindeki "Canlı Sistem Akışı"na düşsün diye
+   * her önemli aşamada AgentEvent oluşturur. Hata patlatmaz — log'a yazıp geçer.
+   */
+  private async pushFeedEvent(
+    tenantId: string,
+    args: {
+      action: string;
+      status: 'basarili' | 'hata' | 'bilgi' | 'atlandi';
+      message: string;
+      mukellef?: string;
+      meta?: any;
+    },
+  ): Promise<void> {
+    try {
+      await this.agentEvents.createEvent(tenantId, {
+        agent: 'kdv-kontrol',
+        action: args.action,
+        status: args.status,
+        message: args.message,
+        mukellef: args.mukellef,
+        meta: args.meta,
+      });
+    } catch (err) {
+      this.logger.warn(`Agent event push failed: ${(err as Error).message}`);
+    }
+  }
 
   private readonly VALID_TYPES = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'] as const;
   private readonly ISLETME_TYPES = ['ISLETME_GELIR', 'ISLETME_GIDER'];
@@ -146,7 +176,7 @@ export class KdvControlService {
       if (!taxpayer) throw new BadRequestException('Mükellef bulunamadı veya yetkisiz erişim');
     }
 
-    return this.prisma.kdvControlSession.create({
+    const created = await this.prisma.kdvControlSession.create({
       data: {
         tenantId,
         type: dto.type as any,
@@ -156,9 +186,20 @@ export class KdvControlService {
         createdBy: userId,
       },
       include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
+        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
       },
     });
+
+    // Gösterge panelindeki "Canlı Sistem Akışı"na düşer
+    await this.pushFeedEvent(tenantId, {
+      action: 'session-create',
+      status: 'bilgi',
+      message: `KDV kontrol oturumu açıldı — ${dto.periodLabel} · ${this.kdvTypeLabel(dto.type)}`,
+      mukellef: this.formatMukellefAdi(created),
+      meta: { sessionId: created.id, period: dto.periodLabel, type: dto.type },
+    });
+
+    return created;
   }
 
   /**
@@ -401,6 +442,16 @@ export class KdvControlService {
     await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
       data: { status: 'PROCESSING' },
+    });
+
+    // Gösterge panelindeki "Canlı Sistem Akışı"na düşer
+    const session = await this.findSession(sessionId, tenantId);
+    await this.pushFeedEvent(tenantId, {
+      action: 'luca-import',
+      status: 'basarili',
+      message: `Luca Excel yüklendi — ${parsed.length} satır${skipped > 0 ? ` (${skipped} atlandı)` : ''}`,
+      mukellef: this.formatMukellefAdi(session),
+      meta: { sessionId, imported: parsed.length, skipped },
     });
 
     return { imported: parsed.length, skipped };
@@ -749,8 +800,42 @@ export class KdvControlService {
 
   /** Eşleştirme motorunu çalıştır */
   async runReconciliation(sessionId: string, tenantId: string) {
-    await this.findSession(sessionId, tenantId);
-    return this.reconciliation.runReconciliation(sessionId);
+    const session = await this.findSession(sessionId, tenantId);
+    const mukellefAdi = this.formatMukellefAdi(session);
+    try {
+      const result = await this.reconciliation.runReconciliation(sessionId);
+      await this.pushFeedEvent(tenantId, {
+        action: 'reconcile',
+        status: 'basarili',
+        message: `KDV eşleştirme tamam — ${result.matched} tam · ${result.partial + result.needsReview} incele · ${result.unmatched} hatalı`,
+        mukellef: mukellefAdi,
+        meta: {
+          sessionId,
+          period: session.periodLabel,
+          type: session.type,
+          ...result,
+        },
+      });
+      return result;
+    } catch (err) {
+      await this.pushFeedEvent(tenantId, {
+        action: 'reconcile',
+        status: 'hata',
+        message: `KDV eşleştirme hatası: ${(err as Error).message}`,
+        mukellef: mukellefAdi,
+      });
+      throw err;
+    }
+  }
+
+  /** Mükellef adını feed event için formatla (şirket / ad+soyad / VKN sırası) */
+  private formatMukellefAdi(session: any): string | undefined {
+    const t = session?.taxpayer;
+    if (!t) return undefined;
+    if (t.companyName) return t.companyName;
+    const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ');
+    if (fullName) return fullName;
+    return t.taxNumber || undefined;
   }
 
   /** Eşleştirme sonuçları */
@@ -1529,10 +1614,29 @@ export class KdvControlService {
       }
     });
 
+    // Gösterge panelindeki "Canlı Sistem Akışı"na başlangıç eventi
+    const session = await this.findSession(sessionId, tenantId);
+    const mukellefAdi = this.formatMukellefAdi(session);
+    await this.pushFeedEvent(tenantId, {
+      action: 'ocr-start',
+      status: 'bilgi',
+      message: `Fatura OCR başladı — ${toQueue.length} yeni${cacheHits > 0 ? ` · ${cacheHits} cache'den` : ''}`,
+      mukellef: mukellefAdi,
+      meta: { sessionId, queued: toQueue.length, cacheHits },
+    });
+
     // Workers'ları arkaplanda çalıştır, HTTP yanıtını hemen döndür
-    Promise.all(workers).then(() =>
-      this.logger.log(`OCR kuyruğu bitti: ${queued} fatura işlendi · ${cacheHits} cached`),
-    );
+    Promise.all(workers).then(async () => {
+      this.logger.log(`OCR kuyruğu bitti: ${queued} fatura işlendi · ${cacheHits} cached`);
+      // OCR tamamlandığında da feed'e yaz
+      await this.pushFeedEvent(tenantId, {
+        action: 'ocr-complete',
+        status: 'basarili',
+        message: `Fatura OCR tamamlandı — ${queued} işlendi${cacheHits > 0 ? ` · ${cacheHits} cache'den` : ''}`,
+        mukellef: mukellefAdi,
+        meta: { sessionId, processed: queued, cacheHits },
+      });
+    });
 
     return {
       queued: toQueue.length,
