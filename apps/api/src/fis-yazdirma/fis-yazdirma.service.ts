@@ -4,6 +4,8 @@ import { logAiUsage } from '../common/ai-usage-logger';
 import { createWorker } from 'tesseract.js';
 import * as sharp from 'sharp';
 import * as XLSX from 'xlsx';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   Document,
   Packer,
@@ -874,27 +876,54 @@ export class FisYazdirmaService {
       const dates = sorted.map((f) => allDates[f.originalname]).filter(Boolean).sort();
       const ilkTarih = dates[0] ? isoDisplay(dates[0]) : '—';
       const sonTarih = dates[dates.length - 1] ? isoDisplay(dates[dates.length - 1]) : '—';
-      const coverChildren: any[] = [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { before: 4000, after: 400 },
-          children: [
-            new TextRun({ text: 'MOREN', bold: true, size: 72, color: '8B7649' }),
-          ],
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 800 },
-          children: [
-            new TextRun({ text: 'MALİ MÜŞAVİRLİK', bold: true, size: 28, color: '8B7649' }),
-          ],
-        }),
+      // Moren logosu — kapak sayfası için; yüklenemezse TextRun fallback
+      let logoBuffer: Buffer | null = null;
+      try {
+        const logoPath = path.join(__dirname, '..', 'assets', 'moren-logo.png');
+        if (fs.existsSync(logoPath)) {
+          logoBuffer = fs.readFileSync(logoPath);
+        }
+      } catch (err) {
+        this.logger.warn(`Kapak logosu yüklenemedi: ${(err as Error).message}`);
+      }
+
+      const coverChildren: any[] = [];
+      if (logoBuffer) {
+        coverChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 3600, after: 600 },
+            children: [
+              new ImageRun({
+                data: logoBuffer,
+                transformation: { width: 260, height: 260 },
+                type: 'png',
+              }),
+            ],
+          }),
+        );
+      } else {
+        // Fallback — logo yoksa eski metin
+        coverChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 4000, after: 400 },
+            children: [new TextRun({ text: 'MOREN', bold: true, size: 72, color: '8B7649' })],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { after: 800 },
+            children: [new TextRun({ text: 'MALİ MÜŞAVİRLİK', bold: true, size: 28, color: '8B7649' })],
+          }),
+        );
+      }
+      coverChildren.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { after: 200 },
-          children: [new TextRun({ text: '—— FİŞ DÖKÜMÜ ——', size: 24, color: '666666' })],
+          children: [new TextRun({ text: '—— FİŞ DÖKÜMÜ ——', size: 24, color: '8B7649' })],
         }),
-      ];
+      );
       if (opts.mukellef) {
         coverChildren.push(
           new Paragraph({
