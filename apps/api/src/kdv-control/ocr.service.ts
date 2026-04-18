@@ -896,9 +896,14 @@ export class OcrService {
    * Azure OCR text'ini normalize et:
    *   - NBSP (U+00A0) → normal boşluk (regex \s'in yakalamadığı ara form)
    *   - Full-width "％" → ASCII "%"
-   *   - Full-width rakamlar → ASCII
-   * Aksi halde "Hesaplanan KDV (% 20,00 )" gibi label'lar Azure çıktısında
-   * görünür ama regex eşleşmesi NBSP yüzünden başarısız olabilir.
+   *   - Türkçe locale uppercase: "İ" (U+0130) / "ı" (U+0131) doğru case-fold
+   *     olmuyor. `/i` flag'li regex'ler "Özel İletişim" yazılı satırı
+   *     yakalayamıyor çünkü `i → İ` (büyük I noktalı) case-folding JS
+   *     standard regex'inde beklenen davranışı vermiyor.
+   *     toLocaleUpperCase('tr-TR') deterministik olarak ÖZEL → ÖZEL,
+   *     iletişim → İLETİŞİM yapar. Tüm tax-label regex'leri UPPERCASE
+   *     pattern'lı yazıldığı için bu normalize şart.
+   *     (Sayılar/virgül/noktaya dokunmaz — parse sonucu aynı kalır.)
    */
   private normalizeAzureText(text: string): string {
     if (!text) return '';
@@ -906,7 +911,8 @@ export class OcrService {
       .replace(/\u00A0/g, ' ') // NBSP
       .replace(/\u2007/g, ' ') // figure space
       .replace(/\u202F/g, ' ') // narrow no-break space
-      .replace(/\uFF05/g, '%'); // full-width %
+      .replace(/\uFF05/g, '%') // full-width %
+      .toLocaleUpperCase('tr-TR'); // Türkçe-farkındalıklı büyük harf
   }
 
   private extractKdvOnlyFromTelekomAzure(text: string): number | null {
@@ -1049,6 +1055,69 @@ export class OcrService {
     }
 
     return breakdown;
+  }
+
+  /**
+   * Tablo satırı tabanlı çok oranlı KDV yakalama — FALLBACK.
+   *
+   * Şirin Reklam (ESR...895) gibi faturalarda "Hesaplanan KDV (%N)" özet
+   * satırı Azure tarafından parçalanabiliyor ve extractMultiRateKdvFromAzure
+   * boş dönebiliyor. Ama tablo satırlarında "% 20,00" ile "1.006,00 TL" YAN
+   * YANA. Bu fonksiyon tablo satırlarını yakalar, oran başına tutarları toplar.
+   *
+   * Örnek (Şirin Reklam):
+   *   "1 REKS39 LEDBOX 2 Adet 75,0000 TL ... % 10,00 15,00 TL ... 150,00 TL"
+   *   "2 REK1008 MESH VINIL 1 Adet 5.030,0000 TL ... % 20,00 1.006,00 TL ... 5.030,00 TL"
+   *   → [%20: 1006, %10: 15]
+   *
+   * Güvenlik kısıtları:
+   *   - "Özel İletişim Vergisi (10%)" gibi ÖİV satırları dışarıda
+   *   - "İsk %" / "İskonto %" / "iskonto oranı" gibi indirim sütunları dışarıda
+   *   - Oran × amount eşleşmesi için her ikisi de aynı satırda olmalı
+   *   - Bulunan tutar absurd büyük (10M+) veya negatif ise atla
+   */
+  private extractMultiRateKdvFromItemRows(text: string): KdvBreakdownItem[] {
+    if (!text) return [];
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const sumByOran = new Map<number, number>();
+    // Pattern: "% NN,NN" (veya "% NN") + whitespace + "X.XXX,XX" (+ ops. TL/TRY/₺)
+    // Ondalıklı oran: "% 20,00", tutar ise "1.006,00 TL" veya "15,00"
+    const pairRe = /%\s*(\d{1,2})(?:[,.]\d{1,2})?\s+([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})(?:\s*(?:TL|TRY|₺))?/gi;
+    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
+    // Discount/iskonto satırlarını atla — "İsk %" kolonu da "%" içerir, yanlış yakalanmasın
+    const discountRowRe = /İSKONTO|ISKONTO|\bİSK\s*%|\bISK\s*%|İNDİRİM|INDIRIM/i;
+
+    for (const line of lines) {
+      if (skipTaxRe.test(line)) continue;
+      // Satır TAMAMEN iskonto/discount odaklı mı?
+      // "Toplam İskonto" satırı varsa atla (discount total, KDV kaleminin bir
+      // parçası gibi görünebilir). Ama "İsk % 0 ... KDV % 20 ... 1.006,00"
+      // gibi tablo satırı geçerli — o satırda hem İsk hem KDV var, ilk
+      // eşleşme 0 zaten (tutar=0 → filter).
+      if (discountRowRe.test(line) && !/KDV/i.test(line)) continue;
+
+      let m: RegExpExecArray | null;
+      pairRe.lastIndex = 0;
+      while ((m = pairRe.exec(line)) !== null) {
+        const oran = parseInt(m[1], 10);
+        const tutar = this.parseAmount(m[2]);
+        // Sıfır tutarlı "İsk % 0 0,00" veya "%0" eşleşmelerini atla
+        if (!(oran > 0 && oran <= 30)) continue;
+        if (!(tutar > 0 && tutar < 10_000_000)) continue;
+        sumByOran.set(oran, (sumByOran.get(oran) || 0) + tutar);
+      }
+    }
+
+    // 2+ oran bulunduysa anlamlı. Tek oran için zaten kdvTutari var, üretme.
+    if (sumByOran.size < 2) return [];
+    return Array.from(sumByOran.entries())
+      .sort((a, b) => b[0] - a[0]) // %20, %10, %1 sırayla
+      .map(([oran, tutar]) => ({
+        oran,
+        tutar: Math.round(tutar * 100) / 100, // float precision
+        matrah: null,
+      }));
   }
 
   private extractZRaporuKdvFromAzure(text: string): {
@@ -1336,8 +1405,24 @@ export class OcrService {
     // eksik dönerse, Azure metninden "Hesaplanan KDV (%X) ..." satırlarını parse et.
     // ÖRNEK: ESR2026000001204 gibi karma fatura — %20 + %10 ayrı satır, breakdown
     // boş gelmiş olabilir. UI'da KDV Kırılımı boş kalıyor → bu fix doldurur.
+    //
+    // İki aşamalı Azure fallback:
+    //   A) extractMultiRateKdvFromAzure — "Hesaplanan KDV (%N)" özet satırı formatı
+    //   B) extractMultiRateKdvFromItemRows — tabloda "% N,NN ... X,XX TL" satır
+    //      başına yakalama (A boş gelirse). Şirin Reklam gibi summary kopuk
+    //      çıkarıldığında bile tablo satırlarından oran başına toplam kdv çıkar.
     if (result.belgeTipi !== 'Z_RAPORU') {
-      const azureBreakdown = this.extractMultiRateKdvFromAzure(azureText);
+      let azureBreakdown = this.extractMultiRateKdvFromAzure(azureText);
+      // A boş veya tek oran → B ile fallback dene
+      if (azureBreakdown.length < 2) {
+        const rowBreakdown = this.extractMultiRateKdvFromItemRows(azureText);
+        if (rowBreakdown.length >= 2) {
+          this.logger.log(
+            `Multi-rate item-row fallback devreye girdi: ${rowBreakdown.length} oran (${originalName})`,
+          );
+          azureBreakdown = rowBreakdown;
+        }
+      }
       const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
       // Sadece Azure 2+ oran bulduysa anlamlı (tek oran zaten kdvTutari'dir)
       if (azureBreakdown.length >= 2 && azureBreakdown.length > claudeBreakdownCount) {
