@@ -905,21 +905,26 @@ export class KdvControlService {
     // Boş satır
     ws.getRow(3).height = 8;
 
-    // Bilgi bloğu (2 kolonlu)
+    // Bilgi bloğu (2 kolonlu) — Label A+B merge (dar A sığmıyor), Value C+D merge
     const infoLabelStyle = { font: { bold: true, color: { argb: 'FF666666' }, size: 10 } };
     const infoValueStyle = { font: { color: { argb: 'FF1A1916' }, size: 11 } };
     const setInfo = (r: number, label1: string, val1: string, label2?: string, val2?: string) => {
+      ws.mergeCells(`A${r}:B${r}`);
       const c1 = ws.getCell(`A${r}`);
-      c1.value = label1; Object.assign(c1, infoLabelStyle);
-      const c2 = ws.getCell(`B${r}`);
-      c2.value = val1; Object.assign(c2, infoValueStyle);
-      ws.mergeCells(`B${r}:D${r}`);
+      c1.value = label1; c1.font = infoLabelStyle.font;
+      c1.alignment = { horizontal: 'left', vertical: 'middle' };
+      ws.mergeCells(`C${r}:D${r}`);
+      const c2 = ws.getCell(`C${r}`);
+      c2.value = val1; c2.font = infoValueStyle.font;
+      c2.alignment = { horizontal: 'left', vertical: 'middle' };
       if (label2) {
         const c3 = ws.getCell(`E${r}`);
-        c3.value = label2; Object.assign(c3, infoLabelStyle);
-        const c4 = ws.getCell(`F${r}`);
-        c4.value = val2; Object.assign(c4, infoValueStyle);
+        c3.value = label2; c3.font = infoLabelStyle.font;
+        c3.alignment = { horizontal: 'left', vertical: 'middle' };
         ws.mergeCells(`F${r}:I${r}`);
+        const c4 = ws.getCell(`F${r}`);
+        c4.value = val2; c4.font = infoValueStyle.font;
+        c4.alignment = { horizontal: 'left', vertical: 'middle' };
       }
     };
     setInfo(4, 'Mükellef',     mukellefName,  'Dönem',        periodLabel);
@@ -938,18 +943,22 @@ export class KdvControlService {
     ws.getRow(8).height = 20;
 
     const setSummary = (r: number, l1: string, v1: any, l2?: string, v2?: any) => {
+      ws.mergeCells(`A${r}:B${r}`);
       const c1 = ws.getCell(`A${r}`);
       c1.value = l1; c1.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-      const c2 = ws.getCell(`B${r}`);
+      c1.alignment = { horizontal: 'left', vertical: 'middle' };
+      ws.mergeCells(`C${r}:D${r}`);
+      const c2 = ws.getCell(`C${r}`);
       c2.value = v1; c2.font = { size: 11 };
-      c2.alignment = { horizontal: 'right' };
-      ws.mergeCells(`B${r}:D${r}`);
+      c2.alignment = { horizontal: 'right', vertical: 'middle' };
       if (l2) {
         const c3 = ws.getCell(`E${r}`);
         c3.value = l2; c3.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-        const c4 = ws.getCell(`F${r}`);
-        c4.value = v2; c4.font = { size: 11 }; c4.alignment = { horizontal: 'right' };
+        c3.alignment = { horizontal: 'left', vertical: 'middle' };
         ws.mergeCells(`F${r}:I${r}`);
+        const c4 = ws.getCell(`F${r}`);
+        c4.value = v2; c4.font = { size: 11 };
+        c4.alignment = { horizontal: 'right', vertical: 'middle' };
       }
     };
     setSummary(9,  'Toplam Satır',       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
