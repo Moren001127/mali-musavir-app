@@ -1597,7 +1597,14 @@ export class OcrService {
     //   B) extractMultiRateKdvFromItemRows — tabloda "% N,NN ... X,XX TL" satır
     //      başına yakalama (A boş gelirse). Şirin Reklam gibi summary kopuk
     //      çıkarıldığında bile tablo satırlarından oran başına toplam kdv çıkar.
-    if (result.belgeTipi !== 'Z_RAPORU') {
+    // Multi-rate auto-fill — TÜM belge tipleri için çalıştır. Eski davranışta
+    // Z_RAPORU excluded'tı; ama Claude bazen e-arşiv/e-fatura'yı yanlışlıkla
+    // Z_RAPORU olarak kategorize ediyor (ESR2026000001204 gibi) → bu blok
+    // hiç çalışmıyordu. Z_RAPORU için zaten extractZRaporuKdvFromAzure
+    // özel olarak TOPKDV satırlarını yakalıyor — orda başarısız olursa bu
+    // generic fallback devreye girsin zarar vermez, override koşulu zaten
+    // Claude<Azure durumunu arıyor.
+    {
       const multiA = this.extractMultiRateKdvFromAzure(azureText);
       const multiB = this.extractMultiRateKdvFromItemRows(azureText);
       // C) SON ÇARE: Azure text'te "%N" markörleri ile tüm sayılar arasından
@@ -1632,8 +1639,11 @@ export class OcrService {
         );
       }
 
-      // Sadece Azure 2+ oran bulduysa anlamlı (tek oran zaten kdvTutari'dir)
-      if (azureBreakdown.length >= 2 && azureBreakdown.length > claudeBreakdownCount) {
+      // Azure 2+ oran bulduysa ALWAYS override et. Eski koşul "Azure > Claude"
+      // idi, ama Claude'un breakdown'ı DB'ye null olarak kaydedilse de
+      // claudeBreakdownCount kodda 2 görünebiliyor → koşul tetiklenmiyordu.
+      // Azure iki bağımsız tanıkla (A/B/C) bulduysa zaten güvenilir.
+      if (azureBreakdown.length >= 2) {
         this.logger.warn(
           `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${azureBreakdown.length} oran (${originalName})`,
         );
@@ -1956,20 +1966,21 @@ export class OcrService {
       }
     }
 
-    // ─── 8. Z_RAPORU breakdown ZORUNLU — boşsa kullanıcıya yolla ───
-    // Çoğu Z raporu çok oranlı (KIRTASIYE %20 + GIDA %10 vs.) — breakdown olmadan güvenilemez
+    // ─── 8. Z_RAPORU breakdown — sadece LOG, confidence düşürme ───
+    // Eski davranış: breakdown boşsa confidence 0.4'e düşürülüyordu. Ama
+    // Türkiye'deki Z raporlarının ÇOĞU tek oran (sadece %10 veya sadece %20) —
+    // kırtasiye/market/tekstil bağımsız, tek kategori satan mükellefler için
+    // normal. Breakdown boş olması "multi-rate parse failure" kadar "single-rate
+    // fatura" da anlamına gelir. Confidence düşürmek yanlış pozitif.
+    //
+    // TOPKDV %X satırı hiç yoksa (sadece "TOPKDV *123,45" gibi) extractZRaporuKdvFromAzure
+    // zaten kdvTutari'yi simple regex'le doldurur. O kdvTutari Claude'un
+    // kdvTutari'sı ile karşılaştırıldıysa ve auto-fill boost ettiyse sorun yok.
     if (result.belgeTipi === 'Z_RAPORU' && (!result.kdvBreakdown || result.kdvBreakdown.length === 0)) {
-      // Z raporunda KDV varsa ama breakdown yoksa → şüpheli, kullanıcı teyidine
       if (result.kdvTutari) {
-        this.logger.warn(
-          `Z_RAPORU breakdown EKSİK: kdvTutari=${result.kdvTutari} ama oran kırılımı yok (${originalName}) — confidence düşürülüyor`,
+        this.logger.log(
+          `Z_RAPORU single-rate varsayımı: kdvTutari=${result.kdvTutari} breakdown yok (${originalName})`,
         );
-        if (result.fieldConfidence) {
-          result.fieldConfidence.kdvTutari = Math.min(
-            result.fieldConfidence.kdvTutari ?? 0.4,
-            0.4,
-          );
-        }
       }
     }
 
