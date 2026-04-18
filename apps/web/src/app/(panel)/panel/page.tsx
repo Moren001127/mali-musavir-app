@@ -58,11 +58,11 @@ function agentEventToFeed(ev: any) {
 // Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
 type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy';
 const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
-  gold:      { color: '#d4b876', bg: 'rgba(184,160,111,0.08)', border: 'rgba(184,160,111,0.15)', hoverBg: 'rgba(184,160,111,0.04)', hoverBorder: 'rgba(184,160,111,0.18)' },
-  champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.08)', border: 'rgba(232,214,160,0.20)', hoverBg: 'rgba(232,214,160,0.04)', hoverBorder: 'rgba(232,214,160,0.22)' },
-  bronze:    { color: '#bf9c70', bg: 'rgba(160,134,96,0.10)',  border: 'rgba(160,134,96,0.22)',  hoverBg: 'rgba(160,134,96,0.05)',  hoverBorder: 'rgba(160,134,96,0.25)' },
-  copper:    { color: '#d99560', bg: 'rgba(192,133,82,0.10)',  border: 'rgba(192,133,82,0.22)',  hoverBg: 'rgba(192,133,82,0.05)',  hoverBorder: 'rgba(192,133,82,0.25)' },
-  burgundy:  { color: '#c98896', bg: 'rgba(92,42,53,0.14)',    border: 'rgba(201,136,150,0.28)', hoverBg: 'rgba(92,42,53,0.10)',    hoverBorder: 'rgba(201,136,150,0.32)' },
+  gold:      { color: '#d4b876', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(212,184,118,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
+  champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.14)', border: 'rgba(232,214,160,0.32)', hoverBg: 'rgba(232,214,160,0.06)', hoverBorder: 'rgba(232,214,160,0.36)' },
+  bronze:    { color: '#c0a079', bg: 'rgba(192,160,121,0.14)', border: 'rgba(192,160,121,0.32)', hoverBg: 'rgba(192,160,121,0.06)', hoverBorder: 'rgba(192,160,121,0.36)' },
+  copper:    { color: '#d99560', bg: 'rgba(217,149,96,0.14)',  border: 'rgba(217,149,96,0.32)',  hoverBg: 'rgba(217,149,96,0.06)',  hoverBorder: 'rgba(217,149,96,0.36)' },
+  burgundy:  { color: '#c98896', bg: 'rgba(201,136,150,0.14)', border: 'rgba(201,136,150,0.34)', hoverBg: 'rgba(201,136,150,0.08)', hoverBorder: 'rgba(201,136,150,0.38)' },
 };
 
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
@@ -85,11 +85,12 @@ function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accen
   return href ? <Link href={href} className="block">{c}</Link> : c;
 }
 
-function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+function Section({ title, children, action, accent = 'gold' }: { title: string; children: ReactNode; action?: ReactNode; accent?: StatAccent }) {
+  const t = ACCENT_TONES[accent];
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
       <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div className="flex items-center gap-2.5"><span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} /><h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>{title}</h3></div>
+        <div className="flex items-center gap-2.5"><span className="w-[3px] h-4 rounded-sm" style={{ background: t.color }} /><h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>{title}</h3></div>
         {action}
       </div>
       {children}
@@ -341,15 +342,14 @@ export default function DashboardPage() {
   // Kritik uyarı: hatalar + okunmamış bildirim
   const criticalCount = tHata + (unread > 0 ? unread : 0);
 
-  // Mükellef durumu donut segmentleri (taxpayer status'a göre yoksa basit)
+  // Mükellef durumu donut segmentleri — Elit Boutique altın tonları (4 segment × 4 ton)
   const donutSegments = useMemo(() => {
     if (tx.length === 0) return [
-      { label: 'Tamamlanan', value: 0, color: GOLD },
-      { label: 'Devam Eden', value: 0, color: 'rgba(184,160,111,0.55)' },
-      { label: 'Bekleyen', value: 0, color: 'rgba(184,160,111,0.28)' },
+      { label: 'Tamamlanan', value: 0, color: ACCENT_TONES.gold.color },
+      { label: 'Devam Eden', value: 0, color: ACCENT_TONES.champagne.color },
+      { label: 'Bekleyen', value: 0, color: ACCENT_TONES.bronze.color },
       { label: 'Başlanmadı', value: 0, color: 'rgba(255,255,255,0.08)' },
     ];
-    // Durum alanı olan mükellefler varsa ona göre kır, yoksa aktif/pasif + mevcut görev dağılımı ile doldur
     const byStatus: Record<string, number> = {};
     for (const t of tx) {
       const s = String(t?.durum || t?.status || '').toLowerCase();
@@ -357,16 +357,15 @@ export default function DashboardPage() {
     }
     if (Object.keys(byStatus).length > 0) {
       return [
-        { label: 'Tamamlanan', value: (byStatus['tamamlanan'] || byStatus['tamamlandi'] || byStatus['completed'] || 0), color: GOLD },
-        { label: 'Devam Eden', value: (byStatus['devam_eden'] || byStatus['devam'] || byStatus['in_progress'] || byStatus['aktif'] || activeCount), color: 'rgba(184,160,111,0.55)' },
-        { label: 'Bekleyen', value: (byStatus['bekleyen'] || byStatus['pending'] || 0), color: 'rgba(184,160,111,0.28)' },
-        { label: 'Başlanmadı', value: (byStatus['baslanmadi'] || byStatus['yeni'] || byStatus['new'] || passiveCount), color: 'rgba(255,255,255,0.08)' },
+        { label: 'Tamamlanan', value: (byStatus['tamamlanan'] || byStatus['tamamlandi'] || byStatus['completed'] || 0), color: ACCENT_TONES.gold.color },
+        { label: 'Devam Eden', value: (byStatus['devam_eden'] || byStatus['devam'] || byStatus['in_progress'] || byStatus['aktif'] || activeCount), color: ACCENT_TONES.champagne.color },
+        { label: 'Bekleyen', value: (byStatus['bekleyen'] || byStatus['pending'] || 0), color: ACCENT_TONES.bronze.color },
+        { label: 'Başlanmadı', value: (byStatus['baslanmadi'] || byStatus['yeni'] || byStatus['new'] || passiveCount), color: ACCENT_TONES.copper.color },
       ];
     }
-    // Fallback: aktif/pasif basit dağılım
     return [
-      { label: 'Aktif', value: activeCount, color: GOLD },
-      { label: 'Pasif', value: passiveCount, color: 'rgba(184,160,111,0.28)' },
+      { label: 'Aktif', value: activeCount, color: ACCENT_TONES.gold.color },
+      { label: 'Pasif', value: passiveCount, color: ACCENT_TONES.bronze.color },
     ];
   }, [tx, activeCount, passiveCount]);
 
@@ -449,7 +448,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <Section title="Notlar & Görevler" action={
+        <Section title="Notlar & Görevler" accent="champagne" action={
           <div className="flex items-center gap-2">
             <span className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.35)' }}>{today} · BUGÜN</span>
             <button onClick={() => setModal(true)} className="text-[11px] font-medium px-2.5 py-[5px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}>＋ Ekle</button>
@@ -465,7 +464,7 @@ export default function DashboardPage() {
           </div>
         </Section>
 
-        <Section title="Canlı Sistem Akışı" action={
+        <Section title="Canlı Sistem Akışı" accent="bronze" action={
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: feed.length > 0 ? '#22c55e' : 'rgba(255,255,255,0.25)', boxShadow: feed.length > 0 ? '0 0 8px rgba(34,197,94,0.8)' : 'none', animation: feed.length > 0 ? 'moren-pulse 1.6s infinite' : 'none' }} />
             <span className="text-[10px] font-bold uppercase tracking-[.1em]" style={{ color: feed.length > 0 ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>{feed.length > 0 ? 'Canlı' : 'Boş'}</span>
@@ -485,17 +484,24 @@ export default function DashboardPage() {
       </div>
 
       <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />Hızlı Erişim</h3>
+        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: ACCENT_TONES.copper.color }} />Hızlı Erişim</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[{ label: 'Mükellef Ekle', href: '/panel/mukellefler/yeni', icon: Plus }, { label: 'KDV Kontrolü', href: '/panel/kdv-kontrol/yeni', icon: CheckCircle2 }, { label: 'Fiş Yazdırma', href: '/panel/fis-yazdirma', icon: Printer }, { label: 'Evrak Yönetimi', href: '/panel/evraklar', icon: FileText }].map(({ label, href, icon: Icon }) => (
+          {[
+            { label: 'Mükellef Ekle',  href: '/panel/mukellefler/yeni',   icon: Plus,         accent: 'gold' as StatAccent },
+            { label: 'KDV Kontrolü',    href: '/panel/kdv-kontrol/yeni',   icon: CheckCircle2, accent: 'champagne' as StatAccent },
+            { label: 'Fiş Yazdırma',    href: '/panel/fis-yazdirma',       icon: Printer,      accent: 'bronze' as StatAccent },
+            { label: 'Evrak Yönetimi',  href: '/panel/evraklar',           icon: FileText,     accent: 'copper' as StatAccent },
+          ].map(({ label, href, icon: Icon, accent }) => {
+            const t = ACCENT_TONES[accent];
+            return (
             <Link key={href} href={href} className="flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 group" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(184,160,111,0.05)'; e.currentTarget.style.borderColor = 'rgba(184,160,111,0.2)'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = t.hoverBg; e.currentTarget.style.borderColor = t.hoverBorder; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={15} /></div>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color }}><Icon size={15} /></div>
               <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{label}</span>
-              <ArrowRight size={14} className="ml-auto transition-all opacity-30 group-hover:opacity-100" style={{ color: GOLD }} />
-            </Link>
-          ))}
+              <ArrowRight size={14} className="ml-auto transition-all opacity-30 group-hover:opacity-100" style={{ color: t.color }} />
+            </Link>);
+          })}
         </div>
       </div>
 

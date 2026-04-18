@@ -10,7 +10,11 @@ import {
   Scale, TrendingUp, Table2, MessageSquare,
 } from 'lucide-react';
 
-const GOLD = '#d4b876';
+// Elit Boutique altın ailesi — her grup kendi tonunu alır
+const GOLD      = '#d4b876';  // Ana altın
+const CHAMPAGNE = '#e8d6a0';  // Parlak şampanya
+const BRONZE    = '#c0a079';  // Bronz
+const COPPER    = '#d99560';  // Bakır
 const navGroups = [
   {
     label: 'Ana Modüller',
@@ -28,7 +32,7 @@ const navGroups = [
   },
   {
     label: 'Kontrol',
-    color: GOLD,
+    color: CHAMPAGNE,
     icon: FileCheck,
     items: [
       { href: '/panel/kdv-kontrol',    label: 'KDV Kontrol',     icon: FileCheck },
@@ -40,7 +44,7 @@ const navGroups = [
   },
   {
     label: 'Ajanlar',
-    color: GOLD,
+    color: BRONZE,
     icon: Zap,
     items: [
       { href: '/panel/ajanlar',             label: 'Tüm Ajanlar',         icon: Cpu },
@@ -56,7 +60,7 @@ const navGroups = [
   },
   {
     label: 'Sistem',
-    color: GOLD,
+    color: COPPER,
     icon: Settings,
     items: [
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: Bell },
