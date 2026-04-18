@@ -26,13 +26,13 @@ export class MizanParserService {
   private readonly logger = new Logger(MizanParserService.name);
 
   parse(buffer: Buffer): ParsedMizanRow[] {
-    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false, raw: false });
+    // raw: true ile sayısal hücreleri JS number olarak al — Türkçe binlik
+    // ayracı (.) ve ondalık virgül (,) formatlama sorunlarını önler.
+    const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
     const sheet = wb.Sheets[wb.SheetNames[0]];
-
-    // Ham 2D grid olarak al — başlık satırı tespiti için
     const grid: any[][] = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
-      raw: false,
+      raw: true,
       defval: null,
     });
 
@@ -94,6 +94,16 @@ export class MizanParserService {
     this.logger.log(
       `Mizan başlık ${headerRowIdx + 1}. satırda bulundu. Sütunlar: ${headers.filter(Boolean).join(' · ')}`,
     );
+    // Örnek — ilk veri satırının borç değeri ne tipte ve ne olarak geliyor
+    if (rows.length > 0) {
+      const sample = rows[0];
+      const borcKey = Object.keys(sample).find((k) => /bor[çc]$/.test(k) || /^bor[çc]/.test(k));
+      if (borcKey) {
+        this.logger.log(
+          `Örnek borç hücresi (satır 1): key="${borcKey}" value=${JSON.stringify(sample[borcKey])} tip=${typeof sample[borcKey]}`,
+        );
+      }
+    }
 
     const results: ParsedMizanRow[] = [];
     let skipped = 0;
@@ -166,12 +176,48 @@ export class MizanParserService {
 
   private toDecimal(val: any): number {
     if (val == null || val === '') return 0;
-    const str = String(val)
-      .replace(/\s/g, '')
-      .replace(/\./g, '') // Türkçe binlik
-      .replace(',', '.') // ondalık
-      .replace(/[^\d.\-]/g, '');
+
+    // 1) Değer zaten number ise direkt kullan (raw: true sayesinde genelde böyle)
+    if (typeof val === 'number') {
+      return Number.isFinite(val) ? val : 0;
+    }
+
+    // 2) String ise — Türkçe/İngilizce formatı akıllıca ayırt et:
+    //    Hem nokta hem virgül varsa: sonuncu hangisiyse ondalık, diğeri binlik.
+    //    Sadece virgül varsa: virgül ondalıktır.
+    //    Sadece nokta varsa: noktanın sayı konumuna göre karar ver.
+    let str = String(val).trim().replace(/\s/g, '');
+    // Sadece işaret karakterlerini temizle (rakam, nokta, virgül, eksi kalsın)
+    str = str.replace(/[^\d.,\-]/g, '');
+    if (!str) return 0;
+
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+
+    if (lastDot !== -1 && lastComma !== -1) {
+      // Hem nokta hem virgül var — sonuncusu ondalık
+      if (lastComma > lastDot) {
+        // "245.260,17" Türkçe: nokta binlik, virgül ondalık
+        str = str.replace(/\./g, '').replace(',', '.');
+      } else {
+        // "245,260.17" İngilizce: virgül binlik, nokta ondalık
+        str = str.replace(/,/g, '');
+      }
+    } else if (lastComma !== -1) {
+      // Sadece virgül — ondalık kabul et ("245,26" → "245.26")
+      str = str.replace(',', '.');
+    } else if (lastDot !== -1) {
+      // Sadece nokta — noktadan sonra 3 hane varsa binlik ayracı ("245.260"),
+      // 1-2 hane varsa ondalık ("245.26")
+      const afterDot = str.substring(lastDot + 1).length;
+      if (afterDot === 3 && str.indexOf('.') === lastDot) {
+        // Tek nokta + 3 hane → binlik ayracı
+        str = str.replace(/\./g, '');
+      }
+      // Aksi halde nokta ondalık olarak kalsın (zaten JS native)
+    }
+
     const n = parseFloat(str);
-    return isNaN(n) ? 0 : n;
+    return Number.isFinite(n) ? n : 0;
   }
 }
