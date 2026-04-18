@@ -92,6 +92,42 @@ export class OcrService {
       `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'}`,
     );
 
+    // ═══════════════════════════════════════════════════════
+    // 0. XML DOĞRUDAN PARSE — UBL e-Fatura/e-Arşiv
+    // ═══════════════════════════════════════════════════════
+    // Uzantı .xml veya içerik <?xml ile başlıyorsa Claude'a gitmeden
+    // UBL alanlarını doğrudan regex'le çıkar. %100 doğruluk, 0 maliyet.
+    const isXml =
+      /\.xml$/i.test(originalName || '') ||
+      imageBuffer.slice(0, 64).toString('utf8').trimStart().startsWith('<?xml') ||
+      imageBuffer.slice(0, 512).toString('utf8').includes('<Invoice') ||
+      imageBuffer.slice(0, 512).toString('utf8').includes('<ArchiveInvoice');
+
+    if (isXml) {
+      try {
+        const xmlResult = this.parseUblXml(imageBuffer.toString('utf8'));
+        if (xmlResult && (xmlResult.belgeNo || xmlResult.date || xmlResult.kdvTutari)) {
+          // Dosya adıyla belge no'yu reconcile et — filename override güvence
+          if (belgeNoFromFilename && xmlResult.belgeNo !== belgeNoFromFilename) {
+            const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const xmlClean = (xmlResult.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (fnClean !== xmlClean && fnClean.length >= xmlClean.length) {
+              this.logger.warn(
+                `XML belge no filename'den farklı, filename kullanılıyor: xml=${xmlClean} filename=${fnClean}`,
+              );
+              xmlResult.belgeNo = belgeNoFromFilename;
+            }
+          }
+          this.logger.log(
+            `XML parse başarılı: ${originalName} · belgeNo=${xmlResult.belgeNo} date=${xmlResult.date} kdv=${xmlResult.kdvTutari} breakdown=${xmlResult.kdvBreakdown?.length || 0}`,
+          );
+          return xmlResult;
+        }
+      } catch (e: any) {
+        this.logger.warn(`XML parse hatası (${originalName}): ${e?.message}`);
+      }
+    }
+
     // 1. Tercih: Claude Haiku 4.5 Vision (eğer API key varsa)
     if (hasClaudeKey) {
       try {
@@ -374,12 +410,34 @@ export class OcrService {
         `${Date.now() - startMs}ms`,
     );
 
+    // ── KDV BREAKDOWN — çok oranlı belgelerde her KDV oranı için ayrı satır ──
+    let kdvBreakdown: KdvBreakdownItem[] | null = null;
+    if (Array.isArray(parsed.kdvBreakdown) && parsed.kdvBreakdown.length > 0) {
+      kdvBreakdown = parsed.kdvBreakdown
+        .map((item: any) => {
+          const oran = typeof item?.oran === 'number' ? item.oran : parseFloat(String(item?.oran || 0));
+          const tutar = this.parseAmount(String(item?.tutar ?? '0'));
+          const matrahRaw = item?.matrah;
+          const matrah = matrahRaw != null ? this.parseAmount(String(matrahRaw)) : null;
+          return { oran: Number.isFinite(oran) ? oran : 0, tutar, matrah };
+        })
+        .filter((b: KdvBreakdownItem) => b.tutar > 0 || (b.oran === 0 && b.matrah));
+      if (kdvBreakdown.length === 0) kdvBreakdown = null;
+    }
+
+    // Belge tipi — Claude prompt'unda var
+    const belgeTipi = parsed.belgeTipi
+      ? String(parsed.belgeTipi).toUpperCase().trim()
+      : null;
+
     return {
       rawText: JSON.stringify(parsed).slice(0, 2000),
       belgeNo,
       date,
       kdvTutari,
       totalTutari: toplam,
+      belgeTipi,
+      kdvBreakdown,
       confidence,
       fieldConfidence,
       engine: 'claude-haiku-4-5',
@@ -598,5 +656,111 @@ export class OcrService {
 
   private formatAmount(n: number): string {
     return n.toFixed(2).replace('.', ',');
+  }
+
+  /**
+   * UBL (Universal Business Language) formatındaki Türk e-Fatura/e-Arşiv XML'ini
+   * regex ile parse eder. fast-xml-parser yerine regex çünkü:
+   *   - UBL alanları sabit yapıdadır (standart)
+   *   - Dependency eklemeye gerek yok
+   *   - %100 doğruluk (Claude gibi yanlış okumaz)
+   *
+   * Çıkardığı alanlar:
+   *   - Invoice ID (belge no) — <cbc:ID> (root level, CustomizationID'den sonra)
+   *   - IssueDate (tarih)
+   *   - TaxTotal/TaxAmount (toplam KDV)
+   *   - TaxSubtotal breakdown (her oran için ayrı KDV)
+   *   - PayableAmount (ödenecek toplam)
+   */
+  private parseUblXml(xml: string): OcrResult | null {
+    if (!xml || xml.length < 50) return null;
+
+    // ─── BELGE NO ─────────────────────────────────────
+    // UBL'de top-level ID: CustomizationID + ProfileID sonrasında gelir.
+    // Regex ile ProfileID sonrası ilk <cbc:ID> alınır (CustomizationID=TR1.2 değil).
+    let belgeNo: string | null = null;
+    const afterProfile = xml.match(/<cbc:ProfileID>[^<]*<\/cbc:ProfileID>\s*<cbc:ID>([^<]+)<\/cbc:ID>/i);
+    if (afterProfile) belgeNo = afterProfile[1].trim();
+    // Fallback: Invoice/ArchiveInvoice root altında ilk <cbc:ID>
+    if (!belgeNo) {
+      const rootId = xml.match(/<(?:Invoice|ArchiveInvoice)[^>]*>[\s\S]*?<cbc:ID>([^<]+)<\/cbc:ID>/i);
+      if (rootId) {
+        const candidate = rootId[1].trim();
+        // TR1.2, UBL-2.1 gibi versiyon stringlerini reddet
+        if (!/^(TR|UBL)[\d.\-]+$/i.test(candidate) && candidate.length >= 5) {
+          belgeNo = candidate;
+        }
+      }
+    }
+
+    // ─── TARİH ─────────────────────────────────────────
+    let date: string | null = null;
+    const issueDate = xml.match(/<cbc:IssueDate>([^<]+)<\/cbc:IssueDate>/i);
+    if (issueDate) {
+      const d = issueDate[1].trim();
+      // UBL standardı zaten YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) date = d;
+    }
+
+    // ─── KDV TUTARI + BREAKDOWN ────────────────────────
+    const kdvBreakdown: KdvBreakdownItem[] = [];
+    // Her <cac:TaxSubtotal>'u sırayla tara
+    const subtotalRegex = /<cac:TaxSubtotal>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = subtotalRegex.exec(xml)) !== null) {
+      const block = m[1];
+      const taxableMatch = block.match(/<cbc:TaxableAmount[^>]*>([^<]+)<\/cbc:TaxableAmount>/i);
+      const taxAmountMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
+      const percentMatch = block.match(/<cbc:Percent>([^<]+)<\/cbc:Percent>/i);
+      if (taxAmountMatch) {
+        const tutar = parseFloat(taxAmountMatch[1]) || 0;
+        const matrah = taxableMatch ? parseFloat(taxableMatch[1]) : null;
+        const oran = percentMatch ? parseFloat(percentMatch[1]) : 0;
+        if (tutar > 0 || (oran === 0 && matrah && matrah > 0)) {
+          kdvBreakdown.push({ oran, tutar, matrah });
+        }
+      }
+    }
+
+    // Toplam KDV: breakdown toplamı veya root TaxTotal/TaxAmount
+    let kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
+    if (kdvToplam === 0) {
+      // Fallback: ilk <cac:TaxTotal>/<cbc:TaxAmount>
+      const rootTax = xml.match(/<cac:TaxTotal>[\s\S]*?<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
+      if (rootTax) kdvToplam = parseFloat(rootTax[1]) || 0;
+    }
+    const kdvTutari = kdvToplam > 0 ? this.formatAmount(kdvToplam) : null;
+
+    // ─── TOPLAM ÖDENECEK ─────────────────────────────
+    let totalTutari: string | null = null;
+    const payable = xml.match(/<cbc:PayableAmount[^>]*>([^<]+)<\/cbc:PayableAmount>/i);
+    if (payable) {
+      const t = parseFloat(payable[1]) || 0;
+      if (t > 0) totalTutari = this.formatAmount(t);
+    }
+
+    // ─── SATICI / BELGE TİPİ ─────────────────────────
+    const isArchive = /<ArchiveInvoice|InvoiceTypeCode[^>]*>EARSIV/i.test(xml);
+    const belgeTipi = isArchive ? 'EARSIV' : 'EFATURA';
+
+    // Hiç veri yoksa null dön
+    if (!belgeNo && !date && !kdvTutari) return null;
+
+    return {
+      rawText: '', // XML içeriğini log'a taşımıyoruz — büyük olabilir
+      belgeNo,
+      date,
+      kdvTutari,
+      totalTutari,
+      belgeTipi,
+      kdvBreakdown: kdvBreakdown.length > 0 ? kdvBreakdown : null,
+      confidence: belgeNo && date && kdvTutari ? 0.99 : 0.85,
+      fieldConfidence: {
+        belgeNo: belgeNo ? 0.99 : null,
+        date: date ? 0.99 : null,
+        kdvTutari: kdvTutari ? 0.99 : null,
+      },
+      engine: 'ubl-xml-direct',
+    };
   }
 }

@@ -651,6 +651,8 @@ export class KdvControlService {
           ocrDateConfidence: ocrResult.fieldConfidence.date,
           ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
           ocrEngine: ocrResult.engine,
+          ocrBelgeTipi: ocrResult.belgeTipi ?? null,
+          ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
         },
       });
     } catch (err) {
@@ -706,6 +708,8 @@ export class KdvControlService {
           ocrDateConfidence: ocrResult.fieldConfidence.date,
           ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
           ocrEngine: ocrResult.engine,
+          ocrBelgeTipi: ocrResult.belgeTipi ?? null,
+          ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
         },
       });
     } catch {
@@ -767,6 +771,7 @@ export class KdvControlService {
       belgeNo?: string;
       date?: string;
       kdvTutari?: string;
+      kdvBreakdown?: Array<{ oran: number; tutar: number; matrah?: number | null }> | null;
     },
   ) {
     const image = await this.prisma.receiptImage.findFirst({
@@ -774,12 +779,19 @@ export class KdvControlService {
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
 
+    // KDV breakdown verilmişse kaydet; verilmezse OCR'dakini koru (override yok)
+    const breakdownToSave =
+      dto.kdvBreakdown !== undefined
+        ? ((dto.kdvBreakdown as any) ?? null)
+        : undefined;
+
     return this.prisma.receiptImage.update({
       where: { id: imageId },
       data: {
         confirmedBelgeNo: dto.belgeNo ?? image.ocrBelgeNo,
         confirmedDate: dto.date ?? image.ocrDate,
         confirmedKdvTutari: dto.kdvTutari ?? image.ocrKdvTutari,
+        ...(breakdownToSave !== undefined ? { confirmedKdvBreakdown: breakdownToSave } : {}),
         isManuallyConfirmed: true,
         ocrStatus: 'SUCCESS',
       },

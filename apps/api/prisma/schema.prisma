@@ -686,11 +686,17 @@ model ReceiptImage {
   ocrBelgeNoConfidence Float?
   ocrDateConfidence    Float?
   ocrKdvConfidence     Float?
-  ocrEngine    String?   // claude-haiku-4-5 | azure-vision | filename-only
+  ocrEngine    String?   // claude-haiku-4-5 | azure-vision | filename-only | ubl-xml-direct
+  // Belge tipi (EFATURA / EARSIV / OKC_FIS / Z_RAPORU / MAKBUZ)
+  ocrBelgeTipi String?
+  // Çok oranlı KDV kırılımı (JSON) — [{oran, tutar, matrah}]
+  ocrKdvBreakdown Json?
   // Kullanıcı düzeltmesi
   confirmedBelgeNo   String?
   confirmedDate      String?
   confirmedKdvTutari String?
+  // Kullanıcı onaylı KDV kırılımı (JSON)
+  confirmedKdvBreakdown Json?
   isManuallyConfirmed Boolean @default(false)
   uploadedAt   DateTime  @default(now())
 

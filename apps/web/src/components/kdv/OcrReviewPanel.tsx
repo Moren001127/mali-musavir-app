@@ -12,6 +12,12 @@ const THRESHOLD = 0.7;
 
 type FilterMode = 'reviewFlow' | 'needsReview' | 'success' | 'confirmed' | 'lowConf' | 'failed' | 'all';
 
+export interface KdvBreakdownItem {
+  oran: number;
+  tutar: number;
+  matrah?: number | null;
+}
+
 export interface ReviewImage {
   id: string;
   originalName: string;
@@ -19,6 +25,8 @@ export interface ReviewImage {
   ocrBelgeNo: string | null;
   ocrDate: string | null;
   ocrKdvTutari: string | null;
+  ocrBelgeTipi?: string | null;
+  ocrKdvBreakdown?: KdvBreakdownItem[] | null;
   ocrBelgeNoConfidence: number | null;
   ocrDateConfidence: number | null;
   ocrKdvConfidence: number | null;
@@ -26,6 +34,7 @@ export interface ReviewImage {
   confirmedBelgeNo: string | null;
   confirmedDate: string | null;
   confirmedKdvTutari: string | null;
+  confirmedKdvBreakdown?: KdvBreakdownItem[] | null;
   isManuallyConfirmed: boolean;
 }
 
@@ -51,10 +60,16 @@ export function OcrReviewPanel({
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [form, setForm] = useState<{ belgeNo: string; date: string; kdvTutari: string }>({
+  const [form, setForm] = useState<{
+    belgeNo: string;
+    date: string;
+    kdvTutari: string;
+    breakdown: KdvBreakdownItem[] | null;
+  }>({
     belgeNo: '',
     date: '',
     kdvTutari: '',
+    breakdown: null,
   });
   /** Hangi durumdaki faturalar listelensin? Chip'lere tıklayınca değişir.
    *  Default 'reviewFlow' — bekleyen + onaylanan birlikte (kullanıcının yaptığı + yapacağı tek listede). */
@@ -130,7 +145,7 @@ export function OcrReviewPanel({
   // Aktif görsel değişince formu doldur
   useEffect(() => {
     if (!activeImg) {
-      setForm({ belgeNo: '', date: '', kdvTutari: '' });
+      setForm({ belgeNo: '', date: '', kdvTutari: '', breakdown: null });
       setPreviewUrl(null);
       return;
     }
@@ -138,6 +153,7 @@ export function OcrReviewPanel({
       belgeNo: activeImg.confirmedBelgeNo ?? activeImg.ocrBelgeNo ?? '',
       date: activeImg.confirmedDate ?? activeImg.ocrDate ?? '',
       kdvTutari: activeImg.confirmedKdvTutari ?? activeImg.ocrKdvTutari ?? '',
+      breakdown: (activeImg.confirmedKdvBreakdown ?? activeImg.ocrKdvBreakdown ?? null) as KdvBreakdownItem[] | null,
     });
     // Presigned URL'i yükle
     let cancelled = false;
@@ -152,7 +168,12 @@ export function OcrReviewPanel({
   const confirmMut = useMutation({
     mutationFn: (payload: {
       imageId: string;
-      data: { belgeNo?: string; date?: string; kdvTutari?: string };
+      data: {
+        belgeNo?: string;
+        date?: string;
+        kdvTutari?: string;
+        kdvBreakdown?: KdvBreakdownItem[] | null;
+      };
     }) => kdvApi.confirmOcr(payload.imageId, payload.data),
     onSuccess: () => {
       toast.success('Teyit edildi');
@@ -168,12 +189,21 @@ export function OcrReviewPanel({
 
   function handleConfirm() {
     if (!activeImg) return;
+    // Breakdown varsa toplamı hesapla, yoksa form.kdvTutari'yi kullan
+    let kdvToSave = form.kdvTutari.trim() || undefined;
+    if (form.breakdown && form.breakdown.length > 0) {
+      const toplam = form.breakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+      if (toplam > 0) {
+        kdvToSave = toplam.toFixed(2).replace('.', ',');
+      }
+    }
     confirmMut.mutate({
       imageId: activeImg.id,
       data: {
         belgeNo: form.belgeNo.trim() || undefined,
         date: form.date.trim() || undefined,
-        kdvTutari: form.kdvTutari.trim() || undefined,
+        kdvTutari: kdvToSave,
+        kdvBreakdown: form.breakdown && form.breakdown.length > 0 ? form.breakdown : null,
       },
     });
   }
@@ -420,14 +450,31 @@ export function OcrReviewPanel({
                 onEnter={handleConfirm}
               />
               <FieldInput
-                label="KDV Tutarı"
+                label={form.breakdown && form.breakdown.length > 0 ? 'KDV Tutarı (toplam — otomatik)' : 'KDV Tutarı'}
                 placeholder="123,45"
-                value={form.kdvTutari}
+                value={
+                  form.breakdown && form.breakdown.length > 0
+                    ? form.breakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0).toFixed(2).replace('.', ',')
+                    : form.kdvTutari
+                }
                 confidence={activeImg.ocrKdvConfidence}
                 onChange={(v) => setForm((f) => ({ ...f, kdvTutari: v }))}
                 onEnter={handleConfirm}
                 numeric
+                readOnly={!!(form.breakdown && form.breakdown.length > 0)}
               />
+
+              {/* KDV Breakdown paneli — çok oranlı belgelerde (Z Raporu, karma fatura) */}
+              <KdvBreakdownEditor
+                breakdown={form.breakdown}
+                onChange={(next) => setForm((f) => ({ ...f, breakdown: next }))}
+              />
+
+              {activeImg.ocrBelgeTipi && (
+                <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                  Belge tipi: <span className="font-semibold" style={{ color: GOLD }}>{activeImg.ocrBelgeTipi}</span>
+                </p>
+              )}
 
               {activeImg.ocrEngine && (
                 <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
@@ -517,6 +564,7 @@ function FieldInput({
   onChange,
   onEnter,
   numeric,
+  readOnly,
 }: {
   label: string;
   value: string;
@@ -525,6 +573,7 @@ function FieldInput({
   onChange: (v: string) => void;
   onEnter: () => void;
   numeric?: boolean;
+  readOnly?: boolean;
 }) {
   const low = typeof confidence === 'number' && confidence < THRESHOLD;
   const missing = confidence === null;
@@ -552,7 +601,8 @@ function FieldInput({
         value={value}
         placeholder={placeholder}
         inputMode={numeric ? 'decimal' : 'text'}
-        onChange={(e) => onChange(e.target.value)}
+        readOnly={readOnly}
+        onChange={(e) => !readOnly && onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();
@@ -561,11 +611,141 @@ function FieldInput({
         }}
         className="w-full px-3 py-2 text-[13px] rounded-lg outline-none transition focus:brightness-110"
         style={{
-          background: 'rgba(255,255,255,0.03)',
-          border: `1px solid ${low || missing ? color + '55' : 'rgba(255,255,255,0.08)'}`,
-          color: '#fafaf9',
+          background: readOnly ? 'rgba(34,197,94,0.04)' : 'rgba(255,255,255,0.03)',
+          border: `1px solid ${readOnly ? 'rgba(34,197,94,0.2)' : low || missing ? color + '55' : 'rgba(255,255,255,0.08)'}`,
+          color: readOnly ? 'rgba(34,197,94,0.9)' : '#fafaf9',
+          cursor: readOnly ? 'not-allowed' : 'text',
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * KDV oran-bazlı kırılım editörü. Z raporu / karma faturada her KDV oranı
+ * için ayrı tutar girilir, toplam KDV otomatik hesaplanır.
+ */
+function KdvBreakdownEditor({
+  breakdown,
+  onChange,
+}: {
+  breakdown: KdvBreakdownItem[] | null;
+  onChange: (next: KdvBreakdownItem[] | null) => void;
+}) {
+  const list = breakdown || [];
+  const toplam = list.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+  const fmtNum = (n: number | null | undefined) =>
+    n == null ? '' : Number(n).toFixed(2).replace('.', ',');
+  const parseNum = (s: string): number => {
+    const c = String(s || '').trim().replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(c);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  function setItem(idx: number, patch: Partial<KdvBreakdownItem>) {
+    const next = list.map((b, i) => (i === idx ? { ...b, ...patch } : b));
+    onChange(next);
+  }
+  function addRow() {
+    const usedRates = new Set(list.map((b) => b.oran));
+    const nextRate = [20, 10, 18, 8, 1, 0].find((r) => !usedRates.has(r)) ?? 0;
+    onChange([...list, { oran: nextRate, tutar: 0, matrah: null }]);
+  }
+  function removeRow(idx: number) {
+    const next = list.filter((_, i) => i !== idx);
+    onChange(next.length > 0 ? next : null);
+  }
+
+  return (
+    <div className="rounded-lg p-3" style={{ background: 'rgba(184,160,111,0.04)', border: '1px solid rgba(184,160,111,0.18)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+            KDV Kırılımı
+          </span>
+          {list.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD }}>
+              {list.length} oran
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={addRow}
+          className="px-2 py-0.5 rounded text-[10.5px] font-bold"
+          style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}
+        >
+          + Oran Ekle
+        </button>
+      </div>
+
+      {list.length === 0 ? (
+        <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          Çok oranlı belge (Z raporu, karma fatura) değilse boş bırak. Gerekiyorsa "+ Oran Ekle" ile satır ekle.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <span>Oran</span>
+            <span>Matrah</span>
+            <span>KDV Tutarı</span>
+            <span></span>
+          </div>
+          {list.map((b, idx) => (
+            <div key={idx} className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center mb-1.5">
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={b.oran}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value.replace(',', '.')) || 0;
+                    setItem(idx, { oran: n });
+                  }}
+                  className="w-full px-2 py-1 pr-5 text-[12px] rounded text-right font-mono outline-none"
+                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: GOLD }}
+                />
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }}>%</span>
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={fmtNum(b.matrah)}
+                onChange={(e) => setItem(idx, { matrah: parseNum(e.target.value) })}
+                className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}
+              />
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                value={fmtNum(b.tutar)}
+                onChange={(e) => setItem(idx, { tutar: parseNum(e.target.value) })}
+                className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}
+              />
+              <button
+                type="button"
+                onClick={() => removeRow(idx)}
+                className="w-6 h-6 flex items-center justify-center rounded"
+                style={{ background: 'rgba(244,63,94,0.08)', color: '#f43f5e' }}
+                title="Bu satırı sil"
+              >
+                <XIcon size={12} />
+              </button>
+            </div>
+          ))}
+          <div className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={{ borderTop: '1px solid rgba(184,160,111,0.2)' }}>
+            <span></span>
+            <span className="text-[11px] font-bold text-right" style={{ color: GOLD }}>Toplam KDV</span>
+            <span className="px-2 py-1 text-[12.5px] font-mono font-bold text-right" style={{ color: GOLD }}>
+              {toplam.toFixed(2).replace('.', ',')}
+            </span>
+            <span></span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

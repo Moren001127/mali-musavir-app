@@ -223,7 +223,12 @@ export class KdvControlController {
   confirmOcr(
     @Req() req: any,
     @Param('imageId') imageId: string,
-    @Body() body: { belgeNo?: string; date?: string; kdvTutari?: string },
+    @Body() body: {
+      belgeNo?: string;
+      date?: string;
+      kdvTutari?: string;
+      kdvBreakdown?: Array<{ oran: number; tutar: number; matrah?: number | null }> | null;
+    },
   ) {
     return this.kdvService.confirmImageOcr(imageId, req.user.tenantId, body);
   }

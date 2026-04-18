@@ -96,7 +96,15 @@ export const kdvApi = {
   getImageUrl: (imageId: string) =>
     api.get(`/kdv-control/images/${imageId}/download`).then((r) => r.data),
 
-  confirmOcr: (imageId: string, data: { belgeNo?: string; date?: string; kdvTutari?: string }) =>
+  confirmOcr: (
+    imageId: string,
+    data: {
+      belgeNo?: string;
+      date?: string;
+      kdvTutari?: string;
+      kdvBreakdown?: Array<{ oran: number; tutar: number; matrah?: number | null }> | null;
+    },
+  ) =>
     api.patch(`/kdv-control/images/${imageId}/confirm-ocr`, data).then((r) => r.data),
 
   deleteImage: (imageId: string) =>
