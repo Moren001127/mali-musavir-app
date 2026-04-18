@@ -65,9 +65,10 @@ export function OcrReviewPanel({
     const list = images.filter((i) => {
       switch (filter) {
         case 'reviewFlow':
-          // Bekleyen (NEEDS_REVIEW/LOW_CONFIDENCE/FAILED) + Teyit edilen birlikte
+          // OCR'ı biten tüm faturalar: Başarılı (SUCCESS) + Bekleyen + Teyit edilen
+          // Sadece hâlâ işlemdekiler (PENDING/PROCESSING) dışarıda.
           return i.isManuallyConfirmed ||
-            ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(i.ocrStatus);
+            ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(i.ocrStatus);
         case 'needsReview':
           return !i.isManuallyConfirmed &&
             ['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(i.ocrStatus);
@@ -83,11 +84,21 @@ export function OcrReviewPanel({
           return true;
       }
     });
-    // Sıralama: bekleyenler önce (en düşük confidence en başa), onaylananlar en sona
+    // Sıralama önceliği:
+    //   1. Bekleyen (NEEDS_REVIEW / LOW_CONFIDENCE / FAILED) — eylem gerek
+    //   2. Başarılı (SUCCESS, otomatik okundu, info)
+    //   3. Teyit edildi — tamamlanmış
+    // Aynı grup içinde: confidence düşük olan önce
+    const priority = (img: ReviewImage): number => {
+      if (img.isManuallyConfirmed) return 3;
+      if (['NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(img.ocrStatus)) return 1;
+      if (img.ocrStatus === 'SUCCESS') return 2;
+      return 4;
+    };
     return [...list].sort((a, b) => {
-      const aConfirmed = a.isManuallyConfirmed ? 1 : 0;
-      const bConfirmed = b.isManuallyConfirmed ? 1 : 0;
-      if (aConfirmed !== bConfirmed) return aConfirmed - bConfirmed;
+      const pa = priority(a);
+      const pb = priority(b);
+      if (pa !== pb) return pa - pb;
       return (avgConf(a) ?? 0) - (avgConf(b) ?? 0);
     });
   }, [images, filter]);
@@ -188,11 +199,15 @@ export function OcrReviewPanel({
               OCR Teyit Paneli
             </h3>
             <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              Düşük güvenli alanları kontrol et ve teyit et —{' '}
+              OCR sonuçları tek liste —{' '}
+              <span className="font-semibold" style={{ color: '#22c55e' }}>
+                {summary.success}
+              </span>{' '}
+              başarılı ·{' '}
               <span className="font-semibold" style={{ color: '#f59e0b' }}>
                 {summary.needsReview + summary.lowConf + summary.failed}
               </span>{' '}
-              bekliyor · {' '}
+              teyit bekler ·{' '}
               <span className="font-semibold" style={{ color: '#22c55e' }}>
                 {summary.confirmed}
               </span>{' '}
@@ -202,10 +217,10 @@ export function OcrReviewPanel({
         </div>
         {/* Özet chips: tıklayınca filtre değişir */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {(summary.needsReview + summary.lowConf + summary.failed + summary.confirmed) > 0 && (
+          {(summary.success + summary.needsReview + summary.lowConf + summary.failed + summary.confirmed) > 0 && (
             <SummaryChip
               label="Teyit Akışı"
-              count={summary.needsReview + summary.lowConf + summary.failed + summary.confirmed}
+              count={summary.success + summary.needsReview + summary.lowConf + summary.failed + summary.confirmed}
               color="#b8a06f"
               active={filter === 'reviewFlow'}
               onClick={() => { setFilter('reviewFlow'); setActiveId(null); }}
@@ -291,11 +306,13 @@ export function OcrReviewPanel({
                 OCR devam ediyor — {summary.processing} fatura işleniyor, bittikçe burada görünecek
               </span>
             </>
-          ) : (filter === 'reviewFlow' || filter === 'needsReview') ? (
+          ) : filter === 'needsReview' ? (
             <>
               <CheckCircle2 size={18} />
               <span className="font-semibold">Tüm faturalar incelendi — teyit bekleyen yok</span>
             </>
+          ) : filter === 'reviewFlow' ? (
+            <span>Henüz OCR sonucu yok — fatura yüklenip okunduktan sonra burada listelenir</span>
           ) : (
             <span>Bu durumda fatura yok</span>
           )}
@@ -311,7 +328,16 @@ export function OcrReviewPanel({
             const active = img.id === (activeImg?.id ?? null);
             const avg = avgConf(img);
             const confirmed = img.isManuallyConfirmed;
-            const accentColor = confirmed ? '#22c55e' : '#f59e0b';
+            const isSuccess = !confirmed && img.ocrStatus === 'SUCCESS';
+            const isPending = !confirmed && !isSuccess;
+            // Accent rengi: teyit=yeşil, success=mavi, bekleyen=turuncu
+            const accentColor = confirmed ? '#22c55e' : isSuccess ? '#60a5fa' : '#f59e0b';
+            // Confidence rakamı rengi
+            const avgColor = confirmed
+              ? '#22c55e'
+              : isSuccess
+                ? '#22c55e'
+                : (typeof avg === 'number' && avg < THRESHOLD ? '#f43f5e' : '#f59e0b');
             return (
               <button
                 key={img.id}
@@ -319,11 +345,11 @@ export function OcrReviewPanel({
                 className="w-full text-left px-4 py-3 transition"
                 style={{
                   background: active
-                    ? (confirmed ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.1)')
+                    ? `${accentColor}1a`
                     : 'transparent',
-                  borderLeft: `3px solid ${active ? accentColor : (confirmed ? 'rgba(34,197,94,0.3)' : 'transparent')}`,
+                  borderLeft: `3px solid ${active ? accentColor : (confirmed ? 'rgba(34,197,94,0.3)' : isSuccess ? 'rgba(96,165,250,0.2)' : 'transparent')}`,
                   borderBottom: '1px solid rgba(255,255,255,0.03)',
-                  opacity: confirmed && !active ? 0.7 : 1,
+                  opacity: (confirmed || isSuccess) && !active ? 0.75 : 1,
                 }}
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -332,12 +358,13 @@ export function OcrReviewPanel({
                     style={{ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' }}
                   >
                     {confirmed && <CheckCircle2 size={11} style={{ color: '#22c55e', flexShrink: 0 }} />}
+                    {isSuccess && <CheckCircle2 size={11} style={{ color: '#60a5fa', flexShrink: 0 }} />}
                     <span className="truncate">{img.originalName}</span>
                   </p>
                   {typeof avg === 'number' && (
                     <span
                       className="text-[10px] font-bold tabular-nums"
-                      style={{ color: confirmed ? '#22c55e' : (avg < THRESHOLD ? '#f43f5e' : '#f59e0b') }}
+                      style={{ color: avgColor }}
                     >
                       %{Math.round(avg * 100)}
                     </span>
@@ -350,6 +377,13 @@ export function OcrReviewPanel({
                       style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
                     >
                       Teyit Edildi
+                    </span>
+                  ) : isSuccess ? (
+                    <span
+                      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}
+                    >
+                      Başarılı
                     </span>
                   ) : (
                     <StatusTag status={img.ocrStatus} />
@@ -410,6 +444,15 @@ export function OcrReviewPanel({
                 </div>
               )}
 
+              {!activeImg.isManuallyConfirmed && activeImg.ocrStatus === 'SUCCESS' && (
+                <div
+                  className="flex items-center gap-2 text-[11.5px] font-semibold px-3 py-2 rounded-lg"
+                  style={{ background: 'rgba(96,165,250,0.08)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' }}
+                >
+                  <CheckCircle2 size={12} /> OCR yüksek güvenle okudu — değerler doğruysa atla, yanlışsa düzeltip teyit et.
+                </div>
+              )}
+
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleConfirm}
@@ -428,7 +471,11 @@ export function OcrReviewPanel({
                   ) : (
                     <CheckCircle2 size={14} />
                   )}
-                  {activeImg.isManuallyConfirmed ? 'Güncelle & Sonraki' : 'Teyit Et & Sonraki'}
+                  {activeImg.isManuallyConfirmed
+                    ? 'Güncelle & Sonraki'
+                    : activeImg.ocrStatus === 'SUCCESS'
+                      ? 'Onayla & Sonraki'
+                      : 'Teyit Et & Sonraki'}
                 </button>
                 {previewUrl && (
                   <a
