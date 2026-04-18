@@ -827,6 +827,44 @@ export default function KdvKontrolPage() {
                 </div>
               ))}
             </div>
+            {/* MATH BALANCE — Luca ve Fatura taraflarının her biri totalRecords/totalImages'a
+                nasıl bölündüğünü açıklar. Eşleşme Hatalı (rejected+unmatched) aslında
+                iki ayrı kovadan geliyor: Luca satırı var ama fatura yok + Fatura var ama
+                Luca'da yok. Kullanıcı neden 22+7+4=33 ≠ 31 olduğunu burada anlıyor. */}
+            {(() => {
+              const matched = stats.matched ?? 0;
+              const review = (stats.needsReview ?? 0) + (stats.partialMatch ?? 0);
+              const rejected = stats.rejected ?? 0;
+              const lucaOnlyMissing = Math.max(0, (stats.totalRecords ?? 0) - matched - review - rejected);
+              const imageOnlyMissing = Math.max(0, (stats.totalImages ?? 0) - matched - review - rejected);
+              return (
+                <div
+                  className="mt-4 px-4 py-3 rounded-xl text-[11.5px] tabular-nums space-y-1"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                >
+                  <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                    <span style={{ color: GOLD, fontWeight: 600 }}>{stats.totalRecords ?? 0} Luca satırı</span>
+                    <span>=</span>
+                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{matched} tam</span>
+                    <span>+</span>
+                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{review} incele</span>
+                    {rejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{rejected} reddedilen</span></>}
+                    <span>+</span>
+                    <span style={{ color: '#f43f5e', fontWeight: 600 }}>{lucaOnlyMissing} faturası yok</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                    <span style={{ color: '#a855f7', fontWeight: 600 }}>{stats.totalImages ?? 0} Fatura</span>
+                    <span>=</span>
+                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{matched} tam</span>
+                    <span>+</span>
+                    <span style={{ color: '#fb923c', fontWeight: 600 }}>{review} incele</span>
+                    {rejected > 0 && <><span>+</span><span style={{ color: '#f43f5e', fontWeight: 600 }}>{rejected} reddedilen</span></>}
+                    <span>+</span>
+                    <span style={{ color: '#f43f5e', fontWeight: 600 }}>{imageOnlyMissing} Luca'da yok</span>
+                  </div>
+                </div>
+              );
+            })()}
             {/* OCR maliyet tahmini — Claude Haiku 4.5 ≈ $0.0025/fatura */}
             {(() => {
               const successCount = images.filter((i: any) =>
