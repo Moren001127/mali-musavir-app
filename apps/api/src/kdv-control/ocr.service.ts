@@ -1098,8 +1098,14 @@ export class OcrService {
     //   "1.006,00 TL"
     //   "5.030,00 TL"
     // → ilk amount (1.006) %20'nin KDV'si.
-    type Marker = { oran: number; lineIdx: number; afterLabel: string };
+    type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean };
     const markers: Marker[] = [];
+    // Summary satırı = "HESAPLANAN KDV (%N)" veya "TOPKDV (%N)" — fatura altı özet
+    // Item row satırı = ürün tablosundaki "... % N,NN ... X,XX ..." kalemi
+    // Bir oran için HEM summary HEM item row eşleşirse iki kez toplanmayalım:
+    // summary authoritative — varsa item row'ları o oran için YOK SAY.
+    const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?/i;
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (skipTaxRe.test(line)) continue;
@@ -1107,16 +1113,15 @@ export class OcrService {
 
       // Önceki 2 satırda non-KDV vergi label'ı varsa bu "% N,NN" markörü ÖİV'ye
       // / Telsize / ÖTV'ye ait olabilir (label + oran + amount 3 ayrı satırda).
-      // Örnek Turkcell: "Özel İletişim Vergisi" / "% 10,00" / "126,00 TL"
-      // Bu markörü atla. İskontola karıştırma: KDV satırı varsa saydan çıkar.
       let prevHasNonKdvTax = false;
       for (let p = 1; p <= 2 && i - p >= 0; p++) {
         const prev = lines[i - p];
         if (skipTaxRe.test(prev)) { prevHasNonKdvTax = true; break; }
-        // "Katma Değer Vergisi" / "KDV" önceki satırda bulunduysa temiz say
         if (/KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\b/i.test(prev)) break;
       }
       if (prevHasNonKdvTax) continue;
+
+      const isSummary = summaryLineRe.test(line);
 
       rateMarkerRe.lastIndex = 0;
       let m: RegExpExecArray | null;
@@ -1124,14 +1129,21 @@ export class OcrService {
         const oran = parseInt(m[1], 10);
         if (!(oran > 0 && oran <= 30)) continue;
         const afterLabel = line.slice(m.index + m[0].length);
-        markers.push({ oran, lineIdx: i, afterLabel });
+        markers.push({ oran, lineIdx: i, afterLabel, isSummary });
       }
     }
 
-    // Bir satırda birden fazla "% NN" varsa (header row gibi — "KDV % 20")
-    // hepsini işlemek yerine kalanını akıllıca çöz. Önce aynı satırda
-    // amount var mı? Yoksa sonraki satırları tara.
+    // Hangi oranlar summary satırıyla zaten sayıldı? Bu oranlar için item
+    // row'larına dokunma — duplicate toplama olur (1006 + 1006 = 2012 bug'ı).
+    const oranCoveredBySummary = new Set<number>();
     for (const marker of markers) {
+      if (marker.isSummary) oranCoveredBySummary.add(marker.oran);
+    }
+
+    for (const marker of markers) {
+      // Summary ile zaten sayılan oranın item row markörünü atla
+      if (!marker.isSummary && oranCoveredBySummary.has(marker.oran)) continue;
+
       let tutar: number | null = null;
 
       // 1) Aynı satır, label'den sonra amount var mı?
@@ -1141,13 +1153,11 @@ export class OcrService {
         if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
       }
 
-      // 2) Yoksa sonraki 3 satırdan ilk geçerli amount'u al (tablo cell gibi
-      //    bölünmüş layout için). skipTax/discount satırlarına takılma.
+      // 2) Yoksa sonraki 3 satırdan ilk geçerli amount'u al
       if (tutar == null) {
         for (let j = 1; j <= 3 && marker.lineIdx + j < lines.length; j++) {
           const nextLine = lines[marker.lineIdx + j];
           if (skipTaxRe.test(nextLine)) break;
-          // Sonraki rate marker satırına girdiysek dur
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
           const am = nextLine.match(amountRe);
           if (am) {
@@ -1161,7 +1171,14 @@ export class OcrService {
       }
 
       if (tutar != null) {
-        sumByOran.set(marker.oran, (sumByOran.get(marker.oran) || 0) + tutar);
+        // Summary satırı için oran başına SET et (overwrite) — birden fazla
+        // aynı oran summary çıkarsa (nadir), en son okunanı bırak.
+        // Item row için topla (aynı oranda birden fazla kalem olabilir).
+        if (marker.isSummary) {
+          sumByOran.set(marker.oran, tutar);
+        } else {
+          sumByOran.set(marker.oran, (sumByOran.get(marker.oran) || 0) + tutar);
+        }
       }
     }
 

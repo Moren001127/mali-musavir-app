@@ -720,8 +720,11 @@ enum OcrStatus {
 model ReconciliationResult {
   id          String      @id @default(cuid())
   sessionId   String
-  kdvRecordId String?     @unique
-  imageId     String?     @unique
+  // @unique KALDIRILDI — çok oranlı Luca faturaları (aynı fatura için %20+%10
+  // iki ayrı Luca satırı) tek fatura görselini paylaşır. Eski @unique constraint
+  // bu durumu engelliyordu.
+  kdvRecordId String?
+  imageId     String?
   status      MatchStatus @default(UNMATCHED)
   matchScore  Float?      // 0-1 eşleşme skoru
   mismatchReasons String[] // Uyumsuzluk nedenleri
