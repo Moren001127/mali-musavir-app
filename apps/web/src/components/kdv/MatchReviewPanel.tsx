@@ -120,7 +120,6 @@ function MatchRow({
   const lucaKdv = r.kdvRecord?.kdvTutari
     ? parseFloat(r.kdvRecord.kdvTutari).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
     : '—';
-  const lucaAciklama = r.kdvRecord?.karsiTaraf || r.kdvRecord?.aciklama || '—';
 
   const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
   const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
@@ -167,7 +166,6 @@ function MatchRow({
             <Row label="Belge No" value={lucaBelgeNo} />
             <Row label="Tarih" value={lucaTarih} />
             <Row label="KDV" value={lucaKdv} />
-            <Row label="Açıklama" value={lucaAciklama} />
           </div>
 
           {/* Fatura tarafı */}
@@ -175,8 +173,13 @@ function MatchRow({
             <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#a855f7' }}>Fatura / Görsel</div>
             <Row label="Dosya" value={faturaDosya} />
             <Row label="Belge No" value={faturaBelgeNo} />
-            <Row label="Tarih" value={faturaTarih} />
+            <Row label="Tarih" value={faturaTarih} highlight={isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
             <Row label="KDV" value={faturaKdv} />
+            {isLikelyOcrDateMisread(lucaTarih, faturaTarih) && (
+              <p className="text-[10.5px] mt-2 px-2 py-1.5 rounded" style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
+                ⚠ OCR muhtemelen yıl hanesini yanlış okudu ({lucaTarih} vs {faturaTarih}) — "6"↔"4" / "0"↔"8" gibi benzer rakamlar. Luca tarihi doğruysa Onayla.
+              </p>
+            )}
           </div>
 
           {/* Aksiyonlar */}
@@ -216,11 +219,40 @@ function MatchRow({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex items-start gap-2 mb-1 text-[12px]">
       <span className="uppercase tracking-wider font-semibold" style={{ color: 'rgba(250,250,249,0.45)', minWidth: 72, fontSize: 10 }}>{label}</span>
-      <span className="flex-1 break-words" style={{ color: '#fafaf9' }}>{value}</span>
+      <span
+        className="flex-1 break-words"
+        style={{
+          color: highlight ? '#fb923c' : '#fafaf9',
+          fontWeight: highlight ? 600 : 400,
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
+}
+
+/**
+ * Luca ve fatura tarihleri gün+ay aynı ama yıl farklıysa, bu büyük olasılıkla
+ * OCR'ın rakam yanlış okuması (örn. "2026" → "2024" çünkü "6"↔"4" benzer).
+ * Gün, ay ve yılın son hanesi hariç her şey tutuyorsa muhtemelen aynı faturadır.
+ */
+function isLikelyOcrDateMisread(dateA: string, dateB: string): boolean {
+  if (!dateA || !dateB || dateA === '—' || dateB === '—') return false;
+  const parse = (s: string) => {
+    // Türkçe format "DD.MM.YYYY" veya ISO gibi
+    const m = s.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
+    if (!m) return null;
+    return { d: +m[1], mo: +m[2], y: +m[3] };
+  };
+  const a = parse(dateA);
+  const b = parse(dateB);
+  if (!a || !b) return false;
+  if (a.d !== b.d || a.mo !== b.mo) return false;
+  // Yıllar farklı ama gün+ay aynı → muhtemelen OCR yıl hatası
+  return a.y !== b.y && Math.abs(a.y - b.y) <= 5;
 }
