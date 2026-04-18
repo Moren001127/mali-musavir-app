@@ -347,19 +347,65 @@ export class OcrService {
       '',
       '╔══ 5) KDV — ÇOK ORANLI / BREAKDOWN ══╗',
       'Türk belgelerinde KDV oranları: %0, %1, %8, %10, %18, %20 (güncel). Eski: %18.',
-      'Görselde BİRDEN FAZLA KDV oranı varsa (Z raporu, karma fatura):',
-      '  → HER ORAN İÇİN AYRI "kdvBreakdown" öğesi dön.',
-      '  → kdvTutari = breakdown\'daki TÜM tutarların TOPLAMI.',
-      'Örnek Z raporu: "TOPKDV %20: 47,50 / TOPKDV %10: 243,19"',
+      '',
+      '⛔ KRİTİK — NE KDV SAYILIR NE SAYILMAZ:',
+      'SADECE şu etiketli satırlar KDV\'dir:',
+      '  ✓ "KDV", "K.D.V.", "Katma Değer Vergisi"',
+      '  ✓ "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV"',
+      '  ✓ Tabloda "KDV %" sütunu (örn. "KDV (% 20,00)")',
+      '',
+      'ŞU SATIRLARI KDV\'YE ASLA DAHİL ETME (bunlar AYRI vergi türleridir):',
+      '  ✗ "Özel İletişim Vergisi" / "ÖİV" / "ÖIV" — telekom faturalarında (Turkcell, Türk Telekom, Vodafone) %5/%10/%25',
+      '  ✗ "Telsiz Kullanım Vergisi" / "Telsiz Kullanım Aylık Taksit" — telekom',
+      '  ✗ "ÖTV" / "Özel Tüketim Vergisi" — akaryakıt, sigara, alkol, motorlu araç',
+      '  ✗ "Konaklama Vergisi" — otel/pansiyon (2026 itibarıyla %2)',
+      '  ✗ "Damga Vergisi" — sözleşme, makbuz üstü',
+      '  ✗ "BSMV" / "Banka ve Sigorta Muameleleri Vergisi" — banka işlem ücretleri',
+      '  ✗ "KKDF" / "Kaynak Kullanımını Destekleme Fonu" — kredi/ithalat',
+      '  ✗ "Çevre Temizlik Vergisi" — belediye',
+      '  ✗ "Stopaj" / "Tevkifat" / "Gelir Vergisi Kesintisi" — ayrı vergi',
+      '  ✗ "Diğer Vergiler" / "Vergiler" başlıklı toplam satır (içinde KDV olsa bile tek başına alma)',
+      '  ✗ "Fon Payı" / "Özel Tüketim Fonu"',
+      '',
+      'ÖRNEK — Turkcell faturası:',
+      '  Katma Değer Vergisi   %20  252,00   ← BU KDV (252 TL)',
+      '  Özel İletişim Vergisi %10  126,00   ← BU ÖİV, KDV DEĞİL',
+      '  Telsiz Kullanım Taksit %0   26,98   ← BU TELSİZ, KDV DEĞİL',
+      '  → kdvTutari = "252,00" (SADECE KDV satırı)',
+      '  → kdvBreakdown = [{"oran":20,"tutar":"252,00","matrah":"1260,01"}]',
+      '',
+      'ÖRNEK — Akaryakıt faturası:',
+      '  KDV %20           50,00   ← BU KDV',
+      '  ÖTV              120,00   ← BU ÖTV, KDV DEĞİL',
+      '  → kdvTutari = "50,00"',
+      '',
+      'Eğer belgede HİÇ "KDV" etiketli satır yoksa (örn. sadece ÖİV varsa), kdvTutari = "0,00".',
+      '',
+      '╔══ 5b) ÇOK ORANLI KDV — BREAKDOWN ZORUNLU ══╗',
+      'Görselde BİRDEN FAZLA KDV oranı satırı varsa (her biri ayrı "KDV %X" etiketli):',
+      '  ► kdvBreakdown alanını MUTLAKA doldur — her oran ayrı eleman olacak.',
+      '  ► kdvTutari = tüm KDV satırlarının matematiksel TOPLAMI.',
+      '  ► Tek oran bile olsa breakdown\'u doldur (tek elemanlı dizi olarak).',
+      '',
+      'ÖRNEK — Karma fatura (iki oran):',
+      '  Hesaplanan KDV (%20)   116,00   (Matrah: 580,00)',
+      '  Hesaplanan KDV (%10)    42,00   (Matrah: 420,00)',
+      '  → kdvBreakdown=[{"oran":20,"tutar":"116,00","matrah":"580,00"},{"oran":10,"tutar":"42,00","matrah":"420,00"}]',
+      '  → kdvTutari="158,00" (116 + 42)',
+      '',
+      'ÖRNEK — Z raporu:',
+      '  "TOPKDV %20: 47,50 / TOPKDV %10: 243,19"',
       '  → kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
-      '  → kdvTutari="290,69" (47,50 + 243,19)',
-      'Tek oran olsa bile breakdown tek eleman olarak doldurabilirsin (tavsiye).',
+      '  → kdvTutari="290,69"',
+      '',
+      'Matrah belirgin değilse matrah hesapla: matrah = tutar * 100 / oran (örn. %20, 116 TL → matrah 580).',
       '',
       '╔══ 6) TUTAR FORMATI ══╗',
       'Türkiye: nokta binlik ayraç, virgül ondalık. "1.234,56" → output "1234,56" (noktasız, virgüllü).',
-      '"KDV" etiketi: "KDV", "K.D.V.", "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV".',
+      '"KDV" etiketi (kabul): "KDV", "K.D.V.", "Katma Değer Vergisi", "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV".',
+      '"KDV" DEĞİL (reddet): "Özel İletişim Vergisi", "ÖİV", "Telsiz Kullanım", "ÖTV", "Damga", "BSMV", "KKDF", "Konaklama Vergisi", "Çevre Vergisi", "Stopaj", "Tevkifat".',
       '"Toplam" etiketi: "Genel Toplam", "Ödenecek", "Fatura Toplamı", "Vergiler Dahil Toplam".',
-      'Eğer tutar "₺" ya da "TL" içeriyorsa o işareti KALDIR, sadece sayı kal.',
+      'Eğer tutar "₺" ya da "TL" / "TRY" içeriyorsa o işareti KALDIR, sadece sayı kal.',
       '',
       '╔══ 7) KARAKTER NETLİĞİ — OCR TUZAKLARI ══╗',
       'Belge no\'da rakam/harf karışıklığı:',
@@ -388,11 +434,15 @@ export class OcrService {
       '         DD-MM-YYYY Türk formatından "YYYY-MM-DD"\'ye çevir.',
       '         "10-03-2026" → "2026-03-10" (10 Mart 2026, ay-gün YERİNİ DEĞİŞTİRME).',
       '         Sadece görsel tamamen okunamıyorsa tarih=null dön.',
-      'ADIM 4: KDV oranlarını tara — birden fazla varsa breakdown dizisini doldur, kdvTutari = toplam.',
+      'ADIM 4: KDV oranlarını tara — birden fazla varsa breakdown dizisini MUTLAKA doldur, kdvTutari = toplam.',
+      '         ► KDV SADECE "KDV" / "Katma Değer Vergisi" etiketli satırlardan okunur.',
+      '         ► Özel İletişim Vergisi (ÖİV), Telsiz Kullanım Vergisi, ÖTV, Damga, BSMV, KKDF → KDV DEĞİL, dahil etme!',
+      '         ► Turkcell/Vodafone/TT telekom faturalarında SADECE "Katma Değer Vergisi" satırı KDV\'dir.',
       'ADIM 5: Her alan için gerçekçi confidence skoru ver.',
       '',
       'YASAK: TR1.2, TEMELFATURA, TICARIFATURA, UUID, ETTN, VKN, TCKN asla belge no DEĞİL.',
       'Z RAPORU YASAK: FIŞ NO / EKÜ NO / AT NO / SAAT / Z NO HARİÇ HİÇBİR ŞEY belge no DEĞİL.',
+      'KDV YASAK: ÖİV / Telsiz / ÖTV / Damga / BSMV / KKDF / Konaklama / Çevre / Fon = KDV DEĞİL.',
       'Sadece JSON dön.',
     ].join('\n');
 
@@ -1409,12 +1459,54 @@ export class OcrService {
     }
 
     // ─── KDV TUTARI + BREAKDOWN ────────────────────────
+    // Turkish UBL e-Fatura'da bir TaxSubtotal bloğunda KDV dışında vergi türleri
+    // de olabilir (ÖİV, Telsiz Kullanım, ÖTV, Damga, BSMV, KKDF, Konaklama vb.).
+    // TaxCategory > TaxScheme > Name/TaxTypeCode alanına bakarak SADECE KDV'yi al.
+    // KDV için standart kodlar: "KDV" (Name) veya "0015" (TaxTypeCode).
     const kdvBreakdown: KdvBreakdownItem[] = [];
-    // Her <cac:TaxSubtotal>'u sırayla tara
     const subtotalRegex = /<cac:TaxSubtotal>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
     let m: RegExpExecArray | null;
     while ((m = subtotalRegex.exec(xml)) !== null) {
       const block = m[1];
+      // Tax türü belirleme — KDV dışındaki vergileri atla
+      const taxSchemeName = block.match(/<cbc:Name>([^<]+)<\/cbc:Name>/i)?.[1]?.trim().toUpperCase() || '';
+      const taxSchemeId =
+        block.match(/<cbc:TaxTypeCode>([^<]+)<\/cbc:TaxTypeCode>/i)?.[1]?.trim() ||
+        block.match(/<cac:TaxScheme>[\s\S]*?<cbc:ID>([^<]+)<\/cbc:ID>/i)?.[1]?.trim() ||
+        '';
+      // KDV dışı vergi türlerini ele (ÖİV, Telsiz, ÖTV, Damga, vb.)
+      const isNotKdv =
+        /ÖZEL\s*İLETİŞİM|OZEL\s*ILETISIM|ÖİV|OIV/i.test(taxSchemeName) ||
+        /TELSİZ|TELSIZ/i.test(taxSchemeName) ||
+        /ÖTV|OTV|ÖZEL\s*TÜKETİM/i.test(taxSchemeName) ||
+        /DAMGA/i.test(taxSchemeName) ||
+        /BSMV/i.test(taxSchemeName) ||
+        /KKDF/i.test(taxSchemeName) ||
+        /KONAKLAMA/i.test(taxSchemeName) ||
+        /STOPAJ|TEVKIFAT|TEVKİFAT/i.test(taxSchemeName) ||
+        // TaxTypeCode: 0003=Damga, 0059=ÖİV, 0071=ÖTV, 4080=Konaklama (GİB kod listesi)
+        ['0003', '0059', '0061', '0071', '0072', '0073', '0074', '0075', '0076', '0077', '4080', '9040', '9077'].includes(taxSchemeId);
+      const isKdv =
+        /^KDV$|KATMA\s*DEĞER|KATMA\s*DEGER/i.test(taxSchemeName) ||
+        taxSchemeId === '0015';
+      // Eğer kesinlikle KDV değilse atla
+      if (isNotKdv) {
+        this.logger.log(
+          `XML parser: KDV dışı vergi atlandı — Name="${taxSchemeName}" Code="${taxSchemeId}"`,
+        );
+        continue;
+      }
+      // Ne KDV ne de açıkça KDV dışı — TaxScheme yoksa (eski fatura formatı) varsayım KDV
+      // Ama hem Name hem Code boşsa ve breakdown çoktan başka KDV satırları aldıysa
+      // güvenlik için atla.
+      if (!isKdv && (taxSchemeName || taxSchemeId)) {
+        // Etiket var ama KDV değil — atla
+        this.logger.warn(
+          `XML parser: bilinmeyen vergi türü atlandı — Name="${taxSchemeName}" Code="${taxSchemeId}"`,
+        );
+        continue;
+      }
+
       const taxableMatch = block.match(/<cbc:TaxableAmount[^>]*>([^<]+)<\/cbc:TaxableAmount>/i);
       const taxAmountMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
       const percentMatch = block.match(/<cbc:Percent>([^<]+)<\/cbc:Percent>/i);
@@ -1428,13 +1520,9 @@ export class OcrService {
       }
     }
 
-    // Toplam KDV: breakdown toplamı veya root TaxTotal/TaxAmount
-    let kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
-    if (kdvToplam === 0) {
-      // Fallback: ilk <cac:TaxTotal>/<cbc:TaxAmount>
-      const rootTax = xml.match(/<cac:TaxTotal>[\s\S]*?<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
-      if (rootTax) kdvToplam = parseFloat(rootTax[1]) || 0;
-    }
+    // Toplam KDV: breakdown toplamı. Fallback kaldırıldı — eski "ilk TaxAmount'u al"
+    // kuralı telekom faturalarında ÖİV/Telsiz'i de toplayıp yanlış KDV üretiyordu.
+    const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
     const kdvTutari = kdvToplam > 0 ? this.formatAmount(kdvToplam) : null;
 
     // ─── TOPLAM ÖDENECEK ─────────────────────────────
