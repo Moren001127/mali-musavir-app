@@ -1757,6 +1757,18 @@ export class OcrService {
         matched++;
         continue;
       }
+      // Z_RAPORU / OKC_FIS için Azure ham metni çoğunlukla bozuk geliyor
+      // ("KDU" yerine "KDV", US format sayılar, ¥/* karakterler). Generic
+      // cross-check %90+ Claude confidence'ı yapay olarak %20'ye çekiyordu.
+      // Bu belgelerde KDV doğrulaması zaten Z_RAPORU regex bloğuyla yapılıyor;
+      // generic cross-check FAIL'ı confidence'ı kırmasın.
+      if (
+        c.key === 'kdvTutari' &&
+        (result.belgeTipi === 'Z_RAPORU' || result.belgeTipi === 'OKC_FIS')
+      ) {
+        matched++;
+        continue;
+      }
       const found = this.isFieldInAzureText(c.value, c.field, azureText);
       if (found) {
         matched++;
