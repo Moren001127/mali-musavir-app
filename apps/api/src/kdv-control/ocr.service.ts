@@ -107,15 +107,33 @@ export class OcrService {
     // ═══════════════════════════════════════════════════════
     // 0. XML DOĞRUDAN PARSE — UBL e-Fatura/e-Arşiv
     // ═══════════════════════════════════════════════════════
-    // İçerik gerçekten XML mi? (binary image değil) — EXTENSION TEK BAŞINA GÜVENLİ DEĞİL
-    const head512 = imageBuffer.slice(0, 512).toString('utf8');
-    const looksLikeXmlContent =
-      head512.trimStart().startsWith('<?xml') ||
-      head512.includes('<Invoice') ||
-      head512.includes('<ArchiveInvoice') ||
-      head512.includes('<cbc:') ||
-      head512.includes('<cac:');
-    const isXml = looksLikeXmlContent;
+    // İçerik gerçekten XML mi? (binary image değil)
+    // Head 512 byte tek başına güvenli değil — bazı Mihsap XML'leri BOM, HTML
+    // wrapper veya whitespace ile başlıyor olabilir. Bu nedenle ilk 4 KB'ye
+    // kadar UBL marker aranır. Ayrıca uzantı .xml ise content ASCII-düzeyinde
+    // (binary/image değil) olduğu sürece XML'e zorlarız.
+    const head4k = imageBuffer.slice(0, Math.min(4096, imageBuffer.byteLength)).toString('utf8');
+    const hasUblMarker =
+      /<\?xml/i.test(head4k) ||
+      /<Invoice[\s>]/i.test(head4k) ||
+      /<ArchiveInvoice[\s>]/i.test(head4k) ||
+      /<cbc:ID>/i.test(head4k) ||
+      /<cac:TaxTotal>/i.test(head4k) ||
+      /<cac:LegalMonetaryTotal>/i.test(head4k) ||
+      /UBL-TR|UBL\s*Invoice/i.test(head4k);
+    // Uzantı xml ise ve içerik gerçekten XML-benzeri ASCII ise (image magic bytes yok) XML kabul et
+    const filenameIsXml = /\.xml$/i.test(originalName || '');
+    const isImageMagic =
+      imageBuffer.length > 4 && (
+        // PNG, JPEG, PDF, GIF, TIFF, BMP
+        (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) ||
+        (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8) ||
+        (imageBuffer[0] === 0x25 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x44) ||
+        (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49) ||
+        (imageBuffer[0] === 0x49 && imageBuffer[1] === 0x49) ||
+        (imageBuffer[0] === 0x42 && imageBuffer[1] === 0x4d)
+      );
+    const isXml = hasUblMarker || (filenameIsXml && !isImageMagic);
 
     if (isXml) {
       try {
@@ -393,10 +411,39 @@ export class OcrService {
       '  → kdvBreakdown=[{"oran":20,"tutar":"116,00","matrah":"580,00"},{"oran":10,"tutar":"42,00","matrah":"420,00"}]',
       '  → kdvTutari="158,00" (116 + 42)',
       '',
-      'ÖRNEK — Z raporu:',
-      '  "TOPKDV %20: 47,50 / TOPKDV %10: 243,19"',
-      '  → kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
-      '  → kdvTutari="290,69"',
+      'ÖRNEK — Z raporu (YAZAR KASA FİŞİ) — BU PATTERN ZORUNLU:',
+      '  Z raporunda KDV oranları ŞU FORMATTA görünür (sıra önemli, her biri AYRI satır):',
+      '    TOPLAM %20    *285,00    ← matrah (%20 oranlı satışların toplamı)',
+      '    TOPKDV %20     *47,50    ← KDV (%20 oran için)',
+      '    TOPLAM %10   *2.675,00   ← matrah (%10 oranlı satışların toplamı)',
+      '    TOPKDV %10    *243,19    ← KDV (%10 oran için)',
+      '    TOPLAM       *2.960,00   ← genel matrah (tüm oranlar)',
+      '    TOPKDV         *290,69   ← GENEL KDV TOPLAMI (breakdown toplamına eşit olmalı)',
+      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
+      '  ➜ kdvTutari="290,69"',
+      '  ⚠ Z raporunda "TOPKDV %NN" her satırı AYRI bir breakdown elemanıdır.',
+      '  ⚠ "KUM TOPKDV" / "KUM TOPLAM" kümülatif — asla alma, sadece "TOPKDV" satırlarını al.',
+      '  ⚠ Yazıcı baskısı silik olabilir — "*" ile ayrılmış sayı daima sağdaki değerdir.',
+      '',
+      'ÖRNEK — TÜRK TELEKOM / TURKCELL / VODAFONE faturası — DİKKAT:',
+      '  Telekom faturalarında "KDV" ile "ÖİV" yan yana görünür ve KARIŞTIRILMASI KOLAY:',
+      '    Matrah          304,18    ← BU MATRAH (KDV DEĞİL)',
+      '    KDV (%20)        60,84    ← BU KDV (%20 oranlı)',
+      '    ÖİV (%10)        30,42    ← BU ÖİV, KDV DEĞİL',
+      '    Genel Toplam    395,44',
+      '  ➜ kdvTutari="60,84"  (SADECE "KDV (%NN)" etiketli satır)',
+      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"60,84","matrah":"304,18"}]',
+      '  ⚠ "304,18" MATRAH\'tır (KDV\'nin hesaplandığı tutar), KDV DEĞİL.',
+      '  ⚠ Matrah genelde KDV\'den 5x daha büyüktür (20% oranında). Büyük sayıya "KDV" deme.',
+      '  ⚠ KDV satırı her zaman "KDV" veya "Katma Değer" etiketi taşır — etiket yoksa KDV değildir.',
+      '',
+      'TEK ORAN ÖZEL KURALI — "kalem satırlarındaki KDV" alt toplam sayılmaz:',
+      '  Normal e-Fatura/e-Arşiv tablosunda her kalem için ayrı KDV sütunu görünür (ör. 250,20 + 400,00).',
+      '  Bu kalem satırlarındaki KDV\'ler AYRI breakdown DEĞİL — hepsi aynı oran (%20) için toplamdır.',
+      '  Fatura altındaki "Hesaplanan KDV (%20): 650,20" satırını tek kaynak olarak al.',
+      '  ➜ kdvTutari="650,20"',
+      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"650,20","matrah":"3251,00"}]',
+      '  ⚠ SAKIN kalem satırlarını ayrı oran olarak sayma — hepsi %20 ise TEK BREAKDOWN elemanı.',
       '',
       'Matrah belirgin değilse matrah hesapla: matrah = tutar * 100 / oran (örn. %20, 116 TL → matrah 580).',
       '',
