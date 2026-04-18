@@ -15,6 +15,9 @@ import { ReconciliationEngine } from './reconciliation.engine';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { randomUUID } from 'crypto';
+import * as ExcelJS from 'exceljs';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class KdvControlService {
@@ -781,11 +784,8 @@ export class KdvControlService {
       orderBy: [{ status: 'asc' }, { matchScore: 'desc' }],
     });
 
-    // ExcelJS — stiller + logo + native number format için gerekli.
-    // (SheetJS CE stil yazamıyor, xlsx-js-style görsel eklemiyor.)
-    const ExcelJS = (await import('exceljs')).default;
-    const path = await import('path');
-    const fs = await import('fs');
+    // ExcelJS + path + fs üstte static import ediliyor — webpack bundling
+    // sorunlarını önlemek için dynamic import yerine static kullan.
 
     // Mükellef + dönem bilgileri
     const mukellefName = session.taxpayer

@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
@@ -92,6 +92,40 @@ export default function MizanPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mizan çekilemedi'),
   });
 
+  // Manuel Excel yükleme — Luca dışında kendi dosyandan (xlsx)
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const uploadMut = useMutation({
+    mutationFn: (file: File) =>
+      mizanApi.uploadExcel(
+        { taxpayerId, donem: toDonem(year, month, donemTipi), donemTipi },
+        file,
+      ),
+    onSuccess: (d: any) => {
+      toast.success(`Mizan yüklendi — ${d.rows} hesap satırı`);
+      qc.invalidateQueries({ queryKey: ['mizan-list'] });
+      qc.invalidateQueries({ queryKey: ['mizan', d.mizanId] });
+      if (uploadRef.current) uploadRef.current.value = '';
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message || e?.message || 'Mizan yüklenemedi');
+      if (uploadRef.current) uploadRef.current.value = '';
+    },
+  });
+
+  const handleUploadClick = () => {
+    if (!taxpayerId) { toast.error('Önce mükellef seçin'); setPickerOpen(true); return; }
+    uploadRef.current?.click();
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!/\.(xlsx|xls)$/i.test(f.name)) {
+      toast.error('Sadece .xlsx / .xls dosyası kabul edilir');
+      return;
+    }
+    uploadMut.mutate(f);
+  };
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => mizanApi.remove(id),
     onSuccess: () => {
@@ -155,7 +189,7 @@ export default function MizanPage() {
           Mizan
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          Luca'dan tek tuşla mizan çek, hesap kodu denetimlerini otomatik yap. Geçmiş dönemleri arşivden görüntüle.
+          Kendi Excel dosyanı yükle veya Luca'dan tek tuşla çek. Hesap kodu denetimlerini otomatik yap. Geçmiş dönemleri arşivden görüntüle.
         </p>
       </div>
 
@@ -233,17 +267,41 @@ export default function MizanPage() {
             </div>
           )}
 
+          {/* Birincil: Manuel Mizan Yükle */}
+          <input
+            ref={uploadRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleUploadClick}
+            disabled={uploadMut.isPending || importMut.isPending}
+            className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+          >
+            {uploadMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            Mizan Yükle
+          </button>
+
+          {/* İkincil: Luca'dan Çek */}
           <button
             onClick={() => {
               if (!taxpayerId) { toast.error('Önce mükellef seçin'); setPickerOpen(true); return; }
               importMut.mutate();
             }}
-            disabled={importMut.isPending}
-            className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+            disabled={importMut.isPending || uploadMut.isPending}
+            className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50 transition"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(184,160,111,0.3)',
+              color: GOLD,
+            }}
+            title="Luca Muhasebe'den bağlı hesapla mizan çek"
           >
             {importMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            Luca'dan Mizan Çek
+            Luca'dan Çek
           </button>
         </div>
       </div>
