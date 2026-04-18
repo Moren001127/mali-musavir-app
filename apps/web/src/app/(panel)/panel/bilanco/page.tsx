@@ -426,6 +426,109 @@ export default function BilancoPage() {
               Fark: {fmtTRY(fark)}
             </span>
           </div>
+
+          {/* ─── Finansal Oranlar ve Yorumlama ───────────────────── */}
+          {bilanco.finansalOranlar && (
+            <div>
+              <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={{ color: '#fafaf9' }}>
+                <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+                Finansal Oranlar
+                {bilanco.oncekiDonemBilgi && (
+                  <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa' }}>
+                    Önceki: {bilanco.oncekiDonemBilgi.donem}
+                  </span>
+                )}
+                {bilanco.finansalOzet && (
+                  <span className="text-[11.5px] italic ml-auto" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                    {bilanco.finansalOzet}
+                  </span>
+                )}
+              </h3>
+
+              {/* 3 kategori × N kart */}
+              {(() => {
+                const kategoriler: Array<{ baslik: string; kod: 'likidite' | 'maliYapi' | 'karlilik'; renk: string }> = [
+                  { baslik: 'Likidite', kod: 'likidite', renk: '#60a5fa' },
+                  { baslik: 'Mali Yapı', kod: 'maliYapi', renk: GOLD },
+                  { baslik: 'Kârlılık', kod: 'karlilik', renk: '#22c55e' },
+                ];
+                const yorumRenk = (y: string) => {
+                  if (y.startsWith('✓')) return '#22c55e';
+                  if (y.startsWith('⚠')) return '#f59e0b';
+                  if (y.startsWith('✗')) return '#f43f5e';
+                  return 'rgba(250,250,249,0.6)';
+                };
+                const trendIcon = (t: string | undefined) =>
+                  t === 'up' ? '↑' : t === 'down' ? '↓' : t === 'flat' ? '→' : '';
+                const trendRenk = (t: string | undefined, kod: string) => {
+                  if (!t || t === 'flat') return 'rgba(250,250,249,0.4)';
+                  // Kaldıraç ve borç/özk artması kötüdür — ters yorum
+                  const tersMetrikler = ['kaldirac', 'borcOzk'];
+                  if (tersMetrikler.includes(kod)) {
+                    return t === 'up' ? '#f43f5e' : '#22c55e';
+                  }
+                  return t === 'up' ? '#22c55e' : '#f43f5e';
+                };
+                return (
+                  <div className="space-y-4">
+                    {kategoriler.map((kat) => {
+                      const oranlar = (bilanco.finansalOranlar as any)[kat.kod] || [];
+                      if (oranlar.length === 0) return null;
+                      return (
+                        <div key={kat.kod}>
+                          <div className="text-[11px] uppercase font-bold tracking-[.2em] mb-2 flex items-center gap-2" style={{ color: kat.renk }}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: kat.renk }} />
+                            {kat.baslik}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {oranlar.map((o: any) => (
+                              <div
+                                key={o.kod}
+                                className="rounded-xl p-4"
+                                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                              >
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] uppercase font-bold tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                                    {o.ad}
+                                  </span>
+                                  <span className="text-[10px] font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                                    ideal {o.ideal}
+                                  </span>
+                                </div>
+                                <div className="flex items-baseline justify-between mt-2">
+                                  <span className="font-mono tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 700, color: kat.renk }}>
+                                    {o.degerFmt}
+                                  </span>
+                                  {o.trend && (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[13px] font-bold" style={{ color: trendRenk(o.trend, o.kod) }}>
+                                        {trendIcon(o.trend)}
+                                      </span>
+                                      <span className="text-[11px] font-mono" style={{ color: trendRenk(o.trend, o.kod) }}>
+                                        {o.degisimYuzde > 0 ? '+' : ''}{o.degisimYuzde?.toFixed(1)}%
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                {o.oncekiFmt && (
+                                  <div className="text-[10px] mt-1 font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                                    Önceki: {o.oncekiFmt}
+                                  </div>
+                                )}
+                                <div className="text-[11.5px] mt-2 font-semibold" style={{ color: yorumRenk(o.yorum) }}>
+                                  {o.yorum}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </>
       )}
 
