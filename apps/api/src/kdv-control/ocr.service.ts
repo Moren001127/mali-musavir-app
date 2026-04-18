@@ -2144,6 +2144,10 @@ export class OcrService {
     );
 
     const kdvBreakdown: KdvBreakdownItem[] = [];
+    // KDV tevkifatı: Luca muavininde satıcının "Hesaplanan KDV" alanına NET KDV
+    // (tam KDV − tevkifat) yazılır. Reconciliation'ın doğru eşleşmesi için
+    // OCR çıktısındaki kdvTutari da net olmalı.
+    let kdvTevkifat = 0;
     const subtotalRegex = /<cac:TaxSubtotal>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
     let m: RegExpExecArray | null;
     while ((m = subtotalRegex.exec(xmlInvoiceLevelOnly)) !== null) {
@@ -2154,6 +2158,24 @@ export class OcrService {
         block.match(/<cbc:TaxTypeCode>([^<]+)<\/cbc:TaxTypeCode>/i)?.[1]?.trim() ||
         block.match(/<cac:TaxScheme>[\s\S]*?<cbc:ID>([^<]+)<\/cbc:ID>/i)?.[1]?.trim() ||
         '';
+      // Tevkifat tespiti — KDV'den indirilecek withholding kısmı
+      const isTevkifat =
+        /KDV.*TEVKIFAT|KDV.*TEVKİFAT|TEVKIFAT.*KDV|TEVKİFAT.*KDV/i.test(taxSchemeName) ||
+        // GİB TaxTypeCode listesinde KDV tevkifat kodları 9xxx aralığında
+        /^9\d{3}$/.test(taxSchemeId);
+      if (isTevkifat) {
+        const tutarMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
+        if (tutarMatch) {
+          const tutar = parseFloat(tutarMatch[1]) || 0;
+          if (tutar > 0) {
+            kdvTevkifat += tutar;
+            this.logger.log(
+              `XML parser: KDV tevkifatı yakalandı — Name="${taxSchemeName}" Code="${taxSchemeId}" tutar=${tutar}`,
+            );
+          }
+        }
+        continue;
+      }
       // KDV dışı vergi türlerini ele (ÖİV, Telsiz, ÖTV, Damga, vb.)
       const isNotKdv =
         /ÖZEL\s*İLETİŞİM|OZEL\s*ILETISIM|ÖİV|OIV/i.test(taxSchemeName) ||
@@ -2163,7 +2185,7 @@ export class OcrService {
         /BSMV/i.test(taxSchemeName) ||
         /KKDF/i.test(taxSchemeName) ||
         /KONAKLAMA/i.test(taxSchemeName) ||
-        /STOPAJ|TEVKIFAT|TEVKİFAT/i.test(taxSchemeName) ||
+        /STOPAJ/i.test(taxSchemeName) ||
         // TaxTypeCode: 0003=Damga, 0059=ÖİV, 0071=ÖTV, 4080=Konaklama (GİB kod listesi)
         ['0003', '0059', '0061', '0071', '0072', '0073', '0074', '0075', '0076', '0077', '4080', '9040', '9077'].includes(taxSchemeId);
       const isKdv =
@@ -2200,10 +2222,35 @@ export class OcrService {
       }
     }
 
-    // Toplam KDV: breakdown toplamı. Fallback kaldırıldı — eski "ilk TaxAmount'u al"
-    // kuralı telekom faturalarında ÖİV/Telsiz'i de toplayıp yanlış KDV üretiyordu.
+    // WithholdingTaxTotal bloğu — UBL'de tevkifat bazen burada kodlanır
+    const withholdingRegex = /<cac:WithholdingTaxTotal>([\s\S]*?)<\/cac:WithholdingTaxTotal>/gi;
+    let wm: RegExpExecArray | null;
+    while ((wm = withholdingRegex.exec(xmlInvoiceLevelOnly)) !== null) {
+      const block = wm[1];
+      const taxAmountMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
+      if (taxAmountMatch) {
+        const tutar = parseFloat(taxAmountMatch[1]) || 0;
+        if (tutar > 0) {
+          kdvTevkifat += tutar;
+          this.logger.log(`XML parser: WithholdingTaxTotal yakalandı — tutar=${tutar}`);
+        }
+      }
+    }
+
+    // Toplam KDV: breakdown toplamı. Tevkifat varsa NET KDV döndür (Luca muavininde
+    // satıcının "Hesaplanan KDV" alanına yazılan değer net KDV'dir).
     const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
-    const kdvTutari = kdvToplam > 0 ? this.formatAmount(kdvToplam) : null;
+    const kdvNet = kdvTevkifat > 0 ? Math.max(0, kdvToplam - kdvTevkifat) : kdvToplam;
+    if (kdvTevkifat > 0) {
+      this.logger.log(
+        `XML parser: Tevkifat hesabı — tam KDV=${kdvToplam}, tevkifat=${kdvTevkifat}, net KDV=${kdvNet}`,
+      );
+      // Tek oranlı faturalarda breakdown da net'e indirilsin (UI tutarlılığı için)
+      if (kdvBreakdown.length === 1) {
+        kdvBreakdown[0].tutar = kdvNet;
+      }
+    }
+    const kdvTutari = kdvNet > 0 ? this.formatAmount(kdvNet) : null;
 
     // ─── TOPLAM ÖDENECEK ─────────────────────────────
     let totalTutari: string | null = null;
