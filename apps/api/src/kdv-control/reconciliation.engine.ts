@@ -234,6 +234,14 @@ export class ReconciliationEngine {
       } else if (mihsapBelgeTarihi && this.sameDay(recordDate, mihsapBelgeTarihi)) {
         score += 0.25;
         dateExact = true; // Mihsap'ın belge tarihi Luca ile eşleşiyor → tarih doğrulandı
+      } else if (parsedImgDate && this.likelyOcrYearMisread(recordDate, parsedImgDate)) {
+        // OCR YIL HATASI OLASILIĞI: Gün+ay aynı, yıl farklı (1-5 yıl sapma).
+        // Muhtemelen OCR yıl hanesini yanlış okudu ("6"↔"5", "2024"↔"2026" gibi).
+        // Eşleşmedi demek yerine PARTIAL skor ver → kullanıcı İncele panelinde teyit etsin.
+        score += 0.18;
+        reasons.push(
+          `OCR yıl hatası olasılığı — Luca: ${this.fmtDate(recordDate)} vs Fiş: ${this.fmtDate(parsedImgDate)} (gün/ay aynı, yıl farklı)`,
+        );
       } else if (parsedImgDate || mihsapBelgeTarihi) {
         const parts: string[] = [`Luca: ${this.fmtDate(recordDate)}`];
         if (parsedImgDate) parts.push(`Fiş: ${this.fmtDate(parsedImgDate)}`);
@@ -242,6 +250,20 @@ export class ReconciliationEngine {
       }
     } else if (!imgDate && record.belgeDate) {
       reasons.push('Görselden tarih okunamadı');
+    }
+
+    // ── OCR ŞÜPHE BONUSU ────────────────────────────────────
+    // Belge no uyumsuz ama KDV kuruşu kuruşuna aynı + tarih OCR hatası olasılığı
+    // → iki kayıt büyük ihtimalle aynı belge, sadece OCR yanlış okumuş.
+    // Bu durumu yakalamak için ek bonus — aday listesine girsin, user teyit etsin.
+    if (kdvExact && !belgeNoExact && !dateExact && record.belgeDate && imgDate) {
+      const parsedImgDate = this.parseTrDate(imgDate);
+      if (parsedImgDate && this.likelyOcrYearMisread(new Date(record.belgeDate), parsedImgDate)) {
+        score += 0.12;
+        reasons.push(
+          'Şüpheli eşleşme: KDV tutarı tam aynı + tarihler gün/ay tutuyor → OCR hatası olabilir',
+        );
+      }
     }
 
     // ── STRICT MATCH KURALI ─────────────────────────────────
@@ -263,6 +285,18 @@ export class ReconciliationEngine {
       a.getMonth() === b.getMonth() &&
       a.getDate() === b.getDate()
     );
+  }
+
+  /**
+   * Gün ve ay aynı ama yıl farklıysa → OCR yıl hatası olasılığı.
+   * Sapma 5 yıldan fazla ise coincidence olma ihtimali yükseldiği için
+   * bu kadarla sınırlıyoruz.
+   */
+  private likelyOcrYearMisread(a: Date, b: Date): boolean {
+    if (a.getDate() !== b.getDate()) return false;
+    if (a.getMonth() !== b.getMonth()) return false;
+    const yearDiff = Math.abs(a.getFullYear() - b.getFullYear());
+    return yearDiff > 0 && yearDiff <= 5;
   }
 
   private scoreToStatus(score: number, image: ReceiptImage, strictMatch: boolean): string {
