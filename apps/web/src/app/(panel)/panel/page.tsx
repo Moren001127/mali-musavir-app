@@ -55,17 +55,30 @@ function agentEventToFeed(ev: any) {
   return { time, icon: Icon, title, meta: p.join(' · ') || ts.toLocaleDateString('tr-TR'), kind };
 }
 
-function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat' }) {
+// Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
+type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy';
+const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
+  gold:      { color: '#d4b876', bg: 'rgba(184,160,111,0.08)', border: 'rgba(184,160,111,0.15)', hoverBg: 'rgba(184,160,111,0.04)', hoverBorder: 'rgba(184,160,111,0.18)' },
+  champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.08)', border: 'rgba(232,214,160,0.20)', hoverBg: 'rgba(232,214,160,0.04)', hoverBorder: 'rgba(232,214,160,0.22)' },
+  bronze:    { color: '#bf9c70', bg: 'rgba(160,134,96,0.10)',  border: 'rgba(160,134,96,0.22)',  hoverBg: 'rgba(160,134,96,0.05)',  hoverBorder: 'rgba(160,134,96,0.25)' },
+  copper:    { color: '#d99560', bg: 'rgba(192,133,82,0.10)',  border: 'rgba(192,133,82,0.22)',  hoverBg: 'rgba(192,133,82,0.05)',  hoverBorder: 'rgba(192,133,82,0.25)' },
+  burgundy:  { color: '#c98896', bg: 'rgba(92,42,53,0.14)',    border: 'rgba(201,136,150,0.28)', hoverBg: 'rgba(92,42,53,0.10)',    hoverBorder: 'rgba(201,136,150,0.32)' },
+};
+
+function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
+  const t = ACCENT_TONES[accent];
   const c = (
-    <div className="group rounded-2xl p-5 transition-all duration-300" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', cursor: href ? 'pointer' : 'default' }}
-      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(184,160,111,0.04)'; el.style.borderColor = 'rgba(184,160,111,0.18)'; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)'; }}
+    <div className="group rounded-2xl p-5 transition-all duration-300 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', cursor: href ? 'pointer' : 'default' }}
+      onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)'; }}
       onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.02)'; el.style.borderColor = 'rgba(255,255,255,0.05)'; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
+      {/* Üstten ince altın hairline (kendi tonunda, hover'da belirginleşir) */}
+      <span className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300 group-hover:opacity-100" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, opacity: 0.35 }} />
       <div className="flex items-center justify-between mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={17} /></div>
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color }}><Icon size={17} /></div>
         {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{trend}</span>}
       </div>
       <p className="text-[11px] uppercase font-semibold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{title}</p>
-      <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, letterSpacing: '-0.03em', color: GOLD }}>{value ?? 0}</p>
+      <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, letterSpacing: '-0.03em', color: t.color }}>{value ?? 0}</p>
       {sub && <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.32)' }}>{sub}</p>}
     </div>
   );
@@ -383,6 +396,7 @@ export default function DashboardPage() {
           icon={Users}
           href="/panel/mukellefler"
           sub={passiveCount > 0 ? `${activeCount} aktif · ${passiveCount} pasif` : `${activeCount} aktif`}
+          accent="gold"
         />
         <StatCard
           title="Bekleyen Görev"
@@ -391,6 +405,7 @@ export default function DashboardPage() {
           sub={todayTaskCount > 0 ? `Bugün: ${todayTaskCount}` : nextDueStr ? `Son tarih: ${nextDueStr}` : 'Bugün yok'}
           trend={pendingTasks.length > 0 ? `${pendingTasks.length} kaldı` : undefined}
           trendKind={pendingTasks.length > 0 ? 'down' : 'flat'}
+          accent="champagne"
         />
         <StatCard
           title="Ajan İşlemleri (Bugün)"
@@ -400,6 +415,7 @@ export default function DashboardPage() {
           sub={todayEvents.length > 0 ? `${tKayit} kayıt · ${tAtla} atla · ${tHata} hata` : 'Henüz işlem yok'}
           trend={successRate != null ? `%${Math.round(successRate)} başarı` : undefined}
           trendKind={successRate != null ? (successRate >= 80 ? 'up' : successRate >= 50 ? 'flat' : 'down') : undefined}
+          accent="bronze"
         />
         <StatCard
           title="Kritik Uyarı"
@@ -409,6 +425,7 @@ export default function DashboardPage() {
           sub={criticalCount > 0 ? `${tHata} hata · ${unread} bildirim` : 'Kritik uyarı yok'}
           trend={criticalCount === 0 ? 'değişmedi' : undefined}
           trendKind={criticalCount === 0 ? 'flat' : undefined}
+          accent={criticalCount > 0 ? 'burgundy' : 'copper'}
         />
       </div>
 
