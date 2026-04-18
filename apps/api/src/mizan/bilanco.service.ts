@@ -286,25 +286,36 @@ export class BilancoService {
   }
 
   async listBilancolar(tenantId: string, taxpayerId?: string) {
-    return (this.prisma as any).bilanco.findMany({
+    // taxpayer relation tanımsız → manuel enrich
+    const results = await (this.prisma as any).bilanco.findMany({
       where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
       orderBy: { createdAt: 'desc' },
-      include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-      },
       take: 100,
     });
+    const taxpayerIds = [...new Set(results.map((r: any) => r.taxpayerId))];
+    const taxpayers = taxpayerIds.length
+      ? await (this.prisma as any).taxpayer.findMany({
+          where: { id: { in: taxpayerIds }, tenantId },
+          select: { id: true, firstName: true, lastName: true, companyName: true },
+        })
+      : [];
+    const tpMap = new Map(taxpayers.map((t: any) => [t.id, t]));
+    return results.map((r: any) => ({ ...r, taxpayer: tpMap.get(r.taxpayerId) || null }));
   }
 
   async getBilanco(id: string, tenantId: string) {
     const b = await (this.prisma as any).bilanco.findFirst({
       where: { id, tenantId },
       include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
         mizan: { select: { id: true, donem: true, donemTipi: true } },
       },
     });
     if (!b) throw new NotFoundException('Bilanço bulunamadı');
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: b.taxpayerId, tenantId },
+      select: { id: true, firstName: true, lastName: true, companyName: true },
+    });
+    b.taxpayer = tp || null;
     return b;
   }
 

@@ -186,25 +186,36 @@ export class GelirTablosuService {
   }
 
   async listGelirTablolari(tenantId: string, taxpayerId?: string) {
-    return (this.prisma as any).gelirTablosu.findMany({
+    // taxpayer relation tanımsız → manuel enrich
+    const results = await (this.prisma as any).gelirTablosu.findMany({
       where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
       orderBy: { createdAt: 'desc' },
-      include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
-      },
       take: 100,
     });
+    const taxpayerIds = [...new Set(results.map((r: any) => r.taxpayerId))];
+    const taxpayers = taxpayerIds.length
+      ? await (this.prisma as any).taxpayer.findMany({
+          where: { id: { in: taxpayerIds }, tenantId },
+          select: { id: true, firstName: true, lastName: true, companyName: true },
+        })
+      : [];
+    const tpMap = new Map(taxpayers.map((t: any) => [t.id, t]));
+    return results.map((r: any) => ({ ...r, taxpayer: tpMap.get(r.taxpayerId) || null }));
   }
 
   async getGelirTablosu(id: string, tenantId: string) {
     const gt = await (this.prisma as any).gelirTablosu.findFirst({
       where: { id, tenantId },
       include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
         mizan: { select: { id: true, donem: true, donemTipi: true } },
       },
     });
     if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: gt.taxpayerId, tenantId },
+      select: { id: true, firstName: true, lastName: true, companyName: true },
+    });
+    gt.taxpayer = tp || null;
     return gt;
   }
 

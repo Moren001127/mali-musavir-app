@@ -382,31 +382,52 @@ export class MizanService {
   // ==================== LIST / GET / DELETE ====================
 
   async listMizans(tenantId: string, taxpayerId?: string) {
+    // NOT: Mizan modelinde Prisma `taxpayer` relation'ı tanımlı değil; bu yüzden
+    // include kullanmak yerine ayrı sorgu ile taxpayer bilgilerini çekip enrich
+    // ediyoruz. (İleride schema'ya relation eklendiğinde include'a dönülebilir.)
     const results = await (this.prisma as any).mizan.findMany({
       where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
       orderBy: { createdAt: 'desc' },
       include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
         _count: { select: { hesaplar: true, anomaliler: true } },
       },
       take: 100,
     });
+
+    // taxpayer bilgilerini manuel ekle
+    const taxpayerIds = [...new Set(results.map((r: any) => r.taxpayerId))];
+    const taxpayers = taxpayerIds.length
+      ? await (this.prisma as any).taxpayer.findMany({
+          where: { id: { in: taxpayerIds }, tenantId },
+          select: { id: true, firstName: true, lastName: true, companyName: true },
+        })
+      : [];
+    const tpMap = new Map(taxpayers.map((t: any) => [t.id, t]));
+    const enriched = results.map((r: any) => ({ ...r, taxpayer: tpMap.get(r.taxpayerId) || null }));
+
     this.logger.log(
-      `Mizan list: tenant=${tenantId}, taxpayer=${taxpayerId || '(hepsi)'}, sonuç=${results.length}`,
+      `Mizan list: tenant=${tenantId}, taxpayer=${taxpayerId || '(hepsi)'}, sonuç=${enriched.length}`,
     );
-    return results;
+    return enriched;
   }
 
   async getMizan(id: string, tenantId: string) {
+    // taxpayer relation tanımsız — manuel enrich
     const m = await (this.prisma as any).mizan.findFirst({
       where: { id, tenantId },
       include: {
-        taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
         hesaplar: { orderBy: { rowIndex: 'asc' } },
         anomaliler: true,
       },
     });
     if (!m) throw new NotFoundException('Mizan bulunamadı');
+
+    // taxpayer ekle
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: m.taxpayerId, tenantId },
+      select: { id: true, firstName: true, lastName: true, companyName: true },
+    });
+    m.taxpayer = tp || null;
 
     // Toplam borç/alacak hesapla
     // En düşük seviyeli hesapları topla (detay mizanlarda seviye 0 ana hesap
