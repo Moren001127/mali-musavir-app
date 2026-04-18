@@ -1468,18 +1468,29 @@ export class OcrService {
     //      başına yakalama (A boş gelirse). Şirin Reklam gibi summary kopuk
     //      çıkarıldığında bile tablo satırlarından oran başına toplam kdv çıkar.
     if (result.belgeTipi !== 'Z_RAPORU') {
-      let azureBreakdown = this.extractMultiRateKdvFromAzure(azureText);
-      // A boş veya tek oran → B ile fallback dene
-      if (azureBreakdown.length < 2) {
-        const rowBreakdown = this.extractMultiRateKdvFromItemRows(azureText);
-        if (rowBreakdown.length >= 2) {
-          this.logger.log(
-            `Multi-rate item-row fallback devreye girdi: ${rowBreakdown.length} oran (${originalName})`,
-          );
-          azureBreakdown = rowBreakdown;
-        }
-      }
+      const multiA = this.extractMultiRateKdvFromAzure(azureText);
+      const multiB = this.extractMultiRateKdvFromItemRows(azureText);
+      let azureBreakdown = multiA.length >= 2 ? multiA : (multiB.length >= 2 ? multiB : multiA);
+
+      // TEŞHİS LOGU — multi-rate bulunamadıysa veya Claude'dan az orana
+      // ulaşıldıysa Azure metninin başını log'a bas ki gerçek çıktı görülsün.
+      // Aksi halde kör regex tuning yapmak zorunda kalırız.
       const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
+      const mentionsKdvOran =
+        /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|%\s*\d{1,2}/i.test(
+          this.normalizeAzureText(azureText),
+        );
+      if (azureBreakdown.length < 2 && claudeBreakdownCount < 2 && mentionsKdvOran) {
+        const snippet = (azureText || '').slice(0, 1500).replace(/\s+/g, ' ');
+        this.logger.warn(
+          `Multi-rate DEBUG (${originalName}): Claude=${claudeBreakdownCount} A=${multiA.length} B=${multiB.length} | azure[0..1500]="${snippet}"`,
+        );
+      } else if (multiB.length >= 2 && multiA.length < 2) {
+        this.logger.log(
+          `Multi-rate item-row fallback devreye girdi: ${multiB.length} oran (${originalName})`,
+        );
+      }
+
       // Sadece Azure 2+ oran bulduysa anlamlı (tek oran zaten kdvTutari'dir)
       if (azureBreakdown.length >= 2 && azureBreakdown.length > claudeBreakdownCount) {
         this.logger.warn(
