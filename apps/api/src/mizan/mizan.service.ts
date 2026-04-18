@@ -379,6 +379,11 @@ export class MizanService {
       const anaKod = h.hesapKodu.split('.')[0];
       mevcutAnaHesaplar.add(anaKod);
       const leaf = isLeaf(h.hesapKodu);
+      // Uyarı stratejisi:
+      //   - Seviye 0 (ana hesap, ör. "100") → UYAR
+      //   - Seviye 1 (grup, ör. "100.01") → UYARMA (orta seviye)
+      //   - Seviye 2+ (detay, ör. "100.01.001") → leaf ise UYAR
+      const uyarVer = h.seviye === 0 || (h.seviye >= 2 && leaf);
 
       // 1) TDHP dışı
       if (h.seviye === 0 && !TDHP_ANA_HESAPLAR.has(anaKod)) {
@@ -391,10 +396,10 @@ export class MizanService {
         });
       }
 
-      // 2) Net olmayan bakiye — hem borç hem alacak bakiye var (sadece LEAF hesaplar)
-      // Ana/grup hesaplarında doğal olarak hem borç hem alacak bakiye görünür.
-      // Gerçek problem en detay seviyede tespit edilir.
-      if (leaf && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) > 0) {
+      // 2) Net olmayan bakiye — hem borç hem alacak bakiye var
+      // Ana hesap (seviye 0) veya detay leaf hesap (seviye 2+ leaf) için uyar.
+      // Orta seviye (seviye 1 grup) atlanır — zaten alt kırılım aynı uyarıyı verir.
+      if (uyarVer && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) > 0) {
         anomaliler.push({
           hesapKodu: h.hesapKodu,
           tip: 'NET_OLMAYAN',
@@ -407,11 +412,10 @@ export class MizanService {
       // 3) Zıt bakiye — 120 (alıcılar) alacak bakiye verirse yanlış, 320 (satıcılar) borç bakiye verirse yanlış
       // Filtreler:
       //   a) KONTRA hesaplar (amortisman, karşılık, sermaye düzeltmeleri) muaf
-      //   b) Sadece LEAF hesap kontrol edilir — 108, 108.01, 108.01.001 hepsi
-      //      problemliyse düzeltme 108.01.001'de yapılır, ana satırlarda tekrar
-      //      uyarı vermek anlamsız (aynı hata 3 yerde görünür).
+      //   b) Ana hesap (seviye 0) VEYA detay leaf (seviye 2+ ve leaf) — orta grup atlanır.
+      //      Örn: 100 uyarır, 100.01 atlanır, 100.01.001 uyarır.
       const isKontra = KONTRA_HESAPLAR.has(anaKod);
-      if (!isKontra && leaf) {
+      if (!isKontra && uyarVer) {
         const beklenen = this.beklenenBakiyeTipi(anaKod);
         if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
           anomaliler.push({
