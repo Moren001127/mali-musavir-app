@@ -78,6 +78,29 @@ export default function BilancoPage() {
     onSuccess: () => { toast.success('Kilit açıldı'); qc.invalidateQueries({ queryKey: ['bilanco-list'] }); qc.invalidateQueries({ queryKey: ['bilanco'] }); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Açılamadı'),
   });
+
+  // Manuel düzeltme — 590 Dönem Net Kârı / 591 Dönem Net Zararı
+  const [manuelKar, setManuelKar] = useState('');
+  const [manuelZarar, setManuelZarar] = useState('');
+  const duzeltmelerMut = useMutation({
+    mutationFn: (args: { id: string; donemNetKari: number; donemNetZarari: number }) =>
+      bilancoApi.updateDuzeltmeler(args.id, {
+        donemNetKari: args.donemNetKari,
+        donemNetZarari: args.donemNetZarari,
+      }),
+    onSuccess: () => {
+      toast.success('Manuel düzeltme kaydedildi');
+      qc.invalidateQueries({ queryKey: ['bilanco'] });
+      qc.invalidateQueries({ queryKey: ['bilanco-list'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydedilemedi'),
+  });
+  const parseLocale = (s: string): number => {
+    const c = s.trim();
+    if (!c) return 0;
+    const n = parseFloat(c.replace(/\./g, '').replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  };
   const handleLock = (id: string) => {
     const note = prompt('Kesin kayıt notu (opsiyonel — beyanname no vb.):') || '';
     if (!confirm('Bilanço kesin kayıt olarak işaretlenecek. Sonra düzeltme yapılamaz. Devam?')) return;
@@ -261,6 +284,128 @@ export default function BilancoPage() {
               ]}
             />
           </div>
+
+          {/* Manuel Düzeltme — 590 / 591 (geçici vergi dönemlerinde) */}
+          {(() => {
+            const mevcutDuzeltme = (bilanco.detay as any)?.duzeltmeler || {};
+            const mevcutKar = Number(mevcutDuzeltme.donemNetKari) || 0;
+            const mevcutZarar = Number(mevcutDuzeltme.donemNetZarari) || 0;
+            const manuelVar = mevcutKar > 0 || mevcutZarar > 0;
+            const gelirBagli = bilanco.gelirTablosuBagli || null;
+            const otomatikKaynak = bilanco.otomatikKaynak || null;
+            const isGecici = /GECICI/i.test(String(bilanco.donemTipi || ''));
+            const getirGelirTablosu = () => {
+              if (!gelirBagli) return;
+              setManuelKar(gelirBagli.onerilenKar > 0 ? String(gelirBagli.onerilenKar).replace('.', ',') : '');
+              setManuelZarar(gelirBagli.onerilenZarar > 0 ? String(gelirBagli.onerilenZarar).replace('.', ',') : '');
+            };
+            return (
+              <div
+                className="rounded-xl p-5 space-y-3"
+                style={{
+                  background: 'rgba(184,160,111,0.04)',
+                  border: '1px solid rgba(184,160,111,0.22)',
+                }}
+              >
+                <div className="flex items-center gap-2 text-[13px] flex-wrap">
+                  <Scale size={14} style={{ color: GOLD }} />
+                  <strong style={{ color: GOLD }}>59 Dönem Net Kâr / Zarar — Manuel Düzeltme</strong>
+                  {isGecici && (
+                    <span className="text-[10.5px] font-bold px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, letterSpacing: '.08em' }}>
+                      GEÇİCİ VERGİ DÖNEMİ
+                    </span>
+                  )}
+                  {otomatikKaynak && !manuelVar && (
+                    <span className="text-[10.5px] font-bold px-2 py-[2px] rounded-md flex items-center gap-1" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', letterSpacing: '.08em' }}>
+                      <CheckCircle2 size={10} /> GELİR TABLOSUNDAN OTOMATİK
+                    </span>
+                  )}
+                </div>
+
+                {/* Gelir tablosu bağlantı rozeti */}
+                {gelirBagli ? (
+                  <div className="rounded-lg px-3 py-2 text-[12px] flex items-center justify-between gap-3 flex-wrap" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.22)' }}>
+                    <div className="flex items-center gap-2" style={{ color: '#fafaf9' }}>
+                      <Zap size={12} style={{ color: '#22c55e' }} />
+                      <span>Bağlı gelir tablosu bulundu</span>
+                      <span className="font-mono font-bold" style={{ color: gelirBagli.donemNetKari >= 0 ? '#22c55e' : '#f43f5e' }}>
+                        {gelirBagli.donemNetKari >= 0 ? 'Kâr' : 'Zarar'}: {fmtTRY(Math.abs(gelirBagli.donemNetKari))}
+                      </span>
+                    </div>
+                    <button
+                      onClick={getirGelirTablosu}
+                      disabled={bilanco.locked}
+                      className="px-3 py-1 rounded-md text-[11.5px] font-semibold transition-all"
+                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}
+                    >
+                      ↓ Gelir Tablosundan Getir
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                    Bu bilanço için henüz gelir tablosu üretilmemiş. Geçici vergi döneminde 590/591 otomatik gelsin için önce gelir tablosunu oluşturun veya aşağıya manuel giriş yapın.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div>
+                    <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                      590 Dönem Net Kârı
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={mevcutKar > 0 ? fmtTRY(mevcutKar) : (gelirBagli?.onerilenKar > 0 ? `Öneri: ${fmtTRY(gelirBagli.onerilenKar)}` : '0,00')}
+                      value={manuelKar}
+                      onChange={(e) => setManuelKar(e.target.value)}
+                      disabled={bilanco.locked || duzeltmelerMut.isPending}
+                      className="w-full px-3 py-2 rounded-lg text-[14px] border outline-none font-mono"
+                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(34,197,94,0.25)', color: '#22c55e' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                      591 Dönem Net Zararı
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={mevcutZarar > 0 ? fmtTRY(mevcutZarar) : (gelirBagli?.onerilenZarar > 0 ? `Öneri: ${fmtTRY(gelirBagli.onerilenZarar)}` : '0,00')}
+                      value={manuelZarar}
+                      onChange={(e) => setManuelZarar(e.target.value)}
+                      disabled={bilanco.locked || duzeltmelerMut.isPending}
+                      className="w-full px-3 py-2 rounded-lg text-[14px] border outline-none font-mono"
+                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(244,63,94,0.25)', color: '#f43f5e' }}
+                    />
+                  </div>
+                  <button
+                    onClick={() => duzeltmelerMut.mutate({
+                      id: bilanco.id,
+                      donemNetKari: parseLocale(manuelKar),
+                      donemNetZarari: parseLocale(manuelZarar),
+                    })}
+                    disabled={bilanco.locked || duzeltmelerMut.isPending}
+                    className="px-4 py-2 rounded-lg text-[13px] font-semibold transition-all"
+                    style={{ background: GOLD, color: '#0a0906', opacity: bilanco.locked ? 0.5 : 1 }}
+                  >
+                    {duzeltmelerMut.isPending ? (
+                      <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Kaydediliyor…</span>
+                    ) : 'Kaydet & Yeniden Hesapla'}
+                  </button>
+                </div>
+                {(mevcutKar > 0 || mevcutZarar > 0) && (
+                  <div className="text-[11.5px] flex items-center gap-2" style={{ color: '#22c55e' }}>
+                    <CheckCircle2 size={12} />
+                    Kayıtlı düzeltme: Kâr {fmtTRY(mevcutKar)} · Zarar {fmtTRY(mevcutZarar)} · Net Etki {fmtTRY(mevcutKar - mevcutZarar)}
+                  </div>
+                )}
+                {otomatikKaynak && !manuelVar && (
+                  <div className="text-[11.5px] flex items-center gap-2" style={{ color: '#22c55e' }}>
+                    <CheckCircle2 size={12} />
+                    Otomatik: Gelir tablosundaki <strong>{fmtTRY(Math.abs(otomatikKaynak.donemNetKari))}</strong> {otomatikKaynak.donemNetKari >= 0 ? 'kâr' : 'zarar'} değeri bilançoya uygulandı. Manuel giriş varsa o önceliklidir.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Denklik */}
           <div

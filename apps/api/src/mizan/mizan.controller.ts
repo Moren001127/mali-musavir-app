@@ -229,6 +229,18 @@ export class MizanController {
     await this.bilancoService.deleteBilanco(id, req.user.tenantId);
   }
 
+  /** Manuel düzeltmeleri kaydet (geçici vergi için 590/591 vb.) */
+  @Patch('bilanco/:id/duzeltmeler')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  updateBilancoDuzeltmeler(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { duzeltmeler: Record<string, number> },
+  ) {
+    return this.bilancoService.updateDuzeltmeler(id, req.user.tenantId, body?.duzeltmeler || {});
+  }
+
   @Patch('bilanco/:id/lock')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)

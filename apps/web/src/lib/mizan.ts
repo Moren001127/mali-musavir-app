@@ -63,6 +63,8 @@ export const bilancoApi = {
   get: (id: string) => api.get(`/bilanco/${id}`).then((r) => r.data),
   generate: (data: { mizanId: string; tarih?: string; donemTipi?: string }) =>
     api.post('/bilanco/generate', data).then((r) => r.data),
+  updateDuzeltmeler: (id: string, duzeltmeler: Record<string, number>) =>
+    api.patch(`/bilanco/${id}/duzeltmeler`, { duzeltmeler }).then((r) => r.data),
   lock: (id: string, note?: string) => api.patch(`/bilanco/${id}/lock`, { note }).then((r) => r.data),
   unlock: (id: string, reason: string) => api.patch(`/bilanco/${id}/unlock`, { reason }).then((r) => r.data),
   remove: (id: string) => api.delete(`/bilanco/${id}`).then((r) => r.data),

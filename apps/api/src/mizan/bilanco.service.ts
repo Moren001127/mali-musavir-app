@@ -316,7 +316,132 @@ export class BilancoService {
       select: { id: true, firstName: true, lastName: true, companyName: true },
     });
     b.taxpayer = tp || null;
+
+    // ── Gelir tablosu bağlantısı ─────────────────────────────
+    // Bilanço ile aynı mizandan veya aynı taxpayer+dönem'den üretilmiş gelir
+    // tablosunu bul → donemNetKari'yi al. 590/591 için manuel düzeltme yoksa
+    // otomatik olarak buna göre uygulanır.
+    let gelirTablosu: any = null;
+    try {
+      gelirTablosu = await (this.prisma as any).gelirTablosu.findFirst({
+        where: {
+          tenantId,
+          taxpayerId: b.taxpayerId,
+          OR: [
+            ...(b.mizanId ? [{ mizanId: b.mizanId }] : []),
+            { donem: b.donem },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, donem: true, donemTipi: true, donemNetKari: true, locked: true },
+      });
+    } catch {
+      gelirTablosu = null;
+    }
+    const gelirNet = gelirTablosu ? Number(gelirTablosu.donemNetKari) || 0 : 0;
+
+    // Manuel düzeltmeler (detay.duzeltmeler) — geçici vergi dönemlerinde
+    // 590/591 mizanda olmayabilir; kullanıcı manuel girince veya gelir
+    // tablosundan otomatik geldiğinde burada bilançoya yansıtılır.
+    const duzeltmeler = (b.detay as any)?.duzeltmeler || {};
+    let netKari = Number(duzeltmeler.donemNetKari) || 0;
+    let netZarari = Number(duzeltmeler.donemNetZarari) || 0;
+    const manuelVar = netKari > 0 || netZarari > 0;
+
+    // OTOMATIK BAĞLANTI: Manuel düzeltme yoksa ve gelir tablosu varsa
+    // → net kâr pozitifse 590'a, negatifse 591'e otomatik yaz
+    let otomatikKaynak: any = null;
+    if (!manuelVar && gelirTablosu && gelirNet !== 0) {
+      if (gelirNet > 0) {
+        netKari = gelirNet;
+      } else {
+        netZarari = Math.abs(gelirNet);
+      }
+      otomatikKaynak = {
+        gelirTablosuId: gelirTablosu.id,
+        donem: gelirTablosu.donem,
+        donemTipi: gelirTablosu.donemTipi,
+        donemNetKari: gelirNet,
+      };
+    }
+
+    // UI için: bağlantı bilgisini response'a ekle
+    b.gelirTablosuBagli = gelirTablosu
+      ? {
+          id: gelirTablosu.id,
+          donem: gelirTablosu.donem,
+          donemTipi: gelirTablosu.donemTipi,
+          donemNetKari: gelirNet,
+          onerilenKar: gelirNet > 0 ? gelirNet : 0,
+          onerilenZarar: gelirNet < 0 ? Math.abs(gelirNet) : 0,
+        }
+      : null;
+    b.otomatikKaynak = otomatikKaynak;
+
+    const duzeltmeEtkisi = netKari - netZarari; // + kar, - zarar
+    if (duzeltmeEtkisi !== 0) {
+      // Pasif JSON içinde 59 Dönem Kar/Zarar kalemini güncelle
+      if (b.pasif && typeof b.pasif === 'object') {
+        const p: any = b.pasif;
+        if (p.donemKarZarar) {
+          p.donemKarZarar = {
+            ...p.donemKarZarar,
+            toplam: Number(p.donemKarZarar.toplam || 0) + duzeltmeEtkisi,
+            manuelDuzeltme: duzeltmeEtkisi,
+          };
+        }
+      }
+      b.ozkaynaklar = Number(b.ozkaynaklar || 0) + duzeltmeEtkisi;
+      b.pasifToplami = Number(b.pasifToplami || 0) + duzeltmeEtkisi;
+      // Denklik durumunu güncelle
+      const fark = Number(b.aktifToplami || 0) - Number(b.pasifToplami || 0);
+      b.detay = {
+        ...(b.detay as any),
+        fark,
+        denk: Math.abs(fark) < 0.01,
+      };
+    }
     return b;
+  }
+
+  /**
+   * Bilanço için manuel düzeltme kaydet — özellikle geçici vergi dönemlerinde
+   * mizanda bulunmayan 590 Dönem Net Kârı / 591 Dönem Net Zararı için.
+   * Input örnek: { donemNetKari: 150000, donemNetZarari: 0 }
+   */
+  async updateDuzeltmeler(
+    id: string,
+    tenantId: string,
+    duzeltmeler: Record<string, number>,
+  ) {
+    const b = await (this.prisma as any).bilanco.findFirst({ where: { id, tenantId } });
+    if (!b) throw new NotFoundException('Bilanço bulunamadı');
+    if (b.locked) throw new BadRequestException('Kesin kayıtlı bilançoda düzeltme yapılamaz');
+
+    // Temizle: sadece bilinen alanları (donemNetKari, donemNetZarari) kabul et
+    const cleaned: Record<string, number> = {};
+    const toNum = (v: any): number => {
+      if (typeof v === 'number') return v;
+      const s = String(v ?? '').trim();
+      if (!s) return 0;
+      const n = parseFloat(s.replace(/\./g, '').replace(',', '.'));
+      return isFinite(n) ? n : 0;
+    };
+    const allowedKeys = ['donemNetKari', 'donemNetZarari'];
+    for (const k of allowedKeys) {
+      const n = toNum(duzeltmeler?.[k]);
+      if (n !== 0) cleaned[k] = n;
+    }
+
+    const newDetay = {
+      ...((b.detay as any) || {}),
+      duzeltmeler: cleaned,
+    };
+
+    return (this.prisma as any).bilanco.update({
+      where: { id },
+      data: { detay: newDetay as any },
+    });
   }
 
   async deleteBilanco(id: string, tenantId: string) {
