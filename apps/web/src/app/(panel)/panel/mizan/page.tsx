@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -42,6 +42,7 @@ const AYLAR = [
 
 export default function MizanPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const viewId = searchParams.get('id');
 
@@ -88,6 +89,8 @@ export default function MizanPage() {
       toast.success(`Mizan çekildi — ${d.rows} hesap satırı`);
       qc.invalidateQueries({ queryKey: ['mizan-list'] });
       qc.invalidateQueries({ queryKey: ['mizan', d.mizanId] });
+      // Yeni mizana otomatik yönlen
+      if (d.mizanId) router.replace(`/panel/mizan?id=${d.mizanId}`);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mizan çekilemedi'),
   });
@@ -105,6 +108,8 @@ export default function MizanPage() {
       qc.invalidateQueries({ queryKey: ['mizan-list'] });
       qc.invalidateQueries({ queryKey: ['mizan', d.mizanId] });
       if (uploadRef.current) uploadRef.current.value = '';
+      // Yeni mizana otomatik yönlen — ekranda hemen görünsün
+      if (d.mizanId) router.replace(`/panel/mizan?id=${d.mizanId}`);
     },
     onError: (e: any) => {
       toast.error(e?.response?.data?.message || e?.message || 'Mizan yüklenemedi');
@@ -387,6 +392,26 @@ export default function MizanPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Hesap Listesi: boş hal bildirimi */}
+      {effectiveId && hesaplar.length === 0 && (
+        <div className="rounded-xl p-6 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <FileSpreadsheet size={28} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.35)' }} />
+          <p className="text-[13.5px] font-medium" style={{ color: 'rgba(250,250,249,0.7)' }}>Mizan yükleniyor…</p>
+          <p className="text-[12px] mt-1.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            Hesaplar getiriliyor. Birkaç saniye içinde görünecek. Görünmezse sayfayı yenileyin (F5).
+          </p>
+        </div>
+      )}
+      {!effectiveId && mizanList.length === 0 && taxpayerId && (
+        <div className="rounded-xl p-6 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(184,160,111,0.20)' }}>
+          <FileSpreadsheet size={28} className="mx-auto mb-3" style={{ color: GOLD, opacity: 0.5 }} />
+          <p className="text-[13.5px] font-medium" style={{ color: '#fafaf9' }}>Bu mükellef için henüz mizan yok</p>
+          <p className="text-[12px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Yukarıdan <strong style={{ color: GOLD }}>Mizan Yükle</strong> veya <strong style={{ color: GOLD }}>Luca'dan Çek</strong> ile başla.
+          </p>
         </div>
       )}
 

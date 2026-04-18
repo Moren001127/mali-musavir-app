@@ -376,11 +376,17 @@ export class MizanService {
     if (!m) throw new NotFoundException('Mizan bulunamadı');
 
     // Toplam borç/alacak hesapla
-    const toplamBorc = (m.hesaplar as any[])
-      .filter((h) => h.seviye === 0)
+    // En düşük seviyeli hesapları topla (detay mizanlarda seviye 0 ana hesap
+    // bulunmayabilir — "320.01.A003" tipinde doğrudan alt kırılımlar olabilir).
+    const hesaplar = m.hesaplar as any[];
+    const minSeviye = hesaplar.length > 0
+      ? Math.min(...hesaplar.map((h) => h.seviye ?? 0))
+      : 0;
+    const toplamBorc = hesaplar
+      .filter((h) => (h.seviye ?? 0) === minSeviye)
       .reduce((s, h) => s + Number(h.borcToplami), 0);
-    const toplamAlacak = (m.hesaplar as any[])
-      .filter((h) => h.seviye === 0)
+    const toplamAlacak = hesaplar
+      .filter((h) => (h.seviye ?? 0) === minSeviye)
       .reduce((s, h) => s + Number(h.alacakToplami), 0);
 
     return { ...m, toplamBorc, toplamAlacak };
