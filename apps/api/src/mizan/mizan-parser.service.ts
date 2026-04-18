@@ -94,15 +94,12 @@ export class MizanParserService {
     this.logger.log(
       `Mizan başlık ${headerRowIdx + 1}. satırda bulundu. Sütunlar: ${headers.filter(Boolean).join(' · ')}`,
     );
-    // Örnek — ilk veri satırının borç değeri ne tipte ve ne olarak geliyor
+    // Örnek — ilk veri satırının tüm hücrelerini logla (debug)
     if (rows.length > 0) {
       const sample = rows[0];
-      const borcKey = Object.keys(sample).find((k) => /bor[çc]$/.test(k) || /^bor[çc]/.test(k));
-      if (borcKey) {
-        this.logger.log(
-          `Örnek borç hücresi (satır 1): key="${borcKey}" value=${JSON.stringify(sample[borcKey])} tip=${typeof sample[borcKey]}`,
-        );
-      }
+      this.logger.log(
+        `Örnek satır 1: ${JSON.stringify(sample)}`,
+      );
     }
 
     const results: ParsedMizanRow[] = [];
@@ -131,17 +128,26 @@ export class MizanParserService {
       ).trim();
 
       const borcToplami = this.toDecimal(
-        find([/bor[çc]\s*toplam/, /bor[çc]$/, /^bor[çc]/]),
+        find([/bor[çc]\s*toplam/, /^bor[çc]$/, /^bor[çc]\s/]),
       );
       const alacakToplami = this.toDecimal(
-        find([/alacak\s*toplam/, /alacak$/, /^alacak/]),
+        find([/alacak\s*toplam/, /^alacak$/, /^alacak\s/]),
       );
-      const borcBakiye = this.toDecimal(
-        find([/bor[çc]\s*bak[iı]y/, /bakiye.*bor[çc]/, /^bb$/]),
+      let borcBakiye = this.toDecimal(
+        find([/bor[çc]\s*bak[iı]y/, /bakiye.*bor[çc]/, /^bb$/, /bor[çc]\s*kal/]),
       );
-      const alacakBakiye = this.toDecimal(
-        find([/alacak\s*bak[iı]y/, /bakiye.*alacak/, /^ab$/]),
+      let alacakBakiye = this.toDecimal(
+        find([/alacak\s*bak[iı]y/, /bakiye.*alacak/, /^ab$/, /alacak\s*kal/]),
       );
+
+      // Bakiye sütunları dolmamışsa (merged cell veya farklı format) —
+      // standart mizan mantığı ile borç toplam - alacak toplam farkından
+      // türet. Borç > alacak ise borç bakiyesi, aksi halde alacak bakiyesi.
+      if (borcBakiye === 0 && alacakBakiye === 0) {
+        const fark = borcToplami - alacakToplami;
+        if (fark > 0) borcBakiye = fark;
+        else if (fark < 0) alacakBakiye = Math.abs(fark);
+      }
 
       // Hiçbir tutar yoksa geç
       if (
