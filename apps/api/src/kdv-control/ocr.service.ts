@@ -892,11 +892,36 @@ export class OcrService {
    *   "(Matrah: 1.260,01 TRY)"
    *   "252,00"
    */
+  /**
+   * Azure OCR text'ini normalize et:
+   *   - NBSP (U+00A0) → normal boşluk (regex \s'in yakalamadığı ara form)
+   *   - Full-width "％" → ASCII "%"
+   *   - Full-width rakamlar → ASCII
+   * Aksi halde "Hesaplanan KDV (% 20,00 )" gibi label'lar Azure çıktısında
+   * görünür ama regex eşleşmesi NBSP yüzünden başarısız olabilir.
+   */
+  private normalizeAzureText(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/\u00A0/g, ' ') // NBSP
+      .replace(/\u2007/g, ' ') // figure space
+      .replace(/\u202F/g, ' ') // narrow no-break space
+      .replace(/\uFF05/g, '%'); // full-width %
+  }
+
   private extractKdvOnlyFromTelekomAzure(text: string): number | null {
     if (!text) return null;
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const kdvLabelRe = /KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]/i;
+    // KDV label varyasyonları:
+    //   "Katma Değer Vergisi"                   — Turkcell, Vodafone
+    //   "KDV (20%)"                             — Türk Telekom "(NN%)"
+    //   "KDV (%20)", "K.D.V. (%20)"             — E-fatura / E-arşiv
+    // Başında "Özel İletişim" gibi başka vergi label'ı varsa YAKALAMA
+    // (çünkü onların içinde de "%NN" geçer ama "KDV" substring'i yok).
+    const kdvLabelRe =
+      /KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\s*\(?\s*%?\s*\d/i;
     // Satır başka bir vergi etiketi mi?
     const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN|ÖTV\b|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
 
@@ -940,20 +965,24 @@ export class OcrService {
 
   private extractMultiRateKdvFromAzure(text: string): KdvBreakdownItem[] {
     if (!text) return [];
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const breakdown: KdvBreakdownItem[] = [];
     const seen = new Set<number>();
 
-    // Label regex: "Hesaplanan KDV (% 20,00 )" veya "KDV (%10)"
+    // Label regex: "Hesaplanan KDV (% 20,00 )" / "Hesaplanan KDV(%20)" / "KDV (%10)"
     // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 ibaresi" gibi) önler
-    const labelRe = /(?:HESAPLANAN\s+)?KDV\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
+    // Boşluk toleransı: "Hesaplanan   KDV" (NBSP normalize edildi) ve parantez içi
+    // boşluklar serbest. "%" sonrası ayrıca opsiyonel boşluk (" 20,00" yakala).
+    const labelRe = /(?:HESAPLANAN\s*)?K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
     // Amount regex: "1.006,00" / "42,00" / "320,15" (opsiyonel TL/TRY/₺)
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
+    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       // KDV DIŞI vergi satırlarını atla (Turkcell faturası gibi)
-      if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i.test(line)) {
+      if (skipTaxRe.test(line)) {
         continue;
       }
 
@@ -972,14 +1001,19 @@ export class OcrService {
         if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
       }
 
-      // 2) Aynı satırda bulunamadıysa SONRAKİ 1-3 satıra bak (tablo layout için)
+      // 2) Aynı satırda bulunamadıysa SONRAKİ 1-8 satıra bak (tablo layout için).
+      //    Azure bazen label ve tutarı 4-6 satır ara ile çıkarıyor (özellikle
+      //    parantez içindeki "( % 20,00 )" yapısı yüzünden). 1-3 yetmiyor.
       if (tutar == null) {
-        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+        for (let j = 1; j <= 8 && i + j < lines.length; j++) {
           const nextLine = lines[i + j];
           // Sonraki satır başka bir KDV label'ı ise kes
           if (labelRe.test(nextLine)) break;
           // ÖİV/Telsiz vb. satırı varsa kes
-          if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(nextLine)) break;
+          if (skipTaxRe.test(nextLine)) break;
+          // Saf yapı satırlarını atla ("(", ")", "%", "% 20,00" tek başına)
+          if (/^[\(\)%\s]*$/.test(nextLine)) continue;
+          if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?$/.test(nextLine)) continue;
           const m = nextLine.match(amountRe);
           if (m) {
             const parsed = this.parseAmount(m[1]);
@@ -1276,7 +1310,11 @@ export class OcrService {
     // Claude bunları bazen topluyor. Azure metninde "Özel İletişim" varsa
     // bu telekom faturasıdır — "Katma Değer Vergisi" satırını özel
     // parse edip kdvTutari'yi defansif olarak override et.
-    const isTelekomFatura = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN/i.test(azureText);
+    // NBSP / full-width karakterler regex'i kırmasın diye azureText'i normalize
+    // edilmiş haliyle test et. (extractKdvOnlyFromTelekomAzure kendi içinde
+    // normalize ediyor — ama bu üst seviye trigger için de gerekli.)
+    const normalizedAzureText = this.normalizeAzureText(azureText);
+    const isTelekomFatura = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN/i.test(normalizedAzureText);
     if (isTelekomFatura) {
       const kdvOnlyAmount = this.extractKdvOnlyFromTelekomAzure(azureText);
       if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
