@@ -23,7 +23,25 @@ export type MizanDonemTipi =
  * Denetimde "TDHP dışı" tespiti için.
  */
 const TDHP_ANA_HESAPLAR = new Set([
-  // Aktif — Dönen Varlıklar
+  // Tek basamaklı SINIFLAR (Aktif, Pasif, Gelir, Maliyet, Nazım)
+  '1','2','3','4','5','6','7','9',
+  // İki basamaklı GRUPLAR — Dönen Varlıklar
+  '10','11','12','13','15','17','18','19',
+  // İki basamaklı GRUPLAR — Duran Varlıklar
+  '20','22','23','24','25','26','27','28','29',
+  // İki basamaklı GRUPLAR — Kısa Vadeli Yabancı Kaynaklar
+  '30','32','33','34','35','36','37','38','39',
+  // İki basamaklı GRUPLAR — Uzun Vadeli Yabancı Kaynaklar
+  '40','42','43','44','47','48','49',
+  // İki basamaklı GRUPLAR — Özkaynaklar
+  '50','52','54','57','58','59',
+  // İki basamaklı GRUPLAR — Gelir tablosu
+  '60','61','62','63','64','65','66','67','68','69',
+  // İki basamaklı GRUPLAR — Maliyet hesapları
+  '71','72','73','74','75','76','77','78','79',
+  // İki basamaklı GRUPLAR — Nazım
+  '90','91','92','94','95','96',
+  // Aktif — Dönen Varlıklar (3 basamaklı detay)
   '100','101','102','103','108','110','111','112','118','120','121','122','126','127','128','129',
   '131','132','133','135','136','137','138','139','150','151','152','153','157','158','159',
   '170','171','172','173','178','179','180','181','190','191','192','193','195','196','197','198','199',
@@ -430,18 +448,37 @@ export class MizanService {
     m.taxpayer = tp || null;
 
     // Toplam borç/alacak hesapla
-    // En düşük seviyeli hesapları topla (detay mizanlarda seviye 0 ana hesap
-    // bulunmayabilir — "320.01.A003" tipinde doğrudan alt kırılımlar olabilir).
+    // Türk muhasebe mantığı: mizan hiyerarşi üretir (1 = sınıf → 10 = grup →
+    // 100 = ana hesap → 100.01 = alt → 100.01.01 = detay). Toplam = en üst
+    // seviyenin toplamı (çakışmayı önler).
+    // Öncelik:
+    //   1) Tek basamaklı sınıflar (1, 2, 3...) varsa onlar
+    //   2) Yoksa iki basamaklı gruplar (10, 12, 30...)
+    //   3) Yoksa üç basamaklı ana hesaplar (100, 120, 320...)
+    //   4) Yoksa en düşük seviyeli kayıtlar (fallback)
     const hesaplar = m.hesaplar as any[];
-    const minSeviye = hesaplar.length > 0
-      ? Math.min(...hesaplar.map((h) => h.seviye ?? 0))
-      : 0;
-    const toplamBorc = hesaplar
-      .filter((h) => (h.seviye ?? 0) === minSeviye)
-      .reduce((s, h) => s + Number(h.borcToplami), 0);
-    const toplamAlacak = hesaplar
-      .filter((h) => (h.seviye ?? 0) === minSeviye)
-      .reduce((s, h) => s + Number(h.alacakToplami), 0);
+    const sumOver = (list: any[]) => ({
+      borc: list.reduce((s, h) => s + Number(h.borcToplami), 0),
+      alacak: list.reduce((s, h) => s + Number(h.alacakToplami), 0),
+    });
+    let toplamBorc = 0;
+    let toplamAlacak = 0;
+    const siniflar  = hesaplar.filter((h) => /^[1-9]$/.test(h.hesapKodu));
+    const gruplar   = hesaplar.filter((h) => /^\d{2}$/.test(h.hesapKodu));
+    const anaHes    = hesaplar.filter((h) => /^\d{3}$/.test(h.hesapKodu));
+    const hasTutar  = (list: any[]) =>
+      list.some((h) => Number(h.borcToplami) > 0 || Number(h.alacakToplami) > 0);
+    if (siniflar.length > 0 && hasTutar(siniflar)) {
+      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(siniflar));
+    } else if (gruplar.length > 0 && hasTutar(gruplar)) {
+      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(gruplar));
+    } else if (anaHes.length > 0 && hasTutar(anaHes)) {
+      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(anaHes));
+    } else if (hesaplar.length > 0) {
+      const minSeviye = Math.min(...hesaplar.map((h) => h.seviye ?? 0));
+      const leaves = hesaplar.filter((h) => (h.seviye ?? 0) === minSeviye);
+      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(leaves));
+    }
 
     return { ...m, toplamBorc, toplamAlacak };
   }
