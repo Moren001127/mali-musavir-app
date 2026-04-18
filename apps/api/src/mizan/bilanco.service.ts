@@ -380,13 +380,36 @@ export class BilancoService {
 
     const duzeltmeEtkisi = netKari - netZarari; // + kar, - zarar
     if (duzeltmeEtkisi !== 0) {
-      // Pasif JSON içinde 59 Dönem Kar/Zarar kalemini güncelle
+      // Pasif JSON içinde 59 Dönem Kar/Zarar grubunu güncelle:
+      //   - toplam'a düzeltme etkisini ekle
+      //   - hesaplar[] array'ine 590 (kâr) veya 591 (zarar) alt kalemini ekle
+      //     ki frontend "50 Ödenmiş Sermaye → 500 SERMAYE" gibi alt satır gösterebilsin
       if (b.pasif && typeof b.pasif === 'object') {
         const p: any = b.pasif;
         if (p.donemKarZarar) {
+          // Mevcut hesaplar (mizandaki 590/591 varsa) korunsun
+          const mevcutHesaplar = Array.isArray(p.donemKarZarar.hesaplar)
+            ? [...p.donemKarZarar.hesaplar]
+            : [];
+          // Manuel düzeltme satırlarını ekle
+          if (netKari > 0) {
+            mevcutHesaplar.push({
+              kod: '590',
+              ad: 'Dönem Net Kârı (Manuel)',
+              tutar: netKari,
+            });
+          }
+          if (netZarari > 0) {
+            mevcutHesaplar.push({
+              kod: '591',
+              ad: 'Dönem Net Zararı (-) (Manuel)',
+              tutar: -netZarari,
+            });
+          }
           p.donemKarZarar = {
             ...p.donemKarZarar,
             toplam: Number(p.donemKarZarar.toplam || 0) + duzeltmeEtkisi,
+            hesaplar: mevcutHesaplar,
             manuelDuzeltme: duzeltmeEtkisi,
           };
         }
