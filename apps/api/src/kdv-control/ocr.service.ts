@@ -398,8 +398,10 @@ export class OcrService {
 
     const startMs = Date.now();
     // 429 retry — Anthropic rate limit'e takıldığımızda exponential backoff ile tekrar dene.
-    // retry-after header'ı varsa ona saygı göster; yoksa 15s, 30s, 60s bekle.
-    const MAX_RETRIES = 4;
+    // retry-after header'ı varsa ona saygı göster; yoksa progresif bekle.
+    // 6 retry · toplam ~13dk bekleme penceresi (eski: 4 retry · 3.5dk yetmiyordu)
+    const MAX_RETRIES = 6;
+    const BACKOFF_SECONDS = [10, 25, 60, 120, 240, 360];
     let res: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -426,7 +428,10 @@ export class OcrService {
       });
       if (res.status !== 429 && res.status !== 529) break;
       if (attempt === MAX_RETRIES) break;
-      const retryAfter = Number(res.headers.get('retry-after')) || [15, 30, 60, 120][attempt] || 30;
+      const retryAfter =
+        Number(res.headers.get('retry-after')) ||
+        BACKOFF_SECONDS[attempt] ||
+        60;
       this.logger.warn(
         `Claude rate-limit (${res.status}), ${retryAfter}s bekleniyor… (attempt ${attempt + 1}/${MAX_RETRIES})`,
       );

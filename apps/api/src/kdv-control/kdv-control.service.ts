@@ -1687,19 +1687,26 @@ export class KdvControlService {
     }
 
     // Concurrency limit — Claude rate limit'ine takılmamak için aynı anda
-    // max CLAUDE_OCR_CONCURRENCY işlem (default 3). Kuyrukta sırayla dönüyoruz;
-    // her slot boşaldığında bir sonraki OCR başlar.
-    const CONCURRENCY = Math.max(1, Number(process.env.CLAUDE_OCR_CONCURRENCY) || 3);
+    // max CLAUDE_OCR_CONCURRENCY işlem (default 2). Önceden 3'tü ama Anthropic
+    // organization rate limit'e takılıyordu. 2 + her request arası 800ms throttle ile
+    // 60 req/dakika seviyesinde kalıyoruz (Anthropic Tier 1 = 50 RPM, Tier 2 = 1000 RPM).
+    const CONCURRENCY = Math.max(1, Number(process.env.CLAUDE_OCR_CONCURRENCY) || 2);
+    const REQUEST_THROTTLE_MS = Math.max(0, Number(process.env.OCR_REQUEST_THROTTLE_MS) || 800);
     this.logger.log(
-      `OCR kuyruğu başlatılıyor: ${toQueue.length} fatura (${cacheHits} önceden cached) · concurrency=${CONCURRENCY}`,
+      `OCR kuyruğu başlatılıyor: ${toQueue.length} fatura (${cacheHits} önceden cached) · concurrency=${CONCURRENCY} · throttle=${REQUEST_THROTTLE_MS}ms`,
     );
 
     const queue = [...toQueue];
     let queued = 0;
     const workers = Array.from({ length: CONCURRENCY }, async (_, workerIdx) => {
+      // Worker'ları stagger et — hepsi aynı anda başlamasın (rate limit jitter)
+      if (workerIdx > 0) {
+        await new Promise((r) => setTimeout(r, workerIdx * 400));
+      }
       while (queue.length > 0) {
         const img = queue.shift();
         if (!img) break;
+        const startMs = Date.now();
         try {
           if (img.s3Key?.startsWith('mihsap://')) {
             const invoiceId = img.s3Key.slice('mihsap://'.length);
@@ -1711,6 +1718,11 @@ export class KdvControlService {
           this.logger.error(`OCR worker ${workerIdx} hata [${img.id}]: ${e?.message}`);
         }
         queued++;
+        // İşlem hızlı bittiyse minimum throttle uygula (rate limit nezaket)
+        const elapsed = Date.now() - startMs;
+        if (elapsed < REQUEST_THROTTLE_MS && queue.length > 0) {
+          await new Promise((r) => setTimeout(r, REQUEST_THROTTLE_MS - elapsed));
+        }
       }
     });
 
