@@ -126,6 +126,57 @@ export class GelirTablosuService {
     // Dönem Net Karı
     const donemNetKar = donemKar - vergi.toplam;
 
+    // ── STOK ve MALİYET hesapları (mizandan bakiye) — gelir tablosu altındaki widget için ──
+    // Net bakiye = borçBakiye - alacakBakiye (aktif hesaplar için)
+    const hesapBakiye = (prefix: string): { kod: string; hesapAdi: string; bakiye: number }[] => {
+      const out: { kod: string; hesapAdi: string; bakiye: number }[] = [];
+      for (const [kod, h] of map.entries()) {
+        if (!kod.startsWith(prefix)) continue;
+        // Sadece leaf (en alt seviye) değil, ana hesabı al
+        // seviye 0 varsa onu, yoksa ilk eşleşeni
+        if (h.seviye === 0 || (kod === prefix)) {
+          const net = Number(h.borcBakiye) - Number(h.alacakBakiye);
+          out.push({ kod, hesapAdi: h.hesapAdi, bakiye: net });
+        }
+      }
+      return out;
+    };
+    // Tek hesap için net bakiye (ilk eşleşen seviye 0)
+    const tekHesap = (kod: string): { kod: string; hesapAdi: string; bakiye: number } => {
+      const h = map.get(kod);
+      if (h && h.seviye === 0) {
+        return {
+          kod,
+          hesapAdi: h.hesapAdi,
+          bakiye: Number(h.borcBakiye) - Number(h.alacakBakiye),
+        };
+      }
+      return { kod, hesapAdi: '', bakiye: 0 };
+    };
+
+    const stokHesaplari = [
+      tekHesap('150'), // İlk Madde ve Malzeme
+      tekHesap('151'), // Yarı Mamuller
+      tekHesap('152'), // Mamuller
+      tekHesap('153'), // Ticari Mallar
+      tekHesap('157'), // Diğer Stoklar
+    ];
+    const toplamStok = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
+
+    const maliyetHesaplari = [
+      tekHesap('720'), // Direkt İlk Madde Malzeme Gideri
+      tekHesap('721'), // Direkt İlk Madde Malzeme Gideri Yansıtma (-)
+      tekHesap('730'), // Genel Üretim Giderleri
+      tekHesap('731'), // Genel Üretim Giderleri Yansıtma (-)
+    ];
+
+    // Kalan Stok = Toplam Stok - Satılan Malın Maliyeti (satisMal.toplam)
+    const kalanStok = toplamStok - satisMal.toplam;
+
+    // KKEG — 950 nazım hesabı varsa oradan, yoksa 689 (Diğer Olağandışı Gider)
+    const kkeg950 = tekHesap('950');
+    const kkeg = kkeg950.bakiye !== 0 ? kkeg950.bakiye : olDisiGider.toplam;
+
     const detay = {
       brutSatis,
       satisInd,
@@ -137,6 +188,12 @@ export class GelirTablosuService {
       olDisiGelir,
       olDisiGider,
       vergi,
+      // Yeni: stok & maliyet & KKEG (gelir tablosu altı widget için)
+      stokHesaplari,
+      toplamStok,
+      maliyetHesaplari,
+      kalanStok,
+      kkeg,
     };
 
     // Eski kaydı sil — kesin kayıtlı ise reddet

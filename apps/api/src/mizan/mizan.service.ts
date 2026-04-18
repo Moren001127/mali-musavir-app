@@ -22,6 +22,70 @@ export type MizanDonemTipi =
  * TDHP (Tek Düzen Hesap Planı) standart ana hesap kodu prefix seti.
  * Denetimde "TDHP dışı" tespiti için.
  */
+/**
+ * TDHP'de negatif karakterli ("-") KONTRA hesaplar.
+ * Aktifte olup alacak bakiyesi verir (karşılıklar, amortismanlar, reeskontlar)
+ * ya da pasif/gelir grubunda olup borç bakiyesi verir (iskonto, iade, zarar).
+ * Bu hesaplarda "ZIT BAKIYE" uyarısı verilmemeli — normal, tanım gereği.
+ *
+ * Kaynak: T.C. Maliye Bakanlığı Muhasebe Sistemi Uygulama Genel Tebliği (MSUGT)
+ * Tek Düzen Hesap Planı resmi kod listesi.
+ */
+const KONTRA_HESAPLAR = new Set([
+  // ── AKTİF KONTRA (normalde alacak bakiyesi verir) ──
+  // 1X Dönen Varlıklar karşılıkları ve reeskontları
+  '103', // Verilen Çekler ve Ödeme Emirleri (-) — aktif kontra (Bankalar grubunda)
+  '109', // Diğer Hazır Değerler Karşılığı (-)
+  '119', // Menkul Kıymetler Değer Düşüklüğü Karşılığı (-)
+  '122', // Alacak Senetleri Reeskontu (-)
+  '124', // Kazanılmamış Finansal Kiralama Faiz Gelirleri (-)
+  '129', // Şüpheli Ticari Alacaklar Karşılığı (-)
+  '139', // Diğer Alacaklar Reeskontu/Karşılığı (-)
+  '158', // Stok Değer Düşüklüğü Karşılığı (-)
+  '198', // Sayım ve Tesellüm Noksanları (bazen -)
+  '199', // Diğer Dönen Varlıklar Karşılığı (-)
+  // 2X Duran Varlıklar karşılıkları ve amortismanları
+  '222', // UV Alacak Senetleri Reeskontu (-)
+  '224', // UV Kazanılmamış Finansal Kiralama Faiz Gelirleri (-)
+  '229', // UV Şüpheli Diğer Alacaklar Karşılığı (-)
+  '237', // Bağlı Menkul Kıymetler Değer Düşüklüğü Karşılığı (-)
+  '239', // Diğer Mali Duran Varlıklar Karşılığı (-)
+  '241', // Bağlı Menkul Kıymetler Değer Düşüklüğü Karşılığı UV (-) — bazı sürümlerde
+  '242', // İştirakler Sermaye Taahhütleri (-)
+  '244', // İştiraklere Sermaye Payları Değer Düşüklüğü Karşılığı (-)
+  '246', // Bağlı Ortaklıklar Sermaye Taahhütleri (-)
+  '248', // Bağlı Ortaklıklar Sermaye Payları Değer Düşüklüğü Karşılığı (-)
+  '257', // Birikmiş Amortismanlar (-) — Maddi Duran Varlık
+  '268', // Birikmiş Amortismanlar (-) — Maddi Olmayan Duran Varlık
+  '278', // Birikmiş Tükenme Payları (-) — Özel Tükenmeye Tabi Varlıklar
+  '298', // Stok Değer Düşüklüğü Karşılığı (-) — Diğer Duran
+  '299', // Birikmiş Amortismanlar Diğer (-) — Gelecek Yıllara Ait Giderler vs.
+
+  // ── PASİF KONTRA (normalde borç bakiyesi verir) ──
+  '322', // Borç Senetleri Reeskontu (-)
+  '422', // UV Borç Senetleri Reeskontu (-)
+  // Özkaynak kontra
+  '501', // Ödenmemiş Sermaye (-)
+  // NOT: 502 (Sermaye Düzeltmesi Olumlu Farkları) POZİTİFTİR, kontra DEĞİLDİR
+  '580', // Geçmiş Yıllar Zararları (-)
+  '591', // Dönem Net Zararı (-)
+
+  // ── GELİR / GİDER GRUBU KONTRA ──
+  // 6X Satış İndirimleri (alacak bakiye verir, satıştan düşer)
+  '610', // Satıştan İadeler (-)
+  '611', // Satış İskontoları (-)
+  '612', // Diğer İndirimler (-)
+  // 7/A Yansıtma hesapları (borç bakiye verir, gideri bilançoya yansıtır)
+  '711', // Direkt İlk Madde Malzeme Giderleri Yansıtma (-)
+  '721', // Direkt İşçilik Giderleri Yansıtma (-)
+  '731', // Genel Üretim Giderleri Yansıtma (-)
+  '741', // Hizmet Üretim Maliyeti Yansıtma (-)
+  '751', // Ar-Ge Giderleri Yansıtma (-)
+  '761', // Pazarlama Satış Dağıtım Giderleri Yansıtma (-)
+  '771', // Genel Yönetim Giderleri Yansıtma (-)
+  '781', // Finansman Giderleri Yansıtma (-)
+]);
+
 const TDHP_ANA_HESAPLAR = new Set([
   // Tek basamaklı SINIFLAR (Aktif, Pasif, Gelir, Maliyet, Nazım)
   '1','2','3','4','5','6','7','9',
@@ -324,23 +388,30 @@ export class MizanService {
       }
 
       // 3) Zıt bakiye — 120 (alıcılar) alacak bakiye verirse yanlış, 320 (satıcılar) borç bakiye verirse yanlış
-      const beklenen = this.beklenenBakiyeTipi(anaKod);
-      if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
-        anomaliler.push({
-          hesapKodu: h.hesapKodu,
-          tip: 'ZIT_BAKIYE',
-          seviye: 'WARN',
-          mesaj: `${h.hesapKodu} "${h.hesapAdi}" normalde borç bakiyesi verir ama alacak bakiyesi var`,
-          detay: { alacakBakiye: h.alacakBakiye },
-        });
-      } else if (beklenen === 'alacak' && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) === 0) {
-        anomaliler.push({
-          hesapKodu: h.hesapKodu,
-          tip: 'ZIT_BAKIYE',
-          seviye: 'WARN',
-          mesaj: `${h.hesapKodu} "${h.hesapAdi}" normalde alacak bakiyesi verir ama borç bakiyesi var`,
-          detay: { borcBakiye: h.borcBakiye },
-        });
+      // Tek istisna: TDHP'deki KONTRA hesaplar (amortisman, karşılık, sermaye
+      // düzeltmeleri vb.) — bunlar tanım gereği zıt bakiye verir, normal.
+      // Bireysel cari hesaplar (320.01.XXX gibi alt kırılımlar) uyarı versin
+      // ki müşavir tek tek görüp düzeltebilsin.
+      const isKontra = KONTRA_HESAPLAR.has(anaKod);
+      if (!isKontra) {
+        const beklenen = this.beklenenBakiyeTipi(anaKod);
+        if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
+          anomaliler.push({
+            hesapKodu: h.hesapKodu,
+            tip: 'ZIT_BAKIYE',
+            seviye: 'WARN',
+            mesaj: `${h.hesapKodu} "${h.hesapAdi}" normalde borç bakiyesi verir ama alacak bakiyesi var`,
+            detay: { alacakBakiye: h.alacakBakiye },
+          });
+        } else if (beklenen === 'alacak' && Number(h.borcBakiye) > 0 && Number(h.alacakBakiye) === 0) {
+          anomaliler.push({
+            hesapKodu: h.hesapKodu,
+            tip: 'ZIT_BAKIYE',
+            seviye: 'WARN',
+            mesaj: `${h.hesapKodu} "${h.hesapAdi}" normalde alacak bakiyesi verir ama borç bakiyesi var`,
+            detay: { borcBakiye: h.borcBakiye },
+          });
+        }
       }
     }
 
