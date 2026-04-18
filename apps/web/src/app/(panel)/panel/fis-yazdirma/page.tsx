@@ -1231,9 +1231,10 @@ export default function FisYazdirmaPage() {
           <div
             className="rounded-2xl max-w-lg w-full p-6 space-y-4"
             style={{
-              background: '#ffffff',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,.5)',
-              color: '#0f172a',
+              background: '#12100c',
+              border: '1px solid rgba(184,160,111,0.18)',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,.7)',
+              color: '#fafaf9',
             }}
             onClick={(e) => e.stopPropagation()}
           >
