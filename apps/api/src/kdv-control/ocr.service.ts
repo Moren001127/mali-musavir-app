@@ -204,7 +204,7 @@ export class OcrService {
 
           // ═══ AZURE CROSS-CHECK (ikinci tanık) ═══
           if (azureRawText) {
-            this.crossCheckWithAzure(claudeResult, azureRawText, originalName);
+            this.crossCheckWithAzure(claudeResult, azureRawText, originalName, belgeNoFromFilename);
             // Cross-check sonrası rawText'i Azure metniyle zenginleştir
             // (debug + ileride extractDateFromText fallback için)
             claudeResult.rawText = `[CLAUDE] ${claudeResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
@@ -907,7 +907,24 @@ export class OcrService {
       // Belge no'da noktalama/boşluk tolere et
       const normalizedValue = v.replace(/[^A-Z0-9]/g, '');
       const normalizedText = text.replace(/[^A-Z0-9]/g, '');
-      if (normalizedValue.length < 3) return false;
+      if (normalizedValue.length === 0) return false;
+
+      // Kısa belge no'lar (1-3 hane fiş no, Z no): etiket bazlı arama lazım,
+      // çünkü "20" gibi kısa sayı metinde başka yerlerde tesadüfen geçebilir.
+      // "FIŞ NO 20", "Z NO 20", "BELGE NO 20" gibi etikete eşlik etsin.
+      if (normalizedValue.length <= 3) {
+        const labelPatterns = [
+          new RegExp(`F[İI]Ş\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`Z\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`BELGE\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`MAKBUZ\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`SER[İI]\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`F[İI]S\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+        ];
+        return labelPatterns.some((p) => p.test(text));
+      }
+
+      // 4+ karakter belge no: doğrudan substring match
       return normalizedText.includes(normalizedValue);
     }
 
@@ -948,8 +965,28 @@ export class OcrService {
     result: OcrResult,
     azureText: string,
     originalName?: string,
+    belgeNoFromFilename?: string | null,
   ): void {
     if (!azureText || azureText.length < 10) return;
+
+    // Filename ile belge no eşleşiyorsa, belge no cross-check'ini ATLA.
+    // Filename %100 güvenilir kaynak — Azure render kalitesi düşükse FAIL verebilir
+    // ama bu false positive'dir. SRD2026000000760.xml + OCR=SRD2026000000760 → kesin doğru.
+    let skipBelgeNoCheck = false;
+    if (belgeNoFromFilename && result.belgeNo) {
+      const fn = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const ocr = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (fn === ocr && fn.length >= 4) {
+        skipBelgeNoCheck = true;
+        // Filename match → belge no zaten %95 confidence
+        if (result.fieldConfidence.belgeNo != null) {
+          result.fieldConfidence.belgeNo = Math.max(
+            result.fieldConfidence.belgeNo ?? 0,
+            0.95,
+          );
+        }
+      }
+    }
 
     // ─── Z RAPORU AUTO-CORRECT — Azure metninden direkt çıkar ───
     // Z raporları yapısal: TOPLAM %X / TOPKDV %X / TOPKDV satırları sabit format.
@@ -998,6 +1035,11 @@ export class OcrService {
 
     for (const c of checks) {
       if (!c.value) continue;
+      // Filename ile belge no eşleşiyorsa cross-check'i atla (yukarıdaki blok hallettı)
+      if (c.key === 'belgeNo' && skipBelgeNoCheck) {
+        matched++;
+        continue;
+      }
       const found = this.isFieldInAzureText(c.value, c.field, azureText);
       if (found) {
         matched++;
@@ -1011,11 +1053,15 @@ export class OcrService {
       } else {
         mismatched++;
         mismatches.push(`${c.key}=${c.value}`);
-        // Tanık yok → confidence sıfırla, kullanıcı mutlaka gözden geçirsin
         this.logger.warn(
           `Cross-check FAIL: ${c.key}="${c.value}" Azure metninde yok (${originalName})`,
         );
-        result.fieldConfidence[c.key] = 0.2; // Sıfır yapmıyoruz, Claude doğru olabilir ama şüpheli
+        // Kısa belge no (1-3 hane) için cross-check güvenilmez (etiket bağlamı sorunu).
+        // Bu durumda confidence'ı çok kırma, sadece orta seviyeye çek (0.6).
+        const isShortBelgeNo =
+          c.key === 'belgeNo' &&
+          c.value.replace(/[^A-Z0-9]/gi, '').length <= 3;
+        result.fieldConfidence[c.key] = isShortBelgeNo ? 0.6 : 0.2;
       }
     }
 
