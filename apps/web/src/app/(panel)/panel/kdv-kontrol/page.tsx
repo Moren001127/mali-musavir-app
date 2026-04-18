@@ -12,6 +12,7 @@ import {
   ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap, Upload,
 } from 'lucide-react';
 import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
+import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
 
 const GOLD = '#d4b876';
 
@@ -103,6 +104,13 @@ export default function KdvKontrolPage() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const feedScrollRef = useRef<HTMLDivElement>(null);
   const seenResultIdsRef = useRef<Set<string>>(new Set());
+  /**
+   * Seans yüklendikten sonra ilk veri çekilişinde mevcut result'ları
+   * feed'e akıtmadan "görülmüş" işaretler. Böylece kullanıcı daha önce
+   * çalışmış bir seansa geri dönünce eski sonuçlar "yeniymiş gibi"
+   * tekrar animasyonla akmaz.
+   */
+  const resultsSeededRef = useRef<boolean>(false);
   /** imageId → son görülen ocrStatus. Status değişince bir feed satırı üretilir. */
   const seenImageStatusRef = useRef<Map<string, string>>(new Map());
 
@@ -187,6 +195,8 @@ export default function KdvKontrolPage() {
   useEffect(() => {
     setFeed([]);
     seenResultIdsRef.current.clear();
+    resultsSeededRef.current = false;
+    seenImageStatusRef.current.clear();
   }, [sessionId]);
 
   const { data: stats } = useQuery<any>({
@@ -410,9 +420,23 @@ export default function KdvKontrolPage() {
   /**
    * Sonuçlar DB'den her çekildiğinde yeni gelenleri feed'e animasyonla ekle.
    * Böylece kullanıcı reconcile bastıktan sonra "canlı akış" görür.
+   *
+   * ÖNEMLİ: İlk yüklemede (seans açılışı) mevcut result'lar feed'e akıtılmaz —
+   * sadece "görülmüş" olarak işaretlenir. Ancak bundan sonra gelecek YENİ
+   * result'lar feed'e animasyon ile düşer.
    */
   useEffect(() => {
     if (!results?.length) return;
+
+    // İlk yüklemede mevcut tüm result'ları sessizce "seen" yap — replay olmasın
+    if (!resultsSeededRef.current) {
+      for (const r of results as any[]) {
+        seenResultIdsRef.current.add(r.id);
+      }
+      resultsSeededRef.current = true;
+      return;
+    }
+
     const newOnes = (results as any[]).filter((r) => !seenResultIdsRef.current.has(r.id));
     if (newOnes.length === 0) return;
 
@@ -459,6 +483,13 @@ export default function KdvKontrolPage() {
       const curr = img.ocrStatus as string;
       // Sadece son durum değişimini bir kere logla
       if (prevStatus === curr) continue;
+
+      // Seans ilk açılışında zaten tamamlanmış OCR'ları sessizce "görülmüş" işaretle
+      // Böylece eski seanslar açıldığında OCR event'leri tekrar akmaz.
+      if (!prevStatus && ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE', 'FAILED'].includes(curr)) {
+        seenImageStatusRef.current.set(img.id, curr);
+        continue;
+      }
 
       // İlk defa görüyorsak ve hâlâ işleniyorsa, sessiz kayıt ama logla
       if (!prevStatus && (curr === 'PENDING' || curr === 'PROCESSING')) {
@@ -771,7 +802,8 @@ export default function KdvKontrolPage() {
                 { key: 'matched', label: 'Eşleşen',         val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
                 { key: 'pending', label: 'OCR Teyit Bekler', val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle },
                 { key: 'review', label: 'Eşleşme İncele',    val: (stats.needsReview ?? 0) + (stats.partialMatch ?? 0), color: '#fb923c', icon: AlertTriangle },
-                { key: 'unmatched', label: 'Eşleşmedi',        val: stats.unmatched ?? 0,    color: '#ef4444', icon: XCircle },
+                { key: 'orphanImg', label: 'Tekil Fatura',   val: (results as any[]).filter((r: any) => r.status === 'UNMATCHED' && !r.kdvRecord).length, color: '#ef4444', icon: XCircle, tooltip: 'Luca kaydı bulunmayan faturalar' },
+                { key: 'orphanLuca',label: 'Tekil Luca',      val: (results as any[]).filter((r: any) => r.status === 'UNMATCHED' && !r.image).length,    color: '#ef4444', icon: XCircle, tooltip: 'Fatura görseli bulunmayan Luca satırları' },
               ].map(({ key, label, val, color, icon: Icon, showRerun }) => (
                 <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <div className="flex items-center justify-between mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
@@ -843,6 +875,11 @@ export default function KdvKontrolPage() {
       {/* OCR TEYİT PANELİ — düşük güvenli alanlar için kullanıcı incelemesi */}
       {activeSession?.id && (
         <OcrReviewPanel sessionId={activeSession.id} images={images as any} />
+      )}
+
+      {/* EŞLEŞME İNCELE PANELİ — PARTIAL / NEEDS_REVIEW durumundaki eşleşmeler için kullanıcı kararı */}
+      {activeSession?.id && (
+        <MatchReviewPanel sessionId={activeSession.id} results={results as any[]} />
       )}
 
       {/* CANLI KONTROL AKIŞI — her zaman görünür */}
@@ -1020,7 +1057,8 @@ export default function KdvKontrolPage() {
                   <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
                   <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tip</th>
                   <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşen</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Uyuşmaz.</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>İncele</th>
+                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşmedi</th>
                   <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
                 </tr>
               </thead>
