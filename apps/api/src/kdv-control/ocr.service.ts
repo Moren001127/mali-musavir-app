@@ -1335,6 +1335,13 @@ export class OcrService {
   ): void {
     if (!azureText || azureText.length < 10) return;
 
+    // Auto-fill bloklarından (Z_RAPORU, Telekom, multi-rate) kdvTutari doğrulandı
+    // mı? Evetse cross-check onu tekrar doğrulamayı denemesin — "*467,56" veya
+    // "467 56" gibi Azure format farklılıkları yüzünden confidence yanlış düşüyordu.
+    // Auto-fill demek: Azure'ın kendi regex'iyle zaten KDV'yi bulduk ve Claude ile
+    // karşılaştırdık. İkinci bir cross-check düşürmesine gerek yok.
+    const kdvAlreadyVerifiedByAutoFill = { value: false };
+
     // Filename ile belge no eşleşiyorsa (veya yakın — OCR 1-2 karakter hata yapmış),
     // belge no cross-check'ini ATLA. Filename %100 güvenilir kaynak — Azure render
     // kalitesi düşükse FAIL verebilir ama bu false positive'dir.
@@ -1407,12 +1414,14 @@ export class OcrService {
           );
           result.kdvTutari = zParsed.kdvTutari;
           result.fieldConfidence.kdvTutari = 0.92; // Azure regex match → yüksek güven
+          kdvAlreadyVerifiedByAutoFill.value = true;
         } else {
           // Eşleşiyorsa zaten doğruydu — confidence boost
           result.fieldConfidence.kdvTutari = Math.max(
             result.fieldConfidence.kdvTutari ?? 0,
             0.95,
           );
+          kdvAlreadyVerifiedByAutoFill.value = true;
         }
       }
       // Breakdown'u Azure'dan al (Claude vermediyse veya yanlışsa)
@@ -1452,6 +1461,7 @@ export class OcrService {
           result.fieldConfidence.kdvTutari = 0.92;
           // Breakdown'u da tek oran olarak yeniden yaz
           result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
+          kdvAlreadyVerifiedByAutoFill.value = true;
         }
       }
     }
@@ -1513,6 +1523,7 @@ export class OcrService {
           result.fieldConfidence.kdvTutari ?? 0,
           0.92,
         );
+        kdvAlreadyVerifiedByAutoFill.value = true;
       }
     }
 
@@ -1530,6 +1541,14 @@ export class OcrService {
       if (!c.value) continue;
       // Filename ile belge no eşleşiyorsa cross-check'i atla (yukarıdaki blok hallettı)
       if (c.key === 'belgeNo' && skipBelgeNoCheck) {
+        matched++;
+        continue;
+      }
+      // KDV yukarıdaki auto-fill bloklarında (Z_RAPORU / Telekom / multi-rate)
+      // Azure'ın kendi regex'leriyle zaten doğrulandıysa, bu generic
+      // isFieldInAzureText tarama gereksiz — Azure'ın text formatı ("*467,56",
+      // "467 56" gibi) generic regex'i kırıp false FAIL üretiyordu.
+      if (c.key === 'kdvTutari' && kdvAlreadyVerifiedByAutoFill.value) {
         matched++;
         continue;
       }
@@ -1764,21 +1783,32 @@ export class OcrService {
         }
       }
 
-      // 7. Matrah × oran / 100 ≈ tutar çapraz doğrulama (AGRESİF)
+      // 7. Matrah × oran ≈ tutar çapraz doğrulama (AGRESİF)
+      // Matrah NET (KDV'siz) ise: tutar = matrah × oran / 100
+      // Matrah BRÜT (KDV dahil) ise: tutar = matrah × oran / (100 + oran)
+      // Claude/Azure bazen NET bazen BRÜT matrah veriyor — HER İKİSİNİ de dene,
+      // hangisi ±%2 tolerans içindeyse kabul. Sadece ikisi de başarısız olursa
+      // gerçek inconsistency var demektir.
       for (const b of result.kdvBreakdown) {
         if (b.matrah && b.oran > 0) {
-          const expected = (Number(b.matrah) * b.oran) / 100;
+          const matrah = Number(b.matrah);
           const actual = Number(b.tutar);
-          const diffPct = Math.abs(expected - actual) / (expected || 1);
-          if (diffPct > 0.02) {
-            // %2'den fazla sapma → OCR hatası, item'ı işaretle
+          const expectedNet = (matrah * b.oran) / 100;
+          const expectedBrut = (matrah * b.oran) / (100 + b.oran);
+          const diffNetPct = Math.abs(expectedNet - actual) / (expectedNet || 1);
+          const diffBrutPct = Math.abs(expectedBrut - actual) / (expectedBrut || 1);
+          const bestDiff = Math.min(diffNetPct, diffBrutPct);
+          if (bestDiff > 0.02) {
+            // Her iki formül de tutmuyor → gerçek OCR hatası
             this.logger.warn(
-              `KDV %${b.oran}: matrah×oran=${expected.toFixed(2)} ≠ tutar=${actual.toFixed(2)} (%${Math.round(diffPct * 100)} sapma) — confidence düşürülüyor`,
+              `KDV %${b.oran}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} · NET beklenti=${expectedNet.toFixed(2)} (sapma %${Math.round(diffNetPct * 100)}) · BRÜT beklenti=${expectedBrut.toFixed(2)} (sapma %${Math.round(diffBrutPct * 100)}) — confidence düşürülüyor`,
             );
             breakdownInconsistent = true;
-            // Doğru değer matrah×oran/100 olmalı — düzelt
-            b.tutar = parseFloat(expected.toFixed(2));
+            // Yakın olan formülü kullanarak düzelt
+            const best = diffNetPct < diffBrutPct ? expectedNet : expectedBrut;
+            b.tutar = parseFloat(best.toFixed(2));
           }
+          // İkisinden biri ±%2 tolerans içindeyse tutarlı — dokunma
         }
       }
 
