@@ -184,43 +184,72 @@ export class MizanService {
       );
     }
 
-    await (this.prisma as any).mizan.deleteMany({
-      where: {
-        tenantId: params.tenantId,
-        taxpayerId: params.taxpayerId,
-        donem: params.donem,
-        donemTipi: params.donemTipi || 'AYLIK',
-      },
-    });
+    this.logger.log(
+      `Mizan import başladı: tenant=${params.tenantId}, taxpayer=${params.taxpayerId}, donem=${params.donem}, donemTipi=${params.donemTipi || 'AYLIK'}, satir=${rows.length}`,
+    );
 
-    const mizan = await (this.prisma as any).mizan.create({
-      data: {
-        tenantId: params.tenantId,
-        taxpayerId: params.taxpayerId,
-        donem: params.donem,
-        donemTipi: params.donemTipi || 'AYLIK',
-        kaynak: 'EXCEL',
-        status: 'READY',
-        createdBy: params.createdBy || null,
-      },
-    });
+    try {
+      // Önce eski mizanları sil — aynı dönem için tek mizan kalsın
+      const deleted = await (this.prisma as any).mizan.deleteMany({
+        where: {
+          tenantId: params.tenantId,
+          taxpayerId: params.taxpayerId,
+          donem: params.donem,
+          donemTipi: params.donemTipi || 'AYLIK',
+        },
+      });
+      if (deleted.count > 0) {
+        this.logger.log(`Eski ${deleted.count} mizan silindi (aynı dönem)`);
+      }
 
-    await (this.prisma as any).mizanHesap.createMany({
-      data: rows.map((r) => ({
-        mizanId: mizan.id,
-        hesapKodu: r.hesapKodu,
-        hesapAdi: r.hesapAdi,
-        seviye: r.seviye,
-        borcToplami: r.borcToplami,
-        alacakToplami: r.alacakToplami,
-        borcBakiye: r.borcBakiye,
-        alacakBakiye: r.alacakBakiye,
-        rowIndex: r.rowIndex,
-      })),
-    });
+      // Mizan başlık kaydını oluştur
+      const mizan = await (this.prisma as any).mizan.create({
+        data: {
+          tenantId: params.tenantId,
+          taxpayerId: params.taxpayerId,
+          donem: params.donem,
+          donemTipi: params.donemTipi || 'AYLIK',
+          kaynak: 'EXCEL',
+          status: 'READY',
+          createdBy: params.createdBy || null,
+        },
+      });
+      this.logger.log(`Mizan kaydı oluşturuldu: id=${mizan.id}`);
 
-    await this.analyzeAccounts(mizan.id);
-    return { mizanId: mizan.id, rows: rows.length };
+      // Hesap satırlarını yaz
+      const created = await (this.prisma as any).mizanHesap.createMany({
+        data: rows.map((r) => ({
+          mizanId: mizan.id,
+          hesapKodu: r.hesapKodu,
+          hesapAdi: r.hesapAdi,
+          seviye: r.seviye,
+          borcToplami: r.borcToplami,
+          alacakToplami: r.alacakToplami,
+          borcBakiye: r.borcBakiye,
+          alacakBakiye: r.alacakBakiye,
+          rowIndex: r.rowIndex,
+        })),
+      });
+      this.logger.log(`${created.count} mizan hesap satırı yazıldı`);
+
+      // Denetim — başarısız olursa mizan kaydı yine de duracak (try/catch içinde)
+      try {
+        await this.analyzeAccounts(mizan.id);
+      } catch (analyzeErr: any) {
+        this.logger.warn(
+          `Mizan analizi başarısız (mizan ${mizan.id}): ${analyzeErr?.message}. Mizan kaydı korunuyor.`,
+        );
+      }
+
+      return { mizanId: mizan.id, rows: rows.length };
+    } catch (err: any) {
+      this.logger.error(
+        `Mizan import HATASI: ${err?.message}\n${err?.stack || ''}`,
+      );
+      throw new BadRequestException(
+        `Mizan kaydedilemedi: ${err?.message || 'bilinmeyen hata'}`,
+      );
+    }
   }
 
   // ==================== DENETIM ====================
@@ -353,7 +382,7 @@ export class MizanService {
   // ==================== LIST / GET / DELETE ====================
 
   async listMizans(tenantId: string, taxpayerId?: string) {
-    return (this.prisma as any).mizan.findMany({
+    const results = await (this.prisma as any).mizan.findMany({
       where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -362,6 +391,10 @@ export class MizanService {
       },
       take: 100,
     });
+    this.logger.log(
+      `Mizan list: tenant=${tenantId}, taxpayer=${taxpayerId || '(hepsi)'}, sonuç=${results.length}`,
+    );
+    return results;
   }
 
   async getMizan(id: string, tenantId: string) {
