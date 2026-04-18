@@ -299,6 +299,7 @@ export class OcrService {
       '  "tarih": "YYYY-MM-DD" | null,',
       '  "belgeNo": "...",',
       '  "kdvTutari": "1234,56",',
+      '  "kdvTevkifat": "0,00",',
       '  "toplam": "1499,56",',
       '  "satici": "ABC LTD",',
       '  "kdvOrani": 20,',
@@ -448,10 +449,11 @@ export class OcrService {
       '',
       'Matrah belirgin değilse matrah hesapla: matrah = tutar * 100 / oran (örn. %20, 116 TL → matrah 580).',
       '',
-      '╔══ 5c) KDV TEVKİFATLI FATURA — NET KDV KURALI ══╗',
-      'BİR FATURA TEVKİFATLIYSA kdvTutari = NET KDV (tam KDV − tevkifat tutarı) olarak dön.',
-      'Sebep: Satıcının muavin defterinde "Hesaplanan KDV" alanına NET KDV yazılır;',
-      'reconciliation bu değerle eşleşme arar. Tam KDV dönersen muavinle hiç eşleşmez.',
+      '╔══ 5c) KDV TEVKİFATLI FATURA — İKİ SAYIYI AYRI OKU ══╗',
+      'TEVKİFATLI faturalarda SAKIN matematik yapma — görseldeki iki sayıyı AYRI AYRI kopyala:',
+      '  1. kdvTutari = faturada yazan "Hesaplanan KDV" / "KDV Tutarı" / "KDV(%N)" TAM TUTARI',
+      '  2. kdvTevkifat = faturada yazan "Hesaplanan KDV Tevkifat(%XX)" / "KDV Tevkifatı" TUTARI',
+      'Kodun kendisi net KDV = tam − tevkifat hesaplayacak. Sen sadece iki rakamı OKU.',
       '',
       'TEVKİFAT TESPİTİ — şu markerlar varsa fatura tevkifatlıdır:',
       '  • "Fatura Tipi: TEVKİFAT" / "Senaryo: TEVKİFAT" / "TEVKİFATLI" etiketi',
@@ -459,25 +461,29 @@ export class OcrService {
       '  • "Tevkifata Tabi İşlem Tutarı" satırı',
       '  • "Tevkifat Sebebi" / "Tevkifat Oranı" alanı',
       '',
-      'HESAPLAMA (tek oran):',
-      '  Hesaplanan KDV(%20)           3.788,00   ← TAM KDV (kalem toplamı)',
-      '  Hesaplanan KDV Tevkifat(%50)  1.894,00   ← TEVKİFAT (alıcı öder)',
-      '  → NET KDV = 3.788,00 − 1.894,00 = 1.894,00',
-      '  → kdvTutari = "1894,00"',
-      '  → kdvBreakdown = [{"oran":20,"tutar":"1894,00","matrah":"18940,00"}]  (tutar da NET)',
+      'ÖRNEK 1 — Tevkifatlı fatura (tek oran):',
+      '  Hesaplanan KDV(%20)           3.788,00   ← kdvTutari için bu',
+      '  Hesaplanan KDV Tevkifat(%50)  1.894,00   ← kdvTevkifat için bu',
+      '  Vergiler Dahil Toplam          22.728,00',
+      '  Ödenecek Tutar                 20.834,00',
+      '  → kdvTutari = "3788,00"     (görselde yazan tam KDV)',
+      '  → kdvTevkifat = "1894,00"   (görselde yazan tevkifat tutarı)',
+      '  → toplam = "22728,00"        (Vergiler Dahil Toplam)',
+      '  → kdvBreakdown = [{"oran":20,"tutar":"3788,00","matrah":"18940,00"}]  (tam, net DEĞİL)',
       '',
-      'HESAPLAMA — örnek:',
-      '  Hesaplanan KDV(%20)            3.788,00   (Matrah 18.940,00)',
-      '  Hesaplanan KDV Tevkifat(%50)   1.894,00',
-      '  Vergiler Dahil Toplam          22.728,00   (18.940 + 3.788 tam KDV)',
-      '  Ödenecek Tutar                 20.834,00   (18.940 + 1.894 net KDV)',
-      '  ⚠ "Vergiler Dahil Toplam" tam KDV\'li tutardır, toplam = bu.',
-      '  ⚠ "Ödenecek Tutar" net KDV\'li tutardır (alıcının gerçekten ödediği).',
-      '  → kdvTutari = "1894,00"  (NET, muavinle eşleşmek için)',
-      '  → toplam = "22728,00"  (Vergiler Dahil Toplam, tam KDV\'li olan)',
+      'ÖRNEK 2 — Tevkifatlı fatura (farklı tutarlar):',
+      '  Hesaplanan KDV(%20)           10.560,00',
+      '  Hesaplanan KDV Tevkifat(%50)   5.280,00',
+      '  → kdvTutari = "10560,00"',
+      '  → kdvTevkifat = "5280,00"',
       '',
-      'FATURA TEVKİFATLI DEĞİLSE (hiç tevkifat satırı yoksa): kdvTutari = olağan tam KDV.',
-      '⚠ "Tevkifat" kelimesi faturada GEÇİYORSA ve tutar > 0 ise: kural UYGULANIR, NET döndür.',
+      'TEVKİFATSIZ FATURA:',
+      '  → kdvTevkifat = "0,00" (veya null)',
+      '  → kdvTutari = olağan tam KDV',
+      '',
+      '⚠ KRİTİK: Tevkifatlı faturada kdvTevkifat alanını BOŞ BIRAKMA. Tutarı oku.',
+      '⚠ KRİTİK: kdvTutari = TAM KDV (kendin çıkarma işlemi yapma, kod halleder).',
+      '⚠ "Tevkifat" kelimesi faturada GEÇİYORSA ve tutar varsa: kdvTevkifat\'ı MUTLAKA doldur.',
       '',
       '╔══ 6) TUTAR FORMATI ══╗',
       'Türkiye: nokta binlik ayraç, virgül ondalık. "1.234,56" → output "1234,56" (noktasız, virgüllü).',
@@ -614,8 +620,23 @@ export class OcrService {
     const date = this.formatIsoToTr(parsed.tarih) ?? null;
 
     const belgeNo = parsed.belgeNo ? String(parsed.belgeNo).toUpperCase().trim() : null;
-    const kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
+    let kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
     const toplam = parsed.toplam ? String(parsed.toplam).replace(/\s/g, '') : null;
+
+    // KDV TEVKİFATI — deterministik net KDV hesabı
+    // Claude'dan tam KDV + tevkifat tutarı AYRI alanda gelir (5c bölümü).
+    // Matematiği kod yapar (Claude tutarsız hesapladığı için) — Luca muavininde
+    // satıcının "Hesaplanan KDV" alanına yazılan NET KDV'dir.
+    const kdvTevkifatRaw = parsed.kdvTevkifat ? String(parsed.kdvTevkifat).replace(/\s/g, '') : null;
+    const kdvTevkifatNum = kdvTevkifatRaw ? this.parseAmount(kdvTevkifatRaw) : 0;
+    if (kdvTutari && kdvTevkifatNum > 0) {
+      const tamKdv = this.parseAmount(kdvTutari);
+      const netKdv = Math.max(0, tamKdv - kdvTevkifatNum);
+      this.logger.log(
+        `Claude OCR: tevkifat düşüldü — tam=${tamKdv}, tevkifat=${kdvTevkifatNum}, net=${netKdv}`,
+      );
+      kdvTutari = this.formatAmount(netKdv);
+    }
 
     // Claude'un verdiği alan-bazlı confidence'ı parse et
     const cf = parsed.confidence || {};
@@ -652,6 +673,11 @@ export class OcrService {
         })
         .filter((b: KdvBreakdownItem) => b.tutar > 0 || (b.oran === 0 && !!b.matrah));
       kdvBreakdown = mappedBreakdown.length > 0 ? mappedBreakdown : null;
+    }
+
+    // Tevkifat varsa breakdown tutar'ını da net'e indir (tek oranlı faturalarda UI tutarlılığı)
+    if (kdvBreakdown && kdvBreakdown.length === 1 && kdvTevkifatNum > 0 && kdvTutari) {
+      kdvBreakdown[0].tutar = this.parseAmount(kdvTutari);
     }
 
     // Belge tipi — Claude prompt'unda var
