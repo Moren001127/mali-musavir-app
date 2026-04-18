@@ -160,7 +160,7 @@ export class OcrService {
           `XML parse başarısız (${originalName}): belge no/date/kdv bulunamadı, filename-only döndürülüyor`,
         );
         return {
-          rawText: head512.slice(0, 500),
+          rawText: head4k.slice(0, 500),
           belgeNo: belgeNoFromFilename,
           date: null,
           kdvTutari: null,
