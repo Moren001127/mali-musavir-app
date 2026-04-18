@@ -232,8 +232,11 @@ export class OcrService {
       '  • EFATURA/EARSIV → "Fatura No" / "Belge No" etiketindeki değer.',
       '    Pattern: 3 harf + 4 rakam (yıl) + 9 rakam (sıra) = 16 char, örn. "EFA2026000000093".',
       '    EĞER 13-14 KARAKTER OKUDUYSAN SIFIRLARI ATLADIN — TEKRAR SAY.',
-      '  • Z_RAPORU → "Z NO" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO DEĞİL!',
-      '    Örn. "Z NO: 666" → belgeNo = "666".',
+      '  • Z_RAPORU → SADECE "Z NO" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO / SAAT / TARİH ASLA DEĞİL!',
+      '    ► KRİTİK: "FIŞ NO. 45" görsen bile o "FIŞ NO" — Z_RAPORU\'nda belge no DEĞİL.',
+      '    ► Z raporunda doğru alan: belgenin alt kısmında "Z NO: 670" / "Z NO 670" şeklinde geçer.',
+      '    ► Örnek: "FIŞ NO. 45 ... TOPLAM ... Z NO: 670" → belgeNo = "670" (45 DEĞİL).',
+      '    ► Bazen "Z NO" en altta tek başına yazar (örn. "Z NO 670") — orayı bul.',
       '  • OKC_FIS → "FİŞ NO" / "FIS NO" / "BELGE NO" (3-6 hane).',
       '  • GIDER_PUSULASI → "MAKBUZ NO" / "BELGE NO" / "SERİ NO".',
       '  • SMM → "MAKBUZ NO" / "SERİ NO-SIRA NO" birleşik.',
@@ -251,12 +254,20 @@ export class OcrService {
       '  Bu alanlardan biri tek başına dönme — gerçek belge no bulunana kadar ara.',
       '',
       '╔══ 4) TARİH — TÜRK FORMATI (DD-MM-YYYY) ══╗',
+      'HER MUHASEBE BELGESİNDE MUTLAKA BİR TARİH VARDIR. Genelde en üstte veya en altta görünür.',
+      'Arama yerleri:',
+      '  • Belgenin tepesinde (tarih + saat birlikte olabilir: "10-03-2026 21:30")',
+      '  • "Fatura Tarihi", "Belge Tarihi", "Düzenleme Tarihi", "Fiş Tarihi", "Tanzim Tarihi" etiketleri',
+      '  • Z raporunda: başta tarih, sonra "SAAT" olur',
+      '  • Makbuz/fişte: genelde "TARİH:" etiketi veya serbest format',
       'Türkiye\'de tarih DAİMA "GÜN-AY-YIL" sırasıdır. İLK kısım GÜN, ORTA kısım AY, SON 4 hane YIL.',
       '  • "11-03-2026" = "11.03.2026" = "11/03/2026" = 11 Mart 2026 → output "2026-03-11"',
       '  • "31.12.2025" → 31 Aralık 2025 → output "2025-12-31"',
+      '  • "10-03-2026 21:30" → sadece tarih kısmı: "2026-03-10"',
       'KURAL: Eğer ilk hane 13-31 arasındaysa o KESİNLİKLE gün. Ay 1-12 arası olur.',
       'SAKIN ABD formatı (MM-DD-YYYY) düşünme — Türk belgeleri ASLA öyle yazmaz.',
-      'Etiketler: "Fatura Tarihi", "Belge Tarihi", "Düzenleme Tarihi", "Fiş Tarihi", "Tanzim Tarihi" — hepsi aynı tarih.',
+      '⚠ ÖNEMLİ: Tarih belgede DAİMA vardır — "null" dönmeden önce tüm belgeyi tara.',
+      '  Sadece görsel tamamen okunaksız/hasarlıysa null dön.',
       'Yıl 2020-2050 dışındaysa muhtemelen OCR hatası, confidence düşür.',
       '',
       '╔══ 5) KDV — ÇOK ORANLI / BREAKDOWN ══╗',
@@ -296,11 +307,17 @@ export class OcrService {
       '',
       'ADIM 1: Belge tipini tespit et (EFATURA/EARSIV/OKC_FIS/Z_RAPORU/MAKBUZ/GIDER_PUSULASI/SMM/DEKONT/SEVK_IRSALIYESI/DIGER).',
       'ADIM 2: Tipe göre doğru alandan belge no\'yu KARAKTER KARAKTER kopyala (sıfırları atlama).',
-      'ADIM 3: Tarihi DD-MM-YYYY Türk formatından "YYYY-MM-DD"\'ye çevir (ASLA ay-gün yerini değiştirme).',
+      '         ► Z_RAPORU ise: "Z NO" alanını ara, "FIŞ NO" DEĞİL!',
+      '         ► E-FATURA/EARSIV ise: 16 karakter (3 harf + 13 rakam)',
+      'ADIM 3: TARİHİ MUTLAKA BUL — belgenin üstünde/altında DAİMA vardır.',
+      '         DD-MM-YYYY Türk formatından "YYYY-MM-DD"\'ye çevir.',
+      '         "10-03-2026" → "2026-03-10" (10 Mart 2026, ay-gün YERİNİ DEĞİŞTİRME).',
+      '         Sadece görsel tamamen okunamıyorsa tarih=null dön.',
       'ADIM 4: KDV oranlarını tara — birden fazla varsa breakdown dizisini doldur, kdvTutari = toplam.',
       'ADIM 5: Her alan için gerçekçi confidence skoru ver.',
       '',
       'YASAK: TR1.2, TEMELFATURA, TICARIFATURA, UUID, ETTN, VKN, TCKN asla belge no DEĞİL.',
+      'Z RAPORU YASAK: FIŞ NO / EKÜ NO / AT NO / SAAT / Z NO HARİÇ HİÇBİR ŞEY belge no DEĞİL.',
       'Sadece JSON dön.',
     ].join('\n');
 
@@ -454,12 +471,72 @@ export class OcrService {
     return n;
   }
 
-  /** "2026-03-08" → "08.03.2026" */
+  /**
+   * Claude'un döndürdüğü tarihi "DD.MM.YYYY" Türk formatına normalize eder.
+   * Kabul edilen girdi formatları:
+   *   - "2026-03-08"  (ISO, prompt'ta istenen)
+   *   - "08.03.2026" / "08-03-2026" / "08/03/2026" (TR, kullanıcı hatası)
+   *   - "08 03 2026" (boşluklu OCR)
+   * Ay/gün ambiguous ise (ikisi de 1-12) ISO sırasını koru.
+   */
   private formatIsoToTr(iso?: string | null): string | null {
     if (!iso || typeof iso !== 'string') return null;
-    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return null;
-    return `${m[3]}.${m[2]}.${m[1]}`;
+    const s = iso.trim();
+
+    // 1) ISO — YYYY-MM-DD (canonical)
+    const iso1 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (iso1) {
+      const yy = iso1[1], mo = iso1[2].padStart(2, '0'), dd = iso1[3].padStart(2, '0');
+      if (+mo >= 1 && +mo <= 12 && +dd >= 1 && +dd <= 31) return `${dd}.${mo}.${yy}`;
+    }
+
+    // 2) TR — DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY / DD MM YYYY
+    const tr = s.match(/^(\d{1,2})[.\-\/\s](\d{1,2})[.\-\/\s](\d{4})$/);
+    if (tr) {
+      let dd = +tr[1], mo = +tr[2], yy = +tr[3];
+      // Türk belgeleri DAİMA DD-MM-YYYY. Sadece gün > 12 olduğunda swap mantıklı.
+      if (dd < 1 || mo < 1) return null;
+      if (mo > 12 && dd <= 12) {
+        // Claude yanlışlıkla US formatı döndü, swap
+        [dd, mo] = [mo, dd];
+      }
+      if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
+      if (yy < 2000 || yy > 2050) return null;
+      return `${String(dd).padStart(2, '0')}.${String(mo).padStart(2, '0')}.${yy}`;
+    }
+
+    // 3) YYYY/MM/DD (nadir)
+    const iso2 = s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})$/);
+    if (iso2) {
+      const yy = iso2[1], mo = iso2[2].padStart(2, '0'), dd = iso2[3].padStart(2, '0');
+      if (+mo >= 1 && +mo <= 12 && +dd >= 1 && +dd <= 31) return `${dd}.${mo}.${yy}`;
+    }
+
+    return null;
+  }
+
+  /**
+   * "08.03.2026" Türk formatındaki metni rawText'ten yakalar — Claude tarih döndürmediğinde
+   * fallback olarak kullanılır. En erken (en üstte) bulunan makul tarihi döner.
+   */
+  private extractDateFromText(text: string): string | null {
+    if (!text) return null;
+    // Öncelik: DD-MM-YYYY, DD.MM.YYYY, DD/MM/YYYY
+    const regexes = [
+      /\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})\b/g,
+      /\b(\d{1,2})\s(\d{1,2})\s(\d{4})\b/g,
+    ];
+    for (const re of regexes) {
+      for (const m of text.matchAll(re)) {
+        let dd = +m[1], mo = +m[2];
+        const yy = +m[3];
+        if (yy < 2000 || yy > 2050) continue;
+        if (mo > 12 && dd <= 12) [dd, mo] = [mo, dd];
+        if (mo < 1 || mo > 12 || dd < 1 || dd > 31) continue;
+        return `${String(dd).padStart(2, '0')}.${String(mo).padStart(2, '0')}.${yy}`;
+      }
+    }
+    return null;
   }
 
   /**
@@ -716,6 +793,27 @@ export class OcrService {
       }
     }
 
+    // ─── 2b. Z_RAPORU özel filename override ───
+    // Z raporu filename'i genelde sadece Z NO'dan oluşur ("670.image", "0670.image", "Z670.image").
+    // Standart filename override şartı (≥10 char) bu kısa numaralar için tetiklenmez,
+    // o yüzden Z raporları için ayrı kural koyuyoruz.
+    if (result.belgeTipi === 'Z_RAPORU' && originalName) {
+      const fnBase = originalName.replace(/\.[^/.]+$/, '').trim();
+      // Salt rakam (1-8 hane) veya "Z" + rakam → Z NO kabul
+      const zMatch = fnBase.match(/^Z?(\d{1,8})$/i);
+      if (zMatch) {
+        const zNoFromFilename = zMatch[1];
+        const ocrBn = (result.belgeNo || '').replace(/\D/g, '');
+        if (ocrBn !== zNoFromFilename) {
+          this.logger.warn(
+            `Z_RAPORU filename override: OCR="${result.belgeNo}" → "${zNoFromFilename}" (${originalName})`,
+          );
+          result.belgeNo = zNoFromFilename;
+          if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.95;
+        }
+      }
+    }
+
     // ─── 3. BELGE NO — Pattern/uzunluk kontrolü ───
     if (result.belgeNo) {
       const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -729,31 +827,50 @@ export class OcrService {
       }
     }
 
+    // ─── 3b. TARİH — rawText fallback (Claude null döndürdüyse) ───
+    if (!result.date && result.rawText) {
+      const trDate = this.extractDateFromText(result.rawText);
+      if (trDate) {
+        // DD.MM.YYYY → YYYY-MM-DD ile aynı internal tutmak için DD.MM.YYYY kabul et;
+        // postProcess sonraki adımı YYYY-MM-DD bekliyor — bu fallback için DD.MM bypass.
+        this.logger.warn(
+          `Tarih Claude'tan boş geldi, rawText'ten yakalandı: ${trDate} (${originalName})`,
+        );
+        result.date = trDate; // direkt DD.MM.YYYY (zaten Türk display formatı)
+        if (result.fieldConfidence) result.fieldConfidence.date = 0.7;
+      }
+    }
+
     // ─── 4. TARİH — Ay/gün/yıl geçerlilik ───
+    // Bu noktada result.date formatı DAİMA "DD.MM.YYYY" (formatIsoToTr sonrası Türk display formatı)
     if (result.date) {
-      const m = result.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const m = result.date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       if (!m) {
-        // YYYY-MM-DD değil → null
-        this.logger.warn(`Tarih format bozuk: "${result.date}" (${originalName})`);
-        result.date = null;
-        if (result.fieldConfidence) result.fieldConfidence.date = 0;
-      } else {
-        const yy = +m[1], mo = +m[2], dd = +m[3];
-        if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
-          this.logger.warn(`Tarih geçersiz: ${result.date}`);
+        // DD.MM.YYYY değil → normalize etmeye çalış
+        const normalized = this.formatIsoToTr(result.date);
+        if (normalized) {
+          result.date = normalized;
+        } else {
+          this.logger.warn(`Tarih format bozuk: "${result.date}" (${originalName})`);
           result.date = null;
           if (result.fieldConfidence) result.fieldConfidence.date = 0;
-        } else if (dd <= 12 && mo <= 12 && dd !== mo) {
-          // Ay/gün ambiguous — confidence düşür, kullanıcı teyidine bırak
-          if (result.fieldConfidence && (result.fieldConfidence.date ?? 0) > 0.7) {
-            result.fieldConfidence.date = 0.7;
-          }
         }
-        // Yıl 2000-2050 makul, dışındakilerin confidence'ı düşür
-        if (yy < 2000 || yy > 2050) {
-          this.logger.warn(`Yıl makul dışı: ${yy}`);
-          if (result.fieldConfidence) {
-            result.fieldConfidence.date = Math.min(result.fieldConfidence.date ?? 1, 0.3);
+      }
+
+      // Yeniden kontrol et (normalize edildi olabilir)
+      if (result.date) {
+        const m2 = result.date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+        if (m2) {
+          const dd = +m2[1], mo = +m2[2], yy = +m2[3];
+          if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+            this.logger.warn(`Tarih geçersiz: ${result.date}`);
+            result.date = null;
+            if (result.fieldConfidence) result.fieldConfidence.date = 0;
+          } else if (yy < 2000 || yy > 2050) {
+            this.logger.warn(`Yıl makul dışı: ${yy}`);
+            if (result.fieldConfidence) {
+              result.fieldConfidence.date = Math.min(result.fieldConfidence.date ?? 1, 0.3);
+            }
           }
         }
       }
