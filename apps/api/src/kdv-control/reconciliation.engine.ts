@@ -228,18 +228,30 @@ export class ReconciliationEngine {
     // ── BELGE NO ─────────────────────────────────────────────
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
     if (record.belgeNo && imgBelgeNo) {
-      const similarity = this.stringSimilarity(
-        record.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, ''),
-        imgBelgeNo.toUpperCase().replace(/[^A-Z0-9]/g, ''),
-      );
-      if (similarity >= 0.9) {
+      const normA = this.normalizeBelgeNo(record.belgeNo);
+      const normB = this.normalizeBelgeNo(imgBelgeNo);
+      // Leading zero-stripped karşılaştırma — "0599" = "599"
+      // ÖKC fişlerde Luca genelde sıfır önekli kayıt ("0599"), OCR çıplak ("599")
+      const strippedA = this.stripLeadingZeros(normA);
+      const strippedB = this.stripLeadingZeros(normB);
+      if (normA === normB || strippedA === strippedB) {
+        // Tam aynı veya leading-zero eşiti → exact
         score += belgeNoWeight;
         belgeNoExact = true;
-      } else if (similarity >= 0.7) {
-        score += belgeNoWeight * 0.55;
-        reasons.push(`Belge no kısmi: ${record.belgeNo} ≠ ${imgBelgeNo}`);
       } else {
-        reasons.push(`Belge no uyumsuz: ${record.belgeNo} ≠ ${imgBelgeNo}`);
+        // Hem ham hem stripped versiyonun en yüksek similarity'sini al
+        const simRaw = this.stringSimilarity(normA, normB);
+        const simStripped = this.stringSimilarity(strippedA, strippedB);
+        const similarity = Math.max(simRaw, simStripped);
+        if (similarity >= 0.9) {
+          score += belgeNoWeight;
+          belgeNoExact = true;
+        } else if (similarity >= 0.7) {
+          score += belgeNoWeight * 0.55;
+          reasons.push(`Belge no kısmi: ${record.belgeNo} ≠ ${imgBelgeNo}`);
+        } else {
+          reasons.push(`Belge no uyumsuz: ${record.belgeNo} ≠ ${imgBelgeNo}`);
+        }
       }
     } else if (!record.belgeNo || !imgBelgeNo) {
       score += 0.15;
@@ -354,6 +366,24 @@ export class ReconciliationEngine {
     if (score >= 0.65) return 'PARTIAL_MATCH';
     if (score >= 0.45) return 'PARTIAL_MATCH';
     return 'NEEDS_REVIEW';
+  }
+
+  /** Belge no'yu karşılaştırma için normalize et: UPPER + sadece alfa-sayısal */
+  private normalizeBelgeNo(s: string): string {
+    return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  /**
+   * Sayısal belge no'larda leading zero'ları çıkar. Karışık (harf+rakam) ise
+   * sadece baştaki rakam kısmının leading zero'larını çıkar.
+   * "0599" → "599" · "00123" → "123" · "EFA2026000000093" → aynı (harfle başlar)
+   */
+  private stripLeadingZeros(s: string): string {
+    if (!s) return '';
+    // Tamamı rakamsa
+    if (/^\d+$/.test(s)) return s.replace(/^0+/, '') || '0';
+    // Karışık ise değiştirme — "EFA..." sıfırlar ortasında kritik
+    return s;
   }
 
   /** Levenshtein tabanlı basit string benzerliği */

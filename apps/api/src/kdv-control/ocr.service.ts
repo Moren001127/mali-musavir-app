@@ -413,16 +413,16 @@ export class OcrService {
     // ── KDV BREAKDOWN — çok oranlı belgelerde her KDV oranı için ayrı satır ──
     let kdvBreakdown: KdvBreakdownItem[] | null = null;
     if (Array.isArray(parsed.kdvBreakdown) && parsed.kdvBreakdown.length > 0) {
-      kdvBreakdown = parsed.kdvBreakdown
-        .map((item: any) => {
+      const mappedBreakdown: KdvBreakdownItem[] = parsed.kdvBreakdown
+        .map((item: any): KdvBreakdownItem => {
           const oran = typeof item?.oran === 'number' ? item.oran : parseFloat(String(item?.oran || 0));
           const tutar = this.parseAmount(String(item?.tutar ?? '0'));
           const matrahRaw = item?.matrah;
           const matrah = matrahRaw != null ? this.parseAmount(String(matrahRaw)) : null;
           return { oran: Number.isFinite(oran) ? oran : 0, tutar, matrah };
         })
-        .filter((b: KdvBreakdownItem) => b.tutar > 0 || (b.oran === 0 && b.matrah));
-      if (kdvBreakdown.length === 0) kdvBreakdown = null;
+        .filter((b: KdvBreakdownItem) => b.tutar > 0 || (b.oran === 0 && !!b.matrah));
+      kdvBreakdown = mappedBreakdown.length > 0 ? mappedBreakdown : null;
     }
 
     // Belge tipi — Claude prompt'unda var
