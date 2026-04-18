@@ -883,9 +883,19 @@ export class KdvControlService {
     const now = new Date();
     const tarihStr = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-    const matchedCount = results.filter((r) => r.status === 'MATCHED').length;
-    const partialCount = results.filter((r) => r.status === 'PARTIAL_MATCH').length;
-    const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED' || r.status === 'NEEDS_REVIEW').length;
+    // ─── Sayaç semantiği ─────────────────────────────────
+    // MATCHED       → otomatik tam eşleşme
+    // CONFIRMED     → kullanıcı "İncele"den onayladı (tam eşleşme grubunda say)
+    // PARTIAL_MATCH → kısmi eşleşme (incele)
+    // NEEDS_REVIEW  → düşük güvenli eşleşme (incele)
+    // UNMATCHED     → hiç eşleşme yok (orphan, hatalı)
+    // REJECTED      → kullanıcı reddetti (hatalı)
+    const isMatchedStatus = (s: string) => s === 'MATCHED' || s === 'CONFIRMED';
+    const isReviewStatus = (s: string) => s === 'PARTIAL_MATCH' || s === 'NEEDS_REVIEW';
+    const isErrorStatus = (s: string) => s === 'UNMATCHED' || s === 'REJECTED';
+    const matchedCount = results.filter((r) => isMatchedStatus(r.status)).length;
+    const partialCount = results.filter((r) => isReviewStatus(r.status)).length;
+    const unmatchedCount = results.filter((r) => isErrorStatus(r.status)).length;
 
     const parseKdv = (v: any): number => {
       if (v === null || v === undefined || v === '') return 0;
@@ -910,11 +920,12 @@ export class KdvControlService {
     // Özet için 3 ayrı grup — kullanıcının "fark" kafa karışıklığını çözer
     const sumLucaAll = results.reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
     const sumOcrAll = results.reduce((s, r: any) => s + parseKdv(r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari), 0);
+    // Sadece eşleşen tutarlar: MATCHED + CONFIRMED (kullanıcının onayladıkları)
     const sumLucaMatched = results
-      .filter((r: any) => r.status === 'MATCHED')
+      .filter((r: any) => isMatchedStatus(r.status))
       .reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
     const sumOcrMatched = results
-      .filter((r: any) => r.status === 'MATCHED')
+      .filter((r: any) => isMatchedStatus(r.status))
       .reduce((s, r: any) => s + parseKdv(r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari), 0);
     const fmtTl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 
@@ -1046,11 +1057,11 @@ export class KdvControlService {
         c4.alignment = { horizontal: 'right', vertical: 'middle' };
       }
     };
-    setSummary(9,  'Toplam Satır',       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
-    setSummary(10, '✓ Eşleşen',         matchedCount,                                                       'Fatura OCR (tüm satırlar)', fmtTl(sumOcrAll));
-    setSummary(11, '⚠ Kısmi / İnceleme', partialCount + unmatchedCount,                                      'Luca (sadece eşleşen)',     fmtTl(sumLucaMatched));
-    setSummary(12, 'Eşleşme Oranı',      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Fatura (sadece eşleşen)',   fmtTl(sumOcrMatched));
-    setSummary(13, '',                   '',                                                                'Eşleşenler farkı',          fmtTl(sumLucaMatched - sumOcrMatched));
+    setSummary(9,  'Toplam Satır',                       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
+    setSummary(10, '✓ Eşleşen (otomatik + onaylanan)',   matchedCount,                                                       'Fatura OCR (tüm satırlar)', fmtTl(sumOcrAll));
+    setSummary(11, '⚠ Kısmi / İnceleme',                 partialCount,                                                       'Luca (sadece eşleşen)',     fmtTl(sumLucaMatched));
+    setSummary(12, '✗ Hatalı (orphan + reddedilen)',     unmatchedCount,                                                     'Fatura (sadece eşleşen)',   fmtTl(sumOcrMatched));
+    setSummary(13, 'Eşleşme Oranı',                      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Eşleşenler farkı',          fmtTl(sumLucaMatched - sumOcrMatched));
 
     ws.getRow(14).height = 8;
 
@@ -1089,9 +1100,11 @@ export class KdvControlService {
 
       let durum = '';
       if (r.status === 'MATCHED') durum = '✓ EŞLEŞTİ';
+      else if (r.status === 'CONFIRMED') durum = '✓ ONAYLANDI';
       else if (r.status === 'PARTIAL_MATCH') durum = '⚠ KISMİ';
-      else if (r.status === 'UNMATCHED') durum = '✗ EŞLEŞMEDİ';
       else if (r.status === 'NEEDS_REVIEW') durum = '⚠ İNCELE';
+      else if (r.status === 'UNMATCHED') durum = '✗ EŞLEŞMEDİ';
+      else if (r.status === 'REJECTED') durum = '✗ REDDEDİLDİ';
       else durum = r.status;
 
       const aciklama = !r.image
@@ -1109,11 +1122,11 @@ export class KdvControlService {
       let rowBg = idx % 2 === 0 ? 'FFFFFFFF' : ALT_BG;
       let statusText = 'FF1A1916';
       let statusBold = false;
-      if (r.status === 'MATCHED') {
+      if (r.status === 'MATCHED' || r.status === 'CONFIRMED') {
         rowBg = GREEN_BG; statusText = GREEN_TEXT; statusBold = true;
       } else if (r.status === 'PARTIAL_MATCH' || r.status === 'NEEDS_REVIEW') {
         rowBg = YELLOW_BG; statusText = YELLOW_TEXT; statusBold = true;
-      } else if (r.status === 'UNMATCHED') {
+      } else if (r.status === 'UNMATCHED' || r.status === 'REJECTED') {
         rowBg = RED_BG; statusText = RED_TEXT; statusBold = true;
       }
 

@@ -805,15 +805,30 @@ export default function KdvKontrolPage() {
           </div>
           <div className="p-5">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-              {[
-                { key: 'luca',    label: 'Luca Satırı',       val: stats.totalRecords, color: GOLD,       icon: FileText },
-                { key: 'uploaded',label: 'Yüklenen Fatura',   val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
-                { key: 'read',    label: 'OCR Fatura Okuma',  val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
-                { key: 'pending', label: 'OCR Teyit Bekler',  val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle },
-                { key: 'matched', label: 'Tam Eşleşme',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
-                { key: 'review',  label: 'Eşleşme İncele',    val: (stats.needsReview ?? 0) + (stats.partialMatch ?? 0), color: '#fb923c', icon: AlertTriangle },
-                { key: 'failed',  label: 'Eşleşme Hatalı',    val: (stats.rejected ?? 0) + (stats.unmatched ?? 0), color: '#f43f5e', icon: XCircle },
-              ].map(({ key, label, val, color, icon: Icon, showRerun }) => (
+              {(() => {
+                // Eşleşme Hatalı kartı için kırılım: iki ayrı kovadan geliyor
+                //   (1) Luca var, fatura yok  → lucaOnlyMissing (Luca tarafı orphan)
+                //   (2) Fatura var, Luca yok  → imageOnlyMissing (Fatura tarafı orphan)
+                //   Ayrıca kullanıcı reddettikleri (REJECTED) → ayrı satır
+                const _matched = stats.matched ?? 0;
+                const _review = (stats.needsReview ?? 0) + (stats.partialMatch ?? 0);
+                const _rejected = stats.rejected ?? 0;
+                const _lucaOrphan = Math.max(0, (stats.totalRecords ?? 0) - _matched - _review - _rejected);
+                const _imageOrphan = Math.max(0, (stats.totalImages ?? 0) - _matched - _review - _rejected);
+                const failedSubParts: string[] = [];
+                if (_lucaOrphan > 0) failedSubParts.push(`${_lucaOrphan} fatura yok`);
+                if (_imageOrphan > 0) failedSubParts.push(`${_imageOrphan} Luca yok`);
+                if (_rejected > 0) failedSubParts.push(`${_rejected} reddedilen`);
+                return [
+                  { key: 'luca',    label: 'Luca Satırı',       val: stats.totalRecords, color: GOLD,       icon: FileText },
+                  { key: 'uploaded',label: 'Yüklenen Fatura',   val: stats.totalImages,  color: '#a855f7',  icon: ImageIcon },
+                  { key: 'read',    label: 'OCR Fatura Okuma',  val: readCount,          color: '#60a5fa',  icon: ScanLine, showRerun: hasImages },
+                  { key: 'pending', label: 'OCR Teyit Bekler',  val: stats.needsOcrConfirm ?? 0, color: '#f59e0b', icon: AlertTriangle },
+                  { key: 'matched', label: 'Tam Eşleşme',       val: stats.matched,      color: '#22c55e',  icon: CheckCircle2 },
+                  { key: 'review',  label: 'Eşleşme İncele',    val: _review, color: '#fb923c', icon: AlertTriangle },
+                  { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
+                ];
+              })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
                 <div key={key} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <div className="flex items-center justify-between mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
                     <span className="flex items-center gap-1.5">
@@ -834,6 +849,11 @@ export default function KdvKontrolPage() {
                   <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 700, color: '#fafaf9' }}>
                     {val ?? 0}
                   </p>
+                  {sub && (
+                    <p className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>
+                      {sub}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
