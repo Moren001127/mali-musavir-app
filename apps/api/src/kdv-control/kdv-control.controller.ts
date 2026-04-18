@@ -240,6 +240,18 @@ export class KdvControlController {
     return this.kdvService.deleteImage(imageId, req.user.tenantId);
   }
 
+  /**
+   * Tek bir fatura görselinin OCR'ını yeniden çalıştır.
+   * "OCR FATURA OKUMA" panelinde her satırın yanındaki ⟳ butonu için.
+   * Cache atlanır, manuel teyit sıfırlanır, OCR arkaplanda yeniden çalışır.
+   */
+  @Post('images/:imageId/reocr')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  reocrImage(@Req() req: any, @Param('imageId') imageId: string) {
+    return this.kdvService.reocrSingleImage(imageId, req.user.tenantId);
+  }
+
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
 
   /**

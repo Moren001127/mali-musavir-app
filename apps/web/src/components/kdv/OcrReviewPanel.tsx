@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, AlertTriangle, XCircle, Eye, Loader2, ZoomIn, ZoomOut, X as XIcon, Maximize2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Eye, Loader2, ZoomIn, ZoomOut, X as XIcon, Maximize2, RefreshCw } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
 import { toast } from 'sonner';
 
@@ -187,6 +187,53 @@ export function OcrReviewPanel({
     onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Teyit başarısız'),
   });
 
+  /**
+   * Tek-fatura yeniden OCR: her satırın yanındaki ⟳ butonu ve detay
+   * panelinin üst kısmındaki "Bu faturayı yeniden oku" butonu için.
+   *
+   * useMutation.isPending tek seferde tek mutation takip ettiği için
+   * birden fazla butonun aynı anda loading görünmesi için reocringIds
+   * set'ini ayrıca tutuyoruz (birden fazla satıra hızlıca basılabilir).
+   */
+  const [reocringIds, setReocringIds] = useState<Set<string>>(new Set());
+  const reocrMut = useMutation({
+    mutationFn: (imageId: string) => kdvApi.reocrImage(imageId),
+    onMutate: (imageId) => {
+      setReocringIds((prev) => {
+        const next = new Set(prev);
+        next.add(imageId);
+        return next;
+      });
+    },
+    onSuccess: (_data, imageId) => {
+      toast.success('OCR yeniden başlatıldı — birkaç saniye içinde sonuç gelir');
+      // getImages polling zaten her 3sn'de bir güncelleniyor; tek sefer
+      // anlık invalidate ile durumu PROCESSING'e çek.
+      qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
+      // Set'ten kaldır — polling artık durumu gösterir
+      setReocringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    },
+    onError: (e: any, imageId) => {
+      toast.error(e?.response?.data?.message ?? 'OCR yeniden başlatılamadı');
+      setReocringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    },
+  });
+  const handleReocr = (imageId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    e?.preventDefault();
+    if (reocringIds.has(imageId)) return;
+    reocrMut.mutate(imageId);
+  };
+
   function handleConfirm() {
     if (!activeImg) return;
     // Breakdown varsa toplamı hesapla, yoksa form.kdvTutari'yi kullan
@@ -360,6 +407,8 @@ export function OcrReviewPanel({
             const confirmed = img.isManuallyConfirmed;
             const isSuccess = !confirmed && img.ocrStatus === 'SUCCESS';
             const isPending = !confirmed && !isSuccess;
+            const isReocring = reocringIds.has(img.id) ||
+              ['PENDING', 'PROCESSING'].includes(img.ocrStatus);
             // Accent rengi: teyit=yeşil, success=mavi, bekleyen=turuncu
             const accentColor = confirmed ? '#22c55e' : isSuccess ? '#60a5fa' : '#f59e0b';
             // Confidence rakamı rengi
@@ -369,10 +418,9 @@ export function OcrReviewPanel({
                 ? '#22c55e'
                 : (typeof avg === 'number' && avg < THRESHOLD ? '#f43f5e' : '#f59e0b');
             return (
-              <button
+              <div
                 key={img.id}
-                onClick={() => setActiveId(img.id)}
-                className="w-full text-left px-4 py-3 transition"
+                className="w-full transition relative"
                 style={{
                   background: active
                     ? `${accentColor}1a`
@@ -382,45 +430,78 @@ export function OcrReviewPanel({
                   opacity: (confirmed || isSuccess) && !active ? 0.75 : 1,
                 }}
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <p
-                    className="text-[12px] font-medium truncate flex items-center gap-1.5"
-                    style={{ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' }}
-                  >
-                    {confirmed && <CheckCircle2 size={11} style={{ color: '#22c55e', flexShrink: 0 }} />}
-                    {isSuccess && <CheckCircle2 size={11} style={{ color: '#60a5fa', flexShrink: 0 }} />}
-                    <span className="truncate">{img.originalName}</span>
-                  </p>
-                  {typeof avg === 'number' && (
-                    <span
-                      className="text-[10px] font-bold tabular-nums"
-                      style={{ color: avgColor }}
+                <button
+                  onClick={() => setActiveId(img.id)}
+                  className="w-full text-left px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p
+                      className="text-[12px] font-medium truncate flex items-center gap-1.5"
+                      style={{ color: active ? '#fafaf9' : 'rgba(250,250,249,0.75)' }}
                     >
-                      %{Math.round(avg * 100)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  {confirmed ? (
-                    <span
-                      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
-                    >
-                      Teyit Edildi
-                    </span>
-                  ) : isSuccess ? (
-                    <span
-                      className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}
-                    >
-                      Başarılı
-                    </span>
+                      {confirmed && <CheckCircle2 size={11} style={{ color: '#22c55e', flexShrink: 0 }} />}
+                      {isSuccess && <CheckCircle2 size={11} style={{ color: '#60a5fa', flexShrink: 0 }} />}
+                      <span className="truncate">{img.originalName}</span>
+                    </p>
+                    {typeof avg === 'number' && (
+                      <span
+                        className="text-[10px] font-bold tabular-nums"
+                        style={{ color: avgColor, marginRight: 28 }}
+                      >
+                        %{Math.round(avg * 100)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                    {confirmed ? (
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                      >
+                        Teyit Edildi
+                      </span>
+                    ) : isSuccess ? (
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(96,165,250,0.15)', color: '#60a5fa' }}
+                      >
+                        Başarılı
+                      </span>
+                    ) : (
+                      <StatusTag status={img.ocrStatus} />
+                    )}
+                    <span className="truncate">{img.confirmedBelgeNo ?? img.ocrBelgeNo ?? '—'}</span>
+                  </div>
+                </button>
+                {/* Tek-fatura ⟳ "yeniden OCR" butonu — sağ üst köşe.
+                    Satır seçimini kapatmamak için stopPropagation.
+                    PROCESSING/PENDING durumda spin gösterilir, tıklama disable. */}
+                <button
+                  type="button"
+                  onClick={(e) => handleReocr(img.id, e)}
+                  disabled={isReocring}
+                  title={
+                    isReocring
+                      ? 'OCR işleniyor…'
+                      : 'Bu faturayı yeniden OCR et (cache atlanır)'
+                  }
+                  className="absolute top-2.5 right-2.5 inline-flex items-center justify-center w-6 h-6 rounded-md transition disabled:opacity-70"
+                  style={{
+                    background: isReocring
+                      ? 'rgba(96,165,250,0.18)'
+                      : 'rgba(184,160,111,0.12)',
+                    border: `1px solid ${isReocring ? 'rgba(96,165,250,0.35)' : 'rgba(184,160,111,0.3)'}`,
+                    color: isReocring ? '#60a5fa' : GOLD,
+                    cursor: isReocring ? 'wait' : 'pointer',
+                  }}
+                >
+                  {isReocring ? (
+                    <Loader2 size={11} className="animate-spin" />
                   ) : (
-                    <StatusTag status={img.ocrStatus} />
+                    <RefreshCw size={11} />
                   )}
-                  <span className="truncate">{img.confirmedBelgeNo ?? img.ocrBelgeNo ?? '—'}</span>
-                </div>
-              </button>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -523,6 +604,31 @@ export function OcrReviewPanel({
                     : activeImg.ocrStatus === 'SUCCESS'
                       ? 'Onayla & Sonraki'
                       : 'Teyit Et & Sonraki'}
+                </button>
+                {/* Bu faturayı yeniden OCR et — aktif kayıtta hızlı erişim.
+                    Sol listedeki ⟳ ile aynı işi yapar, ama detay panelinden tek
+                    tıkta erişim için burada da var. */}
+                <button
+                  type="button"
+                  onClick={() => handleReocr(activeImg.id)}
+                  disabled={
+                    reocringIds.has(activeImg.id) ||
+                    ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
+                  style={{
+                    background: 'rgba(184,160,111,0.1)',
+                    color: GOLD,
+                    border: '1px solid rgba(184,160,111,0.28)',
+                  }}
+                  title="Bu faturayı yeniden OCR et (cache atlanır)"
+                >
+                  {reocringIds.has(activeImg.id) ||
+                  ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus) ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <RefreshCw size={12} />
+                  )}
                 </button>
                 {previewUrl && (
                   <a

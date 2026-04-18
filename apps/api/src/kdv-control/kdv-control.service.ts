@@ -808,6 +808,59 @@ export class KdvControlService {
     });
   }
 
+  /**
+   * Tek bir fatura görselinin OCR'ını sıfırlayıp yeniden çalıştırır.
+   * Frontend'deki "her fatura satırının yanında ⟳ OCR Yap" butonu için.
+   *
+   * Cache atlanır (force-fresh) — kullanıcı bu butona zaten "yeniden oku"
+   * niyetiyle basıyor, eski sonucu kopyalamak işe yaramaz. Manuel teyit
+   * (isManuallyConfirmed) sıfırlanır ki yeni OCR sonucu yazılabilsin.
+   */
+  async reocrSingleImage(imageId: string, tenantId: string) {
+    const image = await this.prisma.receiptImage.findFirst({
+      where: { id: imageId, session: { tenantId } },
+    });
+    if (!image) throw new NotFoundException('Görsel bulunamadı');
+    if (!image.s3Key) {
+      throw new BadRequestException('Görselin kaynağı (s3Key) yok — OCR yapılamaz');
+    }
+
+    // OCR sonuçlarını sıfırla — yeni sonuç temiz yazılsın.
+    // confirmedKdvBreakdown (Json?) Prisma'da plain null kabul etmiyor;
+    // isManuallyConfirmed=false olduğu için zaten okunmayacak — bu yüzden
+    // dokunmuyoruz, sadece flag'i sıfırlıyoruz. Yeni OCR ocrKdvBreakdown'a yazar.
+    await this.prisma.receiptImage.update({
+      where: { id: imageId },
+      data: {
+        ocrStatus: 'PROCESSING',
+        isManuallyConfirmed: false,
+        confirmedBelgeNo: null,
+        confirmedDate: null,
+        confirmedKdvTutari: null,
+      },
+    });
+
+    // Arkaplanda çalıştır — HTTP isteğini bloke etmiyoruz, frontend polling'le takip eder.
+    (async () => {
+      try {
+        if (image.s3Key.startsWith('mihsap://')) {
+          const invoiceId = image.s3Key.slice('mihsap://'.length);
+          await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId);
+        } else {
+          await this.runOcrForImage(image.id, image.s3Key);
+        }
+      } catch (err: any) {
+        this.logger.error(`reocrSingleImage [${imageId}]: ${err?.message}`);
+      }
+    })();
+
+    return {
+      queued: true,
+      imageId,
+      message: 'OCR yeniden başlatıldı — birkaç saniye içinde sonuç gelir',
+    };
+  }
+
   /** Görseli sil (DB) — S3'ten silme şimdilik atlanıyor */
   async deleteImage(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({

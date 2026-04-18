@@ -178,6 +178,17 @@ export const kdvApi = {
       })
       .then((r) => r.data),
 
+  /**
+   * Tek bir fatura görselinin OCR'ını yeniden çalıştır.
+   * Her satırın yanındaki ⟳ "OCR Yap" butonu için.
+   * Cache atlanır, manuel teyit sıfırlanır, arkaplanda OCR çalışır;
+   * frontend periyodik olarak getImages ile durumu yeniler.
+   */
+  reocrImage: (imageId: string) =>
+    api
+      .post(`/kdv-control/images/${imageId}/reocr`)
+      .then((r) => r.data as { queued: boolean; imageId: string; message: string }),
+
   /* ── EŞLEŞTİRME ── */
   reconcile: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/reconcile`).then((r) => r.data),
