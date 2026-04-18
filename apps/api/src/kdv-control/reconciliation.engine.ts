@@ -73,8 +73,11 @@ export class ReconciliationEngine {
     const createData: any[] = [];
 
     // Virtual record match sonucunu orijinal satırların hepsine fan-out et.
-    // Tek imageId, birden çok kdvRecordId — her biri ayrı ReconciliationResult
-    // satırı olarak oluşturulur (status/score/reasons hepsine aynı).
+    // DB kısıtı: ReconciliationResult.imageId @unique → aynı imageId sadece
+    // BİR satırda olabilir. Multi-rate Luca kaydı (aynı faturaya bağlı 2-3
+    // satır) için: İLK orijinal kayıt imageId ile, KALAN kayıtlar imageId=null
+    // ama status/score/reasons aynı + "primary link" işareti. UI iki satırı da
+    // MATCHED görür, schema kısıtını ihlal etmez.
     const fanOutMatch = (
       record: KdvRecord,
       imageId: string,
@@ -83,17 +86,21 @@ export class ReconciliationEngine {
       reasons: string[],
     ) => {
       const originalIds = virtualGroups.get(record.id) ?? [record.id];
-      for (const origId of originalIds) {
+      originalIds.forEach((origId, idx) => {
         usedRecordIds.add(origId);
+        const isPrimary = idx === 0;
         createData.push({
           sessionId,
           kdvRecordId: origId,
-          imageId,
+          // Sadece ilk kayıt imageId alır — unique constraint gereği
+          imageId: isPrimary ? imageId : null,
           status,
           matchScore: score,
-          mismatchReasons: reasons,
+          mismatchReasons: isPrimary
+            ? reasons
+            : [...reasons, `Çok oranlı fatura — ana satır kdvRecord=${originalIds[0]}`],
         });
-      }
+      });
     };
 
     // ═══════════════════════════════════════════════════════
