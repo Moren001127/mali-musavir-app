@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Maximize2, FileText } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
 import { toast } from 'sonner';
 
@@ -125,6 +125,26 @@ function MatchRow({
   const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
   const faturaKdv = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '—';
   const faturaDosya = r.image?.originalName ?? '—';
+  const isXmlFile = /\.xml$/i.test(faturaDosya);
+
+  // Satır açıldığında fatura görselinin presigned URL'sini çek
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  useEffect(() => {
+    if (!open || !r.image?.id || isXmlFile) return;
+    let cancelled = false;
+    kdvApi
+      .getImageUrl(r.image.id)
+      .then((resp: any) => {
+        if (!cancelled) setImageUrl(resp?.url || null);
+      })
+      .catch(() => {
+        if (!cancelled) setImageUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, r.image?.id, isXmlFile]);
 
   const reasons: string[] = r.mismatchReasons ?? [];
   const statusLabel = r.status === 'PARTIAL_MATCH' ? 'Kısmi Eşleşme' : 'İnceleme Gerekli';
@@ -168,9 +188,50 @@ function MatchRow({
             <Row label="KDV" value={lucaKdv} />
           </div>
 
-          {/* Fatura tarafı */}
+          {/* Fatura tarafı — görsel önizlemeli */}
           <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#a855f7' }}>Fatura / Görsel</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#a855f7' }}>Fatura / Görsel</div>
+              {imageUrl && !isXmlFile && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+                  className="text-[10px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded"
+                  style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' }}
+                >
+                  <Maximize2 size={10} /> Tam ekran
+                </button>
+              )}
+            </div>
+
+            {/* Görsel önizleme */}
+            {isXmlFile ? (
+              <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+                <FileText size={14} style={{ color: '#22c55e' }} />
+                <span className="text-[11px]" style={{ color: '#22c55e' }}>
+                  XML e-Fatura — doğrudan parse edildi (OCR yok)
+                </span>
+              </div>
+            ) : imageUrl ? (
+              <div
+                className="mb-3 rounded overflow-hidden cursor-zoom-in"
+                style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', maxHeight: 200 }}
+                onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+              >
+                <img
+                  src={imageUrl}
+                  alt={faturaDosya}
+                  className="w-full object-contain select-none"
+                  style={{ maxHeight: 200 }}
+                  draggable={false}
+                />
+              </div>
+            ) : open && r.image?.id ? (
+              <div className="mb-3 flex items-center justify-center rounded" style={{ height: 80, background: 'rgba(0,0,0,0.2)', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                <Loader2 size={16} className="animate-spin" style={{ color: GOLD }} />
+              </div>
+            ) : null}
+
             <Row label="Dosya" value={faturaDosya} />
             <Row label="Belge No" value={faturaBelgeNo} />
             <Row label="Tarih" value={faturaTarih} highlight={isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
@@ -181,6 +242,30 @@ function MatchRow({
               </p>
             )}
           </div>
+
+          {/* Lightbox — tam ekran görsel */}
+          {lightboxOpen && imageUrl && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center p-6"
+              style={{ background: 'rgba(0,0,0,0.9)' }}
+              onClick={() => setLightboxOpen(false)}
+            >
+              <img
+                src={imageUrl}
+                alt={faturaDosya}
+                className="max-w-full max-h-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+              <button
+                type="button"
+                onClick={() => setLightboxOpen(false)}
+                className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full"
+                style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
+              >
+                <XCircle size={20} />
+              </button>
+            </div>
+          )}
 
           {/* Aksiyonlar */}
           <div className="md:col-span-2 flex items-center gap-2 mt-1">

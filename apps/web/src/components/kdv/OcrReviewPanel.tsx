@@ -816,30 +816,48 @@ function ZoomableImage({ src, alt }: { src: string | null; alt: string }) {
               onClick={() => src && setLightbox(true)}
             />
 
-            {/* Lupe (büyüteç lensi) */}
-            {hoverPos && imgRef.current && containerRef.current && (
-              <div
-                className="pointer-events-none absolute rounded-full shadow-2xl"
-                style={{
-                  width: lensSize,
-                  height: lensSize,
-                  left: hoverPos.x - lensSize / 2,
-                  top: hoverPos.y - lensSize / 2,
-                  border: `2px solid ${GOLD}`,
-                  boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.6)',
-                  backgroundImage: `url(${src})`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundSize: `${imgRef.current.offsetWidth * zoom}px ${imgRef.current.offsetHeight * zoom}px`,
-                  backgroundPosition: `${-(
-                    ((hoverPos.x - (containerRef.current.clientWidth - imgRef.current.offsetWidth) / 2) * zoom) -
-                    lensSize / 2
-                  )}px ${-(
-                    ((hoverPos.y - (containerRef.current.clientHeight - imgRef.current.offsetHeight) / 2) * zoom) -
-                    lensSize / 2
-                  )}px`,
-                }}
-              />
-            )}
+            {/* Lupe (büyüteç lensi) — NETLEŞTİRME:
+               Görselin naturalWidth'i render boyutundan büyükse (genelde öyle — 2000px
+               orijinal, 300px render), offset*zoom = 750px büyüteç arka planı orijinali
+               2000→750 downscale ettiği için blur olur. Çözüm: backgroundSize'ı
+               en az naturalWidth kadar tut → browser 1:1 piksel oranında render eder,
+               netlik artar. */}
+            {hoverPos && imgRef.current && containerRef.current && (() => {
+              const img = imgRef.current;
+              const container = containerRef.current;
+              const offsetW = img.offsetWidth || 1;
+              const offsetH = img.offsetHeight || 1;
+              const natW = img.naturalWidth || offsetW;
+              const natH = img.naturalHeight || offsetH;
+              // Natural resolution baz — zoom bunun üzerine çarpar. En az 1:1 natural kalır.
+              const effectiveZoom = Math.max(zoom, natW / offsetW);
+              const bgW = offsetW * effectiveZoom;
+              const bgH = offsetH * effectiveZoom;
+              const relX = hoverPos.x - (container.clientWidth - offsetW) / 2;
+              const relY = hoverPos.y - (container.clientHeight - offsetH) / 2;
+              const bgX = -(relX * effectiveZoom - lensSize / 2);
+              const bgY = -(relY * effectiveZoom - lensSize / 2);
+              return (
+                <div
+                  className="pointer-events-none absolute rounded-full shadow-2xl"
+                  style={{
+                    width: lensSize,
+                    height: lensSize,
+                    left: hoverPos.x - lensSize / 2,
+                    top: hoverPos.y - lensSize / 2,
+                    border: `2px solid ${GOLD}`,
+                    boxShadow: '0 0 0 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.6)',
+                    backgroundImage: `url(${src})`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: `${bgW}px ${bgH}px`,
+                    backgroundPosition: `${bgX}px ${bgY}px`,
+                    // Render hint — keskin kenar yerine optimize edilmiş bilinear
+                    imageRendering: 'crisp-edges' as any,
+                    WebkitImageRendering: '-webkit-optimize-contrast',
+                  } as any}
+                />
+              );
+            })()}
 
             {/* Büyüteç kontrolleri — sağ üst köşede kompakt panel */}
             <div

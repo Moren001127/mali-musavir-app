@@ -133,61 +133,8 @@ export class OcrService {
       try {
         const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
         if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
-          // ─── FILENAME DOĞRULAMA — OCR güvenilirliği artırıcı savunma hattı ───
-          // Dosya adında geçerli bir belge no pattern'i varsa ve OCR'ın okuduğu
-          // belge no bundan sapıyorsa (sıfırları atlamış, harf eksik), filename
-          // otoritesini kullan. e-Fatura dosya adları genelde gerçek belge no'dur.
-          if (belgeNoFromFilename) {
-            const ocrBelgeNo = claudeResult.belgeNo?.toUpperCase().replace(/[^A-Z0-9]/g, '') || '';
-            const fnBelgeNo = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
-            // Filename daha uzun AND OCR kısaltma/sıfır-drop benzeri hata →
-            // filename'i otorite kabul et (e-fatura dosya adları standarttır).
-            const filenameLonger = fnBelgeNo.length > ocrBelgeNo.length;
-            const prefixMatches = fnBelgeNo.startsWith(ocrBelgeNo.slice(0, 3));
-            const ocrIsTooShort = ocrBelgeNo.length < 10 && fnBelgeNo.length >= 10;
-            const divergedSignificantly = ocrBelgeNo.length > 0 && !fnBelgeNo.includes(ocrBelgeNo) && prefixMatches;
-            if ((filenameLonger && prefixMatches) || ocrIsTooShort || divergedSignificantly) {
-              this.logger.warn(
-                `OCR belge no filename'den sapıyor → filename override: ${ocrBelgeNo} → ${fnBelgeNo} (${originalName})`,
-              );
-              claudeResult.belgeNo = belgeNoFromFilename;
-              if (claudeResult.fieldConfidence) {
-                claudeResult.fieldConfidence.belgeNo = 0.9; // filename güvenilir
-              }
-            }
-          }
-
-          // ─── TARİH SAĞDUYU KONTROLÜ — ay/gün takası ───
-          // OCR Türk tarihini ABD formatı sanıp ay ile günü yer değiştirdiyse
-          // (örn. 11.03.2026 → "2026-11-03" yerine "2026-03-11" olmalı),
-          // bu noktada düzeltilecek net bir kural yok — sadece confidence'ı
-          // düşür ki kullanıcı review'da görsün. Prompt seviyesinde önlendi.
-          if (claudeResult.date) {
-            const m = claudeResult.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (m) {
-              const yy = +m[1], mo = +m[2], dd = +m[3];
-              // Geçersiz ay/gün kombinasyonu
-              if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
-                this.logger.warn(`OCR tarih geçersiz: ${claudeResult.date} (${originalName})`);
-                claudeResult.date = null;
-                if (claudeResult.fieldConfidence) claudeResult.fieldConfidence.date = 0;
-              }
-              // Her iki değer de 1-12 arası → ambiguous, confidence düşür
-              else if (dd <= 12 && mo <= 12 && dd !== mo) {
-                if (claudeResult.fieldConfidence && (claudeResult.fieldConfidence.date || 0) > 0.6) {
-                  claudeResult.fieldConfidence.date = 0.6;
-                }
-              }
-              // Imkansız: yy 2020'den küçük veya 2099'dan büyük
-              if (yy < 2020 || yy > 2099) {
-                this.logger.warn(`OCR yıl şüpheli: ${yy} (${originalName})`);
-                if (claudeResult.fieldConfidence) {
-                  claudeResult.fieldConfidence.date = Math.min(claudeResult.fieldConfidence.date || 0, 0.4);
-                }
-              }
-            }
-          }
-
+          // ═══ KAPSAMLI POST-PROCESS DOĞRULAMA ═══
+          this.postProcessOcrResult(claudeResult, belgeNoFromFilename, originalName);
           return claudeResult;
         }
         this.logger.warn(
@@ -250,58 +197,112 @@ export class OcrService {
       b64 = buffer.toString('base64');
     }
 
-    const systemPrompt =
-      'Sen Türk e-Fatura, e-Arşiv ve ÖKC fiş görselleri için uzmanlaşmış bir OCR sistemisin. ' +
-      'Görseli dikkatle incele ve şu alanları JSON olarak döndür: ' +
-      '{"tarih":"YYYY-MM-DD" veya null, "belgeNo":"...", "kdvTutari":"123,45", "toplam":"345,67", "satici":"...", "kdvOrani": 20, ' +
-      '"belgeTipi":"EFATURA|EARSIV|OKC_FIS|Z_RAPORU|MAKBUZ", ' +
-      '"kdvBreakdown":[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}], ' +
-      '"confidence":{"tarih":0.95,"belgeNo":0.88,"kdvTutari":0.72}}. ' +
-      '\n' +
-      '═══ KDV BREAKDOWN — ÇOK ORANLI BELGELER ═══ ' +
-      'Görselde birden fazla KDV oranı varsa (örn. Z Raporu, karma fatura) ' +
-      'HER ORAN İÇİN AYRI bir öğe döndür. Tipik Z raporu görünümü: ' +
-      '"TOPLAM %20: 285,00 / TOPKDV %20: 47,50" ve "TOPLAM %10: 2.675,00 / TOPKDV %10: 243,19". ' +
-      'Bu durumda: kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}] ' +
-      've kdvTutari=TOPLAM (47,50 + 243,19 = 290,69). ' +
-      'Tek oran varsa kdvBreakdown=[{"oran":<orn>,"tutar":<kdv>,"matrah":<matrah>}] ile tek eleman dön (zorunlu değil ama tavsiye). ' +
-      '\n' +
-      '\n' +
-      '═══ TARİH FORMATI — ÇOK ÖNEMLİ ═══ ' +
-      'TÜRKİYE\'DE TARİH DAİMA GÜN-AY-YIL SIRASIDIR (DD-MM-YYYY). İLK KISIM GÜN, ORTA KISIM AY, SON 4 HANE YIL. ' +
-      'Görseldeki tarih "11-03-2026" veya "11.03.2026" veya "11/03/2026" ise → bu 11 MART 2026 demektir → output: "tarih":"2026-03-11". ' +
-      'SAKIN ilk hanenin ayı/ikinci hanenin günü olduğunu düşünme — ABD formatı DEĞİLDİR. ' +
-      'Ay dahil 12 olabilir; ay hanesi 13-31 asla olmaz. Eğer ilk hane 13-31 arasındaysa kesinlikle GÜN\'dür. ' +
-      'Diğer işaretler: "Fatura Tarihi", "Belge Tarihi", "Düzenleme Tarihi", "Fiş Tarihi" → aynı tarih. ' +
-      'Net okunamıyorsa null. ' +
-      '\n' +
-      '═══ BELGE NO — DOĞRU ALAN SEÇİMİ ═══ ' +
-      'ÖNCE BELGE TİPİNİ TESPİT ET, sonra doğru numarayı al: ' +
-      '\n  • E-FATURA / E-ARŞİV: "Fatura No", "Belge No" satırındaki değer. Genelde 16 karakter (3 harf + 4 rakam yıl + 9 rakam sıra). Örnek: "EFA2026000000093". ' +
-      '\n  • Z RAPORU (Daily Z Report): Görselde "Z RAPORU", "Z RAPOR", "Z REPORT" yazıyorsa → belge no = "Z NO" alanındaki değer. FIŞ NO DEĞİL! ' +
-      'Örnek: "Z NO: 666" → belgeNo="666". Görseldeki "FİŞ NO" o Z raporunun son fişi olabilir, ama belge no olarak ZARFI NO kullanılır. ' +
-      '\n  • ÖKC FIS (normal satış fişi, Z Raporu değilse): "FİŞ NO", "FIS NO", "BELGE NO" satırındaki değer. Genelde 4-6 hane. ' +
-      '\n  • GİDER PUSULASI / MAKBUZ: "MAKBUZ NO", "BELGE NO" satırındaki değer. ' +
-      'BELGE NO\'yu KARAKTER KARAKTER kopyala — HİÇBİR RAKAMI ATLAMA, HİÇBİR SIFIRI KAYBETME. ' +
-      'Eğer e-Fatura\'dan 16 karakter bekliyorsan ve 13-14 karakter okuduysan MUHTEMELEN SIFIRLARI ATLADIN — TEKRAR SAY. ' +
-      'DİKKAT: "Özelleştirme No" veya "CustomizationID" (TR1.2 gibi) veya "Senaryo" (TICARIFATURA gibi) BELGE NO DEĞİLDİR — bunları ASLA belge no olarak dönme. ' +
-      'DİKKAT: Z Raporunda FIŞ NO, EKÜ NO, AT NO → bunlar BELGE NO DEĞİLDİR. Sadece Z NO belge no\'dur. ' +
-      'KDV tutarı: "KDV", "K.D.V.", "Hesaplanan KDV", "KDV Tutarı" satırındaki TUTAR. Birden fazla KDV oranı varsa TOPLAM KDV tutarı. ' +
-      'Toplam: genel toplam / ödenecek tutar / fatura toplamı. ' +
-      'Tutarları Türk formatında ver: "1.234,56" → "1234,56" (noktasız, virgüllü). ' +
-      'ZORUNLU: confidence objesinde her alan için 0.0–1.0 arası gerçekçi güven skoru ver. ' +
-      'Netlik kriterleri: 0.95+ = karakterler tam net, tek bir yorum var; 0.80–0.94 = okunaklı ama küçük belirsizlik; ' +
-      '0.60–0.79 = okunabiliyor ama şüphe var (bulanık, kısmen kapalı, el yazısı); ' +
-      '<0.60 = tahmine dayalı; alan yoksa veya hiç okunmuyorsa 0. ' +
-      'KDV tutarı için: birden fazla kalem topladıysan ve hepsi netse yüksek; bir kalem bile şüpheliyse düşür. ' +
-      'Sadece geçerli JSON dön, açıklama yok.';
+    const systemPrompt = [
+      'Sen Türk muhasebe dokümanları (e-Fatura, e-Arşiv, ÖKC fişi, Z raporu, makbuz, dekont) için uzmanlaşmış bir OCR sistemisin.',
+      'Görseli karakter karakter incele ve SADECE geçerli JSON dön — açıklama/prolog YOK.',
+      '',
+      '╔══ JSON ŞEMA ══╗',
+      '{',
+      '  "tarih": "YYYY-MM-DD" | null,',
+      '  "belgeNo": "...",',
+      '  "kdvTutari": "1234,56",',
+      '  "toplam": "1499,56",',
+      '  "satici": "ABC LTD",',
+      '  "kdvOrani": 20,',
+      '  "belgeTipi": "EFATURA|EARSIV|OKC_FIS|Z_RAPORU|MAKBUZ|GIDER_PUSULASI|SMM|DEKONT|SEVK_IRSALIYESI|DIGER",',
+      '  "kdvBreakdown": [{"oran":20,"tutar":"47,50","matrah":"285,00"}],',
+      '  "confidence": {"tarih":0.95,"belgeNo":0.88,"kdvTutari":0.72}',
+      '}',
+      '',
+      '╔══ 1) BELGE TİPİNİ TESPİT ET ══╗',
+      'Görselin tamamını oku, şu anahtar kelimeleri ara:',
+      '  • "E-FATURA" / "e-Fatura" / "TEMELFATURA" / "TICARIFATURA" → EFATURA',
+      '  • "E-ARŞİV" / "E-ARSIV" / "EARSIVFATURA" → EARSIV',
+      '  • "Z RAPORU" / "Z RAPOR" / "Z REPORT" / "GÜNLÜK Z" → Z_RAPORU',
+      '  • Fiş numaralı satış belgesi (Z raporu değilse) / "FİŞ NO" → OKC_FIS',
+      '  • "GİDER PUSULASI" → GIDER_PUSULASI',
+      '  • "SERBEST MESLEK MAKBUZU" → SMM',
+      '  • "MAKBUZ" (tek başına, SMM değilse) → MAKBUZ',
+      '  • "DEKONT" / "HAVALE" / "EFT" / banka başlıklı → DEKONT',
+      '  • "SEVK İRSALİYESİ" / "İRSALİYE" → SEVK_IRSALIYESI',
+      '  • Hiçbiri değilse → DIGER',
+      '',
+      '╔══ 2) BELGE NO — TİPE GÖRE DOĞRU ALAN ══╗',
+      'Belge no\'yu tipe göre ŞU ALANDAN al:',
+      '  • EFATURA/EARSIV → "Fatura No" / "Belge No" etiketindeki değer.',
+      '    Pattern: 3 harf + 4 rakam (yıl) + 9 rakam (sıra) = 16 char, örn. "EFA2026000000093".',
+      '    EĞER 13-14 KARAKTER OKUDUYSAN SIFIRLARI ATLADIN — TEKRAR SAY.',
+      '  • Z_RAPORU → "Z NO" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO DEĞİL!',
+      '    Örn. "Z NO: 666" → belgeNo = "666".',
+      '  • OKC_FIS → "FİŞ NO" / "FIS NO" / "BELGE NO" (3-6 hane).',
+      '  • GIDER_PUSULASI → "MAKBUZ NO" / "BELGE NO" / "SERİ NO".',
+      '  • SMM → "MAKBUZ NO" / "SERİ NO-SIRA NO" birleşik.',
+      '  • MAKBUZ → "MAKBUZ NO" / "SERİ SIRA".',
+      '  • DEKONT → "REFERANS NO" / "DEKONT NO" / "İŞLEM NO".',
+      '  • SEVK_IRSALIYESI → "İRSALİYE NO".',
+      '',
+      '╔══ 3) BELGE NO — YASAK ALANLAR (ASLA BELGE NO OLARAK DÖNME) ══╗',
+      '  • "Özelleştirme No" / "CustomizationID" (TR1.2, TR1.0, UBL-2.1)',
+      '  • "Senaryo" / "ProfileID" (TICARIFATURA, TEMELFATURA, EARSIVFATURA)',
+      '  • "UUID" / "ETTN" (GUID formatlı uzun string)',
+      '  • "VKN" / "TCKN" (satıcı/alıcı kimlik no)',
+      '  • "Sipariş No" / "İrsaliye No" (faturanın ana numarası değil)',
+      '  • Z Raporunda: FİŞ NO / EKÜ NO / AT NO / MALİ FİŞ SAYISI vs.',
+      '  Bu alanlardan biri tek başına dönme — gerçek belge no bulunana kadar ara.',
+      '',
+      '╔══ 4) TARİH — TÜRK FORMATI (DD-MM-YYYY) ══╗',
+      'Türkiye\'de tarih DAİMA "GÜN-AY-YIL" sırasıdır. İLK kısım GÜN, ORTA kısım AY, SON 4 hane YIL.',
+      '  • "11-03-2026" = "11.03.2026" = "11/03/2026" = 11 Mart 2026 → output "2026-03-11"',
+      '  • "31.12.2025" → 31 Aralık 2025 → output "2025-12-31"',
+      'KURAL: Eğer ilk hane 13-31 arasındaysa o KESİNLİKLE gün. Ay 1-12 arası olur.',
+      'SAKIN ABD formatı (MM-DD-YYYY) düşünme — Türk belgeleri ASLA öyle yazmaz.',
+      'Etiketler: "Fatura Tarihi", "Belge Tarihi", "Düzenleme Tarihi", "Fiş Tarihi", "Tanzim Tarihi" — hepsi aynı tarih.',
+      'Yıl 2020-2050 dışındaysa muhtemelen OCR hatası, confidence düşür.',
+      '',
+      '╔══ 5) KDV — ÇOK ORANLI / BREAKDOWN ══╗',
+      'Türk belgelerinde KDV oranları: %0, %1, %8, %10, %18, %20 (güncel). Eski: %18.',
+      'Görselde BİRDEN FAZLA KDV oranı varsa (Z raporu, karma fatura):',
+      '  → HER ORAN İÇİN AYRI "kdvBreakdown" öğesi dön.',
+      '  → kdvTutari = breakdown\'daki TÜM tutarların TOPLAMI.',
+      'Örnek Z raporu: "TOPKDV %20: 47,50 / TOPKDV %10: 243,19"',
+      '  → kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
+      '  → kdvTutari="290,69" (47,50 + 243,19)',
+      'Tek oran olsa bile breakdown tek eleman olarak doldurabilirsin (tavsiye).',
+      '',
+      '╔══ 6) TUTAR FORMATI ══╗',
+      'Türkiye: nokta binlik ayraç, virgül ondalık. "1.234,56" → output "1234,56" (noktasız, virgüllü).',
+      '"KDV" etiketi: "KDV", "K.D.V.", "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV".',
+      '"Toplam" etiketi: "Genel Toplam", "Ödenecek", "Fatura Toplamı", "Vergiler Dahil Toplam".',
+      'Eğer tutar "₺" ya da "TL" içeriyorsa o işareti KALDIR, sadece sayı kal.',
+      '',
+      '╔══ 7) KARAKTER NETLİĞİ — OCR TUZAKLARI ══╗',
+      'Belge no\'da rakam/harf karışıklığı:',
+      '  • "O" (harf O) ve "0" (rakam sıfır) — sayısal pattern\'de "0" tercih et.',
+      '  • "l" / "I" (harf i/L) ve "1" (rakam bir) — belge no\'da "1" tercih et.',
+      '  • "S" ve "5", "B" ve "8", "Z" ve "2" — pattern\'e bakarak karar ver.',
+      'Her harfi ayrı ayrı gözden geçir, özellikle belge no\'da tüm sıfırları SAY.',
+      '',
+      '╔══ 8) CONFIDENCE — GERÇEKÇİ SKOR ══╗',
+      '  • 0.95-1.00 → Karakterler cam gibi net, tek yorum.',
+      '  • 0.80-0.94 → Okunaklı, çok küçük belirsizlik.',
+      '  • 0.60-0.79 → Bulanık/kısmen kapalı, tahmin var.',
+      '  • <0.60 → Net değil, tahmine dayalı.',
+      '  • 0 → Alan yok veya hiç okunmuyor.',
+      'Birden fazla kalem topladıysan ve biri şüpheliyse skorlu düşür.',
+    ].join('\n');
 
-    const userText =
-      'Bu Türk faturasının/fişinin verilerini JSON olarak çıkar. ' +
-      'TARİH: DD-MM-YYYY formatı Türkiye standardıdır — ilk hane gün, orta hane ay. "11-03-2026" = 11 Mart 2026 = output "2026-03-11". ASLA ayı ile günü yer değiştirme. ' +
-      'BELGE NO: Fatura No / Belge No satırındaki değeri tam ve eksiksiz kopyala — sıfırları atlama. "Özelleştirme No" (TR1.2) veya "Senaryo" BELGE NO değildir. ' +
-      'KDV tutarı KRİTİK — birden fazla kalem varsa hepsini topla. ' +
-      'Her alan için gerçekçi confidence skoru ver — okunamayan/şüpheli alanlara düşük skor.';
+    const userText = [
+      'Bu Türk muhasebe belgesinin yapısal verilerini JSON olarak çıkar.',
+      '',
+      'ADIM 1: Belge tipini tespit et (EFATURA/EARSIV/OKC_FIS/Z_RAPORU/MAKBUZ/GIDER_PUSULASI/SMM/DEKONT/SEVK_IRSALIYESI/DIGER).',
+      'ADIM 2: Tipe göre doğru alandan belge no\'yu KARAKTER KARAKTER kopyala (sıfırları atlama).',
+      'ADIM 3: Tarihi DD-MM-YYYY Türk formatından "YYYY-MM-DD"\'ye çevir (ASLA ay-gün yerini değiştirme).',
+      'ADIM 4: KDV oranlarını tara — birden fazla varsa breakdown dizisini doldur, kdvTutari = toplam.',
+      'ADIM 5: Her alan için gerçekçi confidence skoru ver.',
+      '',
+      'YASAK: TR1.2, TEMELFATURA, TICARIFATURA, UUID, ETTN, VKN, TCKN asla belge no DEĞİL.',
+      'Sadece JSON dön.',
+    ].join('\n');
 
     const startMs = Date.now();
     // 429 retry — Anthropic rate limit'e takıldığımızda exponential backoff ile tekrar dene.
@@ -656,6 +657,147 @@ export class OcrService {
 
   private formatAmount(n: number): string {
     return n.toFixed(2).replace('.', ',');
+  }
+
+  /**
+   * OCR sonucunu kapsamlı doğrular + mümkünse düzeltir. Çağıran taraf
+   * (Claude Vision OCR) parse sonrası bu method'u çağırır.
+   *
+   * Yaptıkları:
+   *  1. Belge no: yasak değerleri temizle (TR1.2, UUID, vb.), filename override
+   *  2. Belge no: uzunluk/pattern kontrolü, tipine göre uyum doğrulama
+   *  3. Tarih: ay/gün geçerli mi, yıl makul mu
+   *  4. KDV: breakdown toplamı = kdvTutari mi (tolerans ±1 kuruş)
+   *  5. KDV: matrah × oran / 100 ≈ tutar mi (çapraz doğrulama)
+   *  6. Numerik alanlar normalize (₺, TL, boşluk temizle)
+   */
+  private postProcessOcrResult(
+    result: OcrResult,
+    belgeNoFromFilename: string | null,
+    originalName?: string,
+  ): void {
+    // ─── 1. BELGE NO — Yasak değerleri temizle ───
+    if (result.belgeNo) {
+      const cleaned = result.belgeNo.trim().toUpperCase();
+      const forbidden = [
+        /^TR[\d.\-_]+$/,                         // TR1.2, TR1.0
+        /^UBL[\d.\-_]*$/,                        // UBL-2.1
+        /^(TEMELFATURA|TICARIFATURA|EARSIVFATURA)$/,
+        /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i, // UUID/ETTN
+      ];
+      if (forbidden.some((p) => p.test(cleaned))) {
+        this.logger.warn(`OCR yasak belge no değeri: "${cleaned}" → null (${originalName})`);
+        result.belgeNo = null;
+        if (result.fieldConfidence) result.fieldConfidence.belgeNo = null;
+      }
+    }
+
+    // ─── 2. BELGE NO — Filename override (eksik/yanlış OCR) ───
+    if (belgeNoFromFilename) {
+      const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const ocrClean = (result.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+      // Senaryolar:
+      //   a) OCR belge no yok, filename var → kullan
+      //   b) OCR belge no çok kısa (<10 char) ama filename uzun (≥10) → kullan
+      //   c) OCR belge no filename'in prefix'i ile eşleşiyor ama kısa kalmış → kullan
+      //   d) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
+      const shouldOverride =
+        !ocrClean ||
+        (ocrClean.length < 10 && fnClean.length >= 10) ||
+        (fnClean.length > ocrClean.length && fnClean.startsWith(ocrClean.slice(0, 3)));
+
+      if (shouldOverride && fnClean !== ocrClean) {
+        this.logger.warn(
+          `Belge no filename override: "${ocrClean}" → "${fnClean}" (${originalName})`,
+        );
+        result.belgeNo = belgeNoFromFilename;
+        if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.9;
+      }
+    }
+
+    // ─── 3. BELGE NO — Pattern/uzunluk kontrolü ───
+    if (result.belgeNo) {
+      const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const tipi = result.belgeTipi;
+      // e-Fatura/e-Arşiv: genelde 16 char (3 harf + 13 rakam). 13 altı şüpheli.
+      if ((tipi === 'EFATURA' || tipi === 'EARSIV') && bn.length < 13) {
+        this.logger.warn(`Belge tipi ${tipi} için belge no kısa (${bn.length} char): ${bn}`);
+        if (result.fieldConfidence && (result.fieldConfidence.belgeNo ?? 0) > 0.5) {
+          result.fieldConfidence.belgeNo = 0.5;
+        }
+      }
+    }
+
+    // ─── 4. TARİH — Ay/gün/yıl geçerlilik ───
+    if (result.date) {
+      const m = result.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) {
+        // YYYY-MM-DD değil → null
+        this.logger.warn(`Tarih format bozuk: "${result.date}" (${originalName})`);
+        result.date = null;
+        if (result.fieldConfidence) result.fieldConfidence.date = 0;
+      } else {
+        const yy = +m[1], mo = +m[2], dd = +m[3];
+        if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+          this.logger.warn(`Tarih geçersiz: ${result.date}`);
+          result.date = null;
+          if (result.fieldConfidence) result.fieldConfidence.date = 0;
+        } else if (dd <= 12 && mo <= 12 && dd !== mo) {
+          // Ay/gün ambiguous — confidence düşür, kullanıcı teyidine bırak
+          if (result.fieldConfidence && (result.fieldConfidence.date ?? 0) > 0.7) {
+            result.fieldConfidence.date = 0.7;
+          }
+        }
+        // Yıl 2000-2050 makul, dışındakilerin confidence'ı düşür
+        if (yy < 2000 || yy > 2050) {
+          this.logger.warn(`Yıl makul dışı: ${yy}`);
+          if (result.fieldConfidence) {
+            result.fieldConfidence.date = Math.min(result.fieldConfidence.date ?? 1, 0.3);
+          }
+        }
+      }
+    }
+
+    // ─── 5. TUTAR NORMALIZE — ₺, TL, boşluk temizle ───
+    const normalizeAmount = (s: string | null | undefined): string | null => {
+      if (!s) return null as any;
+      return s
+        .replace(/₺|TL|USD|EUR/gi, '')
+        .replace(/\s+/g, '')
+        .trim() || null;
+    };
+    result.kdvTutari = normalizeAmount(result.kdvTutari);
+    result.totalTutari = normalizeAmount(result.totalTutari);
+
+    // ─── 6. KDV BREAKDOWN — Toplam kontrolü ───
+    if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
+      const breakdownSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+      const declaredTotal = this.parseAmount(result.kdvTutari);
+      // ±1 kuruş tolerans (yuvarlama)
+      if (Math.abs(breakdownSum - declaredTotal) > 0.05) {
+        this.logger.warn(
+          `KDV breakdown tutarsız: breakdown=${breakdownSum.toFixed(2)} vs kdvTutari=${declaredTotal.toFixed(2)} — breakdown toplamını kullan`,
+        );
+        // Breakdown toplamı daha güvenilir — çünkü her oran ayrı görüldü
+        result.kdvTutari = this.formatAmount(breakdownSum);
+      }
+
+      // 7. Matrah × oran / 100 ≈ tutar çapraz doğrulama
+      for (const b of result.kdvBreakdown) {
+        if (b.matrah && b.oran > 0) {
+          const expected = (Number(b.matrah) * b.oran) / 100;
+          const actual = Number(b.tutar);
+          const diffPct = Math.abs(expected - actual) / (expected || 1);
+          if (diffPct > 0.02) {
+            // %2'den fazla sapma → OCR hatası olabilir
+            this.logger.warn(
+              `KDV %${b.oran}: matrah×oran=${expected.toFixed(2)} ≠ tutar=${actual.toFixed(2)} (%${Math.round(diffPct * 100)} sapma)`,
+            );
+          }
+        }
+      }
+    }
   }
 
   /**

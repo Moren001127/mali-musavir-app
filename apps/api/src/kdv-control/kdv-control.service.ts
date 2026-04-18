@@ -815,6 +815,11 @@ export class KdvControlService {
     const session = await this.findSession(sessionId, tenantId);
     const mukellefAdi = this.formatMukellefAdi(session);
     try {
+      // ÖNCE: Bozuk OCR belge no'larını dosya adından düzelt (UBL versiyon string'leri gibi)
+      // Bu eskiden yüklenen XML'lerde Claude'un yanlış aldığı "TR1.2" gibi değerleri
+      // dosya adındaki gerçek belge no ile değiştirir. Yeni reconciliation doğru eşleştirir.
+      await this.fixBrokenOcrBelgeNo(sessionId);
+
       const result = await this.reconciliation.runReconciliation(sessionId);
       await this.pushFeedEvent(tenantId, {
         action: 'reconcile',
@@ -848,6 +853,76 @@ export class KdvControlService {
     const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ');
     if (fullName) return fullName;
     return t.taxNumber || undefined;
+  }
+
+  /**
+   * ReceiptImage kayıtlarındaki bozuk belge no'ları tespit edip dosya adından düzeltir.
+   * Bozuk = UBL versiyon string'leri (TR1.2, TR1.0, UBL-2.1, TICARIFATURA gibi).
+   * Eski Claude OCR bunları belge no olarak kaydetmişti; dosya adından gerçek belge no'yu al.
+   * Idempotent — her reconcile çağrısında çalışabilir, zaten düzgün olan kayıtlara dokunmaz.
+   */
+  private async fixBrokenOcrBelgeNo(sessionId: string): Promise<number> {
+    const images = await this.prisma.receiptImage.findMany({
+      where: { sessionId },
+      select: {
+        id: true,
+        originalName: true,
+        ocrBelgeNo: true,
+        confirmedBelgeNo: true,
+        isManuallyConfirmed: true,
+      },
+    });
+
+    // Belge no bozuk sayılan pattern'ler
+    const isBrokenBelgeNo = (bn: string | null | undefined): boolean => {
+      if (!bn) return false;
+      const s = bn.toUpperCase().trim();
+      // UBL versiyon: TR1.2, TR1.0, UBL-2.1
+      if (/^(TR|UBL)[\d.\-_]+$/.test(s)) return true;
+      // Senaryo/profile id'leri
+      if (['TICARIFATURA', 'TEMELFATURA', 'TICARI', 'EARSIVFATURA'].includes(s)) return true;
+      // 1-2 karakterlik saçma değerler
+      if (s.length <= 2) return true;
+      return false;
+    };
+
+    const extractFromFilename = (fn: string | null | undefined): string | null => {
+      if (!fn) return null;
+      const base = fn.replace(/\.[^/.]+$/, '').trim();
+      // 3 harf + 4 rakam (yıl) + 6-12 rakam (sıra) — e-fatura pattern
+      if (/^[A-Z]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
+      // Harfli-rakamlı orta uzunluk
+      if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
+      // Sadece rakam (ÖKC fiş, Z raporu)
+      if (/^\d{3,8}$/.test(base)) return base;
+      return null;
+    };
+
+    let fixedCount = 0;
+    for (const img of images) {
+      // Manuel teyit edilmişse dokunma
+      if (img.isManuallyConfirmed && img.confirmedBelgeNo) continue;
+      if (!isBrokenBelgeNo(img.ocrBelgeNo)) continue;
+
+      const candidateFromFilename = extractFromFilename(img.originalName);
+      if (!candidateFromFilename) continue;
+
+      await this.prisma.receiptImage.update({
+        where: { id: img.id },
+        data: {
+          ocrBelgeNo: candidateFromFilename,
+          ocrEngine: 'filename-corrected',
+          // Confidence'ı orta-yüksek yap, filename trustable
+          ocrBelgeNoConfidence: 0.85,
+        },
+      });
+      fixedCount++;
+    }
+
+    if (fixedCount > 0) {
+      this.logger.log(`fixBrokenOcrBelgeNo: ${fixedCount} görselin belge no'su dosya adından düzeltildi`);
+    }
+    return fixedCount;
   }
 
   /** Eşleştirme sonuçları */
