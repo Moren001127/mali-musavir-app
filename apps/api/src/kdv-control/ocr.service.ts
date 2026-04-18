@@ -40,8 +40,20 @@ export interface OcrResult {
   };
 }
 
-/** Claude Haiku 4.5 fiyat ($/M token) */
-const CLAUDE_HAIKU_PRICE = { input: 1, output: 5 };
+/** Claude model fiyatları ($/M token) */
+const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
+  'claude-haiku-4-5-20251001': { input: 1, output: 5 },
+  'claude-sonnet-4-5': { input: 3, output: 15 },
+  'claude-sonnet-4-5-20250929': { input: 3, output: 15 },
+  'claude-sonnet-4-6': { input: 3, output: 15 },
+};
+
+/**
+ * Varsayılan OCR modeli — Haiku 4.5 (ucuz, $0.0025/belge).
+ * Hallucination'lara karşı Azure OCR cross-check (2. tanık) + matematiksel validation kullanılıyor.
+ * Sonnet'e çıkmak için ENV: OCR_MODEL=claude-sonnet-4-5
+ */
+const DEFAULT_OCR_MODEL = 'claude-haiku-4-5-20251001';
 
 /** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
 export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
@@ -95,13 +107,15 @@ export class OcrService {
     // ═══════════════════════════════════════════════════════
     // 0. XML DOĞRUDAN PARSE — UBL e-Fatura/e-Arşiv
     // ═══════════════════════════════════════════════════════
-    // Uzantı .xml veya içerik <?xml ile başlıyorsa Claude'a gitmeden
-    // UBL alanlarını doğrudan regex'le çıkar. %100 doğruluk, 0 maliyet.
-    const isXml =
-      /\.xml$/i.test(originalName || '') ||
-      imageBuffer.slice(0, 64).toString('utf8').trimStart().startsWith('<?xml') ||
-      imageBuffer.slice(0, 512).toString('utf8').includes('<Invoice') ||
-      imageBuffer.slice(0, 512).toString('utf8').includes('<ArchiveInvoice');
+    // İçerik gerçekten XML mi? (binary image değil) — EXTENSION TEK BAŞINA GÜVENLİ DEĞİL
+    const head512 = imageBuffer.slice(0, 512).toString('utf8');
+    const looksLikeXmlContent =
+      head512.trimStart().startsWith('<?xml') ||
+      head512.includes('<Invoice') ||
+      head512.includes('<ArchiveInvoice') ||
+      head512.includes('<cbc:') ||
+      head512.includes('<cac:');
+    const isXml = looksLikeXmlContent;
 
     if (isXml) {
       try {
@@ -123,34 +137,94 @@ export class OcrService {
           );
           return xmlResult;
         }
+        // XML parse boş döndü → manuel review için filename only dön (image OCR XML'de işe yaramaz)
+        this.logger.warn(
+          `XML parse başarısız (${originalName}): belge no/date/kdv bulunamadı, filename-only döndürülüyor`,
+        );
+        return {
+          rawText: head512.slice(0, 500),
+          belgeNo: belgeNoFromFilename,
+          date: null,
+          kdvTutari: null,
+          totalTutari: null,
+          confidence: belgeNoFromFilename ? 0.3 : 0,
+          fieldConfidence: {
+            belgeNo: belgeNoFromFilename ? 0.5 : null,
+            date: null,
+            kdvTutari: null,
+          },
+          engine: 'xml-parse-failed',
+        };
       } catch (e: any) {
         this.logger.warn(`XML parse hatası (${originalName}): ${e?.message}`);
+        // Parse exception → filename only
+        return {
+          rawText: '',
+          belgeNo: belgeNoFromFilename,
+          date: null,
+          kdvTutari: null,
+          totalTutari: null,
+          confidence: belgeNoFromFilename ? 0.3 : 0,
+          fieldConfidence: {
+            belgeNo: belgeNoFromFilename ? 0.5 : null,
+            date: null,
+            kdvTutari: null,
+          },
+          engine: 'xml-error',
+        };
       }
     }
+    // .xml uzantılı ama içerik binary (gerçekte image) → image OCR'a düş
 
-    // 1. Tercih: Claude Haiku 4.5 Vision (eğer API key varsa)
+    // ═══════════════════════════════════════════════════════
+    // 1. ÇİFT KAYNAK OCR — Claude + Azure paralel
+    //    Claude: yapısal JSON (LLM)
+    //    Azure:  ham metin (Read API) — Claude'un çapraz tanığı
+    //    Eğer her iki kaynak da varsa: Claude'un değerleri Azure metninde
+    //    bulunmuyorsa → confidence sıfırla, kullanıcı teyidine git.
+    // ═══════════════════════════════════════════════════════
+    const useAzureCheck = !!this.azureClient && hasClaudeKey;
+
     if (hasClaudeKey) {
       try {
-        const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
+        // Claude + Azure'u eş zamanlı çağır (Azure çok ucuz, ilk 5K/ay bedava)
+        const [claudeResult, azureRawText] = await Promise.all([
+          this.runClaudeVisionOcr(imageBuffer),
+          useAzureCheck
+            ? this.getAzureRawText(imageBuffer).catch((e) => {
+                this.logger.warn(`Azure cross-check hatası: ${e?.message}`);
+                return '';
+              })
+            : Promise.resolve(''),
+        ]);
+
         if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
-          // ═══ KAPSAMLI POST-PROCESS DOĞRULAMA ═══
+          // ═══ POST-PROCESS DOĞRULAMA (kurala dayalı) ═══
           this.postProcessOcrResult(claudeResult, belgeNoFromFilename, originalName);
+
+          // ═══ AZURE CROSS-CHECK (ikinci tanık) ═══
+          if (azureRawText) {
+            this.crossCheckWithAzure(claudeResult, azureRawText, originalName);
+            // Cross-check sonrası rawText'i Azure metniyle zenginleştir
+            // (debug + ileride extractDateFromText fallback için)
+            claudeResult.rawText = `[CLAUDE] ${claudeResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
+          }
           return claudeResult;
         }
         this.logger.warn(
           `Claude boş döndü: ${originalName || '—'} · raw:${claudeResult.rawText?.slice(0, 120)}`,
         );
-        // Claude boş döndü → Azure fallback
+        // Claude boş döndü → Azure fallback (yapısal extraction)
       } catch (e: any) {
         this.logger.warn(`Claude Vision hatası (${originalName || '—'}): ${e?.message}`);
       }
     }
 
-    // 2. Fallback: Azure Vision Read API
+    // 2. Fallback: Azure Vision Read API yapısal extraction
     if (this.azureClient) {
       try {
         return await this.runAzureOcr(imageBuffer, belgeNoFromFilename);
-      } catch (e) {
+      } catch (e: any) {
         this.logger.error('Azure Vision hatası:', e?.message);
       }
     }
@@ -172,15 +246,16 @@ export class OcrService {
     };
   }
 
-  // === CLAUDE HAIKU 4.5 VISION OCR ===
+  // === CLAUDE VISION OCR (Sonnet 4.5 default, Haiku 4.5 fallback via ENV) ===
   /**
-   * Claude Haiku 4.5'i vision mode'da çağırır; Türk fatura/fiş görselinden
+   * Claude Vision'ı çağırır; Türk fatura/fiş görselinden
    * tarih, belge no, KDV tutarı ve toplam tutarı yapısal JSON olarak alır.
-   * Regex'e oranla çok daha doğru çalışır (özellikle KDV tutarı için).
+   * Default Sonnet 4.5 (Haiku halüsinasyon yapıyordu, kullanıcı düzeltmek zorunda kalıyordu).
+   * Haiku'ya dönmek için ENV: OCR_MODEL=claude-haiku-4-5-20251001
    */
   private async runClaudeVisionOcr(buffer: Buffer): Promise<OcrResult> {
     const apiKey = process.env.ANTHROPIC_API_KEY!;
-    const MODEL = 'claude-haiku-4-5-20251001';
+    const MODEL = process.env.OCR_MODEL || DEFAULT_OCR_MODEL;
 
     // Büyük görselleri 2000px'e küçült (Claude limit + hız)
     let b64: string;
@@ -367,12 +442,13 @@ export class OcrService {
     const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
     const raw = textBlock?.text?.trim() || '';
 
-    // Token kullanımı + maliyet (Haiku 4.5)
+    // Token kullanımı + maliyet (model bazlı)
     const inputTokens = Number(payload?.usage?.input_tokens || 0);
     const outputTokens = Number(payload?.usage?.output_tokens || 0);
+    const price = CLAUDE_PRICES[MODEL] || CLAUDE_PRICES['claude-sonnet-4-5'];
     const costUsd =
-      (inputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE.input +
-      (outputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE.output;
+      (inputTokens / 1_000_000) * price.input +
+      (outputTokens / 1_000_000) * price.output;
     const usage = { inputTokens, outputTokens, costUsd };
 
     // JSON block'unu çıkar (Claude bazen markdown içine sararken)
@@ -387,7 +463,7 @@ export class OcrService {
         totalTutari: null,
         confidence: 0,
         fieldConfidence: { belgeNo: null, date: null, kdvTutari: null },
-        engine: 'claude-haiku-4-5',
+        engine: MODEL,
         usage,
       };
     }
@@ -458,7 +534,8 @@ export class OcrService {
       kdvBreakdown,
       confidence,
       fieldConfidence,
-      engine: 'claude-haiku-4-5',
+      engine: MODEL,
+      usage,
     };
   }
 
@@ -567,42 +644,45 @@ export class OcrService {
   }
 
   // === AZURE VISION OCR ===
-  private async runAzureOcr(
-    buffer: Buffer, 
-    belgeNoFromFilename: string | null
-  ): Promise<OcrResult> {
+  /**
+   * Azure Vision Read API ile görüntüden ham metin çıkarır.
+   * Hem fallback OCR hem de Claude cross-check için kullanılır.
+   * Çok ucuz (~$0.001/belge, ilk 5K/ay bedava).
+   */
+  private async getAzureRawText(buffer: Buffer): Promise<string> {
     if (!this.azureClient) throw new Error('Azure client yok');
 
-    // Azure Read API - en iyi sonuçlar için
     const result = await this.azureClient.readInStream(buffer);
     const operationId = result.operationLocation?.split('/').pop();
-    
     if (!operationId) throw new Error('Azure operation ID alınamadı');
 
-    // Sonucu bekle (polling)
+    // Polling
     let readResult = await this.azureClient.getReadResult(operationId);
     let attempts = 0;
-    
     while (readResult.status !== 'succeeded' && readResult.status !== 'failed' && attempts < 30) {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 500));
       readResult = await this.azureClient.getReadResult(operationId);
       attempts++;
     }
-
     if (readResult.status !== 'succeeded') {
       throw new Error('Azure OCR başarısız: ' + readResult.status);
     }
 
-    // Tüm metni birleştir
     const lines: string[] = [];
     readResult.analyzeResult?.readResults?.forEach((page: any) => {
       page.lines?.forEach((line: any) => {
         lines.push(line.text);
       });
     });
+    return lines.join('\n');
+  }
 
-    const fullText = lines.join('\n');
-    
+  private async runAzureOcr(
+    buffer: Buffer,
+    belgeNoFromFilename: string | null
+  ): Promise<OcrResult> {
+    const fullText = await this.getAzureRawText(buffer);
+
     // Alanları çıkar
     const date = this.extractDate(fullText);
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
@@ -723,6 +803,117 @@ export class OcrService {
       if (m?.[1] && /\d/.test(m[1])) return m[1].replace(/\s/g, '');
     }
     return null;
+  }
+
+  /**
+   * Claude'un verdiği değeri Azure'un ham metninde ara — TANIK DOĞRULAMA.
+   * Amaç: Claude halüsinasyon yaparsa (286,36'yı 631,43 gibi) Azure "bunu görmedim" der.
+   * Tutar için ±1 kuruş tolerans; belge no için case-insensitive; tarih için format-insensitive.
+   */
+  private isFieldInAzureText(
+    value: string,
+    field: 'belgeNo' | 'date' | 'amount',
+    azureText: string,
+  ): boolean {
+    if (!value || !azureText) return false;
+    const text = azureText.toUpperCase();
+    const v = value.toUpperCase().trim();
+
+    if (field === 'belgeNo') {
+      // Belge no'da noktalama/boşluk tolere et
+      const normalizedValue = v.replace(/[^A-Z0-9]/g, '');
+      const normalizedText = text.replace(/[^A-Z0-9]/g, '');
+      if (normalizedValue.length < 3) return false;
+      return normalizedText.includes(normalizedValue);
+    }
+
+    if (field === 'date') {
+      // "08.03.2026" → 08, 03, 2026 parçalarını ayrı ayrı yakalaya
+      const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+      if (!m) return false;
+      const [, dd, mo, yy] = m;
+      // Azure metninde DD?MM?YYYY (herhangi ayraçla) veya DD MM YYYY var mı?
+      const dateRegex = new RegExp(
+        `\\b${dd}[\\s.\\-\\/]?${mo}[\\s.\\-\\/]?${yy}\\b`,
+      );
+      return dateRegex.test(text);
+    }
+
+    if (field === 'amount') {
+      // "286,36" → rakamları yakala, ±1 kuruş tolerans
+      const num = this.parseAmount(v);
+      if (num <= 0) return false;
+      // Azure'da bulunan tüm sayıları tara, en yakınını bul
+      const amountMatches = text.matchAll(/\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\b/g);
+      for (const match of amountMatches) {
+        const candidate = this.parseAmount(match[0]);
+        if (candidate > 0 && Math.abs(candidate - num) < 0.05) return true;
+      }
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Claude sonucunu Azure'un ham metnine karşı çapraz doğrular.
+   * Bulunamayan alanların confidence'ını sıfırlar → kullanıcı teyidine gider.
+   * Bulunan alanların confidence'ını %95'e boost eder.
+   */
+  private crossCheckWithAzure(
+    result: OcrResult,
+    azureText: string,
+    originalName?: string,
+  ): void {
+    if (!azureText || azureText.length < 10) return;
+
+    const checks: { field: 'belgeNo' | 'date' | 'amount'; value: string | null; key: 'belgeNo' | 'date' | 'kdvTutari' }[] = [
+      { field: 'belgeNo', value: result.belgeNo, key: 'belgeNo' },
+      { field: 'date', value: result.date, key: 'date' },
+      { field: 'amount', value: result.kdvTutari, key: 'kdvTutari' },
+    ];
+
+    let matched = 0;
+    let mismatched = 0;
+    const mismatches: string[] = [];
+
+    for (const c of checks) {
+      if (!c.value) continue;
+      const found = this.isFieldInAzureText(c.value, c.field, azureText);
+      if (found) {
+        matched++;
+        // Tanık var → confidence boost (en az %90)
+        if (result.fieldConfidence[c.key] != null) {
+          result.fieldConfidence[c.key] = Math.max(
+            result.fieldConfidence[c.key] ?? 0,
+            0.9,
+          );
+        }
+      } else {
+        mismatched++;
+        mismatches.push(`${c.key}=${c.value}`);
+        // Tanık yok → confidence sıfırla, kullanıcı mutlaka gözden geçirsin
+        this.logger.warn(
+          `Cross-check FAIL: ${c.key}="${c.value}" Azure metninde yok (${originalName})`,
+        );
+        result.fieldConfidence[c.key] = 0.2; // Sıfır yapmıyoruz, Claude doğru olabilir ama şüpheli
+      }
+    }
+
+    // Genel confidence'ı yeniden hesapla
+    const scores = [
+      result.fieldConfidence.belgeNo,
+      result.fieldConfidence.date,
+      result.fieldConfidence.kdvTutari,
+    ].filter((v): v is number => typeof v === 'number');
+    if (scores.length > 0) {
+      result.confidence = scores.reduce((a, b) => a + b, 0) / scores.length;
+    }
+
+    this.logger.log(
+      `Cross-check: ${matched}/${matched + mismatched} eşleşti ` +
+        (mismatches.length > 0 ? `· mismatch: [${mismatches.join(', ')}]` : ''),
+    );
   }
 
   private parseAmount(str: string): number {
@@ -888,6 +1079,7 @@ export class OcrService {
     result.totalTutari = normalizeAmount(result.totalTutari);
 
     // ─── 6. KDV BREAKDOWN — Toplam kontrolü ───
+    let breakdownInconsistent = false;
     if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
       const breakdownSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
       const declaredTotal = this.parseAmount(result.kdvTutari);
@@ -898,18 +1090,78 @@ export class OcrService {
         );
         // Breakdown toplamı daha güvenilir — çünkü her oran ayrı görüldü
         result.kdvTutari = this.formatAmount(breakdownSum);
+        // KDV güvenini düşür — Claude'un kdvTutari'sı yanlıştı
+        if (result.fieldConfidence) {
+          result.fieldConfidence.kdvTutari = Math.min(
+            result.fieldConfidence.kdvTutari ?? 0.5,
+            0.5,
+          );
+        }
       }
 
-      // 7. Matrah × oran / 100 ≈ tutar çapraz doğrulama
+      // 7. Matrah × oran / 100 ≈ tutar çapraz doğrulama (AGRESİF)
       for (const b of result.kdvBreakdown) {
         if (b.matrah && b.oran > 0) {
           const expected = (Number(b.matrah) * b.oran) / 100;
           const actual = Number(b.tutar);
           const diffPct = Math.abs(expected - actual) / (expected || 1);
           if (diffPct > 0.02) {
-            // %2'den fazla sapma → OCR hatası olabilir
+            // %2'den fazla sapma → OCR hatası, item'ı işaretle
             this.logger.warn(
-              `KDV %${b.oran}: matrah×oran=${expected.toFixed(2)} ≠ tutar=${actual.toFixed(2)} (%${Math.round(diffPct * 100)} sapma)`,
+              `KDV %${b.oran}: matrah×oran=${expected.toFixed(2)} ≠ tutar=${actual.toFixed(2)} (%${Math.round(diffPct * 100)} sapma) — confidence düşürülüyor`,
+            );
+            breakdownInconsistent = true;
+            // Doğru değer matrah×oran/100 olmalı — düzelt
+            b.tutar = parseFloat(expected.toFixed(2));
+          }
+        }
+      }
+
+      // Breakdown'da tutarsızlık varsa kdvTutari'yi yeniden hesapla
+      if (breakdownInconsistent) {
+        const fixedSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+        result.kdvTutari = this.formatAmount(fixedSum);
+        if (result.fieldConfidence) {
+          result.fieldConfidence.kdvTutari = Math.min(
+            result.fieldConfidence.kdvTutari ?? 0.4,
+            0.4,
+          );
+        }
+      }
+    }
+
+    // ─── 8. Z_RAPORU breakdown ZORUNLU — boşsa kullanıcıya yolla ───
+    // Çoğu Z raporu çok oranlı (KIRTASIYE %20 + GIDA %10 vs.) — breakdown olmadan güvenilemez
+    if (result.belgeTipi === 'Z_RAPORU' && (!result.kdvBreakdown || result.kdvBreakdown.length === 0)) {
+      // Z raporunda KDV varsa ama breakdown yoksa → şüpheli, kullanıcı teyidine
+      if (result.kdvTutari) {
+        this.logger.warn(
+          `Z_RAPORU breakdown EKSİK: kdvTutari=${result.kdvTutari} ama oran kırılımı yok (${originalName}) — confidence düşürülüyor`,
+        );
+        if (result.fieldConfidence) {
+          result.fieldConfidence.kdvTutari = Math.min(
+            result.fieldConfidence.kdvTutari ?? 0.4,
+            0.4,
+          );
+        }
+      }
+    }
+
+    // ─── 9. KDV TUTARI — makul aralık kontrolü ───
+    // Toplam tutara göre KDV oranı %0-%30 arası makul. Dışındaysa şüpheli.
+    if (result.kdvTutari && result.totalTutari) {
+      const kdvNum = this.parseAmount(result.kdvTutari);
+      const totalNum = this.parseAmount(result.totalTutari);
+      if (totalNum > 0 && kdvNum > 0) {
+        const ratio = kdvNum / totalNum;
+        if (ratio > 0.35 || ratio < 0.005) {
+          this.logger.warn(
+            `KDV/Toplam oranı şüpheli: kdv=${kdvNum} toplam=${totalNum} oran=%${(ratio * 100).toFixed(1)} (${originalName})`,
+          );
+          if (result.fieldConfidence) {
+            result.fieldConfidence.kdvTutari = Math.min(
+              result.fieldConfidence.kdvTutari ?? 0.5,
+              0.5,
             );
           }
         }
