@@ -855,11 +855,11 @@ export class KdvControlService {
     const ALT_BG = 'FFF9FAFB';
 
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
+    // 9 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Durum · Açıklama
     ws.columns = [
       { width: 5 },
       { width: 13 },
       { width: 22 },
-      { width: 42 },
       { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
       { width: 13 },
       { width: 22 },
@@ -886,7 +886,7 @@ export class KdvControlService {
       this.logger.warn(`Moren logo Excel'e eklenemedi: ${e?.message}`);
     }
 
-    ws.mergeCells('A1:J1');
+    ws.mergeCells('A1:I1');
     const r1 = ws.getCell('A1');
     r1.value = 'MOREN MALİ MÜŞAVİRLİK';
     r1.font = { name: 'Calibri', size: 22, bold: true, color: { argb: GOLD } };
@@ -894,7 +894,7 @@ export class KdvControlService {
     r1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
     ws.getRow(1).height = 50;
 
-    ws.mergeCells('A2:J2');
+    ws.mergeCells('A2:I2');
     const r2 = ws.getCell('A2');
     r2.value = 'KDV Kontrol Raporu';
     r2.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -919,7 +919,7 @@ export class KdvControlService {
         c3.value = label2; Object.assign(c3, infoLabelStyle);
         const c4 = ws.getCell(`F${r}`);
         c4.value = val2; Object.assign(c4, infoValueStyle);
-        ws.mergeCells(`F${r}:J${r}`);
+        ws.mergeCells(`F${r}:I${r}`);
       }
     };
     setInfo(4, 'Mükellef',     mukellefName,  'Dönem',        periodLabel);
@@ -929,7 +929,7 @@ export class KdvControlService {
     ws.getRow(7).height = 8;
 
     // ÖZET başlığı
-    ws.mergeCells('A8:J8');
+    ws.mergeCells('A8:I8');
     const rOz = ws.getCell('A8');
     rOz.value = 'ÖZET';
     rOz.font = { bold: true, size: 12, color: { argb: GOLD } };
@@ -949,7 +949,7 @@ export class KdvControlService {
         c3.value = l2; c3.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
         const c4 = ws.getCell(`F${r}`);
         c4.value = v2; c4.font = { size: 11 }; c4.alignment = { horizontal: 'right' };
-        ws.mergeCells(`F${r}:J${r}`);
+        ws.mergeCells(`F${r}:I${r}`);
       }
     };
     setSummary(9,  'Toplam Satır',       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
@@ -963,7 +963,7 @@ export class KdvControlService {
     // Tablo başlığı (15. satır)
     const headerRow = ws.getRow(15);
     headerRow.values = [
-      '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA AÇIKLAMA', 'LUCA KDV (₺)',
+      '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA KDV (₺)',
       'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV (₺)', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
     ];
     headerRow.height = 30;
@@ -986,7 +986,6 @@ export class KdvControlService {
         ? new Date(r.kdvRecord.belgeDate).toLocaleDateString('tr-TR')
         : '—';
       const lucaEvrak = r.kdvRecord?.belgeNo || '—';
-      const lucaAciklama = r.kdvRecord?.karsiTaraf || r.kdvRecord?.aciklama || '—';
       const lucaKdv = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : null;
 
       const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
@@ -1008,7 +1007,7 @@ export class KdvControlService {
           : (r.mismatchReasons || []).join(' · ') || '';
 
       row.values = [
-        idx + 1, lucaTarih, lucaEvrak, lucaAciklama, lucaKdv,
+        idx + 1, lucaTarih, lucaEvrak, lucaKdv,
         faturaTarih, faturaBelgeNo, faturaKdv, durum, aciklama,
       ];
 
@@ -1025,15 +1024,15 @@ export class KdvControlService {
       }
 
       row.eachCell((cell, colNum) => {
-        const isStatus = colNum === 9;
+        const isStatus = colNum === 8;
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
         cell.font = {
           size: 10,
           color: { argb: isStatus ? statusText : 'FF1A1916' },
           bold: isStatus && statusBold,
         };
-        const rightAlign = colNum === 5 || colNum === 8;
-        const centerAlign = colNum === 1 || colNum === 9;
+        const rightAlign = colNum === 4 || colNum === 7;
+        const centerAlign = colNum === 1 || colNum === 8;
         cell.alignment = {
           horizontal: rightAlign ? 'right' : centerAlign ? 'center' : 'left',
           vertical: 'middle',
