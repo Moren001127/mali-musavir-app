@@ -1174,10 +1174,14 @@ export class KdvControlService {
       },
     });
 
+    // Kullanıcının onayladığı eşleşmeler (CONFIRMED) otomatik eşleşmeler (MATCHED)
+    // ile birlikte tek "Tam Eşleşme" sayacında gösterilir — bu sayede kullanıcı
+    // İncele panelinde bir eşleşmeyi Onayladığında sayaç İncele'den düşüp
+    // Tam Eşleşme sayacına geçer.
     return {
       totalRecords,
       totalImages,
-      matched: statusMap['MATCHED'] ?? 0,
+      matched: (statusMap['MATCHED'] ?? 0) + (statusMap['CONFIRMED'] ?? 0),
       partialMatch: statusMap['PARTIAL_MATCH'] ?? 0,
       unmatched: statusMap['UNMATCHED'] ?? 0,
       needsReview: statusMap['NEEDS_REVIEW'] ?? 0,
