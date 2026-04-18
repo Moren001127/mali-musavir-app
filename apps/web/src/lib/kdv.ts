@@ -165,9 +165,18 @@ export const kdvApi = {
   linkMihsapInvoices: (sessionId: string) =>
     api.post(`/kdv-control/sessions/${sessionId}/link-mihsap-invoices`).then((r) => r.data),
 
-  /** Oturumdaki bekleyen tüm görsellerin OCR'ını başlatır. */
-  startOcr: (sessionId: string) =>
-    api.post(`/kdv-control/sessions/${sessionId}/start-ocr`).then((r) => r.data),
+  /**
+   * Oturumdaki bekleyen tüm görsellerin OCR'ını başlatır.
+   * forceFresh=true ise NEEDS_REVIEW (teyit bekler) kayıtları da yeniden
+   * kuyruğa alınır ve OCR cache atlanır — "Yenile" butonunun beklediği davranış
+   * (aksi halde eski buggy sonuç geri kopyalanır).
+   */
+  startOcr: (sessionId: string, opts?: { forceFresh?: boolean }) =>
+    api
+      .post(`/kdv-control/sessions/${sessionId}/start-ocr`, {
+        forceFresh: opts?.forceFresh === true,
+      })
+      .then((r) => r.data),
 
   /* ── EŞLEŞTİRME ── */
   reconcile: (sessionId: string) =>

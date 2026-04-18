@@ -268,12 +268,21 @@ export class KdvControlController {
   /**
    * Oturumdaki bekleyen (PENDING) tüm görsellerin OCR'ını başlat.
    * Mihsap kaynaklı görseller Mihsap CDN'den indirilir, diğerleri S3'ten.
+   *
+   * body.forceFresh=true → "Yenile" butonundan gelen istekler. NEEDS_REVIEW
+   * olanlar da kuyruğa alınır ve OCR cache atlanır (yeni düzeltmeler uygulansın).
    */
   @Post('sessions/:id/start-ocr')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  startOcr(@Req() req: any, @Param('id') id: string) {
-    return this.kdvService.startOcrForSession(id, req.user.tenantId);
+  startOcr(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body?: { forceFresh?: boolean },
+  ) {
+    return this.kdvService.startOcrForSession(id, req.user.tenantId, {
+      forceFresh: body?.forceFresh === true,
+    });
   }
 
   /**

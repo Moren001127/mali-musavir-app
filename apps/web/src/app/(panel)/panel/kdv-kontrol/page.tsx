@@ -376,18 +376,45 @@ export default function KdvKontrolPage() {
     },
   });
 
-  /** Manuel "Tekrar OCR'la" — OCR sayacının yanındaki küçük link için. */
+  /**
+   * Manuel "Yenile" — OCR Teyit Bekler kartının yanındaki buton.
+   * forceFresh=true yollar: NEEDS_REVIEW + LOW_CONFIDENCE + FAILED hepsi
+   * yeniden kuyruğa alınır ve OCR cache atlanır. Aksi halde eski buggy sonuç
+   * tekrar kopyalanır ve yeni düzeltmeler hiçbir zaman uygulanmaz.
+   */
   const runOcrAgain = useMutation({
     mutationFn: async () => {
       const s = await ensureSession.mutateAsync();
-      pushFeed({ group: 'ocr', kind: 'info', title: 'OCR yeniden başlatılıyor…', detail: `${pendingOcrCount} bekleyen fatura` });
-      return kdvApi.startOcr(s.id);
+      const needs = stats?.needsOcrConfirm ?? 0;
+      pushFeed({
+        group: 'ocr',
+        kind: 'info',
+        title: 'OCR yeniden başlatılıyor…',
+        detail: `${needs} teyit bekleyen fatura yeniden okunacak (cache atlanır)`,
+      });
+      return kdvApi.startOcr(s.id, { forceFresh: true });
     },
     onSuccess: (d: any) => {
       clearFeedErrorsInGroup('ocr');
-      pushFeed({ group: 'ocr', kind: 'ok', title: `${d.queued} OCR işi başladı`, detail: 'Faturalar yeniden okunuyor' });
-      toast.success(`${d.queued} OCR başlatıldı`);
+      if ((d.queued ?? 0) === 0) {
+        pushFeed({
+          group: 'ocr',
+          kind: 'info',
+          title: 'Yeniden OCR: kuyrukta iş yok',
+          detail: d.message || 'Teyit bekleyen fatura bulunamadı',
+        });
+        toast(d.message || 'Teyit bekleyen fatura yok', { icon: 'ℹ️' });
+      } else {
+        pushFeed({
+          group: 'ocr',
+          kind: 'ok',
+          title: `${d.queued} OCR işi başladı`,
+          detail: 'Teyit bekleyenler yeniden okunuyor (cache atlandı)',
+        });
+        toast.success(`${d.queued} OCR yeniden başlatıldı`);
+      }
       qc.invalidateQueries({ queryKey: ['kdv-images', sessionId] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'OCR başlatılamadı';

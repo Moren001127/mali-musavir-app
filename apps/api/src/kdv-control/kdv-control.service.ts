@@ -1595,17 +1595,38 @@ export class KdvControlService {
    * Session'a bağlanmış (genelde Mihsap kaynaklı) PENDING durumdaki tüm
    * görsellerin OCR'ını toplu başlatır. Tek tek asenkron tetiklenir;
    * çağıran beklemez. Frontend polling ile durumu izler.
+   *
+   * @param opts.forceFresh Frontend'deki "Yenile" butonundan gelen istekler için
+   *   true geçilir. Bu durumda:
+   *   - NEEDS_REVIEW (teyit bekler) durumundaki fatura görselleri de yeniden
+   *     kuyruğa alınır (normal çağrıda bunlara dokunulmaz çünkü değerler zaten
+   *     doldurulmuştur — ama kullanıcı kodda/promptta düzeltme yaptıysa eski
+   *     sonuçları silip yeniden OCR etmek ister).
+   *   - OCR cache (aynı s3Key için önceki başarılı sonucu kopyalama) devre dışı.
+   *     Aksi halde "Yenile" aynı buggy sonucu geri yapıştırır, yeni düzeltmeler
+   *     hiçbir zaman uygulanmaz.
    */
-  async startOcrForSession(sessionId: string, tenantId: string) {
+  async startOcrForSession(
+    sessionId: string,
+    tenantId: string,
+    opts: { forceFresh?: boolean } = {},
+  ) {
     await this.findSession(sessionId, tenantId);
+    const forceFresh = opts.forceFresh === true;
 
     // PENDING + önceki denemelerde başarısız olanlar (LOW_CONFIDENCE, FAILED).
-    // NEEDS_REVIEW olanlara dokunmayız — kullanıcı teyit sırasında; değerler
-    // zaten doldurulmuş durumda.
+    // Normal akışta NEEDS_REVIEW'a dokunmayız — kullanıcı teyit sırasında;
+    // değerler zaten doldurulmuş durumda. Ama "Yenile" (forceFresh) butonu
+    // NEEDS_REVIEW'ı da kapsar çünkü kullanıcı OCR kodunu/promptunu
+    // düzelttiğinde bu kartı kullanarak eski sonuçları silip yeniden OCR'lamak
+    // ister.
+    const targetStatuses = forceFresh
+      ? ['PENDING', 'LOW_CONFIDENCE', 'FAILED', 'NEEDS_REVIEW']
+      : ['PENDING', 'LOW_CONFIDENCE', 'FAILED'];
     const pending = await this.prisma.receiptImage.findMany({
       where: {
         sessionId,
-        ocrStatus: { in: ['PENDING', 'LOW_CONFIDENCE', 'FAILED'] },
+        ocrStatus: { in: targetStatuses as any },
         isManuallyConfirmed: false,
       },
     });
@@ -1630,10 +1651,14 @@ export class KdvControlService {
     // session'da başarıyla OCR edilmişse, yeni OCR çağrısı YAPMA — önceki
     // sonucu kopyala. Faturalar modülündeki "aynı belgeleri tekrar çekme"
     // mantığının OCR versiyonu. Claude token'ı boşa harcanmaz.
+    //
+    // forceFresh (Yenile butonu) modunda bu cache TAMAMEN atlanır. Aksi halde
+    // kullanıcı "Yenile"ye bastığında eski (buggy) OCR sonucu geri kopyalanır,
+    // yeni deploy ettiği düzeltmeler hiçbir zaman uygulanmaz.
     let cacheHits = 0;
     const toQueue: typeof pending = [];
     for (const img of pending) {
-      if (!img.s3Key?.startsWith('mihsap://')) {
+      if (forceFresh || !img.s3Key?.startsWith('mihsap://')) {
         toQueue.push(img);
         continue;
       }
