@@ -6,7 +6,9 @@ import { buildSystemPrompt } from './system-prompt';
 import { computeCostUsd } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const DEFAULT_MODEL = 'claude-sonnet-4-6'; // Mali müşavir için akıllı model
+// Maliyet optimizasyonu: Haiku 4.5 — Sonnet'ten 12x ucuz, mali musavir sohbet kalitesi
+// icin yeterli. Istek gelirse body.model ile override edilebilir ('claude-sonnet-4-6').
+const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
 
 export interface ChatRequest {
@@ -171,7 +173,10 @@ export class MorenAiService {
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
       const payload: any = {
         model,
-        max_tokens: 4096,
+        // Maliyet optimizasyonu: 4096 -> 1500. Normal sohbet cevabi 500-1000 token.
+        // Sesli modda 200 kelime (~300 token) zaten limitli. Cok uzun cevap kullanici
+        // icin de zor okunur. Tool cevabi gerekiyorsa model daha cok yazar degilse kisa.
+        max_tokens: 1500,
         system: [
           { type: 'text', text: systemPrompt + (taxpayerContext ? '\n\n' + taxpayerContext : '') + voiceHint,
             cache_control: { type: 'ephemeral' } },
