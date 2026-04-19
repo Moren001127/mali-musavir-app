@@ -157,8 +157,8 @@ export function buildFieldRows(event: {
     rows.push({ label: 'Tarih', status: 'full', value: faturaTarihi });
   }
 
-  // Belge Türü — action'dan türet
-  const belgeTuru = inferBelgeTuru(event.action, event.meta);
+  // Belge Türü — meta.belgeTuru > mesajda BT:... > action'dan türet
+  const belgeTuru = inferBelgeTuru(event.action, event.meta, event.message);
   if (belgeTuru) {
     rows.push({ label: 'Belge Türü', status: 'full', value: belgeTuru });
   }
@@ -252,8 +252,18 @@ function normalizeTarih(raw: string): string {
   return s;
 }
 
-function inferBelgeTuru(action?: string, meta?: any): string | undefined {
+function inferBelgeTuru(action?: string, meta?: any, message?: string): string | undefined {
+  // 1) meta.belgeTuru — extension explicit göndermişse en doğru
   if (meta?.belgeTuru) return String(meta.belgeTuru);
+  // 2) Mesajdan "BT:..." parse et — agent.js mTag/log formatında ekliyor
+  if (message) {
+    const m = message.match(/\bBT\s*:\s*([^·\n]+?)(?=\s*[·|]|\s+(?:AST|FatT|B\d+)\s*:|$)/i);
+    if (m) {
+      const v = m[1].trim();
+      if (v) return v;
+    }
+  }
+  // 3) Son çare: action'dan kaba türet
   if (!action) return undefined;
   const a = action.toLowerCase();
   if (a.includes('alis')) return a.includes('isletme') ? 'İşl. Defteri Alış' : 'Bilanço Alış';
