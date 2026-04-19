@@ -12,45 +12,30 @@ async function bootstrap() {
 
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
-  // Helmet — CORS-friendly: cross-origin resource policy gevşetildi
-  app.use(
-    helmet({
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-      crossOriginOpenerPolicy: false,
-      crossOriginEmbedderPolicy: false,
-    }),
-  );
-  app.use(cookieParser());
 
+  // CORS — Helmet'ten ÖNCE kuruluyor ki Access-Control-Allow-Origin her response'a çıksın
   app.enableCors({
     origin: (origin, callback) => {
-      // Origin'siz istekler (server-to-server, curl) — izin ver
       if (!origin) return callback(null, true);
 
-      const allowedExact = [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://portal.morenmusavirlik.com',
-        'https://mali-musavir-app-web.vercel.app',
-        'https://app.mihsap.com',
-        'https://ofis.mihsap.com.tr',
-        'https://luca.com.tr',
-        'https://luca.net.tr',
-      ];
-      const allowedRegex = [
-        /\.mihsap\.com$/,
-        /\.mihsap\.com\.tr$/,
-        /\.vercel\.app$/,
-        /\.luca\.com\.tr$/,
-        /\.luca\.net\.tr$/,
-        /\.morenmusavirlik\.com$/,
-      ];
+      const allowed =
+        /^https?:\/\/localhost(:\d+)?$/.test(origin) ||
+        /\.mihsap\.com$/.test(origin) ||
+        /\.mihsap\.com\.tr$/.test(origin) ||
+        /\.morenmusavirlik\.com$/.test(origin) ||
+        /\.vercel\.app$/.test(origin) ||
+        /\.luca\.com\.tr$/.test(origin) ||
+        /\.luca\.net\.tr$/.test(origin) ||
+        [
+          'https://app.mihsap.com',
+          'https://ofis.mihsap.com.tr',
+          'https://luca.com.tr',
+          'https://luca.net.tr',
+        ].includes(origin);
 
-      if (allowedExact.includes(origin)) return callback(null, true);
-      if (allowedRegex.some((r) => r.test(origin))) return callback(null, true);
-
+      if (allowed) return callback(null, true);
       console.warn(`[CORS] Blocked origin: ${origin}`);
-      return callback(new Error(`CORS: Origin ${origin} not allowed`), false);
+      return callback(null, false); // Error yerine false — sessiz reddet
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -58,6 +43,17 @@ async function bootstrap() {
     exposedHeaders: ['Content-Disposition'],
     maxAge: 600,
   });
+
+  // Helmet — minimal, CORS'u bozmayan ayarlar
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: false,
+      crossOriginOpenerPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.use(cookieParser());
 
   app.setGlobalPrefix('api/v1');
 
