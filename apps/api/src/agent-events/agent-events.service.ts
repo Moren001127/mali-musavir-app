@@ -217,39 +217,50 @@ export class AgentEventsService {
   /**
    * Diagnostic — son 30 AiUsageLog kaydı + özet sayaçlar.
    * Maliyet $0 sorununun kök nedenini görmek için.
+   * try/catch ile hata mesajını geri döndürür (NestJS'in 500 yutmasını engellemek için).
    */
   async aiUsageDiag(tenantId: string) {
-    const rows = await this.prisma.aiUsageLog.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    });
-    const sayilari = {
-      toplam: rows.length,
-      mukellefDolu: rows.filter((r) => !!r.mukellef && r.mukellef.trim().length > 0).length,
-      mukellefBos: rows.filter((r) => !r.mukellef || r.mukellef.trim().length === 0).length,
-      costUsdDolu: rows.filter((r) => Number(r.costUsd || 0) > 0).length,
-      costUsdSifir: rows.filter((r) => !r.costUsd || Number(r.costUsd) === 0).length,
-      kayitYok: rows.length === 0,
-      tenantId,
-    };
-    const toplamUsd = rows.reduce((acc, r) => acc + Number(r.costUsd || 0), 0);
-    return {
-      sayilari,
-      toplamUsd: Number(toplamUsd.toFixed(6)),
-      sonKayitlar: rows.map((r) => ({
-        createdAt: r.createdAt,
-        source: r.source,
-        mukellef: r.mukellef,
-        model: r.model,
-        inputTokens: r.inputTokens,
-        outputTokens: r.outputTokens,
-        costUsd: r.costUsd,
-        karar: r.karar,
-        sebep: (r.sebep || '').slice(0, 80),
-        belgeNo: r.belgeNo,
-      })),
-    };
+    try {
+      const rows = await this.prisma.aiUsageLog.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+      });
+      const sayilari = {
+        toplam: rows.length,
+        mukellefDolu: rows.filter((r) => !!r.mukellef && (r.mukellef as string).trim().length > 0).length,
+        mukellefBos: rows.filter((r) => !r.mukellef || (r.mukellef as string).trim().length === 0).length,
+        costUsdDolu: rows.filter((r) => Number(r.costUsd || 0) > 0).length,
+        costUsdSifir: rows.filter((r) => !r.costUsd || Number(r.costUsd) === 0).length,
+        kayitYok: rows.length === 0,
+        tenantId,
+      };
+      const toplamUsd = rows.reduce((acc, r) => acc + Number(r.costUsd || 0), 0);
+      return {
+        ok: true,
+        sayilari,
+        toplamUsd: Number(toplamUsd.toFixed(6)),
+        sonKayitlar: rows.map((r) => ({
+          createdAt: r.createdAt,
+          source: r.source,
+          mukellef: r.mukellef,
+          model: r.model,
+          inputTokens: r.inputTokens,
+          outputTokens: r.outputTokens,
+          costUsd: r.costUsd,
+          karar: r.karar,
+          sebep: (r.sebep || '').slice(0, 80),
+          belgeNo: r.belgeNo,
+        })),
+      };
+    } catch (e: any) {
+      return {
+        ok: false,
+        error: e?.message || String(e),
+        stack: (e?.stack || '').split('\n').slice(0, 5).join('\n'),
+        tenantId,
+      };
+    }
   }
 
   /**
