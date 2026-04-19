@@ -15,6 +15,7 @@ import { ReconciliationEngine } from './reconciliation.engine';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
+import { logAiUsage } from '../common/ai-usage-logger';
 import { randomUUID } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import * as path from 'path';
@@ -627,8 +628,56 @@ export class KdvControlService {
     return image;
   }
 
+  /**
+   * OCR maliyetini ai_usage_logs'a yaz — Tüm Ajanlar sayacına düşsün.
+   * Image'in session'ı üzerinden tenantId + mukellef bilgisini çeker.
+   */
+  private async logOcrUsage(imageId: string, ocrResult: any, durationMs?: number) {
+    try {
+      if (!ocrResult?.usage) return;
+      const img = await this.prisma.receiptImage.findUnique({
+        where: { id: imageId },
+        select: {
+          session: {
+            select: {
+              tenantId: true,
+              taxpayer: {
+                select: { firstName: true, lastName: true, companyName: true },
+              },
+            },
+          },
+        },
+      });
+      if (!img?.session?.tenantId) return;
+      const tp = img.session.taxpayer;
+      const mukellef = tp
+        ? tp.companyName ||
+          [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() ||
+          null
+        : null;
+
+      await logAiUsage(this.prisma, {
+        tenantId: img.session.tenantId,
+        source: 'kdv-ocr',
+        model: ocrResult.engine || 'claude-haiku-4-5-20251001',
+        mukellef,
+        belgeNo: ocrResult.belgeNo || null,
+        karar: ocrResult.belgeNo && ocrResult.kdvTutari ? 'ok' : 'emin_degil',
+        sebep: null,
+        durationMs,
+        usage: {
+          input_tokens: ocrResult.usage.inputTokens || 0,
+          output_tokens: ocrResult.usage.outputTokens || 0,
+        },
+      });
+    } catch {
+      // log hatası ana akışı bozmasın
+    }
+  }
+
   /** OCR işlemi — buffer doğrudan (S3'e gerek yok) */
   private async runOcrForBuffer(imageId: string, buffer: Buffer, originalName?: string) {
+    const t0 = Date.now();
     try {
       await this.prisma.receiptImage.update({
         where: { id: imageId },
@@ -660,6 +709,9 @@ export class KdvControlService {
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
         },
       });
+
+      // AI maliyet log'u — Tüm Ajanlar sayacına düşsün
+      await this.logOcrUsage(imageId, ocrResult, Date.now() - t0);
     } catch (err) {
       this.logger.error(`runOcrForBuffer [${imageId}]: ${err?.message}`);
       await this.prisma.receiptImage.update({
@@ -671,6 +723,7 @@ export class KdvControlService {
 
   /** OCR işlemi — S3'ten indirerek (presigned upload sonrası kullanılır) */
   private async runOcrForImage(imageId: string, s3Key: string) {
+    const t0 = Date.now();
     try {
       await this.prisma.receiptImage.update({
         where: { id: imageId },
@@ -717,6 +770,9 @@ export class KdvControlService {
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
         },
       });
+
+      // AI maliyet log'u — Tüm Ajanlar sayacına düşsün
+      await this.logOcrUsage(imageId, ocrResult, Date.now() - t0);
     } catch {
       await this.prisma.receiptImage.update({
         where: { id: imageId },
