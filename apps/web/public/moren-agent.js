@@ -567,7 +567,7 @@
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, action }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, action, bosAlanSecenekleri }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -584,6 +584,8 @@
         firma,
         tutar,
         action,
+        // Aşama 2a: boş alan seçenekleri gönderilirse AI öneri verir
+        ...(bosAlanSecenekleri ? { bosAlanSecenekleri } : {}),
       }),
     });
   }
@@ -673,6 +675,107 @@
       console.log('[Moren] BOS BOLUMLER:', bosBolumler, sonuc);
     }
     return bosBolumler.length > 0;
+  }
+
+  // ==========================================================
+  // AŞAMA 2a — AI Hesap Kodu Önerisi (Gölge Mod)
+  // Bir bölümün (Matrah/Vergi/Cari) "Hesap Kodu" select'ini bulur.
+  // ==========================================================
+  function findHesapKoduSelect(etiketRegex) {
+    const all = [...document.querySelectorAll('div, span, td, label, th, h3, h4')];
+    const header = all.find((el) => {
+      if (el.offsetParent === null) return false;
+      const txt = (el.textContent || '').trim();
+      if (txt.length > 50) return false;
+      return etiketRegex.test(txt);
+    });
+    if (!header) return null;
+    let container = header.parentElement;
+    for (let i = 0; i < 5 && container; i++) {
+      const selects = [...container.querySelectorAll('.ant-select')].filter((s) => s.offsetParent !== null);
+      const hk = selects.find((s) => {
+        const ph = s.querySelector('.ant-select-selection-placeholder');
+        const phTxt = (ph?.textContent || '').trim();
+        const it = s.querySelector('.ant-select-selection-item');
+        const itTxt = (it?.textContent || '').trim();
+        return /hesap kodu/i.test(phTxt) || /hesap kodu/i.test(itTxt) || /^\d{3}\.\d/.test(itTxt);
+      });
+      if (hk) return hk;
+      container = container.parentElement;
+    }
+    return null;
+  }
+
+  // Ant Design select'i açar, dropdown seçeneklerini okur, sonra kapatır.
+  // Returns: string[] — her seçenek "600.01.005 - Yurtiçi Hizmet" gibi tam metin.
+  async function readSelectOptions(selectEl, opts = { maxWaitMs: 2500 }) {
+    if (!selectEl) return [];
+    try {
+      // Aç — select'in içine tıkla
+      const clicker = selectEl.querySelector('.ant-select-selector') || selectEl;
+      clicker.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      clicker.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      clicker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // Dropdown'ın görünmesini bekle
+      const t0 = Date.now();
+      let list = null;
+      while (Date.now() - t0 < opts.maxWaitMs) {
+        await sleep(120);
+        // Açık dropdown'ları bul (display:none olmayan)
+        const dropdowns = [...document.querySelectorAll('.ant-select-dropdown')].filter(
+          (d) => !d.classList.contains('ant-select-dropdown-hidden') && d.offsetParent !== null,
+        );
+        if (dropdowns.length > 0) {
+          list = dropdowns[dropdowns.length - 1];
+          // Biraz daha bekle — render tamamlansın
+          await sleep(150);
+          break;
+        }
+      }
+      if (!list) return [];
+      const items = [...list.querySelectorAll('.ant-select-item-option')]
+        .map((el) => (el.textContent || '').trim())
+        .filter(Boolean);
+      // Kapat — Escape ile güvenli kapatma
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
+      );
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
+      );
+      await sleep(200);
+      return items;
+    } catch (e) {
+      console.warn('[Moren] readSelectOptions hata:', e?.message);
+      return [];
+    }
+  }
+
+  // Boş olan alanların dropdown seçeneklerini okur (sadece boş olanları açar).
+  // Returns: { matrahKodlari?, kdvKodlari?, cariKodlari? }
+  async function readBosAlanSecenekleri() {
+    const sonuc = {};
+    const matrahDolu = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
+    const vergiDolu  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
+    const cariDolu   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
+
+    if (matrahDolu === false) {
+      const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
+      const opts = await readSelectOptions(sel);
+      // Sadece hesap kodu pattern'ıyla başlayanları al
+      sonuc.matrahKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+    }
+    if (vergiDolu === false) {
+      const sel = findHesapKoduSelect(/^Vergi\s*\(/i) || findHesapKoduSelect(/^KDV/i) || findHesapKoduSelect(/^Vergi$/i);
+      const opts = await readSelectOptions(sel);
+      sonuc.kdvKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+    }
+    if (cariDolu === false) {
+      const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
+      const opts = await readSelectOptions(sel);
+      sonuc.cariKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+    }
+    return sonuc;
   }
 
   // F2 sonrası validation uyarısı kontrolü
@@ -1516,8 +1619,45 @@
       }
       // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari) → F2 denemeden atla
       if (bosSelectVarMi()) {
+        // ================================================================
+        // AŞAMA 2a (Gölge Mod) — SADECE Bilanço SATIŞ için:
+        // Boş alanların dropdown seçeneklerini okuyup AI'a danış, öneriyi log'a yaz.
+        // Gerçek uygulama yapmaz — yine atlar. Şu öneriler uygun mu değerlendiriyoruz.
+        // ================================================================
+        let aiOneriOzet = '';
+        if (action === 'isle_satis') {
+          try {
+            setStatus(`${mukellef.ad} · #${fid} AI öneriyor (gölge)…`);
+            const secenekler = await readBosAlanSecenekleri();
+            const adetM = (secenekler.matrahKodlari || []).length;
+            const adetK = (secenekler.kdvKodlari || []).length;
+            const adetC = (secenekler.cariKodlari || []).length;
+            if (adetM + adetK + adetC > 0) {
+              const oneriKarari = await aiDecide({
+                codes: codes, tarih, hedefAy,
+                belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
+                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                action, bosAlanSecenekleri: secenekler,
+              });
+              const o = oneriKarari?.onerilenler || {};
+              const cf = o.confidence || {};
+              const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '—';
+              const parts = [];
+              if (adetM > 0) parts.push(`M:${o.matrahHesapKodu || '—'}(${fmtC(cf.matrah)})`);
+              if (adetK > 0) parts.push(`K:${o.kdvHesapKodu || '—'}(${fmtC(cf.kdv)})`);
+              if (adetC > 0) parts.push(`C:${o.cariHesapKodu || '—'}(${fmtC(cf.cari)})`);
+              aiOneriOzet = ` | AI öneri: ${parts.join(' ')} [seçenek sayısı: M=${adetM} K=${adetK} C=${adetC}]`;
+              console.log('[Moren] AI hesap kodu önerisi (gölge mod):', { secenekler, oneri: o });
+            } else {
+              aiOneriOzet = ' | AI: dropdown seçeneği okunamadı';
+            }
+          } catch (e) {
+            console.warn('[Moren] AI öneri hatası (gölge mod):', e?.message);
+            aiOneriOzet = ` | AI hata: ${(e?.message || '').slice(0, 50)}`;
+          }
+        }
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'matrah/KDV/cari boş alan var', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `matrah/KDV/cari boş alan var${aiOneriOzet}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
       // LLM karar
