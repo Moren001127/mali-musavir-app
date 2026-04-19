@@ -706,75 +706,124 @@
     return null;
   }
 
-  // Ant Design select'i açar, dropdown seçeneklerini okur, sonra kapatır.
-  // Returns: string[] — her seçenek "600.01.005 - Yurtiçi Hizmet" gibi tam metin.
-  async function readSelectOptions(selectEl, opts = { maxWaitMs: 2500 }) {
+  // Mihsap dropdown'u "remote search" modunda — tıklayınca boş, yazınca sonuç döner.
+  // Her search term için: dropdown'u aç, yaz, bekle, seçenekleri oku, kapat.
+  async function searchAndReadOptions(selectEl, searchTerm, waitMs = 1500) {
     if (!selectEl) return [];
     try {
-      // Aç — select'in içine tıkla
-      const clicker = selectEl.querySelector('.ant-select-selector') || selectEl;
-      clicker.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      clicker.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      clicker.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      // Dropdown'ın görünmesini bekle
-      const t0 = Date.now();
-      let list = null;
-      while (Date.now() - t0 < opts.maxWaitMs) {
-        await sleep(120);
-        // Açık dropdown'ları bul (display:none olmayan)
-        const dropdowns = [...document.querySelectorAll('.ant-select-dropdown')].filter(
-          (d) => !d.classList.contains('ant-select-dropdown-hidden') && d.offsetParent !== null,
-        );
-        if (dropdowns.length > 0) {
-          list = dropdowns[dropdowns.length - 1];
-          // Biraz daha bekle — render tamamlansın
-          await sleep(150);
-          break;
-        }
+      await closeAllAntDropdowns();
+      await sleep(150);
+      // Aç (tıkla)
+      selectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await sleep(80);
+      const selector = selectEl.querySelector('.ant-select-selector') || selectEl;
+      selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      selector.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      selector.click();
+      const input = selectEl.querySelector('input.ant-select-selection-search-input') || selectEl.querySelector('input');
+      if (!input) return [];
+      try { input.focus(); } catch {}
+      await sleep(100);
+      // Yaz (React state'e ulaşmak için native setter)
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      nativeSetter.call(input, '');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(80);
+      nativeSetter.call(input, searchTerm);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      // Debounce + backend API cevabını bekle
+      await sleep(waitMs);
+      // Seçenekleri topla
+      const dd = findDropdownForSelect(selectEl);
+      const options = [];
+      if (dd) {
+        dd.querySelectorAll('.ant-select-item-option-content').forEach((el) => {
+          const t = (el.textContent || '').trim();
+          if (t) options.push(t);
+        });
       }
-      if (!list) return [];
-      const items = [...list.querySelectorAll('.ant-select-item-option')]
-        .map((el) => (el.textContent || '').trim())
-        .filter(Boolean);
-      // Kapat — Escape ile güvenli kapatma
-      document.activeElement?.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
-      );
-      document.body.dispatchEvent(
-        new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }),
-      );
-      await sleep(200);
-      return items;
+      return options;
     } catch (e) {
-      console.warn('[Moren] readSelectOptions hata:', e?.message);
+      console.warn('[Moren] searchAndReadOptions hata:', e?.message);
       return [];
+    } finally {
+      await closeAllAntDropdowns();
     }
   }
 
-  // Boş olan alanların dropdown seçeneklerini okur (sadece boş olanları açar).
-  // Returns: { matrahKodlari?, kdvKodlari?, cariKodlari? }
-  async function readBosAlanSecenekleri() {
+  // Boş alanlar için arama-bazlı seçenek okuma.
+  // Matrah: 600/601/602 yazıp tüm yurtiçi satış kodlarını topla (SATIŞ modu için).
+  // KDV: 391 yazıp hesaplanan KDV kodlarını topla.
+  // Cari: firmaAdi'nin ilk kısmıyla ara.
+  async function readBosAlanSecenekleri({ action, firmaAdi } = {}) {
     const sonuc = {};
     const matrahDolu = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
     const vergiDolu  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
     const cariDolu   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
 
+    console.log('[Moren.debug] readBosAlanSecenekleri — başlıyor', { matrahDolu, vergiDolu, cariDolu, action, firmaAdi });
+
+    // "600.01.005-YURTİÇİ SATIŞLAR %1" veya "600.01.005 - ..." şeklindeki option'dan kod kısmı
+    const extractKod = (optText) => {
+      const m = optText.match(/^(\d{3}\.[A-Z0-9Öİ]+(?:\.[A-Z0-9Öİ]+)*)/i);
+      if (m) return m[1].trim();
+      return optText.split(/[\s\-]/)[0].trim();
+    };
+
+    // Matrah: SATIŞ modunda 600/601/602 prefix'leriyle ara
     if (matrahDolu === false) {
       const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
-      const opts = await readSelectOptions(sel);
-      // Sadece hesap kodu pattern'ıyla başlayanları al
-      sonuc.matrahKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+      if (sel) {
+        const isSatis = action === 'isle_satis';
+        const prefixler = isSatis ? ['600', '601', '602'] : ['153', '740', '770', '760'];
+        const all = new Set();
+        for (const pre of prefixler) {
+          const opts = await searchAndReadOptions(sel, pre);
+          console.log(`[Moren.debug] matrah "${pre}" → ${opts.length} sonuç`, opts.slice(0, 3));
+          opts.forEach((o) => all.add(o));
+        }
+        const kodlar = [...all].map(extractKod).filter((c) => /^\d{3}\.\w/.test(c));
+        if (kodlar.length > 0) sonuc.matrahKodlari = kodlar;
+      }
     }
+
+    // KDV: 391 (SATIŞ hesaplanan) / 191 (ALIŞ indirilecek)
     if (vergiDolu === false) {
       const sel = findHesapKoduSelect(/^Vergi\s*\(/i) || findHesapKoduSelect(/^KDV/i) || findHesapKoduSelect(/^Vergi$/i);
-      const opts = await readSelectOptions(sel);
-      sonuc.kdvKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+      if (sel) {
+        const isSatis = action === 'isle_satis';
+        const prefixler = isSatis ? ['391'] : ['191'];
+        const all = new Set();
+        for (const pre of prefixler) {
+          const opts = await searchAndReadOptions(sel, pre);
+          console.log(`[Moren.debug] kdv "${pre}" → ${opts.length} sonuç`, opts.slice(0, 3));
+          opts.forEach((o) => all.add(o));
+        }
+        const kodlar = [...all].map(extractKod).filter((c) => /^\d{3}\.\w/.test(c));
+        if (kodlar.length > 0) sonuc.kdvKodlari = kodlar;
+      }
     }
+
+    // Cari: firma adının ilk kısmıyla ara (minimum 3, maks 10 karakter)
     if (cariDolu === false) {
       const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
-      const opts = await readSelectOptions(sel);
-      sonuc.cariKodlari = opts.map((t) => (t.match(/^\d{3}\.\d[\.\d]*/)?.[0] || t.split(/\s|-/)[0]).trim()).filter((c) => /^\d{3}\.\d/.test(c));
+      if (sel && firmaAdi && firmaAdi.length >= 3) {
+        // Firma adından ilk 3 anlamlı karakter (boşluk/noktalama olmayan)
+        const temiz = firmaAdi.replace(/[^\wÇĞİÖŞÜçğıöşü\s]/g, '').trim();
+        const ilkKelime = temiz.split(/\s+/)[0] || '';
+        const anahtar = ilkKelime.slice(0, Math.min(8, ilkKelime.length));
+        if (anahtar.length >= 3) {
+          const opts = await searchAndReadOptions(sel, anahtar, 1800);
+          console.log(`[Moren.debug] cari "${anahtar}" → ${opts.length} sonuç`, opts.slice(0, 3));
+          const kodlar = opts.map(extractKod).filter((c) => /^\d{3}\.\w/.test(c));
+          if (kodlar.length > 0) sonuc.cariKodlari = kodlar;
+        }
+      } else if (sel) {
+        console.log('[Moren.debug] cari — firma adı yok veya çok kısa, atlandı');
+      }
     }
+
+    console.log('[Moren.debug] readBosAlanSecenekleri — SONUÇ:', sonuc);
     return sonuc;
   }
 
@@ -1342,6 +1391,7 @@
         let ustOzet = [];
 
         // Fatura Türü: deterministik — Alış→Gider, Satış→Gelir
+        // Boş → ata. Dolu ve farklı → ATLA (yanlış sınıflandırma yapma).
         const beklenenFaturaTuru = isAlis ? 'Gider' : 'Gelir';
         if (!ust.faturaTuru) {
           const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
@@ -1651,7 +1701,7 @@
         if (action === 'isle_satis') {
           try {
             setStatus(`${mukellef.ad} · #${fid} AI öneriyor (gölge)…`);
-            const secenekler = await readBosAlanSecenekleri();
+            const secenekler = await readBosAlanSecenekleri({ action, firmaAdi: meta.firma });
             const adetM = (secenekler.matrahKodlari || []).length;
             const adetK = (secenekler.kdvKodlari || []).length;
             const adetC = (secenekler.cariKodlari || []).length;
