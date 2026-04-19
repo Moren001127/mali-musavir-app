@@ -1098,6 +1098,7 @@ export default function KdvKontrolPage() {
                     <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Fatura</th>
                     <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşen</th>
                     <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşmedi</th>
+                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>Maliyet</th>
                     <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
                   </tr>
                 </thead>
@@ -1145,6 +1146,19 @@ export default function KdvKontrolPage() {
                           }}
                         >
                           {unmatched ?? '—'}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right tabular-nums"
+                          style={{
+                            fontSize: 11.5,
+                            color: s?.maliyetUsd && s.maliyetUsd > 0
+                              ? 'rgba(168,85,247,0.85)'
+                              : 'rgba(250,250,249,0.3)',
+                          }}
+                        >
+                          {s?.maliyetUsd && s.maliyetUsd > 0
+                            ? `$${Number(s.maliyetUsd).toFixed(4)}`
+                            : '—'}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1.5">

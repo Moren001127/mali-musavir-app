@@ -517,6 +517,27 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
     • Fatura "e-Arşiv Fatura" yazıyor ama belgeTuru E_FATURA ise veya tam tersi → atla
     • Fatura "e-Fatura" yazıyor ama belgeTuru E_ARSIV ise → atla
     • Fatura üzerinde "İHRACAT / EXPORT" yazıyor ama faturaTuru normal satışsa → atla
+
+    [F.1] ÖKC FİŞİ vs FATURA UYUMSUZLUĞU (ÇOK ÖNEMLİ):
+      ÖKC fişi (yazarkasa fişi) belirteçleri — herhangi biri görülüyorsa belge ÖKC FİŞİ'dir:
+        • "Z NO" / "Z NO:" numarası (örn "Z NO:1462")
+        • "EKÜ NO" / "EKÜ NO:" numarası
+        • "T. SİCİL NO" / "T.SİCİL NO" (yazarkasa sicil numarası)
+        • "EMV SATIŞ TUTARI" veya "EMU SATIŞ TUTARI"
+        • "FİŞ NO" küçük formatta (örn "FİŞ NO: 0099") — üstte yazarkasa adı/VD ile birlikte
+        • Altta "AID:" veya "I:" ve "T:" EMV kart kodları
+        • Termal yazıcı görünümlü dar kağıt, "TOPKDV" / "TOPLAM" toplu satırları
+      e-Fatura/e-Arşiv belirteçleri — tek başına veya kombinasyon:
+        • Üstte "e-FATURA" / "e-ARŞİV FATURA" ibaresi
+        • GİB kare kodu / barkod
+        • GTİP satırları, satır kalemli tablo (adet, birim fiyat, matrah, KDV, toplam sütunları)
+        • ETTN numarası veya fatura no formatı "XXX2026000000123"
+      KARAR KURALI:
+        • Görüntüde ÖKC göstergelerinden (Z NO / EKÜ NO / T.SİCİL / EMV SATIŞ) en az 2 tanesi KESİN görünüyor
+          VE ekrandaki belgeTuru "E_FATURA" veya "E_ARSIV" ise → ATLA ("ÖKC fişi ama Fatura seçilmiş")
+        • Görüntüde e-Fatura/e-Arşiv göstergeleri KESİN var ama ekrandaki belgeTuru "FIS" ise → ATLA ("Fatura ama ÖKC seçilmiş")
+        • Emin değilsen atlama, GEÇ.
+
     NOT: Okuyamadığın madde için atlama, GEÇ. Sadece KESİN gördüğün uyumsuzlukta atla.
 
 === MUTLAK YASAKLAR (asla bu gerekçelerle ATLA deme) ===
