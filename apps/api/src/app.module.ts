@@ -18,6 +18,7 @@ import { MihsapModule } from './mihsap/mihsap.module';
 import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
+import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -41,6 +42,7 @@ import { ReminderCron } from './schedule/reminder.cron';
     LucaModule,
     MizanModule,
     MorenAiModule,
+    WhatsAppModule,
   ],
   providers: [ReminderCron],
 })
