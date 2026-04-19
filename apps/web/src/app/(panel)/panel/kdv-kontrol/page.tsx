@@ -1487,32 +1487,37 @@ function FeedCount({ kind, label, count }: { kind: FeedItem['kind']; label: stri
 }
 
 function FeedRow({ item }: { item: FeedItem }) {
+  // Mat ton paleti — Mihsap LogCard ile tutarlı
   const colors: Record<FeedItem['kind'], { c: string; bg: string; icon: string }> = {
-    ok:   { c: '#22c55e', bg: 'rgba(34,197,94,0.06)',  icon: '✓' },
-    warn: { c: '#f59e0b', bg: 'rgba(245,158,11,0.06)', icon: '⚠' },
-    err:  { c: '#f43f5e', bg: 'rgba(244,63,94,0.06)',  icon: '✗' },
-    info: { c: '#60a5fa', bg: 'rgba(96,165,250,0.06)', icon: '●' },
+    ok:   { c: '#6a9a6c', bg: 'rgba(60,120,70,0.05)',  icon: '✓' },
+    warn: { c: '#b89870', bg: 'rgba(180,120,40,0.05)', icon: '⚠' },
+    err:  { c: '#c85555', bg: 'rgba(180,50,50,0.07)',  icon: '✗' },
+    info: { c: '#6b94c2', bg: 'rgba(96,140,200,0.05)', icon: '●' },
   };
   const s = colors[item.kind];
   const time = new Date(item.ts).toLocaleTimeString('tr-TR', { hour12: false });
+  // Detail çok satırlı olabilir — \n ile böl, anahtar kelimeli prefix yoksa tek satır kalır
+  const detailLines = item.detail ? item.detail.split(/\r?\n/).filter((l) => l.length > 0) : [];
   return (
     <div
       className="flex items-start gap-3 px-3 py-2 rounded-lg text-[12px] animate-in fade-in slide-in-from-bottom-1 duration-200"
       style={{ background: s.bg, borderLeft: `2px solid ${s.c}` }}
     >
-      <span className="text-[10px] tabular-nums flex-shrink-0 mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+      <span className="text-[10px] tabular-nums flex-shrink-0 mt-0.5" style={{ color: '#6b6b6b' }}>
         {time}
       </span>
       <span className="font-bold flex-shrink-0" style={{ color: s.c, width: 14 }}>
         {s.icon}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="font-medium leading-tight" style={{ color: '#fafaf9' }}>
+        <div className="font-medium leading-tight" style={{ color: '#cbd5e1' }}>
           {item.title}
         </div>
-        {item.detail && (
-          <div className="text-[11px] mt-0.5 leading-tight" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            {item.detail}
+        {detailLines.length > 0 && (
+          <div className="text-[11px] mt-0.5" style={{ color: '#8a8a8a', lineHeight: '1.5' }}>
+            {detailLines.map((line, i) => (
+              <div key={i} style={{ minHeight: '1em' }}>{line}</div>
+            ))}
           </div>
         )}
       </div>

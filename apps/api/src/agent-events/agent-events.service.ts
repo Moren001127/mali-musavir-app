@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
+import { profileToPromptText } from '../common/profile-prompt';
 
 export interface AgentEventInput {
   agent: string;
@@ -411,17 +412,17 @@ export class AgentEventsService {
     if (!apiKey) {
       return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
     }
-    // Mükellef talimatı — panelden girilen özel kural. AI ana 6 kuralı uyguladıktan
-    // SONRA, sadece açık uyumsuzluk varsa talimatı ek referans olarak kullanır.
-    // Ana kuralları (özellikle [E] nakliye bedeli = ONAY) geçersiz kılmaz.
+    // Mükellef profili — yapılandırılmış (sektör, KDV hesapları, tahsilat vs.)
+    // + serbest talimat + sistem kuralları (tevkifat / kasa limit).
     let mukellefTalimat = '';
     if (input.tenantId && input.mukellef) {
       try {
         const rule = await this.prisma.agentRule.findUnique({
           where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
         });
-        const talimat = (rule?.profile as any)?.talimat;
-        if (talimat) mukellefTalimat = String(talimat);
+        if (rule?.profile) {
+          mukellefTalimat = profileToPromptText(rule.profile);
+        }
       } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
@@ -787,15 +788,16 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       ? 'ALIŞ'
       : 'ALIŞ';
 
-    // Mükellef özel talimatı
+    // Mükellef profili (yapılandırılmış + sistem kuralları)
     let mukellefTalimat = '';
     if (input.tenantId && input.mukellef) {
       try {
         const rule = await this.prisma.agentRule.findUnique({
           where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
         });
-        const talimat = (rule?.profile as any)?.talimat;
-        if (talimat) mukellefTalimat = String(talimat);
+        if (rule?.profile) {
+          mukellefTalimat = profileToPromptText(rule.profile);
+        }
       } catch {}
     }
 

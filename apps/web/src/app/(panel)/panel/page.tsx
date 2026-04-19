@@ -99,11 +99,12 @@ function Section({ title, children, action, accent = 'gold' }: { title: string; 
 }
 
 function FeedRow({ time, icon: Icon, title, meta, kind = 'info' }: { time: string; icon: any; title: ReactNode; meta: string; kind?: FeedKind }) {
+  // Mat ton paleti — Mihsap LogCard ve KDV Kontrol akışıyla tutarlı
   const C: Record<FeedKind, { bg: string; bd: string; c: string }> = {
-    ok: { bg: 'rgba(34,197,94,0.08)', bd: 'rgba(34,197,94,0.2)', c: '#22c55e' },
-    warn: { bg: 'rgba(245,158,11,0.08)', bd: 'rgba(245,158,11,0.2)', c: '#f59e0b' },
-    err: { bg: 'rgba(244,63,94,0.08)', bd: 'rgba(244,63,94,0.2)', c: '#f43f5e' },
-    info: { bg: 'rgba(184,160,111,0.08)', bd: 'rgba(184,160,111,0.15)', c: GOLD },
+    ok:   { bg: 'rgba(60,120,70,0.06)',  bd: 'rgba(77,124,79,0.2)',  c: '#7aa07c' },
+    warn: { bg: 'rgba(180,120,40,0.06)', bd: 'rgba(146,116,74,0.2)', c: '#b89870' },
+    err:  { bg: 'rgba(180,50,50,0.07)',  bd: 'rgba(176,64,64,0.2)',  c: '#d97070' },
+    info: { bg: 'rgba(184,160,111,0.06)', bd: 'rgba(184,160,111,0.15)', c: GOLD },
   };
   const c = C[kind];
   return (
