@@ -436,7 +436,7 @@ export class AgentEventsService {
     // Firma Hafizasi — bu firma icin gecmis onaylari hint olarak al.
     // Hint varsa AI prompt'una OVERRIDE kuraliyla eklenecek (fatura icerigi cakisirsa
     // AI hint'i gormezden gelebilir). 3+ onay yoksa null doner (yeni/az kullanilmis firma).
-    let vendorHint: Awaited<ReturnType<typeof this.vendorMemory.getHintForVendor>> = null;
+    let vendorHint: Awaited<ReturnType<VendorMemoryService['getHintForVendor']>> = null;
     if (input.tenantId && input.firmaKimlikNo) {
       try {
         vendorHint = await this.vendorMemory.getHintForVendor(
@@ -919,7 +919,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     }
 
     // Firma Hafizasi hint — isletme defteri modu icin (kayitTuru + altTuru kombinasyonu)
-    let vendorHintIsletme: Awaited<ReturnType<typeof this.vendorMemory.getHintForVendor>> = null;
+    let vendorHintIsletme: Awaited<ReturnType<VendorMemoryService['getHintForVendor']>> = null;
     if (input.tenantId && input.firmaKimlikNo) {
       try {
         vendorHintIsletme = await this.vendorMemory.getHintForVendor(
