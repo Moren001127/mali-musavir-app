@@ -118,6 +118,17 @@ export class AgentEventsController {
     return this.service.getAiUsageStats(req.user.tenantId);
   }
 
+  /**
+   * Diagnostic — son 30 AI usage kaydını dümdüz döner.
+   * "Maliyet neden 0 görünüyor?" sorusunu cevaplamak için.
+   * mukellef NULL mı? costUsd 0 mı? token sayısı 0 mı? görelim.
+   */
+  @Get('ai/diag')
+  @UseGuards(AuthGuard('jwt'))
+  async aiDiag(@Req() req: any) {
+    return this.service.aiUsageDiag(req.user.tenantId);
+  }
+
   /** Kontör yükleme kaydet */
   @Post('ai/credit-topup')
   @UseGuards(AuthGuard('jwt'))
