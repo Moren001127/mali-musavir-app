@@ -172,8 +172,10 @@ export class AgentEventsService {
     }
 
     // AI maliyeti — bu ay her mukellef için harcanan USD (Claude/Anthropic + OCR)
-    // ai-usage-logger ts ile aynı dönemde + meta.mukellef ile eşleşen kayıtları topla.
-    const maliyetMap = await this.aiMaliyetByMukellef(tenantId, periodStart, periodEnd);
+    // ai-usage-logger'dan dönemdeki tüm kayıtları al; mukellef dolu olanları
+    // mukellefe yaz, boş olanları (eski extension kayıtları) "diger" toplamına ekle.
+    const { perMukellef: maliyetMap, digerUsd, toplamAiUsd } =
+      await this.aiMaliyetByMukellef(tenantId, periodStart, periodEnd);
 
     const items = Array.from(map.entries())
       .map(([mukellef, counts]) => ({
@@ -196,41 +198,59 @@ export class AgentEventsService {
       }),
       { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0, maliyetUsd: 0 },
     );
-    toplam.maliyetUsd = Number(toplam.maliyetUsd.toFixed(4));
+    // Toplam maliyete mukellef-bağsız harcamayı da ekle (Toplam Maliyet kpi için).
+    // Eski extension kayıtları mukellef field'ı yok — yine de ödendiği gerçek.
+    toplam.maliyetUsd = Number((toplamAiUsd || (toplam.maliyetUsd + digerUsd)).toFixed(4));
 
-    return { period: { year, month }, toplam, items };
+    return {
+      period: { year, month },
+      toplam,
+      items,
+      maliyet: {
+        toplamAiUsd: Number((toplamAiUsd || 0).toFixed(4)),
+        mukellefBagliUsd: Number((toplam.maliyetUsd - digerUsd).toFixed(4)),
+        digerUsd: Number((digerUsd || 0).toFixed(4)),
+      },
+    };
   }
 
   /**
-   * Bu ayda mükellef başına AI USD harcaması.
-   * AiUsageLog.mukellef alanından grupla; boş olanlar (genel kullanım) atla.
+   * Bu ayda AI USD harcamasını çıkarır:
+   *  - perMukellef: mukellef adı dolu olan kayıtlar gruplanır
+   *  - digerUsd: mukellef field NULL/boş olan kayıtların toplamı (eski extension)
+   *  - toplamAiUsd: dönemdeki TÜM AI USD (Toplam Maliyet kpi için)
    */
   private async aiMaliyetByMukellef(
     tenantId: string,
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
+  ): Promise<{ perMukellef: Map<string, number>; digerUsd: number; toplamAiUsd: number }> {
+    const perMukellef = new Map<string, number>();
+    let digerUsd = 0;
+    let toplamAiUsd = 0;
     try {
       const rows = await this.prisma.aiUsageLog.findMany({
         where: {
           tenantId,
           createdAt: { gte: periodStart, lt: periodEnd },
-          mukellef: { not: null },
         },
         select: { costUsd: true, mukellef: true },
       });
       for (const r of rows) {
         const cost = Number(r.costUsd || 0);
         if (!Number.isFinite(cost) || cost <= 0) continue;
+        toplamAiUsd += cost;
         const muk = (r.mukellef || '').trim();
-        if (!muk) continue;
-        map.set(muk, (map.get(muk) || 0) + cost);
+        if (muk) {
+          perMukellef.set(muk, (perMukellef.get(muk) || 0) + cost);
+        } else {
+          digerUsd += cost;
+        }
       }
     } catch (e) {
       console.warn('[summary-by-mukellef] aiMaliyetByMukellef hatası:', e);
     }
-    return map;
+    return { perMukellef, digerUsd, toplamAiUsd };
   }
 
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {

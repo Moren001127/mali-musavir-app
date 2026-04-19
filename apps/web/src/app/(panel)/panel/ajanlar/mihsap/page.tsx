@@ -631,7 +631,10 @@ function MukellefIslemOzeti({
     .filter((ad) => ad && !islenenSet.has(ad))
     .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0, maliyetUsd: 0 }));
 
-  const tumu = [...items, ...islenmeyen];
+  // Alfabetik sıralama (Türkçe locale): işlem gören + görmeyen tek listede.
+  const tumu = [...items, ...islenmeyen].sort((a, b) =>
+    a.mukellef.localeCompare(b.mukellef, 'tr', { sensitivity: 'base' }),
+  );
   const filtreli = searchQuery
     ? tumu.filter((i) => i.mukellef.toLowerCase().includes(searchQuery.toLowerCase()))
     : tumu;
@@ -709,20 +712,25 @@ function MukellefIslemOzeti({
               </tr>
             </thead>
             <tbody>
-              {goruntulenen.map((row, i) => (
+              {goruntulenen.map((row, i) => {
+                // Toplam ETKİLEŞİM = alış + satış + atlanan (her biri bir işlemdir).
+                // "İşlem yok" badge'i: hiçbir kayıt yoksa.
+                const tumToplam = row.alis + row.satis + row.atlanan;
+                const islemYok = tumToplam === 0;
+                return (
                 <tr
                   key={row.mukellef}
                   className="transition-all"
                   style={{
                     borderTop: i > 0 ? '1px solid rgba(255,255,255,0.03)' : 'none',
-                    background: row.toplam === 0 ? 'rgba(245,158,11,0.02)' : 'transparent',
+                    background: islemYok ? 'rgba(245,158,11,0.02)' : 'transparent',
                   }}
                 >
                   <td className="px-4 py-2.5">
-                    <span style={{ color: row.toplam === 0 ? 'rgba(250,250,249,0.55)' : '#fafaf9', fontWeight: 500 }}>
+                    <span style={{ color: islemYok ? 'rgba(250,250,249,0.55)' : '#fafaf9', fontWeight: 500 }}>
                       {row.mukellef}
                     </span>
-                    {row.toplam === 0 && (
+                    {islemYok && (
                       <span
                         className="ml-2 inline-block px-1.5 py-0.5 rounded text-[9.5px] font-bold uppercase"
                         style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}
@@ -740,14 +748,15 @@ function MukellefIslemOzeti({
                   <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: row.atlanan > 0 ? '#f59e0b' : 'rgba(250,250,249,0.3)' }}>
                     {row.atlanan}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: row.toplam > 0 ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
-                    {row.toplam}
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: tumToplam > 0 ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
+                    {tumToplam}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.maliyetUsd ?? 0) > 0 ? '#a78bfa' : 'rgba(250,250,249,0.3)' }}>
                     {fmtUsd(row.maliyetUsd ?? 0)}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {filtreli.length > 20 && (
