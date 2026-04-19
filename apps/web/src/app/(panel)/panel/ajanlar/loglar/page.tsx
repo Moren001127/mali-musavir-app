@@ -222,8 +222,10 @@ function LogLine({ event }: { event: AgentEvent }) {
         </div>
         {event.message && (
           <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8', lineHeight: '1.5' }}>
-            {event.message.split(/\r?\n/).map((line, i) => (
-              <div key={i} style={{ minHeight: '1em' }}>{line || '\u00A0'}</div>
+            {splitLogMessage(event.message).map((line, i) => (
+              <div key={i} style={{ minHeight: '1em', paddingLeft: line.startsWith('  ') ? '12px' : '0' }}>
+                {line.trim() || '\u00A0'}
+              </div>
             ))}
           </div>
         )}
@@ -235,6 +237,37 @@ function LogLine({ event }: { event: AgentEvent }) {
       </div>
     </div>
   );
+}
+
+// Log mesajını maddeler halinde böler.
+// Önce \n veya \r\n ile dener; eğer hiç newline yoksa (extension/transport
+// boşluğa çevirmiş olabilir) bilinen anahtar kelimelerin ÖNÜNE satır atar.
+function splitLogMessage(msg: string): string[] {
+  const byNewline = msg.split(/\r?\n/).filter((s) => s.length > 0);
+  if (byNewline.length > 1) return byNewline;
+
+  // Newline yok — anahtar kelimelere göre lookahead-split
+  const KEYS = [
+    'Boş alanlar:',
+    'AI önerisi:',
+    'AI öneri:',
+    'AI öneri',
+    'Sonuç:',
+    'Mihsap uyarısı:',
+    'Hata:',
+    'Matrah :',
+    'Matrah:',
+    'KDV :',
+    'KDV:',
+    'Cari :',
+    'Cari:',
+  ];
+  const escaped = KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const re = new RegExp(`\\s*(?=(?:${escaped}))`, 'g');
+  const parts = msg.split(re).map((s) => s.trim()).filter((s) => s.length > 0);
+
+  // Matrah/KDV/Cari satırlarına 2 boşluk indent ver (AI önerisi alt satırları)
+  return parts.map((p) => (/^(Matrah|KDV|Cari)\b/.test(p) ? '  ' + p : p));
 }
 
 function styleFor(status: string) {
