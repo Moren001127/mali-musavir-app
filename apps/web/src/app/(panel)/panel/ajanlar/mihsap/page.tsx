@@ -63,10 +63,11 @@ export default function MihsapAgentPage() {
     satis: number;
     atlanan: number;
     toplam: number;
+    maliyetUsd?: number;
   };
   type MukellefSummary = {
     period: { year: number; month: number };
-    toplam: { alis: number; satis: number; toplam: number; mukellefSayisi: number };
+    toplam: { alis: number; satis: number; toplam: number; mukellefSayisi: number; maliyetUsd?: number };
     items: MukellefSummaryItem[];
   };
   const { data: mukellefSummary } = useQuery<MukellefSummary>({
@@ -622,14 +623,13 @@ function MukellefIslemOzeti({
 
   // API'den gelen özet + mihsapId tanımlı olup henüz işlem GÖRMEMİŞ mükellefleri birleştir.
   // Böylece 0 işlem gören mükellefler de listede olur.
-  const items: { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number }[] =
-    summary?.items || [];
+  type Row = { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number; maliyetUsd?: number };
+  const items: Row[] = summary?.items || [];
   const islenenSet = new Set(items.map((i) => i.mukellef));
-  const islenmeyen: { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number }[] =
-    mihsapTaxpayers
-      .map(taxpayerName)
-      .filter((ad) => ad && !islenenSet.has(ad))
-      .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0 }));
+  const islenmeyen: Row[] = mihsapTaxpayers
+    .map(taxpayerName)
+    .filter((ad) => ad && !islenenSet.has(ad))
+    .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0, maliyetUsd: 0 }));
 
   const tumu = [...items, ...islenmeyen];
   const filtreli = searchQuery
@@ -639,8 +639,11 @@ function MukellefIslemOzeti({
 
   const toplamAlis = summary?.toplam?.alis ?? 0;
   const toplamSatis = summary?.toplam?.satis ?? 0;
+  const toplamMaliyetUsd = summary?.toplam?.maliyetUsd ?? 0;
   const islemGorenAdedi = items.length;
   const islemGormeyenAdedi = islenmeyen.length;
+  const fmtUsd = (v: number) =>
+    `$${(v || 0).toLocaleString('tr-TR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}`;
 
   return (
     <div
@@ -677,13 +680,14 @@ function MukellefIslemOzeti({
 
       {/* TOPLAM ŞERİDİ */}
       <div
-        className="grid grid-cols-2 sm:grid-cols-4 gap-px"
+        className="grid grid-cols-2 sm:grid-cols-5 gap-px"
         style={{ background: 'rgba(255,255,255,0.04)' }}
       >
         <OzetHucre label="Dönemde İşlem Gören" value={islemGorenAdedi} alt={`toplam ${mihsapTaxpayers.length} mükellef`} color="#d4b876" />
         <OzetHucre label="İşlem Görmeyen" value={islemGormeyenAdedi} alt={islemGormeyenAdedi > 0 ? 'manuel ya da eksik' : ''} color="#f59e0b" />
         <OzetHucre label="Toplam Alış" value={toplamAlis} alt="fatura" color="#059669" />
         <OzetHucre label="Toplam Satış" value={toplamSatis} alt="fatura" color="#2563eb" />
+        <OzetHucre label="Toplam Maliyet" valueText={fmtUsd(toplamMaliyetUsd)} alt="AI kullanımı" color="#a78bfa" />
       </div>
 
       {/* TABLO */}
@@ -701,6 +705,7 @@ function MukellefIslemOzeti({
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Satış</th>
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Atlanan</th>
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Toplam</th>
+                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Maliyet</th>
               </tr>
             </thead>
             <tbody>
@@ -738,6 +743,9 @@ function MukellefIslemOzeti({
                   <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ color: row.toplam > 0 ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
                     {row.toplam}
                   </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.maliyetUsd ?? 0) > 0 ? '#a78bfa' : 'rgba(250,250,249,0.3)' }}>
+                    {fmtUsd(row.maliyetUsd ?? 0)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -759,7 +767,16 @@ function MukellefIslemOzeti({
   );
 }
 
-function OzetHucre({ label, value, alt, color }: { label: string; value: number; alt: string; color: string }) {
+function OzetHucre({
+  label, value, valueText, alt, color,
+}: {
+  label: string;
+  value?: number;
+  valueText?: string;
+  alt: string;
+  color: string;
+}) {
+  const display = valueText !== undefined ? valueText : (value ?? 0).toLocaleString('tr-TR');
   return (
     <div className="px-4 py-3" style={{ background: 'rgba(12,10,7,0.5)' }}>
       <div className="text-[10px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
@@ -767,7 +784,7 @@ function OzetHucre({ label, value, alt, color }: { label: string; value: number;
       </div>
       <div className="flex items-baseline gap-2">
         <span className="text-xl font-bold tabular-nums" style={{ color }}>
-          {value.toLocaleString('tr-TR')}
+          {display}
         </span>
         {alt && (
           <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>

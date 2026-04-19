@@ -143,6 +143,9 @@ export class AgentEventsService {
     const ALIS_ACTIONS = ['isle_alis', 'isle_alis_isletme'];
     const SATIS_ACTIONS = ['isle_satis', 'isle_satis_isletme'];
 
+    // v1.14.1 — action filtresi kaldırıldı. Eski extension kayıtlarında
+    // action NULL geliyordu, onlar da yoksayılıyordu. Şimdi action varsa
+    // alış/satış olarak ayır, yoksa "atlanan" sayacında say (bilinmiyor).
     const rows = await this.prisma.agentEvent.findMany({
       where: {
         tenantId,
@@ -150,7 +153,6 @@ export class AgentEventsService {
         status: { in: SUCCESS_STATUSES },
         ts: { gte: periodStart, lt: periodEnd },
         mukellef: { not: null },
-        action: { in: [...ALIS_ACTIONS, ...SATIS_ACTIONS] },
       },
       select: { mukellef: true, action: true, status: true },
     });
@@ -160,14 +162,18 @@ export class AgentEventsService {
     for (const row of rows) {
       if (!row.mukellef) continue;
       const entry = map.get(row.mukellef) || { alis: 0, satis: 0, atlanan: 0 };
-      const isAlis = row.action && ALIS_ACTIONS.includes(row.action);
-      const isSatis = row.action && SATIS_ACTIONS.includes(row.action);
+      const isAlis = !!row.action && ALIS_ACTIONS.includes(row.action);
+      const isSatis = !!row.action && SATIS_ACTIONS.includes(row.action);
       const isSkip = row.status === 'skip' || row.status === 'atlandi';
       if (isAlis) entry.alis++;
       else if (isSatis) entry.satis++;
       if (isSkip) entry.atlanan++;
       map.set(row.mukellef, entry);
     }
+
+    // AI maliyeti — bu ay her mukellef için harcanan USD (Claude/Anthropic + OCR)
+    // ai-usage-logger ts ile aynı dönemde + meta.mukellef ile eşleşen kayıtları topla.
+    const maliyetMap = await this.aiMaliyetByMukellef(tenantId, periodStart, periodEnd);
 
     const items = Array.from(map.entries())
       .map(([mukellef, counts]) => ({
@@ -176,6 +182,7 @@ export class AgentEventsService {
         satis: counts.satis,
         atlanan: counts.atlanan,
         toplam: counts.alis + counts.satis,
+        maliyetUsd: Number((maliyetMap.get(mukellef) || 0).toFixed(4)),
       }))
       .sort((a, b) => b.toplam - a.toplam);
 
@@ -185,11 +192,45 @@ export class AgentEventsService {
         satis: acc.satis + i.satis,
         toplam: acc.toplam + i.toplam,
         mukellefSayisi: acc.mukellefSayisi + 1,
+        maliyetUsd: acc.maliyetUsd + i.maliyetUsd,
       }),
-      { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0 },
+      { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0, maliyetUsd: 0 },
     );
+    toplam.maliyetUsd = Number(toplam.maliyetUsd.toFixed(4));
 
     return { period: { year, month }, toplam, items };
+  }
+
+  /**
+   * Bu ayda mükellef başına AI USD harcaması.
+   * AiUsageLog.mukellef alanından grupla; boş olanlar (genel kullanım) atla.
+   */
+  private async aiMaliyetByMukellef(
+    tenantId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    try {
+      const rows = await this.prisma.aiUsageLog.findMany({
+        where: {
+          tenantId,
+          createdAt: { gte: periodStart, lt: periodEnd },
+          mukellef: { not: null },
+        },
+        select: { costUsd: true, mukellef: true },
+      });
+      for (const r of rows) {
+        const cost = Number(r.costUsd || 0);
+        if (!Number.isFinite(cost) || cost <= 0) continue;
+        const muk = (r.mukellef || '').trim();
+        if (!muk) continue;
+        map.set(muk, (map.get(muk) || 0) + cost);
+      }
+    } catch (e) {
+      console.warn('[summary-by-mukellef] aiMaliyetByMukellef hatası:', e);
+    }
+    return map;
   }
 
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
