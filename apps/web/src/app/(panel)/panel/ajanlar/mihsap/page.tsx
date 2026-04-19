@@ -29,9 +29,26 @@ export default function MihsapAgentPage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [action, setAction] = useState<
-    'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
-  >('isle_alis');
+  type ActionKey = 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme';
+  // Çoklu seçim — aynı defter (Bilanço veya İşletme) içinde Alış+Satış birlikte seçilebilir.
+  // Farklı defter karışımı engelli (Mihsap URL'si farklı, runner aynı session içinde geçemez).
+  const [actions, setActions] = useState<ActionKey[]>(['isle_alis']);
+
+  const toggleAction = (a: ActionKey) => {
+    const isIsletme = (k: ActionKey) => k.endsWith('_isletme');
+    setActions((prev) => {
+      // Zaten seçili → kaldır (en az bir seçili kalmalı)
+      if (prev.includes(a)) {
+        const next = prev.filter((x) => x !== a);
+        return next.length > 0 ? next : prev;
+      }
+      // Defter karışımı engelle: yeni seçim mevcut defter ailesinden farklıysa, eskiyi sıfırla
+      const yeniIsletme = isIsletme(a);
+      const mevcutIsletme = prev.length > 0 ? isIsletme(prev[0]) : yeniIsletme;
+      if (yeniIsletme !== mevcutIsletme) return [a];
+      return [...prev, a];
+    });
+  };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
@@ -91,24 +108,28 @@ export default function MihsapAgentPage() {
   );
 
   const runMut = useMutation({
-    mutationFn: () =>
-      agentsApi.createCommand({
-        agent: 'mihsap',
-        action,
-        payload: {
-          ay,
-          mukellefIds: selectedIds,
-          mukellefler: selectedIds
-            .map((id) => taxpayers.find((t) => t.id === id))
-            .filter(Boolean)
-            .map((t: any) => ({
-              id: t.id,
-              ad: taxpayerName(t),
-              mihsapId: t.mihsapId,
-              mihsapDefterTuru: t.mihsapDefterTuru,
-            })),
-        },
-      }),
+    mutationFn: async () => {
+      // Çoklu action — her biri için ayrı komut sırayla oluştur
+      const mukellefler = selectedIds
+        .map((id) => taxpayers.find((t) => t.id === id))
+        .filter(Boolean)
+        .map((t: any) => ({
+          id: t.id,
+          ad: taxpayerName(t),
+          mihsapId: t.mihsapId,
+          mihsapDefterTuru: t.mihsapDefterTuru,
+        }));
+      const sonuclar: any[] = [];
+      for (const a of actions) {
+        const r = await agentsApi.createCommand({
+          agent: 'mihsap',
+          action: a,
+          payload: { ay, mukellefIds: selectedIds, mukellefler },
+        });
+        sonuclar.push(r);
+      }
+      return sonuclar;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agent-commands'] }),
   });
 
@@ -187,49 +208,49 @@ export default function MihsapAgentPage() {
 
           <div className="flex-shrink-0">
             <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Defter / İşlem
+              Defter / İşlem <span style={{ color: 'rgba(250,250,249,0.35)', fontWeight: 400, textTransform: 'none' }}>(çoklu seçim — aynı defter ailesinde)</span>
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               <button
-                onClick={() => setAction('isle_alis')}
+                onClick={() => toggleAction('isle_alis')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
-                  background: action === 'isle_alis' ? 'rgba(5,150,105,.15)' : 'rgba(255,255,255,0.03)',
-                  borderColor: action === 'isle_alis' ? '#059669' : 'rgba(255,255,255,0.05)',
-                  color: action === 'isle_alis' ? '#059669' : '#fafaf9',
+                  background: actions.includes('isle_alis') ? 'rgba(5,150,105,.15)' : 'rgba(255,255,255,0.03)',
+                  borderColor: actions.includes('isle_alis') ? '#059669' : 'rgba(255,255,255,0.05)',
+                  color: actions.includes('isle_alis') ? '#059669' : '#fafaf9',
                 }}
               >
                 BİLANÇO · ALIŞ
               </button>
               <button
-                onClick={() => setAction('isle_satis')}
+                onClick={() => toggleAction('isle_satis')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
-                  background: action === 'isle_satis' ? 'rgba(37,99,235,.15)' : 'rgba(255,255,255,0.03)',
-                  borderColor: action === 'isle_satis' ? '#2563eb' : 'rgba(255,255,255,0.05)',
-                  color: action === 'isle_satis' ? '#2563eb' : '#fafaf9',
+                  background: actions.includes('isle_satis') ? 'rgba(37,99,235,.15)' : 'rgba(255,255,255,0.03)',
+                  borderColor: actions.includes('isle_satis') ? '#2563eb' : 'rgba(255,255,255,0.05)',
+                  color: actions.includes('isle_satis') ? '#2563eb' : '#fafaf9',
                 }}
               >
                 BİLANÇO · SATIŞ
               </button>
               <button
-                onClick={() => setAction('isle_alis_isletme')}
+                onClick={() => toggleAction('isle_alis_isletme')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
-                  background: action === 'isle_alis_isletme' ? 'rgba(168,85,247,.15)' : 'rgba(255,255,255,0.03)',
-                  borderColor: action === 'isle_alis_isletme' ? '#a855f7' : 'rgba(255,255,255,0.05)',
-                  color: action === 'isle_alis_isletme' ? '#a855f7' : '#fafaf9',
+                  background: actions.includes('isle_alis_isletme') ? 'rgba(168,85,247,.15)' : 'rgba(255,255,255,0.03)',
+                  borderColor: actions.includes('isle_alis_isletme') ? '#a855f7' : 'rgba(255,255,255,0.05)',
+                  color: actions.includes('isle_alis_isletme') ? '#a855f7' : '#fafaf9',
                 }}
               >
                 İŞLETME · ALIŞ
               </button>
               <button
-                onClick={() => setAction('isle_satis_isletme')}
+                onClick={() => toggleAction('isle_satis_isletme')}
                 className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                 style={{
-                  background: action === 'isle_satis_isletme' ? 'rgba(234,88,12,.15)' : 'rgba(255,255,255,0.03)',
-                  borderColor: action === 'isle_satis_isletme' ? '#ea580c' : 'rgba(255,255,255,0.05)',
-                  color: action === 'isle_satis_isletme' ? '#ea580c' : '#fafaf9',
+                  background: actions.includes('isle_satis_isletme') ? 'rgba(234,88,12,.15)' : 'rgba(255,255,255,0.03)',
+                  borderColor: actions.includes('isle_satis_isletme') ? '#ea580c' : 'rgba(255,255,255,0.05)',
+                  color: actions.includes('isle_satis_isletme') ? '#ea580c' : '#fafaf9',
                 }}
               >
                 İŞLETME · SATIŞ
