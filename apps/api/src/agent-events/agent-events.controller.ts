@@ -234,7 +234,9 @@ export class AgentEventsController {
     return this.service.updateCommand(tenantId, id, body);
   }
 
-  /** Claude ile fatura kararı: onay/atla/emin_degil */
+  /** Claude ile fatura kararı: onay/atla/emin_degil
+   *  YENİ: bosAlanSecenekleri verilirse AI boş alan için hesap kodu önerir.
+   *  Öneriler, ${response}.onerilenler objesinde döner. */
   @Post('ai/decide-fatura')
   async decideFatura(
     @Headers('x-agent-token') token: string,
@@ -251,6 +253,11 @@ export class AgentEventsController {
       firma?: string;
       tutar?: number | string;
       action?: string;
+      bosAlanSecenekleri?: {
+        matrahKodlari?: string[];
+        kdvKodlari?: string[];
+        cariKodlari?: string[];
+      };
     },
   ) {
     const tenantId = this.resolveTenantFromToken(token);

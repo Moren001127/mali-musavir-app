@@ -267,7 +267,10 @@ export class AgentEventsService {
   /**
    * Claude Haiku 4.5 ile fatura kararı verir.
    * Input: fatura jpeg base64 + hesap kodları
-   * Output: { karar: 'onay'|'atla'|'emin_degil', sebep: string, ocrOzet?: string }
+   * Output: { karar: 'onay'|'atla'|'emin_degil', sebep: string, ocrOzet?: string, onerilenler?: {...} }
+   *
+   * YENİ (Bilanço SATIŞ modu): bosAlanSecenekleri verilirse AI boş alanlar için
+   * Mihsap dropdown'undan hesap kodu önerir (matrah / kdv / cari).
    */
   async decideFatura(input: {
     faturaImageBase64: string;
@@ -283,6 +286,16 @@ export class AgentEventsService {
     tutar?: number | string;
     action?: string; // 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
     tenantId?: string;
+    /**
+     * Boş alanlar için dropdown seçenekleri. Runner, Mihsap'ta boş alana tıkladığında
+     * Luca entegrasyonundan gelen hesap kodu listesini buraya koyar.
+     * AI her alan için listedeki en uygun kodu seçer.
+     */
+    bosAlanSecenekleri?: {
+      matrahKodlari?: string[];  // Matrah hesabı (ör: 600.01.001, 600.01.005...)
+      kdvKodlari?: string[];     // KDV hesabı (ör: 391.01.001, 391.01.006...)
+      cariKodlari?: string[];    // Cari hesap (ör: 120.01.ABC, 120.02.XYZ...)
+    };
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -429,8 +442,59 @@ Yukarıdaki talimatta "araç satışı" geçiyor. Bunu UYGULAMAK için şu ŞART
 
 Cümlede "nakliye/taşıma/sevk/lojistik/sefer" kelimesi geçiyorsa, içerikte plaka veya "araç" kelimesi de olsa DAHİ → ONAY.
 ` : ''}
+${
+  // Sadece Bilanço SATIŞ modunda ve boş alan seçeneği verildiyse öneri bölümünü ekle
+  input.action === 'isle_satis' && input.bosAlanSecenekleri &&
+  ((input.bosAlanSecenekleri.matrahKodlari?.length || 0) +
+   (input.bosAlanSecenekleri.kdvKodlari?.length || 0) +
+   (input.bosAlanSecenekleri.cariKodlari?.length || 0)) > 0
+  ? `
+=== HESAP KODU ÖNERİSİ — BİLANÇO SATIŞ ===
+Runner bu faturada BOŞ alan tespit etti. Dropdown'daki mevcut seçeneklerden doğru kodu sen seçeceksin.
+Mevcut seçenekler aşağıda. HER ALAN İÇİN tam olarak bu listelerden BİRİNİ seç — listenin dışından kod ÜRETME.
 
-Sadece JSON döndür: {"karar":"onay|atla|emin_degil","sebep":"80 karakter","ocrOzet":"1 satır"}`;
+A) MATRAH HESABI (faturanın KDV'siz bedeli hangi satış hesabına yazılacak):
+   Seçenekler: ${input.bosAlanSecenekleri.matrahKodlari?.join(', ') || '(runner listelemedi — önerme)'}
+   Kural:
+     • 600.xx → Yurtiçi Mal/Hizmet Satışı (en yaygın)
+     • 601.xx → Yurtdışı Satış (İHRACAT faturalarında)
+     • 602.xx → Diğer Satışlar
+   Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA bak ve bu gruplara en uygun alt kodu seç.
+   Eğer mükellefin sadece 1 yurtiçi satış kodu varsa (örn sadece "600.01.001") → onu seç.
+   Birden fazla alt kod varsa (örn "600.01.001 Mamul Satışı", "600.01.005 Hizmet Satışı") → fatura içeriğine göre ayırt et.
+
+B) KDV HESABI (hesaplanan KDV hangi koda yazılacak):
+   Seçenekler: ${input.bosAlanSecenekleri.kdvKodlari?.join(', ') || '(runner listelemedi — önerme)'}
+   Kural: Satış tarafında KDV hep 391 grubunda olur (Hesaplanan KDV). Listede birden fazla 391.xx varsa,
+          genellikle MATRAH seçtiğin kodla AYNI alt gruplama mantığı (örn 600.01.005 → 391.01.006).
+          Tam eşleşme yoksa 391 grubundaki en düşük numaralıyı seç.
+
+C) CARİ HESAP (alıcı firma hangi cari kodu):
+   Seçenekler: ${input.bosAlanSecenekleri.cariKodlari?.join(', ') || '(runner listelemedi — önerme)'}
+   Kural: Alıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir.
+   Cari kod listesinde alıcı firma YOKSA → cari için null dön (yeni cari açılması gerekir, runner atlayacak).
+
+ÇIKTI: JSON response'una "onerilenler" objesi ekle (AŞAĞIDAKİ JSON ŞEMASINA BAK).
+       Emin olmadığın alanı null bırak. Yanlış tahmin etme — null daha güvenli.
+       Confidence: her alan için 0-1 arası skor. 0.8 altındaki önerileri runner uygulamayacak.
+` : ''
+}
+
+Sadece JSON döndür: {
+  "karar": "onay|atla|emin_degil",
+  "sebep": "80 karakter",
+  "ocrOzet": "1 satır"${
+    input.action === 'isle_satis' && input.bosAlanSecenekleri
+      ? `,
+  "onerilenler": {
+    "matrahHesapKodu": "600.01.005" | null,
+    "kdvHesapKodu": "391.01.006" | null,
+    "cariHesapKodu": "120.01.ABC" | null,
+    "confidence": { "matrah": 0.92, "kdv": 0.95, "cari": 0.75 }
+  }`
+      : ''
+  }
+}`;
 
     const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
 Kodlar: ${kodListe || '(boş)'} | Tarih: ${input.faturaTarihi || '?'} | Belge no: ${input.belgeNo || '?'}
@@ -468,7 +532,8 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 600,
+          // Öneri modunda cevap daha uzun (onerilenler JSON'u eklenir) → 900 token güvenli
+          max_tokens: input.bosAlanSecenekleri ? 900 : 600,
           system,
           messages: [
             {
@@ -510,6 +575,14 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         try {
           const parsed = JSON.parse(c);
           if (parsed?.karar) {
+            // Öneri mod: AI'nın önerdiği kodları gerçekten dropdown'da var mı ve
+            // güven skoru >= 0.8 mi diye doğrula. Halüsinasyon korumasıdır.
+            if (input.bosAlanSecenekleri && parsed.onerilenler) {
+              parsed.onerilenler = this.sanitizeHesapKoduOnerileri(
+                parsed.onerilenler,
+                input.bosAlanSecenekleri,
+              );
+            }
             await logUsage(parsed.karar, parsed.sebep, usage);
             return parsed;
           }
@@ -529,6 +602,41 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
       return { karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` };
     }
+  }
+
+  /**
+   * AI'nın önerdiği hesap kodlarını doğrular:
+   *  - Kod gerçekten dropdown seçeneklerinde var mı? (halüsinasyon koruması)
+   *  - Güven skoru MIN_CONFIDENCE (0.8) üstü mü? Değilse null.
+   * Geçersiz öneri → null döner → runner bu alanı boş bırakıp atlar.
+   */
+  private sanitizeHesapKoduOnerileri(
+    oneriler: any,
+    secenekler: { matrahKodlari?: string[]; kdvKodlari?: string[]; cariKodlari?: string[] },
+  ): any {
+    const MIN_CONFIDENCE = 0.8;
+    const conf = (oneriler?.confidence as Record<string, number>) || {};
+    const validateKod = (
+      kod: any,
+      izinliListe: string[] | undefined,
+      guvenSkoru: number | undefined,
+    ): string | null => {
+      if (!kod || typeof kod !== 'string') return null;
+      const trimmed = kod.trim();
+      if (!trimmed) return null;
+      // Listede yoksa halüsinasyon → reddet
+      if (!izinliListe || izinliListe.length === 0) return null;
+      if (!izinliListe.includes(trimmed)) return null;
+      // Güven düşükse → reddet
+      if (typeof guvenSkoru === 'number' && guvenSkoru < MIN_CONFIDENCE) return null;
+      return trimmed;
+    };
+    return {
+      matrahHesapKodu: validateKod(oneriler?.matrahHesapKodu, secenekler.matrahKodlari, conf.matrah),
+      kdvHesapKodu: validateKod(oneriler?.kdvHesapKodu, secenekler.kdvKodlari, conf.kdv),
+      cariHesapKodu: validateKod(oneriler?.cariHesapKodu, secenekler.cariKodlari, conf.cari),
+      confidence: conf,
+    };
   }
 
   /**
