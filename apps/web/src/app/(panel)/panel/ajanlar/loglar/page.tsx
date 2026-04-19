@@ -221,8 +221,10 @@ function LogLine({ event }: { event: AgentEvent }) {
           ))}
         </div>
         {event.message && (
-          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
-            {event.message}
+          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8', lineHeight: '1.5' }}>
+            {event.message.split(/\r?\n/).map((line, i) => (
+              <div key={i} style={{ minHeight: '1em' }}>{line || '\u00A0'}</div>
+            ))}
           </div>
         )}
         {event.mukellef && (
