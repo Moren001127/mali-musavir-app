@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
+import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
+import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
 
 export interface AgentEventInput {
   agent: string;
@@ -20,7 +22,11 @@ export interface AgentEventInput {
 
 @Injectable()
 export class AgentEventsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private vendorMemory: VendorMemoryService,
+    private pendingDecisions: PendingDecisionsService,
+  ) {}
 
   async createEvent(tenantId: string, input: AgentEventInput) {
     // Status normalizasyonu — ajan tarafı eski sürümlerde 'ok'/'skip'/'error' gönderiyordu.
@@ -394,6 +400,7 @@ export class AgentEventsService {
     faturaTuru?: string;
     mukellef?: string;
     firma?: string;
+    firmaKimlikNo?: string; // Karsi firma VKN/TCKN — Firma Hafizasi icin
     tutar?: number | string;
     action?: string; // 'isle_alis' | 'isle_satis' | 'isle_alis_isletme' | 'isle_satis_isletme'
     tenantId?: string;
@@ -423,6 +430,20 @@ export class AgentEventsService {
         if (rule?.profile) {
           mukellefTalimat = profileToPromptText(rule.profile);
         }
+      } catch {}
+    }
+
+    // Firma Hafizasi — bu firma icin gecmis onaylari hint olarak al.
+    // Hint varsa AI prompt'una OVERRIDE kuraliyla eklenecek (fatura icerigi cakisirsa
+    // AI hint'i gormezden gelebilir). 3+ onay yoksa null doner (yeni/az kullanilmis firma).
+    let vendorHint: Awaited<ReturnType<typeof this.vendorMemory.getHintForVendor>> = null;
+    if (input.tenantId && input.firmaKimlikNo) {
+      try {
+        vendorHint = await this.vendorMemory.getHintForVendor(
+          input.tenantId,
+          input.firmaKimlikNo,
+          'fatura',
+        );
       } catch {}
     }
     const kodListe = input.hesapKodlari.join(', ');
@@ -555,6 +576,8 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 2. Görüntü tamamen okunamıyor mu? → emin_degil
 3. Diğer tüm durumlarda → onay
 
+${vendorHint ? `
+${vendorHint.hintText}` : ''}
 ${mukellefTalimat ? `
 === MÜKELLEF ÖZEL TALİMATI (${input.mukellef}) ===
 ${mukellefTalimat}
@@ -703,6 +726,10 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       const nonGreedy = text.match(/\{[\s\S]*?"karar"[\s\S]*?\}/);
       if (nonGreedy) candidates.push(nonGreedy[0]);
 
+      // kategori key (Firma Hafizasi icin) — fatura modunda ilk hesap kodu
+      // (Mihsap satirinda AI bu kodu onayladi sayilir). Liste bossa memory skip edilir.
+      const kategoriKey = (input.hesapKodlari?.[0] || '').trim();
+
       for (const c of candidates) {
         try {
           const parsed = JSON.parse(c);
@@ -715,6 +742,74 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                 input.bosAlanSecenekleri,
               );
             }
+
+            // === FIRMA HAFIZASI ENTEGRASYONU ===
+            // Sadece AI "onay" derse memory'ye yansit. "atla"/"emin_degil" etkilemez.
+            if (
+              parsed.karar === 'onay' &&
+              input.tenantId &&
+              input.firmaKimlikNo &&
+              kategoriKey
+            ) {
+              // Sapma var mi?
+              if (vendorHint) {
+                const sapma = this.vendorMemory.detectDeviation({
+                  topKategoriler: vendorHint.topKategoriler,
+                  aiKategori: kategoriKey,
+                  aiAltKategori: null,
+                });
+                if (sapma.isSapma) {
+                  // Onay kuyruguna dus, AI'yi otomatik islemeden durdur
+                  try {
+                    const pending = await this.pendingDecisions.create({
+                      tenantId: input.tenantId,
+                      mukellef: input.mukellef,
+                      firmaKimlikNo: input.firmaKimlikNo,
+                      firmaUnvan: input.firma,
+                      belgeNo: input.belgeNo,
+                      belgeTuru: input.belgeTuru,
+                      faturaTarihi: input.faturaTarihi,
+                      tutar: typeof input.tutar === 'number' ? input.tutar : (input.tutar ? Number(input.tutar) : null),
+                      kararTipi: 'fatura',
+                      aiKarari: { ...parsed, hesapKodu: kategoriKey },
+                      gecmisBeklenen: {
+                        topKategoriler: vendorHint.topKategoriler,
+                        enCok: sapma.enCokGecmisKategori,
+                        enCokSayisi: sapma.enCokGecmisOnaySayisi,
+                      },
+                      sapmaSebep: sapma.sebep,
+                      imageBase64: input.faturaImageBase64,
+                    });
+                    await logUsage('onay_bekliyor', sapma.sebep, usage);
+                    return {
+                      karar: 'onay_bekliyor',
+                      sebep: sapma.sebep,
+                      pendingId: pending.id,
+                      sapmaSebep: sapma.sebep,
+                    };
+                  } catch (e: any) {
+                    // Pending olusturma basarisizsa AI kararina gec — guvenli fallback
+                    await logUsage(parsed.karar, `pending create failed: ${e?.message}`, usage);
+                    return parsed;
+                  }
+                }
+              }
+              // Sapma yok (veya hint yok) → memory'ye kaydet
+              try {
+                await this.vendorMemory.recordDecision({
+                  tenantId: input.tenantId,
+                  firmaKimlikNo: input.firmaKimlikNo,
+                  firmaUnvan: input.firma,
+                  kararTipi: 'fatura',
+                  kategori: kategoriKey,
+                  altKategori: null,
+                });
+              } catch {
+                // Memory kaydi basarisiz olsa bile ana akis devam eder
+              }
+            }
+            // === /FIRMA HAFIZASI ===
+
             await logUsage(parsed.karar, parsed.sebep, usage);
             return parsed;
           }
@@ -788,6 +883,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     faturaTuru?: string;
     mukellef?: string;
     firma?: string;
+    firmaKimlikNo?: string; // Karsi firma VKN/TCKN — Firma Hafizasi icin
     tutar?: number | string;
     action?: string;
     matrah?: string | number;
@@ -822,11 +918,23 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       } catch {}
     }
 
+    // Firma Hafizasi hint — isletme defteri modu icin (kayitTuru + altTuru kombinasyonu)
+    let vendorHintIsletme: Awaited<ReturnType<typeof this.vendorMemory.getHintForVendor>> = null;
+    if (input.tenantId && input.firmaKimlikNo) {
+      try {
+        vendorHintIsletme = await this.vendorMemory.getHintForVendor(
+          input.tenantId,
+          input.firmaKimlikNo,
+          'isletme',
+        );
+      } catch {}
+    }
+
     const kayitListe = input.kayitTuruOptions.filter(Boolean).join(' | ');
     const altListe = input.altTuruOptions.filter(Boolean).join(' | ');
 
     const system = `Sen bir işletme defteri kayıt kategorisi seçicisin. Fatura görüntüsüne bakıp bir blok için Kayıt Türü ve K. Alt Türü karar vereceksin.
-
+${vendorHintIsletme ? '\n' + vendorHintIsletme.hintText : ''}
 ### İŞLEM BAĞLAMI ###
 İşlem yönü: ${islemTuru}  (ALIŞ = alış/gider, SATIŞ = satış/gelir)
 Blok: ${input.blokIndex || 1}/${input.blokToplam || 1}
@@ -995,6 +1103,70 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                   sebep: `AI liste dışı değer döndü (kayit=${parsed.kayitTuru}, alt=${parsed.altTuru})`,
                 };
               }
+
+              // === FIRMA HAFIZASI ENTEGRASYONU (isletme modu) ===
+              // Sadece tam karar (hem kayitTuru hem altTuru belli) + firma VKN varsa
+              const altTuruKey = altListeVar ? (parsed.altTuru || '').trim() : null;
+              if (
+                input.tenantId &&
+                input.firmaKimlikNo &&
+                parsed.kayitTuru
+              ) {
+                if (vendorHintIsletme) {
+                  const sapma = this.vendorMemory.detectDeviation({
+                    topKategoriler: vendorHintIsletme.topKategoriler,
+                    aiKategori: String(parsed.kayitTuru),
+                    aiAltKategori: altTuruKey,
+                  });
+                  if (sapma.isSapma) {
+                    try {
+                      const pending = await this.pendingDecisions.create({
+                        tenantId: input.tenantId,
+                        mukellef: input.mukellef,
+                        firmaKimlikNo: input.firmaKimlikNo,
+                        firmaUnvan: input.firma,
+                        belgeNo: input.belgeNo,
+                        belgeTuru: input.belgeTuru,
+                        faturaTarihi: input.faturaTarihi,
+                        tutar: typeof input.tutar === 'number' ? input.tutar : (input.tutar ? Number(input.tutar) : null),
+                        kararTipi: 'isletme',
+                        aiKarari: parsed,
+                        gecmisBeklenen: {
+                          topKategoriler: vendorHintIsletme.topKategoriler,
+                          enCok: sapma.enCokGecmisKategori,
+                          enCokSayisi: sapma.enCokGecmisOnaySayisi,
+                        },
+                        sapmaSebep: sapma.sebep,
+                        imageBase64: input.faturaImageBase64,
+                      });
+                      await logUsage('onay_bekliyor', sapma.sebep, usage);
+                      return {
+                        emin: false,
+                        karar: 'onay_bekliyor',
+                        sebep: sapma.sebep,
+                        pendingId: pending.id,
+                        sapmaSebep: sapma.sebep,
+                      };
+                    } catch (e: any) {
+                      // Fallback: pending olusmazsa normal AI kararini don
+                      await logUsage('onay', `pending create failed: ${e?.message}`, usage);
+                      return parsed;
+                    }
+                  }
+                }
+                // Sapma yok → memory'ye kaydet
+                try {
+                  await this.vendorMemory.recordDecision({
+                    tenantId: input.tenantId,
+                    firmaKimlikNo: input.firmaKimlikNo,
+                    firmaUnvan: input.firma,
+                    kararTipi: 'isletme',
+                    kategori: String(parsed.kayitTuru),
+                    altKategori: altTuruKey,
+                  });
+                } catch {}
+              }
+              // === /FIRMA HAFIZASI ===
             }
             await logUsage(parsed.emin ? 'onay' : 'emin_degil', parsed.sebep, usage);
             return parsed;

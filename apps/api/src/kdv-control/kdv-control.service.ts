@@ -88,8 +88,9 @@ export class KdvControlService {
         _count: { select: { kdvRecords: true, images: true, results: true } },
         taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
         images: {
-          select: { createdAt: true },
-          orderBy: { createdAt: 'asc' },
+          // ReceiptImage modelinde createdAt yok, uploadedAt var (schema.prisma:705)
+          select: { uploadedAt: true },
+          orderBy: { uploadedAt: 'asc' },
           take: 1,
         },
       },

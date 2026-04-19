@@ -1307,3 +1307,77 @@ model AiMessage {
   @@index([conversationId, createdAt])
   @@map("ai_messages")
 }
+
+// ============================================================
+// FIRMA HAFIZASI (Vendor Memory) + ONAY KUYRUGU (Pending Decisions)
+// ============================================================
+// AI fatura kategorize ederken her firma (VKN/TCKN) icin gecmis onay
+// sayaclarini kullanir. Sapma tespit edilirse (gecmisten farkli karar)
+// islem otomatik gecmez, PendingDecision'a dusup insan onayi bekler.
+
+// Her firma (VKN/TCKN) icin hafiza kaydi — toplam onay + son kullanim.
+model VendorMemory {
+  id            String   @id @default(cuid())
+  tenantId      String
+  firmaKimlikNo String   // VKN (10 hane) veya TCKN (11 hane)
+  firmaUnvan    String?  // Son gorulen unvan (degisebilir)
+  toplamOnay    Int      @default(0)
+  sonKullanim   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  decisions     VendorMemoryDecision[]
+
+  @@unique([tenantId, firmaKimlikNo])
+  @@index([tenantId, sonKullanim])
+  @@map("vendor_memory")
+}
+
+// Her firma icin kategori bazli karar sayaci.
+// fatura: kararTipi='fatura', kategori=hesapKodu, altKategori=null
+// isletme: kararTipi='isletme', kategori=kayitTuru, altKategori=altTuru
+model VendorMemoryDecision {
+  id              String   @id @default(cuid())
+  vendorMemoryId  String
+  kararTipi       String   // "fatura" | "isletme"
+  kategori        String   // fatura: hesapKodu; isletme: kayitTuru
+  altKategori     String?  // sadece isletme: altTuru
+  onayAdedi       Int      @default(0)
+  sonKullanim     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  vendorMemory    VendorMemory @relation(fields: [vendorMemoryId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorMemoryId, kararTipi, kategori, altKategori])
+  @@index([vendorMemoryId, onayAdedi])
+  @@map("vendor_memory_decisions")
+}
+
+// Onay Kuyrugu — AI sapma tespit ettiginde insan onayi bekler.
+model PendingDecision {
+  id              String   @id @default(cuid())
+  tenantId        String
+  mukellef        String?
+  firmaKimlikNo   String?
+  firmaUnvan      String?
+  belgeNo         String?
+  belgeTuru       String?
+  faturaTarihi    DateTime?
+  tutar           Decimal? @db.Decimal(14, 2)
+  kararTipi       String   // "fatura" | "isletme"
+  aiKarari        Json     // AI'nin onerdigi karar (tam response)
+  gecmisBeklenen  Json?    // VendorMemory'den top kategori + sayi
+  sapmaSebep      String   @db.VarChar(500)
+  imageBase64     String?  @db.Text  // Fatura gorseli (kucuk tutulur)
+  durum           String   @default("bekliyor") // "bekliyor" | "onaylandi" | "reddedildi"
+  sonucKarari     Json?    // Kullanici override ettiyse final karar
+  onayAlan        String?  // userId
+  onayTarihi      DateTime?
+  notlar          String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, durum, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("pending_decisions")
+}

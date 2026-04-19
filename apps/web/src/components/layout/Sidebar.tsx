@@ -7,8 +7,10 @@ import {
   LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
-  Scale, TrendingUp, Table2, MessageSquare,
+  Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
 // Elit Boutique altın ailesi — her grup kendi tonunu alır
 const GOLD      = '#d4b876';  // Ana altın
@@ -56,6 +58,8 @@ const navGroups = [
       { href: '/panel/ajanlar/sgk',         label: 'SGK Bildirge',       icon: ShieldCheck },
       { href: '/panel/ajanlar/loglar',      label: 'Yapılan İşlemler',   icon: Activity },
       { href: '/panel/ajanlar/profiller',   label: 'Mükellef Profilleri',icon: Sliders },
+      { href: '/panel/onay-kuyrugu',        label: 'Onay Kuyruğu',        icon: AlertTriangle },
+      { href: '/panel/firma-hafizasi',      label: 'Firma Hafızası',      icon: Brain },
     ],
   },
   {
@@ -73,6 +77,15 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: user } = useMe();
   const logout = useLogout();
+
+  // Onay kuyrugu bekleyen sayisi — badge icin
+  const { data: pendingCount } = useQuery({
+    queryKey: ['pending-count'],
+    queryFn: () => pendingDecisionsApi.count().catch(() => ({ bekleyen: 0 })),
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+  const bekleyenSayisi = pendingCount?.bekleyen || 0;
 
   const isActive = (href: string) =>
     href === '/panel' ? pathname === '/panel' : pathname.startsWith(href);
@@ -204,6 +217,21 @@ export default function Sidebar() {
                       </div>
 
                       <span className="flex-1 leading-none relative">{label}</span>
+
+                      {/* Onay kuyruğu badge */}
+                      {href === '/panel/onay-kuyrugu' && bekleyenSayisi > 0 && (
+                        <span
+                          className="inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0"
+                          style={{
+                            background: '#d97706',
+                            color: '#fafaf9',
+                            minWidth: 16,
+                            boxShadow: '0 0 8px rgba(217, 119, 6, 0.5)',
+                          }}
+                        >
+                          {bekleyenSayisi > 99 ? '99+' : bekleyenSayisi}
+                        </span>
+                      )}
 
                       {/* Sağ ok - aktifse */}
                       {active && (

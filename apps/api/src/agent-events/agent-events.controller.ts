@@ -262,6 +262,7 @@ export class AgentEventsController {
       faturaTuru?: string;
       mukellef?: string;
       firma?: string;
+      firmaKimlikNo?: string; // VKN/TCKN — Firma Hafizasi icin
       tutar?: number | string;
       action?: string;
       bosAlanSecenekleri?: {
@@ -293,6 +294,7 @@ export class AgentEventsController {
       faturaTuru?: string;
       mukellef?: string;
       firma?: string;
+      firmaKimlikNo?: string; // VKN/TCKN — Firma Hafizasi icin
       tutar?: number | string;
       action?: string;
       matrah?: string | number;

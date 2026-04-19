@@ -19,6 +19,8 @@ import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
+import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -43,6 +45,8 @@ import { ReminderCron } from './schedule/reminder.cron';
     MizanModule,
     MorenAiModule,
     WhatsAppModule,
+    VendorMemoryModule,
+    PendingDecisionsModule,
   ],
   providers: [ReminderCron],
 })
