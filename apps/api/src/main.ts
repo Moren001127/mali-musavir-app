@@ -12,26 +12,51 @@ async function bootstrap() {
 
   app.useBodyParser('json', { limit: '10mb' });
   app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
-  app.use(helmet());
+  // Helmet — CORS-friendly: cross-origin resource policy gevşetildi
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginOpenerPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   app.use(cookieParser());
 
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'https://portal.morenmusavirlik.com',
-      'https://mali-musavir-app-web.vercel.app',
-      'https://app.mihsap.com',
-      'https://ofis.mihsap.com.tr',
-      /\.mihsap\.com$/,
-      /\.mihsap\.com\.tr$/,
-      /\.vercel\.app$/,
-      // Moren Agent bookmarklet — Luca domain'lerinden direkt API çağrısı
-      /\.luca\.com\.tr$/,
-      /\.luca\.net\.tr$/,
-      'https://luca.com.tr',
-      'https://luca.net.tr',
-    ],
+    origin: (origin, callback) => {
+      // Origin'siz istekler (server-to-server, curl) — izin ver
+      if (!origin) return callback(null, true);
+
+      const allowedExact = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://portal.morenmusavirlik.com',
+        'https://mali-musavir-app-web.vercel.app',
+        'https://app.mihsap.com',
+        'https://ofis.mihsap.com.tr',
+        'https://luca.com.tr',
+        'https://luca.net.tr',
+      ];
+      const allowedRegex = [
+        /\.mihsap\.com$/,
+        /\.mihsap\.com\.tr$/,
+        /\.vercel\.app$/,
+        /\.luca\.com\.tr$/,
+        /\.luca\.net\.tr$/,
+        /\.morenmusavirlik\.com$/,
+      ];
+
+      if (allowedExact.includes(origin)) return callback(null, true);
+      if (allowedRegex.some((r) => r.test(origin))) return callback(null, true);
+
+      console.warn(`[CORS] Blocked origin: ${origin}`);
+      return callback(new Error(`CORS: Origin ${origin} not allowed`), false);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+    exposedHeaders: ['Content-Disposition'],
+    maxAge: 600,
   });
 
   app.setGlobalPrefix('api/v1');
