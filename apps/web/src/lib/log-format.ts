@@ -157,11 +157,13 @@ export function buildFieldRows(event: {
     rows.push({ label: 'Tarih', status: 'full', value: faturaTarihi });
   }
 
-  // Belge Türü — meta.belgeTuru > mesajda BT:... > action'dan türet
+  // Belge Türü — meta.belgeTuru > mesajda BT:... (action türetimi YOK, gerçek değer yoksa "—")
   const belgeTuru = inferBelgeTuru(event.action, event.meta, event.message);
-  if (belgeTuru) {
-    rows.push({ label: 'Belge Türü', status: 'full', value: belgeTuru });
-  }
+  rows.push({
+    label: 'Belge Türü',
+    status: belgeTuru ? 'full' : 'missing',
+    value: belgeTuru || '—',
+  });
 
   // Toplam Tutar
   if (event.tutar != null && event.tutar !== '') {
@@ -263,10 +265,7 @@ function inferBelgeTuru(action?: string, meta?: any, message?: string): string |
       if (v) return v;
     }
   }
-  // 3) Son çare: action'dan kaba türet
-  if (!action) return undefined;
-  const a = action.toLowerCase();
-  if (a.includes('alis')) return a.includes('isletme') ? 'İşl. Defteri Alış' : 'Bilanço Alış';
-  if (a.includes('satis')) return a.includes('isletme') ? 'İşl. Defteri Satış' : 'Bilanço Satış';
-  return action;
+  // 3) Gerçek Belge Türü gelmediyse — "İşl. Defteri Alış" gibi action türetimi YAPMA.
+  //    Yanlış bilgi vermektense boş bırak; UI tarafı "—" gösterir.
+  return undefined;
 }

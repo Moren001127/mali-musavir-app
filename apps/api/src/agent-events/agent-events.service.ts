@@ -818,9 +818,7 @@ K. Alt Türü seçenekleri: ${altListe || '(boş)'}
 
 ### KAYIT TÜRÜ SEÇİM KURALLARI (ÇOK ÖNEMLİ) ###
 
-**VARSAYILAN: "İndirilecek Giderler (GVK Md. 40)"**
-İşletme defterinde faturaların büyük çoğunluğu (%80+) "İndirilecek Giderler" kategorisindedir.
-Emin değilsen her zaman "İndirilecek Giderler (GVK Md. 40)" seç.
+**VARSAYILAN YOK.** Emin değilsen → emin:false. Tahmin etme, "En yakın" diye alakasız kategori seçme.
 
 **"Mal Alışı" SADECE şu durumlarda kullanılır:**
 - Mükellef bir MARKET, BÜFE, BAKKAL, TOPTAN SATIŞ veya PERAKENDE TİCARET işletmesiyse VE
@@ -833,34 +831,38 @@ Emin değilsen her zaman "İndirilecek Giderler (GVK Md. 40)" seç.
 - Akaryakıt, kira, telefon, internet, sigorta, muhasebe ücreti
 - Yemek, konaklama, ulaşım giderleri
 - Herhangi bir HİZMET faturası
-- İçeriği net anlaşılamayan ÖKC fişleri → "İndirilecek Giderler" kullan
 
 **"Sabit Kıymet Alışı":** Bilgisayar, araç, makine, ofis mobilyası gibi uzun ömürlü varlıklar
 **"Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)":** Cezalar, bağışlar, kişisel harcamalar
+**"İndirilecek Giderler (GVK Md. 40)":** Fatura içeriği SOMUT bir gider kalemiyse (akaryakıt, telefon, kira, yemek, vb.)
 
-### K. ALT TÜRÜ SEÇİM KURALLARI ###
-- Fatura içeriğine göre en uygun alt kategoriyi seç
-- Akaryakıt/benzin → "Taşıt Akaryakıt Giderleri (GVK 40/1-40/5)"
-- Telefon → "Telefon Giderleri (GVK 40/1)"
+### K. ALT TÜRÜ SEÇİM KURALLARI — SOMUT KALEMLE EŞLEŞME ZORUNLU ###
+Fatura içeriği → alt tür (birebir eşleşme olmalı):
+- Akaryakıt/benzin/mazot/LPG → "Taşıt Akaryakıt Giderleri (GVK 40/1-40/5)"
+- Telefon/GSM → "Telefon Giderleri (GVK 40/1)"
 - Elektrik → "Elektrik Giderleri (GVK 40/1)"
-- Kırtasiye → "Kırtasiye Harcamaları (GVK 40/1)"
-- Yemek/gıda → "Gıda Harcamaları (GVK 40/1-40/2)" veya "Temsil ve Ağırlama Gideri (İş yemeği vb.) (GVK 40/1)"
-- Ofis temizlik/çay/kahve → "Ofis Giderleri(Çay, Kahve, Şeker, Temizlik vb.) (GVK 40/1)"
-- Muhasebe → "Muhasebe/Mali Müşavirlik Giderleri (GVK 40/1)"
-- İçeriği belirsiz ama gider olduğu kesin → "Diğer (GVK 40/1)"
+- Doğalgaz → "Doğalgaz/Isınma Giderleri (GVK 40/1)" (listedeyse)
+- Su → "Su Giderleri (GVK 40/1)" (listedeyse)
+- Kırtasiye/kalem/defter → "Kırtasiye Harcamaları (GVK 40/1)"
+- Yemek/gıda/baklava/pasta/kebap/lokanta → "Gıda Harcamaları (GVK 40/1-40/2)" veya "Temsil ve Ağırlama Gideri (İş yemeği vb.) (GVK 40/1)"
+- Ofis temizlik/çay/kahve/şeker → "Ofis Giderleri(Çay, Kahve, Şeker, Temizlik vb.) (GVK 40/1)"
+- Muhasebe/mali müşavir → "Muhasebe/Mali Müşavirlik Giderleri (GVK 40/1)"
+- Kira/işyeri kirası → "Kira Giderleri (GVK 40/1)"
+- İnternet → "İnternet Giderleri (GVK 40/1)"
 - Mal Alışı için alt tür genellikle "Mal Alışı" (aynı isim)
-- Liste dışı değer üretme, eşleşme yoksa en yakını seç
 
 ### GENEL KURALLAR ###
 1. Emin olduğun değerler MEVCUT SEÇENEKLER'de birebir var olmalı (karakter karakter). Yoksa emin:false.
 2. Fatura görüntüsü okunamıyorsa → emin:false
-3. ÖKC fişi / perakende satış fişi okunamıyorsa bile gider olduğu kesinse → İndirilecek Giderler + "Diğer (GVK 40/1)"
-4. Tahmin yapma ama makul çıkarım yapabilirsin (OPET = akaryakıt, TURKCELL = telefon gibi)
+3. ÖKC fişi / perakende satış fişi içeriği okunamıyorsa → emin:false (kesinlikle "Diğer" demiyorsun)
+4. Makul çıkarım yapabilirsin (OPET = akaryakıt, TURKCELL = telefon). Ama MARKA TANIMLAMADIYSAN → emin:false.
 
-### YASAK ###
-× Listede olmayan değer üretme
-× "Belki", "muhtemelen" ile emin=true deme
-× İçerik okunamıyorsa Mal Alışı deme — İndirilecek Giderler / Diğer kullan
+### ⛔ MUTLAK YASAKLAR ⛔ ###
+× Listede olmayan değer üretmek
+× "Belki", "muhtemelen", "sanırım" ile emin=true demek
+× **"Diğer" içeren HERHANGİ BİR kategori seçmek** (ör: "Diğer (GVK 40/1)", "Diğer Giderler", "Diğer Gelir", "Diğer Hasılat", "Diğer Sabit Kıymet Alışı")
+  → İçerik bu somut kalemlerden birine denk gelmiyorsa **emin:false** dön. "Diğer" seçmektense atla.
+× İçerik okunamıyorsa herhangi bir tahminle kategori seçmek — emin:false
 
 ${mukellefTalimat ? `### MÜKELLEF ÖZEL TALİMATI ###\n${mukellefTalimat}\n` : ''}
 
@@ -945,6 +947,21 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
           if (typeof parsed?.emin === 'boolean') {
             // Sanity: seçilen değerler gerçekten listede mi?
             if (parsed.emin) {
+              // ⛔ "Diğer" kategorisi yasağı — AI prompt'a rağmen "Diğer..." dediyse override et, atla
+              const isDigerKayit = /diger|diğer/i.test(String(parsed.kayitTuru || ''));
+              const isDigerAlt = /diger|diğer/i.test(String(parsed.altTuru || ''));
+              if (isDigerKayit || isDigerAlt) {
+                await logUsage(
+                  'emin_degil',
+                  `Diğer kategorisi yasağı: kayit=${parsed.kayitTuru} alt=${parsed.altTuru}`,
+                  usage,
+                );
+                return {
+                  emin: false,
+                  sebep: `AI "Diğer" kategorisi seçti, atlandı (kayit=${parsed.kayitTuru}, alt=${parsed.altTuru})`,
+                };
+              }
+
               // 2-aşamalı yaklaşım: ilk çağrıda altTuruOptions boş gönderilir (sadece kayıt kararı).
               // Bu durumda altTuru validasyonunu atla.
               const inKayit = input.kayitTuruOptions.length === 0 || input.kayitTuruOptions.includes(parsed.kayitTuru);
