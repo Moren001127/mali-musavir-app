@@ -148,14 +148,13 @@ export function buildFieldRows(event: {
 }, parsed: ParsedAgentMessage): FieldRow[] {
   const rows: FieldRow[] = [];
 
-  // Tarih (event.ts)
-  if (event.ts) {
-    const d = new Date(event.ts);
-    rows.push({
-      label: 'Tarih',
-      status: 'full',
-      value: d.toLocaleDateString('tr-TR'),
-    });
+  // Tarih — FATURA tarihi (event.ts kayıt zamanı, bizim işimize yaramaz):
+  // 1) Önce meta.tarih (extension yeni sürümde gönderir)
+  // 2) Sonra mesaj prefix'i: "31.03.2026 · KADİR... · #01335 · ..."
+  // 3) Bulunamazsa atla — "bugünün tarihi" gibi yanıltıcı bilgi göstermeyiz
+  const faturaTarihi = extractFaturaTarihi(event.meta, event.message);
+  if (faturaTarihi) {
+    rows.push({ label: 'Tarih', status: 'full', value: faturaTarihi });
   }
 
   // Belge Türü — action'dan türet
@@ -214,6 +213,43 @@ export function buildFieldRows(event: {
   checkField('Cari');
 
   return rows;
+}
+
+/**
+ * Fatura tarihi çıkarır. Öncelik:
+ *  1) meta.tarih (extension yeni sürüm doğrudan koyuyor)
+ *  2) Mesaj prefix'i "DD.MM.YYYY · ..." veya "YYYY-MM-DD · ..."
+ *  3) Bulunamazsa undefined — UI tarihi göstermez (yanıltıcı olmasın)
+ *
+ * event.ts ASLA kullanılmaz: o kayıt zamanı (bugün), fatura tarihi değil.
+ */
+function extractFaturaTarihi(meta?: any, message?: string): string | undefined {
+  // 1) meta.tarih
+  if (meta?.tarih) {
+    const t = String(meta.tarih).trim();
+    if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
+  }
+  // 2) Mesaj prefix'inden parse
+  if (message) {
+    // "31.03.2026 · ..." veya "2026-03-31 · ..."
+    const m = message.match(/^\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\s*[·\-—]/);
+    if (m) return normalizeTarih(m[1]);
+  }
+  return undefined;
+}
+
+function normalizeTarih(raw: string): string {
+  const s = raw.trim();
+  // YYYY-MM-DD veya YYYY/MM/DD → DD.MM.YYYY
+  let m = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+  if (m) return `${m[3].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[1]}`;
+  // DD.MM.YYYY veya DD/MM/YYYY → DD.MM.YYYY
+  m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (m) {
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3];
+    return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${yyyy}`;
+  }
+  return s;
 }
 
 function inferBelgeTuru(action?: string, meta?: any): string | undefined {
