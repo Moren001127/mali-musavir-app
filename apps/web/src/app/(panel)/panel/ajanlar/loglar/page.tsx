@@ -221,7 +221,7 @@ function LogLine({ event }: { event: AgentEvent }) {
           ))}
         </div>
         {event.message && (
-          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8' }}>
+          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
             {event.message}
           </div>
         )}
