@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { agentsApi, AGENTS, AgentEvent } from '@/lib/agents';
 import { Search, Pause, Play, Download } from 'lucide-react';
+import { LogCard } from '../_components/LogCard';
 
 export default function LoglarPage() {
   const [agent, setAgent] = useState<string>('');
@@ -175,99 +176,13 @@ export default function LoglarPage() {
         ) : (
           <div className="p-3 space-y-1.5">
             {[...filtered].reverse().map((e: AgentEvent) => (
-              <LogLine key={e.id} event={e} />
+              <LogCard key={e.id} event={e as any} />
             ))}
           </div>
         )}
       </div>
     </div>
   );
-}
-
-function LogLine({ event }: { event: AgentEvent }) {
-  const d = new Date(event.ts);
-  const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-  const { color, icon, bg, label } = styleFor(event.status);
-  const parts = [event.fisNo && `#${event.fisNo}`, event.hesapKodu, event.kdv, event.tutar ? `${Number(event.tutar).toLocaleString('tr-TR')} TL` : null].filter(Boolean);
-
-  return (
-    <div
-      className="flex items-start gap-3 px-3 py-2 rounded-md transition-colors hover:brightness-110"
-      style={{
-        background: bg,
-        borderLeft: `3px solid ${color}`,
-      }}
-    >
-      <span
-        className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold px-1.5 py-0.5"
-        style={{ background: color + '33', color, minWidth: 52 }}
-      >
-        {icon} {label}
-      </span>
-      <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#94a3b8' }}>
-        {t}
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap text-[13px]">
-          {event.firma && (
-            <span className="font-semibold truncate" style={{ color: '#fafaf9' }}>
-              {event.firma}
-            </span>
-          )}
-          {parts.map((p, i) => (
-            <span key={i} className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.06)', color: '#cbd5e1' }}>
-              {p}
-            </span>
-          ))}
-        </div>
-        {event.message && (
-          <div className="text-[12px] mt-0.5" style={{ color: '#94a3b8', lineHeight: '1.5' }}>
-            {splitLogMessage(event.message).map((line, i) => (
-              <div key={i} style={{ minHeight: '1em', paddingLeft: line.startsWith('  ') ? '12px' : '0' }}>
-                {line.trim() || '\u00A0'}
-              </div>
-            ))}
-          </div>
-        )}
-        {event.mukellef && (
-          <div className="text-[10px] mt-0.5 truncate" style={{ color: '#64748b' }}>
-            {event.mukellef}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Log mesajını maddeler halinde böler.
-// Önce \n veya \r\n ile dener; eğer hiç newline yoksa (extension/transport
-// boşluğa çevirmiş olabilir) bilinen anahtar kelimelerin ÖNÜNE satır atar.
-function splitLogMessage(msg: string): string[] {
-  const byNewline = msg.split(/\r?\n/).filter((s) => s.length > 0);
-  if (byNewline.length > 1) return byNewline;
-
-  // Newline yok — anahtar kelimelere göre lookahead-split
-  const KEYS = [
-    'Boş alanlar:',
-    'AI önerisi:',
-    'AI öneri:',
-    'AI öneri',
-    'Sonuç:',
-    'Mihsap uyarısı:',
-    'Hata:',
-    'Matrah :',
-    'Matrah:',
-    'KDV :',
-    'KDV:',
-    'Cari :',
-    'Cari:',
-  ];
-  const escaped = KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const re = new RegExp(`\\s*(?=(?:${escaped}))`, 'g');
-  const parts = msg.split(re).map((s) => s.trim()).filter((s) => s.length > 0);
-
-  // Matrah/KDV/Cari satırlarına 2 boşluk indent ver (AI önerisi alt satırları)
-  return parts.map((p) => (/^(Matrah|KDV|Cari)\b/.test(p) ? '  ' + p : p));
 }
 
 function styleFor(status: string) {
