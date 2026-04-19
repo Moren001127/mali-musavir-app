@@ -1242,11 +1242,34 @@
     if (!tipSegment || !mukellef.mihsapId) return;
     const targetPath = `/documents/${tipSegment}/${mukellef.mihsapId}`;
     const baseList = `https://app.mihsap.com${targetPath}`;
-    // URL uygun değilse user'ın gitmesini bekle (SPA nav, script ölmez)
+    // URL uygun değilse otomatik navigasyonu dene, başarısızsa kullanıcıdan bekle.
+    // SPA-uyumlu: history.pushState + popstate → Mihsap React Router tepki verir, script ölmez.
+    // Kullanıcı eski davranışı tercih ederse: console'dan __morenAgent.autoNavigate = false
     const waitT0 = Date.now();
+    let autoNavDenemesi = 0;
     while (!location.pathname.startsWith(targetPath)) {
       if (window.__morenAgent.stopRequested) return;
       if (Date.now() - waitT0 > 180000) { setStatus('URL beklendi, zaman aşımı'); return; }
+
+      // Otomatik navigasyon — varsayılan açık, __morenAgent.autoNavigate=false ile kapatılır.
+      // Maksimum 3 deneme — SPA yanıt vermiyorsa manuel beklemeye düş.
+      const autoNavAcik = window.__morenAgent?.autoNavigate !== false;
+      if (autoNavAcik && autoNavDenemesi < 3) {
+        autoNavDenemesi++;
+        try {
+          setStatus(`→ ${mukellef.ad} sayfasına geçiliyor (otomatik ${autoNavDenemesi}/3)…`);
+          history.pushState({}, '', targetPath);
+          window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+          await sleep(1800); // React Router'ın render etmesini bekle
+          if (location.pathname.startsWith(targetPath)) {
+            console.log(`[Moren] auto-nav başarılı: ${targetPath}`);
+            break;
+          }
+        } catch (e) {
+          console.warn('[Moren] auto-nav hata:', e?.message);
+        }
+      }
+
       setStatus(`→ ${mukellef.ad} için bu sayfayı açın`);
       await sleep(2000);
     }
