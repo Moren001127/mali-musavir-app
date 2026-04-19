@@ -123,6 +123,75 @@ export class AgentEventsService {
     return { toplam, buGun, buAy, hataBugun: hata, perMukellef };
   }
 
+  /**
+   * Mükellef başına ayın özet raporu — portal üzerinden kaç alış/satış faturası işlendi.
+   * Sadece başarılı veya atlanan olaylar sayılır (hata olanlar işlenmiş sayılmaz).
+   * Manuel işlenen faturalar bu özetin dışında kalır — kullanıcı hangi mükellefi kaçar
+   * kere sistem üzerinden geçirdiğini görür.
+   */
+  async eventSummaryByMukellef(
+    tenantId: string,
+    agent: string,
+    year: number,
+    month: number,
+  ) {
+    const periodStart = new Date(year, month - 1, 1);
+    const periodEnd = new Date(year, month, 1);
+
+    // İşlem başarılı/atlandı sayılır; 'hata' olanlar dahil edilmez.
+    const SUCCESS_STATUSES = ['ok', 'onaylandi', 'basarili', 'skip', 'atlandi'];
+    const ALIS_ACTIONS = ['isle_alis', 'isle_alis_isletme'];
+    const SATIS_ACTIONS = ['isle_satis', 'isle_satis_isletme'];
+
+    const rows = await this.prisma.agentEvent.findMany({
+      where: {
+        tenantId,
+        agent,
+        status: { in: SUCCESS_STATUSES },
+        ts: { gte: periodStart, lt: periodEnd },
+        mukellef: { not: null },
+        action: { in: [...ALIS_ACTIONS, ...SATIS_ACTIONS] },
+      },
+      select: { mukellef: true, action: true, status: true },
+    });
+
+    // Mükellef → { alis, satis, atlanan }
+    const map = new Map<string, { alis: number; satis: number; atlanan: number }>();
+    for (const row of rows) {
+      if (!row.mukellef) continue;
+      const entry = map.get(row.mukellef) || { alis: 0, satis: 0, atlanan: 0 };
+      const isAlis = row.action && ALIS_ACTIONS.includes(row.action);
+      const isSatis = row.action && SATIS_ACTIONS.includes(row.action);
+      const isSkip = row.status === 'skip' || row.status === 'atlandi';
+      if (isAlis) entry.alis++;
+      else if (isSatis) entry.satis++;
+      if (isSkip) entry.atlanan++;
+      map.set(row.mukellef, entry);
+    }
+
+    const items = Array.from(map.entries())
+      .map(([mukellef, counts]) => ({
+        mukellef,
+        alis: counts.alis,
+        satis: counts.satis,
+        atlanan: counts.atlanan,
+        toplam: counts.alis + counts.satis,
+      }))
+      .sort((a, b) => b.toplam - a.toplam);
+
+    const toplam = items.reduce(
+      (acc, i) => ({
+        alis: acc.alis + i.alis,
+        satis: acc.satis + i.satis,
+        toplam: acc.toplam + i.toplam,
+        mukellefSayisi: acc.mukellefSayisi + 1,
+      }),
+      { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0 },
+    );
+
+    return { period: { year, month }, toplam, items };
+  }
+
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
     return this.prisma.agentStatus.upsert({
       where: { tenantId_agent: { tenantId, agent } },

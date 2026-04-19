@@ -93,6 +93,24 @@ export class AgentEventsController {
     return this.service.stats(req.user.tenantId);
   }
 
+  /** Mükellef bazında ayın özet: seçili ayda her mükellef için kaç alış/satış işlendi */
+  @Get('events/summary-by-mukellef')
+  @UseGuards(AuthGuard('jwt'))
+  summaryByMukellef(
+    @Req() req: any,
+    @Query('agent') agent: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    if (!agent) throw new BadRequestException('agent gerekli (mihsap)');
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    if (!y || !m || m < 1 || m > 12) {
+      throw new BadRequestException('geçerli year ve month gerekli');
+    }
+    return this.service.eventSummaryByMukellef(req.user.tenantId, agent, y, m);
+  }
+
   /** AI kullanım istatistikleri (bugün / bu ay / toplam + bakiye) */
   @Get('ai/usage-stats')
   @UseGuards(AuthGuard('jwt'))
