@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   Send, Mic, MicOff, Volume2, VolumeX, Plus, Trash2,
-  Loader2, Sparkles, MessageSquare, Wrench, DollarSign, Clock, Edit3,
+  Loader2, Sparkles, MessageSquare, DollarSign, Clock, Edit3,
 } from 'lucide-react';
 import {
   listConversations, getConversation, chat, deleteConversation, renameConversation,
@@ -474,7 +474,6 @@ export default function MorenAIPage() {
 // --------------------------------------------
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
-  const toolCalls = (message.toolCalls as any[]) || [];
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -488,22 +487,7 @@ function MessageBubble({ message }: { message: Message }) {
           color: '#fafaf9',
         }}
       >
-        {/* Tool çağrı özeti */}
-        {toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            {toolCalls.map((t: any, i: number) => (
-              <span
-                key={i}
-                className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
-                style={{ background: `${GOLD}22`, color: GOLD, border: `1px solid ${GOLD}44` }}
-                title={JSON.stringify(t.input, null, 2)}
-              >
-                <Wrench size={8} />
-                {t.name}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Tool çağrı chip'leri gizlendi — kullanıcıya teknik tool isimleri gösterilmez */}
 
         {/* İçerik — Markdown render */}
         <div className="moren-md text-[13px] leading-[1.55]">

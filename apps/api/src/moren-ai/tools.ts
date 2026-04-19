@@ -54,6 +54,39 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
       required: ['taxpayerId'],
     },
   },
+  {
+    name: 'list_taxpayers_monthly_status',
+    description:
+      'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir aydaki evrak/işlem durumunu listeler. ' +
+      '"Bu ay evraklarını getirenler kimler", "Bu ay evrakları gelmemiş olanlar", "Nisan kaydı açılmamış mükellefler", ' +
+      '"Kimin beyannamesi verilmedi" gibi TOPLU sorularda MUTLAKA bu tool\'u kullan. ' +
+      'ASLA `get_taxpayer` ile 50+ mükellefi tek tek çağırma — bu yerine bunu çağır. ' +
+      'Ay parametresi YYYY-MM formatında (örn. "2026-04"). evrakDurumu filtresi: ' +
+      '"geldi"=evraklarGeldi true, "gelmedi"=false veya kayıt yok, "tumu"=hepsi (varsayılan).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: {
+          type: 'string',
+          description: 'Dönem. "YYYY-MM" (örn. "2026-04"). Boş bırakılırsa bulunulan ay.',
+        },
+        evrakDurumu: {
+          type: 'string',
+          enum: ['geldi', 'gelmedi', 'tumu'],
+          description: 'Evrak teslim durumu filtresi. Varsayılan "tumu".',
+        },
+        beyannameDurumu: {
+          type: 'string',
+          enum: ['verildi', 'verilmedi', 'tumu'],
+          description: 'Beyanname verilme durumu filtresi. Varsayılan "tumu".',
+        },
+        onlyActive: {
+          type: 'boolean',
+          description: 'Sadece aktif mükellefler (varsayılan true).',
+        },
+      },
+    },
+  },
 
   // ============ MİZAN ============
   {

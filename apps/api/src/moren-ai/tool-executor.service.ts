@@ -24,6 +24,7 @@ export class ToolExecutorService {
       switch (name) {
         case 'list_taxpayers':      return this.listTaxpayers(input, ctx);
         case 'get_taxpayer':        return this.getTaxpayer(input, ctx);
+        case 'list_taxpayers_monthly_status': return this.listTaxpayersMonthlyStatus(input, ctx);
         case 'list_mizan_periods':  return this.listMizanPeriods(input, ctx);
         case 'get_mizan':           return this.getMizan(input, ctx);
         case 'get_gelir_tablosu':   return this.getGelirTablosu(input, ctx);
@@ -152,6 +153,96 @@ export class ToolExecutorService {
         beyannameVerildi: s.beyannameVerildi,
         kdvKontrolEdildi: s.kdvKontrolEdildi,
       })),
+    };
+  }
+
+  /**
+   * Tek cagri ile TUM mukelleflerin belirli bir aydaki durumunu doner.
+   * "Bu ay evrak getirenler kimler" tarzi toplu sorulara cevap — get_taxpayer
+   * ile 73 kez cagri yapmak yerine tek JOIN ile hepsini doker.
+   */
+  private async listTaxpayersMonthlyStatus(input: any, ctx: { tenantId: string }) {
+    // Donem parse
+    let year: number;
+    let month: number;
+    const period = (input?.period || '').trim();
+    const m = period.match(/^(\d{4})-(\d{2})$/);
+    if (m) {
+      year = parseInt(m[1], 10);
+      month = parseInt(m[2], 10);
+    } else {
+      const now = new Date();
+      year = now.getFullYear();
+      month = now.getMonth() + 1;
+    }
+
+    const evrakFilter = (input?.evrakDurumu || 'tumu') as string;
+    const beyannameFilter = (input?.beyannameDurumu || 'tumu') as string;
+    const onlyActive = input?.onlyActive !== false;
+
+    // Tum mukellefleri + o aydaki durum kaydini JOIN ile cek.
+    // Aylik durum kaydi yoksa null doner (henuz hicbir islem yapilmamis demektir).
+    const whereTaxpayer: any = { tenantId: ctx.tenantId };
+    if (onlyActive) whereTaxpayer.isActive = true;
+
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: whereTaxpayer,
+      select: {
+        id: true, type: true, companyName: true, firstName: true, lastName: true,
+        taxNumber: true, evrakTeslimGunu: true,
+        monthlyStatuses: {
+          where: { year, month },
+          select: {
+            evraklarGeldi: true,
+            evraklarIslendi: true,
+            kontrolEdildi: true,
+            beyannameVerildi: true,
+            kdvKontrolEdildi: true,
+          },
+          take: 1,
+        },
+      },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    // Satirlari hazirla
+    let rows = taxpayers.map((t) => {
+      const s = t.monthlyStatuses[0] || null;
+      return {
+        id: t.id,
+        isim: this.displayName(t),
+        vkn_tckn: t.taxNumber,
+        tip: t.type,
+        evrakTeslimGunu: t.evrakTeslimGunu,
+        evraklarGeldi: s?.evraklarGeldi ?? false,
+        evraklarIslendi: s?.evraklarIslendi ?? false,
+        kontrolEdildi: s?.kontrolEdildi ?? false,
+        beyannameVerildi: s?.beyannameVerildi ?? false,
+        kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
+        kayitVar: !!s, // Bu ay icin durum kaydi olusturulmus mu
+      };
+    });
+
+    // Filtre uygula
+    if (evrakFilter === 'geldi') {
+      rows = rows.filter((r) => r.evraklarGeldi === true);
+    } else if (evrakFilter === 'gelmedi') {
+      rows = rows.filter((r) => r.evraklarGeldi !== true);
+    }
+    if (beyannameFilter === 'verildi') {
+      rows = rows.filter((r) => r.beyannameVerildi === true);
+    } else if (beyannameFilter === 'verilmedi') {
+      rows = rows.filter((r) => r.beyannameVerildi !== true);
+    }
+
+    const donem = `${year}-${String(month).padStart(2, '0')}`;
+    return {
+      donem,
+      toplamMukellef: taxpayers.length,
+      sonuc: rows.length,
+      evrakFiltresi: evrakFilter,
+      beyannameFiltresi: beyannameFilter,
+      mukellefler: rows,
     };
   }
 
