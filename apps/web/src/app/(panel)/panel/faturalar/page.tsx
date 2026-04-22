@@ -93,7 +93,7 @@ export default function FaturalarPage() {
             ? selectedMukellef
             : undefined,
         donem,
-        limit: 500,
+        limit: 10000, // Büyük mükelleflerde 1500+ fatura olabilir; 10k güvenli üst sınır
       }),
     enabled: !!selectedMukellef,
   });

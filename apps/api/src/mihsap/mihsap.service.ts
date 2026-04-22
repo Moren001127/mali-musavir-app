@@ -138,7 +138,9 @@ export class MihsapService {
     return { total, items: content };
   }
 
-  /** Tüm sayfaları çek (pagination loop) — toplam < 2000 kayıt için safe */
+  /** Tüm sayfaları çek (pagination loop). Büyük mükellef dosyaları (1500+) için güvenli:
+   *  100'lük sayfalarla ilerler, Mihsap'ın döndürdüğü 'total' değerine ulaşınca durur.
+   *  Safety cap: 100 sayfa × 100 = 10,000 fatura üst sınırı. */
   async listAllInvoices(params: {
     tenantId: string;
     mukellefMihsapId: string | number;
@@ -157,7 +159,7 @@ export class MihsapService {
       all.push(...items);
       if (all.length >= total || items.length < PAGE_SIZE) break;
       pageIndex++;
-      if (pageIndex > 50) break; // safety
+      if (pageIndex > 100) break; // safety: en fazla 10,000 fatura
     }
     return all;
   }
@@ -365,10 +367,14 @@ export class MihsapService {
     if (params.faturaTuru) where.faturaTuru = params.faturaTuru;
     if (params.belgeTuru) where.belgeTuru = params.belgeTuru;
 
+    // Limit: kullanıcı belirtmişse en fazla 10000, hiç belirtmemişse 5000.
+    // Büyük mükellef dosyalarında (1500+ fatura/ay) 500 limiti yetersizdi.
+    const safeLimit = Math.min(params.limit || 5000, 10000);
+
     return (this.prisma as any).mihsapInvoice.findMany({
       where,
       orderBy: [{ donem: 'desc' }, { faturaTarihi: 'desc' }],
-      take: params.limit || 200,
+      take: safeLimit,
     });
   }
 
