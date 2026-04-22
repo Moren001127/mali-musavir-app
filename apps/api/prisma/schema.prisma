@@ -144,6 +144,7 @@ model Taxpayer {
   lucaSlug           String?  // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
   mihsapId           String?  // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
   mihsapDefterTuru   String?  // "BILANCO" | "DEFTER_BEYAN"
+  hattatId           String?  // Hattat yazılımındaki iç mükellef kodu (ZIP import eşleştirme için)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -161,6 +162,7 @@ model Taxpayer {
   vendorDecisions     VendorMemoryDecision[]
   beyanConfig         TaxpayerBeyanConfig?
   beyanDurumlari      BeyanDurumu[]
+  beyanKayitlari      BeyanKaydi[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -235,6 +237,45 @@ model BeyanDurumu {
   @@index([tenantId, beyanTipi, donem])
   @@index([taxpayerId])
   @@map("beyan_durumlari")
+}
+
+// ============================================================
+// BEYANNAME KAYITLARI (Hattat'tan import edilen geçmiş beyannameler)
+// Her beyanname için tek kayıt: mükellef + tip + dönem + tutar + (ops.) PDF.
+// Import kaynağı Hattat Excel export'u. Status alanı şimdilik yok —
+// ileride durum takibi eklenecek (gönderildi/onaylandı vb.).
+// ============================================================
+model BeyanKaydi {
+  id              String    @id @default(cuid())
+  tenantId        String
+  taxpayerId      String
+  beyanTipi       String    // "KDV1" | "KDV2" | "MUHSGK" | "DAMGA" | "POSET" | "KURUMLAR" | "GELIR" | "BILDIRGE" | "EDEFTER" | "GECICI_VERGI" | "DIGER"
+  donem           String    // "2026-03" format (yyyy-mm), yıllık beyanlar için "2025-YIL"
+  beyanTarihi     DateTime? // Beyannamenin verildiği tarih
+  tahakkukTutari  Decimal?  @db.Decimal(14, 2)
+  odemeTutari     Decimal?  @db.Decimal(14, 2) // İleride ödeme takibi için
+  onayNo          String?   // GİB onay numarası / tahakkuk no
+  // Dosya referansları (opsiyonel)
+  pdfUrl          String?   // Tahakkuk fişi PDF — storage key
+  beyannameUrl    String?   // Beyanname aslı PDF — storage key
+  xmlUrl          String?   // e-Beyanname XML — storage key
+  // İçe aktarım izleme
+  kaynak          String    @default("manuel") // "hattat_excel" | "gib_agent" | "manuel"
+  importBatchId   String?   // Aynı anda import edilen grubu tanımlar
+  notlar          String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  // Aynı mükellefin aynı dönem aynı tipinden 2 kayıt olmamalı
+  @@unique([tenantId, taxpayerId, beyanTipi, donem])
+  @@index([tenantId, donem])
+  @@index([tenantId, beyanTipi])
+  @@index([taxpayerId])
+  @@index([importBatchId])
+  @@map("beyan_kayitlari")
 }
 
 enum TaxpayerType {
