@@ -21,6 +21,7 @@ import { MorenAiModule } from './moren-ai/moren-ai.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
+import { BeyannameTakipModule } from './beyanname-takip/beyanname-takip.module';
 import { ReminderCron } from './schedule/reminder.cron';
 
 @Module({
@@ -47,6 +48,7 @@ import { ReminderCron } from './schedule/reminder.cron';
     WhatsAppModule,
     VendorMemoryModule,
     PendingDecisionsModule,
+    BeyannameTakipModule,
   ],
   providers: [ReminderCron],
 })

@@ -1,7 +1,8 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, Mailbox, Calculator, BookOpen, Printer, CheckCircle2, X as IconX, Check, Download } from 'lucide-react';
+import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, Mailbox, Calculator, BookOpen, Printer, CheckCircle2, X as IconX, Check, Download, FileCheck2, Search as SearchIcon, Settings } from 'lucide-react';
+import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/beyanname-takip';
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
@@ -156,6 +157,216 @@ function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; ic
       </div>
       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: running ? '#22c55e' : 'rgba(255,255,255,0.18)', boxShadow: running ? '0 0 8px rgba(34,197,94,0.6)' : 'none', animation: running ? 'moren-pulse 2s infinite' : 'none' }} />
     </Link>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// TOPLU BEYANNAME — SGK VE E-DEFTER KONTROL (Hattat-stili)
+// Dönem seçici + beyanname/SGK/E-defter tabloları progress bar ile
+// ══════════════════════════════════════════════════════════
+function ToplubeyannameTable() {
+  // Varsayılan: bir önceki ay (mart ayı için şu an "2026-03")
+  const [donem, setDonem] = useState<string>(() => {
+    const now = new Date();
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['beyanname-ozet', donem],
+    queryFn: () => beyannameTakipApi.listOzet(donem),
+    // Her beyanname döneminde otomatik yenilensin diye 5 dk cache
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const rows = data?.rows || [];
+
+  // Tablo gruplamaları
+  const beyanTipleri: BeyanTipi[] = ['KURUMLAR', 'GELIR', 'KDV1', 'KDV2', 'DAMGA', 'POSET', 'MUHSGK'];
+  const beyanRows = rows.filter((r) => beyanTipleri.includes(r.beyanTipi) && r.toplam > 0);
+  const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
+  const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
+
+  // Dönem seçenekleri: son 12 ay
+  const donemOptions = useMemo(() => {
+    const now = new Date();
+    const arr: { value: string; label: string }[] = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const aylar = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+      arr.push({ value: v, label: `${d.getFullYear()}/${aylar[d.getMonth()]}` });
+    }
+    return arr;
+  }, []);
+
+  return (
+    <div>
+      {/* Başlık bandı */}
+      <div className="flex items-center justify-between px-5 py-4 flex-wrap gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <div className="flex items-center gap-2.5">
+          <FileCheck2 size={16} style={{ color: GOLD }} />
+          <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Toplu Beyanname — SGK ve E-Defter Kontrol</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={donem}
+            onChange={(e) => setDonem(e.target.value)}
+            className="text-[12px] px-2.5 py-1.5 rounded-md outline-none cursor-pointer"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}
+          >
+            {donemOptions.map((o) => (
+              <option key={o.value} value={o.value} style={{ background: '#1a1814' }}>{o.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => refetch()}
+            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
+            style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.3)', color: GOLD }}
+          >
+            <SearchIcon size={11} /> Sorgula
+          </button>
+          <Link
+            href="/panel/ayarlar/beyanname-takip"
+            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
+          >
+            <Settings size={11} /> Ayarlar
+          </Link>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="px-5 py-10 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          Yükleniyor...
+        </div>
+      )}
+
+      {!isLoading && beyanRows.length === 0 && !bildirgeRow && !edefterRow && (
+        <div className="px-5 py-10 text-center">
+          <p className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Bu dönem için hiçbir mükellefin beyan yükümlülüğü yok.
+          </p>
+          <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.3)' }}>
+            Ayarlar → Mükellef Beyanname Takip sayfasından mükellef konfigürasyonlarını düzenle.
+          </p>
+        </div>
+      )}
+
+      {/* Beyannameler tablosu */}
+      {beyanRows.length > 0 && (
+        <div className="px-1.5 py-1.5">
+          <table className="w-full text-[12px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+            <thead>
+              <tr style={{ background: 'rgba(184,160,111,0.08)' }}>
+                <Th className="min-w-[160px]">Beyannameler ({data?.donem})</Th>
+                <Th className="w-[70px]" right>Toplam</Th>
+                <Th className="w-[90px]" right>Onaylanan</Th>
+                <Th className="w-[95px]" right>Bekleyen</Th>
+                <Th className="w-[70px]" right>Hatalı</Th>
+                <Th className="w-[70px]" right>Kalan</Th>
+                <Th>Durum</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {beyanRows.map((r) => (
+                <BeyanTr key={r.beyanTipi} row={r} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Bildirge + E-Defter yan yana */}
+      {(bildirgeRow || edefterRow) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 px-1.5 pb-2">
+          {bildirgeRow && (
+            <MiniTable title="Bildirge" row={bildirgeRow} donem={data?.donem || donem} accent="copper" />
+          )}
+          {edefterRow && (
+            <MiniTable title="E-Defter" row={edefterRow} donem={data?.donem || donem} accent="bronze" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Th({ children, right, className }: { children: ReactNode; right?: boolean; className?: string }) {
+  return (
+    <th
+      className={`text-[10.5px] font-semibold uppercase tracking-wider px-3 py-2.5 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
+      style={{ color: 'rgba(250,250,249,0.6)' }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function BeyanTr({ row }: { row: OzetRow }) {
+  const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
+  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
+  return (
+    <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+      <td className="px-3 py-2.5 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{row.toplam}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#22c55e' }}>{row.onaylanan}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.5)' }}>{row.bekleyen}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)' }}>{row.hatali}</td>
+      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.kalan > 0 ? '#f59e0b' : '#22c55e' }}>{row.kalan}</td>
+      <td className="px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div
+              className="h-full transition-all duration-500 rounded-full"
+              style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
+            />
+          </div>
+          <span className="text-[10.5px] font-semibold tabular-nums w-[32px] text-right" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function MiniTable({ title, row, donem, accent }: { title: string; row: OzetRow; donem: string; accent: StatAccent }) {
+  const tone = ACCENT_TONES[accent];
+  const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
+  const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` }}>
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ background: tone.bg }}>
+        <div className="flex items-center gap-2">
+          <span className="w-[3px] h-3.5 rounded-sm" style={{ background: tone.color }} />
+          <span className="text-[12px] font-semibold" style={{ color: tone.color }}>{title} ({donem})</span>
+        </div>
+      </div>
+      <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70">Toplam</div>
+          <div className="text-[16px] font-semibold tabular-nums" style={{ color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }}>{row.toplam}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70">{title === 'E-Defter' ? 'Verilen' : 'Onaylanan'}</div>
+          <div className="text-[16px] font-semibold tabular-nums" style={{ color: '#22c55e', fontFamily: 'JetBrains Mono, monospace' }}>{row.onaylanan}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider opacity-70">Kalan</div>
+          <div className="text-[16px] font-semibold tabular-nums" style={{ color: row.kalan > 0 ? '#f59e0b' : '#22c55e', fontFamily: 'JetBrains Mono, monospace' }}>{row.kalan}</div>
+        </div>
+      </div>
+      <div className="px-4 pb-3">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div
+              className="h-full transition-all duration-500 rounded-full"
+              style={{ width: `${row.yuzde}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
+            />
+          </div>
+          <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -429,13 +640,8 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3.5">
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <TrendChart events={agentEvents as any[]} />
-        </div>
-        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <MukellefDonut total={totalTx} segments={donutSegments} />
-        </div>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <ToplubeyannameTable />
       </div>
 
       <div>

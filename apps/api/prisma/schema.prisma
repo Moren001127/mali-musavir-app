@@ -159,10 +159,82 @@ model Taxpayer {
   kdvControlSessions  KdvControlSession[]
   monthlyStatuses     TaxpayerMonthlyStatus[]
   vendorDecisions     VendorMemoryDecision[]
+  beyanConfig         TaxpayerBeyanConfig?
+  beyanDurumlari      BeyanDurumu[]
 
   @@index([tenantId])
   @@index([taxNumber])
   @@map("taxpayers")
+}
+
+// ============================================================
+// MÜKELLEF BEYANNAME KONFIGURASYONU (Hattat-stil toplu beyanname takip)
+// Her mükellef için hangi beyannameleri verir, dönemi ne.
+// Ayarlar > Mükellef Beyanname Takip sayfasından düzenlenir.
+// ============================================================
+model TaxpayerBeyanConfig {
+  id              String    @id @default(cuid())
+  taxpayerId      String    @unique
+
+  // Gelir/Kurumlar vergisi mükellef tipi (yıllık beyan için)
+  incomeTaxType   String?   // "KURUMLAR" | "GELIR" | "BASIT_USUL" | null
+
+  // KDV1 (Katma Değer Vergisi, 1 No'lu)
+  kdv1Period      String?   // "AYLIK" | "UCAYLIK" | null (KDV mükellefi değilse)
+
+  // KDV2 (Tevkifat) — aylık zorunlu, enabled bayrağı yeterli
+  kdv2Enabled     Boolean   @default(false)
+
+  // Muhtasar (MUHSGK — birleşik)
+  muhtasarPeriod  String?   // "AYLIK" | "UCAYLIK" | null
+
+  // Damga Vergisi (sürekli damga vergisi mükellefi mi)
+  damgaEnabled    Boolean   @default(false)
+
+  // Poşet Beyannamesi (3 aylık — plastik poşet kullananlar için)
+  posetEnabled    Boolean   @default(false)
+
+  // SGK Aylık Prim ve Hizmet Belgesi (çalışanı olanlar)
+  sgkBildirgeEnabled Boolean @default(false)
+
+  // E-Defter (bilanço usulü mükellefler için)
+  eDefterPeriod   String?   // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
+
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@map("taxpayer_beyan_configs")
+}
+
+// ============================================================
+// DÖNEM BAZLI BEYAN DURUMU
+// Her mükellef + dönem + beyan tipi için tek kayıt.
+// Beyanname verildiğinde/onaylandığında güncellenir.
+// Dashboard'daki Toplu Beyanname tablosu bu veriyi özetler.
+// ============================================================
+model BeyanDurumu {
+  id              String    @id @default(cuid())
+  tenantId        String
+  taxpayerId      String
+  beyanTipi       String    // "KURUMLAR" | "GELIR" | "KDV1" | "KDV2" | "DAMGA" | "MUHSGK" | "POSET" | "BILDIRGE" | "EDEFTER"
+  donem           String    // "2026-03" format (yyyy-mm)
+  durum           String    @default("beklemede")  // "beklemede" | "onaylandi" | "hatali" | "muaf"
+  onayTarihi      DateTime?
+  tahakkukTutari  Decimal?  @db.Decimal(14, 2)
+  notlar          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, beyanTipi, donem])
+  @@index([tenantId, donem])
+  @@index([tenantId, beyanTipi, donem])
+  @@index([taxpayerId])
+  @@map("beyan_durumlari")
 }
 
 enum TaxpayerType {

@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Copy, Check, ExternalLink } from 'lucide-react';
+import { Loader2, Copy, Check, ExternalLink, FileCheck2, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 
 /**
  * Moren Agent = tarayıcıda çalışan bookmarklet.
@@ -305,6 +306,23 @@ export default function AyarlarPage() {
       </div>
 
       <MorenAgentSection />
+
+      <Link
+        href="/panel/ayarlar/beyanname-takip"
+        className="card hover:border-amber-300 transition-colors flex items-center gap-4 group cursor-pointer"
+      >
+        <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 flex-shrink-0">
+          <FileCheck2 size={22} />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>Mükellef Beyanname Takip</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Her mükellefin hangi beyannameleri verdiğini (KDV/MUHSGK/Kurumlar/E-Defter) ve dönem yapısını ayarla.
+            Toplu Beyanname Kontrol paneli bu ayarlara göre çalışır.
+          </p>
+        </div>
+        <ArrowRight size={18} className="text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
+      </Link>
 
       <SmsTemplateSection />
 
