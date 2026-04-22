@@ -9,7 +9,20 @@ import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat
 
 const GOLD = '#d4b876';
 
-type Task = { id: string; title: string; dueDate: string; note?: string; done: boolean; createdAt: string };
+type Task = {
+  id: string;
+  title: string;
+  dueDate: string;
+  note?: string;
+  done: boolean;
+  createdAt: string;
+  // İleride aktif edilecek hatırlatma kanalları
+  whatsappPhone?: string; // "05xx xxx xx xx" — WhatsApp hatırlatma için
+  emailAddr?: string;     // E-posta hatırlatma için
+  // Bildirim kontrolü
+  lastReminderAt?: string; // Son uyarının zamanı (sürekli bildirim tekrarı için)
+  reminderDismissed?: boolean; // Kullanıcı "Anladım" derse bu oturumda bir daha uyarma
+};
 const TKEY = 'moren-dashboard-tasks';
 const loadT = (): Task[] => { if (typeof window === 'undefined') return []; try { const r = localStorage.getItem(TKEY); return r ? JSON.parse(r) : []; } catch { return []; } };
 const saveT = (t: Task[]) => { if (typeof window !== 'undefined') localStorage.setItem(TKEY, JSON.stringify(t)); };
@@ -136,7 +149,16 @@ function TaskRow({ t, onToggle, onDelete }: { t: Task; onToggle: () => void; onD
       <div className="w-[3px] h-7 rounded-sm flex-shrink-0" style={{ background: barC }} />
       <button onClick={onToggle} className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: t.done ? GOLD : 'transparent', border: `1.5px solid ${t.done ? GOLD : 'rgba(250,250,249,0.25)'}`, color: '#0f0d0b' }}>{t.done && <Check size={13} strokeWidth={3} />}</button>
       <div className="flex-1 min-w-0">
-        <p className="text-[13.5px] font-medium truncate" style={{ color: '#fafaf9', textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.55 : 1 }}>{t.title}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[13.5px] font-medium truncate" style={{ color: '#fafaf9', textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.55 : 1 }}>{t.title}</p>
+          {/* Hatırlatma kanalı rozetleri */}
+          {t.whatsappPhone && (
+            <span title={`WhatsApp: ${t.whatsappPhone} (yakında aktif)`} className="text-[9.5px] px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}>WA</span>
+          )}
+          {t.emailAddr && (
+            <span title={`E-posta: ${t.emailAddr} (yakında aktif)`} className="text-[9.5px] px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}>MAIL</span>
+          )}
+        </div>
         <p className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>{t.note ? `${dateStr} · ${t.note}` : dateStr}</p>
       </div>
       <span className="text-[10.5px] font-semibold px-2.5 py-[3px] rounded-md flex-shrink-0" style={{ background: cs.bg, color: cs.c }}>{chip}</span>
@@ -695,13 +717,87 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [modal, setModal] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
-  const [nT, setNT] = useState(''); const [nD, setND] = useState(() => new Date().toISOString().slice(0, 10)); const [nN, setNN] = useState('');
+  const [nT, setNT] = useState('');
+  const [nD, setND] = useState(() => new Date().toISOString().slice(0, 10));
+  const [nN, setNN] = useState('');
+  const [nWA, setNWA] = useState('');
+  const [nEM, setNEM] = useState('');
+  // Bu oturumda hangi görevler için uyarı gösterildi
+  const [dueShown, setDueShown] = useState<Record<string, number>>({});
+
   useEffect(() => { setTasks(loadT()); }, []);
   useEffect(() => { saveT(tasks); }, [tasks]);
+
   const addT = () => {
     if (!nT.trim()) return;
-    setTasks((p) => [{ id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()), title: nT.trim(), dueDate: nD, note: nN.trim() || undefined, done: false, createdAt: new Date().toISOString() }, ...p]);
-    setNT(''); setNN(''); setND(new Date().toISOString().slice(0, 10)); setModal(false);
+    setTasks((p) => [{
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+      title: nT.trim(),
+      dueDate: nD,
+      note: nN.trim() || undefined,
+      done: false,
+      createdAt: new Date().toISOString(),
+      whatsappPhone: nWA.trim() || undefined,
+      emailAddr: nEM.trim() || undefined,
+    }, ...p]);
+    setNT(''); setNN(''); setNWA(''); setNEM('');
+    setND(new Date().toISOString().slice(0, 10));
+    setModal(false);
+  };
+
+  // ══════════ Sürekli Hatırlatma Sistemi ══════════
+  // Bugün veya geçmiş tarihli, tamamlanmamış görevler için:
+  //   1) Tarayıcı bildirimi (permission verdiyse)
+  //   2) Sayfada kırmızı pulse banner (dismiss edilene kadar)
+  //   3) Her 10 dakikada bir tekrar tetikleme
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Tamamlanmamış, bugün/geçmiş dueDate'li, bu oturumda dismiss edilmemiş görevler
+  const dueTasks = useMemo(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    return tasks.filter((t) => {
+      if (t.done) return false;
+      const d = new Date(t.dueDate); d.setHours(0,0,0,0);
+      if (d > today) return false; // gelecek
+      if (t.reminderDismissed) return false;
+      return true;
+    });
+  }, [tasks]);
+
+  // Her 10 dakikada tarayıcı bildirimini yenile
+  useEffect(() => {
+    if (dueTasks.length === 0) return;
+    const tick = () => {
+      const now = Date.now();
+      const TEN_MIN = 10 * 60 * 1000;
+      for (const t of dueTasks) {
+        const last = dueShown[t.id] || 0;
+        if (now - last >= TEN_MIN) {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+              new Notification('⚠ Hatırlatma — ' + t.title, {
+                body: t.note ? `${t.note} · Vade: ${new Date(t.dueDate).toLocaleDateString('tr-TR')}` : `Vade: ${new Date(t.dueDate).toLocaleDateString('tr-TR')}`,
+                tag: `moren-task-${t.id}`,
+                requireInteraction: true,
+              });
+            } catch {}
+          }
+          setDueShown((prev) => ({ ...prev, [t.id]: now }));
+        }
+      }
+    };
+    tick(); // hemen tetikle
+    const iv = setInterval(tick, 60 * 1000); // her dakika kontrol
+    return () => clearInterval(iv);
+  }, [dueTasks, dueShown]);
+
+  const dismissReminder = (id: string) => {
+    setTasks((p) => p.map((x) => x.id === id ? { ...x, reminderDismissed: true } : x));
   };
   const sorted = [...tasks].sort((a, b) => a.done !== b.done ? (a.done ? 1 : -1) : new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
@@ -771,6 +867,52 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
+      {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı */}
+      {dueTasks.length > 0 && (
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap"
+          style={{
+            background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(239,68,68,0.08))',
+            border: '1px solid rgba(244,63,94,0.4)',
+            boxShadow: '0 0 0 1px rgba(244,63,94,0.15), 0 8px 24px rgba(244,63,94,0.12)',
+            animation: 'moren-pulse 2.4s ease-in-out infinite',
+          }}
+        >
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.5)' }}>
+            <AlertTriangle size={18} style={{ color: '#f43f5e' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13.5px] font-bold mb-0.5" style={{ color: '#fafaf9' }}>
+              {dueTasks.length} hatırlatma zamanı geldi
+            </div>
+            <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+              {dueTasks.slice(0, 3).map((t) => t.title).join(' · ')}
+              {dueTasks.length > 3 && ` · +${dueTasks.length - 3} daha`}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {dueTasks.length === 1 && (
+              <button
+                onClick={() => dismissReminder(dueTasks[0].id)}
+                className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+              >
+                Anladım
+              </button>
+            )}
+            {dueTasks.length > 1 && (
+              <button
+                onClick={() => dueTasks.forEach((t) => dismissReminder(t.id))}
+                className="text-[11.5px] font-medium px-3 py-1.5 rounded-md transition"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
+              >
+                Hepsini anladım
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div className="flex items-center gap-2.5 mb-2"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
@@ -816,16 +958,18 @@ export default function DashboardPage() {
           trendKind={successRate != null ? (successRate >= 80 ? 'up' : successRate >= 50 ? 'flat' : 'down') : undefined}
           accent="bronze"
         />
-        <StatCard
-          title="Kritik Uyarı"
-          value={criticalCount}
-          icon={AlertTriangle}
-          href="/panel/bildirimler"
-          sub={criticalCount > 0 ? `${tHata} hata · ${unread} bildirim` : 'Kritik uyarı yok'}
-          trend={criticalCount === 0 ? 'değişmedi' : undefined}
-          trendKind={criticalCount === 0 ? 'flat' : undefined}
-          accent={criticalCount > 0 ? 'burgundy' : 'copper'}
-        />
+        <div title="Bugünkü ajan işlem hataları + okunmamış tebligat/sistem bildirimleri toplamı. Tıklayınca Bildirimler sayfasına gider.">
+          <StatCard
+            title="Kritik Uyarı"
+            value={criticalCount}
+            icon={AlertTriangle}
+            href="/panel/bildirimler"
+            sub={criticalCount > 0 ? `${tHata} ajan hatası · ${unread} okunmamış bildirim` : 'Sorun yok — her şey yolunda'}
+            trend={criticalCount === 0 ? 'değişmedi' : undefined}
+            trendKind={criticalCount === 0 ? 'flat' : undefined}
+            accent={criticalCount > 0 ? 'burgundy' : 'copper'}
+          />
+        </div>
       </div>
 
       <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -924,6 +1068,43 @@ export default function DashboardPage() {
                 <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Not (opsiyonel)</label>
                 <textarea value={nN} onChange={(e) => setNN(e.target.value)} rows={3} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] outline-none resize-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
               </div>
+
+              {/* Hatırlatma kanalları — şimdilik bilgi toplama, entegrasyon ileride */}
+              <div className="pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2 mb-2 mt-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>Hatırlatma Kanalları</span>
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.3)' }}>Yakında Aktif</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📱 WhatsApp numarası (Örn: 0535 058 74 75)</label>
+                    <input
+                      type="tel"
+                      value={nWA}
+                      onChange={(e) => setNWA(e.target.value)}
+                      placeholder="05xx xxx xx xx"
+                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📧 E-posta adresi</label>
+                    <input
+                      type="email"
+                      value={nEM}
+                      onChange={(e) => setNEM(e.target.value)}
+                      placeholder="ornek@mail.com"
+                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] mt-2" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                  Hatırlatma günü geldiğinde bu kanallara da bildirim gidecek. Şimdilik bilgi kaydediliyor, entegrasyon yakında.
+                </p>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button onClick={() => setModal(false)} className="px-4 py-2 rounded-[10px] text-[13px] font-medium" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
                 <button onClick={addT} disabled={!nT.trim()} className="px-5 py-2 rounded-[10px] text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>Ekle</button>
