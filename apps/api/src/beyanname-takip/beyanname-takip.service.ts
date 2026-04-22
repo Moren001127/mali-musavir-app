@@ -33,8 +33,18 @@ export class BeyannameTakipService {
   // ══════════════════════════════════════════════════════════
 
   async listConfigs(tenantId: string) {
+    // Sadece aktif + işi bırakmamış mükellefleri göster
+    const now = new Date();
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        isActive: true,
+        // endDate dolu ve geçmişte ise (işi bırakmış) hariç tut
+        OR: [
+          { endDate: null },
+          { endDate: { gt: now } },
+        ],
+      },
       include: { beyanConfig: true },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });

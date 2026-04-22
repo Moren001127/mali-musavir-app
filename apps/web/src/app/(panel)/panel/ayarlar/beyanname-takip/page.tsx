@@ -8,7 +8,7 @@ import {
   TaxpayerBeyanConfig,
   Period,
 } from '@/lib/beyanname-takip';
-import { ArrowLeft, Search, Save, FileCheck2 } from 'lucide-react';
+import { ArrowLeft, Search, Save, FileCheck2, Check } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
@@ -39,7 +39,6 @@ export default function BeyannameTakipAyarlariPage() {
     onError: (e: any) => toast.error(e?.message || 'Kaydedilemedi'),
   });
 
-  // Arama filtresi
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
     const q = search.toLowerCase().trim();
@@ -71,14 +70,20 @@ export default function BeyannameTakipAyarlariPage() {
 
   const hasChanges = (taxpayerId: string) => !!localChanges[taxpayerId] && Object.keys(localChanges[taxpayerId]).length > 0;
 
+  const totalConfigured = rows.filter((r) => {
+    const cfg = r.config;
+    return cfg.kdv1Period || cfg.muhtasarPeriod || cfg.eDefterPeriod || cfg.kdv2Enabled
+      || cfg.damgaEnabled || cfg.posetEnabled || cfg.sgkBildirgeEnabled || cfg.incomeTaxType;
+  }).length;
+
   return (
     <div className="p-6 space-y-5">
       {/* Başlık */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Link
             href="/panel/ayarlar"
-            className="p-2 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition"
+            className="p-2 rounded-lg hover:bg-stone-800/40 text-stone-400 hover:text-stone-200 transition"
           >
             <ArrowLeft size={18} />
           </Link>
@@ -86,180 +91,216 @@ export default function BeyannameTakipAyarlariPage() {
             <h1 className="text-2xl font-semibold flex items-center gap-2" style={{ color: '#d4b876' }}>
               <FileCheck2 className="w-6 h-6" /> Mükellef Beyanname Takip
             </h1>
-            <p className="text-sm text-stone-500 mt-1">
-              Her mükellefin hangi beyannameleri verdiğini ve dönemini ayarla.
-              İşe başlama/bırakma tarihleri mükellefler sayfasından düzenlenir.
+            <p className="text-sm text-stone-400 mt-1">
+              Her mükellefin hangi beyannameleri verdiğini ayarla. Yalnızca <strong className="text-amber-400">aktif</strong> mükellefler görünür.
             </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <div className="px-3 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-300">
+            <strong>{rows.length}</strong> aktif mükellef · <strong>{totalConfigured}</strong> tanesi yapılandırılmış
           </div>
         </div>
       </div>
 
       {/* Arama */}
       <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
         <input
           type="text"
           placeholder="Mükellef adı ile ara..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:border-amber-300"
+          className="w-full pl-9 pr-3 py-2 rounded-md text-sm outline-none"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
         />
       </div>
 
-      {isLoading && <div className="text-stone-500 text-sm">Yükleniyor...</div>}
+      {isLoading && <div className="text-stone-400 text-sm">Yükleniyor...</div>}
 
-      {/* Tablo */}
       {!isLoading && filtered.length === 0 && (
-        <div className="bg-stone-50 border border-stone-200 rounded-lg p-12 text-center">
-          <FileCheck2 className="w-10 h-10 text-stone-300 mx-auto mb-3" />
-          <p className="text-stone-500">
-            {search ? 'Aramaya uyan mükellef yok.' : 'Henüz mükellef eklenmemiş.'}
+        <div className="rounded-lg p-12 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <FileCheck2 className="w-10 h-10 text-stone-600 mx-auto mb-3" />
+          <p className="text-stone-400">
+            {search ? 'Aramaya uyan mükellef yok.' : 'Aktif mükellef bulunamadı.'}
           </p>
         </div>
       )}
 
+      {/* Kart listesi — her mükellef için ayrı kart, buton grupları ile seçim */}
       {filtered.length > 0 && (
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200 sticky top-0">
-              <tr className="text-left text-[11px] font-medium text-stone-600 uppercase tracking-wider">
-                <th className="px-3 py-3 min-w-[200px]">Mükellef</th>
-                <th className="px-3 py-3">Gelir/Kurumlar</th>
-                <th className="px-3 py-3">KDV1</th>
-                <th className="px-3 py-3 text-center">KDV2</th>
-                <th className="px-3 py-3">Muhtasar</th>
-                <th className="px-3 py-3 text-center">Damga</th>
-                <th className="px-3 py-3 text-center">Poşet</th>
-                <th className="px-3 py-3 text-center">SGK Bildirge</th>
-                <th className="px-3 py-3">E-Defter</th>
-                <th className="px-3 py-3 text-right sticky right-0 bg-stone-50">Kaydet</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {filtered.map((row) => {
-                const cfg = getCfg(row);
-                const changed = hasChanges(row.taxpayerId);
-                return (
-                  <tr key={row.taxpayerId} className={changed ? 'bg-amber-50/30' : 'hover:bg-stone-50/50'}>
-                    <td className="px-3 py-2 text-stone-800 font-medium">
-                      <div>{row.ad}</div>
-                      {(row.startDate || row.endDate) && (
-                        <div className="text-[10.5px] text-stone-500 mt-0.5">
-                          {row.startDate && `Başl: ${new Date(row.startDate).toLocaleDateString('tr-TR')}`}
-                          {row.endDate && ` · Bitiş: ${new Date(row.endDate).toLocaleDateString('tr-TR')}`}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select
-                        value={cfg.incomeTaxType || ''}
-                        onChange={(v) => setCfg(row.taxpayerId, { incomeTaxType: (v || null) as any })}
-                        options={[
-                          { v: '', l: '—' },
-                          { v: 'KURUMLAR', l: 'Kurumlar' },
-                          { v: 'GELIR', l: 'Gelir' },
-                          { v: 'BASIT_USUL', l: 'Basit Usul' },
-                        ]}
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <PeriodSelect
-                        value={cfg.kdv1Period}
-                        onChange={(v) => setCfg(row.taxpayerId, { kdv1Period: v })}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <Checkbox
+        <div className="space-y-3">
+          {filtered.map((row) => {
+            const cfg = getCfg(row);
+            const changed = hasChanges(row.taxpayerId);
+            return (
+              <div
+                key={row.taxpayerId}
+                className="rounded-xl p-4 transition-all"
+                style={{
+                  background: changed ? 'rgba(212,184,118,0.06)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${changed ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.06)'}`,
+                }}
+              >
+                {/* Üst: mükellef adı + kaydet butonu */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-[14px] font-semibold truncate" style={{ color: '#fafaf9' }}>{row.ad}</h3>
+                    {(row.startDate || row.endDate) && (
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        {row.startDate && `Başl: ${new Date(row.startDate).toLocaleDateString('tr-TR')}`}
+                        {row.endDate && ` · Bitiş: ${new Date(row.endDate).toLocaleDateString('tr-TR')}`}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    disabled={!changed || upsert.isPending}
+                    onClick={() => save(row.taxpayerId)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 py-2 rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={changed ? {
+                      background: 'linear-gradient(135deg, #d4b876, #b8a06f)',
+                      color: '#0a0906',
+                    } : {
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      color: 'rgba(250,250,249,0.4)',
+                    }}
+                  >
+                    <Save size={13} />
+                    {changed ? 'Kaydet' : 'Değişiklik yok'}
+                  </button>
+                </div>
+
+                {/* Orta: Gelir/Kurumlar türü (tek satır başı) */}
+                <div className="mb-3 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <Label>Gelir / Kurumlar Vergisi</Label>
+                  <ButtonGroup
+                    value={cfg.incomeTaxType || ''}
+                    onChange={(v) => setCfg(row.taxpayerId, { incomeTaxType: (v || null) as any })}
+                    options={[
+                      { v: '', l: 'Yok' },
+                      { v: 'KURUMLAR', l: 'Kurumlar V.' },
+                      { v: 'GELIR', l: 'Gelir V.' },
+                      { v: 'BASIT_USUL', l: 'Basit Usul' },
+                    ]}
+                  />
+                </div>
+
+                {/* Alt: Aylık beyannameler — 2 kolonda grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  <div>
+                    <Label>KDV1 (Katma Değer)</Label>
+                    <PeriodButtons
+                      value={cfg.kdv1Period}
+                      onChange={(v) => setCfg(row.taxpayerId, { kdv1Period: v })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Muhtasar (MUHSGK)</Label>
+                    <PeriodButtons
+                      value={cfg.muhtasarPeriod}
+                      onChange={(v) => setCfg(row.taxpayerId, { muhtasarPeriod: v })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>E-Defter</Label>
+                    <PeriodButtons
+                      value={cfg.eDefterPeriod}
+                      onChange={(v) => setCfg(row.taxpayerId, { eDefterPeriod: v })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Ek Yükümlülükler</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Toggle
                         checked={cfg.kdv2Enabled}
                         onChange={(v) => setCfg(row.taxpayerId, { kdv2Enabled: v })}
+                        label="KDV2 Tevkifat"
                       />
-                    </td>
-                    <td className="px-3 py-2">
-                      <PeriodSelect
-                        value={cfg.muhtasarPeriod}
-                        onChange={(v) => setCfg(row.taxpayerId, { muhtasarPeriod: v })}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <Checkbox
+                      <Toggle
                         checked={cfg.damgaEnabled}
                         onChange={(v) => setCfg(row.taxpayerId, { damgaEnabled: v })}
+                        label="Damga"
                       />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <Checkbox
+                      <Toggle
                         checked={cfg.posetEnabled}
                         onChange={(v) => setCfg(row.taxpayerId, { posetEnabled: v })}
+                        label="Poşet (3A)"
                       />
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <Checkbox
+                      <Toggle
                         checked={cfg.sgkBildirgeEnabled}
                         onChange={(v) => setCfg(row.taxpayerId, { sgkBildirgeEnabled: v })}
+                        label="SGK Bildirge"
                       />
-                    </td>
-                    <td className="px-3 py-2">
-                      <PeriodSelect
-                        value={cfg.eDefterPeriod}
-                        onChange={(v) => setCfg(row.taxpayerId, { eDefterPeriod: v })}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-right sticky right-0 bg-white">
-                      <button
-                        disabled={!changed || upsert.isPending}
-                        onClick={() => save(row.taxpayerId)}
-                        className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md transition ${
-                          changed
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                        }`}
-                      >
-                        <Save size={13} />
-                        Kaydet
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="text-xs text-stone-500 border-t border-stone-100 pt-3">
-        <strong>Not:</strong> Aylık = her ay beyan; Üç Aylık = 3/6/9/12. aylarda (çeyrek sonu).
-        Poşet beyannamesi 3 aylık olarak 1/4/7/10. aylarında verilir.
-        Kurumlar yılda bir kez Nisan, Gelir Mart'ta beyan edilir — otomatik eklenir.
+      <div className="text-xs text-stone-500 border-t border-stone-800 pt-3 mt-5">
+        <strong>Not:</strong> <span className="text-stone-400">Aylık</span> = her ay beyan verilir; <span className="text-stone-400">3 Aylık</span> = yalnızca 3/6/9/12. aylarda (çeyrek sonu).
+        Poşet beyannamesi 1/4/7/10. aylarında verilir.
+        Kurumlar yılda bir kez Nisan, Gelir Mart'ta otomatik eklenir.
       </div>
     </div>
   );
 }
 
 // ────────────────────────────────────────────────────────────
-// Küçük yardımcı bileşenler
+// Yardımcı bileşenler
 // ────────────────────────────────────────────────────────────
 
-function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { v: string; l: string }[] }) {
+function Label({ children }: { children: React.ReactNode }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="text-xs border border-stone-200 rounded px-2 py-1 bg-white hover:border-amber-300 focus:border-amber-400 focus:outline-none w-full"
-    >
-      {options.map((o) => (
-        <option key={o.v} value={o.v}>{o.l}</option>
-      ))}
-    </select>
+    <div className="text-[10.5px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+      {children}
+    </div>
   );
 }
 
-function PeriodSelect({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+function ButtonGroup({ value, onChange, options }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { v: string; l: string }[];
+}) {
   return (
-    <Select
+    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+      {options.map((o, i) => {
+        const active = value === o.v;
+        return (
+          <button
+            key={o.v}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className="text-[12px] font-medium px-3 py-1.5 transition-all"
+            style={{
+              background: active ? 'rgba(212,184,118,0.16)' : 'transparent',
+              color: active ? '#d4b876' : 'rgba(250,250,249,0.6)',
+              borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.08)' : 'none',
+            }}
+          >
+            {o.l}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PeriodButtons({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+  return (
+    <ButtonGroup
       value={value || ''}
       onChange={(v) => onChange((v || null) as Period)}
       options={[
-        { v: '', l: '—' },
+        { v: '', l: 'Yok' },
         { v: 'AYLIK', l: 'Aylık' },
         { v: 'UCAYLIK', l: '3 Aylık' },
       ]}
@@ -267,13 +308,28 @@ function PeriodSelect({ value, onChange }: { value: Period; onChange: (v: Period
   );
 }
 
-function Checkbox({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <input
-      type="checkbox"
-      checked={checked}
-      onChange={(e) => onChange(e.target.checked)}
-      className="w-4 h-4 accent-amber-500 cursor-pointer"
-    />
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-md transition-all"
+      style={{
+        background: checked ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.03)',
+        border: `1px solid ${checked ? 'rgba(212,184,118,0.4)' : 'rgba(255,255,255,0.08)'}`,
+        color: checked ? '#d4b876' : 'rgba(250,250,249,0.6)',
+      }}
+    >
+      <span
+        className="w-3.5 h-3.5 rounded-[3px] flex items-center justify-center flex-shrink-0"
+        style={{
+          background: checked ? '#d4b876' : 'transparent',
+          border: `1.5px solid ${checked ? '#d4b876' : 'rgba(250,250,249,0.3)'}`,
+        }}
+      >
+        {checked && <Check size={10} strokeWidth={3.5} style={{ color: '#0a0906' }} />}
+      </span>
+      {label}
+    </button>
   );
 }
