@@ -44,6 +44,12 @@ export class BeyanKayitlariController {
     res.redirect(url);
   }
 
+  @Get(':id/beyanname')
+  async beyanname(@Req() req: any, @Param('id') id: string, @Res() res: Response) {
+    const url = await this.svc.getBeyannameUrl(req.user.tenantId, id);
+    res.redirect(url);
+  }
+
   // ── SİL ─────────────────────────────────────────────
   @Delete(':id')
   remove(@Req() req: any, @Param('id') id: string) {

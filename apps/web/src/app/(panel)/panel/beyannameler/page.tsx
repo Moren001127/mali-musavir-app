@@ -120,13 +120,13 @@ export default function BeyannamelerPage() {
         </div>
       </div>
 
-      {/* ÖZET KARTLARI */}
+      {/* ÖZET KARTLARI — rakamsal tutar yok, sadece sayım */}
       {ozet && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <OzetCard label="Toplam Kayıt" value={ozet.toplam.toLocaleString('tr-TR')} icon={FileText} />
-          <OzetCard label="Toplam Tahakkuk" value={fmtMoney(ozet.toplamTahakkuk)} icon={Wallet} />
+          <OzetCard label="Toplam Beyanname" value={ozet.toplam.toLocaleString('tr-TR')} icon={FileText} />
           <OzetCard label="KDV Kayıtları" value={(ozet.byTip.KDV1 || 0) + (ozet.byTip.KDV2 || 0)} icon={FileText} />
           <OzetCard label="MUHSGK Kayıtları" value={ozet.byTip.MUHSGK || 0} icon={FileText} />
+          <OzetCard label="Geçici Vergi" value={ozet.byTip.GECICI_VERGI || 0} icon={FileText} />
         </div>
       )}
 
@@ -194,9 +194,8 @@ export default function BeyannamelerPage() {
                 <th className="px-4 py-3">Mükellef</th>
                 <th className="px-4 py-3">Tip</th>
                 <th className="px-4 py-3">Dönem</th>
-                <th className="px-4 py-3 text-right">Tahakkuk</th>
                 <th className="px-4 py-3">Onay No</th>
-                <th className="px-4 py-3">Beyan Tarihi</th>
+                <th className="px-4 py-3">Beyanname</th>
                 <th className="px-4 py-3 text-right"></th>
               </tr>
             </thead>
@@ -204,7 +203,7 @@ export default function BeyannamelerPage() {
               {filtered.map((k) => (
                 <tr key={k.id} className="group" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                   <td className="px-4 py-2.5">
-                    <div className="font-medium truncate max-w-[220px]" style={{ color: '#fafaf9' }}>
+                    <div className="font-medium truncate max-w-[260px]" style={{ color: '#fafaf9' }}>
                       {beyanKaydiMukellefAdi(k)}
                     </div>
                     <div className="text-[11px] font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
@@ -217,29 +216,39 @@ export default function BeyannamelerPage() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-[12.5px]">{fmtDonem(k.donem)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {fmtMoney(k.tahakkukTutari)}
-                  </td>
                   <td className="px-4 py-2.5 text-[12px] font-mono" style={{ color: 'rgba(250,250,249,0.55)' }}>
                     {k.onayNo || '—'}
                   </td>
-                  <td className="px-4 py-2.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                    {k.beyanTarihi ? new Date(k.beyanTarihi).toLocaleDateString('tr-TR') : '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2 text-[11px]">
+                      {k.beyannameUrl ? (
+                        <a
+                          href={beyanKayitlariApi.beyannameUrl(k.id)}
+                          target="_blank"
+                          rel="noopener"
+                          className="inline-flex items-center gap-1 px-2 py-[3px] rounded-md"
+                          style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.25)' }}
+                        >
+                          <FileText size={11} /> Beyanname
+                        </a>
+                      ) : (
+                        <span className="text-[10.5px] italic" style={{ color: 'rgba(250,250,249,0.35)' }}>—</span>
+                      )}
                       {k.pdfUrl && (
                         <a
                           href={beyanKayitlariApi.pdfUrl(k.id)}
                           target="_blank"
                           rel="noopener"
-                          className="p-1.5 rounded-md hover:bg-white/5"
-                          style={{ color: 'rgba(250,250,249,0.6)' }}
-                          title="PDF'i aç"
+                          className="inline-flex items-center gap-1 px-2 py-[3px] rounded-md"
+                          style={{ background: 'rgba(212,184,118,0.1)', color: GOLD, border: '1px solid rgba(212,184,118,0.25)' }}
                         >
-                          <Download size={14} />
+                          <FileText size={11} /> Tahakkuk
                         </a>
                       )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <div className="flex items-center gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition">
                       <button
                         onClick={() => {
                           if (confirm(`Bu kaydı silmek istediğine emin misin?\n\n${beyanKaydiMukellefAdi(k)} · ${BEYAN_TIPI_LABEL[k.beyanTipi]} · ${fmtDonem(k.donem)}`)) {

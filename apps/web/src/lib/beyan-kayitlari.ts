@@ -80,9 +80,13 @@ export const beyanKayitlariApi = {
     api.delete(`/beyan-kayitlari/${id}`).then((r) => r.data),
 
   pdfUrl: (id: string): string => {
-    // API_URL + JWT ile direkt indirme URL'i (redirect yapıyor)
     const base = (api.defaults.baseURL || '').replace(/\/$/, '');
     return `${base}/beyan-kayitlari/${id}/pdf`;
+  },
+
+  beyannameUrl: (id: string): string => {
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return `${base}/beyan-kayitlari/${id}/beyanname`;
   },
 
   // Toplu PDF yükleme — FormData ile

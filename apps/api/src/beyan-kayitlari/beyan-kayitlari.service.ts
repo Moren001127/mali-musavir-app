@@ -1,12 +1,35 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as AdmZip from 'adm-zip';
+import * as iconv from 'iconv-lite';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
   parseMukellefKlasoru, parseBeyanTipiKlasoru, mapBeyanTipi,
   parsePdfAd, formatDonem, adBenzerlik, normalizeAd,
 } from './hattat-zip-parser';
+
+/**
+ * ZIP entry'sinin adını Türkçe encoding'e göre decode et.
+ * Hattat Windows programı ZIP üretirken CP437/CP850/Win1254 encoding kullanıyor.
+ * Önce UTF-8 flag'e bak, yoksa Win1254 dene, yoksa orjinal bırak.
+ */
+function decodeZipEntryName(entry: any): string {
+  // Eğer UTF-8 flag set ise entryName zaten UTF-8
+  const flags = entry?.header?.flags;
+  const utf8 = typeof flags === 'number' && (flags & 0x800) !== 0;
+  if (utf8) return entry.entryName;
+
+  // Raw byte buffer'ı al (rawEntryName) — Windows Turkish encoding'i dene
+  try {
+    const raw: Buffer | undefined = entry.rawEntryName;
+    if (raw && Buffer.isBuffer(raw) && raw.length > 0) {
+      // Windows-1254 (Türkçe) → UTF-8
+      return iconv.decode(raw, 'win1254');
+    }
+  } catch {}
+  return entry.entryName || '';
+}
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const CLAUDE_MODEL = 'claude-haiku-4-5-20251001'; // Hızlı + ekonomik; beyanname metadata için yeterli
@@ -293,14 +316,24 @@ export class BeyanKayitlariService {
     await (this.prisma as any).beyanKaydi.delete({ where: { id } });
   }
 
-  /** PDF indirmek için presigned URL */
-  async getPdfUrl(tenantId: string, id: string, filename = 'beyanname.pdf'): Promise<string> {
+  /** Tahakkuk PDF için presigned URL */
+  async getPdfUrl(tenantId: string, id: string, filename = 'tahakkuk.pdf'): Promise<string> {
     const kayit = await (this.prisma as any).beyanKaydi.findFirst({
       where: { id, tenantId },
       select: { pdfUrl: true },
     });
-    if (!kayit || !kayit.pdfUrl) throw new NotFoundException('PDF bulunamadı');
+    if (!kayit || !kayit.pdfUrl) throw new NotFoundException('Tahakkuk PDF bulunamadı');
     return this.storage.getPresignedDownloadUrl(kayit.pdfUrl, filename);
+  }
+
+  /** Beyanname PDF için presigned URL */
+  async getBeyannameUrl(tenantId: string, id: string, filename = 'beyanname.pdf'): Promise<string> {
+    const kayit = await (this.prisma as any).beyanKaydi.findFirst({
+      where: { id, tenantId },
+      select: { beyannameUrl: true },
+    });
+    if (!kayit || !kayit.beyannameUrl) throw new NotFoundException('Beyanname PDF bulunamadı');
+    return this.storage.getPresignedDownloadUrl(kayit.beyannameUrl, filename);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -337,9 +370,11 @@ export class BeyanKayitlariService {
 
     for (const entry of zip.getEntries()) {
       if (entry.isDirectory) continue;
-      if (!/\.pdf$/i.test(entry.entryName)) continue;
+      // Türkçe encoding düzelt — Hattat ZIP'i Win1254 üretiyor
+      const entryName = decodeZipEntryName(entry);
+      if (!/\.pdf$/i.test(entryName)) continue;
       // Normalize separator + drop empty parts
-      const parts = entry.entryName.replace(/\\/g, '/').split('/').filter(Boolean);
+      const parts = entryName.replace(/\\/g, '/').split('/').filter(Boolean);
       // Son eleman PDF adı. Son-1 beyan tipi klasörü. Son-2 mükellef klasörü.
       if (parts.length < 3) continue;
       const pdfAdi = parts[parts.length - 1];
@@ -463,19 +498,29 @@ export class BeyanKayitlariService {
             continue;
           }
 
-          // PDF'leri yükle
+          // PDF'leri yükle — S3 hata verirse kayıt yine oluşsun (graceful fallback)
           const base = `${tenantId}/${taxpayer.id}/beyan`;
-          const tahakkukKey = g.tahakkukBuffer ? `${base}/${g.tip}_${g.donem}_Tahakkuk_${randomUUID()}.pdf` : null;
-          const beyannameKey = g.beyannameBuffer ? `${base}/${g.tip}_${g.donem}_Beyanname_${randomUUID()}.pdf` : null;
+          let tahakkukKey: string | null = g.tahakkukBuffer ? `${base}/${g.tip}_${g.donem}_Tahakkuk_${randomUUID()}.pdf` : null;
+          let beyannameKey: string | null = g.beyannameBuffer ? `${base}/${g.tip}_${g.donem}_Beyanname_${randomUUID()}.pdf` : null;
           if (tahakkukKey && g.tahakkukBuffer) {
-            await this.storage.putBuffer(tahakkukKey, g.tahakkukBuffer, 'application/pdf', {
-              mukellef: encodeURIComponent(ad), tip: g.tip, donem: g.donem, rolu: 'tahakkuk',
-            });
+            try {
+              await this.storage.putBuffer(tahakkukKey, g.tahakkukBuffer, 'application/pdf', {
+                mukellef: encodeURIComponent(ad), tip: g.tip, donem: g.donem, rolu: 'tahakkuk',
+              });
+            } catch (e: any) {
+              this.logger.warn(`S3 upload başarısız (tahakkuk) — kayıt pdfUrl=null olarak eklenecek: ${e?.message}`);
+              tahakkukKey = null;
+            }
           }
           if (beyannameKey && g.beyannameBuffer) {
-            await this.storage.putBuffer(beyannameKey, g.beyannameBuffer, 'application/pdf', {
-              mukellef: encodeURIComponent(ad), tip: g.tip, donem: g.donem, rolu: 'beyanname',
-            });
+            try {
+              await this.storage.putBuffer(beyannameKey, g.beyannameBuffer, 'application/pdf', {
+                mukellef: encodeURIComponent(ad), tip: g.tip, donem: g.donem, rolu: 'beyanname',
+              });
+            } catch (e: any) {
+              this.logger.warn(`S3 upload başarısız (beyanname) — kayıt beyannameUrl=null olarak eklenecek: ${e?.message}`);
+              beyannameKey = null;
+            }
           }
 
           // DB kayıt
