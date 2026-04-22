@@ -164,13 +164,16 @@ function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; ic
 // TOPLU BEYANNAME — SGK VE E-DEFTER KONTROL (Hattat-stili)
 // Dönem seçici + beyanname/SGK/E-defter tabloları progress bar ile
 // ══════════════════════════════════════════════════════════
+type BeyanFilter = 'toplam' | 'onaylanan' | 'bekleyen' | 'hatali' | 'kalan';
+type ModalState = { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string } | null;
+
 function ToplubeyannameTable() {
-  // Varsayılan: bir önceki ay (mart ayı için şu an "2026-03")
+  // Varsayılan: içinde bulunduğumuz ay
   const [donem, setDonem] = useState<string>(() => {
     const now = new Date();
-    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [modal, setModal] = useState<ModalState>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['beyanname-ozet', donem],
@@ -180,6 +183,8 @@ function ToplubeyannameTable() {
   });
 
   const rows = data?.rows || [];
+  const openModal = (beyanTipi: BeyanTipi, filter: BeyanFilter) =>
+    setModal({ beyanTipi, filter, donem });
 
   // Tablo gruplamaları
   const beyanTipleri: BeyanTipi[] = ['KURUMLAR', 'GELIR', 'KDV1', 'KDV2', 'DAMGA', 'POSET', 'MUHSGK'];
@@ -256,21 +261,30 @@ function ToplubeyannameTable() {
       {/* Beyannameler tablosu */}
       {beyanRows.length > 0 && (
         <div className="px-1.5 py-1.5">
-          <table className="w-full text-[12px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+          <table className="w-full text-[12px]" style={{ color: 'rgba(250,250,249,0.85)', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '68px' }} />
+              <col style={{ width: '82px' }} />
+              <col style={{ width: '82px' }} />
+              <col style={{ width: '68px' }} />
+              <col style={{ width: '68px' }} />
+              <col />
+            </colgroup>
             <thead>
               <tr style={{ background: 'rgba(184,160,111,0.08)' }}>
-                <Th className="min-w-[160px]">Beyannameler ({data?.donem})</Th>
-                <Th className="w-[70px]" right>Toplam</Th>
-                <Th className="w-[90px]" right>Onaylanan</Th>
-                <Th className="w-[95px]" right>Bekleyen</Th>
-                <Th className="w-[70px]" right>Hatalı</Th>
-                <Th className="w-[70px]" right>Kalan</Th>
+                <Th>Beyannameler ({data?.donem})</Th>
+                <Th right>Toplam</Th>
+                <Th right>Onaylanan</Th>
+                <Th right>Bekleyen</Th>
+                <Th right>Hatalı</Th>
+                <Th right>Kalan</Th>
                 <Th>Durum</Th>
               </tr>
             </thead>
             <tbody>
               {beyanRows.map((r) => (
-                <BeyanTr key={r.beyanTipi} row={r} />
+                <BeyanTr key={r.beyanTipi} row={r} onNumberClick={openModal} />
               ))}
             </tbody>
           </table>
@@ -281,13 +295,16 @@ function ToplubeyannameTable() {
       {(bildirgeRow || edefterRow) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 px-1.5 pb-2">
           {bildirgeRow && (
-            <MiniTable title="Bildirge" row={bildirgeRow} donem={data?.donem || donem} accent="copper" />
+            <MiniTable title="Bildirge" row={bildirgeRow} donem={data?.donem || donem} accent="copper" onNumberClick={openModal} />
           )}
           {edefterRow && (
-            <MiniTable title="E-Defter" row={edefterRow} donem={data?.donem || donem} accent="bronze" />
+            <MiniTable title="E-Defter" row={edefterRow} donem={data?.donem || donem} accent="bronze" onNumberClick={openModal} />
           )}
         </div>
       )}
+
+      {/* Mükellef listesi modal'ı */}
+      {modal && <BeyanDetayModal state={modal} onClose={() => setModal(null)} />}
     </div>
   );
 }
@@ -295,7 +312,7 @@ function ToplubeyannameTable() {
 function Th({ children, right, className }: { children: ReactNode; right?: boolean; className?: string }) {
   return (
     <th
-      className={`text-[10.5px] font-semibold uppercase tracking-wider px-3 py-2.5 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
+      className={`text-[10.5px] font-semibold uppercase tracking-wider px-2.5 py-2 ${right ? 'text-right' : 'text-left'} ${className || ''}`}
       style={{ color: 'rgba(250,250,249,0.6)' }}
     >
       {children}
@@ -303,18 +320,45 @@ function Th({ children, right, className }: { children: ReactNode; right?: boole
   );
 }
 
-function BeyanTr({ row }: { row: OzetRow }) {
+/** Tıklanabilir rakam hücresi — rakam > 0 ise altın hover + tıklama. */
+function Num({
+  value,
+  color,
+  bold,
+  onClick,
+  disabled,
+}: {
+  value: number;
+  color: string;
+  bold?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const clickable = !disabled && !!onClick && value > 0;
+  return (
+    <td
+      className={`px-2.5 py-2 text-right tabular-nums ${bold ? 'font-semibold' : ''} ${clickable ? 'cursor-pointer hover:bg-white/5 hover:underline decoration-dotted underline-offset-2' : ''} transition`}
+      style={{ fontFamily: 'JetBrains Mono, monospace', color }}
+      onClick={clickable ? onClick : undefined}
+      title={clickable ? 'Mükellef listesini göster' : undefined}
+    >
+      {value}
+    </td>
+  );
+}
+
+function BeyanTr({ row, onNumberClick }: { row: OzetRow; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
   const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
   return (
     <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-      <td className="px-3 py-2.5 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{row.toplam}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#22c55e' }}>{row.onaylanan}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.5)' }}>{row.bekleyen}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)' }}>{row.hatali}</td>
-      <td className="px-3 py-2.5 text-right tabular-nums font-semibold" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.kalan > 0 ? '#f59e0b' : '#22c55e' }}>{row.kalan}</td>
-      <td className="px-3 py-2.5">
+      <td className="px-2.5 py-2 font-semibold" style={{ color: GOLD }}>{BEYAN_ETIKETLER[row.beyanTipi]}</td>
+      <Num value={row.toplam}    color="rgba(250,250,249,0.85)"                                              onClick={() => onNumberClick(row.beyanTipi, 'toplam')} />
+      <Num value={row.onaylanan} color="#22c55e"                                                             onClick={() => onNumberClick(row.beyanTipi, 'onaylanan')} />
+      <Num value={row.bekleyen}  color="rgba(250,250,249,0.5)"                                               onClick={() => onNumberClick(row.beyanTipi, 'bekleyen')} />
+      <Num value={row.hatali}    color={row.hatali > 0 ? '#ef4444' : 'rgba(250,250,249,0.3)'}                onClick={() => onNumberClick(row.beyanTipi, 'hatali')} />
+      <Num value={row.kalan}     color={row.kalan > 0 ? '#f59e0b' : '#22c55e'} bold                          onClick={() => onNumberClick(row.beyanTipi, 'kalan')} />
+      <td className="px-2.5 py-2">
         <div className="flex items-center gap-2">
           <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
             <div
@@ -329,10 +373,28 @@ function BeyanTr({ row }: { row: OzetRow }) {
   );
 }
 
-function MiniTable({ title, row, donem, accent }: { title: string; row: OzetRow; donem: string; accent: StatAccent }) {
+function MiniTable({ title, row, donem, accent, onNumberClick }: { title: string; row: OzetRow; donem: string; accent: StatAccent; onNumberClick: (tip: BeyanTipi, filter: BeyanFilter) => void }) {
   const tone = ACCENT_TONES[accent];
   const kind = row.yuzde >= 90 ? 'ok' : row.yuzde >= 50 ? 'warn' : 'danger';
   const barColor = kind === 'ok' ? '#22c55e' : kind === 'warn' ? '#f59e0b' : '#ef4444';
+  const miniCell = (label: string, value: number, color: string, filter: BeyanFilter) => {
+    const clickable = value > 0;
+    return (
+      <div
+        className={`group ${clickable ? 'cursor-pointer' : ''}`}
+        onClick={clickable ? () => onNumberClick(row.beyanTipi, filter) : undefined}
+        title={clickable ? 'Mükellef listesini göster' : undefined}
+      >
+        <div className="text-[10px] uppercase tracking-wider opacity-70">{label}</div>
+        <div
+          className={`text-[16px] font-semibold tabular-nums ${clickable ? 'group-hover:underline decoration-dotted underline-offset-2' : ''}`}
+          style={{ color, fontFamily: 'JetBrains Mono, monospace' }}
+        >
+          {value}
+        </div>
+      </div>
+    );
+  };
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${tone.border}` }}>
       <div className="flex items-center justify-between px-4 py-2.5" style={{ background: tone.bg }}>
@@ -342,18 +404,9 @@ function MiniTable({ title, row, donem, accent }: { title: string; row: OzetRow;
         </div>
       </div>
       <div className="px-4 py-3 grid grid-cols-3 gap-3 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider opacity-70">Toplam</div>
-          <div className="text-[16px] font-semibold tabular-nums" style={{ color: '#fafaf9', fontFamily: 'JetBrains Mono, monospace' }}>{row.toplam}</div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider opacity-70">{title === 'E-Defter' ? 'Verilen' : 'Onaylanan'}</div>
-          <div className="text-[16px] font-semibold tabular-nums" style={{ color: '#22c55e', fontFamily: 'JetBrains Mono, monospace' }}>{row.onaylanan}</div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider opacity-70">Kalan</div>
-          <div className="text-[16px] font-semibold tabular-nums" style={{ color: row.kalan > 0 ? '#f59e0b' : '#22c55e', fontFamily: 'JetBrains Mono, monospace' }}>{row.kalan}</div>
-        </div>
+        {miniCell('Toplam', row.toplam, '#fafaf9', 'toplam')}
+        {miniCell(title === 'E-Defter' ? 'Verilen' : 'Onaylanan', row.onaylanan, '#22c55e', 'onaylanan')}
+        {miniCell('Kalan', row.kalan, row.kalan > 0 ? '#f59e0b' : '#22c55e', 'kalan')}
       </div>
       <div className="px-4 pb-3">
         <div className="flex items-center gap-2">
@@ -364,6 +417,141 @@ function MiniTable({ title, row, donem, accent }: { title: string; row: OzetRow;
             />
           </div>
           <span className="text-[10.5px] font-semibold tabular-nums" style={{ color: barColor, fontFamily: 'JetBrains Mono, monospace' }}>%{row.yuzde}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// BEYAN DETAY MODAL — rakama tıklanınca açılır, filtreye göre mükellef listesi
+// ══════════════════════════════════════════════════════════
+function BeyanDetayModal({ state, onClose }: { state: { beyanTipi: BeyanTipi; filter: BeyanFilter; donem: string }; onClose: () => void }) {
+  const { data: detay, isLoading } = useQuery({
+    queryKey: ['beyanname-detay', state.donem],
+    queryFn: () => beyannameTakipApi.listDetay(state.donem),
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const filterLabels: Record<BeyanFilter, string> = {
+    toplam: 'Tüm Yükümlüler',
+    onaylanan: 'Onaylananlar',
+    bekleyen: 'Bekleyenler',
+    hatali: 'Hatalı Olanlar',
+    kalan: 'Henüz Verilmeyenler',
+  };
+
+  const filteredTaxpayers = useMemo(() => {
+    if (!detay) return [];
+    return detay
+      .map((row) => {
+        const b = row.beyanlar.find((x) => x.beyanTipi === state.beyanTipi);
+        if (!b) return null;
+        switch (state.filter) {
+          case 'toplam':    return row;
+          case 'onaylanan': return b.durum === 'onaylandi' ? row : null;
+          case 'bekleyen':  return b.durum === 'beklemede' ? row : null;
+          case 'hatali':    return b.durum === 'hatali' ? row : null;
+          case 'kalan':     return (b.durum === 'beklemede' || b.durum === 'hatali') ? row : null;
+          default: return null;
+        }
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [detay, state.beyanTipi, state.filter]);
+
+  const filterColor: Record<BeyanFilter, string> = {
+    toplam: '#d4b876',
+    onaylanan: '#22c55e',
+    bekleyen: 'rgba(250,250,249,0.6)',
+    hatali: '#ef4444',
+    kalan: '#f59e0b',
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl overflow-hidden flex flex-col"
+        style={{ background: '#11100c', border: '1px solid rgba(184,160,111,0.3)', maxHeight: '80vh' }}
+      >
+        {/* Başlık */}
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div>
+            <div className="text-[11px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              {BEYAN_ETIKETLER[state.beyanTipi]} · {state.donem}
+            </div>
+            <h3 className="text-[16px] font-semibold mt-0.5" style={{ fontFamily: 'Fraunces, serif', color: filterColor[state.filter] }}>
+              {filterLabels[state.filter]}
+            </h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-white/5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <IconX size={18} />
+          </button>
+        </div>
+
+        {/* İçerik */}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {isLoading && (
+            <div className="px-4 py-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              Yükleniyor...
+            </div>
+          )}
+          {!isLoading && filteredTaxpayers.length === 0 && (
+            <div className="px-4 py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Bu kategoride mükellef yok.
+            </div>
+          )}
+          {!isLoading && filteredTaxpayers.length > 0 && (
+            <ul className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+              {filteredTaxpayers.map((tp, i) => {
+                const b = tp.beyanlar.find((x) => x.beyanTipi === state.beyanTipi);
+                const durumRenk: Record<string, string> = {
+                  onaylandi: '#22c55e',
+                  beklemede: 'rgba(250,250,249,0.5)',
+                  hatali:    '#ef4444',
+                  muaf:      '#d4b876',
+                };
+                const durumEtiket: Record<string, string> = {
+                  onaylandi: 'Onaylandı',
+                  beklemede: 'Bekliyor',
+                  hatali:    'Hatalı',
+                  muaf:      'Muaf',
+                };
+                return (
+                  <li key={tp.taxpayerId} className="px-3 py-2.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span className="text-[10.5px] font-semibold tabular-nums w-6 text-right" style={{ color: 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {i + 1}
+                      </span>
+                      <span className="text-[13px] truncate" style={{ color: '#fafaf9' }}>{tp.ad}</span>
+                    </div>
+                    {b && (
+                      <span
+                        className="text-[10.5px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wider flex-shrink-0"
+                        style={{
+                          background: `${durumRenk[b.durum]}22`,
+                          border: `1px solid ${durumRenk[b.durum]}55`,
+                          color: durumRenk[b.durum],
+                        }}
+                      >
+                        {durumEtiket[b.durum] || b.durum}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Alt bilgi */}
+        <div className="px-5 py-2.5 text-[11px] flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.4)' }}>
+          <span>{filteredTaxpayers.length} mükellef</span>
+          <button onClick={onClose} className="font-medium hover:text-amber-400 transition">Kapat</button>
         </div>
       </div>
     </div>
