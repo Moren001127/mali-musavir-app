@@ -502,7 +502,10 @@ export class BeyanKayitlariService {
               mukellefAdi: ad,
               beyanTipi: g.tip,
               donem: g.donem,
+              beyanTarihi: null,
               tahakkukTutari: null,
+              onayNo: g.onayNo,
+              guven: 'YUKSEK',
             },
           });
         } catch (e: any) {
