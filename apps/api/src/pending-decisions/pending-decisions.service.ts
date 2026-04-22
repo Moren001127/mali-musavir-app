@@ -190,7 +190,7 @@ export class PendingDecisionsService {
       },
     });
 
-    // VendorMemory'ye yansit — insan onaylayinca bu karar firma icin ogrenilir
+    // VendorMemory'ye yansit — insan onaylayinca bu karar firma+mükellef için öğrenilir
     if (row.firmaKimlikNo) {
       await this.vendorMemory.recordDecision({
         tenantId,
@@ -199,6 +199,7 @@ export class PendingDecisionsService {
         kararTipi: row.kararTipi as 'fatura' | 'isletme',
         kategori: finalKategori,
         altKategori: finalAltKategori,
+        taxpayerId: (row as any).taxpayerId || null, // Mükellef-bazlı kayıt
       });
     }
 

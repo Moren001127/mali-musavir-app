@@ -399,6 +399,7 @@ export class AgentEventsService {
     belgeTuru?: string;
     faturaTuru?: string;
     mukellef?: string;
+    mukellefId?: string; // YENİ: Taxpayer.id — Firma Hafızası mükellef-bazlı öğrenme için
     firma?: string;
     firmaKimlikNo?: string; // Karsi firma VKN/TCKN — Firma Hafizasi icin
     tutar?: number | string;
@@ -443,6 +444,7 @@ export class AgentEventsService {
           input.tenantId,
           input.firmaKimlikNo,
           'fatura',
+          input.mukellefId || null, // Mükellef-bazlı hint
         );
       } catch {}
     }
@@ -803,6 +805,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                   kararTipi: 'fatura',
                   kategori: kategoriKey,
                   altKategori: null,
+                  taxpayerId: input.mukellefId || null, // Mükellef-bazlı kayıt
                 });
               } catch {
                 // Memory kaydi basarisiz olsa bile ana akis devam eder
@@ -882,6 +885,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     belgeTuru?: string;
     faturaTuru?: string;
     mukellef?: string;
+    mukellefId?: string; // YENİ: Taxpayer.id — Firma Hafızası mükellef-bazlı öğrenme için
     firma?: string;
     firmaKimlikNo?: string; // Karsi firma VKN/TCKN — Firma Hafizasi icin
     tutar?: number | string;
@@ -926,6 +930,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
           input.tenantId,
           input.firmaKimlikNo,
           'isletme',
+          input.mukellefId || null, // Mükellef-bazlı hint
         );
       } catch {}
     }
@@ -1163,6 +1168,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                     kararTipi: 'isletme',
                     kategori: String(parsed.kayitTuru),
                     altKategori: altTuruKey,
+                    taxpayerId: input.mukellefId || null,
                   });
                 } catch {}
               }

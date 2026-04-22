@@ -261,6 +261,7 @@ export class AgentEventsController {
       belgeTuru?: string;
       faturaTuru?: string;
       mukellef?: string;
+      mukellefId?: string; // Taxpayer.id — Firma Hafizasi mukellef-bazli
       firma?: string;
       firmaKimlikNo?: string; // VKN/TCKN — Firma Hafizasi icin
       tutar?: number | string;
@@ -293,6 +294,7 @@ export class AgentEventsController {
       belgeTuru?: string;
       faturaTuru?: string;
       mukellef?: string;
+      mukellefId?: string; // Taxpayer.id — Firma Hafizasi mukellef-bazli
       firma?: string;
       firmaKimlikNo?: string; // VKN/TCKN — Firma Hafizasi icin
       tutar?: number | string;

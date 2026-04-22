@@ -1,0 +1,4231 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOREN Mali Müşavirlik | V2 — Elit Boutique+</title>
+<meta name="description" content="MOREN Mali Müşavirlik — Bugünü düzenler, yarına güç katar. Arnavutköy'de 15+ yıllık deneyimle profesyonel mali müşavirlik. Muhasebe, vergi danışmanlığı, bordro, KDV kontrol, e-beyanname. SMMM Muzaffer Ören.">
+<meta name="keywords" content="mali müşavir, muhasebe, vergi danışmanlığı, bordro, Arnavutköy, İstanbul, MOREN, SMMM, KDV kontrol, e-beyanname, şirket kurulumu">
+<meta name="author" content="MOREN Mali Müşavirlik">
+<meta name="robots" content="index, follow">
+<!-- Open Graph -->
+<meta property="og:title" content="MOREN Mali Müşavirlik | Bugünü düzenler, yarına güç katar">
+<meta property="og:description" content="Arnavutköy'de 15+ yıllık deneyim, yapay zekâ destekli Moren platformu ile güvenilir mali müşavirlik hizmeti.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://morenmusavirlik.com">
+<meta property="og:locale" content="tr_TR">
+<meta property="og:image" content="https://morenmusavirlik.com/moren-tanitim-paylasim.png">
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MOREN Mali Müşavirlik">
+<meta name="twitter:description" content="Bugünü düzenler, yarına güç katar. Arnavutköy'de profesyonel mali müşavirlik.">
+<!-- Schema.org LocalBusiness -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "AccountingService",
+  "name": "MOREN Mali Müşavirlik",
+  "slogan": "Bugünü düzenler, yarına güç katar",
+  "description": "Arnavutköy'de 15+ yıllık deneyimle profesyonel mali müşavirlik. Muhasebe, vergi danışmanlığı, bordro, KDV kontrol hizmetleri.",
+  "url": "https://morenmusavirlik.com",
+  "telephone": "+90-535-058-74-75",
+  "email": "info@morenmusavirlik.com",
+  "priceRange": "Teklife göre",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "Hastane Mah. Özcan Taşkınbaş Cd. 16/6",
+    "addressLocality": "Arnavutköy",
+    "addressRegion": "İstanbul",
+    "postalCode": "34555",
+    "addressCountry": "TR"
+  },
+  "openingHours": ["Mo-Fr 09:00-18:00", "Sa 10:00-14:00"],
+  "founder": { "@type": "Person", "name": "Muzaffer Ören", "jobTitle": "SMMM" }
+}
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #0a0906;
+  --bg-2: #12100c;
+  --bg-3: #1a1612;
+  --surface: rgba(255,255,255,0.02);
+  --surface-hover: rgba(184,160,111,0.04);
+  --border: rgba(255,255,255,0.06);
+  --border-gold: rgba(184,160,111,0.2);
+  --text: #fafaf9;
+  --text-dim: rgba(250,250,249,0.65);
+  --text-mute: rgba(250,250,249,0.4);
+  --gold: #b8a06f;
+  --gold-bright: #d4b876;
+  --gold-dim: rgba(184,160,111,0.5);
+  --green: #22c55e;
+  --red: #f43f5e;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.serif { font-family: 'Fraunces', serif; letter-spacing: -0.02em; }
+.mono  { font-family: 'JetBrains Mono', monospace; }
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+
+.container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* ═══════════════════════════════════════
+   HEADER (iki katmanlı)
+═══════════════════════════════════════ */
+.topbar {
+  background: #070604;
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.topbar-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.topbar-left, .topbar-right { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+.topbar-item { display: flex; align-items: center; gap: 7px; }
+.topbar-item svg { color: var(--gold); }
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10, 9, 6, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  position: relative;
+  text-decoration: none;
+}
+
+/* ═══ ANIMASYONLU LOGO — ORIJINAL PNG, 3 parçaya clip-path ile bölünür ═══ */
+/* Aynı moren-logo-gold.png 3 kez yerleşir; her birine clip-path ile sadece belirli bölüm gösterilir.
+   Parçalar birleştiğinde ORIJINAL LOGO birebir görünür. Animasyon: M soldan, O sağdan, yazı alttan. */
+.brand-anim {
+  position: relative;
+  width: 280px;
+  height: 150px;
+  display: block;
+}
+.lg-part {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 6px 20px rgba(184,160,111,0.45));
+}
+/* SOL - "M" harfi — soldan süzülür, blur + scale */
+.lg-part-m {
+  clip-path: polygon(0% 0%, 52% 0%, 52% 66%, 0% 66%);
+  -webkit-clip-path: polygon(0% 0%, 52% 0%, 52% 66%, 0% 66%);
+  z-index: 2;
+  animation: lg-m-in 1s cubic-bezier(0.22, 1, 0.36, 1) 0.2s backwards;
+}
+@keyframes lg-m-in {
+  from { opacity: 0; transform: translateX(-100px) scale(0.7); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+/* ORTA-SAG - "O" harfi (daire + içinde Mm) — sağdan dönerek gelir */
+.lg-part-o {
+  clip-path: polygon(40% 0%, 100% 0%, 100% 66%, 40% 66%);
+  -webkit-clip-path: polygon(40% 0%, 100% 0%, 100% 66%, 40% 66%);
+  z-index: 3;
+  animation: lg-o-in 1s cubic-bezier(0.22, 1, 0.36, 1) 0.75s backwards;
+}
+@keyframes lg-o-in {
+  from { opacity: 0; transform: translateX(100px) scale(0.6) rotate(-90deg); }
+  to   { opacity: 1; transform: translateX(0) scale(1) rotate(0deg); }
+}
+/* ALT - "MOREN MALİ MÜŞAVİRLİK" yazı — alttan yukarı belirir */
+.lg-part-text {
+  clip-path: polygon(0% 60%, 100% 60%, 100% 100%, 0% 100%);
+  -webkit-clip-path: polygon(0% 60%, 100% 60%, 100% 100%, 0% 100%);
+  z-index: 1;
+  animation: lg-text-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) 1.35s backwards;
+}
+@keyframes lg-text-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Hover — tum logo hafif belirginlesir */
+.brand-anim:hover .lg-part {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), filter 0.3s;
+  filter: drop-shadow(0 8px 26px rgba(184,160,111,0.65));
+}
+.brand-anim:hover .lg-part-m { transform: translateX(-2px); }
+.brand-anim:hover .lg-part-o { transform: translateX(2px) scale(1.03); }
+
+/* Logo arkasi yumusak altin halo */
+.brand-halo {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 260px; height: 180px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse, rgba(212,184,118,0.22) 0%, rgba(184,160,111,0.06) 40%, transparent 70%);
+  filter: blur(24px);
+  z-index: 0;
+  pointer-events: none;
+  animation: halo-breathe 5s ease-in-out infinite 1.8s backwards;
+  opacity: 0;
+}
+@keyframes halo-breathe {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  15%  { opacity: 1; }
+  50%  { opacity: 0.75; transform: translate(-50%, -50%) scale(1.12); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Footer'da eski PNG logosu kalmiş olabilir — hala gorunur */
+.brand-logo {
+  height: 100px; width: auto; object-fit: contain;
+  filter: drop-shadow(0 6px 20px rgba(184,160,111,0.45));
+  transition: transform 0.3s, filter 0.3s;
+}
+.footer-brand-logo { height: 130px; }
+.header-inner { min-height: 110px; }
+
+@media (max-width: 640px) {
+  .brand-anim { width: 200px; height: 110px; }
+}
+.brand-text .brand-name {
+  font-family: 'Fraunces', serif;
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.brand-text .brand-sub {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.nav { display: flex; gap: 32px; align-items: center; }
+.nav a {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fafaf9;
+  letter-spacing: 0.01em;
+  transition: color 0.25s, text-shadow 0.25s;
+  position: relative;
+  text-decoration: none;
+}
+.nav a:hover { color: var(--gold-bright); text-shadow: 0 0 12px rgba(212,184,118,0.4); }
+.nav a::after {
+  content: '';
+  position: absolute;
+  bottom: -8px; left: 0;
+  width: 0; height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-bright));
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 2px;
+}
+.nav a:hover::after { width: 100%; }
+
+.header-actions { display: flex; gap: 10px; align-items: center; }
+.header-cta {
+  background: var(--gold);
+  color: #0a0906;
+  padding: 11px 22px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.25s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.header-cta:hover {
+  background: var(--gold-bright);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(184,160,111,0.3);
+}
+.header-portal {
+  border: 1px solid var(--border-gold);
+  color: var(--gold);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.25s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(184,160,111,0.04);
+}
+.header-portal:hover {
+  background: rgba(184,160,111,0.12);
+  border-color: var(--gold);
+  color: var(--gold-bright);
+}
+
+/* ═══════════════════════════════════════
+   WHATSAPP FLOATING BUTTON
+═══════════════════════════════════════ */
+.wa-float {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 58px; height: 58px;
+  background: #25D366;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 8px 24px rgba(37,211,102,0.4), 0 0 0 0 rgba(37,211,102,0.5);
+  z-index: 999;
+  transition: transform 0.25s, box-shadow 0.25s;
+  animation: wapulse 2.2s infinite;
+}
+@keyframes wapulse {
+  0%   { box-shadow: 0 8px 24px rgba(37,211,102,0.4), 0 0 0 0 rgba(37,211,102,0.5); }
+  70%  { box-shadow: 0 8px 24px rgba(37,211,102,0.4), 0 0 0 16px rgba(37,211,102,0); }
+  100% { box-shadow: 0 8px 24px rgba(37,211,102,0.4), 0 0 0 0 rgba(37,211,102,0); }
+}
+.wa-float:hover {
+  transform: scale(1.1);
+  background: #1fb755;
+}
+.wa-float::after {
+  content: 'WhatsApp';
+  position: absolute;
+  right: 70px;
+  background: var(--bg-3);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, transform 0.2s;
+  transform: translateX(6px);
+  border: 1px solid var(--border-gold);
+}
+.wa-float:hover::after { opacity: 1; transform: translateX(0); }
+
+/* ═══════════════════════════════════════
+   MÜKELLEF PORTAL BÖLÜMÜ
+═══════════════════════════════════════ */
+.portal-access {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 80px 0;
+  position: relative;
+  overflow: hidden;
+}
+.portal-access::before {
+  content: '';
+  position: absolute;
+  top: -200px; right: -200px;
+  width: 600px; height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(184,160,111,0.10), transparent 60%);
+  pointer-events: none;
+}
+.portal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.portal-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 40px 34px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.portal-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 3px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.portal-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-4px);
+}
+.portal-card:hover::before { opacity: 1; }
+.portal-card.featured {
+  background: linear-gradient(180deg, rgba(184,160,111,0.10) 0%, rgba(184,160,111,0.02) 100%);
+  border: 1px solid var(--gold);
+}
+.portal-icon {
+  width: 60px; height: 60px;
+  border-radius: 14px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  margin-bottom: 22px;
+}
+.portal-card h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  letter-spacing: -0.015em;
+}
+.portal-card p {
+  color: var(--text-dim);
+  font-size: 14.5px;
+  margin-bottom: 22px;
+  line-height: 1.6;
+}
+.portal-features {
+  list-style: none;
+  margin-bottom: 26px;
+}
+.portal-features li {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  padding: 6px 0 6px 22px;
+  position: relative;
+}
+.portal-features li::before {
+  content: '→';
+  position: absolute;
+  left: 0;
+  color: var(--gold);
+  font-weight: 600;
+}
+.portal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: all 0.25s;
+}
+.portal-card:not(.featured) .portal-btn {
+  border: 1px solid var(--border-gold);
+  color: var(--gold);
+  background: rgba(184,160,111,0.04);
+}
+.portal-card:not(.featured) .portal-btn:hover {
+  background: rgba(184,160,111,0.12);
+  border-color: var(--gold);
+}
+.portal-card.featured .portal-btn {
+  background: var(--gold);
+  color: #0a0906;
+}
+.portal-card.featured .portal-btn:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(184,160,111,0.3);
+}
+.portal-status {
+  position: absolute;
+  top: 18px; right: 18px;
+  font-size: 10.5px;
+  padding: 5px 12px;
+  border-radius: 100px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+.portal-status.live { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.portal-status.soon { background: rgba(184,160,111,0.12); color: var(--gold); border: 1px solid rgba(184,160,111,0.3); }
+
+/* ═══════════════════════════════════════
+   GOOGLE MAPS
+═══════════════════════════════════════ */
+.map-wrapper {
+  margin-top: 30px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  height: 340px;
+  position: relative;
+}
+.map-wrapper iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  filter: grayscale(0.4) brightness(0.85) contrast(1.05);
+  transition: filter 0.3s;
+}
+.map-wrapper:hover iframe {
+  filter: grayscale(0) brightness(1) contrast(1);
+}
+.map-overlay-link {
+  position: absolute;
+  bottom: 16px; right: 16px;
+  background: var(--bg);
+  color: var(--gold);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--border-gold);
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  z-index: 2;
+}
+.map-overlay-link:hover {
+  background: var(--gold);
+  color: #0a0906;
+  border-color: var(--gold);
+}
+
+.menu-toggle { display: none; font-size: 22px; }
+
+/* ═══════════════════════════════════════
+   HERO
+═══════════════════════════════════════ */
+.hero {
+  position: relative;
+  padding: 60px 0 70px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 1000px 700px at 15% 10%, rgba(184,160,111,0.18), transparent 60%),
+    radial-gradient(ellipse 900px 600px at 85% 90%, rgba(184,160,111,0.10), transparent 60%),
+    linear-gradient(180deg, #12100c 0%, #0a0906 100%);
+}
+.ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(184,160,111,0.12);
+  pointer-events: none;
+}
+.ring.r1 { width: 700px; height: 700px; top: -220px; right: -220px; }
+.ring.r2 { width: 950px; height: 950px; top: -330px; right: -330px; border-color: rgba(184,160,111,0.06); }
+.ring.r3 { width: 450px; height: 450px; bottom: -110px; left: -110px; border-color: rgba(184,160,111,0.08); }
+
+.hero .container {
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 64px;
+  align-items: center;
+}
+@media (max-width: 1024px) {
+  .hero .container { grid-template-columns: 1fr; gap: 48px; }
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 640px;
+}
+
+/* ═══ Sag taraf: Açık Defter + Dolma Kalem — mesleki zarafet ═══ */
+.hero-visual {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 380px;
+  padding-top: 0;
+  margin-top: -30px;
+}
+.pen-glow {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 480px; height: 480px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at center,
+    rgba(212,184,118,0.25) 0%,
+    rgba(155,74,90,0.08) 35%,
+    transparent 65%);
+  filter: blur(44px);
+  animation: pen-breathe 7s ease-in-out infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+@keyframes pen-breathe {
+  0%,100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.78; }
+}
+.pen-decor {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 500px; height: 500px;
+  transform: translate(-50%, -50%);
+  animation: pen-rotate 60s linear infinite;
+  z-index: 0;
+  pointer-events: none;
+}
+@keyframes pen-rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+.pen-dot {
+  position: absolute;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--gold-bright);
+  box-shadow: 0 0 10px var(--gold-bright);
+  z-index: 1;
+}
+.pen-dot.d1 { top: 15%; left: 20%; animation: dot-float 5s ease-in-out infinite; }
+.pen-dot.d2 { bottom: 18%; right: 22%; animation: dot-float 6s ease-in-out infinite 1s; width: 4px; height: 4px; }
+.pen-dot.d3 { top: 25%; right: 15%; animation: dot-float 7s ease-in-out infinite 0.5s; width: 3px; height: 3px; opacity: 0.7; }
+@keyframes dot-float {
+  0%,100% { transform: translate(0,0); opacity: 1; }
+  50% { transform: translate(8px, -14px); opacity: 0.5; }
+}
+
+.pen-svg {
+  position: relative;
+  z-index: 2;
+  width: clamp(300px, 38vw, 420px);
+  height: clamp(300px, 38vw, 420px);
+  color: var(--gold-bright);
+  filter: drop-shadow(0 12px 28px rgba(212,184,118,0.2));
+}
+
+/* Kalem yukardan sahneye iniyor */
+.pen-svg .pen {
+  transform-origin: 210px 50px;
+  animation: pen-enter 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s backwards,
+             pen-hover 5s ease-in-out 1.8s infinite;
+}
+@keyframes pen-enter {
+  from { transform: translate(210px, -100px) rotate(38deg); opacity: 0; }
+  to   { transform: translate(210px, 50px) rotate(38deg); opacity: 1; }
+}
+@keyframes pen-hover {
+  0%,100% { transform: translate(210px, 50px) rotate(38deg); }
+  50%     { transform: translate(210px, 48px) rotate(37.5deg); }
+}
+
+/* Defter sayfalarının kenar çizgileri — çiziliyor efekti */
+.pen-svg .book-page {
+  stroke-dasharray: 700;
+  stroke-dashoffset: 700;
+  animation: draw-book 2s ease-out 0.8s forwards;
+}
+.pen-svg .book-line {
+  stroke-dasharray: 120;
+  stroke-dashoffset: 120;
+  animation: draw-line 0.8s ease-out forwards;
+}
+.pen-svg .book-line:nth-child(4) { animation-delay: 1.6s; }
+.pen-svg .book-line:nth-child(5) { animation-delay: 1.75s; }
+.pen-svg .book-line:nth-child(6) { animation-delay: 1.85s; }
+.pen-svg .book-line:nth-child(7) { animation-delay: 1.95s; }
+.pen-svg .book-line:nth-child(8) { animation-delay: 2.05s; }
+.pen-svg .book-line:nth-child(9) { animation-delay: 2.15s; }
+.pen-svg .book-line:nth-child(10) { animation-delay: 2.25s; }
+.pen-svg .book-line:nth-child(11) { animation-delay: 2.35s; }
+@keyframes draw-book {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes draw-line {
+  to { stroke-dashoffset: 0; }
+}
+/* Imza çizgisi — kalem uçundan çıkar gibi */
+.pen-svg .signature {
+  stroke-dasharray: 180;
+  stroke-dashoffset: 180;
+  animation: draw-sig 1.8s cubic-bezier(0.16, 1, 0.3, 1) 2.5s forwards;
+}
+.pen-svg .signature-2 {
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+  animation: draw-sig 1.2s cubic-bezier(0.16, 1, 0.3, 1) 4s forwards;
+}
+.pen-svg .ink-drop {
+  opacity: 0;
+  animation: ink-appear 0.4s ease-out forwards;
+}
+.pen-svg .ink-drop:nth-of-type(1) { animation-delay: 4.3s; }
+.pen-svg .ink-drop:nth-of-type(2) { animation-delay: 4.6s; }
+@keyframes draw-sig {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes ink-appear {
+  from { opacity: 0; transform: scale(0); }
+  to   { opacity: 0.6; transform: scale(1); }
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 15px;
+  border: 1px solid var(--border-gold);
+  border-radius: 100px;
+  background: rgba(184,160,111,0.06);
+  font-size: 12px;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+  margin-bottom: 18px;
+}
+.hero-badge .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 12px var(--gold);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(34px, 5vw, 54px);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin-bottom: 18px;
+}
+.hero h1 .accent {
+  color: var(--gold);
+  font-style: italic;
+  font-weight: 400;
+}
+.hero p {
+  font-size: clamp(14.5px, 1.3vw, 16.5px);
+  color: var(--text-dim);
+  max-width: 580px;
+  line-height: 1.55;
+  margin-bottom: 24px;
+}
+.hero-tagline {
+  font-family: 'Fraunces', serif !important;
+  font-size: clamp(15px, 1.4vw, 18px) !important;
+  font-style: italic;
+  color: var(--gold-bright) !important;
+  letter-spacing: -0.01em;
+  padding-left: 16px;
+  border-left: 2px solid var(--gold);
+  margin-bottom: 20px !important;
+  max-width: 620px !important;
+  line-height: 1.45 !important;
+}
+
+.cta-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.btn {
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.25s;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.btn-primary {
+  background: var(--gold);
+  color: #0a0906;
+}
+.btn-primary:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(184,160,111,0.3);
+}
+.btn-ghost {
+  border: 1px solid var(--border-gold);
+  color: var(--text);
+}
+.btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--gold);
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-top: 80px;
+  position: relative;
+  z-index: 2;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 20px;
+  transition: all 0.25s;
+}
+.stat-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.stat-val {
+  font-family: 'Fraunces', serif;
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--gold);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.stat-lbl {
+  font-size: 11.5px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 10px;
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════
+   SECTION COMMON
+═══════════════════════════════════════ */
+section { padding: 100px 0; position: relative; }
+.section-label {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 14px;
+  font-weight: 600;
+}
+.section-title {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(32px, 4vw, 46px);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+.section-title .accent { color: var(--gold); font-style: italic; }
+.section-sub {
+  font-size: 16px;
+  color: var(--text-dim);
+  max-width: 620px;
+  line-height: 1.6;
+}
+
+.section-head {
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 60px;
+}
+.section-head .section-sub { margin: 16px auto 0; }
+
+/* ═══════════════════════════════════════
+   HİZMETLER
+═══════════════════════════════════════ */
+.services {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.grid-services {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.service-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 30px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.service-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.service-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-4px);
+}
+.service-card:hover::before { opacity: 1; }
+.service-icon {
+  width: 54px; height: 54px;
+  border-radius: 12px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+  color: var(--gold);
+}
+.service-card h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+  letter-spacing: -0.015em;
+}
+.service-card p {
+  color: var(--text-dim);
+  font-size: 14.5px;
+  margin-bottom: 20px;
+}
+.service-list { list-style: none; }
+.service-list li {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  padding: 6px 0 6px 22px;
+  position: relative;
+}
+.service-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* ═══════════════════════════════════════
+   NEDEN MOREN
+═══════════════════════════════════════ */
+.why {
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+.why::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 800px; height: 800px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(184,160,111,0.08), transparent 60%);
+  pointer-events: none;
+}
+.grid-why {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  position: relative;
+  z-index: 2;
+}
+.why-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 22px;
+  text-align: left;
+  transition: all 0.25s;
+}
+.why-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.why-icon {
+  font-size: 28px;
+  margin-bottom: 18px;
+  color: var(--gold);
+}
+.why-card h4 {
+  font-family: 'Fraunces', serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.why-card p {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* ═══════════════════════════════════════
+   PAKETLER
+═══════════════════════════════════════ */
+.pricing {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.grid-pricing {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.price-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 30px;
+  transition: all 0.3s;
+  position: relative;
+}
+.price-card:hover {
+  border-color: var(--border-gold);
+  transform: translateY(-4px);
+}
+.price-card.featured {
+  background: linear-gradient(180deg, rgba(184,160,111,0.08) 0%, rgba(184,160,111,0.02) 100%);
+  border: 1px solid var(--gold);
+  box-shadow: 0 20px 60px rgba(184,160,111,0.1);
+}
+.price-badge {
+  position: absolute;
+  top: -12px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: #0a0906;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 100px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.price-name {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.price-tag {
+  font-family: 'Fraunces', serif;
+  margin: 18px 0 8px;
+}
+.price-amount {
+  font-size: 44px;
+  font-weight: 600;
+  color: var(--gold);
+  letter-spacing: -0.02em;
+}
+.price-period {
+  font-size: 14px;
+  color: var(--text-mute);
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  margin-left: 6px;
+}
+.price-desc {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  margin-bottom: 22px;
+  min-height: 42px;
+}
+.price-features {
+  list-style: none;
+  margin: 22px 0;
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+}
+.price-features li {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  padding: 8px 0 8px 26px;
+  position: relative;
+}
+.price-features li::before {
+  content: '✓';
+  position: absolute;
+  left: 4px;
+  color: var(--gold);
+  font-weight: 700;
+}
+.price-cta {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 13px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-top: 24px;
+  transition: all 0.25s;
+}
+.price-card:not(.featured) .price-cta {
+  border: 1px solid var(--border-gold);
+  color: var(--text);
+}
+.price-card:not(.featured) .price-cta:hover {
+  background: var(--surface-hover);
+  border-color: var(--gold);
+}
+.price-card.featured .price-cta {
+  background: var(--gold);
+  color: #0a0906;
+}
+.price-card.featured .price-cta:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(184,160,111,0.3);
+}
+.price-note {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-mute);
+  margin-top: 30px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* ═══════════════════════════════════════
+   SSS / FAQ
+═══════════════════════════════════════ */
+.faq-wrapper {
+  max-width: 820px;
+  margin: 0 auto;
+}
+.faq-item {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 0;
+}
+.faq-q {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 4px;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  transition: color 0.2s;
+}
+.faq-q:hover { color: var(--gold); }
+.faq-toggle {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border-gold);
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s;
+  flex-shrink: 0;
+  margin-left: 18px;
+}
+.faq-item.open .faq-toggle {
+  background: var(--gold);
+  color: #0a0906;
+  transform: rotate(45deg);
+}
+.faq-a {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s;
+  font-size: 14.5px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.faq-item.open .faq-a {
+  max-height: 400px;
+  padding: 0 4px 26px;
+}
+
+/* ═══════════════════════════════════════
+   İLETİŞİM
+═══════════════════════════════════════ */
+.contact {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+}
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 50px;
+  align-items: start;
+}
+.contact-info h2 { margin-bottom: 20px; }
+.contact-info p { color: var(--text-dim); margin-bottom: 34px; }
+
+.info-cards { display: grid; gap: 14px; }
+.info-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  transition: all 0.25s;
+}
+.info-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+}
+.info-icon {
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+.info-card .info-label {
+  font-size: 11px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.info-card .info-value {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.contact-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 34px;
+}
+.contact-form h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.contact-form .form-sub {
+  font-size: 13.5px;
+  color: var(--text-mute);
+  margin-bottom: 26px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 13px 16px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s, background 0.2s;
+}
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(184,160,111,0.04);
+}
+.form-group textarea { min-height: 120px; resize: vertical; }
+.form-submit {
+  width: 100%;
+  background: var(--gold);
+  color: #0a0906;
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.25s;
+}
+.form-submit:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(184,160,111,0.3);
+}
+
+/* ═══════════════════════════════════════
+   CTA BANT
+═══════════════════════════════════════ */
+.cta-band {
+  background: linear-gradient(135deg, rgba(184,160,111,0.1), rgba(184,160,111,0.02));
+  border-top: 1px solid var(--border-gold);
+  border-bottom: 1px solid var(--border-gold);
+  padding: 60px 0;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta-band::before,
+.cta-band::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(184,160,111,0.1);
+}
+.cta-band::before { width: 300px; height: 300px; top: -100px; left: -100px; }
+.cta-band::after { width: 400px; height: 400px; bottom: -150px; right: -150px; }
+.cta-band h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(28px, 3.5vw, 38px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 2;
+}
+.cta-band p {
+  font-size: 15px;
+  color: var(--text-dim);
+  margin-bottom: 28px;
+  position: relative;
+  z-index: 2;
+}
+.cta-band .cta-row { justify-content: center; position: relative; z-index: 2; }
+
+/* ═══════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════ */
+footer {
+  background: #070604;
+  border-top: 1px solid var(--border);
+  padding: 70px 0 0;
+  color: var(--text-dim);
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 50px;
+  padding-bottom: 50px;
+}
+.footer-col h5 {
+  font-family: 'Fraunces', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 18px;
+}
+.footer-col ul { list-style: none; }
+.footer-col ul li { margin-bottom: 10px; }
+.footer-col a {
+  color: var(--text-mute);
+  font-size: 13.5px;
+  transition: color 0.2s;
+}
+.footer-col a:hover { color: var(--gold); }
+.footer-col p { font-size: 13.5px; line-height: 1.65; color: var(--text-mute); margin-bottom: 14px; }
+.footer-socials {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+.footer-socials a {
+  width: 38px; height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-mute);
+  transition: all 0.25s;
+}
+.footer-socials a:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  transform: translateY(-2px);
+}
+.footer-bottom {
+  border-top: 1px solid var(--border);
+  padding: 20px 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-mute);
+}
+.footer-bottom .links { display: flex; gap: 22px; }
+
+/* ═══════════════════════════════════════
+   VERGİ TAKVİMİ WIDGET
+═══════════════════════════════════════ */
+.tax-calendar {
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+.tax-calendar::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 500px; height: 500px;
+  border: 1px solid rgba(184,160,111,0.06);
+  border-radius: 50%;
+}
+.tax-warning-banner {
+  background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(184,160,111,0.05));
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 14px;
+  padding: 22px 26px;
+  margin-bottom: 50px;
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+.tax-warning-banner .warning-icon {
+  width: 48px; height: 48px;
+  background: rgba(239,68,68,0.15);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ef4444;
+  flex-shrink: 0;
+}
+.tax-warning-banner h4 {
+  font-family: 'Fraunces', serif;
+  font-size: 17px;
+  color: var(--text);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+.tax-warning-banner p {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.tax-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+}
+.tax-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 20px;
+  transition: all 0.25s;
+  position: relative;
+}
+.tax-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.tax-card.urgent { border-color: rgba(239,68,68,0.3); background: linear-gradient(180deg, rgba(239,68,68,0.06), transparent); }
+.tax-date {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.tax-card.urgent .tax-date { color: #ef4444; }
+.tax-day {
+  font-family: 'Fraunces', serif;
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.tax-month {
+  font-size: 13px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.tax-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.tax-desc {
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.5;
+}
+.tax-link {
+  display: inline-block;
+  margin-top: 28px;
+  color: var(--gold);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: rgba(184,160,111,0.4);
+  transition: color 0.2s;
+}
+.tax-link:hover { color: var(--gold-bright); }
+
+/* ═══════════════════════════════════════
+   MOBİL UYGULAMA DEMO
+═══════════════════════════════════════ */
+.mobile-demo {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.demo-grid {
+  display: block;
+}
+.demo-head {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 30px;
+}
+.demo-head h2 { margin-bottom: 18px; }
+.demo-head .demo-tagline {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  font-size: 22px;
+  color: var(--gold);
+  margin-bottom: 16px;
+  letter-spacing: -0.01em;
+}
+.demo-text h2 { margin-bottom: 18px; }
+.demo-text .demo-tagline {
+  font-family: 'Fraunces', serif;
+  font-style: italic;
+  font-size: 18px;
+  color: var(--gold);
+  margin-bottom: 28px;
+  padding-left: 14px;
+  border-left: 2px solid var(--gold);
+}
+.demo-bottom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  margin-top: 50px;
+  align-items: start;
+  max-width: 1080px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.demo-features { list-style: none; margin: 0; }
+.demo-features li {
+  display: flex;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.demo-features li:last-child { border-bottom: none; }
+.demo-features .feat-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+.demo-features strong {
+  display: block;
+  font-size: 15px;
+  color: var(--text);
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+.demo-features p { font-size: 13.5px; color: var(--text-dim); line-height: 1.5; }
+.store-badges {
+  display: flex;
+  gap: 12px;
+  margin-top: 26px;
+  flex-wrap: wrap;
+}
+.store-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border-gold);
+  border-radius: 10px;
+  color: var(--text);
+  transition: all 0.25s;
+}
+.store-badge:hover {
+  background: rgba(184,160,111,0.08);
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+.store-badge-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.store-badge-label .lbl-small { font-size: 10px; color: var(--text-mute); letter-spacing: 0.05em; }
+.store-badge-label .lbl-big { font-size: 14px; font-weight: 600; }
+
+/* 3-Phone mockup layout (moren-tanitim'den adapte) */
+.phones-wrap {
+  display: flex;
+  gap: 40px;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px 0 40px;
+}
+.mini-phone {
+  width: 220px;
+  height: 460px;
+  background: #000;
+  border-radius: 34px;
+  padding: 8px;
+  position: relative;
+  flex-shrink: 0;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(184,160,111,0.08);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.mini-phone.side {
+  transform: translateY(24px) scale(0.85);
+  opacity: 0.9;
+}
+.mini-phone.side:hover { transform: translateY(16px) scale(0.88); opacity: 1; }
+.mini-phone:not(.side) {
+  transform: scale(1.02);
+  z-index: 2;
+}
+.mini-phone:not(.side):hover { transform: scale(1.06); }
+.mini-phone::before {
+  content: '';
+  position: absolute;
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  width: 82px; height: 20px;
+  background: #000;
+  border-radius: 14px;
+  z-index: 2;
+}
+.mini-screen {
+  width: 100%; height: 100%;
+  background: #0f0d0b;
+  border-radius: 26px;
+  overflow: hidden;
+  position: relative;
+}
+.pc-top {
+  padding: 42px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pc-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d4b876, #8b7649);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 13px; font-weight: 700; color: #0f0d0b;
+}
+.pc-greet { font-size: 11px; color: rgba(250,250,249,0.55); }
+.pc-name { font-family: 'Fraunces', serif; font-size: 16px; color: #fafaf9; font-weight: 600; }
+.pc-kpis {
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pc-kpi {
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.05);
+}
+.pc-kpi.gold { background: linear-gradient(135deg, rgba(184,160,111,.14), rgba(184,160,111,.02)); border-color: rgba(184,160,111,.22); }
+.pc-kpi.green { background: linear-gradient(135deg, rgba(34,197,94,.14), rgba(34,197,94,.02)); border-color: rgba(34,197,94,.22); }
+.pc-kpi-l { font-size: 9px; color: rgba(250,250,249,.6); letter-spacing: 0.12em; font-weight: 600; text-transform: uppercase; }
+.pc-kpi-v { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 700; margin-top: 3px; letter-spacing: -0.02em; }
+.pc-kpi.gold .pc-kpi-v { color: #d4b876; }
+.pc-kpi.green .pc-kpi-v { color: #22c55e; }
+.pc-section { padding: 6px 16px; margin-top: 6px; }
+.pc-sec-title {
+  font-size: 9.5px; color: rgba(250,250,249,.55);
+  letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 8px;
+  font-weight: 600;
+}
+.pc-item {
+  background: rgba(255,255,255,.04);
+  border-radius: 9px;
+  padding: 9px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-left: 2px solid;
+  animation: slideIn 0.8s ease forwards;
+  opacity: 0;
+}
+.pc-item:nth-child(2) { animation-delay: 0.2s; }
+.pc-item:nth-child(3) { animation-delay: 0.4s; }
+.pc-item:nth-child(4) { animation-delay: 0.6s; }
+.pc-item.ok { border-color: #22c55e; }
+.pc-item.skip { border-color: #f59e0b; }
+.pc-ic {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: rgba(255,255,255,.06);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; flex-shrink: 0;
+}
+.pc-t { font-size: 10.5px; font-weight: 600; color: #fafaf9; }
+.pc-m { font-size: 9px; color: rgba(250,250,249,.55); margin-top: 1px; }
+
+/* Phone 2 — Moren Asistan chat */
+.pc-chat-head {
+  padding: 40px 14px 12px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.pc-chat-av {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: linear-gradient(135deg, #d4b876, #8b7649);
+  display: flex; align-items: center; justify-content: center;
+  color: #0f0d0b; font-size: 15px;
+}
+.pc-chat-name { font-family: 'Fraunces', serif; font-size: 14px; font-weight: 600; color: #fafaf9; }
+.pc-chat-stat { font-size: 9px; color: #22c55e; font-weight: 500; margin-top: 1px; }
+.pc-chat-body {
+  padding: 14px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.pc-msg {
+  font-size: 10.5px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  max-width: 85%;
+  line-height: 1.5;
+  animation: slideIn 0.8s ease forwards;
+  opacity: 0;
+}
+.pc-msg:nth-child(1) { animation-delay: 0.1s; }
+.pc-msg:nth-child(2) { animation-delay: 0.3s; }
+.pc-msg:nth-child(3) { animation-delay: 0.5s; }
+.pc-msg:nth-child(4) { animation-delay: 0.7s; }
+.pc-msg:nth-child(5) { animation-delay: 0.9s; }
+.pc-msg:nth-child(6) { animation-delay: 1.1s; }
+.pc-msg.user {
+  background: linear-gradient(135deg, #d4b876, #8b7649);
+  color: #0f0d0b;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+  font-weight: 500;
+}
+.pc-msg.ai {
+  background: rgba(255,255,255,.06);
+  color: #fafaf9;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.pc-msg.ai.stats {
+  background: linear-gradient(135deg, rgba(184,160,111,.15), rgba(184,160,111,.03));
+  border: 1px solid rgba(184,160,111,.2);
+}
+
+/* Phone 3 — Faturalar grid */
+.pc-fat-head {
+  padding: 40px 14px 10px;
+}
+.pc-fat-count { font-size: 10px; color: rgba(250,250,249,.6); font-family: 'JetBrains Mono', monospace; }
+.pc-fat-title { font-family: 'Fraunces', serif; font-size: 17px; font-weight: 600; color: #fafaf9; margin-top: 3px; }
+.pc-fat-grid {
+  padding: 6px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.pc-fat {
+  aspect-ratio: 0.7;
+  background: linear-gradient(135deg, #f5f3ee, #e5ddc8);
+  border-radius: 6px;
+  padding: 6px;
+  color: #222;
+  font-family: 'Courier New', monospace;
+  font-size: 7px;
+  line-height: 1.4;
+  position: relative;
+  overflow: hidden;
+  font-weight: 600;
+}
+.pc-fat .d { position: absolute; top: 4px; right: 5px; font-size: 6.5px; color: #8b7649; font-weight: bold; }
+
+/* (Kullanılmayan eski phone-frame — geriye dönük korunuyor) */
+.phone-frame {
+  width: 320px;
+  height: 650px;
+  border: 10px solid #1a1916;
+  border-radius: 44px;
+  background: linear-gradient(180deg, #0a0906 0%, #12100c 100%);
+  position: relative;
+  margin: 0 auto;
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.7),
+    0 0 0 1px rgba(184,160,111,0.1),
+    inset 0 0 0 1px rgba(184,160,111,0.08);
+  overflow: hidden;
+}
+.phone-notch {
+  position: absolute;
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  width: 110px; height: 26px;
+  background: #000;
+  border-radius: 20px;
+  z-index: 10;
+}
+.phone-screen {
+  position: absolute;
+  top: 10px; left: 10px; right: 10px; bottom: 10px;
+  border-radius: 32px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.phone-status {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 30px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+.phone-app-header {
+  padding: 24px 20px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.phone-greeting { font-size: 14px; font-weight: 500; color: var(--text); }
+.phone-greeting .dim { color: var(--text-mute); font-weight: 400; font-size: 12px; display: block; margin-top: 2px; }
+.phone-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #8a7850);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  color: #0a0906;
+  font-size: 14px;
+}
+.phone-screen-body { padding: 20px; }
+.phone-title {
+  font-size: 22px;
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.phone-subtitle {
+  font-size: 11.5px;
+  color: var(--text-mute);
+  margin-bottom: 22px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.phone-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
+  animation: slideIn 0.8s ease forwards;
+  opacity: 0;
+}
+.phone-card:nth-child(1) { animation-delay: 0.2s; }
+.phone-card:nth-child(2) { animation-delay: 0.4s; }
+.phone-card:nth-child(3) { animation-delay: 0.6s; }
+.phone-card:nth-child(4) { animation-delay: 0.8s; }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.phone-card-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.phone-card-type { font-size: 10px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+.phone-card-status { font-size: 10px; color: var(--green); font-weight: 600; }
+.phone-card-status.red { color: #f43f5e; }
+.phone-card-status.amber { color: #f59e0b; }
+.phone-card-title { font-size: 14px; color: var(--text); font-weight: 500; margin-bottom: 4px; }
+.phone-card-meta { font-size: 11px; color: var(--text-mute); display: flex; justify-content: space-between; }
+.phone-bottom-nav {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 14px 24px 26px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+}
+.phone-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-mute);
+  font-size: 10px;
+}
+.phone-nav-item.active { color: var(--gold); }
+
+/* ═══════════════════════════════════════
+   EKİP / KURUCU
+═══════════════════════════════════════ */
+.team-section {
+  background: var(--bg);
+}
+.founder-card {
+  background: linear-gradient(135deg, rgba(184,160,111,0.08), rgba(184,160,111,0.02));
+  border: 1px solid var(--border-gold);
+  border-radius: 22px;
+  padding: 50px;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 50px;
+  align-items: center;
+  max-width: 1040px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+.founder-card::before {
+  content: '';
+  position: absolute;
+  top: -100px; right: -100px;
+  width: 300px; height: 300px;
+  border: 1px solid rgba(184,160,111,0.1);
+  border-radius: 50%;
+}
+.founder-avatar {
+  width: 220px; height: 220px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), #8a7850);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 84px;
+  font-weight: 600;
+  color: #0a0906;
+  box-shadow: 0 20px 60px rgba(184,160,111,0.2), inset 0 0 0 3px rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+.founder-info .founder-label {
+  font-size: 11px;
+  color: var(--gold);
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.founder-info h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+.founder-info .founder-title {
+  font-size: 15px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-bottom: 22px;
+  font-family: 'Fraunces', serif;
+}
+.founder-info p {
+  color: var(--text-dim);
+  font-size: 14.5px;
+  line-height: 1.7;
+  margin-bottom: 22px;
+}
+.founder-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+.founder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  border-radius: 100px;
+  font-size: 12px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+}
+.founder-badge svg { color: var(--gold); }
+
+.memberships {
+  display: flex;
+  justify-content: center;
+  gap: 50px;
+  margin-top: 60px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.membership-label {
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  width: 100%;
+  text-align: center;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.membership-badge {
+  padding: 14px 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-family: 'Fraunces', serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--gold);
+  transition: all 0.25s;
+}
+.membership-badge:hover {
+  border-color: var(--border-gold);
+  background: var(--surface-hover);
+}
+
+/* ═══════════════════════════════════════
+   MÜŞTERİ YORUMLARI
+═══════════════════════════════════════ */
+.reviews {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.google-stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 50px;
+  padding: 20px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.google-logo {
+  font-family: Arial, sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+}
+.google-logo .g1 { color: #4285F4; }
+.google-logo .g2 { color: #EA4335; }
+.google-logo .g3 { color: #FBBC05; }
+.google-logo .g4 { color: #4285F4; }
+.google-logo .g5 { color: #34A853; }
+.google-logo .g6 { color: #EA4335; }
+.google-stars {
+  color: #FBBC05;
+  letter-spacing: 2px;
+  font-size: 20px;
+}
+.google-rating { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; color: var(--text); }
+.google-count { font-size: 12px; color: var(--text-mute); }
+
+.reviews-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+.review-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  transition: all 0.25s;
+}
+.review-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.review-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.review-avatar {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(184,160,111,0.3), rgba(184,160,111,0.1));
+  border: 1px solid rgba(184,160,111,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--gold);
+}
+.review-meta .review-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.review-meta .review-time { font-size: 11.5px; color: var(--text-mute); margin-top: 2px; }
+.review-stars { color: #FBBC05; letter-spacing: 1.5px; margin-bottom: 12px; font-size: 14px; }
+.review-text { font-size: 13.5px; color: var(--text-dim); line-height: 1.6; }
+
+/* ═══════════════════════════════════════
+   ÇÖZÜM ORTAKLARI
+═══════════════════════════════════════ */
+.partners {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.partners-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.partner-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 22px;
+  text-align: center;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.partner-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.partner-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.partner-card:hover::before { opacity: 1; }
+.partner-cat {
+  font-size: 10px;
+  color: var(--gold);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.partner-name {
+  font-family: 'Fraunces', serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  margin-bottom: 6px;
+}
+.partner-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.partners-scroller {
+  display: flex;
+  gap: 60px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 50px;
+  padding: 30px 20px;
+  background: linear-gradient(90deg, transparent, rgba(184,160,111,0.03), transparent);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.partner-logo-mono {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-mute);
+  letter-spacing: -0.015em;
+  filter: grayscale(1);
+  opacity: 0.55;
+  transition: all 0.25s;
+}
+.partner-logo-mono:hover {
+  color: var(--gold);
+  filter: grayscale(0);
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════
+   ÜCRETSİZ ARAÇLAR
+═══════════════════════════════════════ */
+.tools {
+  background: var(--bg);
+}
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+.tool-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  transition: all 0.25s;
+  text-decoration: none;
+  color: inherit;
+}
+.tool-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.tool-icon {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+.tool-card h4 {
+  font-family: 'Fraunces', serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.tool-card p { font-size: 12.5px; color: var(--text-dim); line-height: 1.45; }
+.tool-card .tool-arrow {
+  margin-left: auto;
+  color: var(--gold);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: all 0.25s;
+}
+.tool-card:hover .tool-arrow {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* ═══════════════════════════════════════
+   BLOG / DUYURULAR
+═══════════════════════════════════════ */
+.blog {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.blog-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+.blog-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.25s;
+  display: flex;
+  flex-direction: column;
+}
+.blog-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-gold);
+  transform: translateY(-3px);
+}
+.blog-image {
+  height: 180px;
+  background: linear-gradient(135deg, rgba(184,160,111,0.2) 0%, rgba(184,160,111,0.05) 100%);
+  border-bottom: 1px solid var(--border-gold);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gold);
+}
+.blog-image .blog-big-icon {
+  font-family: 'Fraunces', serif;
+  font-size: 72px;
+  font-weight: 600;
+  opacity: 0.3;
+}
+.blog-content { padding: 22px 24px 24px; flex: 1; display: flex; flex-direction: column; }
+.blog-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  margin-bottom: 10px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.blog-card h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  margin-bottom: 12px;
+  letter-spacing: -0.015em;
+}
+.blog-excerpt {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  flex: 1;
+  margin-bottom: 16px;
+}
+.blog-read-more {
+  font-size: 13px;
+  color: var(--gold);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: gap 0.25s;
+}
+.blog-card:hover .blog-read-more { gap: 10px; }
+
+/* ═══════════════════════════════════════
+   NEWSLETTER
+═══════════════════════════════════════ */
+.newsletter {
+  background: var(--bg);
+  padding: 80px 0;
+}
+.newsletter-inner {
+  max-width: 680px;
+  margin: 0 auto;
+  text-align: center;
+  padding: 50px 40px;
+  background: linear-gradient(135deg, rgba(184,160,111,0.08), rgba(184,160,111,0.02));
+  border: 1px solid var(--border-gold);
+  border-radius: 22px;
+  position: relative;
+  overflow: hidden;
+}
+.newsletter-inner::before {
+  content: '';
+  position: absolute;
+  top: -80px; left: -80px;
+  width: 240px; height: 240px;
+  border: 1px solid rgba(184,160,111,0.15);
+  border-radius: 50%;
+}
+.newsletter-icon {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  background: rgba(184,160,111,0.12);
+  border: 1px solid var(--border-gold);
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 22px;
+}
+.newsletter h2 { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500; margin-bottom: 8px; letter-spacing: -0.02em; }
+.newsletter p { color: var(--text-dim); font-size: 14.5px; margin-bottom: 28px; }
+.newsletter-form {
+  display: flex;
+  gap: 10px;
+  max-width: 460px;
+  margin: 0 auto;
+}
+.newsletter-form input {
+  flex: 1;
+  padding: 13px 18px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+}
+.newsletter-form input:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: rgba(184,160,111,0.04);
+}
+.newsletter-form button {
+  padding: 13px 26px;
+  background: var(--gold);
+  color: #0a0906;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: all 0.25s;
+}
+.newsletter-form button:hover {
+  background: var(--gold-bright);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(184,160,111,0.3);
+}
+.newsletter-note { font-size: 11px; color: var(--text-mute); margin-top: 14px; font-family: 'JetBrains Mono', monospace; }
+
+/* ═══════════════════════════════════════
+   COOKIE / KVKK BANNER
+═══════════════════════════════════════ */
+.cookie-banner {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border-gold);
+  padding: 20px 0;
+  z-index: 998;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.4);
+  transform: translateY(0);
+  transition: transform 0.4s;
+}
+.cookie-banner.hidden { transform: translateY(100%); }
+.cookie-inner {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.cookie-text { flex: 1; min-width: 300px; font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+.cookie-text strong { color: var(--gold); font-weight: 600; }
+.cookie-text a { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
+.cookie-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.cookie-btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.25s;
+}
+.cookie-btn.primary {
+  background: var(--gold);
+  color: #0a0906;
+}
+.cookie-btn.primary:hover { background: var(--gold-bright); }
+.cookie-btn.ghost {
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.cookie-btn.ghost:hover { border-color: var(--gold); color: var(--text); }
+
+
+/* ═══════════════════════════════════════════════════════
+   V2 — ELİT BOUTIQUE+ (altın tonları ailesi + ufak zarif detaylar)
+═══════════════════════════════════════════════════════ */
+:root {
+  --gold-champagne: #e8d6a0;
+  --gold-bright:    #d4b876;
+  --gold:           #b8a06f;
+  --gold-bronze:    #a08660;
+  --gold-antique:   #8b7349;
+  --gold-copper:    #c08552;
+  --burgundy-deep:  #3a1820;
+  --burgundy-rich:  #5c2a35;
+  --burgundy-accent:#c98896;
+  --ivory:          #f5ecd9;
+}
+
+/* ─── İkon renk varyantları (altın ailesi) ─── */
+.icon-champagne { background: rgba(232,214,160,0.08) !important; border-color: rgba(232,214,160,0.28) !important; color: var(--gold-champagne) !important; }
+.icon-bronze    { background: rgba(160,134,96,0.10)  !important; border-color: rgba(160,134,96,0.30)  !important; color: var(--gold-bronze) !important; }
+.icon-copper    { background: rgba(192,133,82,0.10)  !important; border-color: rgba(192,133,82,0.32)  !important; color: var(--gold-copper) !important; }
+.icon-burgundy  { background: rgba(92,42,53,0.14)    !important; border-color: rgba(201,136,150,0.35) !important; color: var(--burgundy-accent) !important; }
+
+/* ─── Section label'lere tire-çizgi prefix (sofistike detay) ─── */
+.section-label {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 12px;
+  letter-spacing: 0.28em !important;
+}
+.section-label::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  background: var(--gold);
+  opacity: 0.7;
+}
+/* Farklı tonlardaki label'ler için prefix çizgisi de kendi rengine */
+.section-label.lbl-bright::before   { background: var(--gold-champagne); }
+.section-label.lbl-bronze::before   { background: var(--gold-bronze); }
+.section-label.lbl-copper::before   { background: var(--gold-copper); }
+.section-label.lbl-burgundy::before { background: var(--burgundy-accent); opacity: 0.9; }
+
+.section-label.lbl-bright   { color: var(--gold-champagne) !important; }
+.section-label.lbl-bronze   { color: var(--gold-bronze) !important; }
+.section-label.lbl-copper   { color: var(--gold-copper) !important; }
+.section-label.lbl-burgundy { color: var(--burgundy-accent) !important; }
+
+/* ─── Başlık altında ince altın hairline ayırıcı (subtle magazine feel) ─── */
+.section-head .section-title::after {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  margin: 24px auto 0;
+  opacity: 0.65;
+}
+.demo-head .section-title::after,
+.contact-info .section-title::after {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+/* ─── Section title .accent altın tonları ─── */
+.section-title .accent.acc-champagne { color: var(--gold-champagne); }
+.section-title .accent.acc-bronze    { color: var(--gold-bronze); }
+.section-title .accent.acc-copper    { color: var(--gold-copper); }
+.section-title .accent.acc-burgundy  { color: var(--burgundy-accent); }
+
+/* ─── Stat kartları — hairline üst ayırıcı + farklı ton rakamlar ─── */
+.stat-card {
+  position: relative;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 20px; right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0.35;
+  transition: opacity 0.3s;
+}
+.stat-card:hover::before { opacity: 0.9; }
+.stat-val.val-champagne { color: var(--gold-champagne); }
+.stat-val.val-bronze    { color: var(--gold-bronze); }
+.stat-val.val-copper    { color: var(--gold-copper); }
+
+/* ─── Bölüm arka planları — çok subtle altın/bordo gradient ─── */
+.tax-calendar { background: linear-gradient(180deg, var(--bg) 0%, rgba(58,24,32,0.14) 100%); }
+.why          { background: linear-gradient(180deg, var(--bg) 0%, rgba(184,160,111,0.025) 100%); }
+.mobile-demo  { background: linear-gradient(180deg, var(--bg-2) 0%, rgba(160,134,96,0.04) 100%); }
+.team-section { background: linear-gradient(180deg, var(--bg) 0%, rgba(92,42,53,0.08) 100%); }
+.partners     { background: linear-gradient(180deg, var(--bg) 0%, rgba(192,133,82,0.04) 100%); }
+.tools        { background: linear-gradient(180deg, var(--bg) 0%, rgba(184,160,111,0.03) 100%); }
+.blog         { background: linear-gradient(180deg, var(--bg-2) 0%, rgba(58,24,32,0.08) 100%); }
+
+/* ─── Service kart hover üst altın çizgi daha belirgin + accent varyantları ─── */
+.service-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  opacity: 0;
+  transition: opacity 0.35s;
+}
+.service-card:hover::before { opacity: 1; }
+.service-card.accent-champagne::before { background: linear-gradient(90deg, transparent, var(--gold-champagne), transparent); }
+.service-card.accent-bronze::before    { background: linear-gradient(90deg, transparent, var(--gold-bronze), transparent); }
+.service-card.accent-copper::before    { background: linear-gradient(90deg, transparent, var(--gold-copper), transparent); }
+.service-card.accent-burgundy::before  { background: linear-gradient(90deg, transparent, var(--burgundy-accent), transparent); }
+
+/* ─── CTA Band — şarap-altın gradient (elit) ─── */
+.cta-band {
+  background: linear-gradient(135deg, rgba(92,42,53,0.16), rgba(184,160,111,0.08)) !important;
+  border-color: rgba(184,160,111,0.28) !important;
+}
+.cta-band h2 .accent { color: var(--gold-champagne); font-style: italic; }
+
+/* ─── Newsletter — ivory sıcak davetiye ─── */
+.newsletter-inner {
+  background: linear-gradient(135deg, rgba(245,236,217,0.05), rgba(184,160,111,0.04)) !important;
+  border-color: rgba(232,214,160,0.28) !important;
+}
+.newsletter-icon {
+  background: rgba(232,214,160,0.10) !important;
+  border-color: rgba(232,214,160,0.30) !important;
+  color: var(--gold-champagne) !important;
+}
+.newsletter h2 { color: var(--gold-champagne); }
+
+/* ─── Vergi Takvimi — bordo uyarı vurgusu ─── */
+.tax-calendar .section-title .accent { color: var(--burgundy-accent); }
+.tax-warning-banner {
+  background: linear-gradient(135deg, rgba(58,24,32,0.20), rgba(184,160,111,0.04)) !important;
+  border-color: rgba(92,42,53,0.35) !important;
+}
+.tax-warning-banner .warning-icon {
+  background: rgba(92,42,53,0.20) !important;
+  color: var(--burgundy-accent) !important;
+  border: 1px solid rgba(92,42,53,0.3);
+}
+.tax-card.urgent {
+  border-color: rgba(92,42,53,0.35) !important;
+  background: linear-gradient(180deg, rgba(58,24,32,0.10), transparent) !important;
+}
+.tax-card.urgent .tax-date { color: var(--burgundy-accent) !important; }
+
+/* ─── Kurucu kartı — bordo+altın gradient (elit) ─── */
+.founder-card {
+  background: linear-gradient(135deg, rgba(92,42,53,0.14), rgba(184,160,111,0.04)) !important;
+  border-color: rgba(184,160,111,0.32) !important;
+}
+.founder-info .founder-label {
+  color: var(--gold-copper) !important;
+  letter-spacing: 0.28em !important;
+}
+.founder-avatar {
+  box-shadow: 0 20px 60px rgba(184,160,111,0.22), 0 0 0 1px rgba(184,160,111,0.3), inset 0 0 0 3px rgba(255,255,255,0.10) !important;
+}
+
+/* ─── Hero badge bronz (altın tek tip yerine) ─── */
+.hero-badge {
+  border-color: rgba(160,134,96,0.32) !important;
+  background: rgba(160,134,96,0.06) !important;
+  color: var(--gold-bronze) !important;
+}
+.hero-badge .dot {
+  background: var(--gold-bronze) !important;
+  box-shadow: 0 0 12px var(--gold-bronze) !important;
+}
+
+/* ─── Phone KPI (green → bronze) ─── */
+.pc-kpi.green {
+  background: linear-gradient(135deg, rgba(160,134,96,0.14), rgba(160,134,96,0.02)) !important;
+  border-color: rgba(160,134,96,0.22) !important;
+}
+.pc-kpi.green .pc-kpi-v { color: var(--gold-bronze) !important; }
+
+/* ─── Partner kategori renkleri (altın ailesi) ─── */
+.partner-cat.cat-champagne { color: var(--gold-champagne); }
+.partner-cat.cat-bronze    { color: var(--gold-bronze); }
+.partner-cat.cat-copper    { color: var(--gold-copper); }
+.partner-cat.cat-burgundy  { color: var(--burgundy-accent); }
+
+/* ─── Blog kategori renkleri ─── */
+.blog-meta .cat-burgundy { color: var(--burgundy-accent); }
+.blog-meta .cat-bronze   { color: var(--gold-bronze); }
+.blog-meta .cat-copper   { color: var(--gold-copper); }
+
+/* ─── Footer slogan — şampanya italic ─── */
+.footer-col p[style*="font-style: italic"] {
+  color: var(--gold-champagne) !important;
+  border-left-color: rgba(232,214,160,0.4) !important;
+}
+
+/* ─── Minik dekoratif diamond (CTA band ve kurucu kartında) — çok subtle ─── */
+.cta-band::after {
+  content: '◆';
+  position: absolute;
+  top: 18px;
+  right: 40px;
+  font-size: 10px;
+  color: var(--gold-champagne);
+  opacity: 0.35;
+  letter-spacing: 2px;
+}
+.founder-card::after {
+  content: '◆ ◆ ◆';
+  position: absolute;
+  bottom: 22px;
+  right: 30px;
+  font-size: 7px;
+  color: var(--gold-champagne);
+  opacity: 0.3;
+  letter-spacing: 5px;
+}
+
+/* ═══════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════ */
+@media (max-width: 980px) {
+  .nav { display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-2); flex-direction: column; padding: 20px; gap: 14px; border-top: 1px solid var(--border); }
+  .nav.open { display: flex; }
+  .menu-toggle { display: block; color: var(--gold); }
+  .header-cta { display: none; }
+  .header-portal { padding: 8px 14px; font-size: 12px; }
+  .grid-services { grid-template-columns: repeat(2, 1fr); }
+  .grid-why { grid-template-columns: repeat(2, 1fr); }
+  .portal-grid { grid-template-columns: 1fr; gap: 18px; }
+  .contact-grid { grid-template-columns: 1fr; gap: 40px; }
+  .footer-grid { grid-template-columns: 1fr 1fr; gap: 36px; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .topbar-left { flex: 1; }
+  .topbar-right { justify-content: flex-start; }
+  section { padding: 70px 0; }
+  .hero { padding: 70px 0 80px; }
+  .wa-float { bottom: 18px; right: 18px; width: 52px; height: 52px; }
+  .wa-float::after { display: none; }
+  .map-wrapper { height: 280px; }
+  .brand-logo { height: 72px; }
+  .footer-brand-logo { height: 100px; }
+  .header-inner { min-height: 80px; }
+  .phones-wrap { flex-wrap: wrap; gap: 30px; }
+  .mini-phone.side { transform: translateY(0) scale(0.9); }
+  .tax-grid { grid-template-columns: repeat(2, 1fr); }
+  .demo-bottom { grid-template-columns: 1fr; gap: 40px; }
+  .phone-frame { width: 290px; height: 580px; }
+  .founder-card { grid-template-columns: 1fr; padding: 36px 28px; text-align: center; }
+  .founder-avatar { margin: 0 auto; width: 180px; height: 180px; font-size: 68px; }
+  .reviews-grid { grid-template-columns: 1fr; }
+  .partners-grid { grid-template-columns: repeat(2, 1fr); }
+  .partners-scroller { gap: 30px; }
+  .tools-grid { grid-template-columns: 1fr; }
+  .blog-grid { grid-template-columns: 1fr; }
+  .memberships { gap: 22px; margin-top: 36px; }
+}
+@media (max-width: 560px) {
+  .grid-services { grid-template-columns: 1fr; }
+  .grid-why { grid-template-columns: 1fr; }
+  .hero-stats { grid-template-columns: 1fr 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+  .footer-grid { grid-template-columns: 1fr; }
+  .topbar { font-size: 11.5px; }
+  .topbar-left, .topbar-right { gap: 14px; }
+  .container { padding: 0 20px; }
+  .brand-text .brand-sub { display: none; }
+  .header-portal { display: none; }
+  .portal-card { padding: 30px 24px; }
+  .portal-status { top: 12px; right: 12px; font-size: 9.5px; padding: 3px 9px; }
+  .tax-grid { grid-template-columns: 1fr; }
+  .tax-warning-banner { flex-direction: column; text-align: center; }
+  .partners-grid { grid-template-columns: 1fr; }
+  .newsletter-form { flex-direction: column; }
+  .newsletter-inner { padding: 36px 24px; }
+  .cookie-actions { width: 100%; justify-content: stretch; }
+  .cookie-btn { flex: 1; }
+  .brand-logo { height: 58px; }
+  .footer-brand-logo { height: 80px; }
+  .mini-phone { width: 180px; height: 380px; }
+  .mini-phone.side { transform: scale(0.82); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   HAKKIMIZDA BOLUMU — 3 degerler kartı
+   ═══════════════════════════════════════════════════════ */
+.about-section {
+  padding: 90px 0;
+  background:
+    radial-gradient(ellipse 800px 400px at 50% 0%, rgba(184,160,111,0.08), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  position: relative;
+}
+.values-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  max-width: 1060px;
+  margin: 0 auto 48px;
+}
+@media (max-width: 860px) {
+  .values-grid { grid-template-columns: 1fr; max-width: 560px; }
+}
+.value-card {
+  position: relative;
+  background: linear-gradient(180deg, rgba(26,22,18,0.8), rgba(18,16,12,0.9));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.value-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-bright));
+  opacity: 0.6;
+  transition: opacity 0.4s;
+}
+.value-card:hover::before { opacity: 1; }
+.value-card:hover {
+  transform: translateY(-6px);
+  border-color: rgba(184,160,111,0.28);
+  background: linear-gradient(180deg, rgba(26,22,18,0.9), rgba(18,16,12,1));
+  box-shadow: 0 24px 48px rgba(0,0,0,0.35);
+}
+.value-icon {
+  width: 58px; height: 58px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 22px;
+  transition: transform 0.3s;
+}
+.value-card:hover .value-icon { transform: scale(1.1) rotate(-4deg); }
+.value-icon.vi-gold {
+  background: linear-gradient(135deg, rgba(212,184,118,0.16), rgba(184,160,111,0.08));
+  color: var(--gold-bright);
+  border: 1px solid rgba(184,160,111,0.22);
+}
+.value-icon.vi-teal {
+  background: linear-gradient(135deg, rgba(156,70,86,0.16), rgba(192,104,128,0.08));
+  color: var(--teal-bright);
+  border: 1px solid rgba(156,70,86,0.22);
+}
+.value-icon.vi-emerald {
+  background: linear-gradient(135deg, rgba(201,167,124,0.16), rgba(220,192,155,0.08));
+  color: var(--emerald-bright);
+  border: 1px solid rgba(201,167,124,0.22);
+}
+.value-card:nth-child(2)::before {
+  background: linear-gradient(90deg, var(--teal), var(--teal-bright));
+}
+.value-card:nth-child(3)::before {
+  background: linear-gradient(90deg, var(--emerald), var(--emerald-bright));
+}
+.value-title {
+  font-family: 'Fraunces', serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.value-desc {
+  font-size: 14.5px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+/* Uyelik rozetleri seridi */
+.memberships-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 20px 24px;
+  background: rgba(255,255,255,0.015);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+.mbr-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-mute);
+  margin-right: 10px;
+}
+.mbr-chip {
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gold-bright);
+  background: rgba(184,160,111,0.08);
+  border: 1px solid rgba(184,160,111,0.2);
+  border-radius: 100px;
+  transition: all 0.25s;
+}
+.mbr-chip:hover {
+  background: rgba(184,160,111,0.18);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(184,160,111,0.15);
+}
+
+/* ═══════════════════════════════════════════════════════
+   SAYFA GEÇİŞ ANİMASYONLARI — scroll reveal
+   ═══════════════════════════════════════════════════════ */
+
+/* Tum section'lar scroll'da fade-in + slight lift */
+section > .container > * {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.8s ease-out, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+section.visible > .container > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+section > .container > *:nth-child(2) { transition-delay: 0.1s; }
+section > .container > *:nth-child(3) { transition-delay: 0.2s; }
+section > .container > *:nth-child(4) { transition-delay: 0.3s; }
+
+/* Hero zaten ilk goruntude acilir — animasyon atla */
+.hero > .container > * {
+  opacity: 1;
+  transform: none;
+  animation: hero-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.hero > .container > *:nth-child(1) { animation-delay: 0.1s; }
+.hero > .container > *:nth-child(2) { animation-delay: 0.3s; }
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Servis kartlari ve benzeri grid elemanlarina stagger */
+.grid-services > *, .reviews-grid > *, .partners-grid > *,
+.tools-grid > *, .why-grid > *, .blog-grid > *, .calendar-grid > * {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+section.visible .grid-services > *, section.visible .reviews-grid > *,
+section.visible .partners-grid > *, section.visible .tools-grid > *,
+section.visible .why-grid > *, section.visible .blog-grid > *,
+section.visible .calendar-grid > * {
+  opacity: 1;
+  transform: translateY(0);
+}
+section.visible .grid-services > *:nth-child(1),
+section.visible .reviews-grid > *:nth-child(1) { transition-delay: 0.05s; }
+section.visible .grid-services > *:nth-child(2),
+section.visible .reviews-grid > *:nth-child(2) { transition-delay: 0.15s; }
+section.visible .grid-services > *:nth-child(3),
+section.visible .reviews-grid > *:nth-child(3) { transition-delay: 0.25s; }
+section.visible .grid-services > *:nth-child(4) { transition-delay: 0.35s; }
+section.visible .grid-services > *:nth-child(5) { transition-delay: 0.45s; }
+section.visible .grid-services > *:nth-child(6) { transition-delay: 0.55s; }
+
+/* Servis kartlari hover parlaklaştır */
+.service-card { transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.service-card:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.4), 0 0 0 1px rgba(184,160,111,0.2);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BÖLÜM BAZLI YUMUŞAK RENKLENDİRME — göz yormayan farklı hava
+   ═══════════════════════════════════════════════════════ */
+/* Hizmetler — altın ana renk devam */
+.services {
+  background:
+    radial-gradient(ellipse 900px 500px at 20% 0%, rgba(184,160,111,0.06), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%) !important;
+}
+/* Neden Moren — zümrüt subtle */
+.why {
+  background:
+    radial-gradient(ellipse 800px 400px at 80% 10%, rgba(201,167,124,0.05), transparent 60%),
+    linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%) !important;
+}
+.why .section-title .accent { color: var(--emerald-bright) !important; }
+.why .section-label.lbl-bright {
+  background: rgba(201,167,124,0.10);
+  color: var(--emerald-bright);
+  border-color: rgba(201,167,124,0.3);
+}
+.why-card:hover {
+  border-color: rgba(201,167,124,0.25);
+  background: linear-gradient(180deg, rgba(201,167,124,0.04), rgba(255,255,255,0.02)) !important;
+}
+.why-icon {
+  background: rgba(201,167,124,0.1) !important;
+  color: var(--emerald-bright) !important;
+  border: 1px solid rgba(201,167,124,0.22) !important;
+}
+.why-icon.icon-champagne { background: rgba(212,184,118,0.1) !important; color: var(--gold-bright) !important; border-color: rgba(212,184,118,0.22) !important; }
+.why-icon.icon-bronze    { background: rgba(192,160,121,0.1) !important; color: #c9ae7f !important; border-color: rgba(192,160,121,0.22) !important; }
+.why-icon.icon-copper    { background: rgba(217,149,96,0.1) !important; color: #e0a372 !important; border-color: rgba(217,149,96,0.22) !important; }
+
+/* Portal / Mobil Uygulama — bronze subtle */
+.mobile-demo {
+  background:
+    radial-gradient(ellipse 1000px 500px at 50% 0%, rgba(212,184,118,0.05), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 50%, var(--bg) 100%) !important;
+}
+
+/* Hakkimizda — zaten altin tint eklendi */
+
+/* SSS — yumuşak nötr bronze */
+#sss {
+  background:
+    radial-gradient(ellipse 700px 400px at 20% 100%, rgba(192,160,121,0.04), transparent 60%),
+    linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%) !important;
+}
+
+/* İletişim — petrol mavisi subtle */
+.contact {
+  background:
+    radial-gradient(ellipse 900px 500px at 80% 80%, rgba(156,70,86,0.06), transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%) !important;
+}
+.contact .section-title .accent { color: var(--teal-bright) !important; }
+
+/* ═══════════════════════════════════════════════════════
+   RENKLENDİRME — yeni accent ailesi (petrol mavisi + zümrüt)
+   ═══════════════════════════════════════════════════════ */
+:root {
+  /* YENİ RENK TEMASI — mavi + yeşil tamamen çıkarıldı, yerine sıcak tonlar: bordo + şampanya pembesi */
+  --teal: #9c4656;         /* Bordo — vergi takvimi + iletişim */
+  --teal-bright: #c06880;  /* Bordo açık/gül */
+  --emerald: #c9a77c;      /* Şampanya pembesi — neden moren + bir hizmet kartı */
+  --emerald-bright: #dcc09b; /* Şampanya açık */
+  --rose: #d4947a;         /* Sıcak pembe/terracotta — vurgu */
+}
+.section-label.lbl-teal {
+  background: rgba(156,70,86,0.10);
+  color: var(--teal-bright);
+  border-color: rgba(156,70,86,0.3);
+}
+.section-label.lbl-emerald {
+  background: rgba(201,167,124,0.10);
+  color: var(--emerald-bright);
+  border-color: rgba(201,167,124,0.3);
+}
+.accent.acc-teal { color: var(--teal-bright); }
+.accent.acc-emerald { color: var(--emerald-bright); }
+
+/* Yeni hizmet kartı: teal (Yıl Sonu Kapanış) */
+.service-card.accent-teal {
+  background: linear-gradient(180deg, rgba(156,70,86,0.04), rgba(255,255,255,0.02));
+}
+.service-card.accent-teal:hover {
+  border-color: rgba(156,70,86,0.3);
+}
+.service-icon.icon-teal {
+  background: rgba(156,70,86,0.12);
+  color: var(--teal-bright);
+}
+
+/* Takvim bölümü — petrol mavisi baz */
+.tax-calendar { background: linear-gradient(180deg, var(--bg) 0%, rgba(156,70,86,0.06) 100%) !important; }
+.tax-calendar .section-title .accent { color: var(--teal-bright) !important; }
+
+/* ═══════════════════════════════════════════════════════
+   CANLI VERGİ TAKVİMİ — kompakt liste
+   ═══════════════════════════════════════════════════════ */
+.tax-calendar { padding: 70px 0 80px !important; }
+.timeline-wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  display: grid;
+  gap: 8px;
+}
+.cal-item {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-left: 3px solid rgba(156,70,86,0.5);
+  border-radius: 10px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.cal-item:hover {
+  transform: translateX(4px);
+  background: rgba(156,70,86,0.05);
+  border-color: rgba(156,70,86,0.35);
+  border-left-color: var(--teal-bright);
+}
+.cal-item.soon { border-left-color: #f59e0b; }
+.cal-item.soon:hover { background: rgba(245,158,11,0.05); }
+.cal-item.urgent { border-left-color: #f43f5e; background: rgba(244,63,94,0.03); }
+.cal-item.urgent:hover { background: rgba(244,63,94,0.06); }
+
+.cal-date {
+  text-align: center;
+  padding: 4px 0;
+  background: rgba(255,255,255,0.02);
+  border-radius: 7px;
+}
+.cal-day {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text);
+}
+.cal-month {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+
+.cal-main .cal-title {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+  margin-bottom: 2px;
+  line-height: 1.3;
+}
+.cal-main .cal-desc {
+  font-size: 11.5px;
+  color: var(--text-mute);
+  line-height: 1.3;
+}
+
+.cal-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 100px;
+  background: rgba(156,70,86,0.12);
+  color: var(--teal-bright);
+  border: 1px solid rgba(156,70,86,0.3);
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+.cal-item.soon .cal-count {
+  background: rgba(245,158,11,0.12);
+  color: #f59e0b;
+  border-color: rgba(245,158,11,0.3);
+}
+.cal-item.urgent .cal-count {
+  background: rgba(244,63,94,0.15);
+  color: #f43f5e;
+  border-color: rgba(244,63,94,0.4);
+  animation: pulse-mini 1.6s infinite;
+}
+@keyframes pulse-mini {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@media (max-width: 560px) {
+  .cal-item { grid-template-columns: 44px 1fr; gap: 10px; }
+  .cal-count { grid-column: 1 / -1; justify-self: start; margin-top: 4px; }
+}
+
+/* ═══ 3 TELEFON STAGGER ANIMASYON — scroll'da sirayla gelir ═══ */
+.phones-wrap .mini-phone {
+  opacity: 0;
+  transform: translateY(50px) scale(0.92);
+  transition: opacity 0.9s ease-out, transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+section.visible .phones-wrap .mini-phone {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+/* Merkezdeki telefon buyuk kalir (side olmayan) — bos scale trans restore */
+section.visible .phones-wrap .mini-phone.side {
+  transform: translateY(0) scale(0.88);
+}
+/* Sirayla aciliyor — sol, orta, sag */
+section.visible .phones-wrap .mini-phone:nth-child(1) { transition-delay: 0.15s; }
+section.visible .phones-wrap .mini-phone:nth-child(2) { transition-delay: 0.40s; }
+section.visible .phones-wrap .mini-phone:nth-child(3) { transition-delay: 0.65s; }
+
+/* Ozellik kartlari (Anlik Bildirim vs.) da scroll'da sirayli */
+.demo-features li {
+  opacity: 0;
+  transform: translateX(-20px);
+  transition: opacity 0.7s ease-out, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+section.visible .demo-features li {
+  opacity: 1;
+  transform: translateX(0);
+}
+section.visible .demo-features:first-of-type li:nth-child(1) { transition-delay: 0.9s; }
+section.visible .demo-features:first-of-type li:nth-child(2) { transition-delay: 1.0s; }
+section.visible .demo-features:last-of-type li:nth-child(1) { transition-delay: 1.1s; }
+section.visible .demo-features:last-of-type li:nth-child(2) { transition-delay: 1.2s; }
+
+/* Reduce motion — erisilebilirlik */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="header">
+  <div class="container header-inner">
+    <a href="#home" class="brand brand-anim" aria-label="MOREN Mali Müşavirlik">
+      <span class="brand-halo"></span>
+      <!-- Orijinal logo 3 parcaya clip-path ile bolunur, her biri ayri animasyonla gelir -->
+      <img src="moren-logo-gold.png" alt="" class="lg-part lg-part-m" aria-hidden="true">
+      <img src="moren-logo-gold.png" alt="" class="lg-part lg-part-o" aria-hidden="true">
+      <img src="moren-logo-gold.png" alt="MOREN Mali Müşavirlik" class="lg-part lg-part-text">
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#home">Ana Sayfa</a>
+      <a href="#hizmetler">Hizmetler</a>
+      <a href="#neden">Neden Moren</a>
+      <a href="#portal">Portal</a>
+      <a href="#hakkimizda">Hakkımızda</a>
+      <a href="#sss">SSS</a>
+      <a href="#iletisim">İletişim</a>
+    </nav>
+    <div class="header-actions">
+      <a href="#portal" class="header-portal">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Portal Giriş
+      </a>
+      <a href="tel:+905350587475" class="header-cta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Hemen Ara
+      </a>
+    </div>
+    <button class="menu-toggle" onclick="document.getElementById('nav').classList.toggle('open')">☰</button>
+  </div>
+</header>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section id="home" class="hero">
+  <div class="ring r1"></div>
+  <div class="ring r2"></div>
+  <div class="ring r3"></div>
+  <div class="container">
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="dot"></span>
+        <span>Arnavutköy · SMMM Muzaffer Ören</span>
+      </div>
+      <h1>
+        Bugünü <span class="accent">düzenler</span>,<br>
+        yarına <span class="accent">güç katar</span>.
+      </h1>
+      <p class="hero-tagline">
+        Mali müşavirlik; sadece defter tutmak değil — bugünkü düzeni kurup yarının güvencesini yaratmaktır.
+      </p>
+      <p>
+        KOBİ'ler ve kurumsal firmalar için uçtan uca muhasebe, vergi danışmanlığı ve bordro
+        hizmetleri. Yapay zekâ destekli Moren platformu ile şeffaf, hızlı ve hatasız çalışıyoruz.
+      </p>
+      <div class="cta-row">
+        <a href="#iletisim" class="btn btn-primary">
+          Ücretsiz Ön Görüşme
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </a>
+        <a href="#hizmetler" class="btn btn-ghost">Hizmetlerimizi İnceleyin</a>
+      </div>
+    </div>
+
+    <!-- Sag taraf: Açık Defter + Dolma Kalem — mesleki zarafet -->
+    <div class="hero-visual">
+      <div class="pen-glow"></div>
+      <svg class="pen-decor" viewBox="0 0 500 500" fill="none" aria-hidden="true">
+        <circle cx="250" cy="250" r="200" stroke="rgba(184,160,111,0.12)" stroke-width="1" stroke-dasharray="4 8"/>
+        <circle cx="250" cy="250" r="160" stroke="rgba(217,149,96,0.08)" stroke-width="1"/>
+      </svg>
+      <span class="pen-dot d1"></span>
+      <span class="pen-dot d2"></span>
+      <span class="pen-dot d3"></span>
+      <svg class="pen-svg" viewBox="0 0 400 400" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <defs>
+          <linearGradient id="pageGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(212,184,118,0.08)" />
+            <stop offset="100%" stop-color="rgba(184,160,111,0.02)" />
+          </linearGradient>
+          <linearGradient id="penGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="rgba(184,160,111,0.15)" />
+            <stop offset="50%" stop-color="rgba(232,214,160,0.35)" />
+            <stop offset="100%" stop-color="rgba(184,160,111,0.15)" />
+          </linearGradient>
+        </defs>
+
+        <!-- Masa golgesi (defterin altinda yumusak) -->
+        <ellipse cx="200" cy="350" rx="160" ry="12" fill="rgba(212,184,118,0.08)" filter="blur(6px)"/>
+
+        <g class="book">
+          <!-- Sayfa derinlik efekti — alt tabakalar -->
+          <path d="M68 184 L200 154 L200 314 L68 344 Z" stroke-width="1" stroke="rgba(184,160,111,0.25)" fill="url(#pageGrad)" opacity="0.5"/>
+          <path d="M200 154 L332 184 L332 344 L200 314 Z" stroke-width="1" stroke="rgba(184,160,111,0.25)" fill="url(#pageGrad)" opacity="0.5"/>
+          <!-- Üst sayfalar ana -->
+          <path class="book-page" d="M70 180 L200 150 L200 310 L70 340 Z" stroke-width="2" fill="url(#pageGrad)"/>
+          <path class="book-page" d="M200 150 L330 180 L330 340 L200 310 Z" stroke-width="2" fill="url(#pageGrad)"/>
+          <!-- Orta kıvrım gölgesi -->
+          <line x1="200" y1="150" x2="200" y2="310" stroke-width="2" opacity="0.7"/>
+          <path d="M196 152 Q200 160 204 152" stroke="none" fill="rgba(0,0,0,0.3)" opacity="0.4"/>
+
+          <!-- Sol sayfa basligi -->
+          <line class="book-line" x1="90" y1="200" x2="150" y2="188" stroke-width="2" opacity="0.85"/>
+          <!-- Sol sayfa satirlari -->
+          <line class="book-line" x1="90" y1="218" x2="185" y2="198" stroke-width="1" opacity="0.55"/>
+          <line class="book-line" x1="90" y1="232" x2="185" y2="213" stroke-width="1" opacity="0.5"/>
+          <line class="book-line" x1="90" y1="246" x2="170" y2="230" stroke-width="1" opacity="0.5"/>
+          <line class="book-line" x1="90" y1="260" x2="185" y2="242" stroke-width="1" opacity="0.45"/>
+          <line class="book-line" x1="90" y1="274" x2="160" y2="262" stroke-width="1" opacity="0.45"/>
+          <line class="book-line" x1="90" y1="288" x2="175" y2="272" stroke-width="1" opacity="0.4"/>
+          <line class="book-line" x1="90" y1="302" x2="150" y2="292" stroke-width="1" opacity="0.35"/>
+          <!-- Rakam sutunu (sol sayfa sagi) -->
+          <circle cx="180" cy="220" r="1.2" fill="currentColor" opacity="0.5"/>
+          <circle cx="180" cy="235" r="1.2" fill="currentColor" opacity="0.5"/>
+          <circle cx="180" cy="250" r="1.2" fill="currentColor" opacity="0.5"/>
+          <circle cx="180" cy="265" r="1.2" fill="currentColor" opacity="0.4"/>
+
+          <!-- Sag sayfa basligi -->
+          <line class="book-line" x1="215" y1="183" x2="275" y2="192" stroke-width="2" opacity="0.85"/>
+          <!-- Sag sayfa satirlari -->
+          <line class="book-line" x1="215" y1="200" x2="310" y2="220" stroke-width="1" opacity="0.55"/>
+          <line class="book-line" x1="215" y1="214" x2="310" y2="234" stroke-width="1" opacity="0.5"/>
+          <line class="book-line" x1="215" y1="228" x2="290" y2="244" stroke-width="1" opacity="0.45"/>
+          <line class="book-line" x1="215" y1="242" x2="310" y2="262" stroke-width="1" opacity="0.45"/>
+          <line class="book-line" x1="215" y1="256" x2="280" y2="270" stroke-width="1" opacity="0.4"/>
+          <!-- Toplam cizgisi (altın vurgu) -->
+          <line class="book-line" x1="250" y1="288" x2="310" y2="300" stroke="var(--gold-bright)" stroke-width="1.5" opacity="0.9"/>
+          <line class="book-line" x1="250" y1="292" x2="310" y2="304" stroke="var(--gold-bright)" stroke-width="1" opacity="0.5"/>
+
+          <!-- Sayfa kose kivrim efekti (sag sag alt) -->
+          <path d="M318 330 L332 340 L326 344 Z" stroke-width="1.5" stroke="rgba(184,160,111,0.4)" fill="rgba(212,184,118,0.04)" opacity="0.7"/>
+        </g>
+
+        <!-- Dolma kalem - daha detayli -->
+        <g class="pen" transform="translate(210 50) rotate(38)">
+          <!-- Ana govde gradient dolgulu -->
+          <rect x="-7" y="0" width="14" height="130" rx="3" stroke-width="2" fill="url(#penGrad)"/>
+          <!-- Kapak (ust) -->
+          <rect x="-8" y="0" width="16" height="32" rx="3" stroke-width="2" fill="rgba(232,214,160,0.3)"/>
+          <!-- Kapak band cizgisi -->
+          <line x1="-8" y1="30" x2="8" y2="30" stroke-width="1.5" opacity="0.6"/>
+          <!-- Klips — ayrintili -->
+          <path d="M0 6 Q-1 10 -1 20 L1 28 Q1 18 2 10 Z" stroke-width="1.2" fill="rgba(232,214,160,0.5)"/>
+          <!-- Tepe nokta -->
+          <circle cx="0" cy="0" r="3" stroke-width="1.5" fill="rgba(184,160,111,0.3)"/>
+          <!-- Govde isik yansimasi (cizgi) -->
+          <line x1="-3" y1="40" x2="-3" y2="110" stroke-width="0.8" opacity="0.4"/>
+          <!-- Nib (altin uc V seklinde) -->
+          <path d="M-7 130 L0 158 L7 130 Z" stroke-width="2" fill="rgba(232,214,160,0.3)"/>
+          <!-- Nib ortasi kanal -->
+          <line x1="0" y1="138" x2="0" y2="154" stroke-width="1.5" opacity="0.85"/>
+          <!-- Nib ust delik -->
+          <circle cx="0" cy="138" r="2.5" fill="currentColor" opacity="0.8"/>
+          <!-- Nib hafif isik -->
+          <path d="M-4 134 L0 132" stroke-width="0.8" opacity="0.5"/>
+        </g>
+
+        <!-- Mürekkep damlacıkları (yuksek detay) -->
+        <circle class="ink-drop" cx="232" cy="275" r="1.5" fill="var(--gold-bright)" opacity="0.6"/>
+        <circle class="ink-drop" cx="252" cy="282" r="1" fill="var(--gold-bright)" opacity="0.5"/>
+
+        <!-- Imza cizgisi - iki aşamali -->
+        <path class="signature" d="M180 300 Q200 285 230 295 T275 305" stroke-width="2" opacity="0.85"/>
+        <path class="signature-2" d="M240 315 Q255 310 275 318" stroke-width="1.5" opacity="0.5"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ HİZMETLER ═══════════ -->
+<section id="hizmetler" class="services">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">Hizmetlerimiz</div>
+      <h2 class="section-title">Uçtan uca <span class="accent">mali çözüm</span></h2>
+      <p class="section-sub">KOBİ'den kurumsala, şirket kuruluşundan yıl sonu kapanışa kadar tüm mali süreçleriniz profesyonel ekibimizin güvenli ellerinde.</p>
+    </div>
+
+    <div class="grid-services">
+      <div class="service-card">
+        <div class="service-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="18" x2="12" y2="18"/></svg>
+        </div>
+        <h3>Muhasebe Hizmetleri</h3>
+        <p>Günlük muhasebe kayıtlarınız, yevmiye defterleriniz ve finansal tablolarınız eksiksiz ve zamanında.</p>
+        <ul class="service-list">
+          <li>Günlük muhasebe kaydı</li>
+          <li>Yevmiye defteri tutma</li>
+          <li>Bilanço ve gelir tablosu</li>
+          <li>Defter tasdik işlemleri</li>
+        </ul>
+      </div>
+
+      <div class="service-card accent-champagne">
+        <div class="service-icon icon-champagne">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </div>
+        <h3>Vergi Danışmanlığı</h3>
+        <p>Vergi yükünü optimize eden stratejiler, zamanında beyanname hazırlığı ve vergi incelemesi desteği.</p>
+        <ul class="service-list">
+          <li>Vergi planlaması</li>
+          <li>KDV, ÖTV, kurumlar vergisi</li>
+          <li>Aylık/üç aylık beyannameler</li>
+          <li>Vergi incelemesi desteği</li>
+        </ul>
+      </div>
+
+      <div class="service-card accent-bronze">
+        <div class="service-icon icon-bronze">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+        </div>
+        <h3>Finansal Raporlama</h3>
+        <p>Karar alma süreçlerinizi hızlandıran, görsel ve net finansal raporlarla işinizi rakama dökün.</p>
+        <ul class="service-list">
+          <li>Yönetim raporları</li>
+          <li>Nakit akış analizi</li>
+          <li>Kârlılık raporları</li>
+          <li>Bütçe ve tahmin çalışmaları</li>
+        </ul>
+      </div>
+
+      <div class="service-card accent-copper">
+        <div class="service-icon icon-copper">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>Bordro ve SGK</h3>
+        <p>Personel bordroları, SGK bildirgeleri ve teşvik hesaplamaları tek bir sistemden.</p>
+        <ul class="service-list">
+          <li>Aylık bordro düzenleme</li>
+          <li>SGK e-Bildirge işlemleri</li>
+          <li>İş kanunu danışmanlığı</li>
+          <li>Teşvik hesaplamaları</li>
+        </ul>
+      </div>
+
+      <div class="service-card accent-burgundy">
+        <div class="service-icon icon-burgundy">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <h3>Şirket Kurulum</h3>
+        <p>Şirket kurulumundan ilk vergi kaydına, ticaret sicil işlemlerinden banka hesabına kadar sizinle.</p>
+        <ul class="service-list">
+          <li>Şirket tipi danışmanlığı</li>
+          <li>Ticaret sicil işlemleri</li>
+          <li>Vergi dairesi kayıtları</li>
+          <li>Oda ve SGK başvuruları</li>
+        </ul>
+      </div>
+
+      <div class="service-card accent-teal">
+        <div class="service-icon icon-teal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-7m7 5h-7m7 5h-7M4 7h.01M4 12h.01M4 17h.01"/></svg>
+        </div>
+        <h3>Yıl Sonu Kapanış</h3>
+        <p>Dönem sonu kapanış işlemleri, denge çalışmaları ve gelecek yıla güvenli geçiş için hazırlık.</p>
+        <ul class="service-list">
+          <li>Envanter ve amortisman</li>
+          <li>Karşılık ve reeskont</li>
+          <li>Kurumlar vergisi hesaplama</li>
+          <li>Gelecek yıl planlaması</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ VERGİ TAKVİMİ ═══════════ -->
+<section id="takvim" class="tax-calendar">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label lbl-teal">Vergi Takvimi</div>
+      <h2 class="section-title">Bu ay ne var, <span class="accent acc-teal">ne zaman var</span></h2>
+      <p class="section-sub">Bugünün tarihine göre yaklaşan beyanname ve ödemeler — gerçek zamanlı. Siz takip etmeden önce biz hatırlatırız.</p>
+    </div>
+
+    <!-- CANLI VERGİ TAKVİMİ — JS ile bugünün tarihine göre hesaplanır -->
+    <div class="timeline-wrap" id="taxTimeline">
+      <!-- JS tarafindan doldurulur -->
+    </div>
+
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="https://www.gib.gov.tr/yardim-ve-kaynaklar/vergi-takvimi" target="_blank" class="tax-link">
+        GİB Resmî Vergi Takvimi →
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ NEDEN MOREN ═══════════ -->
+<section id="neden" class="why">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label lbl-bright">Neden Moren?</div>
+      <h2 class="section-title">Mükellefine <span class="accent acc-champagne">yakın duran</span> mali müşavirlik</h2>
+      <p class="section-sub">Rakamlar kadar insan da önemlidir. Moren'de sizi neyin beklediği kısaca.</p>
+    </div>
+
+    <div class="grid-why">
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h4>Aradığınızda Ulaşırsınız</h4>
+        <p>Telefon ve WhatsApp'tan gün içinde dönüş garantili. Soru küçük ya da büyük, cevabı geciktirmeyiz — sizi askıda bırakmayız.</p>
+      </div>
+
+      <div class="why-card">
+        <div class="why-icon icon-champagne">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h4>Son Gününü Biz Biliyoruz</h4>
+        <p>Beyanname, ödeme ve tebligat son günlerini sizin takip etmenize gerek yok. Zamanı gelmeden bildirim düşer; aksi bir durumda hatırlatırız.</p>
+      </div>
+
+      <div class="why-card">
+        <div class="why-icon icon-bronze">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        </div>
+        <h4>Gizli Kapı Yok</h4>
+        <p>Ücretinizin içinde ne var, faturanız nerede, bakiyeniz kaç — portalinizden istediğiniz an açıp görürsünüz. Açıklanamaz bir rakam olmaz.</p>
+      </div>
+
+      <div class="why-card">
+        <div class="why-icon icon-copper">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <h4>Hatasız Bitirmek İçin Çift Kontrol</h4>
+        <p>Her fatura ve her beyanname önce sistem tarafından kontrol edilir, sonra gözden geçirilir. Küçük hatanın bile maliyetli olduğunu biliyoruz.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ MÜKELLEF MOBİL UYGULAMA DEMO ═══════════ -->
+<section id="portal" class="mobile-demo">
+  <div class="container">
+    <!-- Üst başlık -->
+    <div class="demo-head">
+      <div class="section-label lbl-bronze">Mükellef Mobil Uygulama</div>
+      <h2 class="section-title">Cebinizde <span class="accent acc-bronze">mali müşaviriniz</span></h2>
+      <p class="demo-tagline">Sorunu aramadan, çözümü elinizde.</p>
+      <p style="color: var(--text-dim); font-size: 15px; line-height: 1.7; margin-top: 14px;">
+        Beyannameniz hazır mı, borcunuz kaç, bu ay ne kadar ödeyeceksiniz — hepsi telefonunuzda.
+        Bize ulaşmadan da görürsünüz, aklınıza bir soru geldiğinde de anında sorabilirsiniz.
+      </p>
+    </div>
+    <div class="demo-grid">
+      <!-- 3 telefonlu showcase altta eklenecek -->
+      <div style="display: none;">
+        <!-- Placeholder left column, içerik yok. Eski demo-grid korunuyor -->
+      </div>
+
+      <!-- 3 telefon yan yana — dashboard · Moren Asistan · faturalar -->
+      <div class="phones-wrap">
+        <!-- Phone 1: Dashboard (yan) -->
+        <div class="mini-phone side">
+          <div class="mini-screen">
+            <div class="pc-top">
+              <div class="pc-avatar">MY</div>
+              <div>
+                <div class="pc-greet">Hoşgeldiniz,</div>
+                <div class="pc-name">Mehmet Yılmaz</div>
+              </div>
+            </div>
+            <div class="pc-kpis">
+              <div class="pc-kpi gold">
+                <div class="pc-kpi-l">KDV</div>
+                <div class="pc-kpi-v">4.130</div>
+              </div>
+              <div class="pc-kpi green">
+                <div class="pc-kpi-l">SGK</div>
+                <div class="pc-kpi-v">12.450</div>
+              </div>
+            </div>
+            <div class="pc-section">
+              <div class="pc-sec-title">Son Hareketler</div>
+              <div class="pc-item ok">
+                <div class="pc-ic">✓</div>
+                <div>
+                  <div class="pc-t">Fatura onaylandı</div>
+                  <div class="pc-m">ŞEKERCİ PETROL · 3.798 TL</div>
+                </div>
+              </div>
+              <div class="pc-item ok">
+                <div class="pc-ic">✓</div>
+                <div>
+                  <div class="pc-t">KDV beyanname hazır</div>
+                  <div class="pc-m">Son tarih: 28 Nisan</div>
+                </div>
+              </div>
+              <div class="pc-item skip">
+                <div class="pc-ic">📄</div>
+                <div>
+                  <div class="pc-t">Yeni fatura eklendi</div>
+                  <div class="pc-m">AYTEMİZ · 4.050 TL</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phone 2: Moren Asistan sohbet (merkez, öne çıkan) -->
+        <div class="mini-phone">
+          <div class="mini-screen">
+            <div class="pc-chat-head">
+              <div class="pc-chat-av">✨</div>
+              <div>
+                <div class="pc-chat-name">Moren Asistan</div>
+                <div class="pc-chat-stat">● Çevrimiçi</div>
+              </div>
+            </div>
+            <div class="pc-chat-body">
+              <div class="pc-msg ai">Günaydın Mehmet Bey 👋</div>
+              <div class="pc-msg user">Bu ay KDV durumum ne?</div>
+              <div class="pc-msg ai">
+                Mart 2026 <strong style="color:#d4b876">KDV</strong>'niz
+                <strong style="color:#d4b876">4.130 TL</strong>. Son ödeme
+                <strong>28 Nisan</strong>. ✅
+              </div>
+              <div class="pc-msg user">Peki toplam ne ödüyorum?</div>
+              <div class="pc-msg ai stats">
+                <strong>Mart 2026</strong><br>
+                • KDV: 4.130 TL<br>
+                • MUHSGK: 12.450 TL<br>
+                <strong style="color:#d4b876">Toplam: 18.400 TL</strong>
+              </div>
+              <div class="pc-msg user">Teşekkürler</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phone 3: Faturalarım (yan) -->
+        <div class="mini-phone side">
+          <div class="mini-screen">
+            <div class="pc-fat-head">
+              <div class="pc-fat-count">Mart 2026</div>
+              <div class="pc-fat-title">Faturalarım</div>
+            </div>
+            <div class="pc-fat-grid">
+              <div class="pc-fat"><div class="d">12.03</div><div style="font-weight:bold">ŞEKERCİ</div><div>PETROL</div></div>
+              <div class="pc-fat"><div class="d">11.03</div><div style="font-weight:bold">AYTEMİZ</div><div>MOTORİN</div></div>
+              <div class="pc-fat"><div class="d">10.03</div><div style="font-weight:bold">D-FAST</div><div>NAKLİYE</div></div>
+              <div class="pc-fat"><div class="d">09.03</div><div style="font-weight:bold">İLGİ OTO</div><div>FREN</div></div>
+              <div class="pc-fat"><div class="d">08.03</div><div style="font-weight:bold">ETİLER</div><div>YİYECEK</div></div>
+              <div class="pc-fat"><div class="d">07.03</div><div style="font-weight:bold">ŞEKERCİ</div><div>MOTORİN</div></div>
+              <div class="pc-fat"><div class="d">06.03</div><div style="font-weight:bold">TANKAR</div><div>AKARYAKIT</div></div>
+              <div class="pc-fat"><div class="d">05.03</div><div style="font-weight:bold">DİNAMİK</div><div>PARÇA</div></div>
+              <div class="pc-fat"><div class="d">04.03</div><div style="font-weight:bold">BP</div><div>MOTORİN</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alt: özellikler + store badges -->
+    <div class="demo-bottom">
+      <ul class="demo-features">
+        <li>
+          <div class="feat-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <div>
+            <strong>Son Günü Sizden Önce Biz Biliriz</strong>
+            <p>Beyanname son gününü, ödeme tarihlerini ve e-tebligatları hatırlatmadan önce telefonunuza bildirim düşer. Kaçırdığınız bir son gün olmaz.</p>
+          </div>
+        </li>
+        <li>
+          <div class="feat-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          </div>
+          <div>
+            <strong>Fotoğrafını Çek, Gerisini Bize Bırakın</strong>
+            <p>Faturayı mail, WhatsApp, kargo ile göndermenize gerek yok. Alışverişten çıkınca fotoğrafını çekin, sistem kendi okur; muhasebe kaydı anında düşer.</p>
+          </div>
+        </li>
+      </ul>
+      <ul class="demo-features">
+        <li>
+          <div class="feat-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <strong>Aklınıza Takılan Her Soruya Anında Cevap</strong>
+            <p>"Bu ay ne kadar ödeyeceğim?", "KDV'm hazır mı?" — aklınıza geldiği an sorun. Moren Asistan anında, müşaviriniz gün içinde mutlaka döner.</p>
+          </div>
+        </li>
+        <li>
+          <div class="feat-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+          </div>
+          <div>
+            <strong>Hesabınızın Her Detayı Sizinle Paylaşılır</strong>
+            <p>Muhasebe ücretiniz, varsa geçmiş ödemeleriniz, ay ay işlenen faturalarınız — gizli hiçbir şey yok; istediğiniz an açıp görürsünüz.</p>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="store-badges" style="justify-content: center; margin-top: 40px;">
+      <a href="#" class="store-badge" aria-label="App Store'dan indir">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+        <div class="store-badge-label">
+          <span class="lbl-small">Yakında</span>
+          <span class="lbl-big">App Store</span>
+        </div>
+      </a>
+      <a href="#" class="store-badge" aria-label="Google Play'den indir">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 0 1-.61-.92V2.734a1 1 0 0 1 .609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 0 1 0 1.73l-2.808 1.626L15.096 12l2.602-2.492zM5.864 2.658L16.802 8.99l-2.302 2.302-8.636-8.634z"/></svg>
+        <div class="store-badge-label">
+          <span class="lbl-small">Yakında</span>
+          <span class="lbl-big">Google Play</span>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ HAKKIMIZDA ═══════════ -->
+<section id="hakkimizda" class="about-section">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label lbl-copper">Hakkımızda</div>
+      <h2 class="section-title">Değerlerimiz ve <span class="accent acc-copper">bağlılığımız</span></h2>
+      <p class="section-sub">Mali müşavirlik; rakamlardan önce insana, süreçten önce anlayışa dayanır. Moren'i ayakta tutan üç temel değer ve yetkili üyelikler.</p>
+    </div>
+
+    <!-- 3 Degerler kartı — genis grid -->
+    <div class="values-grid">
+      <div class="value-card">
+        <div class="value-icon vi-gold">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3 class="value-title">Güven</h3>
+        <p class="value-desc">SMMM ruhsatlı, etik kurallara tam bağlı çalışma düzeni. Mükellef bilgileri güvence altında, her işlem mesleki sorumluluk sigortası ile korunur.</p>
+      </div>
+      <div class="value-card">
+        <div class="value-icon vi-teal">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+        </div>
+        <h3 class="value-title">Şeffaflık</h3>
+        <p class="value-desc">Her işlem, her maliyet, her belge portal üzerinden mükellefimize açık. Sormanızı beklemeden paylaşırız, hesabımız daima ortada.</p>
+      </div>
+      <div class="value-card">
+        <div class="value-icon vi-emerald">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h3 class="value-title">Teknoloji</h3>
+        <p class="value-desc">Yapay zekâ destekli kontrol ve otomasyonla; insan gözünden kaçabilecek her detay sistem gözünden geçirilir. Hata payını sıfıra yaklaştırırız.</p>
+      </div>
+    </div>
+
+    <!-- Uyelik rozetleri seridi -->
+    <div class="memberships-bar">
+      <span class="mbr-label">Yetkili Üye</span>
+      <span class="mbr-chip">İSMMMO</span>
+      <span class="mbr-chip">TÜRMOB</span>
+      <span class="mbr-chip">KGK Yetkili</span>
+      <span class="mbr-chip">KVKK Uyumlu</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ SSS ═══════════ -->
+<section id="sss">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">Sıkça Sorulan Sorular</div>
+      <h2 class="section-title">Merak <span class="accent">edilenler</span></h2>
+    </div>
+    <div class="faq-wrapper">
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Mali müşavir değiştirmek istiyorum, süreç nasıl işliyor?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Çok basit. Önce bir ön görüşme yapıyoruz. Mevcut mali müşavirinizden sizin onayınızla devir yazısı ve geçmiş dönem belgeleriniz alınır. Biz tüm teknik geçişi üstleniriz — siz işinizle ilgilenirsiniz. Ortalama 1-2 hafta içinde tüm süreç tamamlanır.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Moren platformu nedir? Her müşavirin böyle bir sistemi var mı?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Moren, kendi geliştirdiğimiz yapay zekâ destekli mali müşavirlik platformudur. Mükelleflerimiz beyannamelerini, belgelerini ve mali durumlarını gerçek zamanlı görebilir. Fatura yükleme, KDV kontrol, e-tebligat bildirimi gibi işlemler otomatiktir. Bu altyapı Arnavutköy'de sadece Moren'de bulunur.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Yeni şirket kuruyorum, sıfırdan destek alabilir miyim?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Elbette. Şirket türü seçiminden (Ltd, AŞ, şahıs), ticaret sicil ve vergi dairesi işlemlerine, oda ve SGK kayıtlarına kadar tüm süreci yönetiyoruz. İlk görüşmede sizin faaliyet alanınıza en uygun yapı birlikte belirlenir.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Ücretlendirme nasıl yapılıyor?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Sabit paket ücreti + varsa ek hizmet modeli. Aylık ücret; faaliyet türü, aylık fatura adedi, personel sayısı ve beyanname türlerine göre belirlenir. İlk görüşmede size özel şeffaf bir teklif hazırlıyoruz, sürpriz ek ücret yok.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Belgelerimi nasıl ulaştırabilirim?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Üç kolay yol: (1) Moren platform üzerinden mobil uygulamanızla fotoğrafını çekip yüklersiniz — OCR otomatik okur. (2) WhatsApp üzerinden gönderirsiniz. (3) Klasik ofisimize elden teslim edersiniz. Elektronik faturalarınız ise entegratörünüzden otomatik çekilir.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Beyanname tahakkukundan nasıl haberdar olurum?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Her beyanname onayı ardından WhatsApp ve e-mail ile anlık bildirim gelir. Moren platformunda "Beyannamelerim" menüsünden her beyannamenin PDF'ini, tahakkuk fişini ve ödeme detayını görürsünüz. Ödeme son günü yaklaştığında da hatırlatma alırsınız.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>KDV Kontrol Sistemi ne işe yarıyor?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Faturalarınızı sisteme yüklediğinizde OCR otomatik okur, Luca muhasebe sisteminizden aktarılan KDV listesiyle mutabakatını yapar. Kayıt farkları, yanlış belge numaraları, yıl OCR hataları anlık tespit edilir. Böylece hiç KDV iadesi veya ödeme yanlışlığı yaşamazsınız.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q">
+          <span>Sadece Arnavutköy'de mi hizmet veriyorsunuz?</span>
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-a">
+          Fiziki ofisimiz Arnavutköy'de. Ancak Moren platformu sayesinde İstanbul'un her ilçesinden ve Türkiye'nin her yerinden mükellef kabul ediyoruz. Tüm belge, beyanname ve iletişim dijital — coğrafi sınır yok.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ CTA BAND ═══════════ -->
+<div class="cta-band">
+  <div class="container">
+    <h2>Şirketinize <span style="color: var(--gold); font-style: italic;">özel</span> bir teklif alın</h2>
+    <p>15 dakikalık ücretsiz ön görüşmede ihtiyaçlarınızı dinliyor, size özel paket hazırlıyoruz.</p>
+    <div class="cta-row">
+      <a href="tel:+905350587475" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        Hemen Arayın
+      </a>
+      <a href="https://wa.me/905350587475" class="btn btn-ghost" target="_blank">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        WhatsApp'tan Yaz
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ İLETİŞİM ═══════════ -->
+<section id="iletisim" class="contact">
+  <div class="container">
+    <div class="contact-grid">
+      <div class="contact-info">
+        <div class="section-label">İletişim</div>
+        <h2 class="section-title">Bize <span class="accent">ulaşın</span></h2>
+        <p>15 yıllık deneyimimiz ve modern teknolojimizle sizinle tanışmaktan mutluluk duyarız. Aşağıdaki formu doldurun, 24 saat içinde geri dönelim — veya doğrudan arayın.</p>
+
+        <div class="info-cards">
+          <div class="info-card">
+            <div class="info-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            </div>
+            <div>
+              <div class="info-label">Ofis Adresi</div>
+              <div class="info-value">Hastane Mah. Özcan Taşkınbaş Cd. 16/6<br>34555 Arnavutköy/İstanbul</div>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </div>
+            <div>
+              <div class="info-label">Telefon</div>
+              <div class="info-value"><a href="tel:+905350587475">0535 058 74 75</a></div>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <div>
+              <div class="info-label">E-posta</div>
+              <div class="info-value"><a href="mailto:info@morenmusavirlik.com">info@morenmusavirlik.com</a></div>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="info-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="info-label">Çalışma Saatleri</div>
+              <div class="info-value">Pzt-Cum 09:00 - 18:00<br>Cmt 10:00 - 14:00</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Google Maps -->
+        <div class="map-wrapper">
+          <iframe
+            src="https://www.google.com/maps?q=Hastane+Mahallesi+%C3%96zcan+Ta%C5%9Fk%C4%B1nba%C5%9F+Caddesi+16%2F6+Arnavutk%C3%B6y+%C4%B0stanbul&output=embed"
+            loading="lazy"
+            allowfullscreen
+            referrerpolicy="no-referrer-when-downgrade"
+            title="MOREN Mali Müşavirlik Konum">
+          </iframe>
+          <a href="https://www.google.com/maps/dir/?api=1&destination=Hastane+Mah.+%C3%96zcan+Ta%C5%9Fk%C4%B1nba%C5%9F+Cd.+16%2F6+Arnavutk%C3%B6y+%C4%B0stanbul" target="_blank" class="map-overlay-link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            Yol Tarifi Al
+          </a>
+        </div>
+      </div>
+
+      <form class="contact-form" onsubmit="event.preventDefault(); alert('Teşekkürler! Mesajınız tarafımıza iletilmiştir. 24 saat içinde dönüş yapılacaktır.'); this.reset();">
+        <h3>Ücretsiz Ön Görüşme</h3>
+        <p class="form-sub">15 dakikalık ön görüşmede ihtiyaçlarınızı anlıyor, size özel teklif hazırlıyoruz.</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ad Soyad *</label>
+            <input type="text" required placeholder="Adınız Soyadınız">
+          </div>
+          <div class="form-group">
+            <label>Telefon *</label>
+            <input type="tel" required placeholder="05xx xxx xx xx">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>E-posta</label>
+            <input type="email" placeholder="ornek@mail.com">
+          </div>
+          <div class="form-group">
+            <label>Hizmet Türü</label>
+            <select>
+              <option value="">Seçiniz</option>
+              <option>Muhasebe Hizmetleri</option>
+              <option>Vergi Danışmanlığı</option>
+              <option>Bordro ve SGK</option>
+              <option>Şirket Kurulum</option>
+              <option>Mali Müşavir Değişikliği</option>
+              <option>Diğer / Genel Bilgi</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Mesajınız</label>
+          <textarea placeholder="Firmanız ve ihtiyaçlarınız hakkında kısa bilgi..."></textarea>
+        </div>
+        <button type="submit" class="form-submit">
+          Mesaj Gönder
+        </button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <div class="brand" style="margin-bottom: 14px;">
+          <img src="moren-logo-gold.png" alt="MOREN Mali Müşavirlik" class="brand-logo footer-brand-logo">
+        </div>
+        <p style="font-family: 'Fraunces', serif; font-style: italic; color: var(--gold); margin-bottom: 16px; font-size: 14.5px; padding-left: 12px; border-left: 2px solid rgba(184,160,111,0.3);">
+          Bugünü düzenler, yarına güç katar.
+        </p>
+        <p>SMMM Muzaffer Ören önderliğinde, Arnavutköy'de 15+ yıllık deneyimle KOBİ'lere ve kurumsal firmalara hizmet veriyoruz. Yapay zekâ destekli Moren platformu ile sektörü dönüştürüyoruz.</p>
+        <div class="footer-socials">
+          <a href="#" aria-label="LinkedIn"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg></a>
+          <a href="https://wa.me/905350587475" target="_blank" aria-label="WhatsApp"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+          <a href="#" aria-label="Instagram"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg></a>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h5>Hizmetler</h5>
+        <ul>
+          <li><a href="#hizmetler">Muhasebe</a></li>
+          <li><a href="#hizmetler">Vergi Danışmanlığı</a></li>
+          <li><a href="#hizmetler">Bordro &amp; SGK</a></li>
+          <li><a href="#hizmetler">Finansal Raporlama</a></li>
+          <li><a href="#hizmetler">Şirket Kurulum</a></li>
+          <li><a href="#hizmetler">Yıl Sonu Kapanış</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>Hızlı Erişim</h5>
+        <ul>
+          <li><a href="#home">Ana Sayfa</a></li>
+          <li><a href="#hizmetler">Hizmetlerimiz</a></li>
+          <li><a href="#neden">Neden Moren</a></li>
+          <li><a href="#portal">Mobil Uygulama</a></li>
+          <li><a href="#takvim">Vergi Takvimi</a></li>
+          <li><a href="#hakkimizda">Hakkımızda</a></li>
+          <li><a href="#sss">Sıkça Sorulanlar</a></li>
+          <li><a href="#iletisim">İletişim</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>İletişim</h5>
+        <ul>
+          <li>📍 Arnavutköy, İstanbul</li>
+          <li>📞 <a href="tel:+905350587475">0535 058 74 75</a></li>
+          <li>📧 <a href="mailto:info@morenmusavirlik.com">info@morenmusavirlik.com</a></li>
+          <li>🕐 Pzt-Cum 09-18</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <div>© 2026 MOREN Mali Müşavirlik · SMMM Muzaffer Ören · Tüm hakları saklıdır</div>
+      <div class="links">
+        <a href="#">Gizlilik Politikası</a>
+        <a href="#">KVKK Aydınlatma Metni</a>
+        <a href="#">Çerez Politikası</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════ KVKK / COOKIE BANNER ═══════════ -->
+<div class="cookie-banner" id="cookieBanner">
+  <div class="container cookie-inner">
+    <div class="cookie-text">
+      <strong>🍪 KVKK &amp; Çerez Bildirimi.</strong>
+      Bu sitede deneyiminizi iyileştirmek için zorunlu çerezler ve analiz çerezleri kullanıyoruz.
+      Kişisel verileriniz 6698 sayılı KVKK kapsamında işlenir. Detaylı bilgi için
+      <a href="#">Aydınlatma Metni</a> ve <a href="#">Çerez Politikası</a>'nı inceleyebilirsiniz.
+    </div>
+    <div class="cookie-actions">
+      <button class="cookie-btn ghost" onclick="document.getElementById('cookieBanner').classList.add('hidden'); localStorage.setItem('cookieChoice','onlyEssential');">Sadece Zorunlu</button>
+      <button class="cookie-btn primary" onclick="document.getElementById('cookieBanner').classList.add('hidden'); localStorage.setItem('cookieChoice','all');">Tümünü Kabul Et</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ WHATSAPP FLOATING BUTTON ═══════════ -->
+<a href="https://wa.me/905350587475?text=Merhaba%2C%20MOREN%20Mali%20M%C3%BC%C5%9Favirlik%20web%20sitenizden%20ula%C5%9F%C4%B1yorum.%20%C4%B0lgilendi%C4%9Fim%20konu%3A"
+   class="wa-float"
+   target="_blank"
+   rel="noopener"
+   aria-label="WhatsApp ile yazın">
+  <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+  </svg>
+</a>
+
+<script>
+// FAQ accordion
+document.querySelectorAll('.faq-q').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const item = btn.parentElement;
+    const isOpen = item.classList.contains('open');
+    // Close all
+    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+    // Open clicked if was closed
+    if (!isOpen) item.classList.add('open');
+  });
+});
+
+// Mobile menu close on link click
+document.querySelectorAll('.nav a').forEach(a => {
+  a.addEventListener('click', () => {
+    document.getElementById('nav').classList.remove('open');
+  });
+});
+
+// KVKK/Cookie banner - önceki tercih varsa gösterme
+(function() {
+  if (localStorage.getItem('cookieChoice')) {
+    document.getElementById('cookieBanner').classList.add('hidden');
+  }
+})();
+
+// ═══ CANLI VERGİ TAKVİMİ ═══
+// Bugünün tarihine göre Türkiye'nin standart beyanname/ödeme son günlerini
+// hesaplayıp yaklaşanları sıralar. Sunucusuz, tamamen client-side.
+(function() {
+  const el = document.getElementById('taxTimeline');
+  if (!el) return;
+
+  const AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+
+  // ═══ TÜRKİYE BEYANNAME TAKVİMİ (2025+) ═══
+  // Her obje: { gun, sart?(ay 1-12), ad, aciklama }
+  // sart: sadece o ay aktif (yillik/donemsel beyannameler)
+  // sart yoksa: her ay tekrarlanır (aylık beyannameler)
+  const TAKVIM = [
+    // ═══ HER AY (AYLIK BEYANNAMELER) ═══
+    // ÖTV-1 petrol/mineral yağ — ayda 2 kez
+    { gun: 10, ad: 'ÖTV-1 Beyannamesi (1. Dönem)', aciklama: 'Petrol ve mineral yağlar · ayın 1-15 dönemi' },
+    { gun: 15, ad: 'ÖTV-II, III, IV Beyannameleri', aciklama: 'Taşıt / alkol-tütün / kola / lüks mallar — önceki ay' },
+    { gun: 15, ad: 'Banka ve Sigorta Muameleleri Vergisi (BSMV)', aciklama: 'Bankalar ve sigorta şirketleri — önceki ay' },
+    { gun: 20, ad: 'İlan ve Reklam Vergisi', aciklama: 'Belediye — bir önceki ay' },
+    { gun: 20, ad: 'Eğlence Vergisi', aciklama: 'Belediye — bir önceki ay' },
+    { gun: 24, ad: 'Muhtasar ve Prim Hizmet Beyannamesi (MUHSGK)', aciklama: 'Bir önceki ay dönemi · tek beyanname' },
+    { gun: 25, ad: 'ÖTV-1 Beyannamesi (2. Dönem)', aciklama: 'Petrol ve mineral yağlar · ayın 16-sonu dönemi' },
+    { gun: 26, ad: 'Damga Vergisi Beyannamesi', aciklama: 'Bir önceki ay için damga vergisi' },
+    { gun: 26, ad: 'Konaklama Vergisi Beyannamesi', aciklama: 'Bir önceki ay · turizm işletmeleri için' },
+    { gun: 28, ad: 'KDV-1 Beyannamesi', aciklama: 'Bir önceki ay KDV · ödeme ayın son işgünü' },
+    { gun: 28, ad: 'KDV-2 Beyannamesi (Tevkifatlı)', aciklama: 'Sorumlu sıfatıyla kesilen KDV' },
+
+    // ═══ GEÇİCİ VERGİ (3 dönem — 4. dönem 2024\'ten itibaren kaldırıldı) ═══
+    { gun: 17, sart: 5,  ad: '1. Dönem Geçici Vergi Beyannamesi', aciklama: 'Ocak-Mart dönemi · gelir ve kurumlar' },
+    { gun: 17, sart: 8,  ad: '2. Dönem Geçici Vergi Beyannamesi', aciklama: 'Nisan-Haziran dönemi · gelir ve kurumlar' },
+    { gun: 17, sart: 11, ad: '3. Dönem Geçici Vergi Beyannamesi', aciklama: 'Temmuz-Eylül dönemi · gelir ve kurumlar' },
+
+    // ═══ YILLIK ═══
+    { gun: 31, sart: 3,  ad: 'Yıllık Gelir Vergisi Beyannamesi', aciklama: 'Geçen yıl · 1. taksit Mart, 2. taksit Temmuz' },
+    { gun: 31, sart: 7,  ad: 'Gelir Vergisi 2. Taksit Ödemesi', aciklama: 'Yıllık GV 2. yarı ödeme günü' },
+    { gun: 30, sart: 4,  ad: 'Yıllık Kurumlar Vergisi Beyannamesi', aciklama: 'Geçen yıl · beyan ve ödeme aynı gün' },
+
+    // ═══ TURİZM PAYI (3 aylık dönem sonrası ayın son günü) ═══
+    { gun: 31, sart: 1,  ad: 'Turizm Payı Beyannamesi (4. Çeyrek)', aciklama: 'Önceki yıl Ekim-Aralık · Ocak sonu' },
+    { gun: 30, sart: 4,  ad: 'Turizm Payı Beyannamesi (1. Çeyrek)', aciklama: 'Ocak-Mart dönemi · Nisan sonu' },
+    { gun: 31, sart: 7,  ad: 'Turizm Payı Beyannamesi (2. Çeyrek)', aciklama: 'Nisan-Haziran dönemi · Temmuz sonu' },
+    { gun: 31, sart: 10, ad: 'Turizm Payı Beyannamesi (3. Çeyrek)', aciklama: 'Temmuz-Eylül dönemi · Ekim sonu' },
+
+    // ═══ MOTORLU TAŞITLAR VERGİSİ (2 taksit) ═══
+    { gun: 31, sart: 1,  ad: 'Motorlu Taşıtlar Vergisi 1. Taksit', aciklama: 'MTV ilk yarı — Ocak sonu' },
+    { gun: 31, sart: 7,  ad: 'Motorlu Taşıtlar Vergisi 2. Taksit', aciklama: 'MTV ikinci yarı — Temmuz sonu' },
+
+    // ═══ EMLAK + ÇEVRE TEMİZLİK (2 taksit) ═══
+    { gun: 31, sart: 5,  ad: 'Emlak ve Çevre Temizlik Vergisi 1. Taksit', aciklama: 'Belediye — Mayıs sonu' },
+    { gun: 30, sart: 11, ad: 'Emlak ve Çevre Temizlik Vergisi 2. Taksit', aciklama: 'Belediye — Kasım sonu' },
+
+    // ═══ DİJİTAL HİZMET VERGİSİ (aylık — ayın son günü) ═══
+    { gun: 30, ad: 'Dijital Hizmet Vergisi Beyannamesi', aciklama: 'Bir önceki ay — 30.000 ₺ üstü dijital gelir' },
+
+    // ═══ FORM Ba-Bs (Aylık — ayın son günü) ═══
+    { gun: 30, ad: 'Form Ba-Bs (Alış-Satış Bildirim)', aciklama: 'Bir önceki ay · 5.000 ₺+ fatura bildirim formu' },
+  ];
+
+  const bugun = new Date();
+  bugun.setHours(0, 0, 0, 0);
+  const ayNorm = bugun.getMonth();
+  const yil = bugun.getFullYear();
+  const ayAdi = AYLAR[ayNorm];
+
+  // Bu ayin sonuna kadar olan beyannameler
+  const sonrakiler = [];
+  TAKVIM.forEach(ev => {
+    if (ev.sart && ev.sart - 1 !== ayNorm) return;
+    const tarih = new Date(yil, ayNorm, ev.gun);
+    if (tarih < bugun) return;
+    const farkGun = Math.ceil((tarih - bugun) / (1000 * 60 * 60 * 24));
+    sonrakiler.push({
+      tarih,
+      gun: ev.gun,
+      ay: ayAdi,
+      ad: ev.ad,
+      aciklama: ev.aciklama,
+      farkGun,
+    });
+  });
+  sonrakiler.sort((a, b) => a.tarih - b.tarih);
+
+  if (sonrakiler.length === 0) {
+    el.innerHTML = `<p style="text-align:center; color:var(--text-mute); padding:24px; font-size: 14px;">${ayAdi} ayı için kalan beyanname yok — bir sonraki aya geçiş bekleniyor.</p>`;
+    return;
+  }
+
+  el.innerHTML = sonrakiler.map(e => {
+    const durum = e.farkGun <= 3 ? 'urgent' : e.farkGun <= 10 ? 'soon' : '';
+    const sayacMetin = e.farkGun === 0 ? 'Bugün' : e.farkGun === 1 ? 'Yarın' : e.farkGun + ' gün';
+    return `
+      <div class="cal-item ${durum}">
+        <div class="cal-date">
+          <div class="cal-day">${e.gun}</div>
+          <div class="cal-month">${e.ay}</div>
+        </div>
+        <div class="cal-main">
+          <div class="cal-title">${e.ad}</div>
+          <div class="cal-desc">${e.aciklama}</div>
+        </div>
+        <div class="cal-count">${sayacMetin}</div>
+      </div>
+    `;
+  }).join('');
+})();
+
+// ═══ SCROLL REVEAL — IntersectionObserver ═══
+// Her <section> ekranda gorunduğunde 'visible' class'i eklenir
+// CSS tarafinda .visible icin fade-in + stagger tanimli
+(function() {
+  if (!('IntersectionObserver' in window)) {
+    // Fallback: eski tarayicilar icin hepsine visible ver
+    document.querySelectorAll('section').forEach(s => s.classList.add('visible'));
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target); // Bir kez tetiklensin, sonra kapat
+      }
+    });
+  }, {
+    threshold: 0.12,              // Section %12 goruldugunde tetikle
+    rootMargin: '0px 0px -60px 0px' // Alttan 60px erken tetikle
+  });
+  document.querySelectorAll('section').forEach(s => observer.observe(s));
+})();
+</script>
+
+</body>
+</html>

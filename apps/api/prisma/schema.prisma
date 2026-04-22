@@ -158,6 +158,7 @@ model Taxpayer {
   documents           Document[]
   kdvControlSessions  KdvControlSession[]
   monthlyStatuses     TaxpayerMonthlyStatus[]
+  vendorDecisions     VendorMemoryDecision[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1339,6 +1340,7 @@ model VendorMemory {
 model VendorMemoryDecision {
   id              String   @id @default(cuid())
   vendorMemoryId  String
+  taxpayerId      String?  // YENİ — hangi mükellef için öğrenildi (null = eski ortak kayıtlar)
   kararTipi       String   // "fatura" | "isletme"
   kategori        String   // fatura: hesapKodu; isletme: kayitTuru
   altKategori     String?  // sadece isletme: altTuru
@@ -1347,9 +1349,13 @@ model VendorMemoryDecision {
   createdAt       DateTime @default(now())
 
   vendorMemory    VendorMemory @relation(fields: [vendorMemoryId], references: [id], onDelete: Cascade)
+  taxpayer        Taxpayer?    @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
 
-  @@unique([vendorMemoryId, kararTipi, kategori, altKategori])
+  // Nullable taxpayerId ile standart @@unique çalışmadığı için SQL migration'da
+  // COALESCE indexi oluşturuldu. Burada indeksleme yalnızca performans için:
   @@index([vendorMemoryId, onayAdedi])
+  @@index([vendorMemoryId, taxpayerId])
+  @@index([taxpayerId])
   @@map("vendor_memory_decisions")
 }
 
@@ -1357,6 +1363,7 @@ model VendorMemoryDecision {
 model PendingDecision {
   id              String   @id @default(cuid())
   tenantId        String
+  taxpayerId      String?  // YENİ: Firma Hafızası mükellef-bazlı öğrenme için
   mukellef        String?
   firmaKimlikNo   String?
   firmaUnvan      String?

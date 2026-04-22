@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 520" width="600" height="520">
+  <defs>
+    <linearGradient id="gMain" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#e3c480"/>
+      <stop offset="55%" stop-color="#c9a966"/>
+      <stop offset="100%" stop-color="#8b7649"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Büyük serif M — kalın, yuvarlak hatlı -->
+  <text x="10" y="430"
+        font-family="'Fraunces', 'Playfair Display', Georgia, serif"
+        font-size="560"
+        font-weight="700"
+        fill="url(#gMain)"
+        letter-spacing="-30">M</text>
+
+  <!-- Halka (ring/swoosh) — M'nin sağ üstünü kesen kalın daire -->
+  <circle cx="430" cy="230" r="150"
+          stroke="url(#gMain)" stroke-width="38"
+          fill="none" stroke-linecap="round"/>
+
+  <!-- Halkanın içinde sağ üstte küçük dolu daire — Mm imzası -->
+  <circle cx="490" cy="150" r="52" fill="url(#gMain)"/>
+  <text x="490" y="170"
+        font-family="'Fraunces', Georgia, serif"
+        font-size="52"
+        font-weight="700"
+        text-anchor="middle"
+        fill="#0f0d0b">M<tspan font-size="30" dy="-18">m</tspan></text>
+</svg>

@@ -526,6 +526,18 @@
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
         firma: v.faturaFirmaAdi || v.firmaUnvan || null,
+        // Karşı firma VKN/TCKN — Firma Hafızası için. Mihsap API'de birkaç farklı isimde olabilir:
+        firmaKimlikNo:
+          v.faturaFirmaKimlikNo ||
+          v.firmaKimlikNo ||
+          v.karsiFirmaKimlikNo ||
+          v.vergiKimlikNo ||
+          v.vknTckn ||
+          v.faturaFirmaVkn ||
+          v.firmaVkn ||
+          v.vkn ||
+          v.tckn ||
+          null,
       };
     } catch { return {}; }
   }
@@ -1416,7 +1428,7 @@
             kayitOptions: ISLETME_BELGE_TURU_LIST,
             altOptions: [],
             tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: '', faturaTuru: ust.faturaTuru,
-            mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+            mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
             action, blokIndex: 0, blokToplam: 0,
           });
           if (kararBelge?.emin && kararBelge.kayitTuru) {
@@ -1515,7 +1527,7 @@
                 kayitOptions: [d.kayitDeger],
                 altOptions,
                 tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
-                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
               });
@@ -1526,7 +1538,7 @@
                 kayitOptions,
                 altOptions: tumAltOptions,
                 tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
-                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
               });
@@ -1709,7 +1721,7 @@
               const oneriKarari = await aiDecide({
                 codes: codes, tarih, hedefAy,
                 belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
-                mukellef: mukellef.ad, firma: meta.firma, tutar: meta.tutar,
+                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                 action, bosAlanSecenekleri: secenekler,
               });
               const o = oneriKarari?.onerilenler || {};
@@ -1739,7 +1751,9 @@
         codes, tarih, hedefAy,
         belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
         mukellef: mukellef.ad,
+        mukellefId: mukellef.id,
         firma: meta.firma,
+        firmaKimlikNo: meta.firmaKimlikNo,
         tutar: meta.tutar,
         action,
       });

@@ -2,39 +2,35 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Vendor Memory — her firma (VKN/TCKN) icin AI kararlari hafizada tutulur.
+ * Vendor Memory — her firma (VKN/TCKN) için AI kararları hafızada tutulur.
  *
- * AI fatura kategorize ederken:
- *  1. getHintForVendor() ile gecmisteki en cok onaylanan kategori(ler) alinir
- *  2. Hint prompt'a OVERRIDE kuraliyla enjekte edilir (fatura icerigi cakisirsa gormezden gel)
- *  3. AI karari geldikten sonra detectDeviation() ile gecmisle eslesip eslesmedigi kontrol edilir
- *  4. Sapma yoksa recordDecision() ile sayac artar
- *  5. Sapma varsa PendingDecision'a dusup insan onayi bekler (pending-decisions module)
+ * HİBRİT YAPI (2026-04-20 migration):
+ *  - VendorMemory: tenant geneli — firma kimliği, unvan ortak
+ *  - VendorMemoryDecision: MÜKELLEF-BAZLI — her mükellef kendi hesap kodunu öğrenir
+ *    (örn. CK BOĞAZİÇİ ELEKTRİK → TAHİR SUCU: 740, MUHARREM DEMİR: 770)
  *
- * kararTipi:
- *  - 'fatura': decideFatura icin, kategori=hesapKodu, altKategori=null
- *  - 'isletme': decideIsletme icin, kategori=kayitTuru, altKategori=altTuru
+ * Akış:
+ *  1. getHintForVendor(tenantId, firma, kararTipi, taxpayerId) — mükellef-bazlı öneriler
+ *  2. AI karar verir
+ *  3. detectDeviation — mükellef için geçmişte onaylanan kategoriyle eşleşme kontrolü
+ *  4. recordDecision(taxpayerId dâhil) — sapma yoksa sayaç artar
  */
 @Injectable()
 export class VendorMemoryService {
-  // En az kac onaydan sonra hint olusturulsun (cok az veriyle overfitting olmasin)
   private readonly MIN_ONAY_FOR_HINT = 3;
-  // Top kac kategori hint'e eklensin
   private readonly TOP_N_KATEGORI = 3;
 
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Firma icin hint metni olustur. 3+ onay yoksa null doner.
-   *
-   * Donen metin, decideFatura/decideIsletme prompt'una system message'a eklenecek.
-   * OVERRIDE kurali bilerek sert: AI fatura icerigine ONCE bakmali, celiski varsa
-   * hint'i gormezden gelmeli. Kullanicinin (senin) 4 katmanli koruma istegine uygun.
+   * Firma+Mükellef için hint metni oluştur. 3+ onay yoksa null döner.
+   * taxpayerId verilirse mükellef-bazlı kararlar öncelikli; yoksa tüm ortak kararlar.
    */
   async getHintForVendor(
     tenantId: string,
     firmaKimlikNo: string | null | undefined,
     kararTipi: 'fatura' | 'isletme',
+    taxpayerId?: string | null,
   ): Promise<{ hintText: string; memoryId: string; topKategoriler: Array<{ kategori: string; altKategori: string | null; onayAdedi: number }> } | null> {
     if (!firmaKimlikNo) return null;
     const normalized = firmaKimlikNo.trim();
@@ -44,42 +40,65 @@ export class VendorMemoryService {
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: normalized } },
       include: {
         decisions: {
-          where: { kararTipi },
+          where: {
+            kararTipi,
+            // Mükellef-bazlı: önce bu mükellefin kararlarına bak. Yoksa NULL (ortak) kararlara fallback.
+            ...(taxpayerId
+              ? { OR: [{ taxpayerId }, { taxpayerId: null }] }
+              : {}),
+          },
           orderBy: { onayAdedi: 'desc' },
-          take: this.TOP_N_KATEGORI,
+          take: this.TOP_N_KATEGORI * 2, // taxpayer + null karışık olabilir, fazla al
         },
       },
     });
 
     if (!memory || !memory.decisions || memory.decisions.length === 0) return null;
 
-    const toplam = memory.decisions.reduce((s: number, d: any) => s + (d.onayAdedi || 0), 0);
+    // Eğer mükellef-bazlı kararlar varsa ÖNCELİK onlarda; yoksa ortak (NULL) fallback
+    let decisions = memory.decisions;
+    if (taxpayerId) {
+      const mukellefKararlar = decisions.filter((d: any) => d.taxpayerId === taxpayerId);
+      if (mukellefKararlar.length > 0) {
+        decisions = mukellefKararlar;
+      } else {
+        // Mükellef için veri yok; ortak NULL kararları fallback kullan (daha zayıf sinyal)
+        decisions = decisions.filter((d: any) => d.taxpayerId === null);
+      }
+    }
+    decisions = decisions.slice(0, this.TOP_N_KATEGORI);
+
+    const toplam = decisions.reduce((s: number, d: any) => s + (d.onayAdedi || 0), 0);
     if (toplam < this.MIN_ONAY_FOR_HINT) return null;
 
     const firmaAdi = memory.firmaUnvan || normalized;
-    const kategoriSatirlari = memory.decisions
+    const mukellefInfo = taxpayerId && decisions.some((d: any) => d.taxpayerId === taxpayerId)
+      ? ' (bu mükellef için)'
+      : ' (bu ofisin geçmişinden)';
+
+    const kategoriSatirlari = decisions
       .map((d: any) => {
         const label = d.altKategori ? `${d.kategori} → ${d.altKategori}` : d.kategori;
-        return `  - "${label}" : ${d.onayAdedi} kez onaylandi`;
+        return `  - "${label}" : ${d.onayAdedi} kez onaylandı`;
       })
       .join('\n');
 
-    const hintText = `### FIRMA HAFIZASI (${firmaAdi} - VKN/TCKN: ${normalized}) ###
-Bu firma icin gecmiste ${toplam} karar kaydedildi. En cok onaylanan kategoriler:
+    const hintText = `### FIRMA HAFIZASI (${firmaAdi} - VKN/TCKN: ${normalized})${mukellefInfo} ###
+Bu firma için geçmişte ${toplam} karar kaydedildi. En çok onaylanan kategoriler:
 ${kategoriSatirlari}
 
 **KURAL - OVERRIDE:**
-Bu bilgi sadece IPUCUDUR, zorunluluk degildir. ONCE faturanin icerigini oku.
-Eger icerik gecmiste onaylanan kategoriyle ayniysa → kararinda bu hint'i pekistirici kullan.
-Eger icerik farkliysa (ornek: her zaman akaryakit faturasi gelen firmadan bu sefer makine satis faturasi) → hint'i GORMEZDEN GEL, gercek icerige gore karar ver.
-Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
+Bu bilgi sadece İPUCUDUR, zorunluluk değildir. ÖNCE faturanın içeriğini oku.
+Eğer içerik geçmişte onaylanan kategoriyle aynıysa → kararında bu hint'i pekiştirici kullan.
+Eğer içerik farklıysa (örnek: her zaman akaryakıt faturası gelen firmadan bu sefer makine satış faturası) → hint'i GÖRMEZDEN GEL, gerçek içeriğe göre karar ver.
+Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR.
 ### /FIRMA HAFIZASI ###
 `;
 
     return {
       hintText,
       memoryId: memory.id,
-      topKategoriler: memory.decisions.map((d: any) => ({
+      topKategoriler: decisions.map((d: any) => ({
         kategori: d.kategori,
         altKategori: d.altKategori,
         onayAdedi: d.onayAdedi,
@@ -88,8 +107,7 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
   }
 
   /**
-   * Bir karar tamamlaninca hafizayi guncelle. Sapma yoksa (veya insan onayindan gecmisse)
-   * cagrilir. Firma ilk defa gorunuyorsa VendorMemory olusturur.
+   * Karar tamamlanınca hafızayı güncelle. Firma tenant geneli, karar mükellef-bazlı.
    */
   async recordDecision(params: {
     tenantId: string;
@@ -98,13 +116,14 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
     kararTipi: 'fatura' | 'isletme';
     kategori: string;
     altKategori?: string | null;
+    taxpayerId?: string | null;   // YENİ: hangi mükellef bu kararı verdi
   }): Promise<void> {
-    const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori } = params;
+    const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori, taxpayerId } = params;
     if (!firmaKimlikNo) return;
     const vkn = firmaKimlikNo.trim();
     if (!vkn || !kategori) return;
 
-    // Upsert VendorMemory
+    // Upsert VendorMemory (tenant geneli — mükellef bağımsız)
     const memory = await (this.prisma as any).vendorMemory.upsert({
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
       create: {
@@ -117,17 +136,15 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
       update: {
         toplamOnay: { increment: 1 },
         sonKullanim: new Date(),
-        // Unvan degisebilir (firma isim degistirmis olabilir); en sonu gosteriyoruz.
         firmaUnvan: firmaUnvan || undefined,
       },
     });
 
-    // Upsert VendorMemoryDecision — altKategori NULL'da COALESCE unique index
-    // Prisma standart upsert NULL ile composite unique'i tam islemiyor.
-    // Bu yuzden manual: find → create/update.
+    // VendorMemoryDecision — (vendorMemoryId + taxpayerId + kategori + altKategori) anahtar
     const existing = await (this.prisma as any).vendorMemoryDecision.findFirst({
       where: {
         vendorMemoryId: memory.id,
+        taxpayerId: taxpayerId || null,
         kararTipi,
         kategori,
         altKategori: altKategori || null,
@@ -146,6 +163,7 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
       await (this.prisma as any).vendorMemoryDecision.create({
         data: {
           vendorMemoryId: memory.id,
+          taxpayerId: taxpayerId || null,
           kararTipi,
           kategori,
           altKategori: altKategori || null,
@@ -156,16 +174,7 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
     }
   }
 
-  /**
-   * AI karari gecmisle eslesiyor mu? Sapma tespit et.
-   *
-   * Dogal mantik:
-   *  - Hic memory yok → false (sapma yok, yeni firma)
-   *  - AI karari zaten top kategorilerden biri → false (gelenekle uyumlu)
-   *  - AI karari top kategorilerden farkli → TRUE (sapma)
-   *
-   * Kullanici tercihi: kucuk fark bile onay kuyruguna dussun → her farkliligi sapma say.
-   */
+  /** AI kararı geçmişle eşleşiyor mu? Sapma tespit. */
   detectDeviation(params: {
     topKategoriler: Array<{ kategori: string; altKategori: string | null; onayAdedi: number }>;
     aiKategori: string;
@@ -179,7 +188,6 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
     const aiKategoriNorm = (aiKategori || '').trim();
     const aiAltNorm = (aiAltKategori || '').trim() || null;
 
-    // Top kategorilerden biriyle eslesiyorsa sapma yok
     const match = topKategoriler.find(
       (t) =>
         t.kategori.trim() === aiKategoriNorm &&
@@ -194,13 +202,15 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
     const aiLabel = aiAltNorm ? `${aiKategoriNorm} → ${aiAltNorm}` : aiKategoriNorm;
     return {
       isSapma: true,
-      sebep: `Bu firma icin gecmiste en cok "${enCokLabel}" (${enCok.onayAdedi} kez) onaylandi, AI bu sefer "${aiLabel}" onerdi.`,
+      sebep: `Bu firma için geçmişte en çok "${enCokLabel}" (${enCok.onayAdedi} kez) onaylandı, AI bu sefer "${aiLabel}" önerdi.`,
       enCokGecmisKategori: enCokLabel,
       enCokGecmisOnaySayisi: enCok.onayAdedi,
     };
   }
 
-  /** Panel listesi icin: tenant'in tum firma hafizasi, en cok kullanilana gore sirali. */
+  /**
+   * Panel listesi — her firma için mükellef-bazlı dağılım bilgisi de döner.
+   */
   async listVendorMemory(tenantId: string, opts: { search?: string; limit?: number } = {}) {
     const { search, limit = 200 } = opts;
     const where: any = { tenantId };
@@ -211,39 +221,102 @@ Yanlis ipucuna uyup yanlis karar vermek, ipucu olmamasindan DAHA KOTUDUR.
         { firmaUnvan: { contains: q, mode: 'insensitive' } },
       ];
     }
-    return (this.prisma as any).vendorMemory.findMany({
+    const rows = await (this.prisma as any).vendorMemory.findMany({
       where,
       orderBy: [{ toplamOnay: 'desc' }, { sonKullanim: 'desc' }],
       take: limit,
       include: {
         decisions: {
           orderBy: { onayAdedi: 'desc' },
-          take: 10,
+          take: 50,
+          include: {
+            taxpayer: {
+              select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
+            },
+          },
         },
       },
     });
+
+    // Her firma için mükellef özeti üret: "TAHİR SUCU: 7, MUHARREM DEMİR: 2, ortak: 1"
+    return rows.map((row: any) => {
+      const mukellefGrup: Record<string, { taxpayerId: string | null; ad: string; onayAdedi: number }> = {};
+      for (const d of row.decisions || []) {
+        const key = d.taxpayerId || '__ortak__';
+        const ad = d.taxpayer
+          ? taxpayerAd(d.taxpayer)
+          : '(ortak — mükellef atanmamış eski karar)';
+        if (!mukellefGrup[key]) {
+          mukellefGrup[key] = { taxpayerId: d.taxpayerId, ad, onayAdedi: 0 };
+        }
+        mukellefGrup[key].onayAdedi += d.onayAdedi || 0;
+      }
+      const mukellefler = Object.values(mukellefGrup).sort((a, b) => b.onayAdedi - a.onayAdedi);
+      return { ...row, mukellefler };
+    });
   }
 
-  /** Tek firma detayi (VKN ile) */
+  /** Tek firma detayı — mükellef bazlı kategori dağılımı ile. */
   async getVendorDetail(tenantId: string, firmaKimlikNo: string) {
-    return (this.prisma as any).vendorMemory.findUnique({
+    const row = await (this.prisma as any).vendorMemory.findUnique({
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
       include: {
         decisions: {
-          orderBy: [{ kararTipi: 'asc' }, { onayAdedi: 'desc' }],
+          orderBy: [{ onayAdedi: 'desc' }],
+          include: {
+            taxpayer: {
+              select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
+            },
+          },
         },
       },
     });
+    if (!row) return null;
+
+    // Mükellef bazlı grupla
+    const mukellefMap: Record<string, {
+      taxpayerId: string | null;
+      ad: string;
+      toplamOnay: number;
+      kategoriler: Array<{ kategori: string; altKategori: string | null; kararTipi: string; onayAdedi: number; sonKullanim: Date }>;
+    }> = {};
+
+    for (const d of row.decisions || []) {
+      const key = d.taxpayerId || '__ortak__';
+      const ad = d.taxpayer
+        ? taxpayerAd(d.taxpayer)
+        : '(ortak — mükellef atanmamış eski karar)';
+      if (!mukellefMap[key]) {
+        mukellefMap[key] = { taxpayerId: d.taxpayerId, ad, toplamOnay: 0, kategoriler: [] };
+      }
+      mukellefMap[key].toplamOnay += d.onayAdedi || 0;
+      mukellefMap[key].kategoriler.push({
+        kategori: d.kategori,
+        altKategori: d.altKategori,
+        kararTipi: d.kararTipi,
+        onayAdedi: d.onayAdedi,
+        sonKullanim: d.sonKullanim,
+      });
+    }
+
+    const mukellefler = Object.values(mukellefMap).sort((a, b) => b.toplamOnay - a.toplamOnay);
+    return { ...row, mukellefler };
   }
 
-  /** Yanlis ogrenme durumunu temizleme — tek firmanin tum hafizasini sil */
+  /** Yanlış öğrenme durumunu temizleme — tek firmanın tüm hafızasını sil */
   async deleteVendorMemory(tenantId: string, firmaKimlikNo: string): Promise<void> {
     const m = await (this.prisma as any).vendorMemory.findUnique({
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
       select: { id: true },
     });
     if (!m) return;
-    // Decisions onDelete: Cascade ile otomatik silinir
     await (this.prisma as any).vendorMemory.delete({ where: { id: m.id } });
   }
+}
+
+/** Taxpayer için kısa isim üret. */
+function taxpayerAd(tp: { firstName?: string | null; lastName?: string | null; companyName?: string | null; type?: string }): string {
+  if (tp.companyName && tp.companyName.trim()) return tp.companyName.trim();
+  const full = [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim();
+  return full || '(isimsiz mükellef)';
 }
