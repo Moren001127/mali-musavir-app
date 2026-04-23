@@ -117,6 +117,27 @@ export class MihsapController {
     return { url };
   }
 
+  /**
+   * Canlı akış log'undan "Görsel" butonu için — belgeNo ile invoice bul.
+   * Log'da belgeNo + mukellef adı var; frontend bu endpoint'le MihsapInvoice
+   * tablosunda o faturayı bulur ve /mihsap/invoices/:id/file ile gösterir.
+   */
+  @Get('invoices/find')
+  @UseGuards(AuthGuard('jwt'))
+  async findByBelgeNo(
+    @Req() req: any,
+    @Query('belgeNo') belgeNo: string,
+    @Query('mukellefId') mukellefId?: string,
+  ) {
+    if (!belgeNo) return { id: null };
+    const found = await this.service.findInvoiceByBelgeNo(
+      req.user.tenantId,
+      belgeNo,
+      mukellefId,
+    );
+    return { id: found?.id || null, storageUrl: found?.storageUrl || null };
+  }
+
   /** DEBUG — bir faturanın tüm DB alanlarını ve MIHSAP ham payload'unu döndürür.
    *  Hangi tarih alanı "kabul tarihi"dir onu tespit için. */
   @Get('invoices/:id/raw')

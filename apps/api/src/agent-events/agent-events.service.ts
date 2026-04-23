@@ -422,7 +422,6 @@ export class AgentEventsService {
     }
 
     // Mükellef ID eksikse, mükellef adından bulmaya çalış.
-    // Firma Hafızası "mükellef atanmamış" yerine gerçek mükellef-bazlı öğrenir.
     if (!input.mukellefId && input.tenantId && input.mukellef) {
       try {
         const mukellefAd = input.mukellef.trim();
@@ -440,18 +439,31 @@ export class AgentEventsService {
       } catch {}
     }
 
-    // Mükellef profili — yapılandırılmış (sektör, KDV hesapları, tahsilat vs.)
-    // + serbest talimat + sistem kuralları (tevkifat / kasa limit).
-    let mukellefTalimat = '';
+    // === MÜKELLEF PROFİLİ ZORUNLU KONTROL ===
+    // Sektör/faaliyet tanımı yoksa AI'ya bile gitme — "önce profil tanımla" uyarısı
+    let rule: any = null;
     if (input.tenantId && input.mukellef) {
       try {
-        const rule = await this.prisma.agentRule.findUnique({
+        rule = await this.prisma.agentRule.findUnique({
           where: { tenantId_mukellef: { tenantId: input.tenantId, mukellef: input.mukellef } },
         });
-        if (rule?.profile) {
-          mukellefTalimat = profileToPromptText(rule.profile);
-        }
       } catch {}
+    }
+    const sektor = rule?.profile?.sektor?.toString().trim();
+    if (!sektor) {
+      return {
+        karar: 'atla',
+        sebep: `⚠️ Mükellef profili eksik — Mükellef Profilleri'nden "${input.mukellef}" için sektör/faaliyet tanımlayın`,
+        profilEksik: true,
+        mukellef: input.mukellef,
+        mukellefId: input.mukellefId,
+      };
+    }
+
+    // Mükellef profili prompt metni (sektör dahil tüm yapılandırılmış alanlar)
+    let mukellefTalimat = '';
+    if (rule?.profile) {
+      mukellefTalimat = profileToPromptText(rule.profile);
     }
 
     // Firma Hafizasi — bu firma icin gecmis onaylari hint olarak al.
@@ -612,32 +624,45 @@ Ekrandaki matrah kodu (${codesArr.join(', ')}) içerik türüne UYUYOR mu? Hızl
   • **600.xx / 601.xx** (Satışlar) → "Mal" satışı
   • **120.xx / 320.xx** (Alıcı/Satıcı cari) → her tür (cari hesap, matrah değil)
 
-**UYUMSUZLUK kuralı — onay_bekliyor örnekleri:**
-  • 153 seçilmiş, fatura "bilgisayar/yazıcı/mobilya" → "Demirbaş alımı 255 olmalı, ama 153 seçilmiş"
-  • 153 seçilmiş, fatura "elektrik/su/internet/temizlik/kira" → "Genel yönetim gideri 770 olmalı, ama 153 seçilmiş"
-  • 153 seçilmiş, fatura "reklam/sosyal medya" → "Pazarlama gideri 760 olmalı, ama 153 seçilmiş"
-  • 770 seçilmiş, fatura "ticari ürün toptan alım (koli/palet)" → "Ticari mal 153 olmalı"
-  • 255 seçilmiş, fatura "marketten alışveriş/yemek" → "Gider 770 olmalı, ama 255 seçilmiş"
-  • 254 seçilmiş, fatura "araç kiralama faturası" → "Araç kirası 770 olmalı, 254 araç sahipliği"
+**ALTIN KURAL — Her fatura için mantıksal akıl yürütme (EZBERE YOK):**
 
-Kontrolde **ekran kodunun ilk 3 hanesi** dikkate alınır (153.01.005 → 153). Alt kırılımı (örn 153.01.001 vs 153.01.005) İLGİLENDİRMEZ — sadece ana hesap grubunun içerik türüne uyumu.
+Mükellefin sektörü yukarıda MÜKELLEF PROFİLİ'nde verildi. Bu bilgiyle aşağıdaki soruları sor:
+
+1. **Fatura ne içeriyor?** (mal/hizmet açıklaması)
+2. **Bu içerik mükellefin NE olduğuyla ilgili?**
+   • Mükellefin **satış konusu** mu? (aynı sektörden ürün/hizmet alıyor) → **Mal/Stok grubu** (153/150/152/157)
+   • Mükellefin **üretim/hizmet sürecinin parçası** mı? (hizmet sektörü için yakıt, depo elektriği, sarf gibi iş için kullanılan gider) → **Hizmet Üretim Maliyeti** (740)
+   • Mükellefin **pazarlama/satış aşamasının** parçası mı? (reklam, kargo, tanıtım) → **Pazarlama Satış Dağıtım** (760)
+   • **Yönetim/ofis giderleri** (ofis elektriği, kırtasiye, muhasebe hizmeti) → **Genel Yönetim** (770)
+   • **İşletmede uzun süre kullanılacak eşya** mı? → **Sabit Kıymet** (253 makine / 254 taşıt / 255 demirbaş)
+   • **Finansman** (faiz, bankacılık, sigorta primi) → 780 veya ilgili
+
+3. **Ekrandaki kod** (${codesArr.join(', ')}) **yukarıda çıkardığın mantıksal koda uyuyor mu?**
+   • Uyuyorsa → **onay**
+   • Ana hesap grubu farklıysa → **onay_bekliyor** (sebep: "X olmalı ama Y seçilmiş")
+
+**ÖRNEK AKIL YÜRÜTME — faaliyete göre farklılık:**
+  • Mükellef = gıda toptancısı, fatura = gıda → satış konusu → 153 doğru
+  • Mükellef = inşaat, fatura = gıda → satış konusu DEĞİL, personel için → 770 doğru
+  • Mükellef = nakliye, fatura = akaryakıt → işin maliyeti → **740 doğru** (ezbere 770 DEĞİL)
+  • Mükellef = nakliye, fatura = depo kirası → işin maliyeti → **740 doğru**
+  • Mükellef = nakliye, fatura = ofis kirası → yönetim → 770 doğru
+  • Mükellef = imalatçı, fatura = fabrika elektriği → üretim → **740 / 730**
+  • Mükellef = imalatçı, fatura = ofis elektriği → yönetim → 770
+  • Mükellef = ofis işletmesi, fatura = ofis elektriği → 770 doğru
+  • Mükellef = her sektör, fatura = bilgisayar → uzun süre kullanım → **255** doğru
+
+**NOT:** Fatura AÇIKLAMASI net değilse (sadece "hizmet bedeli" gibi) onay ver — aksi halde aşırı titiz atmış olursun.
+
+Kontrolde **ekran kodunun ilk 3 hanesi** dikkate alınır (153.01.005 → 153). Alt kırılım (153.01.001 vs 153.01.005) kontrol EDİLMEZ.
 
 **UYUMLUYSA** → onay. Emin değilsen → onay_bekliyor (ATLA değil — kullanıcı bakacak).
 
-=== [H] MÜKELLEF FAALİYETİ ↔ İÇERİK UYUMU (varsa) ===
-Mükellef profilinde faaliyet bilgisi varsa (örn "gıda toptancısı", "inşaat", "nakliye"),
-faturanın içeriği bu faaliyete uyuyor mu?
-  • Gıda toptancısı → mal alışı/satışı gıda olmalı; "demirbaş bilgisayar" alışı normal ama gider tarafında
-  • Nakliye firması → hizmet satışı, akaryakıt/bakım alışı normal
-  • İnşaat firması → inşaat malzemesi alışı normal; "gıda alışı" şüpheli → onay_bekliyor
-Faaliyet bilgisi YOKSA bu kontrolü atla.
-
 === KARAR AKIŞI (yeni) ===
-1. [A][B][C][D][E][F] kesinse → atla (ekran-görüntü tutarsızlığı, özel durum)
-2. [G] kod-içerik uyumsuzluğu varsa → **onay_bekliyor** (kullanıcı bakacak)
-3. [H] faaliyet-içerik uyumsuzluğu varsa → **onay_bekliyor**
-4. Görüntü tamamen okunamıyor mu? → emin_degil
-5. Diğer tüm durumlar → onay (F2)
+1. [A][B][C][D][E][F] kesinse → **atla** (ekran-görüntü tutarsızlığı, özel durum)
+2. [G] içerik-kod uyumsuzluğu varsa (mükellef sektörü dahil) → **onay_bekliyor** (kullanıcı bakacak)
+3. Görüntü tamamen okunamıyor mu? → **emin_degil**
+4. Diğer tüm durumlar → **onay** (F2)
 
 NOT: "onay_bekliyor" ATLA DEĞİL. Fatura kullanıcının onay kuyruğuna düşer, kullanıcı elle karar verir.
 
