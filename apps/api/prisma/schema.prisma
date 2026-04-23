@@ -1501,3 +1501,50 @@ model PendingDecision {
   @@index([tenantId, createdAt])
   @@map("pending_decisions")
 }
+
+// ============================================================
+// GALERİ — HGS İhlal Sorgulama Modülü
+// Araç plakalarını kayıtlı tutar, KGM HGS İhlal takip sitesinden
+// periyodik (ör. her Pazartesi) otomatik sorgu yapar ve sonuçları saklar.
+// ============================================================
+model Arac {
+  id          String   @id @default(cuid())
+  tenantId    String
+  plaka       String   // "34 ABC 123" veya "34ABC123" — normalize edilir
+  marka       String?  // Opsiyonel: araç markası
+  model       String?  // Opsiyonel: araç modeli
+  sahipAd     String?  // Opsiyonel: araç sahibi (galerici müşteri vb.)
+  taxpayerId  String?  // Opsiyonel: portaldaki mükellefe bağlama
+  aktif       Boolean  @default(true)
+  notlar      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hgsSonuclari HgsIhlalSorguSonucu[]
+
+  @@unique([tenantId, plaka])
+  @@index([tenantId])
+  @@index([taxpayerId])
+  @@map("araclar")
+}
+
+// Her sorgu bir kayıt — aynı plaka için dönem dönem birden fazla kayıt olur
+model HgsIhlalSorguSonucu {
+  id           String   @id @default(cuid())
+  tenantId     String
+  aracId       String
+  sorguTarihi  DateTime @default(now())
+  durum        String   @default("beklemede") // "beklemede" | "basarili" | "hatali"
+  ihlalSayisi  Int      @default(0)
+  toplamTutar  Decimal? @db.Decimal(14, 2)
+  detaylar     Json?    // Ham ihlal detayları (tarih, tutar, ücret noktası vb. array)
+  rawHtml      String?  @db.Text // Sorgu HTML snapshoti (debug için)
+  hataMesaji   String?  // durum=hatali ise sebep
+  kaynak       String   @default("manuel") // "manuel" | "cron_pazartesi" | "tek_sefer"
+
+  arac         Arac     @relation(fields: [aracId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sorguTarihi])
+  @@index([aracId, sorguTarihi])
+  @@map("hgs_ihlal_sorgu_sonuclari")
+}
