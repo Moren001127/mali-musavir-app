@@ -1380,7 +1380,7 @@
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
 
@@ -1409,14 +1409,14 @@
           const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
           if (!ok) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
           ustOzet.push(`FatT:${beklenenFaturaTuru}`);
           ust.faturaTuru = beklenenFaturaTuru;
         } else if (ust.faturaTuru !== beklenenFaturaTuru) {
           counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
           await clickIleri(fid); continue;
         }
 
@@ -1440,7 +1440,7 @@
           }
           if (!ust.belgeTuru) {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
         }
@@ -1456,7 +1456,7 @@
             ustOzet.push(`AST:${varsayilan}`);
           } else {
             counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
         }
@@ -1466,7 +1466,7 @@
         if (!blok.varMi) {
           counters.atla++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · İşletme: blok bulunamadı`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid); continue;
         }
@@ -1494,7 +1494,7 @@
         if (doluKontrolHata) {
           counters.atla++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Doğrulama: ${doluKontrolHata}`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid); continue;
         }
@@ -1591,7 +1591,7 @@
           if (aiHata) {
             counters.atla++; counters.toplam++; setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI: ${aiHata}`, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid); continue;
           }
@@ -1600,7 +1600,7 @@
           if (!blok.varMi || blok.bosBlokVar) {
             counters.atla++; counters.toplam++; setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI sonrası hâlâ boş blok var`, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid); continue;
           }
@@ -1671,7 +1671,7 @@
             const aiNot = aiKullanildi ? ` · AI` : '';
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
           } else {
@@ -1680,14 +1680,14 @@
               ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
               : `${mTag} · İşletme F2 sonuçlanmadı`;
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid);
           }
         } catch (e) {
           counters.hata++; counters.toplam++; setCount();
           await logEvent(mukellef.id, mukellef.ad, 'error', `${mTag} · ${String(e)}`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid);
         }
@@ -1699,7 +1699,7 @@
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
       // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari) → F2 denemeden atla
@@ -1742,7 +1742,7 @@
           }
         }
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `matrah/KDV/cari boş alan var${aiOneriOzet}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `matrah/KDV/cari boş alan var${aiOneriOzet}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
       // LLM karar
@@ -1761,7 +1761,7 @@
       const sebep = (decision?.sebep || '').slice(0, 120);
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         await clickIleri(fid); continue;
       }
       try {
@@ -1846,18 +1846,18 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
           await clickIleri(fid);
         }
       } catch (e) {
         counters.hata++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid);
       }
     }
