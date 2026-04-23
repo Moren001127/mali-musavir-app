@@ -519,7 +519,7 @@
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
-      // Belge türü — Mihsap API'sinde boş olabilir, faturaTuru'dan türet
+      // Belge türü — 3 kanaldan ara: 1) API, 2) faturaTuru türetim, 3) DOM (işletme defteri için)
       let belgeTuru = v.belgeTuru || v.belgeTipi || v.belgeTipiKod || null;
       if (!belgeTuru) {
         const ft = String(v.faturaTuru || '').toUpperCase();
@@ -527,6 +527,16 @@
         else if (ft.includes('EFATURA') || ft.includes('E_FATURA') || ft.includes('E-FATURA') || ft === 'FATURA') belgeTuru = 'E_FATURA';
         else if (ft.includes('FIS') || ft.includes('ÖKC') || ft.includes('OKC')) belgeTuru = 'FIS';
         else if (ft.includes('IRSALIYE')) belgeTuru = 'IRSALIYE';
+      }
+      // Son çare — Mihsap ekranındaki defterData_belgeTuru select'inden oku
+      if (!belgeTuru) {
+        try {
+          const sel = document.querySelector('#defterData_belgeTuru, [id*="belgeTuru"]');
+          const span = sel?.querySelector('.ant-select-selection-item') ||
+                       sel?.querySelector('.ant-select-selection-selected-value');
+          const domVal = (span?.textContent || sel?.value || '').trim();
+          if (domVal && domVal !== 'Seçiniz') belgeTuru = domVal;
+        } catch {}
       }
 
       return {
