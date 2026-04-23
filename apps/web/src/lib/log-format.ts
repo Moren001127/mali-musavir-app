@@ -131,11 +131,11 @@ export function splitLogMessage(msg: string): string[] {
 }
 
 /**
- * Bir AgentEvent'i 6-alan tablosuna çevirir:
- *   Tarih, Belge Türü, Toplam Tutar, Matrah, KDV, Cari
+ * Bir AgentEvent'i 8-alan tablosuna çevirir:
+ *   Tarih, Cari, Belge Türü, Toplam Tutar, Matrah, KDV, İçerik, Onay
  *
- * Header bilgileri (Tarih, Belge Türü, Tutar) event'in kendi
- * field'larından gelir; Matrah/KDV/Cari ise mesajdaki AI önerisinden.
+ * Her satır alt alta gösterilir — artık "F2 · ..." tarzı metin alt satırı
+ * YOK, her bilgi ayrı row olarak yer alır.
  */
 export function buildFieldRows(event: {
   ts?: string | Date;
@@ -143,21 +143,29 @@ export function buildFieldRows(event: {
   tutar?: number | string;
   hesapKodu?: string;
   kdv?: string;
+  status?: string;
   message?: string;
   meta?: any;
 }, parsed: ParsedAgentMessage): FieldRow[] {
   const rows: FieldRow[] = [];
 
-  // Tarih — FATURA tarihi (event.ts kayıt zamanı, bizim işimize yaramaz):
-  // 1) Önce meta.tarih (extension yeni sürümde gönderir)
-  // 2) Sonra mesaj prefix'i: "31.03.2026 · KADİR... · #01335 · ..."
-  // 3) Bulunamazsa atla — "bugünün tarihi" gibi yanıltıcı bilgi göstermeyiz
+  // 1) Tarih — meta.tarih > mesaj prefix'inden
   const faturaTarihi = extractFaturaTarihi(event.meta, event.message);
-  if (faturaTarihi) {
-    rows.push({ label: 'Tarih', status: 'full', value: faturaTarihi });
-  }
+  rows.push({
+    label: 'Tarih',
+    status: faturaTarihi ? 'full' : 'missing',
+    value: faturaTarihi || '—',
+  });
 
-  // Belge Türü — meta.belgeTuru > mesajda BT:... (action türetimi YOK, gerçek değer yoksa "—")
+  // 2) Cari (karşı firma) — meta.firma veya meta.cari
+  const cari = (event.meta?.cari || event.meta?.firma || '').toString().trim();
+  rows.push({
+    label: 'Cari',
+    status: cari ? 'full' : 'missing',
+    value: cari || '—',
+  });
+
+  // 3) Belge Türü — meta.belgeTuru > mesajda BT:...
   const belgeTuru = inferBelgeTuru(event.action, event.meta, event.message);
   rows.push({
     label: 'Belge Türü',
@@ -165,7 +173,7 @@ export function buildFieldRows(event: {
     value: belgeTuru || '—',
   });
 
-  // Toplam Tutar
+  // 4) Toplam Tutar
   if (event.tutar != null && event.tutar !== '') {
     const n = Number(event.tutar);
     if (Number.isFinite(n)) {
@@ -175,10 +183,12 @@ export function buildFieldRows(event: {
         value: `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`,
       });
     }
+  } else {
+    rows.push({ label: 'Toplam Tutar', status: 'missing', value: '—' });
   }
 
-  // Matrah / KDV / Cari — boş alan + öneri durumuna göre
-  const checkField = (label: 'Matrah' | 'KDV' | 'Cari', existingValue?: string) => {
+  // 5-6) Matrah / KDV — boş alan + öneri durumuna göre
+  const checkField = (label: 'Matrah' | 'KDV', existingValue?: string) => {
     const isBos = parsed.bosAlanlar.some((b) => b.toLowerCase() === label.toLowerCase());
     const oneri = parsed.oneriler[label];
     if (!isBos && existingValue) {
@@ -204,15 +214,38 @@ export function buildFieldRows(event: {
       rows.push({ label, status: 'missing', value: 'boş' });
       return;
     }
-    // Hiçbir bilgi yok — atla (gösterme), ya da varsayılan dolu göster
     if (existingValue) {
       rows.push({ label, status: 'full', value: existingValue });
+    } else {
+      rows.push({ label, status: 'missing', value: '—' });
     }
   };
-
   checkField('Matrah', event.hesapKodu);
   checkField('KDV', event.kdv);
-  checkField('Cari');
+
+  // 7) İçerik (AI ocrOzet veya meta.icerik)
+  const icerik = (event.meta?.icerik || event.meta?.ocrOzet || '').toString().trim();
+  if (icerik) {
+    rows.push({ label: 'İçerik', status: 'full', value: icerik });
+  }
+
+  // 8) Onay/Karar
+  const kararText =
+    event.meta?.karar === 'onay' || event.status === 'basarili' || event.status === 'ok' || event.status === 'onaylandi'
+      ? 'Onaylandı (F2)'
+      : event.meta?.karar === 'atla' || event.status === 'atlandi' || event.status === 'skip'
+      ? 'Atlandı'
+      : event.meta?.karar === 'emin_degil' || event.status === 'hata'
+      ? 'Emin değil / Hata'
+      : event.meta?.karar || event.status || '';
+  if (kararText) {
+    const ok = /onay|F2|başarı|basarili/i.test(kararText);
+    rows.push({
+      label: 'Onay',
+      status: ok ? 'full' : 'missing',
+      value: kararText,
+    });
+  }
 
   return rows;
 }
