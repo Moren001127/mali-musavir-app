@@ -519,10 +519,20 @@
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
+      // Belge türü — Mihsap API'sinde boş olabilir, faturaTuru'dan türet
+      let belgeTuru = v.belgeTuru || v.belgeTipi || v.belgeTipiKod || null;
+      if (!belgeTuru) {
+        const ft = String(v.faturaTuru || '').toUpperCase();
+        if (ft.includes('EARSIV') || ft.includes('E_ARSIV') || ft.includes('ARSIV')) belgeTuru = 'E_ARSIV';
+        else if (ft.includes('EFATURA') || ft.includes('E_FATURA') || ft.includes('E-FATURA') || ft === 'FATURA') belgeTuru = 'E_FATURA';
+        else if (ft.includes('FIS') || ft.includes('ÖKC') || ft.includes('OKC')) belgeTuru = 'FIS';
+        else if (ft.includes('IRSALIYE')) belgeTuru = 'IRSALIYE';
+      }
+
       return {
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
-        belgeTuru: v.belgeTuru || null,
+        belgeTuru,
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
         firma: v.faturaFirmaAdi || v.firmaUnvan || null,

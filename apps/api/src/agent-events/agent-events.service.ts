@@ -917,6 +917,36 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
         try {
           const parsed = JSON.parse(c);
           if (parsed?.karar) {
+            // === POST-PROCESSING: AI Hallüsinasyon Filtresi ===
+            // AI "atla" dediğinde sebep'i kontrol et — geçersiz sebep varsa ONAY'a çevir.
+            // Bunlar prompt'ta açıkça yasaklanmış ama AI bazen inatçı, burada override ediyoruz.
+            if (parsed.karar === 'atla' && typeof parsed.sebep === 'string') {
+              const sebepLower = parsed.sebep.toLowerCase();
+              const gecersizSebepKaliplari = [
+                'fatura tipi sati',      // "Fatura Tipi: SATIŞ" / "Fatura Tipi SATIŞ"
+                'fatura tipi: sati',
+                'satıcı: mükellef',      // "satıcı: Mükellef"
+                'senaryo: ticari',       // e-fatura senaryo
+                'senaryo:ticari',
+                'senaryo ticari',
+                'ettn',                  // ETTN numarası belge no değil
+                'ubl-tr',                // XML versiyon
+                'ubl tr 1',
+                'tr 1.2',
+                'tr1.2',
+                'tr 1.3',
+                'satış türü (satıcı',    // "SATIŞ türü (satıcı: Mükellef)"
+              ];
+              const gecersizMi = gecersizSebepKaliplari.some(k => sebepLower.includes(k));
+              if (gecersizMi) {
+                // AI hatalı atladı — override et, ONAY'a çevir
+                const orijSebep = parsed.sebep;
+                parsed.karar = 'onay';
+                parsed.sebep = `F2 · otomatik onay (AI\'nın "${orijSebep.slice(0, 60)}" sebebi geçersiz — karşı firma yön bilgisi)`;
+                parsed._overrideReason = 'ai-gecersiz-sebep';
+              }
+            }
+
             // Öneri mod: AI'nın önerdiği kodları gerçekten dropdown'da var mı ve
             // güven skoru >= 0.8 mi diye doğrula. Halüsinasyon korumasıdır.
             if (input.bosAlanSecenekleri && parsed.onerilenler) {
