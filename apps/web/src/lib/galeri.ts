@@ -55,4 +55,39 @@ export const galeriApi = {
 
   ozet: () =>
     api.get<GaleriOzet>('/galeri/ozet').then((r) => r.data),
+
+  // ── Toplu otomatik sorgu (agent komutları) ──
+  baslatTopluSorgu: (body: { aracIds?: string[]; sadeceAktif?: boolean } = {}) =>
+    api.post<{
+      ok: boolean;
+      sebep?: string;
+      komutId?: string;
+      aracSayisi?: number;
+      mesaj?: string;
+      durum?: string;
+    }>('/galeri/toplu-sorgu-baslat', body).then((r) => r.data),
+
+  agentDurumu: () =>
+    api.get<{
+      status: { running: boolean; lastPing: string; meta: any } | null;
+      canli: boolean;
+      pingYasiSaniye: number | null;
+      aktifKomut: any | null;
+      sonKomut: any | null;
+    }>('/galeri/agent-durumu').then((r) => r.data),
+
+  komutKuyrugu: () =>
+    api.get<any[]>('/galeri/komut-kuyrugu').then((r) => r.data),
+
+  // ── PDF Rapor (Selim Motors logolu) ──
+  pdfRaporUrl: (): string => {
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    return `${base}/galeri/pdf-rapor`;
+  },
+
+  pdfRaporAracUrl: (aracId: string, sorguId?: string): string => {
+    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
+    const q = sorguId ? `?sorguId=${encodeURIComponent(sorguId)}` : '';
+    return `${base}/galeri/araclar/${aracId}/pdf-rapor${q}`;
+  },
 };

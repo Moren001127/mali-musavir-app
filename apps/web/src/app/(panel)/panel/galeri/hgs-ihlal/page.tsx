@@ -6,6 +6,7 @@ import { galeriApi, Arac } from '@/lib/galeri';
 import {
   Gavel, Plus, Search, Trash2, ExternalLink, RefreshCw, Car,
   CheckCircle2, AlertCircle, Clock, X as IconX, Edit2, Save,
+  Zap, PlayCircle, Bot, FileText, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -37,6 +38,29 @@ export default function HgsIhlalPage() {
   const { data: ozet } = useQuery({
     queryKey: ['galeri-ozet'],
     queryFn: () => galeriApi.ozet(),
+  });
+
+  // Agent durumu — her 15 saniyede bir yenile
+  const { data: agentInfo } = useQuery({
+    queryKey: ['galeri-agent-durumu'],
+    queryFn: () => galeriApi.agentDurumu(),
+    refetchInterval: 15000,
+  });
+
+  // Toplu sorgu başlatma mutation
+  const topluSorguMut = useMutation({
+    mutationFn: () => galeriApi.baslatTopluSorgu({ sadeceAktif: true }),
+    onSuccess: (data) => {
+      if (data.ok) {
+        toast.success(data.mesaj || 'Toplu sorgu komutu oluşturuldu');
+      } else {
+        toast.error(data.sebep || 'Sorgu başlatılamadı');
+      }
+      qc.invalidateQueries({ queryKey: ['galeri-agent-durumu'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Bir hata oluştu');
+    },
   });
 
   const deleteMut = useMutation({
@@ -91,6 +115,74 @@ export default function HgsIhlalPage() {
           <OzetCard label="Toplam Tutar" value={fmtTL(ozet.toplamTutar)} icon={Gavel} color={GOLD} />
         </div>
       )}
+
+      {/* OTOMATIK SORGU PANELI */}
+      <div
+        className="rounded-xl p-5 flex items-center gap-4 flex-wrap"
+        style={{
+          background: 'linear-gradient(135deg, rgba(184,160,111,0.05), rgba(184,160,111,0.02))',
+          border: '1px solid rgba(184,160,111,0.15)',
+        }}
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center"
+            style={{ background: 'rgba(184,160,111,0.1)', border: '1px solid rgba(184,160,111,0.25)' }}
+          >
+            <Bot size={18} style={{ color: GOLD }} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+                Otomatik HGS Sorgu
+              </span>
+              {agentInfo?.canli ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e] animate-pulse" />
+                  Agent Çevrimiçi
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                  style={{ background: 'rgba(250,250,249,0.05)', color: 'rgba(250,250,249,0.5)' }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.4)' }} />
+                  Agent Kapalı
+                </span>
+              )}
+            </div>
+            <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              {agentInfo?.aktifKomut
+                ? <>Çalışıyor — <b>{agentInfo.aktifKomut.status === 'running' ? 'işleme alındı' : 'kuyrukta'}</b></>
+                : agentInfo?.sonKomut
+                  ? <>Son sorgu: <b>{fmtTarih(agentInfo.sonKomut.finishedAt || agentInfo.sonKomut.createdAt)}</b> · Her Pazartesi 08:00 otomatik çalışır</>
+                  : 'Her Pazartesi 08:00 otomatik çalışır — manuel başlatabilirsin'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={() => topluSorguMut.mutate()}
+          disabled={topluSorguMut.isPending || !!agentInfo?.aktifKomut}
+          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-[13px] font-bold rounded-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+        >
+          {topluSorguMut.isPending
+            ? <><RefreshCw size={14} className="animate-spin" /> Başlatılıyor...</>
+            : agentInfo?.aktifKomut
+              ? <><Clock size={14} /> Çalışıyor...</>
+              : <><PlayCircle size={14} /> Toplu Sorgu Başlat</>}
+        </button>
+        <a
+          href={galeriApi.pdfRaporUrl()}
+          target="_blank"
+          rel="noopener"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
+        >
+          <FileText size={14} /> PDF Rapor
+        </a>
+      </div>
 
       {/* ARAMA */}
       <div className="relative max-w-md">

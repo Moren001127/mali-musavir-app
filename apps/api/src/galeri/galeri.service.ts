@@ -153,6 +153,127 @@ export class GaleriService {
     });
   }
 
+  // ════════════ TOPLU OTOMATIK SORGU (AgentCommand köprüsü) ════════════
+
+  /**
+   * Portal UI'ından veya Cron'dan tetiklenir.
+   * AgentCommand tablosuna 'hgs'/'toplu-sorgu' komutu yazar — local hgs-agent
+   * `/agent/commands/claim` endpoint'iyle bu komutu alıp çalıştırır.
+   *
+   * Aynı anda birden fazla pending komutu engellemek için basit kontrol var.
+   */
+  async baslatTopluSorgu(
+    tenantId: string,
+    userId: string | null,
+    opts: { aracIds?: string[]; sadeceAktif?: boolean } = {},
+  ) {
+    // Zaten bekleyen veya çalışan bir HGS komutu var mı?
+    const mevcut = await (this.prisma as any).agentCommand.findFirst({
+      where: {
+        tenantId,
+        agent: 'hgs',
+        action: 'toplu-sorgu',
+        status: { in: ['pending', 'running'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (mevcut) {
+      return {
+        ok: false,
+        sebep: 'Zaten çalışan bir toplu sorgu komutu var',
+        komutId: mevcut.id,
+        durum: mevcut.status,
+        olusturmaZamani: mevcut.createdAt,
+      };
+    }
+
+    // Sorgulanacak araçları belirle
+    const where: any = { tenantId };
+    if (opts.sadeceAktif) where.aktif = true;
+    if (opts.aracIds && opts.aracIds.length > 0) where.id = { in: opts.aracIds };
+
+    const araclar = await (this.prisma as any).arac.findMany({
+      where,
+      select: { id: true, plaka: true },
+    });
+
+    if (araclar.length === 0) {
+      return { ok: false, sebep: 'Sorgulanacak araç bulunamadı', araclar: 0 };
+    }
+
+    const komut = await (this.prisma as any).agentCommand.create({
+      data: {
+        tenantId,
+        agent: 'hgs',
+        action: 'toplu-sorgu',
+        payload: {
+          aracIds: araclar.map((a: any) => a.id),
+          plakalar: araclar.map((a: any) => a.plaka),
+          tarih: new Date().toISOString(),
+          tetikleyici: userId ? 'manuel' : 'cron_pazartesi',
+        },
+        status: 'pending',
+        createdBy: userId,
+      },
+    });
+
+    return {
+      ok: true,
+      komutId: komut.id,
+      aracSayisi: araclar.length,
+      mesaj: `${araclar.length} plaka için sorgu komutu oluşturuldu. Local HGS agent yakında çalıştıracak.`,
+    };
+  }
+
+  /** Agent'ın son ping'i, running durumu, son meta bilgisi */
+  async agentDurumu(tenantId: string) {
+    const status = await (this.prisma as any).agentStatus.findUnique({
+      where: { tenantId_agent: { tenantId, agent: 'hgs' } },
+    }).catch(() => null);
+
+    // Aktif komut var mı?
+    const aktifKomut = await (this.prisma as any).agentCommand.findFirst({
+      where: {
+        tenantId,
+        agent: 'hgs',
+        status: { in: ['pending', 'running'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Son tamamlanan komut (ne zaman, ne kadar sürdü)
+    const sonKomut = await (this.prisma as any).agentCommand.findFirst({
+      where: {
+        tenantId,
+        agent: 'hgs',
+        status: { in: ['done', 'failed'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const now = Date.now();
+    const lastPingMs = status?.lastPing ? new Date(status.lastPing).getTime() : 0;
+    const pingYasi = lastPingMs > 0 ? Math.floor((now - lastPingMs) / 1000) : null; // saniye
+    const canli = pingYasi !== null && pingYasi < 120; // 2 dk içinde ping varsa canlı say
+
+    return {
+      status: status || null,
+      canli,
+      pingYasiSaniye: pingYasi,
+      aktifKomut,
+      sonKomut,
+    };
+  }
+
+  /** Son 20 komut — durum takibi */
+  async komutKuyrugu(tenantId: string) {
+    return (this.prisma as any).agentCommand.findMany({
+      where: { tenantId, agent: 'hgs' },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+  }
+
   /** Dashboard için: toplam araç, ihlalli araç sayısı, toplam tutar */
   async ozet(tenantId: string) {
     const toplamArac = await (this.prisma as any).arac.count({ where: { tenantId, aktif: true } });

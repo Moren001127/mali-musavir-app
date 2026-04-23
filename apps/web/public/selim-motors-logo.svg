@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 96" width="260" height="96" role="img" aria-label="Selim Motors">
+  <title>Selim Motors</title>
+  <g transform="translate(4, 18)">
+    <path d="M8,38 L16,26 Q20,20 28,18 L60,18 Q68,19 74,24 L86,28 Q96,30 99,38 Z"
+          fill="none" stroke="#b8956a" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="34" y1="21" x2="62" y2="21" stroke="#b8956a" stroke-width="0.6"/>
+    <path d="M36,18.5 L40,14 L56,14 L60,18.5 Z" fill="none" stroke="#b8956a" stroke-width="0.8"/>
+    <circle cx="26" cy="38" r="5.5" fill="#fafaf9" stroke="#0f0d0b" stroke-width="1.5"/>
+    <circle cx="26" cy="38" r="2" fill="#b8956a"/>
+    <circle cx="82" cy="38" r="5.5" fill="#fafaf9" stroke="#0f0d0b" stroke-width="1.5"/>
+    <circle cx="82" cy="38" r="2" fill="#b8956a"/>
+    <line x1="0" y1="46" x2="108" y2="46" stroke="#b8956a" stroke-width="0.5" stroke-dasharray="2 2"/>
+  </g>
+  <g transform="translate(124, 0)">
+    <text x="0" y="46" font-family="Georgia, 'Times New Roman', serif" font-size="24" font-weight="500" fill="#0f0d0b" letter-spacing="3">SELİM MOTORS</text>
+    <line x1="0" y1="52" x2="132" y2="52" stroke="#b8956a" stroke-width="0.8"/>
+    <text x="0" y="68" font-family="'Helvetica Neue', Arial, sans-serif" font-size="8" font-weight="500" fill="#8a7240" letter-spacing="4.5">OTO GALERİ · İSTANBUL</text>
+  </g>
+</svg>

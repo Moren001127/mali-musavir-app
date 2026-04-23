@@ -49,4 +49,33 @@ export class GaleriController {
   ozet(@Req() req: any) {
     return this.svc.ozet(req.user.tenantId);
   }
+
+  // ── TOPLU OTOMATIK SORGU ───────────────────────────
+  /**
+   * Portal UI'dan tetiklenir — "🔄 Toplu Sorgu Başlat" butonu.
+   * AgentCommand tablosuna 'hgs'-'toplu-sorgu' komutu yazar;
+   * local hgs-agent bu komutu /agent/commands/claim ile alıp çalıştırır.
+   */
+  @Post('toplu-sorgu-baslat')
+  baslatTopluSorgu(
+    @Req() req: any,
+    @Body() body: { aracIds?: string[]; sadeceAktif?: boolean },
+  ) {
+    return this.svc.baslatTopluSorgu(req.user.tenantId, req.user.userId, {
+      aracIds: body?.aracIds,
+      sadeceAktif: body?.sadeceAktif !== false, // varsayılan true
+    });
+  }
+
+  /** Canlı agent durumu (son ping, çalışıyor mu, aktif komut var mı) */
+  @Get('agent-durumu')
+  agentDurumu(@Req() req: any) {
+    return this.svc.agentDurumu(req.user.tenantId);
+  }
+
+  /** Aktif/son toplu sorgu kuyruğundaki komutlar */
+  @Get('komut-kuyrugu')
+  komutKuyrugu(@Req() req: any) {
+    return this.svc.komutKuyrugu(req.user.tenantId);
+  }
 }
