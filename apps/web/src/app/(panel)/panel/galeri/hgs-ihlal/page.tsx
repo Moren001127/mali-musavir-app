@@ -315,12 +315,32 @@ function AracRow({ arac, onDelete }: { arac: Arac; onDelete: () => void }) {
         <td className="px-4 py-2.5 text-right">
           <div className="flex items-center gap-1 justify-end">
             <button
+              onClick={() => {
+                const plakaTemiz = (arac.plaka || '').replace(/\s/g, '');
+                // Plaka clipboard'a kopyalansın — KGM formuna yapıştırılır
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(plakaTemiz).catch(() => {});
+                }
+                const w = window.open(KGM_URL, '_blank', 'width=1200,height=820');
+                if (!w) {
+                  toast.error('Pop-up engellendi — tarayıcı ayarlarını kontrol et');
+                } else {
+                  toast.success(`${arac.plakaGorunum || arac.plaka} kopyalandı, yeni pencerede yapıştır`);
+                }
+              }}
+              className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+              title="KGM sitesini aç — plaka panoya kopyalanır"
+            >
+              <ExternalLink size={11} /> Sorgula
+            </button>
+            <button
               onClick={() => setSonucOpen(true)}
               className="text-[11px] font-medium px-2.5 py-1.5 rounded-md transition inline-flex items-center gap-1"
               style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}
               title="Sonuç kaydet"
             >
-              <RefreshCw size={11} /> Sorgu Sonucu
+              <RefreshCw size={11} /> Sonuç
             </button>
             <button
               onClick={() => {
