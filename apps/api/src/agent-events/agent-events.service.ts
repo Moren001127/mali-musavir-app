@@ -422,20 +422,46 @@ export class AgentEventsService {
     }
 
     // Mükellef ID eksikse, mükellef adından bulmaya çalış.
+    // Arama stratejisi: equals / contains / reverse-contains / firstName+lastName
     if (!input.mukellefId && input.tenantId && input.mukellef) {
       try {
         const mukellefAd = input.mukellef.trim();
-        const taxpayer = await this.prisma.taxpayer.findFirst({
-          where: {
-            tenantId: input.tenantId,
-            OR: [
-              { companyName: { equals: mukellefAd, mode: 'insensitive' } },
-              { companyName: { contains: mukellefAd, mode: 'insensitive' } },
-            ],
-          },
-          select: { id: true },
+        // Önce tüm mükellefleri kısaca çek, kod tarafında fuzzy eşleştir
+        const candidates = await this.prisma.taxpayer.findMany({
+          where: { tenantId: input.tenantId, isActive: true },
+          select: { id: true, companyName: true, firstName: true, lastName: true },
         });
-        if (taxpayer) input.mukellefId = taxpayer.id;
+        const normalize = (s: string) => s.toLocaleUpperCase('tr-TR').replace(/\s+/g, ' ').trim();
+        const target = normalize(mukellefAd);
+        let found: { id: string } | null = null;
+        // 1. Tam eşleşme
+        for (const c of candidates) {
+          const name = c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+          if (!name) continue;
+          if (normalize(name) === target) { found = c; break; }
+        }
+        // 2. İçerik karşılaştırması (iki yönlü)
+        if (!found) {
+          for (const c of candidates) {
+            const name = c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+            if (!name) continue;
+            const n = normalize(name);
+            if (n.includes(target) || target.includes(n)) { found = c; break; }
+          }
+        }
+        // 3. İlk kelime eşleşmesi (son çare)
+        if (!found) {
+          const firstWord = target.split(' ')[0];
+          if (firstWord && firstWord.length >= 4) {
+            for (const c of candidates) {
+              const name = c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+              if (!name) continue;
+              const n = normalize(name);
+              if (n.startsWith(firstWord + ' ') || n === firstWord) { found = c; break; }
+            }
+          }
+        }
+        if (found) input.mukellefId = found.id;
       } catch {}
     }
 
@@ -457,6 +483,26 @@ export class AgentEventsService {
         profilEksik: true,
         mukellef: input.mukellef,
         mukellefId: input.mukellefId,
+      };
+    }
+
+    // === ZORUNLU META KONTROLÜ ===
+    // Agent tarih/belge türü okuyamadıysa fatura işleme — tutarsız karar vermesin.
+    // Kullanıcı bu alanları canlı akışta ✗ görüyorsa sebep burada.
+    const faturaTarihi = (input.faturaTarihi || '').trim();
+    const belgeTuru = (input.belgeTuru || '').trim();
+    if (!faturaTarihi || faturaTarihi === '?' || faturaTarihi === '??') {
+      return {
+        karar: 'atla',
+        sebep: '⚠️ Fatura tarihi okunamadı — agent meta eksik, fatura atlandı',
+        metaEksik: 'tarih',
+      };
+    }
+    if (!belgeTuru || belgeTuru === '?' || belgeTuru === '??') {
+      return {
+        karar: 'atla',
+        sebep: '⚠️ Belge türü okunamadı — agent meta eksik, fatura atlandı',
+        metaEksik: 'belgeTuru',
       };
     }
 
@@ -540,6 +586,14 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 
 === KESİN ATLA LİSTESİ (yalnızca bu 6 durumda atla) ===
 
+⚠️ **KRİTİK — YANILTICI E-FATURA ALANLARI:**
+E-fatura belgesinde şu alanlar KARŞI FİRMANIN bakış açısındadır, bunları bizim ekran alanlarımızla karıştırma:
+  • "Fatura Tipi: SATIŞ" — satıcı açısından yazılır. Biz alış yapıyorsak NORMAL, atlama sebebi DEĞİL.
+  • "Senaryo: TICARIFATURA / TEMELFATURA" — e-fatura standardı, yön bilgisi değil.
+  • "ETTN: xxx-xxx-xxx" — Elektronik Tebligat Tebliğ No, BELGE NO DEĞİL.
+  • "UBL-TR 1.2" / "TR x.y" — XML versiyon, BELGE NO DEĞİL.
+Belge no olarak SADECE faturanın başındaki "Fatura No: XXX" veya "Belge No: XXX" alanına bak.
+
 [A] TARİH FARKLI: MIHSAP ekranındaki tarih (${input.faturaTarihi || '?'}) ile fatura görüntüsündeki tarih AYNI GÜN DEĞİL.
     → Gün/ay/yıl üçünden biri farklıysa atla. Okuyamazsan bu kontrolü GEÇ (atlama).
 
@@ -550,8 +604,9 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
     → Kısaltma/uzun ad/unvan farkı (LTD ŞTİ vs LİMİTED ŞİRKETİ) önemsiz — ONAY.
     → Bariz farklı şirket isimleriyse atla.
 
-[D] BELGE NO FARKLI: Ekrandaki belge no (${input.belgeNo || '?'}) ile fatura üzerindeki no FARKLI.
-    → Farklıysa atla. Okuyamazsan bu kontrolü GEÇ.
+[D] BELGE NO FARKLI: Ekrandaki belge no (${input.belgeNo || '?'}) ile fatura üzerindeki gerçek "Fatura No" FARKLI.
+    → Farklıysa atla. ETTN / UBL / Senaryo alanları belge no DEĞİL — onlara bakma.
+    → Okuyamazsan bu kontrolü GEÇ.
 
 [E] AÇIK DEMİRBAŞ/ARAÇ/İADE SATIŞI:
     Fatura satırının TAMAMINI bir cümle olarak oku. Cümlede şu kelimelerden BİRİ geçiyorsa ONAY (atlamadan geç):
