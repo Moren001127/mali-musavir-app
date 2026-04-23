@@ -1,0 +1,17 @@
+{
+  "name": "moren-hgs-agent",
+  "version": "1.0.0",
+  "description": "HGS İhlal Sorgu Agent - Portal komutlarını claim edip KGM sitesinde otomatik sorgu yapar",
+  "main": "hgs-agent.js",
+  "scripts": {
+    "start": "node hgs-agent.js",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright-core": "^1.47.2",
+    "playwright": "^1.47.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

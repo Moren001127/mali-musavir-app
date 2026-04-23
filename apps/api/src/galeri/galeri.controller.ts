@@ -2,7 +2,6 @@ import {
   Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { Response } from 'express';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { GaleriService } from './galeri.service';
 import { PdfRaporService } from './pdf-rapor.service';

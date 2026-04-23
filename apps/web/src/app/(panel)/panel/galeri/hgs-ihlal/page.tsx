@@ -47,7 +47,7 @@ export default function HgsIhlalPage() {
     refetchInterval: 15000,
   });
 
-  // Toplu sorgu başlatma mutation
+  // Toplu sorgu başlatma mutation — AgentCommand tablosuna komut yazar
   const topluSorguMut = useMutation({
     mutationFn: () => galeriApi.baslatTopluSorgu({ sadeceAktif: true }),
     onSuccess: (data) => {
@@ -156,8 +156,8 @@ export default function HgsIhlalPage() {
               {agentInfo?.aktifKomut
                 ? <>Çalışıyor — <b>{agentInfo.aktifKomut.status === 'running' ? 'işleme alındı' : 'kuyrukta'}</b></>
                 : agentInfo?.sonKomut
-                  ? <>Son sorgu: <b>{fmtTarih(agentInfo.sonKomut.finishedAt || agentInfo.sonKomut.createdAt)}</b> · Her Pazartesi 08:00 otomatik çalışır</>
-                  : 'Her Pazartesi 08:00 otomatik çalışır — manuel başlatabilirsin'}
+                  ? <>Son sorgu: <b>{fmtTarih(agentInfo.sonKomut.finishedAt || agentInfo.sonKomut.createdAt)}</b></>
+                  : 'Manuel başlatabilirsin'}
             </div>
           </div>
         </div>
@@ -173,15 +173,16 @@ export default function HgsIhlalPage() {
               ? <><Clock size={14} /> Çalışıyor...</>
               : <><PlayCircle size={14} /> Toplu Sorgu Başlat</>}
         </button>
-        <a
-          href={galeriApi.pdfRaporUrl()}
-          target="_blank"
-          rel="noopener"
+        <button
+          onClick={() => {
+            galeriApi.acPdfRapor({ sadeceIhlalli: false })
+              .catch((err) => toast.error(err?.message || 'PDF açılamadı'));
+          }}
           className="inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
           style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.85)' }}
         >
           <FileText size={14} /> PDF Rapor
-        </a>
+        </button>
       </div>
 
       {/* ARAMA */}

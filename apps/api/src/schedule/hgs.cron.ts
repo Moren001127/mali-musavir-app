@@ -24,8 +24,9 @@ export class HgsCron {
     private galeri: GaleriService,
   ) {}
 
-  // Her Pazartesi 08:00 TR (UTC+3 → 05:00 UTC)
-  @Cron('0 5 * * 1')
+  // NOT: Otomatik Pazartesi cron'u kullanıcı isteğiyle DEVRE DIŞI.
+  // İleride etkinleştirmek için @Cron('0 5 * * 1') satırını geri aç.
+  // Cron('0 5 * * 1')
   async pazartesiTopluSorgu() {
     try {
       // Tüm tenant'ları al (aktif kullanıcısı olanlar)
