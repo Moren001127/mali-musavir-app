@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Post,
   Delete,
   Param,
   Query,
@@ -26,6 +27,25 @@ export class VendorMemoryController {
     if (!tenantId) throw new BadRequestException('tenantId yok');
     const lim = limit ? Math.min(1000, Math.max(1, parseInt(limit, 10))) : 200;
     return this.service.listVendorMemory(tenantId, { search, limit: lim });
+  }
+
+  /**
+   * BACKFILL — tum "(ortak)" VendorMemoryDecision kayitlarini,
+   * AgentEvent tablosundaki gecmis islemlere bakarak mukelleflere bagla.
+   * Bir kerelik bakim islemi — butona basilir, sonra raporu doner.
+   */
+  @Post('backfill-mukellef')
+  async backfill(@Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    const result = await this.service.backfillMukellefIds(tenantId);
+    return {
+      ok: true,
+      mesaj: `${result.eslesti} karar mukellefe baglandi. ` +
+        `${result.eslesmeyenFirmalar} firmada AgentEvent bulunamadi, ` +
+        `${result.mukellefBulunamayan} firmada Taxpayer tablosunda eslesme yok.`,
+      ...result,
+    };
   }
 
   /** Tek firma detayi — tum kategorilerin dokumu */

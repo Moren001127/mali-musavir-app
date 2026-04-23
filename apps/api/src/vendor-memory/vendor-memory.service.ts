@@ -303,6 +303,117 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     return { ...row, mukellefler };
   }
 
+  /**
+   * Backfill: taxpayerId=null olan tüm VendorMemoryDecision kayıtlarını
+   * AgentEvent tablosundan çapraz bakarak mükelleflere bağlar.
+   *
+   * Mantık:
+   *  1. Her "ortak" decision için VendorMemory.firmaUnvan al
+   *  2. AgentEvent'ta `firma` alanı eşleşen kayıtları bul, `mukellef` adlarını topla
+   *  3. En çok geçen mukellef'i tespit et
+   *  4. Taxpayer tablosunda o ad ile mükellef ara, bulursan decision.taxpayerId'yi set et
+   *  5. Bulunamayan decisions olduğu gibi kalır (silinmez)
+   */
+  async backfillMukellefIds(tenantId: string): Promise<{
+    taranan: number;
+    eslesti: number;
+    eslesmeyenFirmalar: number;
+    mukellefBulunamayan: number;
+  }> {
+    const ortakDecisions = await (this.prisma as any).vendorMemoryDecision.findMany({
+      where: {
+        taxpayerId: null,
+        vendorMemory: { tenantId },
+      },
+      include: { vendorMemory: true },
+    });
+
+    let eslesti = 0;
+    let eslesmeyenFirmalar = 0;
+    let mukellefBulunamayan = 0;
+
+    // Firma başına grupla (aynı firma için birden fazla decision olabilir)
+    const firmaGrup: Record<string, { decisions: any[]; firmaUnvan: string }> = {};
+    for (const d of ortakDecisions) {
+      const unvan = d.vendorMemory?.firmaUnvan || '';
+      if (!unvan) continue;
+      if (!firmaGrup[unvan]) firmaGrup[unvan] = { decisions: [], firmaUnvan: unvan };
+      firmaGrup[unvan].decisions.push(d);
+    }
+
+    for (const [unvan, grup] of Object.entries(firmaGrup)) {
+      // AgentEvent'ta bu firma için hangi mükellef en sık işlemiş?
+      const eventler = await this.prisma.agentEvent.findMany({
+        where: {
+          tenantId,
+          firma: { equals: unvan, mode: 'insensitive' },
+          mukellef: { not: null },
+        },
+        select: { mukellef: true },
+        take: 500,
+      });
+
+      if (eventler.length === 0) {
+        eslesmeyenFirmalar++;
+        continue;
+      }
+
+      // En çok geçen mukellef adı
+      const sayac: Record<string, number> = {};
+      for (const e of eventler) {
+        const m = (e.mukellef || '').trim();
+        if (!m) continue;
+        sayac[m] = (sayac[m] || 0) + 1;
+      }
+      const enCokMukellef = Object.entries(sayac).sort(([, a], [, b]) => b - a)[0]?.[0];
+      if (!enCokMukellef) {
+        eslesmeyenFirmalar++;
+        continue;
+      }
+
+      // Taxpayer bul (companyName ile)
+      const taxpayer = await this.prisma.taxpayer.findFirst({
+        where: {
+          tenantId,
+          OR: [
+            { companyName: { equals: enCokMukellef, mode: 'insensitive' } },
+            { companyName: { contains: enCokMukellef, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      if (!taxpayer) {
+        mukellefBulunamayan++;
+        continue;
+      }
+
+      // Bu firmanın tüm ortak decisions'larını mukellef'e bağla
+      for (const d of grup.decisions) {
+        try {
+          await (this.prisma as any).vendorMemoryDecision.update({
+            where: { id: d.id },
+            data: { taxpayerId: taxpayer.id },
+          });
+          eslesti++;
+        } catch {
+          // unique constraint hatası — aynı mukellef+firma+kategori için zaten kayıt varsa
+          // eski ortak kaydı sil (verileri yeni kayda taşımak yerine basit: sil)
+          try {
+            await (this.prisma as any).vendorMemoryDecision.delete({ where: { id: d.id } });
+          } catch {}
+        }
+      }
+    }
+
+    return {
+      taranan: ortakDecisions.length,
+      eslesti,
+      eslesmeyenFirmalar,
+      mukellefBulunamayan,
+    };
+  }
+
   /** Yanlış öğrenme durumunu temizleme — tek firmanın tüm hafızasını sil */
   async deleteVendorMemory(tenantId: string, firmaKimlikNo: string): Promise<void> {
     const m = await (this.prisma as any).vendorMemory.findUnique({

@@ -64,4 +64,15 @@ export const vendorMemoryApi = {
     api.get<VendorMemoryDetail>(`/vendor-memory/${encodeURIComponent(firmaKimlikNo)}`).then((r) => r.data),
   remove: (firmaKimlikNo: string) =>
     api.delete(`/vendor-memory/${encodeURIComponent(firmaKimlikNo)}`).then((r) => r.data),
+
+  /** Backfill: tüm "(ortak)" kayıtları geçmiş AgentEvent'lerden mükelleflere bağla */
+  backfillMukellef: () =>
+    api.post<{
+      ok: boolean;
+      mesaj: string;
+      taranan: number;
+      eslesti: number;
+      eslesmeyenFirmalar: number;
+      mukellefBulunamayan: number;
+    }>('/vendor-memory/backfill-mukellef').then((r) => r.data),
 };

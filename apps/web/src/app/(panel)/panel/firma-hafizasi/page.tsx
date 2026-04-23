@@ -8,7 +8,8 @@ import {
   VendorMukellefOzet,
   VendorMukellefDetay,
 } from '@/lib/vendor-memory';
-import { Brain, Search, Trash2, X, Users } from 'lucide-react';
+import { Brain, Search, Trash2, X, Users, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function FirmaHafizasiPage() {
   const qc = useQueryClient();
@@ -31,6 +32,17 @@ export default function FirmaHafizasiPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vendor-memory'] });
       setSelectedVkn(null);
+    },
+  });
+
+  const backfillMut = useMutation({
+    mutationFn: () => vendorMemoryApi.backfillMukellef(),
+    onSuccess: (data: any) => {
+      toast.success(data?.mesaj || 'Toplu bağlama tamamlandı');
+      qc.invalidateQueries({ queryKey: ['vendor-memory'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Backfill hatası');
     },
   });
 
@@ -72,6 +84,18 @@ export default function FirmaHafizasiPage() {
             AI her mükellefin firma için geçmiş kararlarını ayrı öğrenir. Sapma olursa onay kuyruğuna düşer.
           </p>
         </div>
+        <button
+          onClick={() => {
+            if (confirm('Tüm "(ortak — mükellef atanmamış)" kayıtları, geçmiş işlem verilerine bakılarak mükelleflere bağlanacak. Devam edilsin mi?')) {
+              backfillMut.mutate();
+            }
+          }}
+          disabled={backfillMut.isPending}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          <RefreshCw size={14} className={backfillMut.isPending ? 'animate-spin' : ''} />
+          {backfillMut.isPending ? 'Bağlanıyor...' : 'Eski kayıtları mükelleflere bağla'}
+        </button>
       </div>
 
       {/* Arama */}
