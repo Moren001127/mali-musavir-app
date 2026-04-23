@@ -79,15 +79,24 @@ export const galeriApi = {
   komutKuyrugu: () =>
     api.get<any[]>('/galeri/komut-kuyrugu').then((r) => r.data),
 
-  // ── PDF Rapor (Selim Motors logolu) ──
-  pdfRaporUrl: (): string => {
-    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
-    return `${base}/galeri/pdf-rapor`;
-  },
-
-  pdfRaporAracUrl: (aracId: string, sorguId?: string): string => {
-    const base = (api.defaults.baseURL || '').replace(/\/$/, '');
-    const q = sorguId ? `?sorguId=${encodeURIComponent(sorguId)}` : '';
-    return `${base}/galeri/araclar/${aracId}/pdf-rapor${q}`;
+  // ── PDF Rapor (Selim Motors logolu, print-optimize HTML) ──
+  /**
+   * PDF rapor HTML'ini JWT auth ile çeker, yeni pencerede açar.
+   * Kullanıcı pencerede Ctrl+P → PDF Kaydet ile arşivler.
+   */
+  acPdfRapor: async (opts: { sadeceIhlalli?: boolean } = {}) => {
+    const params = opts.sadeceIhlalli ? { sadeceIhlalli: 'true' } : {};
+    const res = await api.get<string>('/galeri/pdf-rapor', {
+      params,
+      responseType: 'text',
+    });
+    const blob = new Blob([res.data], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    // Blob URL'ini 60 saniye sonra revoke et (pencere zaten yüklemiş olacak)
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (!win) {
+      throw new Error('Popup engellenmiş olabilir — tarayıcı ayarlarını kontrol edin');
+    }
   },
 };

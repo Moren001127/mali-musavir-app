@@ -1,14 +1,19 @@
 import {
-  Controller, Get, Post, Put, Delete, Body, Param, Query, Req, UseGuards,
+  Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Response } from 'express';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { GaleriService } from './galeri.service';
+import { PdfRaporService } from './pdf-rapor.service';
 
 @Controller('galeri')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 export class GaleriController {
-  constructor(private svc: GaleriService) {}
+  constructor(
+    private svc: GaleriService,
+    private pdfSvc: PdfRaporService,
+  ) {}
 
   // ── ARAÇLAR ───────────────────────────────────────
   @Get('araclar')
@@ -77,5 +82,22 @@ export class GaleriController {
   @Get('komut-kuyrugu')
   komutKuyrugu(@Req() req: any) {
     return this.svc.komutKuyrugu(req.user.tenantId);
+  }
+
+  // ── PDF RAPOR (Selim Motors logolu, print-optimize HTML) ──
+  /**
+   * Browser'da açılır, "Ctrl+P → PDF olarak kaydet" ile arşivlenir.
+   * Plaka gruplu tablo + her plakanın alt toplamı + genel toplam.
+   */
+  @Get('pdf-rapor')
+  async pdfRapor(
+    @Req() req: any,
+    @Res() res: Response,
+    @Query('sadeceIhlalli') sadeceIhlalli?: string,
+  ) {
+    const html = await this.pdfSvc.topluRaporHtml(req.user.tenantId, {
+      sadeceIhlalli: sadeceIhlalli === 'true',
+    });
+    res.type('html').send(html);
   }
 }
