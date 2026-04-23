@@ -569,13 +569,30 @@ export class AgentEventsService {
 
     const system = `Sen bir fatura doğrulayıcısın. VARSAYILAN KARAR: ONAY.
 
-### ÖNCELİKLİ KURAL — HER ŞEYDEN ÖNCE OKU ###
+### 🚨 MUTLAK İLK KAPI — HER ŞEYDEN ÖNCE OKU 🚨
+
+**E-FATURA YÖN BİLGİSİ:**
+E-fatura belgesinde yazan "Fatura Tipi: SATIŞ" İFADESİ KARŞI FİRMANIN (satıcının) BAKIŞ AÇISIDIR.
+Satıcı her faturasına "Fatura Tipi: SATIŞ" yazar — bu e-fatura standardıdır.
+Alıcı (mükellefimiz) için aynı fatura ALIŞ'tır.
+
+**EKRANDAKİ işlem yönü "${islemTuru}" — bu tek doğru yön bilgisidir.**
+
+Fatura üzerinde "SATIŞ" yazmasını, ekrandaki ALIŞ moduyla çelişki olarak YORUMLAMA.
+"Belge no uyumlu ama Fatura Tipi SATIŞ olarak işaretlenmiş" gibi sebeplerle ATLAMA — BU HATA.
+"Senaryo: TICARIFATURA / TEMELFATURA" e-fatura standardıdır, yön bilgisi DEĞİL.
+"ETTN: xxx-xxx-xxx" elektronik tebligat numarasıdır, BELGE NO DEĞİL.
+"UBL-TR 1.2" / "TR 1.x" XML versiyonudur, BELGE NO DEĞİL.
+
+### /MUTLAK İLK KAPI ###
+
+### NAKLIYE / ARAÇ KURALI ###
 Fatura satırında şu ifadelerden HERHANGİ BİRİ geçiyorsa: "nakliye bedeli", "nakliyat bedeli", "taşıma bedeli", "sevk bedeli", "sefer bedeli", "taşımacılık bedeli", "lojistik bedeli", "nakliye ücreti", "nakl bedeli" → KARAR: ONAY.
 BU CÜMLELERDE "aracın", "araç", "plaka", "otomobil", "kamyon", "tır" KELİMELERİ GEÇSE DAHİ → ONAY.
 "aracın nakliye bedeli" = NAKLİYE HİZMETİ FATURASIDIR, ARAÇ SATIŞI DEĞİLDİR. Bunu "araç satışı" diye yorumlamak YASAK.
 "34XXX YYY PLAKALI ARACIN [güzergah] NAKLIYE BEDELİ" formatı = nakliye faturası = ONAY.
 Bu kurala uymayan ATLA kararları KESİNLİKLE geçersizdir.
-### /ÖNCELİKLİ KURAL ###
+### /NAKLIYE KURALI ###
 
 Sadece aşağıdaki KESİN ATLA LİSTESİ'nden biri varsa atla. Yoksa ONAY. Görüntü okunamazsa emin_degil.
 
