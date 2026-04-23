@@ -760,36 +760,42 @@ Yukarıdaki talimatta "araç satışı" geçiyor. Bunu UYGULAMAK için şu ŞART
 Cümlede "nakliye/taşıma/sevk/lojistik/sefer" kelimesi geçiyorsa, içerikte plaka veya "araç" kelimesi de olsa DAHİ → ONAY.
 ` : ''}
 ${
-  // Sadece Bilanço SATIŞ modunda ve boş alan seçeneği verildiyse öneri bölümünü ekle
-  input.action === 'isle_satis' && input.bosAlanSecenekleri &&
+  // Hem ALIŞ hem SATIŞ modunda — boş alan seçeneği verildiyse öneri bölümünü ekle
+  ['isle_satis', 'isle_alis', 'isle_satis_isletme', 'isle_alis_isletme'].includes(input.action || '') && input.bosAlanSecenekleri &&
   ((input.bosAlanSecenekleri.matrahKodlari?.length || 0) +
    (input.bosAlanSecenekleri.kdvKodlari?.length || 0) +
    (input.bosAlanSecenekleri.cariKodlari?.length || 0)) > 0
   ? `
-=== HESAP KODU ÖNERİSİ — BİLANÇO SATIŞ ===
+=== HESAP KODU ÖNERİSİ — ${islemTuru} ===
 Runner bu faturada BOŞ alan tespit etti. Dropdown'daki mevcut seçeneklerden doğru kodu sen seçeceksin.
 Mevcut seçenekler aşağıda. HER ALAN İÇİN tam olarak bu listelerden BİRİNİ seç — listenin dışından kod ÜRETME.
 
-A) MATRAH HESABI (faturanın KDV'siz bedeli hangi satış hesabına yazılacak):
+A) MATRAH HESABI (faturanın KDV'siz bedeli hangi ${islemTuru === 'SATIŞ' ? 'satış' : 'alış/gider'} hesabına yazılacak):
    Seçenekler: ${input.bosAlanSecenekleri.matrahKodlari?.join(', ') || '(runner listelemedi — önerme)'}
-   Kural:
+   ${islemTuru === 'SATIŞ' ? `SATIŞ kuralı:
      • 600.xx → Yurtiçi Mal/Hizmet Satışı (en yaygın)
      • 601.xx → Yurtdışı Satış (İHRACAT faturalarında)
-     • 602.xx → Diğer Satışlar
-   Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA bak ve bu gruplara en uygun alt kodu seç.
-   Eğer mükellefin sadece 1 yurtiçi satış kodu varsa (örn sadece "600.01.001") → onu seç.
-   Birden fazla alt kod varsa (örn "600.01.001 Mamul Satışı", "600.01.005 Hizmet Satışı") → fatura içeriğine göre ayırt et.
+     • 602.xx → Diğer Satışlar` : `ALIŞ kuralı — fatura içeriğine göre seç:
+     • 153.xx → Ticari Mal Alışı (mükellefin satış konusuyla aynı ürün)
+     • 150.xx → İlk Madde/Malzeme (üretimde kullanılacak hammadde)
+     • 253.xx / 254.xx / 255.xx → Sabit Kıymet (bilgisayar, araç, makine, demirbaş)
+     • 740.xx → Hizmet Üretim Maliyeti (mükellefin işinin maliyeti — ör. nakliyecinin yakıtı)
+     • 760.xx → Pazarlama/Satış/Dağıtım Gideri (reklam, kargo, tanıtım)
+     • 770.xx → Genel Yönetim Gideri (ofis, elektrik, kira, muhasebe, internet)`}
+   Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA + mükellef sektörüne bak ve en uygun kodu seç.
+   Eğer mükellefin sadece 1 uygun kodu varsa → onu seç.
 
-B) KDV HESABI (hesaplanan KDV hangi koda yazılacak):
+B) KDV HESABI:
    Seçenekler: ${input.bosAlanSecenekleri.kdvKodlari?.join(', ') || '(runner listelemedi — önerme)'}
-   Kural: Satış tarafında KDV hep 391 grubunda olur (Hesaplanan KDV). Listede birden fazla 391.xx varsa,
-          genellikle MATRAH seçtiğin kodla AYNI alt gruplama mantığı (örn 600.01.005 → 391.01.006).
-          Tam eşleşme yoksa 391 grubundaki en düşük numaralıyı seç.
+   ${islemTuru === 'SATIŞ' ? `Kural: Satışta KDV hep 391 grubunda (Hesaplanan KDV).`
+    : `Kural: Alışta KDV hep 191 grubunda (İndirilecek KDV).`}
+   Listede birden fazla alt kod varsa, MATRAH seçtiğin kodla AYNI alt gruplama mantığı önceliklidir.
 
-C) CARİ HESAP (alıcı firma hangi cari kodu):
+C) CARİ HESAP:
    Seçenekler: ${input.bosAlanSecenekleri.cariKodlari?.join(', ') || '(runner listelemedi — önerme)'}
-   Kural: Alıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir.
-   Cari kod listesinde alıcı firma YOKSA → cari için null dön (yeni cari açılması gerekir, runner atlayacak).
+   ${islemTuru === 'SATIŞ' ? `Kural: Alıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 120.xx grubundadır.`
+    : `Kural: Satıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 320.xx grubundadır.`}
+   Cari kod listesinde firma YOKSA → cari için null dön (yeni cari açılması gerekir; agent atlar, kullanıcı elle açsın).
 
 ÇIKTI: JSON response'una "onerilenler" objesi ekle (AŞAĞIDAKİ JSON ŞEMASINA BAK).
        Emin olmadığın alanı null bırak. Yanlış tahmin etme — null daha güvenli.
