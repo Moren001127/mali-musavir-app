@@ -637,10 +637,30 @@ C) CARİ HESAP (alıcı firma hangi cari kodu):
 ` : ''
 }
 
+=== SEBEP YAZIM KURALI (ÇOK ÖNEMLİ) ===
+İşlem yönü "${islemTuru}" — MÜKELLEF AÇISINDAN yazarken:
+• ALIŞ ise: "mal alışı", "hizmet alışı", "gider kaydı", "tedarik" gibi terim kullan.
+• SATIŞ ise: "mal satışı", "hizmet satışı", "gelir kaydı" gibi terim kullan.
+• Karşı firmanın bakış açısını YAZMA. Mükellef ALIŞ yaparken "mal satışı geçerli" DEME, "mal alışı geçerli" de.
+• "fatura geçerli" tarzı nötr ifadeler de olabilir.
+
+=== STRUCTURED ALAN ÇIKARIMI ===
+Fatura görüntüsünden şu alanları da çıkarıp JSON'a ekle (okunamazsa null):
+• tarih: "DD.MM.YYYY" veya "DD-MM-YYYY" formatında
+• belgeNo: fatura üzerindeki belge/fiş/ETTN numarası
+• cari: fatura üzerindeki karşı tarafın tam ünvanı
+• belgeTuru: "E_FATURA" | "E_ARSIV" | "FIS" | "IRSALIYE" (görüntüden tespit ettiğin)
+• kdvOrani: "0" | "1" | "10" | "20" (ana KDV oranı, birden fazla varsa dominant olan)
+
 Sadece JSON döndür: {
   "karar": "onay|atla|emin_degil",
-  "sebep": "80 karakter",
-  "ocrOzet": "1 satır"${
+  "sebep": "mükellef açısından 80 karakter",
+  "ocrOzet": "1 satır",
+  "tarih": "18.03.2026" | null,
+  "belgeNo": "TEE2026000000384" | null,
+  "cari": "Karşı Firma Tam Ünvanı" | null,
+  "belgeTuru": "E_FATURA|E_ARSIV|FIS|IRSALIYE" | null,
+  "kdvOrani": "20" | null${
     input.action === 'isle_satis' && input.bosAlanSecenekleri
       ? `,
   "onerilenler": {
@@ -1000,9 +1020,22 @@ Fatura içeriği → alt tür (birebir eşleşme olmalı):
 
 ${mukellefTalimat ? `### MÜKELLEF ÖZEL TALİMATI ###\n${mukellefTalimat}\n` : ''}
 
+### STRUCTURED ALAN ÇIKARIMI ###
+Fatura görüntüsünden şu alanları çıkarıp JSON'a da ekle (okunamazsa null):
+• tarih: "DD.MM.YYYY" formatında
+• belgeNo: fatura/fiş numarası
+• cari: fatura üzerindeki karşı firma tam ünvanı
+• belgeTuru: "E_FATURA" | "E_ARSIV" | "FIS" | "IRSALIYE"
+• kdvOrani: "0" | "1" | "10" | "20"
+
+### SEBEP YAZIM KURALI ###
+Sebep yazarken MÜKELLEF AÇISINDAN yaz (işlem yönü "${islemTuru}"):
+• ALIŞ ise "gider/alış" terimleri kullan, karşı firmanın "satış" ifadesini YAZMA.
+• SATIŞ ise "gelir/satış" terimleri kullan.
+
 ### ÇIKTI ###
-Sadece JSON: {"emin":true,"kayitTuru":"<liste değeri>","altTuru":"<liste değeri>","sebep":"60 karakter"}
-veya: {"emin":false,"sebep":"60 karakter"}`;
+Sadece JSON: {"emin":true,"kayitTuru":"<liste değeri>","altTuru":"<liste değeri>","sebep":"60 karakter","tarih":"DD.MM.YYYY"|null,"belgeNo":"..."|null,"cari":"..."|null,"belgeTuru":"..."|null,"kdvOrani":"..."|null}
+veya: {"emin":false,"sebep":"60 karakter","tarih":null,"belgeNo":null,"cari":null,"belgeTuru":null,"kdvOrani":null}`;
 
     const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
 Belge no: ${input.belgeNo || '?'} | Tarih: ${input.faturaTarihi || '?'} | Tutar: ${input.tutar || '?'}
