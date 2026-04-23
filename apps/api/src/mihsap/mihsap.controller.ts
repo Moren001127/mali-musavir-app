@@ -161,6 +161,39 @@ export class MihsapController {
     return res.send(data.buffer);
   }
 
+  /**
+   * Toplu yazdırma — dönem + ALIS/SATIS için SADECE fatura (e-Fatura/e-Arşiv)
+   * belgelerini tek HTML sayfasında birleştirir. Fiş ve Z raporları HARİÇ.
+   * Frontend bu response'u yeni sekmede açar → sayfa otomatik window.print() tetikler.
+   */
+  @Get('invoices/toplu-yazdir')
+  @UseGuards(AuthGuard('jwt'))
+  async topluYazdir(
+    @Req() req: any,
+    @Res() res: any,
+    @Query('donem') donem: string,
+    @Query('faturaTuru') faturaTuru: 'ALIS' | 'SATIS',
+    @Query('mukellefId') mukellefId?: string,
+  ) {
+    if (!donem) throw new BadRequestException('donem gerekli (2026-03)');
+    if (faturaTuru !== 'ALIS' && faturaTuru !== 'SATIS') {
+      throw new BadRequestException('faturaTuru ALIS veya SATIS olmalı');
+    }
+    const { html, count, skipped } = await this.service.buildBulkPrintHtml({
+      tenantId: req.user.tenantId,
+      mukellefId,
+      donem,
+      faturaTuru,
+    });
+    res.set({
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Print-Count': String(count),
+      'X-Print-Skipped': String(skipped),
+    });
+    return res.send(html);
+  }
+
   /** Son çekme job'larını listele */
   @Get('jobs')
   @UseGuards(AuthGuard('jwt'))

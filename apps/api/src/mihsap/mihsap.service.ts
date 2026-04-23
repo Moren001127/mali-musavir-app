@@ -529,6 +529,244 @@ export class MihsapService {
     return null;
   }
 
+  // ==================== TOPLU YAZDIRMA ====================
+
+  /**
+   * Toplu fatura yazdırma — belirli bir dönem + ALIS/SATIS için SADECE fatura
+   * niteliğindeki belgeleri (e-Fatura, e-Arşiv) bir araya getirir, her JPEG'i
+   * MIHSAP CDN'den çeker, base64 inline edilmiş tek bir print-ready HTML üretir.
+   *
+   * **ÇOK ÖNEMLİ:** Fiş (FIS/OKC) ve Z Raporu gibi belge türleri HARİÇ tutulur.
+   * Whitelist yaklaşımı: sadece E_FATURA + E_ARSIV.
+   */
+  async buildBulkPrintHtml(params: {
+    tenantId: string;
+    mukellefId?: string;
+    donem: string;             // "2026-03"
+    faturaTuru: 'ALIS' | 'SATIS';
+  }): Promise<{ html: string; count: number; skipped: number }> {
+    const { tenantId, mukellefId, donem, faturaTuru } = params;
+
+    // Mihsap belgeTuru değerleri: E_FATURA, E_ARSIV, FIS, IRSALIYE, Z_RAPORU
+    // Yazdırmaya sadece e-Fatura + e-Arşiv dahil.
+    const FATURA_WHITELIST = [
+      'E_FATURA', 'E_ARSIV', 'EFATURA', 'E-FATURA', 'E-ARSIV',
+      'e_fatura', 'e_arsiv',
+    ];
+
+    const where: any = {
+      tenantId,
+      donem,
+      faturaTuru,
+      belgeTuru: { in: FATURA_WHITELIST },
+    };
+    if (mukellefId) where.mukellefId = mukellefId;
+
+    const invoices = await (this.prisma as any).mihsapInvoice.findMany({
+      where,
+      orderBy: [{ faturaTarihi: 'asc' }, { faturaNo: 'asc' }],
+      take: 5000,
+    });
+
+    // Ek güvenlik filtresi (string case farklılıkları + raw kontrolü)
+    const filtered = invoices.filter((inv: any) => {
+      const bt = String(inv.belgeTuru || '').toUpperCase();
+      if (bt.includes('FIS') || bt.includes('FIŞ')) return false;
+      if (bt.includes('Z_RAPOR') || bt.includes('ZRAPOR')) return false;
+      if (bt.includes('IRSALIYE') || bt.includes('İRSALİYE')) return false;
+      if (bt.includes('OKC')) return false;
+      return true;
+    });
+
+    const skipped = invoices.length - filtered.length;
+
+    if (filtered.length === 0) {
+      return {
+        html: this.renderBulkPrintEmpty(donem, faturaTuru),
+        count: 0,
+        skipped,
+      };
+    }
+
+    // MIHSAP token'ı (bazı CDN path'leri auth ister)
+    let mihsapToken: string | null = null;
+    try {
+      mihsapToken = await this.getToken(tenantId);
+    } catch {
+      /* ignore */
+    }
+
+    // Paralel çek — 8'li batch (CDN rate limit'i yorma)
+    type ImgRec = {
+      inv: any;
+      base64: string | null;
+      mime: string;
+      error?: string;
+    };
+    const results: ImgRec[] = [];
+    const BATCH = 8;
+    for (let i = 0; i < filtered.length; i += BATCH) {
+      const chunk = filtered.slice(i, i + BATCH);
+      const settled = await Promise.allSettled(
+        chunk.map((inv: any) => this.fetchMihsapFileAsBase64(inv, mihsapToken)),
+      );
+      settled.forEach((r, idx) => {
+        if (r.status === 'fulfilled') {
+          results.push({ inv: chunk[idx], ...r.value });
+        } else {
+          results.push({
+            inv: chunk[idx],
+            base64: null,
+            mime: '',
+            error: String(r.reason?.message || r.reason || 'indirme hatası'),
+          });
+        }
+      });
+    }
+
+    const html = this.renderBulkPrintHtml(donem, faturaTuru, results);
+    return { html, count: results.filter((r) => r.base64).length, skipped };
+  }
+
+  private async fetchMihsapFileAsBase64(
+    inv: any,
+    mihsapToken: string | null,
+  ): Promise<{ base64: string; mime: string }> {
+    if (!inv.mihsapFileLink) throw new Error('mihsapFileLink boş');
+    const url = inv.mihsapFileLink.startsWith('http')
+      ? inv.mihsapFileLink
+      : `${MIHSAP_BASE}${inv.mihsapFileLink.startsWith('/') ? '' : '/'}${inv.mihsapFileLink}`;
+
+    const baseHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      Referer: `${MIHSAP_BASE}/`,
+      Origin: MIHSAP_BASE,
+    };
+    let res = await fetch(url, { headers: baseHeaders });
+    if (!res.ok && mihsapToken) {
+      res = await fetch(url, {
+        headers: {
+          ...baseHeaders,
+          Authorization: `Bearer ${mihsapToken}`,
+          Cookie: `jwt=${mihsapToken}; Auth=${mihsapToken}`,
+        },
+      });
+    }
+    if (!res.ok) throw new Error(`CDN ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const mime =
+      res.headers.get('content-type') ||
+      this.guessContentType(inv.orjDosyaTuru || url) ||
+      'image/jpeg';
+    return { base64: buf.toString('base64'), mime };
+  }
+
+  private renderBulkPrintEmpty(donem: string, faturaTuru: 'ALIS' | 'SATIS'): string {
+    const tr = faturaTuru === 'ALIS' ? 'Alış' : 'Satış';
+    return `<!doctype html><meta charset="utf-8"><title>Toplu ${tr} · ${donem}</title>
+<body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#555">
+  <h1 style="color:#9c4656">Yazdırılacak ${tr} faturası bulunamadı</h1>
+  <p>Dönem <b>${donem}</b> için filtreye uyan (e-Fatura / e-Arşiv) belge yok.<br>
+  Fiş ve Z raporları toplu yazdırmaya dahil edilmez.</p>
+</body>`;
+  }
+
+  private renderBulkPrintHtml(
+    donem: string,
+    faturaTuru: 'ALIS' | 'SATIS',
+    items: Array<{ inv: any; base64: string | null; mime: string; error?: string }>,
+  ): string {
+    const tr = faturaTuru === 'ALIS' ? 'Alış' : 'Satış';
+    const esc = (s: any) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) =>
+      ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' } as any)[c],
+    );
+    const tarihFmt = (d: any) => {
+      try {
+        const dt = new Date(d);
+        return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}`;
+      } catch {
+        return String(d || '');
+      }
+    };
+    const pages = items.map((it, idx) => {
+      const inv = it.inv;
+      const meta = `<div class="hdr">
+  <span class="idx">#${idx + 1} / ${items.length}</span>
+  <span class="no">${esc(inv.faturaNo || '—')}</span>
+  <span class="firma">${esc(inv.firmaUnvan || '')}</span>
+  <span class="tarih">${tarihFmt(inv.faturaTarihi)}</span>
+  <span class="tutar">${Number(inv.toplamTutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺</span>
+</div>`;
+      if (!it.base64) {
+        return `<section class="page err">${meta}
+  <div class="missing">⚠ Bu fatura görseli indirilemedi: ${esc(it.error || '')}</div>
+</section>`;
+      }
+      const isPdf = it.mime.includes('pdf');
+      if (isPdf) {
+        return `<section class="page">${meta}
+  <iframe class="pdf" src="data:${it.mime};base64,${it.base64}"></iframe>
+</section>`;
+      }
+      return `<section class="page">${meta}
+  <img class="doc" src="data:${it.mime};base64,${it.base64}" alt="">
+</section>`;
+    }).join('\n');
+
+    return `<!doctype html>
+<html lang="tr"><head>
+<meta charset="utf-8">
+<title>Toplu ${tr} Faturaları · ${donem}</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#f5f4ef;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#2a2a2a}
+  .page{width:210mm;min-height:297mm;margin:8px auto;padding:8mm 8mm 10mm;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);page-break-after:always;break-after:page;display:flex;flex-direction:column}
+  .page.err{justify-content:center;align-items:center;text-align:center}
+  .hdr{display:flex;align-items:center;gap:10px;border-bottom:2px solid #9c4656;padding:2mm 0 3mm;margin-bottom:4mm;font-size:10pt;color:#555}
+  .hdr .idx{font-weight:600;color:#9c4656;min-width:60px}
+  .hdr .no{font-weight:700;color:#111;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .hdr .firma{flex:1;font-weight:600;color:#2a2a2a;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .hdr .tarih{font-family:ui-monospace,monospace}
+  .hdr .tutar{font-weight:700;color:#9c4656;font-variant-numeric:tabular-nums}
+  .doc{width:100%;max-height:270mm;object-fit:contain;display:block;margin:0 auto}
+  .pdf{width:100%;height:270mm;border:0}
+  .missing{color:#c43;font-size:14pt;padding:20mm;border:1px dashed #c43;border-radius:6px}
+  .toolbar{position:sticky;top:0;z-index:10;background:#1a1a1a;color:#fafaf9;padding:10px 16px;display:flex;align-items:center;gap:16px;border-bottom:1px solid #333}
+  .toolbar h1{margin:0;font-family:'Fraunces',serif;font-size:18px;font-weight:600;color:#c9a77c;letter-spacing:-.02em}
+  .toolbar .meta{color:#aaa;font-size:13px}
+  .toolbar button{margin-left:auto;padding:8px 16px;background:#9c4656;color:#fff;border:0;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer}
+  .toolbar button:hover{background:#b35565}
+  @media print{.toolbar{display:none!important}body{background:#fff}.page{margin:0;box-shadow:none;page-break-after:always}}
+  @page{size:A4;margin:8mm}
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>Toplu ${tr} Faturaları</h1>
+    <span class="meta">Dönem <b>${donem}</b> · ${items.filter(i=>i.base64).length}/${items.length} belge</span>
+    <button onclick="window.print()">🖨 Yazdır</button>
+  </div>
+  ${pages}
+  <script>
+    window.addEventListener('load', function(){
+      var imgs = document.querySelectorAll('img.doc');
+      var left = imgs.length;
+      var fire = function(){ setTimeout(function(){ window.print(); }, 400); };
+      if (left === 0) { fire(); return; }
+      imgs.forEach(function(im){
+        if (im.complete) { if (--left === 0) fire(); }
+        else {
+          im.addEventListener('load',  function(){ if (--left === 0) fire(); });
+          im.addEventListener('error', function(){ if (--left === 0) fire(); });
+        }
+      });
+    });
+  </script>
+</body></html>`;
+  }
+
   /** DEBUG — DB kayıt + ham MIHSAP payload'u. Hangi tarih alanı kabul tarihi
    *  onu anlamak için. */
   async getInvoiceRaw(tenantId: string, invoiceId: string) {

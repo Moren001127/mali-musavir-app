@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { agentsApi } from '@/lib/agents';
 import {
   Download, RefreshCw, FileText, Calendar, Users, CheckCircle2, XCircle,
-  Loader2, AlertCircle, Receipt, Search, ChevronDown, X,
+  Loader2, AlertCircle, Receipt, Search, ChevronDown, X, Printer,
 } from 'lucide-react';
 
 type Taxpayer = {
@@ -64,6 +64,7 @@ export default function FaturalarPage() {
     currentName: string;
     errors: string[];
   } | null>(null);
+  const [printing, setPrinting] = useState<'idle' | 'ALIS' | 'SATIS'>('idle');
 
   const ALL_SENTINEL = '__ALL__';
 
@@ -119,6 +120,100 @@ export default function FaturalarPage() {
       qc.invalidateQueries({ queryKey: ['mihsap-jobs'] });
     },
   });
+
+  // Toplu yazdırma — Sadece e-Fatura/e-Arşiv dahil; fiş ve Z raporları HARİÇ.
+  // Backend tarafı filtreyi uygular, biz sadece /toplu-yazdir endpoint'ini çağırıp
+  // gelen HTML'i yeni sekmede açarız. Yeni sekme kendi window.print()'i tetikler.
+  const handleBulkPrint = async (tip: 'ALIS' | 'SATIS') => {
+    if (!donem) return;
+    setPrinting(tip);
+    try {
+      const resp = await api.get('/agent/mihsap/invoices/toplu-yazdir', {
+        params: {
+          donem,
+          faturaTuru: tip,
+          ...(selectedMukellef && selectedMukellef !== ALL_SENTINEL
+            ? { mukellefId: selectedMukellef }
+            : {}),
+        },
+        responseType: 'text',
+        transformResponse: (d) => d,
+      });
+      const count = Number(resp.headers['x-print-count'] || 0);
+      const skipped = Number(resp.headers['x-print-skipped'] || 0);
+      if (count === 0) {
+        alert(
+          `Yazdırılacak ${tip === 'ALIS' ? 'alış' : 'satış'} faturası bulunamadı.\n` +
+            (skipped > 0 ? `(${skipped} fiş/Z raporu filtrelendi.)` : 'Bu dönem için e-Fatura / e-Arşiv yok.'),
+        );
+        setPrinting('idle');
+        return;
+      }
+      const blob = new Blob([resp.data], { type: 'text/html; charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank');
+      if (!w) {
+        alert('Popup engellendi. Tarayıcı çubuğundan bu sayfaya popup izni verin.');
+      }
+      // Bellek — 5 dk sonra revoke et (yeni sekme kendini zaten yükledi)
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    } catch (e: any) {
+      alert(`Yazdırma hazırlanamadı: ${e?.response?.data?.message || e?.message || 'hata'}`);
+    } finally {
+      setPrinting('idle');
+    }
+  };
+
+  // Tek fatura yazdır (fiş/Z raporu dahil — manuel istek, filtre yok)
+  const handleSinglePrint = async (invoiceId: string, faturaNo: string) => {
+    try {
+      const resp = await api.get(`/agent/mihsap/invoices/${invoiceId}/file`, {
+        responseType: 'blob',
+      });
+      const blobUrl = URL.createObjectURL(resp.data);
+      // Yeni sekmede aç + iframe sarmalayıcı ile otomatik print
+      const win = window.open('', '_blank');
+      if (!win) {
+        alert('Popup engellendi.');
+        return;
+      }
+      const isPdf = (resp.data as Blob).type.includes('pdf');
+      win.document.write(`<!doctype html><html lang="tr"><head>
+<meta charset="utf-8"><title>Yazdır · ${faturaNo.replace(/[<>&"]/g, '')}</title>
+<style>
+  html,body{margin:0;padding:0;background:#1a1a1a;color:#eee;font-family:system-ui,sans-serif;height:100%}
+  .tb{position:sticky;top:0;background:#1a1a1a;padding:8px 14px;border-bottom:1px solid #333;display:flex;align-items:center;gap:12px}
+  .tb h1{margin:0;font-size:14px;color:#c9a77c}
+  .tb button{margin-left:auto;padding:6px 14px;background:#9c4656;color:#fff;border:0;border-radius:4px;font-weight:600;cursor:pointer}
+  .frame{width:100%;height:calc(100vh - 42px);border:0;background:#fff}
+  img.frame{object-fit:contain;display:block;margin:0 auto;max-height:calc(100vh - 42px)}
+  @media print{.tb{display:none}.frame{height:auto;max-height:none}}
+  @page{size:A4;margin:8mm}
+</style></head>
+<body>
+<div class="tb"><h1>Fatura · ${faturaNo.replace(/[<>&"]/g, '')}</h1>
+<button onclick="window.print()">🖨 Yazdır</button></div>
+${isPdf
+  ? `<iframe class="frame" src="${blobUrl}"></iframe>`
+  : `<img class="frame" src="${blobUrl}" alt="">`}
+<script>
+  window.addEventListener('load', function(){
+    var el = document.querySelector('.frame');
+    if (el && el.tagName === 'IMG') {
+      if (el.complete) setTimeout(function(){ window.print(); }, 300);
+      else el.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 300); });
+    } else if (el) {
+      setTimeout(function(){ window.print(); }, 800);
+    }
+  });
+</script>
+</body></html>`);
+      win.document.close();
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5 * 60 * 1000);
+    } catch (e: any) {
+      alert(`Yazdırma açılamadı: ${e?.response?.data?.message || e?.message || 'hata'}`);
+    }
+  };
 
   const taxpayerName = (t: Taxpayer) =>
     t.companyName ||
@@ -485,26 +580,59 @@ export default function FaturalarPage() {
                 {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
               </h3>
             </div>
-            {/* Tab filtreleri */}
-            <div className="flex gap-1">
-              {(['all', 'ALIS', 'SATIS'] as const).map((t) => {
-                const count = t === 'all' ? invoices.length : invoices.filter(i => i.faturaTuru.includes(t)).length;
-                const active = tab === t;
-                return (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className="px-3.5 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition-all"
-                    style={{
-                      background: active ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)',
-                      color: active ? '#d4b876' : 'rgba(250,250,249,0.55)',
-                      border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                    }}
-                  >
-                    {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
-                  </button>
-                );
-              })}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Tab filtreleri */}
+              <div className="flex gap-1">
+                {(['all', 'ALIS', 'SATIS'] as const).map((t) => {
+                  const count = t === 'all' ? invoices.length : invoices.filter(i => i.faturaTuru.includes(t)).length;
+                  const active = tab === t;
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setTab(t)}
+                      className="px-3.5 py-1.5 rounded-[8px] text-[11.5px] font-semibold transition-all"
+                      style={{
+                        background: active ? 'rgba(184,160,111,0.12)' : 'rgba(255,255,255,0.03)',
+                        color: active ? '#d4b876' : 'rgba(250,250,249,0.55)',
+                        border: `1px solid ${active ? 'rgba(184,160,111,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                      }}
+                    >
+                      {t === 'all' ? 'Tümü' : t === 'ALIS' ? 'Alış' : 'Satış'} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Toplu yazdırma — SADECE fatura (e-Fatura/e-Arşiv). Fiş ve Z raporu HARİÇ */}
+              <div className="flex gap-1.5" title="Toplu yazdırma — fiş ve Z raporu otomatik hariç tutulur">
+                <button
+                  onClick={() => handleBulkPrint('ALIS')}
+                  disabled={!selectedMukellef || printing !== 'idle'}
+                  className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  style={{
+                    background: 'rgba(59,130,246,0.14)',
+                    color: '#93c5fd',
+                    border: '1px solid rgba(96,165,250,0.35)',
+                  }}
+                  title="Alış faturalarını toplu yazdır (fiş/Z raporu hariç)"
+                >
+                  {printing === 'ALIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
+                  Toplu Alış Yazdır
+                </button>
+                <button
+                  onClick={() => handleBulkPrint('SATIS')}
+                  disabled={!selectedMukellef || printing !== 'idle'}
+                  className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  style={{
+                    background: 'rgba(34,197,94,0.14)',
+                    color: '#86efac',
+                    border: '1px solid rgba(74,222,128,0.35)',
+                  }}
+                  title="Satış faturalarını toplu yazdır (fiş/Z raporu hariç)"
+                >
+                  {printing === 'SATIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
+                  Toplu Satış Yazdır
+                </button>
+              </div>
             </div>
           </div>
           {invLoading ? (
@@ -539,12 +667,17 @@ export default function FaturalarPage() {
                     <th className="px-5 py-3">Karşı Firma</th>
                     <th className="px-5 py-3">Tarih</th>
                     <th className="px-5 py-3 text-right">Tutar</th>
-                    <th className="px-5 py-3 text-center">Görüntüle</th>
+                    <th className="px-5 py-3 text-center">İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredInvoices.map((inv) => (
-                    <InvoiceRow key={inv.id} invoice={inv} onPreview={setPreviewInvoice} />
+                    <InvoiceRow
+                      key={inv.id}
+                      invoice={inv}
+                      onPreview={setPreviewInvoice}
+                      onPrint={handleSinglePrint}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -731,9 +864,11 @@ function StatBox({ label, value, sub, color, icon: Icon }: any) {
 function InvoiceRow({
   invoice,
   onPreview,
+  onPrint,
 }: {
   invoice: MihsapInvoice;
   onPreview: (inv: MihsapInvoice) => void;
+  onPrint: (id: string, faturaNo: string) => void;
 }) {
   const isAlis = invoice.faturaTuru.includes('ALIS');
   const date = new Date(invoice.faturaTarihi);
@@ -781,17 +916,30 @@ function InvoiceRow({
       </td>
       <td className="px-5 py-3 text-center">
         {canPreview ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onPreview(invoice);
-            }}
-            className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
-            style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
-            title="Görüntüle"
-          >
-            <FileText size={12} /> Aç
-          </button>
+          <div className="inline-flex items-center gap-1.5">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(invoice);
+              }}
+              className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
+              style={{ background: 'rgba(184,160,111,0.12)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
+              title="Görüntüle"
+            >
+              <FileText size={12} /> Aç
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrint(invoice.id, invoice.faturaNo);
+              }}
+              className="px-2.5 py-1 rounded-md inline-flex items-center gap-1 text-[11.5px] font-semibold transition-all"
+              style={{ background: 'rgba(156,70,86,0.16)', border: '1px solid rgba(156,70,86,0.35)', color: '#f4a5b2' }}
+              title="Bu faturayı yazdır"
+            >
+              <Printer size={12} /> Yazdır
+            </button>
+          </div>
         ) : (
           <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
             —
