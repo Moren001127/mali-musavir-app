@@ -585,18 +585,61 @@ Mod-kod uyumu: TAMAM. Tarih ayı: TAMAM. Alış/satış yönü: TAMAM.
 
 === MUTLAK YASAKLAR (asla bu gerekçelerle ATLA deme) ===
 × "Mükellef alıcı/satıcı konumunda" / "ALIŞ/SATIŞ konumu" — yön backend'in işi
-× "Alış/satış kodu çelişkisi" / "Sektör uyumsuz"
-× "Fatura içeriği matrah koduyla uyumsuz" — içerik-kod kontrolünü YAPMA, backend yapıyor
-× "Nakliye firması ama nakliye alıyor/veriyor" — yorum yapma
+× "Alış/satış kodu çelişkisi" — yön kontrolü backend'in işi, YAPMA
 × "Backend X demiş ama görüntüde Y" cümlesi kurma — backend doğru
 × Plaka/güzergah/rota görünce araç satışı çıkarımı
-× "Mükellef talimatında..." referansları — talimatı yorumlama
-× "Emin değilim ama ihtimal..." — şüpheliyse direkt ONAY
+× "Emin değilim ama ihtimal..." — şüpheliyse onay_bekliyor kullan
 
-=== KARAR AKIŞI ===
-1. [A][B][C][D][E]'den herhangi biri KESİN olarak görüldü mü? → atla
-2. Görüntü tamamen okunamıyor mu? → emin_degil
-3. Diğer tüm durumlarda → onay
+=== [G] İÇERİK ↔ KOD UYUM KONTROLÜ (YENİ — bir mali müşavirin yaptığı iş) ===
+Fatura kalemlerini oku, içeriği SINIFLANDIR:
+  • "Mal" (ticari ürün satışı/alışı — gıda, içecek, tekstil, hammadde, yedek parça, bitmiş ürün)
+  • "Hizmet" (nakliye, temizlik, danışmanlık, yazılım, iletişim, muhasebe, sigorta)
+  • "Sabit Kıymet" (bilgisayar, mobilya, makine, taşıt — işletmede kullanılan uzun ömürlü eşya)
+  • "Kira/Kiralama" (gayrimenkul, araç, makine kiralama)
+  • "Enerji/Sarf" (elektrik, su, doğalgaz, akaryakıt, kırtasiye, temizlik malzemesi)
+  • "Finansal" (faiz, bankacılık, sigorta primi)
+
+Ekrandaki matrah kodu (${codesArr.join(', ')}) içerik türüne UYUYOR mu? Hızlı eşleştirme:
+  • **153.xx** (Ticari Mallar) → sadece "Mal" içeriği (ticari ürün alışı)
+  • **150.xx / 151.xx / 152.xx** (İlk Madde/Yarı Mamul/Mamul) → hammadde veya üretim malzemesi
+  • **157.xx** (Diğer Stoklar) → sarf malzemesi stoklanıyor
+  • **253.xx** (Tesis, Makine, Cihazlar) → üretim makinesi, ağır ekipman
+  • **254.xx** (Taşıtlar) → araba, kamyon, minibüs (taşıt)
+  • **255.xx** (Demirbaşlar) → bilgisayar, masa, mobilya, küçük makine
+  • **740.xx** (Hizmet Üretim Maliyeti) → üretimde kullanılan hizmet/sarf (ör. üretim için alınan nakliye, elektrik)
+  • **760.xx** (Pazarlama Satış Dağıtım Gid.) → reklam, sosyal medya, tanıtım, kargo-dağıtım
+  • **770.xx** (Genel Yönetim Giderleri) → ofis elektriği, internet, kırtasiye, muhasebe, kira
+  • **600.xx / 601.xx** (Satışlar) → "Mal" satışı
+  • **120.xx / 320.xx** (Alıcı/Satıcı cari) → her tür (cari hesap, matrah değil)
+
+**UYUMSUZLUK kuralı — onay_bekliyor örnekleri:**
+  • 153 seçilmiş, fatura "bilgisayar/yazıcı/mobilya" → "Demirbaş alımı 255 olmalı, ama 153 seçilmiş"
+  • 153 seçilmiş, fatura "elektrik/su/internet/temizlik/kira" → "Genel yönetim gideri 770 olmalı, ama 153 seçilmiş"
+  • 153 seçilmiş, fatura "reklam/sosyal medya" → "Pazarlama gideri 760 olmalı, ama 153 seçilmiş"
+  • 770 seçilmiş, fatura "ticari ürün toptan alım (koli/palet)" → "Ticari mal 153 olmalı"
+  • 255 seçilmiş, fatura "marketten alışveriş/yemek" → "Gider 770 olmalı, ama 255 seçilmiş"
+  • 254 seçilmiş, fatura "araç kiralama faturası" → "Araç kirası 770 olmalı, 254 araç sahipliği"
+
+Kontrolde **ekran kodunun ilk 3 hanesi** dikkate alınır (153.01.005 → 153). Alt kırılımı (örn 153.01.001 vs 153.01.005) İLGİLENDİRMEZ — sadece ana hesap grubunun içerik türüne uyumu.
+
+**UYUMLUYSA** → onay. Emin değilsen → onay_bekliyor (ATLA değil — kullanıcı bakacak).
+
+=== [H] MÜKELLEF FAALİYETİ ↔ İÇERİK UYUMU (varsa) ===
+Mükellef profilinde faaliyet bilgisi varsa (örn "gıda toptancısı", "inşaat", "nakliye"),
+faturanın içeriği bu faaliyete uyuyor mu?
+  • Gıda toptancısı → mal alışı/satışı gıda olmalı; "demirbaş bilgisayar" alışı normal ama gider tarafında
+  • Nakliye firması → hizmet satışı, akaryakıt/bakım alışı normal
+  • İnşaat firması → inşaat malzemesi alışı normal; "gıda alışı" şüpheli → onay_bekliyor
+Faaliyet bilgisi YOKSA bu kontrolü atla.
+
+=== KARAR AKIŞI (yeni) ===
+1. [A][B][C][D][E][F] kesinse → atla (ekran-görüntü tutarsızlığı, özel durum)
+2. [G] kod-içerik uyumsuzluğu varsa → **onay_bekliyor** (kullanıcı bakacak)
+3. [H] faaliyet-içerik uyumsuzluğu varsa → **onay_bekliyor**
+4. Görüntü tamamen okunamıyor mu? → emin_degil
+5. Diğer tüm durumlar → onay (F2)
+
+NOT: "onay_bekliyor" ATLA DEĞİL. Fatura kullanıcının onay kuyruğuna düşer, kullanıcı elle karar verir.
 
 ${vendorHint ? `
 ${vendorHint.hintText}` : ''}
@@ -673,8 +716,9 @@ Fatura görüntüsünden şu alanları da çıkarıp JSON'a ekle (okunamazsa nul
 • kdvOrani: "0" | "1" | "10" | "20" (ana KDV oranı, birden fazla varsa dominant olan)
 
 Sadece JSON döndür: {
-  "karar": "onay|atla|emin_degil",
-  "sebep": "mükellef açısından 80 karakter",
+  "karar": "onay|atla|onay_bekliyor|emin_degil",
+  "sebep": "mükellef açısından 80 karakter (onay_bekliyor ise net sebep: 'Sabit kıymet 253 olmalı', 'Faaliyet uymuyor' vb.)",
+  "icerikSinifi": "Mal|Hizmet|Sabit Kıymet|Kira|Enerji/Sarf|Finansal" ,
   "ocrOzet": "1 satır",
   "tarih": "18.03.2026" | null,
   "belgeNo": "TEE2026000000384" | null,
