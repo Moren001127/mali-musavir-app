@@ -547,35 +547,34 @@ export class MihsapService {
   }): Promise<{ html: string; count: number; skipped: number }> {
     const { tenantId, mukellefId, donem, faturaTuru } = params;
 
-    // Mihsap belgeTuru değerleri: E_FATURA, E_ARSIV, FIS, IRSALIYE, Z_RAPORU
-    // Yazdırmaya sadece e-Fatura + e-Arşiv dahil.
-    const FATURA_WHITELIST = [
-      'E_FATURA', 'E_ARSIV', 'EFATURA', 'E-FATURA', 'E-ARSIV',
-      'e_fatura', 'e_arsiv',
-    ];
-
-    const where: any = {
-      tenantId,
-      donem,
-      faturaTuru,
-      belgeTuru: { in: FATURA_WHITELIST },
-    };
+    // Mihsap belgeTuru değerleri gerçek DB'de: "e_FATURA", "e_ARSIV", "FIS",
+    // "IRSALIYE", "Z_RAPORU" vb. Case karışık (küçük e, büyük FATURA).
+    // Prisma `in` clause case-sensitive olduğu için DB tarafında filtre yapmıyor,
+    // tüm dönem+faturaTuru kayıtlarını çekip JS'de normalize edilmiş whitelist
+    // + blacklist uyguluyoruz.
+    const where: any = { tenantId, donem, faturaTuru };
     if (mukellefId) where.mukellefId = mukellefId;
 
     const invoices = await (this.prisma as any).mihsapInvoice.findMany({
       where,
       orderBy: [{ faturaTarihi: 'asc' }, { faturaNo: 'asc' }],
-      take: 5000,
+      take: 10000,
     });
 
-    // Ek güvenlik filtresi (string case farklılıkları + raw kontrolü)
     const filtered = invoices.filter((inv: any) => {
-      const bt = String(inv.belgeTuru || '').toUpperCase();
-      if (bt.includes('FIS') || bt.includes('FIŞ')) return false;
-      if (bt.includes('Z_RAPOR') || bt.includes('ZRAPOR')) return false;
-      if (bt.includes('IRSALIYE') || bt.includes('İRSALİYE')) return false;
-      if (bt.includes('OKC')) return false;
-      return true;
+      const bt = String(inv.belgeTuru || '')
+        .toUpperCase()
+        .replace(/[-\s]/g, '_');   // "E-FATURA" → "E_FATURA"
+
+      // BLACKLIST: fiş, Z raporu, irsaliye, ÖKC
+      if (/FI[SŞ]|OKC|Z_?RAPOR|IRSALIYE|İRSALİYE|PERAKENDE/.test(bt)) return false;
+
+      // WHITELIST: e-Fatura + e-Arşiv (hepsi uppercase'e çevrildi)
+      if (/^E_?FATURA$/.test(bt)) return true;
+      if (/^E_?AR[SŞ]IV(_FATURA)?$/.test(bt)) return true;
+
+      // Bilinmeyen değer: güvenli taraf — atla (fatura değilse dahil etme)
+      return false;
     });
 
     const skipped = invoices.length - filtered.length;
