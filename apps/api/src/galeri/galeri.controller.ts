@@ -91,7 +91,7 @@ export class GaleriController {
   @Get('pdf-rapor')
   async pdfRapor(
     @Req() req: any,
-    @Res() res: Response,
+    @Res() res: any,
     @Query('sadeceIhlalli') sadeceIhlalli?: string,
   ) {
     const html = await this.pdfSvc.topluRaporHtml(req.user.tenantId, {
