@@ -420,6 +420,26 @@ export class AgentEventsService {
     if (!apiKey) {
       return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
     }
+
+    // Mükellef ID eksikse, mükellef adından bulmaya çalış.
+    // Firma Hafızası "mükellef atanmamış" yerine gerçek mükellef-bazlı öğrenir.
+    if (!input.mukellefId && input.tenantId && input.mukellef) {
+      try {
+        const mukellefAd = input.mukellef.trim();
+        const taxpayer = await this.prisma.taxpayer.findFirst({
+          where: {
+            tenantId: input.tenantId,
+            OR: [
+              { companyName: { equals: mukellefAd, mode: 'insensitive' } },
+              { companyName: { contains: mukellefAd, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (taxpayer) input.mukellefId = taxpayer.id;
+      } catch {}
+    }
+
     // Mükellef profili — yapılandırılmış (sektör, KDV hesapları, tahsilat vs.)
     // + serbest talimat + sistem kuralları (tevkifat / kasa limit).
     let mukellefTalimat = '';
@@ -928,6 +948,24 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       : ALIS_ACTIONS.includes(input.action || '')
       ? 'ALIŞ'
       : 'ALIŞ';
+
+    // Mükellef ID eksikse mükellef adından bul (Firma Hafızası mükellef-bazlı)
+    if (!input.mukellefId && input.tenantId && input.mukellef) {
+      try {
+        const mukellefAd = input.mukellef.trim();
+        const taxpayer = await this.prisma.taxpayer.findFirst({
+          where: {
+            tenantId: input.tenantId,
+            OR: [
+              { companyName: { equals: mukellefAd, mode: 'insensitive' } },
+              { companyName: { contains: mukellefAd, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (taxpayer) input.mukellefId = taxpayer.id;
+      } catch {}
+    }
 
     // Mükellef profili (yapılandırılmış + sistem kuralları)
     let mukellefTalimat = '';
