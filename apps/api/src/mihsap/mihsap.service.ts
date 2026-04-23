@@ -378,6 +378,30 @@ export class MihsapService {
     });
   }
 
+  /** Canlı akış log butonundan — belgeNo ile invoice bul */
+  async findInvoiceByBelgeNo(
+    tenantId: string,
+    belgeNo: string,
+    mukellefId?: string,
+  ): Promise<{ id: string; storageUrl: string | null } | null> {
+    const where: any = {
+      tenantId,
+      OR: [
+        { faturaNo: belgeNo },
+        { faturaNo: { contains: belgeNo } },
+      ],
+    };
+    if (mukellefId) where.mukellefId = mukellefId;
+
+    const inv = await (this.prisma as any).mihsapInvoice.findFirst({
+      where,
+      select: { id: true, storageUrl: true, mihsapFileLink: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!inv) return null;
+    return { id: inv.id, storageUrl: inv.storageUrl || inv.mihsapFileLink || null };
+  }
+
   /** Bir faturanın binary içeriğini getir (proxy — CORS bypass).
    *  Frontend `fetch()` MIHSAP CDN'e direkt gidemez; backend aracı olur.
    *  Başarısızsa reason ile birlikte exception atar — 404 yerine 502 dönülür.
