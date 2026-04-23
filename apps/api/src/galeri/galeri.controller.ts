@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Res, UseGuards,
+  Controller, Get, Post, Put, Delete, Body, Param, Query, Req, Header, UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -89,14 +89,13 @@ export class GaleriController {
    * Plaka gruplu tablo + her plakanın alt toplamı + genel toplam.
    */
   @Get('pdf-rapor')
+  @Header('Content-Type', 'text/html; charset=utf-8')
   async pdfRapor(
     @Req() req: any,
-    @Res() res: any,
     @Query('sadeceIhlalli') sadeceIhlalli?: string,
-  ) {
-    const html = await this.pdfSvc.topluRaporHtml(req.user.tenantId, {
+  ): Promise<string> {
+    return this.pdfSvc.topluRaporHtml(req.user.tenantId, {
       sadeceIhlalli: sadeceIhlalli === 'true',
     });
-    res.type('html').send(html);
   }
 }
