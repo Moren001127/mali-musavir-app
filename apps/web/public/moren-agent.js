@@ -797,7 +797,11 @@
       const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
       if (sel) {
         const isSatis = action === 'isle_satis';
-        const prefixler = isSatis ? ['600', '601', '602'] : ['153', '740', '770', '760'];
+        // Sabit kıymet (253/254/255) KASTEN YOK — fatura içeriği demirbaş/araç/makine ise
+        // AI bu koda yönlenmeyecek, zaten backend "Demirbaş → atla" diyecek.
+        const prefixler = isSatis
+          ? ['600', '601', '602']
+          : ['153', '150', '152', '157', '740', '760', '770'];
         const all = new Set();
         for (const pre of prefixler) {
           const opts = await searchAndReadOptions(sel, pre);

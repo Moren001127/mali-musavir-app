@@ -625,7 +625,18 @@ Belge no olarak SADECE faturanın başındaki "Fatura No: XXX" veya "Belge No: X
     → Farklıysa atla. ETTN / UBL / Senaryo alanları belge no DEĞİL — onlara bakma.
     → Okuyamazsan bu kontrolü GEÇ.
 
-[E] AÇIK DEMİRBAŞ/ARAÇ/İADE SATIŞI:
+[E] SABİT KIYMET / DEMİRBAŞ / ARAÇ / MAKİNE:
+    ⛔ **Fatura içeriği şunlardan biri ise KARAR: ATLA** (hem ALIŞ hem SATIŞ'ta):
+      - Bilgisayar, laptop, yazıcı, telefon (demirbaş)
+      - Mobilya, masa, sandalye, dolap, koltuk (demirbaş)
+      - Klima, kombi, televizyon, buzdolabı (demirbaş)
+      - Araba, kamyon, minibüs, motosiklet (taşıt)
+      - Üretim makinesi, tezgah, kompresör, jeneratör (makine)
+      - Hat, tesisat, inşaat ekipmanı (tesis)
+    Sebep: "Sabit kıymet — amortisman gerekli, kullanıcı elle işlesin"
+    AI'nın 253/254/255 koduna yazma hakkı YOK — bu içerikler bulunursa atla.
+
+[E.alt] AÇIK DEMİRBAŞ/ARAÇ/İADE SATIŞI:
     Fatura satırının TAMAMINI bir cümle olarak oku. Cümlede şu kelimelerden BİRİ geçiyorsa ONAY (atlamadan geç):
       "nakliye", "nakliyat", "taşıma", "taşımacılık", "sevk", "sevkiyat", "lojistik", "hat", "güzergah", "sefer", "bedel", "ücret"
     Bu kelimeler yoksa, cümlede AÇIKÇA şunlardan biri YAZIYORSA atla:
@@ -778,10 +789,13 @@ A) MATRAH HESABI (faturanın KDV'siz bedeli hangi ${islemTuru === 'SATIŞ' ? 'sa
      • 602.xx → Diğer Satışlar` : `ALIŞ kuralı — fatura içeriğine göre seç:
      • 153.xx → Ticari Mal Alışı (mükellefin satış konusuyla aynı ürün)
      • 150.xx → İlk Madde/Malzeme (üretimde kullanılacak hammadde)
-     • 253.xx / 254.xx / 255.xx → Sabit Kıymet (bilgisayar, araç, makine, demirbaş)
      • 740.xx → Hizmet Üretim Maliyeti (mükellefin işinin maliyeti — ör. nakliyecinin yakıtı)
      • 760.xx → Pazarlama/Satış/Dağıtım Gideri (reklam, kargo, tanıtım)
-     • 770.xx → Genel Yönetim Gideri (ofis, elektrik, kira, muhasebe, internet)`}
+     • 770.xx → Genel Yönetim Gideri (ofis, elektrik, kira, muhasebe, internet)
+
+     ⛔ **SABİT KIYMET (253/254/255) YASAK**: Fatura içeriği bilgisayar/mobilya/makine/taşıt ise
+     → karar: "atla", sebep: "Sabit kıymet alımı — kullanıcı elle işlesin"
+     → Bu ürünler amortisman gerektirir, AI otomatik işlemez.`}
    Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA + mükellef sektörüne bak ve en uygun kodu seç.
    Eğer mükellefin sadece 1 uygun kodu varsa → onu seç.
 
