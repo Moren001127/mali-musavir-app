@@ -291,6 +291,109 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
 
+  // ============ BEYANNAME KAYITLARI (Hattat ZIP import) ============
+  {
+    name: 'list_beyan_kayitlari',
+    description:
+      'İmport edilmiş (Hattat ZIP\'inden veya manuel PDF\'den) geçmiş beyanname kayıtlarını listeler. ' +
+      '"X mükellefinin 2025 Mart KDV beyannamesi kaydedilmiş mi?", "Kurumlar beyannamesi yüklenen mükellefler kim?", ' +
+      '"2025-03 dönemi MUHSGK eksik olanlar" gibi sorularda kullan. ' +
+      'Her kayıt: mükellef, beyanTipi, dönem, onay no, tahakkuk tutarı, PDF var mı içerir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Belirli bir mükellef için filtre (opsiyonel).' },
+        beyanTipi: {
+          type: 'string',
+          enum: ['KDV1', 'KDV2', 'MUHSGK', 'DAMGA', 'POSET', 'KURUMLAR', 'GELIR', 'BILDIRGE', 'EDEFTER', 'GECICI_VERGI', 'DIGER'],
+          description: 'Beyan tipi filtresi (opsiyonel).',
+        },
+        donem: { type: 'string', description: 'Dönem: yyyy-mm (örn. "2025-03") veya yyyy-YIL (yıllık).' },
+        search: { type: 'string', description: 'Mükellef adı/VKN veya onay no içinde arama.' },
+        limit: { type: 'number', description: 'Max kayıt (varsayılan 100, max 500).' },
+      },
+    },
+  },
+
+  // ============ ONAY KUYRUĞU (Firma Hafızası sapma tespiti) ============
+  {
+    name: 'list_pending_decisions',
+    description:
+      'AI\'ın geçmişten sapmış karar tespit ettiği onay bekleyen faturaları listeler. ' +
+      '"Kaç fatura onay bekliyor?", "Hangi mükellefin faturaları duruyor?", "Onay kuyruğunda ne var?" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        durum: { type: 'string', enum: ['bekliyor', 'onaylandi', 'reddedildi'], description: 'Durum filtresi (varsayılan bekliyor).' },
+        mukellef: { type: 'string', description: 'Mükellef adı ile filtre.' },
+        limit: { type: 'number', description: 'Max kayıt (varsayılan 50).' },
+      },
+    },
+  },
+
+  // ============ FİRMA HAFIZASI (Vendor Memory) ============
+  {
+    name: 'get_firma_hafizasi',
+    description:
+      'Belirli bir karşı firmanın (tedarikçi/alıcı) hafızasını getirir — hangi mükelleflerde hangi hesap koduna kaydedilmiş, ' +
+      'kaç defa onaylanmış. "CK Boğaziçi Elektrik\'i hangi mükellefler hangi koda işliyor?", ' +
+      '"TTNET faturasını kim hangi hesaba yazmış?" gibi sorularda kullan. ' +
+      'search parametresi ile firma unvanı veya VKN ile arama yapabilir.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Firma unvanı veya VKN/TCKN ile arama.' },
+        limit: { type: 'number', description: 'Max firma (varsayılan 20).' },
+      },
+    },
+  },
+
+  // ============ GALERİ + HGS ============
+  {
+    name: 'list_araclar_hgs',
+    description:
+      'Galeri modülündeki araç listesini ve son HGS ihlal sorgu sonuçlarını getirir. ' +
+      '"Kaç aracımız var?", "İhlalli araçlar kim?", "Toplam HGS ceza tutarı ne?", ' +
+      '"X plakanın ihlal durumu ne?" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Plaka, marka, model veya sahip adında arama.' },
+        ihlalliMi: { type: 'boolean', description: 'true=sadece ihlalli araçlar, false=ihlalsizler, null=hepsi.' },
+      },
+    },
+  },
+
+  // ============ BEYANNAME TAKİP KONFİGÜRASYONU ============
+  {
+    name: 'get_beyanname_config',
+    description:
+      'Bir veya tüm mükelleflerin beyanname yapılandırmasını döner: hangi beyannameleri veriyor (KDV1/KDV2/MUHSGK/Damga/Poşet/SGK/E-Defter), ' +
+      'dönemi aylık mı 3 aylık mı. "TAHİR SUCU hangi beyannameleri veriyor?", ' +
+      '"Kaç mükellefte MUHSGK aylık?", "E-Defter vermesi gereken mükellefler" gibi sorularda kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Belirli bir mükellef (opsiyonel).' },
+      },
+    },
+  },
+
+  // ============ TOPLU BEYAN DURUMU (Hattat-stil dashboard tablosu) ============
+  {
+    name: 'get_beyan_ozet',
+    description:
+      'Belirli bir dönem için tüm mükelleflerin beyanname durumunu özetler (dashboard\'daki Toplu Beyanname tablosu). ' +
+      '"Bu ay kaç KDV bekliyoruz?", "Mart 2026 MUHSGK durumu ne?", "Kaç mükellef beyanname vermedi?" sorularında kullan. ' +
+      'Beyan tipi bazında: toplam / onaylanan / bekleyen / hatalı / kalan sayıları döner.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        donem: { type: 'string', description: 'Dönem: yyyy-mm (varsayılan bulunulan ay).' },
+      },
+    },
+  },
+
   // ============ GENEL SORGULAMA ============
   {
     name: 'search_all',

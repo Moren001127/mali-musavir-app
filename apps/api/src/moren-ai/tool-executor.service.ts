@@ -38,6 +38,13 @@ export class ToolExecutorService {
         case 'compare_periods':     return this.comparePeriods(input, ctx);
         case 'calculate_financial_ratios': return this.calculateFinancialRatios(input, ctx);
         case 'search_all':          return this.searchAll(input, ctx);
+        // FAZ 1 — Yeni modül tool'ları
+        case 'list_beyan_kayitlari':  return this.listBeyanKayitlari(input, ctx);
+        case 'list_pending_decisions':return this.listPendingDecisions(input, ctx);
+        case 'get_firma_hafizasi':    return this.getFirmaHafizasi(input, ctx);
+        case 'list_araclar_hgs':      return this.listAraclarHgs(input, ctx);
+        case 'get_beyanname_config':  return this.getBeyannameConfig(input, ctx);
+        case 'get_beyan_ozet':        return this.getBeyanOzet(input, ctx);
         default:
           return { error: `Bilinmeyen tool: ${name}` };
       }
@@ -824,6 +831,305 @@ export class ToolExecutorService {
       })),
       evraklar: documents.map((d) => ({
         id: d.id, baslik: d.title, kategori: d.category,
+      })),
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // FAZ 1 — Yeni modül tool handler'ları
+  // ══════════════════════════════════════════════════════════
+
+  /** İmport edilmiş beyanname kayıtlarını listele */
+  private async listBeyanKayitlari(input: any, ctx: { tenantId: string }) {
+    const { taxpayerId, beyanTipi, donem, search, limit } = input || {};
+    const where: any = { tenantId: ctx.tenantId };
+    if (taxpayerId) where.taxpayerId = taxpayerId;
+    if (beyanTipi) where.beyanTipi = beyanTipi;
+    if (donem) where.donem = donem;
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { onayNo: { contains: q, mode: 'insensitive' } },
+        { taxpayer: { companyName: { contains: q, mode: 'insensitive' } } },
+        { taxpayer: { taxNumber: { contains: q } } },
+      ];
+    }
+    const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
+      where,
+      include: {
+        taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } },
+      },
+      orderBy: [{ donem: 'desc' }],
+      take: Math.min(limit || 100, 500),
+    });
+    return {
+      adet: kayitlar.length,
+      kayitlar: kayitlar.map((k: any) => ({
+        id: k.id,
+        mukellef: k.taxpayer?.companyName || `${k.taxpayer?.firstName || ''} ${k.taxpayer?.lastName || ''}`.trim() || '—',
+        vkn: k.taxpayer?.taxNumber,
+        beyanTipi: k.beyanTipi,
+        donem: k.donem,
+        onayNo: k.onayNo,
+        tahakkukTutari: k.tahakkukTutari ? Number(k.tahakkukTutari) : null,
+        pdfVar: !!k.pdfUrl,
+        beyannameVar: !!k.beyannameUrl,
+        kaynak: k.kaynak,
+        kayitTarihi: k.createdAt,
+      })),
+    };
+  }
+
+  /** Onay bekleyen AI kararlarını listele */
+  private async listPendingDecisions(input: any, ctx: { tenantId: string }) {
+    const { durum, mukellef, limit } = input || {};
+    const where: any = { tenantId: ctx.tenantId };
+    where.durum = durum || 'bekliyor';
+    if (mukellef && mukellef.trim()) {
+      where.mukellef = { contains: mukellef.trim(), mode: 'insensitive' };
+    }
+    const rows = await (this.prisma as any).pendingDecision.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit || 50, 200),
+      select: {
+        id: true, mukellef: true, firmaUnvan: true, firmaKimlikNo: true,
+        belgeNo: true, tutar: true, kararTipi: true, sapmaSebep: true,
+        durum: true, createdAt: true,
+      },
+    });
+    return {
+      adet: rows.length,
+      kayitlar: rows.map((r: any) => ({
+        ...r,
+        tutar: r.tutar ? Number(r.tutar) : null,
+      })),
+    };
+  }
+
+  /** Firma Hafızası — belirli firma veya arama */
+  private async getFirmaHafizasi(input: any, ctx: { tenantId: string }) {
+    const { search, limit } = input || {};
+    const where: any = { tenantId: ctx.tenantId };
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { firmaUnvan: { contains: q, mode: 'insensitive' } },
+        { firmaKimlikNo: { contains: q } },
+      ];
+    }
+    const firmalar = await (this.prisma as any).vendorMemory.findMany({
+      where,
+      take: Math.min(limit || 20, 100),
+      orderBy: [{ toplamOnay: 'desc' }, { sonKullanim: 'desc' }],
+      include: {
+        decisions: {
+          orderBy: { onayAdedi: 'desc' },
+          take: 10,
+          include: {
+            taxpayer: { select: { companyName: true, firstName: true, lastName: true, taxNumber: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      adet: firmalar.length,
+      firmalar: firmalar.map((f: any) => {
+        // Mükellef bazında grupla
+        const byMukellef: Record<string, any[]> = {};
+        for (const d of f.decisions || []) {
+          const ad = d.taxpayer
+            ? (d.taxpayer.companyName || `${d.taxpayer.firstName || ''} ${d.taxpayer.lastName || ''}`.trim())
+            : '(ortak)';
+          if (!byMukellef[ad]) byMukellef[ad] = [];
+          byMukellef[ad].push({
+            kategori: d.altKategori ? `${d.kategori} → ${d.altKategori}` : d.kategori,
+            kararTipi: d.kararTipi,
+            kullanimSayisi: d.onayAdedi,
+          });
+        }
+        return {
+          firmaUnvan: f.firmaUnvan,
+          vkn: f.firmaKimlikNo,
+          toplamOnay: f.toplamOnay,
+          sonKullanim: f.sonKullanim,
+          mukellefBazliKararlar: byMukellef,
+        };
+      }),
+    };
+  }
+
+  /** Galeri araçları + HGS durumları */
+  private async listAraclarHgs(input: any, ctx: { tenantId: string }) {
+    const { search, ihlalliMi } = input || {};
+    const where: any = { tenantId: ctx.tenantId, aktif: true };
+    if (search && search.trim()) {
+      const q = search.trim().toUpperCase();
+      where.OR = [
+        { plaka: { contains: q } },
+        { marka: { contains: q, mode: 'insensitive' } },
+        { model: { contains: q, mode: 'insensitive' } },
+        { sahipAd: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    const araclar = await (this.prisma as any).arac.findMany({
+      where,
+      include: {
+        hgsSonuclari: { orderBy: { sorguTarihi: 'desc' }, take: 1 },
+      },
+    });
+
+    let liste = araclar.map((a: any) => {
+      const s = a.hgsSonuclari?.[0];
+      return {
+        plaka: a.plaka,
+        marka: a.marka,
+        model: a.model,
+        sahipAd: a.sahipAd,
+        sonSorguTarihi: s?.sorguTarihi || null,
+        ihlalSayisi: s?.ihlalSayisi || 0,
+        toplamTutar: s?.toplamTutar ? Number(s.toplamTutar) : 0,
+        sorguDurumu: s?.durum || 'henüz-sorgulanmamis',
+      };
+    });
+
+    if (ihlalliMi === true) liste = liste.filter((a: any) => a.ihlalSayisi > 0);
+    if (ihlalliMi === false) liste = liste.filter((a: any) => a.ihlalSayisi === 0);
+
+    const toplamArac = liste.length;
+    const ihlalliArac = liste.filter((a: any) => a.ihlalSayisi > 0).length;
+    const toplamTutar = liste.reduce((s: number, a: any) => s + a.toplamTutar, 0);
+
+    return {
+      ozet: { toplamArac, ihlalliArac, toplamTutar },
+      araclar: liste,
+    };
+  }
+
+  /** Mükellef beyanname yapılandırması */
+  private async getBeyannameConfig(input: any, ctx: { tenantId: string }) {
+    const { taxpayerId } = input || {};
+
+    if (taxpayerId) {
+      const tp = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: taxpayerId, tenantId: ctx.tenantId },
+        include: { beyanConfig: true },
+      });
+      if (!tp) return { error: 'Mükellef bulunamadı' };
+      return {
+        mukellef: tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim(),
+        config: tp.beyanConfig || {
+          incomeTaxType: null, kdv1Period: null, kdv2Enabled: false,
+          muhtasarPeriod: null, damgaEnabled: false, posetEnabled: false,
+          sgkBildirgeEnabled: false, eDefterPeriod: null,
+          yapilandirilmamis: true,
+        },
+      };
+    }
+
+    // Tümü
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId: ctx.tenantId, isActive: true },
+      include: { beyanConfig: true },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const configlu = taxpayers.filter((t: any) => t.beyanConfig);
+    return {
+      toplam: taxpayers.length,
+      yapilandirilmis: configlu.length,
+      yapilandirilmamis: taxpayers.length - configlu.length,
+      mukellefler: taxpayers.map((t: any) => ({
+        ad: t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
+        config: t.beyanConfig ? {
+          incomeTaxType: t.beyanConfig.incomeTaxType,
+          kdv1Period: t.beyanConfig.kdv1Period,
+          kdv2Enabled: t.beyanConfig.kdv2Enabled,
+          muhtasarPeriod: t.beyanConfig.muhtasarPeriod,
+          damgaEnabled: t.beyanConfig.damgaEnabled,
+          posetEnabled: t.beyanConfig.posetEnabled,
+          sgkBildirgeEnabled: t.beyanConfig.sgkBildirgeEnabled,
+          eDefterPeriod: t.beyanConfig.eDefterPeriod,
+        } : null,
+      })),
+    };
+  }
+
+  /** Toplu beyan özeti (dashboard tablosu eşdeğeri) */
+  private async getBeyanOzet(input: any, ctx: { tenantId: string }) {
+    let donem = input?.donem;
+    if (!donem) {
+      const now = new Date();
+      donem = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (!/^\d{4}-\d{2}$/.test(donem)) return { error: 'Geçersiz dönem (yyyy-mm)' };
+
+    const [yilStr, ayStr] = donem.split('-');
+    const yil = parseInt(yilStr, 10);
+    const ay = parseInt(ayStr, 10);
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId: ctx.tenantId, isActive: true },
+      include: { beyanConfig: true },
+    });
+
+    const durumlar = await (this.prisma as any).beyanDurumu.findMany({
+      where: { tenantId: ctx.tenantId, donem },
+    });
+    const durumMap = new Map<string, any>();
+    for (const d of durumlar) durumMap.set(`${d.taxpayerId}::${d.beyanTipi}`, d);
+
+    const agg: Record<string, { toplam: number; onaylanan: number; bekleyen: number; hatali: number }> = {
+      KDV1: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      KDV2: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      MUHSGK: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      DAMGA: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      POSET: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      BILDIRGE: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      EDEFTER: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      KURUMLAR: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+      GELIR: { toplam: 0, onaylanan: 0, bekleyen: 0, hatali: 0 },
+    };
+
+    for (const tp of taxpayers) {
+      const cfg = tp.beyanConfig;
+      if (!cfg) continue;
+      // Mükellef aktiflik kontrolü
+      if (tp.endDate && new Date(tp.endDate) < new Date(yil, ay - 1, 1)) continue;
+
+      const beklenen: string[] = [];
+      if (cfg.kdv1Period === 'AYLIK' || (cfg.kdv1Period === 'UCAYLIK' && [3, 6, 9, 12].includes(ay))) beklenen.push('KDV1');
+      if (cfg.kdv2Enabled) beklenen.push('KDV2');
+      if (cfg.muhtasarPeriod === 'AYLIK' || (cfg.muhtasarPeriod === 'UCAYLIK' && [3, 6, 9, 12].includes(ay))) beklenen.push('MUHSGK');
+      if (cfg.damgaEnabled) beklenen.push('DAMGA');
+      if (cfg.posetEnabled && [1, 4, 7, 10].includes(ay)) beklenen.push('POSET');
+      if (cfg.sgkBildirgeEnabled) beklenen.push('BILDIRGE');
+      if (cfg.eDefterPeriod === 'AYLIK' || (cfg.eDefterPeriod === 'UCAYLIK' && [3, 6, 9, 12].includes(ay))) beklenen.push('EDEFTER');
+      if (cfg.incomeTaxType === 'KURUMLAR' && ay === 4) beklenen.push('KURUMLAR');
+      if (cfg.incomeTaxType === 'GELIR' && ay === 3) beklenen.push('GELIR');
+
+      for (const tip of beklenen) {
+        if (!agg[tip]) continue;
+        agg[tip].toplam++;
+        const d = durumMap.get(`${tp.id}::${tip}`);
+        if (d?.durum === 'onaylandi') agg[tip].onaylanan++;
+        else if (d?.durum === 'hatali') agg[tip].hatali++;
+        else agg[tip].bekleyen++;
+      }
+    }
+
+    // Sadece toplam > 0 olanları döndür
+    const aktifTipler = Object.entries(agg).filter(([_, v]) => v.toplam > 0);
+    return {
+      donem,
+      satirlar: aktifTipler.map(([tip, v]) => ({
+        beyanTipi: tip,
+        toplam: v.toplam,
+        onaylanan: v.onaylanan,
+        bekleyen: v.bekleyen,
+        hatali: v.hatali,
+        yuzde: v.toplam > 0 ? Math.round((v.onaylanan / v.toplam) * 100) : 0,
       })),
     };
   }
