@@ -29,6 +29,7 @@ export interface BeyanKaydi {
   odemeTutari: number | null;
   onayNo: string | null;
   pdfUrl: string | null;
+  beyannameUrl: string | null;
   xmlUrl: string | null;
   kaynak: string;
   importBatchId: string | null;
