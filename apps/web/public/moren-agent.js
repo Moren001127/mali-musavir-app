@@ -291,34 +291,58 @@
       }
     }
 
-    // 5) Form'u FormData ile direkt POST — click yok, yeni pencere yok
-    const fd = new FormData(mizanForm);
-    fd.delete('TARIH_ILK');  // eski uppercase boş alan override etmesin
-    fd.delete('TARIH_SON');
+    // 5) Luca'nın doğal akışı — "Rapor" butonunu tıklat + window.open intercept
+    // Direct form POST mükellef context'ini kaybediyordu (boş Excel geliyordu).
+    // Luca'nın kendi JS'i ile butona basmak session/state'i koruyor.
+    const win = mizanDoc.defaultView || window;
+    const origOpen = win.open;
+    let capturedBlob = null;
+    let capturedUrl = null;
+    win.open = function (url, ...rest) {
+      capturedUrl = url;
+      log(`Luca yeni pencere URL'i yakalandı`);
+      // Açılmış pencereyi taklit et (Luca yine de mutlu olsun)
+      return { closed: false, close: () => {}, focus: () => {}, document: { write: () => {} } };
+    };
 
-    log(`Excel POST atılıyor → Luca'ya istek gönderildi…`);
-    const resp = await fetch(mizanForm.action, {
-      method: (mizanForm.method || 'POST').toUpperCase(),
-      body: fd,
-      credentials: 'include',
-    });
+    // Rapor butonunu bul ve tıklat
+    const raporBtn = [...mizanDoc.querySelectorAll('button, input[type=button], input[type=submit]')]
+      .find((el) => /^rapor$/i.test((el.textContent || el.value || '').trim()));
+    if (!raporBtn) {
+      win.open = origOpen;
+      throw new Error('Luca\'da "Rapor" butonu bulunamadı (mizanDoc içinde)');
+    }
+    log(`Rapor butonuna tıklanıyor…`);
+    raporBtn.click();
 
-    if (!resp.ok) {
-      throw new Error(`Luca rapor HTTP ${resp.status} ${resp.statusText}`);
+    // URL veya direct download bekle (max 30 sn)
+    const t0 = Date.now();
+    while (!capturedUrl && !capturedBlob && Date.now() - t0 < 30000) {
+      await sleep(300);
+    }
+    win.open = origOpen;
+
+    if (!capturedUrl && !capturedBlob) {
+      throw new Error('Rapor tıklandı ama 30 sn içinde URL/Excel yakalanamadı');
     }
 
-    const ct = resp.headers.get('content-type') || '';
-    const blob = await resp.blob();
-    log(`✓ Luca yanıtı: ${(blob.size/1024).toFixed(1)} KB · ${ct.split(';')[0]}`);
+    // URL yakalandıysa kendi fetch'imle indir (cookies same-origin gider)
+    if (capturedUrl && !capturedBlob) {
+      log(`URL'den Excel indiriliyor…`);
+      const resp = await fetch(capturedUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error(`Excel HTTP ${resp.status}`);
+      capturedBlob = await resp.blob();
+    }
+
+    const blob = capturedBlob;
+    log(`✓ Luca yanıtı: ${(blob.size/1024).toFixed(1)} KB · ${blob.type}`);
 
     if (blob.size < 500) {
-      throw new Error(
-        'Luca boş yanıt (' + blob.size + ' byte) — Luca oturumu dolmuş olabilir, yeniden login olun',
-      );
+      throw new Error('Luca boş yanıt (' + blob.size + ' byte) — Luca oturumu dolmuş olabilir');
     }
-    if (ct.includes('html') || ct.includes('text/plain')) {
+    if (blob.type.includes('html')) {
       const txt = await blob.text();
-      throw new Error('Luca HTML döndü (Excel değil): ' + txt.slice(0, 200));
+      throw new Error('Luca HTML döndü: ' + txt.slice(0, 200));
     }
     return blob;
   }
