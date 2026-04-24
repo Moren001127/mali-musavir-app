@@ -129,6 +129,18 @@
       if (!Array.isArray(jobs) || jobs.length === 0) return;
 
       window.__lucaJobRunning = true;
+      // Progress log helper — agent her adımda Mizan sayfasına bildirir
+      const jobLog = async (jobId, msg) => {
+        try {
+          await fetch(API + `/agent/luca/jobs/${jobId}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ msg }),
+          });
+        } catch {}
+        console.log('[Moren Job ' + jobId.slice(-6) + ']', msg);
+      };
+      window.__lucaJobLog = jobLog;
       for (const job of jobs) {
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
@@ -136,16 +148,18 @@
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN },
           });
+          await jobLog(job.id, `Job alındı · ${job.tip} · ${job.donem}`);
 
+          window.__currentLucaJobId = job.id;
           const blob = await fetchLucaMuavinExcel(job);
           if (!blob) throw new Error('Excel yakalanamadı');
+          await jobLog(job.id, `✓ Excel yakalandı (${(blob.size/1024).toFixed(1)} KB)`);
 
           // Backend'e gönder — tip bazlı endpoint seçimi
           const fd = new FormData();
           fd.append('file', blob, `luca-${job.tip}-${job.donem}.xlsx`);
           let uploadUrl;
           if (job.tip === 'MIZAN') {
-            // Mizan için özel endpoint — mizan tablosuna parse edilir
             const params = new URLSearchParams({
               mukellefId: job.mukellefId,
               donem: job.donem,
@@ -153,9 +167,9 @@
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params}`;
           } else {
-            // KDV kontrol session için eski endpoint
             uploadUrl = `${API}/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`;
           }
+          await jobLog(job.id, `Backend'e yükleniyor…`);
           const uploadRes = await fetch(uploadUrl, {
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN },
@@ -163,16 +177,18 @@
           });
           if (!uploadRes.ok) {
             const errBody = await uploadRes.text().catch(() => '');
-            throw new Error(`Upload HTTP ${uploadRes.status}: ${errBody.slice(0, 120)}`);
+            await jobLog(job.id, `✗ Backend hatası: ${errBody.slice(0, 200)}`);
+            throw new Error(`Upload HTTP ${uploadRes.status}: ${errBody.slice(0, 200)}`);
           }
-          // Mizan için job status done yapılmalı (KDV runner endpoint'i kendisi yapıyor)
           if (job.tip === 'MIZAN') {
+            await jobLog(job.id, `✓ Mizan parse edildi, DB'ye yazıldı`);
             await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
               body: JSON.stringify({ recordCount: 0 }),
             }).catch(() => {});
           }
+          window.__currentLucaJobId = null;
           setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
         } catch (e) {
           console.error('[Moren] Luca job hata:', e);
@@ -209,12 +225,21 @@
    * Click YOK — yeni pencere açma riski yok.
    */
   async function fetchLucaMuavinExcel(job) {
+    const log = (msg) => {
+      if (window.__currentLucaJobId && window.__lucaJobLog) {
+        window.__lucaJobLog(window.__currentLucaJobId, msg);
+      } else {
+        console.log('[Moren]', msg);
+      }
+    };
+
     // 1) Multi-frame tarama
     const allDocs = [document];
     document.querySelectorAll('iframe, frame').forEach((iframe) => {
       try { if (iframe.contentDocument) allDocs.push(iframe.contentDocument); }
       catch (e) { /* cross-origin */ }
     });
+    log(`Luca sekmesi tarandı · ${allDocs.length} frame`);
 
     // 2) Mizan formunu bul (frm3'te olmalı)
     let mizanForm = null;
@@ -231,7 +256,7 @@
           'Luca\'da Muhasebe → Mizan ekranını açıp tekrar deneyin.',
       );
     }
-    console.log('[Moren] Luca mizan formu — action:', mizanForm.action);
+    log(`✓ Mizan formu bulundu`);
 
     // 3) Tarihleri donem'e göre ayarla — "2026-03" → "01/03/2026" → "31/03/2026"
     const [year, month] = (job.donem || '').split('-');
@@ -249,7 +274,7 @@
         sonInput.value = tarihSon;
         sonInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      console.log('[Moren] Luca tarihleri:', tarihIlk, '→', tarihSon);
+      log(`✓ Tarihler: ${tarihIlk} → ${tarihSon}`);
     }
 
     // 4) Rapor Türü dropdown — Excel olduğundan emin ol
@@ -271,7 +296,7 @@
     fd.delete('TARIH_ILK');  // eski uppercase boş alan override etmesin
     fd.delete('TARIH_SON');
 
-    console.log('[Moren] Luca form POST →', mizanForm.action);
+    log(`Excel POST atılıyor → Luca'ya istek gönderildi…`);
     const resp = await fetch(mizanForm.action, {
       method: (mizanForm.method || 'POST').toUpperCase(),
       body: fd,
@@ -284,7 +309,7 @@
 
     const ct = resp.headers.get('content-type') || '';
     const blob = await resp.blob();
-    console.log('[Moren] Luca Excel blob:', blob.size, 'bytes,', blob.type, 'ct:', ct);
+    log(`✓ Luca yanıtı: ${(blob.size/1024).toFixed(1)} KB · ${ct.split(';')[0]}`);
 
     if (blob.size < 500) {
       throw new Error(

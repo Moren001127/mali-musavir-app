@@ -231,6 +231,19 @@ export class LucaController {
     return { ok: true };
   }
 
+  /** Agent her aşamada ilerleme mesajı yollar — Mizan sayfası canlı gösterir. */
+  @Post('agent/luca/jobs/:id/log')
+  @HttpCode(HttpStatus.OK)
+  async logJob(
+    @Param('id') id: string,
+    @Body() body: { msg: string },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    await this.resolveTenantFromAgentToken(agentToken);
+    if (body?.msg) await this.luca.appendJobLog(id, body.msg);
+    return { ok: true };
+  }
+
   // ==================== RUNNER MIZAN UPLOAD ====================
   // Tarayıcı eklentisi (moren-agent.js) Luca sekmesinde gezinip mizan Excel'i
   // indirir, bu endpoint'e multipart POST ile yükler. Backend parse edip

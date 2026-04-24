@@ -41,34 +41,38 @@ export class MizanParserService {
     // dönem, kapak satırları içerir. Gerçek başlık 2-10. satır arasında
     // olabilir. İçinde hem "hesap/kod" hem "borç/alacak" geçen ilk satırı
     // başlık olarak kabul ederiz.
-    const MAX_SCAN = Math.min(20, grid.length);
+    const MAX_SCAN = Math.min(30, grid.length);
     let headerRowIdx = -1;
     for (let i = 0; i < MAX_SCAN; i++) {
       const row = grid[i];
       if (!row || row.length === 0) continue;
       const cells = row.map((c) => String(c ?? '').toLowerCase());
-      const hasKod = cells.some((c) => /hesap|kod/.test(c));
+      const hasKod = cells.some((c) => /hesap.*kod|^kod\b|hesap_kod/.test(c));
+      const hasAd = cells.some((c) => /hesap.*ad[ıi]?|^ad[ıi]?\b/.test(c));
       const hasBorc = cells.some((c) => /bor[çc]/.test(c));
       const hasAlacak = cells.some((c) => /alacak/.test(c));
-      if (hasKod && (hasBorc || hasAlacak)) {
+      const hasBakiye = cells.some((c) => /bakiye/.test(c));
+      // Luca standart format: Hesap Kodu + Hesap Adı + Bakiye yeterli.
+      // Bilanço usulü: + Borç Toplamı + Alacak Toplamı.
+      if ((hasKod || hasAd) && (hasBorc || hasAlacak || hasBakiye)) {
         headerRowIdx = i;
         break;
       }
     }
 
     if (headerRowIdx === -1) {
-      // Hiçbir başlık satırı bulunamadı — detaylı hata ver
+      // Hiçbir başlık satırı bulunamadı — detaylı hata ver (ilk 10 satır + sample)
       const firstFewRows = grid
-        .slice(0, 5)
-        .map((r, i) => `Satır ${i + 1}: ${(r || []).slice(0, 6).join(' | ')}`)
+        .slice(0, 10)
+        .map((r, i) => `Satır ${i + 1}: ${(r || []).slice(0, 10).map((c) => String(c ?? '')).join(' | ')}`)
         .join('\n');
       this.logger.warn(
-        `Mizan başlık satırı bulunamadı. İlk 5 satır:\n${firstFewRows}`,
+        `Mizan başlık satırı bulunamadı. İlk 10 satır:\n${firstFewRows}`,
       );
       throw new Error(
         'Mizan Excel dosyasında başlık satırı bulunamadı. ' +
-          'Beklenen sütunlar: "Hesap Kodu", "Hesap Adı", "Borç Toplamı", "Alacak Toplamı". ' +
-          'Dosyanın Luca\'dan standart mizan formatında indirildiğinden emin olun.',
+          'Beklenen sütunlar: "Hesap Kodu" + ("Bakiye" veya "Borç/Alacak"). ' +
+          `İlk satır: ${(grid[0] || []).slice(0, 8).map((c) => String(c ?? '')).join(' | ')}`,
       );
     }
 
@@ -140,9 +144,15 @@ export class MizanParserService {
         find([/alacak\s*bak[iı]y/, /bakiye.*alacak/, /^ab$/, /alacak\s*kal/]),
       );
 
-      // Bakiye sütunları dolmamışsa (merged cell veya farklı format) —
-      // standart mizan mantığı ile borç toplam - alacak toplam farkından
-      // türet. Borç > alacak ise borç bakiyesi, aksi halde alacak bakiyesi.
+      // Luca formatı: tek "Bakiye" sütunu varsa (Borç Bakiye - Alacak Bakiye birleşik)
+      // negatif/pozitif değere göre borç/alacak ayrımı yap
+      if (borcBakiye === 0 && alacakBakiye === 0) {
+        const tekBakiye = this.toDecimal(find([/^bakiye$/, /^bakıye$/, /^bak[iı]y/]));
+        if (tekBakiye > 0) borcBakiye = tekBakiye;
+        else if (tekBakiye < 0) alacakBakiye = Math.abs(tekBakiye);
+      }
+
+      // Hâlâ boşsa: borç toplam - alacak toplam farkından türet
       if (borcBakiye === 0 && alacakBakiye === 0) {
         const fark = borcToplami - alacakToplami;
         if (fark > 0) borcBakiye = fark;

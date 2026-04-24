@@ -139,9 +139,27 @@ export class LucaService {
       where: { id: jobId },
       data: {
         status: 'failed',
-        errorMsg: errorMsg.slice(0, 500),
+        errorMsg: errorMsg.slice(0, 2000),
         finishedAt: new Date(),
       },
+    });
+  }
+
+  /**
+   * Job'a ilerleme mesajı ekle — frontend polling ile canlı gösterir.
+   * errorMsg field'ını kümülatif log olarak kullan (migration gereksin diye).
+   */
+  async appendJobLog(jobId: string, message: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (!job) return null;
+    const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+    const newLine = `[${ts}] ${message}`;
+    const prev = job.errorMsg || '';
+    const lines = (prev ? prev.split('\n') : []).concat(newLine).slice(-20);
+    const merged = lines.join('\n').slice(-2000);
+    return (this.prisma as any).lucaFetchJob.update({
+      where: { id: jobId },
+      data: { errorMsg: merged },
     });
   }
 

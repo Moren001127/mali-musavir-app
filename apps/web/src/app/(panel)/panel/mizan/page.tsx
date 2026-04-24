@@ -101,6 +101,7 @@ export default function MizanPage() {
   // tutma zorunluluğu yok — her personel kendi oturumuyla çekim yapar.
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState<string>('');
+  const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
 
   const lucaAgentMut = useMutation({
     mutationFn: () =>
@@ -112,6 +113,7 @@ export default function MizanPage() {
     onSuccess: (d) => {
       setLucaJobId(d.jobId);
       setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
+      setLucaLogLines([]);
       toast.info('Luca job oluşturuldu · Luca sekmesini açık tut', { duration: 5000 });
     },
     onError: (e: any) =>
@@ -128,17 +130,24 @@ export default function MizanPage() {
     onSuccess: (d: any) => {
       if (!d?.job) return;
       const s = d.job.status;
-      if (s === 'running') setLucaStatus('Luca sayfasından Excel çekiliyor…');
+      // errorMsg artık kümülatif progress log — her satır bir adım
+      const log = d.job.errorMsg || '';
+      const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+      setLucaLogLines(lines);
+      const lastLine = lines[lines.length - 1] || '';
+      if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
+      else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
       else if (s === 'done') {
-        setLucaStatus('');
-        setLucaJobId(null);
+        setLucaStatus('Tamamlandı ✓');
+        // 2 sn sonra kapat ki kullanıcı son durumu görebilsin
+        setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
         toast.success('Mizan Luca\'dan çekildi');
         qc.invalidateQueries({ queryKey: ['mizan-list'] });
         if (d.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
       } else if (s === 'failed') {
         setLucaStatus('');
         setLucaJobId(null);
-        toast.error(`Luca çekim hatası: ${d.job.errorMsg || 'bilinmeyen'}`);
+        toast.error(`Luca çekim hatası — son satır: ${lastLine || 'bilinmeyen'}`);
       }
     },
   } as any);
@@ -359,30 +368,61 @@ export default function MizanPage() {
         </div>
       </div>
 
-      {/* Luca job durumu — extension Luca sekmesini kullanıyor */}
+      {/* Luca job durumu — extension Luca sekmesini kullanıyor + progress timeline */}
       {lucaJobId && (
         <div
-          className="rounded-lg p-3 text-sm flex items-center gap-3"
+          className="rounded-lg p-3 text-sm"
           style={{
             background: 'rgba(184,160,111,0.08)',
             border: '1px solid rgba(184,160,111,0.3)',
             color: '#fafaf9',
           }}
         >
-          <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
-          <div className="flex-1">
-            <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
-            <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
-              {lucaStatus || 'Moren agent Luca sayfasındaki mizan Excel\'ini indiriyor…'}
+          <div className="flex items-center gap-3">
+            <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+            <div className="flex-1">
+              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+              <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
+                {lucaStatus || 'Moren agent Luca sayfasındaki mizan Excel\'ini indiriyor…'}
+              </div>
             </div>
+            <button
+              onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
+              className="px-3 py-1.5 rounded-md text-xs"
+              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
+            >
+              İptal
+            </button>
           </div>
-          <button
-            onClick={() => { setLucaJobId(null); setLucaStatus(''); }}
-            className="px-3 py-1.5 rounded-md text-xs"
-            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
-          >
-            İptal
-          </button>
+          {lucaLogLines.length > 0 && (
+            <div
+              className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                color: 'rgba(250,250,249,0.75)',
+                maxHeight: 200,
+                overflowY: 'auto',
+              }}
+            >
+              {lucaLogLines.map((line, i) => {
+                const isErr = /✗|hata|error/i.test(line);
+                const isOk = /✓/.test(line);
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      color: isErr ? '#fca5a5' : isOk ? '#86efac' : 'rgba(250,250,249,0.65)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {line}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
