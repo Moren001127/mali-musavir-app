@@ -195,55 +195,128 @@
   setInterval(processLucaJobs, 15000);
 
   /**
-   * Luca sayfasında mevcut muavin/işletme defteri Excel'ini yakalar.
-   * DOM'da `a[href*=".xlsx"]` veya "Excel" yazan butonu arar; bir
-   * click fetch interceptor ile indirilen blob yakalanır.
+   * Luca sayfasında mevcut mizan/muavin Excel'ini yakalar.
    *
-   * NOT: Luca DOM'u her sürümde değişebilir — bu fonksiyon first-cut
-   * implementasyondur. Keşif sonucu kesinleştirilir.
+   * Luca v2.1 davranışı:
+   *   - Mizan sayfasında "Rapor" butonu var ("Excel" değil)
+   *   - Rapor Türü dropdown'u zaten "Excel Liste (xlsx)" (varsayılan)
+   *   - "Rapor" tıklanınca form submit edilip yeni pencere/sekme açılıyor
+   *
+   * Bu yüzden 3 yolla blob yakalamaya çalışıyoruz (paralel):
+   *   a) fetch interceptor — XHR/fetch ile indirme yapılırsa
+   *   b) window.open monkey patch — yeni pencere URL'ini yakala + kendi fetch'imizle indir
+   *   c) a[href].click() — doğrudan link click edilirse URL'i yakala
    */
   async function fetchLucaMuavinExcel(job) {
-    // 1) Sayfa hazır mı? Mükellef + dönem + hesap seçili mi? (kullanıcı
-    //    manuel açmış olmalı — runner sadece indirir).
-    const excelBtn =
-      [...document.querySelectorAll('button,a')].find((el) =>
-        /excel|xlsx/i.test(el.textContent || ''),
-      ) || document.querySelector('a[href*=".xlsx"]');
-    if (!excelBtn) {
+    // 1) Tetiklenecek elementi bul — öncelik sırası:
+    //    "Excel Liste" metni > "Rapor" butonu > a[href*=.xlsx]
+    const candidates = [...document.querySelectorAll(
+      'button, a, input[type=button], input[type=submit]',
+    )];
+    const getText = (el) =>
+      ((el.textContent || el.value || el.getAttribute('title') || '') + '').trim();
+    let trigger =
+      candidates.find((el) => /excel[\s_-]*liste|xlsx/i.test(getText(el))) ||
+      candidates.find((el) => /^rapor$|📄\s*rapor/i.test(getText(el))) ||
+      document.querySelector('a[href*=".xlsx"]') ||
+      candidates.find((el) => /excel/i.test(getText(el)));
+
+    if (!trigger) {
       throw new Error(
-        'Luca muavin ekranında Excel indirme butonu bulunamadı — ekranı açıp tekrar deneyin',
+        'Luca mizan sayfasında "Rapor" / "Excel" butonu bulunamadı. ' +
+          'Luca menüden Muhasebe → Mizan raporu ekranını açıp tekrar deneyin.',
       );
     }
+    console.log('[Moren] Luca trigger:', getText(trigger), trigger);
 
-    // 2) Fetch interceptor: sonraki indirilecek blob'u yakala
-    const originalFetch = window.fetch;
     let captured = null;
+
+    // 2) Fetch interceptor
+    const origFetch = window.fetch;
     window.fetch = async function (...args) {
-      const res = await originalFetch.apply(this, args);
+      const res = await origFetch.apply(this, args);
       try {
+        const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         const ct = res.headers.get('content-type') || '';
         if (
           ct.includes('spreadsheet') ||
           ct.includes('excel') ||
-          (typeof args[0] === 'string' && args[0].includes('.xlsx'))
+          /\.xlsx(\?|$)/i.test(url)
         ) {
-          const clone = res.clone();
-          captured = await clone.blob();
+          captured = await res.clone().blob();
+          console.log('[Moren] Luca blob (fetch) yakalandı:', captured.size);
         }
       } catch {}
       return res;
     };
 
-    // 3) Butona tıkla
+    // 3) window.open monkey patch — Luca yeni pencereye yönlendiriyorsa
+    const origOpen = window.open;
+    window.open = function (url, ...rest) {
+      const u = url || '';
+      console.log('[Moren] Luca window.open:', u);
+      if (u && (/\.xlsx|mizan|rapor|excel/i.test(u))) {
+        // Kendi fetch'imizle indirip yakala — yeni pencere açma
+        origFetch
+          .call(window, u, { credentials: 'include' })
+          .then((r) => r.blob())
+          .then((b) => {
+            captured = b;
+            console.log('[Moren] Luca blob (window.open) yakalandı:', b.size);
+          })
+          .catch((e) => console.warn('[Moren] window.open fetch hata:', e));
+        return null; // yeni sekme açma
+      }
+      return origOpen.apply(this, [url, ...rest]);
+    };
+
+    // 4) Download event listener (XMLHttpRequest/form submit)
+    const origXhrOpen = window.XMLHttpRequest.prototype.open;
+    const origXhrSend = window.XMLHttpRequest.prototype.send;
+    window.XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+      this.__morenUrl = url;
+      return origXhrOpen.apply(this, [method, url, ...rest]);
+    };
+    window.XMLHttpRequest.prototype.send = function (...args) {
+      const xhr = this;
+      xhr.addEventListener('load', function () {
+        try {
+          const ct = xhr.getResponseHeader('content-type') || '';
+          if (
+            ct.includes('spreadsheet') ||
+            ct.includes('excel') ||
+            /\.xlsx/i.test(xhr.__morenUrl || '')
+          ) {
+            // Response body blob olmalı — responseType ayarlamamış olabilir
+            if (xhr.response instanceof Blob) {
+              captured = xhr.response;
+              console.log('[Moren] Luca blob (xhr) yakalandı:', captured.size);
+            }
+          }
+        } catch {}
+      });
+      return origXhrSend.apply(this, args);
+    };
+
     try {
-      excelBtn.click();
-      // 4) Blob yakalanana kadar bekle (max 20 sn)
+      trigger.click();
+      // 30 sn bekle — Luca rapor üretimi yavaş olabilir
       const t0 = Date.now();
-      while (!captured && Date.now() - t0 < 20000) {
-        await sleep(250);
+      while (!captured && Date.now() - t0 < 30000) {
+        await sleep(300);
       }
     } finally {
-      window.fetch = originalFetch;
+      window.fetch = origFetch;
+      window.open = origOpen;
+      window.XMLHttpRequest.prototype.open = origXhrOpen;
+      window.XMLHttpRequest.prototype.send = origXhrSend;
+    }
+
+    if (!captured) {
+      throw new Error(
+        '"Rapor" tıklandı ama Excel dosyası 30 sn içinde yakalanamadı. ' +
+          'Luca yeni sekmede açıyor olabilir — popup engelli mi? Ya da Rapor Türü dropdown\'u Excel değil.',
+      );
     }
     return captured;
   }
