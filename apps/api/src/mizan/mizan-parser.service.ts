@@ -29,12 +29,30 @@ export class MizanParserService {
     // raw: true ile sayısal hücreleri JS number olarak al — Türkçe binlik
     // ayracı (.) ve ondalık virgül (,) formatlama sorunlarını önler.
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const grid: any[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      raw: true,
-      defval: null,
+
+    // Tüm sheet'leri tara — en çok satırı olanı seç (Luca bazen ilk sheet'i
+    // kapak/info için kullanır, asıl mizan ikinci sheet'te olabilir)
+    let bestSheet: any = null;
+    let bestGrid: any[][] = [];
+    let bestSheetName = '';
+    for (const name of wb.SheetNames) {
+      const sh = wb.Sheets[name];
+      const g: any[][] = XLSX.utils.sheet_to_json(sh, {
+        header: 1, raw: true, defval: null,
+      });
+      const dolulukSayisi = g.filter((r) => r && r.some((c) => c != null && String(c).trim() !== '')).length;
+      this.logger.log(`Sheet "${name}": ${g.length} satır, ${dolulukSayisi} dolu`);
+      if (dolulukSayisi > bestGrid.filter((r) => r && r.some((c) => c != null)).length) {
+        bestSheet = sh;
+        bestGrid = g;
+        bestSheetName = name;
+      }
+    }
+    const sheet = bestSheet || wb.Sheets[wb.SheetNames[0]];
+    const grid: any[][] = bestGrid.length > 0 ? bestGrid : XLSX.utils.sheet_to_json(sheet, {
+      header: 1, raw: true, defval: null,
     });
+    this.logger.log(`Mizan parse: sheet="${bestSheetName || wb.SheetNames[0]}" seçildi · ${wb.SheetNames.length} sheet toplam (${wb.SheetNames.join(', ')})`);
 
     // ── BAŞLIK SATIRI OTOMATİK TESPİT ──────────────────────────
     // Luca ve diğer programların Excel'leri genelde üstte firma bilgisi,
