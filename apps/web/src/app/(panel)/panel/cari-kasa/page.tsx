@@ -81,11 +81,6 @@ export default function CariKasaPage() {
     queryFn: () => api.get('/taxpayers').then((r) => r.data?.data ?? r.data ?? []),
   });
 
-  // Mükellef seçilmemişse tablo görünümü (toplu liste)
-  if (!taxpayerId) {
-    return <GenelListeView onSelect={setTaxpayerId} />;
-  }
-
   const { data: hizmetler = [] } = useQuery<Hizmet[]>({
     queryKey: ['cari-hizmetler', taxpayerId],
     queryFn: () => api.get('/cari-kasa/hizmet', { params: { taxpayerId } }).then((r) => r.data),
@@ -103,6 +98,11 @@ export default function CariKasaPage() {
     queryFn: () => api.get(`/cari-kasa/bakiye/${taxpayerId}`).then((r) => r.data),
     enabled: !!taxpayerId,
   });
+
+  // Tüm hook'lar çağrıldı — şimdi early return güvenli (Rules of Hooks uyumlu)
+  if (!taxpayerId) {
+    return <GenelListeView onSelect={setTaxpayerId} />;
+  }
 
   const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
   const selectedAd = selectedTaxpayer
