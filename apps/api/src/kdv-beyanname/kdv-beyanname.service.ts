@@ -352,7 +352,7 @@ export class KdvBeyannameService {
               session: {
                 tenantId,
                 taxpayerId: mukellefId,
-                period: donem,
+                periodLabel: { in: [donem, donem.replace('-', '/')] },
               },
               belgeNo: { in: Array.from(belgeNoSet) as string[] },
             },
@@ -426,7 +426,12 @@ export class KdvBeyannameService {
     // OCR'dan geçen ve tevkifat alanı dolu olanlar
     const records = await (this.prisma as any).kdvRecord.findMany({
       where: {
-        session: { tenantId, taxpayerId: mukellefId, period: donem, type: 'KDV_191' },
+        session: {
+          tenantId,
+          taxpayerId: mukellefId,
+          periodLabel: { in: [donem, donem.replace('-', '/')] },
+          type: 'KDV_191',
+        },
       },
     });
 
@@ -454,7 +459,12 @@ export class KdvBeyannameService {
   ) {
     const records = await (this.prisma as any).kdvRecord.findMany({
       where: {
-        session: { tenantId, taxpayerId: mukellefId, period: donem, type: 'KDV_191' },
+        session: {
+          tenantId,
+          taxpayerId: mukellefId,
+          periodLabel: { in: [donem, donem.replace('-', '/')] },
+          type: 'KDV_191',
+        },
       },
       orderBy: { belgeDate: 'asc' },
     });
