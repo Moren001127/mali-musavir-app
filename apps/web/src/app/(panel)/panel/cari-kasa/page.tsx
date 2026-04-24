@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 import { toast } from 'sonner';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
-  TrendingUp, TrendingDown, X, Edit3,
+  TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -65,7 +65,13 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export default function CariKasaPage() {
   const qc = useQueryClient();
-  const [taxpayerId, setTaxpayerId] = useState('');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const taxpayerId = searchParams.get('mukellef') || '';
+  const setTaxpayerId = (id: string) => {
+    if (id) router.push(`/panel/cari-kasa?mukellef=${id}`);
+    else router.push('/panel/cari-kasa');
+  };
   const [tab, setTab] = useState<'hizmetler' | 'hareketler' | 'ekstre'>('hizmetler');
   const [hizmetModal, setHizmetModal] = useState<Hizmet | 'yeni' | null>(null);
   const [tahsilatModal, setTahsilatModal] = useState(false);
@@ -74,6 +80,11 @@ export default function CariKasaPage() {
     queryKey: ['taxpayers-for-cari'],
     queryFn: () => api.get('/taxpayers').then((r) => r.data?.data ?? r.data ?? []),
   });
+
+  // Mükellef seçilmemişse tablo görünümü (toplu liste)
+  if (!taxpayerId) {
+    return <GenelListeView onSelect={setTaxpayerId} />;
+  }
 
   const { data: hizmetler = [] } = useQuery<Hizmet[]>({
     queryKey: ['cari-hizmetler', taxpayerId],
@@ -93,42 +104,44 @@ export default function CariKasaPage() {
     enabled: !!taxpayerId,
   });
 
+  const selectedTaxpayer = taxpayers.find((t) => t.id === taxpayerId);
+  const selectedAd = selectedTaxpayer
+    ? (selectedTaxpayer.companyName || `${selectedTaxpayer.firstName || ''} ${selectedTaxpayer.lastName || ''}`.trim())
+    : 'Mükellef';
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
-            Finansal Takip · Cari
-          </div>
-          <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, color: '#fafaf9', letterSpacing: '-.03em' }}>
-            Cari Kasa
-          </h1>
-          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            Müşteri hizmetleri, aylık otomatik tahakkuk ve ödeme takibi. Ekstre yazdırılabilir.
-          </p>
-        </div>
-        {taxpayerId && (
+        <div className="flex items-start gap-3">
           <button
-            onClick={() => setTahsilatModal(true)}
-            className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' }}
+            onClick={() => setTaxpayerId('')}
+            className="mt-1 p-2 rounded-md"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}
+            title="Listeye dön"
           >
-            <Plus size={14} /> Tahsilat Ekle
+            <ArrowLeft size={16} />
           </button>
-        )}
-      </div>
-
-      {/* Mükellef seçici */}
-      <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-        <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-          Mükellef
-        </label>
-        <TaxpayerSelect
-          taxpayers={taxpayers}
-          value={taxpayerId}
-          onChange={setTaxpayerId}
-          placeholder="— Mükellef Seçin —"
-        />
+          <div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
+              Cari Kasa · Detay
+            </div>
+            <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 28, color: '#fafaf9', letterSpacing: '-.02em' }}>
+              {selectedAd}
+            </h1>
+            {selectedTaxpayer?.taxNumber && (
+              <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>
+                {selectedTaxpayer.taxNumber}
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => setTahsilatModal(true)}
+          className="px-4 py-2 rounded-[9px] text-[12.5px] font-bold inline-flex items-center gap-2"
+          style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b', boxShadow: '0 2px 10px rgba(212,184,118,0.35)' }}
+        >
+          <Plus size={14} /> Tahsilat Ekle
+        </button>
       </div>
 
       {taxpayerId && (
@@ -196,18 +209,6 @@ export default function CariKasaPage() {
 
           {tab === 'ekstre' && <EkstreView taxpayerId={taxpayerId} taxpayers={taxpayers} />}
         </>
-      )}
-
-      {!taxpayerId && (
-        <div className="rounded-2xl p-12 text-center border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-          <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.1)' }}>
-            <Wallet size={24} style={{ color: GOLD }} />
-          </div>
-          <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Başlamak için mükellef seçin</p>
-          <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Hizmet tanımla → her ayın 1'inde otomatik tahakkuk → tahsilat kaydet → ekstre yazdır
-          </p>
-        </div>
       )}
 
       {hizmetModal && (
@@ -630,5 +631,216 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</label>
       {children}
     </div>
+  );
+}
+
+// ==================== GENEL LİSTE (Hattat-tarzı toplu tablo) ====================
+
+type OzetSatir = {
+  id: string;
+  ad: string;
+  taxNumber?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  aylikMuhasebeUcreti: number;
+  tahakkuk: number;
+  tahsilat: number;
+  bakiye: number;
+};
+
+function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
+  const [search, setSearch] = useState('');
+  const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
+
+  const { data: ozet = [], isLoading } = useQuery<OzetSatir[]>({
+    queryKey: ['cari-ozet'],
+    queryFn: () => api.get('/cari-kasa/ozet').then((r) => r.data),
+    refetchInterval: 30000,
+  });
+
+  const filtered = useMemo(() => {
+    const s = search.toLocaleLowerCase('tr');
+    return ozet.filter((o) => {
+      if (sadecaBakiyeli && o.bakiye === 0) return false;
+      if (s) {
+        const name = (o.ad || '').toLocaleLowerCase('tr');
+        const vkn = (o.taxNumber || '').toLowerCase();
+        if (!name.includes(s) && !vkn.includes(s)) return false;
+      }
+      return true;
+    });
+  }, [ozet, search, sadecaBakiyeli]);
+
+  const toplamlar = useMemo(() => {
+    let ucret = 0, tahakkuk = 0, tahsilat = 0, bakiye = 0;
+    for (const o of filtered) {
+      ucret += o.aylikMuhasebeUcreti;
+      tahakkuk += o.tahakkuk;
+      tahsilat += o.tahsilat;
+      bakiye += o.bakiye;
+    }
+    return { ucret, tahakkuk, tahsilat, bakiye };
+  }, [filtered]);
+
+  const indirExcel = () => {
+    // Basit tarayıcı Excel oluşturma: HTML table → Excel indirme yerine
+    // server-side ozet-xlsx ileride eklenebilir. Şimdilik kullanıcı
+    // mükellef seçip ekstre alır.
+    toast.info('Toplu Excel için her mükellefe girip Ekstre İndir kullanın (ileride toplu eklenir)');
+  };
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
+            Finansal Takip · Cari
+          </div>
+          <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, color: '#fafaf9', letterSpacing: '-.03em' }}>
+            Cari Kasa
+          </h1>
+          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Tüm mükellefler · muhasebe ücreti + tahakkuk + tahsilat + bakiye. Mükellefe tıkla, detaya gir.
+          </p>
+        </div>
+      </div>
+
+      {/* Filtreler */}
+      <div className="rounded-2xl p-4 border flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="relative flex-1 min-w-[250px]">
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Mükellef ara… ad veya VKN"
+            className="w-full pl-9 pr-3 py-2 rounded-md text-[13px] outline-none"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer text-[12.5px]" style={{ color: 'rgba(250,250,249,0.75)' }}>
+          <input
+            type="checkbox"
+            checked={sadecaBakiyeli}
+            onChange={(e) => setSadecaBakiyeli(e.target.checked)}
+          />
+          <span>Sadece bakiyesi olanlar</span>
+        </label>
+        <button
+          onClick={indirExcel}
+          className="px-3 py-2 rounded-md text-[12.5px] font-semibold inline-flex items-center gap-1.5"
+          style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}
+        >
+          <Download size={13} /> Excel
+        </button>
+      </div>
+
+      {/* Tablo */}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        {isLoading && (
+          <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            <Loader2 className="animate-spin inline mr-2" size={16} />Yükleniyor…
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && (
+          <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            {ozet.length === 0 ? 'Henüz cari hareket yok — mükellefe tıklayıp hizmet tanımlayın.' : 'Filtreye uyan kayıt yok'}
+          </div>
+        )}
+        {!isLoading && filtered.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr style={{ background: 'rgba(255,255,255,0.015)', color: 'rgba(250,250,249,0.5)' }}>
+                  <th className="text-left px-4 py-2.5 font-semibold">Mükellef</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Muhasebe Ücreti</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Borç (Hizmet)</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Alacak (Tahsilat)</th>
+                  <th className="text-right px-4 py-2.5 font-semibold">Bakiye</th>
+                  <th className="text-center px-4 py-2.5 font-semibold">İşlemler</th>
+                </tr>
+              </thead>
+              <tbody style={{ color: '#fafaf9' }}>
+                {filtered.map((o) => (
+                  <tr
+                    key={o.id}
+                    onClick={() => onSelect(o.id)}
+                    className="cursor-pointer transition-colors"
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(184,160,111,0.04)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <td className="px-4 py-2.5">
+                      <div className="font-semibold truncate max-w-[320px]" style={{ color: '#fafaf9' }}>{o.ad}</div>
+                      {o.taxNumber && (
+                        <div className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>
+                          {o.taxNumber}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.aylikMuhasebeUcreti ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
+                      {o.aylikMuhasebeUcreti ? `${fmt(o.aylikMuhasebeUcreti)} ₺` : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.tahakkuk ? '#60a5fa' : 'rgba(250,250,249,0.3)' }}>
+                      {o.tahakkuk ? `${fmt(o.tahakkuk)} ₺` : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.tahsilat ? '#4ade80' : 'rgba(250,250,249,0.3)' }}>
+                      {o.tahsilat ? `${fmt(o.tahsilat)} ₺` : '—'}
+                    </td>
+                    <td
+                      className="px-4 py-2.5 text-right tabular-nums font-bold"
+                      style={{
+                        fontFamily: 'JetBrains Mono, monospace',
+                        color: o.bakiye > 0 ? '#fca5a5' : o.bakiye < 0 ? '#86efac' : 'rgba(250,250,249,0.4)',
+                      }}
+                    >
+                      {o.bakiye !== 0 ? `${fmt(o.bakiye)} ₺` : '0,00 ₺'}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center justify-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <IconBtn color="#4ade80" title="Düzenle" onClick={() => onSelect(o.id)}><Edit3 size={13} /></IconBtn>
+                        <IconBtn color={BORDO} title="Tahsilat" onClick={() => onSelect(o.id)}><Plus size={13} /></IconBtn>
+                        <IconBtn color="#a78bfa" title="Hareketler" onClick={() => onSelect(o.id)}><Receipt size={13} /></IconBtn>
+                        <IconBtn color="#fbbf24" title="Ekstre" onClick={() => onSelect(o.id)}><FileText size={13} /></IconBtn>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: 'rgba(156,70,86,0.08)', borderTop: '2px solid rgba(156,70,86,0.3)', fontWeight: 700 }}>
+                  <td className="px-4 py-3" style={{ color: BORDO }}>TOPLAM ({filtered.length})</td>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: GOLD }}>
+                    {fmt(toplamlar.ucret)} ₺
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#60a5fa' }}>
+                    {fmt(toplamlar.tahakkuk)} ₺
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#4ade80' }}>
+                    {fmt(toplamlar.tahsilat)} ₺
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: BORDO, fontSize: 14 }}>
+                    {fmt(toplamlar.bakiye)} ₺
+                  </td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IconBtn({ children, color, title, onClick }: { children: React.ReactNode; color: string; title: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="p-1.5 rounded-md transition"
+      style={{ background: `${color}22`, color, border: `1px solid ${color}40` }}
+    >
+      {children}
+    </button>
   );
 }

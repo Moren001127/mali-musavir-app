@@ -375,31 +375,66 @@ export class CariKasaService {
   }
 
   // ==================== GENEL ÖZET (tüm mükellefler) ====================
-
+  //
+  // Tablo görünümü için — HER mükellef dönülür (hareket yoksa 0 bakiye).
+  // aylikMuhasebeUcreti: aktif ve AYLIK olan ilk hizmetin tutarı (muhasebe ücreti).
   async genelOzet(tenantId: string) {
+    // 1. Tüm aktif mükellefler (hareket olmasa bile tabloda görünsün)
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true, firstName: true, lastName: true, companyName: true,
+        taxNumber: true, phone: true, email: true, startDate: true, endDate: true,
+      },
+    });
+
+    // 2. Tüm hareketler tek sorgu
     const hareketler = await (this.prisma as any).cariHareket.findMany({
       where: { tenantId },
       select: { taxpayerId: true, tip: true, tutar: true },
     });
-    const map = new Map<string, { tahakkuk: number; tahsilat: number; bakiye: number }>();
+    const harMap = new Map<string, { tahakkuk: number; tahsilat: number }>();
     for (const h of hareketler) {
-      const r = map.get(h.taxpayerId) || { tahakkuk: 0, tahsilat: 0, bakiye: 0 };
+      const r = harMap.get(h.taxpayerId) || { tahakkuk: 0, tahsilat: 0 };
       const v = Number(h.tutar);
       if (h.tip === 'TAHAKKUK') r.tahakkuk += v;
       else if (h.tip === 'IADE') r.tahakkuk -= v;
       else if (h.tip === 'TAHSILAT') r.tahsilat += v;
       else if (h.tip === 'DUZELTME') r.tahsilat -= v;
-      r.bakiye = r.tahakkuk - r.tahsilat;
-      map.set(h.taxpayerId, r);
+      harMap.set(h.taxpayerId, r);
     }
-    const taxpayers = await (this.prisma as any).taxpayer.findMany({
-      where: { tenantId, id: { in: Array.from(map.keys()) } },
-      select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
+
+    // 3. Aylık muhasebe ücreti — aktif AYLIK hizmetler (mukellef başına toplam)
+    const hizmetler = await (this.prisma as any).cariHizmet.findMany({
+      where: { tenantId, aktif: true, periyot: 'AYLIK' },
+      select: { taxpayerId: true, tutar: true },
     });
-    return taxpayers.map((t: any) => ({
-      ...t,
-      ad: t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim(),
-      ...map.get(t.id)!,
-    })).sort((a: any, b: any) => b.bakiye - a.bakiye);
+    const ucretMap = new Map<string, number>();
+    for (const h of hizmetler) {
+      ucretMap.set(h.taxpayerId, (ucretMap.get(h.taxpayerId) || 0) + Number(h.tutar));
+    }
+
+    // Türkçe alfabetik sıralama için Intl.Collator
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    const adOf = (t: any) =>
+      (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber || '').trim();
+
+    return taxpayers
+      .map((t: any) => {
+        const h = harMap.get(t.id) || { tahakkuk: 0, tahsilat: 0 };
+        const bakiye = Math.round((h.tahakkuk - h.tahsilat) * 100) / 100;
+        return {
+          id: t.id,
+          ad: adOf(t),
+          taxNumber: t.taxNumber,
+          phone: t.phone,
+          email: t.email,
+          aylikMuhasebeUcreti: ucretMap.get(t.id) || 0,
+          tahakkuk: Math.round(h.tahakkuk * 100) / 100,
+          tahsilat: Math.round(h.tahsilat * 100) / 100,
+          bakiye,
+        };
+      })
+      .sort((a: any, b: any) => collator.compare(a.ad, b.ad));
   }
 }
