@@ -8,7 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel,
+  Car, Gavel, Wallet,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
@@ -29,6 +29,7 @@ const navGroups = [
       { href: '/panel/mukellefler', label: 'Mükellefler',       icon: Users },
       { href: '/panel/beyannameler',label: 'Beyannameler',      icon: FileText },
       { href: '/panel/faturalar',   label: 'Faturalar',         icon: Receipt },
+      { href: '/panel/cari-kasa',   label: 'Cari Kasa',         icon: Wallet },
       { href: '/panel/bordro',      label: 'Bordro & SGK',      icon: Users2 },
       { href: '/panel/evraklar',    label: 'Evrak Yönetimi',    icon: FolderOpen },
     ],

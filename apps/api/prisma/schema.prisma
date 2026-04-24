@@ -163,6 +163,8 @@ model Taxpayer {
   beyanConfig         TaxpayerBeyanConfig?
   beyanDurumlari      BeyanDurumu[]
   beyanKayitlari      BeyanKaydi[]
+  cariHizmetler       CariHizmet[]
+  cariHareketler      CariHareket[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1547,4 +1549,64 @@ model HgsIhlalSorguSonucu {
   @@index([tenantId, sorguTarihi])
   @@index([aracId, sorguTarihi])
   @@map("hgs_ihlal_sorgu_sonuclari")
+}
+
+// ============================================================
+// CARİ KASA — Müşteri Hizmetleri ve Ödeme Takibi
+// ============================================================
+
+/**
+ * Mükellefe tanımlanan tekrar eden hizmetler (muhasebe ücreti, bordro, SGK, vb.)
+ * Her ayın 1. günü cron otomatik tahakkuk kaydı oluşturur.
+ */
+model CariHizmet {
+  id            String    @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  hizmetAdi     String    // "Muhasebe Ücreti", "Bordro", "SGK", "Yıllık Kapanış", vb.
+  tutar         Decimal   @db.Decimal(14, 2)
+  periyot       String    // "AYLIK" | "UCAYLIK" | "ALTIAYLIK" | "YILLIK"
+  baslangicAy   String    // "2026-01" formatı — bu aydan itibaren tahakkuk geçer
+  bitisAy       String?   // opsiyonel, belirtilirse o aya kadar tahakkuk edilir
+  aktif         Boolean   @default(true)
+  sonTahakkukAy String?   // "2026-04" — duplicate önleme (cron kontrolü)
+  notlar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  taxpayer      Taxpayer       @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  hareketler    CariHareket[]
+
+  @@index([tenantId, taxpayerId])
+  @@index([tenantId, aktif])
+  @@map("cari_hizmetler")
+}
+
+/**
+ * Cari hareketler — tahakkuk (borç) ve tahsilat (alacak) kayıtları.
+ * Bakiye = SUM(TAHAKKUK) - SUM(TAHSILAT) olarak hesaplanır.
+ */
+model CariHareket {
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  hizmetId       String?   // Tahakkuksa hizmete bağlı; manuel ödeme ise null
+  tarih          DateTime
+  tip            String    // "TAHAKKUK" | "TAHSILAT" | "IADE" | "DUZELTME"
+  tutar          Decimal   @db.Decimal(14, 2)
+  aciklama       String?
+  odemeYontemi   String?   // "NAKIT" | "HAVALE" | "POS" | "CEK" | "SENET" | null
+  belgeNo        String?   // Dekont/makbuz no
+  donem          String?   // "2026-04" — tahakkuk hangi ayın, tahsilat hangi aya ait
+  otoOlusturuldu Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  createdBy      String?
+
+  taxpayer       Taxpayer     @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  hizmet         CariHizmet?  @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, taxpayerId, tarih])
+  @@index([tenantId, tarih])
+  @@index([tenantId, tip])
+  @@map("cari_hareketler")
 }

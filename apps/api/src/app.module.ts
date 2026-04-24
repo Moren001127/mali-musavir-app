@@ -25,6 +25,7 @@ import { BeyannameTakipModule } from './beyanname-takip/beyanname-takip.module';
 import { BeyanKayitlariModule } from './beyan-kayitlari/beyan-kayitlari.module';
 import { KdvBeyannameModule } from './kdv-beyanname/kdv-beyanname.module';
 import { GaleriModule } from './galeri/galeri.module';
+import { CariKasaModule } from './cari-kasa/cari-kasa.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -56,6 +57,7 @@ import { HgsCron } from './schedule/hgs.cron';
     BeyanKayitlariModule,
     KdvBeyannameModule,
     GaleriModule,
+    CariKasaModule,
   ],
   providers: [ReminderCron, HgsCron],
 })
