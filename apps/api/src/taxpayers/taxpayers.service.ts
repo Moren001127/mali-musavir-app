@@ -42,7 +42,7 @@ export class TaxpayersService {
       });
     }
 
-    const taxpayers = await this.prisma.taxpayer.findMany({
+    const taxpayersRaw = await this.prisma.taxpayer.findMany({
       where: { AND: andConditions },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       select: {
@@ -70,6 +70,19 @@ export class TaxpayersService {
         _count: { select: { taxDeclarations: true, documents: true } },
       },
     });
+
+    // Türkçe locale-aware sıralama. PostgreSQL default collation İ/Ğ/Ş/Ç/Ü/Ö
+    // karakterlerini yanlış sıralıyor — JS Intl.Collator ile düzeltiyoruz.
+    // Görüntü adı: companyName öncelikli, yoksa "firstName lastName".
+    const collator = new Intl.Collator('tr', { sensitivity: 'base', numeric: false });
+    const displayName = (t: any): string =>
+      (t.companyName ||
+        `${t.firstName || ''} ${t.lastName || ''}`.trim() ||
+        t.taxNumber ||
+        '').trim();
+    const taxpayers = [...taxpayersRaw].sort((a, b) =>
+      collator.compare(displayName(a), displayName(b)),
+    );
 
     if (!year || !month) return taxpayers.map(t => ({ ...t, monthlyStatus: null }));
 

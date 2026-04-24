@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PageHeader } from '@/components/ui/PageHeader';
+import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 import {
   Upload,
   FileImage,
@@ -1262,20 +1263,17 @@ export default function FisYazdirmaPage() {
                 <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   Mükellef *
                 </label>
-                <select
+                <TaxpayerSelect
+                  taxpayers={taxpayers.map((t) => ({
+                    id: t.id,
+                    companyName: t.name,
+                    taxNumber: (t as any).taxNumber || null,
+                  }))}
                   value={fetchMukellefId}
-                  onChange={(e) => setFetchMukellefId(e.target.value)}
+                  onChange={setFetchMukellefId}
                   disabled={fetchLoading}
-                  className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
-                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
-                >
-                  <option value="">— mükellef seçin —</option>
-                  {taxpayers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="— mükellef seçin —"
+                />
               </div>
 
               <div>

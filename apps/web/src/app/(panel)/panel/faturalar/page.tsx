@@ -141,23 +141,15 @@ export default function FaturalarPage() {
         responseType: 'text',
         transformResponse: (d) => d,
       });
-      const count = Number(resp.headers['x-print-count'] || 0);
-      const skipped = Number(resp.headers['x-print-skipped'] || 0);
-      if (count === 0) {
-        alert(
-          `Yazdırılacak ${tip === 'ALIS' ? 'alış' : 'satış'} faturası bulunamadı.\n` +
-            (skipped > 0 ? `(${skipped} fiş/Z raporu filtrelendi.)` : 'Bu dönem için e-Fatura / e-Arşiv yok.'),
-        );
-        setPrinting('idle');
-        return;
-      }
+      // Sıfır kayıt olsa bile HTML'i yeni sekmede aç — backend'in döndürdüğü
+      // boş sonuç sayfası gerçek belgeTuru sayımlarını ve sebebi gösterir.
+      // Böylece "neden boş" sorusu kullanıcıya görünür hale gelir.
       const blob = new Blob([resp.data], { type: 'text/html; charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const w = window.open(url, '_blank');
       if (!w) {
         alert('Popup engellendi. Tarayıcı çubuğundan bu sayfaya popup izni verin.');
       }
-      // Bellek — 5 dk sonra revoke et (yeni sekme kendini zaten yükledi)
       setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
     } catch (e: any) {
       alert(`Yazdırma hazırlanamadı: ${e?.response?.data?.message || e?.message || 'hata'}`);
