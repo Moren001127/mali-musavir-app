@@ -41,14 +41,14 @@ export class MizanParserService {
     // dönem, kapak satırları içerir. Gerçek başlık 2-10. satır arasında
     // olabilir. İçinde hem "hesap/kod" hem "borç/alacak" geçen ilk satırı
     // başlık olarak kabul ederiz.
-    const MAX_SCAN = Math.min(30, grid.length);
+    const MAX_SCAN = Math.min(50, grid.length);
     let headerRowIdx = -1;
     for (let i = 0; i < MAX_SCAN; i++) {
       const row = grid[i];
       if (!row || row.length === 0) continue;
       const cells = row.map((c) => String(c ?? '').toLowerCase());
-      const hasKod = cells.some((c) => /hesap.*kod|^kod\b|hesap_kod/.test(c));
-      const hasAd = cells.some((c) => /hesap.*ad[ıi]?|^ad[ıi]?\b/.test(c));
+      const hasKod = cells.some((c) => /hesap.*kod|^kod\b|hesap_kod|kodu/.test(c));
+      const hasAd = cells.some((c) => /hesap.*ad[ıi]?|^ad[ıi]?\b|ad[ıi]/.test(c));
       const hasBorc = cells.some((c) => /bor[çc]/.test(c));
       const hasAlacak = cells.some((c) => /alacak/.test(c));
       const hasBakiye = cells.some((c) => /bakiye/.test(c));
@@ -61,18 +61,18 @@ export class MizanParserService {
     }
 
     if (headerRowIdx === -1) {
-      // Hiçbir başlık satırı bulunamadı — detaylı hata ver (ilk 10 satır + sample)
-      const firstFewRows = grid
-        .slice(0, 10)
-        .map((r, i) => `Satır ${i + 1}: ${(r || []).slice(0, 10).map((c) => String(c ?? '')).join(' | ')}`)
-        .join('\n');
-      this.logger.warn(
-        `Mizan başlık satırı bulunamadı. İlk 10 satır:\n${firstFewRows}`,
-      );
+      // Hiçbir başlık satırı bulunamadı — TÜM dolu satırları hata mesajına ekle
+      const dumpRows = grid
+        .slice(0, Math.min(20, grid.length))
+        .map((r, i) => {
+          const cells = (r || []).map((c) => String(c ?? '').trim()).filter((c) => c);
+          return cells.length > 0 ? `S${i + 1}: ${cells.slice(0, 10).join(' | ')}` : null;
+        })
+        .filter(Boolean)
+        .join(' || ');
+      this.logger.warn(`Mizan başlık satırı bulunamadı. Dolu satırlar:\n${dumpRows}`);
       throw new Error(
-        'Mizan Excel dosyasında başlık satırı bulunamadı. ' +
-          'Beklenen sütunlar: "Hesap Kodu" + ("Bakiye" veya "Borç/Alacak"). ' +
-          `İlk satır: ${(grid[0] || []).slice(0, 8).map((c) => String(c ?? '')).join(' | ')}`,
+        `Mizan Excel'de başlık satırı bulunamadı. Dolu satırlar (ilk 20): ${dumpRows.slice(0, 1500)}`,
       );
     }
 

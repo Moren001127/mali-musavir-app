@@ -135,13 +135,12 @@ export class LucaService {
   }
 
   async markJobFailed(jobId: string, errorMsg: string) {
+    // Önce mevcut log'a hata satırını append et — agent'tan gelen progress
+    // satırlarını silmesin. Sonra status'u failed yap.
+    await this.appendJobLog(jobId, `✗ ${errorMsg}`);
     return (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
-      data: {
-        status: 'failed',
-        errorMsg: errorMsg.slice(0, 2000),
-        finishedAt: new Date(),
-      },
+      data: { status: 'failed', finishedAt: new Date() },
     });
   }
 
