@@ -1555,10 +1555,8 @@ model HgsIhlalSorguSonucu {
 // CARİ KASA — Müşteri Hizmetleri ve Ödeme Takibi
 // ============================================================
 
-/**
- * Mükellefe tanımlanan tekrar eden hizmetler (muhasebe ücreti, bordro, SGK, vb.)
- * Her ayın 1. günü cron otomatik tahakkuk kaydı oluşturur.
- */
+// Mükellefe tanımlanan tekrar eden hizmetler (muhasebe ücreti, bordro, SGK, vb.)
+// Her ayın 1. günü cron otomatik tahakkuk kaydı oluşturur.
 model CariHizmet {
   id            String    @id @default(cuid())
   tenantId      String
@@ -1582,10 +1580,8 @@ model CariHizmet {
   @@map("cari_hizmetler")
 }
 
-/**
- * Cari hareketler — tahakkuk (borç) ve tahsilat (alacak) kayıtları.
- * Bakiye = SUM(TAHAKKUK) - SUM(TAHSILAT) olarak hesaplanır.
- */
+// Cari hareketler — tahakkuk (borç) ve tahsilat (alacak) kayıtları.
+// Bakiye = SUM(TAHAKKUK) - SUM(TAHSILAT) olarak hesaplanır.
 model CariHareket {
   id             String    @id @default(cuid())
   tenantId       String
