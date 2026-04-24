@@ -89,6 +89,12 @@ export class KdvBeyannameService {
 
     // 6) Kalite raporu
     const kaliteRapor = this.raporKalite(satis, alisTumu);
+    if (tevkifatAyri.ocrsizTevkifatliAdet > 0) {
+      kaliteRapor.uyarilar.push(
+        `${tevkifatAyri.ocrsizTevkifatliAdet} adet tevkifatlı alış faturası OCR'dan geçmemiş — ` +
+          `KDV2 tutarı eksik hesaplanmış olabilir. Kesin rakam için KDV Kontrol modülünden geçirin.`,
+      );
+    }
 
     return {
       mukellefId,
@@ -412,7 +418,14 @@ export class KdvBeyannameService {
     };
   }
 
-  /** Tevkifatlı alış faturalarını ayır (KDV2'ye girer) */
+  /** Tevkifatlı alış faturalarını ayır (KDV2'ye girer)
+   *
+   *  ÖNCELİK: OCR (KdvRecord) → kesin matrah + hesaplanan KDV + tevkifat tutarı.
+   *  FALLBACK: OCR'dan geçmeyen TEVKIFATLI_ALIS faturası varsa TAHMİN YAPMAZ —
+   *  sadece "şu kadar fatura OCR'dan geçmemiş, KDV2 eksik olabilir" uyarısını
+   *  `ocrsizTevkifatliAdet` ile yukarı bildirir. Beyannameye yanlış rakam
+   *  yazmaktansa kullanıcıyı OCR'a yönlendirmek doğru.
+   */
   private async ayirTevkifatliAlis(
     tenantId: string,
     mukellefId: string,
@@ -422,8 +435,15 @@ export class KdvBeyannameService {
     tevkifatKdvToplam: number;
     hesaplananKdvToplam: number;
     adet: number;
+    ocrsizTevkifatliAdet: number;
   }> {
-    // OCR'dan geçen ve tevkifat alanı dolu olanlar
+    let matrah = 0;
+    let tevkifatKdv = 0;
+    let hesaplananKdv = 0;
+    let adet = 0;
+    const seenBelgeNo = new Set<string>();
+
+    // Birincil kaynak — OCR (KdvRecord + rawData.kdvTevkifat)
     const records = await (this.prisma as any).kdvRecord.findMany({
       where: {
         session: {
@@ -434,29 +454,56 @@ export class KdvBeyannameService {
         },
       },
     });
-
-    let matrah = 0;
-    let tevkifatKdv = 0;
-    let hesaplananKdv = 0;
-    let adet = 0;
     for (const r of records) {
       const tevkifat = Number(r.rawData?.kdvTevkifat || 0);
       if (tevkifat > 0) {
         matrah += Number(r.kdvMatrahi || 0);
         tevkifatKdv += tevkifat;
-        hesaplananKdv += Number(r.kdvTutari || 0) + tevkifat; // kdvTutari NET, hesaplanan = NET + tevkifat
+        hesaplananKdv += Number(r.kdvTutari || 0) + tevkifat;
         adet++;
+        if (r.belgeNo) seenBelgeNo.add(r.belgeNo);
       }
     }
-    return { matrah, tevkifatKdvToplam: tevkifatKdv, hesaplananKdvToplam: hesaplananKdv, adet };
+
+    // OCR'dan geçmemiş tevkifatlı faturalar — sadece adet say, tahmin yapma
+    const mihsapTevkifat = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        mukellefId,
+        donem,
+        faturaTuru: { contains: 'TEVKIFATLI' },
+      },
+      select: { faturaNo: true },
+    });
+    const ocrsizTevkifatliAdet = mihsapTevkifat.filter(
+      (f: any) => !seenBelgeNo.has(f.faturaNo),
+    ).length;
+
+    return {
+      matrah,
+      tevkifatKdvToplam: tevkifatKdv,
+      hesaplananKdvToplam: hesaplananKdv,
+      adet,
+      ocrsizTevkifatliAdet,
+    };
   }
 
-  /** KDV2 için tüm tevkifatlı alış faturalarını döner (detay satır) */
+  /** KDV2 için tüm tevkifatlı alış faturalarını döner (detay satır)
+   *
+   *  ÖNCELİK: OCR (KdvRecord + rawData.kdvTevkifat) → kesin rakam.
+   *  OCR'ı olmayan TEVKIFATLI_ALIS faturaları listeye "oran ve tutarı bilinmiyor"
+   *  etiketiyle eklenir. Kullanıcı hangi faturaları OCR'dan geçirmesi gerektiğini
+   *  görür; sistem yanlış rakam beyannameye yazmaz.
+   */
   private async getTevkifatliAlisFaturalari(
     tenantId: string,
     mukellefId: string,
     donem: string,
   ) {
+    const satirlar: any[] = [];
+    const seenBelgeNo = new Set<string>();
+
+    // Birincil — OCR (kesin)
     const records = await (this.prisma as any).kdvRecord.findMany({
       where: {
         session: {
@@ -468,28 +515,53 @@ export class KdvBeyannameService {
       },
       orderBy: { belgeDate: 'asc' },
     });
-
-    return records
-      .filter((r: any) => Number(r.rawData?.kdvTevkifat || 0) > 0)
-      .map((r: any) => {
-        const tevkifat = Number(r.rawData?.kdvTevkifat || 0);
-        const netKdv = Number(r.kdvTutari || 0);
-        const hesaplanan = netKdv + tevkifat;
-        // Tevkifat oranı: tevkifat / hesaplanan ≈ 1/2, 5/10, 9/10
-        const oran = hesaplanan > 0 ? tevkifat / hesaplanan : 0;
-        const oranStr = this.tevkifatOranStr(oran);
-        return {
-          belgeNo: r.belgeNo || '',
-          satici: r.karsiTaraf || '—',
-          saticiVkn: r.rawData?.saticiVkn || r.rawData?.vkn || '',
-          tarih: r.belgeDate ? r.belgeDate.toISOString().slice(0, 10) : '',
-          matrah: Number(r.kdvMatrahi || 0),
-          hesaplananKdv: hesaplanan,
-          tevkifatOrani: oranStr,
-          tevkifatTutari: tevkifat,
-          kaynak: 'ocr' as const,
-        };
+    for (const r of records) {
+      const tevkifat = Number(r.rawData?.kdvTevkifat || 0);
+      if (tevkifat <= 0) continue;
+      const netKdv = Number(r.kdvTutari || 0);
+      const hesaplanan = netKdv + tevkifat;
+      const oran = hesaplanan > 0 ? tevkifat / hesaplanan : 0;
+      satirlar.push({
+        belgeNo: r.belgeNo || '',
+        satici: r.karsiTaraf || '—',
+        saticiVkn: r.rawData?.saticiVkn || r.rawData?.vkn || '',
+        tarih: r.belgeDate ? r.belgeDate.toISOString().slice(0, 10) : '',
+        matrah: Number(r.kdvMatrahi || 0),
+        hesaplananKdv: hesaplanan,
+        tevkifatOrani: this.tevkifatOranStr(oran),
+        tevkifatTutari: tevkifat,
+        kaynak: 'ocr' as const,
       });
+      if (r.belgeNo) seenBelgeNo.add(r.belgeNo);
+    }
+
+    // OCR'ı olmayan TEVKIFATLI_ALIS faturalar — işaretli listele (rakamlar 0)
+    const mihsapTevkifat = await (this.prisma as any).mihsapInvoice.findMany({
+      where: {
+        tenantId,
+        mukellefId,
+        donem,
+        faturaTuru: { contains: 'TEVKIFATLI' },
+      },
+      orderBy: { faturaTarihi: 'asc' },
+    });
+    for (const f of mihsapTevkifat) {
+      if (seenBelgeNo.has(f.faturaNo)) continue;
+      satirlar.push({
+        belgeNo: f.faturaNo || '',
+        satici: f.firmaUnvan || '—',
+        saticiVkn: f.firmaKimlikNo || '',
+        tarih: f.faturaTarihi ? new Date(f.faturaTarihi).toISOString().slice(0, 10) : '',
+        matrah: 0,
+        hesaplananKdv: 0,
+        tevkifatOrani: 'OCR gerekli',
+        tevkifatTutari: 0,
+        kaynak: 'ocr_eksik' as const,
+        toplamTutar: Number(f.toplamTutar || 0), // referans için
+      });
+    }
+
+    return satirlar;
   }
 
   private tevkifatOranStr(oran: number): string {
