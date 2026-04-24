@@ -95,6 +95,54 @@ export default function MizanPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mizan çekilemedi'),
   });
 
+  // === Extension-first Luca çekimi (multi-user) ===
+  // Kullanıcının tarayıcısında Luca açıkken moren-agent.js job'u alır,
+  // Excel indirir, backend'e yükler. Bu sayede Railway'de headless browser
+  // tutma zorunluluğu yok — her personel kendi oturumuyla çekim yapar.
+  const [lucaJobId, setLucaJobId] = useState<string | null>(null);
+  const [lucaStatus, setLucaStatus] = useState<string>('');
+
+  const lucaAgentMut = useMutation({
+    mutationFn: () =>
+      mizanApi.fetchFromLucaAgent({
+        mukellefId: taxpayerId,
+        donem: toDonem(year, month, donemTipi),
+        donemTipi,
+      }),
+    onSuccess: (d) => {
+      setLucaJobId(d.jobId);
+      setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
+      toast.info('Luca job oluşturuldu · Luca sekmesini açık tut', { duration: 5000 });
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message || e?.message || 'Luca job oluşturulamadı'),
+  });
+
+  // Job polling — done olunca tazele
+  useQuery({
+    queryKey: ['luca-job', lucaJobId],
+    queryFn: () => mizanApi.getLucaJob(lucaJobId!),
+    enabled: !!lucaJobId,
+    refetchInterval: 3000,
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    onSuccess: (d: any) => {
+      if (!d?.job) return;
+      const s = d.job.status;
+      if (s === 'running') setLucaStatus('Luca sayfasından Excel çekiliyor…');
+      else if (s === 'done') {
+        setLucaStatus('');
+        setLucaJobId(null);
+        toast.success('Mizan Luca\'dan çekildi');
+        qc.invalidateQueries({ queryKey: ['mizan-list'] });
+        if (d.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
+      } else if (s === 'failed') {
+        setLucaStatus('');
+        setLucaJobId(null);
+        toast.error(`Luca çekim hatası: ${d.job.errorMsg || 'bilinmeyen'}`);
+      }
+    },
+  } as any);
+
   // Manuel Excel yükleme — Luca dışında kendi dosyandan (xlsx)
   const uploadRef = useRef<HTMLInputElement>(null);
   const uploadMut = useMutation({
@@ -282,7 +330,7 @@ export default function MizanPage() {
           />
           <button
             onClick={handleUploadClick}
-            disabled={uploadMut.isPending || importMut.isPending}
+            disabled={uploadMut.isPending || lucaAgentMut.isPending}
             className="px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50"
             style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
           >
@@ -290,26 +338,53 @@ export default function MizanPage() {
             Mizan Yükle
           </button>
 
-          {/* İkincil: Luca'dan Çek */}
+          {/* İkincil: Luca'dan Çek — Extension-first (kendi tarayıcından) */}
           <button
             onClick={() => {
               if (!taxpayerId) { toast.error('Önce mükellef seçin'); setPickerOpen(true); return; }
-              importMut.mutate();
+              lucaAgentMut.mutate();
             }}
-            disabled={importMut.isPending || uploadMut.isPending}
+            disabled={lucaAgentMut.isPending || !!lucaJobId || uploadMut.isPending}
             className="px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 disabled:opacity-50 transition"
             style={{
               background: 'rgba(255,255,255,0.04)',
               border: '1px solid rgba(184,160,111,0.3)',
               color: GOLD,
             }}
-            title="Luca Muhasebe'den bağlı hesapla mizan çek"
+            title="Luca sekmeniz açık olmalı — moren-agent mizanı çeker"
           >
-            {importMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            Luca'dan Çek
+            {(lucaAgentMut.isPending || !!lucaJobId) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {lucaJobId ? 'Luca\'dan Çekiliyor…' : 'Luca\'dan Çek'}
           </button>
         </div>
       </div>
+
+      {/* Luca job durumu — extension Luca sekmesini kullanıyor */}
+      {lucaJobId && (
+        <div
+          className="rounded-lg p-3 text-sm flex items-center gap-3"
+          style={{
+            background: 'rgba(184,160,111,0.08)',
+            border: '1px solid rgba(184,160,111,0.3)',
+            color: '#fafaf9',
+          }}
+        >
+          <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+          <div className="flex-1">
+            <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+            <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
+              {lucaStatus || 'Moren agent Luca sayfasındaki mizan Excel\'ini indiriyor…'}
+            </div>
+          </div>
+          <button
+            onClick={() => { setLucaJobId(null); setLucaStatus(''); }}
+            className="px-3 py-1.5 rounded-md text-xs"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
+          >
+            İptal
+          </button>
+        </div>
+      )}
 
       {/* KPI */}
       {mizan && (
