@@ -335,12 +335,12 @@ export class KdvBeyannameService {
       },
     });
 
-    // Sadece fatura niteliğindekiler — fiş/Z raporu/irsaliye atla
-    const faturaOnly = faturalar.filter((f: any) => {
-      const bt = String(f.belgeTuru || '').toUpperCase().replace(/[-\s]/g, '_');
-      if (/FI[SŞ]|OKC|Z_?RAPOR|IRSALIYE|İRSALİYE|PERAKENDE/.test(bt)) return false;
-      return true;
-    });
+    // KDV beyannamesine dahil etme kuralı:
+    //   HER ŞEY DAHİL — kullanıcı kuralı: Faturalar listesinde görünen bütün
+    //   belgeler KDV matrah/hesaplamasına girer. Tevkifatlı faturalar dahil,
+    //   fişler dahil, Z raporu dahil, irsaliye dahil. Hiçbir kısıtlama yok.
+    //   (Tevkifat ayrıca `ayirTevkifatliAlis` ile KDV2'ye yönlendirilir.)
+    const faturaOnly = faturalar;
 
     // OCR verileri — bu dönem için KdvRecord'da olan faturaları bul
     const belgeNoSet = new Set(faturaOnly.map((f: any) => f.faturaNo));

@@ -5,8 +5,11 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
   HttpCode,
   HttpStatus,
   Headers,
@@ -14,10 +17,13 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { LucaService } from './luca.service';
 import { LucaAutoScraperService } from './luca-auto-scraper.service';
+import { MizanService } from '../mizan/mizan.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -32,6 +38,7 @@ export class LucaController {
   constructor(
     private readonly luca: LucaService,
     private readonly autoScraper: LucaAutoScraperService,
+    private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -222,6 +229,48 @@ export class LucaController {
     await this.resolveTenantFromAgentToken(agentToken);
     await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata');
     return { ok: true };
+  }
+
+  // ==================== RUNNER MIZAN UPLOAD ====================
+  // Tarayıcı eklentisi (moren-agent.js) Luca sekmesinde gezinip mizan Excel'i
+  // indirir, bu endpoint'e multipart POST ile yükler. Backend parse edip
+  // Mizan + MizanHesap tablosuna yazar. Multi-user: her personel kendi
+  // tarayıcısından kendi X-Agent-Token'ıyla çağırır.
+  @Post('agent/luca/runner/upload-mizan')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadMizanFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('mukellefId') mukellefId: string,
+    @Query('donem') donem: string,
+    @Query('donemTipi') donemTipi?: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!mukellefId || !donem) {
+      throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
+    }
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+
+    try {
+      const result = await this.mizan.importFromExcel({
+        tenantId,
+        taxpayerId: mukellefId,
+        donem,
+        donemTipi: (donemTipi as any) || 'AYLIK',
+        buffer: file.buffer,
+        createdBy: 'extension',
+      });
+      return {
+        ok: true,
+        mizanId: (result as any)?.id,
+        hesapCount: (result as any)?.hesapCount,
+      };
+    } catch (e: any) {
+      throw new BadRequestException(
+        `Mizan import hatası: ${e?.message || 'bilinmeyen'}`,
+      );
+    }
   }
 
   // --------------------------------------------------------------
