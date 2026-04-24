@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
-  Loader2, Search, Receipt, TrendingUp, TrendingDown, Sparkles,
+  Loader2, Receipt, TrendingUp, TrendingDown, Sparkles,
 } from 'lucide-react';
+import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 
 type Taxpayer = {
   id: string;
@@ -79,7 +80,6 @@ export default function KdvBeyannamePage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'));
   const [tab, setTab] = useState<'KDV1' | 'KDV2'>('KDV1');
-  const [search, setSearch] = useState('');
 
   const donem = `${year}-${month}`;
 
@@ -90,14 +90,6 @@ export default function KdvBeyannamePage() {
 
   const taxpayerName = (t: Taxpayer) =>
     t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber;
-
-  const filteredTaxpayers = useMemo(() => {
-    if (!search) return taxpayers;
-    const s = search.toLowerCase();
-    return taxpayers.filter(
-      (t) => taxpayerName(t).toLowerCase().includes(s) || t.taxNumber.includes(s),
-    );
-  }, [taxpayers, search]);
 
   const { data: kdv1, isLoading: kdv1Loading } = useQuery<Kdv1>({
     queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem],
@@ -197,29 +189,12 @@ export default function KdvBeyannamePage() {
             <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
               <Users size={11} className="inline mr-1" /> Mükellef
             </label>
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.3)' }} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Mükellef ara..."
-                className="w-full pl-9 pr-3 py-2.5 rounded-[10px] text-[13px] outline-none mb-1.5"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-              />
-            </div>
-            <select
+            <TaxpayerSelect
+              taxpayers={taxpayers}
               value={selectedMukellef}
-              onChange={(e) => setSelectedMukellef(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-[10px] text-[13px] outline-none cursor-pointer"
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-            >
-              <option value="" style={{ background: '#0f0d0b' }}>— Mükellef Seçin —</option>
-              {filteredTaxpayers.map((t) => (
-                <option key={t.id} value={t.id} style={{ background: '#0f0d0b' }}>
-                  {taxpayerName(t)} ({t.taxNumber})
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedMukellef}
+              placeholder="— Mükellef Seçin —"
+            />
           </div>
 
           <div className="col-span-6 md:col-span-3">

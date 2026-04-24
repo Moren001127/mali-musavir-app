@@ -311,13 +311,22 @@ export class KdvBeyannameService {
     donem: string,
     faturaTuru: 'ALIS' | 'SATIS',
   ) {
+    // ÖNEMLİ: faturaTuru "TEVKIFATLI_ALIS" / "TEVKIFATLI_SATIS" gibi varyantlarda
+    // da gelebiliyor. KDV1 ön hazırlığı için tevkifatlı alış da indirilecek
+    // KDV'ye dahildir (tevkifat tutarı sonradan ayrılır). contains ile alıyoruz.
     const faturalar = await (this.prisma as any).mihsapInvoice.findMany({
-      where: { tenantId, mukellefId, donem, faturaTuru },
+      where: {
+        tenantId,
+        mukellefId,
+        donem,
+        faturaTuru: { contains: faturaTuru },
+      },
       select: {
         id: true,
         faturaNo: true,
         toplamTutar: true,
         belgeTuru: true,
+        faturaTuru: true,
         raw: true,
       },
     });

@@ -552,7 +552,15 @@ export class MihsapService {
     // Prisma `in` clause case-sensitive olduğu için DB tarafında filtre yapmıyor,
     // tüm dönem+faturaTuru kayıtlarını çekip JS'de normalize edilmiş whitelist
     // + blacklist uyguluyoruz.
-    const where: any = { tenantId, donem, faturaTuru };
+    //
+    // ÖNEMLİ: faturaTuru DB'de "ALIS", "TEVKIFATLI_ALIS", "SATIS",
+    // "TEVKIFATLI_SATIS" olabiliyor. Toplu yazdırırken tevkifatlılar da
+    // dahil olmalı → kesin eşitlik yerine "contains" ile filtrele.
+    const where: any = {
+      tenantId,
+      donem,
+      faturaTuru: { contains: faturaTuru }, // 'ALIS' → 'ALIS' + 'TEVKIFATLI_ALIS'
+    };
     if (mukellefId) where.mukellefId = mukellefId;
 
     const invoices = await (this.prisma as any).mihsapInvoice.findMany({
@@ -561,20 +569,24 @@ export class MihsapService {
       take: 10000,
     });
 
+    // BASİT KURAL:
+    //   ALIŞ yazdır → fiş dışında HER ŞEYİ al (e-Fatura, e-Arşiv, irsaliye, vb.)
+    //   SATIŞ yazdır → Z raporu dışında HER ŞEYİ al
+    // Whitelist yok — sadece spesifik bir tek tipi dışla.
     const filtered = invoices.filter((inv: any) => {
       const bt = String(inv.belgeTuru || '')
         .toUpperCase()
-        .replace(/[-\s]/g, '_');   // "E-FATURA" → "E_FATURA"
+        .replace(/[-\s]/g, '_');
 
-      // BLACKLIST: fiş, Z raporu, irsaliye, ÖKC
-      if (/FI[SŞ]|OKC|Z_?RAPOR|IRSALIYE|İRSALİYE|PERAKENDE/.test(bt)) return false;
-
-      // WHITELIST: e-Fatura + e-Arşiv (hepsi uppercase'e çevrildi)
-      if (/^E_?FATURA$/.test(bt)) return true;
-      if (/^E_?AR[SŞ]IV(_FATURA)?$/.test(bt)) return true;
-
-      // Bilinmeyen değer: güvenli taraf — atla (fatura değilse dahil etme)
-      return false;
+      if (faturaTuru === 'ALIS') {
+        // Alışta SADECE fişleri (FIS / OKC / PERAKENDE_FIS) dışla
+        if (/^FI[SŞ]$|FI[SŞ]_|_FI[SŞ]|OKC|PERAKENDE/.test(bt)) return false;
+        return true;
+      } else {
+        // Satışta SADECE Z raporlarını dışla
+        if (/Z_?RAPOR/.test(bt)) return false;
+        return true;
+      }
     });
 
     const skipped = invoices.length - filtered.length;
@@ -696,11 +708,15 @@ export class MihsapService {
   <div style="margin-top:12px;color:#f4a5b2">Bu değer whitelist'te (E_FATURA / E_ARSIV) yoksa bize bildir — filtreye ekleyelim.</div>
 </div>`
       : '';
+    const haricKural =
+      faturaTuru === 'ALIS'
+        ? 'Alışta sadece <b>fişler (FIS / OKC / PERAKENDE)</b> dışlandı; diğer her şey dahil edildi.'
+        : 'Satışta sadece <b>Z raporları</b> dışlandı; diğer her şey dahil edildi.';
     return `<!doctype html><meta charset="utf-8"><title>Toplu ${tr} · ${donem}</title>
 <body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#444;background:#0f0d0b">
-  <h1 style="color:#9c4656">Yazdırılacak ${tr} faturası bulunamadı</h1>
-  <p style="color:#aaa">Dönem <b>${donem}</b> için filtreye uyan (e-Fatura / e-Arşiv) belge yok.<br>
-  Fiş ve Z raporları toplu yazdırmaya dahil edilmez.</p>
+  <h1 style="color:#9c4656">Yazdırılacak ${tr} belgesi bulunamadı</h1>
+  <p style="color:#aaa">Dönem <b>${donem}</b> için bu mükellefte yazdırılabilir belge yok.<br>
+  ${haricKural}</p>
   ${debugBlock}
 </body>`;
   }
