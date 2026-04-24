@@ -5,18 +5,22 @@ import { Kdv1OnHazirlik, Kdv2OnHazirlik, OranRow, DonemOzet, KdvTip } from './ty
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
  *
+ * Bu modül TAMAMEN KENDİ BAŞINA çalışır — Mizan/GelirTablosu/Bilanço
+ * tablolarına BAĞIMLI DEĞİLDİR (o tablolar geçici vergi modülü için).
+ *
  * Veri kaynakları:
  *   1. MihsapInvoice — fatura metadata (toplam tutar). OCR'dan geçmemişse sadece toplam.
- *   2. KdvRecord (KDV Kontrol) — OCR'dan geçmiş faturalarda oran bazlı matrah+KDV.
- *   3. Mizan (Luca) — 191 / 391 hesap bakiyeleri (çapraz kontrol).
- *   4. BeyanKaydi — geçmiş dönem sonu devreden KDV.
+ *   2. KdvRecord (KDV Kontrol) — OCR'dan geçmiş faturalarda oran bazlı matrah+KDV + tevkifat.
+ *   3. BeyanKaydi — geçmiş dönem sonu devreden KDV.
  *
  * Akış:
  *   - Satış faturaları → oran bazlı gruplama (OCR varsa kesin, yoksa %20 tahmin).
  *   - Alış faturaları → oran bazlı gruplama + tevkifatlı/tevkifatsız ayrımı.
  *   - Geçen ay BeyanKaydi'nden devreden KDV.
- *   - Luca mizan'dan 191/391 → fark varsa uyarı.
  *   - Sonuç: ödenecek veya sonraki aya devreden.
+ *
+ * TODO (gelecek iş): KDV'ye özel Luca sync — `KdvLucaSnapshot` tablosu + muavin
+ * çekimiyle 191/391/190 aylık bakiye çapraz kontrol. Mizan modülünden BAĞIMSIZ.
  */
 
 const DEFAULT_KDV_ORAN = 20; // Mihsap'ta KDV detayı yoksa varsayılan
@@ -503,15 +507,14 @@ export class KdvBeyannameService {
 
   /**
    * Geçen dönem sonu devreden KDV tutarını bul.
-   *  1. BeyanKaydi (kaynak: hattat_excel veya manuel) → tahakkuk/önceki dönem KDV
-   *  2. Yoksa Luca mizan 190 hesabı (Devreden KDV) — bu dönemin başı bakiye
+   * SADECE BeyanKaydi tablosundan — Mizan tablosuna dokunmaz
+   * (Mizan geçici vergi modülüne ait, KDV beyannamesi kendi başına çalışır).
    */
   private async getDevredenKdv(
     tenantId: string,
     mukellefId: string,
     donem: string,
   ) {
-    // Geçen ayın son BeyanKaydi'ne bak
     const onceki = this.oncekiDonem(donem);
 
     const beyan = await (this.prisma as any).beyanKaydi.findFirst({
@@ -523,10 +526,8 @@ export class KdvBeyannameService {
       },
     });
 
-    // BeyanKaydi'nda sonraki aya devreden KDV tutarı yoksa (sadece tahakkuk var)
-    // bu dönem Luca mizan'dan 190 bakiyesini deneyelim.
-    if (beyan && beyan.notlar) {
-      // notlar'da "devreden: 1234.56" şeklinde yazılabilir (ileride)
+    if (beyan?.notlar) {
+      // notlar'da "devreden: 1234.56" şeklinde yazılabilir
       const m = /devreden[:\s]+([0-9.,]+)/i.exec(beyan.notlar);
       if (m) {
         return {
@@ -537,30 +538,6 @@ export class KdvBeyannameService {
       }
     }
 
-    // Luca mizan 190 hesabı (bu dönem başı bakiye = geçen ay sonu devreden)
-    const mizan = await (this.prisma as any).mizan.findFirst({
-      where: { tenantId, taxpayerId: mukellefId, donem, status: 'READY' },
-      include: {
-        hesaplar: {
-          where: { hesapKodu: { startsWith: '190' } },
-        },
-      },
-    });
-    if (mizan && mizan.hesaplar.length > 0) {
-      // Devreden KDV aktif hesap (190) → dönem BAŞI borç bakiyesi = geçen ay devreden
-      // Ancak mizan genelde dönem sonu bakiyesi gösterir. Açılış için borcToplami - alacakToplami
-      // bu dönemin net hareketi. Dönem başı için bakiye - hareket. MVP'de son bakiye.
-      const toplam = mizan.hesaplar.reduce(
-        (s: number, h: any) => s + (Number(h.borcBakiye) - Number(h.alacakBakiye)),
-        0,
-      );
-      return {
-        tutar: Math.max(0, toplam),
-        kaynak: 'luca_mizan' as const,
-        sonKayitDonem: donem,
-      };
-    }
-
     return {
       tutar: 0,
       kaynak: 'yok' as const,
@@ -568,85 +545,32 @@ export class KdvBeyannameService {
     };
   }
 
-  /** Luca mizan ile Mihsap toplamlarını karşılaştır */
+  /**
+   * Luca çapraz kontrol — KDV'YE ÖZEL Luca sync (ileride aktif olacak).
+   *
+   * Mizan modülünden VERİ ÇEKMEZ (o modül geçici vergi için). Gelecekte:
+   *   - KdvLucaSnapshot tablosuna mükellef+dönem bazlı 191/391/190 bakiyeleri
+   *   - /kdv-beyanname/luca-sync endpoint'i ile Playwright muavin indirir
+   *   - Buradan okuyup karşılaştırır.
+   *
+   * Şimdilik tüm alanlar null — frontend "Luca senkronizasyonu v2'de" gösterir.
+   */
   private async lucaCrosscheck(
-    tenantId: string,
-    mukellefId: string,
-    donem: string,
-    mihsapHesaplanan: number,
-    mihsapIndirilecek: number,
-    devreden: number,
+    _tenantId: string,
+    _mukellefId: string,
+    _donem: string,
+    _mihsapHesaplanan: number,
+    _mihsapIndirilecek: number,
+    _devreden: number,
   ) {
-    const mizan = await (this.prisma as any).mizan.findFirst({
-      where: { tenantId, taxpayerId: mukellefId, donem, status: 'READY' },
-      include: {
-        hesaplar: {
-          where: {
-            OR: [
-              { hesapKodu: { startsWith: '191' } },
-              { hesapKodu: { startsWith: '391' } },
-              { hesapKodu: { startsWith: '190' } },
-            ],
-          },
-        },
-      },
-    });
-
-    if (!mizan) {
-      return {
-        mizanVar: false,
-        luca391Bakiye: null,
-        luca191Bakiye: null,
-        luca190Bakiye: null,
-        fark391: null,
-        fark191: null,
-        uyarilar: ['Bu dönem için Luca mizan yok — çapraz kontrol yapılamıyor.'],
-      };
-    }
-
-    const toplamBakiye = (prefix: string) =>
-      mizan.hesaplar
-        .filter((h: any) => String(h.hesapKodu).startsWith(prefix))
-        .reduce((s: number, h: any) => {
-          if (prefix === '191' || prefix === '190') {
-            return s + (Number(h.borcBakiye) - Number(h.alacakBakiye));
-          }
-          // 391 → alacak bakiye
-          return s + (Number(h.alacakBakiye) - Number(h.borcBakiye));
-        }, 0);
-
-    const luca391 = toplamBakiye('391');
-    const luca191 = toplamBakiye('191');
-    const luca190 = toplamBakiye('190');
-
-    const fark391 = Math.round((mihsapHesaplanan - luca391) * 100) / 100;
-    const fark191 = Math.round((mihsapIndirilecek - luca191) * 100) / 100;
-
-    const uyarilar: string[] = [];
-    const yuzdeFark = (f: number, baz: number) => (baz === 0 ? 0 : Math.abs(f) / baz);
-    if (yuzdeFark(fark391, luca391) > 0.02) {
-      uyarilar.push(
-        `Hesaplanan KDV farkı: Mihsap ${mihsapHesaplanan.toFixed(2)} ≠ Luca 391: ${luca391.toFixed(2)} (fark ${fark391.toFixed(2)})`,
-      );
-    }
-    if (yuzdeFark(fark191, luca191) > 0.02) {
-      uyarilar.push(
-        `İndirilecek KDV farkı: Mihsap ${mihsapIndirilecek.toFixed(2)} ≠ Luca 191: ${luca191.toFixed(2)} (fark ${fark191.toFixed(2)})`,
-      );
-    }
-    if (devreden > 0 && luca190 > 0 && Math.abs(devreden - luca190) / luca190 > 0.05) {
-      uyarilar.push(
-        `Devreden KDV farkı: BeyanKaydi ${devreden.toFixed(2)} ≠ Luca 190: ${luca190.toFixed(2)}`,
-      );
-    }
-
+    const uyarilar: string[] = []; // İleride KDV-özel Luca sync eklenecek
     return {
-      mizanVar: true,
-      luca391Bakiye: Math.round(luca391 * 100) / 100,
-      luca191Bakiye: Math.round(luca191 * 100) / 100,
-      luca190Bakiye: Math.round(luca190 * 100) / 100,
-      fark391,
-      fark191,
+      mizanVar: false,
+      luca391Bakiye: null,
+      luca191Bakiye: null,
+      luca190Bakiye: null,
+      fark391: null,
+      fark191: null,
       uyarilar,
     };
   }

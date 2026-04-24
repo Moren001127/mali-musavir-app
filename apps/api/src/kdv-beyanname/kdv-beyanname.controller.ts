@@ -80,8 +80,16 @@ export class KdvBeyannameController {
       throw new BadRequestException('mukellefId ve donem gerekli');
     }
     const tenantId = req.user.tenantId;
-    const kdv1 = await this.service.kdv1OnHazirlik({ tenantId, mukellefId, donem });
-    const kdv2 = await this.service.kdv2OnHazirlik({ tenantId, mukellefId, donem });
+    let kdv1: any;
+    let kdv2: any;
+    try {
+      kdv1 = await this.service.kdv1OnHazirlik({ tenantId, mukellefId, donem });
+      kdv2 = await this.service.kdv2OnHazirlik({ tenantId, mukellefId, donem });
+    } catch (e: any) {
+      throw new BadRequestException(
+        `KDV ön hazırlık verisi üretilemedi: ${e?.message || 'bilinmeyen hata'}`,
+      );
+    }
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Moren Mali Müşavirlik';

@@ -71,8 +71,10 @@ type Kdv2 = {
 const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
 const MONTH_NAMES = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-const fmt = (n: number) =>
-  n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n: number | null | undefined) => {
+  const v = typeof n === 'number' && isFinite(n) ? n : 0;
+  return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 
 export default function KdvBeyannamePage() {
   const now = new Date();
@@ -91,7 +93,7 @@ export default function KdvBeyannamePage() {
   const taxpayerName = (t: Taxpayer) =>
     t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber;
 
-  const { data: kdv1, isLoading: kdv1Loading } = useQuery<Kdv1>({
+  const { data: kdv1, isLoading: kdv1Loading, error: kdv1Error } = useQuery<Kdv1>({
     queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem],
     queryFn: () =>
       api
@@ -100,9 +102,10 @@ export default function KdvBeyannamePage() {
         })
         .then((r) => r.data),
     enabled: !!selectedMukellef && tab === 'KDV1',
+    retry: 0,
   });
 
-  const { data: kdv2, isLoading: kdv2Loading } = useQuery<Kdv2>({
+  const { data: kdv2, isLoading: kdv2Loading, error: kdv2Error } = useQuery<Kdv2>({
     queryKey: ['kdv-beyanname-kdv2', selectedMukellef, donem],
     queryFn: () =>
       api
@@ -111,6 +114,7 @@ export default function KdvBeyannamePage() {
         })
         .then((r) => r.data),
     enabled: !!selectedMukellef && tab === 'KDV2',
+    retry: 0,
   });
 
   const handleDownload = async () => {
@@ -256,7 +260,13 @@ export default function KdvBeyannamePage() {
       {selectedMukellef && tab === 'KDV1' && (
         <div className="space-y-4">
           {kdv1Loading && <LoadingCard />}
-          {kdv1 && <Kdv1View data={kdv1} />}
+          {!kdv1Loading && kdv1Error && <ErrorCard error={kdv1Error} label="KDV1" />}
+          {!kdv1Loading && !kdv1Error && kdv1 && kdv1.satis.faturaAdet === 0 && kdv1.alis.faturaAdet === 0 && (
+            <EmptyStateCard donem={donem} />
+          )}
+          {!kdv1Loading && !kdv1Error && kdv1 && (kdv1.satis.faturaAdet > 0 || kdv1.alis.faturaAdet > 0) && (
+            <Kdv1View data={kdv1} />
+          )}
         </div>
       )}
 
@@ -264,7 +274,21 @@ export default function KdvBeyannamePage() {
       {selectedMukellef && tab === 'KDV2' && (
         <div className="space-y-4">
           {kdv2Loading && <LoadingCard />}
-          {kdv2 && <Kdv2View data={kdv2} />}
+          {!kdv2Loading && kdv2Error && <ErrorCard error={kdv2Error} label="KDV2" />}
+          {!kdv2Loading && !kdv2Error && kdv2 && kdv2.toplamlar.faturaAdet === 0 && (
+            <div
+              className="rounded-2xl p-10 text-center border"
+              style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+            >
+              <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+                Bu dönemde tevkifatlı fatura bulunamadı
+              </p>
+              <p className="text-[12px] mt-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                KDV2 beyanı için tevkifatlı alış faturası gerekir. Faturalar KDV Kontrol'den geçmiş olmalı (OCR tevkifat tutarını okur).
+              </p>
+            </div>
+          )}
+          {!kdv2Loading && !kdv2Error && kdv2 && kdv2.toplamlar.faturaAdet > 0 && <Kdv2View data={kdv2} />}
         </div>
       )}
 
@@ -295,12 +319,84 @@ function LoadingCard() {
   );
 }
 
+function ErrorCard({ error, label }: { error: any; label: string }) {
+  const status = error?.response?.status;
+  const msg = error?.response?.data?.message || error?.message || 'bilinmeyen hata';
+  const isNotFound = status === 404;
+  const isServerError = status >= 500;
+  return (
+    <div
+      className="rounded-2xl p-8 border"
+      style={{
+        background: 'rgba(239,68,68,0.06)',
+        borderColor: 'rgba(239,68,68,0.25)',
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <AlertCircle size={22} style={{ color: '#fca5a5', flexShrink: 0, marginTop: 2 }} />
+        <div className="flex-1">
+          <h3 className="text-[14.5px] font-bold mb-1" style={{ color: '#fca5a5' }}>
+            {label} verisi yüklenemedi
+          </h3>
+          <p className="text-[12.5px] mb-2" style={{ color: 'rgba(252,165,165,0.85)' }}>
+            {isNotFound && 'Backend endpoint bulunamadı (404). Railway deploy tamamlandı mı? API build başarısız olduysa son commit canlıya çıkmamış olabilir.'}
+            {isServerError && `Sunucu hatası (${status}). Backend log'unu kontrol et. Prisma schema eşleşmiyor olabilir veya mükellef bulunamıyor olabilir.`}
+            {!isNotFound && !isServerError && msg}
+          </p>
+          <code
+            className="block p-2 rounded-md text-[11px] font-mono"
+            style={{
+              background: 'rgba(0,0,0,0.3)',
+              color: 'rgba(252,165,165,0.7)',
+              wordBreak: 'break-word',
+            }}
+          >
+            {status ? `HTTP ${status} · ` : ''}{msg}
+          </code>
+          <p className="text-[11px] mt-2" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            DevTools → Network → /kdv-beyanname/on-hazirlik/{label.toLowerCase()} isteğini açıp response'a bak.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyStateCard({ donem }: { donem: string }) {
+  return (
+    <div
+      className="rounded-2xl p-10 text-center border"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+    >
+      <div
+        className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center"
+        style={{ background: 'rgba(212,184,118,0.1)' }}
+      >
+        <Receipt size={24} style={{ color: '#d4b876' }} />
+      </div>
+      <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
+        Dönem <span style={{ color: '#d4b876' }}>{donem}</span> için kayıtlı fatura bulunamadı
+      </p>
+      <p className="text-[12px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        Önce <b>Faturalar</b> modülünden Mihsap fatura çekilmiş olmalı. Oradan "Alış Çek" ve "Satış Çek"
+        butonlarıyla dönem verisi geldikten sonra burada KDV1 ön hazırlığı otomatik üretilir.
+      </p>
+    </div>
+  );
+}
+
 function Kdv1View({ data }: { data: Kdv1 }) {
-  const odenecek = data.sonuc.odenecekKdv > 0;
+  // Backend'ten gelen veride eksik alanlar olabileceğini varsay; defansif ol
+  const sonuc = data.sonuc || { hesaplananKdv: 0, indirilecekKdv: 0, devredenKdv: 0, odenecekKdv: 0, sonrakiAyaDevreden: 0 };
+  const satis = data.satis || { oranlar: [], toplamMatrah: 0, toplamHesaplananKdv: 0, faturaAdet: 0 };
+  const alis = data.alis || { oranlar: [], toplamMatrah: 0, toplamIndirilecekKdv: 0, faturaAdet: 0, tevkifatsiz: { matrah: 0, kdv: 0, adet: 0 }, tevkifatli: { matrah: 0, kdv: 0, adet: 0 } };
+  const lucaKontrol = data.lucaKontrol || { mizanVar: false, luca391Bakiye: null, luca191Bakiye: null, luca190Bakiye: null, fark391: null, fark191: null, uyarilar: [] };
+  const kaliteRapor = data.kaliteRapor || { ocrliFaturaOrani: 0, tahminFaturaOrani: 0, uyarilar: [] };
+  const odenecek = sonuc.odenecekKdv > 0;
   return (
     <>
       {/* Uyarılar */}
-      {(data.kaliteRapor.uyarilar.length > 0 || data.lucaKontrol.uyarilar.length > 0) && (
+      {(kaliteRapor.uyarilar.length > 0 || lucaKontrol.uyarilar.length > 0) && (
         <div
           className="rounded-2xl p-4 border"
           style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}
@@ -308,7 +404,7 @@ function Kdv1View({ data }: { data: Kdv1 }) {
           <div className="flex items-start gap-2">
             <AlertCircle size={16} style={{ color: '#fca5a5', flexShrink: 0, marginTop: 2 }} />
             <div className="space-y-1">
-              {[...data.lucaKontrol.uyarilar, ...data.kaliteRapor.uyarilar].map((u, i) => (
+              {[...lucaKontrol.uyarilar, ...kaliteRapor.uyarilar].map((u, i) => (
                 <p key={i} className="text-[12.5px]" style={{ color: '#fca5a5' }}>{u}</p>
               ))}
             </div>
@@ -339,7 +435,7 @@ function Kdv1View({ data }: { data: Kdv1 }) {
                 color: odenecek ? '#fca5a5' : '#86efac',
               }}
             >
-              ₺{fmt(odenecek ? data.sonuc.odenecekKdv : data.sonuc.sonrakiAyaDevreden)}
+              ₺{fmt(odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden)}
             </div>
           </div>
           {odenecek ? <TrendingUp size={40} style={{ color: '#fca5a5' }} /> : <TrendingDown size={40} style={{ color: '#86efac' }} />}
@@ -348,18 +444,16 @@ function Kdv1View({ data }: { data: Kdv1 }) {
 
       {/* 3 özet kart */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <SummaryCard label="Hesaplanan KDV" value={data.sonuc.hesaplananKdv} color="#4ade80" subtitle={`${data.satis.faturaAdet} satış faturası`} />
-        <SummaryCard label="İndirilecek KDV" value={data.sonuc.indirilecekKdv} color="#60a5fa" subtitle={`${data.alis.faturaAdet} alış faturası`} />
+        <SummaryCard label="Hesaplanan KDV" value={sonuc.hesaplananKdv} color="#4ade80" subtitle={`${satis.faturaAdet} satış faturası`} />
+        <SummaryCard label="İndirilecek KDV" value={sonuc.indirilecekKdv} color="#60a5fa" subtitle={`${alis.faturaAdet} alış faturası`} />
         <SummaryCard
           label="Devreden KDV"
-          value={data.sonuc.devredenKdv}
+          value={sonuc.devredenKdv}
           color="#d4b876"
           subtitle={
-            data.devreden.kaynak === 'beyan_kaydi'
-              ? `Beyan Kaydı · ${data.devreden.sonKayitDonem}`
-              : data.devreden.kaynak === 'luca_mizan'
-                ? 'Luca Mizan'
-                : 'Kayıt yok'
+            data.devreden?.kaynak === 'beyan_kaydi'
+              ? `Beyan Kaydı · ${data.devreden?.sonKayitDonem || '—'}`
+              : 'Kayıt yok'
           }
         />
       </div>
@@ -368,28 +462,28 @@ function Kdv1View({ data }: { data: Kdv1 }) {
       <OranTablosu
         baslik="Satış · Hesaplanan KDV (Oran Bazlı)"
         renk="#4ade80"
-        oranlar={data.satis.oranlar}
-        toplamMatrah={data.satis.toplamMatrah}
-        toplamKdv={data.satis.toplamHesaplananKdv}
-        adet={data.satis.faturaAdet}
+        oranlar={satis.oranlar}
+        toplamMatrah={satis.toplamMatrah}
+        toplamKdv={satis.toplamHesaplananKdv}
+        adet={satis.faturaAdet}
       />
 
       {/* Alış oran tablosu */}
       <OranTablosu
         baslik="Alış · İndirilecek KDV (Oran Bazlı)"
         renk="#60a5fa"
-        oranlar={data.alis.oranlar}
-        toplamMatrah={data.alis.toplamMatrah}
-        toplamKdv={data.alis.toplamIndirilecekKdv}
-        adet={data.alis.faturaAdet}
+        oranlar={alis.oranlar}
+        toplamMatrah={alis.toplamMatrah}
+        toplamKdv={alis.toplamIndirilecekKdv}
+        adet={alis.faturaAdet}
         altSatir={[
-          { ad: 'Tevkifatsız', v: data.alis.tevkifatsiz },
-          { ad: 'Tevkifatlı (KDV2\'ye)', v: data.alis.tevkifatli },
+          { ad: 'Tevkifatsız', v: alis.tevkifatsiz },
+          { ad: 'Tevkifatlı (KDV2\'ye)', v: alis.tevkifatli },
         ]}
       />
 
-      {/* Luca çapraz kontrol */}
-      {data.lucaKontrol.mizanVar && (
+      {/* Luca çapraz kontrol — KDV'ye özel sync ileride aktif olacak */}
+      {lucaKontrol.mizanVar ? (
         <div
           className="rounded-2xl p-5 border"
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
@@ -397,7 +491,7 @@ function Kdv1View({ data }: { data: Kdv1 }) {
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 size={14} style={{ color: '#d4b876' }} />
             <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-              Luca Mizan Çapraz Kontrol
+              Luca Çapraz Kontrol
             </h3>
           </div>
           <table className="w-full text-[12px]">
@@ -410,11 +504,27 @@ function Kdv1View({ data }: { data: Kdv1 }) {
               </tr>
             </thead>
             <tbody style={{ color: '#fafaf9' }}>
-              <LucaCrossRow hesap="391 · Hesaplanan KDV" mihsap={data.satis.toplamHesaplananKdv} luca={data.lucaKontrol.luca391Bakiye} fark={data.lucaKontrol.fark391} />
-              <LucaCrossRow hesap="191 · İndirilecek KDV" mihsap={data.alis.toplamIndirilecekKdv} luca={data.lucaKontrol.luca191Bakiye} fark={data.lucaKontrol.fark191} />
-              <LucaCrossRow hesap="190 · Devreden KDV" mihsap={null} luca={data.lucaKontrol.luca190Bakiye} fark={null} />
+              <LucaCrossRow hesap="391 · Hesaplanan KDV" mihsap={satis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
+              <LucaCrossRow hesap="191 · İndirilecek KDV" mihsap={alis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
+              <LucaCrossRow hesap="190 · Devreden KDV" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div
+          className="rounded-2xl p-4 border flex items-start gap-3"
+          style={{ background: 'rgba(255,255,255,0.015)', borderColor: 'rgba(255,255,255,0.05)' }}
+        >
+          <Sparkles size={16} style={{ color: 'rgba(212,184,118,0.6)', flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <p className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.75)' }}>
+              Luca Çapraz Kontrol — Yakında
+            </p>
+            <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              KDV'ye özel Luca senkronizasyonu (191 / 391 / 190 muavin) ileride eklenecek.
+              Mizan modülündeki veri geçici vergi için — KDV beyanname kendi başına Mihsap + KDV Kontrol (OCR) verilerinden çalışır.
+            </p>
+          </div>
         </div>
       )}
     </>
@@ -448,10 +558,11 @@ function LucaCrossRow({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: nu
 function OranTablosu({
   baslik, renk, oranlar, toplamMatrah, toplamKdv, adet, altSatir,
 }: {
-  baslik: string; renk: string; oranlar: OranRow[];
+  baslik: string; renk: string; oranlar: OranRow[] | null | undefined;
   toplamMatrah: number; toplamKdv: number; adet: number;
   altSatir?: Array<{ ad: string; v: { matrah: number; kdv: number; adet: number } }>;
 }) {
+  const safeOranlar = oranlar || [];
   return (
     <div
       className="rounded-2xl p-5 border"
@@ -471,10 +582,10 @@ function OranTablosu({
           </tr>
         </thead>
         <tbody style={{ color: '#fafaf9' }}>
-          {oranlar.length === 0 && (
+          {safeOranlar.length === 0 && (
             <tr><td colSpan={4} className="text-center py-4" style={{ color: 'rgba(250,250,249,0.4)' }}>Bu dönem için kayıt yok</td></tr>
           )}
-          {oranlar.map((o) => (
+          {safeOranlar.map((o) => (
             <tr key={o.oran} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
               <td className="py-2 font-semibold">%{o.oran}</td>
               <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(o.matrah)}</td>
@@ -518,9 +629,14 @@ function SummaryCard({ label, value, color, subtitle }: { label: string; value: 
 }
 
 function Kdv2View({ data }: { data: Kdv2 }) {
+  // Defansif: backend eksik alan döndürürse patlamasın
+  const uyarilar = data.uyarilar || [];
+  const tevkifatli = data.tevkifatli || [];
+  const tevkifatKodlari = data.tevkifatKodlari || [];
+  const toplamlar = data.toplamlar || { faturaAdet: 0, toplamMatrah: 0, toplamHesaplananKdv: 0, toplamTevkifat: 0 };
   return (
     <>
-      {data.uyarilar.length > 0 && (
+      {uyarilar.length > 0 && (
         <div
           className="rounded-2xl p-4 border"
           style={{ background: 'rgba(245,158,11,0.08)', borderColor: 'rgba(245,158,11,0.3)' }}
@@ -528,7 +644,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
           <div className="flex items-start gap-2">
             <AlertCircle size={16} style={{ color: '#fbbf24', flexShrink: 0, marginTop: 2 }} />
             <div className="space-y-1">
-              {data.uyarilar.map((u, i) => (
+              {uyarilar.map((u, i) => (
                 <p key={i} className="text-[12.5px]" style={{ color: '#fde68a' }}>{u}</p>
               ))}
             </div>
@@ -538,10 +654,10 @@ function Kdv2View({ data }: { data: Kdv2 }) {
 
       {/* Toplam kart */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <SummaryCard label="Tevkifatlı Fatura" value={data.toplamlar.faturaAdet} color="#c9a77c" subtitle="adet" />
-        <SummaryCard label="Toplam Matrah" value={data.toplamlar.toplamMatrah} color="#60a5fa" subtitle="—" />
-        <SummaryCard label="Hesaplanan KDV" value={data.toplamlar.toplamHesaplananKdv} color="#4ade80" subtitle="—" />
-        <SummaryCard label="Tevkifat Tutarı" value={data.toplamlar.toplamTevkifat} color="#fca5a5" subtitle="beyan edilecek" />
+        <SummaryCard label="Tevkifatlı Fatura" value={toplamlar.faturaAdet} color="#c9a77c" subtitle="adet" />
+        <SummaryCard label="Toplam Matrah" value={toplamlar.toplamMatrah} color="#60a5fa" subtitle="—" />
+        <SummaryCard label="Hesaplanan KDV" value={toplamlar.toplamHesaplananKdv} color="#4ade80" subtitle="—" />
+        <SummaryCard label="Tevkifat Tutarı" value={toplamlar.toplamTevkifat} color="#fca5a5" subtitle="beyan edilecek" />
       </div>
 
       {/* Detay satır tablosu */}
@@ -552,7 +668,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
         <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Tevkifat Detayı</h3>
         </div>
-        {data.tevkifatli.length === 0 ? (
+        {tevkifatli.length === 0 ? (
           <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
             Bu dönemde tevkifatlı alış faturası yok
           </div>
@@ -571,7 +687,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
                 </tr>
               </thead>
               <tbody style={{ color: '#fafaf9' }}>
-                {data.tevkifatli.map((t, i) => (
+                {tevkifatli.map((t, i) => (
                   <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
                     <td className="px-4 py-2 tabular-nums" style={{ color: '#d4b876', fontFamily: 'JetBrains Mono, monospace' }}>{t.belgeNo}</td>
                     <td className="px-4 py-2 truncate max-w-[220px]">{t.satici}</td>
@@ -589,7 +705,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
       </div>
 
       {/* Oran bazlı özet */}
-      {data.tevkifatKodlari.length > 0 && (
+      {tevkifatKodlari.length > 0 && (
         <div
           className="rounded-2xl p-5 border"
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
