@@ -140,7 +140,7 @@ export class KdvBeyannameService {
     // veya MihsapInvoice.raw'daki tevkifat işaretleriyle
     const faturalar = await this.getTevkifatliAlisFaturalari(tenantId, mukellefId, donem);
 
-    const satirlar = faturalar.map((f) => ({
+    const satirlar = faturalar.map((f: any) => ({
       belgeNo: f.belgeNo,
       satici: f.satici,
       saticiVkn: f.saticiVkn || '',
@@ -151,9 +151,9 @@ export class KdvBeyannameService {
       tevkifatTutari: Math.round(f.tevkifatTutari * 100) / 100,
     }));
 
-    const toplamMatrah = satirlar.reduce((s, r) => s + r.matrah, 0);
-    const toplamHesaplananKdv = satirlar.reduce((s, r) => s + r.hesaplananKdv, 0);
-    const toplamTevkifat = satirlar.reduce((s, r) => s + r.tevkifatTutari, 0);
+    const toplamMatrah = satirlar.reduce((s: number, r: any) => s + r.matrah, 0);
+    const toplamHesaplananKdv = satirlar.reduce((s: number, r: any) => s + r.hesaplananKdv, 0);
+    const toplamTevkifat = satirlar.reduce((s: number, r: any) => s + r.tevkifatTutari, 0);
 
     // Tevkifat oranı bazlı gruplama
     const gruplar = new Map<string, { matrah: number; tevkifat: number; adet: number }>();
@@ -176,7 +176,7 @@ export class KdvBeyannameService {
     if (satirlar.length === 0) {
       uyarilar.push('Bu dönemde tevkifatlı alış faturası tespit edilmedi.');
     }
-    const tevkifatsizTespitEdilen = faturalar.filter((f) => f.kaynak === 'mihsap_only').length;
+    const tevkifatsizTespitEdilen = faturalar.filter((f: any) => f.kaynak === 'mihsap_only').length;
     if (tevkifatsizTespitEdilen > 0) {
       uyarilar.push(
         `${tevkifatsizTespitEdilen} fatura için oran tespiti yapılamadı (varsayılan 1/2). Kesin değer için KDV Kontrol'den geçirin.`,
@@ -384,10 +384,10 @@ export class KdvBeyannameService {
         kdv: Math.round(v.kdv * 100) / 100,
         adet: v.adet,
       }))
-      .sort((a, b) => a.oran - b.oran);
+      .sort((a: any, b: any) => a.oran - b.oran);
 
-    const toplamMatrah = oranlar.reduce((s, o) => s + o.matrah, 0);
-    const toplamKdv = oranlar.reduce((s, o) => s + o.kdv, 0);
+    const toplamMatrah = oranlar.reduce((s: number, o: any) => s + o.matrah, 0);
+    const toplamKdv = oranlar.reduce((s: number, o: any) => s + o.kdv, 0);
 
     return {
       oranlar,

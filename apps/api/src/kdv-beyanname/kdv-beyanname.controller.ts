@@ -113,7 +113,7 @@ export class KdvBeyannameController {
       ozet.addRow([]);
       const u = ozet.addRow(['UYARILAR']);
       u.font = { bold: true, color: { argb: 'FFC43333' } };
-      [...kdv1.lucaKontrol.uyarilar, ...kdv1.kaliteRapor.uyarilar].forEach((msg) => {
+      [...kdv1.lucaKontrol.uyarilar, ...kdv1.kaliteRapor.uyarilar].forEach((msg: string) => {
         ozet.addRow([msg]);
       });
     }
@@ -178,7 +178,7 @@ export class KdvBeyannameController {
     k1.getColumn(2).width = 16;
     k1.getColumn(3).width = 16;
     k1.getColumn(4).width = 14;
-    [2, 3].forEach((col) => (k1.getColumn(col).numFmt = '#,##0.00'));
+    [2, 3].forEach((col: number) => (k1.getColumn(col).numFmt = '#,##0.00'));
 
     // ===== KDV2 SHEET =====
     const k2 = wb.addWorksheet('KDV2 Tevkifat', { properties: { tabColor: { argb: 'FFC9A77C' } } });
@@ -213,7 +213,7 @@ export class KdvBeyannameController {
     k2.getColumn(2).width = 30;
     k2.getColumn(3).width = 14;
     k2.getColumn(4).width = 12;
-    [5, 6, 8].forEach((col) => (k2.getColumn(col).numFmt = '#,##0.00'));
+    [5, 6, 8].forEach((col: number) => (k2.getColumn(col).numFmt = '#,##0.00'));
 
     // ===== STREAM =====
     const buf = await wb.xlsx.writeBuffer();
