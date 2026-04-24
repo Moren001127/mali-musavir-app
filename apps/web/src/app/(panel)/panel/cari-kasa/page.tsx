@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 import { toast } from 'sonner';
 import {
-  Wallet, Calendar, Plus, Download, Trash2, FileText, Loader2,
-  TrendingUp, TrendingDown, CheckCircle2, X, Edit3,
+  Wallet, Calendar, Plus, Download, Trash2, Loader2,
+  TrendingUp, TrendingDown, X, Edit3,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -60,10 +60,6 @@ const fmt = (n: number | null | undefined) => {
 const thisMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
-const firstOfMonth = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 };
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -240,7 +236,15 @@ export default function CariKasaPage() {
 
 // ==================== COMPONENT'LER ====================
 
-function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: any) {
+function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: {
+  label: string;
+  value?: number;
+  text?: string;
+  color?: string;
+  icon?: any;
+  highlight?: boolean;
+  big?: boolean;
+}) {
   return (
     <div className="rounded-2xl p-4 border" style={{ background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' }}>
       <div className="flex items-center gap-2 mb-2">
@@ -258,7 +262,12 @@ function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: 
   );
 }
 
-function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: any) {
+function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
+  hizmetler: Hizmet[];
+  onYeni: () => void;
+  onEdit: (h: Hizmet) => void;
+  onDelete: (id: string) => void;
+}) {
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
       <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -300,7 +309,10 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: any) {
   );
 }
 
-function HareketlerView({ hareketler, onDelete }: any) {
+function HareketlerView({ hareketler, onDelete }: {
+  hareketler: Hareket[];
+  onDelete: (id: string) => void;
+}) {
   return (
     <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
       <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
