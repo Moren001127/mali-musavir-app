@@ -39,6 +39,7 @@ const navGroups = [
     icon: FileCheck,
     items: [
       { href: '/panel/kdv-kontrol',    label: 'KDV Kontrol',     icon: FileCheck },
+      { href: '/panel/kdv-beyanname',  label: 'KDV Beyanname',   icon: FileCheck },
       { href: '/panel/fis-yazdirma',   label: 'Fiş Yazdırma',    icon: Printer },
       { href: '/panel/mizan',          label: 'Mizan',           icon: Table2 },
       { href: '/panel/gelir-tablosu',  label: 'Gelir Tablosu',   icon: TrendingUp },

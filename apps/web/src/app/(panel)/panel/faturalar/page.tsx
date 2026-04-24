@@ -96,7 +96,9 @@ export default function FaturalarPage() {
         donem,
         limit: 10000, // Büyük mükelleflerde 1500+ fatura olabilir; 10k güvenli üst sınır
       }),
-    enabled: !!selectedMukellef,
+    // Dönem varsa her zaman sorgula — mükellef seçili değilse tüm mükelleflerin
+    // o ayki faturalarının birleşimi gelir.
+    enabled: !!donem,
   });
 
   // Son çekme job'ları (progress gösterimi için)
@@ -337,13 +339,13 @@ ${isPdf
         <MihsapConnectionBadge session={mihsapSession} />
       </div>
 
-      {/* KPI Özet — her zaman görünür */}
+      {/* KPI Özet — mükellef seçili değilse tüm mükelleflerin toplamı */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
         {[
-          { label: 'Toplam Fatura', value: selectedMukellef ? invoices.length : 0, sub: selectedMukellef ? `${MONTH_NAMES[Number(month)-1]} ${year}` : 'Mükellef seçin', icon: Receipt },
-          { label: 'Alış Faturası', value: selectedMukellef ? alisInvoices.length : 0, sub: selectedMukellef ? `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}` : '—', icon: FileText },
-          { label: 'Satış Faturası', value: selectedMukellef ? satisInvoices.length : 0, sub: selectedMukellef ? `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}` : '—', icon: FileText },
-          { label: 'İndirilmiş Dosya', value: selectedMukellef ? invoices.filter(i=>i.storageKey).length : 0, sub: selectedMukellef ? `/ ${invoices.length} fatura` : '—', icon: Download },
+          { label: 'Toplam Fatura', value: invoices.length, sub: selectedMukellef ? `${MONTH_NAMES[Number(month)-1]} ${year}` : `Tüm mükellefler · ${MONTH_NAMES[Number(month)-1]} ${year}`, icon: Receipt },
+          { label: 'Alış Faturası', value: alisInvoices.length, sub: `₺${totalAlis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
+          { label: 'Satış Faturası', value: satisInvoices.length, sub: `₺${totalSatis.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`, icon: FileText },
+          { label: 'İndirilmiş Dosya', value: invoices.filter(i=>i.storageKey).length, sub: invoices.length ? `/ ${invoices.length} fatura` : '—', icon: Download },
         ].map(({ label, value, sub, icon: Icon }) => (
           <div key={label} className="rounded-2xl p-5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex items-center justify-between mb-4">
@@ -564,8 +566,8 @@ ${isPdf
         </div>
       )}
 
-      {/* Fatura listesi */}
-      {selectedMukellef && (
+      {/* Fatura listesi — mükellef seçili olmasa bile tüm mükelleflerin o ay toplam faturası */}
+      {donem && (
         <div
           className="rounded-2xl border overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
@@ -577,7 +579,7 @@ ${isPdf
             <div className="flex items-center gap-2.5">
               <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
               <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
-                {selectedTaxpayer && taxpayerName(selectedTaxpayer)} · {MONTH_NAMES[Number(month) - 1]} {year}
+                {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Tüm Mükellefler'} · {MONTH_NAMES[Number(month) - 1]} {year}
               </h3>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -606,28 +608,28 @@ ${isPdf
               <div className="flex gap-1.5" title="Toplu yazdırma — fiş ve Z raporu otomatik hariç tutulur">
                 <button
                   onClick={() => handleBulkPrint('ALIS')}
-                  disabled={!selectedMukellef || printing !== 'idle'}
+                  disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   style={{
                     background: 'rgba(59,130,246,0.14)',
                     color: '#93c5fd',
                     border: '1px solid rgba(96,165,250,0.35)',
                   }}
-                  title="Alış faturalarını toplu yazdır (fiş/Z raporu hariç)"
+                  title={selectedMukellef ? 'Bu mükellefin alış faturalarını yazdır' : 'Tüm mükelleflerin alış faturalarını yazdır'}
                 >
                   {printing === 'ALIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
                   Toplu Alış Yazdır
                 </button>
                 <button
                   onClick={() => handleBulkPrint('SATIS')}
-                  disabled={!selectedMukellef || printing !== 'idle'}
+                  disabled={printing !== 'idle' || !donem}
                   className="px-3 py-1.5 rounded-[8px] text-[11.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   style={{
                     background: 'rgba(34,197,94,0.14)',
                     color: '#86efac',
                     border: '1px solid rgba(74,222,128,0.35)',
                   }}
-                  title="Satış faturalarını toplu yazdır (fiş/Z raporu hariç)"
+                  title={selectedMukellef ? 'Bu mükellefin satış faturalarını yazdır' : 'Tüm mükelleflerin satış faturalarını yazdır'}
                 >
                   {printing === 'SATIS' ? <Loader2 size={12} className="animate-spin" /> : <Printer size={12} />}
                   Toplu Satış Yazdır

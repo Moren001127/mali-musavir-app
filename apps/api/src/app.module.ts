@@ -23,6 +23,7 @@ import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
 import { BeyannameTakipModule } from './beyanname-takip/beyanname-takip.module';
 import { BeyanKayitlariModule } from './beyan-kayitlari/beyan-kayitlari.module';
+import { KdvBeyannameModule } from './kdv-beyanname/kdv-beyanname.module';
 import { GaleriModule } from './galeri/galeri.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
@@ -53,6 +54,7 @@ import { HgsCron } from './schedule/hgs.cron';
     PendingDecisionsModule,
     BeyannameTakipModule,
     BeyanKayitlariModule,
+    KdvBeyannameModule,
     GaleriModule,
   ],
   providers: [ReminderCron, HgsCron],
