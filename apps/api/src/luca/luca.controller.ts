@@ -274,18 +274,27 @@ export class LucaController {
   }
 
   // --------------------------------------------------------------
-  // Agent token'dan tenantId çöz — mevcut agent-events desenini takip eder.
-  // Proje gerçek implementasyonunda AgentEventsService/Guard merkezi;
-  // buraya aynı logic'i koymak yerine uygun servisi inject edebilirsiniz.
+  // Agent token'dan tenantId çöz — Mihsap ile TAM UYUMLU:
+  //  1. Önce AGENT_INGEST_TOKENS env variable (Mihsap ile aynı ortak)
+  //  2. Bulunamazsa tenant.slug / tenant.id direkt
+  // Her iki yol da kabul edilir — eski slug bazlı akış kırılmaz.
   // --------------------------------------------------------------
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
     if (!token) throw new ForbiddenException('Agent token eksik');
-    // Basit eşleşme: tenant.slug === token (mevcut agent desenine uygun)
-    // Gerçek projede AgentToken tablosu / hash kullanılır.
+    const t = token.trim();
+
+    // 1. AGENT_INGEST_TOKENS env'i (format: "tenantId1:token1,tenantId2:token2")
+    const raw = process.env.AGENT_INGEST_TOKENS || '';
+    const map: Record<string, string> = {};
+    for (const pair of raw.split(',')) {
+      const [tid, tok] = pair.split(':');
+      if (tid && tok) map[tok.trim()] = tid.trim();
+    }
+    if (map[t]) return map[t];
+
+    // 2. Fallback: tenant.slug veya tenant.id direkt
     const tenant = await (this.prisma as any).tenant.findFirst({
-      where: {
-        OR: [{ slug: token }, { id: token }],
-      },
+      where: { OR: [{ slug: t }, { id: t }] },
     });
     if (!tenant) throw new ForbiddenException('Agent token geçersiz');
     return tenant.id;

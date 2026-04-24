@@ -112,10 +112,18 @@
       if (!isLucaOrigin()) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
+      // 403 "cooldown" — token/deploy sorunu varsa polling'i yavaşlat
+      if (window.__lucaAuthFailUntil && Date.now() < window.__lucaAuthFailUntil) return;
 
       const r = await fetch(API + '/agent/luca/jobs/pending', {
         headers: { 'X-Agent-Token': TOKEN },
       });
+      if (r.status === 401 || r.status === 403) {
+        // 2 dakika cooldown; kullanıcı token'ı düzelttiğinde manuel reload yapar
+        window.__lucaAuthFailUntil = Date.now() + 2 * 60 * 1000;
+        console.warn('[Moren] Luca agent ' + r.status + ' — token kabul edilmiyor, 2 dk beklenecek');
+        return;
+      }
       if (!r.ok) return;
       const jobs = await r.json();
       if (!Array.isArray(jobs) || jobs.length === 0) return;
