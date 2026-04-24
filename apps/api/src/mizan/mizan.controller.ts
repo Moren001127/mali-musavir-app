@@ -24,6 +24,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { MizanService, MizanDonemTipi } from './mizan.service';
 import { GelirTablosuService } from './gelir-tablosu.service';
 import { BilancoService } from './bilanco.service';
+import { LucaService } from '../luca/luca.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller()
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -32,6 +34,8 @@ export class MizanController {
     private readonly mizanService: MizanService,
     private readonly gelirTablosuService: GelirTablosuService,
     private readonly bilancoService: BilancoService,
+    private readonly lucaService: LucaService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ==================== MİZAN ====================
@@ -93,6 +97,51 @@ export class MizanController {
     return this.mizanService.getMizan(id, req.user.tenantId).then(() =>
       this.mizanService.analyzeAccounts(id),
     );
+  }
+
+  // === LUCA'DAN OTOMATİK ÇEKİM (EXTENSION-FIRST) ===
+  // Frontend bu endpoint'i çağırır → LucaFetchJob oluşur → moren-agent.js
+  // (personelin tarayıcısında açık Luca sekmesinde) job'u alıp Excel indirir,
+  // /agent/luca/runner/upload-mizan'a yükler. Multi-user: her personel kendi
+  // tarayıcısından çalıştırabilir, job tenant bazlı paylaşılır.
+  @Post('mizan/fetch-from-luca')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async fetchFromLuca(
+    @Req() req: any,
+    @Body() body: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi },
+  ) {
+    if (!body?.mukellefId || !body?.donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
+    }
+    const job = await this.lucaService.createFetchJob({
+      tenantId: req.user.tenantId,
+      sessionId: undefined as any, // Mizan için null (KDV kontrol'e bağlı değil)
+      mukellefId: body.mukellefId,
+      donem: body.donem,
+      tip: 'MIZAN',
+      createdBy: req.user.sub,
+    });
+    return { jobId: job.id, status: job.status };
+  }
+
+  // Polling endpoint — frontend "Luca sekmesini açık tut" gösterirken bunu çağırır
+  @Get('mizan/luca-job/:id')
+  async getLucaJob(@Req() req: any, @Param('id') id: string) {
+    const job = await this.lucaService.getJob(id, req.user.tenantId);
+    // Job done olduysa yeni oluşan mizan kaydını da dön
+    let mizan: any = null;
+    if (job.status === 'done') {
+      mizan = await (this.prisma as any).mizan.findFirst({
+        where: {
+          tenantId: req.user.tenantId,
+          taxpayerId: job.mukellefId,
+          donem: job.donem,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    return { job, mizan };
   }
 
   @Delete('mizan/:id')

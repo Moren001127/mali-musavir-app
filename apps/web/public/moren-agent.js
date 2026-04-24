@@ -132,19 +132,38 @@
           const blob = await fetchLucaMuavinExcel(job);
           if (!blob) throw new Error('Excel yakalanamadı');
 
-          // Backend'e gönder — uploadExcelFromRunner
+          // Backend'e gönder — tip bazlı endpoint seçimi
           const fd = new FormData();
           fd.append('file', blob, `luca-${job.tip}-${job.donem}.xlsx`);
-          const uploadRes = await fetch(
-            API + `/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`,
-            {
-              method: 'POST',
-              headers: { 'X-Agent-Token': TOKEN },
-              body: fd,
-            },
-          );
+          let uploadUrl;
+          if (job.tip === 'MIZAN') {
+            // Mizan için özel endpoint — mizan tablosuna parse edilir
+            const params = new URLSearchParams({
+              mukellefId: job.mukellefId,
+              donem: job.donem,
+              donemTipi: 'AYLIK',
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params}`;
+          } else {
+            // KDV kontrol session için eski endpoint
+            uploadUrl = `${API}/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`;
+          }
+          const uploadRes = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: { 'X-Agent-Token': TOKEN },
+            body: fd,
+          });
           if (!uploadRes.ok) {
-            throw new Error(`Upload HTTP ${uploadRes.status}`);
+            const errBody = await uploadRes.text().catch(() => '');
+            throw new Error(`Upload HTTP ${uploadRes.status}: ${errBody.slice(0, 120)}`);
+          }
+          // Mizan için job status done yapılmalı (KDV runner endpoint'i kendisi yapıyor)
+          if (job.tip === 'MIZAN') {
+            await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+              body: JSON.stringify({ recordCount: 0 }),
+            }).catch(() => {});
           }
           setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
         } catch (e) {
@@ -1700,9 +1719,17 @@
             });
           } else {
             counters.atla++; counters.toplam++; setCount();
-            const atlamaSebebi = validationFailed
-              ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} · İşletme F2 sonuçlanmadı`;
+            // Daha açıklayıcı sebep üret — kullanıcı "neden atladı" anlasın
+            let atlamaSebebi;
+            if (validationFailed) {
+              atlamaSebebi = `${mTag} · MIHSAP eksik alan: ${validationFailed.slice(0, 60)}`;
+            } else if (aiHata) {
+              atlamaSebebi = `${mTag} · AI karar veremedi: ${(aiHata || '').slice(0, 60)}`;
+            } else if (sonBlokStat && sonBlokStat.includes('boş')) {
+              atlamaSebebi = `${mTag} · Dolu alanlar eksik (Matrah/KDV/Cari kontrolü başarısız)`;
+            } else {
+              atlamaSebebi = `${mTag} · F2 sonrası Mihsap onay vermedi (uyarı modalı / duplicate / fatura bilgisi eksik)`;
+            }
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });

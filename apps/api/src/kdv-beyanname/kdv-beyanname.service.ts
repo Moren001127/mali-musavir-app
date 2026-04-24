@@ -471,7 +471,12 @@ export class KdvBeyannameService {
         tenantId,
         mukellefId,
         donem,
-        faturaTuru: { contains: 'TEVKIFATLI' },
+        // Sadece ALIŞ tarafı tevkifatı (tevkifat sorumlusu sıfatıyla beyan).
+        // "TEVKIFATLI_SATIS" HARİÇ — o firmanın kendi hesapladığı KDV, KDV1'de.
+        AND: [
+          { faturaTuru: { contains: 'TEVKIFAT' } },
+          { faturaTuru: { contains: 'ALIS' } },
+        ],
       },
       select: { faturaNo: true },
     });
@@ -541,7 +546,12 @@ export class KdvBeyannameService {
         tenantId,
         mukellefId,
         donem,
-        faturaTuru: { contains: 'TEVKIFATLI' },
+        // Sadece ALIŞ tarafı tevkifatı (tevkifat sorumlusu sıfatıyla beyan).
+        // "TEVKIFATLI_SATIS" HARİÇ — o firmanın kendi hesapladığı KDV, KDV1'de.
+        AND: [
+          { faturaTuru: { contains: 'TEVKIFAT' } },
+          { faturaTuru: { contains: 'ALIS' } },
+        ],
       },
       orderBy: { faturaTarihi: 'asc' },
     });
