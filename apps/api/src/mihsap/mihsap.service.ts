@@ -580,8 +580,26 @@ export class MihsapService {
     const skipped = invoices.length - filtered.length;
 
     if (filtered.length === 0) {
+      // Debug: DB'deki gerçek belgeTuru değerlerini göster
+      const belgeTuruSayim = new Map<string, number>();
+      for (const inv of invoices) {
+        const bt = String(inv.belgeTuru || '(boş)');
+        belgeTuruSayim.set(bt, (belgeTuruSayim.get(bt) || 0) + 1);
+      }
+      const debugSatir = Array.from(belgeTuruSayim.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ');
+      this.logger.warn(
+        `[toplu-yazdir] ${donem} ${faturaTuru}: toplam=${invoices.length} filtrelenen=${filtered.length} belgeTuru değerleri: ${debugSatir}`,
+      );
       return {
-        html: this.renderBulkPrintEmpty(donem, faturaTuru),
+        html: this.renderBulkPrintEmpty(donem, faturaTuru, {
+          toplam: invoices.length,
+          filtrelenen: filtered.length,
+          belgeTuruOrnek: debugSatir || '(hiç fatura yok)',
+        }),
         count: 0,
         skipped,
       };
@@ -662,13 +680,28 @@ export class MihsapService {
     return { base64: buf.toString('base64'), mime };
   }
 
-  private renderBulkPrintEmpty(donem: string, faturaTuru: 'ALIS' | 'SATIS'): string {
+  private renderBulkPrintEmpty(
+    donem: string,
+    faturaTuru: 'ALIS' | 'SATIS',
+    debug?: { toplam: number; filtrelenen: number; belgeTuruOrnek: string },
+  ): string {
     const tr = faturaTuru === 'ALIS' ? 'Alış' : 'Satış';
+    const debugBlock = debug
+      ? `<div style="margin-top:24px;padding:16px;background:#222;color:#ccc;text-align:left;border-radius:6px;font-family:ui-monospace,monospace;font-size:12px;max-width:640px;margin-left:auto;margin-right:auto">
+  <div style="color:#c9a77c;font-weight:bold;margin-bottom:6px">DEBUG</div>
+  <div>Dönemdeki toplam ${tr} kaydı: <b>${debug.toplam}</b></div>
+  <div>Filtreden geçen: <b>${debug.filtrelenen}</b></div>
+  <div>Atlanan (fiş/Z raporu/bilinmeyen): <b>${debug.toplam - debug.filtrelenen}</b></div>
+  <div style="margin-top:8px">DB'deki belgeTuru değerleri: <b>${debug.belgeTuruOrnek}</b></div>
+  <div style="margin-top:12px;color:#f4a5b2">Bu değer whitelist'te (E_FATURA / E_ARSIV) yoksa bize bildir — filtreye ekleyelim.</div>
+</div>`
+      : '';
     return `<!doctype html><meta charset="utf-8"><title>Toplu ${tr} · ${donem}</title>
-<body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#555">
+<body style="font-family:system-ui,sans-serif;padding:40px;text-align:center;color:#444;background:#0f0d0b">
   <h1 style="color:#9c4656">Yazdırılacak ${tr} faturası bulunamadı</h1>
-  <p>Dönem <b>${donem}</b> için filtreye uyan (e-Fatura / e-Arşiv) belge yok.<br>
+  <p style="color:#aaa">Dönem <b>${donem}</b> için filtreye uyan (e-Fatura / e-Arşiv) belge yok.<br>
   Fiş ve Z raporları toplu yazdırmaya dahil edilmez.</p>
+  ${debugBlock}
 </body>`;
   }
 
