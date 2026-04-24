@@ -421,7 +421,25 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
           <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Bitiş</label>
           <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
         </div>
-        <button onClick={indirXlsx} className="px-4 py-2 rounded-md text-[12.5px] font-bold inline-flex items-center gap-2 ml-auto" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+        <button
+          onClick={() => {
+            const url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/cari-kasa/ekstre/${taxpayerId}/pdf?baslangic=${baslangic}&bitis=${bitis}`;
+            // JWT gerekli — fetch+blob, yeni sekmede aç
+            api.get(`/cari-kasa/ekstre/${taxpayerId}/pdf`, { params: { baslangic, bitis }, responseType: 'text', transformResponse: (d) => d })
+              .then((r) => {
+                const blob = new Blob([r.data], { type: 'text/html; charset=utf-8' });
+                const u = URL.createObjectURL(blob);
+                window.open(u, '_blank');
+                setTimeout(() => URL.revokeObjectURL(u), 5 * 60 * 1000);
+              })
+              .catch((e: any) => toast.error(e?.response?.data?.message || 'PDF açılamadı'));
+          }}
+          className="px-4 py-2 rounded-md text-[12.5px] font-bold inline-flex items-center gap-2 ml-auto"
+          style={{ background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff' }}
+        >
+          <FileText size={13} /> PDF Yazdır
+        </button>
+        <button onClick={indirXlsx} className="px-4 py-2 rounded-md text-[12.5px] font-bold inline-flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
           <Download size={13} /> Excel İndir
         </button>
       </div>
@@ -651,10 +669,19 @@ type OzetSatir = {
 function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
+  const [view, setView] = useState<'tablo' | 'istatistik'>('tablo');
+  const yil = new Date().getFullYear();
+  const [baslangic, setBaslangic] = useState(`${yil}-01-01`);
+  const [bitis, setBitis] = useState(() => new Date().toISOString().slice(0, 10));
+  const [tarihAktif, setTarihAktif] = useState(false); // filtreye göre sorgula
 
   const { data: ozet = [], isLoading } = useQuery<OzetSatir[]>({
-    queryKey: ['cari-ozet'],
-    queryFn: () => api.get('/cari-kasa/ozet').then((r) => r.data),
+    queryKey: ['cari-ozet', tarihAktif ? baslangic : '', tarihAktif ? bitis : ''],
+    queryFn: () => {
+      const params: any = {};
+      if (tarihAktif) { params.baslangic = baslangic; params.bitis = bitis; }
+      return api.get('/cari-kasa/ozet', { params }).then((r) => r.data);
+    },
     refetchInterval: 30000,
   });
 
@@ -705,7 +732,58 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         </div>
       </div>
 
-      {/* Filtreler */}
+      {/* Tablo / İstatistik tab */}
+      <div className="flex gap-1.5">
+        {(['tablo', 'istatistik'] as const).map((t) => {
+          const active = view === t;
+          return (
+            <button
+              key={t}
+              onClick={() => setView(t)}
+              className="px-4 py-2 rounded-[10px] text-[12.5px] font-semibold"
+              style={{
+                background: active ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
+                color: active ? GOLD : 'rgba(250,250,249,0.6)',
+                border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
+              }}
+            >
+              {t === 'tablo' ? 'Mükellef Listesi' : 'İstatistikler'}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === 'istatistik' && <IstatistiklerView />}
+
+      {view === 'tablo' && (
+      <>
+      {/* Tarih filtresi */}
+      <div className="rounded-2xl p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div>
+          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Dönem-1</label>
+          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+        </div>
+        <div>
+          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Dönem-2</label>
+          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+        </div>
+        <button
+          onClick={() => setTarihAktif((v) => !v)}
+          className="px-4 py-2 rounded-md text-[12.5px] font-bold"
+          style={{
+            background: tarihAktif ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(245,158,11,0.12)',
+            color: tarihAktif ? '#fff' : '#f59e0b',
+            border: '1px solid rgba(245,158,11,0.3)',
+          }}
+        >
+          {tarihAktif ? '✓ Tarih Filtresi AKTIF' : '☐ Tarihe Göre Filtrele'}
+        </button>
+        <div className="text-[11px] ml-auto self-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          {tarihAktif ? `Borç/Alacak sadece ${baslangic} – ${bitis} arasında` : 'Tüm zamanlar'}
+        </div>
+      </div>
+
+      {/* Arama ve diğer filtreler */}
       <div className="rounded-2xl p-4 border flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
         <div className="relative flex-1 min-w-[250px]">
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
@@ -733,8 +811,11 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
           <Download size={13} /> Excel
         </button>
       </div>
+      </>
+      )}
 
-      {/* Tablo */}
+      {/* Tablo — sadece tablo view'da */}
+      {view === 'tablo' && (
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
         {isLoading && (
           <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}>
@@ -828,6 +909,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -842,5 +924,155 @@ function IconBtn({ children, color, title, onClick }: { children: React.ReactNod
     >
       {children}
     </button>
+  );
+}
+
+// ==================== İSTATİSTİKLER TAB ====================
+
+type IstatData = {
+  kpi: {
+    aylikHedef: number;
+    buAyTahakkuk: number;
+    buAyTahsilat: number;
+    gecenAyTahsilat: number;
+    toplamTahakkuk12Ay: number;
+    toplamTahsilat12Ay: number;
+    tahsilatOrani: number;
+    toplamAktifBorc: number;
+    borcluMukellefAdet: number;
+  };
+  trend: Array<{ ay: string; tahakkuk: number; tahsilat: number }>;
+  odemeYontemi: Array<{ yontem: string; tutar: number }>;
+  enBorclular: Array<{ id: string; ad: string; taxNumber?: string | null; bakiye: number }>;
+};
+
+function IstatistiklerView() {
+  const router = useRouter();
+  const { data, isLoading } = useQuery<IstatData>({
+    queryKey: ['cari-istatistik'],
+    queryFn: () => api.get('/cari-kasa/istatistikler').then((r) => r.data),
+    refetchInterval: 60000,
+  });
+
+  if (isLoading || !data) {
+    return <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 className="animate-spin inline mr-2" size={16} />Hesaplanıyor…</div>;
+  }
+
+  const { kpi, trend, odemeYontemi, enBorclular } = data;
+  const maxTrend = Math.max(...trend.map((t) => Math.max(t.tahakkuk, t.tahsilat)), 1);
+  const yontemToplam = odemeYontemi.reduce((s, o) => s + o.tutar, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* KPI kartları */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="Aylık Hedef" value={kpi.aylikHedef} color={GOLD} sub="aktif hizmet toplamı" />
+        <StatCard label="Bu Ay Tahakkuk" value={kpi.buAyTahakkuk} color="#60a5fa" />
+        <StatCard label="Bu Ay Tahsilat" value={kpi.buAyTahsilat} color="#4ade80" sub={`Geçen ay: ${fmt(kpi.gecenAyTahsilat)} ₺`} />
+        <StatCard label="Aktif Borç" value={kpi.toplamAktifBorc} color={BORDO} highlight sub={`${kpi.borcluMukellefAdet} mükellef`} />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard label="12 Ay Tahakkuk" value={kpi.toplamTahakkuk12Ay} color="#60a5fa" />
+        <StatCard label="12 Ay Tahsilat" value={kpi.toplamTahsilat12Ay} color="#4ade80" />
+        <StatCard
+          label="Tahsilat Oranı"
+          text={`%${kpi.tahsilatOrani.toFixed(1)}`}
+          color={kpi.tahsilatOrani > 80 ? '#4ade80' : kpi.tahsilatOrani > 50 ? '#fbbf24' : '#fca5a5'}
+          sub="son 12 ay"
+        />
+      </div>
+
+      {/* Aylık trend bar chart */}
+      <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        <h3 className="text-[13px] font-semibold mb-4" style={{ color: '#fafaf9' }}>Aylık Tahakkuk vs Tahsilat (Son 12 Ay)</h3>
+        <div className="flex items-end gap-1.5 h-[200px] mb-2">
+          {trend.map((t) => (
+            <div key={t.ay} className="flex-1 flex flex-col items-center gap-0.5 justify-end" title={`${t.ay}: Tahakkuk ${fmt(t.tahakkuk)} · Tahsilat ${fmt(t.tahsilat)}`}>
+              <div className="w-full flex gap-0.5 items-end" style={{ height: 180 }}>
+                <div style={{ flex: 1, height: `${(t.tahakkuk / maxTrend) * 180}px`, background: '#60a5fa', borderRadius: '2px 2px 0 0', minHeight: 2 }} />
+                <div style={{ flex: 1, height: `${(t.tahsilat / maxTrend) * 180}px`, background: '#4ade80', borderRadius: '2px 2px 0 0', minHeight: 2 }} />
+              </div>
+              <div className="text-[9.5px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>{t.ay.split('-')[1]}/{t.ay.split('-')[0].slice(2)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-center gap-4 text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#60a5fa', borderRadius: 2, marginRight: 4 }} />Tahakkuk</span>
+          <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#4ade80', borderRadius: 2, marginRight: 4 }} />Tahsilat</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Ödeme yöntemi dağılımı */}
+        <div className="rounded-2xl p-5 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Ödeme Yöntemi Dağılımı (12 ay)</h3>
+          {odemeYontemi.length === 0 ? (
+            <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Tahsilat yok</p>
+          ) : (
+            <div className="space-y-2">
+              {odemeYontemi.map((y) => {
+                const pct = yontemToplam > 0 ? (y.tutar / yontemToplam) * 100 : 0;
+                return (
+                  <div key={y.yontem}>
+                    <div className="flex justify-between text-[12px] mb-1" style={{ color: '#fafaf9' }}>
+                      <span>{y.yontem}</span>
+                      <span className="tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{fmt(y.tutar)} ₺ · %{pct.toFixed(1)}</span>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.05)', height: 8, borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #4ade80, #22c55e)' }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* En borçlu 10 */}
+        <div className="rounded-2xl p-5 border" style={{ background: 'rgba(156,70,86,0.05)', borderColor: 'rgba(156,70,86,0.2)' }}>
+          <h3 className="text-[13px] font-semibold mb-3" style={{ color: BORDO }}>En Yüksek 10 Borç</h3>
+          {enBorclular.length === 0 ? (
+            <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Borçlu mükellef yok 🎉</p>
+          ) : (
+            <div className="space-y-1.5">
+              {enBorclular.map((b, i) => (
+                <div
+                  key={b.id}
+                  onClick={() => router.push(`/panel/cari-kasa?mukellef=${b.id}`)}
+                  className="flex items-center gap-2 p-2 rounded-md cursor-pointer transition"
+                  style={{ background: 'rgba(255,255,255,0.02)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(156,70,86,0.1)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                >
+                  <span className="text-[11px] font-bold w-6" style={{ color: 'rgba(250,250,249,0.4)' }}>#{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{b.ad}</div>
+                    {b.taxNumber && <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>{b.taxNumber}</div>}
+                  </div>
+                  <div className="text-[13px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: BORDO }}>
+                    {fmt(b.bakiye)} ₺
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, text, color, sub, highlight }: { label: string; value?: number; text?: string; color: string; sub?: string; highlight?: boolean }) {
+  return (
+    <div className="rounded-2xl p-4 border" style={{
+      background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)',
+      borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)',
+    }}>
+      <div className="text-[10.5px] font-bold uppercase tracking-[.12em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
+      <div className="text-[22px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+        {text ?? `${fmt(value)} ₺`}
+      </div>
+      {sub && <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</div>}
+    </div>
   );
 }

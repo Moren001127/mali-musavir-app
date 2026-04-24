@@ -51,7 +51,7 @@ export class CariKasaService {
     if (!/^\d{4}-\d{2}$/.test(data.baslangicAy)) {
       throw new BadRequestException('baslangicAy formatı: "2026-01"');
     }
-    return (this.prisma as any).cariHizmet.create({
+    const hizmet = await (this.prisma as any).cariHizmet.create({
       data: {
         tenantId,
         taxpayerId: data.taxpayerId,
@@ -63,6 +63,60 @@ export class CariKasaService {
         notlar: data.notlar?.trim() || null,
       },
     });
+
+    // Otomatik backfill — başlangıç ayından şu ana kadar TAHAKKUK kayıtları üret.
+    // Kullanıcı "2.000 TL Muhasebe Ücreti Aylık 2026-01" dediğinde borç görünsün.
+    await this.backfillTahakkuk(hizmet);
+    return hizmet;
+  }
+
+  /**
+   * Başlangıç ayından bugüne kadar periyoda uygun TAHAKKUK hareketlerini üretir.
+   * Hem createHizmet sonrası hem manuel tetikleme (updateHizmet) için kullanılır.
+   */
+  private async backfillTahakkuk(hizmet: any) {
+    const now = new Date();
+    const bugunAy = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const hareketler: any[] = [];
+    let donem = hizmet.baslangicAy;
+    let sonUretilen: string | null = null;
+    let iter = 0;
+    while (donem <= bugunAy && iter < 60) {
+      iter++;
+      if (hizmet.bitisAy && donem > hizmet.bitisAy) break;
+      if (this.periyotMatch(hizmet.periyot, hizmet.baslangicAy, donem)) {
+        const [y, m] = donem.split('-');
+        const tarih = new Date(Number(y), Number(m) - 1, 1);
+        hareketler.push({
+          tenantId: hizmet.tenantId,
+          taxpayerId: hizmet.taxpayerId,
+          hizmetId: hizmet.id,
+          tarih,
+          tip: 'TAHAKKUK',
+          tutar: hizmet.tutar,
+          donem,
+          aciklama: `${hizmet.hizmetAdi} · ${donem}`,
+          otoOlusturuldu: true,
+        });
+        sonUretilen = donem;
+      }
+      // Sonraki ay
+      const [y, m] = donem.split('-').map(Number);
+      const next = new Date(y, m, 1); // ay+1
+      donem = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (hareketler.length > 0) {
+      await (this.prisma as any).cariHareket.createMany({ data: hareketler });
+      await (this.prisma as any).cariHizmet.update({
+        where: { id: hizmet.id },
+        data: { sonTahakkukAy: sonUretilen },
+      });
+    }
+    this.logger.log(
+      `[CariKasa] Backfill: hizmet=${hizmet.id} periyot=${hizmet.periyot} → ${hareketler.length} tahakkuk`,
+    );
+    return { count: hareketler.length };
   }
 
   async updateHizmet(tenantId: string, id: string, data: Partial<{
@@ -378,7 +432,8 @@ export class CariKasaService {
   //
   // Tablo görünümü için — HER mükellef dönülür (hareket yoksa 0 bakiye).
   // aylikMuhasebeUcreti: aktif ve AYLIK olan ilk hizmetin tutarı (muhasebe ücreti).
-  async genelOzet(tenantId: string) {
+  // baslangic/bitis verilirse o tarih aralığındaki tahakkuk+tahsilat; yoksa tümü.
+  async genelOzet(tenantId: string, baslangic?: string, bitis?: string) {
     // 1. Tüm aktif mükellefler (hareket olmasa bile tabloda görünsün)
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, isActive: true },
@@ -388,9 +443,19 @@ export class CariKasaService {
       },
     });
 
-    // 2. Tüm hareketler tek sorgu
+    // 2. Hareketler — tarih aralığı verilmişse filtrele, değilse hepsi
+    const hareketWhere: any = { tenantId };
+    if (baslangic || bitis) {
+      hareketWhere.tarih = {};
+      if (baslangic) hareketWhere.tarih.gte = new Date(baslangic);
+      if (bitis) {
+        const b = new Date(bitis);
+        b.setHours(23, 59, 59, 999);
+        hareketWhere.tarih.lte = b;
+      }
+    }
     const hareketler = await (this.prisma as any).cariHareket.findMany({
-      where: { tenantId },
+      where: hareketWhere,
       select: { taxpayerId: true, tip: true, tutar: true },
     });
     const harMap = new Map<string, { tahakkuk: number; tahsilat: number }>();
@@ -436,5 +501,102 @@ export class CariKasaService {
         };
       })
       .sort((a: any, b: any) => collator.compare(a.ad, b.ad));
+  }
+
+  // ==================== İSTATİSTİKLER ====================
+  //
+  // Son 12 aylık tahakkuk/tahsilat trendi + en borçlu 10 + en çok tahsilat + KPI'lar.
+  async istatistikler(tenantId: string) {
+    const now = new Date();
+    const onIkiAyOnce = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    const hareketler = await (this.prisma as any).cariHareket.findMany({
+      where: { tenantId, tarih: { gte: onIkiAyOnce } },
+      select: { tip: true, tutar: true, tarih: true, taxpayerId: true, odemeYontemi: true, donem: true },
+    });
+
+    // Aylık trend (son 12 ay)
+    const aylar: string[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      aylar.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    const trend = aylar.map((ay) => ({
+      ay,
+      tahakkuk: 0,
+      tahsilat: 0,
+    }));
+    const trendMap = new Map(trend.map((t) => [t.ay, t]));
+    for (const h of hareketler) {
+      const d = new Date(h.tarih);
+      const ay = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const row = trendMap.get(ay);
+      if (!row) continue;
+      const v = Number(h.tutar);
+      if (h.tip === 'TAHAKKUK') row.tahakkuk += v;
+      else if (h.tip === 'TAHSILAT') row.tahsilat += v;
+    }
+
+    // Ödeme yöntemi dağılımı (tahsilatlar)
+    const odemeYontemMap = new Map<string, number>();
+    for (const h of hareketler) {
+      if (h.tip !== 'TAHSILAT') continue;
+      const k = h.odemeYontemi || 'BELIRTILMEMIS';
+      odemeYontemMap.set(k, (odemeYontemMap.get(k) || 0) + Number(h.tutar));
+    }
+    const odemeYontemi = Array.from(odemeYontemMap.entries())
+      .map(([k, v]) => ({ yontem: k, tutar: Math.round(v * 100) / 100 }))
+      .sort((a, b) => b.tutar - a.tutar);
+
+    // En borçlu 10 mükellef (tüm zamanlar)
+    const ozet = await this.genelOzet(tenantId);
+    const enBorclular = ozet.filter((o: any) => o.bakiye > 0).slice(0, 10);
+
+    // KPI — son 12 ayın toplamları
+    const toplamTahakkuk = trend.reduce((s, t) => s + t.tahakkuk, 0);
+    const toplamTahsilat = trend.reduce((s, t) => s + t.tahsilat, 0);
+    const buAy = trend[trend.length - 1];
+    const gecenAy = trend[trend.length - 2];
+
+    // Bu ayki hedef (aktif aylık hizmetlerin toplamı)
+    const aktifAylikHizmetler = await (this.prisma as any).cariHizmet.findMany({
+      where: { tenantId, aktif: true, periyot: 'AYLIK' },
+      select: { tutar: true },
+    });
+    const aylikHedef = aktifAylikHizmetler.reduce(
+      (s: number, h: any) => s + Number(h.tutar),
+      0,
+    );
+
+    // Tahsilat oranı (son 12 ay)
+    const tahsilatOrani = toplamTahakkuk > 0
+      ? Math.round((toplamTahsilat / toplamTahakkuk) * 10000) / 100
+      : 0;
+
+    return {
+      kpi: {
+        aylikHedef: Math.round(aylikHedef * 100) / 100,
+        buAyTahakkuk: Math.round(buAy.tahakkuk * 100) / 100,
+        buAyTahsilat: Math.round(buAy.tahsilat * 100) / 100,
+        gecenAyTahsilat: Math.round(gecenAy.tahsilat * 100) / 100,
+        toplamTahakkuk12Ay: Math.round(toplamTahakkuk * 100) / 100,
+        toplamTahsilat12Ay: Math.round(toplamTahsilat * 100) / 100,
+        tahsilatOrani, // %
+        toplamAktifBorc: ozet.reduce((s: number, o: any) => s + (o.bakiye > 0 ? o.bakiye : 0), 0),
+        borcluMukellefAdet: ozet.filter((o: any) => o.bakiye > 0).length,
+      },
+      trend: trend.map((t) => ({
+        ay: t.ay,
+        tahakkuk: Math.round(t.tahakkuk * 100) / 100,
+        tahsilat: Math.round(t.tahsilat * 100) / 100,
+      })),
+      odemeYontemi,
+      enBorclular: enBorclular.map((o: any) => ({
+        id: o.id,
+        ad: o.ad,
+        taxNumber: o.taxNumber,
+        bakiye: o.bakiye,
+      })),
+    };
   }
 }

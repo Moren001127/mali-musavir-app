@@ -72,8 +72,17 @@ export class CariKasaController {
   }
 
   @Get('ozet')
-  genelOzet(@Req() req: any) {
-    return this.service.genelOzet(req.user.tenantId);
+  genelOzet(
+    @Req() req: any,
+    @Query('baslangic') baslangic?: string,
+    @Query('bitis') bitis?: string,
+  ) {
+    return this.service.genelOzet(req.user.tenantId, baslangic, bitis);
+  }
+
+  @Get('istatistikler')
+  istatistikler(@Req() req: any) {
+    return this.service.istatistikler(req.user.tenantId);
   }
 
   // ==================== EKSTRE ====================
@@ -152,6 +161,111 @@ export class CariKasaController {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(Buffer.from(buf));
+  }
+
+  // ==================== PDF EKSTRE (print-ready HTML) ====================
+  @Get('ekstre/:taxpayerId/pdf')
+  async ekstrePdf(
+    @Req() req: any,
+    @Res() res: any,
+    @Param('taxpayerId') taxpayerId: string,
+    @Query('baslangic') baslangic: string,
+    @Query('bitis') bitis: string,
+  ) {
+    if (!baslangic || !bitis) throw new BadRequestException('baslangic ve bitis gerekli');
+    const e = await this.service.getEkstre(req.user.tenantId, taxpayerId, baslangic, bitis);
+
+    const fmt = (n: number) =>
+      n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const trDate = (d: any) => new Date(d).toLocaleDateString('tr-TR');
+
+    const satirlarHtml = e.satirlar.map((s: any) => {
+      const borc = s.tip === 'TAHAKKUK' ? s.tutar : s.tip === 'IADE' ? -s.tutar : 0;
+      const alacak = s.tip === 'TAHSILAT' ? s.tutar : s.tip === 'DUZELTME' ? -s.tutar : 0;
+      return `<tr>
+        <td>${trDate(s.tarih)}</td>
+        <td>${s.hizmet?.hizmetAdi || ''}</td>
+        <td>${s.tip}</td>
+        <td>${(s.aciklama || '').replace(/[<>&]/g, '')}</td>
+        <td class="num">${borc ? fmt(borc) : '—'}</td>
+        <td class="num">${alacak ? fmt(alacak) : '—'}</td>
+        <td class="num bold">${fmt(s.runningBakiye || 0)}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!doctype html><html lang="tr"><head>
+<meta charset="utf-8">
+<title>Ekstre · ${e.taxpayer.ad} · ${baslangic} - ${bitis}</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:20mm;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#1a1a1a}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #9c4656;padding-bottom:10mm;margin-bottom:8mm}
+  .brand h1{margin:0;color:#9c4656;font-size:22pt;font-family:Fraunces,serif;letter-spacing:-.02em}
+  .brand p{margin:2mm 0 0;color:#888;font-size:9.5pt}
+  .info{text-align:right;font-size:9.5pt}
+  .info .label{color:#888}
+  .info b{color:#111}
+  h2{font-size:14pt;color:#111;margin:5mm 0 3mm}
+  .muk{background:#fbf7f2;border-left:4px solid #c9a77c;padding:4mm 5mm;margin-bottom:5mm;border-radius:3px}
+  .muk .ad{font-size:14pt;font-weight:700;color:#111}
+  .muk .sub{font-size:9.5pt;color:#666;margin-top:1mm}
+  .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin-bottom:6mm}
+  .summary .card{background:#fff;border:1px solid #ddd;padding:3mm 4mm;border-radius:3px}
+  .summary .card .k{font-size:8pt;color:#888;text-transform:uppercase;letter-spacing:.08em}
+  .summary .card .v{font-size:13pt;font-weight:700;margin-top:1mm;font-variant-numeric:tabular-nums}
+  .summary .card.hi{background:#fbf7f2;border-color:#9c4656}
+  .summary .card.hi .v{color:#9c4656}
+  table{width:100%;border-collapse:collapse;font-size:10pt}
+  th,td{padding:3mm 4mm;text-align:left;border-bottom:1px solid #e8e8e8}
+  th{background:#9c4656;color:#fff;font-weight:600;font-size:9pt;letter-spacing:.04em}
+  .num{text-align:right;font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace}
+  .bold{font-weight:700}
+  tr.acilis{background:#eef5ff;font-weight:600}
+  tr.kapanis{background:#fbe8ec;font-weight:700;border-top:2px solid #9c4656}
+  tr.kapanis td{color:#9c4656;padding:4mm 4mm}
+  .footer{margin-top:8mm;padding-top:4mm;border-top:1px solid #eee;font-size:8.5pt;color:#888;text-align:center}
+  @page{size:A4;margin:0}
+  @media print{body{padding:10mm}.no-print{display:none}}
+</style></head>
+<body>
+  <div class="hdr">
+    <div class="brand">
+      <h1>MOREN Mali Müşavirlik</h1>
+      <p>Serbest Muhasebeci Mali Müşavir</p>
+    </div>
+    <div class="info">
+      <div><span class="label">Ekstre Tarihi:</span> <b>${trDate(new Date())}</b></div>
+      <div><span class="label">Dönem:</span> <b>${trDate(e.donem.baslangic)} – ${trDate(e.donem.bitis)}</b></div>
+    </div>
+  </div>
+  <div class="muk">
+    <div class="ad">${(e.taxpayer.ad || '').replace(/[<>&]/g, '')}</div>
+    <div class="sub">VKN/TCKN: <b>${e.taxpayer.taxNumber || ''}</b> · ${(e.taxpayer.taxOffice || '').replace(/[<>&]/g, '')}</div>
+  </div>
+  <div class="summary">
+    <div class="card"><div class="k">Açılış Bakiye</div><div class="v">${fmt(e.acilisBakiye)} ₺</div></div>
+    <div class="card"><div class="k">Dönem Borç</div><div class="v">${fmt(e.toplamTahakkuk)} ₺</div></div>
+    <div class="card"><div class="k">Dönem Alacak</div><div class="v">${fmt(e.toplamTahsilat)} ₺</div></div>
+    <div class="card hi"><div class="k">Kapanış Bakiye</div><div class="v">${fmt(e.kapanisBakiye)} ₺</div></div>
+  </div>
+  <h2>Hareket Detayı</h2>
+  <table>
+    <thead>
+      <tr><th>Tarih</th><th>Hizmet</th><th>Tip</th><th>Açıklama</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th></tr>
+    </thead>
+    <tbody>
+      <tr class="acilis"><td colspan="6">Açılış Bakiyesi</td><td class="num">${fmt(e.acilisBakiye)} ₺</td></tr>
+      ${satirlarHtml || `<tr><td colspan="7" style="text-align:center;padding:8mm;color:#888">Bu dönemde hareket yok</td></tr>`}
+      <tr class="kapanis"><td colspan="6">Kapanış Bakiyesi</td><td class="num">${fmt(e.kapanisBakiye)} ₺</td></tr>
+    </tbody>
+  </table>
+  <div class="footer">Moren Mali Müşavirlik · ${new Date().toLocaleString('tr-TR')}</div>
+  <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),400));</script>
+</body></html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(html);
   }
 
   // ==================== MANUEL CRON TETİKLEME (debug) ====================
