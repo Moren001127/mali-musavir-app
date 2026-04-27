@@ -296,19 +296,40 @@ export class OcrService {
     const apiKey = process.env.ANTHROPIC_API_KEY!;
     const MODEL = process.env.OCR_MODEL || DEFAULT_OCR_MODEL;
 
-    // Büyük görselleri 2000px'e küçült (Claude limit + hız)
+    // ─── DOSYA TİPİNİ TESPİT ET (magic bytes) ───
+    // PDF / JPEG / PNG / GIF / TIFF / BMP / WEBP destekleniyor.
+    // PDF için Claude API'ye "document" content type olarak gönderilir
+    // (image değil) — `application/pdf` media_type. Sharp PDF'i resize edemediği
+    // için PDF'leri ham buffer olarak gönderiyoruz.
+    const isPdf =
+      buffer.length >= 4 &&
+      buffer[0] === 0x25 && buffer[1] === 0x50 &&
+      buffer[2] === 0x44 && buffer[3] === 0x46; // "%PDF"
+
     let b64: string;
-    try {
-      const sharp = (await import('sharp')).default;
-      const resized = await sharp(buffer)
-        .rotate() // EXIF
-        .resize({ width: 2000, withoutEnlargement: true })
-        .jpeg({ quality: 90 })
-        .toBuffer();
-      b64 = resized.toString('base64');
-    } catch {
-      // sharp yoksa ham buffer'ı kullan
+    let mediaType = 'image/jpeg';
+    let contentType: 'image' | 'document' = 'image';
+
+    if (isPdf) {
+      // PDF — sharp resize yapamaz. Ham buffer'ı document olarak gönder.
       b64 = buffer.toString('base64');
+      mediaType = 'application/pdf';
+      contentType = 'document';
+      this.logger.log(`Claude OCR: PDF input (${buffer.length} byte) → document type`);
+    } else {
+      // Image — büyük görselleri 2000px'e küçült (Claude limit + hız)
+      try {
+        const sharp = (await import('sharp')).default;
+        const resized = await sharp(buffer)
+          .rotate() // EXIF
+          .resize({ width: 2000, withoutEnlargement: true })
+          .jpeg({ quality: 90 })
+          .toBuffer();
+        b64 = resized.toString('base64');
+      } catch {
+        // sharp yoksa ham buffer'ı kullan
+        b64 = buffer.toString('base64');
+      }
     }
 
     const systemPrompt = [
@@ -595,6 +616,11 @@ export class OcrService {
     const BACKOFF_SECONDS = [10, 25, 60, 120, 240, 360];
     let res: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      // Content block — PDF için "document", görsel için "image"
+      const contentBlock = contentType === 'document'
+        ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType, data: b64 } }
+        : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType, data: b64 } };
+
       res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -604,13 +630,14 @@ export class OcrService {
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 400,
+          // PDF çok sayfalı olabilir → token limitini biraz artır
+          max_tokens: isPdf ? 800 : 400,
           system: systemPrompt,
           messages: [
             {
               role: 'user',
               content: [
-                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+                contentBlock,
                 { type: 'text', text: userText },
               ],
             },
