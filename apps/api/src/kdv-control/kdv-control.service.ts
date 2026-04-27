@@ -759,6 +759,7 @@ export class KdvControlService {
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
+          ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
           ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
@@ -767,6 +768,7 @@ export class KdvControlService {
           ocrEngine: ocrResult.engine,
           ocrBelgeTipi: ocrResult.belgeTipi ?? null,
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
+          ocrValidationScore: ocrResult.validationScore ?? null,
         },
       });
 
@@ -820,6 +822,7 @@ export class KdvControlService {
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
+          ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
           ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
@@ -828,6 +831,7 @@ export class KdvControlService {
           ocrEngine: ocrResult.engine,
           ocrBelgeTipi: ocrResult.belgeTipi ?? null,
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
+          ocrValidationScore: ocrResult.validationScore ?? null,
         },
       });
 
@@ -897,6 +901,7 @@ export class KdvControlService {
       belgeNo?: string;
       date?: string;
       kdvTutari?: string;
+      kdvTevkifat?: string | null;
       kdvBreakdown?: Array<{ oran: number; tutar: number; matrah?: number | null }> | null;
     },
   ) {
@@ -917,6 +922,11 @@ export class KdvControlService {
         confirmedBelgeNo: dto.belgeNo ?? image.ocrBelgeNo,
         confirmedDate: dto.date ?? image.ocrDate,
         confirmedKdvTutari: dto.kdvTutari ?? image.ocrKdvTutari,
+        // Tevkifat: dto'da yoksa OCR'dakini koru, "" geldiyse temizle
+        confirmedKdvTevkifat:
+          dto.kdvTevkifat !== undefined
+            ? dto.kdvTevkifat || null
+            : image.ocrKdvTevkifat,
         ...(breakdownToSave !== undefined ? { confirmedKdvBreakdown: breakdownToSave } : {}),
         isManuallyConfirmed: true,
         ocrStatus: 'SUCCESS',
@@ -953,6 +963,7 @@ export class KdvControlService {
         confirmedBelgeNo: null,
         confirmedDate: null,
         confirmedKdvTutari: null,
+        confirmedKdvTevkifat: null,
       },
     });
 

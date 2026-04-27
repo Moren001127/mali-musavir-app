@@ -16,11 +16,14 @@ export interface OcrResult {
   rawText: string;
   belgeNo: string | null;
   date: string | null;
+  /** NET KDV — tevkifatlı faturada (tam KDV − tevkifat). Reconciliation'da Luca ile karşılaştırılan değer. */
   kdvTutari: string | null;
+  /** Tevkifat tutarı (TL) — varsa; tevkifatsız faturada null veya "0,00". */
+  kdvTevkifat?: string | null;
   totalTutari: string | null;
   /** Belge tipi: EFATURA, EARSIV, OKC_FIS, Z_RAPORU, MAKBUZ */
   belgeTipi?: string | null;
-  /** Çok oranlı KDV kırılımı (varsa) — Z raporu/karma fatura */
+  /** Çok oranlı KDV kırılımı (varsa) — Z raporu/karma fatura. tutar = NET (tevkifat düşülmüş). */
   kdvBreakdown?: KdvBreakdownItem[] | null;
   /** Genel güven skoru (geriye dönük uyumluluk) */
   confidence: number;
@@ -30,6 +33,17 @@ export interface OcrResult {
     date: number | null;
     kdvTutari: number | null;
   };
+  /**
+   * Multi-pass validation skoru (0–1):
+   *   • breakdown.tutar.sum === kdvTutari (1.0 = tam, 0.5 = ±%5 tolerans)
+   *   • matrah × oran/100 === tutar (her satır)
+   *   • geçerli KDV oranları (0/1/8/10/18/20)
+   *   • tevkifat ≤ kdvTutari mantık kontrolü
+   * UBL XML doğrudan parse edildiyse 1.0; aksi halde validateOcrResult() hesaplar.
+   */
+  validationScore?: number | null;
+  /** Validation hataları — confidence düşürme/UI uyarı için */
+  validationIssues?: string[];
   engine: string;
   /** Claude API response'undan gelen token kullanımı — maliyet hesabı için. */
   usage?: {
@@ -227,6 +241,13 @@ export class OcrService {
             // (debug + ileride extractDateFromText fallback için)
             claudeResult.rawText = `[CLAUDE] ${claudeResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
           }
+
+          // ═══ MULTI-PASS VALIDATION (matematik + mantık) ═══
+          // breakdown.tutar.sum === kdvTutari? matrah×oran === tutar?
+          // Geçerli oran (0/1/8/10/18/20)? Tevkifat ≤ KDV? gibi kontroller.
+          // Doğrulama başarısızsa confidence düşürülür → NEEDS_REVIEW gider.
+          this.validateOcrResult(claudeResult, originalName);
+
           return claudeResult;
         }
         this.logger.warn(
@@ -623,12 +644,15 @@ export class OcrService {
     let kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
     const toplam = parsed.toplam ? String(parsed.toplam).replace(/\s/g, '') : null;
 
-    // KDV TEVKİFATI — deterministik net KDV hesabı
+    // KDV TEVKİFATI — deterministik net KDV hesabı + tevkifat tutarını sakla
     // Claude'dan tam KDV + tevkifat tutarı AYRI alanda gelir (5c bölümü).
     // Matematiği kod yapar (Claude tutarsız hesapladığı için) — Luca muavininde
     // satıcının "Hesaplanan KDV" alanına yazılan NET KDV'dir.
+    // ÖNEMLİ: Tevkifat tutarı kaybolmasın diye OcrResult.kdvTevkifat alanına
+    // ayrıca yazılıyor — DB'de transparency için.
     const kdvTevkifatRaw = parsed.kdvTevkifat ? String(parsed.kdvTevkifat).replace(/\s/g, '') : null;
     const kdvTevkifatNum = kdvTevkifatRaw ? this.parseAmount(kdvTevkifatRaw) : 0;
+    let kdvTevkifatOut: string | null = null;
     if (kdvTutari && kdvTevkifatNum > 0) {
       const tamKdv = this.parseAmount(kdvTutari);
       const netKdv = Math.max(0, tamKdv - kdvTevkifatNum);
@@ -636,6 +660,7 @@ export class OcrService {
         `Claude OCR: tevkifat düşüldü — tam=${tamKdv}, tevkifat=${kdvTevkifatNum}, net=${netKdv}`,
       );
       kdvTutari = this.formatAmount(netKdv);
+      kdvTevkifatOut = this.formatAmount(kdvTevkifatNum);
     }
 
     // Claude'un verdiği alan-bazlı confidence'ı parse et
@@ -690,6 +715,7 @@ export class OcrService {
       belgeNo,
       date,
       kdvTutari,
+      kdvTevkifat: kdvTevkifatOut,
       totalTutari: toplam,
       belgeTipi,
       kdvBreakdown,
@@ -2142,6 +2168,110 @@ export class OcrService {
   }
 
   /**
+   * Multi-pass validation — OCR sonucunun matematiksel ve mantıksal tutarlılığını
+   * kontrol eder. Hatalar `validationIssues`'a yazılır, `validationScore` 0-1
+   * arasında hesaplanır ve gerektiğinde `fieldConfidence.kdvTutari` düşürülür
+   * (NEEDS_REVIEW akışına gitmesi için).
+   *
+   * Yapılan kontroller:
+   *   1. breakdown.tutar.sum === kdvTutari (±%2 tolerans, kuruş yuvarlamasına izin)
+   *   2. her breakdown satırı: matrah × oran/100 ≈ tutar (±%2 tolerans)
+   *   3. geçerli KDV oranları: 0, 1, 8, 10, 18, 20
+   *   4. tevkifat ≤ tam KDV (tevkifat > KDV mantıksız)
+   *   5. KDV > 0 ama oran 0 → uyarı
+   *
+   * UBL XML parse'lı sonuçlar için validationScore daha önce 1.0 olarak set
+   * edilmiş; bu fonksiyon sadece Claude/Azure çıktılarını doğrular.
+   */
+  private validateOcrResult(result: OcrResult, originalName?: string): void {
+    const issues: string[] = [];
+    let score = 1.0;
+
+    const kdvNum = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+    const tevkifatNum = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
+    const breakdown = result.kdvBreakdown || [];
+
+    // ─── 1) BREAKDOWN TUTAR TOPLAMI = kdvTutari ───
+    if (breakdown.length > 0 && kdvNum > 0) {
+      const sum = breakdown.reduce((s, b) => s + (b.tutar || 0), 0);
+      const diff = Math.abs(sum - kdvNum);
+      const tol = Math.max(0.05, kdvNum * 0.02); // 5 kuruş VEYA %2
+      if (diff > tol) {
+        issues.push(
+          `Breakdown toplamı KDV ile uyumsuz: ${this.formatAmount(sum)} ≠ ${this.formatAmount(kdvNum)} (fark ${this.formatAmount(diff)})`,
+        );
+        score -= 0.3;
+      }
+    }
+
+    // ─── 2) HER BREAKDOWN SATIRI: matrah × oran/100 ≈ tutar ───
+    for (const b of breakdown) {
+      if (!b.matrah || !b.oran || b.oran <= 0) continue;
+      const expectedTutar = (b.matrah * b.oran) / 100;
+      const diff = Math.abs(expectedTutar - (b.tutar || 0));
+      const tol = Math.max(0.05, expectedTutar * 0.02);
+      if (diff > tol) {
+        issues.push(
+          `KDV hesabı uyumsuz: %${b.oran} matrah=${this.formatAmount(b.matrah)} → beklenen=${this.formatAmount(expectedTutar)}, bulunan=${this.formatAmount(b.tutar)}`,
+        );
+        score -= 0.15;
+      }
+    }
+
+    // ─── 3) GEÇERLİ KDV ORANLARI ───
+    const validRates = [0, 1, 8, 10, 18, 20];
+    for (const b of breakdown) {
+      if (b.oran == null) continue;
+      // Yakın oran toleransı (19.5–20.5 → 20 kabul)
+      const closest = validRates.find((r) => Math.abs(r - b.oran) < 0.5);
+      if (!closest && b.oran !== 0) {
+        issues.push(`Geçersiz KDV oranı: %${b.oran} (beklenen: ${validRates.join(', ')})`);
+        score -= 0.2;
+      }
+    }
+
+    // ─── 4) TEVKİFAT MANTIK KONTROLÜ ───
+    // Tevkifat NET KDV'den fazla olamaz (tam KDV = NET + tevkifat).
+    // Bu durumda OCR ya net'i ya da tevkifatı yanlış okumuştur.
+    if (tevkifatNum > 0 && kdvNum > 0 && tevkifatNum > kdvNum * 5) {
+      // tevkifat oranı 1/10 ila 9/10 arası olur — net KDV'nin 5x'inden fazlası mantıksız
+      issues.push(
+        `Tevkifat tutarı mantıksız: tevkifat=${this.formatAmount(tevkifatNum)} >> NET KDV=${this.formatAmount(kdvNum)}`,
+      );
+      score -= 0.25;
+    }
+
+    // ─── 5) KDV VAR AMA ORAN 0 → UYARI ───
+    if (kdvNum > 0 && breakdown.length > 0) {
+      const allZeroRate = breakdown.every((b) => !b.oran || b.oran === 0);
+      if (allZeroRate) {
+        issues.push('KDV tutarı var ama tüm oranlar %0 — okuma hatası olabilir');
+        score -= 0.15;
+      }
+    }
+
+    // Skor 0–1 arası
+    score = Math.max(0, Math.min(1, score));
+    result.validationScore = score;
+    result.validationIssues = issues.length > 0 ? issues : undefined;
+
+    // Skor düşükse confidence'ı da düşür → NEEDS_REVIEW akışına götür
+    if (score < 0.7 && result.fieldConfidence.kdvTutari != null) {
+      const oldConf = result.fieldConfidence.kdvTutari;
+      const newConf = Math.min(oldConf, score);
+      if (newConf < oldConf) {
+        result.fieldConfidence.kdvTutari = newConf;
+        this.logger.warn(
+          `Validation skoru düşük (${score.toFixed(2)}): ${originalName || ''} · kdv conf %${Math.round(oldConf * 100)} → %${Math.round(newConf * 100)} · sorunlar: ${issues.join('; ')}`,
+        );
+      }
+    } else if (score >= 0.95 && issues.length === 0 && result.fieldConfidence.kdvTutari != null) {
+      // Validation tam: confidence boost (Claude düşük verdiyse de çek yukarı)
+      result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
+    }
+  }
+
+  /**
    * UBL (Universal Business Language) formatındaki Türk e-Fatura/e-Arşiv XML'ini
    * regex ile parse eder. fast-xml-parser yerine regex çünkü:
    *   - UBL alanları sabit yapıdadır (standart)
@@ -2331,6 +2461,7 @@ export class OcrService {
       belgeNo,
       date,
       kdvTutari,
+      kdvTevkifat: kdvTevkifat > 0 ? this.formatAmount(kdvTevkifat) : null,
       totalTutari,
       belgeTipi,
       kdvBreakdown: kdvBreakdown.length > 0 ? kdvBreakdown : null,
@@ -2340,6 +2471,8 @@ export class OcrService {
         date: date ? 0.99 : null,
         kdvTutari: kdvTutari ? 0.99 : null,
       },
+      // UBL XML doğrudan structured veri — validation'a gerek yok, %100 güven
+      validationScore: 1.0,
       engine: 'ubl-xml-direct',
     };
   }

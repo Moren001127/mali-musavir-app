@@ -8,7 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet,
+  Car, Gavel, Wallet, Megaphone,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
@@ -71,6 +71,14 @@ const navGroups = [
     icon: Car,
     items: [
       { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
+    ],
+  },
+  {
+    label: 'Pazarlama',
+    color: CHAMPAGNE,
+    icon: Megaphone,
+    items: [
+      { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
     ],
   },
   {

@@ -25,8 +25,10 @@ export interface ReviewImage {
   ocrBelgeNo: string | null;
   ocrDate: string | null;
   ocrKdvTutari: string | null;
+  ocrKdvTevkifat?: string | null;
   ocrBelgeTipi?: string | null;
   ocrKdvBreakdown?: KdvBreakdownItem[] | null;
+  ocrValidationScore?: number | null;
   ocrBelgeNoConfidence: number | null;
   ocrDateConfidence: number | null;
   ocrKdvConfidence: number | null;
@@ -34,6 +36,7 @@ export interface ReviewImage {
   confirmedBelgeNo: string | null;
   confirmedDate: string | null;
   confirmedKdvTutari: string | null;
+  confirmedKdvTevkifat?: string | null;
   confirmedKdvBreakdown?: KdvBreakdownItem[] | null;
   isManuallyConfirmed: boolean;
 }
@@ -64,11 +67,13 @@ export function OcrReviewPanel({
     belgeNo: string;
     date: string;
     kdvTutari: string;
+    kdvTevkifat: string;
     breakdown: KdvBreakdownItem[] | null;
   }>({
     belgeNo: '',
     date: '',
     kdvTutari: '',
+    kdvTevkifat: '',
     breakdown: null,
   });
   /** Hangi durumdaki faturalar listelensin? Chip'lere tıklayınca değişir.
@@ -145,7 +150,7 @@ export function OcrReviewPanel({
   // Aktif görsel değişince formu doldur
   useEffect(() => {
     if (!activeImg) {
-      setForm({ belgeNo: '', date: '', kdvTutari: '', breakdown: null });
+      setForm({ belgeNo: '', date: '', kdvTutari: '', kdvTevkifat: '', breakdown: null });
       setPreviewUrl(null);
       return;
     }
@@ -153,6 +158,7 @@ export function OcrReviewPanel({
       belgeNo: activeImg.confirmedBelgeNo ?? activeImg.ocrBelgeNo ?? '',
       date: activeImg.confirmedDate ?? activeImg.ocrDate ?? '',
       kdvTutari: activeImg.confirmedKdvTutari ?? activeImg.ocrKdvTutari ?? '',
+      kdvTevkifat: activeImg.confirmedKdvTevkifat ?? activeImg.ocrKdvTevkifat ?? '',
       breakdown: (activeImg.confirmedKdvBreakdown ?? activeImg.ocrKdvBreakdown ?? null) as KdvBreakdownItem[] | null,
     });
     // Presigned URL'i yükle
@@ -172,6 +178,7 @@ export function OcrReviewPanel({
         belgeNo?: string;
         date?: string;
         kdvTutari?: string;
+        kdvTevkifat?: string | null;
         kdvBreakdown?: KdvBreakdownItem[] | null;
       };
     }) => kdvApi.confirmOcr(payload.imageId, payload.data),
@@ -250,6 +257,8 @@ export function OcrReviewPanel({
         belgeNo: form.belgeNo.trim() || undefined,
         date: form.date.trim() || undefined,
         kdvTutari: kdvToSave,
+        // Tevkifat: form değerini gönder (boşsa null = temizle)
+        kdvTevkifat: form.kdvTevkifat.trim() || null,
         kdvBreakdown: form.breakdown && form.breakdown.length > 0 ? form.breakdown : null,
       },
     });
@@ -531,7 +540,7 @@ export function OcrReviewPanel({
                 onEnter={handleConfirm}
               />
               <FieldInput
-                label={form.breakdown && form.breakdown.length > 0 ? 'KDV Tutarı (toplam — otomatik)' : 'KDV Tutarı'}
+                label={form.breakdown && form.breakdown.length > 0 ? 'KDV Tutarı (toplam — otomatik)' : 'KDV Tutarı (NET — tevkifat düşülmüş)'}
                 placeholder="123,45"
                 value={
                   form.breakdown && form.breakdown.length > 0
@@ -543,6 +552,17 @@ export function OcrReviewPanel({
                 onEnter={handleConfirm}
                 numeric
                 readOnly={!!(form.breakdown && form.breakdown.length > 0)}
+              />
+
+              {/* KDV Tevkifat — varsa görünür (tevkifatsız faturalarda gizleyebiliriz). */}
+              {/* Otomatik göster: ya OCR tevkifat okumuş ya da kullanıcı düzeltmek istiyor olabilir. */}
+              <FieldInput
+                label="KDV Tevkifatı (varsa)"
+                placeholder="0,00"
+                value={form.kdvTevkifat}
+                onChange={(v) => setForm((f) => ({ ...f, kdvTevkifat: v }))}
+                onEnter={handleConfirm}
+                numeric
               />
 
               {/* KDV Breakdown paneli — çok oranlı belgelerde (Z Raporu, karma fatura) */}
@@ -560,6 +580,21 @@ export function OcrReviewPanel({
               {activeImg.ocrEngine && (
                 <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
                   OCR: <span style={{ color: 'rgba(250,250,249,0.6)' }}>{activeImg.ocrEngine}</span>
+                  {typeof activeImg.ocrValidationScore === 'number' && (
+                    <span
+                      className="ml-2"
+                      style={{
+                        color:
+                          activeImg.ocrValidationScore >= 0.9
+                            ? '#86efac'
+                            : activeImg.ocrValidationScore >= 0.7
+                            ? '#fbbf24'
+                            : '#fca5a5',
+                      }}
+                    >
+                      · doğrulama %{Math.round(activeImg.ocrValidationScore * 100)}
+                    </span>
+                  )}
                 </p>
               )}
 

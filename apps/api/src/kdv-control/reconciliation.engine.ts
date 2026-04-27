@@ -10,6 +10,41 @@ export interface MatchCandidate {
   strictMatch: boolean;
 }
 
+/** OCR breakdown JSON yapısı — {oran, tutar, matrah?} */
+interface BreakdownItem {
+  oran: number;
+  tutar: number;
+  matrah?: number | null;
+}
+
+/**
+ * Image'ın breakdown'unu al — onaylanmış varsa onu, yoksa OCR'dakini.
+ * Format normalizasyonu yapar (string → number).
+ */
+function getImageBreakdown(image: ReceiptImage): BreakdownItem[] {
+  const raw = (image.confirmedKdvBreakdown ?? image.ocrKdvBreakdown) as any;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((it: any) => {
+      const oran = typeof it?.oran === 'number' ? it.oran : parseFloat(String(it?.oran || 0));
+      const tutar = typeof it?.tutar === 'number'
+        ? it.tutar
+        : parseFloat(String(it?.tutar || '0').replace(/\./g, '').replace(',', '.'));
+      const matrah =
+        it?.matrah == null
+          ? null
+          : typeof it.matrah === 'number'
+            ? it.matrah
+            : parseFloat(String(it.matrah).replace(/\./g, '').replace(',', '.'));
+      return {
+        oran: Number.isFinite(oran) ? oran : 0,
+        tutar: Number.isFinite(tutar) ? tutar : 0,
+        matrah: Number.isFinite(matrah as number) ? (matrah as number) : null,
+      };
+    })
+    .filter((b: BreakdownItem) => b.tutar > 0 || (b.oran === 0 && (b.matrah ?? 0) > 0));
+}
+
 @Injectable()
 export class ReconciliationEngine {
   private readonly logger = new Logger(ReconciliationEngine.name);
@@ -48,7 +83,7 @@ export class ReconciliationEngine {
     //   → Virtual: ESR...1204/2026-03-23/kdv=158 → Fatura ile eşleşir
     //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
     // ═══════════════════════════════════════════════════════
-    const { records, virtualGroups } = this.aggregateMultiRateRecords(rawRecords);
+    const { records, virtualGroups, virtualExpectedBreakdown } = this.aggregateMultiRateRecords(rawRecords);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
     // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
@@ -111,7 +146,8 @@ export class ReconciliationEngine {
       for (const image of images) {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
+        const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown);
         if (strictMatch) {
           usedImageIds.add(image.id);
           fanOutMatch(record, image.id, 'MATCHED', score, reasons);
@@ -140,7 +176,8 @@ export class ReconciliationEngine {
       for (const image of images) {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi);
+        const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown);
         if (score >= MIN_PAIR_SCORE) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
@@ -238,6 +275,9 @@ export class ReconciliationEngine {
     record: KdvRecord,
     image: ReceiptImage,
     mihsapBelgeTarihi: Date | null = null,
+    /** Multi-rate virtual record için Luca tarafının beklediği breakdown.
+     *  Verildiyse OCR breakdown'u ile kalem-kalem karşılaştırılır. */
+    expectedBreakdown: Array<{ oran: number; tutar: number }> | null = null,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
@@ -252,6 +292,8 @@ export class ReconciliationEngine {
     let belgeNoExact = false;
     let kdvExact = false;
     let dateExact = false;
+    let rateExact = false;       // KDV oranı eşleşti mi (multi-rate kontrolü için)
+    let rateMismatched = false;  // Oran kesin uyumsuz (ör. Luca %20, OCR breakdown'unda %20 yok)
 
     // ── BELGE NO ─────────────────────────────────────────────
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
@@ -286,28 +328,104 @@ export class ReconciliationEngine {
       reasons.push(!imgBelgeNo ? 'Görselde belge no okunamadı' : 'Luca kaydında belge no yok');
     }
 
-    // ── KDV TUTARI ─────────────────────────────────────────
+    // ── KDV TUTARI + ORAN ─────────────────────────────────
+    // Multi-rate fix: Luca kaydında bir oran (örn. %20) varsa, OCR breakdown'unda
+    // o oranın bulunup bulunmadığı ve tutarın eşleşip eşleşmediği kontrol edilir.
+    // Çok oranlı faturalarda virtual record (aggregate) kullanıldığında ise
+    // kdvOrani=null gelir → klasik toplam karşılaştırması yapılır.
+    const recordRate = record.kdvOrani != null
+      ? parseFloat(record.kdvOrani.toString())
+      : null;
+    const imageBreakdown = getImageBreakdown(image);
+
     if (record.kdvTutari && imgKdv) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
-      const imgKdvNum = parseFloat(
-        imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
-      );
-      if (!isNaN(imgKdvNum)) {
-        const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
-        if (diff < 0.01) {
-          score += 0.3;
-          kdvExact = true;
-        } else if (diff < 0.05) {
-          score += 0.15;
-          reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
+
+      // Bu BİR ORANLI Luca kaydı + OCR breakdown var → oran-bazlı karşılaştırma
+      if (recordRate != null && recordRate > 0 && imageBreakdown.length > 0) {
+        const matchingItem = imageBreakdown.find(
+          (b) => Math.abs(b.oran - recordRate) < 0.5,
+        );
+        if (matchingItem) {
+          // Oran var — şimdi tutarı kıyasla
+          rateExact = true;
+          const diff = Math.abs(matchingItem.tutar - recordKdv) / (recordKdv || 1);
+          if (diff < 0.01) {
+            score += 0.3;
+            kdvExact = true;
+          } else if (diff < 0.05) {
+            score += 0.12;
+            reasons.push(
+              `%${recordRate} KDV farkı: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(matchingItem.tutar)} (%${Math.round(diff * 100)})`,
+            );
+          } else {
+            reasons.push(
+              `%${recordRate} KDV uyumsuz: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(matchingItem.tutar)}`,
+            );
+          }
         } else {
-          reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
+          // Luca'da %20 var ama OCR breakdown'unda %20 yok — KESİN UYUMSUZ
+          rateMismatched = true;
+          const ranges = imageBreakdown.map((b) => `%${b.oran}`).join(', ');
+          reasons.push(
+            `KDV oranı uyumsuz: Luca %${recordRate} → Faturada bulunamadı (faturada: ${ranges || 'yok'})`,
+          );
+        }
+      } else {
+        // Klasik toplam karşılaştırması — virtual record veya tek oran + breakdown yok
+        const imgKdvNum = parseFloat(
+          imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
+        );
+        if (!isNaN(imgKdvNum)) {
+          const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
+          if (diff < 0.01) {
+            score += 0.3;
+            kdvExact = true;
+          } else if (diff < 0.05) {
+            score += 0.15;
+            reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
+          } else {
+            reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
+          }
         }
       }
     } else if (!imgKdv && record.kdvTutari) {
       score += 0.1;
       reasons.push('Görselden KDV tutarı okunamadı');
     }
+
+    // ── ÇOK ORANLI VIRTUAL RECORD: KALEM-KALEM BREAKDOWN DOĞRULAMASI ──
+    // Multi-rate Luca aggregate'inde her oran için beklenen tutar var.
+    // OCR breakdown'unda her oran bulunmalı VE tutarlar eşleşmeli; aksi halde
+    // total uyumlu olsa bile MATCHED verme — başka bir belgeyle karıştırma riski.
+    if (expectedBreakdown && expectedBreakdown.length > 1 && imageBreakdown.length > 0) {
+      let allRatesMatched = true;
+      for (const exp of expectedBreakdown) {
+        const item = imageBreakdown.find((b) => Math.abs(b.oran - exp.oran) < 0.5);
+        if (!item) {
+          allRatesMatched = false;
+          rateMismatched = true;
+          reasons.push(
+            `Çok oranlı uyumsuzluk: Luca'da %${exp.oran} var, faturada bulunamadı`,
+          );
+          continue;
+        }
+        const diff = Math.abs(item.tutar - exp.tutar) / (exp.tutar || 1);
+        if (diff > 0.01) {
+          allRatesMatched = false;
+          reasons.push(
+            `%${exp.oran} KDV uyumsuz: Luca ${this.fmtAmt(exp.tutar)} ≠ Fatura ${this.fmtAmt(item.tutar)}`,
+          );
+        }
+      }
+      if (allRatesMatched) {
+        // Toplam zaten eşleştiği için kdvExact=true, ek bonus
+        rateExact = true;
+        score = Math.min(1, score + 0.05);
+      }
+    }
+    // suppress unused-var lint (rateExact rezerve, gelecekte UI'da kullanılabilir)
+    void rateExact;
 
     // ── TARİH ──────────────────────────────────────────────
     if (record.belgeDate && imgDate) {
@@ -354,8 +472,14 @@ export class ReconciliationEngine {
 
     // ── STRICT MATCH KURALI ─────────────────────────────────
     // User: "tarih + evrak no + KDV üçü aynı anda eşleşmezse kabul edilmeyecek"
-    // Bu yüzden MATCHED sadece üç alan da exact eşleştiğinde verilir.
-    const strictMatch = belgeNoExact && kdvExact && dateExact;
+    // EK KURAL: Multi-rate faturalarda Luca'nın KDV oranı OCR breakdown'unda
+    // bulunamıyorsa MATCHED ASLA verilmez (oran uyumsuzluğu = farklı belge).
+    const strictMatch = belgeNoExact && kdvExact && dateExact && !rateMismatched;
+
+    // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
+    if (rateMismatched) {
+      score = Math.max(0, score - 0.4);
+    }
 
     return { score: Math.min(score, 1), reasons, strictMatch };
   }
@@ -454,6 +578,12 @@ export class ReconciliationEngine {
   private aggregateMultiRateRecords(rawRecords: KdvRecord[]): {
     records: KdvRecord[];
     virtualGroups: Map<string, string[]>;
+    /**
+     * Virtual record id → [{oran, tutar}] — Luca tarafından beklenen
+     * KDV oranları ve tutarları. calculateScore içinde OCR breakdown'u
+     * ile karşılaştırılır (kalem-kalem doğrulama).
+     */
+    virtualExpectedBreakdown: Map<string, Array<{ oran: number; tutar: number }>>;
   } {
     const groups = new Map<string, KdvRecord[]>();
     const unaggregated: KdvRecord[] = [];
@@ -472,6 +602,7 @@ export class ReconciliationEngine {
 
     const result: KdvRecord[] = [...unaggregated];
     const virtualGroups = new Map<string, string[]>();
+    const virtualExpectedBreakdown = new Map<string, Array<{ oran: number; tutar: number }>>();
 
     for (const [key, group] of groups) {
       if (group.length === 1) {
@@ -486,9 +617,16 @@ export class ReconciliationEngine {
       // number'ın .toString()'i zaten sayısal string döndüğü için bu güvenli.
       let kdvToplam = 0;
       let matrahToplam = 0;
+      // Beklenen breakdown — aynı oran iki satırda ise toplanır
+      const expectedByRate = new Map<number, number>();
       for (const r of group) {
-        kdvToplam += parseFloat(r.kdvTutari?.toString() || '0');
+        const tutar = parseFloat(r.kdvTutari?.toString() || '0');
+        kdvToplam += tutar;
         matrahToplam += parseFloat(r.kdvMatrahi?.toString() || '0');
+        const oran = r.kdvOrani != null ? parseFloat(r.kdvOrani.toString()) : 0;
+        if (oran > 0 && tutar > 0) {
+          expectedByRate.set(oran, (expectedByRate.get(oran) || 0) + tutar);
+        }
       }
       const base = group[0];
       const virtualId = `__virtual__:${key}`;
@@ -496,16 +634,27 @@ export class ReconciliationEngine {
         ...base,
         id: virtualId,
         kdvTutari: kdvToplam as any,
+        // Multi-rate virtual'da kdvOrani null — calculateScore total karşılaştırması yapacak,
+        // expected breakdown ayrı parametre olarak iletilecek.
+        kdvOrani: null,
         ...(matrahToplam > 0 ? { kdvMatrahi: matrahToplam as any } : {}),
       };
       result.push(virtual);
       virtualGroups.set(virtualId, group.map((r) => r.id));
+      if (expectedByRate.size > 0) {
+        virtualExpectedBreakdown.set(
+          virtualId,
+          Array.from(expectedByRate.entries())
+            .map(([oran, tutar]) => ({ oran, tutar }))
+            .sort((a, b) => b.oran - a.oran),
+        );
+      }
       this.logger.log(
-        `Çok oranlı KDV aggregate: belge=${base.belgeNo} · ${group.length} satır → toplam KDV=${kdvToplam.toFixed(2)}`,
+        `Çok oranlı KDV aggregate: belge=${base.belgeNo} · ${group.length} satır → toplam KDV=${kdvToplam.toFixed(2)} · oranlar=[${Array.from(expectedByRate.entries()).map(([o, t]) => `%${o}:${t.toFixed(2)}`).join(', ')}]`,
       );
     }
 
-    return { records: result, virtualGroups };
+    return { records: result, virtualGroups, virtualExpectedBreakdown };
   }
 
   private parseTrDate(s: string): Date | null {

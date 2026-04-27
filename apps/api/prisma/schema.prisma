@@ -799,7 +799,8 @@ model ReceiptImage {
   ocrStatus    OcrStatus @default(PENDING)
   ocrBelgeNo   String?
   ocrDate      String?
-  ocrKdvTutari String?
+  ocrKdvTutari String?            // NET KDV (tevkifatlıysa tam − tevkifat); reconciliation'da Luca ile karşılaştırılan değer
+  ocrKdvTevkifat String?          // Tevkifat tutarı (varsa); null/0,00 = tevkifatsız fatura
   ocrRawText   String?   // Ham OCR çıktısı
   ocrConfidence Float?   // 0-1 arası genel güven skoru
   // Alan-bazlı güven skorları (null = alan okunamadı)
@@ -810,11 +811,17 @@ model ReceiptImage {
   // Belge tipi (EFATURA / EARSIV / OKC_FIS / Z_RAPORU / MAKBUZ)
   ocrBelgeTipi String?
   // Çok oranlı KDV kırılımı (JSON) — [{oran, tutar, matrah}]
+  // tutar = NET (tevkifat düşülmüş) tutar — kdvTutari toplamı = breakdown.tutar toplamı
   ocrKdvBreakdown Json?
+  // OCR validation skoru — multi-pass doğrulama sonucu (0-1).
+  // breakdown.tutar.sum === kdvTutari, matrah×rate consistency, geçerli oran kontrolü.
+  // null = doğrulama yapılmadı (ör. UBL XML doğrudan parse).
+  ocrValidationScore Float?
   // Kullanıcı düzeltmesi
   confirmedBelgeNo   String?
   confirmedDate      String?
   confirmedKdvTutari String?
+  confirmedKdvTevkifat String?    // Kullanıcı düzeltmiş tevkifat tutarı
   // Kullanıcı onaylı KDV kırılımı (JSON)
   confirmedKdvBreakdown Json?
   isManuallyConfirmed Boolean @default(false)

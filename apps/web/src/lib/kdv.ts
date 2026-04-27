@@ -102,6 +102,7 @@ export const kdvApi = {
       belgeNo?: string;
       date?: string;
       kdvTutari?: string;
+      kdvTevkifat?: string | null;
       kdvBreakdown?: Array<{ oran: number; tutar: number; matrah?: number | null }> | null;
     },
   ) =>
