@@ -1129,113 +1129,102 @@ export class OcrService {
   } | null {
     if (!text) return null;
     const normalized = this.normalizeAzureText(text);
-    const rawLines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-    // Multi-line birleştirme — Azure bazen satırı 2'ye böler:
-    //   "HESAPLANAN KDV(%10)"
-    //   "1.330,00"
-    // Bu durumda label satırının ardındaki tutar bulunamaz. Çözüm: bir
-    // önceki satırda label varsa ve mevcut satır SADECE tutarsa birleştir.
-    const lines: string[] = [];
-    for (let i = 0; i < rawLines.length; i++) {
-      const cur = rawLines[i];
-      const next = rawLines[i + 1] || '';
-      // "HESAPLANAN KDV(%X)" gibi label satırı ve aynı satırda tutar yok ise
-      // sonraki satırı birleştir
-      const isLabelOnly =
-        /HESAPLANAN\s+KDV/i.test(cur) &&
-        !/[\d]+[.,]\d{2}/.test(cur);
-      if (isLabelOnly && /^[\d.,\s]+(?:TL|TRY|₺)?$/i.test(next)) {
-        lines.push(`${cur} ${next}`);
-        i++; // sonraki satır birleştirildi, atla
-      } else {
-        lines.push(cur);
-      }
-    }
-
-    // Tutar yakalama regex'i — Türk format (1.234,56 veya 1234,56)
-    const amountRe = /(\d{1,3}(?:\.\d{3})*,\d{1,2}|\d+,\d{1,2}|\d{1,3}(?:\.\d{3})+)/g;
-
-    /** Satırdaki tüm tutarları bulup en büyüğünü dön (KDV satırlarında matrah da olabilir, ama kapsam içinde KDV en büyük olmaz; biz son tutarı alacağız çünkü tablo "label tutar" sırasında) */
-    const lastAmountInLine = (line: string): number => {
-      const matches = [...line.matchAll(amountRe)];
-      if (matches.length === 0) return 0;
-      // Son tutar — Türk faturalarında label sonrası tutar gelir, yan yana matrah+kdv olsa bile son sayı KDV'dir.
-      // Ama "KDV %10 1.330,00" gibi tek tutar varsa zaten o.
-      const last = matches[matches.length - 1][1];
-      return this.parseAmount(last);
-    };
+    // SATIR-BAĞIMSIZ pattern match — Azure bazen tüm faturayı tek satırda
+    // veriyor (PDF render farkı). Whitespace'i tek boşluğa indirip pattern'i
+    // doğrudan etiket+tutar sırasında ararız.
+    const flat = normalized.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ');
 
     let tamKdv = 0;
     let tevkifat = 0;
 
-    // ───────────────────────────────────────────────────────
-    // 1) TEVKİFAT satırı — daha spesifik, önce yakalanır
-    // ───────────────────────────────────────────────────────
-    // Türk e-fatura tevkifat satırı pattern'leri:
-    //   "Hesaplanan KDV Tevkifat(%50)  665,00"
-    //   "Hesaplanan KDV Tevkifat(%50): 665,00 TL"
-    //   "KDV Tevkifatı (%50,00) = 665,00 TL"
-    //   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  1.330,00" (bu TAM KDV, tevkifat değil!)
-    for (const line of lines) {
-      // "TEVKİFAT" kelimesi içeriyor + "HESAPLANAN" veya "KDV TEVK" başlangıcı var
-      // ve "ÜZERİNDEN" ya da "TABİ" YOKsa (onlar TAM KDV satırı)
-      const hasTevkifatLabel =
-        /TEVK[İI]FAT/i.test(line) &&
-        (/HESAPLANAN/i.test(line) || /KDV\s+TEVK[İI]FAT/i.test(line)) &&
-        !/ÜZER[İI]NDEN|TAB[İI]\s+[İI]ŞLEM\s+TUTAR/i.test(line);
-      if (hasTevkifatLabel) {
-        const v = lastAmountInLine(line);
-        if (v > 0 && v > tevkifat) tevkifat = v;
+    // Türk tutar formatı: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
+    // (Binlik nokta opsiyonel, ondalık virgül 1-2 hane)
+    const amountPattern = '(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';
+
+    // ─── 1) "HESAPLANAN KDV(%X) TUTAR" — TAM KDV ya da TEVKİFAT
+    //   Tek regex iki durumu ayırır: "TEVKIFAT" kelimesi varsa tevkifat,
+    //   yoksa tam KDV. Bu sayede pattern sıralaması fark etmez.
+    // ───
+    const labelRegex = new RegExp(
+      'HESAPLANAN\\s+KDV(\\s+TEVK[İI]FAT)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
+        amountPattern,
+      'gi',
+    );
+    let m: RegExpExecArray | null;
+    while ((m = labelRegex.exec(flat)) !== null) {
+      const isTevkifat = !!m[1];
+      const tutar = this.parseAmount(m[2]);
+      if (tutar <= 0) continue;
+      if (isTevkifat) {
+        if (tutar > tevkifat) tevkifat = tutar;
+      } else {
+        if (tutar > tamKdv) tamKdv = tutar;
       }
     }
 
-    // ───────────────────────────────────────────────────────
-    // 2) TAM KDV satırı — "Hesaplanan KDV(%X)" (TEVKİFAT yok)
-    // ───────────────────────────────────────────────────────
-    for (const line of lines) {
-      // "HESAPLANAN KDV(%X)" — TEVKİFAT yok
-      const isTamKdvLabel =
-        /HESAPLANAN\s+KDV\s*\(/i.test(line) &&
-        !/TEVK[İI]FAT/i.test(line);
-      if (isTamKdvLabel) {
-        const v = lastAmountInLine(line);
-        if (v > 0 && v > tamKdv) tamKdv = v;
-      }
-    }
-
-    // ───────────────────────────────────────────────────────
-    // 3) Alternatif: "Tevkifata Tabi İşlem Üzerinden Hes. KDV"
-    //    Bu da TAM KDV'yi gösterir (faturada tekrarlanır)
-    // ───────────────────────────────────────────────────────
+    // ─── 2) Alternatif tam KDV gösterimleri (sadece tamKdv bulunmadıysa) ───
+    //   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  TUTAR"  (Tam KDV'nin tekrarı)
     if (tamKdv === 0) {
-      for (const line of lines) {
-        if (/TEVK[İI]FATA\s+TAB[İI].*ÜZER[İI]NDEN.*KDV/i.test(line)) {
-          const v = lastAmountInLine(line);
-          if (v > 0 && v > tamKdv) tamKdv = v;
+      const altRe = new RegExp(
+        'TEVK[İI]FATA\\s+TAB[İI][^\\d]{0,80}ÜZER[İI]NDEN[^\\d]{0,40}KDV[^\\d]{0,20}' +
+          amountPattern,
+        'i',
+      );
+      const am = flat.match(altRe);
+      if (am) {
+        const v = this.parseAmount(am[1]);
+        if (v > 0) tamKdv = v;
+      }
+    }
+
+    // ─── 3) Alternatif tevkifat gösterimleri ───
+    //   "KDV Tevkifatı (%50,00) = 665,00 TL"
+    //   "Tevkifat Tutarı: 665,00"
+    if (tevkifat === 0) {
+      const altTevkifatPatterns = [
+        new RegExp(
+          'KDV\\s+TEVK[İI]FATI?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[=:]?\\s*' + amountPattern,
+          'i',
+        ),
+        new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[:=]?\\s*' + amountPattern, 'i'),
+      ];
+      for (const re of altTevkifatPatterns) {
+        const am = flat.match(re);
+        if (am) {
+          const v = this.parseAmount(am[1]);
+          if (v > tevkifat) tevkifat = v;
         }
       }
     }
 
-    // Tevkifat var mı kontrol et — yoksa bu fatura tevkifatlı değil, null dön
-    if (tevkifat <= 0) return null;
+    // Tevkifat yoksa tevkifatlı değildir — null dön
+    if (tevkifat <= 0) {
+      // Tevkifat kelimesi metinde geçiyor mu? Diagnostic
+      if (/TEVK[İI]FAT/i.test(flat)) {
+        this.logger.warn(
+          `Tevkifat extract: TEVKIFAT kelimesi var ama tutar bulunamadı. Flat metin (ilk 500 char): "${flat.slice(0, 500)}"`,
+        );
+      }
+      return null;
+    }
 
-    // Tam KDV bulunamadıysa: tevkifat oranından geri hesapla
-    // "TEVKİFAT(%50)" gibi
+    // Tam KDV bulunamadıysa tevkifat oranından geri hesapla
     if (tamKdv === 0) {
-      const tevkifatRateMatch = normalized.match(/TEVK[İI]FAT[\s\S]*?\(\s*[%/]?\s*(\d{1,2})\s*\)/i);
+      const tevkifatRateMatch = flat.match(/TEVK[İI]FAT[\s\S]{0,50}?\(\s*[%/]?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/i);
       if (tevkifatRateMatch) {
         const oran = parseInt(tevkifatRateMatch[1], 10);
         if (oran >= 10 && oran <= 90) {
-          // tevkifat = tamKdv × (oran/100)  →  tamKdv = tevkifat / (oran/100)
           tamKdv = tevkifat / (oran / 100);
+          this.logger.log(
+            `Tevkifat extract: tamKdv tevkifat oranından geri hesaplandı → ${tamKdv} (tevkifat=${tevkifat}, oran=%${oran})`,
+          );
         }
       }
     }
 
     if (tamKdv <= 0 || tamKdv < tevkifat) {
       this.logger.warn(
-        `Tevkifat extract: tamKdv=${tamKdv} tevkifat=${tevkifat} — mantıksız, null döndürüyorum`,
+        `Tevkifat extract: tamKdv=${tamKdv} tevkifat=${tevkifat} — mantıksız, null döndürüyorum. Flat (ilk 400 char): "${flat.slice(0, 400)}"`,
       );
       return null;
     }
@@ -1913,9 +1902,13 @@ export class OcrService {
     //
     // Çözüm: Azure metninde "Hesaplanan KDV(%X)" + "Hesaplanan KDV Tevkifat(%XX)"
     // pattern'ini doğrudan yakala, Claude'un sonucunu override et.
+    const azureTextNorm = this.normalizeAzureText(azureText);
+    const azureMentionsTevkifat = /TEVK[İI]FAT/i.test(azureTextNorm);
+    let tevkifatExtracted = false;
     {
       const tevkifatli = this.extractTevkifatliFaturaFromAzure(azureText);
       if (tevkifatli) {
+        tevkifatExtracted = true;
         const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
         const claudeTevkifat = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
         const azureNet = tevkifatli.netKdv;
@@ -1939,7 +1932,7 @@ export class OcrService {
             result.kdvBreakdown[0].tutar = azureNet;
           } else if (!result.kdvBreakdown || result.kdvBreakdown.length === 0) {
             // Breakdown yok ama oran tespit edilebilirse oluştur (en yaygın %10/%20)
-            const oranMatch = this.normalizeAzureText(azureText).match(
+            const oranMatch = azureTextNorm.match(
               /HESAPLANAN\s+KDV\s*\(\s*[%/]?\s*(\d{1,2})\s*\)(?!\s*TEVK)/i,
             );
             if (oranMatch) {
@@ -1950,6 +1943,44 @@ export class OcrService {
             }
           }
           kdvAlreadyVerifiedByAutoFill.value = true;
+        }
+      }
+    }
+
+    // ─── DEFANSİF FALLBACK: Tevkifat var ama extract edilemediyse ───
+    // Azure metni "TEVKIFAT" diyor ama biz tutarı doğru çıkaramadık.
+    // Claude'un kdvTutari'sı muhtemelen yanlış (toplam/11 veya toplam/6 hesabı).
+    // Bu durumda yanlış değeri kullanıcıya gösterme — confidence sıfırla,
+    // NEEDS_REVIEW akışına gitsin, kullanıcı manuel girebilsin.
+    if (azureMentionsTevkifat && !tevkifatExtracted && result.kdvTutari) {
+      const claudeKdv = this.parseAmount(result.kdvTutari);
+      const claudeTotal = result.totalTutari ? this.parseAmount(result.totalTutari) : 0;
+
+      // Yanlış matematik göstergesi:
+      //   • kdvTutari ≈ totalTutari / 11   (Claude %10 KDV-DAHİL hesabı yapmış)
+      //   • kdvTutari ≈ totalTutari / 6    (Claude %20 KDV-DAHİL hesabı yapmış)
+      let suspiciousMath = false;
+      if (claudeTotal > 0 && claudeKdv > 0) {
+        const ratio11 = Math.abs(claudeKdv - claudeTotal / 11) / claudeKdv;
+        const ratio6 = Math.abs(claudeKdv - claudeTotal / 6) / claudeKdv;
+        if (ratio11 < 0.02 || ratio6 < 0.02) {
+          suspiciousMath = true;
+        }
+      }
+
+      // Tevkifat boş + Azure'da TEVKİFAT var → şüpheli
+      const tevkifatEmpty = !result.kdvTevkifat || this.parseAmount(result.kdvTevkifat) === 0;
+
+      if (suspiciousMath || tevkifatEmpty) {
+        this.logger.warn(
+          `Tevkifatlı fatura DEFANSİF FALLBACK (${originalName}): Azure'da TEVKIFAT var ama extract edemedik. Claude kdv=${result.kdvTutari} total=${result.totalTutari} tevk=${result.kdvTevkifat ?? '0'}. Confidence sıfırlanıp NEEDS_REVIEW'a gidiyor.`,
+        );
+        // Confidence sıfırla — kullanıcı manuel girsin, yanlış değer önerme
+        result.fieldConfidence.kdvTutari = 0.3;
+        // Mantıksız değerleri null'la
+        if (suspiciousMath) {
+          result.kdvTutari = null;
+          result.kdvBreakdown = null;
         }
       }
     }
@@ -2002,7 +2033,19 @@ export class OcrService {
     // özel olarak TOPKDV satırlarını yakalıyor — orda başarısız olursa bu
     // generic fallback devreye girsin zarar vermez, override koşulu zaten
     // Claude<Azure durumunu arıyor.
-    {
+    //
+    // ⚠ TEVKİFATLI FATURA KORUMASI: Eğer Azure metni "TEVKIFAT" geçiyor VE
+    // tevkifatlı auto-correct çalıştıysa, multi-rate fallback'leri ATLAR.
+    // Aksi halde "Hesaplanan KDV(%10) 2.840" + "Hesaplanan KDV Tevkifat(%50)
+    // 1.420" pattern'lerini iki farklı oranlı KDV gibi yorumlayabilir
+    // (örn. %10:2840 + %50:1420 → toplam 4260, doğru NET=1420 → override KIRIK).
+    // Tevkifatlı tek-oranlı fatura için zaten yukarıdaki tevkifat auto-correct
+    // doğru değeri set etti.
+    if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
+      this.logger.log(
+        `Multi-rate auto-fill SKIP: tevkifatlı fatura (auto-correct çalıştı, ${originalName})`,
+      );
+    } else {
       const multiA = this.extractMultiRateKdvFromAzure(azureText);
       const multiB = this.extractMultiRateKdvFromItemRows(azureText);
       // C) SON ÇARE: Azure text'te "%N" markörleri ile tüm sayılar arasından
