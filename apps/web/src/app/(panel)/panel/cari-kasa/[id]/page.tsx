@@ -627,4 +627,8 @@ const inpStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.03)', bo
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-[10.5px] font-bold uppercase tracking-[.
+      <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</label>
+      {children}
+    </div>
+  );
+}
