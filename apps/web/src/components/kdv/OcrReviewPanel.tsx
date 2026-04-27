@@ -555,7 +555,7 @@ export function OcrReviewPanel({
               />
 
               {/* KDV Tevkifat — varsa görünür (tevkifatsız faturalarda gizleyebiliriz). */}
-              {/* Otomatik göster: ya OCR tevkifat okumuş ya da kullanıcı düzeltmek istiyor olabilir. */}
+              {/* confidence verilmediği için badge görünmüyor — opsiyonel alan. */}
               <FieldInput
                 label="KDV Tevkifatı (varsa)"
                 placeholder="0,00"
@@ -709,13 +709,15 @@ function FieldInput({
 }: {
   label: string;
   value: string;
-  confidence: number | null;
+  /** Confidence verilmezse (undefined) badge hiç gösterilmez — tevkifat gibi opsiyonel alanlar için. */
+  confidence?: number | null;
   placeholder?: string;
   onChange: (v: string) => void;
   onEnter: () => void;
   numeric?: boolean;
   readOnly?: boolean;
 }) {
+  const showBadge = confidence !== undefined;
   const low = typeof confidence === 'number' && confidence < THRESHOLD;
   const missing = confidence === null;
   const color = missing ? '#f43f5e' : low ? '#f59e0b' : '#22c55e';
@@ -727,15 +729,17 @@ function FieldInput({
         <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
           {label}
         </label>
-        <span
-          className="text-[10px] font-bold tabular-nums px-2 py-0.5 rounded"
-          style={{
-            background: color + '1a',
-            color,
-          }}
-        >
-          {missing ? 'OKUNAMADI' : `%${pct}`}
-        </span>
+        {showBadge && (
+          <span
+            className="text-[10px] font-bold tabular-nums px-2 py-0.5 rounded"
+            style={{
+              background: color + '1a',
+              color,
+            }}
+          >
+            {missing ? 'OKUNAMADI' : `%${pct}`}
+          </span>
+        )}
       </div>
       <input
         type="text"
