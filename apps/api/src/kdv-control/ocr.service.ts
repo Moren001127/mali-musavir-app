@@ -506,6 +506,40 @@ export class OcrService {
       '⚠ KRİTİK: kdvTutari = TAM KDV (kendin çıkarma işlemi yapma, kod halleder).',
       '⚠ "Tevkifat" kelimesi faturada GEÇİYORSA ve tutar varsa: kdvTevkifat\'ı MUTLAKA doldur.',
       '',
+      '⛔ ÇOK ÖNEMLİ — MAL HİZMET TOPLAM ≠ VERGİLER DAHİL TOPLAM:',
+      'Tevkifatlı faturada şu alanları KESİNLİKLE KARIŞTIRMA:',
+      '  • "Mal Hizmet Toplam Tutarı" = MATRAH (KDV hariç). Bunu /11 ile bölme!',
+      '  • "Vergiler Dahil Toplam Tutar" = MATRAH + KDV (KDV dahil). Bu da kdvTutari değil.',
+      '  • "Ödenecek Tutar" = MATRAH + (KDV − Tevkifat). Bu da kdvTutari değil.',
+      '',
+      'KDV TUTARI sadece şu satırlardan biridir:',
+      '  ✓ "Hesaplanan KDV(%X)" satırının yanındaki tutar — TAM KDV',
+      '  ✓ Tevkifat bölümünde "Hesaplanan KDV Tevkifat(%XX)" — TEVKİFAT',
+      '  ✗ "Mal Hizmet Toplam" — bu MATRAH, KDV DEĞİL',
+      '  ✗ "Vergiler Dahil Toplam" — bu MATRAH+KDV, KDV DEĞİL',
+      '  ✗ "Ödenecek KDV" — bu NET KDV (kod hesaplayacak), KDV ALANI DEĞİL',
+      '',
+      'YAPILACAK MATEMATİK YOK — faturadaki YAZILI sayıları KOPYALA. SAKIN /11 veya /1.20 işlemi yapma.',
+      '',
+      'ÖRNEK — TEVKİFATLI ALIŞ FATURASI (HİZMET):',
+      '  Mal Hizmet Toplam Tutarı            13.300,00 TL  ← MATRAH (KDV DEĞİL!)',
+      '  Hesaplanan KDV(%10)                  1.330,00 TL  ← TAM KDV (kdvTutari için bu)',
+      '  Hesaplanan KDV Tevkifat(%50)           665,00 TL  ← TEVKİFAT (kdvTevkifat için bu)',
+      '  Tevkifata Tabi İşlem Üzerinden Hes.   1.330,00 TL  ← Aynı KDV (alternatif gösterim)',
+      '  Ödenecek KDV                           665,00 TL  ← NET (kod hesaplar)',
+      '  Vergiler Dahil Toplam               14.630,00 TL',
+      '  Ödenecek Tutar                      13.965,00 TL',
+      '  → kdvTutari = "1330,00"          (TAM KDV — Hesaplanan KDV satırı)',
+      '  → kdvTevkifat = "665,00"          (Tevkifat tutarı)',
+      '  → kdvBreakdown = [{"oran":10,"tutar":"1330,00","matrah":"13300,00"}]',
+      '  ⚠ 13.300 / 11 = 1.209 SAKIN BUNU YAZMA — bu yanlış matematik! Faturadaki "1.330,00" sayısını OKU.',
+      '',
+      'ALGILAMA: Tevkifatlı fatura = "Hesaplanan KDV Tevkifat" satırı VAR demektir.',
+      'Bu satırı görür görmez:',
+      '  1. ÜSTTEKİ "Hesaplanan KDV(%X)" satırının tutarını → kdvTutari (TAM)',
+      '  2. ALTTAKİ "Hesaplanan KDV Tevkifat(%XX)" satırının tutarını → kdvTevkifat',
+      '  3. Hiç hesap yapma. İki sayıyı oku, kod halleder.',
+      '',
       '╔══ 6) TUTAR FORMATI ══╗',
       'Türkiye: nokta binlik ayraç, virgül ondalık. "1.234,56" → output "1234,56" (noktasız, virgüllü).',
       '"KDV" etiketi (kabul): "KDV", "K.D.V.", "Katma Değer Vergisi", "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV".',
@@ -1045,6 +1079,106 @@ export class OcrService {
       .replace(/\u202F/g, ' ') // narrow no-break space
       .replace(/\uFF05/g, '%') // full-width %
       .toLocaleUpperCase('tr-TR'); // Türkçe-farkındalıklı büyük harf
+  }
+
+  /**
+   * Tevkifatlı faturalardan TAM KDV ve TEVKİFAT tutarlarını Azure metninden
+   * doğrudan yakalar. Claude bazen "Mal Hizmet Toplam" değerini "KDV dahil
+   * toplam" sanıp /11 hesabı yapıyor (13.300 → 1209,09 gibi). Halbuki faturada
+   * "Hesaplanan KDV(%X)" satırının yanında doğru tutar açık yazıyor.
+   *
+   * Aranan pattern'ler (Türk e-Fatura/e-Arşiv tevkifat formatı):
+   *   "Hesaplanan KDV(%10)        1.330,00"
+   *   "Hesaplanan KDV Tevkifat(%50) 665,00"
+   *   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  3.350,00"
+   *
+   * Geri dönen değer:
+   *   { tamKdv, tevkifat, netKdv } veya null (pattern bulunamazsa)
+   */
+  private extractTevkifatliFaturaFromAzure(text: string): {
+    tamKdv: number;
+    tevkifat: number;
+    netKdv: number;
+  } | null {
+    if (!text) return null;
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+    // Tutar yakalama regex'i — Türk format (1.234,56 veya 1234,56)
+    const amountRe = /([\d]{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+,\d{1,2})/;
+
+    let tamKdv = 0;
+    let tevkifat = 0;
+
+    // Önce tevkifat satırını ara (daha spesifik) — "Hesaplanan KDV Tevkifat(%XX)"
+    // Ya da "KDV TEVKIFAT" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"
+    for (const line of lines) {
+      // "HESAPLANAN KDV TEVKIFAT" satırı (tevkifat tutarı)
+      if (
+        /HESAPLANAN\s+KDV\s+TEVK[İI]FAT/i.test(line) ||
+        /KDV\s+TEVK[İI]FATI?\s*\(/i.test(line)
+      ) {
+        // Aynı satırın sonundaki tutar
+        const m = line.match(new RegExp(amountRe.source + '\\s*(?:TL|TRY|₺)?\\s*$'));
+        if (m) {
+          const v = this.parseAmount(m[1]);
+          if (v > 0 && v > tevkifat) tevkifat = v;
+        }
+      }
+    }
+
+    // Sonra TAM KDV satırını ara — "Hesaplanan KDV(%XX)" (Tevkifat KELİMESİ YOK)
+    for (const line of lines) {
+      // "Hesaplanan KDV(%XX)" — TEVKİFAT kelimesi içermesin (yukarıda yakaladık)
+      if (
+        /HESAPLANAN\s+KDV\s*\(/i.test(line) &&
+        !/TEVK[İI]FAT/i.test(line)
+      ) {
+        const m = line.match(new RegExp(amountRe.source + '\\s*(?:TL|TRY|₺)?\\s*$'));
+        if (m) {
+          const v = this.parseAmount(m[1]);
+          if (v > 0 && v > tamKdv) tamKdv = v;
+        }
+      }
+    }
+
+    // "Tevkifata Tabi İşlem Üzerinden Hes. KDV" — TAM KDV'nin alternatif gösterimi
+    if (tamKdv === 0) {
+      for (const line of lines) {
+        if (
+          /TEVK[İI]FATA\s+TAB[İI].*HES.*KDV/i.test(line) ||
+          /HESAPLANAN\s+KDV(?!\s+TEVK)/i.test(line)
+        ) {
+          const m = line.match(new RegExp(amountRe.source + '\\s*(?:TL|TRY|₺)?\\s*$'));
+          if (m) {
+            const v = this.parseAmount(m[1]);
+            if (v > 0 && v > tamKdv) tamKdv = v;
+          }
+        }
+      }
+    }
+
+    // Tevkifat var mı kontrol et — yoksa bu fatura tevkifatlı değil, null dön
+    if (tevkifat <= 0) return null;
+
+    // Tam KDV bulunamadıysa: bazı faturalarda tevkifat 1/2 oranında olur,
+    // tam KDV = tevkifat × 2 olabilir. Ama bu varsayım — sadece tevkifat oranı
+    // belliyse hesaplayalım. "TEVKIFAT(%50)" gibi.
+    if (tamKdv === 0) {
+      const tevkifatRateMatch = normalized.match(/TEVK[İI]FAT[\s\S]*?\(\s*[%/]?\s*(\d{1,2})\s*\)/i);
+      if (tevkifatRateMatch) {
+        const oran = parseInt(tevkifatRateMatch[1], 10);
+        if (oran >= 10 && oran <= 90) {
+          // tevkifat = tamKdv × (oran/100)  →  tamKdv = tevkifat / (oran/100)
+          tamKdv = tevkifat / (oran / 100);
+        }
+      }
+    }
+
+    if (tamKdv <= 0 || tamKdv < tevkifat) return null;
+
+    const netKdv = Math.max(0, tamKdv - tevkifat);
+    return { tamKdv, tevkifat, netKdv };
   }
 
   private extractKdvOnlyFromTelekomAzure(text: string): number | null {
@@ -1701,6 +1835,55 @@ export class OcrService {
             `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${zParsed.breakdown.length} oran (${originalName})`,
           );
           result.kdvBreakdown = zParsed.breakdown;
+        }
+      }
+    }
+
+    // ─── TEVKİFATLI FATURA AUTO-CORRECT ───
+    // Tevkifatlı alış faturalarında Claude bazen hatalı hesap yapıyor:
+    //   - Mal Hizmet Toplam değerini "KDV dahil toplam" sanıp /11 hesaplıyor
+    //     (örn. 13.300 / 11 = 1.209,09 — yanlış!)
+    //   - "Hesaplanan KDV Tevkifat(%50)" satırını kaçırıp tevkifat=0 dönüyor
+    //
+    // Çözüm: Azure metninde "Hesaplanan KDV(%X)" + "Hesaplanan KDV Tevkifat(%XX)"
+    // pattern'ini doğrudan yakala, Claude'un sonucunu override et.
+    {
+      const tevkifatli = this.extractTevkifatliFaturaFromAzure(azureText);
+      if (tevkifatli) {
+        const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+        const claudeTevkifat = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
+        const azureNet = tevkifatli.netKdv;
+        const azureTevkifat = tevkifatli.tevkifat;
+
+        // Override koşulları:
+        //   1. Claude tevkifat'ı 0 verdi ama Azure tevkifat buldu (Claude eksik)
+        //   2. Claude'un NET KDV'si Azure'dan farklı (>5 kuruş) — Claude yanlış hesap
+        const tevkifatMissing = claudeTevkifat === 0 && azureTevkifat > 0;
+        const kdvMismatch = Math.abs(claudeKdv - azureNet) > 0.05;
+
+        if (tevkifatMissing || kdvMismatch) {
+          this.logger.warn(
+            `Tevkifatlı fatura auto-correct: Claude kdv=${result.kdvTutari} tevk=${result.kdvTevkifat ?? '0'} → Azure tamKdv=${this.formatAmount(tevkifatli.tamKdv)} tevk=${this.formatAmount(azureTevkifat)} net=${this.formatAmount(azureNet)} (${originalName})`,
+          );
+          result.kdvTutari = this.formatAmount(azureNet);
+          result.kdvTevkifat = this.formatAmount(azureTevkifat);
+          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match → yüksek güven
+          // Tek oranlı tevkifat faturalarında breakdown'u da güncelle
+          if (result.kdvBreakdown && result.kdvBreakdown.length === 1) {
+            result.kdvBreakdown[0].tutar = azureNet;
+          } else if (!result.kdvBreakdown || result.kdvBreakdown.length === 0) {
+            // Breakdown yok ama oran tespit edilebilirse oluştur (en yaygın %10/%20)
+            const oranMatch = this.normalizeAzureText(azureText).match(
+              /HESAPLANAN\s+KDV\s*\(\s*[%/]?\s*(\d{1,2})\s*\)(?!\s*TEVK)/i,
+            );
+            if (oranMatch) {
+              const oran = parseInt(oranMatch[1], 10);
+              if ([1, 8, 10, 18, 20].includes(oran)) {
+                result.kdvBreakdown = [{ oran, tutar: azureNet, matrah: null }];
+              }
+            }
+          }
+          kdvAlreadyVerifiedByAutoFill.value = true;
         }
       }
     }
