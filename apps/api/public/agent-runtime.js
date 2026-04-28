@@ -874,6 +874,29 @@
       await log(`🎯 ${reports.length} report bulundu, sadece "${mizanReport}" gönderiliyor`);
     }
 
+    // Boş kalan zorunlu alanları default değerlerle doldur (Luca elle alındığındaki defaults):
+    //   HESAP_BOYU_ILK/SON: 1-9 (tüm hesap kademeleri)
+    //   kayitli: 1 (kayıtlı fişler dahil)
+    //   TIP: 0 (Genel mizan)
+    //   RAPOR_DILI: TR
+    const fillIfEmpty = (name, value) => {
+      const cur = fd.get(name);
+      if (!cur || String(cur).trim() === '') {
+        fd.set(name, value);
+        return true;
+      }
+      return false;
+    };
+    const filled = [];
+    if (fillIfEmpty('HESAP_BOYU_ILK', '1')) filled.push('HESAP_BOYU_ILK=1');
+    if (fillIfEmpty('HESAP_BOYU_SON', '9')) filled.push('HESAP_BOYU_SON=9');
+    if (fillIfEmpty('kayitli', '1')) filled.push('kayitli=1');
+    if (fillIfEmpty('TIP', '0')) filled.push('TIP=0');
+    if (fillIfEmpty('RAPOR_DILI', 'TR')) filled.push('RAPOR_DILI=TR');
+    if (filled.length > 0) {
+      await log(`🔧 Boş alanlar dolduruldu: ${filled.join(' | ')}`);
+    }
+
     let actionUrl = form.action;
     if (!actionUrl) actionUrl = frm3.contentWindow.location.href;
     if (actionUrl.includes('time=')) {
