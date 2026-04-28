@@ -55,42 +55,88 @@ export class MizanParserService {
     this.logger.log(`Mizan parse: sheet="${bestSheetName || wb.SheetNames[0]}" seçildi · ${wb.SheetNames.length} sheet toplam (${wb.SheetNames.join(', ')})`);
 
     // ── BAŞLIK SATIRI OTOMATİK TESPİT ──────────────────────────
-    // Luca ve diğer programların Excel'leri genelde üstte firma bilgisi,
-    // dönem, kapak satırları içerir. Gerçek başlık 2-10. satır arasında
-    // olabilir. İçinde hem "hesap/kod" hem "borç/alacak" geçen ilk satırı
-    // başlık olarak kabul ederiz.
+    // Luca mizan Excel formatı:
+    //   Satır 1-2: "MİZAN" başlık + firma adı (merge edilmiş)
+    //   Satır 3-4: Dönem / Tarih Aralığı
+    //   Satır 5: boş
+    //   Satır 6: HESAP KODU | HESAP ADI | (boş) | BORÇ | ALACAK | BORÇ BAKİYESİ | ALACAK BAKİYESİ
+    //   Satır 7+: veriler
+    // Türkçe locale toLowerCase için tr-TR kullanıyoruz (İ → i sorununu önler).
     const MAX_SCAN = Math.min(50, grid.length);
     let headerRowIdx = -1;
     for (let i = 0; i < MAX_SCAN; i++) {
       const row = grid[i];
       if (!row || row.length === 0) continue;
-      const cells = row.map((c) => String(c ?? '').toLowerCase());
+      const cells = row.map((c) => String(c ?? '').toLocaleLowerCase('tr-TR').trim());
       const hasKod = cells.some((c) => /hesap.*kod|^kod\b|hesap_kod|kodu/.test(c));
       const hasAd = cells.some((c) => /hesap.*ad[ıi]?|^ad[ıi]?\b|ad[ıi]/.test(c));
       const hasBorc = cells.some((c) => /bor[çc]/.test(c));
       const hasAlacak = cells.some((c) => /alacak/.test(c));
       const hasBakiye = cells.some((c) => /bakiye/.test(c));
-      // Luca standart format: Hesap Kodu + Hesap Adı + Bakiye yeterli.
-      // Bilanço usulü: + Borç Toplamı + Alacak Toplamı.
       if ((hasKod || hasAd) && (hasBorc || hasAlacak || hasBakiye)) {
         headerRowIdx = i;
+        this.logger.log(`Mizan başlık satırı: index=${i} (S${i+1}) · cells=[${cells.filter(c=>c).slice(0,8).join(' | ')}]`);
         break;
+      }
+    }
+
+    // ── FALLBACK: Hesap kodu pattern tabanlı tespit ──
+    // Eğer üst başlıklar bulunamadıysa, mizan veri satırlarına bakalım.
+    // Mizan'da hesap kodları pattern'i: 1, 10, 100, 100.01, 100.01.001 (sayı veya nokta-ayırılmış kademeli)
+    // Bu satırlardan ÖNCEKİ ilk dolu satır büyük olasılıkla başlıktır.
+    if (headerRowIdx === -1) {
+      const isHesapKoduRow = (row: any[]): boolean => {
+        if (!row || row.length === 0) return false;
+        // İlk dolu hücre hesap kodu pattern'ine uyuyor mu?
+        for (let c = 0; c < Math.min(3, row.length); c++) {
+          const v = String(row[c] ?? '').trim();
+          if (!v) continue;
+          // 1, 10, 100, 100.01, 100.01.001 gibi
+          if (/^\d{1,3}(\.\d{1,3})*(\.[A-Za-z0-9]{1,8})*$/.test(v)) return true;
+          return false;
+        }
+        return false;
+      };
+
+      let firstDataRowIdx = -1;
+      for (let i = 0; i < MAX_SCAN; i++) {
+        if (isHesapKoduRow(grid[i])) {
+          firstDataRowIdx = i;
+          break;
+        }
+      }
+
+      if (firstDataRowIdx > 0) {
+        // Bir önceki dolu satırı header kabul et
+        for (let i = firstDataRowIdx - 1; i >= 0; i--) {
+          const row = grid[i];
+          if (row && row.some((c) => c != null && String(c).trim() !== '')) {
+            headerRowIdx = i;
+            this.logger.log(`Mizan başlık (fallback): index=${i} (S${i+1}) — hesap kodu satırı S${firstDataRowIdx+1}'in öncesi`);
+            break;
+          }
+        }
+        // Header bulunmazsa, varsayılan kolon yapısı kullan ve veri satırından başla
+        if (headerRowIdx === -1) {
+          headerRowIdx = firstDataRowIdx - 1;  // varsayılan
+          this.logger.warn(`Mizan başlık tahmin edilemedi, varsayılan kolon yapısı kullanılıyor. Veri S${firstDataRowIdx+1}'den başlar.`);
+        }
       }
     }
 
     if (headerRowIdx === -1) {
       // Hiçbir başlık satırı bulunamadı — TÜM dolu satırları hata mesajına ekle
       const dumpRows = grid
-        .slice(0, Math.min(20, grid.length))
+        .slice(0, Math.min(30, grid.length))
         .map((r, i) => {
           const cells = (r || []).map((c) => String(c ?? '').trim()).filter((c) => c);
-          return cells.length > 0 ? `S${i + 1}: ${cells.slice(0, 10).join(' | ')}` : null;
+          return cells.length > 0 ? `S${i + 1}: ${cells.slice(0, 12).join(' | ')}` : null;
         })
         .filter(Boolean)
         .join(' || ');
-      this.logger.warn(`Mizan başlık satırı bulunamadı. Dolu satırlar:\n${dumpRows}`);
+      this.logger.warn(`Mizan başlık satırı bulunamadı. Sheet=${bestSheetName} · Dolu satırlar:\n${dumpRows}`);
       throw new Error(
-        `Mizan Excel'de başlık satırı bulunamadı. Dolu satırlar (ilk 20): ${dumpRows.slice(0, 1500)}`,
+        `Mizan Excel'de başlık satırı bulunamadı. Sheet="${bestSheetName}". Dolu satırlar (ilk 30): ${dumpRows.slice(0, 2000)}`,
       );
     }
 
