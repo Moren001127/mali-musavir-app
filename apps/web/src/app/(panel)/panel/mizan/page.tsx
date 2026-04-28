@@ -395,18 +395,25 @@ export default function MizanPage() {
               İptal
             </button>
           </div>
-          {lucaLogLines.length > 0 && (
-            <div
-              className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
-              style={{
-                background: 'rgba(0,0,0,0.35)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                color: 'rgba(250,250,249,0.75)',
-                maxHeight: 200,
-                overflowY: 'auto',
-              }}
-            >
-              {lucaLogLines.map((line, i) => {
+          {/* Log container ARTIK HER ZAMAN GÖRÜNÜR — boş bile olsa kullanıcı
+              bir şey olduğunu görsün, debug için kritik. */}
+          <div
+            className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
+            style={{
+              background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(255,255,255,0.05)',
+              color: 'rgba(250,250,249,0.75)',
+              maxHeight: 200,
+              overflowY: 'auto',
+              minHeight: 60,
+            }}
+          >
+            {lucaLogLines.length === 0 ? (
+              <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
+                Agent'tan ilk log satırı bekleniyor… (Luca sekmesi açık ve giriş yapılmış olmalı)
+              </div>
+            ) : (
+              lucaLogLines.map((line, i) => {
                 const isErr = /✗|hata|error/i.test(line);
                 const isOk = /✓/.test(line);
                 return (
@@ -421,9 +428,9 @@ export default function MizanPage() {
                     {line}
                   </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </div>
       )}
 
