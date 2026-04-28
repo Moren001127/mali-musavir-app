@@ -64,4 +64,4 @@ WORKDIR /app/apps/api
 
 EXPOSE ${PORT:-3001}
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node /app/apps/api/dist/main"]
+CMD ["sh", "-c", "node /app/apps/api/scripts/cleanup-failed-migrations.js && npx prisma migrate deploy && node /app/apps/api/dist/main"]
