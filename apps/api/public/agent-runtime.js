@@ -1025,10 +1025,12 @@
       restoreFns.push(() => { try { proto.open = origOpen; proto.send = origSend; } catch (e) {} });
       proto.open = function (method, url) {
         this._capturedUrl = url;
+        this._capturedMethod = method;
         return origOpen.apply(this, arguments);
       };
-      proto.send = function () {
+      proto.send = function (body) {
         const url = this._capturedUrl || '';
+        this._capturedBody = body;
         seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
         this.addEventListener('load', async () => {
           try {
@@ -1045,10 +1047,22 @@
               }
             }
 
-            // 2) rapor_takip.jq görüldü — URL'den rapor_id al, polling response'u BEKLEME
-            //    direkt 5sn sonra rapor_indir.jq fetch et (Luca'nın native polling'i bittiğinde)
+            // 2) rapor_takip.jq görüldü — rapor_id'yi URL/body/response'tan ara
             if (/rapor_takip/i.test(url) && !capturedBlob && !this._raporIdHandled) {
-              const m = url.match(/rapor_id=(\d+)/i) || (this.responseText || '').match(/rapor_id["\s:=]+["]?(\d+)/i);
+              const bodyStr = typeof this._capturedBody === 'string' ? this._capturedBody : (this._capturedBody ? String(this._capturedBody) : '');
+              const respStr = (this.responseText || '').slice(0, 200);
+              // Diagnostic — URL + body + response'u log'la
+              if (!this._loggedDiag) {
+                this._loggedDiag = true;
+                log(`🔍 rapor_takip URL: ${url.slice(0, 100)}`).catch(() => {});
+                log(`🔍 rapor_takip body: ${bodyStr.slice(0, 150)}`).catch(() => {});
+                log(`🔍 rapor_takip response: ${respStr.slice(0, 150)}`).catch(() => {});
+              }
+              const m = url.match(/rapor_id=(\d+)/i)
+                || bodyStr.match(/rapor_id["\s:=]+["]?(\d+)/i)
+                || respStr.match(/rapor_id["\s:=]+["]?(\d+)/i)
+                || bodyStr.match(/(\d{6,})/)  // 6+ digit number
+                || respStr.match(/(\d{6,})/);
               const raporId = m ? m[1] : null;
               if (raporId) {
                 this._raporIdHandled = true;
