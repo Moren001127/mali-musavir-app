@@ -826,8 +826,7 @@
    *   5) FormData → fetch POST → blob yakala
    */
   async function fetchLucaMizanExcel(job, log) {
-    // 0) Luca sürüm kontrolü — agent klasik Luca için yazıldı (auygs.luca.com.tr/Luca/luca.do).
-    //    Yeni sürüm "LUCASSO" (agiris.luca.com.tr/LUCASSO/main.erp) farklı DOM, henüz desteklenmiyor.
+    // 0) Luca sürüm kontrolü
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error(
         'Bu Luca v2.1 (LUCASSO) sürümü. Lütfen klasik Luca\'ya geçin: ' +
@@ -835,13 +834,13 @@
       );
     }
 
-    // 1) Hedef firma açık mı? Değilse değiştir + bekle
+    // 1) Hedef firma açık mı?
     await ensureLucaFirma(job, log);
 
-    // 2) Sayfa Fiş Listesi mi? Ana sayfadaysa Muhasebe → Fiş İşlemleri → Fiş Listesi'ne git
+    // 2) Fiş Listesi sayfasına geç
     await navigateToFisListesi(log);
 
-    // 3) frm3 zaten Mizan formu yüklü mü? Yüklü değilse Mizan menüsüne tıkla
+    // 3) Mizan formu yüklü mü?
     let frm3 = getLucaFrame('frm3');
     let formAlreadyLoaded =
       frm3?.contentDocument?.querySelector('form[name="raporMizanForm"]');
@@ -851,74 +850,154 @@
       await log('✓ Mizan formu zaten açık');
     }
 
-    // 3) raporMizanForm yüklenmesini bekle
+    // 4) Form yüklensin
     const form = await waitForLucaMizanForm(log);
-    frm3 = getLucaFrame('frm3'); // güncel referans
-    await log(`📋 Form action: ${(form.action || '').split('/').slice(-1)[0]}`);
+    frm3 = getLucaFrame('frm3');
 
-    // 4) Rapor türü + tarih input'ları doldur
-    await fillMizanForm(form, job, log);
+    // 5) YENİ JASPER.JQ AKIŞI — Luca artık yeni API kullanıyor (raporMizanAction.do deprecated):
+    //    POST /Luca/jasper.jq?rapor_tur=mizan (JSON body) → rapor_id
+    //    POST /Luca/rapor_takip.jq?rapor_id=... → polling (rapor durumu)
+    //    GET  /Luca/rapor_indir.jq?rapor_id=... → Excel binary
+    return await fetchMizanViaJasperJq(form, job, log);
+  }
 
-    // 5) FormData topla + URL hazırla
-    const fd = new FormData(form);
+  /**
+   * Luca yeni API (jasper.jq) ile Mizan Excel'i indir.
+   * Eski raporMizanAction.do form-urlencoded → boş Excel dönüyordu.
+   */
+  async function fetchMizanViaJasperJq(form, job, log) {
+    // donem_id ve sirket_id formdan oku
+    const donemId = form.querySelector('input[name="DONEM_ID"]')?.value
+      || form.querySelector('input[name="donem_id"]')?.value
+      || '';
+    const sirketId = form.querySelector('input[name="SIRKET_ID"]')?.value
+      || form.querySelector('input[name="sirket_id"]')?.value
+      || '';
 
-    // Mizan formu DOM'unda iki ayrı "report" input'u var:
-    //   - GMUREP06.rdf  (Mizan raporu — istediğimiz)
-    //   - ISMYREP131.rdf (İşletme Defteri — yanlış)
-    // Server son geleni alıyor → boş Excel dönüyor. Sadece Mizan raporunu bırak.
-    const reports = fd.getAll('report');
-    if (reports.length > 1) {
-      const mizanReport = reports.find((r) => /GMUREP/i.test(String(r))) || reports[0];
-      fd.delete('report');
-      fd.set('report', mizanReport);
-      await log(`🎯 ${reports.length} report bulundu, sadece "${mizanReport}" gönderiliyor`);
+    if (!donemId) {
+      throw new Error('DONEM_ID form\'da bulunamadı');
     }
 
-    // Boş kalan zorunlu alanları default değerlerle doldur (Luca elle alındığındaki defaults):
-    //   HESAP_BOYU_ILK/SON: 1-9 (tüm hesap kademeleri)
-    //   kayitli: 1 (kayıtlı fişler dahil)
-    //   TIP: 0 (Genel mizan)
-    //   RAPOR_DILI: TR
-    const fillIfEmpty = (name, value) => {
-      const cur = fd.get(name);
-      if (!cur || String(cur).trim() === '') {
-        fd.set(name, value);
-        return true;
-      }
-      return false;
+    // Tarihleri slash formatına çevir
+    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
+    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    const slash = (s) => String(s).replace(/\./g, '/');
+
+    const payload = {
+      kurTarihYeni: '',
+      tarih_ilk: slash(tarih.bas),
+      tarih_son: slash(tarih.bit),
+      hesap_bas: '',
+      hesap_bit: '',
+      hesap_boyu_bas: '',
+      hesap_boyu_bit: '',
+      hesap_tipi: null,
+      hesap_plani_dovizi_goster: '1',
+      fis_tipi: null,
+      fis_kodu: null,
+      bakiye_goster: '1',
+      bakiye_tipi: '1',
+      dil: 'tr',
+      alanlar: '2',
+      genel_toplam_goster: '2',
+      kurKodYeni: '0',
+      kurTypeYeni: '1',
+      tutarYeni: '',
+      doviz_multiple: 'tl',
+      sistem_doviz_sembol: 'TL',
+      tarih_yazdir: 'H',
+      sayfa_numarasi_yazdir: 'H',
+      report_type: 'LIST',
+      font: 'Calibri',
+      alt_bilgi_yazdir: 'H',
+      donem_id: donemId,
+      sirket_id: sirketId,
+      tur: 'mizan',
+      doviz: ['tl'],
+      email_hesap: null,
     };
-    const filled = [];
-    if (fillIfEmpty('HESAP_BOYU_ILK', '1')) filled.push('HESAP_BOYU_ILK=1');
-    if (fillIfEmpty('HESAP_BOYU_SON', '9')) filled.push('HESAP_BOYU_SON=9');
-    if (fillIfEmpty('kayitli', '1')) filled.push('kayitli=1');
-    if (fillIfEmpty('TIP', '0')) filled.push('TIP=0');
-    if (fillIfEmpty('RAPOR_DILI', 'TR')) filled.push('RAPOR_DILI=TR');
-    if (filled.length > 0) {
-      await log(`🔧 Boş alanlar dolduruldu: ${filled.join(' | ')}`);
+
+    await log(`🆕 jasper.jq akışı: tarih=${payload.tarih_ilk}→${payload.tarih_son}, donem_id=${donemId}, sirket_id=${sirketId}`);
+
+    // 1) jasper.jq → rapor_id al
+    const jasperUrl = `${location.origin}/Luca/jasper.jq?rapor_tur=mizan`;
+    await log(`🚀 POST ${jasperUrl.split('/').pop()}`);
+    const jasperRes = await fetch(jasperUrl, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!jasperRes.ok) {
+      throw new Error(`jasper.jq HTTP ${jasperRes.status}`);
+    }
+    const jasperText = await jasperRes.text();
+    await log(`📥 jasper.jq response (${jasperText.length}B): ${jasperText.slice(0, 200)}`);
+
+    // Response'u parse et — rapor_id veya benzeri ID dönmesi bekleniyor
+    let raporId = null;
+    try {
+      const parsed = JSON.parse(jasperText);
+      raporId = parsed.rapor_id || parsed.raporId || parsed.id || parsed.reportId;
+      if (!raporId && parsed.data) {
+        raporId = parsed.data.rapor_id || parsed.data.raporId || parsed.data.id;
+      }
+    } catch (e) {
+      // JSON değilse, direkt string'i ID kabul et (bazı eski API'ler öyle)
+      if (/^\d+$/.test(jasperText.trim())) raporId = jasperText.trim();
     }
 
-    let actionUrl = form.action;
-    if (!actionUrl) actionUrl = frm3.contentWindow.location.href;
-    if (actionUrl.includes('time=')) {
-      actionUrl = actionUrl.replace(/time=\d+/, 'time=' + Date.now());
+    if (!raporId) {
+      throw new Error(`jasper.jq response'dan rapor_id alınamadı: ${jasperText.slice(0, 300)}`);
+    }
+    await log(`✓ rapor_id alındı: ${raporId}`);
+
+    // 2) rapor_takip.jq — rapor hazırlanıyor, polling
+    const takipUrl = `${location.origin}/Luca/rapor_takip.jq?rapor_id=${raporId}`;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 * 2s = 60s timeout
+    let raporHazir = false;
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const takipRes = await fetch(takipUrl, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rapor_id: raporId }),
+        });
+        const takipText = await takipRes.text();
+        // "ready" / "tamam" / "1" gibi durum bekleniyor
+        if (/ready|tamam|finish|done|hazir|complete|"1"|^1$/i.test(takipText.trim())) {
+          raporHazir = true;
+          await log(`✓ Rapor hazır (deneme ${attempts}/${maxAttempts})`);
+          break;
+        }
+        if (attempts === 1 || attempts % 5 === 0) {
+          await log(`⏳ Polling ${attempts}/${maxAttempts}: ${takipText.slice(0, 80)}`);
+        }
+      } catch (e) {
+        await log(`⚠ Polling hata: ${e.message}`);
+      }
+      await sleep(2000);
     }
 
-    await log(`🚀 POST ${actionUrl.split('/').slice(-1)[0]}`);
+    if (!raporHazir) {
+      await log(`⚠ Polling timeout — yine de indirme deneniyor`);
+    }
 
-    // 6) Submit (browser yerine fetch — yeni tab açılmaz)
-    const res = await fetch(actionUrl, {
-      method: (form.method || 'POST').toUpperCase(),
-      body: fd,
+    // 3) rapor_indir.jq → Excel binary
+    const indirUrl = `${location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
+    await log(`📥 GET ${indirUrl.split('/').pop()}`);
+    const indirRes = await fetch(indirUrl, {
+      method: 'GET',
       credentials: 'include',
     });
-    if (!res.ok) {
-      throw new Error(`Submit HTTP ${res.status} ${res.statusText}`);
+    if (!indirRes.ok) {
+      throw new Error(`rapor_indir.jq HTTP ${indirRes.status}`);
     }
-
-    const ct = (res.headers.get('content-type') || '').toLowerCase();
-    await log(`📥 Response: ${ct.slice(0, 60)}`);
-
-    const blob = await res.blob();
+    const blob = await indirRes.blob();
     if (blob.size < 1000) {
       const text = await blob.text().catch(() => '');
       throw new Error(`Dönen dosya çok küçük (${blob.size}B): ${text.slice(0, 120)}`);
