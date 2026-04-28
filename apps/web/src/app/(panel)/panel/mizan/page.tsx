@@ -145,8 +145,10 @@ export default function MizanPage() {
         qc.invalidateQueries({ queryKey: ['mizan-list'] });
         if (d.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
       } else if (s === 'failed') {
-        setLucaStatus('');
-        setLucaJobId(null);
+        // Job başarısız: lucaJobId'yi NULL'LAMA — log container'ı görünür kalsın,
+        // kullanıcı hata satırlarını okusun ve "İptal" ile kapatsın. Aksi halde
+        // log kaybolur, kullanıcı sadece toast görür.
+        setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal'e basın`);
         toast.error(`Luca çekim hatası — son satır: ${lastLine || 'bilinmeyen'}`);
       }
     },
