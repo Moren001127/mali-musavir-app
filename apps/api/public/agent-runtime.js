@@ -962,11 +962,14 @@
     }
     await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || excelBtn.title || excelBtn.alt || '').trim().slice(0, 30)}" [${excelBtn.tagName}]`);
 
-    // GENİŞ INTERCEPT — Luca download'u fetch / XHR / <a download> / window.open
-    // hangisiyle yapıyorsa yakala. Excel content-type veya .xlsx URL'i göründüğünde
-    // blob'u yakalayıp native download'u iptal et.
+    // PARALEL FLOW STRATEJİSİ — Luca button click → jasper.jq POST body yakala
+    // → biz aynı body ile YENİ jasper.jq POST atalım → kendi rapor_id'mizle
+    // rapor_takip + rapor_indir yapıp blob alalım. Luca'nın orijinal rapor_id'si
+    // native download'da consume olur, bizimki bağımsız.
     let capturedBlob = null;
     let capturedUrl = null;
+    let jasperBody = null;
+    let jasperUrl = null;
     const seenUrls = [];
 
     const isExcelResponse = (ct, blob) => {
@@ -1010,6 +1013,12 @@
       win.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : (input?.url || '');
         seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
+        // jasper.jq POST yakala — body'yi sakla
+        if (/jasper\.jq/i.test(url) && init?.method === 'POST' && init?.body && !jasperBody) {
+          jasperBody = typeof init.body === 'string' ? init.body : String(init.body);
+          jasperUrl = url;
+          log(`📦 jasper.jq POST body yakalandı (${jasperBody.length}B)`).catch(() => {});
+        }
         const promise = orig.apply(this, arguments);
         promise.then((res) => tryCapture(res, url)).catch(() => {});
         return promise;
@@ -1032,6 +1041,12 @@
         const url = this._capturedUrl || '';
         this._capturedBody = body;
         seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
+        // jasper.jq XHR POST yakala — body'yi sakla
+        if (/jasper\.jq/i.test(url) && (this._capturedMethod || 'GET').toUpperCase() === 'POST' && body && !jasperBody) {
+          jasperBody = typeof body === 'string' ? body : String(body);
+          jasperUrl = url;
+          log(`📦 jasper.jq XHR body yakalandı (${jasperBody.length}B)`).catch(() => {});
+        }
         this.addEventListener('load', async () => {
           try {
             const ct = this.getResponseHeader('content-type') || '';
@@ -1047,51 +1062,64 @@
               }
             }
 
-            // 2) rapor_takip.jq görüldü — rapor_id'yi URL/body/response'tan ara
-            if (/rapor_takip/i.test(url) && !capturedBlob && !this._raporIdHandled) {
+            // 2) rapor_takip.jq görüldü — durum:150 (tamamlandı) olunca aynı body ile
+            //    genel/rapor_indir.jq'a POST atalım. Luca yapısı:
+            //      URL: genel/rapor_takip.jq POST {"donem_id":"X","params":{"raporTur":"mizan"}}
+            //      Resp: {"durum":150,"durumAciklama":"Rapor başarılı..."}
+            //      İndirme: genel/rapor_indir.jq POST aynı body
+            if (/rapor_takip/i.test(url) && !capturedBlob) {
               const bodyStr = typeof this._capturedBody === 'string' ? this._capturedBody : (this._capturedBody ? String(this._capturedBody) : '');
-              const respStr = (this.responseText || '').slice(0, 200);
-              // Diagnostic — URL + body + response'u log'la
+              const respStr = (this.responseText || '');
+              // İlk diagnostic
               if (!this._loggedDiag) {
                 this._loggedDiag = true;
                 log(`🔍 rapor_takip URL: ${url.slice(0, 100)}`).catch(() => {});
-                log(`🔍 rapor_takip body: ${bodyStr.slice(0, 150)}`).catch(() => {});
-                log(`🔍 rapor_takip response: ${respStr.slice(0, 150)}`).catch(() => {});
+                log(`🔍 rapor_takip body: ${bodyStr.slice(0, 200)}`).catch(() => {});
+                log(`🔍 rapor_takip response: ${respStr.slice(0, 400)}`).catch(() => {});
               }
-              const m = url.match(/rapor_id=(\d+)/i)
-                || bodyStr.match(/rapor_id["\s:=]+["]?(\d+)/i)
-                || respStr.match(/rapor_id["\s:=]+["]?(\d+)/i)
-                || bodyStr.match(/(\d{6,})/)  // 6+ digit number
-                || respStr.match(/(\d{6,})/);
-              const raporId = m ? m[1] : null;
-              if (raporId) {
-                this._raporIdHandled = true;
-                // İlk rapor_takip görüldü, rapor_id biliniyor — birkaç saniye bekle, sonra fetch
+              // Durum 150 = "Rapor başarılı bir şekilde oluşturuldu"
+              const durum = (respStr.match(/"durum"\s*:\s*(\d+)/) || [])[1];
+              const tamamlandi = durum === '150' || /başarılı bir şekilde oluştur/i.test(respStr);
+              if (tamamlandi && !this._indirmeBaslandi) {
+                this._indirmeBaslandi = true;
                 (async () => {
-                  await log(`🎯 rapor_id=${raporId} yakalandı, indirme bekleniyor (Luca polling bitsin)`);
-                  // Polling tipik 3-10 saniye sürer; 8sn bekle, sonra dene
-                  for (let attempt = 1; attempt <= 6; attempt++) {
-                    await sleep(2000);
-                    if (capturedBlob) return; // başka yöntemle yakalandıysa
-                    try {
-                      const indirUrl = `${win.location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
-                      const r = await win.fetch(indirUrl, { credentials: 'include' });
-                      if (r.ok) {
-                        const ct = r.headers.get('content-type') || '';
-                        const blob = await r.blob();
-                        if (blob.size > 5000) {
-                          capturedBlob = blob;
-                          await log(`✅ rapor_indir.jq blob yakalandı (deneme ${attempt}, ${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-                          return;
-                        } else {
-                          await log(`⏳ Deneme ${attempt}: dosya çok küçük (${blob.size}B), tekrar denenecek`);
-                        }
+                  await log(`🎯 Rapor hazır (durum=${durum}), indirme başlatılıyor`);
+                  // Aynı body ile genel/rapor_indir.jq'a POST
+                  const baseUrl = url.replace(/rapor_takip\.jq.*/, '');
+                  const indirUrl = `${baseUrl}rapor_indir.jq`;
+                  const fullUrl = indirUrl.startsWith('http') ? indirUrl : `${win.location.origin}/Luca/${indirUrl.replace(/^\//, '')}`;
+                  try {
+                    const r = await win.fetch(fullUrl, {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: bodyStr || JSON.stringify({ donem_id: '', params: { raporTur: 'mizan' } }),
+                    });
+                    if (r.ok) {
+                      const ct = r.headers.get('content-type') || '';
+                      const blob = await r.blob();
+                      if (blob.size > 5000) {
+                        capturedBlob = blob;
+                        await log(`✅ rapor_indir.jq blob (POST) yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
                       } else {
-                        await log(`⏳ Deneme ${attempt}: HTTP ${r.status}, tekrar denenecek`);
+                        await log(`⚠ POST küçük (${blob.size}B), GET deneniyor`);
+                        // GET fallback
+                        const r2 = await win.fetch(fullUrl, { credentials: 'include' });
+                        if (r2.ok) {
+                          const blob2 = await r2.blob();
+                          if (blob2.size > 5000) {
+                            capturedBlob = blob2;
+                            await log(`✅ rapor_indir.jq GET blob yakalandı (${Math.round(blob2.size / 1024)} KB)`);
+                          } else {
+                            await log(`⚠ GET de küçük (${blob2.size}B): ${(await blob2.text()).slice(0, 100)}`);
+                          }
+                        }
                       }
-                    } catch (e) {
-                      await log(`⚠ Deneme ${attempt} fetch hata: ${e.message}`);
+                    } else {
+                      await log(`⚠ rapor_indir HTTP ${r.status}: ${(await r.text()).slice(0, 100)}`);
                     }
+                  } catch (e) {
+                    await log(`⚠ rapor_indir fetch hata: ${e.message}`);
                   }
                 })().catch(() => {});
               }
@@ -1204,6 +1232,111 @@
     } catch (e) { await log(`⚠ gonder hata: ${e.message}`); }
     // 4) Yedek: fullActivate (mouseover+down+up+click)
     try { fullActivate(excelBtn, btnWin); } catch (e) {}
+
+    // PARALEL FLOW: jasper.jq body yakalanır yakalanmaz, biz YENİ rapor_id ile
+    // bağımsız flow çalıştırıp blob alalım (Luca'nın orijinal flow'u native download
+    // tetikleyip rapor_id'sini consume ediyor — bizimki bağımsız bir kopya).
+    (async () => {
+      // Body yakalanmasını bekle (max 15 sn)
+      for (let i = 0; i < 75; i++) {
+        if (jasperBody) break;
+        await sleep(200);
+      }
+      if (!jasperBody) {
+        await log(`⚠ jasper.jq body 15sn içinde yakalanamadı`);
+        return;
+      }
+
+      try {
+        await log(`🔄 Paralel flow başlıyor — yeni rapor_id alınıyor`);
+        // 1) Yeni jasper.jq POST → bizim rapor_id
+        const fullJasperUrl = jasperUrl.startsWith('http') ? jasperUrl : `${form.ownerDocument.defaultView.location.origin}/Luca/${jasperUrl.replace(/^\//, '')}`;
+        const r1 = await form.ownerDocument.defaultView.fetch(fullJasperUrl, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: jasperBody,
+        });
+        if (!r1.ok) {
+          await log(`⚠ Yeni jasper.jq HTTP ${r1.status}`);
+          return;
+        }
+        const r1text = await r1.text();
+        await log(`📥 Yeni jasper.jq response (${r1text.length}B): ${r1text.slice(0, 150)}`);
+
+        // 2) rapor_takip polling (genel/rapor_takip.jq POST)
+        // Body: {"donem_id":"X","params":{"raporTur":"mizan"}}
+        let donemId = '';
+        try { donemId = JSON.parse(jasperBody).donem_id || JSON.parse(jasperBody)?.donem_id || ''; } catch (e) {}
+        if (!donemId) {
+          // jasperBody'den manual olarak çıkar
+          const dm = jasperBody.match(/"donem_id"\s*:\s*"?(\d+)"?/);
+          donemId = dm ? dm[1] : '';
+        }
+        const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: 'mizan' } });
+        const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
+
+        for (let i = 0; i < 30; i++) {
+          if (capturedBlob) return;
+          await sleep(2000);
+          try {
+            const r2 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_takip.jq`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: takipBody,
+            });
+            const r2text = await r2.text();
+            const durum = (r2text.match(/"durum"\s*:\s*(\d+)/) || [])[1];
+            if (i === 0 || i % 5 === 0) {
+              await log(`⏳ Polling ${i + 1}/30: durum=${durum || '?'}`);
+            }
+            // Durum 150 = tamamlandı
+            if (durum === '150' || /başarılı bir şekilde oluştur/i.test(r2text)) {
+              await log(`✓ Bizim rapor hazır (durum=${durum})`);
+              break;
+            }
+          } catch (e) {
+            await log(`⚠ Polling hata: ${e.message}`);
+          }
+        }
+
+        if (capturedBlob) return;
+
+        // 3) rapor_indir POST → Excel binary
+        await log(`📥 rapor_indir.jq POST atılıyor`);
+        const r3 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_indir.jq`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: jasperBody,
+        });
+        if (r3.ok) {
+          const ct = r3.headers.get('content-type') || '';
+          const blob = await r3.blob();
+          if (blob.size > 5000) {
+            capturedBlob = blob;
+            await log(`✅ Paralel flow ile blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
+          } else {
+            const t = await blob.text();
+            await log(`⚠ rapor_indir POST küçük (${blob.size}B): ${t.slice(0, 150)}`);
+            // GET fallback
+            const r4 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_indir.jq`, { credentials: 'include' });
+            if (r4.ok) {
+              const blob4 = await r4.blob();
+              if (blob4.size > 5000) {
+                capturedBlob = blob4;
+                await log(`✅ rapor_indir GET ile blob (${Math.round(blob4.size / 1024)} KB)`);
+              }
+            }
+          }
+        } else {
+          await log(`⚠ rapor_indir HTTP ${r3.status}: ${(await r3.text()).slice(0, 100)}`);
+        }
+      } catch (e) {
+        await log(`⚠ Paralel flow hata: ${e.message}`);
+      }
+    })().catch(() => {});
 
     // 90 saniye bekle: blob yakalanana veya download URL yakalanana kadar
     let waited = 0;
