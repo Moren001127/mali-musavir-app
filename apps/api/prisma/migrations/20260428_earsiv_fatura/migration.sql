@@ -1,9 +1,14 @@
--- E-arşiv / E-fatura modülü
--- SATIŞ (e-arşiv) ve ALIŞ (e-fatura) toplu fatura kayıtları
+-- E-arşiv / E-fatura modülü (idempotent — kısmi yürütülmüşse bile güvenli)
 
-CREATE TYPE "EarsivTip" AS ENUM ('SATIS', 'ALIS');
+-- 1. ENUM
+DO $$ BEGIN
+  CREATE TYPE "EarsivTip" AS ENUM ('SATIS', 'ALIS');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TABLE "earsiv_faturalar" (
+-- 2. Tablo
+CREATE TABLE IF NOT EXISTS "earsiv_faturalar" (
   "id"             TEXT PRIMARY KEY,
   "tenantId"       TEXT NOT NULL,
   "taxpayerId"     TEXT NOT NULL,
@@ -28,20 +33,28 @@ CREATE TABLE "earsiv_faturalar" (
   "zipSourceName"  TEXT,
   "fetchJobId"     TEXT,
   "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt"      TIMESTAMP(3) NOT NULL,
-
-  CONSTRAINT "earsiv_faturalar_taxpayerId_fkey" FOREIGN KEY ("taxpayerId")
-    REFERENCES "Taxpayer"("id") ON DELETE CASCADE ON UPDATE CASCADE
+  "updatedAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX "earsiv_faturalar_tenant_taxpayer_tip_no_key"
+-- 3. Foreign key (FK varsa eklenmesin)
+DO $$ BEGIN
+  ALTER TABLE "earsiv_faturalar"
+    ADD CONSTRAINT "earsiv_faturalar_taxpayerId_fkey"
+    FOREIGN KEY ("taxpayerId") REFERENCES "Taxpayer"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 4. Index'ler
+CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key"
   ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "faturaNo");
 
-CREATE INDEX "earsiv_faturalar_tenant_taxpayer_donem_tip_idx"
+CREATE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_donem_tip_idx"
   ON "earsiv_faturalar"("tenantId", "taxpayerId", "donem", "tip");
 
-CREATE INDEX "earsiv_faturalar_tenant_tarih_idx"
+CREATE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_tarih_idx"
   ON "earsiv_faturalar"("tenantId", "faturaTarihi");
 
-CREATE INDEX "earsiv_faturalar_fetchJobId_idx"
+CREATE INDEX IF NOT EXISTS "earsiv_faturalar_fetchJobId_idx"
   ON "earsiv_faturalar"("fetchJobId");
