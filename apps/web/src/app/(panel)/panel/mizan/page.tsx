@@ -128,10 +128,13 @@ export default function MizanPage() {
     refetchInterval: 3000,
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     onSuccess: (d: any) => {
-      if (!d?.job) return;
-      const s = d.job.status;
-      // errorMsg artık kümülatif progress log — her satır bir adım
-      const log = d.job.errorMsg || '';
+      // Backend `getJob` direkt job objesini dönüyor (d.job DEĞİL, d'nin kendisi).
+      // Eski kod d.job arıyordu → polling baştan beri boşa gidiyordu, log container hiç açılmıyordu.
+      const job = d?.job ?? d;
+      if (!job?.status) return;
+      const s = job.status;
+      // errorMsg kümülatif progress log — her satır bir adım
+      const log = job.errorMsg || '';
       const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
       setLucaLogLines(lines);
       const lastLine = lines[lines.length - 1] || '';
@@ -139,15 +142,11 @@ export default function MizanPage() {
       else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
       else if (s === 'done') {
         setLucaStatus('Tamamlandı ✓');
-        // 2 sn sonra kapat ki kullanıcı son durumu görebilsin
         setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
         toast.success('Mizan Luca\'dan çekildi');
         qc.invalidateQueries({ queryKey: ['mizan-list'] });
-        if (d.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
+        if (d?.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
       } else if (s === 'failed') {
-        // Job başarısız: lucaJobId'yi NULL'LAMA — log container'ı görünür kalsın,
-        // kullanıcı hata satırlarını okusun ve "İptal" ile kapatsın. Aksi halde
-        // log kaybolur, kullanıcı sadece toast görür.
         setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal'e basın`);
         toast.error(`Luca çekim hatası — son satır: ${lastLine || 'bilinmeyen'}`);
       }
