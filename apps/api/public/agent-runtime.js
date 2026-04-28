@@ -1016,7 +1016,7 @@
       };
     };
 
-    // ─── XHR override (download bazen XHR ile) ───
+    // ─── XHR override (rapor_takip polling izle, hazır olunca rapor_indir fetch et) ───
     const installXhrOverride = (win, label) => {
       if (!win.XMLHttpRequest) return;
       const proto = win.XMLHttpRequest.prototype;
@@ -1033,11 +1033,40 @@
         this.addEventListener('load', async () => {
           try {
             const ct = this.getResponseHeader('content-type') || '';
+
+            // 1) XHR response Blob ise (Excel)
             if (this.response && this.response instanceof Blob) {
               if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
                 if (!capturedBlob) {
                   capturedBlob = this.response;
                   await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB)`);
+                  return;
+                }
+              }
+            }
+
+            // 2) rapor_takip.jq polling — "ready" gördüğünde biz rapor_indir.jq fetch ederiz
+            if (/rapor_takip/i.test(url) && !capturedBlob) {
+              const text = this.responseText || '';
+              // Luca polling response: "1", "ready", "tamam", "hazir" vs.
+              const ready = /^(\s*1\s*|.*ready.*|.*tamam.*|.*finish.*|.*done.*|.*hazir.*|.*complete.*)$/i.test(text.trim());
+              if (ready) {
+                // URL'den rapor_id çıkar (rapor_takip.jq?rapor_id=12345)
+                const m = url.match(/rapor_id=(\d+)/i) || (this.responseText || '').match(/rapor_id["\s:=]+["]?(\d+)/i);
+                const raporId = m ? m[1] : null;
+                if (raporId) {
+                  await log(`📥 Rapor hazır (rapor_id=${raporId}), indirme tetikleniyor`);
+                  try {
+                    const indirUrl = `${win.location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
+                    const r = await win.fetch(indirUrl, { credentials: 'include' });
+                    if (r.ok) {
+                      const blob = await r.blob();
+                      if (blob.size > 5000) {
+                        capturedBlob = blob;
+                        await log(`✅ rapor_indir.jq blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
+                      }
+                    }
+                  } catch (e) { await log(`⚠ rapor_indir fetch hata: ${e.message}`); }
                 }
               }
             }
