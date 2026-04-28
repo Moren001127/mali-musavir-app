@@ -1087,23 +1087,40 @@
     }
 
     await log(`🖱 "Rapor" butonu tıklanıyor (Luca'nın kendi flow'u)`);
-    // 1) Native click — HTMLElement.prototype.click (en güvenilir, listener'ları tetikler)
+    const btnWin = form.ownerDocument.defaultView;
+
+    // 1) Native click — HTMLElement.prototype.click (en güvenilir, onclick attribute tetikler)
     try { excelBtn.click(); } catch (e) { await log(`⚠ click() hata: ${e.message}`); }
-    // 2) Yedek: dispatchEvent click
+    // 2) jQuery click — Luca jQuery handler kullanıyor olabilir, native click tetiklemez
     try {
-      excelBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: form.ownerDocument.defaultView }));
-    } catch (e) {}
-    // 3) Yedek: fullActivate (mouseover+down+up+click+onclick)
-    try { fullActivate(excelBtn, form.ownerDocument.defaultView); } catch (e) {}
-    // 4) Onclick attribute varsa elle çağır
+      const $ = btnWin.$ || btnWin.jQuery;
+      if ($ && typeof $ === 'function') {
+        $(excelBtn).trigger('click');
+        await log(`🔧 jQuery $(btn).trigger('click') çağrıldı`);
+      }
+    } catch (e) { await log(`⚠ jQuery click hata: ${e.message}`); }
+    // 3) Doğrudan gonder() / global submit fonksiyonunu çağır
     try {
       const oc = excelBtn.getAttribute && excelBtn.getAttribute('onclick');
       if (oc) {
-        await log(`🔧 onclick attribute eval: ${oc.slice(0, 60)}`);
-        const win = form.ownerDocument.defaultView;
-        win.eval(oc);
+        await log(`🔧 onclick: ${oc.slice(0, 60)}`);
+        // onclick'ten fonksiyon adını çıkar (örn "gonder()" → "gonder")
+        const funcName = (oc.match(/(\w+)\s*\(/) || [])[1];
+        if (funcName && typeof btnWin[funcName] === 'function') {
+          btnWin[funcName]();
+          await log(`🚀 ${funcName}() çağrıldı (window scope)`);
+        } else if (funcName && typeof btnWin.top?.[funcName] === 'function') {
+          btnWin.top[funcName]();
+          await log(`🚀 ${funcName}() çağrıldı (top scope)`);
+        } else {
+          // Eval fallback
+          btnWin.eval(oc);
+          await log(`🔧 eval fallback`);
+        }
       }
-    } catch (e) { await log(`⚠ onclick eval hata: ${e.message}`); }
+    } catch (e) { await log(`⚠ gonder hata: ${e.message}`); }
+    // 4) Yedek: fullActivate (mouseover+down+up+click)
+    try { fullActivate(excelBtn, btnWin); } catch (e) {}
 
     // 90 saniye bekle: blob yakalanana veya download URL yakalanana kadar
     let waited = 0;
