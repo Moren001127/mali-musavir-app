@@ -236,11 +236,14 @@ export class LucaController {
   @HttpCode(HttpStatus.OK)
   async logJob(
     @Param('id') id: string,
-    @Body() body: { msg: string },
+    @Body() body: { msg?: string; line?: string; message?: string },
     @Headers('x-agent-token') agentToken: string,
   ) {
     await this.resolveTenantFromAgentToken(agentToken);
-    if (body?.msg) await this.luca.appendJobLog(id, body.msg);
+    // Eski/yeni agent sürümleriyle uyum: msg, line ya da message kabul et.
+    // Cache'lenmiş eski Luca tab'larındaki agent v1.17.0 da çalışsın.
+    const text = body?.msg || body?.line || body?.message;
+    if (text) await this.luca.appendJobLog(id, text);
     return { ok: true };
   }
 
