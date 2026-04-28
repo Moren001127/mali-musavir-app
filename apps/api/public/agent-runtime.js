@@ -866,16 +866,65 @@
    * Eski raporMizanAction.do form-urlencoded → boş Excel dönüyordu.
    */
   async function fetchMizanViaJasperJq(form, job, log) {
-    // donem_id ve sirket_id formdan oku
+    // donem_id formdan oku
     const donemId = form.querySelector('input[name="DONEM_ID"]')?.value
       || form.querySelector('input[name="donem_id"]')?.value
       || '';
-    const sirketId = form.querySelector('input[name="SIRKET_ID"]')?.value
-      || form.querySelector('input[name="sirket_id"]')?.value
-      || '';
+
+    // sirket_id form'da yok — frm4'teki SirketCombo veya başka bir yerden bulmalı.
+    // Tüm frame'leri RECURSIVE tara, "irket" içeren select bul.
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+
+    let sirketId = '';
+    const frames = collectFrames(document);
+    for (const f of frames) {
+      if (!f.contentDocument) continue;
+      try {
+        const combo = f.contentDocument.querySelector('select[name="SirketCombo"]')
+          || f.contentDocument.querySelector('select[name*="irket"]')
+          || f.contentDocument.querySelector('select[name*="Sirket"]')
+          || f.contentDocument.querySelector('select[name*="firma"]')
+          || f.contentDocument.querySelector('select[name*="Firma"]');
+        if (combo && combo.value) {
+          sirketId = combo.value;
+          await log(`✓ sirket_id frame "${f.name || '?'}" / select "${combo.name}"den okundu: ${sirketId}`);
+          break;
+        }
+      } catch (e) {}
+    }
+
+    // Hâlâ bulunamadıysa, top window'da global JS variable arayalım
+    if (!sirketId) {
+      try {
+        sirketId = String(window.SIRKET_ID || window.sirketId || window.SirketId
+          || window.top?.SIRKET_ID || window.top?.sirketId || '');
+      } catch (e) {}
+    }
 
     if (!donemId) {
       throw new Error('DONEM_ID form\'da bulunamadı');
+    }
+    if (!sirketId) {
+      // Diagnostic: tüm frame'lerdeki tüm select'leri logla
+      const allSelects = [];
+      for (const f of frames) {
+        if (!f.contentDocument) continue;
+        try {
+          for (const s of f.contentDocument.querySelectorAll('select')) {
+            allSelects.push(`${f.name || '?'}:${s.name || s.id || '?'}=${(s.value || '').slice(0, 20)}`);
+          }
+        } catch (e) {}
+      }
+      throw new Error(`sirket_id bulunamadı. Mevcut select'ler: ${allSelects.slice(0, 10).join(' | ')}`);
     }
 
     // Tarihleri slash formatına çevir
