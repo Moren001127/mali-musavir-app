@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "nest start --watch",
     "build": "prisma generate && nest build",
-    "start": "prisma migrate deploy && node dist/main",
+    "start": "node scripts/cleanup-failed-migrations.js && prisma migrate deploy && node dist/main",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "db:generate": "prisma generate",
