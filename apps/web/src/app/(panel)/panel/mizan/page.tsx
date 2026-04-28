@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
@@ -120,38 +120,39 @@ export default function MizanPage() {
       toast.error(e?.response?.data?.message || e?.message || 'Luca job oluşturulamadı'),
   });
 
-  // Job polling — done olunca tazele
-  useQuery({
+  // Job polling — React Query v5'te onSuccess kaldırıldı, useEffect ile state güncelle
+  const lucaJobQuery = useQuery({
     queryKey: ['luca-job', lucaJobId],
     queryFn: () => mizanApi.getLucaJob(lucaJobId!),
     enabled: !!lucaJobId,
     refetchInterval: 3000,
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
-    onSuccess: (d: any) => {
-      // Backend `getJob` direkt job objesini dönüyor (d.job DEĞİL, d'nin kendisi).
-      // Eski kod d.job arıyordu → polling baştan beri boşa gidiyordu, log container hiç açılmıyordu.
-      const job = d?.job ?? d;
-      if (!job?.status) return;
-      const s = job.status;
-      // errorMsg kümülatif progress log — her satır bir adım
-      const log = job.errorMsg || '';
-      const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
-      setLucaLogLines(lines);
-      const lastLine = lines[lines.length - 1] || '';
-      if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
-      else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
-      else if (s === 'done') {
-        setLucaStatus('Tamamlandı ✓');
-        setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
-        toast.success('Mizan Luca\'dan çekildi');
-        qc.invalidateQueries({ queryKey: ['mizan-list'] });
-        if (d?.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
-      } else if (s === 'failed') {
-        setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal'e basın`);
-        toast.error(`Luca çekim hatası — son satır: ${lastLine || 'bilinmeyen'}`);
-      }
-    },
-  } as any);
+  });
+
+  useEffect(() => {
+    const d = lucaJobQuery.data as any;
+    if (!d) return;
+    // Backend `/mizan/luca-job/:id` endpoint `{job, mizan}` dönüyor;
+    // eski kod direkt `d` bekliyordu — her ikisini de destekle.
+    const job = d?.job ?? d;
+    if (!job?.status) return;
+    const s = job.status;
+    const log = job.errorMsg || '';
+    const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+    setLucaLogLines(lines);
+    const lastLine = lines[lines.length - 1] || '';
+    if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
+    else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
+    else if (s === 'done') {
+      setLucaStatus('Tamamlandı ✓');
+      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
+      toast.success('Mizan Luca\'dan çekildi');
+      qc.invalidateQueries({ queryKey: ['mizan-list'] });
+      if (d?.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
+    } else if (s === 'failed') {
+      setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal'e basın`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lucaJobQuery.data]);
 
   // Manuel Excel yükleme — Luca dışında kendi dosyandan (xlsx)
   const uploadRef = useRef<HTMLInputElement>(null);
