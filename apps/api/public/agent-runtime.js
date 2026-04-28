@@ -1013,20 +1013,8 @@
       win.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : (input?.url || '');
         seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
-        // jasper.jq POST yakala + ABORT et — server'a ulaşmadan body'yi al
-        // Sonra biz kendi flow'umuzla tek session'da temiz çalıştıracağız
-        if (/jasper\.jq/i.test(url) && init?.method === 'POST' && init?.body && !jasperBody) {
-          jasperBody = typeof init.body === 'string' ? init.body : String(init.body);
-          jasperUrl = url;
-          log(`📦 jasper.jq POST body yakalandı + iptal edildi (${jasperBody.length}B)`).catch(() => {});
-          // Luca'nın isteğini reject et (server'a gitmesin, session conflict olmasın)
-          return Promise.reject(new Error('Moren agent intercepted'));
-        }
-        // rapor_takip ve rapor_indir Luca'nın native flow'u — abort et ki bizim flow tek session'da olsun
-        if (jasperBody && /rapor_takip|rapor_indir/i.test(url) && !init?._morenAgentRequest) {
-          log(`🚫 Luca ${url.split('/').pop().split('?')[0]} iptal edildi`).catch(() => {});
-          return Promise.reject(new Error('Moren agent intercepted'));
-        }
+        // PASIF: Luca akışını engelleme, sadece izle. Background script
+        // disk'ten dosyayı okuyup bize iletecek.
         const promise = orig.apply(this, arguments);
         promise.then((res) => tryCapture(res, url)).catch(() => {});
         return promise;
@@ -1049,20 +1037,7 @@
         const url = this._capturedUrl || '';
         this._capturedBody = body;
         seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
-        // jasper.jq XHR POST yakala + ABORT — body'yi al, server'a gitmesin
-        if (/jasper\.jq/i.test(url) && (this._capturedMethod || 'GET').toUpperCase() === 'POST' && body && !jasperBody) {
-          jasperBody = typeof body === 'string' ? body : String(body);
-          jasperUrl = url;
-          log(`📦 jasper.jq XHR body yakalandı + abort (${jasperBody.length}B)`).catch(() => {});
-          try { this.abort(); } catch (e) {}
-          return; // send'i tetikleme
-        }
-        // rapor_takip + rapor_indir Luca tarafından — abort
-        if (jasperBody && /rapor_takip|rapor_indir/i.test(url) && !this._morenAgentRequest) {
-          log(`🚫 Luca XHR ${url.split('/').pop().split('?')[0]} abort`).catch(() => {});
-          try { this.abort(); } catch (e) {}
-          return;
-        }
+        // PASIF: Luca akışını engelleme, native download'a izin ver.
         this.addEventListener('load', async () => {
           try {
             const ct = this.getResponseHeader('content-type') || '';
@@ -1249,10 +1224,24 @@
     // 4) Yedek: fullActivate (mouseover+down+up+click)
     try { fullActivate(excelBtn, btnWin); } catch (e) {}
 
-    // PARALEL FLOW: jasper.jq body yakalanır yakalanmaz, biz YENİ rapor_id ile
-    // bağımsız flow çalıştırıp blob alalım (Luca'nın orijinal flow'u native download
-    // tetikleyip rapor_id'sini consume ediyor — bizimki bağımsız bir kopya).
-    (async () => {
+    // YENİ STRATEJİ: Background script disk'ten Excel'i okuyup bize iletecek.
+    // moren-luca-file event'ini dinle.
+    const onLucaFile = async (e) => {
+      const detail = e.detail || {};
+      const blob = detail.blob;
+      if (capturedBlob) return;
+      if (blob && blob.size > 5000) {
+        capturedBlob = blob;
+        await log(`✅ Background'tan Excel disk'ten alındı (${Math.round(blob.size / 1024)} KB, dosya: ${(detail.filename || '').split(/[\\/]/).pop()})`);
+      } else if (detail.filename) {
+        await log(`⚠ Background dosyayı diskten okuyamadı: ${detail.filename}. file:// permission yok olabilir.`);
+      }
+    };
+    window.addEventListener('moren-luca-file', onLucaFile);
+    restoreFns.push(() => window.removeEventListener('moren-luca-file', onLucaFile));
+
+    // Eski paralel flow KAPATILDI — Luca native download'a izin veriyoruz, biz disk'ten alıyoruz
+    if (false && jasperBody) (async () => {
       // Body yakalanmasını bekle (max 15 sn)
       for (let i = 0; i < 75; i++) {
         if (jasperBody) break;
