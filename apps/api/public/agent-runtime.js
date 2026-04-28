@@ -890,28 +890,50 @@
       await log(`📅 Tarih: ${tarih.bas} → ${tarih.bit}`);
     }
 
-    // Excel'e Aktar butonunu bul (form içinde veya parent document'ta)
+    // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
+    // DİKKAT: "Kümülatif Rapor" butonunu seçme — sadece "Rapor".
     const findExcelButton = () => {
-      const candidates = [];
-      // Form içinde
-      candidates.push(...form.querySelectorAll('input[type="button"], button, a, input[type="submit"]'));
-      // Form dışında frame içinde
       const doc = form.ownerDocument;
-      candidates.push(...doc.querySelectorAll('input[type="button"], button, a'));
-      for (const el of candidates) {
-        const txt = (el.value || el.textContent || el.title || '').trim();
-        if (/excel|xlsx|aktar/i.test(txt) && !/iptal|cancel/i.test(txt)) {
-          return el;
-        }
+      const all = [
+        ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
+        ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
+      ];
+      // 1. Tam eşleşme: text/value === "Rapor"
+      for (const el of all) {
+        const txt = (el.value || el.textContent || '').trim();
+        if (txt === 'Rapor' || txt === 'RAPOR') return el;
+      }
+      // 2. Tam eşleşme: "Rapor Al" / "Excel'e Aktar" gibi
+      for (const el of all) {
+        const txt = (el.value || el.textContent || '').trim();
+        if (/^rapor( al|u? hazırla|u? olustur)?$/i.test(txt)) return el;
+        if (/excel.*aktar|aktar.*excel/i.test(txt)) return el;
+      }
+      // 3. onclick'inde "rapor", "jasper", "submitForm" var
+      for (const el of all) {
+        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
+        if (/raporIndir|jasper|rapor_tur|raporGetir|submitForm|raporAl/i.test(oc)) return el;
       }
       return null;
     };
 
     const excelBtn = findExcelButton();
     if (!excelBtn) {
-      throw new Error('"Excel\'e Aktar" butonu bulunamadı');
+      // Diagnostic: tüm tıklanabilir elementleri logla
+      const doc = form.ownerDocument;
+      const all = [...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a, img[onclick]')];
+      const list = all
+        .map((el) => {
+          const t = (el.value || el.textContent || el.title || el.alt || '').trim().slice(0, 25);
+          const oc = (el.getAttribute && el.getAttribute('onclick') || '').slice(0, 40);
+          return `[${el.tagName}]${t || '∅'}${oc ? `|onclick=${oc}` : ''}`;
+        })
+        .filter((s, i, arr) => arr.indexOf(s) === i)
+        .slice(0, 20)
+        .join(' || ');
+      throw new Error(`Excel butonu bulunamadı. Form'daki tıklanabilir elementler: ${list}`);
     }
-    await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || '').trim().slice(0, 30)}"`);
+    await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || excelBtn.title || excelBtn.alt || '').trim().slice(0, 30)}" [${excelBtn.tagName}]`);
 
     // Top window'da fetch'i monkey-patch et — tüm frame'lerin fetch'i top'a düşer
     let capturedBlob = null;
