@@ -885,9 +885,36 @@
     const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
     const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
     if (tarihIlk && tarihSon) {
-      setNative(tarihIlk, tarih.bas);
-      setNative(tarihSon, tarih.bit);
-      await log(`📅 Tarih: ${tarih.bas} → ${tarih.bit}`);
+      // Luca slash formatı kullanıyor (network'ten görüldü: "01/03/2026")
+      const slashBas = tarih.bas.replace(/\./g, '/');
+      const slashBit = tarih.bit.replace(/\./g, '/');
+
+      // Set + 5 kez deneme — Luca async olarak silebilir
+      let setOk = false;
+      for (let i = 0; i < 5; i++) {
+        setNative(tarihIlk, slashBas);
+        setNative(tarihSon, slashBit);
+        await sleep(200);
+        if (tarihIlk.value && tarihSon.value) {
+          setOk = true;
+          break;
+        }
+      }
+
+      // Slash başarısızsa nokta dene
+      if (!setOk) {
+        for (let i = 0; i < 3; i++) {
+          setNative(tarihIlk, tarih.bas);
+          setNative(tarihSon, tarih.bit);
+          await sleep(200);
+          if (tarihIlk.value && tarihSon.value) {
+            setOk = true;
+            break;
+          }
+        }
+      }
+
+      await log(`📅 Tarih: ${tarihIlk.value || '∅'} → ${tarihSon.value || '∅'} (set ${setOk ? 'OK' : 'FAIL'})`);
     }
 
     // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
