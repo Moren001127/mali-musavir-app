@@ -94,7 +94,7 @@ export class ReconciliationEngine {
     //   → Virtual: ESR...1204/2026-03-23/kdv=158 → Fatura ile eşleşir
     //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
     // ═══════════════════════════════════════════════════════
-    const { records, virtualGroups, virtualExpectedBreakdown } = this.aggregateMultiRateRecords(rawRecords);
+    const { records, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts } = this.aggregateMultiRateRecords(rawRecords);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
     // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
@@ -158,7 +158,8 @@ export class ReconciliationEngine {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis);
+        const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis, originalKdvList);
         if (strictMatch) {
           usedImageIds.add(image.id);
           fanOutMatch(record, image.id, 'MATCHED', score, reasons);
@@ -191,7 +192,8 @@ export class ReconciliationEngine {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis);
+        const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis, originalKdvList);
         // Belge no exact uyumsuzluğu varsa pair'i ele
         const belgeNoTamUyumsuz = reasons.some((r) =>
           /Belge no uyumsuz|E-fatura belge no farklı|Çok oranlı uyumsuzluk/i.test(r),
@@ -301,6 +303,10 @@ export class ReconciliationEngine {
      *  karşılaştırınca fark çıkar; tevkifat ekleyerek MATCHED yakalanır).
      *  SATIŞ'ta Luca zaten NET kaydeder → fark olmamalı. */
     isAlis: boolean = false,
+    /** Aggregate edilen virtual record için orijinal Luca satırlarındaki KDV
+     *  tutarları. ALIŞ'ta Luca'da NET satırı + Tevkifat satırı ayrı kayıtlar;
+     *  bunlardan biri OCR NET ile eşleşiyorsa AYNI BELGE'dir. */
+    originalRecordKdvList: number[] | null = null,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
@@ -458,13 +464,32 @@ export class ReconciliationEngine {
             const tamKdvFromOcr = imgKdvNum + (Number.isFinite(imgTevkifat) ? imgTevkifat : 0);
             const tamDiff = Math.abs(recordKdv - tamKdvFromOcr) / (recordKdv || 1);
 
+            // ALIŞ tevkifat senaryosu (3 farklı yakalama yolu):
+            //  1. OCR.kdvTutari + OCR.kdvTevkifat = Luca TAM (klasik)
+            //  2. Orijinal Luca satırlarından biri (NET satırı) = OCR.kdvTutari
+            //     (OCR tevkifat tespit edemese bile)
+            //  3. Aggregate Luca / 2 ≈ OCR (tipik %50 tevkifat varsayımı, defansif)
+            const lucaOriginalMatch = isAlis
+              && Array.isArray(originalRecordKdvList)
+              && originalRecordKdvList.length >= 2
+              && originalRecordKdvList.some(
+                (k) => Math.abs(k - imgKdvNum) / (imgKdvNum || 1) < 0.01,
+              );
+
             if (isAlis && imgTevkifat > 0 && tamDiff < 0.01) {
-              // ALIŞ + Luca TAM KDV (aggregate edilmiş NET+Tevkifat) = OCR NET + Tevkifat
-              // → AYNI belge, tevkifat yansıması farklı satırda kaydedilmiş
+              // YOL 1: OCR tevkifat var, TAM kontrolü tutuyor
               score += 0.3;
               kdvExact = true;
               reasons.push(
                 `Alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} (NET+Tevkifat) = Fatura ${this.fmtAmt(imgKdvNum)} (NET) + ${this.fmtAmt(imgTevkifat)} (tevkifat)`,
+              );
+            } else if (lucaOriginalMatch) {
+              // YOL 2: Orijinal Luca satırlarından biri OCR NET'e eşit
+              // OCR tevkifat alanı dolmasa bile aynı belgedir
+              score += 0.3;
+              kdvExact = true;
+              reasons.push(
+                `Alış tevkifat eşleşmesi: Luca'daki NET satırı ${this.fmtAmt(imgKdvNum)} = Fatura NET KDV (Luca'da TAM ${this.fmtAmt(recordKdv)} = NET + Tevkifat)`,
               );
             } else {
               reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
@@ -761,6 +786,13 @@ export class ReconciliationEngine {
      * ile karşılaştırılır (kalem-kalem doğrulama).
      */
     virtualExpectedBreakdown: Map<string, Array<{ oran: number; tutar: number }>>;
+    /**
+     * Virtual record id → orijinal Luca satırlarındaki KDV tutarları listesi.
+     * ALIŞ tevkifatlı faturalarda Luca'da 2 satır vardır (NET + Tevkifat),
+     * aggregate sonrası record.kdvTutari = TAM. Ama orijinal NET satırının
+     * tutarı OCR NET ile eşleşiyorsa bu AYNI BELGE'dir → MATCHED ver.
+     */
+    virtualOriginalKdvAmounts: Map<string, number[]>;
   } {
     const groups = new Map<string, KdvRecord[]>();
     const unaggregated: KdvRecord[] = [];
@@ -780,6 +812,7 @@ export class ReconciliationEngine {
     const result: KdvRecord[] = [...unaggregated];
     const virtualGroups = new Map<string, string[]>();
     const virtualExpectedBreakdown = new Map<string, Array<{ oran: number; tutar: number }>>();
+    const virtualOriginalKdvAmounts = new Map<string, number[]>();
 
     for (const [key, group] of groups) {
       if (group.length === 1) {
@@ -826,12 +859,17 @@ export class ReconciliationEngine {
             .sort((a, b) => b.oran - a.oran),
         );
       }
+      // Orijinal satırlardaki KDV tutarları — ALIŞ tevkifat tespiti için
+      virtualOriginalKdvAmounts.set(
+        virtualId,
+        group.map((r) => parseFloat(r.kdvTutari?.toString() || '0')).filter((n) => n > 0),
+      );
       this.logger.log(
         `Çok oranlı KDV aggregate: belge=${base.belgeNo} · ${group.length} satır → toplam KDV=${kdvToplam.toFixed(2)} · oranlar=[${Array.from(expectedByRate.entries()).map(([o, t]) => `%${o}:${t.toFixed(2)}`).join(', ')}]`,
       );
     }
 
-    return { records: result, virtualGroups, virtualExpectedBreakdown };
+    return { records: result, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts };
   }
 
   private parseTrDate(s: string): Date | null {
