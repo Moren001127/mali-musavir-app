@@ -1141,6 +1141,34 @@
       await log(`🔎 Click öncesi: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
     }
 
+    // Bridge'den gelen Luca download URL'ini dinle (background script chrome.downloads
+    // intercepted etti + iptal etti, URL'i bize gönderiyor)
+    const onBridgeMessage = async (event) => {
+      const data = event.data;
+      if (data?.source !== 'moren-bridge' || data?.type !== 'lucaDownload') return;
+      const dlUrl = data.url;
+      if (!dlUrl || capturedBlob) return;
+      await log(`🌉 Background'tan download URL geldi: ${dlUrl.split('/').pop().slice(0, 60)}`);
+      try {
+        const r = await fetch(dlUrl, { credentials: 'include' });
+        if (r.ok) {
+          const blob = await r.blob();
+          if (blob.size > 5000) {
+            capturedBlob = blob;
+            await log(`✅ Bridge URL fetch ile blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
+          } else {
+            await log(`⚠ Bridge URL fetch küçük dosya (${blob.size}B)`);
+          }
+        } else {
+          await log(`⚠ Bridge URL fetch HTTP ${r.status}`);
+        }
+      } catch (e) {
+        await log(`⚠ Bridge URL fetch hata: ${e.message}`);
+      }
+    };
+    window.addEventListener('message', onBridgeMessage);
+    restoreFns.push(() => { window.removeEventListener('message', onBridgeMessage); });
+
     await log(`🖱 "Rapor" butonu tıklanıyor (Luca'nın kendi flow'u)`);
     const btnWin = form.ownerDocument.defaultView;
 
