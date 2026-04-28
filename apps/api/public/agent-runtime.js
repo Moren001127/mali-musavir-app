@@ -1013,11 +1013,19 @@
       win.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : (input?.url || '');
         seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
-        // jasper.jq POST yakala — body'yi sakla
+        // jasper.jq POST yakala + ABORT et — server'a ulaşmadan body'yi al
+        // Sonra biz kendi flow'umuzla tek session'da temiz çalıştıracağız
         if (/jasper\.jq/i.test(url) && init?.method === 'POST' && init?.body && !jasperBody) {
           jasperBody = typeof init.body === 'string' ? init.body : String(init.body);
           jasperUrl = url;
-          log(`📦 jasper.jq POST body yakalandı (${jasperBody.length}B)`).catch(() => {});
+          log(`📦 jasper.jq POST body yakalandı + iptal edildi (${jasperBody.length}B)`).catch(() => {});
+          // Luca'nın isteğini reject et (server'a gitmesin, session conflict olmasın)
+          return Promise.reject(new Error('Moren agent intercepted'));
+        }
+        // rapor_takip ve rapor_indir Luca'nın native flow'u — abort et ki bizim flow tek session'da olsun
+        if (jasperBody && /rapor_takip|rapor_indir/i.test(url) && !init?._morenAgentRequest) {
+          log(`🚫 Luca ${url.split('/').pop().split('?')[0]} iptal edildi`).catch(() => {});
+          return Promise.reject(new Error('Moren agent intercepted'));
         }
         const promise = orig.apply(this, arguments);
         promise.then((res) => tryCapture(res, url)).catch(() => {});
@@ -1041,11 +1049,19 @@
         const url = this._capturedUrl || '';
         this._capturedBody = body;
         seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
-        // jasper.jq XHR POST yakala — body'yi sakla
+        // jasper.jq XHR POST yakala + ABORT — body'yi al, server'a gitmesin
         if (/jasper\.jq/i.test(url) && (this._capturedMethod || 'GET').toUpperCase() === 'POST' && body && !jasperBody) {
           jasperBody = typeof body === 'string' ? body : String(body);
           jasperUrl = url;
-          log(`📦 jasper.jq XHR body yakalandı (${jasperBody.length}B)`).catch(() => {});
+          log(`📦 jasper.jq XHR body yakalandı + abort (${jasperBody.length}B)`).catch(() => {});
+          try { this.abort(); } catch (e) {}
+          return; // send'i tetikleme
+        }
+        // rapor_takip + rapor_indir Luca tarafından — abort
+        if (jasperBody && /rapor_takip|rapor_indir/i.test(url) && !this._morenAgentRequest) {
+          log(`🚫 Luca XHR ${url.split('/').pop().split('?')[0]} abort`).catch(() => {});
+          try { this.abort(); } catch (e) {}
+          return;
         }
         this.addEventListener('load', async () => {
           try {
@@ -1248,12 +1264,26 @@
       }
 
       try {
-        await log(`🔄 Paralel flow başlıyor — yeni rapor_id alınıyor`);
+        await log(`🔄 Agent flow başlıyor (Luca abort edildi, tek session)`);
+        // Bizim isteklerimizi interceptor'dan koruma flag'i
+        const agentInit = (extra = {}) => ({
+          ...extra,
+          credentials: 'include',
+          // Init objesinin değişmesi için fetch interceptor da bunu görsün
+          _morenAgentRequest: true,
+        });
+        // Native fetch'i interceptor'dan kaçırmak için — direct origFetch kullan
+        const directFetch = (url, init) => {
+          const realInit = { ...init, credentials: 'include' };
+          // Custom flag interceptor için
+          realInit._morenAgentRequest = true;
+          return form.ownerDocument.defaultView.fetch(url, realInit);
+        };
+
         // 1) Yeni jasper.jq POST → bizim rapor_id
         const fullJasperUrl = jasperUrl.startsWith('http') ? jasperUrl : `${form.ownerDocument.defaultView.location.origin}/Luca/${jasperUrl.replace(/^\//, '')}`;
-        const r1 = await form.ownerDocument.defaultView.fetch(fullJasperUrl, {
+        const r1 = await directFetch(fullJasperUrl, {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: jasperBody,
         });
@@ -1280,9 +1310,8 @@
           if (capturedBlob) return;
           await sleep(2000);
           try {
-            const r2 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_takip.jq`, {
+            const r2 = await directFetch(`${baseGenelUrl}/rapor_takip.jq`, {
               method: 'POST',
-              credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
               body: takipBody,
             });
@@ -1305,9 +1334,8 @@
 
         // 3) rapor_indir POST → Excel binary
         await log(`📥 rapor_indir.jq POST atılıyor`);
-        const r3 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_indir.jq`, {
+        const r3 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {
           method: 'POST',
-          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: jasperBody,
         });
@@ -1321,7 +1349,7 @@
             const t = await blob.text();
             await log(`⚠ rapor_indir POST küçük (${blob.size}B): ${t.slice(0, 150)}`);
             // GET fallback
-            const r4 = await form.ownerDocument.defaultView.fetch(`${baseGenelUrl}/rapor_indir.jq`, { credentials: 'include' });
+            const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
             if (r4.ok) {
               const blob4 = await r4.blob();
               if (blob4.size > 5000) {
