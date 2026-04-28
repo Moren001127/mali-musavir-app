@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS "earsiv_faturalar" (
 DO $$ BEGIN
   ALTER TABLE "earsiv_faturalar"
     ADD CONSTRAINT "earsiv_faturalar_taxpayerId_fkey"
-    FOREIGN KEY ("taxpayerId") REFERENCES "Taxpayer"("id")
+    FOREIGN KEY ("taxpayerId") REFERENCES "taxpayers"("id")
     ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION
   WHEN duplicate_object THEN NULL;
