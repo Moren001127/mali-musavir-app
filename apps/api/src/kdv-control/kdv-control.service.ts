@@ -1145,7 +1145,12 @@ export class KdvControlService {
     const results = await this.prisma.reconciliationResult.findMany({
       where: { sessionId },
       include: { kdvRecord: true, image: true },
-      orderBy: [{ status: 'asc' }, { matchScore: 'desc' }],
+      orderBy: [
+        { status: 'asc' },
+        // Aynı status içinde Luca tarihine göre sırala — muhasebeci aynı sırayı her açışta görsün
+        { kdvRecord: { belgeDate: 'asc' } },
+        { matchScore: 'desc' },
+      ],
     });
 
     // ExcelJS + path + fs üstte static import ediliyor — webpack bundling
@@ -1192,20 +1197,55 @@ export class KdvControlService {
       } else {
         cleaned = s;
       }
-      const n = parseFloat(cleaned.replace(/[^\d.-]/g, ''));
-      return Number.isFinite(n) ? Math.abs(n) : 0;
+      const n = parseFloat(cleaned.replace(/[^\d.\-]/g, ''));
+      // Math.abs KALDIRILDI — iptal/iade faturaları negatif olabilir, işaret korunsun
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // ─── FAN-OUT ÇÖZÜM: aynı imageId'ye bağlı birden fazla result varsa ───
+    // Çok oranlı (Z raporu / karma fatura) durumlarda 1 OCR fatura ↔ N Luca
+    // satırı eşleşmesi yapılır. Önceden her satıra fatura KDV TOPLAMI yazıldığı
+    // için raporun "Fatura toplam" sütunu N kat şişiyordu. Çözüm: fatura
+    // KDV'sini orantılı paylaştır → her satırda faturaKdvShare = (lucaKdv /
+    // sum(grup lucaKdv)) × faturaKdvTotal. Tek satırlı eşleşmelerde share =
+    // faturaKdvTotal (değişiklik yok).
+    const imageGroupTotals = new Map<string, number>();
+    for (const r of results as any[]) {
+      if (!r.imageId) continue;
+      const luca = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
+      imageGroupTotals.set(r.imageId, (imageGroupTotals.get(r.imageId) || 0) + luca);
+    }
+    /** Bir result satırının raporda göstermesi gereken (paylaştırılmış) fatura KDV'si */
+    const getFaturaKdvShare = (r: any): number => {
+      if (!r.image || !r.imageId) return 0;
+      const ocrTotal = parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
+      if (ocrTotal <= 0) return 0;
+      const groupTotal = imageGroupTotals.get(r.imageId) || 0;
+      const lucaThis = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
+      // Tek satırsa veya groupTotal sıfırsa olduğu gibi
+      if (groupTotal <= 0 || lucaThis <= 0) return ocrTotal;
+      // Birden fazla satır → orantılı pay
+      return (lucaThis / groupTotal) * ocrTotal;
     };
 
     // Özet için 3 ayrı grup — kullanıcının "fark" kafa karışıklığını çözer
     const sumLucaAll = results.reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
-    const sumOcrAll = results.reduce((s, r: any) => s + parseKdv(r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari), 0);
+    // sumOcrAll: orijinal OCR toplamı (her image bir kez sayılır — fan-out çift saymaz)
+    const seenImageIdsForAll = new Set<string>();
+    const sumOcrAll = results.reduce((s, r: any) => {
+      if (!r.image || !r.imageId) return s;
+      if (seenImageIdsForAll.has(r.imageId)) return s; // aynı image bir kez
+      seenImageIdsForAll.add(r.imageId);
+      return s + parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
+    }, 0);
     // Sadece eşleşen tutarlar: MATCHED + CONFIRMED (kullanıcının onayladıkları)
     const sumLucaMatched = results
       .filter((r: any) => isMatchedStatus(r.status))
       .reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
+    // sumOcrMatched: paylaştırılmış fatura KDV'si üzerinden — fan-out çift saymaz
     const sumOcrMatched = results
       .filter((r: any) => isMatchedStatus(r.status))
-      .reduce((s, r: any) => s + parseKdv(r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari), 0);
+      .reduce((s, r: any) => s + getFaturaKdvShare(r), 0);
     const fmtTl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 
     // ═══════════════ ExcelJS ile oluştur ═══════════════
@@ -1374,7 +1414,9 @@ export class KdvControlService {
 
       const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
       const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
-      const faturaKdvNum = parseKdv(r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari);
+      // Fan-out fix: aynı imageId N Luca satırına bağlıysa her satırda fatura
+      // KDV'si toplam yerine ORANTILI PAY olarak yazılır → toplam doğru çıkar
+      const faturaKdvNum = getFaturaKdvShare(r);
       const faturaKdv = faturaKdvNum > 0 ? faturaKdvNum : null;
 
       let durum = '';
@@ -1386,11 +1428,14 @@ export class KdvControlService {
       else if (r.status === 'REJECTED') durum = '✗ REDDEDİLDİ';
       else durum = r.status;
 
-      const aciklama = !r.image
-        ? 'Fatura görseli yok'
-        : !r.kdvRecord
-          ? 'Luca kaydı yok'
-          : (r.mismatchReasons || []).join(' · ') || '';
+      // Açıklama: orphan durumda referans no ekle ki muhasebeci hangi tarafı
+      // arayacağını bilsin. ONAYLANDI durumda notes da raporda görünsün.
+      const noteSuffix = r.notes ? ` · Not: ${r.notes}` : '';
+      const aciklama = !r.image && r.kdvRecord
+        ? `Fatura görseli yok (Luca ${lucaEvrak} · ${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`
+        : !r.kdvRecord && r.image
+          ? `Luca kaydı yok (Fatura ${faturaBelgeNo})`
+          : ((r.mismatchReasons || []).join(' · ') || (isMatchedStatus(r.status) ? 'Tam eşleşme' : '')) + noteSuffix;
 
       row.values = [
         idx + 1, lucaTarih, lucaEvrak, lucaKdv,
@@ -1441,9 +1486,10 @@ export class KdvControlService {
           where: { id: sessionId },
           include: { taxpayer: true },
         });
-        const matchedCount = results.filter((r) => r.status === 'MATCHED').length;
-        const partialCount = results.filter((r) => r.status === 'PARTIAL_MATCH').length;
-        const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED' || r.status === 'NEEDS_REVIEW').length;
+        // Excel özet ile aynı kategori mantığı kullan — istatistikler tutarlı olsun
+        const matchedCount = results.filter((r) => r.status === 'MATCHED' || r.status === 'CONFIRMED').length;
+        const partialCount = results.filter((r) => r.status === 'PARTIAL_MATCH' || r.status === 'NEEDS_REVIEW').length;
+        const unmatchedCount = results.filter((r) => r.status === 'UNMATCHED' || r.status === 'REJECTED').length;
         const mukellefName = session?.taxpayer
           ? session.taxpayer.companyName ||
             `${session.taxpayer.firstName ?? ''} ${session.taxpayer.lastName ?? ''}`.trim()
