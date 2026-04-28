@@ -854,11 +854,153 @@
     const form = await waitForLucaMizanForm(log);
     frm3 = getLucaFrame('frm3');
 
-    // 5) YENİ JASPER.JQ AKIŞI — Luca artık yeni API kullanıyor (raporMizanAction.do deprecated):
-    //    POST /Luca/jasper.jq?rapor_tur=mizan (JSON body) → rapor_id
-    //    POST /Luca/rapor_takip.jq?rapor_id=... → polling (rapor durumu)
-    //    GET  /Luca/rapor_indir.jq?rapor_id=... → Excel binary
-    return await fetchMizanViaJasperJq(form, job, log);
+    // 5) YENİ AKIŞ: Luca'nın kendi "Excel'e Aktar" butonuna tıkla, fetch'i
+    //    intercept ederek inen Excel'i yakala. Bu jasper.jq+rapor_takip+rapor_indir
+    //    zincirini reverse engineer etmekten çok daha güvenilir — Luca kendi
+    //    JS'iyle doğru body'yi hazırlıyor, biz sonucu yakalıyoruz.
+    return await fetchMizanByClickIntercept(form, job, log);
+  }
+
+  /**
+   * Luca'nın "Excel'e Aktar" butonuna programmatik tıkla, fetch'i monkey-patch
+   * ederek rapor_indir.jq response'unu (Excel blob) yakala.
+   */
+  async function fetchMizanByClickIntercept(form, job, log) {
+    // Önce tarihleri formda elle doldur (button click bunları kullanacak)
+    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
+    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+
+    const setNative = (inp, value) => {
+      if (!inp) return;
+      const win = inp.ownerDocument.defaultView;
+      try {
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, value);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      } catch (e) {}
+    };
+
+    const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
+    const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
+    if (tarihIlk && tarihSon) {
+      setNative(tarihIlk, tarih.bas);
+      setNative(tarihSon, tarih.bit);
+      await log(`📅 Tarih: ${tarih.bas} → ${tarih.bit}`);
+    }
+
+    // Excel'e Aktar butonunu bul (form içinde veya parent document'ta)
+    const findExcelButton = () => {
+      const candidates = [];
+      // Form içinde
+      candidates.push(...form.querySelectorAll('input[type="button"], button, a, input[type="submit"]'));
+      // Form dışında frame içinde
+      const doc = form.ownerDocument;
+      candidates.push(...doc.querySelectorAll('input[type="button"], button, a'));
+      for (const el of candidates) {
+        const txt = (el.value || el.textContent || el.title || '').trim();
+        if (/excel|xlsx|aktar/i.test(txt) && !/iptal|cancel/i.test(txt)) {
+          return el;
+        }
+      }
+      return null;
+    };
+
+    const excelBtn = findExcelButton();
+    if (!excelBtn) {
+      throw new Error('"Excel\'e Aktar" butonu bulunamadı');
+    }
+    await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || '').trim().slice(0, 30)}"`);
+
+    // Top window'da fetch'i monkey-patch et — tüm frame'lerin fetch'i top'a düşer
+    let capturedBlob = null;
+    const seenUrls = [];
+    const origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      const url = typeof input === 'string' ? input : (input?.url || '');
+      seenUrls.push(url.split('?')[0].split('/').pop());
+      const promise = origFetch.apply(this, arguments);
+      if (/rapor_indir|raporIndir/i.test(url)) {
+        promise.then(async (res) => {
+          if (!res.ok) return;
+          try {
+            const cloned = res.clone();
+            const blob = await cloned.blob();
+            if (blob.size > 5000 && !capturedBlob) {
+              capturedBlob = blob;
+            }
+          } catch (e) {}
+        }).catch(() => {});
+      }
+      return promise;
+    };
+
+    // Frame'lerin fetch'ini de override
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+    const frameOrigFetches = [];
+    for (const f of collectFrames(document)) {
+      try {
+        const fwin = f.contentWindow;
+        if (!fwin || !fwin.fetch || fwin === window) continue;
+        const orig = fwin.fetch;
+        frameOrigFetches.push({ win: fwin, fetch: orig });
+        fwin.fetch = function (input, init) {
+          const url = typeof input === 'string' ? input : (input?.url || '');
+          seenUrls.push(`[${f.name || '?'}]` + url.split('?')[0].split('/').pop());
+          const promise = orig.apply(this, arguments);
+          if (/rapor_indir|raporIndir/i.test(url)) {
+            promise.then(async (res) => {
+              if (!res.ok) return;
+              try {
+                const cloned = res.clone();
+                const blob = await cloned.blob();
+                if (blob.size > 5000 && !capturedBlob) {
+                  capturedBlob = blob;
+                }
+              } catch (e) {}
+            }).catch(() => {});
+          }
+          return promise;
+        };
+      } catch (e) {}
+    }
+
+    await log(`🖱 Excel'e Aktar tıklanıyor (Luca'nın kendi flow'u)`);
+    fullActivate(excelBtn, form.ownerDocument.defaultView);
+
+    // 60 saniye bekle, blob yakalanana kadar
+    let waited = 0;
+    while (waited < 60000) {
+      if (capturedBlob) break;
+      await sleep(500);
+      waited += 500;
+      if (waited === 5000 || waited === 15000 || waited === 30000) {
+        await log(`⏳ Beklenen Excel hâlâ gelmedi (${waited / 1000}sn) — gözlemlenen istekler: ${seenUrls.slice(-10).join(' | ')}`);
+      }
+    }
+
+    // Fetch'leri restore et
+    window.fetch = origFetch;
+    for (const { win, fetch: orig } of frameOrigFetches) {
+      try { win.fetch = orig; } catch (e) {}
+    }
+
+    if (!capturedBlob) {
+      throw new Error(`Excel yakalanamadı (60sn). Gözlemlenen istekler: ${seenUrls.slice(-15).join(' | ')}`);
+    }
+
+    await log(`✅ Excel yakalandı (${Math.round(capturedBlob.size / 1024)} KB)`);
+    return capturedBlob;
   }
 
   /**
