@@ -7,4 +7,5 @@
 ALTER TABLE "receipt_images"
   ADD COLUMN IF NOT EXISTS "ocrKdvTevkifat" TEXT,
   ADD COLUMN IF NOT EXISTS "confirmedKdvTevkifat" TEXT,
-  ADD COLUMN IF NOT EXISTS "ocrValidationScore" DOUBLE PRECISION;
+  ADD COLUMN IF NOT EXISTS "ocrValidationScore" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "ocrSatici" TEXT;

@@ -21,6 +21,8 @@ export interface OcrResult {
   /** Tevkifat tutarı (TL) — varsa; tevkifatsız faturada null veya "0,00". */
   kdvTevkifat?: string | null;
   totalTutari: string | null;
+  /** Satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır. */
+  satici?: string | null;
   /** Belge tipi: EFATURA, EARSIV, OKC_FIS, Z_RAPORU, MAKBUZ */
   belgeTipi?: string | null;
   /** Çok oranlı KDV kırılımı (varsa) — Z raporu/karma fatura. tutar = NET (tevkifat düşülmüş). */
@@ -771,6 +773,11 @@ export class OcrService {
       ? String(parsed.belgeTipi).toUpperCase().trim()
       : null;
 
+    // Satıcı unvanı — aynı belge no'lu farklı firmaları ayırmak için
+    const satici = parsed.satici
+      ? String(parsed.satici).trim().slice(0, 200)
+      : null;
+
     return {
       rawText: JSON.stringify(parsed).slice(0, 2000),
       belgeNo,
@@ -778,6 +785,7 @@ export class OcrService {
       kdvTutari,
       kdvTevkifat: kdvTevkifatOut,
       totalTutari: toplam,
+      satici,
       belgeTipi,
       kdvBreakdown,
       confidence,
@@ -2745,6 +2753,16 @@ export class OcrService {
     const isArchive = /<ArchiveInvoice|InvoiceTypeCode[^>]*>EARSIV/i.test(xml);
     const belgeTipi = isArchive ? 'EARSIV' : 'EFATURA';
 
+    // Satıcı unvanı — UBL'de cac:AccountingSupplierParty > cac:Party > cac:PartyName > cbc:Name
+    let satici: string | null = null;
+    const supplierBlock = xml.match(/<cac:AccountingSupplierParty>([\s\S]*?)<\/cac:AccountingSupplierParty>/i);
+    if (supplierBlock) {
+      const nameMatch = supplierBlock[1].match(/<cbc:Name>([^<]+)<\/cbc:Name>/i);
+      if (nameMatch) {
+        satici = nameMatch[1].trim().slice(0, 200);
+      }
+    }
+
     // Hiç veri yoksa null dön
     if (!belgeNo && !date && !kdvTutari) return null;
 
@@ -2755,6 +2773,7 @@ export class OcrService {
       kdvTutari,
       kdvTevkifat: kdvTevkifat > 0 ? this.formatAmount(kdvTevkifat) : null,
       totalTutari,
+      satici,
       belgeTipi,
       kdvBreakdown: kdvBreakdown.length > 0 ? kdvBreakdown : null,
       confidence: belgeNo && date && kdvTutari ? 0.99 : 0.85,

@@ -296,7 +296,15 @@ export class ReconciliationEngine {
     let rateMismatched = false;  // Oran kesin uyumsuz (ör. Luca %20, OCR breakdown'unda %20 yok)
 
     // ── BELGE NO ─────────────────────────────────────────────
+    // E-fatura format'ı (3 harf + 13 rakam = 16 char): TAM EŞLEŞME ZORUNLU.
+    //   Bu numaralar GİB tarafından merkezi atanır, yıllık seri unique. 1 karakter
+    //   farkı bile FARKLI BELGE'dir (örn. GIB...0008 ≠ GIB...0007). Fuzzy match yok.
+    // ÖKC fişi (≤6 char): Leading zero stripped tam eşleşme.
+    // Diğer (gider pusulası/SMM/dekont): %95+ similarity ile kısmi (1 karakter
+    //   tolerans uzun belge no'larda).
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
+    const isEFaturaFormat = (s: string): boolean =>
+      /^[A-Z]{3}\d{13}$/.test(s); // EFA/ESR/BEF/GHN/GIB/EFT/IRU/KMI + 4 yıl + 9 sıra
     if (record.belgeNo && imgBelgeNo) {
       const normA = this.normalizeBelgeNo(record.belgeNo);
       const normB = this.normalizeBelgeNo(imgBelgeNo);
@@ -304,19 +312,27 @@ export class ReconciliationEngine {
       // ÖKC fişlerde Luca genelde sıfır önekli kayıt ("0599"), OCR çıplak ("599")
       const strippedA = this.stripLeadingZeros(normA);
       const strippedB = this.stripLeadingZeros(normB);
+
+      const isEFaturaPair = isEFaturaFormat(normA) || isEFaturaFormat(normB);
+
       if (normA === normB || strippedA === strippedB) {
         // Tam aynı veya leading-zero eşiti → exact
         score += belgeNoWeight;
         belgeNoExact = true;
+      } else if (isEFaturaPair) {
+        // E-FATURA: 1 karakter farkı bile farklı belge — fuzzy match YOK
+        // Reason'a yaz, score'a hiç katma → bu çift kesinlikle MATCHED OLMAYACAK
+        reasons.push(`E-fatura belge no farklı: ${record.belgeNo} ≠ ${imgBelgeNo}`);
       } else {
-        // Hem ham hem stripped versiyonun en yüksek similarity'sini al
+        // Diğer (kısa/karışık) belge no — eski Levenshtein, ama daha sıkı eşik
         const simRaw = this.stringSimilarity(normA, normB);
         const simStripped = this.stringSimilarity(strippedA, strippedB);
         const similarity = Math.max(simRaw, simStripped);
-        if (similarity >= 0.9) {
+        if (similarity >= 0.95) {
+          // %95+ similarity (1 karakter farkı 20+ char'da) — exact kabul
           score += belgeNoWeight;
           belgeNoExact = true;
-        } else if (similarity >= 0.7) {
+        } else if (similarity >= 0.75) {
           score += belgeNoWeight * 0.55;
           reasons.push(`Belge no kısmi: ${record.belgeNo} ≠ ${imgBelgeNo}`);
         } else {
@@ -392,6 +408,35 @@ export class ReconciliationEngine {
     } else if (!imgKdv && record.kdvTutari) {
       score += 0.1;
       reasons.push('Görselden KDV tutarı okunamadı');
+    }
+
+    // ── SATICI KARŞILAŞTIRMASI (arka plan, UI'da görünmez) ──
+    // Aynı belge no'lu farklı firmaların faturaları eşleşmesin.
+    // ÖKC fişlerinde 0001, 0002 gibi kısa numaralar; e-fatura'da bile aynı seri
+    // numarası farklı satıcılarda tekrarlayabilir.
+    //
+    // Karşılaştırma stratejisi:
+    //   - Luca tarafı: record.karsiTaraf (örn. "ÖZ ELA TURİZM TAŞIMACILIK İNŞAAT...")
+    //   - OCR tarafı:  image.ocrSatici (örn. "GÜRTUR PERSONEL TAŞIMACILIĞI...")
+    //   - Normalize edilip (UPPER, noktalama temizliği, "LTD ŞTİ"/"A.Ş."/"TİC."
+    //     gibi suffix'ler atılır) similarity karşılaştırılır.
+    //   - %50+ benzerlik = aynı firma kabul edilir (kısaltmalar tolere edilir)
+    //   - %50- = farklı firma → score sert düşürülür, MATCHED engellenir.
+    let saticiMismatch = false;
+    const recordSatici = (record.karsiTaraf || '').trim();
+    const imgSatici = ((image as any).ocrSatici || '').trim();
+    if (recordSatici && imgSatici) {
+      const sim = this.companyNameSimilarity(recordSatici, imgSatici);
+      if (sim >= 0.5) {
+        // Aynı firma — küçük bir bonus
+        score = Math.min(1, score + 0.05);
+      } else {
+        // Farklı firma → büyük penalty + MATCHED engellenir
+        saticiMismatch = true;
+        reasons.push(
+          `Satıcı uyumsuz: Luca "${recordSatici.slice(0, 40)}" ≠ Fatura "${imgSatici.slice(0, 40)}"`,
+        );
+      }
     }
 
     // ── ÇOK ORANLI VIRTUAL RECORD: KALEM-KALEM BREAKDOWN DOĞRULAMASI ──
@@ -474,14 +519,79 @@ export class ReconciliationEngine {
     // User: "tarih + evrak no + KDV üçü aynı anda eşleşmezse kabul edilmeyecek"
     // EK KURAL: Multi-rate faturalarda Luca'nın KDV oranı OCR breakdown'unda
     // bulunamıyorsa MATCHED ASLA verilmez (oran uyumsuzluğu = farklı belge).
-    const strictMatch = belgeNoExact && kdvExact && dateExact && !rateMismatched;
+    // EK KURAL 2: Satıcı bilgisi varsa ve uyumsuzsa MATCHED ASLA verilmez
+    // (aynı belge no'lu farklı firma).
+    const strictMatch = belgeNoExact && kdvExact && dateExact && !rateMismatched && !saticiMismatch;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
       score = Math.max(0, score - 0.4);
     }
+    // Satıcı uyumsuzsa: aday listesine bile girmesin
+    if (saticiMismatch) {
+      score = Math.max(0, score - 0.5);
+    }
 
     return { score: Math.min(score, 1), reasons, strictMatch };
+  }
+
+  /**
+   * İki firma adının benzerliğini (0–1) hesaplar.
+   *
+   * Türk firma adlarında kısaltma/varyasyon yaygın:
+   *   "ÖZ ELA TURİZM TAŞIMACILIK İNŞAAT TİCARET LİMİTED ŞİRKETİ"
+   *   "ÖZ ELA TURİZM TAŞ. İNŞ. TİC. LTD. ŞTİ."
+   *   "Öz Ela Turizm Taşımacılık"
+   * Bu varyasyonların hepsi aynı firma olarak kabul edilmeli.
+   *
+   * Strateji:
+   *   1. Normalize: upper case, noktalama temizliği, çoklu boşluk tek boşluk
+   *   2. Suffix temizliği: LTD ŞTİ / A.Ş. / TİC. / İNŞ. / TURİZM gibi yaygın
+   *      kelimeler atılır (varyasyon yaratıyorlar)
+   *   3. Token-based Jaccard similarity: kelime kümeleri kesişimi / birleşim
+   *   4. Edge: çok kısa (1-2 kelime) firma adlarında string similarity'ye düş
+   */
+  private companyNameSimilarity(a: string, b: string): number {
+    const normalize = (s: string): string[] => {
+      const upper = s
+        .toLocaleUpperCase('tr-TR')
+        .replace(/[.,;:'"\-/\\()]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Yaygın firma suffix/prefix'lerini at — varyasyon yaratıyorlar
+      const SUFFIX_REMOVE = new Set([
+        'LTD', 'ŞTİ', 'STI', 'AŞ', 'A.Ş', 'A.Ş.', 'ANONİM', 'ANONIM', 'LİMİTED', 'LIMITED',
+        'ŞİRKETİ', 'SIRKETI', 'TİCARET', 'TICARET', 'TİC', 'TIC',
+        'SANAYİ', 'SANAYI', 'SAN', 'İNŞAAT', 'INSAAT', 'İNŞ', 'INS',
+        'VE', 'İLE', 'ILE',
+      ]);
+      return upper.split(' ').filter((w) => w.length > 1 && !SUFFIX_REMOVE.has(w));
+    };
+
+    const tokensA = normalize(a);
+    const tokensB = normalize(b);
+    if (tokensA.length === 0 || tokensB.length === 0) {
+      // Fallback: ham string similarity
+      return this.stringSimilarity(
+        a.toLocaleUpperCase('tr-TR').replace(/\s+/g, ''),
+        b.toLocaleUpperCase('tr-TR').replace(/\s+/g, ''),
+      );
+    }
+
+    // Jaccard similarity
+    const setA = new Set(tokensA);
+    const setB = new Set(tokensB);
+    const intersection = [...setA].filter((t) => setB.has(t)).length;
+    const union = new Set([...setA, ...setB]).size;
+    const jaccard = union > 0 ? intersection / union : 0;
+
+    // Tek-kelime kısa firma adları için ek string similarity (Jaccard yetersiz)
+    if (Math.min(tokensA.length, tokensB.length) <= 2) {
+      const stringSim = this.stringSimilarity(tokensA.join(''), tokensB.join(''));
+      return Math.max(jaccard, stringSim);
+    }
+
+    return jaccard;
   }
 
   private fmtAmt(n: number): string {
