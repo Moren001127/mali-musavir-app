@@ -165,6 +165,7 @@ model Taxpayer {
   beyanKayitlari      BeyanKaydi[]
   cariHizmetler       CariHizmet[]
   cariHareketler      CariHareket[]
+  earsivFaturalar     EarsivFatura[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1616,4 +1617,48 @@ model CariHareket {
   @@index([tenantId, tarih])
   @@index([tenantId, tip])
   @@map("cari_hareketler")
+}
+
+// === E-ARŞİV / E-FATURA ===
+// Luca'dan toplu çekilen e-arşiv (SATIŞ) ve e-fatura (ALIŞ) faturaları.
+// Orijinal UBL XML + PDF saklanır (denetim için), parse edilen alanlar ayrı kolonlarda.
+model EarsivFatura {
+  id             String     @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  tip            EarsivTip  // SATIS | ALIS
+  donem          String     // "2026-03" YYYY-MM
+  faturaNo       String
+  faturaTarihi   DateTime
+  ettn           String?    // E-fatura/e-arşiv UUID
+  satici         String?
+  saticiVergiNo  String?
+  alici          String?
+  aliciVergiNo   String?
+  matrah         Decimal?   @db.Decimal(18, 2)
+  kdvTutari      Decimal?   @db.Decimal(18, 2)
+  kdvOrani       Decimal?   @db.Decimal(5, 2)
+  toplamTutar    Decimal?   @db.Decimal(18, 2)
+  paraBirimi     String?    @default("TL")
+  aciklama       String?
+  durum          String?    // KABUL | RED | IPTAL | BEKLEMEDE
+  xmlContent     String?    @db.Text  // orijinal UBL XML
+  pdfStorageKey  String?    // S3 key veya disk path; ham PDF
+  zipSourceName  String?    // Hangi ZIP'ten geldi
+  fetchJobId     String?    // Hangi LucaFetchJob ile çekildi
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  taxpayer       Taxpayer   @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, tip, faturaNo])
+  @@index([tenantId, taxpayerId, donem, tip])
+  @@index([tenantId, faturaTarihi])
+  @@index([fetchJobId])
+  @@map("earsiv_faturalar")
+}
+
+enum EarsivTip {
+  SATIS
+  ALIS
 }

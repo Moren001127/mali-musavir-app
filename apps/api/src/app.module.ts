@@ -17,6 +17,7 @@ import { AgentEventsModule } from './agent-events/agent-events.module';
 import { MihsapModule } from './mihsap/mihsap.module';
 import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
+import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
@@ -49,6 +50,7 @@ import { HgsCron } from './schedule/hgs.cron';
     MihsapModule,
     LucaModule,
     MizanModule,
+    EarsivModule,
     MorenAiModule,
     WhatsAppModule,
     VendorMemoryModule,
