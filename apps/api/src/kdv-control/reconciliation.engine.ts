@@ -63,6 +63,17 @@ export class ReconciliationEngine {
     // Mevcut sonuçları temizle
     await this.prisma.reconciliationResult.deleteMany({ where: { sessionId } });
 
+    // Session type — alış/satış ayrımı için (tevkifat farkı kontrolü ALIŞ'ta
+    // devreye girer, SATIŞ'ta atlanır — Türk muhasebe pratiğine göre alışlarda
+    // Luca'da 2 satır gelir, satışlarda tek)
+    const session = await this.prisma.kdvControlSession.findUnique({
+      where: { id: sessionId },
+      select: { type: true },
+    });
+    // KDV_191 = Bilanço Alış, ISLETME_GIDER = İşletme Alış → ALIŞ
+    // KDV_391 = Bilanço Satış, ISLETME_GELIR = İşletme Satış → SATIŞ
+    const isAlis = session?.type === 'KDV_191' || session?.type === 'ISLETME_GIDER';
+
     const [rawRecords, images] = await Promise.all([
       this.prisma.kdvRecord.findMany({ where: { sessionId } }),
       this.prisma.receiptImage.findMany({ where: { sessionId } }),
@@ -147,7 +158,7 @@ export class ReconciliationEngine {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown);
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis);
         if (strictMatch) {
           usedImageIds.add(image.id);
           fanOutMatch(record, image.id, 'MATCHED', score, reasons);
@@ -169,7 +180,10 @@ export class ReconciliationEngine {
     // en yüksekten aşağıya doğru bağla. Hem record hem image kullanılmamışsa
     // eşleştir. Böylece en güvenli pairler ÖNCE sabitlenir, zayıflar
     // güçlüleri çalamaz.
-    const MIN_PAIR_SCORE = 0.4; // 0.3 çok düşüktü — drift yaratıyordu
+    // Eşik 0.4 → 0.55: yalnızca güçlü adaylar listede kalır.
+    // Plus: belgeNo TAM eşleşmiyorsa (reasons'da "uyumsuz" varsa) eleyerek
+    // alakasız belge no'ların zorla pair olmasını engelle (örn. 0015 ↔ 0888).
+    const MIN_PAIR_SCORE = 0.55;
     const allPairs: MatchCandidate[] = [];
     for (const record of records) {
       if (usedRecordIds.has(record.id)) continue;
@@ -177,8 +191,12 @@ export class ReconciliationEngine {
         if (usedImageIds.has(image.id)) continue;
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown);
-        if (score >= MIN_PAIR_SCORE) {
+        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis);
+        // Belge no exact uyumsuzluğu varsa pair'i ele
+        const belgeNoTamUyumsuz = reasons.some((r) =>
+          /Belge no uyumsuz|E-fatura belge no farklı|Çok oranlı uyumsuzluk/i.test(r),
+        );
+        if (score >= MIN_PAIR_SCORE && !belgeNoTamUyumsuz) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -278,6 +296,11 @@ export class ReconciliationEngine {
     /** Multi-rate virtual record için Luca tarafının beklediği breakdown.
      *  Verildiyse OCR breakdown'u ile kalem-kalem karşılaştırılır. */
     expectedBreakdown: Array<{ oran: number; tutar: number }> | null = null,
+    /** ALIŞ session'ı mı? Tevkifat farkı kontrolü sadece ALIŞ'ta devreye girer
+     *  (Luca'da NET + Tevkifat ayrı satır → aggregate ile TAM olur, OCR NET ile
+     *  karşılaştırınca fark çıkar; tevkifat ekleyerek MATCHED yakalanır).
+     *  SATIŞ'ta Luca zaten NET kaydeder → fark olmamalı. */
+    isAlis: boolean = false,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
@@ -401,7 +424,51 @@ export class ReconciliationEngine {
             score += 0.15;
             reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
           } else {
-            reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
+            // ─── TEVKİFAT FARKI KONTROLÜ (ALIŞ için kritik) ───
+            // Türk muhasebe pratiğinde tevkifatlı faturalar farklı şekillerde
+            // kayıt edilir:
+            //
+            // ALIŞ tarafı (Luca'da 2 ayrı satır):
+            //   1. İndirilecek KDV (191 NET)        = NET KDV
+            //   2. Sorumlu sıfatıyla indirilecek    = Tevkifat tutarı
+            //   İkisi toplamı  = TAM KDV
+            //   → aggregateMultiRateRecords aynı belge_no + tarih kombinasyonunu
+            //     topladığında virtual.kdvTutari = TAM KDV olur.
+            //
+            // SATIŞ tarafı (Luca'da tek satır):
+            //   "Hesaplanan KDV" = NET KDV (zaten tevkifat düşülmüş)
+            //   → Aggregate zaten tek satır, virtual.kdvTutari = NET KDV.
+            //
+            // OCR ise her iki durumda da NET KDV verir (kdvTutari) + tevkifatı
+            // ayrı alanda (kdvTevkifat).
+            //
+            // Karşılaştırma:
+            //   • Satışta:  Luca NET == OCR NET                → ilk diff < 0.01 → MATCHED
+            //   • Alışta:   Luca TAM == OCR NET + OCR Tevkifat → bu blok yakalar → MATCHED
+            const imgTevkifatRaw = (image as any).confirmedKdvTevkifat
+              ?? (image as any).ocrKdvTevkifat;
+            const imgTevkifat = imgTevkifatRaw
+              ? parseFloat(
+                  String(imgTevkifatRaw)
+                    .replace(/\./g, '')
+                    .replace(',', '.')
+                    .replace(/[^\d.]/g, ''),
+                )
+              : 0;
+            const tamKdvFromOcr = imgKdvNum + (Number.isFinite(imgTevkifat) ? imgTevkifat : 0);
+            const tamDiff = Math.abs(recordKdv - tamKdvFromOcr) / (recordKdv || 1);
+
+            if (isAlis && imgTevkifat > 0 && tamDiff < 0.01) {
+              // ALIŞ + Luca TAM KDV (aggregate edilmiş NET+Tevkifat) = OCR NET + Tevkifat
+              // → AYNI belge, tevkifat yansıması farklı satırda kaydedilmiş
+              score += 0.3;
+              kdvExact = true;
+              reasons.push(
+                `Alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} (NET+Tevkifat) = Fatura ${this.fmtAmt(imgKdvNum)} (NET) + ${this.fmtAmt(imgTevkifat)} (tevkifat)`,
+              );
+            } else {
+              reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
+            }
           }
         }
       }
