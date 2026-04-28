@@ -801,7 +801,10 @@ model ReceiptImage {
   ocrDate      String?
   ocrKdvTutari String?            // NET KDV (tevkifatlıysa tam − tevkifat); reconciliation'da Luca ile karşılaştırılan değer
   ocrKdvTevkifat String?          // Tevkifat tutarı (varsa); null/0,00 = tevkifatsız fatura
-  ocrSatici    String?            // OCR'dan gelen satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır
+  // OCR'dan gelen satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır
+  // @map: Railway DB'sinde kolon "ocrsatici" (lowercase) olarak yaratıldı (UI'dan elle eklendi).
+  // Prisma client camelCase görür, DB'ye lowercase yazar/okur.
+  ocrSatici    String?            @map("ocrsatici")
   ocrRawText   String?   // Ham OCR çıktısı
   ocrConfidence Float?   // 0-1 arası genel güven skoru
   // Alan-bazlı güven skorları (null = alan okunamadı)
