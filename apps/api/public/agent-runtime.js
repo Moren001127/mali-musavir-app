@@ -935,30 +935,35 @@
     }
     await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || excelBtn.title || excelBtn.alt || '').trim().slice(0, 30)}" [${excelBtn.tagName}]`);
 
-    // Top window'da fetch'i monkey-patch et — tüm frame'lerin fetch'i top'a düşer
+    // GENİŞ INTERCEPT — Luca download'u fetch / XHR / <a download> / window.open
+    // hangisiyle yapıyorsa yakala. Excel content-type veya .xlsx URL'i göründüğünde
+    // blob'u yakalayıp native download'u iptal et.
     let capturedBlob = null;
+    let capturedUrl = null;
     const seenUrls = [];
-    const origFetch = window.fetch;
-    window.fetch = function (input, init) {
-      const url = typeof input === 'string' ? input : (input?.url || '');
-      seenUrls.push(url.split('?')[0].split('/').pop());
-      const promise = origFetch.apply(this, arguments);
-      if (/rapor_indir|raporIndir/i.test(url)) {
-        promise.then(async (res) => {
-          if (!res.ok) return;
-          try {
-            const cloned = res.clone();
-            const blob = await cloned.blob();
-            if (blob.size > 5000 && !capturedBlob) {
-              capturedBlob = blob;
-            }
-          } catch (e) {}
-        }).catch(() => {});
-      }
-      return promise;
+
+    const isExcelResponse = (ct, blob) => {
+      if (!ct) return false;
+      return /excel|xlsx|spreadsheet|officedocument|octet-stream/i.test(ct);
+    };
+    const isExcelUrl = (url) => /\.xlsx|rapor_indir|raporIndir|jasper|download/i.test(url);
+
+    const tryCapture = async (res, url) => {
+      try {
+        if (!res.ok) return;
+        const ct = res.headers.get('content-type') || '';
+        const cloned = res.clone();
+        const blob = await cloned.blob();
+        if (blob.size > 5000 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
+          if (!capturedBlob) {
+            capturedBlob = blob;
+            await log(`✅ Blob yakalandı: ${url.split('/').pop().slice(0, 60)} (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
+          }
+        }
+      } catch (e) {}
     };
 
-    // Frame'lerin fetch'ini de override
+    // ─── FETCH override (top + tüm frameler) ───
     const collectFrames = (root, depth = 0, acc = []) => {
       if (depth > 5) return acc;
       try {
@@ -969,59 +974,147 @@
       } catch (e) {}
       return acc;
     };
-    const frameOrigFetches = [];
+
+    const restoreFns = [];
+    const installFetchOverride = (win, label) => {
+      if (!win.fetch) return;
+      const orig = win.fetch;
+      restoreFns.push(() => { try { win.fetch = orig; } catch (e) {} });
+      win.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input?.url || '');
+        seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
+        const promise = orig.apply(this, arguments);
+        promise.then((res) => tryCapture(res, url)).catch(() => {});
+        return promise;
+      };
+    };
+
+    // ─── XHR override (download bazen XHR ile) ───
+    const installXhrOverride = (win, label) => {
+      if (!win.XMLHttpRequest) return;
+      const proto = win.XMLHttpRequest.prototype;
+      const origOpen = proto.open;
+      const origSend = proto.send;
+      restoreFns.push(() => { try { proto.open = origOpen; proto.send = origSend; } catch (e) {} });
+      proto.open = function (method, url) {
+        this._capturedUrl = url;
+        return origOpen.apply(this, arguments);
+      };
+      proto.send = function () {
+        const url = this._capturedUrl || '';
+        seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
+        this.addEventListener('load', async () => {
+          try {
+            const ct = this.getResponseHeader('content-type') || '';
+            if (this.response && this.response instanceof Blob) {
+              if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
+                if (!capturedBlob) {
+                  capturedBlob = this.response;
+                  await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB)`);
+                }
+              }
+            }
+          } catch (e) {}
+        });
+        return origSend.apply(this, arguments);
+      };
+    };
+
+    // ─── ANCHOR <a download> click override (native download intercept) ───
+    const installAnchorOverride = (win, label) => {
+      if (!win.HTMLAnchorElement) return;
+      const proto = win.HTMLAnchorElement.prototype;
+      const origClick = proto.click;
+      restoreFns.push(() => { try { proto.click = origClick; } catch (e) {} });
+      proto.click = function () {
+        const href = this.href || '';
+        seenUrls.push(`${label}aclick:${href.split('?')[0].split('/').pop()}`);
+        if (isExcelUrl(href)) {
+          // URL'i yakala, biz fetch ederiz (native download tetikletme)
+          capturedUrl = href;
+          log(`🔗 Anchor download URL yakalandı: ${href.split('/').pop().slice(0, 80)}`).catch(() => {});
+          return; // native click'i atla
+        }
+        return origClick.apply(this, arguments);
+      };
+    };
+
+    // Top + tüm frame'lere yükle
+    installFetchOverride(window, '');
+    installXhrOverride(window, '');
+    installAnchorOverride(window, '');
     for (const f of collectFrames(document)) {
       try {
         const fwin = f.contentWindow;
-        if (!fwin || !fwin.fetch || fwin === window) continue;
-        const orig = fwin.fetch;
-        frameOrigFetches.push({ win: fwin, fetch: orig });
-        fwin.fetch = function (input, init) {
-          const url = typeof input === 'string' ? input : (input?.url || '');
-          seenUrls.push(`[${f.name || '?'}]` + url.split('?')[0].split('/').pop());
-          const promise = orig.apply(this, arguments);
-          if (/rapor_indir|raporIndir/i.test(url)) {
-            promise.then(async (res) => {
-              if (!res.ok) return;
-              try {
-                const cloned = res.clone();
-                const blob = await cloned.blob();
-                if (blob.size > 5000 && !capturedBlob) {
-                  capturedBlob = blob;
-                }
-              } catch (e) {}
-            }).catch(() => {});
-          }
-          return promise;
-        };
+        if (!fwin || fwin === window) continue;
+        const lbl = `[${f.name || '?'}]`;
+        installFetchOverride(fwin, lbl);
+        installXhrOverride(fwin, lbl);
+        installAnchorOverride(fwin, lbl);
       } catch (e) {}
     }
 
-    await log(`🖱 Excel'e Aktar tıklanıyor (Luca'nın kendi flow'u)`);
-    fullActivate(excelBtn, form.ownerDocument.defaultView);
+    // Tıklama öncesi tarih input value'sunu kontrol et
+    if (tarihIlk && tarihSon) {
+      await log(`🔎 Click öncesi: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
+    }
 
-    // 60 saniye bekle, blob yakalanana kadar
+    await log(`🖱 "Rapor" butonu tıklanıyor (Luca'nın kendi flow'u)`);
+    // 1) Native click — HTMLElement.prototype.click (en güvenilir, listener'ları tetikler)
+    try { excelBtn.click(); } catch (e) { await log(`⚠ click() hata: ${e.message}`); }
+    // 2) Yedek: dispatchEvent click
+    try {
+      excelBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: form.ownerDocument.defaultView }));
+    } catch (e) {}
+    // 3) Yedek: fullActivate (mouseover+down+up+click+onclick)
+    try { fullActivate(excelBtn, form.ownerDocument.defaultView); } catch (e) {}
+    // 4) Onclick attribute varsa elle çağır
+    try {
+      const oc = excelBtn.getAttribute && excelBtn.getAttribute('onclick');
+      if (oc) {
+        await log(`🔧 onclick attribute eval: ${oc.slice(0, 60)}`);
+        const win = form.ownerDocument.defaultView;
+        win.eval(oc);
+      }
+    } catch (e) { await log(`⚠ onclick eval hata: ${e.message}`); }
+
+    // 90 saniye bekle: blob yakalanana veya download URL yakalanana kadar
     let waited = 0;
-    while (waited < 60000) {
+    while (waited < 90000) {
       if (capturedBlob) break;
+      // Anchor click intercept ettiysek, URL'i biz fetch edelim
+      if (capturedUrl) {
+        try {
+          await log(`🌐 Yakalanan URL fetch ediliyor: ${capturedUrl.split('/').pop().slice(0, 60)}`);
+          const r = await fetch(capturedUrl, { credentials: 'include' });
+          if (r.ok) {
+            const blob = await r.blob();
+            if (blob.size > 5000) {
+              capturedBlob = blob;
+              break;
+            }
+          }
+        } catch (e) {
+          await log(`⚠ URL fetch hata: ${e.message}`);
+        }
+        capturedUrl = null; // tekrar tekrar denememe
+      }
       await sleep(500);
       waited += 500;
-      if (waited === 5000 || waited === 15000 || waited === 30000) {
-        await log(`⏳ Beklenen Excel hâlâ gelmedi (${waited / 1000}sn) — gözlemlenen istekler: ${seenUrls.slice(-10).join(' | ')}`);
+      if (waited === 5000 || waited === 15000 || waited === 30000 || waited === 60000) {
+        await log(`⏳ ${waited / 1000}sn bekledi — istekler: ${seenUrls.slice(-12).join(' | ')}`);
       }
     }
 
-    // Fetch'leri restore et
-    window.fetch = origFetch;
-    for (const { win, fetch: orig } of frameOrigFetches) {
-      try { win.fetch = orig; } catch (e) {}
+    // Tüm interceptor'ları restore et
+    for (const restore of restoreFns) {
+      try { restore(); } catch (e) {}
     }
 
     if (!capturedBlob) {
-      throw new Error(`Excel yakalanamadı (60sn). Gözlemlenen istekler: ${seenUrls.slice(-15).join(' | ')}`);
+      throw new Error(`Excel yakalanamadı (90sn). İstekler: ${seenUrls.slice(-20).join(' | ')}`);
     }
 
-    await log(`✅ Excel yakalandı (${Math.round(capturedBlob.size / 1024)} KB)`);
     return capturedBlob;
   }
 
