@@ -7,15 +7,19 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
   HttpCode,
   HttpStatus,
   Headers,
+  Header,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -41,6 +45,30 @@ export class LucaController {
     private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
+  // Extension'daki agent.js sadece küçük bir loader. Asıl kod burada.
+  // Cache'lenmemesi için Cache-Control: no-store. Sayfa yüklenince yeni kod gelir.
+  @Get('agent/runtime.js')
+  @Header('Content-Type', 'application/javascript; charset=utf-8')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate')
+  @Header('Access-Control-Allow-Origin', '*')
+  getAgentRuntime() {
+    // Birden fazla muhtemel path dene (dev/prod farkları için)
+    const candidates = [
+      join(process.cwd(), 'apps/api/public/agent-runtime.js'),
+      join(process.cwd(), 'public/agent-runtime.js'),
+      join(__dirname, '../../public/agent-runtime.js'),
+      join(__dirname, '../../../public/agent-runtime.js'),
+      join(__dirname, '../../../../public/agent-runtime.js'),
+    ];
+    for (const p of candidates) {
+      try {
+        return readFileSync(p, 'utf-8');
+      } catch {}
+    }
+    return '/* agent-runtime.js bulunamadı */ console.error("[Moren] runtime.js bulunamadı");';
+  }
 
   // ==================== AGENT TOKEN (BOOKMARKLET KURULUMU) ====================
 
