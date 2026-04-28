@@ -1045,29 +1045,41 @@
               }
             }
 
-            // 2) rapor_takip.jq polling — "ready" gördüğünde biz rapor_indir.jq fetch ederiz
-            if (/rapor_takip/i.test(url) && !capturedBlob) {
-              const text = this.responseText || '';
-              // Luca polling response: "1", "ready", "tamam", "hazir" vs.
-              const ready = /^(\s*1\s*|.*ready.*|.*tamam.*|.*finish.*|.*done.*|.*hazir.*|.*complete.*)$/i.test(text.trim());
-              if (ready) {
-                // URL'den rapor_id çıkar (rapor_takip.jq?rapor_id=12345)
-                const m = url.match(/rapor_id=(\d+)/i) || (this.responseText || '').match(/rapor_id["\s:=]+["]?(\d+)/i);
-                const raporId = m ? m[1] : null;
-                if (raporId) {
-                  await log(`📥 Rapor hazır (rapor_id=${raporId}), indirme tetikleniyor`);
-                  try {
-                    const indirUrl = `${win.location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
-                    const r = await win.fetch(indirUrl, { credentials: 'include' });
-                    if (r.ok) {
-                      const blob = await r.blob();
-                      if (blob.size > 5000) {
-                        capturedBlob = blob;
-                        await log(`✅ rapor_indir.jq blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
+            // 2) rapor_takip.jq görüldü — URL'den rapor_id al, polling response'u BEKLEME
+            //    direkt 5sn sonra rapor_indir.jq fetch et (Luca'nın native polling'i bittiğinde)
+            if (/rapor_takip/i.test(url) && !capturedBlob && !this._raporIdHandled) {
+              const m = url.match(/rapor_id=(\d+)/i) || (this.responseText || '').match(/rapor_id["\s:=]+["]?(\d+)/i);
+              const raporId = m ? m[1] : null;
+              if (raporId) {
+                this._raporIdHandled = true;
+                // İlk rapor_takip görüldü, rapor_id biliniyor — birkaç saniye bekle, sonra fetch
+                (async () => {
+                  await log(`🎯 rapor_id=${raporId} yakalandı, indirme bekleniyor (Luca polling bitsin)`);
+                  // Polling tipik 3-10 saniye sürer; 8sn bekle, sonra dene
+                  for (let attempt = 1; attempt <= 6; attempt++) {
+                    await sleep(2000);
+                    if (capturedBlob) return; // başka yöntemle yakalandıysa
+                    try {
+                      const indirUrl = `${win.location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
+                      const r = await win.fetch(indirUrl, { credentials: 'include' });
+                      if (r.ok) {
+                        const ct = r.headers.get('content-type') || '';
+                        const blob = await r.blob();
+                        if (blob.size > 5000) {
+                          capturedBlob = blob;
+                          await log(`✅ rapor_indir.jq blob yakalandı (deneme ${attempt}, ${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
+                          return;
+                        } else {
+                          await log(`⏳ Deneme ${attempt}: dosya çok küçük (${blob.size}B), tekrar denenecek`);
+                        }
+                      } else {
+                        await log(`⏳ Deneme ${attempt}: HTTP ${r.status}, tekrar denenecek`);
                       }
+                    } catch (e) {
+                      await log(`⚠ Deneme ${attempt} fetch hata: ${e.message}`);
                     }
-                  } catch (e) { await log(`⚠ rapor_indir fetch hata: ${e.message}`); }
-                }
+                  }
+                })().catch(() => {});
               }
             }
           } catch (e) {}
