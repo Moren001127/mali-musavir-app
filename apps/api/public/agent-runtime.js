@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.25.0';
+          const AGENT_VER = '1.26.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -1006,6 +1006,22 @@
     };
 
     const restoreFns = [];
+
+    // Background script'e "şu andan itibaren Luca download'ı bekliyorum"
+    // sinyali gönder. Bridge.js (sadece top frame'de yüklü) bunu
+    // chrome.runtime.sendMessage ile background.js'e iletir. Flag yoksa
+    // background download'a hiç dokunmuyor → moren-luca-file event'i hiç
+    // ateşlemiyor → 90sn timeout. window.top kullan ki child frame'den
+    // çağrılırsa bile bridge yakalasın.
+    const postExpecting = (val) => {
+      const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
+      try { window.postMessage(payload, '*'); } catch (e) {}
+      try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
+    };
+    postExpecting(true);
+    await log('🔔 Background\'a "download bekliyorum" sinyali gönderildi');
+    restoreFns.push(() => postExpecting(false));
+
     const installFetchOverride = (win, label) => {
       if (!win.fetch) return;
       const orig = win.fetch;
