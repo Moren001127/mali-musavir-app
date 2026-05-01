@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.49.0';
+          const AGENT_VER = '1.50.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -666,12 +666,29 @@
     const slashBas = tarih.bas.replace(/\./g, '/');
     const slashBit = tarih.bit.replace(/\./g, '/');
 
-    // Gerçek typing simulate (Luca date input'u da onblur'da validate ediyor olabilir)
-    await typeLucaInput(tarihIlk, slashBas);
-    await sleep(200);
-    await typeLucaInput(tarihSon, slashBit);
-    await sleep(400);
-    await log(`📅 Tarih (typed): ${tarihIlk.value} → ${tarihSon.value}`);
+    // Tarih için setNative — Luca tarih input'larında datepicker mask var,
+    // synthetic keypress'i mask plugin'i reddediyor. Mizan'da setNative çalışıyor;
+    // KDV'de de setNative kullanmak doğru.
+    const setNative = (inp, value) => {
+      const win = inp.ownerDocument.defaultView;
+      try {
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, value);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      } catch {}
+    };
+    setNative(tarihIlk, slashBas);
+    setNative(tarihSon, slashBit);
+    await sleep(300);
+    // Doğrula — boşsa tekrar yaz
+    if (!tarihIlk.value || !tarihSon.value) {
+      setNative(tarihIlk, slashBas);
+      setNative(tarihSon, slashBit);
+      await sleep(200);
+    }
+    await log(`📅 Tarih: ${tarihIlk.value} → ${tarihSon.value}`);
   }
 
   /**
@@ -839,53 +856,119 @@
   }
 
   /**
-   * Defteri Kebir flow (KDV 191 / 391):
-   *   1) Firma değiştir
-   *   2) Fiş Listesi'ne geç
-   *   3) Sağ menü "Defteri Kebir" — 2. occurrence (Tüm Yazıcılar altındaki)
-   *   4) Form yüklensin (defteriKebir veya benzeri)
-   *   5) Hesap kodu = 191 veya 391
-   *   6) Tarih
-   *   7) Rapor Türü = Excel
-   *   8) Rapor butonu → form intercept Excel blob
+   * Defteri Kebir flow (KDV 191 / 391) — Mizan'dan BAĞIMSIZ, sıfırdan yazıldı.
+   *
+   * Yaklaşım: Luca'nın UI butonlarına tıklamak yerine doğrudan form parametrelerini
+   * topla, kendi fetch POST'umuzu at. Server'dan dönen JSON'daki rapor_id ile
+   * rapor_takip + rapor_indir zincirini bizim parametrelerimizle yürüt.
+   * Bu sayede Luca'nın frontend "input.value submit'e geçmiyor" sorunu bypass.
    */
   async function fetchLucaDefteriKebirExcel(job, log, hesapKodu) {
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
-    // KDV Kontrol her zaman AYLIK dönem üzerinde çalışır (mizandaki gibi GECICI_Q1
-    // değil). Backend job'a donemTipi göndermediği için agent default Q1 hesaplıyordu
-    // → 01.01-31.03 yazıyordu. AYLIK force edilerek sadece seçili ay kullanılır.
+    // KDV her zaman AYLIK
     job = { ...job, donemTipi: 'AYLIK' };
-    await log(`📆 KDV donemTipi=AYLIK force edildi (donem=${job.donem})`);
-    const firmaResult = await ensureLucaFirma(job, log);
+    await log(`📆 KDV: donem=${job.donem} (AYLIK)`);
+
+    // 1) Firma + Fiş Listesi
+    await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
-    // NOT: Mizan akışındaki "frm3 about:blank reset" Defteri Kebir'de
-    // hesap planı state'ini bozuyor → manuel davranıştan farklı sonuç (tüm hesaplar
-    // dönüyor). Burada KALDIRIYORUZ: Luca menüye tıklamamız zaten doğru form'u yükler.
-    if (firmaResult?.changed) {
-      await log('ℹ️ Firma değişti — Defteri Kebir menüsü doğrudan tıklanıyor (frm3 reset YOK)');
-    }
-
-    // "Defteri Kebir" → Tüm Yazıcılar altındaki (2. occurrence)
+    // 2) Sağ menü → Defteri Kebir (Tüm Yazıcılar = 2. occurrence)
     await clickLucaRightMenu('Defteri Kebir', log, { nth: 2 });
 
-    // Form yüklensin — defteriKebir veya benzer pattern
-    const form = await waitForLucaAnyForm(log, /defteri[Kk]ebir|defteriKebir|kebir/i, 15000, 'Defteri Kebir formu');
-    await dumpLucaFormStructure(form, log);
+    // 3) Form yüklensin (parametre kaynağı: hidden DONEM_ID, report, vb.)
+    const form = await waitForLucaAnyForm(log, /raporKebir|kebir/i, 15000, 'Defteri Kebir formu');
+    const frm3doc = form.ownerDocument;
+    const frm3win = frm3doc.defaultView;
 
-    // Manuel kullanım sırasıyla aynı:
-    //   1) Tarih yaz  2) Hesap kodu yaz  3) Rapor Türü Excel  4) Rapor bas
-    // Yenile butonu GEREKSIZ — manuel test bu sırayla doğru Excel veriyor.
-    await fillLucaTarih(form, job, log);
-    await fillLucaHesapKodu(form, hesapKodu, log);
-    await setRaporTuruExcel(form, log);
-    await sleep(500);
-    await clickLucaRaporButton(form, log);
+    // 4) Tarih hesapla
+    const tarih = donemToTarihAraligi(job.donem, 'AYLIK');
+    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    const TARIH_ILK = tarih.bas.replace(/\./g, '/');
+    const TARIH_SON = tarih.bit.replace(/\./g, '/');
+    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
+    await log(`💼 Hesap kodu: ${hesapKodu}-${hesapKodu}`);
 
-    // Mizan'daki gibi blob bekleme — global capturedBlob form intercept tarafından set ediliyor
-    return await waitForCapturedBlob(log, 30000);
+    // 5) Form'un mevcut hidden parametrelerini topla (DONEM_ID, sirket_id, vb.)
+    const formData = new FormData(form);
+    // 6) Override — KDV için kritik parametreler
+    formData.set('TARIH_ILK', TARIH_ILK);
+    formData.set('TARIH_SON', TARIH_SON);
+    formData.set('HESAPKODU_ILK', hesapKodu);
+    formData.set('HESAPKODU_SON', hesapKodu);
+    formData.set('REPORT_TYPE', 'xlsx');
+
+    // 7) URL — form.action'tan al ama time querystring'i yenile
+    const baseUrl = (form.action || '').split('?')[0];
+    const fullUrl = baseUrl + '?time=' + Date.now();
+
+    // 8) URL-encoded body'ye çevir
+    const params = new URLSearchParams();
+    for (const [k, v] of formData) params.append(k, String(v));
+    const bodyStr = params.toString();
+    await log(`🚀 POST ${fullUrl.split('/').pop().slice(0, 50)} (${bodyStr.length} byte)`);
+    await log(`🔬 body preview: ${bodyStr.slice(0, 250)}`);
+
+    // 9) Direkt fetch — credentials: include ile session cookie otomatik gider
+    let res;
+    try {
+      res = await frm3win.fetch(fullUrl, {
+        method: 'POST',
+        body: bodyStr,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'include',
+      });
+    } catch (e) {
+      throw new Error(`raporKebirAction.do POST hatası: ${e?.message || e}`);
+    }
+    if (!res.ok) {
+      throw new Error(`raporKebirAction.do HTTP ${res.status}`);
+    }
+
+    const ct = res.headers.get('content-type') || '';
+    await log(`📥 Response ct=${ct.slice(0, 50)}`);
+
+    // 10) Excel direkt mi geldi?
+    if (/spreadsheet|excel|xlsx|octet-stream/i.test(ct)) {
+      const blob = await res.blob();
+      await log(`✅ Excel direkt geldi (${Math.round(blob.size / 1024)} KB)`);
+      return blob;
+    }
+
+    // 11) JSON döndüyse rapor_takip + rapor_indir zincirini biz yürüt
+    const json = await res.json().catch(() => null);
+    await log(`🔍 JSON response: durum=${json?.durum} rapor_id=${json?.rapor_id || json?.raporId || '?'}`);
+    const raporId = json?.rapor_id || json?.raporId || json?.id;
+    if (!raporId) {
+      throw new Error(`raporKebirAction yanıtında rapor_id yok: ${JSON.stringify(json).slice(0, 200)}`);
+    }
+
+    // 12) rapor_takip — durum=150 (Hazır) bekle
+    const takipUrl = (baseUrl.replace(/[^/]+$/, 'rapor_takip.jq')) + '?rapor_id=' + raporId + '&time=' + Date.now();
+    let takipReady = false;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 30000) {
+      const tRes = await frm3win.fetch(takipUrl + '&_=' + Date.now(), { credentials: 'include' });
+      const tJson = await tRes.json().catch(() => null);
+      const durum = tJson?.durum;
+      if (durum === 150 || durum === '150') { takipReady = true; break; }
+      if (durum === 999 || durum === '999' || tJson?.hata) {
+        throw new Error(`rapor_takip durum hatası: ${JSON.stringify(tJson).slice(0, 200)}`);
+      }
+      await sleep(500);
+    }
+    if (!takipReady) throw new Error('rapor_takip 30sn içinde durum=150 vermedi');
+    await log(`✓ rapor_takip durum=150 (rapor hazır)`);
+
+    // 13) rapor_indir — Excel blob
+    const indirUrl = (baseUrl.replace(/[^/]+$/, 'rapor_indir.jq')) + '?rapor_id=' + raporId + '&time=' + Date.now();
+    const indirRes = await frm3win.fetch(indirUrl, { credentials: 'include', method: 'POST' });
+    if (!indirRes.ok) throw new Error(`rapor_indir HTTP ${indirRes.status}`);
+    const blob = await indirRes.blob();
+    await log(`✅ Excel indirildi (${Math.round(blob.size / 1024)} KB, ct=${indirRes.headers.get('content-type')})`);
+    return blob;
   }
 
   async function fetchLucaIsletmeGelirGiderExcel(job, log, mode) {
