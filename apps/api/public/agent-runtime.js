@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.40.0';
+          const AGENT_VER = '1.41.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -203,8 +203,13 @@
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params.toString()}`;
           } else {
-            // KDV muavin / işletme defteri — KDV control session'a yükle
-            uploadUrl = `${API}/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`;
+            // KDV / İşletme defteri — agent-token kabul eden yan endpoint
+            // (eski /kdv-control/.../excel-from-runner endpoint'i JWT bekliyordu)
+            const params = new URLSearchParams({
+              sessionId: String(job.sessionId || ''),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-kdv?${params.toString()}`;
           }
 
           const uploadRes = await fetch(uploadUrl, {

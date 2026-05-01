@@ -29,6 +29,7 @@ import { LucaService } from './luca.service';
 import { LucaAutoScraperService } from './luca-auto-scraper.service';
 import { MizanService } from '../mizan/mizan.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { KdvControlService } from '../kdv-control/kdv-control.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -44,6 +45,7 @@ export class LucaController {
     private readonly autoScraper: LucaAutoScraperService,
     private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
+    private readonly kdvControl: KdvControlService,
   ) {}
 
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
@@ -313,6 +315,40 @@ export class LucaController {
     } catch (e: any) {
       throw new BadRequestException(
         `Mizan import hatası: ${e?.message || 'bilinmeyen'}`,
+      );
+    }
+  }
+
+  /**
+   * KDV / İşletme defteri Excel upload endpoint'i — agent token ile çalışır.
+   * `kdv-control/sessions/:id/excel-from-runner/:jobId` JWT guard'lı (panel kullanıcısı için);
+   * agent JWT'ye sahip olmadığından bu yan endpoint'i mizan pattern'inde sağlıyoruz.
+   */
+  @Post('agent/luca/runner/upload-kdv')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadKdvFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('sessionId') sessionId: string,
+    @Query('jobId') jobId: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!sessionId || !jobId) {
+      throw new BadRequestException('sessionId ve jobId query parametreleri gerekli');
+    }
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    try {
+      const result = await this.kdvControl.uploadExcelFromRunner(
+        sessionId,
+        tenantId,
+        jobId,
+        file.buffer,
+      );
+      return { ok: true, ...result };
+    } catch (e: any) {
+      throw new BadRequestException(
+        `KDV import hatası: ${e?.message || 'bilinmeyen'}`,
       );
     }
   }
