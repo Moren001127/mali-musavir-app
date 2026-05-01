@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.48.0';
+          const AGENT_VER = '1.49.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -660,26 +660,62 @@
   async function fillLucaTarih(form, job, log) {
     const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
     if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-    const setNative = (inp, value) => {
-      if (!inp) return;
-      const win = inp.ownerDocument.defaultView;
-      try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, value);
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      } catch {}
-    };
     const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
     const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
     if (!tarihIlk || !tarihSon) throw new Error('TARIH_ILK / TARIH_SON bulunamadı');
     const slashBas = tarih.bas.replace(/\./g, '/');
     const slashBit = tarih.bit.replace(/\./g, '/');
-    setNative(tarihIlk, slashBas);
-    setNative(tarihSon, slashBit);
+
+    // Gerçek typing simulate (Luca date input'u da onblur'da validate ediyor olabilir)
+    await typeLucaInput(tarihIlk, slashBas);
     await sleep(200);
-    await log(`📅 Tarih: ${slashBas} → ${slashBit}`);
+    await typeLucaInput(tarihSon, slashBit);
+    await sleep(400);
+    await log(`📅 Tarih (typed): ${tarihIlk.value} → ${tarihSon.value}`);
+  }
+
+  /**
+   * Generic typing simulator — fillLucaHesapKodu içinde tanımlı typeText ile aynı.
+   * Modüler kullanım için dışarı çıkarıldı: tarih + hesap kodu + diğer text input'lar.
+   */
+  async function typeLucaInput(inp, text) {
+    if (!inp) return false;
+    const win = inp.ownerDocument.defaultView;
+    try {
+      inp.focus();
+      inp.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }));
+      inp.dispatchEvent(new win.FocusEvent('focus', { bubbles: true }));
+      // Önceki değeri temizle
+      try {
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, '');
+        inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      } catch {}
+      // Karakter karakter yaz
+      for (const ch of text) {
+        const code = ch.charCodeAt(0);
+        try {
+          inp.dispatchEvent(new win.InputEvent('beforeinput', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
+          inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: ch, keyCode: code, which: code }));
+          inp.dispatchEvent(new win.KeyboardEvent('keypress', { bubbles: true, key: ch, keyCode: code, which: code }));
+          const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+          setter.call(inp, (inp.value || '') + ch);
+          inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+          inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: ch, keyCode: code, which: code }));
+        } catch (e) {}
+        await sleep(40);
+      }
+      // Final
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }));
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      // Inline onblur/onchange execute
+      const onBlurAttr = inp.getAttribute('onblur');
+      if (onBlurAttr) { try { new win.Function('event', onBlurAttr).call(inp, new win.Event('blur')); } catch {} }
+      const onChangeAttr = inp.getAttribute('onchange');
+      if (onChangeAttr) { try { new win.Function('event', onChangeAttr).call(inp, new win.Event('change')); } catch {} }
+      return true;
+    } catch (e) { return false; }
   }
 
   /**
@@ -734,20 +770,22 @@
 
     const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
     await log(`🎯 Buton bulundu: "${label}" [${btn.tagName}]`);
-    await log(`🖱 "${label}" butonu tıklanıyor`);
-    btn.click();
-    // Click bubble + onclick handler
+    await log(`🖱 "${label}" butonu tıklanıyor (gerçek user click sim)`);
+    // Gerçek user click — focus + mousedown + mouseup + click sırası
+    const win = doc.defaultView || window;
     try {
-      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    } catch {}
-    // onclick attribute'unu doğrudan execute et (Luca bazen sadece onclick'i kullanır)
-    try {
-      const oc = btn.getAttribute && btn.getAttribute('onclick');
-      if (oc) {
-        const win = doc.defaultView || window;
-        new win.Function(oc).call(btn);
-      }
-    } catch {}
+      if (typeof btn.focus === 'function') btn.focus();
+      btn.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      btn.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      btn.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
+      btn.click();
+    } catch (e) {
+      try { btn.click(); } catch {}
+    }
+    // NOT: onclick attribute eval'i KALDIRILDI — Mizan'da gerekiyordu
+    // (gonder() fonksiyonu) ama KDV Defteri Kebir akışında Luca'nın kendi click
+    // handler'ı zaten dispatch edilen MouseEvent ile tetikleniyor. Ekstra eval
+    // bazen flow'u 2 kez tetikleyip yanlış sonuçlara sebep oluyor.
   }
 
   /**
@@ -2077,7 +2115,8 @@
                 const fullUrl = action.startsWith('http')
                   ? action
                   : new URL(action, win.location.href).toString();
-                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte body)`);
+                const bodyPreview = params.toString().slice(0, 200);
+                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte) body: ${bodyPreview}`);
 
                 const fetchOpts = {
                   method,
