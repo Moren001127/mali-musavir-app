@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.42.0';
+          const AGENT_VER = '1.43.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -480,15 +480,30 @@
    * "Tek hesap kodu" alanı varsa onu, yoksa BAS+BIT'i aynı değerle doldurur.
    */
   async function fillLucaHesapKodu(form, hesapKodu, log) {
+    // Luca onblur/onchange'inde server'a AJAX atıp session'a hesap kodunu yazıyor.
+    // setNative + zengin event chain + inline onblur eval + bekleme ile session
+    // güncellemesini garantile.
     const setNative = (inp, value) => {
       if (!inp) return false;
       const win = inp.ownerDocument.defaultView;
       try {
         const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
         setter.call(inp, value);
+        inp.dispatchEvent(new Event('focus', { bubbles: true }));
         inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: 'Tab', code: 'Tab', keyCode: 9 }));
+        inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: 'Tab', code: 'Tab', keyCode: 9 }));
         inp.dispatchEvent(new Event('change', { bubbles: true }));
         inp.dispatchEvent(new Event('blur', { bubbles: true }));
+        // Inline onblur/onchange attribute'unu da çağır (Luca'nın gerçek lookup kodu)
+        const onBlurAttr = inp.getAttribute('onblur');
+        if (onBlurAttr) {
+          try { new win.Function('event', onBlurAttr).call(inp, new win.Event('blur')); } catch (e) {}
+        }
+        const onChangeAttr = inp.getAttribute('onchange');
+        if (onChangeAttr) {
+          try { new win.Function('event', onChangeAttr).call(inp, new win.Event('change')); } catch (e) {}
+        }
         return true;
       } catch (e) { return false; }
     };
@@ -517,7 +532,18 @@
     if (ilk && son) {
       setNative(ilk, hesapKodu);
       setNative(son, hesapKodu);
-      await log(`💼 Hesap kodu (HESAPKODU_ILK+SON) set: ${hesapKodu} (aralık: ${hesapKodu}-${hesapKodu})`);
+      // Luca onblur AJAX'i için bekle (server'a hesap kodu yazılması)
+      await sleep(800);
+      // Doğrula — value hâlâ doğru mu? Bazen Luca onblur'da ters yıkar
+      const v1 = ilk.value, v2 = son.value;
+      await log(`💼 Hesap kodu (HESAPKODU_ILK+SON) set: ${hesapKodu} (input.value: ILK="${v1}" SON="${v2}")`);
+      // Eğer değer kayboldu ise tekrar yaz
+      if (v1 !== hesapKodu || v2 !== hesapKodu) {
+        setNative(ilk, hesapKodu);
+        setNative(son, hesapKodu);
+        await sleep(400);
+        await log(`💼 Hesap kodu re-set: ILK="${ilk.value}" SON="${son.value}"`);
+      }
       return true;
     }
 
