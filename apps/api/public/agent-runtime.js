@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.43.0';
+          const AGENT_VER = '1.44.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -692,6 +692,56 @@
   }
 
   /**
+   * Form üzerindeki "Yenile" butonunu bul ve tıkla — Defteri Kebir akışında
+   * hesap kodu set sonrası Luca session'ını güncellemek için ŞART.
+   * frm3 doc'unda "Yenile" text'li link/button arar (form'un dışında olabilir).
+   */
+  async function clickLucaYenileButton(form, log) {
+    const doc = form.ownerDocument;
+    const all = [
+      ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
+      ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a, td, font, span, div'),
+    ];
+
+    // 1) Tam eşleşme: "Yenile" / "YENİLE"
+    let btn = all.find((el) => {
+      const txt = (el.value || el.textContent || '').trim();
+      // Sadece kendi içeriği "Yenile" olan (parent/wrapper değil)
+      if (el.children && el.children.length > 0) return false;
+      return txt === 'Yenile' || txt === 'YENİLE' || txt === 'YENILE';
+    });
+
+    // 2) onclick içinde "yenile|refresh|reload|loadhesap"
+    if (!btn) {
+      btn = all.find((el) => {
+        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
+        return /yenile|refresh|reload|loadHesap|loadhesap|hesapAra|hesapPlani/i.test(oc);
+      });
+    }
+
+    if (!btn) {
+      await log('ℹ️ Yenile butonu bulunamadı — devam ediliyor (Luca session zaten güncel olabilir)');
+      return false;
+    }
+
+    const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
+    await log(`🔄 Yenile butonu tıklanıyor: "${label}" [${btn.tagName}]`);
+    try {
+      btn.click();
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } catch {}
+    // onclick attribute'unu da execute et
+    try {
+      const oc = btn.getAttribute && btn.getAttribute('onclick');
+      if (oc) {
+        const win = doc.defaultView || window;
+        new win.Function(oc).call(btn);
+      }
+    } catch {}
+    return true;
+  }
+
+  /**
    * Defteri Kebir flow (KDV 191 / 391):
    *   1) Firma değiştir
    *   2) Fiş Listesi'ne geç
@@ -726,6 +776,13 @@
     await fillLucaHesapKodu(form, hesapKodu, log);
     await setRaporTuruExcel(form, log);
 
+    // KRİTİK: Defteri Kebir'de hesap kodu set sonrası "Yenile" butonu basılmazsa
+    // Luca session'ı yeni hesap kodunu kabul etmiyor — sonuç tüm hesapları olan
+    // mizan-benzeri rapor oluyor. Yenile = hesap planı/filtre validation + session
+    // güncelleme. Sonra Rapor güvenle tıklanabilir.
+    await clickLucaYenileButton(form, log);
+    await sleep(1500);
+
     // Rapor butonu → form intercept
     await clickLucaRaporButton(form, log);
 
@@ -753,6 +810,10 @@
     await fillLucaTarih(form, job, log);
     await fillLucaGelirGider(form, mode, log);
     await setRaporTuruExcel(form, log);
+
+    // İşletme Defteri'nde de Yenile gerekebilir — denedikten sonra Rapor
+    await clickLucaYenileButton(form, log);
+    await sleep(1500);
 
     await clickLucaRaporButton(form, log);
     return await waitForCapturedBlob(log, 30000);
