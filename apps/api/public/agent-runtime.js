@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.38.0';
+          const AGENT_VER = '1.39.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -387,25 +387,49 @@
    * Olası name/id'ler: RAPOR_TURU, raporTuru, format, TIP, dosyaTuru
    */
   async function setRaporTuruExcel(form, log) {
+    // Rapor Türü select'ini İSME göre değil İÇERİĞE göre bul:
+    // Gerçek Rapor Türü her zaman PDF + Excel içerir (Word/ODT/RTF de olur).
+    // REPORT_TYPE / TIPID / format gibi yanıltıcı isimleri hep doğru yakalar.
     const selects = [...form.querySelectorAll('select')];
     for (const sel of selects) {
-      const key = ((sel.name || '') + ' ' + (sel.id || '') + ' ' + (sel.title || '')).toLocaleLowerCase('tr-TR');
-      if (/rapor|format|tip|dosya|tur|report|cikti|çıktı/.test(key)) {
-        // Excel seçeneği var mı?
-        for (const opt of sel.options) {
-          const t = (opt.text || '').toLocaleLowerCase('tr-TR');
-          const v = (opt.value || '').toLocaleLowerCase();
-          if (/excel|xls/i.test(t) || /excel|xls/i.test(v)) {
-            const oldText = sel.selectedOptions[0]?.text || '?';
-            sel.value = opt.value;
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            await log(`📑 Rapor Türü: ${oldText} → ${opt.text} (select#${sel.name || sel.id})`);
-            return true;
-          }
+      let hasPdf = false;
+      let excelOpt = null;
+      for (const opt of sel.options) {
+        const t = (opt.text || '').toLocaleLowerCase('tr-TR').trim();
+        const v = (opt.value || '').toLocaleLowerCase().trim();
+        if (/pdf/.test(t) || /pdf/.test(v)) hasPdf = true;
+        // "Excel (xlsx)" — başlıyor "excel" ile, "Liste" içermiyor (Excel Liste farklı opt)
+        if (!excelOpt && /^excel\b/.test(t) && !/liste/.test(t)) {
+          excelOpt = opt;
+        }
+        // Fallback: value'da "xlsx" geçen ama "liste" geçmeyen
+        if (!excelOpt && /xlsx/.test(v) && !/liste/.test(t) && !/liste/.test(v)) {
+          excelOpt = opt;
+        }
+      }
+      if (hasPdf && excelOpt) {
+        const oldText = sel.selectedOptions[0]?.text || '?';
+        sel.value = excelOpt.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`📑 Rapor Türü: ${oldText} → ${excelOpt.text} (select#${sel.name || sel.id})`);
+        return true;
+      }
+    }
+    // Fallback: hiç PDF+Excel content match'i yoksa, value'sunda "xlsx" geçen herhangi bir opt
+    for (const sel of selects) {
+      for (const opt of sel.options) {
+        const t = (opt.text || '').toLocaleLowerCase('tr-TR');
+        const v = (opt.value || '').toLocaleLowerCase();
+        if ((/excel\s*\(xlsx\)/.test(t) || (v === 'xlsx' || /\.xlsx/.test(v))) && !/liste/.test(t)) {
+          const oldText = sel.selectedOptions[0]?.text || '?';
+          sel.value = opt.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          await log(`📑 Rapor Türü (fallback): ${oldText} → ${opt.text} (select#${sel.name || sel.id})`);
+          return true;
         }
       }
     }
-    await log(`⚠ Rapor Türü select'i bulunamadı — PDF olarak kalabilir (Excel istemiyorsan da olur)`);
+    await log(`⚠ Rapor Türü select'i bulunamadı (PDF+Excel option içeren hiçbir select yok)`);
     return false;
   }
 
