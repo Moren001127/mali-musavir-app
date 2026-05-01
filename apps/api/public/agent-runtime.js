@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.50.0';
+          const AGENT_VER = '1.52.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -867,135 +867,183 @@
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
-    // KDV her zaman AYLIK
-    job = { ...job, donemTipi: 'AYLIK' };
-    await log(`📆 KDV: donem=${job.donem} (AYLIK)`);
 
-    // 1) Firma + Fiş Listesi
+    // ── KDV TAM AKIŞ — sıfırdan, Mizan'dan bağımsız ──
+    // Akış (manuel kullanıma birebir paralel):
+    //   1. Firma seç (lucaSlug ile)
+    //   2. Fiş Listesi sayfasına geç
+    //   3. Sağ menü "Defteri Kebir" (Tüm Yazıcılar) — 2. occurrence
+    //   4. Form yüklensin
+    //   5. Tarih (AYLIK, sadece seçili ay)
+    //   6. Hesap kodu (191 alış / 391 satış)
+    //   7. Rapor Türü = Excel (xlsx)
+    //   8. window.__lucaJobOverrides set — XHR hook hesap kodunu jasper.jq body'sine inject etsin
+    //   9. Luca gonder()/formsubmit() çağır — Luca kendi flow'unu yürütür
+    //  10. Form intercept rapor_indir.jq blob'unu yakalar
+    //  11. __lucaJobOverrides temizle
+
+    // 1-2. Firma + Fiş Listesi
     await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
-    // 2) Sağ menü → Defteri Kebir (Tüm Yazıcılar = 2. occurrence)
+    // 3. Defteri Kebir (Tüm Yazıcılar) — 2. occurrence
     await clickLucaRightMenu('Defteri Kebir', log, { nth: 2 });
 
-    // 3) Form yüklensin (parametre kaynağı: hidden DONEM_ID, report, vb.)
+    // 4. Form yüklensin
     const form = await waitForLucaAnyForm(log, /raporKebir|kebir/i, 15000, 'Defteri Kebir formu');
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
-    // 4) Tarih hesapla
-    const tarih = donemToTarihAraligi(job.donem, 'AYLIK');
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-    const TARIH_ILK = tarih.bas.replace(/\./g, '/');
-    const TARIH_SON = tarih.bit.replace(/\./g, '/');
+    // 5. Tarih hesabı — AYLIK (sadece seçili ay, Q1/Q2/Q3/Q4 değil)
+    const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
+    const TARIH_SON = parseAylikDonemBitis(job.donem);
+    if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
     await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
     await log(`💼 Hesap kodu: ${hesapKodu}-${hesapKodu}`);
 
-    // 5) Form'un mevcut hidden parametrelerini topla (DONEM_ID, sirket_id, vb.)
-    const formData = new FormData(form);
-    // 6) Override — KDV için kritik parametreler
-    formData.set('TARIH_ILK', TARIH_ILK);
-    formData.set('TARIH_SON', TARIH_SON);
-    formData.set('HESAPKODU_ILK', hesapKodu);
-    formData.set('HESAPKODU_SON', hesapKodu);
-    formData.set('REPORT_TYPE', 'xlsx');
+    // Helper — input'a native setter ile değer yaz + event'leri dispatch
+    const setInput = (sel, value) => {
+      const inp = form.querySelector(sel);
+      if (!inp) return false;
+      const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
+      setter.call(inp, value);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    };
 
-    // 7) URL — form.action'tan al ama time querystring'i yenile
-    const baseUrl = (form.action || '').split('?')[0];
-    const fullUrl = baseUrl + '?time=' + Date.now();
+    // 6. Form input'larına yaz
+    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
+    setInput('input[name="TARIH_SON"]', TARIH_SON);
+    setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
+    setInput('input[name="HESAPKODU_SON"]', hesapKodu);
 
-    // 8) URL-encoded body'ye çevir
-    const params = new URLSearchParams();
-    for (const [k, v] of formData) params.append(k, String(v));
-    const bodyStr = params.toString();
-    await log(`🚀 POST ${fullUrl.split('/').pop().slice(0, 50)} (${bodyStr.length} byte)`);
-    await log(`🔬 body preview: ${bodyStr.slice(0, 250)}`);
-
-    // 9) Direkt fetch — credentials: include ile session cookie otomatik gider
-    let res;
-    try {
-      res = await frm3win.fetch(fullUrl, {
-        method: 'POST',
-        body: bodyStr,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        credentials: 'include',
-      });
-    } catch (e) {
-      throw new Error(`raporKebirAction.do POST hatası: ${e?.message || e}`);
-    }
-    if (!res.ok) {
-      throw new Error(`raporKebirAction.do HTTP ${res.status}`);
-    }
-
-    const ct = res.headers.get('content-type') || '';
-    await log(`📥 Response ct=${ct.slice(0, 50)}`);
-
-    // 10) Excel direkt mi geldi?
-    if (/spreadsheet|excel|xlsx|octet-stream/i.test(ct)) {
-      const blob = await res.blob();
-      await log(`✅ Excel direkt geldi (${Math.round(blob.size / 1024)} KB)`);
-      return blob;
-    }
-
-    // 11) JSON döndüyse rapor_takip + rapor_indir zincirini biz yürüt
-    const json = await res.json().catch(() => null);
-    await log(`🔍 JSON response: durum=${json?.durum} rapor_id=${json?.rapor_id || json?.raporId || '?'}`);
-    const raporId = json?.rapor_id || json?.raporId || json?.id;
-    if (!raporId) {
-      throw new Error(`raporKebirAction yanıtında rapor_id yok: ${JSON.stringify(json).slice(0, 200)}`);
-    }
-
-    // 12) rapor_takip — durum=150 (Hazır) bekle
-    const takipUrl = (baseUrl.replace(/[^/]+$/, 'rapor_takip.jq')) + '?rapor_id=' + raporId + '&time=' + Date.now();
-    let takipReady = false;
-    const t0 = Date.now();
-    while (Date.now() - t0 < 30000) {
-      const tRes = await frm3win.fetch(takipUrl + '&_=' + Date.now(), { credentials: 'include' });
-      const tJson = await tRes.json().catch(() => null);
-      const durum = tJson?.durum;
-      if (durum === 150 || durum === '150') { takipReady = true; break; }
-      if (durum === 999 || durum === '999' || tJson?.hata) {
-        throw new Error(`rapor_takip durum hatası: ${JSON.stringify(tJson).slice(0, 200)}`);
+    // 7. Rapor Türü = Excel (xlsx) — frm3 doc'da visible select#report_type (6 opt)
+    const reportSel = frm3doc.querySelector('select#report_type, select[name="report_type"]');
+    if (reportSel) {
+      let xlsxOpt = null;
+      for (const opt of reportSel.options) {
+        const t = (opt.text || '').toLowerCase();
+        if (/excel\s*\(xlsx\)/.test(t) && !/liste/.test(t)) { xlsxOpt = opt; break; }
       }
-      await sleep(500);
+      if (xlsxOpt) {
+        const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLSelectElement.prototype, 'value').set;
+        setter.call(reportSel, xlsxOpt.value);
+        reportSel.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`📑 Rapor Türü: Excel (xlsx)`);
+      } else {
+        await log(`⚠ Rapor Türü Excel option bulunamadı`);
+      }
     }
-    if (!takipReady) throw new Error('rapor_takip 30sn içinde durum=150 vermedi');
-    await log(`✓ rapor_takip durum=150 (rapor hazır)`);
 
-    // 13) rapor_indir — Excel blob
-    const indirUrl = (baseUrl.replace(/[^/]+$/, 'rapor_indir.jq')) + '?rapor_id=' + raporId + '&time=' + Date.now();
-    const indirRes = await frm3win.fetch(indirUrl, { credentials: 'include', method: 'POST' });
-    if (!indirRes.ok) throw new Error(`rapor_indir HTTP ${indirRes.status}`);
-    const blob = await indirRes.blob();
-    await log(`✅ Excel indirildi (${Math.round(blob.size / 1024)} KB, ct=${indirRes.headers.get('content-type')})`);
-    return blob;
+    // 8. KRİTİK: window.__lucaJobOverrides — XHR hook bunu jasper.jq POST'larına inject ediyor
+    // Luca formsubmit input.value'lardan toplamasa bile bizim parametrelerimiz body'ye girer
+    window.__lucaJobOverrides = {
+      TARIH_ILK,
+      TARIH_SON,
+      HESAPKODU_ILK: hesapKodu,
+      HESAPKODU_SON: hesapKodu,
+      REPORT_TYPE: 'xlsx',
+    };
+    await log(`🔧 __lucaJobOverrides set: ${Object.keys(window.__lucaJobOverrides).join(',')}`);
+
+    await sleep(500);
+
+    // 9. Luca'nın kendi flow'unu tetikle — gonder()/formsubmit() varsa onları,
+    // yoksa Rapor butonu fallback. XHR hook jasper.jq'yu intercept edip body'ye
+    // hesap kodumuzu enjekte edecek.
+    let triggered = false;
+    try {
+      if (typeof frm3win.gonder === 'function') {
+        await log(`🚀 Luca gonder() çağrılıyor`);
+        frm3win.gonder();
+        triggered = true;
+      }
+    } catch (e) { await log(`⚠ gonder() hatası: ${e?.message || e}`); }
+    if (!triggered) {
+      try {
+        if (typeof frm3win.formsubmit === 'function') {
+          await log(`🚀 Luca formsubmit() çağrılıyor`);
+          frm3win.formsubmit(new frm3win.Event('submit'), 0);
+          triggered = true;
+        }
+      } catch (e) { await log(`⚠ formsubmit() hatası: ${e?.message || e}`); }
+    }
+    if (!triggered) {
+      await log(`ℹ️ Luca JS fonksiyonu yok, Rapor butonu fallback`);
+      await clickLucaRaporButton(form, log);
+    }
+
+    // 10-11. Blob yakala + override temizle
+    try {
+      const blob = await waitForCapturedBlob(log, 45000);
+      return blob;
+    } finally {
+      delete window.__lucaJobOverrides;
+      await log(`🧹 __lucaJobOverrides temizlendi`);
+    }
   }
 
   async function fetchLucaIsletmeGelirGiderExcel(job, log, mode) {
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
-    // İşletme defteri her zaman AYLIK dönem üzerinde
+
     job = { ...job, donemTipi: 'AYLIK' };
-    await log(`📆 İşletme donemTipi=AYLIK force edildi (donem=${job.donem})`);
-    const firmaResult = await ensureLucaFirma(job, log);
+    await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
-    if (firmaResult?.changed) {
-      await log('ℹ️ Firma değişti — İşletme menüsü doğrudan tıklanıyor (frm3 reset YOK)');
-    }
-
     await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
-
     const form = await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme/i, 15000, 'İşletme Gelir/Gider formu');
-    await dumpLucaFormStructure(form, log);
+    const frm3doc = form.ownerDocument;
+    const frm3win = frm3doc.defaultView;
 
-    await fillLucaTarih(form, job, log);
+    const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
+    const TARIH_SON = parseAylikDonemBitis(job.donem);
+    if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
+    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
+    await log(`📊 Mode: ${mode}`);
+
+    const setInput = (sel, value) => {
+      const inp = form.querySelector(sel);
+      if (!inp) return false;
+      const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
+      setter.call(inp, value);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    };
+    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
+    setInput('input[name="TARIH_SON"]', TARIH_SON);
+
     await fillLucaGelirGider(form, mode, log);
     await setRaporTuruExcel(form, log);
 
-    await clickLucaRaporButton(form, log);
-    return await waitForCapturedBlob(log, 30000);
+    window.__lucaJobOverrides = {
+      TARIH_ILK,
+      TARIH_SON,
+      REPORT_TYPE: 'xlsx',
+    };
+    await sleep(500);
+
+    let triggered = false;
+    try {
+      if (typeof frm3win.gonder === 'function') { frm3win.gonder(); triggered = true; }
+    } catch {}
+    if (!triggered) {
+      try {
+        if (typeof frm3win.formsubmit === 'function') { frm3win.formsubmit(new frm3win.Event('submit'), 0); triggered = true; }
+      } catch {}
+    }
+    if (!triggered) await clickLucaRaporButton(form, log);
+
+    try {
+      return await waitForCapturedBlob(log, 45000);
+    } finally {
+      delete window.__lucaJobOverrides;
+    }
   }
 
   /**
@@ -1017,6 +1065,34 @@
   }
 
   // ─── LUCA TAM OTOMATİK YARDIMCILARI ───
+
+  /**
+   * "2026-03" → "01/03/2026" (AYLIK ay başlangıcı)
+   * "2026-3"  → "01/03/2026"
+   * "032026"  → "01/03/2026"
+   */
+  function parseAylikDonemBaslangic(donem) {
+    if (!donem) return null;
+    const s = String(donem).trim();
+    let yil, ay;
+    let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
+    if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
+    if (!yil) { m = s.match(/^(\d{2})(\d{4})$/); if (m) { ay = m[1]; yil = m[2]; } }
+    if (!yil || !ay) return null;
+    return `01/${ay}/${yil}`;
+  }
+  function parseAylikDonemBitis(donem) {
+    if (!donem) return null;
+    const s = String(donem).trim();
+    let yil, ay;
+    let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
+    if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
+    if (!yil) { m = s.match(/^(\d{2})(\d{4})$/); if (m) { ay = m[1]; yil = m[2]; } }
+    if (!yil || !ay) return null;
+    // Ayın son günü
+    const lastDay = new Date(parseInt(yil), parseInt(ay), 0).getDate();
+    return `${String(lastDay).padStart(2, '0')}/${ay}/${yil}`;
+  }
 
   /** Bir frame referansını adıyla al */
   function getLucaFrame(name) {
@@ -2785,6 +2861,45 @@
 
   // === HELPERS ===
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ─────────────────────────────────────────────────────────────────────
+  // XHR HOOK — jasper.jq POST'larına window.__lucaJobOverrides body inject
+  // KDV/İşletme akışında HESAPKODU_ILK/SON, TARIH_ILK/SON server'a gerçekten
+  // gitsin diye Luca'nın kendi XHR'ini intercept ediyoruz. Mizan etkilenmez
+  // çünkü __lucaJobOverrides sadece KDV akışı sırasında set edilir.
+  (function installXhrHook() {
+    if (window.__morenXhrHookInstalled) return;
+    window.__morenXhrHookInstalled = true;
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__morenUrl = url;
+      this.__morenMethod = method;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      try {
+        const url = this.__morenUrl || '';
+        const ov = window.__lucaJobOverrides;
+        if (ov && typeof body === 'string' && /jasper\.jq|raporKebir|raporIslem|raporMuavin/i.test(url)) {
+          const params = new URLSearchParams(body);
+          for (const [k, v] of Object.entries(ov)) {
+            params.set(k, String(v));
+          }
+          body = params.toString();
+          // İlk 200 char log (debug için window.__morenLogs'a)
+          if (Array.isArray(window.__morenLogs)) {
+            window.__morenLogs.push(`[XHR-INJECT] ${url.split('/').pop().slice(0,30)} body=${body.slice(0, 200)}`);
+          }
+        }
+      } catch (e) {}
+      return origSend.call(this, body);
+    };
+    // window.__morenLogs henüz init olmamış olabilir, ama job loop'ta init oluyor
+    try { console.log('[Moren] XHR hook kuruldu'); } catch {}
+  })();
+
+
   async function api(path, opts = {}) {
     const res = await fetch(API + path, {
       ...opts,
