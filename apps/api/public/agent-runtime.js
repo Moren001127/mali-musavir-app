@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.36.0';
+          const AGENT_VER = '1.37.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -390,7 +390,7 @@
     const selects = [...form.querySelectorAll('select')];
     for (const sel of selects) {
       const key = ((sel.name || '') + ' ' + (sel.id || '') + ' ' + (sel.title || '')).toLocaleLowerCase('tr-TR');
-      if (/rapor|format|tip|dosya|tur/.test(key)) {
+      if (/rapor|format|tip|dosya|tur|report|cikti|çıktı/.test(key)) {
         // Excel seçeneği var mı?
         for (const opt of sel.options) {
           const t = (opt.text || '').toLocaleLowerCase('tr-TR');
@@ -436,13 +436,23 @@
       return true;
     }
 
-    // BAS + BIT
+    // BAS + BIT (alt çizgili: BAS_HESAP_KODU)
     const bas = form.querySelector('input[name="BAS_HESAP_KODU"], input[id="BAS_HESAP_KODU"], input[name="basHesapKodu"], input[name*="BAS" i][name*="HESAP" i]');
     const bit = form.querySelector('input[name="BIT_HESAP_KODU"], input[id="BIT_HESAP_KODU"], input[name="bitHesapKodu"], input[name*="BIT" i][name*="HESAP" i]');
     if (bas && bit) {
       setNative(bas, hesapKodu);
       setNative(bit, hesapKodu);
       await log(`💼 Hesap kodu (BAS+BIT) set: ${hesapKodu}`);
+      return true;
+    }
+
+    // ILK + SON (Luca'nın gerçek isimleri: HESAPKODU_ILK + HESAPKODU_SON, alt çizgisiz)
+    const ilk = form.querySelector('input[name="HESAPKODU_ILK"], input[id="HESAPKODU_ILK"], input[name="hesapkoduIlk"]');
+    const son = form.querySelector('input[name="HESAPKODU_SON"], input[id="HESAPKODU_SON"], input[name="hesapkoduSon"]');
+    if (ilk && son) {
+      setNative(ilk, hesapKodu);
+      setNative(son, hesapKodu);
+      await log(`💼 Hesap kodu (HESAPKODU_ILK+SON) set: ${hesapKodu} (aralık: ${hesapKodu}-${hesapKodu})`);
       return true;
     }
 
