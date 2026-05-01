@@ -18,6 +18,8 @@ import {
   actionLabel,
   resourceLabel,
   type AuditFilters,
+  type AuditLogItem,
+  type AuditFacets,
 } from '@/lib/audit';
 
 const GOLD = '#d4b876';
@@ -26,18 +28,23 @@ export default function DenetimPage() {
   const [filters, setFilters] = useState<AuditFilters>({ limit: 100, offset: 0 });
   const [searchInput, setSearchInput] = useState('');
 
-  const { data: facets } = useQuery({
+  const { data: facets } = useQuery<AuditFacets>({
     queryKey: ['audit-facets'],
     queryFn: () => auditApi.facets(),
   });
 
-  const { data: logsData, isLoading, isFetching, refetch } = useQuery({
+  const { data: logsData, isLoading, isFetching } = useQuery<{
+    items: AuditLogItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>({
     queryKey: ['audit-logs', filters],
     queryFn: () => auditApi.list(filters),
-    keepPreviousData: true,
-  } as any);
+    placeholderData: (prev) => prev,
+  });
 
-  const { data: stats = [] } = useQuery({
+  const { data: stats = [] } = useQuery<Array<{ day: string; count: number }>>({
     queryKey: ['audit-daily'],
     queryFn: () => auditApi.dailyStats(30),
   });
