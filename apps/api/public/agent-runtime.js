@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.30.0';
+          const AGENT_VER = '1.31.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -300,12 +300,43 @@
       return;
     }
     const currentText = (combo.selectedOptions[0]?.text || '').trim();
-    const norm = (s) => String(s || '').trim().toLocaleUpperCase('tr-TR');
+
+    // ASCII-fold + slug — TR karakter ve boşluk/alt çizgi farklarını sıfırlar.
+    // "OZ ELA TURİZM TAŞIMACILIK İNŞAAT TİCARET" → "oz_ela_turizm_tasimacilik_insaat_ticaret"
+    // "oz_ela_turizm_tasimacilik_insaat_ticaret"  → "oz_ela_turizm_tasimacilik_insaat_ticaret"
+    const slugify = (s) => String(s || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/[ıİ]/g, 'i')
+      .replace(/[şŞ]/g, 's')
+      .replace(/[çÇ]/g, 'c')
+      .replace(/[ğĞ]/g, 'g')
+      .replace(/[üÜ]/g, 'u')
+      .replace(/[öÖ]/g, 'o')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    // Geçerli option mu? — boş, separator (--, ===), <option value=""> hariç
+    const isRealOption = (opt) => {
+      const v = String(opt.value || '').trim();
+      const t = String(opt.text || '').trim();
+      if (!v || !t) return false;
+      if (t.length < 3) return false;
+      if (/^[-=_•·\s]+$/.test(t)) return false; // separator
+      return true;
+    };
 
     // Mevcut açık firma istenen mükellef mi?
-    const currentNorm = norm(currentText);
+    const currentSlug = slugify(currentText);
     for (const c of candidates) {
-      if (currentNorm.includes(norm(c))) {
+      const cSlug = slugify(c);
+      if (!cSlug) continue;
+      // VKN ise tam string match (option text'inde geçiyor mu)
+      if (/^\d{10,11}$/.test(String(c)) && currentText.includes(String(c))) {
+        await log(`✓ Firma zaten doğru: ${currentText}`);
+        return;
+      }
+      // İsim/slug ise: slug eşitliği ya da currentSlug, target slug'ı kapsıyor mu
+      if (cSlug.length >= 6 && (currentSlug === cSlug || currentSlug.includes(cSlug) || cSlug.includes(currentSlug))) {
         await log(`✓ Firma zaten doğru: ${currentText}`);
         return;
       }
@@ -314,49 +345,113 @@
     // Hedef firma option'unu bul — taxNumber > lucaSlug > ad sırası
     let targetOpt = null;
     let matchedBy = '';
-    for (const opt of combo.options) {
-      const t = norm(opt.text);
-      // 1. taxNumber: 10-11 hane sayı, option text'inde geçer
-      if (job.taxNumber && t.includes(String(job.taxNumber))) {
-        targetOpt = opt; matchedBy = `VKN/TCKN ${job.taxNumber}`; break;
-      }
-    }
-    if (!targetOpt && job.lucaSlug) {
-      const wanted = norm(job.lucaSlug);
-      for (const opt of combo.options) {
-        const t = norm(opt.text);
-        if (t.includes(wanted) || wanted.includes(t.replace(/\s+/g, ' ').trim())) {
-          targetOpt = opt; matchedBy = `lucaSlug "${job.lucaSlug}"`; break;
+
+    // 1) VKN/TCKN tam match
+    if (job.taxNumber) {
+      const tn = String(job.taxNumber).replace(/\D/g, '');
+      if (tn) {
+        for (const opt of combo.options) {
+          if (!isRealOption(opt)) continue;
+          if (opt.text.includes(tn)) {
+            targetOpt = opt; matchedBy = `VKN/TCKN ${tn}`; break;
+          }
         }
       }
     }
+
+    // 2) lucaSlug — ASCII-fold + slugify her iki tarafa
+    if (!targetOpt && job.lucaSlug) {
+      const wanted = slugify(job.lucaSlug);
+      if (wanted.length >= 4) {
+        // Önce tam eşitlik
+        for (const opt of combo.options) {
+          if (!isRealOption(opt)) continue;
+          if (slugify(opt.text) === wanted) {
+            targetOpt = opt; matchedBy = `lucaSlug eşitlik "${job.lucaSlug}"`; break;
+          }
+        }
+        // Tam eşitlik yoksa "wanted, optSlug'ı kapsıyor" (ör. slug uzun versiyon, option kısaltılmış)
+        if (!targetOpt) {
+          for (const opt of combo.options) {
+            if (!isRealOption(opt)) continue;
+            const optSlug = slugify(opt.text);
+            if (optSlug.length < 4) continue;
+            if (wanted.includes(optSlug) || optSlug.includes(wanted)) {
+              targetOpt = opt; matchedBy = `lucaSlug substring "${job.lucaSlug}"`; break;
+            }
+          }
+        }
+      }
+    }
+
+    // 3) Mükellef adı — token bazlı (en az 2 anlamlı token slugify edilmiş halde option slug'ında geçmeli)
     if (!targetOpt && job.mukellefAdi) {
-      const wanted = norm(job.mukellefAdi);
-      // Mükellef adı içindeki ilk anlamlı 2-3 kelimeyi al, option ile karşılaştır
-      const tokens = wanted.split(/\s+/).filter((w) => w.length >= 3).slice(0, 3);
-      for (const opt of combo.options) {
-        const t = norm(opt.text);
-        const allMatch = tokens.length > 0 && tokens.every((tok) => t.includes(tok));
-        if (allMatch) {
-          targetOpt = opt; matchedBy = `ad "${job.mukellefAdi}"`; break;
+      const wantedSlug = slugify(job.mukellefAdi);
+      const tokens = wantedSlug.split('_').filter((w) => w.length >= 3).slice(0, 4);
+      if (tokens.length >= 2) {
+        for (const opt of combo.options) {
+          if (!isRealOption(opt)) continue;
+          const optSlug = slugify(opt.text);
+          if (optSlug.length < 4) continue;
+          const matches = tokens.filter((tok) => optSlug.includes(tok)).length;
+          if (matches >= Math.min(tokens.length, 2)) {
+            targetOpt = opt; matchedBy = `ad tokens "${tokens.join('+')}"`; break;
+          }
         }
       }
     }
 
     if (!targetOpt) {
-      const sample = [...combo.options].slice(0, 5).map((o) => o.text.trim().slice(0, 40)).join(' | ');
+      const realOpts = [...combo.options].filter(isRealOption);
+      const sample = realOpts.slice(0, 8).map((o) => o.text.trim().slice(0, 50)).join(' | ');
       throw new Error(
         `Firma bulunamadı: VKN=${job.taxNumber || '?'} slug="${job.lucaSlug || '?'}" ad="${job.mukellefAdi || '?'}". ` +
-        `Luca firma listesinde yok ya da yetkiniz yok. İlk 5 firma: ${sample}`,
+        `Luca firma listesinde yok ya da yetkiniz yok. ` +
+        `Toplam ${combo.options.length} option (${realOpts.length} geçerli). İlk geçerli 8: ${sample}`,
       );
     }
 
-    await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetOpt.text.trim()}`);
-    combo.value = targetOpt.value;
+    const targetText = targetOpt.text.trim();
+    const targetValue = String(targetOpt.value || '').trim();
+    if (!targetValue) {
+      throw new Error(`Eşleşen option boş value taşıyor: "${targetText}". Luca DOM yapısı değişmiş olabilir.`);
+    }
+
+    await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetText}`);
+    combo.value = targetValue;
     combo.dispatchEvent(new Event('change', { bubbles: true }));
 
-    // Sayfa yenilenmesini bekle — frm4 reload edecek, sonra frm5 menü hazır olacak
-    await sleep(2000);
+    // Sayfa yenilenmesini bekle — frm4 reload edecek
+    await sleep(2500);
+
+    // DOĞRULAMA: SirketCombo'da seçili option gerçekten hedef mi?
+    // (frm4 reload sonrası DOM yeniden oluştuğu için tekrar fetch ediyoruz)
+    let verified = false;
+    let lastSelectedText = currentText;
+    const verifyDeadline = Date.now() + 18000;
+    while (Date.now() < verifyDeadline) {
+      const frm4Now = getLucaFrame('frm4');
+      const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
+      if (comboNow) {
+        const selText = (comboNow.selectedOptions[0]?.text || '').trim();
+        const selSlug = slugify(selText);
+        const tgtSlug = slugify(targetText);
+        lastSelectedText = selText;
+        if (selSlug && tgtSlug && (selSlug === tgtSlug || selSlug.includes(tgtSlug) || tgtSlug.includes(selSlug))) {
+          verified = true;
+          break;
+        }
+      }
+      await sleep(500);
+    }
+    if (!verified) {
+      throw new Error(
+        `Firma DEĞİŞMEDİ: hedef "${targetText}", hâlâ seçili olan "${lastSelectedText}". ` +
+        `Luca change event'i kabul etmedi olabilir — manuel olarak Luca'da firma seçip tekrar dene.`,
+      );
+    }
+
+    // Menünün yeni firma için hazır olmasını bekle
     await waitUntil(() => {
       const frm5 = getLucaFrame('frm5');
       if (!frm5 || !frm5.contentDocument) return false;
@@ -366,7 +461,7 @@
       }
       return false;
     }, 15000);
-    await log(`✓ Firma değişti, menü hazır`);
+    await log(`✓ Firma değişti → ${targetText}, menü hazır`);
   }
 
   /**
