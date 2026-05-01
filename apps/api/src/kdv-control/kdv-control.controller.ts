@@ -268,6 +268,22 @@ export class KdvControlController {
   }
 
   /**
+   * Luca fetch job durum sorgusu — frontend polling ile log/state alır.
+   * Mizan'daki `/mizan/luca-job/:id` ile aynı pattern.
+   */
+  @Get('luca-job/:id')
+  @Roles('ADMIN', 'STAFF')
+  async getLucaJob(@Req() req: any, @Param('id') id: string) {
+    const job = await this.kdvService.getLucaJob(id, req.user.tenantId);
+    // Job done olduysa session'ı + record sayısını da dön
+    let session: any = null;
+    if (job?.status === 'done' && job.sessionId) {
+      session = await this.kdvService.findSession(job.sessionId, req.user.tenantId).catch(() => null);
+    }
+    return { job, session };
+  }
+
+  /**
    * Mevcut (portal DB'sindeki) Mihsap fatura kayıtlarını bu oturuma
    * görsel olarak bağlar. Mihsap'a yeniden gitmez.
    */

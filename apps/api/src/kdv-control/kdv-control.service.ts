@@ -1644,6 +1644,20 @@ export class KdvControlService {
    *
    * Döndürülen `jobId` ile frontend durumu polll edebilir.
    */
+  /**
+   * Luca fetch job durumu sorgu — frontend polling için.
+   * Mizan'daki getJob ile aynı, sadece tenant'a filtrelenmiş.
+   */
+  async getLucaJob(jobId: string, tenantId: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { id: jobId, tenantId },
+    });
+    if (!job) {
+      throw new NotFoundException('Luca job bulunamadı');
+    }
+    return job;
+  }
+
   async queueLucaImport(sessionId: string, tenantId: string, userId: string) {
     const session = await this.findSession(sessionId, tenantId);
     if (!session.taxpayerId) {

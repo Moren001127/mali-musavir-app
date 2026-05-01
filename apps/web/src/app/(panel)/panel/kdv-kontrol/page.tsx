@@ -261,6 +261,73 @@ export default function KdvKontrolPage() {
     run();
   };
 
+  // ── LUCA'DAN ÇEK (Extension-first agent) ─────────────────────
+  // Mizan'daki akışın aynısı: backend job oluşturur, agent (Luca tab'ında çalışan
+  // bookmarklet) job'u alıp Defteri Kebir / İşletme Defteri Excel'ini indirip
+  // backend'e POST eder. Frontend bu süreçte log/durum gösterir.
+  const [lucaJobId, setLucaJobId] = useState<string | null>(null);
+  const [lucaStatus, setLucaStatus] = useState<string>('');
+  const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
+
+  const lucaAgentMut = useMutation({
+    mutationFn: async () => {
+      if (!taxpayerId) throw new Error('Önce mükellef seçin');
+      // Önce session var mı veya yarat — sonra import-from-luca tetikle
+      const s = await ensureSession.mutateAsync();
+      return await kdvApi.importFromLuca(s.id);
+    },
+    onSuccess: (d: any) => {
+      setLucaJobId(d.jobId);
+      setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
+      setLucaLogLines([]);
+      toast.info('Luca job oluşturuldu · Luca sekmesini açık tut', { duration: 5000 });
+      pushFeed({ group: 'luca', kind: 'info', title: 'Luca\'dan çekme başlatıldı', detail: `Tip: ${type}` });
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || e?.message || 'Luca job oluşturulamadı';
+      toast.error(msg);
+      pushFeed({ group: 'luca', kind: 'err', title: 'Luca\'dan çekme hatası', detail: msg });
+    },
+  });
+
+  // Job polling
+  const lucaJobQuery = useQuery({
+    queryKey: ['kdv-luca-job', lucaJobId],
+    queryFn: () => kdvApi.getLucaJob(lucaJobId!),
+    enabled: !!lucaJobId,
+    refetchInterval: 3000,
+  });
+
+  useEffect(() => {
+    const d = lucaJobQuery.data as any;
+    if (!d?.job) return;
+    const job = d.job;
+    const s = job.status;
+    const log = job.errorMsg || '';
+    const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+    setLucaLogLines(lines);
+    const lastLine = lines[lines.length - 1] || '';
+    if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
+    else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
+    else if (s === 'done') {
+      setLucaStatus('Tamamlandı ✓');
+      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2500);
+      toast.success('KDV verisi Luca\'dan çekildi');
+      pushFeed({ group: 'luca', kind: 'ok', title: `Luca'dan ${job.recordCount || 0} satır çekildi`, detail: `Tip: ${job.tip}` });
+      // Records / stats yenilensin
+      if (sessionId) {
+        qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
+        qc.invalidateQueries({ queryKey: ['kdv-results', sessionId] });
+      }
+    } else if (s === 'failed') {
+      setLucaStatus('Hata: ' + (lastLine || 'bilinmeyen hata'));
+      toast.error('Luca\'dan çekme başarısız');
+      pushFeed({ group: 'luca', kind: 'err', title: 'Luca\'dan çekme başarısız', detail: lastLine });
+      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 5000);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lucaJobQuery.data]);
+
   // === EXCEL UPLOAD + KOLON MAPPING ===
   const excelFileInputRef = useRef<HTMLInputElement>(null);
   const [mappingModal, setMappingModal] = useState<null | {
@@ -755,12 +822,12 @@ export default function KdvKontrolPage() {
           </div>
         </div>
 
-        {/* AKSİYON BUTONLARI (3 adım — OCR otomatik) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        {/* AKSİYON BUTONLARI (4 adım — OCR otomatik) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
           <ActionBtn
             icon={Upload}
             label="Luca Excel Yükle"
-            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Muavin defter .xlsx'}
+            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Manuel .xlsx upload'}
             color="#2563eb"
             done={hasRecords}
             onClick={() => requireMukellef(openExcelPicker)}
@@ -772,6 +839,21 @@ export default function KdvKontrolPage() {
             accept=".xlsx,.xls,.csv"
             style={{ display: 'none' }}
             onChange={handleExcelSelected}
+          />
+          {/* YENİ: Luca'dan Çek (otomatik agent) */}
+          <ActionBtn
+            icon={Download}
+            label={lucaJobId ? 'Luca\'dan Çekiliyor…' : 'Luca\'dan Çek'}
+            sub={
+              lucaJobId ? (lucaStatus || 'Agent çalışıyor…')
+              : hasRecords ? `${stats?.totalRecords} satır (yenile)`
+              : !taxpayerId ? 'Önce mükellef seçin'
+              : 'Otomatik · agent Luca tab\'ından çeker'
+            }
+            color="#10b981"
+            done={false}
+            onClick={() => requireMukellef(() => lucaAgentMut.mutate())}
+            loading={lucaAgentMut.isPending || !!lucaJobId}
           />
           <ActionBtn
             icon={ImageIcon}
@@ -804,6 +886,45 @@ export default function KdvKontrolPage() {
             loading={runReconcile.isPending}
           />
         </div>
+
+        {/* Luca job durumu — agent Luca sekmesini kullanırken canlı log */}
+        {lucaJobId && (
+          <div
+            className="rounded-lg p-3 text-sm mt-3"
+            style={{
+              background: 'rgba(16,185,129,0.08)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              color: '#fafaf9',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Loader2 size={16} className="animate-spin" style={{ color: '#10b981', flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                <div style={{ color: '#10b981', fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+                <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }} className="truncate">
+                  {lucaStatus || 'Moren agent Luca\'dan KDV verisini indiriyor…'}
+                </div>
+              </div>
+              <button
+                onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
+                className="px-3 py-1.5 rounded-md text-xs"
+                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
+              >
+                İptal
+              </button>
+            </div>
+            {lucaLogLines.length > 0 && (
+              <div
+                className="mt-2 p-2 rounded text-xs font-mono overflow-y-auto"
+                style={{ background: 'rgba(0,0,0,0.3)', maxHeight: 160, color: 'rgba(250,250,249,0.7)' }}
+              >
+                {lucaLogLines.slice(-15).map((line, i) => (
+                  <div key={i} className="leading-relaxed truncate">{line}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* AKTİF SEANS SAYAÇLARI */}

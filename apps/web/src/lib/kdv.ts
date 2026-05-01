@@ -115,7 +115,17 @@ export const kdvApi = {
   /** Luca'dan 191/391 veya işletme defteri verisini otomatik çekmek için
    *  bir fetch job oluşturur. Luca sayfasında açık runner bu job'u işler. */
   importFromLuca: (sessionId: string) =>
-    api.post(`/kdv-control/sessions/${sessionId}/import-from-luca`).then((r) => r.data),
+    api
+      .post(`/kdv-control/sessions/${sessionId}/import-from-luca`)
+      .then((r) => r.data as { jobId: string; status: string; method?: string; message?: string }),
+
+  /** Luca fetch job durumu — Mizan'daki getLucaJob ile aynı pattern.
+   *  Frontend polling ile job.status ('pending' | 'running' | 'done' | 'failed')
+   *  ve job.errorMsg (kümülatif log) görüntüler. */
+  getLucaJob: (jobId: string) =>
+    api
+      .get(`/kdv-control/luca-job/${jobId}`)
+      .then((r) => r.data as { job: any; session: any }),
 
   /** Excel dosyasını preview et — sütun başlıkları + örnek satırlar döner. */
   previewExcel: (sessionId: string, file: File) => {
