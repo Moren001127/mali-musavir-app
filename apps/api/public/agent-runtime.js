@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.0';
+          const AGENT_VER = '1.35.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -478,11 +478,62 @@
       combo.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    // Native onchange yakalayamadıysak form submit fallback dene
-    if (!dispatchedNative) {
+    // Luca'nın onchange'i sadece UI hazırlığı yapıyor (loadDonem, showButton).
+    // Asıl firma değişimi için showButton()'ın gösterdiği "Tamam/Seç/Onayla" butonuna
+    // tıklanması gerek. 800ms bekle (showButton DOM'a buton koymak için zaman),
+    // sonra frm4'te VISIBLE bir button/input[type=submit]/input[type=button] ara ve tıkla.
+    await sleep(800);
+
+    let onayClicked = false;
+    try {
+      const frm4Doc = frm4.contentDocument;
+      // Olası onay buton selector'ları:
+      //   1. input[type=submit] / input[type=button] / button
+      //   2. Text/value: Tamam, Seç, Onayla, Aç, Değiştir, Giriş
+      //   3. ID/name: btnTamam, btnSec, btnOnay, sirketSec
+      const candidates = [];
+      const allButtons = frm4Doc.querySelectorAll('input[type=submit], input[type=button], button, a[onclick]');
+      for (const b of allButtons) {
+        // Görünür mü? (offsetParent !== null = visible)
+        if (!b.offsetParent && b.tagName !== 'A') continue; // a tag offsetParent unstable
+        const txt = ((b.value || '') + ' ' + (b.textContent || '') + ' ' + (b.id || '') + ' ' + (b.name || '') + ' ' + (b.getAttribute('onclick') || '')).toLocaleLowerCase('tr-TR');
+        // Negatif eleme: kapat/iptal/çık olanları reddet
+        if (/iptal|kapat|cancel|close|geri|exit|cikis/.test(txt)) continue;
+        // Pozitif: tamam/seç/onay/değiştir/aç/giriş/sec/sirket
+        if (/tamam|onay|sec|seç|değiştir|degistir|aç|ac|giriş|giris|sirket\s*sec|sirketsec|btnsec|btnonay|btntamam/.test(txt)) {
+          candidates.push({ btn: b, score: 2, txt: txt.slice(0, 40) });
+          continue;
+        }
+        // Fallback: SirketCombo'ya yakın (parent zinciri 5 seviye) bir buton
+        let cur = b;
+        for (let i = 0; i < 5 && cur; i++) {
+          if (cur.contains(combo)) { candidates.push({ btn: b, score: 1, txt: txt.slice(0, 40) }); break; }
+          cur = cur.parentElement;
+        }
+      }
+      candidates.sort((a, b) => b.score - a.score);
+      if (candidates.length > 0) {
+        const chosen = candidates[0];
+        await log(`🔘 Onay butonu tıklanıyor (score=${chosen.score}): "${chosen.txt}"`);
+        try {
+          chosen.btn.click();
+          chosen.btn.dispatchEvent(new frm4Win.MouseEvent('click', { bubbles: true, cancelable: true }));
+          onayClicked = true;
+        } catch (e) {
+          await log(`⚠ Onay butonu tıklama hatası: ${e?.message || e}`);
+        }
+      } else {
+        await log('ℹ️ Onay butonu bulunamadı — form submit fallback denenecek');
+      }
+    } catch (e) {
+      await log(`⚠ Onay butonu arama hatası: ${e?.message || e}`);
+    }
+
+    // Hâlâ aktivasyon yapılmadıysa parent form submit fallback
+    if (!onayClicked && !dispatchedNative) {
       const parentForm = combo.closest('form');
       if (parentForm) {
-        await log(`🔧 onchange yok, parent form submit ediliyor (${parentForm.action || 'no-action'})`);
+        await log(`🔧 Parent form submit ediliyor (${(parentForm.action || 'no-action').slice(-40)})`);
         try { parentForm.submit(); } catch (e) {}
       }
     }
