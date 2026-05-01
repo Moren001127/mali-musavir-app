@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.47.0';
+          const AGENT_VER = '1.48.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -815,6 +815,11 @@
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
+    // KDV Kontrol her zaman AYLIK dönem üzerinde çalışır (mizandaki gibi GECICI_Q1
+    // değil). Backend job'a donemTipi göndermediği için agent default Q1 hesaplıyordu
+    // → 01.01-31.03 yazıyordu. AYLIK force edilerek sadece seçili ay kullanılır.
+    job = { ...job, donemTipi: 'AYLIK' };
+    await log(`📆 KDV donemTipi=AYLIK force edildi (donem=${job.donem})`);
     const firmaResult = await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
@@ -849,6 +854,9 @@
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
+    // İşletme defteri her zaman AYLIK dönem üzerinde
+    job = { ...job, donemTipi: 'AYLIK' };
+    await log(`📆 İşletme donemTipi=AYLIK force edildi (donem=${job.donem})`);
     const firmaResult = await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
