@@ -61,6 +61,7 @@ export class TaxpayersService {
         whatsappEvrakTalep: true,
         whatsappEvrakGeldi: true,
         isActive: true,
+        isEFaturaMukellefi: true,
         startDate: true,
         endDate: true,
         createdAt: true,

@@ -140,6 +140,8 @@ model Taxpayer {
   whatsappEvrakGeldi  Boolean       @default(false)
   lastReminderSentAt  DateTime?
   isActive    Boolean      @default(true)
+  // E-Fatura mükellefi mi? (true → e-fatura/e-arşiv akışında dahil)
+  isEFaturaMukellefi  Boolean      @default(false)
   // === OTOMASYON AJANLARI ===
   lucaSlug           String?  // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
   mihsapId           String?  // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
