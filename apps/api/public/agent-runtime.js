@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.41.0';
+          const AGENT_VER = '1.42.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -396,7 +396,12 @@
     //   1) PDF + Word + Excel(xlsx) üçü birden — gerçek "Rapor Türü" (PDF/Word/Excel/ODT/Liste/RTF)
     //   2) Opt sayısı >= 5 + Excel(xlsx) — yine Rapor Türü kesinlikle (REPORT_TYPE 3 opt'lu skip olur)
     //   3) PDF + Excel — son çare (eski mantık)
-    const selects = [...form.querySelectorAll('select')];
+    // ÖNEMLİ: Form dışındaki select'ler için form.ownerDocument'i tara (frm3 tümü).
+    const doc = form.ownerDocument;
+    const selects = [
+      ...form.querySelectorAll('select'),
+      ...doc.querySelectorAll('select'),
+    ].filter((sel, i, arr) => arr.indexOf(sel) === i); // dedupe
     const analyzeSelect = (sel) => {
       let hasPdf = false, hasWord = false, hasOdt = false, hasRtf = false;
       let excelXlsxOpt = null, excelOpt = null;
@@ -426,7 +431,7 @@
         const oldText = a.sel.selectedOptions[0]?.text || '?';
         a.sel.value = target.value;
         a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
+        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt)`);
         return true;
       }
     }
@@ -437,7 +442,7 @@
         const oldText = a.sel.selectedOptions[0]?.text || '?';
         a.sel.value = target.value;
         a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [opt>=5]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
+        await log(`📑 Rapor Türü [opt>=5]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt)`);
         return true;
       }
     }
@@ -448,16 +453,24 @@
         const oldText = a.sel.selectedOptions[0]?.text || '?';
         a.sel.value = target.value;
         a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [PDF+Excel fallback]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
+        await log(`📑 Rapor Türü [PDF+Excel fallback]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt) — ⚠ uyarı: opt<5 olduğu için yanlış select olabilir`);
         return true;
       }
     }
 
-    // Diagnostic — hiçbir select Excel içermiyor
+    // Diagnostic — hiçbir select Excel içermiyor.
+    // Her select'in opsiyonlarını da log'a düşür (en fazla 6 opt'lu olanları)
     const summary = analyses.map((a) =>
       `${a.sel.name || a.sel.id || '?'}(opt=${a.optCount},pdf=${a.hasPdf},word=${a.hasWord},xlsx=${!!a.excelXlsxOpt},excel=${!!a.excelOpt})`,
     ).join(' | ');
     await log(`⚠ Rapor Türü select'i bulunamadı. Selects: ${summary}`);
+    // 4+ opt'lu select'lerin opsiyonlarını ayrıntılı log
+    for (const a of analyses) {
+      if (a.optCount >= 4 && a.optCount <= 12) {
+        const opts = [...a.sel.options].slice(0, 8).map((o) => `"${(o.text || '').trim().slice(0, 25)}"=${o.value}`).join(' | ');
+        await log(`🔬 ${a.sel.name || a.sel.id || '?'} opts: ${opts}`);
+      }
+    }
     return false;
   }
 
