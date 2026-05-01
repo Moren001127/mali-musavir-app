@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.31.0';
+          const AGENT_VER = '1.32.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -284,11 +284,17 @@
    *   2) job.lucaSlug — Luca'daki firma adının normalize hali (örn. "OZ ELA TUR")
    *   3) job.mukellefAdi — son çare: tam mükellef adı substring eşleşme
    */
+  /**
+   * Returns: { changed: boolean, alreadyCorrect: boolean, skipped: boolean }
+   *   - changed = true        → firma gerçekten YGS→ÖZ ELA gibi değişti, formlar STALE
+   *   - alreadyCorrect = true → firma zaten doğru, hiçbir şey yapılmadı
+   *   - skipped = true        → kontrol edilemedi (slug/tax/ad yok ya da DOM eksik)
+   */
   async function ensureLucaFirma(job, log) {
     const candidates = [job.taxNumber, job.lucaSlug, job.mukellefAdi].filter(Boolean);
     if (candidates.length === 0) {
       await log('ℹ️ Mükellef için lucaSlug/taxNumber/ad yok — firma kontrolü atlanıyor');
-      return;
+      return { changed: false, alreadyCorrect: false, skipped: true };
     }
     const frm4 = getLucaFrame('frm4');
     if (!frm4 || !frm4.contentDocument) {
@@ -297,7 +303,7 @@
     const combo = frm4.contentDocument.getElementById('SirketCombo');
     if (!combo) {
       await log('⚠ SirketCombo bulunamadı, firma kontrolü atlanıyor');
-      return;
+      return { changed: false, alreadyCorrect: false, skipped: true };
     }
     const currentText = (combo.selectedOptions[0]?.text || '').trim();
 
@@ -338,7 +344,7 @@
       // İsim/slug ise: slug eşitliği ya da currentSlug, target slug'ı kapsıyor mu
       if (cSlug.length >= 6 && (currentSlug === cSlug || currentSlug.includes(cSlug) || cSlug.includes(currentSlug))) {
         await log(`✓ Firma zaten doğru: ${currentText}`);
-        return;
+        return { changed: false, alreadyCorrect: true, skipped: false };
       }
     }
 
@@ -462,6 +468,7 @@
       return false;
     }, 15000);
     await log(`✓ Firma değişti → ${targetText}, menü hazır`);
+    return { changed: true, alreadyCorrect: false, skipped: false };
   }
 
   /**
@@ -962,15 +969,22 @@
     }
 
     // 1) Hedef firma açık mı?
-    await ensureLucaFirma(job, log);
+    const firmaResult = await ensureLucaFirma(job, log);
 
     // 2) Fiş Listesi sayfasına geç
     await navigateToFisListesi(log);
 
     // 3) Mizan formu yüklü mü?
+    // ÖNEMLİ: Firma DEĞİŞTİYSE eski form STALE (eski sirketId/donemId hidden input'ları
+    // taşıyor) → submit eski firmanın mizanını çekiyor. Bu durumda formAlreadyLoaded'u
+    // yok say, openLucaMizan'ı çağırarak frm3'ü yeni firma context'inde yenile.
     let frm3 = getLucaFrame('frm3');
     let formAlreadyLoaded =
       frm3?.contentDocument?.querySelector('form[name="raporMizanForm"]');
+    if (firmaResult?.changed) {
+      await log('🔁 Firma değiştiği için Mizan formu yeniden açılıyor (stale önleme)');
+      formAlreadyLoaded = null;
+    }
     if (!formAlreadyLoaded) {
       await openLucaMizan(log);
     } else {
