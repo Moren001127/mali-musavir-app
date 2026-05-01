@@ -87,11 +87,9 @@ mali-musavir-app/
 └── docker-compose.yml
 ```
 
-## Faz Durumu
+## Faz Durumu (Mayıs 2026)
 
-- [x] **Faz 0** — Altyapı, Auth, RBAC, Prisma Şeması, CRM temeli
-- [ ] **Faz 1** — Evrak Yönetimi (S3 upload, versiyon takibi)
-- [ ] **Faz 2** — Beyanname & Vergi Takvimi
-- [ ] **Faz 3** — Fatura / Gelir-Gider / Raporlama
-- [ ] **Faz 4** — Bordro & SGK
-- [ ] **Faz 5** — Entegrasyon adaptörleri (GİB, e-Fatura, SGK)
+- [x] **Faz 0** — Altyapı, Auth, RBAC, Prisma Şeması, CRM, Audit log
+- [x] **Faz 1** — Evrak Yönetimi: S3 (MinIO) upload, versiyon, kategoriler, etiketler
+- [x] **Faz 2** — Beyanname Takip: TaxpayerBeyanConfig + BeyanDurumu + BeyanKaydi (Hattat ZIP/Excel import)
+- [x] **Faz 3** — Fatura / Gelir-Gider / Raporla
