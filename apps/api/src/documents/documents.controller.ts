@@ -38,6 +38,25 @@ export class DocumentsController {
     return this.documentsService.findAll(req.user.tenantId, category, search);
   }
 
+  /**
+   * Geçerliliği biten veya yakında bitecek belgeler.
+   * Dashboard widget ve mükellef detay uyarısı için.
+   * Param: daysAhead (default 30), includeExpired (default true), taxpayerId
+   */
+  @Get('expiring/all')
+  getExpiring(
+    @Req() req: any,
+    @Query('daysAhead') daysAhead?: string,
+    @Query('includeExpired') includeExpired?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    return this.documentsService.getExpiring(req.user.tenantId, {
+      daysAhead: daysAhead ? Math.min(parseInt(daysAhead, 10), 365) : 30,
+      includeExpired: includeExpired !== 'false',
+      taxpayerId: taxpayerId || undefined,
+    });
+  }
+
   /** Mükellef bazlı belgeler */
   @Get('taxpayer/:taxpayerId')
   findByTaxpayer(

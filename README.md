@@ -92,4 +92,45 @@ mali-musavir-app/
 - [x] **Faz 0** — Altyapı, Auth, RBAC, Prisma Şeması, CRM, Audit log
 - [x] **Faz 1** — Evrak Yönetimi: S3 (MinIO) upload, versiyon, kategoriler, etiketler
 - [x] **Faz 2** — Beyanname Takip: TaxpayerBeyanConfig + BeyanDurumu + BeyanKaydi (Hattat ZIP/Excel import)
-- [x] **Faz 3** — Fatura / Gelir-Gider / Raporla
+- [x] **Faz 3** — Fatura / Gelir-Gider / Raporlama:
+  - Mihsap arşivi → fatura görüntüsü + Claude OCR
+  - Luca muavin → Excel parse
+  - KDV Kontrol modülü (191/391 mutabakat motoru, tevkifat)
+  - Mizan / Bilanço / Gelir Tablosu
+  - Cari Kasa (oto tahakkuk + tahsilat + ekstre)
+  - E-Arşiv (ZIP import, fatura listesi)
+  - Fiş Yazdırma
+- [ ] **Faz 4** — Bordro & SGK *(şema hazır, modül bekleniyor)*
+- [ ] **Faz 5** — Entegrasyon adaptörleri *(GİB doğrudan API entegrasyonu yok; Luca/Mihsap için Chrome uzantısı + portal proxy çalışıyor)*
+
+### Aktif Modüller (özet)
+
+| Modül | API Path | Web Sayfa |
+|---|---|---|
+| Mükellefler (CRM) | `/taxpayers` | `/panel/mukellefler` |
+| Evraklar (S3) | `/documents` | `/panel/evraklar` |
+| Beyannameler | `/beyanname-takip`, `/beyan-kayitlari` | `/panel/beyannameler` |
+| KDV Kontrol | `/kdv-control` | `/panel/kdv-kontrol` |
+| Mizan + Finansal Tablolar | `/mizan`, `/bilanco`, `/gelir-tablosu` | `/panel/mizan`, `/panel/bilanco`, `/panel/gelir-tablosu` |
+| Cari Kasa | `/cari-kasa` | `/panel/cari-kasa` |
+| E-Arşiv | `/earsiv` | `/panel/e-arsiv` |
+| Fiş Yazdırma | `/fis-yazdirma` | `/panel/fis-yazdirma` |
+| Galeri / HGS | `/galeri` | `/panel/galeri/hgs-ihlal` |
+| Moren AI | `/moren-ai` | `/panel/moren-ai` |
+| Bildirimler | `/notifications` | `/panel/bildirimler` |
+| Audit Log | `/audit-logs` | `/panel/ayarlar/denetim` |
+| Ajanlar (Luca, Mihsap, KDV vs.) | `/agent/*` | `/panel/ajanlar/*` |
+| Firma Hafızası | `/vendor-memory` | `/panel/firma-hafizasi` |
+| Onay Kuyruğu | `/pending-decisions` | `/panel/onay-kuyrugu` |
+| Duyurular | `/notifications` | `/panel/duyurular` |
+
+### Yapılacaklar (yol haritası)
+
+1. **E-Defter Denetim** modülü (yevmiye fişi denetim raporu — bkz. ön çalışma dokümanı)
+2. **Bordro & SGK** modülü (Faz 4)
+3. **WhatsApp hatırlatma akışı** zenginleştirme
+4. **Beyanname taslak üretici** (KDV1/KDV2 → GİB XML)
+5. **Banka OCR** (banka ekstresi PDF okuma)
+6. **BA-BS mutabakat**
+7. **Müşteri portalı** (mükellefe sınırlı erişim)
+8. **Mobil uygulama** (PWA + Capacitor)

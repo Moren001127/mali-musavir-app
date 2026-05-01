@@ -93,10 +93,68 @@ export const documentsApi = {
       .then((r) => r.data);
   },
 
-  /** Meta güncelle */
-  update: (id: string, dto: { title?: string; category?: string; tags?: string[] }) =>
-    api.patch(`/documents/${id}`, dto).then((r) => r.data),
+  /** Meta güncelle (geçerlilik tarihi de buradan yenilenir) */
+  update: (
+    id: string,
+    dto: {
+      title?: string;
+      category?: string;
+      tags?: string[];
+      expiresAt?: string | null;
+      reminderDays?: number;
+      notes?: string | null;
+    },
+  ) => api.patch(`/documents/${id}`, dto).then((r) => r.data),
+
+  /** Geçerliliği biten / yakında bitecek belgeler */
+  getExpiring: (params: {
+    daysAhead?: number;
+    includeExpired?: boolean;
+    taxpayerId?: string;
+  } = {}) =>
+    api
+      .get('/documents/expiring/all', {
+        params: {
+          daysAhead: params.daysAhead,
+          includeExpired: params.includeExpired === false ? 'false' : 'true',
+          taxpayerId: params.taxpayerId,
+        },
+      })
+      .then((r) => r.data as Array<ExpiringDocument>),
 
   /** Soft delete */
   remove: (id: string) => api.delete(`/documents/${id}`).then((r) => r.data),
 };
+
+export type ExpiringDocument = {
+  id: string;
+  title: string;
+  category: string;
+  expiresAt: string;
+  reminderDays: number;
+  notes: string | null;
+  daysLeft: number;
+  status: 'EXPIRED' | 'EXPIRING_SOON';
+  taxpayer: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    companyName: string | null;
+    taxNumber: string;
+  };
+};
+
+export function expiringStatusColor(status: 'EXPIRED' | 'EXPIRING_SOON', daysLeft: number) {
+  if (status === 'EXPIRED') return '#ef4444';
+  if (daysLeft <= 7) return '#f59e0b';
+  return '#3b82f6';
+}
+
+export function expiringStatusLabel(status: 'EXPIRED' | 'EXPIRING_SOON', daysLeft: number) {
+  if (status === 'EXPIRED') {
+    return daysLeft === 0 ? 'Bugün doldu' : `${Math.abs(daysLeft)} gün önce doldu`;
+  }
+  if (daysLeft === 0) return 'Bugün doluyor';
+  if (daysLeft === 1) return 'Yarın doluyor';
+  return `${daysLeft} gün kaldı`;
+}

@@ -178,4 +178,133 @@ export class TaxpayersService {
       update: data,
     });
   }
+
+  /**
+   * Mükellef için son N ayın özet istatistikleri.
+   * Karlılık / iş yükü takibi için kullanılır.
+   *
+   * Not: AiUsageLog'da taxpayerId alanı yok (sadece mukellef adı string).
+   * Bu yüzden AI kullanım istatistikleri mükellef adıyla eşleştirilir.
+   * CariHareket bakiyesi: TAHAKKUK + → TAHSILAT/IADE − ile net bakiye.
+   */
+  async getStats(taxpayerId: string, tenantId: string, months: number = 1) {
+    const tp = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+
+    const since = new Date();
+    since.setMonth(since.getMonth() - months);
+    since.setHours(0, 0, 0, 0);
+
+    const p = this.prisma as any;
+    const safeCount = async (fn: () => Promise<number>): Promise<number> => {
+      try { return await fn(); } catch { return 0; }
+    };
+    const safeAgg = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try { return await fn(); } catch { return fallback; }
+    };
+
+    const [
+      kdvSessions,
+      mihsapInvoices,
+      earsivInvoices,
+      documents,
+      receiptImages,
+      mizanCount,
+      beyanCount,
+      cariTahakkuk,
+      cariTahsilat,
+    ] = await Promise.all([
+      safeCount(() => p.kdvControlSession.count({
+        where: { taxpayerId, createdAt: { gte: since } },
+      })),
+      safeCount(() => p.mihsapInvoice.count({
+        where: { mukellefId: taxpayerId, createdAt: { gte: since } },
+      })),
+      safeCount(() => p.earsivFatura.count({
+        where: { taxpayerId, createdAt: { gte: since } },
+      })),
+      safeCount(() => p.document.count({
+        where: { taxpayerId, isDeleted: false, createdAt: { gte: since } },
+      })),
+      safeCount(() => p.receiptImage.count({
+        where: {
+          kdvSession: { taxpayerId },
+          createdAt: { gte: since },
+        },
+      })),
+      safeCount(() => p.mizan.count({
+        where: { taxpayerId, createdAt: { gte: since } },
+      })),
+      safeCount(() => p.beyanKaydi.count({
+        where: { taxpayerId, createdAt: { gte: since } },
+      })),
+      safeAgg(
+        () => p.cariHareket.aggregate({
+          where: { taxpayerId, tip: 'TAHAKKUK' },
+          _sum: { tutar: true },
+        }),
+        { _sum: { tutar: 0 } } as any,
+      ),
+      safeAgg(
+        () => p.cariHareket.aggregate({
+          where: { taxpayerId, tip: { in: ['TAHSILAT', 'IADE', 'DUZELTME'] } },
+          _sum: { tutar: true },
+        }),
+        { _sum: { tutar: 0 } } as any,
+      ),
+    ]);
+
+    const tahakkukToplam = Number((cariTahakkuk as any)?._sum?.tutar ?? 0);
+    const tahsilatToplam = Number((cariTahsilat as any)?._sum?.tutar ?? 0);
+    const cariBakiye = tahakkukToplam - tahsilatToplam;
+
+    // AI usage — taxpayer.companyName veya firstName lastName'e göre eşleştir
+    const tpName =
+      tp.companyName ||
+      [tp.firstName, tp.lastName].filter(Boolean).join(' ') ||
+      '';
+    const aiUsage = tpName
+      ? await safeAgg(
+          () => p.aiUsageLog.aggregate({
+            where: {
+              tenantId,
+              mukellef: { contains: tpName, mode: 'insensitive' },
+              createdAt: { gte: since },
+            },
+            _count: { _all: true },
+            _sum: { costUsd: true, inputTokens: true, outputTokens: true },
+          }),
+          { _count: { _all: 0 }, _sum: {} } as any,
+        )
+      : { _count: { _all: 0 }, _sum: {} };
+
+    return {
+      taxpayerId,
+      months,
+      since: since.toISOString(),
+      counts: {
+        kdvSessions,
+        mihsapInvoices,
+        earsivInvoices,
+        documents,
+        receiptImages,
+        mizanCount,
+        beyanCount,
+        aiCalls: (aiUsage as any)?._count?._all ?? 0,
+      },
+      aiUsage: {
+        calls: (aiUsage as any)?._count?._all ?? 0,
+        inputTokens: Number((aiUsage as any)?._sum?.inputTokens ?? 0),
+        outputTokens: Number((aiUsage as any)?._sum?.outputTokens ?? 0),
+        costUsd: Number((aiUsage as any)?._sum?.costUsd ?? 0),
+      },
+      cari: {
+        tahakkukToplam,
+        tahsilatToplam,
+        bakiye: cariBakiye,
+      },
+    };
+  }
 }

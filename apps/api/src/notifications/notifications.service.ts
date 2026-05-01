@@ -33,6 +33,19 @@ export class NotificationsService {
     });
   }
 
+  /** Tenant + (kullanıcının kendi + tenant geneli) tüm okunmamış bildirimleri okundu işaretler */
+  async markAllRead(tenantId: string, userId: string) {
+    const result = await this.prisma.notification.updateMany({
+      where: {
+        tenantId,
+        isRead: false,
+        OR: [{ userId }, { userId: null }],
+      },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { count: result.count };
+  }
+
   async create(data: {
     tenantId: string;
     userId?: string;

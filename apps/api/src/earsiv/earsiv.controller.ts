@@ -93,6 +93,36 @@ export class EarsivController {
     res.send(buf);
   }
 
+  /**
+   * Manuel ZIP yükleme — kullanıcı kendi indirdiği Luca e-arşiv ZIP'ini portala yükler.
+   * Agent endpoint'i ile aynı parser'ı kullanır, sadece auth JWT.
+   */
+  @Post('earsiv/upload-zip')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } }))
+  async uploadZipManual(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { taxpayerId: string; donem: string; tip: EarsivTip },
+  ) {
+    if (!file) throw new BadRequestException('ZIP dosyası gerekli (field: file)');
+    if (!body?.taxpayerId || !body?.donem || !body?.tip) {
+      throw new BadRequestException('taxpayerId, donem ve tip gerekli');
+    }
+    if (body.tip !== 'SATIS' && body.tip !== 'ALIS') {
+      throw new BadRequestException('tip SATIS veya ALIS olmalı');
+    }
+    return this.earsiv.importFromZip({
+      tenantId: req.user.tenantId,
+      taxpayerId: body.taxpayerId,
+      donem: body.donem,
+      tip: body.tip,
+      zipBuffer: file.buffer,
+    });
+  }
+
   // === AGENT ENDPOINTS (X-Agent-Token) ===
 
   @Post('agent/luca/earsiv/upload-zip')

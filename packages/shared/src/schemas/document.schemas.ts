@@ -18,6 +18,9 @@ export const UpdateDocumentSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   category: z.nativeEnum(DocumentCategory).optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+  reminderDays: z.number().int().min(0).max(365).optional(),
+  notes: z.string().max(1000).nullable().optional(),
 });
 
 export type InitiateUploadDto = z.infer<typeof InitiateUploadSchema>;

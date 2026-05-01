@@ -51,6 +51,25 @@ export const earsivApi = {
     api
       .post('/earsiv/download-bulk', { ids }, { responseType: 'blob' })
       .then((r) => r.data as Blob),
+
+  uploadZip: (
+    data: { taxpayerId: string; donem: string; tip: EarsivTip },
+    file: File,
+  ) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('taxpayerId', data.taxpayerId);
+    fd.append('donem', data.donem);
+    fd.append('tip', data.tip);
+    return api
+      .post('/earsiv/upload-zip', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then(
+        (r) =>
+          r.data as { inserted: number; skipped: number; total: number },
+      );
+  },
 };
 
 export function fmtTRY(n: number | string | null | undefined): string {

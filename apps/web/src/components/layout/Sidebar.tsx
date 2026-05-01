@@ -87,8 +87,10 @@ const navGroups = [
     color: COPPER,
     icon: Settings,
     items: [
-      { href: '/panel/bildirimler', label: 'Bildirimler', icon: Bell },
-      { href: '/panel/ayarlar',     label: 'Ayarlar',     icon: Settings },
+      { href: '/panel/bildirimler',       label: 'Bildirimler',     icon: Bell },
+      { href: '/panel/evraklar/yenileme', label: 'Evrak Yenileme',  icon: AlertTriangle },
+      { href: '/panel/ayarlar/denetim',   label: 'Denetim Günlüğü', icon: ShieldCheck },
+      { href: '/panel/ayarlar',           label: 'Ayarlar',         icon: Settings },
     ],
   },
 ];

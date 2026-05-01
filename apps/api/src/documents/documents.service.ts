@@ -238,7 +238,7 @@ export class DocumentsService {
   }
 
   /**
-   * Belge meta güncelleme (başlık, kategori, etiketler)
+   * Belge meta güncelleme (başlık, kategori, etiketler, geçerlilik tarihi)
    */
   async update(id: string, tenantId: string, dto: UpdateDocumentDto) {
     await this.findOne(id, tenantId); // varlık kontrolü
@@ -253,14 +253,78 @@ export class DocumentsService {
         }
       }
 
+      const data: any = {};
+      if (dto.title) data.title = dto.title;
+      if (dto.category) data.category = dto.category;
+      if ((dto as any).expiresAt !== undefined) {
+        const v = (dto as any).expiresAt;
+        data.expiresAt = v === null ? null : new Date(v);
+      }
+      if ((dto as any).reminderDays !== undefined) data.reminderDays = (dto as any).reminderDays;
+      if ((dto as any).notes !== undefined) data.notes = (dto as any).notes;
+
       return tx.document.update({
         where: { id },
-        data: {
-          ...(dto.title ? { title: dto.title } : {}),
-          ...(dto.category ? { category: dto.category } : {}),
-        },
+        data,
         include: { tags: true },
       });
+    });
+  }
+
+  /**
+   * Geçerliliği biten / yakında bitecek belgeleri listele.
+   * - daysAhead: kaç gün sonrasına kadar baksın (default 30)
+   * - includeExpired: süresi geçmiş belgeleri de döndür (default true)
+   * Sonuç: her belge için status ("EXPIRED" | "EXPIRING_SOON") + daysLeft
+   */
+  async getExpiring(
+    tenantId: string,
+    opts: { daysAhead?: number; includeExpired?: boolean; taxpayerId?: string } = {},
+  ) {
+    const daysAhead = opts.daysAhead ?? 30;
+    const includeExpired = opts.includeExpired !== false;
+
+    const now = new Date();
+    const horizon = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+
+    const where: any = {
+      isDeleted: false,
+      expiresAt: includeExpired
+        ? { not: null, lte: horizon }
+        : { gte: now, lte: horizon },
+      taxpayer: { tenantId },
+    };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+
+    const docs = await (this.prisma as any).document.findMany({
+      where,
+      include: {
+        taxpayer: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            companyName: true,
+            taxNumber: true,
+          },
+        },
+      },
+      orderBy: { expiresAt: 'asc' },
+      take: 200,
+    });
+
+    return docs.map((d: any) => {
+      const expiresAt = d.expiresAt as Date | null;
+      let status: 'EXPIRED' | 'EXPIRING_SOON' = 'EXPIRING_SOON';
+      let daysLeft = 0;
+      if (expiresAt) {
+        const diff = Math.floor(
+          (expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
+        );
+        daysLeft = diff;
+        status = diff < 0 ? 'EXPIRED' : 'EXPIRING_SOON';
+      }
+      return { ...d, daysLeft, status };
     });
   }
 

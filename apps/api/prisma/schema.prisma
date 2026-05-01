@@ -578,6 +578,12 @@ model Document {
   s3Key        String           // S3 object key
   currentVersionId String?
   isDeleted    Boolean          @default(false)
+  // Geçerlilik / yenileme — vekaletname, imza sirküleri, ticaret sicil, vergi levhası gibi
+  // belgelerin son kullanım tarihi. NULL = süresiz / takip edilmeyen.
+  expiresAt    DateTime?
+  // Bitime kaç gün kala dashboard'da uyar (default 30 gün)
+  reminderDays Int              @default(30)
+  notes        String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
@@ -586,6 +592,7 @@ model Document {
   tags         DocumentTag[]
 
   @@index([taxpayerId, category])
+  @@index([expiresAt])
   @@map("documents")
 }
 

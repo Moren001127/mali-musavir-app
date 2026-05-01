@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
+import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi (Şirket)' },
@@ -165,6 +167,14 @@ export default function MukellefDetayPage() {
           </button>
         )}
       </div>
+
+      {/* Karlılık & evrak yenileme widget'ları (sadece kayıtlı mükellefte) */}
+      {!isNew && id && (
+        <div className="space-y-3 mb-6">
+          <TaxpayerStatsCard taxpayerId={id} />
+          <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
 

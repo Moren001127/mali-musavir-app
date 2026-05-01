@@ -90,4 +90,21 @@ export class TaxpayersController {
       id, req.user.tenantId, year, month, data,
     );
   }
+
+  /**
+   * Bu ay için mükellef özet istatistikleri — karlılık takibi için.
+   * AI çağrı sayısı, KDV session, fatura/fiş sayısı, cari kasa hareketi
+   */
+  @Get(':id/stats')
+  getStats(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('months') months?: string,
+  ) {
+    return this.taxpayersService.getStats(
+      id,
+      req.user.tenantId,
+      months ? Math.min(parseInt(months, 10), 12) : 1,
+    );
+  }
 }

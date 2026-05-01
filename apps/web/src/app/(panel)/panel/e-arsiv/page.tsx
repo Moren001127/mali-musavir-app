@@ -1,12 +1,12 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   Download, Search, Users, Calendar, Sparkles, Loader2, FileText,
-  ArrowDown, Package, X, CheckSquare, Square,
+  ArrowDown, Package, X, CheckSquare, Square, Upload,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -35,6 +35,8 @@ export default function EarsivPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState('');
+  const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   // Mükellef listesi
   const { data: taxpayers = [] } = useQuery({
@@ -84,19 +86,53 @@ export default function EarsivPage() {
     const job = d?.job ?? d;
     if (!job?.status) return;
     const errorLog = job.errorMsg || '';
-    const lastLine = (errorLog.split('\n').filter((l: string) => l.trim()).pop()) || '';
+    const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
+    setLucaLogLines(lines);
+    const lastLine = lines[lines.length - 1] || '';
     if (job.status === 'pending' || job.status === 'running') {
       setLucaStatus(lastLine || 'Agent çalışıyor…');
     } else if (job.status === 'done') {
       setLucaStatus('Tamamlandı ✓');
       toast.success('E-arşiv faturalar Luca\'dan çekildi');
       qc.invalidateQueries({ queryKey: ['earsiv-list'] });
-      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); }, 2000);
+      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
     } else if (job.status === 'failed') {
       setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lucaJobQuery.data]);
+
+  // Manuel ZIP yükleme
+  const uploadMut = useMutation({
+    mutationFn: (file: File) =>
+      earsivApi.uploadZip({ taxpayerId, donem, tip }, file),
+    onSuccess: (d) => {
+      toast.success(`ZIP yüklendi · ${d.inserted} fatura eklendi (${d.skipped} mükerrer atlandı)`);
+      qc.invalidateQueries({ queryKey: ['earsiv-list'] });
+      if (uploadRef.current) uploadRef.current.value = '';
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message || e?.message || 'ZIP yüklenemedi');
+      if (uploadRef.current) uploadRef.current.value = '';
+    },
+  });
+  const handleUploadClick = () => {
+    if (!taxpayerId) {
+      toast.error('Önce mükellef seçin');
+      setPickerOpen(true);
+      return;
+    }
+    uploadRef.current?.click();
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!/\.zip$/i.test(f.name)) {
+      toast.error('Sadece .zip dosyası kabul edilir');
+      return;
+    }
+    uploadMut.mutate(f);
+  };
 
   // Toplu indirme
   const downloadMut = useMutation({
@@ -227,13 +263,32 @@ export default function EarsivPage() {
       {/* Aksiyonlar */}
       <div className="flex gap-3 flex-wrap items-center">
         <button
-          disabled={!taxpayerId || lucaMut.isPending || !!lucaJobId}
+          disabled={!taxpayerId || lucaMut.isPending || !!lucaJobId || uploadMut.isPending}
           onClick={() => lucaMut.mutate()}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: GOLD, color: '#1a1a18', border: 0 }}
         >
           {lucaMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           {lucaJobId ? 'Çekiliyor…' : `Luca'dan ${tip === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} Çek`}
+        </button>
+
+        {/* Manuel ZIP yükleme */}
+        <input
+          ref={uploadRef}
+          type="file"
+          accept=".zip"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        <button
+          disabled={uploadMut.isPending || lucaMut.isPending || !!lucaJobId}
+          onClick={handleUploadClick}
+          className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}
+          title="Luca'dan elle indirdiğin ZIP'i yükle"
+        >
+          {uploadMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          ZIP Yükle
         </button>
 
         <button
@@ -267,12 +322,40 @@ export default function EarsivPage() {
               </div>
             </div>
             <button
-              onClick={() => { setLucaJobId(null); setLucaStatus(''); }}
+              onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
               className="px-3 py-1.5 rounded-md text-xs"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
             >
               İptal
             </button>
+          </div>
+          {/* Log container — agent'tan gelen ilerleme satırları */}
+          <div
+            className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
+            style={{
+              background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(255,255,255,0.05)',
+              color: 'rgba(250,250,249,0.75)',
+              maxHeight: 200,
+              overflowY: 'auto',
+              minHeight: 60,
+            }}
+          >
+            {lucaLogLines.length === 0 ? (
+              <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
+                Agent'tan ilk log satırı bekleniyor… (Luca sekmesi açık ve giriş yapılmış olmalı)
+              </div>
+            ) : (
+              lucaLogLines.map((line, i) => {
+                const isErr = /✗|hata|error/i.test(line);
+                const isOk = /✓|✅/.test(line);
+                return (
+                  <div key={i} style={{ color: isErr ? '#ef4444' : isOk ? '#10b981' : 'rgba(250,250,249,0.75)' }}>
+                    {line}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
