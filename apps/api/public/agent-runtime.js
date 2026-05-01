@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.37.0';
+          const AGENT_VER = '1.38.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -537,15 +537,67 @@
    * yakalayacak (fetchMizanByClickIntercept'in son kısmıyla aynı mantık).
    */
   async function clickLucaRaporButton(form, log) {
-    const btn = [...form.querySelectorAll('button, input[type=submit], input[type=button]')]
-      .find(b => /rapor|al\b|getir|göster|goster/i.test(((b.textContent || '') + ' ' + (b.value || '')).trim()));
+    // Luca'da "Rapor" butonu form'un DIŞINDA ayrı div'de — mizan akışındaki
+    // findExcelButton ile aynı strateji: form.ownerDocument tüm DOM'u tara.
+    const doc = form.ownerDocument;
+    const all = [
+      ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
+      ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
+    ];
+
+    // 1) Tam eşleşme: "Rapor" / "RAPOR"
+    let btn = all.find((el) => {
+      const txt = (el.value || el.textContent || '').trim();
+      return txt === 'Rapor' || txt === 'RAPOR';
+    });
+
+    // 2) "Rapor Al" / "Raporu Hazırla" / "Excel'e Aktar"
     if (!btn) {
-      const all = [...form.querySelectorAll('button, input[type=submit], input[type=button]')]
-        .map(b => `"${(b.textContent || b.value || '').trim().slice(0, 20)}"`).join(' | ');
-      throw new Error(`"Rapor" butonu bulunamadı. Mevcut butonlar: ${all || '(yok)'}`);
+      btn = all.find((el) => {
+        const txt = (el.value || el.textContent || '').trim();
+        return /^rapor( al|u? hazırla|u? olustur)?$/i.test(txt) ||
+               /excel.*aktar|aktar.*excel/i.test(txt);
+      });
     }
-    await log(`🖱 "${(btn.textContent || btn.value).trim()}" butonu tıklanıyor`);
+
+    // 3) onclick içinde raporIndir/jasper/submitForm/gonder
+    if (!btn) {
+      btn = all.find((el) => {
+        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
+        return /raporIndir|jasper|rapor_tur|raporGetir|submitForm|raporAl|gonder/i.test(oc);
+      });
+    }
+
+    if (!btn) {
+      const sample = all
+        .filter((el) => el.offsetParent !== null) // visible
+        .slice(0, 15)
+        .map((el) => {
+          const t = (el.value || el.textContent || '').trim().slice(0, 20);
+          const oc = ((el.getAttribute && el.getAttribute('onclick')) || '').slice(0, 30);
+          return `[${el.tagName}]"${t || '∅'}"${oc ? `|oc=${oc}` : ''}`;
+        })
+        .filter((s, i, arr) => arr.indexOf(s) === i)
+        .join(' || ');
+      throw new Error(`"Rapor" butonu bulunamadı (form+frame DOM tarandı). Visible elements: ${sample || '(yok)'}`);
+    }
+
+    const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
+    await log(`🎯 Buton bulundu: "${label}" [${btn.tagName}]`);
+    await log(`🖱 "${label}" butonu tıklanıyor`);
     btn.click();
+    // Click bubble + onclick handler
+    try {
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } catch {}
+    // onclick attribute'unu doğrudan execute et (Luca bazen sadece onclick'i kullanır)
+    try {
+      const oc = btn.getAttribute && btn.getAttribute('onclick');
+      if (oc) {
+        const win = doc.defaultView || window;
+        new win.Function(oc).call(btn);
+      }
+    } catch {}
   }
 
   /**
