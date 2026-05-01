@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.39.0';
+          const AGENT_VER = '1.40.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -387,49 +387,72 @@
    * Olası name/id'ler: RAPOR_TURU, raporTuru, format, TIP, dosyaTuru
    */
   async function setRaporTuruExcel(form, log) {
-    // Rapor Türü select'ini İSME göre değil İÇERİĞE göre bul:
-    // Gerçek Rapor Türü her zaman PDF + Excel içerir (Word/ODT/RTF de olur).
-    // REPORT_TYPE / TIPID / format gibi yanıltıcı isimleri hep doğru yakalar.
+    // Rapor Türü select'ini İÇERİĞE göre bul. Üç katman:
+    //   1) PDF + Word + Excel(xlsx) üçü birden — gerçek "Rapor Türü" (PDF/Word/Excel/ODT/Liste/RTF)
+    //   2) Opt sayısı >= 5 + Excel(xlsx) — yine Rapor Türü kesinlikle (REPORT_TYPE 3 opt'lu skip olur)
+    //   3) PDF + Excel — son çare (eski mantık)
     const selects = [...form.querySelectorAll('select')];
-    for (const sel of selects) {
-      let hasPdf = false;
-      let excelOpt = null;
+    const analyzeSelect = (sel) => {
+      let hasPdf = false, hasWord = false, hasOdt = false, hasRtf = false;
+      let excelXlsxOpt = null, excelOpt = null;
       for (const opt of sel.options) {
         const t = (opt.text || '').toLocaleLowerCase('tr-TR').trim();
         const v = (opt.value || '').toLocaleLowerCase().trim();
-        if (/pdf/.test(t) || /pdf/.test(v)) hasPdf = true;
-        // "Excel (xlsx)" — başlıyor "excel" ile, "Liste" içermiyor (Excel Liste farklı opt)
-        if (!excelOpt && /^excel\b/.test(t) && !/liste/.test(t)) {
-          excelOpt = opt;
-        }
-        // Fallback: value'da "xlsx" geçen ama "liste" geçmeyen
-        if (!excelOpt && /xlsx/.test(v) && !/liste/.test(t) && !/liste/.test(v)) {
-          excelOpt = opt;
-        }
+        if (/\bpdf\b/.test(t) || /\bpdf\b/.test(v)) hasPdf = true;
+        if (/\bword\b/.test(t) || /docx/.test(t) || /docx/.test(v)) hasWord = true;
+        if (/\bodt\b/.test(t) || /\bodt\b/.test(v) || /open\s*document/.test(t)) hasOdt = true;
+        if (/\brtf\b/.test(t) || /\brtf\b/.test(v)) hasRtf = true;
+        // "Excel (xlsx)" tam tercih (Excel Liste hariç)
+        if (!excelXlsxOpt && /excel\s*\(xlsx\)/.test(t) && !/liste/.test(t)) excelXlsxOpt = opt;
+        // Genel Excel opt
+        if (!excelOpt && /^excel\b/.test(t) && !/liste/.test(t)) excelOpt = opt;
+        if (!excelOpt && (/xlsx/.test(v) || v === 'xlsx') && !/liste/.test(t) && !/liste/.test(v)) excelOpt = opt;
       }
-      if (hasPdf && excelOpt) {
-        const oldText = sel.selectedOptions[0]?.text || '?';
-        sel.value = excelOpt.value;
-        sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü: ${oldText} → ${excelOpt.text} (select#${sel.name || sel.id})`);
+      const formatCount = (hasPdf?1:0) + (hasWord?1:0) + (hasOdt?1:0) + (hasRtf?1:0);
+      return { sel, hasPdf, hasWord, hasOdt, hasRtf, formatCount, optCount: sel.options.length, excelXlsxOpt, excelOpt };
+    };
+
+    const analyses = selects.map(analyzeSelect);
+
+    // Katman 1: PDF + Word + Excel — bu kesinlikle "Rapor Türü"
+    for (const a of analyses) {
+      if (a.hasPdf && a.hasWord && (a.excelXlsxOpt || a.excelOpt)) {
+        const target = a.excelXlsxOpt || a.excelOpt;
+        const oldText = a.sel.selectedOptions[0]?.text || '?';
+        a.sel.value = target.value;
+        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
         return true;
       }
     }
-    // Fallback: hiç PDF+Excel content match'i yoksa, value'sunda "xlsx" geçen herhangi bir opt
-    for (const sel of selects) {
-      for (const opt of sel.options) {
-        const t = (opt.text || '').toLocaleLowerCase('tr-TR');
-        const v = (opt.value || '').toLocaleLowerCase();
-        if ((/excel\s*\(xlsx\)/.test(t) || (v === 'xlsx' || /\.xlsx/.test(v))) && !/liste/.test(t)) {
-          const oldText = sel.selectedOptions[0]?.text || '?';
-          sel.value = opt.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-          await log(`📑 Rapor Türü (fallback): ${oldText} → ${opt.text} (select#${sel.name || sel.id})`);
-          return true;
-        }
+    // Katman 2: Opt sayısı >= 5 + Excel(xlsx) — "Rapor Türü" minimum 5+ format
+    for (const a of analyses) {
+      if (a.optCount >= 5 && (a.excelXlsxOpt || a.excelOpt)) {
+        const target = a.excelXlsxOpt || a.excelOpt;
+        const oldText = a.sel.selectedOptions[0]?.text || '?';
+        a.sel.value = target.value;
+        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`📑 Rapor Türü [opt>=5]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
+        return true;
       }
     }
-    await log(`⚠ Rapor Türü select'i bulunamadı (PDF+Excel option içeren hiçbir select yok)`);
+    // Katman 3: PDF + Excel (son çare) — REPORT_TYPE'i de kabul eder
+    for (const a of analyses) {
+      if (a.hasPdf && (a.excelXlsxOpt || a.excelOpt)) {
+        const target = a.excelXlsxOpt || a.excelOpt;
+        const oldText = a.sel.selectedOptions[0]?.text || '?';
+        a.sel.value = target.value;
+        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`📑 Rapor Türü [PDF+Excel fallback]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id})`);
+        return true;
+      }
+    }
+
+    // Diagnostic — hiçbir select Excel içermiyor
+    const summary = analyses.map((a) =>
+      `${a.sel.name || a.sel.id || '?'}(opt=${a.optCount},pdf=${a.hasPdf},word=${a.hasWord},xlsx=${!!a.excelXlsxOpt},excel=${!!a.excelOpt})`,
+    ).join(' | ');
+    await log(`⚠ Rapor Türü select'i bulunamadı. Selects: ${summary}`);
     return false;
   }
 
