@@ -143,11 +143,23 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.32.0';
+          const AGENT_VER = '1.33.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
+          // Global log buffer — kullanıcı DevTools Console'da
+          //    copy(window.__morenLogs.join('\n'))
+          // ile bütün log'u bir seferde clipboard'a alabilir.
+          window.__morenLogs = window.__morenLogs || [];
           const log = async (line) => {
             try {
+              const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+              const formatted = `[${ts}] ${line}`;
+              // 1) DevTools Console (kalıcı, kopyalanabilir, F12 → Console → sağ-tık → Save as)
+              try { console.log('[Moren]', formatted); } catch {}
+              // 2) window dizisi — istediği zaman copy(window.__morenLogs.join('\n')) ile alır
+              window.__morenLogs.push(formatted);
+              if (window.__morenLogs.length > 5000) window.__morenLogs.splice(0, 1000);
+              // 3) Backend POST (mevcut akış — portal job ekranında gösteriliyor)
               await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
@@ -694,7 +706,8 @@
       } catch {}
       cur = cur.parentElement;
     }
-    await sleep(500);
+    // about:blank reset sonrası taze form yüklenmesi 1-2sn sürebilir
+    await sleep(1500);
   }
 
   /**
@@ -982,7 +995,19 @@
     let formAlreadyLoaded =
       frm3?.contentDocument?.querySelector('form[name="raporMizanForm"]');
     if (firmaResult?.changed) {
-      await log('🔁 Firma değiştiği için Mizan formu yeniden açılıyor (stale önleme)');
+      await log('🔁 Firma değişti — frm3 sıfırlanıyor (stale form önleme)');
+      // Kritik: Luca, Mizan link'ine 2. tıklamada eski form'u sadece öne getiriyor,
+      // yeni form fetch'lemiyor. frm3.src'yi about:blank'e çekip ZORLA bir Mizan
+      // tıklamasıyla server'dan taze form alıyoruz.
+      try {
+        const f3 = getLucaFrame('frm3');
+        if (f3) {
+          f3.src = 'about:blank';
+          await sleep(700);
+        }
+      } catch (e) {
+        await log(`⚠ frm3 sıfırlama hatası: ${e?.message || e}`);
+      }
       formAlreadyLoaded = null;
     }
     if (!formAlreadyLoaded) {
