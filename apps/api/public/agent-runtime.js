@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.33.0';
+          const AGENT_VER = '1.34.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -437,7 +437,55 @@
 
     await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetText}`);
     combo.value = targetValue;
-    combo.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Luca'nın KENDI onchange handler'ını tetikle — synthetic event yetmiyor çünkü
+    // Luca server-side session cookie'yi onchange'in yaptığı POST/redirect ile günceller.
+    // 3 katmanlı tetikleme:
+    //   a) Inline onchange="..." attribute'unu frm4 window context'inde çalıştır
+    //   b) HTMLSelectElement.prototype.onchange property'si (jQuery bindings için)
+    //   c) Synthetic change event (bubble) — kalan listener'lar için
+    //   d) Eğer hiçbiri sirket değişikliğini server'a iletmezse: form submit fallback
+    const frm4Win = frm4.contentWindow;
+    let dispatchedNative = false;
+    try {
+      const onChangeAttr = combo.getAttribute('onchange');
+      if (onChangeAttr && onChangeAttr.trim().length > 0) {
+        await log(`🔧 Luca onchange="${onChangeAttr.slice(0, 80)}" çağrılıyor`);
+        // frm4 window context'inde execute (frm4'teki global JS fonksiyonlara erişebilsin)
+        try {
+          // eslint-disable-next-line no-new-func
+          const fn = new frm4Win.Function('event', onChangeAttr);
+          fn.call(combo, new frm4Win.Event('change'));
+          dispatchedNative = true;
+        } catch (e) {
+          await log(`⚠ onchange attr execute hatası: ${e?.message || e}`);
+        }
+      }
+    } catch (e) { /* cross-origin? */ }
+
+    // Property handler (jQuery .change(fn) bind'leri buraya gelir)
+    try {
+      if (typeof combo.onchange === 'function') {
+        combo.onchange();
+        dispatchedNative = true;
+      }
+    } catch (e) {}
+
+    // Synthetic change event — yine de dispatch et (delegated listener'lar için)
+    try {
+      combo.dispatchEvent(new frm4Win.Event('change', { bubbles: true }));
+    } catch (e) {
+      combo.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Native onchange yakalayamadıysak form submit fallback dene
+    if (!dispatchedNative) {
+      const parentForm = combo.closest('form');
+      if (parentForm) {
+        await log(`🔧 onchange yok, parent form submit ediliyor (${parentForm.action || 'no-action'})`);
+        try { parentForm.submit(); } catch (e) {}
+      }
+    }
 
     // Sayfa yenilenmesini bekle — frm4 reload edecek
     await sleep(2500);
