@@ -83,6 +83,37 @@ export class ExcelParserService {
       ]);
       const belgeDate = this.parseDate(dateRaw);
 
+      // ─── ÖZEL SATIR FİLTRESİ ───
+      // Luca Defteri Kebir Excel'inde "NAKLİ YEKÜN" (devir bakiyesi) ve "Toplam:"
+      // satırları KDV sütunu doluysa yanlışlıkla kayıt olarak alınır.
+      // Bunlar transaction değil — TARIH/MADDE NO/EVRAK NO boş olur,
+      // AÇIKLAMA "NAKLİ YEKÜN" / "TOPLAM" / "GENEL TOPLAM" içerir.
+      const aciklamaText = String(
+        find(['açıklama', 'aciklama', 'hesap adı', 'hesap adi']) ?? '',
+      ).toLocaleUpperCase('tr-TR').trim();
+      const tarihMissing = !belgeDate;
+      const madeNo = find(['madde no', 'maddeno']);
+      const fisNo = find(['fiş no', 'fis no']);
+      const isHeaderOrSummaryRow =
+        // Devir bakiyesi
+        /^NAKL[İI]\s*YEK[ÜU]N/.test(aciklamaText) ||
+        // Toplam / Genel Toplam
+        /^TOPLAM[:\s]?/.test(aciklamaText) ||
+        /^GENEL\s+TOPLAM/.test(aciklamaText) ||
+        // Hesap başlığı (örn: "191 İNDİRİLECEK KATMA DEĞER VERGİSİ")
+        /^\d{3}\s+[A-ZÇĞİÖŞÜ]/.test(aciklamaText);
+
+      // Transaction kabul kriteri: TARIH dolu VE (madde no veya fiş no) dolu
+      const looksLikeTransaction =
+        !!belgeDate && (madeNo || fisNo || belgeNo);
+
+      if (isHeaderOrSummaryRow || tarihMissing || !looksLikeTransaction) {
+        this.logger.debug(
+          `Satır atlandı (header/özet/devir): row=${i + 2} aciklama="${aciklamaText.slice(0, 40)}" tarih=${tarihMissing ? 'YOK' : 'var'}`,
+        );
+        continue;
+      }
+
       const karsiTaraf = find([
         'açıklama', 'aciklama', 'hesap adı', 'hesap adi',
         'karşı taraf', 'karsi taraf', 'cari adı', 'cari adi', 'firma',
