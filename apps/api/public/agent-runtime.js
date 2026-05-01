@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.28.0';
+          const AGENT_VER = '1.29.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -1153,7 +1153,10 @@
       };
     };
 
-    // ─── form submit override — gonder() form.submit() yapıyorsa target=_blank'i etkisiz hale getir ───
+    // ─── form submit override — gonder() form.submit() yapıyorsa intercept et ───
+    // Luca'nın akışı: rapor_takip durum=150 → <form action="rapor_indir.jq" method="POST">.submit()
+    // → frame yenileniyor, Excel response geliyor ama interceptor'lar kayboluyor.
+    // Çözüm: submit'i engelle, biz fetch ile POST'layıp Blob'u yakala.
     const installFormSubmitOverride = (win, label) => {
       if (!win.HTMLFormElement) return;
       const proto = win.HTMLFormElement.prototype;
@@ -1162,14 +1165,70 @@
       proto.submit = function () {
         try {
           const action = this.action || '';
+          const method = (this.method || 'GET').toUpperCase();
           const target = this.target || '';
           seenUrls.push(`${label}submit:${action.split('?')[0].split('/').pop()}@${target}`);
-          log(`📝 form.submit() action=${action.split('/').pop().slice(0, 50)} target=${target}`).catch(() => {});
-          // target="_blank" ise eski hale çek — yeni tab agent görmüyor, blob yakalanamıyor
+          log(`📝 form.submit() action=${action.split('/').pop().slice(0, 50)} method=${method} target=${target}`).catch(() => {});
+
+          const isExcelForm =
+            isExcelUrl(action) || /rapor_indir|raporIndir|jasper|export|download/i.test(action);
+
+          if (isExcelForm && !this._morenSubmitting) {
+            this._morenSubmitting = true; // aynı form için 4 submit'i tek POST'a indir
+            (async () => {
+              try {
+                // FormData ile tüm input değerlerini topla — Luca POST body'sini hazırlamış olur
+                const fd = new FormData(this);
+                // Multipart yerine application/x-www-form-urlencoded'a çevir — Luca genelde bunu bekler
+                const params = new URLSearchParams();
+                fd.forEach((v, k) => params.append(k, String(v)));
+
+                const fullUrl = action.startsWith('http')
+                  ? action
+                  : new URL(action, win.location.href).toString();
+                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte body)`);
+
+                const fetchOpts = {
+                  method,
+                  credentials: 'include',
+                  headers: {},
+                };
+                if (method === 'POST') {
+                  fetchOpts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                  fetchOpts.body = params.toString();
+                }
+
+                const r = await win.fetch(method === 'GET' ? `${fullUrl}?${params.toString()}` : fullUrl, fetchOpts);
+                if (!r.ok) {
+                  await log(`⚠ form fetch HTTP ${r.status}`);
+                  return;
+                }
+                const ct = r.headers.get('content-type') || '';
+                const blob = await r.blob();
+                if (blob.size > 5000) {
+                  if (!capturedBlob) {
+                    capturedBlob = blob;
+                    await log(`✅ form intercept Blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
+                  }
+                } else {
+                  const txt = await blob.text();
+                  await log(`⚠ form fetch küçük (${blob.size}B): ${txt.slice(0, 120)}`);
+                }
+              } catch (e) {
+                await log(`⚠ form intercept hata: ${e.message}`);
+              } finally {
+                this._morenSubmitting = false;
+              }
+            })().catch(() => {});
+
+            return; // native submit'i atla — frame yenilenmesin
+          }
+
+          // target="_blank" ise eski hale çek (Excel olmayan formlar için)
           if (target === '_blank' || target === 'new' || /win\d+/.test(target)) {
             try {
               this.removeAttribute('target');
-              log(`🔧 form target="_blank" kaldırıldı (aynı tab'da submit)`).catch(() => {});
+              log(`🔧 form target="_blank" kaldırıldı`).catch(() => {});
             } catch (e) {}
           }
         } catch (e) {}
@@ -1234,14 +1293,15 @@
 
     // 1) Native click — HTMLElement.prototype.click (en güvenilir, onclick attribute tetikler)
     try { excelBtn.click(); } catch (e) { await log(`⚠ click() hata: ${e.message}`); }
-    // 2) jQuery click — Luca jQuery handler kullanıyor olabilir, native click tetiklemez
+    // 2) jQuery click — Luca jQuery handler kullanıyor olabilir, native click tetiklemez.
+    //    Luca gerçek jQuery kullanmıyor (.trigger yok); o yüzden gürültü yapmadan dene.
     try {
       const $ = btnWin.$ || btnWin.jQuery;
-      if ($ && typeof $ === 'function') {
+      if ($ && typeof $ === 'function' && typeof $.fn?.trigger === 'function') {
         $(excelBtn).trigger('click');
-        await log(`🔧 jQuery $(btn).trigger('click') çağrıldı`);
+        await log(`🔧 jQuery trigger('click') çağrıldı`);
       }
-    } catch (e) { await log(`⚠ jQuery click hata: ${e.message}`); }
+    } catch (e) { /* jQuery yok — sessiz geç */ }
     // 3) Doğrudan gonder() / global submit fonksiyonunu çağır
     try {
       const oc = excelBtn.getAttribute && excelBtn.getAttribute('onclick');
