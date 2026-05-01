@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.27.0';
+          const AGENT_VER = '1.28.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -1111,10 +1111,57 @@
       };
     };
 
+    // ─── window.open override — Luca gonder() yeni tab açıyorsa URL'i yakala ───
+    const installWindowOpenOverride = (win, label) => {
+      const origOpen = win.open;
+      if (typeof origOpen !== 'function') return;
+      restoreFns.push(() => { try { win.open = origOpen; } catch (e) {} });
+      win.open = function (url, name, features) {
+        try {
+          const urlStr = url ? String(url) : '';
+          seenUrls.push(`${label}open:${urlStr.split('?')[0].split('/').pop()}`);
+          log(`🪟 window.open: ${urlStr.slice(0, 100)}`).catch(() => {});
+          if (urlStr && (isExcelUrl(urlStr) || /rapor|jasper|indir|download|export/i.test(urlStr))) {
+            capturedUrl = urlStr.startsWith('http') ? urlStr : `${win.location.origin}${urlStr.startsWith('/') ? '' : '/'}${urlStr}`;
+            log(`🎯 window.open yakalandı, fetch'leyeceğiz: ${capturedUrl.split('/').pop().slice(0, 80)}`).catch(() => {});
+            // Yeni tab açtırmıyoruz — biz fetch edeceğiz
+            return null;
+          }
+        } catch (e) {}
+        return origOpen.apply(this, arguments);
+      };
+    };
+
+    // ─── form submit override — gonder() form.submit() yapıyorsa target=_blank'i etkisiz hale getir ───
+    const installFormSubmitOverride = (win, label) => {
+      if (!win.HTMLFormElement) return;
+      const proto = win.HTMLFormElement.prototype;
+      const origSubmit = proto.submit;
+      restoreFns.push(() => { try { proto.submit = origSubmit; } catch (e) {} });
+      proto.submit = function () {
+        try {
+          const action = this.action || '';
+          const target = this.target || '';
+          seenUrls.push(`${label}submit:${action.split('?')[0].split('/').pop()}@${target}`);
+          log(`📝 form.submit() action=${action.split('/').pop().slice(0, 50)} target=${target}`).catch(() => {});
+          // target="_blank" ise eski hale çek — yeni tab agent görmüyor, blob yakalanamıyor
+          if (target === '_blank' || target === 'new' || /win\d+/.test(target)) {
+            try {
+              this.removeAttribute('target');
+              log(`🔧 form target="_blank" kaldırıldı (aynı tab'da submit)`).catch(() => {});
+            } catch (e) {}
+          }
+        } catch (e) {}
+        return origSubmit.apply(this, arguments);
+      };
+    };
+
     // Top + tüm frame'lere yükle
     installFetchOverride(window, '');
     installXhrOverride(window, '');
     installAnchorOverride(window, '');
+    installWindowOpenOverride(window, '');
+    installFormSubmitOverride(window, '');
     for (const f of collectFrames(document)) {
       try {
         const fwin = f.contentWindow;
@@ -1123,6 +1170,8 @@
         installFetchOverride(fwin, lbl);
         installXhrOverride(fwin, lbl);
         installAnchorOverride(fwin, lbl);
+        installWindowOpenOverride(fwin, lbl);
+        installFormSubmitOverride(fwin, lbl);
       } catch (e) {}
     }
 
