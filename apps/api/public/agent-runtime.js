@@ -1068,10 +1068,31 @@
                 }
               }
             }
-            // Tanı için: rapor_indir.jq XHR'ı görüldüyse logla — bu Luca'nın native indirme yolu
-            if (/rapor_indir/i.test(url)) {
+            // Tanı için: rapor_indir veya jasper.jq XHR'ı görüldüyse logla
+            if (/rapor_indir|jasper\.jq|raporIndir/i.test(url)) {
               const sz = (this.response && this.response.size) || (this.responseText || '').length;
-              await log(`📡 rapor_indir XHR: ${this.status} · ct=${(ct || '').slice(0, 40)} · size≈${sz}`);
+              await log(`📡 ${url.split('?')[0].split('/').pop()} XHR: ${this.status} · ct=${(ct || '').slice(0, 40)} · size≈${sz}`);
+
+              // Luca yeni akışta jasper.jq direkt Excel binary dönüyor olabilir.
+              // Response Blob değilse de arrayBuffer yorumlamayı deneyelim — content-type
+              // excel/spreadsheet/octet-stream içeriyorsa.
+              if (!capturedBlob && this.status === 200 && sz > 5000 &&
+                  /excel|xlsx|spreadsheet|officedocument|octet-stream/i.test(ct || '')) {
+                try {
+                  // responseType blob değilse, responseText'ten Blob yarat
+                  const data = this.response instanceof Blob
+                    ? this.response
+                    : (this.responseText
+                        ? new Blob([this.responseText], { type: ct || 'application/vnd.ms-excel' })
+                        : null);
+                  if (data && data.size > 5000) {
+                    capturedBlob = data;
+                    await log(`✅ ${url.split('/').pop().slice(0, 30)} → Blob yakalandı (${Math.round(data.size / 1024)} KB)`);
+                  }
+                } catch (e) {
+                  await log(`⚠ ${url.split('/').pop()} blob convert hata: ${e.message}`);
+                }
+              }
             }
 
             // KAPATILDI — Önceden agent burada rapor_takip durum=150 görür görmez
