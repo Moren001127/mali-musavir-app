@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.29.0';
+          const AGENT_VER = '1.30.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -279,12 +279,15 @@
 
   /**
    * Luca'da hedef firma açık değilse SirketCombo'yu değiştirip sayfa
-   * yenilenmesini bekler. job.lucaSlug Taxpayer.lucaSlug — Luca'daki firma
-   * adının normalize hali (örn. "OZ ELA TUR").
+   * yenilenmesini bekler. Eşleştirme önceliği:
+   *   1) job.taxNumber (VKN/TCKN) — option text içinde geçiyorsa kesin eşleşme
+   *   2) job.lucaSlug — Luca'daki firma adının normalize hali (örn. "OZ ELA TUR")
+   *   3) job.mukellefAdi — son çare: tam mükellef adı substring eşleşme
    */
   async function ensureLucaFirma(job, log) {
-    if (!job.lucaSlug) {
-      await log('ℹ️ Mükellefin lucaSlug alanı boş — firma kontrolü atlanıyor');
+    const candidates = [job.taxNumber, job.lucaSlug, job.mukellefAdi].filter(Boolean);
+    if (candidates.length === 0) {
+      await log('ℹ️ Mükellef için lucaSlug/taxNumber/ad yok — firma kontrolü atlanıyor');
       return;
     }
     const frm4 = getLucaFrame('frm4');
@@ -296,35 +299,64 @@
       await log('⚠ SirketCombo bulunamadı, firma kontrolü atlanıyor');
       return;
     }
-    const currentText = combo.selectedOptions[0]?.text?.trim() || '';
-    const wantedNorm = String(job.lucaSlug).trim().toLocaleUpperCase('tr-TR');
-    const currentNorm = currentText.toLocaleUpperCase('tr-TR');
+    const currentText = (combo.selectedOptions[0]?.text || '').trim();
+    const norm = (s) => String(s || '').trim().toLocaleUpperCase('tr-TR');
 
-    if (currentNorm.includes(wantedNorm) || wantedNorm.includes(currentNorm)) {
-      await log(`✓ Firma zaten doğru: ${currentText}`);
-      return;
-    }
-
-    // Hedef firma option'unu bul (text similarity)
-    let targetOpt = null;
-    for (const opt of combo.options) {
-      const t = (opt.text || '').toLocaleUpperCase('tr-TR');
-      if (t.includes(wantedNorm) || wantedNorm.includes(t.replace(/\s+/g, ' ').trim())) {
-        targetOpt = opt;
-        break;
+    // Mevcut açık firma istenen mükellef mi?
+    const currentNorm = norm(currentText);
+    for (const c of candidates) {
+      if (currentNorm.includes(norm(c))) {
+        await log(`✓ Firma zaten doğru: ${currentText}`);
+        return;
       }
     }
-    if (!targetOpt) {
-      throw new Error(`Firma bulunamadı: "${job.lucaSlug}" — Luca'da bu firma yok veya lucaSlug yanlış`);
+
+    // Hedef firma option'unu bul — taxNumber > lucaSlug > ad sırası
+    let targetOpt = null;
+    let matchedBy = '';
+    for (const opt of combo.options) {
+      const t = norm(opt.text);
+      // 1. taxNumber: 10-11 hane sayı, option text'inde geçer
+      if (job.taxNumber && t.includes(String(job.taxNumber))) {
+        targetOpt = opt; matchedBy = `VKN/TCKN ${job.taxNumber}`; break;
+      }
+    }
+    if (!targetOpt && job.lucaSlug) {
+      const wanted = norm(job.lucaSlug);
+      for (const opt of combo.options) {
+        const t = norm(opt.text);
+        if (t.includes(wanted) || wanted.includes(t.replace(/\s+/g, ' ').trim())) {
+          targetOpt = opt; matchedBy = `lucaSlug "${job.lucaSlug}"`; break;
+        }
+      }
+    }
+    if (!targetOpt && job.mukellefAdi) {
+      const wanted = norm(job.mukellefAdi);
+      // Mükellef adı içindeki ilk anlamlı 2-3 kelimeyi al, option ile karşılaştır
+      const tokens = wanted.split(/\s+/).filter((w) => w.length >= 3).slice(0, 3);
+      for (const opt of combo.options) {
+        const t = norm(opt.text);
+        const allMatch = tokens.length > 0 && tokens.every((tok) => t.includes(tok));
+        if (allMatch) {
+          targetOpt = opt; matchedBy = `ad "${job.mukellefAdi}"`; break;
+        }
+      }
     }
 
-    await log(`🔄 Firma değiştiriliyor: ${currentText} → ${targetOpt.text.trim()}`);
+    if (!targetOpt) {
+      const sample = [...combo.options].slice(0, 5).map((o) => o.text.trim().slice(0, 40)).join(' | ');
+      throw new Error(
+        `Firma bulunamadı: VKN=${job.taxNumber || '?'} slug="${job.lucaSlug || '?'}" ad="${job.mukellefAdi || '?'}". ` +
+        `Luca firma listesinde yok ya da yetkiniz yok. İlk 5 firma: ${sample}`,
+      );
+    }
+
+    await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetOpt.text.trim()}`);
     combo.value = targetOpt.value;
     combo.dispatchEvent(new Event('change', { bubbles: true }));
 
     // Sayfa yenilenmesini bekle — frm4 reload edecek, sonra frm5 menü hazır olacak
     await sleep(2000);
-    // frm5 (sağ menü) tekrar yüklensin diye bekle — Mizan text'i orada görünene kadar
     await waitUntil(() => {
       const frm5 = getLucaFrame('frm5');
       if (!frm5 || !frm5.contentDocument) return false;

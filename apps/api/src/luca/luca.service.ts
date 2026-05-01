@@ -197,13 +197,44 @@ export class LucaService {
 
   /**
    * Runner tarafından çağrılır — bekleyen job'ları listeler.
+   * Mükellef bilgilerini (lucaSlug, taxNumber, ad) job'a embed eder ki
+   * agent Luca'da firma değiştirme kontrolünü yapabilsin.
    */
   async pendingJobsForAgent(tenantId: string) {
-    return (this.prisma as any).lucaFetchJob.findMany({
+    const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: { tenantId, status: 'pending' },
       orderBy: { createdAt: 'asc' },
       take: 5,
     });
+
+    // Her job için ilgili Taxpayer bilgilerini join'le
+    const enriched = await Promise.all(
+      jobs.map(async (job: any) => {
+        const tp = await (this.prisma as any).taxpayer.findUnique({
+          where: { id: job.mukellefId },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            companyName: true,
+            taxNumber: true,
+            lucaSlug: true,
+          },
+        });
+        return {
+          ...job,
+          // Agent'a flat olarak göndermek için kök seviyede expose et
+          lucaSlug: tp?.lucaSlug || null,
+          taxNumber: tp?.taxNumber || null,
+          mukellefAdi:
+            tp?.companyName ||
+            [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') ||
+            null,
+        };
+      }),
+    );
+
+    return enriched;
   }
 
   // ==================== (İleride) DOĞRUDAN API PROXY ====================
