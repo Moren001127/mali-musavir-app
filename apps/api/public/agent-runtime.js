@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.26.0';
+          const AGENT_VER = '1.27.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           const log = async (line) => {
@@ -1058,78 +1058,33 @@
           try {
             const ct = this.getResponseHeader('content-type') || '';
 
-            // 1) XHR response Blob ise (Excel)
+            // 1) XHR response Blob ise (Excel) — Luca'nın rapor_indir.jq response'unu yakalama şansı
             if (this.response && this.response instanceof Blob) {
               if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
                 if (!capturedBlob) {
                   capturedBlob = this.response;
-                  await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB)`);
+                  await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB) url=${url.split('/').pop().slice(0, 40)}`);
                   return;
                 }
               }
             }
+            // Tanı için: rapor_indir.jq XHR'ı görüldüyse logla — bu Luca'nın native indirme yolu
+            if (/rapor_indir/i.test(url)) {
+              const sz = (this.response && this.response.size) || (this.responseText || '').length;
+              await log(`📡 rapor_indir XHR: ${this.status} · ct=${(ct || '').slice(0, 40)} · size≈${sz}`);
+            }
 
-            // 2) rapor_takip.jq görüldü — durum:150 (tamamlandı) olunca aynı body ile
-            //    genel/rapor_indir.jq'a POST atalım. Luca yapısı:
-            //      URL: genel/rapor_takip.jq POST {"donem_id":"X","params":{"raporTur":"mizan"}}
-            //      Resp: {"durum":150,"durumAciklama":"Rapor başarılı..."}
-            //      İndirme: genel/rapor_indir.jq POST aynı body
-            if (/rapor_takip/i.test(url) && !capturedBlob) {
-              const bodyStr = typeof this._capturedBody === 'string' ? this._capturedBody : (this._capturedBody ? String(this._capturedBody) : '');
-              const respStr = (this.responseText || '');
-              // İlk diagnostic
-              if (!this._loggedDiag) {
-                this._loggedDiag = true;
-                log(`🔍 rapor_takip URL: ${url.slice(0, 100)}`).catch(() => {});
-                log(`🔍 rapor_takip body: ${bodyStr.slice(0, 200)}`).catch(() => {});
-                log(`🔍 rapor_takip response: ${respStr.slice(0, 400)}`).catch(() => {});
-              }
-              // Durum 150 = "Rapor başarılı bir şekilde oluşturuldu"
+            // KAPATILDI — Önceden agent burada rapor_takip durum=150 görür görmez
+            // kendi rapor_indir.jq POST'unu atıyordu, ama Luca o body'yi
+            // (rapor_takip body'si) reddediyor: "Parameter okhttp3.FormBody.add null".
+            // Native flow zaten gonder() ile doğru istekleri yapıyor; biz sadece
+            // chrome.downloads ile inen dosyayı bridge üzerinden yakalıyoruz.
+            // Diagnostic log bırakıldı — durum görünür kalsın:
+            if (/rapor_takip/i.test(url) && !this._loggedDiag) {
+              this._loggedDiag = true;
+              const respStr = (this.responseText || '').slice(0, 200);
               const durum = (respStr.match(/"durum"\s*:\s*(\d+)/) || [])[1];
-              const tamamlandi = durum === '150' || /başarılı bir şekilde oluştur/i.test(respStr);
-              if (tamamlandi && !this._indirmeBaslandi) {
-                this._indirmeBaslandi = true;
-                (async () => {
-                  await log(`🎯 Rapor hazır (durum=${durum}), indirme başlatılıyor`);
-                  // Aynı body ile genel/rapor_indir.jq'a POST
-                  const baseUrl = url.replace(/rapor_takip\.jq.*/, '');
-                  const indirUrl = `${baseUrl}rapor_indir.jq`;
-                  const fullUrl = indirUrl.startsWith('http') ? indirUrl : `${win.location.origin}/Luca/${indirUrl.replace(/^\//, '')}`;
-                  try {
-                    const r = await win.fetch(fullUrl, {
-                      method: 'POST',
-                      credentials: 'include',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: bodyStr || JSON.stringify({ donem_id: '', params: { raporTur: 'mizan' } }),
-                    });
-                    if (r.ok) {
-                      const ct = r.headers.get('content-type') || '';
-                      const blob = await r.blob();
-                      if (blob.size > 5000) {
-                        capturedBlob = blob;
-                        await log(`✅ rapor_indir.jq blob (POST) yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-                      } else {
-                        await log(`⚠ POST küçük (${blob.size}B), GET deneniyor`);
-                        // GET fallback
-                        const r2 = await win.fetch(fullUrl, { credentials: 'include' });
-                        if (r2.ok) {
-                          const blob2 = await r2.blob();
-                          if (blob2.size > 5000) {
-                            capturedBlob = blob2;
-                            await log(`✅ rapor_indir.jq GET blob yakalandı (${Math.round(blob2.size / 1024)} KB)`);
-                          } else {
-                            await log(`⚠ GET de küçük (${blob2.size}B): ${(await blob2.text()).slice(0, 100)}`);
-                          }
-                        }
-                      }
-                    } else {
-                      await log(`⚠ rapor_indir HTTP ${r.status}: ${(await r.text()).slice(0, 100)}`);
-                    }
-                  } catch (e) {
-                    await log(`⚠ rapor_indir fetch hata: ${e.message}`);
-                  }
-                })().catch(() => {});
-              }
+              log(`🔍 rapor_takip durum=${durum || '?'} (Luca'nın native flow'u sürdürülüyor)`).catch(() => {});
             }
           } catch (e) {}
         });
