@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.44.0';
+          const AGENT_VER = '1.47.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -429,9 +429,21 @@
       if (a.hasPdf && a.hasWord && (a.excelXlsxOpt || a.excelOpt)) {
         const target = a.excelXlsxOpt || a.excelOpt;
         const oldText = a.sel.selectedOptions[0]?.text || '?';
+        // Çoklu strategy — Luca farklı dispatch yöntemleri kullanabilir
+        const targetIdx = [...a.sel.options].indexOf(target);
+        a.sel.selectedIndex = targetIdx;
         a.sel.value = target.value;
+        a.sel.dispatchEvent(new Event('input', { bubbles: true }));
         a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt)`);
+        // Inline onchange attribute'unu da çağır (Luca'nın gerçek handler'ı)
+        const onChangeAttr = a.sel.getAttribute('onchange');
+        if (onChangeAttr) {
+          try {
+            const win = a.sel.ownerDocument.defaultView;
+            new win.Function('event', onChangeAttr).call(a.sel, new win.Event('change'));
+          } catch (e) {}
+        }
+        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt, idx=${targetIdx})`);
         return true;
       }
     }
@@ -480,22 +492,54 @@
    * "Tek hesap kodu" alanı varsa onu, yoksa BAS+BIT'i aynı değerle doldurur.
    */
   async function fillLucaHesapKodu(form, hesapKodu, log) {
-    // Luca onblur/onchange'inde server'a AJAX atıp session'a hesap kodunu yazıyor.
-    // setNative + zengin event chain + inline onblur eval + bekleme ile session
-    // güncellemesini garantile.
-    const setNative = (inp, value) => {
+    // GERÇEK TYPING SİMÜLASYONU — Luca synthetic value set'ini kabul etmiyor;
+    // klavyede gerçekten yazılmış gibi karakter-karakter event chain göndermek lazım.
+    // Strateji: focus + boşalt + her karakter için keydown/keypress/input/keyup
+    // + tüm karakterler bittikten sonra blur (server'a session'a yaz).
+    const typeChar = (inp, ch) => {
+      const win = inp.ownerDocument.defaultView;
+      const code = ch.charCodeAt(0);
+      try {
+        // beforeinput
+        inp.dispatchEvent(new win.InputEvent('beforeinput', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
+        // keydown
+        inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
+        // keypress
+        inp.dispatchEvent(new win.KeyboardEvent('keypress', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
+        // value'yu uzat (native setter ile)
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, (inp.value || '') + ch);
+        // input event (typing'i bildirir)
+        inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
+        // keyup
+        inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
+      } catch (e) { /* fallback: native value set */ }
+    };
+
+    const typeText = async (inp, text) => {
       if (!inp) return false;
       const win = inp.ownerDocument.defaultView;
       try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, value);
-        inp.dispatchEvent(new Event('focus', { bubbles: true }));
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: 'Tab', code: 'Tab', keyCode: 9 }));
-        inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: 'Tab', code: 'Tab', keyCode: 9 }));
+        // 1. Focus
+        inp.focus();
+        inp.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }));
+        inp.dispatchEvent(new win.FocusEvent('focus', { bubbles: true }));
+        // 2. Önceki değeri seç + sil (Luca yazılı değer üstüne yazmayı kabul etmeyebilir)
+        try {
+          const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+          setter.call(inp, '');
+          inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+        } catch {}
+        // 3. Karakter karakter yaz
+        for (const ch of text) {
+          typeChar(inp, ch);
+          await sleep(50); // gerçek typing speed
+        }
+        // 4. Final change + blur
         inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }));
         inp.dispatchEvent(new Event('blur', { bubbles: true }));
-        // Inline onblur/onchange attribute'unu da çağır (Luca'nın gerçek lookup kodu)
+        // 5. Inline onblur/onchange execute (Luca lookup)
         const onBlurAttr = inp.getAttribute('onblur');
         if (onBlurAttr) {
           try { new win.Function('event', onBlurAttr).call(inp, new win.Event('blur')); } catch (e) {}
@@ -504,6 +548,21 @@
         if (onChangeAttr) {
           try { new win.Function('event', onChangeAttr).call(inp, new win.Event('change')); } catch (e) {}
         }
+        return true;
+      } catch (e) { return false; }
+    };
+
+    // Eski sync setNative'u typing fonksiyonuyla değiştir (geri uyumlu wrap)
+    const setNative = (inp, value) => {
+      // Sync bağlamda kullanılan fonksiyon — sadece native setter (fallback için)
+      if (!inp) return false;
+      const win = inp.ownerDocument.defaultView;
+      try {
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, value);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
         return true;
       } catch (e) { return false; }
     };
@@ -530,19 +589,19 @@
     const ilk = form.querySelector('input[name="HESAPKODU_ILK"], input[id="HESAPKODU_ILK"], input[name="hesapkoduIlk"]');
     const son = form.querySelector('input[name="HESAPKODU_SON"], input[id="HESAPKODU_SON"], input[name="hesapkoduSon"]');
     if (ilk && son) {
-      setNative(ilk, hesapKodu);
-      setNative(son, hesapKodu);
-      // Luca onblur AJAX'i için bekle (server'a hesap kodu yazılması)
-      await sleep(800);
-      // Doğrula — value hâlâ doğru mu? Bazen Luca onblur'da ters yıkar
+      // Karakter karakter typing simulate — Luca synthetic value set'ini kabul etmiyor
+      await typeText(ilk, hesapKodu);
+      await sleep(400); // ILK onblur'un Luca AJAX'i tamamlansın
+      await typeText(son, hesapKodu);
+      await sleep(800); // SON onblur'un AJAX'i de tamamlansın
       const v1 = ilk.value, v2 = son.value;
-      await log(`💼 Hesap kodu (HESAPKODU_ILK+SON) set: ${hesapKodu} (input.value: ILK="${v1}" SON="${v2}")`);
-      // Eğer değer kayboldu ise tekrar yaz
+      await log(`💼 Hesap kodu (typed) set: ${hesapKodu} (input.value: ILK="${v1}" SON="${v2}")`);
+      // Doğrulama — boşaldıysa setNative ile tekrar yaz (son çare)
       if (v1 !== hesapKodu || v2 !== hesapKodu) {
         setNative(ilk, hesapKodu);
         setNative(son, hesapKodu);
         await sleep(400);
-        await log(`💼 Hesap kodu re-set: ILK="${ilk.value}" SON="${son.value}"`);
+        await log(`💼 Hesap kodu re-set (native): ILK="${ilk.value}" SON="${son.value}"`);
       }
       return true;
     }
@@ -759,9 +818,11 @@
     const firmaResult = await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
+    // NOT: Mizan akışındaki "frm3 about:blank reset" Defteri Kebir'de
+    // hesap planı state'ini bozuyor → manuel davranıştan farklı sonuç (tüm hesaplar
+    // dönüyor). Burada KALDIRIYORUZ: Luca menüye tıklamamız zaten doğru form'u yükler.
     if (firmaResult?.changed) {
-      await log('🔁 Firma değişti — frm3 sıfırlanıyor (stale form önleme)');
-      try { const f3 = getLucaFrame('frm3'); if (f3) { f3.src = 'about:blank'; await sleep(700); } } catch {}
+      await log('ℹ️ Firma değişti — Defteri Kebir menüsü doğrudan tıklanıyor (frm3 reset YOK)');
     }
 
     // "Defteri Kebir" → Tüm Yazıcılar altındaki (2. occurrence)
@@ -771,19 +832,13 @@
     const form = await waitForLucaAnyForm(log, /defteri[Kk]ebir|defteriKebir|kebir/i, 15000, 'Defteri Kebir formu');
     await dumpLucaFormStructure(form, log);
 
-    // Doldurma
+    // Manuel kullanım sırasıyla aynı:
+    //   1) Tarih yaz  2) Hesap kodu yaz  3) Rapor Türü Excel  4) Rapor bas
+    // Yenile butonu GEREKSIZ — manuel test bu sırayla doğru Excel veriyor.
     await fillLucaTarih(form, job, log);
     await fillLucaHesapKodu(form, hesapKodu, log);
     await setRaporTuruExcel(form, log);
-
-    // KRİTİK: Defteri Kebir'de hesap kodu set sonrası "Yenile" butonu basılmazsa
-    // Luca session'ı yeni hesap kodunu kabul etmiyor — sonuç tüm hesapları olan
-    // mizan-benzeri rapor oluyor. Yenile = hesap planı/filtre validation + session
-    // güncelleme. Sonra Rapor güvenle tıklanabilir.
-    await clickLucaYenileButton(form, log);
-    await sleep(1500);
-
-    // Rapor butonu → form intercept
+    await sleep(500);
     await clickLucaRaporButton(form, log);
 
     // Mizan'daki gibi blob bekleme — global capturedBlob form intercept tarafından set ediliyor
@@ -798,8 +853,7 @@
     await navigateToFisListesi(log);
 
     if (firmaResult?.changed) {
-      await log('🔁 Firma değişti — frm3 sıfırlanıyor');
-      try { const f3 = getLucaFrame('frm3'); if (f3) { f3.src = 'about:blank'; await sleep(700); } } catch {}
+      await log('ℹ️ Firma değişti — İşletme menüsü doğrudan tıklanıyor (frm3 reset YOK)');
     }
 
     await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
@@ -810,10 +864,6 @@
     await fillLucaTarih(form, job, log);
     await fillLucaGelirGider(form, mode, log);
     await setRaporTuruExcel(form, log);
-
-    // İşletme Defteri'nde de Yenile gerekebilir — denedikten sonra Rapor
-    await clickLucaYenileButton(form, log);
-    await sleep(1500);
 
     await clickLucaRaporButton(form, log);
     return await waitForCapturedBlob(log, 30000);
