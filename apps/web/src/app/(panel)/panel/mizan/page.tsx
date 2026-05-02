@@ -804,13 +804,21 @@ function MizanTable({
 
       {/* === TABLO === */}
       <div style={{ overflowX: 'auto' }}>
-        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
+        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
+          <colgroup>
+            <col style={{ width: 110 }} /> {/* HESAP KODU */}
+            <col /> {/* HESAP ADI — esnek */}
+            <col style={{ width: 140 }} /> {/* BORÇ */}
+            <col style={{ width: 140 }} /> {/* ALACAK */}
+            <col style={{ width: 150 }} /> {/* BORÇ BAKİYESİ */}
+            <col style={{ width: 150 }} /> {/* ALACAK BAKİYESİ */}
+          </colgroup>
           <thead>
             <tr style={{ background: 'rgba(184,160,111,0.07)' }}>
               {['HESAP KODU', 'HESAP ADI', 'BORÇ', 'ALACAK', 'BORÇ BAKİYESİ', 'ALACAK BAKİYESİ'].map((label, i) => (
                 <th
                   key={label}
-                  className={`px-4 py-3 text-[12.5px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
+                  className={`px-3 py-3 text-[12px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
                   style={{
                     color: 'rgba(250,250,249,0.9)',
                     border: '1px solid rgba(255,255,255,0.15)',
@@ -863,7 +871,7 @@ function MizanTable({
                         tabIndex={0}
                         onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
-                        className={`px-4 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                        className={`px-3 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
                         style={{
                           border: cellBorder,
                           fontSize: fontSize,
