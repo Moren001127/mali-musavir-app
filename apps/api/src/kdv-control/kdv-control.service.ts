@@ -550,14 +550,38 @@ export class KdvControlService {
         const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
         const end = new Date(Date.UTC(year, month, 0, 23, 59, 59)); // ay sonu
         const before = rows.length;
-        rows = rows.filter((r) => {
+        const monthFiltered = rows.filter((r) => {
           if (!r.belgeDate) return false;
           const t = r.belgeDate.getTime();
           return t >= start.getTime() && t <= end.getTime();
         });
-        this.logger.log(
-          `İşletme dönem filtresi (${dash}): ${before} → ${rows.length} satır (dönem dışı ${before - rows.length} elendi)`,
-        );
+
+        // Ay bazında 0 satır çıkarsa YIL bazında dene (tüm yılı al, kullanıcı manuel filtreler)
+        if (monthFiltered.length === 0 && before > 0) {
+          const yearStart = new Date(Date.UTC(year, 0, 1, 0, 0, 0));
+          const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+          const yearFiltered = rows.filter((r) => {
+            if (!r.belgeDate) return false;
+            const t = r.belgeDate.getTime();
+            return t >= yearStart.getTime() && t <= yearEnd.getTime();
+          });
+          if (yearFiltered.length > 0) {
+            this.logger.warn(
+              `İşletme dönem filtresi (${dash}): ay bazında 0 satır → YIL bazında genişletildi (${year}): ${before} → ${yearFiltered.length}`,
+            );
+            rows = yearFiltered;
+          } else {
+            // Yıl bazında da 0 → tüm satırları geçir, kullanıcı manuel kontrol etsin
+            this.logger.warn(
+              `İşletme dönem filtresi: yıl bazında bile 0 satır, FİLTRE KAPATILDI (${before} satır geçirildi)`,
+            );
+          }
+        } else {
+          rows = monthFiltered;
+          this.logger.log(
+            `İşletme dönem filtresi (${dash}): ${before} → ${rows.length} satır (dönem dışı ${before - rows.length} elendi)`,
+          );
+        }
       }
     }
 
