@@ -534,9 +534,33 @@ export class KdvControlService {
 
     // Session type'a göre doğru parser'ı seç
     const session = await this.prisma.kdvControlSession.findUnique({ where: { id: sessionId } });
-    const rows = this.ISLETME_TYPES.includes(session!.type)
+    let rows = this.ISLETME_TYPES.includes(session!.type)
       ? this.excelParser.parseIsletmeExcel(buffer, session!.type as 'ISLETME_GELIR' | 'ISLETME_GIDER')
       : this.excelParser.parseKdvExcel(buffer, session!.type === 'KDV_191' ? '191' : '391');
+
+    // ── İŞLETME: dönem (ay) tarih filtresi ──
+    // Luca formunda tarih kutusu tutmadığı için Excel tüm dönemi getirebiliyor.
+    // session.periodLabel "2026/03" → 2026-03-01..2026-03-31 aralığı.
+    if (this.ISLETME_TYPES.includes(session!.type) && session!.periodLabel) {
+      const dash = this.toDashDonem(session!.periodLabel); // "2026-03"
+      const m = dash.match(/^(\d{4})-(\d{2})$/);
+      if (m) {
+        const year = +m[1];
+        const month = +m[2]; // 1-12
+        const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+        const end = new Date(Date.UTC(year, month, 0, 23, 59, 59)); // ay sonu
+        const before = rows.length;
+        rows = rows.filter((r) => {
+          if (!r.belgeDate) return false;
+          const t = r.belgeDate.getTime();
+          return t >= start.getTime() && t <= end.getTime();
+        });
+        this.logger.log(
+          `İşletme dönem filtresi (${dash}): ${before} → ${rows.length} satır (dönem dışı ${before - rows.length} elendi)`,
+        );
+      }
+    }
+
     if (rows.length === 0) {
       throw new BadRequestException(
         'Excel dosyasında KDV satırı bulunamadı. Sütun isimlerini kontrol edin.',
