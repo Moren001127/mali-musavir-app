@@ -476,7 +476,15 @@ export default function GelirTablosuPage() {
           </span>
         </h3>
         <div className="rounded-xl overflow-hidden overflow-x-auto" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
+          <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: 70 }} />
+              <col />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 180 }} />
+            </colgroup>
             <thead>
               {/* Firma adı satırı — KOD/KALEM üstüne */}
               {selectedTp && (
@@ -502,7 +510,8 @@ export default function GelirTablosuPage() {
                 </tr>
               )}
               <tr>
-                <th style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }} colSpan={2}></th>
+                <th style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)', width: 80 }}></th>
+                <th style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)', width: 280 }}></th>
                 {DISPLAY_ORDER.map((qi) => {
                   const t = [
                     { no: '1. DÖNEM', range: 'Ocak – Mart' },
@@ -744,12 +753,10 @@ export default function GelirTablosuPage() {
         </div>
       </div>
 
-      {/* HER DÖNEM İÇİN AYRI BLOK: Geçici Vergi Matrahı + Stok/SMM altında — Q4→Q1 sırası */}
-      {quarterDetails.some((qd) => qd?.data?.geciciVergiHesabi || qd?.data?.stokMaliyetOzet) &&
-        DISPLAY_ORDER.map((qi, displayIdx) => {
+      {/* HER DÖNEM İÇİN AYRI BLOK: Geçici Vergi Matrahı + Stok/SMM altında — Q4→Q1 sırası — VERİ YOKSA DA RENDER */}
+      {DISPLAY_ORDER.map((qi, displayIdx) => {
           const qd = quarterDetails[qi];
           const detail = qd?.data as any;
-          if (!detail?.geciciVergiHesabi && !detail?.stokMaliyetOzet) return null;
           const isLocked = !!detail?.locked;
           const ms = detail?.id ? getManuel(detail.id) : { gecmisYil: '', oncekiOdenen: '' };
           const v = detail?.geciciVergiHesabi as any;
@@ -773,7 +780,24 @@ export default function GelirTablosuPage() {
                     KESİN KAYIT
                   </span>
                 )}
+                {!detail && (
+                  <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
+                    · Bu dönem için veri yok
+                  </span>
+                )}
               </div>
+
+              {/* Veri yoksa boş placeholder iki tablo göster */}
+              {!detail?.geciciVergiHesabi && !detail?.stokMaliyetOzet && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="rounded-xl p-4 text-center text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' }}>
+                    Geçici Vergi Matrahı — veri yok
+                  </div>
+                  <div className="rounded-xl p-4 text-center text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' }}>
+                    Stok ve Satılan Malın Maliyeti — veri yok
+                  </div>
+                </div>
+              )}
 
               {/* Geçici Vergi Matrahı — tek sütun */}
               {detail?.geciciVergiHesabi && (
