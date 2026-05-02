@@ -284,7 +284,17 @@ export class ExcelParserService {
         `matrah=${matrahIdx}, kdv=${kdvIdx}`,
     );
 
+    // DİAGNOSTİK: bölümdeki ilk 5 ham satırı dump
+    const diagRows = matrix.slice(target.idx + 1, Math.min(sectionEnd, target.idx + 6))
+      .map((r, di) => {
+        const cells = (r || []).map((c) => (c === null || c === undefined ? '' : String(c).slice(0, 25)));
+        return `  data#${target.idx + 2 + di}: ${cells.map((c, j) => `${j}:"${c}"`).join(' | ')}`;
+      });
+    this.logger.log(`İşletme bölüm ilk 5 satır:\n${diagRows.join('\n')}`);
+
     // 5) Veri satırlarını dolaş (bölümün başından sonuna)
+    let skipReason = { toplam: 0, sectionTitle: 0, noTarih: 0, noKdvNoMatrah: 0, ok: 0 };
+    const sampleSkipped: string[] = [];
     for (let i = target.idx + 1; i < sectionEnd; i++) {
       const row = matrix[i] || [];
       if (!row.length) continue;
@@ -296,7 +306,7 @@ export class ExcelParserService {
         firstCells.includes('genel toplam') ||
         firstCells.includes('devir')
       ) {
-        this.logger.debug(`İşletme satır atlandı (toplam/devir): row=${i + 1}`);
+        skipReason.toplam++;
         continue;
       }
 
@@ -308,7 +318,10 @@ export class ExcelParserService {
         }
         return cell === null || cell === undefined || String(cell).trim() === '';
       });
-      if (isSectionTitle) continue;
+      if (isSectionTitle) {
+        skipReason.sectionTitle++;
+        continue;
+      }
 
       const evrakNo = evrakNoIdx >= 0 ? row[evrakNoIdx] : null;
       const tarihRaw = tarihIdx >= 0 ? row[tarihIdx] : null;
@@ -321,12 +334,23 @@ export class ExcelParserService {
       const belgeDate = this.parseDate(tarihRaw);
 
       // Tarih dolu olmalı
-      if (!belgeDate) continue;
+      if (!belgeDate) {
+        skipReason.noTarih++;
+        if (sampleSkipped.length < 3) {
+          sampleSkipped.push(`row#${i+1} tarihRaw="${tarihRaw}" → null | evrakNo="${evrakNo}" kdv="${kdvRaw}"`);
+        }
+        continue;
+      }
 
       // KDV ya da matrah dolu olmalı
       if ((kdvTutari === null || kdvTutari === 0) && (matrah === null || matrah === 0)) {
+        skipReason.noKdvNoMatrah++;
+        if (sampleSkipped.length < 3) {
+          sampleSkipped.push(`row#${i+1} tarih="${tarihRaw}" kdv="${kdvRaw}" matrah="${matrahRaw}" — ikisi de boş/0`);
+        }
         continue;
       }
+      skipReason.ok++;
 
       // rawData: header → değer eşlemesi
       const rawData: Record<string, any> = {};
@@ -355,8 +379,13 @@ export class ExcelParserService {
     }
 
     this.logger.log(
-      `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel parse: ${results.length} satır bulundu.`,
+      `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel parse: ${results.length} satır bulundu. ` +
+        `(skip: toplam=${skipReason.toplam}, sectionTitle=${skipReason.sectionTitle}, ` +
+        `noTarih=${skipReason.noTarih}, noKdvNoMatrah=${skipReason.noKdvNoMatrah}, ok=${skipReason.ok})`,
     );
+    if (sampleSkipped.length > 0) {
+      this.logger.warn(`Atlanan örnek satırlar:\n${sampleSkipped.join('\n')}`);
+    }
     return results;
   }
 
