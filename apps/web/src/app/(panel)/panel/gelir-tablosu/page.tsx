@@ -228,6 +228,10 @@ export default function GelirTablosuPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydedilemedi'),
   });
 
+  // Görsel sıralama: Q4 önce → Q1 sonra (kullanıcı isteği)
+  // qi (orijinal index 0..3) ile slot'a erişiyoruz, sadece render sırası ters
+  const DISPLAY_ORDER = [3, 2, 1, 0] as const;
+
   const [selectedMizan, setSelectedMizan] = useState('');
 
   // Manuel düzeltme state — her çeyrek için ayrı düzenleme
@@ -456,11 +460,17 @@ export default function GelirTablosuPage() {
         </div>
       </div>
 
-      {/* 4 Çeyrek Yıllık Görünüm — Q1 · Q2 · Q3 · Q4 */}
+      {/* 4 Çeyrek Yıllık Görünüm — Q4 · Q3 · Q2 · Q1 (ters sıra, kullanıcı isteği) */}
       <div>
         <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-          Gelir Tablosu · {year} Yılı Çeyreklik Görünüm
+          Gelir Tablosu
+          {selectedTp && (
+            <span style={{ color: GOLD, fontWeight: 700 }}>
+              · {taxpayerName(selectedTp)}
+            </span>
+          )}
+          <span style={{ color: 'rgba(250,250,249,0.55)' }}>· {year}</span>
           <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
             {quarterSlots.filter(Boolean).length}/4 çeyrek
           </span>
@@ -468,20 +478,43 @@ export default function GelirTablosuPage() {
         <div className="rounded-xl overflow-hidden overflow-x-auto" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
           <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
             <thead>
+              {/* Firma adı satırı — KOD/KALEM üstüne */}
+              {selectedTp && (
+                <tr style={{ background: 'rgba(184,160,111,0.06)', borderBottom: '1px solid rgba(184,160,111,0.2)' }}>
+                  <th
+                    colSpan={2 + 4}
+                    className="px-4 py-2.5 text-left"
+                    style={{
+                      color: GOLD,
+                      fontFamily: 'Fraunces, serif',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {taxpayerName(selectedTp)}
+                    {selectedTp.taxNumber && (
+                      <span className="ml-2 font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 400 }}>
+                        · VKN/TCKN: {selectedTp.taxNumber}
+                      </span>
+                    )}
+                  </th>
+                </tr>
+              )}
               <tr>
                 <th style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.02)' }} colSpan={2}></th>
-                {[
-                  { no: '1. DÖNEM', range: 'Ocak – Mart' },
-                  { no: '2. DÖNEM', range: 'Nisan – Haziran' },
-                  { no: '3. DÖNEM', range: 'Temmuz – Eylül' },
-                  { no: '4. DÖNEM', range: 'Ekim – Aralık' },
-                ].map((t, qi) => {
+                {DISPLAY_ORDER.map((qi) => {
+                  const t = [
+                    { no: '1. DÖNEM', range: 'Ocak – Mart' },
+                    { no: '2. DÖNEM', range: 'Nisan – Haziran' },
+                    { no: '3. DÖNEM', range: 'Temmuz – Eylül' },
+                    { no: '4. DÖNEM', range: 'Ekim – Aralık' },
+                  ][qi];
                   const gt = quarterSlots[qi];
                   const locked = gt?.locked;
                   return (
                     <th
                       key={qi}
-                      colSpan={2}
                       className="text-center"
                       style={{
                         color: gt ? GOLD : 'rgba(250,250,249,0.35)',
@@ -534,11 +567,8 @@ export default function GelirTablosuPage() {
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 80 }}>Kod</th>
                 <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
-                {quarterSlots.map((gt, qi) => (
-                  <React.Fragment key={qi}>
-                    <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>Tutar</th>
-                    <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Oran</th>
-                  </React.Fragment>
+                {DISPLAY_ORDER.map((qi) => (
+                  <th key={qi} className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>Tutar</th>
                 ))}
               </tr>
             </thead>
@@ -552,16 +582,14 @@ export default function GelirTablosuPage() {
                       <td className="px-3 py-2.5 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8 }}>
                         {row.subLabel}
                       </td>
-                      {quarterSlots.map((gt, qi) => {
+                      {DISPLAY_ORDER.map((qi) => {
+                        const gt = quarterSlots[qi];
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <React.Fragment key={qi}>
-                            <td className="px-3 py-2.5 text-right font-mono text-[14px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}>
-                              {hasData ? fmtTRY(v!) : '—'}
-                            </td>
-                            <td style={{ width: 80 }}></td>
-                          </React.Fragment>
+                          <td key={qi} className="px-3 py-2.5 text-right font-mono text-[14px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
+                            {hasData ? fmtTRY(v!) : '—'}
+                          </td>
                         );
                       })}
                     </tr>
@@ -576,14 +604,12 @@ export default function GelirTablosuPage() {
                       <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8 }}>
                         {row.label}
                       </td>
-                      {quarterSlots.map((gt, qi) => {
+                      {DISPLAY_ORDER.map((qi) => {
+                        const gt = quarterSlots[qi];
                         const hasData = gt !== null;
                         if (!hasData) {
                           return (
-                            <React.Fragment key={qi}>
-                              <td style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}></td>
-                              <td style={{ width: 80 }}></td>
-                            </React.Fragment>
+                            <td key={qi} style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}></td>
                           );
                         }
                         const draftVal = duzeltmelerDraft[gt.id]?.[row.manual!];
@@ -591,29 +617,26 @@ export default function GelirTablosuPage() {
                         const currentVal = draftVal !== undefined ? draftVal : (savedVal ?? 0);
                         const isLocked = gt.locked;
                         return (
-                          <React.Fragment key={qi}>
-                            <td className="px-2 py-1.5 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}>
-                              <input
-                                type="text"
-                                value={currentVal === 0 ? '' : currentVal.toString().replace('.', ',')}
-                                onChange={(e) => {
-                                  if (isLocked) return;
-                                  const raw = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
-                                  const n = parseFloat(raw) || 0;
-                                  setDuzeltme(gt.id, row.manual!, n);
-                                }}
-                                disabled={isLocked}
-                                placeholder={isLocked ? 'Kilitli' : '0,00'}
-                                className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border disabled:opacity-50"
-                                style={{
-                                  background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
-                                  borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
-                                  color: isLocked ? 'rgba(34,197,94,0.7)' : '#60a5fa',
-                                }}
-                              />
-                            </td>
-                            <td style={{ width: 80 }}></td>
-                          </React.Fragment>
+                          <td key={qi} className="px-2 py-1.5 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
+                            <input
+                              type="text"
+                              value={currentVal === 0 ? '' : currentVal.toString().replace('.', ',')}
+                              onChange={(e) => {
+                                if (isLocked) return;
+                                const raw = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
+                                const n = parseFloat(raw) || 0;
+                                setDuzeltme(gt.id, row.manual!, n);
+                              }}
+                              disabled={isLocked}
+                              placeholder={isLocked ? 'Kilitli' : '0,00'}
+                              className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border disabled:opacity-50"
+                              style={{
+                                background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
+                                borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
+                                color: isLocked ? 'rgba(34,197,94,0.7)' : '#60a5fa',
+                              }}
+                            />
+                          </td>
                         );
                       })}
                     </tr>
@@ -653,38 +676,38 @@ export default function GelirTablosuPage() {
                     >
                       {row.label}
                     </td>
-                    {quarterSlots.map((gt, qi) => {
+                    {DISPLAY_ORDER.map((qi) => {
+                      const gt = quarterSlots[qi];
                       const d = derived(gt);
                       const v = d ? ((d as any)[row.k!] ?? 0) : null;
                       const netSatis = d ? (d.netSatislar || 1) : 1;
                       const hasData = gt !== null;
+                      const showOranBadge = hasData && showPct(row.k as string) && v !== 0;
                       return (
-                        <React.Fragment key={qi}>
-                          <td
-                            className="px-3 py-2.5 text-right font-mono"
-                            style={{
-                              color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : row.final ? GOLD : row.total ? GOLD : '#fafaf9',
-                              fontSize: row.final ? 18 : row.total ? 15 : 14,
-                              fontWeight: row.final || row.total ? 700 : 500,
-                              borderLeft: '1px solid rgba(255,255,255,0.03)',
-                              fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
-                              width: 130,
-                            }}
-                          >
+                        <td
+                          key={qi}
+                          className="px-3 py-2.5 text-right font-mono"
+                          style={{
+                            color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : row.final ? GOLD : row.total ? GOLD : '#fafaf9',
+                            fontSize: row.final ? 18 : row.total ? 15 : 14,
+                            fontWeight: row.final || row.total ? 700 : 500,
+                            borderLeft: '1px solid rgba(255,255,255,0.03)',
+                            fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
+                            width: 160,
+                          }}
+                        >
+                          <span className="inline-flex items-center justify-end gap-2">
                             {hasData ? fmtTRY(v!) : '—'}
-                          </td>
-                          <td
-                            className="px-3 py-2.5 text-right font-mono text-[12px]"
-                            style={{
-                              color: hasData && showPct(row.k as string) ? '#60a5fa' : 'transparent',
-                              background: hasData && showPct(row.k as string) && v !== 0 ? 'rgba(96,165,250,0.06)' : 'transparent',
-                              fontWeight: row.final || row.total ? 700 : 500,
-                              width: 80,
-                            }}
-                          >
-                            {hasData && showPct(row.k as string) && v !== 0 ? pct(v!, netSatis) : ''}
-                          </td>
-                        </React.Fragment>
+                            {showOranBadge && (
+                              <span
+                                className="text-[11px] font-semibold px-1.5 py-[1px] rounded"
+                                style={{ background: 'rgba(96,165,250,0.10)', color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}
+                              >
+                                {pct(v!, netSatis)}
+                              </span>
+                            )}
+                          </span>
+                        </td>
                       );
                     })}
                   </tr>
@@ -697,20 +720,23 @@ export default function GelirTablosuPage() {
                   <td colSpan={2} className="px-3 py-3 text-[11.5px]" style={{ color: '#60a5fa' }}>
                     ✎ Kaydedilmemiş manuel düzeltme var
                   </td>
-                  {quarterSlots.map((gt, qi) => (
-                    <td key={qi} colSpan={2} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
-                      {gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0 ? (
-                        <button
-                          onClick={() => saveDuzeltmelerMut.mutate(gt.id)}
-                          disabled={saveDuzeltmelerMut.isPending}
-                          className="px-3 py-1.5 rounded text-[11px] font-bold"
-                          style={{ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' }}
-                        >
-                          {saveDuzeltmelerMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
-                        </button>
-                      ) : null}
-                    </td>
-                  ))}
+                  {DISPLAY_ORDER.map((qi) => {
+                    const gt = quarterSlots[qi];
+                    return (
+                      <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
+                        {gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0 ? (
+                          <button
+                            onClick={() => saveDuzeltmelerMut.mutate(gt.id)}
+                            disabled={saveDuzeltmelerMut.isPending}
+                            className="px-3 py-1.5 rounded text-[11px] font-bold"
+                            style={{ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' }}
+                          >
+                            {saveDuzeltmelerMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
+                          </button>
+                        ) : null}
+                      </td>
+                    );
+                  })}
                 </tr>
               )}
             </tbody>
@@ -718,9 +744,10 @@ export default function GelirTablosuPage() {
         </div>
       </div>
 
-      {/* HER DÖNEM İÇİN AYRI BLOK: Geçici Vergi Matrahı + Stok/SMM altında */}
+      {/* HER DÖNEM İÇİN AYRI BLOK: Geçici Vergi Matrahı + Stok/SMM altında — Q4→Q1 sırası */}
       {quarterDetails.some((qd) => qd?.data?.geciciVergiHesabi || qd?.data?.stokMaliyetOzet) &&
-        quarterDetails.map((qd, qi) => {
+        DISPLAY_ORDER.map((qi, displayIdx) => {
+          const qd = quarterDetails[qi];
           const detail = qd?.data as any;
           if (!detail?.geciciVergiHesabi && !detail?.stokMaliyetOzet) return null;
           const isLocked = !!detail?.locked;
@@ -731,7 +758,7 @@ export default function GelirTablosuPage() {
           const allKodlar = [...stokKodList, ...maliyetKodList];
 
           return (
-            <div key={qi} className="space-y-5 pt-2" style={{ borderTop: qi > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: qi > 0 ? 24 : 0 }}>
+            <div key={qi} className="space-y-5 pt-2" style={{ borderTop: displayIdx > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: displayIdx > 0 ? 24 : 0 }}>
               {/* Dönem başlığı */}
               <div className="flex items-baseline gap-3">
                 <span className="w-1 h-7 rounded-sm" style={{ background: GOLD }} />
