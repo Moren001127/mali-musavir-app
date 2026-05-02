@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.72.0';
+          const AGENT_VER = '1.73.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1110,7 +1110,7 @@
     await dumpLucaFormStructure(form, log);
     await sleep(800);
 
-    // 6) Tarih (AYLIK)
+    // 6) Tarih (AYLIK) — birden fazla muhtemel selector dene
     const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
     const TARIH_SON = parseAylikDonemBitis(job.donem);
     if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
@@ -1126,16 +1126,71 @@
       inp.dispatchEvent(new Event('blur', { bubbles: true }));
       return true;
     };
-    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
-    setInput('input[name="TARIH_SON"]', TARIH_SON);
+
+    // Tarih için olası selector'ları sırayla dene — Luca işletme form'unda farklı isim olabilir
+    const ilkSelectors = [
+      'input[name="TARIH_ILK"]',
+      'input[name="tarih_ilk"]',
+      'input[name="BAS_TARIH"]',
+      'input[name="bas_tarih"]',
+      'input[name="TARIH_BAS"]',
+      'input[name="tarih_bas"]',
+      'input[name="BASLANGIC_TARIHI"]',
+      'input[name="baslangic_tarihi"]',
+      'input[name="ILK_TARIH"]',
+      'input[name="ilk_tarih"]',
+    ];
+    const sonSelectors = [
+      'input[name="TARIH_SON"]',
+      'input[name="tarih_son"]',
+      'input[name="BIT_TARIH"]',
+      'input[name="bit_tarih"]',
+      'input[name="TARIH_BIT"]',
+      'input[name="tarih_bit"]',
+      'input[name="BITIS_TARIHI"]',
+      'input[name="bitis_tarihi"]',
+      'input[name="SON_TARIH"]',
+      'input[name="son_tarih"]',
+    ];
+    let ilkSet = false, sonSet = false;
+    for (const s of ilkSelectors) { if (setInput(s, TARIH_ILK)) { await log(`✓ Tarih başlangıç: ${s}`); ilkSet = true; break; } }
+    for (const s of sonSelectors) { if (setInput(s, TARIH_SON)) { await log(`✓ Tarih bitiş: ${s}`); sonSet = true; break; } }
+    if (!ilkSet || !sonSet) {
+      // Selector ile bulunamadıysa form içindeki tüm date/text input'ları placeholder/label'a göre ara
+      const dateInputs = [...form.querySelectorAll('input[type=text], input[type=date], input:not([type])')];
+      const dd = dateInputs.filter(i => {
+        const all = ((i.name||'') + ' ' + (i.id||'') + ' ' + (i.placeholder||'') + ' ' + (i.closest('tr')?.textContent||'')).toLowerCase();
+        return /tarih|date/.test(all);
+      });
+      if (dd.length >= 2) {
+        if (!ilkSet) {
+          const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
+          setter.call(dd[0], TARIH_ILK);
+          dd[0].dispatchEvent(new Event('input', { bubbles: true }));
+          dd[0].dispatchEvent(new Event('change', { bubbles: true }));
+          dd[0].dispatchEvent(new Event('blur', { bubbles: true }));
+          await log(`✓ Tarih başlangıç (fallback): name=${dd[0].name||'?'}`);
+        }
+        if (!sonSet) {
+          const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
+          setter.call(dd[1], TARIH_SON);
+          dd[1].dispatchEvent(new Event('input', { bubbles: true }));
+          dd[1].dispatchEvent(new Event('change', { bubbles: true }));
+          dd[1].dispatchEvent(new Event('blur', { bubbles: true }));
+          await log(`✓ Tarih bitiş (fallback): name=${dd[1].name||'?'}`);
+        }
+      } else {
+        await log(`⚠ Tarih input bulunamadı (form içinde ${dateInputs.length} text/date input)`);
+      }
+    }
     await sleep(300);
 
-    // 7) "Sadece Gelir" / "Sadece Gider" — radio button veya checkbox seçimi
-    // Mode: 'gelir' → Sadece Gelir, 'gider' → Sadece Gider
-    // Form yapısında genelde "rapor_tip" veya "tip" gibi bir radio var.
-    // dumpLucaFormStructure çıktısına göre selector'ları ayarlayacağız.
-    await fillLucaIsletmeGelirGiderSecim(form, mode, log);
-    await sleep(300);
+    // 7) "Sadece Gelir / Sadece Gider" radio seçimi YAPILMIYOR.
+    //    Luca default'ta hem gelirler hem giderler tek Excel'de gönderiyor.
+    //    Backend parser type'a göre doğru bölümü (İndirilecek/Hesaplanan K.D.V.) ayıklıyor.
+    //    Yanlış radio basmaktansa hiç basmamak daha güvenli.
+    await log(`ℹ Sadece Gelir/Gider radio'su seçilmiyor (default: her ikisi de) — backend parser ayıklayacak`);
+    await sleep(200);
 
     // 8) Rapor Türü Excel
     await setRaporTuruExcel(form, log);
