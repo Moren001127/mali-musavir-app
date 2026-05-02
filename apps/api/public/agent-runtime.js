@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.61.0';
+          const AGENT_VER = '1.62.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -2903,16 +2903,32 @@
           if (/rapor_takip\.jq/i.test(url)) {
             this.addEventListener('load', function () {
               try {
-                const resp = JSON.parse(this.responseText || '{}');
-                if ((resp.durum === 150 || resp.durum === '150') && (resp.rapor_id || resp.raporId)) {
+                const respText = this.responseText || '{}';
+                const resp = JSON.parse(respText);
+                // DEBUG: Her rapor_takip response'unun TAM içeriğini log'a düşür
+                if (Array.isArray(window.__morenLogs)) {
+                  const preview = respText.length > 400 ? respText.slice(0, 400) + '...' : respText;
+                  window.__morenLogs.push(`[RAPOR-TAKIP-RESP] durum=${resp.durum} keys=[${Object.keys(resp).join(',')}] body=${preview}`);
+                }
+                // Geniş kapsamlı rapor_id alma — birçok olası field adı
+                const raporId = resp.rapor_id || resp.raporId || resp.id || resp.raporIslemId
+                  || resp.report_id || resp.process_id || resp.processId
+                  || resp.raporGetir?.id || resp.data?.rapor_id || resp.data?.id;
+                if ((resp.durum === 150 || resp.durum === '150') && raporId) {
                   window.__morenRaporHazir = {
-                    rapor_id: resp.rapor_id || resp.raporId,
+                    rapor_id: raporId,
                     response: resp,
                     url: url,
                     timestamp: Date.now(),
                   };
                   if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[RAPOR-HAZIR] rapor_id=${resp.rapor_id || resp.raporId}`);
+                    window.__morenLogs.push(`[RAPOR-HAZIR] rapor_id=${raporId}`);
+                  }
+                }
+                // Eğer durum=150 ama rapor_id bulunamadıysa, response'u tam olarak göster
+                if ((resp.durum === 150 || resp.durum === '150') && !raporId) {
+                  if (Array.isArray(window.__morenLogs)) {
+                    window.__morenLogs.push(`[RAPOR-150-NO-ID] response=${JSON.stringify(resp)}`);
                   }
                 }
               } catch (e) {}
@@ -2999,15 +3015,27 @@
               const cloned = res.clone();
               const text = await cloned.text();
               const resp = JSON.parse(text || '{}');
-              if ((resp.durum === 150 || resp.durum === '150') && (resp.rapor_id || resp.raporId)) {
+              if (Array.isArray(window.__morenLogs)) {
+                const preview = text.length > 400 ? text.slice(0, 400) + '...' : text;
+                window.__morenLogs.push(`[FETCH-RAPOR-TAKIP-RESP] durum=${resp.durum} keys=[${Object.keys(resp).join(',')}] body=${preview}`);
+              }
+              const raporId = resp.rapor_id || resp.raporId || resp.id || resp.raporIslemId
+                || resp.report_id || resp.process_id || resp.processId
+                || resp.raporGetir?.id || resp.data?.rapor_id || resp.data?.id;
+              if ((resp.durum === 150 || resp.durum === '150') && raporId) {
                 window.__morenRaporHazir = {
-                  rapor_id: resp.rapor_id || resp.raporId,
+                  rapor_id: raporId,
                   response: resp,
                   url: url,
                   timestamp: Date.now(),
                 };
                 if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] rapor_id=${resp.rapor_id || resp.raporId}`);
+                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] rapor_id=${raporId}`);
+                }
+              }
+              if ((resp.durum === 150 || resp.durum === '150') && !raporId) {
+                if (Array.isArray(window.__morenLogs)) {
+                  window.__morenLogs.push(`[FETCH-RAPOR-150-NO-ID] response=${JSON.stringify(resp)}`);
                 }
               }
             } catch (e) {}
