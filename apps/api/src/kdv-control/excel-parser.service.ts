@@ -150,7 +150,19 @@ export class ExcelParserService {
   }
 
   /**
-   * Luca işletme defteri (Gelir/Gider sayfası) Excel parse eder.
+   * Luca işletme defteri (Gelir/Gider Listesi) Excel parse eder.
+   *
+   * Excel formatı:
+   *   Satır 1-2: Başlık (GELİR GİDER LİSTESİ)
+   *   Satır 4-5: Metadata (İşyerinin Unvanı, Dönem)
+   *   Satır 6: Boş
+   *   Satır 7: Bölüm başlığı (GİDERLER / GELİRLER)
+   *   Satır 8: Boş
+   *   Satır 9: Header (Evrak No | Tarih | Açıklama | Gider/Hasılat | Alınan Emtia | İndirilecek/Hesaplanan K.D.V. | KREDİLİ TUTAR)
+   *   Satır 10+: Veri satırları
+   *   Son satır: TOPLAM : ...
+   *
+   * Header satırını dinamik olarak tespit ederiz (Evrak No + Tarih + Açıklama içeren satır).
    */
   parseIsletmeExcel(
     buffer: Buffer,
@@ -159,93 +171,185 @@ export class ExcelParserService {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, {
+
+    // header:1 → her satır array olarak gelir (sütun adları yok)
+    const matrix: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
       raw: false,
       defval: null,
+      blankrows: false,
     });
 
-    // Sütun adlarını normalize et
-    const rows = rawRows.map((row) => {
-      const normalized: Record<string, any> = {};
-      for (const [k, v] of Object.entries(row)) {
-        const cleanKey = k.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        normalized[cleanKey] = v;
-      }
-      return normalized;
-    });
-
-    const results: ParsedKdvRow[] = [];
     const isGelir = type === 'ISLETME_GELIR';
+    const results: ParsedKdvRow[] = [];
 
-    // Tam sütun adları önce, sonra kısmi eşleşme
-    const tutarPatterns = isGelir
-      ? [
-          'Hesaplanan K.D.V.', 'hesaplanan k.d.v.',
-          'hesaplanan k.d.v', 'hesaplanan kdv', 'hesaplanan',
-          'k.d.v', 'hasılat', 'hasilat', 'alacak', 'tutar', 'net tutar',
-        ]
-      : [
-          'İndirilecek K.D.V.', 'indirilecek k.d.v.',
-          'indirilecek k.d.v', 'indirilecek kdv', 'indirilecek',
-          'k.d.v', 'borç', 'borc', 'tutar', 'net tutar',
-        ];
+    // Türkçe karakter normalizasyonu
+    const norm = (v: any): string =>
+      String(v ?? '')
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '') // combining marks
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('tr-TR');
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const keys = Object.keys(row);
+    // Excel YAPISIYLA İLGİLİ NOT:
+    //   Aynı dosyada hem GİDERLER hem GELİRLER bölümü var.
+    //   GİDERLER header'ı: ... | Gider | Alınan Emtia | İndirilecek K.D.V. | KREDİLİ TUTAR
+    //   GELİRLER header'ı: ... | Gelir | Satılan Emtia | Hesaplanan K.D.V. | KREDİLİ TUTAR
+    //   Type'a göre doğru bölümün header satırını seçeriz.
 
-      const find = (patterns: string[]): any => {
-        // Önce büyük/küçük harf duyarsız TAM eşleşme
-        for (const p of patterns) {
-          const exactKey = keys.find((k) => k.toLowerCase() === p.toLowerCase());
-          if (exactKey) return row[exactKey];
+    // 1) Aday header satırlarını bul (Evrak No + Tarih + Açıklama içeren)
+    type HeaderInfo = {
+      idx: number;
+      hasIndirilecek: boolean;
+      hasHesaplanan: boolean;
+      cells: string[];
+    };
+    const headers: HeaderInfo[] = [];
+    for (let i = 0; i < matrix.length; i++) {
+      const row = matrix[i] || [];
+      const cells = row.map(norm);
+      const hasEvrakNo = cells.some((c) => c.includes('evrak no'));
+      const hasTarih = cells.some((c) => c === 'tarih');
+      const hasAciklama = cells.some((c) => c.includes('açıklama') || c.includes('aciklama'));
+      if (hasEvrakNo && hasTarih && hasAciklama) {
+        headers.push({
+          idx: i,
+          hasIndirilecek: cells.some((c) => c.includes('indirilecek')),
+          hasHesaplanan: cells.some((c) => c.includes('hesaplanan')),
+          cells,
+        });
+      }
+    }
+
+    if (headers.length === 0) {
+      this.logger.warn(
+        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: hiç header satırı bulunamadı.`,
+      );
+      return results;
+    }
+
+    // 2) Type'a göre doğru header'ı seç
+    const target = isGelir
+      ? headers.find((h) => h.hasHesaplanan)
+      : headers.find((h) => h.hasIndirilecek);
+
+    if (!target) {
+      this.logger.warn(
+        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: ` +
+          `${isGelir ? 'Hesaplanan' : 'İndirilecek'} K.D.V. sütunu içeren header bulunamadı. ` +
+          `Adaylar: ${headers.map((h) => `[#${h.idx + 1}: ${h.cells.join(' | ')}]`).join(' / ')}`,
+      );
+      return results;
+    }
+
+    // 3) Bölümün bitişi: bir sonraki header satırı (varsa), yoksa matrix sonu
+    const nextHeader = headers.find((h) => h.idx > target.idx);
+    const sectionEnd = nextHeader ? nextHeader.idx : matrix.length;
+
+    // 4) Sütun indekslerini topla
+    const headerCells = target.cells;
+    const colIdx = (predicates: ((c: string) => boolean)[]): number => {
+      for (const pred of predicates) {
+        const idx = headerCells.findIndex(pred);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const evrakNoIdx = colIdx([(c) => c === 'evrak no', (c) => c.includes('evrak no'), (c) => c.includes('evrak')]);
+    const tarihIdx = colIdx([(c) => c === 'tarih', (c) => c.includes('tarih')]);
+    const aciklamaIdx = colIdx([(c) => c.includes('açıklama'), (c) => c.includes('aciklama')]);
+    const matrahIdx = isGelir
+      ? colIdx([(c) => c === 'gelir', (c) => c.startsWith('gelir')])
+      : colIdx([(c) => c === 'gider', (c) => c.startsWith('gider')]);
+    const kdvIdx = colIdx(
+      isGelir
+        ? [(c) => c.includes('hesaplanan')]
+        : [(c) => c.includes('indirilecek')],
+    );
+
+    this.logger.log(
+      `İşletme ${isGelir ? 'GELİR' : 'GİDER'} bölümü: header=satır ${target.idx + 1}, ` +
+        `bitis=satır ${sectionEnd}, ` +
+        `evrakNo=${evrakNoIdx}, tarih=${tarihIdx}, aciklama=${aciklamaIdx}, ` +
+        `matrah=${matrahIdx}, kdv=${kdvIdx}`,
+    );
+
+    // 5) Veri satırlarını dolaş (bölümün başından sonuna)
+    for (let i = target.idx + 1; i < sectionEnd; i++) {
+      const row = matrix[i] || [];
+      if (!row.length) continue;
+
+      // TOPLAM / DEVİR / GENEL TOPLAM atla
+      const firstCells = row.slice(0, 6).map(norm).join(' ');
+      if (
+        firstCells.includes('toplam') ||
+        firstCells.includes('genel toplam') ||
+        firstCells.includes('devir')
+      ) {
+        this.logger.debug(`İşletme satır atlandı (toplam/devir): row=${i + 1}`);
+        continue;
+      }
+
+      // GELİRLER / GİDERLER bölüm başlığını da atla
+      const isSectionTitle = row.every((cell, idx) => {
+        if (idx === 0) {
+          const t = norm(cell);
+          return t === 'gelirler' || t === 'giderler' || t === '';
         }
-        // Sonra içerir
-        const key = keys.find((k) =>
-          patterns.some((p) => k.toLowerCase().includes(p.toLowerCase())),
-        );
-        return key ? row[key] : null;
-      };
+        return cell === null || cell === undefined || String(cell).trim() === '';
+      });
+      if (isSectionTitle) continue;
 
-      const tutarRaw = find(tutarPatterns);
-      const tutar = this.toDecimal(tutarRaw);
-      if (tutar === null || tutar === 0) continue;
+      const evrakNo = evrakNoIdx >= 0 ? row[evrakNoIdx] : null;
+      const tarihRaw = tarihIdx >= 0 ? row[tarihIdx] : null;
+      const aciklama = aciklamaIdx >= 0 ? row[aciklamaIdx] : null;
+      const matrahRaw = matrahIdx >= 0 ? row[matrahIdx] : null;
+      const kdvRaw = kdvIdx >= 0 ? row[kdvIdx] : null;
 
-      const belgeNo = find([
-        'evrak no', 'belge no', 'fiş no', 'fatura no',
-        'sıra no', 'sira no', 'kayıt no', 'kayit no', 'no',
-      ]);
+      const kdvTutari = this.toDecimal(kdvRaw);
+      const matrah = this.toDecimal(matrahRaw);
+      const belgeDate = this.parseDate(tarihRaw);
 
-      const dateRaw = find([
-        'tarih', 'belge tarihi', 'fiş tarihi', 'fatura tarihi', 'işlem tarihi',
-      ]);
+      // Tarih dolu olmalı
+      if (!belgeDate) continue;
 
-      const karsiTaraf = find([
-        'açıklama', 'aciklama',
-        'karşı taraf', 'karsi taraf', 'ticari unvan', 'müşteri', 'musteri',
-        'tedarikçi', 'tedarikci', 'cari adı', 'cari adi', 'firma',
-      ]);
+      // KDV ya da matrah dolu olmalı
+      if ((kdvTutari === null || kdvTutari === 0) && (matrah === null || matrah === 0)) {
+        continue;
+      }
+
+      // rawData: header → değer eşlemesi
+      const rawData: Record<string, any> = {};
+      const rawHeader = matrix[target.idx] || [];
+      for (let c = 0; c < headerCells.length; c++) {
+        const key = rawHeader[c];
+        if (key !== null && key !== undefined && String(key).trim() !== '') {
+          rawData[String(key).replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()] = row[c];
+        }
+      }
 
       results.push({
-        rowIndex: i + 2,
-        belgeNo: belgeNo ? String(belgeNo).trim() : null,
-        belgeDate: this.parseDate(dateRaw),
-        karsiTaraf: karsiTaraf ? String(karsiTaraf).trim() : null,
-        kdvMatrahi: null,
-        kdvTutari: tutar,
+        rowIndex: i + 1,
+        belgeNo:
+          evrakNo !== null && evrakNo !== undefined && String(evrakNo).trim() !== ''
+            ? String(evrakNo).trim()
+            : null,
+        belgeDate,
+        karsiTaraf: aciklama ? String(aciklama).trim() : null,
+        kdvMatrahi: matrah,
+        kdvTutari: kdvTutari ?? 0,
         kdvOrani: null,
-        aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
-        rawData: this.sanitizeRawData(row),
+        aciklama: aciklama ? String(aciklama).trim() : null,
+        rawData: this.sanitizeRawData(rawData),
       });
     }
 
     this.logger.log(
       `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel parse: ${results.length} satır bulundu.`,
     );
-    if (results.length === 0 && rows.length > 0) {
-      const firstRowKeys = Object.keys(rows[0]).join(', ');
-      this.logger.warn(`Hiç satır okunamadı. İlk satır sütunları: ${firstRowKeys}`);
-    }
     return results;
   }
 

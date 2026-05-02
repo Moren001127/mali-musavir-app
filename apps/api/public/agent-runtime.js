@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.70.0';
+          const AGENT_VER = '1.72.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1090,19 +1090,31 @@
     }
 
     job = { ...job, donemTipi: 'AYLIK' };
-    await ensureLucaFirma(job, log);
-    await navigateToFisListesi(log);
+    await log(`📊 İşletme akışı başlıyor — mode=${mode} (${mode === 'gelir' ? 'Satış' : 'Alış'})`);
 
+    // 1) Firma değiştir
+    await ensureLucaFirma(job, log);
+
+    // 2) İşletme Defteri → Gider İşlemleri → Gider Listesi (yeni helper)
+    await navigateToIsletmeGiderListesi(log);
+
+    // 3) Sağ menüde "Gelir/Gider Listesi" tıkla → form yüklenir
     await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
-    const form = await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme/i, 15000, 'İşletme Gelir/Gider formu');
+
+    // 4) Form yüklensin
+    const form = await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme|raporGelirGider/i, 15000, 'İşletme Gelir/Gider formu');
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
+    // 5) Form yapısını dump et (debug — gerçek alan isimleri için)
+    await dumpLucaFormStructure(form, log);
+    await sleep(800);
+
+    // 6) Tarih (AYLIK)
     const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
     const TARIH_SON = parseAylikDonemBitis(job.donem);
     if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
     await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
-    await log(`📊 Mode: ${mode}`);
 
     const setInput = (sel, value) => {
       const inp = form.querySelector(sel);
@@ -1116,33 +1128,137 @@
     };
     setInput('input[name="TARIH_ILK"]', TARIH_ILK);
     setInput('input[name="TARIH_SON"]', TARIH_SON);
+    await sleep(300);
 
-    await fillLucaGelirGider(form, mode, log);
+    // 7) "Sadece Gelir" / "Sadece Gider" — radio button veya checkbox seçimi
+    // Mode: 'gelir' → Sadece Gelir, 'gider' → Sadece Gider
+    // Form yapısında genelde "rapor_tip" veya "tip" gibi bir radio var.
+    // dumpLucaFormStructure çıktısına göre selector'ları ayarlayacağız.
+    await fillLucaIsletmeGelirGiderSecim(form, mode, log);
+    await sleep(300);
+
+    // 8) Rapor Türü Excel
     await setRaporTuruExcel(form, log);
+    await sleep(500);
+
+    // 9) Hook'lar + override
+    installXhrHook(frm3win);
+    installFetchHook(frm3win);
+    installNativeDownloadHook(frm3win);
+    await log(`🔗 frm3 hook'lar kuruldu`);
 
     window.__lucaJobOverrides = {
       TARIH_ILK,
       TARIH_SON,
       REPORT_TYPE: 'xlsx',
+      // İşletme için ek parametre — backend hangi mode kullanılacak
+      isletme_mode: mode,
     };
+
+    // 10) Rapor butonu — gerçek user click
     await sleep(500);
+    await clickLucaRaporButton(form, log);
 
-    let triggered = false;
+    // 11) Blob yakala
     try {
-      if (typeof frm3win.gonder === 'function') { frm3win.gonder(); triggered = true; }
-    } catch {}
-    if (!triggered) {
-      try {
-        if (typeof frm3win.formsubmit === 'function') { frm3win.formsubmit(new frm3win.Event('submit'), 0); triggered = true; }
-      } catch {}
-    }
-    if (!triggered) await clickLucaRaporButton(form, log);
-
-    try {
-      return await waitForCapturedBlob(log, 45000);
+      return await waitForKdvBlob(log, frm3win, 60000);
     } finally {
       delete window.__lucaJobOverrides;
+      delete window.__morenRaporHazir;
     }
+  }
+
+  /**
+   * İşletme Gelir/Gider formunda "Sadece Gelir" / "Sadece Gider" seçimi.
+   * Form yapısı bilinmediği için MULTI-STRATEJİ:
+   *   1) radio[name=...][value=GELIR/GIDER]
+   *   2) checkbox[name*=gelir/gider] (sadece istediği işaretli kalır)
+   *   3) select[name*=tip] → option text "Sadece Gelir"/"Sadece Gider"
+   * Hangisi tutarsa onunla devam eder, log'a yazar.
+   */
+  async function fillLucaIsletmeGelirGiderSecim(form, mode, log) {
+    const win = form.ownerDocument.defaultView;
+    const isGelir = mode === 'gelir';
+    const targetText = isGelir ? 'sadece gelir' : 'sadece gider';
+    const targetUpper = isGelir ? 'GELIR' : 'GIDER';
+
+    // Strateji 1: radio button — value veya yakındaki label "Sadece Gelir/Gider"
+    const radios = [...form.querySelectorAll('input[type=radio]')];
+    for (const r of radios) {
+      const v = (r.value || '').toLowerCase();
+      const labelText = (r.closest('tr')?.textContent || r.parentElement?.textContent || '').toLowerCase();
+      const combined = v + ' ' + labelText;
+      if (isGelir && /sadece\s*gelir|^gelir$|gelir_only/.test(combined) && !/gider/.test(v)) {
+        r.checked = true;
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+        r.dispatchEvent(new Event('click', { bubbles: true }));
+        await log(`🟢 Radio: "Sadece Gelir" seçildi (name=${r.name}, value=${r.value})`);
+        return true;
+      }
+      if (!isGelir && /sadece\s*gider|^gider$|gider_only/.test(combined) && !/gelir/.test(v)) {
+        r.checked = true;
+        r.dispatchEvent(new Event('change', { bubbles: true }));
+        r.dispatchEvent(new Event('click', { bubbles: true }));
+        await log(`🔴 Radio: "Sadece Gider" seçildi (name=${r.name}, value=${r.value})`);
+        return true;
+      }
+    }
+
+    // Strateji 2: select dropdown — option text "Sadece Gelir"/"Sadece Gider"
+    const selects = [...form.querySelectorAll('select')];
+    for (const sel of selects) {
+      for (const opt of sel.options) {
+        const t = (opt.text || '').toLowerCase().trim();
+        if (t.includes(targetText)) {
+          const setter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, 'value').set;
+          setter.call(sel, opt.value);
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          await log(`📋 Select: "${opt.text}" seçildi (select#${sel.name || sel.id})`);
+          return true;
+        }
+      }
+    }
+
+    // Strateji 3: checkbox — sadece istediği işaretli kalır
+    const checkboxes = [...form.querySelectorAll('input[type=checkbox]')];
+    let gelirCb = null, giderCb = null;
+    for (const cb of checkboxes) {
+      const key = ((cb.name || '') + ' ' + (cb.id || '') + ' ' + (cb.value || '')).toLowerCase();
+      const label = (cb.closest('tr')?.textContent || cb.parentElement?.textContent || '').toLowerCase();
+      const combined = key + ' ' + label;
+      if (/gelir/.test(combined) && !gelirCb) gelirCb = cb;
+      if (/gider/.test(combined) && !giderCb) giderCb = cb;
+    }
+    const setCb = (cb, want) => {
+      if (!cb) return;
+      if (cb.checked !== want) {
+        cb.checked = want;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+        cb.dispatchEvent(new Event('click', { bubbles: true }));
+      }
+    };
+    if (isGelir) {
+      setCb(gelirCb, true);
+      setCb(giderCb, false);
+      await log(`🟢 Checkbox: Gelir=ON, Gider=OFF (gelir#${gelirCb?.name || '?'} gider#${giderCb?.name || '?'})`);
+    } else {
+      setCb(gelirCb, false);
+      setCb(giderCb, true);
+      await log(`🔴 Checkbox: Gelir=OFF, Gider=ON (gelir#${gelirCb?.name || '?'} gider#${giderCb?.name || '?'})`);
+    }
+    if (gelirCb || giderCb) return true;
+
+    // Hiçbir strateji tutmadıysa diagnostic
+    const diag = {
+      radios: radios.length,
+      selects: selects.length,
+      checkboxes: checkboxes.length,
+      radioValues: radios.map(r => `${r.name}=${r.value}`).slice(0, 10).join(' | '),
+      selectNames: selects.map(s => s.name || s.id).slice(0, 10).join(' | '),
+      checkboxNames: checkboxes.map(c => c.name || c.id).slice(0, 10).join(' | '),
+    };
+    await log(`⚠ Sadece Gelir/Gider seçimi yapılamadı. Form: ${JSON.stringify(diag)}`);
+    return false;
   }
 
   /**
@@ -1699,6 +1815,94 @@
     const mizanReady = await findLucaMenuItem('Mizan', null, 15000);
     if (!mizanReady) throw new Error('Fiş Listesi açıldı ama Mizan menüsü hazır olmadı (timeout 15sn)');
     await log('✓ Fiş Listesi hazır, Mizan menüsü görünür');
+  }
+
+  /**
+   * İŞLETME DEFTERİ akışı — KDV Kontrol İşletme Alış/Satış için.
+   * Akış: Üst menü "İşletme Defteri" → "Gider İşlemleri" hover → "Gider Listesi" tıkla.
+   * Sayfa yenilenir ve sağ menüde "Gelir/Gider Listesi" gözükür.
+   */
+  async function navigateToIsletmeGiderListesi(log) {
+    // Quick check — sağ menüde Gelir/Gider Listesi varsa zaten orada
+    const quick = await findLucaMenuItem('Gelir/Gider Listesi', null, 1500);
+    if (quick) {
+      await log('✓ İşletme Gider Listesi sayfasında (Gelir/Gider Listesi menüsü hazır)');
+      return;
+    }
+    await log('🧭 İşletme Defteri → Gider İşlemleri → Gider Listesi navigasyonu');
+
+    const collectAllFrames = (rootDoc, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of rootDoc.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectAllFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+
+    // 1. "İşletme Defteri" üst menü
+    const allFrameElements = collectAllFrames(document);
+    let menuFrame = null;
+    let isletmeEl = null;
+    for (const f of allFrameElements) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const el of f.contentDocument.querySelectorAll('*')) {
+          const txt = (el.textContent || '').trim();
+          if (txt === 'İşletme Defteri' && el.children.length === 0) {
+            menuFrame = f;
+            isletmeEl = el;
+            break;
+          }
+        }
+        if (menuFrame) break;
+      } catch (e) {}
+    }
+    if (!isletmeEl) {
+      // Top document'ta dene
+      try {
+        for (const el of document.querySelectorAll('*')) {
+          const txt = (el.textContent || '').trim();
+          if (txt === 'İşletme Defteri' && el.children.length === 0) {
+            menuFrame = { contentDocument: document, contentWindow: window, name: 'TOP' };
+            isletmeEl = el;
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+    if (!isletmeEl) {
+      throw new Error('"İşletme Defteri" üst menüsü bulunamadı. Bu mükellef bilanço firması olabilir — Defteri Kebir akışı kullanın.');
+    }
+    await log(`✓ İşletme Defteri menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
+    await log('🖱 İşletme Defteri açılıyor (hover+click+onclick)');
+    fullActivate(isletmeEl, menuFrame.contentWindow);
+    await sleep(800);
+
+    // 2. "Gider İşlemleri" submenü
+    await log('🔍 Gider İşlemleri aranıyor');
+    const giderIslemleri = await findLucaMenuItem('Gider İşlemleri', null, 4000);
+    if (!giderIslemleri) {
+      throw new Error('İşletme Defteri menüsü açıldı ama "Gider İşlemleri" görünmedi');
+    }
+    await log('🖱 Gider İşlemleri açılıyor (hover+click+onclick)');
+    fullActivate(giderIslemleri.el, giderIslemleri.frame.contentWindow || giderIslemleri.frame);
+    await sleep(800);
+
+    // 3. "Gider Listesi" tıkla
+    await log('🔍 Gider Listesi linki aranıyor');
+    const giderListesi = await findLucaMenuItem('Gider Listesi', null, 4000);
+    if (!giderListesi) throw new Error('"Gider Listesi" linki açılmadı');
+    await log('🖱 Gider Listesi tıklanıyor');
+    fullActivate(giderListesi.el, giderListesi.frame.contentWindow || giderListesi.frame);
+
+    // 4. Sayfa yüklensin — sağ menüde "Gelir/Gider Listesi" çıksın
+    await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
+    const ggReady = await findLucaMenuItem('Gelir/Gider Listesi', null, 15000);
+    if (!ggReady) throw new Error('Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 15sn)');
+    await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
   }
 
   /**
