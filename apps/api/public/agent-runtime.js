@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.58.0';
+          const AGENT_VER = '1.59.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -917,8 +917,10 @@
     // 9. EN SON Rapor Türü = Excel (xlsx)
     await setRaporTuruExcel(form, log);
 
-    // 10. XHR hook frm3'e (Luca'nın jasper.jq POST'unu yakalamak için)
+    // 10. XHR + fetch hook frm3'e (Luca jasper.jq POST'unu yakalamak için)
     installXhrHook(frm3win);
+    installFetchHook(frm3win);
+    await log(`🔗 frm3 XHR+fetch hook kuruldu`);
 
     // 11. __lucaJobOverrides — XHR hook body inject etsin
     window.__lucaJobOverrides = {
@@ -2902,17 +2904,75 @@
     }
   }
 
-  // Tüm frame'lere XHR hook kur (recursive). Yeni yüklenen frame'ler için
+  // ─────────────────────────────────────────────────────────────────────
+  // FETCH HOOK — Luca XHR yerine fetch kullanıyorsa onu da yakalar
+  // Aynı body inject mantığı (JSON-aware) — window.__lucaJobOverrides aktifse
+  // form.hesap_bas/bit + tarih_bas/bit override eder.
+  function installFetchHook(targetWin) {
+    try {
+      const w = targetWin || window;
+      if (!w || !w.fetch || w.__morenFetchHookInstalled) return false;
+      w.__morenFetchHookInstalled = true;
+      const origFetch = w.fetch;
+      w.fetch = async function (input, init) {
+        try {
+          const url = typeof input === 'string' ? input : (input && input.url) || '';
+          const ov = window.__lucaJobOverrides;
+          const isJasper = /jasper\.jq/i.test(url);
+          if (ov && isJasper && init && typeof init.body === 'string') {
+            // Body orijinalini log'a düşür
+            if (Array.isArray(window.__morenLogs)) {
+              const orig = init.body.length > 800 ? init.body.slice(0, 800) + '...' : init.body;
+              window.__morenLogs.push(`[FETCH-ORIG] ${url.split('/').pop().slice(0, 40)} body=${orig}`);
+            }
+            try {
+              let parsed;
+              try { parsed = JSON.parse(init.body); } catch { parsed = null; }
+              if (parsed && typeof parsed.form === 'string') {
+                let formObj;
+                try { formObj = JSON.parse(parsed.form); } catch { formObj = null; }
+                if (formObj && typeof formObj === 'object') {
+                  if (ov.HESAPKODU_ILK) {
+                    formObj.hesap_bas = String(ov.HESAPKODU_ILK);
+                    formObj.hesap_bit = String(ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
+                  }
+                  if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
+                  if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
+                  parsed.form = JSON.stringify(formObj);
+                  init = { ...init, body: JSON.stringify(parsed) };
+                  if (Array.isArray(window.__morenLogs)) {
+                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit}`);
+                  }
+                }
+              }
+            } catch (e) {
+              if (Array.isArray(window.__morenLogs)) {
+                window.__morenLogs.push(`[FETCH-INJECT-ERR] ${e?.message || e}`);
+              }
+            }
+          }
+        } catch (e) {}
+        return origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
+      };
+      return true;
+    } catch (e) { return false; }
+  }
+
+    // Tüm frame'lere XHR hook kur (recursive). Yeni yüklenen frame'ler için
   // periyodik tarama da yapıyoruz (Luca frm3'ü dinamik yüklüyor).
   function installXhrHookOnAllFrames() {
     let count = 0;
     if (installXhrHook(window)) count++;
+    if (installFetchHook(window)) count++;
     const collect = (root, depth = 0) => {
       if (depth > 5) return;
       try {
         for (const f of root.querySelectorAll('frame, iframe')) {
           try {
-            if (f.contentWindow && installXhrHook(f.contentWindow)) count++;
+            if (f.contentWindow) {
+              if (installXhrHook(f.contentWindow)) count++;
+              if (installFetchHook(f.contentWindow)) count++;
+            }
             if (f.contentDocument) collect(f.contentDocument, depth + 1);
           } catch {}
         }
