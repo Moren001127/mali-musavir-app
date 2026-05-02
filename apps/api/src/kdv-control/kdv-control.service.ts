@@ -562,6 +562,19 @@ export class KdvControlService {
     }
 
     if (rows.length === 0) {
+      // İŞLETME tiplerinde 0 satır = "o dönemde işlem yok" demek olabilir, hata fırlatma
+      if (this.ISLETME_TYPES.includes(session!.type)) {
+        this.logger.warn(
+          `İşletme ${session!.type} 0 satır — session boş bırakılıyor (dönem ${session!.periodLabel}). ` +
+            `Sebepleri: (1) o dönemde işlem yok, (2) Excel'de yanlış bölüm, (3) tarih dışı.`,
+        );
+        // Session'ı PROCESSING durumda bırakacak — Mihsap eşleştirme aşamasına geçilebilsin
+        await this.prisma.kdvControlSession.update({
+          where: { id: sessionId },
+          data: { status: 'PROCESSING' },
+        });
+        return { parsed: 0 };
+      }
       throw new BadRequestException(
         'Excel dosyasında KDV satırı bulunamadı. Sütun isimlerini kontrol edin.',
       );

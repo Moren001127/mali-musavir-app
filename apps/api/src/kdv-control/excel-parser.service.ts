@@ -238,15 +238,23 @@ export class ExcelParserService {
     }
 
     // 2) Type'a göre doğru header'ı seç
-    const target = isGelir
+    let target = isGelir
       ? headers.find((h) => h.hasHesaplanan)
       : headers.find((h) => h.hasIndirilecek);
 
+    // FALLBACK: İstenen bölüm yoksa diğer bölümle dene (en azından satır gelsin)
+    if (!target && headers.length > 0) {
+      target = headers[0];
+      this.logger.warn(
+        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: istenen bölüm yok (${isGelir ? 'Hesaplanan' : 'İndirilecek'} K.D.V.), ` +
+          `FALLBACK olarak ilk header (#${target.idx + 1}) kullanılıyor. ` +
+          `Adaylar: ${headers.map((h) => `[#${h.idx + 1}: ${h.cells.slice(0, 8).join('|')}]`).join(' / ')}`,
+      );
+    }
+
     if (!target) {
       this.logger.warn(
-        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: ` +
-          `${isGelir ? 'Hesaplanan' : 'İndirilecek'} K.D.V. sütunu içeren header bulunamadı. ` +
-          `Adaylar: ${headers.map((h) => `[#${h.idx + 1}: ${h.cells.join(' | ')}]`).join(' / ')}`,
+        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: hiç KDV header'ı yok.`,
       );
       return results;
     }
