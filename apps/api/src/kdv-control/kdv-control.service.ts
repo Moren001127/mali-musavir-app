@@ -1755,8 +1755,24 @@ export class KdvControlService {
     buffer: Buffer,
   ) {
     try {
-      const result = await this.uploadExcel(sessionId, tenantId, buffer);
-      await this.luca.markJobDone(jobId, result.parsed);
+      // Session type'a göre — KDV_191/391 için MAPPING'li parse et (manuel ile aynı)
+      // Çünkü auto-detect parser bazı Excel'lerde fail ediyor.
+      const session = await this.prisma.kdvControlSession.findUnique({ where: { id: sessionId } });
+      const isKdv = session?.type === 'KDV_191' || session?.type === 'KDV_391';
+      let result: { parsed?: number; imported?: number };
+      if (isKdv) {
+        // Luca Defteri Kebir Excel default sütun isimleri
+        const mapping = {
+          tarihCol: 'EVRAK TARİHİ',
+          belgeNoCol: 'EVRAK NO',
+          kdvCol: session?.type === 'KDV_191' ? 'BORÇ' : 'ALACAK',
+        };
+        const mapResult = await this.importExcelWithMapping(sessionId, tenantId, buffer, mapping);
+        result = { parsed: mapResult.imported };
+      } else {
+        result = await this.uploadExcel(sessionId, tenantId, buffer);
+      }
+      await this.luca.markJobDone(jobId, result.parsed || 0);
       return result;
     } catch (e: any) {
       await this.luca.markJobFailed(jobId, e?.message || 'Excel parse hatası');

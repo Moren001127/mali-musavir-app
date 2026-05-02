@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.69.0';
+          const AGENT_VER = '1.70.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -3307,7 +3307,9 @@
                         .catch(() => {});
                     }
                   }
-                  // Yeni form'lar — Luca rapor_indir formu inject edildiyse YAKALA + KENDI FETCH
+                  // Yeni form'lar — Luca rapor_indir formu inject edildiyse:
+                  // 1. Luca submit'ini PREVENT et (yoksa server bize boş döndürür - session race)
+                  // 2. Agent kendi fetch'i ile blob'u al
                   const forms = n.tagName === 'FORM' ? [n] :
                     (n.querySelectorAll ? [...n.querySelectorAll('form')] : []);
                   for (const f of forms) {
@@ -3315,7 +3317,24 @@
                       if (Array.isArray(window.__morenLogs)) {
                         window.__morenLogs.push(`[NATIVE-DOM-FORM] action=${f.action.slice(0, 100)}`);
                       }
-                      // Form'un input'larını topla + URL-encoded POST at
+                      // KRİTİK: form.submit'i monkey-patch — Luca submit edemesin
+                      const origSubmit = f.submit.bind(f);
+                      f.submit = function () {
+                        if (Array.isArray(window.__morenLogs)) {
+                          window.__morenLogs.push(`[NATIVE-DOM-FORM-SUBMIT-PREVENTED] Luca submit'i bloklandı (session race önlendi)`);
+                        }
+                        // Luca submit ETME — bizim fetch'imiz çalışsın
+                      };
+                      // Click listener da ekle (form içindeki submit button'ını engelle)
+                      f.addEventListener('submit', (ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (Array.isArray(window.__morenLogs)) {
+                          window.__morenLogs.push(`[NATIVE-DOM-FORM-SUBMIT-EVT-PREVENTED]`);
+                        }
+                      }, true);
+
+                      // Agent'ın kendi fetch'i — Luca submit'inden ÖNCE
                       try {
                         const fd = new FormData(f);
                         const params = new URLSearchParams();
