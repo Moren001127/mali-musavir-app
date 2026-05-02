@@ -549,39 +549,134 @@ export default function MizanPage() {
               {hesaplar.length}
             </span>
           </h3>
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-            <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap Kodu</th>
-                  <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap Adı</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Borç</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Alacak</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Borç Bakiye</th>
-                  <th className="px-4 py-3 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Alacak Bakiye</th>
+                <tr style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  {['Hesap Kodu', 'Hesap Adı', 'Borç', 'Alacak', 'Borç Bakiye', 'Alacak Bakiye'].map((label, i) => (
+                    <th
+                      key={label}
+                      className={`px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em] ${i >= 2 ? 'text-right' : ''}`}
+                      style={{
+                        color: 'rgba(250,250,249,0.45)',
+                        borderRight: i < 5 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {hesaplar.map((h: any) => (
-                  <tr key={h.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                    <td className="px-4 py-2 font-mono text-[12px]" style={{ color: GOLD, paddingLeft: `${16 + h.seviye * 18}px` }}>{h.hesapKodu}</td>
-                    <td className="px-4 py-2 text-[12.5px]" style={{ color: h.seviye === 0 ? '#fafaf9' : 'rgba(250,250,249,0.75)', fontWeight: h.seviye === 0 ? 600 : 400 }}>
-                      {h.hesapAdi}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-[12px]" style={{ color: Number(h.borcToplami) > 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-[12px]" style={{ color: Number(h.alacakToplami) > 0 ? '#fafaf9' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-[12px]" style={{ color: Number(h.borcBakiye) > 0 ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '—'}
-                    </td>
-                    <td className="px-4 py-2 text-right font-mono text-[12px]" style={{ color: Number(h.alacakBakiye) > 0 ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>
-                      {Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {hesaplar.map((h: any, idx: number) => {
+                  // Seviyeye göre stil hiyerarşisi:
+                  //   0 = Grup (1, 10, 15)               → en koyu zemin, en parlak/kalın yazı
+                  //   1 = Ana Hesap (100, 120, 153)      → biraz koyu zemin, kalın yazı
+                  //   2 = Kırılım (100.01, 153.01)      → hafif zemin, normal yazı
+                  //   3 = Alt Kırılım (153.01.001)       → zeminsiz, soluk yazı
+                  const lvl = Number(h.seviye ?? 0);
+                  const rowBg =
+                    lvl === 0 ? 'rgba(184,160,111,0.06)' :
+                    lvl === 1 ? 'rgba(255,255,255,0.025)' :
+                    lvl === 2 ? 'rgba(255,255,255,0.012)' :
+                    'transparent';
+                  const codeColor =
+                    lvl === 0 ? GOLD :
+                    lvl === 1 ? GOLD :
+                    lvl === 2 ? 'rgba(184,160,111,0.75)' :
+                    'rgba(184,160,111,0.55)';
+                  const codeWeight = lvl <= 1 ? 700 : lvl === 2 ? 500 : 400;
+                  const adiColor =
+                    lvl === 0 ? '#fafaf9' :
+                    lvl === 1 ? 'rgba(250,250,249,0.92)' :
+                    lvl === 2 ? 'rgba(250,250,249,0.7)' :
+                    'rgba(250,250,249,0.55)';
+                  const adiWeight = lvl === 0 ? 700 : lvl === 1 ? 600 : lvl === 2 ? 500 : 400;
+                  const numColor = (val: any, hasColor: string) =>
+                    Number(val) > 0
+                      ? lvl <= 1 ? hasColor : lvl === 2 ? hasColor : `${hasColor}cc`
+                      : 'rgba(250,250,249,0.25)';
+                  const numWeight = lvl <= 1 ? 600 : lvl === 2 ? 500 : 400;
+                  const fontSize = lvl === 0 ? '13px' : lvl === 1 ? '12.5px' : '12px';
+                  const cellBorder = '1px solid rgba(255,255,255,0.04)';
+
+                  return (
+                    <tr
+                      key={h.id}
+                      style={{
+                        background: rowBg,
+                        borderTop: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <td
+                        className="px-4 py-2 font-mono"
+                        style={{
+                          color: codeColor,
+                          fontWeight: codeWeight,
+                          fontSize,
+                          paddingLeft: `${16 + lvl * 18}px`,
+                          borderRight: cellBorder,
+                        }}
+                      >
+                        {h.hesapKodu}
+                      </td>
+                      <td
+                        className="px-4 py-2"
+                        style={{
+                          color: adiColor,
+                          fontWeight: adiWeight,
+                          fontSize: lvl === 0 ? '13px' : '12.5px',
+                          borderRight: cellBorder,
+                        }}
+                      >
+                        {h.hesapAdi}
+                      </td>
+                      <td
+                        className="px-4 py-2 text-right font-mono"
+                        style={{
+                          color: numColor(h.borcToplami, '#fafaf9'),
+                          fontWeight: numWeight,
+                          fontSize,
+                          borderRight: cellBorder,
+                        }}
+                      >
+                        {Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '—'}
+                      </td>
+                      <td
+                        className="px-4 py-2 text-right font-mono"
+                        style={{
+                          color: numColor(h.alacakToplami, '#fafaf9'),
+                          fontWeight: numWeight,
+                          fontSize,
+                          borderRight: cellBorder,
+                        }}
+                      >
+                        {Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '—'}
+                      </td>
+                      <td
+                        className="px-4 py-2 text-right font-mono"
+                        style={{
+                          color: numColor(h.borcBakiye, '#22c55e'),
+                          fontWeight: numWeight,
+                          fontSize,
+                          borderRight: cellBorder,
+                        }}
+                      >
+                        {Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '—'}
+                      </td>
+                      <td
+                        className="px-4 py-2 text-right font-mono"
+                        style={{
+                          color: numColor(h.alacakBakiye, '#22c55e'),
+                          fontWeight: numWeight,
+                          fontSize,
+                        }}
+                      >
+                        {Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
