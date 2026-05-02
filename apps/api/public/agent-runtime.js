@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.74.0';
+          const AGENT_VER = '1.75.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1116,107 +1116,62 @@
     if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
     await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
 
-    const setInput = (sel, value) => {
+    // Tarih input — KESIN id (FORM_DUMP'tan): #TARIH_ILK, #TARIH_SON
+    const setDateInput = (sel, value) => {
       const inp = form.querySelector(sel);
       if (!inp) return false;
+      // Focus → değer set → input/change/blur (Luca calendar widget'i için)
+      try { inp.focus(); } catch(e){}
       const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
       setter.call(inp, value);
       inp.dispatchEvent(new Event('input', { bubbles: true }));
       inp.dispatchEvent(new Event('change', { bubbles: true }));
+      inp.dispatchEvent(new Event('keyup', { bubbles: true }));
       inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      return true;
+      try { inp.blur(); } catch(e){}
+      return inp.value === value;
     };
-
-    // Tarih için olası selector'ları sırayla dene — Luca işletme form'unda farklı isim olabilir
-    const ilkSelectors = [
-      'input[name="TARIH_ILK"]',
-      'input[name="tarih_ilk"]',
-      'input[name="BAS_TARIH"]',
-      'input[name="bas_tarih"]',
-      'input[name="TARIH_BAS"]',
-      'input[name="tarih_bas"]',
-      'input[name="BASLANGIC_TARIHI"]',
-      'input[name="baslangic_tarihi"]',
-      'input[name="ILK_TARIH"]',
-      'input[name="ilk_tarih"]',
-    ];
-    const sonSelectors = [
-      'input[name="TARIH_SON"]',
-      'input[name="tarih_son"]',
-      'input[name="BIT_TARIH"]',
-      'input[name="bit_tarih"]',
-      'input[name="TARIH_BIT"]',
-      'input[name="tarih_bit"]',
-      'input[name="BITIS_TARIHI"]',
-      'input[name="bitis_tarihi"]',
-      'input[name="SON_TARIH"]',
-      'input[name="son_tarih"]',
-    ];
-    let ilkSet = false, sonSet = false;
-    for (const s of ilkSelectors) { if (setInput(s, TARIH_ILK)) { await log(`✓ Tarih başlangıç: ${s}`); ilkSet = true; break; } }
-    for (const s of sonSelectors) { if (setInput(s, TARIH_SON)) { await log(`✓ Tarih bitiş: ${s}`); sonSet = true; break; } }
-    if (!ilkSet || !sonSet) {
-      // Selector ile bulunamadıysa form içindeki tüm date/text input'ları placeholder/label'a göre ara
-      const dateInputs = [...form.querySelectorAll('input[type=text], input[type=date], input:not([type])')];
-      const dd = dateInputs.filter(i => {
-        const all = ((i.name||'') + ' ' + (i.id||'') + ' ' + (i.placeholder||'') + ' ' + (i.closest('tr')?.textContent||'')).toLowerCase();
-        return /tarih|date/.test(all);
-      });
-      if (dd.length >= 2) {
-        if (!ilkSet) {
-          const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
-          setter.call(dd[0], TARIH_ILK);
-          dd[0].dispatchEvent(new Event('input', { bubbles: true }));
-          dd[0].dispatchEvent(new Event('change', { bubbles: true }));
-          dd[0].dispatchEvent(new Event('blur', { bubbles: true }));
-          await log(`✓ Tarih başlangıç (fallback): name=${dd[0].name||'?'}`);
-        }
-        if (!sonSet) {
-          const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
-          setter.call(dd[1], TARIH_SON);
-          dd[1].dispatchEvent(new Event('input', { bubbles: true }));
-          dd[1].dispatchEvent(new Event('change', { bubbles: true }));
-          dd[1].dispatchEvent(new Event('blur', { bubbles: true }));
-          await log(`✓ Tarih bitiş (fallback): name=${dd[1].name||'?'}`);
-        }
-      } else {
-        await log(`⚠ Tarih input bulunamadı (form içinde ${dateInputs.length} text/date input)`);
-      }
-    }
+    const ilkOk = setDateInput('#TARIH_ILK', TARIH_ILK);
+    const sonOk = setDateInput('#TARIH_SON', TARIH_SON);
+    await log(`📅 Tarih set: TARIH_ILK=${TARIH_ILK} (ok=${ilkOk}) | TARIH_SON=${TARIH_SON} (ok=${sonOk})`);
     await sleep(300);
 
-    // 7) "Gelir" / "Gider" CHECKBOX'ları — TR (table row) label-based bulma
-    //    Form yapısı: <tr><td>Gelir</td><td><input type=checkbox></td>...</tr>
-    //    mode='gelir' → Gelir=ON, Gider=OFF
-    //    mode='gider' → Gider=ON, Gelir=OFF
+    // 7) Gelir/Gider checkbox + GELIR1/GIDER1 hidden flag (kesin id'ler)
+    //    Form yapısı (FORM_DUMP'tan kesinleşti):
+    //      <input type="checkbox" id="gelir" name="gelir">  → görünür
+    //      <input type="checkbox" id="gider" name="gider">  → görünür
+    //      <input type="hidden"   id="GELIR1" name="GELIR1" value="1">  → submit flag
+    //      <input type="hidden"   id="GIDER1" name="GIDER1" value="1">  → submit flag
+    //    mode='gelir' → Gelir=ON, Gider=OFF, GELIR1=1, GIDER1=0
+    //    mode='gider' → Gider=ON, Gelir=OFF, GIDER1=1, GELIR1=0
     {
       const isGelir = mode === 'gelir';
-      let gelirCb = null, giderCb = null;
-      const trs = [...form.querySelectorAll('tr')];
-      for (const tr of trs) {
-        const tds = [...tr.querySelectorAll('td')];
-        if (tds.length < 2) continue;
-        const labelText = (tds[0].textContent || '').trim().toLocaleLowerCase('tr-TR');
-        const cb = tr.querySelector('input[type=checkbox]');
-        if (!cb) continue;
-        if (labelText === 'gelir' && !gelirCb) gelirCb = cb;
-        else if (labelText === 'gider' && !giderCb) giderCb = cb;
-      }
-      const setCb = (cb, want) => {
-        if (!cb) return;
+      const gelirCb = form.querySelector('#gelir, input[name="gelir"][type="checkbox"]');
+      const giderCb = form.querySelector('#gider, input[name="gider"][type="checkbox"]');
+      const gelir1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
+      const gider1 = form.querySelector('#GIDER1, input[name="GIDER1"]');
+
+      // Native click ile checkbox toggle — Luca'nın onclick handler'ı da tetiklenir
+      const setCb = async (cb, want, label) => {
+        if (!cb) { await log(`⚠ ${label} checkbox bulunamadı`); return; }
         if (cb.checked !== want) {
-          cb.checked = want;
-          cb.dispatchEvent(new Event('input', { bubbles: true }));
-          cb.dispatchEvent(new Event('change', { bubbles: true }));
-          cb.dispatchEvent(new Event('click', { bubbles: true }));
+          cb.click();
+          await sleep(120);
+          // Tutmadıysa direkt set et
+          if (cb.checked !== want) {
+            cb.checked = want;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
         }
       };
-      setCb(gelirCb, isGelir);
-      setCb(giderCb, !isGelir);
-      await log(`☑ Checkbox: Gelir=${isGelir ? 'ON' : 'OFF'} (name=${gelirCb?.name || '?'}) | Gider=${!isGelir ? 'ON' : 'OFF'} (name=${giderCb?.name || '?'})`);
-      if (!gelirCb && !giderCb) {
-        await log(`⚠ Gelir/Gider checkbox bulunamadı — form'da TR-label eşleşmesi yok`);
-      }
+      await setCb(gelirCb, isGelir, 'Gelir');
+      await setCb(giderCb, !isGelir, 'Gider');
+
+      // Hidden flag'leri de override et (Luca submit'inde bunlar kullanılıyor olabilir)
+      if (gelir1) gelir1.value = isGelir ? '1' : '0';
+      if (gider1) gider1.value = !isGelir ? '1' : '0';
+
+      await log(`☑ Gelir CB=${gelirCb?.checked} | Gider CB=${giderCb?.checked} | GELIR1=${gelir1?.value} | GIDER1=${gider1?.value}`);
     }
     await sleep(300);
 
