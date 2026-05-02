@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.75.0';
+          const AGENT_VER = '1.76.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1136,42 +1136,36 @@
     await log(`📅 Tarih set: TARIH_ILK=${TARIH_ILK} (ok=${ilkOk}) | TARIH_SON=${TARIH_SON} (ok=${sonOk})`);
     await sleep(300);
 
-    // 7) Gelir/Gider checkbox + GELIR1/GIDER1 hidden flag (kesin id'ler)
-    //    Form yapısı (FORM_DUMP'tan kesinleşti):
-    //      <input type="checkbox" id="gelir" name="gelir">  → görünür
-    //      <input type="checkbox" id="gider" name="gider">  → görünür
-    //      <input type="hidden"   id="GELIR1" name="GELIR1" value="1">  → submit flag
-    //      <input type="hidden"   id="GIDER1" name="GIDER1" value="1">  → submit flag
-    //    mode='gelir' → Gelir=ON, Gider=OFF, GELIR1=1, GIDER1=0
-    //    mode='gider' → Gider=ON, Gelir=OFF, GIDER1=1, GELIR1=0
+    // 7) Gelir/Gider checkbox — ⚠ EMPIRICAL INVERSE LOGIC ⚠
+    //    Test (v1.75 Railway log): agent (gelir=false, gider=true) yaptı,
+    //    Luca Excel'i SADECE GELİRLER bölümüyle döndü → CHECKED checkbox = EXCLUDE that section
+    //
+    //    Doğru mantık (INVERSE):
+    //      ISLETME_GELIR → gelir=false (Gelir'i dahil et), gider=true (Gider'i HARIÇ tut) → Excel: GELİRLER only
+    //      ISLETME_GIDER → gelir=true (Gelir'i HARIÇ tut), gider=false (Gider'i dahil et) → Excel: GİDERLER only
     {
       const isGelir = mode === 'gelir';
       const gelirCb = form.querySelector('#gelir, input[name="gelir"][type="checkbox"]');
       const giderCb = form.querySelector('#gider, input[name="gider"][type="checkbox"]');
-      const gelir1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
-      const gider1 = form.querySelector('#GIDER1, input[name="GIDER1"]');
 
-      // Native click ile checkbox toggle — Luca'nın onclick handler'ı da tetiklenir
       const setCb = async (cb, want, label) => {
         if (!cb) { await log(`⚠ ${label} checkbox bulunamadı`); return; }
         if (cb.checked !== want) {
-          cb.click();
-          await sleep(120);
-          // Tutmadıysa direkt set et
+          cb.click(); // Luca onclick handler tetiklenir, GELIR1/GIDER1 hidden flag'leri kendisi günceller
+          await sleep(150);
           if (cb.checked !== want) {
             cb.checked = want;
             cb.dispatchEvent(new Event('change', { bubbles: true }));
           }
         }
       };
-      await setCb(gelirCb, isGelir, 'Gelir');
-      await setCb(giderCb, !isGelir, 'Gider');
 
-      // Hidden flag'leri de override et (Luca submit'inde bunlar kullanılıyor olabilir)
-      if (gelir1) gelir1.value = isGelir ? '1' : '0';
-      if (gider1) gider1.value = !isGelir ? '1' : '0';
+      // INVERSE assignment — Luca: CHECKED = exclude
+      await setCb(gelirCb, !isGelir, 'Gelir'); // GIDER mode → gelir.checked=true (exclude Gelir)
+      await setCb(giderCb, isGelir, 'Gider');  // GIDER mode → gider.checked=false (include Gider)
 
-      await log(`☑ Gelir CB=${gelirCb?.checked} | Gider CB=${giderCb?.checked} | GELIR1=${gelir1?.value} | GIDER1=${gider1?.value}`);
+      // Hidden flag'leri MANUEL ÖVERRIDE ETMİYORUZ — Luca onclick zaten günceller, override sorun yaratıyor
+      await log(`☑ INVERSE checkbox: Gelir CB=${gelirCb?.checked} | Gider CB=${giderCb?.checked} (mode=${mode}, hedef bölüm=${isGelir ? 'GELİRLER' : 'GİDERLER'})`);
     }
     await sleep(300);
 
