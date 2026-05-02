@@ -183,15 +183,25 @@ export class ExcelParserService {
     const isGelir = type === 'ISLETME_GELIR';
     const results: ParsedKdvRow[] = [];
 
-    // Türkçe karakter normalizasyonu
+    // Türkçe karakter normalizasyonu — KRITIK BUG FIX:
+    //   .normalize('NFD') İ harfini "I + combining dot"a böler.
+    //   Combining'i sildikten sonra kalan "I" toLocaleLowerCase('tr-TR') ile "ı" (dotsuz) olur.
+    //   Bu yüzden "İndirilecek" → "ındirilecek" oluyor, "indirilecek".includes() match etmiyor.
+    //   ÇÖZÜM: NFD/combining'i kaldır, ASCII fallback yap.
     const norm = (v: any): string =>
       String(v ?? '')
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '') // combining marks
         .replace(/\n/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-        .toLocaleLowerCase('tr-TR');
+        // Türkçe büyük→küçük (İ→i, I→ı) — sonra hem TR hem ASCII varyantlarını eşle
+        .toLocaleLowerCase('tr-TR')
+        // ASCII fallback: ı→i, ğ→g, ü→u, ş→s, ö→o, ç→c (parser eşleşmesi için)
+        .replace(/[ıİ]/g, 'i')
+        .replace(/[ğĞ]/g, 'g')
+        .replace(/[üÜ]/g, 'u')
+        .replace(/[şŞ]/g, 's')
+        .replace(/[öÖ]/g, 'o')
+        .replace(/[çÇ]/g, 'c');
 
     // Excel YAPISIYLA İLGİLİ NOT:
     //   Aynı dosyada hem GİDERLER hem GELİRLER bölümü var.
