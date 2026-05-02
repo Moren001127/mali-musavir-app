@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.59.0';
+          const AGENT_VER = '1.60.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -905,14 +905,19 @@
     // 7. ÖNCE Hesap Kodu (hesap planı state'i en kritik)
     setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
     setInput('input[name="HESAPKODU_SON"]', hesapKodu);
-    await log(`💼 Hesap kodu: ${hesapKodu}-${hesapKodu}`);
     await sleep(400); // Luca onblur AJAX'i için
+    // VERIFICATION — input gerçekten dolu mu, UI'da görünür mü?
+    const hkIlkActual = form.querySelector('input[name="HESAPKODU_ILK"]')?.value;
+    const hkSonActual = form.querySelector('input[name="HESAPKODU_SON"]')?.value;
+    await log(`💼 Hesap kodu set sonrası: ILK="${hkIlkActual}" SON="${hkSonActual}"`);
 
     // 8. SONRA Tarih
     setInput('input[name="TARIH_ILK"]', TARIH_ILK);
     setInput('input[name="TARIH_SON"]', TARIH_SON);
-    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
     await sleep(400);
+    const tIlkActual = form.querySelector('input[name="TARIH_ILK"]')?.value;
+    const tSonActual = form.querySelector('input[name="TARIH_SON"]')?.value;
+    await log(`📅 Tarih set sonrası: ILK="${tIlkActual}" SON="${tSonActual}"`);
 
     // 9. EN SON Rapor Türü = Excel (xlsx)
     await setRaporTuruExcel(form, log);
