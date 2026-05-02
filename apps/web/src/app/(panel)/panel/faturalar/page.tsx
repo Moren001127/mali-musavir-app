@@ -273,10 +273,12 @@ ${isPdf
   };
 
   const handleFetch = (faturaTuru?: 'ALIS' | 'SATIS', forceRefresh = false) => {
-    console.log('[Faturalar] handleFetch çağrıldı:', {
-      faturaTuru, forceRefresh, selectedMukellef, selectedTaxpayer,
-      mihsapId: selectedTaxpayer?.mihsapId, donem,
-    });
+    console.log(
+      `[Faturalar] handleFetch: faturaTuru=${faturaTuru} | selectedMukellef="${selectedMukellef}" | hasTaxpayer=${!!selectedTaxpayer} | mihsapId="${selectedTaxpayer?.mihsapId || ''}" | mihsapId-truthy=${!!selectedTaxpayer?.mihsapId} | donem="${donem}"`
+    );
+    if (selectedTaxpayer) {
+      console.log('[Faturalar] selectedTaxpayer detail:', JSON.stringify(selectedTaxpayer));
+    }
     // "Tümü" modu → toplu çekime yönlendir
     if (selectedMukellef === ALL_SENTINEL) {
       handleFetchAll(faturaTuru, forceRefresh);
