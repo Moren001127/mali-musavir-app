@@ -1028,11 +1028,29 @@ export default function GelirTablosuPage() {
                       const detail = quarterDetails[qi]?.data as any;
                       const v = detail?.geciciVergiHesabi;
                       const hasData = !!v;
-                      const val = hasData ? (v[row.key] ?? 0) : null;
                       const manuelState = hasData ? getManuel(detail.id) : null;
                       const isManual = !!row.manual;
                       const isLocked = !!detail?.locked;
-                      const isFirstQuarter = hasData && v.donemSirasi === 1 && row.key === 'oncekiDonemOdenen';
+                      const isFirstQuarter = hasData && v?.donemSirasi === 1 && row.key === 'oncekiDonemOdenen';
+
+                      // ─── LIVE PREVIEW ─── manuel input değişikliklerini anında yansıt
+                      let val: number | null = hasData ? (v[row.key] ?? 0) : null;
+                      if (hasData && manuelState) {
+                        const draftGY = manuelState.gecmisYil ? parseLocale(manuelState.gecmisYil) : null;
+                        const draftOO = manuelState.oncekiOdenen ? parseLocale(manuelState.oncekiOdenen) : null;
+                        const toplamKar = Number(v.toplamKar || 0);
+                        const gecmisYil = draftGY !== null ? draftGY : Number(v.gecmisYilZarari || 0);
+                        const oncekiOdenen = draftOO !== null ? draftOO : Number(v.oncekiDonemOdenen || 0);
+                        const matrah = Math.max(0, toplamKar - gecmisYil);
+                        const hesaplanan = matrah * 0.25;
+                        const odenecek = Math.max(0, hesaplanan - oncekiOdenen);
+                        if (row.key === 'gecmisYilZarari') val = gecmisYil;
+                        else if (row.key === 'gecicVergiMatrahi') val = matrah;
+                        else if (row.key === 'hesaplananGeciciVergi') val = hesaplanan;
+                        else if (row.key === 'oncekiDonemOdenen') val = oncekiOdenen;
+                        else if (row.key === 'odenecekGeciciVergi') val = odenecek;
+                      }
+
                       return (
                         <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9'), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: '1px solid rgba(184,160,111,0.12)', fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
                           {!hasData ? '—' : isManual && !isLocked ? (
@@ -1041,14 +1059,20 @@ export default function GelirTablosuPage() {
                             ) : (
                               <input
                                 type="text"
-                                placeholder={val > 0 ? fmtTRY(val) : '0,00'}
+                                placeholder={(val ?? 0) > 0 ? fmtTRY(val ?? 0) : '0,00'}
                                 value={row.manual === 'gecmisYil' ? manuelState!.gecmisYil : manuelState!.oncekiOdenen}
                                 onChange={(e) => setManuel(detail.id, { [row.manual!]: e.target.value } as any)}
-                                className="w-full px-2 py-1 rounded text-[12px] font-mono text-center outline-none border"
-                                style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
+                                onBlur={(e) => {
+                                  // Blur'da formatla — TR locale
+                                  const n = parseLocale(e.target.value);
+                                  const formatted = n === 0 ? '' : n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                  setManuel(detail.id, { [row.manual!]: formatted } as any);
+                                }}
+                                className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border"
+                                style={{ background: 'rgba(96,165,250,0.06)', borderColor: 'rgba(96,165,250,0.3)', color: '#60a5fa', fontWeight: 600 }}
                               />
                             )
-                          ) : val !== 0 ? (row.negSign ? '−' + fmtTRY(val) : fmtTRY(val)) : '0,00'}
+                          ) : val !== 0 && val !== null ? (row.negSign ? '−' + fmtTRY(val) : fmtTRY(val)) : '0,00'}
                         </td>
                       );
                     })}
@@ -1183,34 +1207,77 @@ export default function GelirTablosuPage() {
                       );
                     })}
                   </tr>
-                  {/* Satılan Malın Maliyeti */}
+                  {/* Satılan Malın Maliyeti — Toplam Stok'tan büyükse kırmızı uyarı */}
                   <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
                     <td></td>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      const v = d?.stokMaliyetOzet?.satisMaliyeti;
+                      const v = Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                      const toplamStok = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
+                      const ihlal = d?.stokMaliyetOzet && v > toplamStok && toplamStok > 0;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: '#f43f5e', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
-                          {d?.stokMaliyetOzet ? '−' + fmtTRY(Number(v)) : '—'}
+                        <td
+                          key={qi}
+                          className="px-3 py-2.5 text-center font-mono font-bold"
+                          style={{
+                            color: '#f43f5e',
+                            borderLeft: '1px solid rgba(184,160,111,0.18)',
+                            background: ihlal ? 'rgba(239,68,68,0.18)' : undefined,
+                            position: 'relative',
+                          }}
+                          title={ihlal ? `⚠ Satılan maliyet (${fmtTRY(v)}) toplam stoktan (${fmtTRY(toplamStok)}) büyük olamaz` : undefined}
+                        >
+                          {d?.stokMaliyetOzet ? '−' + fmtTRY(v) : '—'}
+                          {ihlal && (
+                            <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 11 }}>⚠</span>
+                          )}
                         </td>
                       );
                     })}
                   </tr>
-                  {/* Kalan Stok */}
+                  {/* Kalan Stok — negatif olunca kırmızı uyarı */}
                   <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
                     <td></td>
                     <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      const v = d?.stokMaliyetOzet?.kalanStok;
+                      const v = Number(d?.stokMaliyetOzet?.kalanStok ?? 0);
+                      const negatif = d?.stokMaliyetOzet && v < 0;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold text-[14px]" style={{ color: '#22c55e', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
-                          {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
+                        <td
+                          key={qi}
+                          className="px-3 py-2.5 text-center font-mono font-bold text-[14px]"
+                          style={{
+                            color: negatif ? '#ef4444' : '#22c55e',
+                            borderLeft: '1px solid rgba(184,160,111,0.18)',
+                            background: negatif ? 'rgba(239,68,68,0.18)' : undefined,
+                            position: 'relative',
+                          }}
+                          title={negatif ? `⚠ Kalan stok negatif (${fmtTRY(v)}) — satılan maliyet toplam stoktan büyük` : undefined}
+                        >
+                          {d?.stokMaliyetOzet ? fmtTRY(v) : '—'}
+                          {negatif && (
+                            <span style={{ position: 'absolute', top: 2, right: 4, fontSize: 11 }}>⚠</span>
+                          )}
                         </td>
                       );
                     })}
                   </tr>
+                  {/* Uyarı satırı — herhangi bir çeyrekte ihlal varsa */}
+                  {DISPLAY_ORDER.some((qi) => {
+                    const d = quarterDetails[qi]?.data as any;
+                    const sm = Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                    const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
+                    const ks = Number(d?.stokMaliyetOzet?.kalanStok ?? 0);
+                    return d?.stokMaliyetOzet && ((sm > ts && ts > 0) || ks < 0);
+                  }) && (
+                    <tr style={{ borderTop: '1px dashed rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' }}>
+                      <td colSpan={6} className="px-4 py-2.5 text-[12px]" style={{ color: '#ef4444' }}>
+                        ⚠ <strong>Tutarsızlık:</strong> Satılan Malın Maliyeti, Toplam Stok'tan büyük olamaz; Kalan Stok negatif olamaz. Yukarıda kırmızı işaretli hücreler hatalı. Mizan kayıtlarını kontrol edin.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
