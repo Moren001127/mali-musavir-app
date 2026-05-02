@@ -199,7 +199,9 @@ export class ExcelParserService {
     //   GELİRLER header'ı: ... | Gelir | Satılan Emtia | Hesaplanan K.D.V. | KREDİLİ TUTAR
     //   Type'a göre doğru bölümün header satırını seçeriz.
 
-    // 1) Aday header satırlarını bul (Evrak No + Tarih + Açıklama içeren)
+    // 1) Aday header satırlarını bul.
+    // Header satırı = "İndirilecek K.D.V." VEYA "Hesaplanan K.D.V." içeren satır.
+    // (Evrak No / Tarih / Açıklama merge'lenmiş ya da farklı yazılmış olabilir.)
     type HeaderInfo = {
       idx: number;
       hasIndirilecek: boolean;
@@ -210,14 +212,13 @@ export class ExcelParserService {
     for (let i = 0; i < matrix.length; i++) {
       const row = matrix[i] || [];
       const cells = row.map(norm);
-      const hasEvrakNo = cells.some((c) => c.includes('evrak no'));
-      const hasTarih = cells.some((c) => c === 'tarih');
-      const hasAciklama = cells.some((c) => c.includes('açıklama') || c.includes('aciklama'));
-      if (hasEvrakNo && hasTarih && hasAciklama) {
+      const hasIndirilecek = cells.some((c) => c.includes('indirilecek'));
+      const hasHesaplanan = cells.some((c) => c.includes('hesaplanan'));
+      if (hasIndirilecek || hasHesaplanan) {
         headers.push({
           idx: i,
-          hasIndirilecek: cells.some((c) => c.includes('indirilecek')),
-          hasHesaplanan: cells.some((c) => c.includes('hesaplanan')),
+          hasIndirilecek,
+          hasHesaplanan,
           cells,
         });
       }
@@ -225,8 +226,14 @@ export class ExcelParserService {
 
     if (headers.length === 0) {
       this.logger.warn(
-        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: hiç header satırı bulunamadı.`,
+        `İşletme ${isGelir ? 'Gelir' : 'Gider'} Excel: hiç header satırı bulunamadı (İndirilecek/Hesaplanan K.D.V. sütunu yok).`,
       );
+      // Debug: ilk 15 satırın ham içeriğini dump et
+      const debugRows = matrix.slice(0, 15).map((r, idx) => {
+        const cells = (r || []).map((c) => (c === null || c === undefined ? '' : String(c).slice(0, 30)));
+        return `  [${idx}] ${cells.map((c, j) => `${j}:"${c}"`).join(' | ')}`;
+      });
+      this.logger.warn(`Excel ilk 15 satır dump:\n${debugRows.join('\n')}`);
       return results;
     }
 
