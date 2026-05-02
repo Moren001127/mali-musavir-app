@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.64.0';
+          const AGENT_VER = '1.65.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -985,19 +985,50 @@
           raporTur = parsed.params?.raporTur || '';
         } catch {}
 
-        const tryFetch = async (label, opts) => {
+        const tryFetch = async (label, opts, urlOverride) => {
           try {
-            const res = await frm3win.fetch(indirUrl, opts);
+            const targetUrl = urlOverride || indirUrl;
+            const res = await frm3win.fetch(targetUrl, opts);
             const ct = res.headers.get('content-type') || '';
             if (res.ok) {
-              const blob = await res.blob();
-              await log(`📦 ${label}: ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)}`);
-              if (blob.size > 1000 && /xlsx|spreadsheet|excel|octet-stream/i.test(ct)) {
+              // Önce text olarak oku (JSON ise içeriği görmek için)
+              const text = await res.clone().text();
+              const sz = text.length;
+              if (/xlsx|spreadsheet|excel|octet-stream/i.test(ct) || (sz > 5000 && !/json|html/i.test(ct))) {
+                const blob = await res.blob();
+                await log(`📦 ${label}: ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)} → BLOB`);
                 return blob;
               }
-              if (blob.size > 1000 && !/json/i.test(ct)) {
-                return blob;
-              }
+              // JSON ise içeriği log'la (debug için kritik)
+              await log(`📦 ${label}: ${Math.round(sz / 1024)} KB ct=${ct.slice(0, 40)} body=${text.slice(0, 250)}`);
+              // JSON içinde URL/path var mı? Otomatik takip
+              try {
+                const json = JSON.parse(text);
+                const possibleUrlFields = [
+                  json.dosya_url, json.dosyaUrl, json.url, json.fileUrl, json.file_url,
+                  json.download_url, json.downloadUrl, json.path, json.filePath, json.file_path,
+                  json.indirme_url, json.indirmeUrl,
+                  json.data?.dosya_url, json.data?.url, json.data?.path,
+                  json.dosyaAdi, json.dosya_adi, json.fileName, json.file_name,
+                ];
+                const downloadUrl = possibleUrlFields.find(u => u && typeof u === 'string');
+                const fileId = json.dosya_id || json.dosyaId || json.file_id || json.fileId || json.id;
+                if (downloadUrl) {
+                  const fullUrl = downloadUrl.startsWith('http') ? downloadUrl :
+                    new URL(downloadUrl, indirUrl).href;
+                  await log(`🔗 ${label} JSON içinde URL bulundu: ${downloadUrl.slice(0, 80)} → fetch...`);
+                  const followRes = await frm3win.fetch(fullUrl, { method: 'GET', credentials: 'include' });
+                  if (followRes.ok) {
+                    const fct = followRes.headers.get('content-type') || '';
+                    const followBlob = await followRes.blob();
+                    await log(`📦 follow: ${Math.round(followBlob.size / 1024)} KB ct=${fct.slice(0, 40)}`);
+                    if (followBlob.size > 1000) return followBlob;
+                  }
+                }
+                if (fileId) {
+                  await log(`🔗 ${label} JSON içinde fileId=${fileId} — alternatif endpoint deneniyor`);
+                }
+              } catch (e) {}
             } else {
               await log(`⚠ ${label}: HTTP ${res.status}`);
             }
