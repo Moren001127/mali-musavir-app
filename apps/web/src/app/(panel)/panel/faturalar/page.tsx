@@ -232,7 +232,7 @@ ${isPdf
   ) => {
     const eligible = taxpayers.filter((t) => !!t.mihsapId);
     if (eligible.length === 0) {
-      alert('MIHSAP ID tanımlı mükellef bulunamadı.');
+      toast.error('MIHSAP ID tanımlı mükellef bulunamadı. Mükellef kartlarına Mihsap ID girin.', { duration: 8000 });
       return;
     }
     const label =
@@ -272,16 +272,21 @@ ${isPdf
   };
 
   const handleFetch = (faturaTuru?: 'ALIS' | 'SATIS', forceRefresh = false) => {
+    console.log('[Faturalar] handleFetch çağrıldı:', {
+      faturaTuru, forceRefresh, selectedMukellef, selectedTaxpayer,
+      mihsapId: selectedTaxpayer?.mihsapId, donem,
+    });
     // "Tümü" modu → toplu çekime yönlendir
     if (selectedMukellef === ALL_SENTINEL) {
       handleFetchAll(faturaTuru, forceRefresh);
       return;
     }
-    if (!selectedTaxpayer) return;
+    if (!selectedTaxpayer) {
+      toast.error('Lütfen bir mükellef seçin');
+      return;
+    }
     if (!selectedTaxpayer.mihsapId) {
-      alert(
-        'Bu mükellef için MIHSAP ID kayıtlı değil. Mükellef düzenleme sayfasından ekleyin.',
-      );
+      toast.error('Bu mükellef için MIHSAP ID kayıtlı değil. Mükellef düzenleme sayfasından "Otomasyon Ajanları" bölümüne Mihsap ID giriniz.', { duration: 8000 });
       return;
     }
     const label = faturaTuru === 'ALIS' ? 'alış' : faturaTuru === 'SATIS' ? 'satış' : 'tüm';

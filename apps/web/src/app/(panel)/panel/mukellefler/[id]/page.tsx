@@ -461,3 +461,6 @@ export default function MukellefDetayPage() {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
