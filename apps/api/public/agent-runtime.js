@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.77.0';
+          const AGENT_VER = '1.78.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -3296,10 +3296,13 @@
                     }
                     if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
                     if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
+                    // İŞLETME: GELIR1/GIDER1 hidden flag override
+                    if (ov.GELIR1 !== undefined) formObj.GELIR1 = String(ov.GELIR1);
+                    if (ov.GIDER1 !== undefined) formObj.GIDER1 = String(ov.GIDER1);
                     parsed.form = JSON.stringify(formObj);
                     body = JSON.stringify(parsed);
                     if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[XHR-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit}`);
+                      window.__morenLogs.push(`[XHR-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
                     }
                   } else if (Array.isArray(window.__morenLogs)) {
                     window.__morenLogs.push(`[XHR-FORM-PARSE-FAIL]`);
@@ -3393,10 +3396,19 @@
                   }
                   if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
                   if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
+                  // İŞLETME: GELIR1/GIDER1 hidden flag override
+                  if (ov.GELIR1 !== undefined) {
+                    formObj.GELIR1 = String(ov.GELIR1);
+                    formObj.gelir = String(ov.GELIR1) === '0' ? '1' : '0';
+                  }
+                  if (ov.GIDER1 !== undefined) {
+                    formObj.GIDER1 = String(ov.GIDER1);
+                    formObj.gider = String(ov.GIDER1) === '0' ? '1' : '0';
+                  }
                   parsed.form = JSON.stringify(formObj);
                   init = { ...init, body: JSON.stringify(parsed) };
                   if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit}`);
+                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
                   }
                 }
               }
