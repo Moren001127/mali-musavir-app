@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.55.0';
+          const AGENT_VER = '1.57.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -2844,17 +2844,108 @@
       proto.send = function (body) {
         try {
           const url = this.__morenUrl || '';
-          // __lucaJobOverrides her zaman TOP window'da (agent setliyor)
           const ov = window.__lucaJobOverrides;
           if (ov && typeof body === 'string' && /jasper\.jq|raporKebir|raporIslem|raporMuavin|raporIndir|rapor_takip|rapor_indir/i.test(url)) {
-            const params = new URLSearchParams(body);
-            for (const [k, v] of Object.entries(ov)) {
-              params.set(k, String(v));
-            }
-            body = params.toString();
+            // Body orijinalini log'a düşür (debug — modification yapmıyoruz)
             if (Array.isArray(window.__morenLogs)) {
-              window.__morenLogs.push(`[XHR-INJECT] ${url.split('/').pop().slice(0,40)} body=${body.slice(0, 200)}`);
+              const origPreview = body.length > 800 ? body.slice(0, 800) + '...' : body;
+              window.__morenLogs.push(`[XHR-ORIG] ${url.split('/').pop().slice(0, 40)} body=${origPreview}`);
             }
+            // BODY MODIFICATION DISABLED — Luca'nın doğal davranışına bırak.
+            // Önceki regex inject body'yi bozup 500 Internal Server Error döndürüyordu.
+            // Önce input.value'lardan gerçekten 191/tarih okunduğunu kanıtlayalım.
+            // Yine de hesap kodu uygulanmazsa, body inject'ini doğru regex ile aktive ederiz.
+            const ENABLE_INJECT = false;
+            if (ENABLE_INJECT) {
+
+            // Luca jasper.jq body'si URL-encoded JSON — nested JSON parse + override
+            // Strateji: body'de "donem_bas":"...","donem_bit":"..." pattern'lerini regex ile değiştir
+            // Bu hem URL-encoded hem decoded form için çalışır.
+            try {
+              // URL-encoded body içindeki "donem_bas":"01/01/2026" patternini değiştir
+              // Hem encoded (%5C%22donem_bas%5C%22%3A) hem decoded ("donem_bas":) handle et
+              const tarihIlkEnc = encodeURIComponent(ov.TARIH_ILK || '').replace(/%2F/g, '%2F');
+              const tarihSonEnc = encodeURIComponent(ov.TARIH_SON || '').replace(/%2F/g, '%2F');
+
+              // Pattern 1: URL-encoded escape: %5C%22donem_bas%5C%22%3A%5C%22DD%2FMM%2FYYYY%5C%22
+              body = body.replace(
+                /%5C%22donem_bas%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                `%5C%22donem_bas%5C%22%3A%5C%22${tarihIlkEnc}%5C%22`
+              );
+              body = body.replace(
+                /%5C%22donem_bit%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                `%5C%22donem_bit%5C%22%3A%5C%22${tarihSonEnc}%5C%22`
+              );
+              // Pattern 2: Decoded form: "donem_bas":"01/03/2026"
+              body = body.replace(
+                /\\"donem_bas\\":\\"[^\\]+\\"/g,
+                `\\"donem_bas\\":\\"${ov.TARIH_ILK}\\"`
+              );
+              body = body.replace(
+                /\\"donem_bit\\":\\"[^\\]+\\"/g,
+                `\\"donem_bit\\":\\"${ov.TARIH_SON}\\"`
+              );
+              // Pattern 3: Plain JSON (decoded once): "donem_bas":"01/03/2026"
+              body = body.replace(
+                /"donem_bas":"[^"]+"/g,
+                `"donem_bas":"${ov.TARIH_ILK}"`
+              );
+              body = body.replace(
+                /"donem_bit":"[^"]+"/g,
+                `"donem_bit":"${ov.TARIH_SON}"`
+              );
+
+              // Hesap kodu için pattern arama — Luca farklı isimlendirme kullanmış olabilir
+              // hesapKoduBas/hesapKoduBit, hesap_kodu_bas/hesap_kodu_bit, HESAPKODU_ILK/SON
+              if (ov.HESAPKODU_ILK) {
+                const hk = ov.HESAPKODU_ILK;
+                const hkEnc = encodeURIComponent(hk);
+                // URL-encoded
+                body = body.replace(
+                  /%5C%22hesapKoduBas%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                  `%5C%22hesapKoduBas%5C%22%3A%5C%22${hkEnc}%5C%22`
+                );
+                body = body.replace(
+                  /%5C%22hesapKoduBit%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                  `%5C%22hesapKoduBit%5C%22%3A%5C%22${hkEnc}%5C%22`
+                );
+                body = body.replace(
+                  /%5C%22hesap_kodu_bas%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                  `%5C%22hesap_kodu_bas%5C%22%3A%5C%22${hkEnc}%5C%22`
+                );
+                body = body.replace(
+                  /%5C%22hesap_kodu_bit%5C%22%3A%5C%22[^%]*(?:%[0-9A-F]{2}[^%]*)*%5C%22/g,
+                  `%5C%22hesap_kodu_bit%5C%22%3A%5C%22${hkEnc}%5C%22`
+                );
+                // Decoded forms
+                body = body.replace(/\\"hesapKoduBas\\":\\"[^\\]*\\"/g, `\\"hesapKoduBas\\":\\"${hk}\\"`);
+                body = body.replace(/\\"hesapKoduBit\\":\\"[^\\]*\\"/g, `\\"hesapKoduBit\\":\\"${hk}\\"`);
+                body = body.replace(/\\"hesap_kodu_bas\\":\\"[^\\]*\\"/g, `\\"hesap_kodu_bas\\":\\"${hk}\\"`);
+                body = body.replace(/\\"hesap_kodu_bit\\":\\"[^\\]*\\"/g, `\\"hesap_kodu_bit\\":\\"${hk}\\"`);
+                body = body.replace(/"hesapKoduBas":"[^"]*"/g, `"hesapKoduBas":"${hk}"`);
+                body = body.replace(/"hesapKoduBit":"[^"]*"/g, `"hesapKoduBit":"${hk}"`);
+                body = body.replace(/"hesap_kodu_bas":"[^"]*"/g, `"hesap_kodu_bas":"${hk}"`);
+                body = body.replace(/"hesap_kodu_bit":"[^"]*"/g, `"hesap_kodu_bit":"${hk}"`);
+                // HESAPKODU_ILK/SON form-encoded fallback
+                body = body.replace(/HESAPKODU_ILK=[^&]*/g, `HESAPKODU_ILK=${hkEnc}`);
+                body = body.replace(/HESAPKODU_SON=[^&]*/g, `HESAPKODU_SON=${hkEnc}`);
+              }
+              // TARIH_ILK/SON form-encoded fallback
+              if (ov.TARIH_ILK) {
+                body = body.replace(/TARIH_ILK=[^&]*/g, `TARIH_ILK=${encodeURIComponent(ov.TARIH_ILK)}`);
+                body = body.replace(/TARIH_SON=[^&]*/g, `TARIH_SON=${encodeURIComponent(ov.TARIH_SON)}`);
+              }
+
+              if (Array.isArray(window.__morenLogs)) {
+                const previewNew = body.length > 800 ? body.slice(0, 800) + '...' : body;
+                window.__morenLogs.push(`[XHR-INJECT] ${url.split('/').pop().slice(0, 40)} body=${previewNew}`);
+              }
+            } catch (e) {
+              if (Array.isArray(window.__morenLogs)) {
+                window.__morenLogs.push(`[XHR-INJECT-ERR] ${e?.message || e}`);
+              }
+            }
+            } // ENABLE_INJECT block
           }
         } catch (e) {}
         return origSend.call(this, body);
