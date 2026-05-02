@@ -23,7 +23,7 @@ function PhoneInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder || '05xx xxx xx xx'}
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+      className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
     />
   );
 }
@@ -37,7 +37,7 @@ function EmailInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder="ornek@email.com"
-      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+      className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
     />
   );
 }
@@ -211,7 +211,7 @@ export default function MukellefDetayPage() {
                   type="text"
                   value={form.companyName}
                   onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                  className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                   required
                 />
               </div>
@@ -223,7 +223,7 @@ export default function MukellefDetayPage() {
                     type="text"
                     value={form.firstName}
                     onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                    className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                     required
                   />
                 </div>
@@ -233,7 +233,7 @@ export default function MukellefDetayPage() {
                     type="text"
                     value={form.lastName}
                     onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                    className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                     required
                   />
                 </div>
@@ -248,7 +248,7 @@ export default function MukellefDetayPage() {
                 value={form.taxNumber}
                 onChange={e => setForm(f => ({ ...f, taxNumber: e.target.value.replace(/\D/g, '') }))}
                 maxLength={11}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 font-mono focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 required
               />
             </div>
@@ -258,7 +258,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.taxOffice}
                 onChange={e => setForm(f => ({ ...f, taxOffice: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 required
               />
             </div>
@@ -268,7 +268,7 @@ export default function MukellefDetayPage() {
                 type="date"
                 value={form.startDate}
                 onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
             <div>
@@ -277,7 +277,7 @@ export default function MukellefDetayPage() {
                 type="date"
                 value={form.endDate}
                 onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
             <div className="md:col-span-2">
@@ -286,7 +286,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.address}
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
             </div>
           </div>
@@ -343,7 +343,7 @@ export default function MukellefDetayPage() {
                 value={form.evrakTeslimGunu}
                 onChange={e => setForm(f => ({ ...f, evrakTeslimGunu: e.target.value }))}
                 placeholder="Örn: 15"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               />
               <p className="text-xs text-gray-500 mt-1">Her ayın bu günü geldiğinde WhatsApp hatırlatması gönderilir</p>
             </div>
@@ -405,7 +405,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.lucaSlug}
                 onChange={e => setForm(f => ({ ...f, lucaSlug: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 placeholder="edeler_yem"
               />
               <p className="text-xs text-gray-400 mt-1">Luca ZIP'te görünen ad (ör. edeler_yem)</p>
@@ -418,7 +418,7 @@ export default function MukellefDetayPage() {
                 type="text"
                 value={form.mihsapId}
                 onChange={e => setForm(f => ({ ...f, mihsapId: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
                 placeholder="110564"
               />
               <p className="text-xs text-gray-400 mt-1">Mihsap URL'indeki sayı (ör. 110564)</p>
@@ -430,7 +430,7 @@ export default function MukellefDetayPage() {
               <select
                 value={form.mihsapDefterTuru}
                 onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+                className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               >
                 <option value="BILANCO">Bilanço</option>
                 <option value="DEFTER_BEYAN">Defter Beyan</option>
@@ -446,7 +446,7 @@ export default function MukellefDetayPage() {
             value={form.notes}
             onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
             rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876] resize-none"
+            className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876] resize-none"
             placeholder="Mükellef hakkında notlar..."
           />
         </div>
@@ -461,6 +461,3 @@ export default function MukellefDetayPage() {
           </button>
         </div>
       </form>
-    </div>
-  );
-}
