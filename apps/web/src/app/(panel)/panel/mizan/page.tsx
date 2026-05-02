@@ -810,9 +810,9 @@ function MizanTable({
               {['HESAP KODU', 'HESAP ADI', 'BORÇ', 'ALACAK', 'BORÇ BAKİYESİ', 'ALACAK BAKİYESİ'].map((label, i) => (
                 <th
                   key={label}
-                  className={`px-3 py-2.5 text-[11px] font-bold tracking-[.04em] ${i >= 2 ? 'text-right' : 'text-left'}`}
+                  className={`px-4 py-3 text-[12.5px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
                   style={{
-                    color: 'rgba(250,250,249,0.85)',
+                    color: 'rgba(250,250,249,0.9)',
                     border: '1px solid rgba(255,255,255,0.15)',
                     background: 'rgba(184,160,111,0.10)',
                   }}
@@ -836,8 +836,8 @@ function MizanTable({
               const numBakiyeColor = '#22c55e'; // Bakiye yeşil (tek vurgu)
               const dimColor = 'rgba(250,250,249,0.25)';
 
-              const weight = isUpper ? 700 : 400;
-              const fontSize = 12.5;
+              const weight = isUpper ? 700 : 500;
+              const fontSize = 14;
 
               // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
               const rowBg = isUpper ? 'rgba(255,255,255,0.025)' : 'transparent';
@@ -863,7 +863,7 @@ function MizanTable({
                         tabIndex={0}
                         onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
-                        className={`px-3 py-1.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                        className={`px-4 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
                         style={{
                           border: cellBorder,
                           fontSize: fontSize,
