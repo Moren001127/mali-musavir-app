@@ -726,17 +726,16 @@ export default function GelirTablosuPage() {
                             fontWeight: row.final || row.total ? 700 : 500,
                             borderLeft: '1px solid rgba(184,160,111,0.12)',
                             fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
-                            position: 'relative',
                           }}
                         >
-                          {hasData ? fmtTRY(v!) : '—'}
+                          <div>{hasData ? fmtTRY(v!) : '—'}</div>
                           {showOranBadge && (
-                            <span
-                              className="text-[10.5px] font-semibold px-1.5 py-[1px] rounded"
-                              style={{ background: 'rgba(96,165,250,0.10)', color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)' }}
+                            <div
+                              className="text-[10px] font-semibold mt-0.5"
+                              style={{ color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}
                             >
                               {pct(v!, netSatis)}
-                            </span>
+                            </div>
                           )}
                         </td>
                       );
@@ -965,7 +964,6 @@ export default function GelirTablosuPage() {
           <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' }}>
             <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: 70 }} />
                 <col />
                 <col style={{ width: 180 }} />
                 <col style={{ width: 180 }} />
@@ -975,7 +973,7 @@ export default function GelirTablosuPage() {
               <thead>
                 {/* Üst başlık — gelir tablosundaki gibi: 2026 · X. DÖNEM + ay aralığı */}
                 <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.2)' }}>
-                  <th colSpan={2} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)' }}></th>
+                  <th style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)' }}></th>
                   {DISPLAY_ORDER.map((qi) => (
                     <th
                       key={qi}
@@ -995,7 +993,6 @@ export default function GelirTablosuPage() {
                   ))}
                 </tr>
                 <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.18)' }}>
-                  <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}></th>
                   <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
                   {DISPLAY_ORDER.map((qi) => (
                     <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
@@ -1015,7 +1012,6 @@ export default function GelirTablosuPage() {
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
                   <tr key={ri} style={{ borderTop: '1px solid rgba(255,255,255,0.03)', background: row.bg || 'transparent' }}>
-                    <td></td>
                     <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13 }}>
                       <span className="inline-flex items-center gap-2">
                         {row.label}
@@ -1080,7 +1076,6 @@ export default function GelirTablosuPage() {
                 ))}
                 {/* Kaydet butonları satırı */}
                 <tr style={{ borderTop: '1px dashed rgba(184,160,111,0.25)' }}>
-                  <td></td>
                   <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>Manuel değerleri kaydet</td>
                   {DISPLAY_ORDER.map((qi) => {
                     const detail = quarterDetails[qi]?.data as any;
