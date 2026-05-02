@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.60.0';
+          const AGENT_VER = '1.61.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -944,12 +944,60 @@
     // submit body'sine alıyor. Manuel kullanıcı davranışıyla aynı.
     await clickLucaRaporButton(form, log);
 
-    // 14. Blob yakala + cleanup
+    // 14. Blob yakala — iki yol: form intercept VEYA rapor_takip durum=150 → kendi rapor_indir fetch
     try {
-      return await waitForCapturedBlob(log, 45000);
+      const blob = await waitForKdvBlob(log, frm3win, 60000);
+      return blob;
     } finally {
       delete window.__lucaJobOverrides;
+      delete window.__morenRaporHazir;
     }
+  }
+
+  /**
+   * KDV blob yakalama — form intercept VEYA rapor_takip durum=150 yakalandığında
+   * agent kendi rapor_indir fetch'ini atar. Çünkü Luca rapor_indir'i bazen
+   * <a download> veya window.open ile yapıyor → form intercept tutmuyor.
+   */
+  async function waitForKdvBlob(log, frm3win, maxMs) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < maxMs) {
+      // Yol 1: form intercept blob yakaladı (Mizan tarzı)
+      if (window.__morenCapturedBlob) {
+        const b = window.__morenCapturedBlob;
+        window.__morenCapturedBlob = null;
+        await log(`✅ Blob (form intercept) alındı (${Math.round(b.size / 1024)} KB)`);
+        return b;
+      }
+      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch
+      if (window.__morenRaporHazir && window.__morenRaporHazir.rapor_id) {
+        const rh = window.__morenRaporHazir;
+        window.__morenRaporHazir = null;
+        await log(`📥 rapor hazır (id=${rh.rapor_id}) — kendi fetch ile rapor_indir çağırıyoruz`);
+        try {
+          // rapor_indir.jq URL'sini rapor_takip URL'sinden türet
+          const baseUrl = rh.url.replace(/[^/]+$/, '');
+          const indirUrl = baseUrl + 'rapor_indir.jq?rapor_id=' + rh.rapor_id + '&time=' + Date.now();
+          const res = await frm3win.fetch(indirUrl, {
+            method: 'POST',
+            credentials: 'include',
+            body: JSON.stringify({ rapor_id: rh.rapor_id }),
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            await log(`✅ Excel agent fetch ile alındı (${Math.round(blob.size / 1024)} KB, ct=${res.headers.get('content-type')})`);
+            return blob;
+          } else {
+            await log(`⚠ rapor_indir HTTP ${res.status} — alternatif metoda geç`);
+          }
+        } catch (e) {
+          await log(`⚠ rapor_indir fetch hatası: ${e?.message || e}`);
+        }
+      }
+      await sleep(300);
+    }
+    throw new Error('KDV blob 60sn içinde yakalanamadı (ne form intercept ne rapor_takip)');
   }
 
   async function fetchLucaIsletmeGelirGiderExcel(job, log, mode) {
@@ -2849,6 +2897,28 @@
         return origOpen.apply(this, arguments);
       };
       proto.send = function (body) {
+        // rapor_takip.jq response listener — durum=150 + rapor_id → global'e yaz
+        try {
+          const url = this.__morenUrl || '';
+          if (/rapor_takip\.jq/i.test(url)) {
+            this.addEventListener('load', function () {
+              try {
+                const resp = JSON.parse(this.responseText || '{}');
+                if ((resp.durum === 150 || resp.durum === '150') && (resp.rapor_id || resp.raporId)) {
+                  window.__morenRaporHazir = {
+                    rapor_id: resp.rapor_id || resp.raporId,
+                    response: resp,
+                    url: url,
+                    timestamp: Date.now(),
+                  };
+                  if (Array.isArray(window.__morenLogs)) {
+                    window.__morenLogs.push(`[RAPOR-HAZIR] rapor_id=${resp.rapor_id || resp.raporId}`);
+                  }
+                }
+              } catch (e) {}
+            });
+          }
+        } catch (e) {}
         try {
           const url = this.__morenUrl || '';
           const ov = window.__lucaJobOverrides;
@@ -2922,6 +2992,27 @@
       w.fetch = async function (input, init) {
         try {
           const url = typeof input === 'string' ? input : (input && input.url) || '';
+          // rapor_takip.jq response listener
+          if (/rapor_takip\.jq/i.test(url)) {
+            const res = await origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
+            try {
+              const cloned = res.clone();
+              const text = await cloned.text();
+              const resp = JSON.parse(text || '{}');
+              if ((resp.durum === 150 || resp.durum === '150') && (resp.rapor_id || resp.raporId)) {
+                window.__morenRaporHazir = {
+                  rapor_id: resp.rapor_id || resp.raporId,
+                  response: resp,
+                  url: url,
+                  timestamp: Date.now(),
+                };
+                if (Array.isArray(window.__morenLogs)) {
+                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] rapor_id=${resp.rapor_id || resp.raporId}`);
+                }
+              }
+            } catch (e) {}
+            return res;
+          }
           const ov = window.__lucaJobOverrides;
           const isJasper = /jasper\.jq/i.test(url);
           if (ov && isJasper && init && typeof init.body === 'string') {
