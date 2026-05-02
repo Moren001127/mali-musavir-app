@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.63.0';
+          const AGENT_VER = '1.64.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -969,30 +969,76 @@
         await log(`✅ Blob (form intercept) alındı (${Math.round(b.size / 1024)} KB)`);
         return b;
       }
-      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch (session-based, takipBody ile)
+      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch
+      // ÜÇ varyant deniyoruz: JSON, form-encoded, GET — hangisi blob dönerse onu al
       if (window.__morenRaporHazir && window.__morenRaporHazir.durum === 150) {
         const rh = window.__morenRaporHazir;
         window.__morenRaporHazir = null;
-        await log(`📥 rapor hazır (durum=150) — agent rapor_indir.jq fetch'i atıyor`);
+        await log(`📥 rapor hazır — agent 3 varyant deniyor (JSON/form-encoded/GET)`);
+        const indirUrl = rh.takipUrl.replace(/rapor_takip\.jq/i, 'rapor_indir.jq');
+
+        // takipBody'yi parse et (params değerlerini extract için)
+        let donemId = '', raporTur = '';
         try {
-          const indirUrl = rh.takipUrl.replace(/rapor_takip\.jq/i, 'rapor_indir.jq');
-          await log(`🚀 POST ${indirUrl.split('/').pop().slice(0, 50)} (body=${(rh.takipBody || '').slice(0, 100)})`);
-          const res = await frm3win.fetch(indirUrl, {
-            method: 'POST',
-            credentials: 'include',
-            body: rh.takipBody || JSON.stringify({}),
-            headers: { 'Content-Type': 'application/json' },
-          });
-          if (res.ok) {
-            const blob = await res.blob();
-            await log(`✅ Excel agent fetch ile alındı (${Math.round(blob.size / 1024)} KB, ct=${res.headers.get('content-type')})`);
-            return blob;
-          } else {
-            await log(`⚠ rapor_indir HTTP ${res.status} — beklemeye devam`);
+          const parsed = JSON.parse(rh.takipBody || '{}');
+          donemId = parsed.donem_id || '';
+          raporTur = parsed.params?.raporTur || '';
+        } catch {}
+
+        const tryFetch = async (label, opts) => {
+          try {
+            const res = await frm3win.fetch(indirUrl, opts);
+            const ct = res.headers.get('content-type') || '';
+            if (res.ok) {
+              const blob = await res.blob();
+              await log(`📦 ${label}: ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)}`);
+              if (blob.size > 1000 && /xlsx|spreadsheet|excel|octet-stream/i.test(ct)) {
+                return blob;
+              }
+              if (blob.size > 1000 && !/json/i.test(ct)) {
+                return blob;
+              }
+            } else {
+              await log(`⚠ ${label}: HTTP ${res.status}`);
+            }
+          } catch (e) {
+            await log(`⚠ ${label} hata: ${e?.message || e}`);
           }
-        } catch (e) {
-          await log(`⚠ rapor_indir fetch hatası: ${e?.message || e}`);
-        }
+          return null;
+        };
+
+        // Varyant 1: form-encoded (Mizan tarzı)
+        const formParams = new URLSearchParams();
+        if (donemId) formParams.set('donem_id', donemId);
+        if (raporTur) formParams.set('raporTur', raporTur);
+        formParams.set('dosya_tipi', 'xlsx');
+        const blob1 = await tryFetch('form-encoded', {
+          method: 'POST',
+          credentials: 'include',
+          body: formParams.toString(),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        });
+        if (blob1) return blob1;
+
+        // Varyant 2: JSON (orijinal takipBody)
+        const blob2 = await tryFetch('JSON', {
+          method: 'POST',
+          credentials: 'include',
+          body: rh.takipBody || '{}',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (blob2) return blob2;
+
+        // Varyant 3: GET
+        const getUrl = indirUrl + (indirUrl.includes('?') ? '&' : '?') +
+          `donem_id=${donemId}&raporTur=${raporTur}&dosya_tipi=xlsx`;
+        const blob3 = await tryFetch('GET', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (blob3) return blob3;
+
+        await log(`⚠ 3 varyant da blob dönmedi — form intercept beklemeye devam`);
       }
       await sleep(300);
     }
