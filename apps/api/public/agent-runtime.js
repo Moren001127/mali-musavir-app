@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.67.0';
+          const AGENT_VER = '1.68.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -2981,6 +2981,15 @@
         return origOpen.apply(this, arguments);
       };
       proto.send = function (body) {
+        // DEBUG: __lucaJobOverrides aktifken TÜM XHR URL'lerini log'la
+        try {
+          if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
+            const url = this.__morenUrl || '';
+            if (!/rapor_takip|jasper/i.test(url)) {
+              window.__morenLogs.push(`[XHR-OTHER] ${this.__morenMethod || '?'} ${url.slice(0, 120)}`);
+            }
+          }
+        } catch {}
         // rapor_takip.jq response listener — durum=150 + rapor_id → global'e yaz
         try {
           const url = this.__morenUrl || '';
@@ -3082,6 +3091,15 @@
       w.__morenFetchHookInstalled = true;
       const origFetch = w.fetch;
       w.fetch = async function (input, init) {
+        // DEBUG: __lucaJobOverrides aktifken TÜM fetch URL'lerini log'la
+        try {
+          const dbgUrl = typeof input === 'string' ? input : (input && input.url) || '';
+          if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
+            if (!/rapor_takip|jasper/i.test(dbgUrl)) {
+              window.__morenLogs.push(`[FETCH-OTHER] ${dbgUrl.slice(0, 120)}`);
+            }
+          }
+        } catch {}
         try {
           const url = typeof input === 'string' ? input : (input && input.url) || '';
           // rapor_takip.jq response listener
@@ -3223,7 +3241,94 @@
         }
       } catch (e) {}
 
-      // 3) iframe.src setter intercept — yeni iframe URL'si dosya olabilir
+      // 3.5) window.location.href / document.location.href setter intercept
+      try {
+        const captureLocationDownload = (url) => {
+          try {
+            if (url && window.__lucaJobOverrides && /rapor_indir|excel|xlsx|indir|download|jasper|raporKebir/i.test(url)) {
+              if (Array.isArray(window.__morenLogs)) {
+                window.__morenLogs.push(`[NATIVE-LOC-SET] ${String(url).slice(0, 120)}`);
+              }
+              w.fetch(url, { credentials: 'include' })
+                .then(r => r.blob())
+                .then(blob => {
+                  if (blob.size > 1000) {
+                    window.__morenCapturedBlob = blob;
+                    if (Array.isArray(window.__morenLogs)) {
+                      window.__morenLogs.push(`[NATIVE-LOC-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
+                    }
+                  }
+                })
+                .catch(() => {});
+            }
+          } catch {}
+        };
+        // window.location.assign + window.location.replace intercept
+        const origAssign = w.location.assign;
+        const origReplace = w.location.replace;
+        w.location.assign = function (url) {
+          captureLocationDownload(url);
+          return origAssign.apply(this, arguments);
+        };
+        w.location.replace = function (url) {
+          captureLocationDownload(url);
+          return origReplace.apply(this, arguments);
+        };
+      } catch (e) {}
+
+      // 3.6) MutationObserver — DOM'a yeni eklenen <a href> elementlerini izle
+      try {
+        if (w.MutationObserver && w.document) {
+          const observer = new w.MutationObserver((mutations) => {
+            try {
+              if (!window.__lucaJobOverrides) return;
+              for (const m of mutations) {
+                for (const n of (m.addedNodes || [])) {
+                  if (!n.tagName) continue;
+                  // Yeni eklenen <a> veya çocuğunda <a> var mı
+                  const anchors = n.tagName === 'A' ? [n] :
+                    (n.querySelectorAll ? [...n.querySelectorAll('a[href]')] : []);
+                  for (const a of anchors) {
+                    const href = a.href || '';
+                    if (/rapor_indir|excel|xlsx|indir|download|jasper|raporKebir/i.test(href)) {
+                      if (Array.isArray(window.__morenLogs)) {
+                        window.__morenLogs.push(`[NATIVE-DOM-A] href=${href.slice(0, 120)}`);
+                      }
+                      w.fetch(href, { credentials: 'include' })
+                        .then(r => r.blob())
+                        .then(blob => {
+                          if (blob.size > 1000) {
+                            window.__morenCapturedBlob = blob;
+                            if (Array.isArray(window.__morenLogs)) {
+                              window.__morenLogs.push(`[NATIVE-DOM-A-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
+                            }
+                          }
+                        })
+                        .catch(() => {});
+                    }
+                  }
+                  // Yeni form'lar — submit'e bağlanırsa
+                  const forms = n.tagName === 'FORM' ? [n] :
+                    (n.querySelectorAll ? [...n.querySelectorAll('form')] : []);
+                  for (const f of forms) {
+                    if (f.action && /rapor_indir|jasper|raporKebir/i.test(f.action)) {
+                      if (Array.isArray(window.__morenLogs)) {
+                        window.__morenLogs.push(`[NATIVE-DOM-FORM] action=${f.action.slice(0, 100)}`);
+                      }
+                    }
+                  }
+                }
+              }
+            } catch {}
+          });
+          observer.observe(w.document.documentElement || w.document.body, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      } catch (e) {}
+
+      // 4) iframe.src setter intercept — yeni iframe URL'si dosya olabilir
       try {
         const HTMLIFrameElementProto = w.HTMLIFrameElement && w.HTMLIFrameElement.prototype;
         if (HTMLIFrameElementProto) {
