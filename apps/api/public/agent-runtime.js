@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.53.0';
+          const AGENT_VER = '1.54.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -919,35 +919,11 @@
     setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
     setInput('input[name="HESAPKODU_SON"]', hesapKodu);
 
-    // 7. Rapor Türü = Excel (xlsx) — frm3 doc'da visible select#report_type (6 opt)
-    const reportSel = frm3doc.querySelector('select#report_type, select[name="report_type"]');
-    if (reportSel) {
-      // Excel option arama — gevşek pattern (xlsx parantezi olmasa da yakala)
-      let xlsxOpt = null;
-      // Önce "Excel (xlsx)" net match, sonra "Excel" başlangıç match (Liste hariç)
-      for (const opt of reportSel.options) {
-        const t = (opt.text || '').toLowerCase().trim();
-        if (/excel\s*\(xlsx\)/.test(t) && !/liste/.test(t)) { xlsxOpt = opt; break; }
-      }
-      if (!xlsxOpt) {
-        for (const opt of reportSel.options) {
-          const t = (opt.text || '').toLowerCase().trim();
-          const v = (opt.value || '').toLowerCase().trim();
-          if (/^excel/.test(t) && !/liste/.test(t)) { xlsxOpt = opt; break; }
-          if (v === 'xlsx' || /xlsx/.test(v)) { xlsxOpt = opt; break; }
-        }
-      }
-      if (xlsxOpt) {
-        const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLSelectElement.prototype, 'value').set;
-        setter.call(reportSel, xlsxOpt.value);
-        reportSel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü: ${xlsxOpt.text} (value=${xlsxOpt.value})`);
-      } else {
-        // Diagnostic: tüm option'ları log'a düşür
-        const allOpts = [...reportSel.options].map(o => `"${o.text}"=${o.value}`).join(' | ');
-        await log(`⚠ Rapor Türü Excel option bulunamadı. Mevcut: ${allOpts}`);
-      }
-    }
+    // 7. Rapor Türü = Excel (xlsx) — setRaporTuruExcel kullan (3 katmanlı arama,
+    // frm3 doc'unun TÜMÜNDE PDF+Word+Excel içeren select'i bulur, sadece form
+    // içine bakmaz). Bu fonksiyon REPORT_TYPE (3 opt) gibi yanıltıcı isimleri
+    // atlayıp gerçek Rapor Türü 6-opt'lu select'i bulur.
+    await setRaporTuruExcel(form, log);
 
     // 8. KRİTİK: frm3 window'a XHR hook kur (Luca jasper.jq'yu frm3'ten atıyor)
     installXhrHook(frm3win);
