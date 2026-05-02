@@ -549,137 +549,12 @@ export default function MizanPage() {
               {hesaplar.length}
             </span>
           </h3>
-          <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.025)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  {['Hesap Kodu', 'Hesap Adı', 'Borç', 'Alacak', 'Borç Bakiye', 'Alacak Bakiye'].map((label, i) => (
-                    <th
-                      key={label}
-                      className={`px-4 py-3 text-[10.5px] font-bold uppercase tracking-[.08em] ${i >= 2 ? 'text-right' : ''}`}
-                      style={{
-                        color: 'rgba(250,250,249,0.45)',
-                        borderRight: i < 5 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                      }}
-                    >
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {hesaplar.map((h: any, idx: number) => {
-                  // Seviyeye göre stil hiyerarşisi:
-                  //   0 = Grup (1, 10, 15)               → en koyu zemin, en parlak/kalın yazı
-                  //   1 = Ana Hesap (100, 120, 153)      → biraz koyu zemin, kalın yazı
-                  //   2 = Kırılım (100.01, 153.01)      → hafif zemin, normal yazı
-                  //   3 = Alt Kırılım (153.01.001)       → zeminsiz, soluk yazı
-                  const lvl = Number(h.seviye ?? 0);
-                  const rowBg =
-                    lvl === 0 ? 'rgba(184,160,111,0.06)' :
-                    lvl === 1 ? 'rgba(255,255,255,0.025)' :
-                    lvl === 2 ? 'rgba(255,255,255,0.012)' :
-                    'transparent';
-                  const codeColor =
-                    lvl === 0 ? GOLD :
-                    lvl === 1 ? GOLD :
-                    lvl === 2 ? 'rgba(184,160,111,0.75)' :
-                    'rgba(184,160,111,0.55)';
-                  const codeWeight = lvl <= 1 ? 700 : lvl === 2 ? 500 : 400;
-                  const adiColor =
-                    lvl === 0 ? '#fafaf9' :
-                    lvl === 1 ? 'rgba(250,250,249,0.92)' :
-                    lvl === 2 ? 'rgba(250,250,249,0.7)' :
-                    'rgba(250,250,249,0.55)';
-                  const adiWeight = lvl === 0 ? 700 : lvl === 1 ? 600 : lvl === 2 ? 500 : 400;
-                  const numColor = (val: any, hasColor: string) =>
-                    Number(val) > 0
-                      ? lvl <= 1 ? hasColor : lvl === 2 ? hasColor : `${hasColor}cc`
-                      : 'rgba(250,250,249,0.25)';
-                  const numWeight = lvl <= 1 ? 600 : lvl === 2 ? 500 : 400;
-                  const fontSize = lvl === 0 ? '13px' : lvl === 1 ? '12.5px' : '12px';
-                  const cellBorder = '1px solid rgba(255,255,255,0.04)';
-
-                  return (
-                    <tr
-                      key={h.id}
-                      style={{
-                        background: rowBg,
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
-                      }}
-                    >
-                      <td
-                        className="px-4 py-2 font-mono"
-                        style={{
-                          color: codeColor,
-                          fontWeight: codeWeight,
-                          fontSize,
-                          paddingLeft: `${16 + lvl * 18}px`,
-                          borderRight: cellBorder,
-                        }}
-                      >
-                        {h.hesapKodu}
-                      </td>
-                      <td
-                        className="px-4 py-2"
-                        style={{
-                          color: adiColor,
-                          fontWeight: adiWeight,
-                          fontSize: lvl === 0 ? '13px' : '12.5px',
-                          borderRight: cellBorder,
-                        }}
-                      >
-                        {h.hesapAdi}
-                      </td>
-                      <td
-                        className="px-4 py-2 text-right font-mono"
-                        style={{
-                          color: numColor(h.borcToplami, '#fafaf9'),
-                          fontWeight: numWeight,
-                          fontSize,
-                          borderRight: cellBorder,
-                        }}
-                      >
-                        {Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '—'}
-                      </td>
-                      <td
-                        className="px-4 py-2 text-right font-mono"
-                        style={{
-                          color: numColor(h.alacakToplami, '#fafaf9'),
-                          fontWeight: numWeight,
-                          fontSize,
-                          borderRight: cellBorder,
-                        }}
-                      >
-                        {Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '—'}
-                      </td>
-                      <td
-                        className="px-4 py-2 text-right font-mono"
-                        style={{
-                          color: numColor(h.borcBakiye, '#22c55e'),
-                          fontWeight: numWeight,
-                          fontSize,
-                          borderRight: cellBorder,
-                        }}
-                      >
-                        {Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '—'}
-                      </td>
-                      <td
-                        className="px-4 py-2 text-right font-mono"
-                        style={{
-                          color: numColor(h.alacakBakiye, '#22c55e'),
-                          fontWeight: numWeight,
-                          fontSize,
-                        }}
-                      >
-                        {Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <MizanTable
+            hesaplar={hesaplar}
+            mukellefAdi={selectedTp ? taxpayerName(selectedTp) : (mizan?.taxpayer ? taxpayerName(mizan.taxpayer) : '—')}
+            donem={mizan?.donem || toDonem(year, month, donemTipi)}
+            donemTipi={mizan?.donemTipi || donemTipi}
+          />
         </div>
       )}
 
@@ -809,4 +684,226 @@ function toDonem(year: number, month: string, donemTipi: string): string {
     return `${year}-Q${q}`;
   }
   return `${year}-${month}`;
+}
+
+// Dönem string'inden tarih aralığı (görüntü için)
+function donemToDateRange(donem: string, donemTipi: string): { baslangic: string; bitis: string } {
+  const m = donem.match(/^(\d{4})-(.+)$/);
+  if (!m) return { baslangic: '', bitis: '' };
+  const year = +m[1];
+  const part = m[2];
+  if (donemTipi === 'YILLIK' || part === 'YILLIK') {
+    return { baslangic: `01/01/${year}`, bitis: `31/12/${year}` };
+  }
+  if (part.startsWith('Q')) {
+    const q = +part.slice(1);
+    const start = (q - 1) * 3;
+    const end = q * 3;
+    const lastDays = [31, 31, 30, 31];
+    return { baslangic: `01/${String(start + 1).padStart(2, '0')}/${year}`, bitis: `${lastDays[q - 1]}/${String(end).padStart(2, '0')}/${year}` };
+  }
+  // AYLIK: "2026-03"
+  const month = +part;
+  const last = new Date(year, month, 0).getDate();
+  return { baslangic: `01/${String(month).padStart(2, '0')}/${year}`, bitis: `${last}/${String(month).padStart(2, '0')}/${year}` };
+}
+
+// ===========================================================================
+// MizanTable — Excel benzeri görsel hiyerarşi + klavye navigasyonu
+// ===========================================================================
+function MizanTable({
+  hesaplar,
+  mukellefAdi,
+  donem,
+  donemTipi,
+}: {
+  hesaplar: any[];
+  mukellefAdi: string;
+  donem: string;
+  donemTipi: string;
+}) {
+  const dateRange = donemToDateRange(donem, donemTipi);
+  const [focusCell, setFocusCell] = useState<{ row: number; col: number } | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const COLS = 6;
+  const ROWS = hesaplar.length;
+
+  // Klavye navigasyonu (Excel-like)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!focusCell) return;
+      const target = e.target as HTMLElement;
+      // Input içindeyken atla
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+      let { row, col } = focusCell;
+      let consumed = false;
+
+      if (e.key === 'ArrowDown') { row = Math.min(ROWS - 1, row + 1); consumed = true; }
+      else if (e.key === 'ArrowUp') { row = Math.max(0, row - 1); consumed = true; }
+      else if (e.key === 'ArrowRight' || e.key === 'Tab' && !e.shiftKey) {
+        col = col + 1;
+        if (col >= COLS) { col = 0; row = Math.min(ROWS - 1, row + 1); }
+        consumed = true;
+      }
+      else if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
+        col = col - 1;
+        if (col < 0) { col = COLS - 1; row = Math.max(0, row - 1); }
+        consumed = true;
+      }
+      else if (e.key === 'Home') { col = 0; consumed = true; }
+      else if (e.key === 'End') { col = COLS - 1; consumed = true; }
+      else if (e.key === 'PageDown') { row = Math.min(ROWS - 1, row + 10); consumed = true; }
+      else if (e.key === 'PageUp') { row = Math.max(0, row - 10); consumed = true; }
+      else if (e.key === 'Escape') { setFocusCell(null); consumed = true; }
+
+      if (consumed) {
+        e.preventDefault();
+        if (e.key !== 'Escape') {
+          setFocusCell({ row, col });
+          // Focus edilen hücreyi görünür yap
+          const cellEl = tableRef.current?.querySelector(`[data-cell="${row}-${col}"]`) as HTMLElement;
+          if (cellEl) cellEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [focusCell, ROWS]);
+
+  return (
+    <div ref={tableRef} className="rounded-xl overflow-hidden" style={{
+      background: '#0f0d0b',
+      border: '1px solid rgba(255,255,255,0.12)',
+    }}>
+      {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
+      <div style={{
+        background: 'rgba(184,160,111,0.04)',
+        borderBottom: '1px solid rgba(255,255,255,0.10)',
+        padding: '14px 24px',
+      }}>
+        <div className="text-center" style={{
+          fontSize: 16,
+          fontWeight: 700,
+          letterSpacing: '0.15em',
+          color: GOLD,
+          marginBottom: 6,
+        }}>MİZAN</div>
+        <div className="text-center" style={{
+          fontSize: 14,
+          fontWeight: 600,
+          color: '#fafaf9',
+          marginBottom: 10,
+        }}>{mukellefAdi}</div>
+        <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+          <div><span style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem :</span> <span style={{ color: '#fafaf9', fontWeight: 600 }}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
+          <div><span style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih Aralığı :</span> <span style={{ color: '#fafaf9', fontWeight: 600 }}>{dateRange.baslangic}-{dateRange.bitis}</span></div>
+        </div>
+      </div>
+
+      {/* === TABLO === */}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'rgba(184,160,111,0.07)' }}>
+              {['HESAP KODU', 'HESAP ADI', 'BORÇ', 'ALACAK', 'BORÇ BAKİYESİ', 'ALACAK BAKİYESİ'].map((label, i) => (
+                <th
+                  key={label}
+                  className={`px-3 py-2.5 text-[11px] font-bold tracking-[.04em] ${i >= 2 ? 'text-right' : 'text-left'}`}
+                  style={{
+                    color: 'rgba(250,250,249,0.85)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'rgba(184,160,111,0.10)',
+                  }}
+                >
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {hesaplar.map((h: any, rowIdx: number) => {
+              // Seviyeye göre stil:
+              //   0 = Grup (1, 10, 15)               → kalın yazı, en parlak
+              //   1 = Ana Hesap (100, 120, 153)      → yarı kalın, parlak
+              //   2 = Kırılım (153.01)               → orta kalınlık, hafif soluk
+              //   3+ = Alt Kırılım (153.01.001)      → normal yazı, daha soluk
+              const lvl = Number(h.seviye ?? 0);
+              const isGroup = lvl === 0;
+              const isMain = lvl === 1;
+
+              const codeWeight = lvl === 0 ? 700 : lvl === 1 ? 700 : lvl === 2 ? 600 : 500;
+              const adiWeight = lvl === 0 ? 700 : lvl === 1 ? 700 : lvl === 2 ? 600 : 400;
+              const numWeight = lvl <= 1 ? 700 : lvl === 2 ? 600 : 500;
+              const fontSize = lvl === 0 ? 13 : lvl === 1 ? 12.5 : 12;
+
+              // Renkler — koyu temalı ama kontrastlı
+              const codeColor = lvl <= 1 ? GOLD : lvl === 2 ? 'rgba(184,160,111,0.85)' : 'rgba(184,160,111,0.65)';
+              const adiColor = lvl === 0 ? '#fafaf9' : lvl === 1 ? '#fafaf9' : lvl === 2 ? 'rgba(250,250,249,0.85)' : 'rgba(250,250,249,0.65)';
+              const numColor = (val: any, hasColor: string = '#fafaf9') => Number(val) > 0
+                ? (lvl <= 1 ? hasColor : lvl === 2 ? 'rgba(250,250,249,0.92)' : 'rgba(250,250,249,0.7)')
+                : 'rgba(250,250,249,0.2)';
+
+              // Satır arka planı — seviye bazlı + zebra
+              const rowBg = isGroup ? 'rgba(184,160,111,0.05)'
+                : isMain ? 'rgba(255,255,255,0.025)'
+                : (rowIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.008)');
+
+              const cellBorder = '1px solid rgba(255,255,255,0.08)';
+              const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; weight: number; color: string }> = [
+                { val: h.hesapKodu, align: 'left', weight: codeWeight, color: codeColor },
+                { val: h.hesapAdi, align: 'left', weight: adiWeight, color: adiColor },
+                { val: Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '', align: 'right', weight: numWeight, color: numColor(h.borcToplami) },
+                { val: Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '', align: 'right', weight: numWeight, color: numColor(h.alacakToplami) },
+                { val: Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '', align: 'right', weight: numWeight, color: numColor(h.borcBakiye, '#22c55e') },
+                { val: Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '', align: 'right', weight: numWeight, color: numColor(h.alacakBakiye, '#22c55e') },
+              ];
+
+              return (
+                <tr key={h.id} style={{ background: rowBg }}>
+                  {cells.map((c, colIdx) => {
+                    const focused = focusCell?.row === rowIdx && focusCell?.col === colIdx;
+                    return (
+                      <td
+                        key={colIdx}
+                        data-cell={`${rowIdx}-${colIdx}`}
+                        tabIndex={0}
+                        onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
+                        onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
+                        className={`px-3 py-1.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                        style={{
+                          border: cellBorder,
+                          fontSize: fontSize,
+                          color: c.color,
+                          fontWeight: c.weight,
+                          cursor: 'cell',
+                          outline: focused ? `2px solid ${GOLD}` : 'none',
+                          outlineOffset: focused ? '-2px' : '0',
+                          background: focused ? 'rgba(184,160,111,0.10)' : undefined,
+                          whiteSpace: 'nowrap',
+                          userSelect: 'text',
+                        }}
+                      >
+                        {c.val}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer ipucu */}
+      <div className="px-4 py-2 text-[10.5px]" style={{
+        background: 'rgba(255,255,255,0.02)',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        color: 'rgba(250,250,249,0.45)',
+      }}>
+        💡 Hücreye tıkla → ok tuşları, Tab, Home/End ile gez. Esc seçimi kaldırır.
+      </div>
+    </div>
+  );
 }
