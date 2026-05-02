@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.65.0';
+          const AGENT_VER = '1.67.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -925,7 +925,8 @@
     // 10. XHR + fetch hook frm3'e (Luca jasper.jq POST'unu yakalamak için)
     installXhrHook(frm3win);
     installFetchHook(frm3win);
-    await log(`🔗 frm3 XHR+fetch hook kuruldu`);
+    installNativeDownloadHook(frm3win);
+    await log(`🔗 frm3 XHR+fetch+native-download hook kuruldu`);
 
     // 11. __lucaJobOverrides — XHR hook body inject etsin
     window.__lucaJobOverrides = {
@@ -936,8 +937,15 @@
       REPORT_TYPE: 'xlsx',
     };
 
-    // 12. UZUN BEKLEME — Luca state'i sindirsin (Excel select'i değişti, validation tamamlansın)
+    // 12. UZUN BEKLEME — Luca state'i sindirsin
     await sleep(2000);
+
+    // 12.5. Hook'ları yeniden kur (form yüklenirken yeni frame oluşmuş olabilir)
+    installXhrHookOnAllFrames();
+    installXhrHook(frm3win);
+    installFetchHook(frm3win);
+    installNativeDownloadHook(frm3win);
+    await log(`🔗 Rapor öncesi hook'lar yeniden kuruldu`);
 
     // 13. Rapor butonu — GERÇEK USER CLICK simülasyonu (gonder() DEĞİL)
     // gonder() Luca'nın iç state'inden okuyor; gerçek click form input.value'ları
@@ -3144,12 +3152,123 @@
     } catch (e) { return false; }
   }
 
+    // ─────────────────────────────────────────────────────────────────────
+  // NATIVE DOWNLOAD HOOK — Luca rapor_indir sonrası dosyayı window.open()
+  // veya <a download href=URL> ile veriyor olabilir. Bu URL'yi yakalayıp
+  // bizim fetch'imizle blob alıp __morenCapturedBlob'a yazıyoruz.
+  function installNativeDownloadHook(targetWin) {
+    try {
+      const w = targetWin || window;
+      if (!w || w.__morenNativeDlInstalled) return false;
+      w.__morenNativeDlInstalled = true;
+
+      // 1) window.open intercept — Luca yeni tab/window ile dosya açabilir
+      const origOpen = w.open;
+      w.open = function (url, ...rest) {
+        try {
+          if (url && typeof url === 'string' && window.__lucaJobOverrides) {
+            if (Array.isArray(window.__morenLogs)) {
+              window.__morenLogs.push(`[NATIVE-OPEN] ${url.slice(0, 120)}`);
+            }
+            // URL Luca dosya indirme'ye benziyorsa fetch et
+            if (/rapor_indir|rapor_dosya|excel|xlsx|indir|download/i.test(url)) {
+              w.fetch(url, { credentials: 'include' })
+                .then(r => r.blob())
+                .then(blob => {
+                  if (blob.size > 1000) {
+                    window.__morenCapturedBlob = blob;
+                    if (Array.isArray(window.__morenLogs)) {
+                      window.__morenLogs.push(`[NATIVE-OPEN-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
+                    }
+                  }
+                })
+                .catch(() => {});
+              // Luca'nın native window.open'ını engelleme — bizim fetch paralel
+            }
+          }
+        } catch (e) {}
+        return origOpen.apply(this, [url, ...rest]);
+      };
+
+      // 2) <a download> click intercept — addEventListener capture
+      try {
+        const doc = w.document;
+        if (doc) {
+          doc.addEventListener('click', function (ev) {
+            try {
+              const a = ev.target && ev.target.closest && ev.target.closest('a[href]');
+              if (a && window.__lucaJobOverrides) {
+                const href = a.href;
+                const hasDownload = a.hasAttribute('download');
+                if (hasDownload || /rapor_indir|excel|xlsx|indir/i.test(href)) {
+                  if (Array.isArray(window.__morenLogs)) {
+                    window.__morenLogs.push(`[NATIVE-A-CLICK] href=${href.slice(0, 120)} download=${hasDownload}`);
+                  }
+                  // Paralel fetch
+                  w.fetch(href, { credentials: 'include' })
+                    .then(r => r.blob())
+                    .then(blob => {
+                      if (blob.size > 1000) {
+                        window.__morenCapturedBlob = blob;
+                        if (Array.isArray(window.__morenLogs)) {
+                          window.__morenLogs.push(`[NATIVE-A-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
+                        }
+                      }
+                    })
+                    .catch(() => {});
+                }
+              }
+            } catch (e) {}
+          }, true);
+        }
+      } catch (e) {}
+
+      // 3) iframe.src setter intercept — yeni iframe URL'si dosya olabilir
+      try {
+        const HTMLIFrameElementProto = w.HTMLIFrameElement && w.HTMLIFrameElement.prototype;
+        if (HTMLIFrameElementProto) {
+          const origSrcDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElementProto, 'src');
+          if (origSrcDesc && origSrcDesc.set) {
+            Object.defineProperty(HTMLIFrameElementProto, 'src', {
+              get: origSrcDesc.get,
+              set: function (url) {
+                try {
+                  if (url && window.__lucaJobOverrides && /rapor_indir|excel|xlsx|indir/i.test(url)) {
+                    if (Array.isArray(window.__morenLogs)) {
+                      window.__morenLogs.push(`[NATIVE-IFRAME-SRC] ${url.slice(0, 120)}`);
+                    }
+                    w.fetch(url, { credentials: 'include' })
+                      .then(r => r.blob())
+                      .then(blob => {
+                        if (blob.size > 1000) {
+                          window.__morenCapturedBlob = blob;
+                          if (Array.isArray(window.__morenLogs)) {
+                            window.__morenLogs.push(`[NATIVE-IFRAME-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
+                          }
+                        }
+                      })
+                      .catch(() => {});
+                  }
+                } catch (e) {}
+                return origSrcDesc.set.call(this, url);
+              },
+              configurable: true,
+            });
+          }
+        }
+      } catch (e) {}
+
+      return true;
+    } catch (e) { return false; }
+  }
+
     // Tüm frame'lere XHR hook kur (recursive). Yeni yüklenen frame'ler için
   // periyodik tarama da yapıyoruz (Luca frm3'ü dinamik yüklüyor).
   function installXhrHookOnAllFrames() {
     let count = 0;
     if (installXhrHook(window)) count++;
     if (installFetchHook(window)) count++;
+    if (installNativeDownloadHook(window)) count++;
     const collect = (root, depth = 0) => {
       if (depth > 5) return;
       try {
@@ -3158,6 +3277,7 @@
             if (f.contentWindow) {
               if (installXhrHook(f.contentWindow)) count++;
               if (installFetchHook(f.contentWindow)) count++;
+              if (installNativeDownloadHook(f.contentWindow)) count++;
             }
             if (f.contentDocument) collect(f.contentDocument, depth + 1);
           } catch {}
@@ -3173,7 +3293,7 @@
   // Periyodik — yeni frame'ler yüklendikçe (her 2sn'de yeniden tara)
   setInterval(() => {
     try { installXhrHookOnAllFrames(); } catch {}
-  }, 2000);
+  }, 500);
   try { console.log('[Moren] XHR hook kuruldu (multi-frame)'); } catch {}
 
 
