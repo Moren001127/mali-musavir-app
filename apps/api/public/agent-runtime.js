@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.62.0';
+          const AGENT_VER = '1.63.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -969,19 +969,18 @@
         await log(`✅ Blob (form intercept) alındı (${Math.round(b.size / 1024)} KB)`);
         return b;
       }
-      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch
-      if (window.__morenRaporHazir && window.__morenRaporHazir.rapor_id) {
+      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch (session-based, takipBody ile)
+      if (window.__morenRaporHazir && window.__morenRaporHazir.durum === 150) {
         const rh = window.__morenRaporHazir;
         window.__morenRaporHazir = null;
-        await log(`📥 rapor hazır (id=${rh.rapor_id}) — kendi fetch ile rapor_indir çağırıyoruz`);
+        await log(`📥 rapor hazır (durum=150) — agent rapor_indir.jq fetch'i atıyor`);
         try {
-          // rapor_indir.jq URL'sini rapor_takip URL'sinden türet
-          const baseUrl = rh.url.replace(/[^/]+$/, '');
-          const indirUrl = baseUrl + 'rapor_indir.jq?rapor_id=' + rh.rapor_id + '&time=' + Date.now();
+          const indirUrl = rh.takipUrl.replace(/rapor_takip\.jq/i, 'rapor_indir.jq');
+          await log(`🚀 POST ${indirUrl.split('/').pop().slice(0, 50)} (body=${(rh.takipBody || '').slice(0, 100)})`);
           const res = await frm3win.fetch(indirUrl, {
             method: 'POST',
             credentials: 'include',
-            body: JSON.stringify({ rapor_id: rh.rapor_id }),
+            body: rh.takipBody || JSON.stringify({}),
             headers: { 'Content-Type': 'application/json' },
           });
           if (res.ok) {
@@ -989,7 +988,7 @@
             await log(`✅ Excel agent fetch ile alındı (${Math.round(blob.size / 1024)} KB, ct=${res.headers.get('content-type')})`);
             return blob;
           } else {
-            await log(`⚠ rapor_indir HTTP ${res.status} — alternatif metoda geç`);
+            await log(`⚠ rapor_indir HTTP ${res.status} — beklemeye devam`);
           }
         } catch (e) {
           await log(`⚠ rapor_indir fetch hatası: ${e?.message || e}`);
@@ -2901,34 +2900,26 @@
         try {
           const url = this.__morenUrl || '';
           if (/rapor_takip\.jq/i.test(url)) {
+            // Rapor_takip request body'sini sakla (rapor_indir aynı body ile çağrılacak)
+            const takipBody = body;
             this.addEventListener('load', function () {
               try {
                 const respText = this.responseText || '{}';
                 const resp = JSON.parse(respText);
-                // DEBUG: Her rapor_takip response'unun TAM içeriğini log'a düşür
                 if (Array.isArray(window.__morenLogs)) {
-                  const preview = respText.length > 400 ? respText.slice(0, 400) + '...' : respText;
-                  window.__morenLogs.push(`[RAPOR-TAKIP-RESP] durum=${resp.durum} keys=[${Object.keys(resp).join(',')}] body=${preview}`);
+                  const preview = respText.length > 300 ? respText.slice(0, 300) + '...' : respText;
+                  window.__morenLogs.push(`[RAPOR-TAKIP-RESP] durum=${resp.durum} body=${preview}`);
                 }
-                // Geniş kapsamlı rapor_id alma — birçok olası field adı
-                const raporId = resp.rapor_id || resp.raporId || resp.id || resp.raporIslemId
-                  || resp.report_id || resp.process_id || resp.processId
-                  || resp.raporGetir?.id || resp.data?.rapor_id || resp.data?.id;
-                if ((resp.durum === 150 || resp.durum === '150') && raporId) {
+                if (resp.durum === 150 || resp.durum === '150') {
                   window.__morenRaporHazir = {
-                    rapor_id: raporId,
+                    durum: 150,
+                    takipUrl: url,
+                    takipBody: takipBody,  // KRİTİK: rapor_indir aynı body ile çağrılacak
                     response: resp,
-                    url: url,
                     timestamp: Date.now(),
                   };
                   if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[RAPOR-HAZIR] rapor_id=${raporId}`);
-                  }
-                }
-                // Eğer durum=150 ama rapor_id bulunamadıysa, response'u tam olarak göster
-                if ((resp.durum === 150 || resp.durum === '150') && !raporId) {
-                  if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[RAPOR-150-NO-ID] response=${JSON.stringify(resp)}`);
+                    window.__morenLogs.push(`[RAPOR-HAZIR] durum=150 (session-based, rapor_indir aynı body ile)`);
                   }
                 }
               } catch (e) {}
@@ -3010,32 +3001,26 @@
           const url = typeof input === 'string' ? input : (input && input.url) || '';
           // rapor_takip.jq response listener
           if (/rapor_takip\.jq/i.test(url)) {
+            const takipBody = init && typeof init.body === 'string' ? init.body : null;
             const res = await origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
             try {
               const cloned = res.clone();
               const text = await cloned.text();
               const resp = JSON.parse(text || '{}');
               if (Array.isArray(window.__morenLogs)) {
-                const preview = text.length > 400 ? text.slice(0, 400) + '...' : text;
-                window.__morenLogs.push(`[FETCH-RAPOR-TAKIP-RESP] durum=${resp.durum} keys=[${Object.keys(resp).join(',')}] body=${preview}`);
+                const preview = text.length > 300 ? text.slice(0, 300) + '...' : text;
+                window.__morenLogs.push(`[FETCH-RAPOR-TAKIP-RESP] durum=${resp.durum} body=${preview}`);
               }
-              const raporId = resp.rapor_id || resp.raporId || resp.id || resp.raporIslemId
-                || resp.report_id || resp.process_id || resp.processId
-                || resp.raporGetir?.id || resp.data?.rapor_id || resp.data?.id;
-              if ((resp.durum === 150 || resp.durum === '150') && raporId) {
+              if (resp.durum === 150 || resp.durum === '150') {
                 window.__morenRaporHazir = {
-                  rapor_id: raporId,
+                  durum: 150,
+                  takipUrl: url,
+                  takipBody: takipBody,
                   response: resp,
-                  url: url,
                   timestamp: Date.now(),
                 };
                 if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] rapor_id=${raporId}`);
-                }
-              }
-              if ((resp.durum === 150 || resp.durum === '150') && !raporId) {
-                if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[FETCH-RAPOR-150-NO-ID] response=${JSON.stringify(resp)}`);
+                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] durum=150 session-based`);
                 }
               }
             } catch (e) {}
