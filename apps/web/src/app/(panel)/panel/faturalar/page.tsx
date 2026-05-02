@@ -296,13 +296,21 @@ ${isPdf
     if (forceRefresh) {
       if (!confirm(`${donem} dönemindeki ${label} faturaları silinip yeniden indirilecek. Emin misiniz?`)) return;
     }
-    fetchMut.mutate({
-      mukellefId: selectedTaxpayer.id,
-      mukellefMihsapId: selectedTaxpayer.mihsapId,
-      donem,
-      faturaTuru,
-      forceRefresh,
-    });
+    console.log('[Faturalar] mutate ÇAĞIRILIYOR | isPending=', fetchMut.isPending, 'isError=', fetchMut.isError);
+    fetchMut.mutate(
+      {
+        mukellefId: selectedTaxpayer.id,
+        mukellefMihsapId: selectedTaxpayer.mihsapId,
+        donem,
+        faturaTuru,
+        forceRefresh,
+      },
+      {
+        onSuccess: (data: any) => console.log('[Faturalar] mutate SUCCESS:', data),
+        onError: (e: any) => console.error('[Faturalar] mutate ERROR:', e?.response?.status, e?.response?.data, e?.message),
+      },
+    );
+    console.log('[Faturalar] mutate çağrıldı (sync sonrası)');
   };
 
   const activeJob = jobs.find((j) => j.status === 'running' || j.status === 'pending');
