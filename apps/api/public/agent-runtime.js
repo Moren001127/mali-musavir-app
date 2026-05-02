@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.52.0';
+          const AGENT_VER = '1.53.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -922,22 +922,38 @@
     // 7. Rapor Türü = Excel (xlsx) — frm3 doc'da visible select#report_type (6 opt)
     const reportSel = frm3doc.querySelector('select#report_type, select[name="report_type"]');
     if (reportSel) {
+      // Excel option arama — gevşek pattern (xlsx parantezi olmasa da yakala)
       let xlsxOpt = null;
+      // Önce "Excel (xlsx)" net match, sonra "Excel" başlangıç match (Liste hariç)
       for (const opt of reportSel.options) {
-        const t = (opt.text || '').toLowerCase();
+        const t = (opt.text || '').toLowerCase().trim();
         if (/excel\s*\(xlsx\)/.test(t) && !/liste/.test(t)) { xlsxOpt = opt; break; }
+      }
+      if (!xlsxOpt) {
+        for (const opt of reportSel.options) {
+          const t = (opt.text || '').toLowerCase().trim();
+          const v = (opt.value || '').toLowerCase().trim();
+          if (/^excel/.test(t) && !/liste/.test(t)) { xlsxOpt = opt; break; }
+          if (v === 'xlsx' || /xlsx/.test(v)) { xlsxOpt = opt; break; }
+        }
       }
       if (xlsxOpt) {
         const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLSelectElement.prototype, 'value').set;
         setter.call(reportSel, xlsxOpt.value);
         reportSel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü: Excel (xlsx)`);
+        await log(`📑 Rapor Türü: ${xlsxOpt.text} (value=${xlsxOpt.value})`);
       } else {
-        await log(`⚠ Rapor Türü Excel option bulunamadı`);
+        // Diagnostic: tüm option'ları log'a düşür
+        const allOpts = [...reportSel.options].map(o => `"${o.text}"=${o.value}`).join(' | ');
+        await log(`⚠ Rapor Türü Excel option bulunamadı. Mevcut: ${allOpts}`);
       }
     }
 
-    // 8. KRİTİK: window.__lucaJobOverrides — XHR hook bunu jasper.jq POST'larına inject ediyor
+    // 8. KRİTİK: frm3 window'a XHR hook kur (Luca jasper.jq'yu frm3'ten atıyor)
+    installXhrHook(frm3win);
+    await log(`🔗 frm3 XHR hook kuruldu`);
+
+    // 9. window.__lucaJobOverrides — XHR hook bunu jasper.jq POST'larına inject ediyor
     // Luca formsubmit input.value'lardan toplamasa bile bizim parametrelerimiz body'ye girer
     window.__lucaJobOverrides = {
       TARIH_ILK,
@@ -2864,40 +2880,74 @@
 
   // ─────────────────────────────────────────────────────────────────────
   // XHR HOOK — jasper.jq POST'larına window.__lucaJobOverrides body inject
-  // KDV/İşletme akışında HESAPKODU_ILK/SON, TARIH_ILK/SON server'a gerçekten
-  // gitsin diye Luca'nın kendi XHR'ini intercept ediyoruz. Mizan etkilenmez
-  // çünkü __lucaJobOverrides sadece KDV akışı sırasında set edilir.
-  (function installXhrHook() {
-    if (window.__morenXhrHookInstalled) return;
-    window.__morenXhrHookInstalled = true;
-    const origOpen = XMLHttpRequest.prototype.open;
-    const origSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.open = function (method, url) {
-      this.__morenUrl = url;
-      this.__morenMethod = method;
-      return origOpen.apply(this, arguments);
-    };
-    XMLHttpRequest.prototype.send = function (body) {
+  // ÖNEMLI: Luca jasper.jq'yu frm3.contentWindow'dan atıyor; her frame'in
+  // KENDI XMLHttpRequest objesi var. Top window'a hook kurmak yetmiyor —
+  // her frame'e ayrı ayrı kurmamız lazım. installXhrHook(targetWindow)
+  // helper'ı bunu idempotent şekilde yapar (zaten kurulmuşsa atla).
+  function installXhrHook(targetWin) {
+    try {
+      const w = targetWin || window;
+      if (!w || !w.XMLHttpRequest || w.__morenXhrHookInstalled) return false;
+      w.__morenXhrHookInstalled = true;
+      const proto = w.XMLHttpRequest.prototype;
+      const origOpen = proto.open;
+      const origSend = proto.send;
+      proto.open = function (method, url) {
+        this.__morenUrl = url;
+        this.__morenMethod = method;
+        return origOpen.apply(this, arguments);
+      };
+      proto.send = function (body) {
+        try {
+          const url = this.__morenUrl || '';
+          // __lucaJobOverrides her zaman TOP window'da (agent setliyor)
+          const ov = window.__lucaJobOverrides;
+          if (ov && typeof body === 'string' && /jasper\.jq|raporKebir|raporIslem|raporMuavin|raporIndir|rapor_takip|rapor_indir/i.test(url)) {
+            const params = new URLSearchParams(body);
+            for (const [k, v] of Object.entries(ov)) {
+              params.set(k, String(v));
+            }
+            body = params.toString();
+            if (Array.isArray(window.__morenLogs)) {
+              window.__morenLogs.push(`[XHR-INJECT] ${url.split('/').pop().slice(0,40)} body=${body.slice(0, 200)}`);
+            }
+          }
+        } catch (e) {}
+        return origSend.call(this, body);
+      };
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Tüm frame'lere XHR hook kur (recursive). Yeni yüklenen frame'ler için
+  // periyodik tarama da yapıyoruz (Luca frm3'ü dinamik yüklüyor).
+  function installXhrHookOnAllFrames() {
+    let count = 0;
+    if (installXhrHook(window)) count++;
+    const collect = (root, depth = 0) => {
+      if (depth > 5) return;
       try {
-        const url = this.__morenUrl || '';
-        const ov = window.__lucaJobOverrides;
-        if (ov && typeof body === 'string' && /jasper\.jq|raporKebir|raporIslem|raporMuavin/i.test(url)) {
-          const params = new URLSearchParams(body);
-          for (const [k, v] of Object.entries(ov)) {
-            params.set(k, String(v));
-          }
-          body = params.toString();
-          // İlk 200 char log (debug için window.__morenLogs'a)
-          if (Array.isArray(window.__morenLogs)) {
-            window.__morenLogs.push(`[XHR-INJECT] ${url.split('/').pop().slice(0,30)} body=${body.slice(0, 200)}`);
-          }
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          try {
+            if (f.contentWindow && installXhrHook(f.contentWindow)) count++;
+            if (f.contentDocument) collect(f.contentDocument, depth + 1);
+          } catch {}
         }
-      } catch (e) {}
-      return origSend.call(this, body);
+      } catch {}
     };
-    // window.__morenLogs henüz init olmamış olabilir, ama job loop'ta init oluyor
-    try { console.log('[Moren] XHR hook kuruldu'); } catch {}
-  })();
+    collect(document);
+    return count;
+  }
+
+  // Top + ilk taramayı hemen yap
+  installXhrHookOnAllFrames();
+  // Periyodik — yeni frame'ler yüklendikçe (her 2sn'de yeniden tara)
+  setInterval(() => {
+    try { installXhrHookOnAllFrames(); } catch {}
+  }, 2000);
+  try { console.log('[Moren] XHR hook kuruldu (multi-frame)'); } catch {}
 
 
   async function api(path, opts = {}) {
