@@ -232,6 +232,27 @@ export default function GelirTablosuPage() {
   // qi (orijinal index 0..3) ile slot'a erişiyoruz, sadece render sırası ters
   const DISPLAY_ORDER = [3, 2, 1, 0] as const;
 
+  // Dönem başlık etiketleri — gelir tablosu, geçici vergi ve stok tablolarında ortak
+  const QUARTER_LABELS = [
+    { no: '1. DÖNEM', range: 'Ocak – Mart' },
+    { no: '2. DÖNEM', range: 'Nisan – Haziran' },
+    { no: '3. DÖNEM', range: 'Temmuz – Eylül' },
+    { no: '4. DÖNEM', range: 'Ekim – Aralık' },
+  ];
+
+  // Dönem başlık <th> render — 3 tabloda da aynı şekilde
+  const renderQuarterHeader = (qi: number) => {
+    const t = QUARTER_LABELS[qi];
+    return (
+      <>
+        <div style={{ fontSize: 13 }}>{year} · {t.no}</div>
+        <div className="font-normal mt-0.5" style={{ fontSize: 11, color: 'rgba(250,250,249,0.55)', fontFamily: 'Plus Jakarta Sans, sans-serif', letterSpacing: 0 }}>
+          {t.range}
+        </div>
+      </>
+    );
+  };
+
   const [selectedMizan, setSelectedMizan] = useState('');
 
   // Manuel düzeltme state — her çeyrek için ayrı düzenleme
@@ -530,7 +551,7 @@ export default function GelirTablosuPage() {
                         fontSize: 14,
                         padding: '12px 14px 6px',
                         background: locked ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
-                        borderLeft: '1px solid rgba(255,255,255,0.05)',
+                        borderLeft: '1px solid rgba(184,160,111,0.2)',
                         fontFamily: 'Fraunces, serif',
                         fontWeight: 600,
                         letterSpacing: '-0.01em',
@@ -573,11 +594,11 @@ export default function GelirTablosuPage() {
                   );
                 })}
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 80 }}>Kod</th>
+              <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.2)' }}>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kod</th>
                 <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
                 {DISPLAY_ORDER.map((qi) => (
-                  <th key={qi} className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>Tutar</th>
+                  <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>Tutar</th>
                 ))}
               </tr>
             </thead>
@@ -596,7 +617,7 @@ export default function GelirTablosuPage() {
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <td key={qi} className="px-3 py-2.5 text-right font-mono text-[14px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
+                          <td key={qi} className="px-3 py-2.5 text-center font-mono text-[14px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(184,160,111,0.12)' }}>
                             {hasData ? fmtTRY(v!) : '—'}
                           </td>
                         );
@@ -618,27 +639,30 @@ export default function GelirTablosuPage() {
                         const hasData = gt !== null;
                         if (!hasData) {
                           return (
-                            <td key={qi} style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}></td>
+                            <td key={qi} style={{ borderLeft: '1px solid rgba(184,160,111,0.12)' }}></td>
                           );
                         }
                         const draftVal = duzeltmelerDraft[gt.id]?.[row.manual!];
                         const savedVal = gt.duzeltmeler?.[row.manual!] as number | undefined;
                         const currentVal = draftVal !== undefined ? draftVal : (savedVal ?? 0);
                         const isLocked = gt.locked;
+                        // Türkçe formatla: 1000000 → "1.000.000,00"
+                        const displayVal = currentVal === 0 ? '' : currentVal.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         return (
-                          <td key={qi} className="px-2 py-1.5 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
+                          <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: '1px solid rgba(184,160,111,0.12)' }}>
                             <input
                               type="text"
-                              value={currentVal === 0 ? '' : currentVal.toString().replace('.', ',')}
+                              value={displayVal}
                               onChange={(e) => {
                                 if (isLocked) return;
-                                const raw = e.target.value.replace(/[^\d,.-]/g, '').replace(',', '.');
+                                // Önce nokta (binlik) sil, virgülü noktaya çevir, sonra parse et
+                                const raw = e.target.value.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
                                 const n = parseFloat(raw) || 0;
                                 setDuzeltme(gt.id, row.manual!, n);
                               }}
                               disabled={isLocked}
                               placeholder={isLocked ? 'Kilitli' : '0,00'}
-                              className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border disabled:opacity-50"
+                              className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border disabled:opacity-50"
                               style={{
                                 background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
                                 borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
@@ -695,27 +719,25 @@ export default function GelirTablosuPage() {
                       return (
                         <td
                           key={qi}
-                          className="px-3 py-2.5 text-right font-mono"
+                          className="px-3 py-2.5 text-center font-mono"
                           style={{
                             color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : row.final ? GOLD : row.total ? GOLD : '#fafaf9',
                             fontSize: row.final ? 18 : row.total ? 15 : 14,
                             fontWeight: row.final || row.total ? 700 : 500,
-                            borderLeft: '1px solid rgba(255,255,255,0.03)',
+                            borderLeft: '1px solid rgba(184,160,111,0.12)',
                             fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
-                            width: 160,
+                            position: 'relative',
                           }}
                         >
-                          <span className="inline-flex items-center justify-end gap-2">
-                            {hasData ? fmtTRY(v!) : '—'}
-                            {showOranBadge && (
-                              <span
-                                className="text-[11px] font-semibold px-1.5 py-[1px] rounded"
-                                style={{ background: 'rgba(96,165,250,0.10)', color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}
-                              >
-                                {pct(v!, netSatis)}
-                              </span>
-                            )}
-                          </span>
+                          {hasData ? fmtTRY(v!) : '—'}
+                          {showOranBadge && (
+                            <span
+                              className="text-[10.5px] font-semibold px-1.5 py-[1px] rounded"
+                              style={{ background: 'rgba(96,165,250,0.10)', color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600, position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)' }}
+                            >
+                              {pct(v!, netSatis)}
+                            </span>
+                          )}
                         </td>
                       );
                     })}
@@ -951,12 +973,33 @@ export default function GelirTablosuPage() {
                 <col style={{ width: 180 }} />
               </colgroup>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                {/* Üst başlık — gelir tablosundaki gibi: 2026 · X. DÖNEM + ay aralığı */}
+                <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.2)' }}>
+                  <th colSpan={2} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)' }}></th>
+                  {DISPLAY_ORDER.map((qi) => (
+                    <th
+                      key={qi}
+                      className="text-center"
+                      style={{
+                        color: GOLD,
+                        fontSize: 13,
+                        padding: '10px 14px',
+                        background: 'rgba(255,255,255,0.02)',
+                        borderLeft: '1px solid rgba(184,160,111,0.2)',
+                        fontFamily: 'Fraunces, serif',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {renderQuarterHeader(qi)}
+                    </th>
+                  ))}
+                </tr>
+                <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.18)' }}>
                   <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}></th>
                   <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
                   {DISPLAY_ORDER.map((qi) => (
-                    <th key={qi} className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-                      {quarterRangeLabel(year, qi + 1)}
+                    <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
+                      Tutar
                     </th>
                   ))}
                 </tr>
@@ -991,7 +1034,7 @@ export default function GelirTablosuPage() {
                       const isLocked = !!detail?.locked;
                       const isFirstQuarter = hasData && v.donemSirasi === 1 && row.key === 'oncekiDonemOdenen';
                       return (
-                        <td key={qi} className="px-3 py-2 text-right font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9'), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: '1px solid rgba(255,255,255,0.03)', fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
+                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9'), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: '1px solid rgba(184,160,111,0.12)', fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
                           {!hasData ? '—' : isManual && !isLocked ? (
                             isFirstQuarter ? (
                               <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
@@ -1001,7 +1044,7 @@ export default function GelirTablosuPage() {
                                 placeholder={val > 0 ? fmtTRY(val) : '0,00'}
                                 value={row.manual === 'gecmisYil' ? manuelState!.gecmisYil : manuelState!.oncekiOdenen}
                                 onChange={(e) => setManuel(detail.id, { [row.manual!]: e.target.value } as any)}
-                                className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border"
+                                className="w-full px-2 py-1 rounded text-[12px] font-mono text-center outline-none border"
                                 style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
                               />
                             )
@@ -1020,7 +1063,7 @@ export default function GelirTablosuPage() {
                     const hasData = !!detail?.geciciVergiHesabi;
                     const isLocked = !!detail?.locked;
                     return (
-                      <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
+                      <td key={qi} className="px-2 py-2 text-center" style={{ borderLeft: '1px solid rgba(184,160,111,0.12)' }}>
                         {hasData && !isLocked && (
                           <button
                             onClick={() => {
@@ -1080,12 +1123,33 @@ export default function GelirTablosuPage() {
                   <col style={{ width: 180 }} />
                 </colgroup>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  {/* Üst başlık — gelir tablosundaki gibi */}
+                  <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.2)' }}>
+                    <th colSpan={2} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)' }}></th>
+                    {DISPLAY_ORDER.map((qi) => (
+                      <th
+                        key={qi}
+                        className="text-center"
+                        style={{
+                          color: GOLD,
+                          fontSize: 13,
+                          padding: '10px 14px',
+                          background: 'rgba(255,255,255,0.02)',
+                          borderLeft: '1px solid rgba(184,160,111,0.2)',
+                          fontFamily: 'Fraunces, serif',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {renderQuarterHeader(qi)}
+                      </th>
+                    ))}
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid rgba(184,160,111,0.18)' }}>
                     <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kod</th>
                     <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Hesap Adı</th>
                     {DISPLAY_ORDER.map((qi) => (
-                      <th key={qi} className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-                        {quarterRangeLabel(year, qi + 1)}
+                      <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
+                        Tutar
                       </th>
                     ))}
                   </tr>
@@ -1098,7 +1162,7 @@ export default function GelirTablosuPage() {
                       {DISPLAY_ORDER.map((qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
-                          <td key={qi} className="px-3 py-2 text-right font-mono text-[14px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono text-[14px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(184,160,111,0.12)' }}>
                             {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                           </td>
                         );
@@ -1113,7 +1177,7 @@ export default function GelirTablosuPage() {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.toplamStok;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: GOLD, borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: GOLD, borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
                           {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
                         </td>
                       );
@@ -1127,7 +1191,7 @@ export default function GelirTablosuPage() {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.satisMaliyeti;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: '#f43f5e', borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: '#f43f5e', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
                           {d?.stokMaliyetOzet ? '−' + fmtTRY(Number(v)) : '—'}
                         </td>
                       );
@@ -1141,7 +1205,7 @@ export default function GelirTablosuPage() {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.kalanStok;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-right font-mono font-bold text-[14px]" style={{ color: '#22c55e', borderLeft: '1px solid rgba(255,255,255,0.03)' }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold text-[14px]" style={{ color: '#22c55e', borderLeft: '1px solid rgba(184,160,111,0.18)' }}>
                           {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
                         </td>
                       );
