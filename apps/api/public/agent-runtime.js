@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.73.0';
+          const AGENT_VER = '1.74.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1185,12 +1185,40 @@
     }
     await sleep(300);
 
-    // 7) "Sadece Gelir / Sadece Gider" radio seçimi YAPILMIYOR.
-    //    Luca default'ta hem gelirler hem giderler tek Excel'de gönderiyor.
-    //    Backend parser type'a göre doğru bölümü (İndirilecek/Hesaplanan K.D.V.) ayıklıyor.
-    //    Yanlış radio basmaktansa hiç basmamak daha güvenli.
-    await log(`ℹ Sadece Gelir/Gider radio'su seçilmiyor (default: her ikisi de) — backend parser ayıklayacak`);
-    await sleep(200);
+    // 7) "Gelir" / "Gider" CHECKBOX'ları — TR (table row) label-based bulma
+    //    Form yapısı: <tr><td>Gelir</td><td><input type=checkbox></td>...</tr>
+    //    mode='gelir' → Gelir=ON, Gider=OFF
+    //    mode='gider' → Gider=ON, Gelir=OFF
+    {
+      const isGelir = mode === 'gelir';
+      let gelirCb = null, giderCb = null;
+      const trs = [...form.querySelectorAll('tr')];
+      for (const tr of trs) {
+        const tds = [...tr.querySelectorAll('td')];
+        if (tds.length < 2) continue;
+        const labelText = (tds[0].textContent || '').trim().toLocaleLowerCase('tr-TR');
+        const cb = tr.querySelector('input[type=checkbox]');
+        if (!cb) continue;
+        if (labelText === 'gelir' && !gelirCb) gelirCb = cb;
+        else if (labelText === 'gider' && !giderCb) giderCb = cb;
+      }
+      const setCb = (cb, want) => {
+        if (!cb) return;
+        if (cb.checked !== want) {
+          cb.checked = want;
+          cb.dispatchEvent(new Event('input', { bubbles: true }));
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+          cb.dispatchEvent(new Event('click', { bubbles: true }));
+        }
+      };
+      setCb(gelirCb, isGelir);
+      setCb(giderCb, !isGelir);
+      await log(`☑ Checkbox: Gelir=${isGelir ? 'ON' : 'OFF'} (name=${gelirCb?.name || '?'}) | Gider=${!isGelir ? 'ON' : 'OFF'} (name=${giderCb?.name || '?'})`);
+      if (!gelirCb && !giderCb) {
+        await log(`⚠ Gelir/Gider checkbox bulunamadı — form'da TR-label eşleşmesi yok`);
+      }
+    }
+    await sleep(300);
 
     // 8) Rapor Türü Excel
     await setRaporTuruExcel(form, log);
