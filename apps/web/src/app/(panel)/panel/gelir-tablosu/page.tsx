@@ -718,8 +718,169 @@ export default function GelirTablosuPage() {
         </div>
       </div>
 
-      {/* GEÇİCİ VERGİ MATRAHI HESAPLAMA — 4 çeyrek sütun yapısı */}
-      {quarterDetails.some((qd) => qd?.data?.geciciVergiHesabi) && (
+      {/* HER DÖNEM İÇİN AYRI BLOK: Geçici Vergi Matrahı + Stok/SMM altında */}
+      {quarterDetails.some((qd) => qd?.data?.geciciVergiHesabi || qd?.data?.stokMaliyetOzet) &&
+        quarterDetails.map((qd, qi) => {
+          const detail = qd?.data as any;
+          if (!detail?.geciciVergiHesabi && !detail?.stokMaliyetOzet) return null;
+          const isLocked = !!detail?.locked;
+          const ms = detail?.id ? getManuel(detail.id) : { gecmisYil: '', oncekiOdenen: '' };
+          const v = detail?.geciciVergiHesabi as any;
+          const stokKodList = detail?.stokMaliyetOzet?.stokHesaplari || [];
+          const maliyetKodList = detail?.stokMaliyetOzet?.maliyetHesaplari || [];
+          const allKodlar = [...stokKodList, ...maliyetKodList];
+
+          return (
+            <div key={qi} className="space-y-5 pt-2" style={{ borderTop: qi > 0 ? '1px dashed rgba(184,160,111,0.15)' : 'none', paddingTop: qi > 0 ? 24 : 0 }}>
+              {/* Dönem başlığı */}
+              <div className="flex items-baseline gap-3">
+                <span className="w-1 h-7 rounded-sm" style={{ background: GOLD }} />
+                <h2 className="text-[20px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+                  {qi + 1}. Dönem
+                </h2>
+                <span className="text-[12px] font-medium px-2.5 py-[3px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                  {quarterRangeLabel(year, qi + 1)}
+                </span>
+                {isLocked && (
+                  <span className="text-[10px] font-bold px-2 py-[2px] rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>
+                    KESİN KAYIT
+                  </span>
+                )}
+              </div>
+
+              {/* Geçici Vergi Matrahı — tek sütun */}
+              {detail?.geciciVergiHesabi && (
+                <div>
+                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.9)' }}>
+                    <span className="w-[3px] h-3.5 rounded-sm" style={{ background: GOLD }} />
+                    Geçici Vergi Matrahı Hesaplama
+                  </h3>
+                  <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(184,160,111,0.2)' }}>
+                    <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <tbody>
+                        {[
+                          { key: 'kkeg', label: 'Kanunen Kabul Edilmeyen Gider' },
+                          { key: 'toplamKar', label: 'Toplam Kar', bold: true, color: GOLD },
+                          { key: 'gecmisYilZarari', label: 'Geçmiş Yıl Zararı', manual: 'gecmisYil' as const, negSign: true },
+                          { key: 'gecicVergiMatrahi', label: 'Geçici Vergi Matrahı', bold: true, color: '#22c55e', bg: 'rgba(34,197,94,0.04)' },
+                          { key: 'hesaplananGeciciVergi', label: 'Hesaplanan Geçici Vergi %25' },
+                          { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
+                          { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
+                        ].map((row: any, ri) => {
+                          const val = v[row.key] ?? 0;
+                          const isManual = !!row.manual;
+                          const isFirstQuarter = v.donemSirasi === 1 && row.key === 'oncekiDonemOdenen';
+                          return (
+                            <tr key={ri} style={{ borderTop: ri === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)', background: row.bg || 'transparent' }}>
+                              <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13 }}>
+                                <span className="inline-flex items-center gap-2">
+                                  {row.label}
+                                  {row.manual && (
+                                    <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>MANUEL</span>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9'), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 16 : 13, width: 220, fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
+                                {isManual && !isLocked ? (
+                                  isFirstQuarter ? (
+                                    <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk dönem)</span>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      placeholder={val > 0 ? fmtTRY(val) : '0,00'}
+                                      value={row.manual === 'gecmisYil' ? ms.gecmisYil : ms.oncekiOdenen}
+                                      onChange={(e) => setManuel(detail.id, { [row.manual!]: e.target.value } as any)}
+                                      className="w-full px-2 py-1 rounded text-[12px] font-mono text-right outline-none border"
+                                      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.25)', color: '#fafaf9' }}
+                                    />
+                                  )
+                                ) : val !== 0 ? (row.negSign ? '−' + fmtTRY(val) : fmtTRY(val)) : '0,00'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {!isLocked && (
+                          <tr style={{ borderTop: '1px dashed rgba(184,160,111,0.25)' }}>
+                            <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>Manuel değerleri kaydet</td>
+                            <td className="px-3 py-2 text-right" style={{ width: 220 }}>
+                              <button
+                                onClick={() => {
+                                  vergiDuzeltmeMut.mutate({
+                                    id: detail.id,
+                                    gecmisYilZarari: parseLocale(ms.gecmisYil),
+                                    oncekiDonemOdenenGeciciVergi: parseLocale(ms.oncekiOdenen),
+                                  });
+                                }}
+                                disabled={vergiDuzeltmeMut.isPending}
+                                className="px-3 py-1 rounded text-[11px] font-semibold transition-all"
+                                style={{ background: GOLD, color: '#0a0906' }}
+                              >
+                                {vergiDuzeltmeMut.isPending ? '…' : 'Kaydet'}
+                              </button>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Stok ve Satılan Malın Maliyeti — tek sütun */}
+              {detail?.stokMaliyetOzet && (
+                <div>
+                  <h3 className="text-[13px] font-semibold mb-2.5 flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.9)' }}>
+                    <span className="w-[3px] h-3.5 rounded-sm" style={{ background: GOLD }} />
+                    Stok ve Satılan Malın Maliyeti
+                  </h3>
+                  <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                    <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 90 }}>Kod</th>
+                          <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Hesap Adı</th>
+                          <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 220 }}>Bakiye</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allKodlar.map((h: any) => (
+                          <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                            <td className="px-3 py-2 font-mono text-[13px]" style={{ color: GOLD, fontWeight: 600 }}>{h.kod}</td>
+                            <td className="px-3 py-2 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)' }}>{h.hesapAdi || HESAP_ADLARI[h.kod] || '—'}</td>
+                            <td className="px-3 py-2 text-right font-mono text-[14px]" style={{ color: Number(h.bakiye) === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9' }}>
+                              {Number(h.bakiye) !== 0 ? fmtTRY(Number(h.bakiye)) : '0,00'}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr style={{ borderTop: '2px solid rgba(184,160,111,0.3)', background: 'rgba(184,160,111,0.04)' }}>
+                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={{ color: GOLD }}>Toplam Stok</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: GOLD }}>
+                            {fmtTRY(Number(detail.stokMaliyetOzet.toplamStok))}
+                          </td>
+                        </tr>
+                        <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
+                          <td colSpan={2} className="px-3 py-2.5 font-semibold" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: '#f43f5e' }}>
+                            {'−' + fmtTRY(Number(detail.stokMaliyetOzet.satisMaliyeti))}
+                          </td>
+                        </tr>
+                        <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
+                          <td colSpan={2} className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
+                          <td className="px-3 py-2.5 text-right font-mono font-bold text-[14px]" style={{ color: '#22c55e' }}>
+                            {fmtTRY(Number(detail.stokMaliyetOzet.kalanStok))}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+      {/* ─── KÖR (asla render olmayacak) eski 4-sütun blokları aşağıda ─── */}
+      {false && (
         <div>
           <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
             <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
@@ -837,8 +998,8 @@ export default function GelirTablosuPage() {
         </div>
       )}
 
-      {/* STOK VE SATILAN MALIN MALİYETİ — 4 çeyrek sütun yapısı */}
-      {quarterDetails.some((qd) => qd?.data?.stokMaliyetOzet) && (() => {
+      {/* STOK VE SATILAN MALIN MALİYETİ — KAPATILDI (yukarıdaki dönem-bazlı blokta var) */}
+      {false && (() => {
         const firstWithStok = quarterDetails.find((qd) => qd?.data?.stokMaliyetOzet)?.data as any;
         const stokKodList = firstWithStok?.stokMaliyetOzet?.stokHesaplari || [];
         const maliyetKodList = firstWithStok?.stokMaliyetOzet?.maliyetHesaplari || [];
