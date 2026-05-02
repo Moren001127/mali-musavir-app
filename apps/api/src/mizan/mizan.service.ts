@@ -460,6 +460,224 @@ export class MizanService {
       });
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // 5) SERMAYE KONTROLLERİ (500 / 501)
+    // ────────────────────────────────────────────────────────────────
+    // Mizan'ın bağlı olduğu mükellef bilgisini çek (kuruluş tarihi gerek)
+    // Schema'da Mizan-Taxpayer relation tanımlı değil — ayrı sorgu yap.
+    const mizanInfo = await (this.prisma as any).mizan.findUnique({ where: { id: mizanId } });
+    const taxpayer = mizanInfo?.taxpayerId
+      ? await (this.prisma as any).taxpayer.findUnique({ where: { id: mizanInfo.taxpayerId } })
+      : null;
+    const startDate: Date | null = taxpayer?.startDate ? new Date(taxpayer.startDate) : null;
+
+    // 500 — Sermaye hesabı (alacak bakiyesi olmalı, yani sermaye taahhüt edilmiş)
+    const sermayeHesap = hesaplar.find(
+      (h: any) => h.hesapKodu === '500' || h.hesapKodu.startsWith('500.') || (h as any).seviye === 0 && h.hesapKodu === '500',
+    );
+    const sermayeAna = hesaplar.find((h: any) => h.hesapKodu === '500');
+    const sermayeBakiye = sermayeAna
+      ? Number(sermayeAna.alacakBakiye || 0) + Number(sermayeAna.borcBakiye || 0)
+      : 0;
+    const sermayeHareket = sermayeAna
+      ? Number(sermayeAna.borcToplami || 0) + Number(sermayeAna.alacakToplami || 0)
+      : 0;
+    if (!sermayeAna || (sermayeBakiye === 0 && sermayeHareket === 0)) {
+      anomaliler.push({
+        hesapKodu: '500',
+        tip: 'SERMAYE_TAAHHUT_YOK',
+        seviye: 'ERROR',
+        mesaj: 'Sermaye taahhüdü girilmemiş — 500 "Sermaye" hesabında hareket/bakiye yok',
+        detay: { startDate: startDate?.toISOString() ?? null },
+      });
+    }
+
+    // 501 — Ödenmemiş Sermaye (borç bakiyesi olur, ödendiğinde kapanır)
+    const odenmemisSermaye = hesaplar.find((h: any) => h.hesapKodu === '501');
+    const odenmemisBorcBakiye = odenmemisSermaye ? Number(odenmemisSermaye.borcBakiye || 0) : 0;
+    if (odenmemisSermaye && odenmemisBorcBakiye > 0 && startDate) {
+      // Kuruluş tarihinden mizan dönemi sonuna kadar geçen ay sayısı
+      const donemBitis = this.donemBitisTarihi(mizanInfo!.donem, mizanInfo!.donemTipi);
+      const aySayisi = this.aralikAySayisi(startDate, donemBitis);
+      if (aySayisi >= 24) {
+        anomaliler.push({
+          hesapKodu: '501',
+          tip: 'SERMAYE_SURE_DOLDU',
+          seviye: 'ERROR',
+          mesaj: `Sermaye taahhüt süresi DOLDU (kuruluş ${startDate.toLocaleDateString('tr-TR')} → ${aySayisi} ay) — 501 "Ödenmemiş Sermaye" hâlâ ${this.fmt(odenmemisBorcBakiye)} bakiye veriyor. TTK 344 gereği 24 ay içinde ödenmesi zorunlu.`,
+          detay: { aySayisi, kalanBakiye: odenmemisBorcBakiye, startDate: startDate.toISOString() },
+        });
+      } else if (aySayisi >= 21) {
+        anomaliler.push({
+          hesapKodu: '501',
+          tip: 'SERMAYE_SURE_YAKLAŞIYOR',
+          seviye: 'WARN',
+          mesaj: `Sermaye taahhüt süresi YAKLAŞIYOR (kuruluş ${startDate.toLocaleDateString('tr-TR')} → ${aySayisi} ay, ${24 - aySayisi} ay kaldı) — 501 "Ödenmemiş Sermaye" ${this.fmt(odenmemisBorcBakiye)} bakiye veriyor.`,
+          detay: { aySayisi, kalanBakiye: odenmemisBorcBakiye, startDate: startDate.toISOString() },
+        });
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 6) KASA NEGATİF OLAMAZ (100)
+    // ────────────────────────────────────────────────────────────────
+    const kasa = hesaplar.find((h: any) => h.hesapKodu === '100');
+    if (kasa && Number(kasa.alacakBakiye || 0) > 0 && Number(kasa.borcBakiye || 0) === 0) {
+      anomaliler.push({
+        hesapKodu: '100',
+        tip: 'KASA_NEGATIF',
+        seviye: 'ERROR',
+        mesaj: `Kasa negatif olamaz — 100 "Kasa" alacak bakiye veriyor (${this.fmt(kasa.alacakBakiye)}). Eksik tahsilat veya hatalı kayıt olabilir.`,
+        detay: { alacakBakiye: kasa.alacakBakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 7) STOK NEGATİF OLAMAZ (15X)
+    // ────────────────────────────────────────────────────────────────
+    const stoklar = hesaplar.find((h: any) => h.hesapKodu === '153' || h.hesapKodu === '150' || h.hesapKodu === '152');
+    if (stoklar && Number(stoklar.alacakBakiye || 0) > 0 && Number(stoklar.borcBakiye || 0) === 0) {
+      anomaliler.push({
+        hesapKodu: stoklar.hesapKodu,
+        tip: 'STOK_NEGATIF',
+        seviye: 'ERROR',
+        mesaj: `Stok negatif olamaz — ${stoklar.hesapKodu} "${stoklar.hesapAdi}" alacak bakiye veriyor (${this.fmt(stoklar.alacakBakiye)}). Sayım kontrolü gerekli.`,
+        detay: { alacakBakiye: stoklar.alacakBakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 8) AMORTİSMAN TUTARLILIĞI (250-255 sabit kıymet ↔ 257 birikmiş amortisman)
+    // ────────────────────────────────────────────────────────────────
+    const sabitKiymetKodlari = ['250', '251', '252', '253', '254', '255'];
+    const sabitKiymetVar = sabitKiymetKodlari.some((k) =>
+      hesaplar.some((h: any) => h.hesapKodu === k && Number(h.borcBakiye || 0) > 0),
+    );
+    const birikmisAmortisman = hesaplar.find((h: any) => h.hesapKodu === '257');
+    const yilSonu = mizanInfo?.donemTipi === 'YILLIK' || (mizanInfo?.donem || '').endsWith('-12');
+    if (sabitKiymetVar && yilSonu && (!birikmisAmortisman || Number(birikmisAmortisman.alacakBakiye || 0) === 0)) {
+      anomaliler.push({
+        hesapKodu: '257',
+        tip: 'AMORTISMAN_AYRILMAMIS',
+        seviye: 'WARN',
+        mesaj: 'Sabit kıymet (250-255) hesabı var ama 257 "Birikmiş Amortisman" hesabında yıl sonu amortismanı görülmüyor — VUK gereği amortisman ayrılmalı.',
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 9) YIL SONU KAPANIŞ HESAPLARI (690/691/692) açık mı?
+    // ────────────────────────────────────────────────────────────────
+    if (yilSonu) {
+      for (const k of ['690', '691', '692']) {
+        const h = hesaplar.find((x: any) => x.hesapKodu === k);
+        if (h && (Number(h.borcBakiye || 0) > 0 || Number(h.alacakBakiye || 0) > 0)) {
+          anomaliler.push({
+            hesapKodu: k,
+            tip: 'KAPANIS_YAPILMAMIS',
+            seviye: 'WARN',
+            mesaj: `${k} "${h.hesapAdi}" yıl sonunda kapatılmalı — hâlâ bakiye veriyor.`,
+            detay: { borcBakiye: h.borcBakiye, alacakBakiye: h.alacakBakiye },
+          });
+        }
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 10) DÖNEM NET KÂRI (590) — geçmiş yıl kârlarına devredilmeli
+    // ────────────────────────────────────────────────────────────────
+    const donemKari = hesaplar.find((h: any) => h.hesapKodu === '590');
+    const donemKariBakiye = donemKari
+      ? Number(donemKari.alacakBakiye || 0) + Number(donemKari.borcBakiye || 0)
+      : 0;
+    if (donemKari && donemKariBakiye > 0) {
+      anomaliler.push({
+        hesapKodu: '590',
+        tip: 'DONEM_KARI_DEVREDILMEMIS',
+        seviye: 'WARN',
+        mesaj: `590 "Dönem Net Kârı" hesabında ${this.fmt(donemKariBakiye)} bakiye var — geçmiş yıl kârlarına (570) devredilmemiş.`,
+        detay: { borcBakiye: donemKari.borcBakiye, alacakBakiye: donemKari.alacakBakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 11) KURUMLAR VERGİSİ TAHAKKUKU (370 / 371)
+    // ────────────────────────────────────────────────────────────────
+    // 370 = Dönem Kârı Vergi ve Yasal Yükümlülük Karşılıkları (alacak bakiyeli)
+    // 371 = Dönem Kârının Peşin Ödenen Vergi ve Diğer Yükümlülükleri (borç bakiyeli)
+    const kv370 = hesaplar.find((h: any) => h.hesapKodu === '370');
+    const kv371 = hesaplar.find((h: any) => h.hesapKodu === '371');
+    const kv370Bakiye = kv370
+      ? Number(kv370.alacakBakiye || 0) + Number(kv370.borcBakiye || 0)
+      : 0;
+    const kv371Bakiye = kv371
+      ? Number(kv371.alacakBakiye || 0) + Number(kv371.borcBakiye || 0)
+      : 0;
+    if (kv370Bakiye > 0 || kv371Bakiye > 0) {
+      const detayParca: string[] = [];
+      if (kv370Bakiye > 0) detayParca.push(`370: ${this.fmt(kv370Bakiye)}`);
+      if (kv371Bakiye > 0) detayParca.push(`371: ${this.fmt(kv371Bakiye)}`);
+      anomaliler.push({
+        hesapKodu: kv370Bakiye > 0 ? '370' : '371',
+        tip: 'KURUMLAR_VERGISI_TAHAKKUKU',
+        seviye: 'WARN',
+        mesaj: `Kurumlar vergisi tahakkuku yapılmamış — 370/371 hesaplarında bakiye var (${detayParca.join(', ')}). Yıl sonu kapanışında bu hesaplar kapatılmalı.`,
+        detay: { kv370Bakiye, kv371Bakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 12) 191 İNDİRİLECEK KDV — bakiye varsa indirim yapılmamış
+    // ────────────────────────────────────────────────────────────────
+    // Ay sonu KDV beyanında 191 → 190'a devredilir veya 391 ile mahsup edilir.
+    // Hâlâ bakiye varsa indirim konusu yapılmamış demektir.
+    const kdv191Hesap = hesaplar.find((h: any) => h.hesapKodu === '191');
+    const kdv191Bakiye = kdv191Hesap
+      ? Number(kdv191Hesap.borcBakiye || 0) + Number(kdv191Hesap.alacakBakiye || 0)
+      : 0;
+    if (kdv191Hesap && kdv191Bakiye > 0) {
+      anomaliler.push({
+        hesapKodu: '191',
+        tip: 'KDV_INDIRIM_YAPILMAMIS',
+        seviye: 'WARN',
+        mesaj: `191 "İndirilecek KDV" hesabında ${this.fmt(kdv191Bakiye)} bakiye var — indirim konusu yapılmamış KDV olabilir, kontrol et.`,
+        detay: { borcBakiye: kdv191Hesap.borcBakiye, alacakBakiye: kdv191Hesap.alacakBakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 13) 391 HESAPLANAN KDV — bakiye varsa beyan tamamlanmamış
+    // ────────────────────────────────────────────────────────────────
+    const kdv391Hesap = hesaplar.find((h: any) => h.hesapKodu === '391');
+    const kdv391Bakiye = kdv391Hesap
+      ? Number(kdv391Hesap.alacakBakiye || 0) + Number(kdv391Hesap.borcBakiye || 0)
+      : 0;
+    if (kdv391Hesap && kdv391Bakiye > 0) {
+      anomaliler.push({
+        hesapKodu: '391',
+        tip: 'KDV_BEYAN_TAMAMLANMAMIS',
+        seviye: 'WARN',
+        mesaj: `391 "Hesaplanan KDV" hesabında ${this.fmt(kdv391Bakiye)} bakiye var — KDV beyanı/mahsup tamamlanmamış olabilir, kontrol et.`,
+        detay: { borcBakiye: kdv391Hesap.borcBakiye, alacakBakiye: kdv391Hesap.alacakBakiye },
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 14) MİZAN MATEMATİKSEL DENGE (Toplam Borç = Toplam Alacak)
+    // ────────────────────────────────────────────────────────────────
+    const grupHesaplar = hesaplar.filter((h: any) => h.seviye === 0);
+    const toplamBorc = grupHesaplar.reduce((acc: number, h: any) => acc + Number(h.borcToplami || 0), 0);
+    const toplamAlacak = grupHesaplar.reduce((acc: number, h: any) => acc + Number(h.alacakToplami || 0), 0);
+    const fark = Math.abs(toplamBorc - toplamAlacak);
+    if (fark > 0.5) {
+      anomaliler.push({
+        hesapKodu: null,
+        tip: 'MIZAN_DENGESIZ',
+        seviye: 'ERROR',
+        mesaj: `Mizan matematik denge uyumsuz — Toplam Borç (${this.fmt(toplamBorc)}) ≠ Toplam Alacak (${this.fmt(toplamAlacak)}), fark ${this.fmt(fark)}`,
+        detay: { toplamBorc, toplamAlacak, fark },
+      });
+    }
+
     if (anomaliler.length > 0) {
       await (this.prisma as any).mizanAnomali.createMany({
         data: anomaliler.map((a) => ({
@@ -474,6 +692,44 @@ export class MizanService {
     }
 
     return { count: anomaliler.length };
+  }
+
+  /** Sermaye / amortisman kontrolleri için yardımcılar */
+  private fmt(v: any): string {
+    const n = Number(v || 0);
+    return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Dönem string'inden ("2026-03", "2026-Q2", "2026-YILLIK") bitiş tarihi türet */
+  private donemBitisTarihi(donem: string, donemTipi?: string): Date {
+    if (!donem) return new Date();
+    if (donem.endsWith('-YILLIK') || donemTipi === 'YILLIK') {
+      const y = parseInt(donem.slice(0, 4), 10);
+      return new Date(Date.UTC(y, 11, 31, 23, 59, 59));
+    }
+    const qm = donem.match(/^(\d{4})-Q(\d)$/);
+    if (qm) {
+      const y = +qm[1];
+      const q = +qm[2];
+      const month = q * 3; // 3,6,9,12
+      return new Date(Date.UTC(y, month, 0, 23, 59, 59));
+    }
+    const am = donem.match(/^(\d{4})-(\d{2})$/);
+    if (am) {
+      const y = +am[1];
+      const m = +am[2];
+      return new Date(Date.UTC(y, m, 0, 23, 59, 59)); // ay sonu
+    }
+    return new Date();
+  }
+
+  /** İki tarih arasındaki tam ay sayısı (a < b varsayar) */
+  private aralikAySayisi(start: Date, end: Date): number {
+    const yDiff = end.getUTCFullYear() - start.getUTCFullYear();
+    const mDiff = end.getUTCMonth() - start.getUTCMonth();
+    let total = yDiff * 12 + mDiff;
+    if (end.getUTCDate() < start.getUTCDate()) total -= 1;
+    return Math.max(0, total);
   }
 
   /** 120/121 borç beklenir, 320/321 alacak beklenir... */
