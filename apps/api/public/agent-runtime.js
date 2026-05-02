@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.54.0';
+          const AGENT_VER = '1.55.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -867,20 +867,7 @@
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
       throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
     }
-
-    // ── KDV TAM AKIŞ — sıfırdan, Mizan'dan bağımsız ──
-    // Akış (manuel kullanıma birebir paralel):
-    //   1. Firma seç (lucaSlug ile)
-    //   2. Fiş Listesi sayfasına geç
-    //   3. Sağ menü "Defteri Kebir" (Tüm Yazıcılar) — 2. occurrence
-    //   4. Form yüklensin
-    //   5. Tarih (AYLIK, sadece seçili ay)
-    //   6. Hesap kodu (191 alış / 391 satış)
-    //   7. Rapor Türü = Excel (xlsx)
-    //   8. window.__lucaJobOverrides set — XHR hook hesap kodunu jasper.jq body'sine inject etsin
-    //   9. Luca gonder()/formsubmit() çağır — Luca kendi flow'unu yürütür
-    //  10. Form intercept rapor_indir.jq blob'unu yakalar
-    //  11. __lucaJobOverrides temizle
+    job = { ...job, donemTipi: 'AYLIK' };
 
     // 1-2. Firma + Fiş Listesi
     await ensureLucaFirma(job, log);
@@ -894,12 +881,13 @@
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
-    // 5. Tarih hesabı — AYLIK (sadece seçili ay, Q1/Q2/Q3/Q4 değil)
+    // 5. Form'un tam yüklenmesi için ekstra bekleme — UI elements lazy load
+    await sleep(800);
+
+    // 6. Tarih hesabı (AYLIK)
     const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
     const TARIH_SON = parseAylikDonemBitis(job.donem);
     if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
-    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
-    await log(`💼 Hesap kodu: ${hesapKodu}-${hesapKodu}`);
 
     // Helper — input'a native setter ile değer yaz + event'leri dispatch
     const setInput = (sel, value) => {
@@ -913,24 +901,26 @@
       return true;
     };
 
-    // 6. Form input'larına yaz
-    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
-    setInput('input[name="TARIH_SON"]', TARIH_SON);
+    // ── DOĞRU SIRA (manuel kullanıcı gibi) ──
+    // 7. ÖNCE Hesap Kodu (hesap planı state'i en kritik)
     setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
     setInput('input[name="HESAPKODU_SON"]', hesapKodu);
+    await log(`💼 Hesap kodu: ${hesapKodu}-${hesapKodu}`);
+    await sleep(400); // Luca onblur AJAX'i için
 
-    // 7. Rapor Türü = Excel (xlsx) — setRaporTuruExcel kullan (3 katmanlı arama,
-    // frm3 doc'unun TÜMÜNDE PDF+Word+Excel içeren select'i bulur, sadece form
-    // içine bakmaz). Bu fonksiyon REPORT_TYPE (3 opt) gibi yanıltıcı isimleri
-    // atlayıp gerçek Rapor Türü 6-opt'lu select'i bulur.
+    // 8. SONRA Tarih
+    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
+    setInput('input[name="TARIH_SON"]', TARIH_SON);
+    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
+    await sleep(400);
+
+    // 9. EN SON Rapor Türü = Excel (xlsx)
     await setRaporTuruExcel(form, log);
 
-    // 8. KRİTİK: frm3 window'a XHR hook kur (Luca jasper.jq'yu frm3'ten atıyor)
+    // 10. XHR hook frm3'e (Luca'nın jasper.jq POST'unu yakalamak için)
     installXhrHook(frm3win);
-    await log(`🔗 frm3 XHR hook kuruldu`);
 
-    // 9. window.__lucaJobOverrides — XHR hook bunu jasper.jq POST'larına inject ediyor
-    // Luca formsubmit input.value'lardan toplamasa bile bizim parametrelerimiz body'ye girer
+    // 11. __lucaJobOverrides — XHR hook body inject etsin
     window.__lucaJobOverrides = {
       TARIH_ILK,
       TARIH_SON,
@@ -938,42 +928,20 @@
       HESAPKODU_SON: hesapKodu,
       REPORT_TYPE: 'xlsx',
     };
-    await log(`🔧 __lucaJobOverrides set: ${Object.keys(window.__lucaJobOverrides).join(',')}`);
 
-    await sleep(500);
+    // 12. UZUN BEKLEME — Luca state'i sindirsin (Excel select'i değişti, validation tamamlansın)
+    await sleep(2000);
 
-    // 9. Luca'nın kendi flow'unu tetikle — gonder()/formsubmit() varsa onları,
-    // yoksa Rapor butonu fallback. XHR hook jasper.jq'yu intercept edip body'ye
-    // hesap kodumuzu enjekte edecek.
-    let triggered = false;
+    // 13. Rapor butonu — GERÇEK USER CLICK simülasyonu (gonder() DEĞİL)
+    // gonder() Luca'nın iç state'inden okuyor; gerçek click form input.value'ları
+    // submit body'sine alıyor. Manuel kullanıcı davranışıyla aynı.
+    await clickLucaRaporButton(form, log);
+
+    // 14. Blob yakala + cleanup
     try {
-      if (typeof frm3win.gonder === 'function') {
-        await log(`🚀 Luca gonder() çağrılıyor`);
-        frm3win.gonder();
-        triggered = true;
-      }
-    } catch (e) { await log(`⚠ gonder() hatası: ${e?.message || e}`); }
-    if (!triggered) {
-      try {
-        if (typeof frm3win.formsubmit === 'function') {
-          await log(`🚀 Luca formsubmit() çağrılıyor`);
-          frm3win.formsubmit(new frm3win.Event('submit'), 0);
-          triggered = true;
-        }
-      } catch (e) { await log(`⚠ formsubmit() hatası: ${e?.message || e}`); }
-    }
-    if (!triggered) {
-      await log(`ℹ️ Luca JS fonksiyonu yok, Rapor butonu fallback`);
-      await clickLucaRaporButton(form, log);
-    }
-
-    // 10-11. Blob yakala + override temizle
-    try {
-      const blob = await waitForCapturedBlob(log, 45000);
-      return blob;
+      return await waitForCapturedBlob(log, 45000);
     } finally {
       delete window.__lucaJobOverrides;
-      await log(`🧹 __lucaJobOverrides temizlendi`);
     }
   }
 
