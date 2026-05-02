@@ -12,7 +12,7 @@ import {
 
 const GOLD = '#d4b876';
 
-type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; };
+type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
