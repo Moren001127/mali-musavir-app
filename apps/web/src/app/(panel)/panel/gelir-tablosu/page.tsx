@@ -17,6 +17,31 @@ function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
 
+// Çeyrek aralığını "01-2026 → 03-2026" formatında döndürür
+function quarterRangeLabel(year: number, q: number): string {
+  const ranges: Record<number, [string, string]> = {
+    1: ['01', '03'],
+    2: ['04', '06'],
+    3: ['07', '09'],
+    4: ['10', '12'],
+  };
+  const [bas, bit] = ranges[q] || ['01', '03'];
+  return `${bas}-${year} → ${bit}-${year}`;
+}
+
+// TDHP standart hesap adları (stok ve maliyet hesapları için)
+const HESAP_ADLARI: Record<string, string> = {
+  '150': 'İlk Madde ve Malzeme',
+  '151': 'Yarı Mamuller — Üretim',
+  '152': 'Mamuller',
+  '153': 'Ticari Mallar',
+  '157': 'Diğer Stoklar',
+  '720': 'Direkt İlk Madde Malzeme Gideri',
+  '721': 'Direkt İlk Madde Malzeme Gid. Yansıtma (-)',
+  '730': 'Genel Üretim Giderleri',
+  '731': 'Genel Üretim Giderleri Yansıtma (-)',
+};
+
 /**
  * Gelir tablosu satır tipi.
  *  - `group`: toplama/başlık satırı (bold, koyu zemin)
@@ -507,12 +532,12 @@ export default function GelirTablosuPage() {
                 })}
               </tr>
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Kod</th>
-                <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Kalem</th>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 80 }}>Kod</th>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
                 {quarterSlots.map((gt, qi) => (
                   <React.Fragment key={qi}>
-                    <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>Tutar</th>
-                    <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Oran</th>
+                    <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>Tutar</th>
+                    <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Oran</th>
                   </React.Fragment>
                 ))}
               </tr>
@@ -523,8 +548,8 @@ export default function GelirTablosuPage() {
                 if (row.sub) {
                   return (
                     <tr key={idx} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="px-3 py-2.5 font-mono text-[11.5px]" style={{ color: GOLD, textAlign: 'right', width: 70, fontWeight: 600 }}>{row.sub}</td>
-                      <td className="px-3 py-2.5 text-[13px]" style={{ color: 'rgba(250,250,249,0.72)', paddingLeft: 32 }}>
+                      <td className="px-3 py-2.5 font-mono text-[13px]" style={{ color: GOLD, textAlign: 'left', width: 80, fontWeight: 600 }}>{row.sub}</td>
+                      <td className="px-3 py-2.5 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8 }}>
                         {row.subLabel}
                       </td>
                       {quarterSlots.map((gt, qi) => {
@@ -532,7 +557,7 @@ export default function GelirTablosuPage() {
                         const hasData = gt !== null;
                         return (
                           <React.Fragment key={qi}>
-                            <td className="px-3 py-2.5 text-right font-mono text-[13px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}>
+                            <td className="px-3 py-2.5 text-right font-mono text-[14px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}>
                               {hasData ? fmtTRY(v!) : '—'}
                             </td>
                             <td style={{ width: 80 }}></td>
@@ -547,8 +572,8 @@ export default function GelirTablosuPage() {
                 if (row.manual) {
                   return (
                     <tr key={idx} style={{ borderTop: '1px dashed rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.03)' }}>
-                      <td className="px-3 py-2.5 font-mono text-[11px]" style={{ color: '#60a5fa', textAlign: 'right', width: 70, fontWeight: 700 }}>Manuel</td>
-                      <td className="px-3 py-2.5 text-[12.5px] italic" style={{ color: '#60a5fa', paddingLeft: 32 }}>
+                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', width: 80, fontWeight: 700 }}>Manuel</td>
+                      <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8 }}>
                         {row.label}
                       </td>
                       {quarterSlots.map((gt, qi) => {
@@ -613,14 +638,14 @@ export default function GelirTablosuPage() {
                       borderBottom: row.total ? '1px solid rgba(184,160,111,0.15)' : undefined,
                     }}
                   >
-                    <td className="px-3 py-2.5 font-mono text-[11px]" style={{ color: 'rgba(250,250,249,0.4)', textAlign: 'right', width: 70 }}>{row.kod || ''}</td>
+                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', width: 80, fontWeight: 600 }}>{row.kod || ''}</td>
                     <td
                       className="px-3 py-2.5"
                       style={{
                         color: labelColor,
                         fontWeight: bold ? 700 : 400,
                         fontFamily: labelFont,
-                        fontSize: row.final ? 15 : row.total ? 13.5 : row.group ? 13.5 : 13,
+                        fontSize: row.final ? 16 : row.total ? 14.5 : row.group ? 14.5 : 14,
                         fontStyle: row.total && !row.final ? 'italic' : 'normal',
                         textTransform: row.total && !row.final ? 'uppercase' : 'none',
                         letterSpacing: row.total && !row.final ? '.04em' : '0',
@@ -639,7 +664,7 @@ export default function GelirTablosuPage() {
                             className="px-3 py-2.5 text-right font-mono"
                             style={{
                               color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : row.final ? GOLD : row.total ? GOLD : '#fafaf9',
-                              fontSize: row.final ? 17 : row.total ? 14 : 13,
+                              fontSize: row.final ? 18 : row.total ? 15 : 14,
                               fontWeight: row.final || row.total ? 700 : 500,
                               borderLeft: '1px solid rgba(255,255,255,0.03)',
                               fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
@@ -707,12 +732,12 @@ export default function GelirTablosuPage() {
             <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)', width: 70 }}></th>
-                  <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Kalem</th>
+                  <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 80 }}></th>
+                  <th className="px-3 py-2 text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kalem</th>
                   {quarterSlots.map((gt, qi) => (
                     <React.Fragment key={qi}>
-                      <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)', borderLeft: '1px solid rgba(255,255,255,0.05)', width: 130 }}>
-                        {(quarterDetails[qi]?.data as any)?.donem || gt?.donem || `Q${qi + 1}`}
+                      <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)', width: 160 }}>
+                        {quarterRangeLabel(year, qi + 1)}
                       </th>
                       <th style={{ width: 80 }}></th>
                     </React.Fragment>
@@ -837,12 +862,12 @@ export default function GelirTablosuPage() {
               <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)', width: 70 }}>Kod</th>
-                    <th className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hesap Adı</th>
+                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', width: 80 }}>Kod</th>
+                    <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)' }}>Hesap Adı</th>
                     {quarterSlots.map((gt, qi) => (
                       <React.Fragment key={qi}>
-                        <th className="px-3 py-2 text-right text-[10.5px] font-bold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.45)', borderLeft: '1px solid rgba(255,255,255,0.05)', width: 130 }}>
-                          {(quarterDetails[qi]?.data as any)?.donem || gt?.donem || `Q${qi + 1}`}
+                        <th className="px-3 py-2 text-right text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: 'rgba(250,250,249,0.55)', borderLeft: '1px solid rgba(255,255,255,0.05)', width: 160 }}>
+                          {quarterRangeLabel(year, qi + 1)}
                         </th>
                         <th style={{ width: 80 }}></th>
                       </React.Fragment>
@@ -852,13 +877,13 @@ export default function GelirTablosuPage() {
                 <tbody>
                   {allKodlar.map((baseH: any) => (
                     <tr key={baseH.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-                      <td className="px-3 py-2 font-mono text-[11.5px]" style={{ color: GOLD, textAlign: 'right', width: 70 }}>{baseH.kod}</td>
-                      <td className="px-3 py-2" style={{ color: 'rgba(250,250,249,0.7)' }}>{baseH.hesapAdi || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: GOLD, textAlign: 'left', width: 80, fontWeight: 600 }}>{baseH.kod}</td>
+                      <td className="px-3 py-2 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)' }}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
                       {quarterSlots.map((gt, qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
                           <React.Fragment key={qi}>
-                            <td className="px-3 py-2 text-right font-mono" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 130 }}>
+                            <td className="px-3 py-2 text-right font-mono text-[14px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9', borderLeft: '1px solid rgba(255,255,255,0.03)', width: 160 }}>
                               {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                             </td>
                             <td style={{ width: 80 }}></td>

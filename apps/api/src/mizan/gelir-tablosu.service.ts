@@ -194,9 +194,13 @@ export class GelirTablosuService {
     // Kalan Stok = Toplam Stok - Satılan Malın Maliyeti (satisMal.toplam)
     const kalanStok = toplamStok - satisMal.toplam;
 
-    // KKEG — 950 nazım hesabı varsa oradan, yoksa 689 (Diğer Olağandışı Gider)
+    // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
+    // Eğer 950 nazım hesabı kullanılıyorsa o öncelikli, yoksa 689
     const kkeg950 = tekHesap('950');
-    const kkeg = kkeg950.bakiye !== 0 ? kkeg950.bakiye : olDisiGider.toplam;
+    const kkeg689 = tekHesap('689');
+    const kkeg = kkeg950.bakiye !== 0
+      ? Math.abs(kkeg950.bakiye)
+      : Math.abs(kkeg689.bakiye);
 
     const detay = {
       brutSatis,
@@ -301,8 +305,13 @@ export class GelirTablosuService {
     const stokHesaplari = Array.isArray(detay.stokHesaplari) ? detay.stokHesaplari : [];
     const maliyetHesaplari = Array.isArray(detay.maliyetHesaplari) ? detay.maliyetHesaplari : [];
     const toplamStok = Number(detay.toplamStok || 0);
-    const satisMaliyeti = Number(gt.satisMaliyeti || 0);
-    const kalanStok = toplamStok - satisMaliyeti;
+    // Satılan Malın Maliyeti: kullanıcının gelir tablosunda manuel girdiği değer
+    // (duzeltmeler.satisMaliyetiManuel) varsa onu kullan, yoksa 621 bakiyesi.
+    // Eğer manuel girilmemişse 0 göster — çünkü 153 bakiyesi zaten maliyet düşülmüş halde geliyor.
+    const satisMaliyetiManuel = Number(duzeltmeler.satisMaliyetiManuel || 0);
+    const satisMaliyeti = satisMaliyetiManuel > 0 ? satisMaliyetiManuel : Number(gt.satisMaliyeti || 0);
+    // Kalan Stok = mizandaki 150-157 toplam bakiyesi (zaten net, maliyet düşülmüş)
+    const kalanStok = toplamStok;
     const kkeg = Number(detay.kkeg || 0);
 
     // ── GEÇİCİ VERGİ MATRAHI HESAPLAMASI ──────────────────────────────────
