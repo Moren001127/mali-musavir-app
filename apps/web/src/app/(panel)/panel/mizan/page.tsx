@@ -824,40 +824,32 @@ function MizanTable({
           </thead>
           <tbody>
             {hesaplar.map((h: any, rowIdx: number) => {
-              // Seviyeye göre stil:
-              //   0 = Grup (1, 10, 15)               → kalın yazı, en parlak
-              //   1 = Ana Hesap (100, 120, 153)      → yarı kalın, parlak
-              //   2 = Kırılım (153.01)               → orta kalınlık, hafif soluk
-              //   3+ = Alt Kırılım (153.01.001)      → normal yazı, daha soluk
+              // Sadeleştirilmiş hiyerarşi — 2 grup:
+              //   ÜST seviye (lvl 0-1: Grup ve Ana Hesap) → BOLD, hafif vurgulu zemin
+              //   ALT seviye (lvl 2+: kırılımlar)         → NORMAL, sade zemin
               const lvl = Number(h.seviye ?? 0);
-              const isGroup = lvl === 0;
-              const isMain = lvl === 1;
+              const isUpper = lvl <= 1; // Grup veya Ana Hesap
 
-              const codeWeight = lvl === 0 ? 700 : lvl === 1 ? 700 : lvl === 2 ? 600 : 500;
-              const adiWeight = lvl === 0 ? 700 : lvl === 1 ? 700 : lvl === 2 ? 600 : 400;
-              const numWeight = lvl <= 1 ? 700 : lvl === 2 ? 600 : 500;
-              const fontSize = lvl === 0 ? 13 : lvl === 1 ? 12.5 : 12;
+              const codeColor = GOLD;
+              const adiColor = '#fafaf9';
+              const numTextColor = '#fafaf9';
+              const numBakiyeColor = '#22c55e'; // Bakiye yeşil (tek vurgu)
+              const dimColor = 'rgba(250,250,249,0.25)';
 
-              // Renkler — koyu temalı ama kontrastlı
-              const codeColor = lvl <= 1 ? GOLD : lvl === 2 ? 'rgba(184,160,111,0.85)' : 'rgba(184,160,111,0.65)';
-              const adiColor = lvl === 0 ? '#fafaf9' : lvl === 1 ? '#fafaf9' : lvl === 2 ? 'rgba(250,250,249,0.85)' : 'rgba(250,250,249,0.65)';
-              const numColor = (val: any, hasColor: string = '#fafaf9') => Number(val) > 0
-                ? (lvl <= 1 ? hasColor : lvl === 2 ? 'rgba(250,250,249,0.92)' : 'rgba(250,250,249,0.7)')
-                : 'rgba(250,250,249,0.2)';
+              const weight = isUpper ? 700 : 400;
+              const fontSize = 12.5;
 
-              // Satır arka planı — seviye bazlı + zebra
-              const rowBg = isGroup ? 'rgba(184,160,111,0.05)'
-                : isMain ? 'rgba(255,255,255,0.025)'
-                : (rowIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.008)');
+              // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
+              const rowBg = isUpper ? 'rgba(255,255,255,0.025)' : 'transparent';
 
               const cellBorder = '1px solid rgba(255,255,255,0.08)';
-              const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; weight: number; color: string }> = [
-                { val: h.hesapKodu, align: 'left', weight: codeWeight, color: codeColor },
-                { val: h.hesapAdi, align: 'left', weight: adiWeight, color: adiColor },
-                { val: Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '', align: 'right', weight: numWeight, color: numColor(h.borcToplami) },
-                { val: Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '', align: 'right', weight: numWeight, color: numColor(h.alacakToplami) },
-                { val: Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '', align: 'right', weight: numWeight, color: numColor(h.borcBakiye, '#22c55e') },
-                { val: Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '', align: 'right', weight: numWeight, color: numColor(h.alacakBakiye, '#22c55e') },
+              const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; color: string }> = [
+                { val: h.hesapKodu, align: 'left', color: codeColor },
+                { val: h.hesapAdi, align: 'left', color: adiColor },
+                { val: Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '', align: 'right', color: Number(h.borcToplami) > 0 ? numTextColor : dimColor },
+                { val: Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '', align: 'right', color: Number(h.alacakToplami) > 0 ? numTextColor : dimColor },
+                { val: Number(h.borcBakiye) > 0 ? fmtTRY(h.borcBakiye) : '', align: 'right', color: Number(h.borcBakiye) > 0 ? numBakiyeColor : dimColor },
+                { val: Number(h.alacakBakiye) > 0 ? fmtTRY(h.alacakBakiye) : '', align: 'right', color: Number(h.alacakBakiye) > 0 ? numBakiyeColor : dimColor },
               ];
 
               return (
@@ -876,7 +868,7 @@ function MizanTable({
                           border: cellBorder,
                           fontSize: fontSize,
                           color: c.color,
-                          fontWeight: c.weight,
+                          fontWeight: weight,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',
