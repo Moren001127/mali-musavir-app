@@ -306,8 +306,14 @@ ${isPdf
         forceRefresh,
       },
       {
-        onSuccess: (data: any) => console.log('[Faturalar] mutate SUCCESS:', data),
-        onError: (e: any) => console.error('[Faturalar] mutate ERROR:', e?.response?.status, e?.response?.data, e?.message),
+        onSuccess: (data: any) => {
+          console.log('[Faturalar] mutate SUCCESS (raw):', JSON.stringify(data));
+          toast.success(`Mihsap çekme tamam: ${JSON.stringify(data).slice(0, 150)}`, { duration: 12000 });
+        },
+        onError: (e: any) => {
+          console.error('[Faturalar] mutate ERROR:', e?.response?.status, JSON.stringify(e?.response?.data || {}), e?.message);
+          toast.error(`Mihsap hata: ${e?.response?.status || ''} ${e?.message}`, { duration: 12000 });
+        },
       },
     );
     console.log('[Faturalar] mutate çağrıldı (sync sonrası)');
