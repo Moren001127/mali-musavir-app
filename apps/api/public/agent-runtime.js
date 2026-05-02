@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.68.0';
+          const AGENT_VER = '1.69.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -3307,13 +3307,50 @@
                         .catch(() => {});
                     }
                   }
-                  // Yeni form'lar — submit'e bağlanırsa
+                  // Yeni form'lar — Luca rapor_indir formu inject edildiyse YAKALA + KENDI FETCH
                   const forms = n.tagName === 'FORM' ? [n] :
                     (n.querySelectorAll ? [...n.querySelectorAll('form')] : []);
                   for (const f of forms) {
-                    if (f.action && /rapor_indir|jasper|raporKebir/i.test(f.action)) {
+                    if (f.action && /rapor_indir/i.test(f.action)) {
                       if (Array.isArray(window.__morenLogs)) {
                         window.__morenLogs.push(`[NATIVE-DOM-FORM] action=${f.action.slice(0, 100)}`);
+                      }
+                      // Form'un input'larını topla + URL-encoded POST at
+                      try {
+                        const fd = new FormData(f);
+                        const params = new URLSearchParams();
+                        for (const [k, v] of fd) params.append(k, String(v));
+                        const bodyStr = params.toString();
+                        if (Array.isArray(window.__morenLogs)) {
+                          window.__morenLogs.push(`[NATIVE-DOM-FORM-POST] action=${f.action.slice(0, 60)} body=${bodyStr.slice(0, 200)}`);
+                        }
+                        w.fetch(f.action, {
+                          method: 'POST',
+                          body: bodyStr,
+                          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                          credentials: 'include',
+                        })
+                          .then(r => r.blob().then(blob => ({ blob, ct: r.headers.get('content-type') || '' })))
+                          .then(({ blob, ct }) => {
+                            if (Array.isArray(window.__morenLogs)) {
+                              window.__morenLogs.push(`[NATIVE-DOM-FORM-RESP] ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)}`);
+                            }
+                            if (blob.size > 1000) {
+                              window.__morenCapturedBlob = blob;
+                              if (Array.isArray(window.__morenLogs)) {
+                                window.__morenLogs.push(`[NATIVE-DOM-FORM-BLOB] ✓ yakalandı: ${Math.round(blob.size / 1024)} KB`);
+                              }
+                            }
+                          })
+                          .catch(e => {
+                            if (Array.isArray(window.__morenLogs)) {
+                              window.__morenLogs.push(`[NATIVE-DOM-FORM-ERR] ${e?.message || e}`);
+                            }
+                          });
+                      } catch (e) {
+                        if (Array.isArray(window.__morenLogs)) {
+                          window.__morenLogs.push(`[NATIVE-DOM-FORM-CATCH] ${e?.message || e}`);
+                        }
                       }
                     }
                   }
