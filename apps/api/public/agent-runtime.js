@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.76.0';
+          const AGENT_VER = '1.77.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1136,38 +1136,30 @@
     await log(`📅 Tarih set: TARIH_ILK=${TARIH_ILK} (ok=${ilkOk}) | TARIH_SON=${TARIH_SON} (ok=${sonOk})`);
     await sleep(300);
 
-    // 7) Gelir/Gider checkbox — ⚠ EMPIRICAL INVERSE LOGIC ⚠
-    //    Test (v1.75 Railway log): agent (gelir=false, gider=true) yaptı,
-    //    Luca Excel'i SADECE GELİRLER bölümüyle döndü → CHECKED checkbox = EXCLUDE that section
+    // 7) ⚠ KRİTİK: Bölüm seçimi VISIBLE checkbox değil HIDDEN GELIR1/GIDER1 ile kontrol ediliyor!
+    //    EMPIRICAL (v1.75 testi):
+    //      agent set GELIR1=0, GIDER1=1 → Excel: SADECE GELİR
+    //    Sonuç: GELIR1=0 ya da GIDER1=0 = "sadece o bölümü göster"
+    //           (1,1) default = her iki bölümü göster
     //
-    //    Doğru mantık (INVERSE):
-    //      ISLETME_GELIR → gelir=false (Gelir'i dahil et), gider=true (Gider'i HARIÇ tut) → Excel: GELİRLER only
-    //      ISLETME_GIDER → gelir=true (Gelir'i HARIÇ tut), gider=false (Gider'i dahil et) → Excel: GİDERLER only
+    //    Doğru mantık:
+    //      ISLETME_GELIR → GELIR1='0', GIDER1='1' → Excel: SADECE GELİRLER
+    //      ISLETME_GIDER → GIDER1='0', GELIR1='1' → Excel: SADECE GİDERLER
     {
       const isGelir = mode === 'gelir';
       const gelirCb = form.querySelector('#gelir, input[name="gelir"][type="checkbox"]');
       const giderCb = form.querySelector('#gider, input[name="gider"][type="checkbox"]');
+      const gelir1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
+      const gider1 = form.querySelector('#GIDER1, input[name="GIDER1"]');
 
-      const setCb = async (cb, want, label) => {
-        if (!cb) { await log(`⚠ ${label} checkbox bulunamadı`); return; }
-        if (cb.checked !== want) {
-          cb.click(); // Luca onclick handler tetiklenir, GELIR1/GIDER1 hidden flag'leri kendisi günceller
-          await sleep(150);
-          if (cb.checked !== want) {
-            cb.checked = want;
-            cb.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        }
-      };
+      // Visible checkbox'lara dokunmayalım — Luca'nın onclick handler'ı GELIR1/GIDER1'i resetleyebilir.
+      // Sadece HIDDEN flag'leri override et.
+      if (gelir1) gelir1.value = isGelir ? '0' : '1';   // GELIR mode → GELIR1='0' (only GELIR)
+      if (gider1) gider1.value = !isGelir ? '0' : '1';  // GIDER mode → GIDER1='0' (only GIDER)
 
-      // INVERSE assignment — Luca: CHECKED = exclude
-      await setCb(gelirCb, !isGelir, 'Gelir'); // GIDER mode → gelir.checked=true (exclude Gelir)
-      await setCb(giderCb, isGelir, 'Gider');  // GIDER mode → gider.checked=false (include Gider)
-
-      // Hidden flag'leri MANUEL ÖVERRIDE ETMİYORUZ — Luca onclick zaten günceller, override sorun yaratıyor
-      await log(`☑ INVERSE checkbox: Gelir CB=${gelirCb?.checked} | Gider CB=${giderCb?.checked} (mode=${mode}, hedef bölüm=${isGelir ? 'GELİRLER' : 'GİDERLER'})`);
+      await log(`🚩 Hidden flag set: GELIR1=${gelir1?.value} | GIDER1=${gider1?.value} — hedef: ${isGelir ? 'GELİRLER' : 'GİDERLER'}`);
     }
-    await sleep(300);
+    await sleep(200);
 
     // 8) Rapor Türü Excel
     await setRaporTuruExcel(form, log);
@@ -1185,10 +1177,25 @@
       REPORT_TYPE: 'xlsx',
       // İşletme için ek parametre — backend hangi mode kullanılacak
       isletme_mode: mode,
+      // Hidden flag override (Luca submit'inde kullanır)
+      GELIR1: mode === 'gelir' ? '0' : '1',
+      GIDER1: mode === 'gider' ? '0' : '1',
     };
 
     // 10) Rapor butonu — gerçek user click
     await sleep(500);
+
+    // ⚠ Hidden GELIR1/GIDER1 flag'lerini Rapor click'inden HEMEN ÖNCE bir kez daha override et
+    //   (Luca araya girip default'a resetlemiş olabilir)
+    {
+      const isGelirMode = mode === 'gelir';
+      const g1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
+      const g2 = form.querySelector('#GIDER1, input[name="GIDER1"]');
+      if (g1) g1.value = isGelirMode ? '0' : '1';
+      if (g2) g2.value = !isGelirMode ? '0' : '1';
+      await log(`🚩 Rapor öncesi son set: GELIR1=${g1?.value} | GIDER1=${g2?.value}`);
+    }
+
     await clickLucaRaporButton(form, log);
 
     // 11) Blob yakala
