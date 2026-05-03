@@ -11,7 +11,7 @@ import {
 
 const GOLD = '#d4b876';
 
-type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; };
+type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
@@ -133,6 +133,11 @@ export default function BilancoPage() {
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
           Bilanço
+          {selectedTp && (
+            <span style={{ color: GOLD, fontWeight: 700, fontSize: 22, marginLeft: 12 }}>
+              · {taxpayerName(selectedTp)}
+            </span>
+          )}
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
           Aktif ve Pasif hesap kalemlerini mizandan otomatik türet. Geçmiş dönemlerle karşılaştırma.
@@ -243,9 +248,21 @@ export default function BilancoPage() {
       {/* Aktif / Pasif iki sütun */}
       {bilanco && (
         <>
-          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+          <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={{ color: '#fafaf9' }}>
             <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
             Bilanço · {bilanco.tarih ? new Date(bilanco.tarih).toLocaleDateString('tr-TR') : bilanco.donem}
+            {selectedTp && (
+              <>
+                <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'Fraunces, serif' }}>
+                  · {taxpayerName(selectedTp)}
+                </span>
+                {selectedTp.taxNumber && (
+                  <span className="font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 400 }}>
+                    · VKN/TCKN: {selectedTp.taxNumber}
+                  </span>
+                )}
+              </>
+            )}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <BilancoColumn

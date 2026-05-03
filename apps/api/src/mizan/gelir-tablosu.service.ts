@@ -457,21 +457,54 @@ export class GelirTablosuService {
     if (gt.locked) throw new BadRequestException('Kesin kayıtlı gelir tablosunda düzeltme yapılamaz');
 
     // Mevcut düzeltmeleri koru, üstüne yeni gelenleri yaz (partial update).
-    // İzinli alanlar: gelir tablosu kalemleri + vergi matrahı manuel alanları.
     const cleaned: Record<string, number> = { ...((gt.duzeltmeler as any) || {}) };
     for (const [k, v] of Object.entries(duzeltmeler || {})) {
       const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g, '').replace(',', '.'));
       if (!isFinite(n)) continue;
       if (n === 0) {
-        delete cleaned[k]; // sıfır gelirse o key'i temizle
+        delete cleaned[k];
       } else {
         cleaned[k] = n;
       }
     }
 
+    // Türevleri yeniden hesapla — manuel düzeltme bilançoya / geçici vergiye yansısın
+    // effectiveVal: ham (gt[key]) değer üstüne manuel düzeltme eklenir (frontend ile aynı kural)
+    const effective = (key: string): number => {
+      const base = Number(gt[key]) || 0;
+      const adj = cleaned[key];
+      return typeof adj === 'number' ? base + adj : base;
+    };
+
+    const brutSatislar = effective('brutSatislar');
+    const satisIndirimleri = effective('satisIndirimleri');
+    const netSatislar = brutSatislar - satisIndirimleri;
+    const satisMaliyeti = effective('satisMaliyeti');
+    const brutSatisKari = netSatislar - satisMaliyeti;
+    const faaliyetGiderleri = effective('faaliyetGiderleri');
+    const faaliyetKari = brutSatisKari - faaliyetGiderleri;
+    const digerGelirler = effective('digerGelirler');
+    const digerGiderler = effective('digerGiderler');
+    const finansmanGiderleri = effective('finansmanGiderleri');
+    const olaganKar = faaliyetKari + digerGelirler - digerGiderler - finansmanGiderleri;
+    const olaganDisiGelir = effective('olaganDisiGelir');
+    const olaganDisiGider = effective('olaganDisiGider');
+    const donemKari = olaganKar + olaganDisiGelir - olaganDisiGider;
+    const vergiKarsiligi = effective('vergiKarsiligi');
+    const donemNetKari = donemKari - vergiKarsiligi;
+
     return (this.prisma as any).gelirTablosu.update({
       where: { id },
-      data: { duzeltmeler: cleaned },
+      data: {
+        duzeltmeler: cleaned,
+        // Türev değerler — bilanço, geçici vergi tablosu ve diğer raporlar bu alanları okur
+        netSatislar,
+        satisMaliyeti,
+        brutSatisKari,
+        faaliyetKari,
+        olaganKar,
+        donemNetKari,
+      },
     });
   }
 
