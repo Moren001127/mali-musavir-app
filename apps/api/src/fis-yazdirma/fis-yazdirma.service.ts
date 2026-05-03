@@ -852,9 +852,17 @@ export class FisYazdirmaService {
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              spacing: { before: 20, after: 20 },
+              spacing: { before: 60, after: 40 },
               children: [
-                new TextRun({ text: displayDate, size: 22, bold: true }),
+                // Bold yerine semibold tone — küçük puntoda harf birleşmesini önler
+                // Punto da büyütüldü (11pt → 13pt) ki baskıda net çıksın
+                new TextRun({
+                  text: displayDate,
+                  size: 26,
+                  bold: false,
+                  font: 'Arial',
+                  color: '333333',
+                }),
               ],
             }),
           ],
@@ -908,12 +916,12 @@ export class FisYazdirmaService {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 4000, after: 400 },
-            children: [new TextRun({ text: 'MOREN', bold: true, size: 72, color: '8B7649' })],
+            children: [new TextRun({ text: 'MOREN', bold: true, size: 72, color: '8B7649', font: 'Calibri' })],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 800 },
-            children: [new TextRun({ text: 'MALİ MÜŞAVİRLİK', bold: true, size: 28, color: '8B7649' })],
+            children: [new TextRun({ text: 'MALİ MÜŞAVİRLİK', bold: false, size: 28, color: '8B7649', font: 'Calibri', characterSpacing: 60 })],
           }),
         );
       }
@@ -921,7 +929,7 @@ export class FisYazdirmaService {
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { after: 200 },
-          children: [new TextRun({ text: '—— FİŞ DÖKÜMÜ ——', size: 24, color: '8B7649' })],
+          children: [new TextRun({ text: '—— FİŞ DÖKÜMÜ ——', size: 24, color: '8B7649', font: 'Calibri', bold: false, characterSpacing: 80 })],
         }),
       );
       if (opts.mukellef) {
@@ -929,12 +937,12 @@ export class FisYazdirmaService {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { before: 600, after: 100 },
-            children: [new TextRun({ text: 'MÜKELLEF', size: 18, color: '999999' })],
+            children: [new TextRun({ text: 'MÜKELLEF', size: 20, color: '999999', font: 'Calibri', characterSpacing: 80 })],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 400 },
-            children: [new TextRun({ text: opts.mukellef.toUpperCase(), bold: true, size: 32 })],
+            children: [new TextRun({ text: opts.mukellef.toUpperCase(), bold: false, size: 36, color: '222222', font: 'Calibri', characterSpacing: 30 })],
           }),
         );
       }
@@ -943,12 +951,12 @@ export class FisYazdirmaService {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 100 },
-            children: [new TextRun({ text: 'DÖNEM', size: 18, color: '999999' })],
+            children: [new TextRun({ text: 'DÖNEM', size: 20, color: '999999', font: 'Calibri', characterSpacing: 80 })],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 800 },
-            children: [new TextRun({ text: opts.donem, bold: true, size: 28 })],
+            children: [new TextRun({ text: opts.donem, bold: false, size: 32, color: '222222', font: 'Calibri', characterSpacing: 30 })],
           }),
         );
       }
@@ -956,12 +964,12 @@ export class FisYazdirmaService {
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { before: 600, after: 100 },
-          children: [new TextRun({ text: 'TOPLAM FİŞ', size: 18, color: '999999' })],
+          children: [new TextRun({ text: 'TOPLAM FİŞ', size: 20, color: '999999', font: 'Calibri', characterSpacing: 80 })],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,
           spacing: { after: 600 },
-          children: [new TextRun({ text: `${files.length} adet`, bold: true, size: 26 })],
+          children: [new TextRun({ text: `${files.length} adet`, bold: false, size: 30, color: '222222', font: 'Calibri' })],
         }),
         new Paragraph({
           alignment: AlignmentType.CENTER,

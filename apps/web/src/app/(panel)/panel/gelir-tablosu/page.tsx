@@ -1031,16 +1031,24 @@ export default function GelirTablosuPage() {
 
                       // ─── LIVE PREVIEW ─── manuel input değişikliklerini anında yansıt
                       let val: number | null = hasData ? (v[row.key] ?? 0) : null;
-                      if (hasData && manuelState) {
-                        const draftGY = manuelState.gecmisYil ? parseLocale(manuelState.gecmisYil) : null;
-                        const draftOO = manuelState.oncekiOdenen ? parseLocale(manuelState.oncekiOdenen) : null;
-                        const toplamKar = Number(v.toplamKar || 0);
+                      if (hasData) {
+                        // Manuel düzeltmelerle yeniden hesaplanmış donemNetKari → toplamKar'ı etkiler
+                        // (gelir tablosundaki manuel düzeltme — örn. satılan ticari mal maliyeti)
+                        const slot = quarterSlots[qi];
+                        const der = slot ? derived(slot) : null;
+                        const liveDonemNetKari = der ? der.donemNetKari : Number(v.donemNetKari || 0);
+                        const kkeg = Number(v.kkeg || 0);
+                        const liveToplamKar = liveDonemNetKari + kkeg;
+
+                        const draftGY = manuelState?.gecmisYil ? parseLocale(manuelState.gecmisYil) : null;
+                        const draftOO = manuelState?.oncekiOdenen ? parseLocale(manuelState.oncekiOdenen) : null;
                         const gecmisYil = draftGY !== null ? draftGY : Number(v.gecmisYilZarari || 0);
                         const oncekiOdenen = draftOO !== null ? draftOO : Number(v.oncekiDonemOdenen || 0);
-                        const matrah = Math.max(0, toplamKar - gecmisYil);
+                        const matrah = Math.max(0, liveToplamKar - gecmisYil);
                         const hesaplanan = matrah * 0.25;
                         const odenecek = Math.max(0, hesaplanan - oncekiOdenen);
-                        if (row.key === 'gecmisYilZarari') val = gecmisYil;
+                        if (row.key === 'toplamKar') val = liveToplamKar;
+                        else if (row.key === 'gecmisYilZarari') val = gecmisYil;
                         else if (row.key === 'gecicVergiMatrahi') val = matrah;
                         else if (row.key === 'hesaplananGeciciVergi') val = hesaplanan;
                         else if (row.key === 'oncekiDonemOdenen') val = oncekiOdenen;
@@ -1202,13 +1210,16 @@ export default function GelirTablosuPage() {
                       );
                     })}
                   </tr>
-                  {/* Satılan Malın Maliyeti — Toplam Stok'tan büyükse kırmızı uyarı */}
+                  {/* Satılan Malın Maliyeti — manuel düzeltme + Toplam Stok'tan büyükse kırmızı uyarı */}
                   <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
                     <td></td>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      const v = Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                      // Manuel düzeltme varsa onu kullan, yoksa backend stokMaliyetOzet.satisMaliyeti
+                      const slot = quarterSlots[qi];
+                      const der = slot ? derived(slot) : null;
+                      const v = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
                       const toplamStok = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
                       const ihlal = d?.stokMaliyetOzet && v > toplamStok && toplamStok > 0;
                       return (
@@ -1231,13 +1242,18 @@ export default function GelirTablosuPage() {
                       );
                     })}
                   </tr>
-                  {/* Kalan Stok — negatif olunca kırmızı uyarı */}
+                  {/* Kalan Stok — manuel düzeltmeyle re-compute + negatif olunca kırmızı */}
                   <tr style={{ borderTop: '2px solid rgba(34,197,94,0.3)', background: 'rgba(34,197,94,0.04)' }}>
                     <td></td>
                     <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      const v = Number(d?.stokMaliyetOzet?.kalanStok ?? 0);
+                      // Kalan Stok = Toplam Stok − (manuel) Satılan Maliyet
+                      const slot = quarterSlots[qi];
+                      const der = slot ? derived(slot) : null;
+                      const sm = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                      const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
+                      const v = d?.stokMaliyetOzet ? ts - sm : 0;
                       const negatif = d?.stokMaliyetOzet && v < 0;
                       return (
                         <td
@@ -1259,13 +1275,14 @@ export default function GelirTablosuPage() {
                       );
                     })}
                   </tr>
-                  {/* Uyarı satırı — herhangi bir çeyrekte ihlal varsa */}
+                  {/* Uyarı satırı — herhangi bir çeyrekte ihlal varsa (manuel düzeltme dahil) */}
                   {DISPLAY_ORDER.some((qi) => {
                     const d = quarterDetails[qi]?.data as any;
-                    const sm = Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                    const slot = quarterSlots[qi];
+                    const der = slot ? derived(slot) : null;
+                    const sm = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
                     const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
-                    const ks = Number(d?.stokMaliyetOzet?.kalanStok ?? 0);
-                    return d?.stokMaliyetOzet && ((sm > ts && ts > 0) || ks < 0);
+                    return d?.stokMaliyetOzet && ((sm > ts && ts > 0) || (ts - sm) < 0);
                   }) && (
                     <tr style={{ borderTop: '1px dashed rgba(239,68,68,0.4)', background: 'rgba(239,68,68,0.06)' }}>
                       <td colSpan={6} className="px-4 py-2.5 text-[12px]" style={{ color: '#ef4444' }}>
