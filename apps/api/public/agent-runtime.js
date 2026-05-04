@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.4';
+          const AGENT_VER = '1.34.5';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -506,16 +506,50 @@
       }[job.tip];
       if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip}`);
 
-      await log(`🧭 II1a('${ii1aId}') doğrudan çağrılıyor (${menuLabel})`);
-      // II1a fonksiyonu frm2'de tanımlı (parent.frames[1])
-      const frm2 = getLucaFrame('frm2');
-      if (!frm2 || !frm2.contentWindow || typeof frm2.contentWindow.II1a !== 'function') {
-        throw new Error('frm2.II1a fonksiyonu bulunamadı — Luca yüklendi mi?');
+      await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
+      // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
+      let II1aFn = null, II1aSrc = '';
+      const candidateFrames = ['frm2','frm5','frm3','frm4','frm1','frm6','frm7'];
+      for (const name of candidateFrames) {
+        const fr = getLucaFrame(name);
+        try {
+          if (fr && fr.contentWindow && typeof fr.contentWindow.II1a === 'function') {
+            II1aFn = fr.contentWindow.II1a.bind(fr.contentWindow);
+            II1aSrc = name;
+            break;
+          }
+        } catch {}
       }
-      try {
-        frm2.contentWindow.II1a(null, ii1aId, '');
-      } catch (e) {
-        throw new Error(`II1a çağrısı başarısız: ${e?.message || e}`);
+      // top window'da da deneyelim
+      if (!II1aFn) {
+        try {
+          if (typeof window.II1a === 'function') {
+            II1aFn = window.II1a;
+            II1aSrc = 'top';
+          }
+        } catch {}
+        try {
+          if (!II1aFn && typeof parent.II1a === 'function') {
+            II1aFn = parent.II1a;
+            II1aSrc = 'parent';
+          }
+        } catch {}
+      }
+      if (!II1aFn) {
+        // Fallback: text-based menü tıklama (yedek plan)
+        await log('⚠ II1a fonksiyonu hiçbir frame\'de bulunamadı, fallback: menü click');
+        await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
+        await sleep(1000);
+        await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
+        await sleep(2000);
+        await clickByTextEverywhere(menuLabel, log, { maxMs: 8000 });
+      } else {
+        await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
+        try {
+          II1aFn(null, ii1aId, '');
+        } catch (e) {
+          throw new Error(`II1a('${ii1aId}') çağrısı başarısız: ${e?.message || e}`);
+        }
       }
       await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
       await sleep(6000);
