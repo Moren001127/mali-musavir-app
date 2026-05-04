@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.6';
+          const AGENT_VER = '1.34.7';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -552,7 +552,20 @@
       } else {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
         try {
-          II1aFn(null, ii1aId, '');
+          // II1a Luca'nın kendi fonksiyonu — null event'le çağırınca event.X okumaya çalışıp patlıyor
+        // Sahte event objesi geç (MouseEvent benzeri)
+        const fakeEvent = {
+          type: 'click',
+          target: null,
+          currentTarget: null,
+          srcElement: null,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+          stopImmediatePropagation: () => {},
+          returnValue: true,
+          cancelBubble: false,
+        };
+        II1aFn(fakeEvent, ii1aId, '');
         } catch (e) {
           throw new Error(`II1a('${ii1aId}') çağrısı başarısız: ${e?.message || e}`);
         }
