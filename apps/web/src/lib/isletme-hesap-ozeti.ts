@@ -56,6 +56,7 @@ export type IhoManuelPayload = {
   malAlisi?: number;
   donemBasiStok?: number;
   kalanStok?: number;
+  satilanMalMaliyeti?: number; // doğrudan girilebilir
   donemIciGiderler?: number;
   gecmisYilZarari?: number;
   oncekiOdenenGecVergi?: number;
@@ -108,5 +109,4 @@ export const isletmeHesapOzetiApi = {
 
 export function fmtTRY(n: number | string | null | undefined): string {
   const v = Number(n || 0);
-  return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+  return v.toLocaleString('tr-TR', { m

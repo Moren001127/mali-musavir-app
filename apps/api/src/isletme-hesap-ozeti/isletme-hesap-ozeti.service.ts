@@ -172,6 +172,7 @@ export class IsletmeHesapOzetiService {
     malAlisi?: number;
     donemBasiStok?: number;
     kalanStok?: number;
+    satilanMalMaliyeti?: number; // doğrudan girilebilir — kalanStok otomatik hesaplanır
     donemIciGiderler?: number;
     gecmisYilZarari?: number;
     oncekiOdenenGecVergi?: number;
@@ -194,15 +195,27 @@ export class IsletmeHesapOzetiService {
     const digerGelir = num(params.digerGelir, ozet.digerGelir);
     const malAlisi = num(params.malAlisi, ozet.malAlisi);
     const donemBasiStok = num(params.donemBasiStok, ozet.donemBasiStok);
-    const kalanStok = num(params.kalanStok, ozet.kalanStok);
     const donemIciGiderler = num(params.donemIciGiderler, ozet.donemIciGiderler);
     const gecmisYilZarari = num(params.gecmisYilZarari, ozet.gecmisYilZarari);
     const oncekiOdenenGecVergi = num(params.oncekiOdenenGecVergi, ozet.oncekiOdenenGecVergi);
 
-    // Türetilen alanlar
-    const toplamSatis = r2(satisHasilati + digerGelir);
     const toplamStok = r2(donemBasiStok + malAlisi);
-    const satilanMalMaliyeti = r2(toplamStok - kalanStok);
+
+    // SMM ↔ Kalan Stok iki yönlü:
+    // - Eğer SMM doğrudan gönderildiyse: kalanStok = toplamStok - SMM
+    // - Aksi halde kalanStok'tan SMM hesaplanır (eski davranış)
+    let kalanStok: number;
+    let satilanMalMaliyeti: number;
+    if (typeof params.satilanMalMaliyeti === 'number') {
+      satilanMalMaliyeti = r2(params.satilanMalMaliyeti);
+      kalanStok = r2(toplamStok - satilanMalMaliyeti);
+    } else {
+      kalanStok = num(params.kalanStok, ozet.kalanStok);
+      satilanMalMaliyeti = r2(toplamStok - kalanStok);
+    }
+
+    // Türetilen alanlar (kalan)
+    const toplamSatis = r2(satisHasilati + digerGelir);
     const netSatislar = r2(toplamSatis - satilanMalMaliyeti);
     const donemKari = r2(netSatislar - donemIciGiderler);
     const gecVergiMatrahi = Math.max(0, r2(donemKari - gecmisYilZarari));
@@ -413,17 +426,4 @@ export class IsletmeHesapOzetiService {
     yaz('NET SATIŞLAR', 'netSatislar', { bold: true });
 
     sectionRow('GİDER', 'FFFCE8E8');
-    yaz('Dönem İçi Giderler', 'donemIciGiderler');
-    yaz('DÖNEM KARI', 'donemKari', { bold: true });
-
-    sectionRow('GEÇİCİ VERGİ', 'FFE0E7FF');
-    yaz('Geçmiş Yıl Zararı', 'gecmisYilZarari');
-    yaz('Geçici Vergi Matrahı', 'gecVergiMatrahi', { bold: true });
-    yaz('Hesaplanan Geçici Vergi (%15)', 'hesaplananGecVergi');
-    yaz('(-) Önceki Dönem Ödenen', 'oncekiOdenenGecVergi');
-    yaz('Ödenecek Geçici Vergi', 'odenecekGecVergi', { bold: true });
-
-    const buffer = await wb.xlsx.writeBuffer();
-    return buffer as Buffer;
-  }
-}
+    yaz('Dönem İçi Giderler', 'd

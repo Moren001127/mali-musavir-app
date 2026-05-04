@@ -135,6 +135,7 @@ export class IsletmeHesapOzetiController {
       malAlisi?: number;
       donemBasiStok?: number;
       kalanStok?: number;
+      satilanMalMaliyeti?: number;
       donemIciGiderler?: number;
       gecmisYilZarari?: number;
       oncekiOdenenGecVergi?: number;
@@ -169,6 +170,4 @@ export class IsletmeHesapOzetiController {
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Req() req: any, @Param('id') id: string) {
-    await this.service.remove(req.user.tenantId, id);
-  }
-}
+    await this.service.re
