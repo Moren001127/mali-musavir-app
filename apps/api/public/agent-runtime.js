@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.11';
+          const AGENT_VER = '1.34.12';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -661,8 +661,37 @@
       getirBtn.click();
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
 
-      // Sonuçların gelmesini bekle (15sn timeout, modal kapanır + tablo dolar)
+      // İşlem Takip popup'ı açılır, GİB sorgu yapar (~8sn). Sonra Kapat butonu ile kapat.
       await sleep(8000);
+
+      // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
+      const findAndClick = (label) => {
+        const allDocs = [document];
+        try {
+          for (const fr of document.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) allDocs.push(fr.contentDocument);
+          }
+        } catch {}
+        for (const d of allDocs) {
+          try {
+            for (const btn of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
+              const t = ((btn.value || btn.innerText) || '').trim().toLocaleLowerCase('tr-TR');
+              if (t === label.toLocaleLowerCase('tr-TR') && (btn.offsetParent !== null || btn.tagName === 'INPUT')) {
+                btn.click();
+                return btn;
+              }
+            }
+          } catch {}
+        }
+        return null;
+      };
+      const kapatBtn = findAndClick('Kapat');
+      if (kapatBtn) {
+        await log(`✓ İşlem Takip popup'ı "Kapat" ile kapatıldı`);
+      } else {
+        await log(`⚠ Kapat butonu bulunamadı, popup açık kalmış olabilir`);
+      }
+      await sleep(1500);
     }
 
     await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
