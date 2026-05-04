@@ -137,13 +137,93 @@
       for (const job of jobs) {
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
+
+          // ─── ERKEN FİRMA KONTROLÜ (e-arşiv için) ───
+          // /start çağrılmadan ÖNCE Luca'da doğru firma seçili mi kontrol et.
+          // Yanlışsa firma değiştir → sayfa yenilenir → bu agent ölür →
+          // job pending'de kaldığı için yeni agent aynı job'u tekrar yakalar.
+          const isEarsivJobEarly = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
+          if (isEarsivJobEarly) {
+            let mukellefAdiEarly = '';
+            try {
+              const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
+              if (m) mukellefAdiEarly = m[1].trim();
+            } catch {}
+            if (mukellefAdiEarly) {
+              const frm4Early = getLucaFrame('frm4');
+              if (frm4Early && frm4Early.contentDocument) {
+                const scEarly = frm4Early.contentDocument.getElementById('SirketCombo');
+                if (scEarly) {
+                  const targetEarly = mukellefAdiEarly.toLocaleUpperCase('tr-TR').slice(0, 10).trim();
+                  let bulunduEarly = null;
+                  for (const opt of scEarly.options) {
+                    const t = (opt.text || '').toLocaleUpperCase('tr-TR').trim();
+                    if (t === targetEarly || t.startsWith(targetEarly.slice(0, Math.min(targetEarly.length, 8)))) {
+                      bulunduEarly = opt;
+                      break;
+                    }
+                  }
+                  if (bulunduEarly && scEarly.value !== bulunduEarly.value) {
+                    const mevcutEarly = scEarly.options[scEarly.selectedIndex]?.text?.trim() || '(yok)';
+                    console.log(`[Moren] 🔄 Firma değiştiriliyor: "${mevcutEarly}" → "${bulunduEarly.text}" (job pending kalacak, reload sonrası devam)`);
+                    setStatus(`Firma değiştiriliyor: ${bulunduEarly.text}`);
+                    const overrideOnWin = (w) => {
+                      try { w.confirm = () => true; } catch {}
+                      try { w.alert = () => undefined; } catch {}
+                      try { w.prompt = () => ''; } catch {}
+                    };
+                    try { overrideOnWin(window); } catch {}
+                    try { overrideOnWin(window.top); } catch {}
+                    try { overrideOnWin(frm4Early.contentWindow); } catch {}
+                    ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
+                      try {
+                        const fr = getLucaFrame(name);
+                        if (fr && fr.contentWindow) overrideOnWin(fr.contentWindow);
+                      } catch {}
+                    });
+                    scEarly.value = bulunduEarly.value;
+                    scEarly.dispatchEvent(new Event('input', { bubbles: true }));
+                    scEarly.dispatchEvent(new Event('change', { bubbles: true }));
+                    const onChangeAttrEarly = scEarly.getAttribute('onchange');
+                    if (onChangeAttrEarly) {
+                      try {
+                        new frm4Early.contentWindow.Function('event', onChangeAttrEarly).call(scEarly, new frm4Early.contentWindow.Event('change'));
+                      } catch {}
+                    }
+                    const startEarly = Date.now();
+                    while (Date.now() - startEarly < 5000) {
+                      let clickedE = false;
+                      ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
+                        try {
+                          const fr = getLucaFrame(name);
+                          if (!fr || !fr.contentDocument) return;
+                          for (const btn of fr.contentDocument.querySelectorAll('button, input[type=button], input[type=submit]')) {
+                            const t = ((btn.textContent || btn.value || '').trim()).toLocaleLowerCase('tr-TR');
+                            if ((t === 'tamam' || t === 'evet' || t === 'ok') && btn.offsetParent !== null) {
+                              try { btn.click(); clickedE = true; } catch {}
+                            }
+                          }
+                        } catch {}
+                      });
+                      if (clickedE) break;
+                      await sleep(200);
+                    }
+                    await sleep(60000);
+                    window.__lucaJobRunning = false;
+                    return;
+                  }
+                }
+              }
+            }
+          }
+
           await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN },
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.0';
+          const AGENT_VER = '1.35.1';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -434,15 +514,54 @@
       if (!bulundu) {
         await log(`⚠ Firma "${mukellefAdi}" SirketCombo'da bulunamadı, kullanıcının seçili firmasıyla devam`);
       } else if (sc.value !== bulundu.value) {
-        // Firma DEĞİŞTİRMİYORUZ! Çünkü değiştirme = sayfa reload = agent kopar.
-        // Bunun yerine kullanıcıya hata mesajı veriyoruz.
+        // Firma değiştir — sayfa yenilenecek, fakat /start henüz çağrılmadığı için
+        // job 'pending' kalır. Sayfa yenilendikten sonra agent yine aynı pending
+        // job'u yakalar ve bu sefer firma zaten doğru olduğu için devam eder.
         const mevcut = sc.options[sc.selectedIndex]?.text?.trim() || '(yok)';
-        throw new Error(
-          `Luca'da yanlış firma seçili: "${mevcut}". ` +
-          `Lütfen Luca üst sağ köşedeki firma listesinden "${bulundu.text}" firmasını seçip ` +
-          `tekrar "Luca'dan Çek" butonuna basın. ` +
-          `(Agent firmayı kendi değiştiremiyor çünkü sayfa yenileniyor.)`
-        );
+        await log(`🔄 Firma değiştiriliyor: "${mevcut}" → "${bulundu.text}" (sayfa yenilenecek, agent otomatik devam edecek)`);
+        const overrideOnWin = (w) => {
+          try { w.confirm = () => true; } catch {}
+          try { w.alert = () => undefined; } catch {}
+          try { w.prompt = () => ''; } catch {}
+        };
+        try { overrideOnWin(window); } catch {}
+        try { overrideOnWin(window.top); } catch {}
+        try { overrideOnWin(fwin); } catch {}
+        ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
+          try {
+            const fr = getLucaFrame(name);
+            if (fr && fr.contentWindow) overrideOnWin(fr.contentWindow);
+          } catch {}
+        });
+        sc.value = bulundu.value;
+        sc.dispatchEvent(new Event('input', { bubbles: true }));
+        sc.dispatchEvent(new Event('change', { bubbles: true }));
+        const onChangeAttr = sc.getAttribute('onchange');
+        if (onChangeAttr) {
+          try {
+            new fwin.Function('event', onChangeAttr).call(sc, new fwin.Event('change'));
+          } catch {}
+        }
+        const start = Date.now();
+        while (Date.now() - start < 5000) {
+          let clicked = false;
+          ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
+            try {
+              const fr = getLucaFrame(name);
+              if (!fr || !fr.contentDocument) return;
+              for (const btn of fr.contentDocument.querySelectorAll('button, input[type=button], input[type=submit]')) {
+                const t = ((btn.textContent || btn.value || '').trim()).toLocaleLowerCase('tr-TR');
+                if ((t === 'tamam' || t === 'evet' || t === 'ok') && btn.offsetParent !== null) {
+                  try { btn.click(); clicked = true; } catch {}
+                }
+              }
+            } catch {}
+          });
+          if (clicked) break;
+          await sleep(200);
+        }
+        await sleep(60000);
+        throw new Error(`Firma değiştirildi ama sayfa yenilenmedi`);
       } else {
         await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
       }
