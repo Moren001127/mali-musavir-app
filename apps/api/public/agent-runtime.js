@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.12';
+          const AGENT_VER = '1.35.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -709,16 +709,156 @@
       await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
     }
 
-    // Seçilenleri İndir → ZIP modal aç → indirme
+    // Seçilenleri İndir (ALT TOOLBAR) → ZIP popup açılır
     if (typeof fwin.gonder === 'function') {
       fwin.gonder('zip-window');
-      await log('📦 Seçilenleri İndir tetiklendi, ZIP bekleniyor…');
+      await log('📦 Alt toolbar "Seçilenleri İndir" tetiklendi → popup açılıyor');
     } else {
       throw new Error('zip-window gonder yok');
     }
 
-    // ZIP'in yakalanmasını bekle (max 30sn)
-    for (let i = 0; i < 60; i++) {
+    // Popup açılma animasyonunu bekle
+    await sleep(1800);
+
+    // POPUP içindeki "Seçilenleri İndir" butonunu bul ve tıkla
+    // Popup'ın başlığı: "GİB E-Belge Entegrasyonu ... - İNDİR"
+    // İçinde "Tüm faturaları seçmek için buraya..." metni + "Seçilenleri İndir" butonu var.
+    const collectAllDocsForPopup = () => {
+      const docs = [document];
+      const dive = (root) => {
+        try {
+          for (const fr of root.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) {
+              docs.push(fr.contentDocument);
+              dive(fr.contentDocument);
+            }
+          }
+        } catch {}
+      };
+      dive(document);
+      return docs;
+    };
+
+    let popupBtn = null;
+    let popupClickStrategy = '';
+    // 3 sn boyunca popup'ı poll et (animasyon/gec geliyor olabilir)
+    const popupStart = Date.now();
+    while (Date.now() - popupStart < 5000 && !popupBtn) {
+      for (const d of collectAllDocsForPopup()) {
+        try {
+          // STRATEGY 1: "GİB E-Belge" ya da "İNDİR" başlıklı container'ı bul, içindeki butonu yakala
+          const allBtns = [...d.querySelectorAll('button, input[type=button], input[type=submit], a')];
+          for (const b of allBtns) {
+            const bt = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
+            if (bt !== 'seçilenleri indir' && bt !== 'secilenleri indir') continue;
+            // Görünür mü?
+            if (b.offsetParent === null && b.tagName !== 'A') continue;
+            // Popup container içinde mi? (parent hierarchy'de "GİB E-Belge" / "İNDİR" / "buraya" geçen kapsayıcı)
+            let cur = b.parentElement;
+            let inPopup = false;
+            while (cur) {
+              const ct = (cur.textContent || '').toLocaleUpperCase('tr-TR');
+              if ((ct.includes('GİB E-BELGE') || ct.includes('GIB E-BELGE')) &&
+                  (ct.includes('İNDİR') || ct.includes('INDIR')) &&
+                  ct.includes('BURAYA')) {
+                inPopup = true;
+                break;
+              }
+              cur = cur.parentElement;
+            }
+            if (inPopup) {
+              popupBtn = b;
+              popupClickStrategy = 'popup-container';
+              break;
+            }
+          }
+          if (popupBtn) break;
+          // STRATEGY 2: ID/class ile popup butonu (zip-window ya da indirPopup ID'si olabilir)
+          for (const sel of ['#zip-window button', '#zip-window input[type=button]',
+                             '.zip-window button', '#popup-zip button',
+                             'div[id*="zip"] button', 'div[id*="indir"] button']) {
+            try {
+              const cand = d.querySelector(sel);
+              if (cand && cand.offsetParent !== null) {
+                const ct = ((cand.textContent || cand.value || '').trim()).toLocaleLowerCase('tr-TR');
+                if (ct.includes('seçilen') || ct.includes('secilen') || ct.includes('indir')) {
+                  popupBtn = cand;
+                  popupClickStrategy = `selector:${sel}`;
+                  break;
+                }
+              }
+            } catch {}
+          }
+          if (popupBtn) break;
+        } catch {}
+      }
+      if (!popupBtn) await sleep(300);
+    }
+
+    // STRATEGY 3 (fallback): tüm "Seçilenleri İndir" görünür butonları topla,
+    // alt toolbar'daki orijinali eleyip popup'takini bul
+    if (!popupBtn) {
+      for (const d of collectAllDocsForPopup()) {
+        try {
+          const matches = [];
+          for (const b of d.querySelectorAll('button, input[type=button], input[type=submit], a')) {
+            const bt = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
+            if (bt !== 'seçilenleri indir' && bt !== 'secilenleri indir') continue;
+            if (b.offsetParent === null && b.tagName !== 'A') continue;
+            const r = b.getBoundingClientRect ? b.getBoundingClientRect() : { top: 0, left: 0 };
+            matches.push({ b, top: r.top, left: r.left });
+          }
+          if (matches.length >= 2) {
+            // En altta olan = orijinal toolbar butonu, üstündeki = popup
+            matches.sort((a, b) => a.top - b.top);
+            popupBtn = matches[0].b; // üstteki (popup ortada/üstte)
+            popupClickStrategy = 'topmost-of-multiple';
+            break;
+          } else if (matches.length === 1) {
+            // Tek tane var — toolbar butonu zaten clicklendi/devre dışı olabilir, bu popup butonu
+            // (sadece toolbar butonu ile aynı olmadığını görmek için kontrol)
+            popupBtn = matches[0].b;
+            popupClickStrategy = 'single-match';
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    if (popupBtn) {
+      try {
+        // Multi-strategy click — Luca onclick handler için hem .click() hem MouseEvent
+        const view = popupBtn.ownerDocument.defaultView || window;
+        const r = popupBtn.getBoundingClientRect ? popupBtn.getBoundingClientRect() : null;
+        const x = r ? r.left + r.width / 2 : 0;
+        const y = r ? r.top + r.height / 2 : 0;
+        const fire = (type) => {
+          try {
+            popupBtn.dispatchEvent(new MouseEvent(type, {
+              bubbles: true, cancelable: true, view, clientX: x, clientY: y, button: 0,
+            }));
+          } catch {}
+        };
+        fire('mouseover');
+        fire('mousedown');
+        fire('mouseup');
+        try { popupBtn.click(); } catch {}
+        fire('click');
+        // onclick attribute'unu da elle çağır (jQuery bind'leri için)
+        const onclickAttr = popupBtn.getAttribute('onclick');
+        if (onclickAttr) {
+          try { new view.Function('event', onclickAttr).call(popupBtn, new view.Event('click')); } catch {}
+        }
+        await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${popupClickStrategy})`);
+      } catch (e) {
+        await log(`⚠ Popup butonu tıklama hatası: ${e?.message || e}`);
+      }
+    } else {
+      await log('⚠ Popup içindeki "Seçilenleri İndir" bulunamadı — ZIP yine de yakalanabilir');
+    }
+
+    // ZIP'in yakalanmasını bekle (max 45sn — popup tıklamadan sonra GİB sorgu uzun sürebilir)
+    for (let i = 0; i < 90; i++) {
       if (yakalanmisZip) break;
       await sleep(500);
     }
@@ -726,7 +866,7 @@
     fwin.fetch = origFetch;
 
     if (!yakalanmisZip) {
-      throw new Error('ZIP 30sn içinde yakalanamadı — manuel olarak Seçilenleri İndir tıklamanız gerekebilir');
+      throw new Error('ZIP 45sn içinde yakalanamadı — popup içindeki "Seçilenleri İndir" butonuna tıklanamadı veya sunucu yanıt vermedi');
     }
     return yakalanmisZip;
   }
