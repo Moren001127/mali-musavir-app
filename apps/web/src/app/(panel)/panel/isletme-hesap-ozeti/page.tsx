@@ -116,7 +116,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="w-full rounded-md border border-white/10 px-2.5 py-1.5 text-right text-sm tabular-nums text-stone-100 transition-colors focus:border-amber-400 focus:bg-amber-500/100/5 focus:outline-none focus:ring-1 focus:ring-amber-400/40 disabled:bg-white/[0.05] disabled:text-stone-500"
+      className="w-full rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-right text-sm tabular-nums text-stone-100 transition-colors focus:border-amber-400 focus:bg-amber-500/10 focus:outline-none focus:ring-1 focus:ring-amber-400/40 disabled:bg-white/[0.02] disabled:text-stone-500"
     />
   );
 }
@@ -270,7 +270,7 @@ export default function IsletmeHesapOzetiPage() {
         {taxpayerId && !hicKayitYok && (
           <button
             onClick={indirExcel}
-            className="inline-flex items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-sm text-stone-100 hover:bg-white/5"
+            className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-sm text-stone-100 hover:bg-white/10"
           >
             <Download className="h-4 w-4" /> Excel
           </button>
@@ -283,7 +283,7 @@ export default function IsletmeHesapOzetiPage() {
             <label className="mb-1 block text-xs text-stone-500">Mükellef</label>
             <button
               onClick={() => setTpDropdownOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-md border border-white/15 px-3 py-2 text-sm text-stone-100"
+              className="flex w-full items-center justify-between rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100"
             >
               <span className="flex items-center gap-2 truncate">
                 <Users className="h-4 w-4 text-stone-500" />
@@ -335,7 +335,7 @@ export default function IsletmeHesapOzetiPage() {
             <select
               value={yil}
               onChange={(e) => setYil(Number(e.target.value))}
-              className="rounded-md border border-white/15 px-3 py-2 text-sm text-stone-100"
+              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100"
             >
               {Array.from({ length: 6 }).map((_, i) => {
                 const y = currentYear - i;
@@ -1030,7 +1030,7 @@ function Row({
     <tr className={hl || ''}>
       <td
         className={`border-b border-white/5 px-3 py-2 text-xs ${
-          bold ? 'font-semibold text-stone-100' : 'text-stone-300'
+          bold ? 'font-semibold text-stone-100' : 'text-stone-200'
         }`}
       >
         {label}
@@ -1041,7 +1041,7 @@ function Row({
           key={i}
           className={`border-b border-white/5 px-3 py-2 text-right tabular-nums text-stone-100 ${
             bold ? 'font-semibold' : ''
-          } ${calc && !raw ? 'italic text-stone-300' : ''}`}
+          } ${calc && !raw ? 'italic text-stone-200' : ''}`}
         >
           <div className="flex items-center justify-end gap-2">
             {ratios && ratios[i] && ratios[i] !== '—' && (
