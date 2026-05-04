@@ -48,7 +48,7 @@ export class LucaController {
     private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
     private readonly kdvControl: KdvControlService,
-    private readonly kdvBeyanname: KdvBeyannameService,,
+    private readonly kdvBeyanname: KdvBeyannameService,
     private readonly isletmeHesapOzeti: IsletmeHesapOzetiService
   ) {}
 
