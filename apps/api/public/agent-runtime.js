@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.3';
+          const AGENT_VER = '1.34.4';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -489,14 +489,10 @@
     }[job.tip];
     if (!menuLabel) throw new Error(`Bilinmeyen e-arşiv tipi: ${job.tip}`);
 
-    // Sayfa zaten açık mı? frm3'te "faturalari-getir-btn" varsa atla, yoksa menüyü aç
+    // Her zaman doğru sayfayı II1a ile aç — "faturalari-getir-btn" hem alış hem satışta
+    // var olduğu için sayfa kontrolü güvenilir değil. Yanlış sayfada olabiliriz.
     let frm3 = getLucaFrame('frm3');
-    let sayfaAcik = false;
-    if (frm3 && frm3.contentDocument) {
-      sayfaAcik = !!frm3.contentDocument.getElementById('faturalari-getir-btn');
-    }
-
-    if (!sayfaAcik) {
+    {
       // Kullanıcı keşfinde bulunan direct II1a ID'leri (menü tıklama gerek yok!):
       //   e-Arşiv Satış Faturaları   → apy1000m24i10I
       //   e-Arşiv Alış Faturaları    → apy1000m24i11I
