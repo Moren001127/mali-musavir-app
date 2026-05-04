@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.9';
+          const AGENT_VER = '1.34.10';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -545,10 +545,15 @@
     }[job.tip];
     if (!menuLabel) throw new Error(`Bilinmeyen e-arşiv tipi: ${job.tip}`);
 
-    // Her zaman doğru sayfayı II1a ile aç — "faturalari-getir-btn" hem alış hem satışta
-    // var olduğu için sayfa kontrolü güvenilir değil. Yanlış sayfada olabiliriz.
+    // Yarı otomatik akış: Kullanıcı doğru sayfayı manuel açmış olmalı, agent
+    // firma + tarih + indirme yapar. Sub-sub menü açma agent context'inde
+    // çalışmadığı için (Luca'nın iç JS'i sentetik click'leri kabul etmiyor)
+    // bu yaklaşım daha güvenilir.
     let frm3 = getLucaFrame('frm3');
-    {
+    let sayfaAcik = !!(frm3 && frm3.contentDocument && frm3.contentDocument.getElementById('faturalari-getir-btn'));
+
+    if (!sayfaAcik) {
+      // Sayfa açık değilse II1a dene; başarısız olursa kullanıcıyı yönlendir
       // Kullanıcı keşfinde bulunan direct II1a ID'leri (menü tıklama gerek yok!):
       //   e-Arşiv Satış Faturaları   → apy1000m24i10I
       //   e-Arşiv Alış Faturaları    → apy1000m24i11I
@@ -610,24 +615,19 @@
         }
       }
       if (!basariliAcildi) {
-        // Fallback: menüleri sırayla açıp elementi click et
-        await log('🔄 Text-based menü navigasyonu (yedek plan)');
-        await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
-        await sleep(1200);
-        await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
-        await sleep(2000);
-        await clickByTextEverywhere(menuLabel, log, { maxMs: 8000 });
+        await log('⚠ Otomatik menü açma başarısız');
       }
       await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
       await sleep(6000);
-      // frm3'ü tekrar al (yeniden yüklenmiş olabilir)
       frm3 = getLucaFrame('frm3');
-      // Sayfa açıldığını doğrula
       if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
-        await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
-        await sleep(4000);
-        frm3 = getLucaFrame('frm3');
+        throw new Error(
+          `Luca'da "${menuLabel}" sayfası açılamadı. ` +
+          `Lütfen Luca'da elle Muhasebe → Akıllı Entegrasyon Noktası → ${menuLabel} sayfasını açıp tekrar deneyin.`
+        );
       }
+    } else {
+      await log('✓ Sayfa zaten açık (kullanıcı manuel açmış)');
     }
 
     // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
