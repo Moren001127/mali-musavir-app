@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { KdvControlModule } from '../kdv-control/kdv-control.module';
 import { MizanModule } from '../mizan/mizan.module';
 import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
+import { IsletmeHesapOzetiModule } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
     forwardRef(() => KdvControlModule),
     forwardRef(() => MizanModule),
     forwardRef(() => KdvBeyannameModule),
+    forwardRef(() => IsletmeHesapOzetiModule),
   ],
   controllers: [LucaController],
   providers: [LucaService, LucaAutoScraperService],

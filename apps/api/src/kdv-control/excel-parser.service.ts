@@ -529,4 +529,144 @@ export class ExcelParserService {
     const d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
   }
+/**
+   * İŞLETME HESAP ÖZETİ için detaylı parse — tek excel'den 4 toplam çıkarır:
+   *   - GELİRLER bölümü (Hesaplanan KDV):
+   *       gelirToplam = "Gelir" + "Satılan Emtia" matrah toplamı (KDV hariç)
+   *   - GİDERLER bölümü (İndirilecek KDV):
+   *       malAlisToplam = "Alınan Emtia" matrah toplamı
+   *       giderToplam   = "Gider" matrah toplamı
+   */
+  parseIsletmeExcelDetayli(buffer: Buffer): {
+    gelirToplam: number;
+    malAlisToplam: number;
+    giderToplam: number;
+    gelirSatirAdet: number;
+    giderSatirAdet: number;
+  } {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    const matrix: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      raw: false,
+      defval: null,
+      blankrows: false,
+    });
+
+    const norm = (v: any): string =>
+      String(v ?? '')
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .replace(/[ıİ]/g, 'i')
+        .replace(/[ğĞ]/g, 'g')
+        .replace(/[üÜ]/g, 'u')
+        .replace(/[şŞ]/g, 's')
+        .replace(/[öÖ]/g, 'o')
+        .replace(/[çÇ]/g, 'c');
+
+    // Header satırlarını topla
+    type HeaderInfo = {
+      idx: number;
+      hasIndirilecek: boolean;
+      hasHesaplanan: boolean;
+      cells: string[];
+    };
+    const headers: HeaderInfo[] = [];
+    for (let i = 0; i < matrix.length; i++) {
+      const row = matrix[i] || [];
+      const cells = row.map(norm);
+      const hasIndirilecek = cells.some((c) => c.includes('indirilecek'));
+      const hasHesaplanan = cells.some((c) => c.includes('hesaplanan'));
+      if (hasIndirilecek || hasHesaplanan) {
+        headers.push({ idx: i, hasIndirilecek, hasHesaplanan, cells });
+      }
+    }
+
+    let gelirToplam = 0;
+    let malAlisToplam = 0;
+    let giderToplam = 0;
+    let gelirSatirAdet = 0;
+    let giderSatirAdet = 0;
+
+    if (headers.length === 0) {
+      this.logger.warn('İHÖ Detaylı: Excel\'de hiç KDV header satırı bulunamadı');
+      return { gelirToplam, malAlisToplam, giderToplam, gelirSatirAdet, giderSatirAdet };
+    }
+
+    // GELİRLER bölümü (Hesaplanan KDV): Gelir + Satılan Emtia kolonlarını topla
+    const gelirHeader = headers.find((h) => h.hasHesaplanan);
+    if (gelirHeader) {
+      const next = headers.find((h) => h.idx > gelirHeader.idx);
+      const sectionEnd = next ? next.idx : matrix.length;
+      const cells = gelirHeader.cells;
+      const gelirCol = cells.findIndex((c) => c === 'gelir' || c.startsWith('gelir'));
+      const satilanCol = cells.findIndex((c) => c.includes('satilan') || c.includes('satılan'));
+      const tarihCol = cells.findIndex((c) => c === 'tarih' || c.includes('tarih'));
+
+      this.logger.log(
+        `İHÖ GELİR bölümü: header=${gelirHeader.idx + 1}, end=${sectionEnd}, gelirCol=${gelirCol}, satilanCol=${satilanCol}`,
+      );
+
+      for (let i = gelirHeader.idx + 1; i < sectionEnd; i++) {
+        const row = matrix[i] || [];
+        // Tarih yoksa veya TOPLAM satırıysa atla
+        const tarihRaw = tarihCol >= 0 ? row[tarihCol] : null;
+        const ilkHucre = norm(row[0]);
+        if (!tarihRaw && !ilkHucre) continue;
+        if (ilkHucre.includes('toplam') || ilkHucre.includes('genel')) continue;
+
+        const gelirVal = gelirCol >= 0 ? this.toDecimal(row[gelirCol]) : 0;
+        const satilanVal = satilanCol >= 0 ? this.toDecimal(row[satilanCol]) : 0;
+        const sum = (gelirVal || 0) + (satilanVal || 0);
+        if (sum > 0) {
+          gelirToplam += sum;
+          gelirSatirAdet++;
+        }
+      }
+    }
+
+    // GİDERLER bölümü (İndirilecek KDV): Alınan Emtia + Gider ayrı ayrı
+    const giderHeader = headers.find((h) => h.hasIndirilecek);
+    if (giderHeader) {
+      const next = headers.find((h) => h.idx > giderHeader.idx);
+      const sectionEnd = next ? next.idx : matrix.length;
+      const cells = giderHeader.cells;
+      const giderCol = cells.findIndex((c) => c === 'gider' || c.startsWith('gider'));
+      const alinanCol = cells.findIndex((c) => c.includes('alinan') || c.includes('alınan'));
+      const tarihCol = cells.findIndex((c) => c === 'tarih' || c.includes('tarih'));
+
+      this.logger.log(
+        `İHÖ GİDER bölümü: header=${giderHeader.idx + 1}, end=${sectionEnd}, giderCol=${giderCol}, alinanCol=${alinanCol}`,
+      );
+
+      for (let i = giderHeader.idx + 1; i < sectionEnd; i++) {
+        const row = matrix[i] || [];
+        const tarihRaw = tarihCol >= 0 ? row[tarihCol] : null;
+        const ilkHucre = norm(row[0]);
+        if (!tarihRaw && !ilkHucre) continue;
+        if (ilkHucre.includes('toplam') || ilkHucre.includes('genel')) continue;
+
+        const giderVal = giderCol >= 0 ? this.toDecimal(row[giderCol]) : 0;
+        const alinanVal = alinanCol >= 0 ? this.toDecimal(row[alinanCol]) : 0;
+        if ((giderVal || 0) > 0 || (alinanVal || 0) > 0) {
+          giderToplam += giderVal || 0;
+          malAlisToplam += alinanVal || 0;
+          giderSatirAdet++;
+        }
+      }
+    }
+
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      gelirToplam: r2(gelirToplam),
+      malAlisToplam: r2(malAlisToplam),
+      giderToplam: r2(giderToplam),
+      gelirSatirAdet,
+      giderSatirAdet,
+    };
+  }
 }

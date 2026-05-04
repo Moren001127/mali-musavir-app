@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import {
   Search, ChevronDown, Users, Loader2, Sparkles, Download,
   Lock, Unlock, BookOpen, Save, Trash2,
-  TrendingUp, Package, Calculator,
+  TrendingUp, Package, Calculator, CloudDownload,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -184,6 +184,53 @@ export default function IsletmeHesapOzetiPage() {
     },
   });
 
+  // Luca çekim — her dönem için ayrı job state
+  const [lucaJobs, setLucaJobs] = useState<Record<number, { jobId: string; status: string; message?: string } | null>>({});
+
+  const lucaCekMutation = useMutation({
+    mutationFn: (id: string) => isletmeHesapOzetiApi.lucaCek(id),
+    onSuccess: (data, _id) => {
+      const donem = data.donem;
+      setLucaJobs((prev) => ({ ...prev, [donem]: { jobId: data.jobId, status: 'pending', message: data.message } }));
+      toast.info(data.message);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Luca çekim başlatılamadı'),
+  });
+
+  // Job polling — her açık job'u 4 saniyede bir sorgula
+  useEffect(() => {
+    const activeJobs = Object.entries(lucaJobs).filter(([, j]) => j && (j.status === 'pending' || j.status === 'running'));
+    if (activeJobs.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const [donemStr, j] of activeJobs) {
+        if (!j) continue;
+        try {
+          const updated = await isletmeHesapOzetiApi.getLucaJob(j.jobId);
+          if (updated.status !== j.status) {
+            setLucaJobs((prev) => ({
+              ...prev,
+              [Number(donemStr)]: { ...j, status: updated.status, message: updated.errorMsg || undefined },
+            }));
+            if (updated.status === 'done') {
+              toast.success(`${donemStr}. dönem Luca'dan çekildi`);
+              qc.invalidateQueries({ queryKey: ['iho-yil', taxpayerId, yil] });
+              // Job'u listeden 5sn sonra temizle
+              setTimeout(() => setLucaJobs((p) => ({ ...p, [Number(donemStr)]: null })), 5000);
+            } else if (updated.status === 'failed') {
+              toast.error(`${donemStr}. dönem çekim başarısız: ${updated.errorMsg || ''}`);
+              setTimeout(() => setLucaJobs((p) => ({ ...p, [Number(donemStr)]: null })), 8000);
+            }
+          }
+        } catch {
+          // ignore polling errors
+        }
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [lucaJobs, qc, taxpayerId, yil]);
+
+
   async function indirExcel() {
     if (!taxpayerId) return;
     try {
@@ -344,6 +391,17 @@ export default function IsletmeHesapOzetiPage() {
           onDelete={(id) => {
             if (window.confirm('Bu dönem kaydı silinsin mi?')) deleteMutation.mutate(id);
           }}
+          onLucaCek={(donem) => {
+            const c = yilData?.ceyrekler?.[donem - 1];
+            if (!c) return;
+            const onay = window.confirm(
+              `Luca'dan ${donem}. dönem İşletme Defteri çekilecek.\n\n` +
+                `Devam etmeden önce Luca'da İşletme Defteri ekranını açın ve dönem aralığını seçin (${yil} yılı, ${donem}. çeyrek).\n\n` +
+                `Sonra Moren Agent bookmarklet'ini çalıştırın. Hazır mısınız?`,
+            );
+            if (onay) lucaCekMutation.mutate(c.id);
+          }}
+          lucaJobs={lucaJobs}
         />
       )}
     </div>
@@ -360,6 +418,8 @@ function KarsilastirmaTablosu({
   onLock,
   onUnlock,
   onDelete,
+  onLucaCek,
+  lucaJobs,
 }: {
   yilData: IhoYil;
   tersDonemler: number[];
@@ -367,6 +427,8 @@ function KarsilastirmaTablosu({
   onLock: (id: string) => void;
   onUnlock: (id: string) => void;
   onDelete: (id: string) => void;
+  onLucaCek: (donem: number) => void;
+  lucaJobs: Record<number, { jobId: string; status: string; message?: string } | null>;
 }) {
   const yil = yilData?.yil;
 
@@ -481,6 +543,21 @@ function KarsilastirmaTablosu({
           return (
             <div key={d} className="flex items-center gap-1">
               <span className="text-xs text-stone-500">{DONEM_FULL[d]}:</span>
+              {!c.locked && (
+                <button
+                  onClick={() => onLucaCek(d)}
+                  disabled={!!lucaJobs[d] && lucaJobs[d]?.status === 'pending'}
+                  title="Luca'dan İşletme Defteri Excel'i çek"
+                  className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  {lucaJobs[d]?.status === 'pending' || lucaJobs[d]?.status === 'running' ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <CloudDownload className="h-3 w-3" />
+                  )}
+                  {lucaJobs[d]?.status === 'pending' || lucaJobs[d]?.status === 'running' ? 'Çekiliyor…' : "Luca'dan Çek"}
+                </button>
+              )}
               {c.locked ? (
                 <button
                   onClick={() => onUnlock(c.id)}

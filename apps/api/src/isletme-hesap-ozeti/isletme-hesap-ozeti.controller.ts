@@ -172,4 +172,22 @@ export class IsletmeHesapOzetiController {
   async remove(@Req() req: any, @Param('id') id: string) {
     await this.service.remove(req.user.tenantId, id);
   }
+  /** Luca'dan İşletme Defteri çekim job'u başlat */
+  @Post(':id/luca-cek')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  lucaCek(@Req() req: any, @Param('id') id: string) {
+    return this.service.lucaCek({
+      tenantId: req.user.tenantId,
+      id,
+      createdBy: req.user.sub,
+    });
+  }
+
+  /** Luca çekim job durumunu sorgula (frontend polling için) */
+  @Get('luca-job/:jobId')
+  getLucaJob(@Req() req: any, @Param('jobId') jobId: string) {
+    return this.service.getLucaJob(jobId, req.user.tenantId);
+  }
+
 }

@@ -31,6 +31,7 @@ import { MizanService } from '../mizan/mizan.service';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
+import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -47,7 +48,8 @@ export class LucaController {
     private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
     private readonly kdvControl: KdvControlService,
-    private readonly kdvBeyanname: KdvBeyannameService,
+    private readonly kdvBeyanname: KdvBeyannameService,,
+    private readonly isletmeHesapOzeti: IsletmeHesapOzetiService
   ) {}
 
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
@@ -359,6 +361,44 @@ export class LucaController {
       throw new BadRequestException(
         `KDV mizan snapshot hatası: ${e?.message || 'bilinmeyen'}`,
       );
+    }
+  }
+
+  /**
+   * İşletme Hesap Özeti için Luca'dan İşletme Defteri Excel'i — agent token ile çalışır.
+   * Tek excel'den hem GELİRLER hem GİDERLER bölümü parse edilir, İHÖ kaydı doldurulur.
+   */
+  @Post('agent/luca/runner/upload-iho')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadIhoFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('ihoId') ihoId: string,
+    @Query('jobId') jobId?: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!ihoId) throw new BadRequestException('ihoId query parametresi gerekli');
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+
+    try {
+      const updated = await this.isletmeHesapOzeti.applyLucaSnapshot({
+        tenantId,
+        ihoId,
+        jobId,
+        buffer: file.buffer,
+      });
+      if (jobId) await this.luca.markJobDone(jobId, 1).catch(() => {});
+      return {
+        ok: true,
+        ihoId: (updated as any)?.id,
+        satisHasilati: (updated as any)?.satisHasilati,
+        malAlisi: (updated as any)?.malAlisi,
+        donemIciGiderler: (updated as any)?.donemIciGiderler,
+      };
+    } catch (e: any) {
+      if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
+      throw new BadRequestException(`İHÖ Luca uygulama hatası: ${e?.message || 'bilinmeyen'}`);
     }
   }
 

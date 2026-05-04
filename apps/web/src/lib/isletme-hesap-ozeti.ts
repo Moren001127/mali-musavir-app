@@ -101,6 +101,28 @@ export const isletmeHesapOzetiApi = {
   remove: (id: string) =>
     api.delete(`/isletme-hesap-ozeti/${id}`).then((r) => r.data),
 
+
+  lucaCek: (id: string) =>
+    api.post(`/isletme-hesap-ozeti/${id}/luca-cek`).then((r) => r.data as {
+      jobId: string;
+      status: string;
+      donem: number;
+      yil: number;
+      message: string;
+    }),
+
+  getLucaJob: (jobId: string) =>
+    api.get(`/isletme-hesap-ozeti/luca-job/${jobId}`).then((r) => r.data as {
+      id: string;
+      status: 'pending' | 'running' | 'done' | 'failed';
+      errorMsg?: string | null;
+      tip: string;
+      donem: string;
+      recordCount?: number;
+      startedAt?: string | null;
+      finishedAt?: string | null;
+    }),
+
   exportYil: (taxpayerId: string, yil: number) =>
     api
       .get(`/isletme-hesap-ozeti/export/${taxpayerId}/${yil}`, { responseType: 'arraybuffer' })

@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.78.0';
+          const AGENT_VER = '1.31.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -177,10 +177,12 @@
           // ISLETME_GELIR/GIDER → İşletme defteri ekranı
           const tipLabel = {
             MIZAN: 'Mizan ekranı (Genel Raporlar > Mizan)',
+            KDV_MIZAN: 'KDV Beyanname için Mizan ekranı',
             KDV_191: 'Defteri Kebir (Tüm Yazıcılar) — 191 hesap kodu',
             KDV_391: 'Defteri Kebir (Tüm Yazıcılar) — 391 hesap kodu',
             ISLETME_GELIR: 'İşletme defteri (gelir kayıtları)',
             ISLETME_GIDER: 'İşletme defteri (gider kayıtları)',
+            IHO_FETCH: 'İşletme defteri ekranı (gelir + gider tek dosya)',
           }[job.tip] || job.tip;
           await log(`📋 ${tipLabel} açık olmalı`);
 
@@ -210,6 +212,13 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-kdv-mizan?${params.toString()}`;
+          } else if (job.tip === 'IHO_FETCH') {
+            // İşletme Hesap Özeti — sessionId = İHÖ kayıt id'si
+            const params = new URLSearchParams({
+              ihoId: String(job.sessionId || ''),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-iho?${params.toString()}`;
           } else {
             // KDV / İşletme defteri — agent-token kabul eden yan endpoint
             // (eski /kdv-control/.../excel-from-runner endpoint'i JWT bekliyordu)

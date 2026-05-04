@@ -1,5 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { LucaService } from '../luca/luca.service';
+import { ExcelParserService } from '../kdv-control/excel-parser.service';
 
 /**
  * İşletme Hesap Özeti — TAMAMI MANUEL.
@@ -23,7 +25,11 @@ import { PrismaService } from '../prisma/prisma.service';
 export class IsletmeHesapOzetiService {
   private readonly logger = new Logger(IsletmeHesapOzetiService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly luca: LucaService,
+    private readonly excelParser: ExcelParserService,
+  ) {}
 
   /** Boş bir çeyrek kaydı oluştur (manuel veri girişine açık) */
   async olustur(params: {
@@ -439,4 +445,86 @@ export class IsletmeHesapOzetiService {
     const buffer = await wb.xlsx.writeBuffer();
     return buffer as Buffer;
   }
+  // ═══════════════════════════════════════════════════════
+  // LUCA ÇEKİM — İşletme Defteri Excel'den otomatik doldurma
+  // ═══════════════════════════════════════════════════════
+
+  /** Bir İHÖ kaydı için Luca çekim job'u yarat (agent runner alacak) */
+  async lucaCek(params: {
+    tenantId: string;
+    id: string; // İHÖ kaydı id
+    createdBy?: string;
+  }) {
+    const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
+      where: { id: params.id, tenantId: params.tenantId },
+    });
+    if (!ozet) throw new NotFoundException('İHÖ kaydı bulunamadı');
+    if (ozet.locked) throw new BadRequestException('Kesin kayıt — Luca çekim yapılamaz');
+
+    const aralik = this.donemAraligi(ozet.yil, ozet.donem);
+    const job = await this.luca.createFetchJob({
+      tenantId: params.tenantId,
+      sessionId: ozet.id, // İHÖ kaydı id'si sessionId olarak tutuluyor (job → İHÖ bağı)
+      mukellefId: ozet.taxpayerId,
+      donem: aralik.gte, // Q için ilk ay (YYYY-MM); kullanıcı Luca'da aralığı kendi seçer
+      tip: 'IHO_FETCH',
+      createdBy: params.createdBy,
+    });
+
+    return {
+      jobId: job.id,
+      status: 'queued',
+      donem: ozet.donem,
+      yil: ozet.yil,
+      message: `Luca'da İşletme Defteri ekranını ${ozet.yil} yılı ${aralik.gte}-${aralik.lte} aralığı için açıp Moren Agent'ı çalıştır`,
+    };
+  }
+
+  /** Çeyreklik dönem aralığı: 1→Oca-Mar, 2→Nis-Haz, 3→Tem-Eyl, 4→Eki-Ara */
+  private donemAraligi(yil: number, donem: number): { gte: string; lte: string } {
+    const baslangicAyi = (donem - 1) * 3 + 1;
+    const bitisAyi = donem * 3;
+    const ay = (n: number) => String(n).padStart(2, '0');
+    return { gte: `${yil}-${ay(baslangicAyi)}`, lte: `${yil}-${ay(bitisAyi)}` };
+  }
+
+  /** Agent runner Excel'i yükledikten sonra parse eder ve İHÖ alanlarını doldurur */
+  async applyLucaSnapshot(params: {
+    tenantId: string;
+    ihoId: string;
+    jobId?: string;
+    buffer: Buffer;
+  }) {
+    const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
+      where: { id: params.ihoId, tenantId: params.tenantId },
+    });
+    if (!ozet) throw new NotFoundException('İHÖ kaydı bulunamadı');
+    if (ozet.locked) throw new BadRequestException('Kesin kayıt — Luca verisi uygulanamaz');
+
+    // Excel parse — gelir, mal alışı, gider ayrı ayrı
+    const parsed = this.excelParser.parseIsletmeExcelDetayli(params.buffer);
+
+    this.logger.log(
+      `İHÖ Luca uygulanıyor (id=${params.ihoId}): satışlar=${parsed.gelirToplam}, mal=${parsed.malAlisToplam}, gider=${parsed.giderToplam}`,
+    );
+
+    // Mevcut türetilen alanları yeniden hesaplamak için updateManuel kullan
+    return this.updateManuel({
+      tenantId: params.tenantId,
+      id: params.ihoId,
+      satisHasilati: parsed.gelirToplam,
+      malAlisi: parsed.malAlisToplam,
+      donemIciGiderler: parsed.giderToplam,
+    });
+  }
+
+  /** Job durumunu kontrol et (frontend polling için) */
+  async getLucaJob(jobId: string, tenantId: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { id: jobId, tenantId },
+    });
+    if (!job) throw new NotFoundException('Job bulunamadı');
+    return job;
+  }
 }
+
