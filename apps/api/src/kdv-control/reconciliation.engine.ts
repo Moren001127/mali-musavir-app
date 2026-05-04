@@ -502,28 +502,37 @@ export class ReconciliationEngine {
       reasons.push('Görselden KDV tutarı okunamadı');
     }
 
-    // ── SATICI KARŞILAŞTIRMASI (arka plan, UI'da görünmez) ──
-    // Aynı belge no'lu farklı firmaların faturaları eşleşmesin.
-    // ÖKC fişlerinde 0001, 0002 gibi kısa numaralar; e-fatura'da bile aynı seri
-    // numarası farklı satıcılarda tekrarlayabilir.
+    // ── SATICI KARŞILAŞTIRMASI ──
+    // PRIMARY: VKN/TCKN match (en güvenilir)
+    // FALLBACK: ad benzerliği (similarity ≥ 0.5)
     //
-    // Karşılaştırma stratejisi:
-    //   - Luca tarafı: record.karsiTaraf (örn. "ÖZ ELA TURİZM TAŞIMACILIK İNŞAAT...")
-    //   - OCR tarafı:  image.ocrSatici (örn. "GÜRTUR PERSONEL TAŞIMACILIĞI...")
-    //   - Normalize edilip (UPPER, noktalama temizliği, "LTD ŞTİ"/"A.Ş."/"TİC."
-    //     gibi suffix'ler atılır) similarity karşılaştırılır.
-    //   - %50+ benzerlik = aynı firma kabul edilir (kısaltmalar tolere edilir)
-    //   - %50- = farklı firma → score sert düşürülür, MATCHED engellenir.
+    // Aynı belge no'lu farklı firmaların faturaları eşleşmesin.
     let saticiMismatch = false;
     const recordSatici = (record.karsiTaraf || '').trim();
+    const recordVkn = String((record as any).karsiVergiNo || '').replace(/\D/g, '');
     const imgSatici = ((image as any).ocrSatici || '').trim();
-    if (recordSatici && imgSatici) {
+    const imgVkn = String((image as any).ocrSaticiVkn || '').replace(/\D/g, '');
+
+    // 1) VKN/TCKN MATCH — primary (10 veya 11 hane sayı)
+    if (recordVkn && imgVkn && (imgVkn.length === 10 || imgVkn.length === 11)) {
+      if (recordVkn === imgVkn) {
+        // Tam eşleşme → güçlü bonus, isim kontrolü atla
+        score = Math.min(1, score + 0.15);
+        reasons.push(`VKN/TCKN tam eşleşti (${imgVkn})`);
+      } else {
+        // VKN'ler farklı → kesin yanlış firma
+        saticiMismatch = true;
+        reasons.push(
+          `VKN/TCKN uyumsuz: Luca ${recordVkn} ≠ Fatura ${imgVkn} — farklı firma`,
+        );
+      }
+    }
+    // 2) AD BENZERLİĞİ — VKN yoksa veya farklılaşmadıysa
+    else if (recordSatici && imgSatici) {
       const sim = this.companyNameSimilarity(recordSatici, imgSatici);
       if (sim >= 0.5) {
-        // Aynı firma — küçük bir bonus
         score = Math.min(1, score + 0.05);
       } else {
-        // Farklı firma → büyük penalty + MATCHED engellenir
         saticiMismatch = true;
         reasons.push(
           `Satıcı uyumsuz: Luca "${recordSatici.slice(0, 40)}" ≠ Fatura "${imgSatici.slice(0, 40)}"`,

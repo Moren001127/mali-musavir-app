@@ -2240,17 +2240,48 @@ export class KdvControlService {
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
+          ocrSatici: (ocrResult as any).satici || null,
+          ocrSaticiVkn: (ocrResult as any).saticiVkn || null,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
           ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
           ocrDateConfidence: ocrResult.fieldConfidence.date,
           ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
           ocrEngine: ocrResult.engine,
+          ocrBelgeTipi: (ocrResult as any).belgeTipi || null,
+          ocrKdvBreakdown: (ocrResult as any).kdvBreakdown || null,
+          ocrValidationScore: (ocrResult as any).validationScore ?? null,
           ocrKategori: (ocrResult as any).kategori || null,
           imageHash,
           // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
         } as any,
       });
+
+      // ─── VENDOR MEMORY UPSERT ───
+      // OCR'dan VKN okuduysak VendorMemory'de "bu firmayı gördük" kaydı tut.
+      // Sonraki KDV mutabakatlarında bu firma için öğrenilen kategori auto-suggest edilebilir.
+      const vkn = (ocrResult as any).saticiVkn;
+      const satici = (ocrResult as any).satici;
+      if (vkn && (vkn.length === 10 || vkn.length === 11)) {
+        try {
+          await (this.prisma as any).vendorMemory.upsert({
+            where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+            create: {
+              tenantId,
+              firmaKimlikNo: vkn,
+              firmaUnvan: satici || null,
+              sonKullanim: new Date(),
+            },
+            update: {
+              // Yeni unvan görüldüyse güncelle (son gördüğümüz isim)
+              firmaUnvan: satici || undefined,
+              sonKullanim: new Date(),
+            },
+          });
+        } catch (e: any) {
+          this.logger.warn(`VendorMemory upsert hatası (${vkn}): ${e?.message}`);
+        }
+      }
     } catch (err: any) {
       this.logger.error(`runOcrForMihsapInvoice [${imageId}]: ${err?.message}`);
       await this.prisma.receiptImage.update({
@@ -2258,6 +2289,101 @@ export class KdvControlService {
         data: { ocrStatus: 'FAILED' },
       });
     }
+  }
+
+  /**
+   * Manuel Review Queue — tüm tenant'taki düşük güvenli OCR sonuçları.
+   * NEEDS_REVIEW + LOW_CONFIDENCE statüsündeki ReceiptImage'ları döner,
+   * kullanıcının teyit etmesi için.
+   */
+  async getReviewQueue(
+    tenantId: string,
+    opts: { taxpayerId?: string; donem?: string; limit?: number; offset?: number } = {},
+  ) {
+    const { taxpayerId, donem, limit = 100, offset = 0 } = opts;
+
+    // Önce ilgili sessionları bul (tenant + opsiyonel taxpayer/donem)
+    const sessionWhere: any = { tenantId };
+    if (taxpayerId) sessionWhere.taxpayerId = taxpayerId;
+    if (donem) sessionWhere.periodLabel = { in: [donem, donem.replace('-', '/')] };
+
+    const sessions = await (this.prisma as any).kdvControlSession.findMany({
+      where: sessionWhere,
+      select: {
+        id: true,
+        taxpayerId: true,
+        periodLabel: true,
+        kayitTuru: true,
+        taxpayer: {
+          select: { firstName: true, lastName: true, companyName: true, taxNumber: true },
+        },
+      },
+    });
+    const sessionIds = sessions.map((s: any) => s.id);
+    if (sessionIds.length === 0) {
+      return { items: [], total: 0, limit, offset };
+    }
+    const sessionMap = new Map(sessions.map((s: any) => [s.id, s]));
+
+    // ReviewQueue kriterleri: NEEDS_REVIEW veya LOW_CONFIDENCE; manuel teyit edilmemiş
+    const where: any = {
+      sessionId: { in: sessionIds },
+      ocrStatus: { in: ['NEEDS_REVIEW', 'LOW_CONFIDENCE'] },
+      isManuallyConfirmed: false,
+    };
+
+    const [items, total] = await Promise.all([
+      (this.prisma as any).receiptImage.findMany({
+        where,
+        orderBy: [{ ocrConfidence: 'asc' }, { uploadedAt: 'desc' }], // en düşük confidence önce
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          sessionId: true,
+          originalName: true,
+          ocrStatus: true,
+          ocrBelgeNo: true,
+          ocrDate: true,
+          ocrKdvTutari: true,
+          ocrKdvTevkifat: true,
+          ocrSatici: true,
+          ocrSaticiVkn: true,
+          ocrBelgeTipi: true,
+          ocrKategori: true,
+          ocrConfidence: true,
+          ocrBelgeNoConfidence: true,
+          ocrDateConfidence: true,
+          ocrKdvConfidence: true,
+          ocrEngine: true,
+          ocrValidationScore: true,
+          uploadedAt: true,
+        },
+      }),
+      (this.prisma as any).receiptImage.count({ where }),
+    ]);
+
+    // Her image'a session info ekle
+    const enriched = items.map((img: any) => {
+      const sess: any = sessionMap.get(img.sessionId);
+      const tp = sess?.taxpayer;
+      const mukellefAdi = tp?.companyName || [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') || '—';
+      return {
+        ...img,
+        session: sess
+          ? {
+              id: sess.id,
+              taxpayerId: sess.taxpayerId,
+              donem: sess.periodLabel,
+              kayitTuru: sess.kayitTuru,
+            }
+          : null,
+        mukellefAdi,
+        mukellefVkn: tp?.taxNumber || null,
+      };
+    });
+
+    return { items: enriched, total, limit, offset };
   }
 
   /** "2026/03" → "2026-03" */

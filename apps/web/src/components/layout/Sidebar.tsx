@@ -6,7 +6,7 @@ import { useMe, useLogout } from '@/hooks/useAuth';
 import {
   LayoutDashboard, Users, FileText, Receipt, Users2, FolderOpen,
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
-  Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
+  Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
   Car, Gavel, Wallet, Megaphone, Archive,
 } from 'lucide-react';
@@ -54,7 +54,8 @@ const navGroups = [
     icon: Zap,
     items: [
       { href: '/panel/ajanlar',             label: 'Tüm Ajanlar',         icon: Cpu },
-      { href: '/panel/ajanlar/mihsap',      label: 'Mihsap Fatura',      icon: Bot },
+      { href: '/panel/ajanlar/mihsap',         label: 'Mihsap Fatura',         icon: Bot },
+      { href: '/panel/ajanlar/mihsap/incele',  label: 'Düzeltme Bekleyen',     icon: ShieldAlert },
       { href: '/panel/ajanlar/luca',        label: 'Luca E-Arşiv',       icon: FileInput },
       { href: '/panel/ajanlar/tebligat',    label: 'Tebligat Özet',      icon: Mailbox },
       { href: '/panel/ajanlar/kdv-hazirlik',label: 'KDV Ön-Hazırlık',    icon: Calculator },

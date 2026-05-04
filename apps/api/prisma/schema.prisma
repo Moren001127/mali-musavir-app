@@ -815,6 +815,9 @@ model ReceiptImage {
   // @map: Railway DB'sinde kolon "ocrsatici" (lowercase) olarak yaratıldı (UI'dan elle eklendi).
   // Prisma client camelCase görür, DB'ye lowercase yazar/okur.
   ocrSatici    String?            @map("ocrsatici")
+  // Satıcı VKN/TCKN (10/11 hane) — reconciliation'da PRIMARY match key.
+  // Ad benzerliğinden çok daha güvenilir.
+  ocrSaticiVkn String?
   ocrRawText   String?   // Ham OCR çıktısı
   ocrConfidence Float?   // 0-1 arası genel güven skoru
   // Alan-bazlı güven skorları (null = alan okunamadı)

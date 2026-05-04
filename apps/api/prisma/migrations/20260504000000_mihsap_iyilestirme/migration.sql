@@ -6,8 +6,9 @@
 
 -- ReceiptImage
 ALTER TABLE "receipt_images"
-  ADD COLUMN IF NOT EXISTS "imageHash"   VARCHAR(64),
-  ADD COLUMN IF NOT EXISTS "ocrKategori" TEXT;
+  ADD COLUMN IF NOT EXISTS "imageHash"     VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS "ocrKategori"   TEXT,
+  ADD COLUMN IF NOT EXISTS "ocrSaticiVkn"  TEXT;
 
 CREATE INDEX IF NOT EXISTS "receipt_images_imageHash_idx" ON "receipt_images"("imageHash");
 

@@ -218,6 +218,27 @@ export class KdvControlController {
     return this.kdvService.getImageDownloadUrl(imageId, req.user.tenantId);
   }
 
+  /**
+   * Manuel Review Queue — tenant geneli düşük confidence faturalar.
+   * /panel/ajanlar/mihsap/incele ekranı bu endpoint'i kullanır.
+   * Filtre: NEEDS_REVIEW + LOW_CONFIDENCE; mükellef + dönem + alan-bazlı.
+   */
+  @Get('review-queue')
+  getReviewQueue(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('donem') donem?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.kdvService.getReviewQueue(req.user.tenantId, {
+      taxpayerId: taxpayerId || undefined,
+      donem: donem || undefined,
+      limit: limit ? Math.min(parseInt(limit, 10), 500) : 100,
+      offset: offset ? parseInt(offset, 10) : 0,
+    });
+  }
+
   @Patch('images/:imageId/confirm-ocr')
   @Roles('ADMIN', 'STAFF')
   confirmOcr(
