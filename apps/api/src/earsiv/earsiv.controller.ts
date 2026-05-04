@@ -9,7 +9,7 @@ import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { EarsivService, EarsivTip } from './earsiv.service';
+import { EarsivService, EarsivTip, BelgeKaynak } from './earsiv.service';
 import { LucaService } from '../luca/luca.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -29,7 +29,7 @@ export class EarsivController {
   @HttpCode(HttpStatus.OK)
   async fetchFromLuca(
     @Req() req: any,
-    @Body() body: { mukellefId: string; donem: string; tip: EarsivTip },
+    @Body() body: { mukellefId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak },
   ) {
     if (!body?.mukellefId || !body?.donem || !body?.tip) {
       throw new BadRequestException('mukellefId, donem ve tip gerekli');
@@ -37,12 +37,18 @@ export class EarsivController {
     if (body.tip !== 'SATIS' && body.tip !== 'ALIS') {
       throw new BadRequestException('tip SATIS veya ALIS olmalı');
     }
+    const belgeKaynak: BelgeKaynak = body.belgeKaynak || 'EARSIV';
+    if (belgeKaynak !== 'EFATURA' && belgeKaynak !== 'EARSIV') {
+      throw new BadRequestException('belgeKaynak EFATURA veya EARSIV olmalı');
+    }
+    // Job tip: EARSIV_SATIS | EARSIV_ALIS | EFATURA_SATIS | EFATURA_ALIS
+    const jobTip = `${belgeKaynak}_${body.tip}`;
     const job = await this.luca.createFetchJob({
       tenantId: req.user.tenantId,
       sessionId: undefined as any,
       mukellefId: body.mukellefId,
       donem: body.donem,
-      tip: body.tip === 'SATIS' ? 'EARSIV_SATIS' : 'EARSIV_ALIS',
+      tip: jobTip,
       createdBy: req.user.id,
     });
     return { jobId: job.id, status: job.status };
@@ -62,13 +68,14 @@ export class EarsivController {
     @Query('taxpayerId') taxpayerId?: string,
     @Query('donem') donem?: string,
     @Query('tip') tip?: EarsivTip,
+    @Query('belgeKaynak') belgeKaynak?: BelgeKaynak,
     @Query('search') search?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     return this.earsiv.list({
       tenantId: req.user.tenantId,
-      taxpayerId, donem, tip, search,
+      taxpayerId, donem, tip, belgeKaynak, search,
       page: page ? parseInt(page, 10) : 1,
       pageSize: pageSize ? Math.min(parseInt(pageSize, 10), 200) : 50,
     });
@@ -105,7 +112,7 @@ export class EarsivController {
   async uploadZipManual(
     @Req() req: any,
     @UploadedFile() file: Express.Multer.File,
-    @Body() body: { taxpayerId: string; donem: string; tip: EarsivTip },
+    @Body() body: { taxpayerId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak },
   ) {
     if (!file) throw new BadRequestException('ZIP dosyası gerekli (field: file)');
     if (!body?.taxpayerId || !body?.donem || !body?.tip) {
@@ -114,11 +121,13 @@ export class EarsivController {
     if (body.tip !== 'SATIS' && body.tip !== 'ALIS') {
       throw new BadRequestException('tip SATIS veya ALIS olmalı');
     }
+    const belgeKaynak: BelgeKaynak = body.belgeKaynak || 'EARSIV';
     return this.earsiv.importFromZip({
       tenantId: req.user.tenantId,
       taxpayerId: body.taxpayerId,
       donem: body.donem,
       tip: body.tip,
+      belgeKaynak,
       zipBuffer: file.buffer,
     });
   }
@@ -134,13 +143,14 @@ export class EarsivController {
     @Query('mukellefId') mukellefId: string,
     @Query('donem') donem: string,
     @Query('tip') tipQuery: string,
+    @Query('belgeKaynak') belgeKaynakQuery?: string,
     @Query('jobId') jobId?: string,
   ) {
     if (!file) throw new BadRequestException('ZIP dosyası gerekli (field: file)');
     if (!mukellefId || !donem) throw new BadRequestException('mukellefId ve donem gerekli');
     const tip = tipQuery === 'ALIS' ? 'ALIS' : 'SATIS';
+    const belgeKaynak: BelgeKaynak = belgeKaynakQuery === 'EFATURA' ? 'EFATURA' : 'EARSIV';
 
-    // Tenant token doğrulama (luca controller'daki helper'la aynı pattern)
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
 
     const result = await this.earsiv.importFromZip({
@@ -148,6 +158,7 @@ export class EarsivController {
       taxpayerId: mukellefId,
       donem,
       tip: tip as EarsivTip,
+      belgeKaynak,
       fetchJobId: jobId,
       zipBuffer: file.buffer,
     });

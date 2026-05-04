@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { earsivApi, fmtTRY, type EarsivTip, type EarsivFatura } from '@/lib/earsiv';
+import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -17,6 +17,7 @@ type Taxpayer = {
   lastName?: string | null;
   companyName?: string | null;
   taxNumber?: string | null;
+  isEFaturaMukellefi?: boolean;
 };
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
@@ -31,6 +32,7 @@ export default function EarsivPage() {
   const [year, setYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
   const [tip, setTip] = useState<EarsivTip>('SATIS');
+  const [belgeKaynak, setBelgeKaynak] = useState<BelgeKaynak>('EARSIV');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
@@ -47,11 +49,12 @@ export default function EarsivPage() {
   // E-arşiv fatura listesi
   const donem = `${year}-${String(month).padStart(2, '0')}`;
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['earsiv-list', taxpayerId, donem, tip, search],
+    queryKey: ['earsiv-list', taxpayerId, donem, tip, belgeKaynak, search],
     queryFn: () => earsivApi.list({
       taxpayerId: taxpayerId || undefined,
       donem,
       tip,
+      belgeKaynak,
       search: search || undefined,
       pageSize: 200,
     }),
@@ -62,7 +65,7 @@ export default function EarsivPage() {
   // Luca'dan Çek
   const lucaMut = useMutation({
     mutationFn: () =>
-      earsivApi.fetchFromLuca({ mukellefId: taxpayerId, donem, tip }),
+      earsivApi.fetchFromLuca({ mukellefId: taxpayerId, donem, tip, belgeKaynak }),
     onSuccess: (d) => {
       setLucaJobId(d.jobId);
       setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
@@ -105,7 +108,7 @@ export default function EarsivPage() {
   // Manuel ZIP yükleme
   const uploadMut = useMutation({
     mutationFn: (file: File) =>
-      earsivApi.uploadZip({ taxpayerId, donem, tip }, file),
+      earsivApi.uploadZip({ taxpayerId, donem, tip, belgeKaynak }, file),
     onSuccess: (d) => {
       toast.success(`ZIP yüklendi · ${d.inserted} fatura eklendi (${d.skipped} mükerrer atlandı)`);
       qc.invalidateQueries({ queryKey: ['earsiv-list'] });
@@ -196,8 +199,49 @@ export default function EarsivPage() {
         </p>
       </div>
 
+      {/* Belge tipi sekme barı — mükellef e-fatura mükellefi ise 4 sekme, değilse 2 */}
+      {selectedTp && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {(() => {
+            const isEFM = !!selectedTp.isEFaturaMukellefi;
+            const tabs: Array<{ key: string; label: string; tip: EarsivTip; bk: BelgeKaynak; renk: string }> = [
+              { key: 'EARSIV_SATIS', label: 'E-Arşiv · Giden (SATIŞ)', tip: 'SATIS', bk: 'EARSIV', renk: '#22c55e' },
+              { key: 'EARSIV_ALIS', label: 'E-Arşiv · Gelen (ALIŞ)', tip: 'ALIS', bk: 'EARSIV', renk: '#22c55e' },
+            ];
+            if (isEFM) {
+              tabs.push(
+                { key: 'EFATURA_SATIS', label: 'E-Fatura · Giden (SATIŞ)', tip: 'SATIS', bk: 'EFATURA', renk: '#3b82f6' },
+                { key: 'EFATURA_ALIS', label: 'E-Fatura · Gelen (ALIŞ)', tip: 'ALIS', bk: 'EFATURA', renk: '#3b82f6' },
+              );
+            }
+            return tabs.map((t) => {
+              const aktif = tip === t.tip && belgeKaynak === t.bk;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => { setTip(t.tip); setBelgeKaynak(t.bk); setSelected(new Set()); }}
+                  className="px-4 py-2 rounded-md text-sm font-semibold transition"
+                  style={{
+                    background: aktif ? `${t.renk}20` : 'rgba(255,255,255,0.03)',
+                    color: aktif ? t.renk : 'rgba(250,250,249,0.6)',
+                    border: `1px solid ${aktif ? t.renk + '50' : 'rgba(255,255,255,0.08)'}`,
+                  }}
+                >
+                  {t.label}
+                </button>
+              );
+            });
+          })()}
+          {!selectedTp.isEFaturaMukellefi && (
+            <span className="text-[11px] italic self-center ml-2" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              · Bu mükellef e-fatura mükellefi değil. E-fatura sekmeleri kapalı.
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Filtreler */}
-      <div className="rounded-lg p-4 grid grid-cols-1 md:grid-cols-5 gap-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="rounded-lg p-4 grid grid-cols-1 md:grid-cols-4 gap-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {/* Mükellef */}
         <div className="md:col-span-2">
           <label className="text-[10px] uppercase tracking-[.16em] mb-1.5 block" style={{ color: '#b8a06f' }}>
@@ -211,21 +255,6 @@ export default function EarsivPage() {
             <span>{selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}</span>
             <Search size={14} style={{ color: GOLD }} />
           </button>
-        </div>
-        {/* Tip */}
-        <div>
-          <label className="text-[10px] uppercase tracking-[.16em] mb-1.5 block" style={{ color: '#b8a06f' }}>
-            Tip
-          </label>
-          <select
-            value={tip}
-            onChange={(e) => setTip(e.target.value as EarsivTip)}
-            className="w-full px-3 py-2 rounded-md text-sm"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-          >
-            <option value="SATIS">SATIŞ (E-Arşiv)</option>
-            <option value="ALIS">ALIŞ (E-Fatura)</option>
-          </select>
         </div>
         {/* Yıl */}
         <div>
@@ -269,7 +298,7 @@ export default function EarsivPage() {
           style={{ background: GOLD, color: '#1a1a18', border: 0 }}
         >
           {lucaMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {lucaJobId ? 'Çekiliyor…' : `Luca'dan ${tip === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} Çek`}
+          {lucaJobId ? 'Çekiliyor…' : `Luca'dan ${belgeKaynak === 'EFATURA' ? 'E-Fatura' : 'E-Arşiv'} ${tip === 'SATIS' ? 'Giden' : 'Gelen'} Çek`}
         </button>
 
         {/* Manuel ZIP yükleme */}

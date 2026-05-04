@@ -1,10 +1,12 @@
 import { api } from './api';
 
 export type EarsivTip = 'SATIS' | 'ALIS';
+export type BelgeKaynak = 'EFATURA' | 'EARSIV';
 
 export interface EarsivFatura {
   id: string;
   tip: EarsivTip;
+  belgeKaynak?: BelgeKaynak;
   donem: string;
   faturaNo: string;
   faturaTarihi: string;
@@ -24,7 +26,12 @@ export interface EarsivFatura {
 }
 
 export const earsivApi = {
-  fetchFromLuca: (data: { mukellefId: string; donem: string; tip: EarsivTip }) =>
+  fetchFromLuca: (data: {
+    mukellefId: string;
+    donem: string;
+    tip: EarsivTip;
+    belgeKaynak?: BelgeKaynak;
+  }) =>
     api.post('/earsiv/fetch-from-luca', data).then((r) => r.data as { jobId: string; status: string }),
 
   getLucaJob: (jobId: string) =>
@@ -34,6 +41,7 @@ export const earsivApi = {
     taxpayerId?: string;
     donem?: string;
     tip?: EarsivTip;
+    belgeKaynak?: BelgeKaynak;
     search?: string;
     page?: number;
     pageSize?: number;
@@ -53,7 +61,7 @@ export const earsivApi = {
       .then((r) => r.data as Blob),
 
   uploadZip: (
-    data: { taxpayerId: string; donem: string; tip: EarsivTip },
+    data: { taxpayerId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak },
     file: File,
   ) => {
     const fd = new FormData();
@@ -61,6 +69,7 @@ export const earsivApi = {
     fd.append('taxpayerId', data.taxpayerId);
     fd.append('donem', data.donem);
     fd.append('tip', data.tip);
+    if (data.belgeKaynak) fd.append('belgeKaynak', data.belgeKaynak);
     return api
       .post('/earsiv/upload-zip', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },

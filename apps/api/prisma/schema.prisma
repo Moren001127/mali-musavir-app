@@ -1636,6 +1636,7 @@ model EarsivFatura {
   tenantId       String
   taxpayerId     String
   tip            EarsivTip  // SATIS | ALIS
+  belgeKaynak    BelgeKaynak @default(EARSIV) // EFATURA | EARSIV — Luca'da iki ayrı tab
   donem          String     // "2026-03" YYYY-MM
   faturaNo       String
   faturaTarihi   DateTime
@@ -1660,8 +1661,8 @@ model EarsivFatura {
 
   taxpayer       Taxpayer   @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, taxpayerId, tip, faturaNo])
-  @@index([tenantId, taxpayerId, donem, tip])
+  @@unique([tenantId, taxpayerId, tip, belgeKaynak, faturaNo])
+  @@index([tenantId, taxpayerId, donem, tip, belgeKaynak])
   @@index([tenantId, faturaTarihi])
   @@index([fetchJobId])
   @@map("earsiv_faturalar")
@@ -1670,4 +1671,9 @@ model EarsivFatura {
 enum EarsivTip {
   SATIS
   ALIS
+}
+
+enum BelgeKaynak {
+  EFATURA  // E-fatura mükellefleri arası gelen/giden
+  EARSIV   // E-arşiv (kamuya, e-fatura mükellefi olmayan müşteri)
 }

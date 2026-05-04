@@ -4,6 +4,7 @@ import { EarsivZipParserService, ParsedEarsivFatura } from './earsiv-zip-parser.
 import * as JSZip from 'jszip';
 
 export type EarsivTip = 'SATIS' | 'ALIS';
+export type BelgeKaynak = 'EFATURA' | 'EARSIV';
 
 @Injectable()
 export class EarsivService {
@@ -23,13 +24,15 @@ export class EarsivService {
     taxpayerId: string;
     donem: string;
     tip: EarsivTip;
+    belgeKaynak?: BelgeKaynak;
     fetchJobId?: string;
     zipBuffer: Buffer;
   }): Promise<{ inserted: number; skipped: number; total: number }> {
     const { tenantId, taxpayerId, donem, tip, fetchJobId, zipBuffer } = opts;
+    const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
 
     const parsed = await this.parser.parseZip(zipBuffer);
-    this.logger.log(`ZIP parse: ${parsed.length} fatura bulundu (tip=${tip})`);
+    this.logger.log(`ZIP parse: ${parsed.length} fatura bulundu (tip=${tip}, kaynak=${belgeKaynak})`);
 
     let inserted = 0;
     let skipped = 0;
@@ -38,14 +41,15 @@ export class EarsivService {
       try {
         await (this.prisma as any).earsivFatura.upsert({
           where: {
-            tenantId_taxpayerId_tip_faturaNo: {
-              tenantId, taxpayerId, tip, faturaNo: f.faturaNo,
+            tenantId_taxpayerId_tip_belgeKaynak_faturaNo: {
+              tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo,
             },
           },
           create: {
             tenantId,
             taxpayerId,
             tip,
+            belgeKaynak,
             donem,
             faturaNo: f.faturaNo,
             faturaTarihi: f.faturaTarihi,
@@ -62,7 +66,6 @@ export class EarsivService {
             xmlContent: f.xmlContent,
             zipSourceName: f.zipFileName,
             fetchJobId,
-            // pdfStorageKey: ileride S3 yüklemesi
           },
           update: {
             // Mevcut kaydı güncelle (tarih, tutar değişmiş olabilir)
@@ -97,15 +100,17 @@ export class EarsivService {
     taxpayerId?: string;
     donem?: string;
     tip?: EarsivTip;
+    belgeKaynak?: BelgeKaynak;
     search?: string;
     page?: number;
     pageSize?: number;
   }) {
-    const { tenantId, taxpayerId, donem, tip, search, page = 1, pageSize = 50 } = opts;
+    const { tenantId, taxpayerId, donem, tip, belgeKaynak, search, page = 1, pageSize = 50 } = opts;
     const where: any = { tenantId };
     if (taxpayerId) where.taxpayerId = taxpayerId;
     if (donem) where.donem = donem;
     if (tip) where.tip = tip;
+    if (belgeKaynak) where.belgeKaynak = belgeKaynak;
     if (search && search.trim()) {
       const q = search.trim();
       where.OR = [
@@ -124,7 +129,7 @@ export class EarsivService {
         skip: (page - 1) * pageSize,
         take: pageSize,
         select: {
-          id: true, tip: true, donem: true, faturaNo: true, faturaTarihi: true, ettn: true,
+          id: true, tip: true, belgeKaynak: true, donem: true, faturaNo: true, faturaTarihi: true, ettn: true,
           satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
           matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, paraBirimi: true,
           durum: true, taxpayerId: true, createdAt: true,
