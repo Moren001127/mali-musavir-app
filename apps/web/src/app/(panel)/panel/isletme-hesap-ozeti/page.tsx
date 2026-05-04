@@ -29,14 +29,15 @@ function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
 
-const QUARTER_LABELS: Record<number, string> = {
-  1: 'Q1 (Oca-Mar)',
-  2: 'Q2 (Nis-Haz)',
-  3: 'Q3 (Tem-Eyl)',
-  4: 'Q4 (Eki-Ara)',
+// Roman numeral dönemler (geçici vergi terminolojisi)
+const DONEM_ROMAN: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+const DONEM_FULL: Record<number, string> = {
+  1: '1. Dönem (Oca-Mar)',
+  2: '2. Dönem (Nis-Haz)',
+  3: '3. Dönem (Tem-Eyl)',
+  4: '4. Dönem (Eki-Ara)',
 };
 
-// Manuel input field map (UI → backend key)
 type ManuelField = keyof IhoManuelPayload;
 const MANUEL_FIELDS: ManuelField[] = [
   'satisHasilati',
@@ -70,11 +71,10 @@ export default function IsletmeHesapOzetiPage() {
     enabled: !!taxpayerId && !!yil,
   });
 
-  // Yıl başlatma — Q1-Q4 boş kayıt aç
   const olusturYilMutation = useMutation({
     mutationFn: () => isletmeHesapOzetiApi.olusturYil({ taxpayerId, yil }),
     onSuccess: () => {
-      toast.success(`${yil} yılı için Q1-Q4 boş kayıt açıldı`);
+      toast.success(`${yil} yılı için 4 dönem boş kayıt açıldı`);
       qc.invalidateQueries({ queryKey: ['iho-yil', taxpayerId, yil] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Hata'),
@@ -136,10 +136,8 @@ export default function IsletmeHesapOzetiPage() {
       (t.taxNumber || '').includes(search),
   );
 
-  // Q4 → Q1 ters sıra
+  // 4. Dönem → 1. Dönem ters sıra
   const tersDonemler = [4, 3, 2, 1];
-
-  // Hiç kayıt yok mu?
   const hicKayitYok = !!yilData && yilData.ceyrekler.every((c) => !c);
 
   return (
@@ -155,7 +153,7 @@ export default function IsletmeHesapOzetiPage() {
         {taxpayerId && !hicKayitYok && (
           <button
             onClick={indirExcel}
-            className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50"
+            className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-900 hover:bg-stone-50"
           >
             <Download className="h-4 w-4" /> Excel
           </button>
@@ -164,15 +162,18 @@ export default function IsletmeHesapOzetiPage() {
 
       <div className="rounded-xl border border-stone-200 bg-white p-4">
         <div className="flex flex-wrap items-end gap-3">
+          {/* Mükellef seçici */}
           <div className="relative min-w-[300px]">
             <label className="mb-1 block text-xs text-stone-600">Mükellef</label>
             <button
               onClick={() => setTpDropdownOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+              className="flex w-full items-center justify-between rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
             >
               <span className="flex items-center gap-2 truncate">
                 <Users className="h-4 w-4 text-stone-400" />
-                {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
+                <span className={selectedTp ? 'text-stone-900' : 'text-stone-400'}>
+                  {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
+                </span>
               </span>
               <ChevronDown className="h-4 w-4 text-stone-400" />
             </button>
@@ -186,7 +187,7 @@ export default function IsletmeHesapOzetiPage() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Ad / VKN ara…"
-                      className="w-full rounded border border-stone-200 py-1.5 pl-8 pr-2 text-sm outline-none"
+                      className="w-full rounded border border-stone-200 bg-white py-1.5 pl-8 pr-2 text-sm text-stone-900 outline-none placeholder:text-stone-400"
                     />
                   </div>
                 </div>
@@ -203,7 +204,7 @@ export default function IsletmeHesapOzetiPage() {
                     }}
                     className="block w-full px-3 py-2 text-left text-sm hover:bg-stone-50"
                   >
-                    <div className="font-medium">{taxpayerName(t)}</div>
+                    <div className="font-medium text-stone-900">{taxpayerName(t)}</div>
                     {t.taxNumber && (
                       <div className="text-xs text-stone-500">VKN/TCKN: {t.taxNumber}</div>
                     )}
@@ -213,12 +214,13 @@ export default function IsletmeHesapOzetiPage() {
             )}
           </div>
 
+          {/* Yıl */}
           <div>
             <label className="mb-1 block text-xs text-stone-600">Yıl</label>
             <select
               value={yil}
               onChange={(e) => setYil(Number(e.target.value))}
-              className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
+              className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
             >
               {Array.from({ length: 6 }).map((_, i) => {
                 const y = currentYear - i;
@@ -242,7 +244,7 @@ export default function IsletmeHesapOzetiPage() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {yil} Yılı Başlat (Q1-Q4 Aç)
+              {yil} Yılını Başlat (4 Dönem Aç)
             </button>
           )}
         </div>
@@ -258,7 +260,7 @@ export default function IsletmeHesapOzetiPage() {
         </div>
       ) : hicKayitYok ? (
         <div className="rounded-xl border border-stone-200 bg-white p-12 text-center text-sm text-stone-500">
-          {yil} yılı için henüz kayıt açılmamış. Yukarıdaki "Yılı Başlat" butonuyla Q1-Q4 boş kayıtları
+          {yil} yılı için henüz kayıt açılmamış. Yukarıdaki "Yılı Başlat" butonuyla 4 dönem boş kayıtları
           oluşturup tutarları manuel girebilirsin.
         </div>
       ) : (
@@ -272,7 +274,7 @@ export default function IsletmeHesapOzetiPage() {
             if (reason) unlockMutation.mutate({ id, reason });
           }}
           onDelete={(id) => {
-            if (window.confirm('Bu çeyrek kaydı silinsin mi?')) deleteMutation.mutate(id);
+            if (window.confirm('Bu dönem kaydı silinsin mi?')) deleteMutation.mutate(id);
           }}
         />
       )}
@@ -281,7 +283,7 @@ export default function IsletmeHesapOzetiPage() {
 }
 
 /* ─────────────────────────────────────────────
-   KARŞILAŞTIRMA TABLOSU — Q4 → Q1 ters sıra, tüm tutarlar manuel input
+   KARŞILAŞTIRMA TABLOSU — kullanıcı Excel formatına göre
 ─────────────────────────────────────────────── */
 function KarsilastirmaTablosu({
   yilData,
@@ -300,13 +302,10 @@ function KarsilastirmaTablosu({
 }) {
   const yil = yilData?.yil;
 
-  // Her çeyreğin local draft'i — kullanıcı input'lara yazdıkça burada saklanır
   const [drafts, setDrafts] = useState<Record<number, Partial<Record<ManuelField, number>>>>({});
-  const [notes, setNotes] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const next: Record<number, Partial<Record<ManuelField, number>>> = {};
-    const noteNext: Record<number, string> = {};
     for (let d = 1; d <= 4; d++) {
       const c = yilData?.ceyrekler?.[d - 1];
       if (c) {
@@ -320,11 +319,9 @@ function KarsilastirmaTablosu({
           gecmisYilZarari: Number(c.gecmisYilZarari || 0),
           oncekiOdenenGecVergi: Number(c.oncekiOdenenGecVergi || 0),
         };
-        noteNext[d] = c.not || '';
       }
     }
     setDrafts(next);
-    setNotes(noteNext);
   }, [yilData]);
 
   function saveDraft(donem: number) {
@@ -337,7 +334,6 @@ function KarsilastirmaTablosu({
       const oldV = Number((c as any)[f] || 0);
       if (newV !== oldV) (payload as any)[f] = newV;
     }
-    if ((notes[donem] || '') !== (c.not || '')) payload.not = notes[donem];
     if (Object.keys(payload).length === 0) {
       toast.info('Değişiklik yok');
       return;
@@ -351,7 +347,6 @@ function KarsilastirmaTablosu({
     return Number((c as any)[key] || 0);
   };
 
-  // Manuel alan input'u
   const numInput = (donem: number, field: ManuelField) => {
     const c = yilData?.ceyrekler?.[donem - 1];
     const locked = !!c?.locked;
@@ -367,24 +362,14 @@ function KarsilastirmaTablosu({
             [donem]: { ...(prev[donem] || {}), [field]: Number(e.target.value) },
           }))
         }
-        className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-right text-sm tabular-nums focus:border-amber-400 focus:outline-none disabled:bg-stone-50 disabled:text-stone-400"
+        className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-right text-sm tabular-nums text-stone-900 focus:border-amber-400 focus:outline-none disabled:bg-stone-50 disabled:text-stone-400"
       />
     );
   };
 
-  // Hesaplanan alanın değeri (read-only): backend'den gelir
-  const calcCell = (donem: number, key: keyof IsletmeHesapOzeti) => {
-    const v = valOf(donem, key);
-    return fmtTRY(v);
-  };
+  const calcCell = (donem: number, key: keyof IsletmeHesapOzeti) => fmtTRY(valOf(donem, key));
 
-  // Yüzde
-  const yuzde = (donem: number, key: keyof IsletmeHesapOzeti): string => {
-    const satis = valOf(donem, 'satisHasilati') + valOf(donem, 'digerGelir');
-    if (!satis) return '—';
-    const v = valOf(donem, key);
-    return `${((v / satis) * 100).toFixed(1)}%`;
-  };
+  const COL_WIDTH = `${66 / tersDonemler.length}%`;
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white">
@@ -395,7 +380,7 @@ function KarsilastirmaTablosu({
           if (!c) return null;
           return (
             <div key={d} className="flex items-center gap-1">
-              <span className="text-xs text-stone-500">{QUARTER_LABELS[d]}:</span>
+              <span className="text-xs text-stone-500">{DONEM_FULL[d]}:</span>
               {c.locked ? (
                 <button
                   onClick={() => onUnlock(c.id)}
@@ -432,7 +417,7 @@ function KarsilastirmaTablosu({
           <colgroup>
             <col style={{ width: '34%' }} />
             {tersDonemler.map((d) => (
-              <col key={d} style={{ width: `${66 / tersDonemler.length}%` }} />
+              <col key={d} style={{ width: COL_WIDTH }} />
             ))}
           </colgroup>
           <thead className="bg-stone-50">
@@ -445,56 +430,28 @@ function KarsilastirmaTablosu({
                   key={d}
                   className="border-b border-stone-200 px-3 py-2 text-right text-xs font-semibold text-stone-700"
                 >
-                  {yil}-Q{d}
+                  {DONEM_ROMAN[d]}. Dönem
+                  <div className="text-[10px] font-normal text-stone-400">{yil}</div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {/* GELİR */}
-            <SectionRow label="GELİR" bg="bg-emerald-50" cols={tersDonemler.length} />
+            {/* ═══════════════════════════════════════════
+               BLOK 1 — KAR/ZARAR ÖZETİ (kullanıcı Excel sırası)
+            ═══════════════════════════════════════════ */}
             <Row
-              label="Dönem İçi Satışlar (KDV hariç)"
+              label="DÖNEM İÇİ SATIŞLAR"
+              bold
               cols={tersDonemler.map((d) => numInput(d, 'satisHasilati'))}
+              raw
             />
             <Row
-              label="Diğer Gelirler"
-              cols={tersDonemler.map((d) => numInput(d, 'digerGelir'))}
-            />
-
-            {/* STOK */}
-            <SectionRow label="STOK HAREKETİ" bg="bg-amber-50" cols={tersDonemler.length} />
-            <Row
-              label="Dönem Başı Stok"
-              hint="(Q2-Q4 önceki çeyreğin kalan stoğundan otomatik)"
-              cols={tersDonemler.map((d) => numInput(d, 'donemBasiStok'))}
-            />
-            <Row
-              label="(+) Satın Alınan Mal Bedeli (KDV hariç)"
-              cols={tersDonemler.map((d) => numInput(d, 'malAlisi'))}
-            />
-            <Row
-              label="(=) Toplam Stok"
+              label="SATILAN MALIN MALİYETİ (-)"
               bold
-              cols={tersDonemler.map((d) => calcCell(d, 'toplamStok'))}
+              cols={tersDonemler.map((d) => calcCell(d, 'satilanMalMaliyeti'))}
               calc
             />
-            <Row
-              label="(-) Kalan Stok (sayım)"
-              cols={tersDonemler.map((d) => numInput(d, 'kalanStok'))}
-            />
-            <Row
-              label="SATILAN MALIN MALİYETİ"
-              bold
-              cols={tersDonemler.map((d) => (
-                <span key={d}>
-                  {calcCell(d, 'satilanMalMaliyeti')}{' '}
-                  <span className="text-xs text-stone-400">({yuzde(d, 'satilanMalMaliyeti')})</span>
-                </span>
-              ))}
-              calc
-            />
-
             <Row
               label="NET SATIŞLAR"
               bold
@@ -502,20 +459,12 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => calcCell(d, 'netSatislar'))}
               calc
             />
-
-            {/* GİDER */}
-            <SectionRow label="GİDER" bg="bg-rose-50" cols={tersDonemler.length} />
             <Row
-              label="Dönem İçi Giderler (kira, ücret, elektrik vb.)"
+              label="DÖNEM İÇİ GİDERLER (-)"
+              bold
               cols={tersDonemler.map((d) => numInput(d, 'donemIciGiderler'))}
+              raw
             />
-            <Row
-              label="Gider / Net Satış oranı"
-              cols={tersDonemler.map((d) => yuzde(d, 'donemIciGiderler'))}
-              muted
-            />
-
-            {/* DÖNEM KARI */}
             <Row
               label="DÖNEM KARI"
               bold
@@ -528,65 +477,92 @@ function KarsilastirmaTablosu({
                   </span>
                 );
               })}
-              calc
+              raw
             />
 
-            {/* GEÇİCİ VERGİ */}
-            <SectionRow label="GEÇİCİ VERGİ" bg="bg-indigo-50" cols={tersDonemler.length} />
+            <SpacerRow cols={tersDonemler.length} />
+
+            {/* ═══════════════════════════════════════════
+               BLOK 2 — STOK HAREKETİ DETAYI
+            ═══════════════════════════════════════════ */}
             <Row
-              label="Geçmiş Yıl Zararı"
-              cols={tersDonemler.map((d) => numInput(d, 'gecmisYilZarari'))}
+              label="SATIN ALINAN MAL BEDELİ"
+              bold
+              cols={tersDonemler.map((d) => numInput(d, 'malAlisi'))}
+              raw
             />
             <Row
-              label="Geçici Vergi Matrahı"
+              label="DÖNEM BAŞI STOK"
+              hint="(2-4. dönem önceki dönemin kalan stoğundan otomatik)"
+              bold
+              cols={tersDonemler.map((d) => numInput(d, 'donemBasiStok'))}
+              raw
+            />
+            <Row
+              label="TOPLAM STOK"
+              bold
+              cols={tersDonemler.map((d) => calcCell(d, 'toplamStok'))}
+              calc
+            />
+            <Row
+              label="SATILAN MALIN MALİYETİ"
+              bold
+              cols={tersDonemler.map((d) => calcCell(d, 'satilanMalMaliyeti'))}
+              calc
+            />
+            <Row
+              label="KALAN STOK (sayım)"
+              bold
+              cols={tersDonemler.map((d) => numInput(d, 'kalanStok'))}
+              raw
+            />
+
+            <SpacerRow cols={tersDonemler.length} />
+
+            {/* ═══════════════════════════════════════════
+               BLOK 3 — GEÇİCİ VERGİ
+            ═══════════════════════════════════════════ */}
+            <Row
+              label="DÖNEM KARI"
+              bold
+              cols={tersDonemler.map((d) => calcCell(d, 'donemKari'))}
+              calc
+            />
+            <Row
+              label="GEÇMİŞ YIL ZARARI (-)"
+              bold
+              cols={tersDonemler.map((d) => numInput(d, 'gecmisYilZarari'))}
+              raw
+            />
+            <Row
+              label="GEÇİCİ VERGİ MATRAHI"
               bold
               cols={tersDonemler.map((d) => calcCell(d, 'gecVergiMatrahi'))}
               calc
             />
             <Row
-              label="Hesaplanan Geçici Vergi (%15)"
+              label="HESAPLANAN GEÇİCİ VERGİ %15"
+              bold
               cols={tersDonemler.map((d) => calcCell(d, 'hesaplananGecVergi'))}
               calc
             />
             <Row
-              label="(-) Önceki Dönem Ödenen Geçici Vergi"
+              label="ÖNCEKİ DÖNEM ÖDENEN GEÇİCİ VERGİ (-)"
+              bold
               cols={tersDonemler.map((d) => numInput(d, 'oncekiOdenenGecVergi'))}
+              raw
             />
             <Row
               label="ÖDENECEK GEÇİCİ VERGİ"
               bold
               hl="bg-indigo-100"
               cols={tersDonemler.map((d) => (
-                <span key={d} className="font-semibold text-indigo-900">
+                <span key={d} className="font-bold text-indigo-900">
                   {fmtTRY(valOf(d, 'odenecekGecVergi'))}
                 </span>
               ))}
-              calc
+              raw
             />
-
-            {/* NOT */}
-            <SectionRow label="NOT" bg="bg-stone-100" cols={tersDonemler.length} />
-            <tr>
-              <td className="border-b border-stone-100 px-3 py-1.5 text-xs text-stone-700">Açıklama</td>
-              {tersDonemler.map((d) => {
-                const c = yilData?.ceyrekler?.[d - 1];
-                const locked = !!c?.locked;
-                return (
-                  <td key={d} className="border-b border-stone-100 px-2 py-1">
-                    <input
-                      type="text"
-                      disabled={locked || !c}
-                      value={notes[d] ?? ''}
-                      onChange={(e) =>
-                        setNotes((prev) => ({ ...prev, [d]: e.target.value }))
-                      }
-                      placeholder="—"
-                      className="w-full rounded border border-stone-200 bg-white px-2 py-1 text-xs focus:border-amber-400 focus:outline-none disabled:bg-stone-50"
-                    />
-                  </td>
-                );
-              })}
-            </tr>
           </tbody>
         </table>
       </div>
@@ -603,7 +579,7 @@ function KarsilastirmaTablosu({
                 className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700 ring-1 ring-amber-200"
               >
                 <Lock className="h-3 w-3" />
-                Q{d} kilitli
+                {DONEM_ROMAN[d]}. Dönem kilitli
               </span>
             );
           }
@@ -611,10 +587,10 @@ function KarsilastirmaTablosu({
             <button
               key={d}
               onClick={() => saveDraft(d)}
-              className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50"
+              className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-900 hover:bg-stone-50"
             >
               <Save className="h-4 w-4" />
-              Q{d}'i Kaydet
+              {DONEM_ROMAN[d]}. Dönemi Kaydet
             </button>
           );
         })}
@@ -626,12 +602,10 @@ function KarsilastirmaTablosu({
 /* ─────────────────────────────────────────────
    YARDIMCI KOMPONENTLER
 ─────────────────────────────────────────────── */
-function SectionRow({ label, bg, cols }: { label: string; bg: string; cols: number }) {
+function SpacerRow({ cols }: { cols: number }) {
   return (
     <tr>
-      <td colSpan={cols + 1} className={`${bg} border-b border-stone-100 px-3 py-1.5 text-xs font-bold text-stone-700`}>
-        {label}
-      </td>
+      <td colSpan={cols + 1} className="h-4 border-b border-stone-100 bg-stone-50/30">&nbsp;</td>
     </tr>
   );
 }
@@ -642,33 +616,33 @@ function Row({
   bold,
   hl,
   hint,
-  muted,
   calc,
+  raw,
 }: {
   label: string;
   cols: React.ReactNode[];
   bold?: boolean;
   hl?: string;
   hint?: string;
-  muted?: boolean;
-  calc?: boolean; // hesaplanan alan — read-only renk
+  calc?: boolean; // hesaplanan alan — gri zemin
+  raw?: boolean;  // input/element — bg uygulanmaz
 }) {
   return (
-    <tr className={`${hl || ''} ${muted ? 'text-stone-400' : ''}`}>
+    <tr className={hl || ''}>
       <td
         className={`border-b border-stone-100 px-3 py-1.5 text-xs ${
           bold ? 'font-semibold text-stone-900' : 'text-stone-700'
         }`}
       >
         {label}
-        {hint && <span className="ml-2 text-[10px] text-stone-400">{hint}</span>}
+        {hint && <span className="ml-2 text-[10px] font-normal text-stone-400">{hint}</span>}
       </td>
       {cols.map((c, i) => (
         <td
           key={i}
-          className={`border-b border-stone-100 px-3 py-1.5 text-right tabular-nums ${
+          className={`border-b border-stone-100 px-3 py-1.5 text-right tabular-nums text-stone-900 ${
             bold ? 'font-semibold' : ''
-          } ${calc ? 'bg-stone-50/50 text-stone-800' : ''}`}
+          } ${calc && !raw ? 'bg-stone-50/60' : ''}`}
         >
           {c}
         </td>
