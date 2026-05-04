@@ -168,6 +168,7 @@ model Taxpayer {
   cariHizmetler       CariHizmet[]
   cariHareketler      CariHareket[]
   earsivFaturalar     EarsivFatura[]
+  kdvLucaSnapshots    KdvLucaSnapshot[]
 
   @@index([tenantId])
   @@index([taxNumber])
