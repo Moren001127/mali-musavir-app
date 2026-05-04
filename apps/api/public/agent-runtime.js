@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.2';
+          const AGENT_VER = '1.34.3';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -402,6 +402,65 @@
     throw new Error(`"${text}" element'i ${maxMs/1000}sn içinde bulunamadı`);
   }
 
+  // Luca firma/dönem seçici — frm4'teki SirketCombo + DonemCombo
+  async function selectLucaSirketDonem(mukellefAdi, yil, log) {
+    const frm4 = getLucaFrame('frm4');
+    if (!frm4 || !frm4.contentDocument) {
+      throw new Error('frm4 (firma seçici) bulunamadı');
+    }
+    const fdoc = frm4.contentDocument;
+    const fwin = frm4.contentWindow;
+
+    // 1) Firma seç (SirketCombo)
+    if (mukellefAdi) {
+      const sc = fdoc.getElementById('SirketCombo');
+      if (!sc) throw new Error('SirketCombo select bulunamadı');
+      // Luca text'i 10 karaktere truncate ediyor — ilk 10 karaktere göre eşleştir
+      const target = mukellefAdi.toLocaleUpperCase('tr-TR').slice(0, 10).trim();
+      let bulundu = null;
+      for (const opt of sc.options) {
+        const t = (opt.text || '').toLocaleUpperCase('tr-TR').trim();
+        if (t === target || t.startsWith(target.slice(0, Math.min(target.length, 8)))) {
+          bulundu = opt;
+          break;
+        }
+      }
+      if (!bulundu) {
+        await log(`⚠ Firma "${mukellefAdi}" SirketCombo'da bulunamadı, kullanıcının seçili firmasıyla devam`);
+      } else if (sc.value !== bulundu.value) {
+        sc.value = bulundu.value;
+        sc.dispatchEvent(new Event('change', { bubbles: true }));
+        await log(`✓ Firma değiştirildi: "${bulundu.text}" (id=${bulundu.value})`);
+        // Luca onchange'inde loadDonem() çağrısı sayfayı yeniler — bekle
+        await sleep(3000);
+      } else {
+        await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
+      }
+    }
+
+    // 2) Yıl seç (DonemCombo: "01/01/2026 - 31" gibi)
+    if (yil) {
+      const fdoc2 = getLucaFrame('frm4').contentDocument;
+      const dc = fdoc2 && fdoc2.getElementById('DonemCombo');
+      if (dc) {
+        const yilStr = String(yil);
+        let bulundu = null;
+        for (const opt of dc.options) {
+          if ((opt.text || '').includes(yilStr)) {
+            bulundu = opt;
+            break;
+          }
+        }
+        if (bulundu && dc.value !== bulundu.value) {
+          dc.value = bulundu.value;
+          dc.dispatchEvent(new Event('change', { bubbles: true }));
+          await log(`✓ Dönem (yıl) seçildi: "${bulundu.text}"`);
+          await sleep(2000);
+        }
+      }
+    }
+  }
+
   async function fetchLucaEarsivZip(job, log) {
     const donemStr = String(job.donem || ''); // "YYYY-MM"
     const [yilS, ayS] = donemStr.split('-');
@@ -410,6 +469,16 @@
     if (!yil || !ay || ay < 1 || ay > 12) {
       throw new Error(`Geçersiz dönem formatı: ${donemStr}, beklenen: YYYY-MM`);
     }
+
+    // mukellefAdi backend tarafından job.errorMsg'e [META] formatında eklendi
+    let mukellefAdi = '';
+    try {
+      const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
+      if (m) mukellefAdi = m[1].trim();
+    } catch {}
+
+    // Firma + yıl seçimini yap (kullanıcı yanlış firmadaysa düzelt)
+    await selectLucaSirketDonem(mukellefAdi, yil, log);
 
     // job.tip → açılacak menü item'ı
     const menuLabel = {

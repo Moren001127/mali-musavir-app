@@ -43,6 +43,16 @@ export class EarsivController {
     }
     // Job tip: EARSIV_SATIS | EARSIV_ALIS | EFATURA_SATIS | EFATURA_ALIS
     const jobTip = `${belgeKaynak}_${body.tip}`;
+    // Mükellef adını al (Luca SirketCombo'da text-based eşleşme için)
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: body.mukellefId, tenantId: req.user.tenantId },
+      select: { firstName: true, lastName: true, companyName: true },
+    });
+    const mukellefAdi =
+      taxpayer?.companyName ||
+      [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
+      '';
+
     const job = await this.luca.createFetchJob({
       tenantId: req.user.tenantId,
       sessionId: undefined as any,
@@ -50,6 +60,7 @@ export class EarsivController {
       donem: body.donem,
       tip: jobTip,
       createdBy: req.user.id,
+      mukellefAdi,
     });
     return { jobId: job.id, status: job.status };
   }

@@ -102,6 +102,7 @@ export class LucaService {
     donem: string;
     tip: string;
     createdBy?: string;
+    mukellefAdi?: string;
   }) {
     return (this.prisma as any).lucaFetchJob.create({
       data: {
@@ -112,6 +113,9 @@ export class LucaService {
         tip: params.tip,
         status: 'pending',
         createdBy: params.createdBy || null,
+        // mukellefAdi'yı errorMsg'in başına meta olarak ekleyelim (yeni column eklemeden)
+        // Format: "[META] mukellefAdi=ABC FIRMA"
+        errorMsg: params.mukellefAdi ? `[META] mukellefAdi=${params.mukellefAdi}` : null,
       },
     });
   }
