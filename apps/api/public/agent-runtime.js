@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.5';
+          const AGENT_VER = '1.34.6';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -183,12 +183,18 @@
             ISLETME_GELIR: 'İşletme defteri (gelir kayıtları)',
             ISLETME_GIDER: 'İşletme defteri (gider kayıtları)',
             IHO_FETCH: 'İşletme defteri ekranı (gelir + gider tek dosya)',
-            EARSIV_SATIS: 'E-Arşiv (Düzenlenen) liste ekranı — ZIP indir',
-            EARSIV_ALIS: 'E-Arşiv (Gelen) liste ekranı — ZIP indir',
-            EFATURA_SATIS: 'E-Fatura (Giden) liste ekranı — ZIP indir',
-            EFATURA_ALIS: 'E-Fatura (Gelen) liste ekranı — ZIP indir',
+            EARSIV_SATIS: 'e-Arşiv Satış Faturaları',
+            EARSIV_ALIS: 'e-Arşiv Alış Faturaları',
+            EFATURA_SATIS: 'e-Fatura Satış Faturaları',
+            EFATURA_ALIS: 'e-Fatura Alış Faturaları',
           }[job.tip] || job.tip;
-          await log(`📋 ${tipLabel} açık olmalı`);
+          // E-arşiv tipleri için agent kendisi sayfayı açar — "açık olmalı" yerine "açılacak"
+          const isEarsivJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
+          if (isEarsivJob) {
+            await log(`📋 ${tipLabel} sayfasını agent kendisi açacak…`);
+          } else {
+            await log(`📋 ${tipLabel} açık olmalı`);
+          }
 
           const blob = await fetchLucaMuavinExcel(job, log);
           if (!blob) throw new Error('Excel yakalanamadı');
