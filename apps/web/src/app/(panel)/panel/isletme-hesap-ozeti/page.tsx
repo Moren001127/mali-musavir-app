@@ -633,4 +633,349 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <colgroup>
+            <col style={{ width: '34%' }} />            {tersDonemler.map((d) => (
+              <col key={d} style={{ width: COL_WIDTH }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr>
+              <th className="border-b border-stone-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+                Açıklama
+              </th>
+              {tersDonemler.map((d) => (
+                <th key={d} className="border-b border-stone-200 px-3 py-2 text-right">
+                  <div className="text-sm font-bold text-stone-900">{DONEM_ROMAN[d]}. Dönem</div>
+                  <div className="text-[10px] font-normal text-stone-400">{yil}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <Row
+              label="DÖNEM İÇİ SATIŞLAR"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'satisHasilati')}
+                  onChange={(n) => setField(d, 'satisHasilati', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+              bold
+            />
+            <Row
+              label="SATILAN MALIN MALİYETİ (-)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'satilanMalMaliyeti')}
+                  onChange={(n) => setField(d, 'satilanMalMaliyeti', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              ratios={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return oran(lc.smm, lc.sat);
+              })}
+              raw
+            />
+            <Row
+              label="BRÜT SATIŞ KARI"
+              hint="(Satışlar − SMM)"
+              cols={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return formatTR(lc.netSat);
+              })}
+              ratios={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return oran(lc.netSat, lc.sat);
+              })}
+              calc
+              bold
+              hl="bg-emerald-50/60"
+            />
+            <Row
+              label="DÖNEM İÇİ GİDERLER (-)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'donemIciGiderler')}
+                  onChange={(n) => setField(d, 'donemIciGiderler', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              ratios={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return oran(lc.giderler, lc.sat);
+              })}
+              raw
+            />
+            <Row
+              label="DÖNEM KARI"
+              cols={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return (
+                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-600' : 'text-emerald-700'}>
+                    {formatTR(lc.donemKar)}
+                  </span>
+                );
+              })}
+              ratios={tersDonemler.map((d) => {
+                const lc = liveCalc(d);
+                return oran(lc.donemKar, lc.sat);
+              })}
+              raw
+              bold
+              hl="bg-amber-50"
+            />
+          </tbody>
+        </table>
+      </BlockCard>
+
+      <BlockCard
+        title="STOK HAREKETİ"
+        icon={<Package className="h-4 w-4" />}
+        accent="amber"
+      >
+        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
             <col style={{ width: '34%' }} />
+            {tersDonemler.map((d) => (
+              <col key={d} style={{ width: COL_WIDTH }} />
+            ))}
+          </colgroup>
+          <tbody>
+            <Row
+              label="SATIN ALINAN MAL BEDELİ"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'malAlisi')}
+                  onChange={(n) => setField(d, 'malAlisi', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+            />
+            <Row
+              label="DÖNEM BAŞI STOK"
+              hint="(2-4. dönem önceki kalandan otomatik)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'donemBasiStok')}
+                  onChange={(n) => setField(d, 'donemBasiStok', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+            />
+            <Row
+              label="TOPLAM STOK"
+              hint="(= Dönem Başı + Satın Alınan)"
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).toplam))}
+              calc
+              bold
+            />
+            <Row
+              label="SATILAN MALIN MALİYETİ"
+              hint="(= Toplam − Kalan)"
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).smm))}
+              calc
+            />
+            <Row
+              label="KALAN STOK (sayım)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'kalanStok')}
+                  onChange={(n) => setField(d, 'kalanStok', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+            />
+          </tbody>
+        </table>
+      </BlockCard>
+
+      <BlockCard
+        title="GEÇİCİ VERGİ HESAPLAMASI"
+        icon={<Calculator className="h-4 w-4" />}
+        accent="indigo"
+      >
+        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '34%' }} />
+            {tersDonemler.map((d) => (
+              <col key={d} style={{ width: COL_WIDTH }} />
+            ))}
+          </colgroup>
+          <tbody>
+            <Row
+              label="DÖNEM KARI"
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).donemKar))}
+              calc
+              bold
+            />
+            <Row
+              label="GEÇMİŞ YIL ZARARI (-)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'gecmisYilZarari')}
+                  onChange={(n) => setField(d, 'gecmisYilZarari', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+            />
+            <Row
+              label="GEÇİCİ VERGİ MATRAHI"
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).matrah))}
+              calc
+              bold
+            />
+            <Row
+              label="HESAPLANAN GEÇİCİ VERGİ %15"
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).hesGV))}
+              calc
+            />
+            <Row
+              label="ÖNCEKİ DÖNEM ÖDENEN GEÇİCİ VERGİ (-)"
+              cols={tersDonemler.map((d) => (
+                <NumInput
+                  key={d}
+                  value={draftVal(d, 'oncekiOdenenGecVergi')}
+                  onChange={(n) => setField(d, 'oncekiOdenenGecVergi', n)}
+                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
+                />
+              ))}
+              raw
+            />
+            <Row
+              label="ÖDENECEK GEÇİCİ VERGİ"
+              cols={tersDonemler.map((d) => (
+                <span key={d} className="text-base font-bold text-indigo-900">
+                  {formatTR(liveCalc(d).odenecek)}
+                </span>
+              ))}
+              raw
+              bold
+              hl="bg-indigo-100"
+            />
+          </tbody>
+        </table>
+      </BlockCard>
+
+      <div className="flex items-center justify-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3">
+        {tersDonemler.map((d) => {
+          const c = yilData?.ceyrekler?.[d - 1];
+          if (!c) return null;
+          if (c.locked) {
+            return (
+              <span
+                key={d}
+                className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700 ring-1 ring-amber-200"
+              >
+                <Lock className="h-3 w-3" />
+                {DONEM_ROMAN[d]}. Dönem kilitli
+              </span>
+            );
+          }
+          return (
+            <button
+              key={d}
+              onClick={() => saveDraft(d)}
+              className="inline-flex items-center gap-2 rounded-md bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
+            >
+              <Save className="h-4 w-4" />
+              {DONEM_ROMAN[d]}. Dönemi Kaydet
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BlockCard({
+  title,
+  icon,
+  accent,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  accent: 'emerald' | 'amber' | 'indigo';
+  children: React.ReactNode;
+}) {
+  const accentClasses: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
+    emerald: { bg: 'bg-emerald-50/40', border: 'border-emerald-200', text: 'text-emerald-900', iconBg: 'bg-emerald-100 text-emerald-700' },
+    amber:   { bg: 'bg-amber-50/40',   border: 'border-amber-200',   text: 'text-amber-900',   iconBg: 'bg-amber-100 text-amber-700' },
+    indigo:  { bg: 'bg-indigo-50/40',  border: 'border-indigo-200',  text: 'text-indigo-900',  iconBg: 'bg-indigo-100 text-indigo-700' },
+  };
+  const a = accentClasses[accent];
+  return (
+    <div className={`overflow-hidden rounded-xl border ${a.border} bg-white`}>
+      <div className={`flex items-center gap-2 border-b ${a.border} ${a.bg} px-4 py-2`}>
+        <span className={`inline-flex h-6 w-6 items-center justify-center rounded ${a.iconBg}`}>
+          {icon}
+        </span>
+        <h2 className={`text-xs font-bold uppercase tracking-wider ${a.text}`}>{title}</h2>
+      </div>
+      <div className="overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function Row({
+  label,
+  cols,
+  ratios,
+  bold,
+  hl,
+  hint,
+  calc,
+  raw,
+}: {
+  label: string;
+  cols: React.ReactNode[];
+  ratios?: string[];
+  bold?: boolean;
+  hl?: string;
+  hint?: string;
+  calc?: boolean;
+  raw?: boolean;
+}) {
+  return (
+    <tr className={hl || ''}>
+      <td
+        className={`border-b border-stone-100 px-3 py-2 text-xs ${
+          bold ? 'font-semibold text-stone-900' : 'text-stone-700'
+        }`}
+      >
+        {label}
+        {hint && <span className="ml-2 text-[10px] font-normal text-stone-400">{hint}</span>}
+      </td>
+      {cols.map((c, i) => (
+        <td
+          key={i}
+          className={`border-b border-stone-100 px-3 py-2 text-right tabular-nums text-stone-900 ${
+            bold ? 'font-semibold' : ''
+          } ${calc && !raw ? 'italic text-stone-700' : ''}`}
+        >
+          <div className="flex items-center justify-end gap-2">
+            {ratios && ratios[i] && ratios[i] !== '—' && (
+              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium not-italic text-stone-500">
+                {ratios[i]}
+              </span>
+            )}
+            <span>{c}</span>
+          </div>
+        </td>
+      ))}
+    </tr>
+  );
+}

@@ -426,4 +426,17 @@ export class IsletmeHesapOzetiService {
     yaz('NET SATIŞLAR', 'netSatislar', { bold: true });
 
     sectionRow('GİDER', 'FFFCE8E8');
-    yaz('Dönem İçi Giderler', 'd
+    yaz('Dönem İçi Giderler', 'donemIciGiderler');
+    yaz('DÖNEM KARI', 'donemKari', { bold: true });
+
+    sectionRow('GEÇİCİ VERGİ', 'FFE0E7FF');
+    yaz('Geçmiş Yıl Zararı', 'gecmisYilZarari');
+    yaz('Geçici Vergi Matrahı', 'gecVergiMatrahi', { bold: true });
+    yaz('Hesaplanan Geçici Vergi (%15)', 'hesaplananGecVergi');
+    yaz('(-) Önceki Dönem Ödenen', 'oncekiOdenenGecVergi');
+    yaz('Ödenecek Geçici Vergi', 'odenecekGecVergi', { bold: true });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return buffer as Buffer;
+  }
+}

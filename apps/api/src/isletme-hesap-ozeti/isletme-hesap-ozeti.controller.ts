@@ -170,4 +170,6 @@ export class IsletmeHesapOzetiController {
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Req() req: any, @Param('id') id: string) {
-    await this.service.re
+    await this.service.remove(req.user.tenantId, id);
+  }
+}

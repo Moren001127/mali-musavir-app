@@ -109,4 +109,5 @@ export const isletmeHesapOzetiApi = {
 
 export function fmtTRY(n: number | string | null | undefined): string {
   const v = Number(n || 0);
-  return v.toLocaleString('tr-TR', { m
+  return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
