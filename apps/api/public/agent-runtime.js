@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.1';
+          const AGENT_VER = '1.34.2';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -428,20 +428,40 @@
     }
 
     if (!sayfaAcik) {
-      await log(`🧭 Menü navigasyonu başlıyor: Muhasebe → Akıllı Entegrasyon Noktası → ${menuLabel}`);
-      // 1. Muhasebe menüsü aç (frm2'de II1a fonksiyonu çağır VEYA text click)
-      await clickByTextEverywhere('Muhasebe', log, { maxMs: 8000 });
-      await sleep(1200);  // Muhasebe submenu render
-      // 2. Akıllı Entegrasyon Noktası — hover ile sub-sub menu açılır
-      await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 8000 });
-      await sleep(2000);  // Sub-sub menu render
-      // 3. job tipine göre alt menü (e-Arşiv X Faturaları)
-      await clickByTextEverywhere(menuLabel, log, { maxMs: 12000 });
-      // Sayfa yüklensin
-      await log('⏳ Sayfa yüklenmesi bekleniyor (5sn)…');
-      await sleep(5000);
+      // Kullanıcı keşfinde bulunan direct II1a ID'leri (menü tıklama gerek yok!):
+      //   e-Arşiv Satış Faturaları   → apy1000m24i10I
+      //   e-Arşiv Alış Faturaları    → apy1000m24i11I
+      //   e-Fatura Alış Faturaları   → apy1000m24i17I
+      //   e-Fatura Satış Faturaları  → apy1000m24i18I
+      const ii1aId = {
+        EARSIV_SATIS: 'apy1000m24i10I',
+        EARSIV_ALIS: 'apy1000m24i11I',
+        EFATURA_ALIS: 'apy1000m24i17I',
+        EFATURA_SATIS: 'apy1000m24i18I',
+      }[job.tip];
+      if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip}`);
+
+      await log(`🧭 II1a('${ii1aId}') doğrudan çağrılıyor (${menuLabel})`);
+      // II1a fonksiyonu frm2'de tanımlı (parent.frames[1])
+      const frm2 = getLucaFrame('frm2');
+      if (!frm2 || !frm2.contentWindow || typeof frm2.contentWindow.II1a !== 'function') {
+        throw new Error('frm2.II1a fonksiyonu bulunamadı — Luca yüklendi mi?');
+      }
+      try {
+        frm2.contentWindow.II1a(null, ii1aId, '');
+      } catch (e) {
+        throw new Error(`II1a çağrısı başarısız: ${e?.message || e}`);
+      }
+      await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
+      await sleep(6000);
       // frm3'ü tekrar al (yeniden yüklenmiş olabilir)
       frm3 = getLucaFrame('frm3');
+      // Sayfa açıldığını doğrula
+      if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
+        await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
+        await sleep(4000);
+        frm3 = getLucaFrame('frm3');
+      }
     }
 
     // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
