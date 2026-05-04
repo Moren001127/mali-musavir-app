@@ -1690,3 +1690,28 @@ enum BelgeKaynak {
   EFATURA  // E-fatura mükellefleri arası gelen/giden
   EARSIV   // E-arşiv (kamuya, e-fatura mükellefi olmayan müşteri)
 }
+
+// ─────────────────────────────────────────────────────────────
+// KDV BEYANNAME — LUCA MİZAN SNAPSHOT
+// ─────────────────────────────────────────────────────────────
+// KDV beyannamesi çapraz kontrolü için Luca'dan AYRICA çekilen aylık mizan.
+// Mizan modülünden BAĞIMSIZ — geçici vergi mizanı KDV beyanını ilgilendirmez.
+// hamMizan Json'da TÜM hesap satırları durur; UI'da sadece 190/191/391 + 600/770
+// gibi KDV-ilgili olanlar gösterilir.
+model KdvLucaSnapshot {
+  id            String   @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  donem         String   // "2026-03"
+  cekildiAt     DateTime @default(now())
+  cekenUserId   String?
+  fetchJobId    String?  // Hangi LucaFetchJob ile çekildi
+  hamMizan      Json     // Tüm mizan satırları: [{ kod, ad, borcToplami, alacakToplami, borcBakiye, alacakBakiye }]
+  toplamHesapAdet Int    @default(0)
+
+  taxpayer      Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, donem])
+  @@index([tenantId, taxpayerId, cekildiAt])
+  @@map("kdv_luca_snapshots")
+}

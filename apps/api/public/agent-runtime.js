@@ -202,6 +202,14 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params.toString()}`;
+          } else if (job.tip === 'KDV_MIZAN') {
+            // KDV beyanname için bağımsız mizan snapshot — mizan flow'u aynı, upload yolu farklı
+            const params = new URLSearchParams({
+              mukellefId: String(job.mukellefId || ''),
+              donem: String(job.donem || ''),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-kdv-mizan?${params.toString()}`;
           } else {
             // KDV / İşletme defteri — agent-token kabul eden yan endpoint
             // (eski /kdv-control/.../excel-from-runner endpoint'i JWT bekliyordu)
@@ -267,7 +275,9 @@
    *   ISLETME_*      → İşletme defteri formu (sonradan)
    */
   async function fetchLucaMuavinExcel(job, log = (() => {})) {
-    if (job.tip === 'MIZAN') {
+    // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
+    // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
+    if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
       return await fetchLucaMizanExcel(job, log);
     }
     if (job.tip === 'KDV_191' || job.tip === 'KDV_391') {

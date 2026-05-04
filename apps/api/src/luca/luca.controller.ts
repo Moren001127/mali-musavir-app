@@ -28,6 +28,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { LucaService } from './luca.service';
 import { LucaAutoScraperService } from './luca-auto-scraper.service';
 import { MizanService } from '../mizan/mizan.service';
+import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 
@@ -46,6 +47,7 @@ export class LucaController {
     private readonly mizan: MizanService,
     private readonly prisma: PrismaService,
     private readonly kdvControl: KdvControlService,
+    private readonly kdvBeyanname: KdvBeyannameService,
   ) {}
 
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
@@ -315,6 +317,47 @@ export class LucaController {
     } catch (e: any) {
       throw new BadRequestException(
         `Mizan import hatası: ${e?.message || 'bilinmeyen'}`,
+      );
+    }
+  }
+
+  /**
+   * KDV Beyanname için bağımsız mizan snapshot yükleme.
+   * Mizan tablosuna YAZMAZ — KdvLucaSnapshot tablosuna yazar (geçici vergiyle karışmaz).
+   * Aynı XLS parser'ı reuse eder.
+   */
+  @Post('agent/luca/runner/upload-kdv-mizan')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadKdvMizanFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('mukellefId') mukellefId: string,
+    @Query('donem') donem: string,
+    @Query('jobId') jobId?: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!mukellefId || !donem) {
+      throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
+    }
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+
+    try {
+      const snapshot = await this.kdvBeyanname.importLucaSnapshotXls({
+        tenantId,
+        mukellefId,
+        donem,
+        fetchJobId: jobId,
+        buffer: file.buffer,
+      });
+      return {
+        ok: true,
+        snapshotId: (snapshot as any)?.id,
+        toplamHesapAdet: (snapshot as any)?.toplamHesapAdet,
+      };
+    } catch (e: any) {
+      throw new BadRequestException(
+        `KDV mizan snapshot hatası: ${e?.message || 'bilinmeyen'}`,
       );
     }
   }

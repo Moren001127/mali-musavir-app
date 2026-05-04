@@ -6,6 +6,7 @@ import { LucaController } from './luca.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { KdvControlModule } from '../kdv-control/kdv-control.module';
 import { MizanModule } from '../mizan/mizan.module';
+import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { MizanModule } from '../mizan/mizan.module';
     PrismaModule,
     forwardRef(() => KdvControlModule),
     forwardRef(() => MizanModule),
+    forwardRef(() => KdvBeyannameModule),
   ],
   controllers: [LucaController],
   providers: [LucaService, LucaAutoScraperService],

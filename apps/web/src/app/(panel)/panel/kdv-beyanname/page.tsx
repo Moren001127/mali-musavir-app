@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
@@ -511,23 +512,159 @@ function Kdv1View({ data }: { data: Kdv1 }) {
           </table>
         </div>
       ) : (
-        <div
-          className="rounded-2xl p-4 border flex items-start gap-3"
-          style={{ background: 'rgba(255,255,255,0.015)', borderColor: 'rgba(255,255,255,0.05)' }}
-        >
-          <Sparkles size={16} style={{ color: 'rgba(212,184,118,0.6)', flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <p className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.75)' }}>
-              Luca Çapraz Kontrol — Yakında
-            </p>
-            <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              KDV'ye özel Luca senkronizasyonu (191 / 391 / 190 muavin) ileride eklenecek.
-              Mizan modülündeki veri geçici vergi için — KDV beyanname kendi başına Mihsap + KDV Kontrol (OCR) verilerinden çalışır.
-            </p>
-          </div>
-        </div>
+        <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} />
       )}
     </>
+  );
+}
+
+/**
+ * Luca'dan KDV mizan çekme paneli — kdv-beyanname için bağımsız.
+ * Mevcut Mizan modülünden BAĞIMSIZ; KdvLucaSnapshot tablosuna yazar.
+ */
+function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; donem: string }) {
+  const qc = useQueryClient();
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  // Mevcut snapshot
+  const { data: snap } = useQuery({
+    queryKey: ['kdv-luca-snapshot', mukellefId, donem],
+    queryFn: () =>
+      api.get('/kdv-beyanname/luca-snapshot', { params: { mukellefId, donem } })
+        .then((r) => r.data as {
+          exists: boolean;
+          cekildiAt?: string;
+          toplamHesapAdet?: number;
+          kdvSatirlari?: Array<{
+            kod: string; ad: string;
+            borcToplami: number; alacakToplami: number;
+            borcBakiye: number; alacakBakiye: number;
+          }>;
+        }),
+  });
+
+  const fetchMut = useMutation({
+    mutationFn: () =>
+      api.post('/kdv-beyanname/luca-snapshot/fetch', { mukellefId, donem })
+        .then((r) => r.data as { jobId: string; status: string }),
+    onSuccess: (d) => {
+      setJobId(d.jobId);
+      toast.info('Luca job oluşturuldu — Luca sekmesini açık tut');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Job oluşturulamadı'),
+  });
+
+  // Job polling — done olunca snapshot fetch
+  const jobQuery = useQuery({
+    queryKey: ['kdv-luca-job', jobId],
+    queryFn: () =>
+      api.get(`/kdv-beyanname/luca-job/${jobId}`).then((r) => r.data),
+    enabled: !!jobId,
+    refetchInterval: 3000,
+  });
+
+  React.useEffect(() => {
+    const j = (jobQuery.data as any)?.job;
+    if (!j) return;
+    if (j.status === 'done') {
+      toast.success('Mizan çekildi');
+      qc.invalidateQueries({ queryKey: ['kdv-luca-snapshot'] });
+      qc.invalidateQueries({ queryKey: ['kdv-beyanname'] });
+      setTimeout(() => setJobId(null), 1500);
+    } else if (j.status === 'failed') {
+      toast.error(`Hata: ${j.errorMsg || 'bilinmeyen'}`);
+    }
+  }, [jobQuery.data, qc]);
+
+  const lastLogLine = (() => {
+    const j = (jobQuery.data as any)?.job;
+    if (!j?.errorMsg) return null;
+    const lines = String(j.errorMsg).split('\n').filter((l: string) => l.trim());
+    return lines[lines.length - 1] || null;
+  })();
+
+  return (
+    <div
+      className="rounded-2xl p-5 border space-y-3"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} style={{ color: 'rgba(212,184,118,0.8)' }} />
+            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+              Luca Mizan Çapraz Kontrol
+            </h3>
+          </div>
+          {snap?.exists ? (
+            <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              Son çekim: <strong>{new Date(snap.cekildiAt!).toLocaleString('tr-TR')}</strong> · {snap.toplamHesapAdet} hesap satırı
+            </p>
+          ) : (
+            <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              KDV beyanname için bağımsız Luca mizan henüz çekilmedi.
+              "Luca'dan Çek" ile mizanı al — 191 / 391 / 190 hesapları otomatik karşılaştırılır.
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => fetchMut.mutate()}
+          disabled={fetchMut.isPending || !!jobId}
+          className="px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
+          style={{ background: '#d4b876', color: '#0a0906' }}
+        >
+          {fetchMut.isPending || jobId ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Download size={14} />
+          )}
+          {jobId ? 'Çekiliyor…' : "Luca'dan Çek"}
+        </button>
+      </div>
+
+      {jobId && lastLogLine && (
+        <div
+          className="rounded-md px-3 py-2 text-[11.5px] font-mono"
+          style={{
+            background: 'rgba(0,0,0,0.35)',
+            border: '1px solid rgba(184,160,111,0.2)',
+            color: 'rgba(250,250,249,0.75)',
+          }}
+        >
+          {lastLogLine}
+        </div>
+      )}
+
+      {/* KDV-ilgili hesap satırları tablosu */}
+      {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
+        <div className="rounded-md overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+          <table className="w-full text-[12px]">
+            <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
+              <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
+                <th className="text-left px-3 py-2 font-semibold">Kod</th>
+                <th className="text-left px-3 py-2 font-semibold">Hesap</th>
+                <th className="text-right px-3 py-2 font-semibold">Borç Bakiye</th>
+                <th className="text-right px-3 py-2 font-semibold">Alacak Bakiye</th>
+              </tr>
+            </thead>
+            <tbody style={{ color: 'rgba(250,250,249,0.85)' }}>
+              {snap.kdvSatirlari.map((r, i) => (
+                <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                  <td className="px-3 py-1.5 font-mono" style={{ color: '#d4b876' }}>{r.kod}</td>
+                  <td className="px-3 py-1.5">{r.ad || '—'}</td>
+                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    {r.borcBakiye ? fmt(r.borcBakiye) : ''}
+                  </td>
+                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    {r.alacakBakiye ? fmt(r.alacakBakiye) : ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

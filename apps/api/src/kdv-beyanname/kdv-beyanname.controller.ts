@@ -1,10 +1,15 @@
 import {
   Controller,
   Get,
+  Post,
+  Body,
+  Param,
   Query,
   Req,
   Res,
   UseGuards,
+  HttpCode,
+  HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -15,6 +20,50 @@ import * as ExcelJS from 'exceljs';
 @Controller('kdv-beyanname')
 export class KdvBeyannameController {
   constructor(private readonly service: KdvBeyannameService) {}
+
+  /**
+   * KDV-özel Luca mizan çekme — bağımsız bir Luca job yaratır.
+   * Mizan modülündeki çekimle KARIŞMAZ (ayrı snapshot tablosu).
+   * Agent gelir, normal Mizan ekranından XLS indirir, /agent/luca/runner/upload-kdv-mizan'a yükler.
+   */
+  @Post('luca-snapshot/fetch')
+  @UseGuards(AuthGuard('jwt'))
+  @HttpCode(HttpStatus.OK)
+  async fetchLucaSnapshot(
+    @Req() req: any,
+    @Body() body: { mukellefId: string; donem: string },
+  ) {
+    if (!body?.mukellefId || !body?.donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
+    }
+    return this.service.fetchLucaSnapshot({
+      tenantId: req.user.tenantId,
+      mukellefId: body.mukellefId,
+      donem: body.donem,
+      createdBy: req.user.sub,
+    });
+  }
+
+  /** Snapshot job durum sorgusu (frontend polling) */
+  @Get('luca-job/:id')
+  @UseGuards(AuthGuard('jwt'))
+  async getLucaJob(@Req() req: any, @Param('id') id: string) {
+    return this.service.getLucaJob(id, req.user.tenantId);
+  }
+
+  /** Mevcut snapshot — UI mükellef seçince son çekimi gösterir */
+  @Get('luca-snapshot')
+  @UseGuards(AuthGuard('jwt'))
+  async getSnapshot(
+    @Req() req: any,
+    @Query('mukellefId') mukellefId: string,
+    @Query('donem') donem: string,
+  ) {
+    if (!mukellefId || !donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
+    }
+    return this.service.getLucaSnapshot(req.user.tenantId, mukellefId, donem);
+  }
 
   /** Belirli bir mükellef + dönem için KDV1 ön hazırlık raporu */
   @Get('on-hazirlik/kdv1')

@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MizanParserService } from '../mizan/mizan-parser.service';
 import { Kdv1OnHazirlik, Kdv2OnHazirlik, OranRow, DonemOzet, KdvTip } from './types';
 
 /**
@@ -29,7 +30,41 @@ const DEFAULT_KDV_ORAN = 20; // Mihsap'ta KDV detayı yoksa varsayılan
 export class KdvBeyannameService {
   private readonly logger = new Logger(KdvBeyannameService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mizanParser: MizanParserService,
+  ) {}
+
+  /**
+   * Agent'ın yüklediği XLS buffer'ı parse et + KdvLucaSnapshot'a yaz.
+   * Mizan parser'ı reuse eder ama Mizan tablosuna YAZMAZ — sadece KDV snapshot'una.
+   */
+  async importLucaSnapshotXls(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    fetchJobId?: string;
+    buffer: Buffer;
+  }) {
+    const parsed = this.mizanParser.parse(params.buffer);
+    if (!parsed || parsed.length === 0) {
+      throw new BadRequestException('Mizan Excel parse edildi ama satır bulunamadı');
+    }
+    return this.importSnapshotFromRows({
+      tenantId: params.tenantId,
+      mukellefId: params.mukellefId,
+      donem: params.donem,
+      fetchJobId: params.fetchJobId,
+      parsedRows: parsed.map((p: any) => ({
+        hesapKodu: p.hesapKodu,
+        hesapAdi: p.hesapAdi,
+        borcToplami: Number(p.borcToplami) || 0,
+        alacakToplami: Number(p.alacakToplami) || 0,
+        borcBakiye: Number(p.borcBakiye) || 0,
+        alacakBakiye: Number(p.alacakBakiye) || 0,
+      })),
+    });
+  }
 
   // =========================================================
   // KDV1 — Ana beyanname ön hazırlığı
@@ -648,23 +683,220 @@ export class KdvBeyannameService {
    * Şimdilik tüm alanlar null — frontend "Luca senkronizasyonu v2'de" gösterir.
    */
   private async lucaCrosscheck(
-    _tenantId: string,
-    _mukellefId: string,
-    _donem: string,
-    _mihsapHesaplanan: number,
-    _mihsapIndirilecek: number,
-    _devreden: number,
+    tenantId: string,
+    mukellefId: string,
+    donem: string,
+    mihsapHesaplanan: number,
+    mihsapIndirilecek: number,
+    devreden: number,
   ) {
-    const uyarilar: string[] = []; // İleride KDV-özel Luca sync eklenecek
-    return {
-      mizanVar: false,
-      luca391Bakiye: null,
-      luca191Bakiye: null,
-      luca190Bakiye: null,
-      fark391: null,
-      fark191: null,
-      uyarilar,
+    const uyarilar: string[] = [];
+    const snapshot = await (this.prisma as any).kdvLucaSnapshot.findUnique({
+      where: { tenantId_taxpayerId_donem: { tenantId, taxpayerId: mukellefId, donem } },
+    });
+
+    if (!snapshot) {
+      return {
+        mizanVar: false,
+        luca391Bakiye: null,
+        luca191Bakiye: null,
+        luca190Bakiye: null,
+        fark391: null,
+        fark191: null,
+        uyarilar,
+        cekildiAt: null,
+      };
+    }
+
+    const rows: any[] = Array.isArray(snapshot.hamMizan) ? snapshot.hamMizan : [];
+
+    // Belirli hesap kodunun (alt hesaplar dahil) bakiyesini topla
+    const sumBakiye = (kodPrefix: string, tip: 'borc' | 'alacak'): number | null => {
+      const matches = rows.filter((r: any) => {
+        const k = String(r.kod || r.hesapKodu || '').trim();
+        return k === kodPrefix || k.startsWith(kodPrefix + '.');
+      });
+      if (matches.length === 0) return null;
+      let toplam = 0;
+      for (const m of matches) {
+        const v = tip === 'borc' ? m.borcBakiye : m.alacakBakiye;
+        toplam += Number(v || 0);
+      }
+      return toplam;
     };
+
+    const luca391 = sumBakiye('391', 'alacak');
+    const luca191 = sumBakiye('191', 'borc');
+    const luca190 = sumBakiye('190', 'borc');
+
+    const fark391 = luca391 !== null ? Math.round((mihsapHesaplanan - luca391) * 100) / 100 : null;
+    const fark191 = luca191 !== null ? Math.round((mihsapIndirilecek - luca191) * 100) / 100 : null;
+
+    const TOL_TL = 1;
+    if (fark391 !== null && Math.abs(fark391) > TOL_TL && Math.abs(fark391) > mihsapHesaplanan * 0.005) {
+      uyarilar.push(
+        `391 Hesaplanan KDV uyumsuz: Mihsap ${this.fmt(mihsapHesaplanan)} ≠ Luca ${this.fmt(luca391!)} (fark ${this.fmt(fark391)})`,
+      );
+    }
+    if (fark191 !== null && Math.abs(fark191) > TOL_TL && Math.abs(fark191) > mihsapIndirilecek * 0.005) {
+      uyarilar.push(
+        `191 İndirilecek KDV uyumsuz: Mihsap ${this.fmt(mihsapIndirilecek)} ≠ Luca ${this.fmt(luca191!)} (fark ${this.fmt(fark191)})`,
+      );
+    }
+    if (luca190 !== null && devreden > 0 && Math.abs(luca190 - devreden) > TOL_TL) {
+      uyarilar.push(
+        `190 Devreden KDV uyumsuz: BeyanKaydi ${this.fmt(devreden)} ≠ Luca ${this.fmt(luca190)}`,
+      );
+    }
+
+    return {
+      mizanVar: true,
+      luca391Bakiye: luca391,
+      luca191Bakiye: luca191,
+      luca190Bakiye: luca190,
+      fark391,
+      fark191,
+      uyarilar,
+      cekildiAt: snapshot.cekildiAt,
+    };
+  }
+
+  private fmt(n: number): string {
+    return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ===== KDV-ÖZEL LUCA SNAPSHOT =====
+
+  /** KDV-özel Luca mizan job yarat (KDV_MIZAN tipi) */
+  async fetchLucaSnapshot(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    createdBy?: string;
+  }) {
+    const job = await (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId: params.tenantId,
+        sessionId: null,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        tip: 'KDV_MIZAN',
+        status: 'pending',
+        createdBy: params.createdBy || null,
+      },
+    });
+    return { jobId: job.id, status: job.status };
+  }
+
+  /** Snapshot job durumu (frontend polling) */
+  async getLucaJob(jobId: string, tenantId: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (!job || job.tenantId !== tenantId) {
+      throw new NotFoundException('Job bulunamadı');
+    }
+    let snapshot: any = null;
+    if (job.status === 'done') {
+      snapshot = await (this.prisma as any).kdvLucaSnapshot.findUnique({
+        where: {
+          tenantId_taxpayerId_donem: {
+            tenantId,
+            taxpayerId: job.mukellefId,
+            donem: job.donem,
+          },
+        },
+        select: { id: true, cekildiAt: true, toplamHesapAdet: true },
+      });
+    }
+    return { job, snapshot };
+  }
+
+  /** Mükellef + dönem için son snapshot — UI için filtrelenmiş KDV satırlarıyla */
+  async getLucaSnapshot(tenantId: string, mukellefId: string, donem: string) {
+    const s = await (this.prisma as any).kdvLucaSnapshot.findUnique({
+      where: { tenantId_taxpayerId_donem: { tenantId, taxpayerId: mukellefId, donem } },
+    });
+    if (!s) return { exists: false };
+    return {
+      exists: true,
+      cekildiAt: s.cekildiAt,
+      toplamHesapAdet: s.toplamHesapAdet,
+      kdvSatirlari: this.filterKdvSatirlari(s.hamMizan as any[]),
+    };
+  }
+
+  /** Ham mizan satırlarından sadece KDV beyannamesini ilgilendirenleri seç */
+  private filterKdvSatirlari(rows: any[]): any[] {
+    if (!Array.isArray(rows)) return [];
+    const KDV_PREFIXES = [
+      '190', '191', '192', '193',
+      '391', '392', '393',
+      '600', '601', '602',
+      '610', '611', '612',
+      '150', '153',
+      '730', '740', '760', '770', '780',
+    ];
+    return rows
+      .filter((r: any) => {
+        const k = String(r.kod || r.hesapKodu || '').trim();
+        return KDV_PREFIXES.some((p) => k === p || k.startsWith(p + '.'));
+      })
+      .map((r: any) => ({
+        kod: String(r.kod || r.hesapKodu || ''),
+        ad: r.ad || r.hesapAdi || '',
+        borcToplami: Number(r.borcToplami || 0),
+        alacakToplami: Number(r.alacakToplami || 0),
+        borcBakiye: Number(r.borcBakiye || 0),
+        alacakBakiye: Number(r.alacakBakiye || 0),
+      }));
+  }
+
+  /** Agent yüklediği XLS sonrası snapshot oluştur (parser caller'da, burada sadece DB) */
+  async importSnapshotFromRows(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    fetchJobId?: string;
+    parsedRows: Array<{
+      hesapKodu: string;
+      hesapAdi: string;
+      borcToplami: number;
+      alacakToplami: number;
+      borcBakiye: number;
+      alacakBakiye: number;
+    }>;
+  }) {
+    const ham = params.parsedRows.map((r) => ({
+      kod: r.hesapKodu,
+      ad: r.hesapAdi,
+      borcToplami: r.borcToplami,
+      alacakToplami: r.alacakToplami,
+      borcBakiye: r.borcBakiye,
+      alacakBakiye: r.alacakBakiye,
+    }));
+
+    return (this.prisma as any).kdvLucaSnapshot.upsert({
+      where: {
+        tenantId_taxpayerId_donem: {
+          tenantId: params.tenantId,
+          taxpayerId: params.mukellefId,
+          donem: params.donem,
+        },
+      },
+      create: {
+        tenantId: params.tenantId,
+        taxpayerId: params.mukellefId,
+        donem: params.donem,
+        fetchJobId: params.fetchJobId || null,
+        hamMizan: ham,
+        toplamHesapAdet: ham.length,
+      },
+      update: {
+        cekildiAt: new Date(),
+        fetchJobId: params.fetchJobId || null,
+        hamMizan: ham,
+        toplamHesapAdet: ham.length,
+      },
+    });
   }
 
   private raporKalite(
