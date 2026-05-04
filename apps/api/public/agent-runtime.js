@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.0';
+          const AGENT_VER = '1.34.1';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -333,9 +333,14 @@
   //   3. SORGU 1: Tarih modal aç → ay başı/sonu → Belgeleri Getir → tablo dolar
   //   4. SORGU 2 (gerekirse): bir sonraki ay başı → bugün → Belgeleri Getir → satırlar EKLENİR
   //   5. Tümünü Seç → Seçilenleri İndir → ZIP intercept
-  // Tüm document/frame'lerde text'i arayıp tıklatır (text-based menü navigasyonu)
+  // Tüm document/frame'lerde text'i arayıp HOVER + TIKLAR
+  // Luca'nın menü dropdown'ları bazen sadece hover ile açılıyor.
   async function clickByTextEverywhere(text, log, opts = {}) {
-    const { maxMs = 8000, exact = false } = opts;
+    const { maxMs = 12000, exact = false } = opts;
+    // Normalize: whitespace fazlalığı, case-insensitive, Türkçe karakterler korunur
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+    const target = norm(text);
+
     const collectAllDocs = () => {
       const docs = [document];
       const dive = (root) => {
@@ -351,27 +356,48 @@
       dive(document);
       return docs;
     };
+
     const start = Date.now();
     while (Date.now() - start < maxMs) {
       for (const doc of collectAllDocs()) {
         try {
-          for (const el of doc.querySelectorAll('*')) {
-            const t = (el.textContent || '').trim();
-            const match = exact ? (t === text) : (t === text || t.startsWith(text));
-            if (match && el.children.length === 0) {
-              await log(`🖱 "${text}" tıklanıyor`);
+          // Sadece text içeren küçük element'leri (< 4 child) tara
+          for (const el of doc.querySelectorAll('a, span, div, td, li, p, button, label')) {
+            // Görünür mü? (offsetParent null = display:none / hidden)
+            if (el.offsetParent === null && el.tagName !== 'A') continue;
+            const t = norm(el.textContent || '');
+            if (!t) continue;
+            const match = exact ? (t === target) : (t === target || t.includes(target));
+            if (match) {
+              await log(`🖱 "${text}" tıklanıyor (${el.tagName})`);
+              const view = doc.defaultView || window;
+              const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+              const x = rect ? (rect.left + rect.width / 2) : 0;
+              const y = rect ? (rect.top + rect.height / 2) : 0;
+              const fire = (type) => {
+                try {
+                  el.dispatchEvent(new MouseEvent(type, {
+                    bubbles: true, cancelable: true, view,
+                    clientX: x, clientY: y, button: 0,
+                  }));
+                } catch {}
+              };
+              // Hover + click kombini (Luca menüleri bazen mouseover bekler)
+              fire('mouseover');
+              fire('mouseenter');
+              fire('mousemove');
+              await sleep(150);
               try { el.click(); } catch {}
-              try {
-                const view = doc.defaultView || window;
-                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
-              } catch {}
-              await sleep(800);
+              fire('mousedown');
+              fire('mouseup');
+              fire('click');
+              await sleep(1000);
               return true;
             }
           }
         } catch {}
       }
-      await sleep(300);
+      await sleep(400);
     }
     throw new Error(`"${text}" element'i ${maxMs/1000}sn içinde bulunamadı`);
   }
@@ -404,13 +430,13 @@
     if (!sayfaAcik) {
       await log(`🧭 Menü navigasyonu başlıyor: Muhasebe → Akıllı Entegrasyon Noktası → ${menuLabel}`);
       // 1. Muhasebe menüsü aç (frm2'de II1a fonksiyonu çağır VEYA text click)
-      await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
-      await sleep(600);
-      // 2. Akıllı Entegrasyon Noktası
-      await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
-      await sleep(600);
-      // 3. job tipine göre alt menü
-      await clickByTextEverywhere(menuLabel, log, { maxMs: 5000, exact: true });
+      await clickByTextEverywhere('Muhasebe', log, { maxMs: 8000 });
+      await sleep(1200);  // Muhasebe submenu render
+      // 2. Akıllı Entegrasyon Noktası — hover ile sub-sub menu açılır
+      await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 8000 });
+      await sleep(2000);  // Sub-sub menu render
+      // 3. job tipine göre alt menü (e-Arşiv X Faturaları)
+      await clickByTextEverywhere(menuLabel, log, { maxMs: 12000 });
       // Sayfa yüklensin
       await log('⏳ Sayfa yüklenmesi bekleniyor (5sn)…');
       await sleep(5000);
