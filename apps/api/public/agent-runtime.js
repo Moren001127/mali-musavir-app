@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.33.0';
+          const AGENT_VER = '1.34.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -333,6 +333,49 @@
   //   3. SORGU 1: Tarih modal aç → ay başı/sonu → Belgeleri Getir → tablo dolar
   //   4. SORGU 2 (gerekirse): bir sonraki ay başı → bugün → Belgeleri Getir → satırlar EKLENİR
   //   5. Tümünü Seç → Seçilenleri İndir → ZIP intercept
+  // Tüm document/frame'lerde text'i arayıp tıklatır (text-based menü navigasyonu)
+  async function clickByTextEverywhere(text, log, opts = {}) {
+    const { maxMs = 8000, exact = false } = opts;
+    const collectAllDocs = () => {
+      const docs = [document];
+      const dive = (root) => {
+        try {
+          for (const fr of root.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) {
+              docs.push(fr.contentDocument);
+              dive(fr.contentDocument);
+            }
+          }
+        } catch {}
+      };
+      dive(document);
+      return docs;
+    };
+    const start = Date.now();
+    while (Date.now() - start < maxMs) {
+      for (const doc of collectAllDocs()) {
+        try {
+          for (const el of doc.querySelectorAll('*')) {
+            const t = (el.textContent || '').trim();
+            const match = exact ? (t === text) : (t === text || t.startsWith(text));
+            if (match && el.children.length === 0) {
+              await log(`🖱 "${text}" tıklanıyor`);
+              try { el.click(); } catch {}
+              try {
+                const view = doc.defaultView || window;
+                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
+              } catch {}
+              await sleep(800);
+              return true;
+            }
+          }
+        } catch {}
+      }
+      await sleep(300);
+    }
+    throw new Error(`"${text}" element'i ${maxMs/1000}sn içinde bulunamadı`);
+  }
+
   async function fetchLucaEarsivZip(job, log) {
     const donemStr = String(job.donem || ''); // "YYYY-MM"
     const [yilS, ayS] = donemStr.split('-');
@@ -340,6 +383,39 @@
     const ay = Number(ayS);
     if (!yil || !ay || ay < 1 || ay > 12) {
       throw new Error(`Geçersiz dönem formatı: ${donemStr}, beklenen: YYYY-MM`);
+    }
+
+    // job.tip → açılacak menü item'ı
+    const menuLabel = {
+      EARSIV_SATIS: 'e-Arşiv Satış Faturaları',
+      EARSIV_ALIS: 'e-Arşiv Alış Faturaları',
+      EFATURA_SATIS: 'e-Fatura Satış Faturaları',
+      EFATURA_ALIS: 'e-Fatura Alış Faturaları',
+    }[job.tip];
+    if (!menuLabel) throw new Error(`Bilinmeyen e-arşiv tipi: ${job.tip}`);
+
+    // Sayfa zaten açık mı? frm3'te "faturalari-getir-btn" varsa atla, yoksa menüyü aç
+    let frm3 = getLucaFrame('frm3');
+    let sayfaAcik = false;
+    if (frm3 && frm3.contentDocument) {
+      sayfaAcik = !!frm3.contentDocument.getElementById('faturalari-getir-btn');
+    }
+
+    if (!sayfaAcik) {
+      await log(`🧭 Menü navigasyonu başlıyor: Muhasebe → Akıllı Entegrasyon Noktası → ${menuLabel}`);
+      // 1. Muhasebe menüsü aç (frm2'de II1a fonksiyonu çağır VEYA text click)
+      await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
+      await sleep(600);
+      // 2. Akıllı Entegrasyon Noktası
+      await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
+      await sleep(600);
+      // 3. job tipine göre alt menü
+      await clickByTextEverywhere(menuLabel, log, { maxMs: 5000, exact: true });
+      // Sayfa yüklensin
+      await log('⏳ Sayfa yüklenmesi bekleniyor (5sn)…');
+      await sleep(5000);
+      // frm3'ü tekrar al (yeniden yüklenmiş olabilir)
+      frm3 = getLucaFrame('frm3');
     }
 
     // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
@@ -362,10 +438,9 @@
     await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
     if (sorgu2Gerekli) await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit}`);
 
-    // frm3 frame'ini bul (e-arşiv ekranı burada)
-    const frm3 = getLucaFrame('frm3');
+    // frm3 frame'ini doğrula (yukarıdaki menü navigasyonu ile yüklendi)
     if (!frm3 || !frm3.contentDocument) {
-      throw new Error('frm3 (e-Arşiv ekranı) bulunamadı — Luca\'da Akıllı Entegrasyon → e-Arşiv/E-Fatura Faturaları açık mı?');
+      throw new Error('frm3 (e-Arşiv ekranı) yüklenemedi — menü açılmamış olabilir');
     }
     const fdoc = frm3.contentDocument;
     const fwin = frm3.contentWindow;
