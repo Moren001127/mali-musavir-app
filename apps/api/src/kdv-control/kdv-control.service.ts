@@ -2163,6 +2163,68 @@ export class KdvControlService {
       // PRENSİP: Mihsap'ın ham verisine (faturaNo, faturaTarihi vb.) güvenme.
       // Tek doğru kaynak FATURA GÖRÜNTÜSÜ. Tüm alanlar görselden OCR ile okunur.
       const filenameHint = `${inv.faturaNo || inv.id}.${(inv.orjDosyaTuru || 'jpg').toLowerCase()}`;
+
+      // ─── HASH CACHE KONTROLÜ ───
+      // Aynı görüntü daha önce başarılı işlendiyse Claude'a hiç gitme — DB'den dön.
+      const imageHash = this.ocrService.computeImageHash(buffer);
+      const cached = await (this.prisma as any).receiptImage.findFirst({
+        where: { imageHash, ocrStatus: 'SUCCESS' },
+        orderBy: { uploadedAt: 'desc' },
+        select: {
+          ocrBelgeNo: true, ocrDate: true, ocrKdvTutari: true, ocrKdvTevkifat: true,
+          ocrSatici: true, ocrRawText: true, ocrConfidence: true,
+          ocrBelgeNoConfidence: true, ocrDateConfidence: true, ocrKdvConfidence: true,
+          ocrEngine: true, ocrBelgeTipi: true, ocrKdvBreakdown: true,
+          ocrValidationScore: true, ocrKategori: true,
+        },
+      });
+
+      if (cached) {
+        this.logger.log(`Hash cache HIT [${imageId}]: ${imageHash.slice(0, 8)}... · Claude'a gidilmedi (~$0.007 saved)`);
+        await this.prisma.receiptImage.update({
+          where: { id: imageId },
+          data: {
+            ocrStatus: 'SUCCESS',
+            ocrBelgeNo: cached.ocrBelgeNo,
+            ocrDate: cached.ocrDate,
+            ocrKdvTutari: cached.ocrKdvTutari,
+            ocrKdvTevkifat: cached.ocrKdvTevkifat,
+            ocrSatici: cached.ocrSatici,
+            ocrRawText: cached.ocrRawText,
+            ocrConfidence: cached.ocrConfidence,
+            ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,
+            ocrDateConfidence: cached.ocrDateConfidence,
+            ocrKdvConfidence: cached.ocrKdvConfidence,
+            ocrEngine: `${cached.ocrEngine || 'unknown'} (cache)`,
+            ocrBelgeTipi: cached.ocrBelgeTipi,
+            ocrKdvBreakdown: cached.ocrKdvBreakdown,
+            ocrValidationScore: cached.ocrValidationScore,
+            ocrKategori: cached.ocrKategori,
+            imageHash,
+          } as any,
+        });
+        // Cache hit istatistiği için AiUsageLog'a 0-cost kayıt
+        try {
+          await (this.prisma as any).aiUsageLog.create({
+            data: {
+              tenantId,
+              taxpayerId: inv.mukellefId || null,
+              source: 'mihsap-fatura-cache',
+              mukellef: inv.firmaUnvan || null,
+              model: cached.ocrEngine || 'cache',
+              inputTokens: 0,
+              outputTokens: 0,
+              costUsd: 0,
+              karar: 'cache_hit',
+              belgeNo: cached.ocrBelgeNo,
+              cacheHit: true,
+            },
+          });
+        } catch {}
+        return;
+      }
+
+      // ─── CACHE MISS → Claude'a git ───
       const ocrResult = await this.ocrService.extractFromImage(buffer, filenameHint);
       const review = this.ocrService.needsReview(ocrResult);
       const status = review.needs
@@ -2184,9 +2246,10 @@ export class KdvControlService {
           ocrDateConfidence: ocrResult.fieldConfidence.date,
           ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
           ocrEngine: ocrResult.engine,
+          ocrKategori: (ocrResult as any).kategori || null,
+          imageHash,
           // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
-          // Kullanıcı düşük güvenli sonuçları elle teyit edebilir.
-        },
+        } as any,
       });
     } catch (err: any) {
       this.logger.error(`runOcrForMihsapInvoice [${imageId}]: ${err?.message}`);

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ComputerVisionClient } from '@azure/cognitiveservices-computervision';
 import { ApiKeyCredentials } from '@azure/ms-rest-js';
+import * as crypto from 'crypto';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -23,10 +24,16 @@ export interface OcrResult {
   totalTutari: string | null;
   /** Satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır. */
   satici?: string | null;
+  /** Satıcı VKN/TCKN (10 veya 11 hane) — reconciliation'da primary match key */
+  saticiVkn?: string | null;
   /** Belge tipi: EFATURA, EARSIV, OKC_FIS, Z_RAPORU, MAKBUZ */
   belgeTipi?: string | null;
   /** Çok oranlı KDV kırılımı (varsa) — Z raporu/karma fatura. tutar = NET (tevkifat düşülmüş). */
   kdvBreakdown?: KdvBreakdownItem[] | null;
+  /** Otomatik gider kategorisi: yakit, yemek, kirtasiye, telekom, kira, vb. */
+  kategori?: string | null;
+  /** Görüntünün SHA-256 hash'i — caller cache kontrolü için kullanır */
+  imageHash?: string;
   /** Genel güven skoru (geriye dönük uyumluluk) */
   confidence: number;
   /** Alan-bazlı güven skorları (0–1). Null ise alan bulunamadı. */
@@ -113,11 +120,17 @@ export class OcrService {
    * PRENSİP: Hiçbir dış sistemden (Mihsap, Luca vs.) gelen ham veriye
    * güvenmeyiz. Doğrulama daima GÖRÜNTÜNÜN KENDİSİNDEN yapılır.
    */
+  /** Görüntü buffer'ından SHA-256 hash hesapla — cache anahtarı olarak kullanılır */
+  computeImageHash(buffer: Buffer): string {
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+  }
+
   async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
     const hasClaudeKey = !!process.env.ANTHROPIC_API_KEY;
+    const imageHash = this.computeImageHash(imageBuffer);
     this.logger.log(
-      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'}`,
+      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · hash=${imageHash.slice(0, 8)}... · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'}`,
     );
 
     // ═══════════════════════════════════════════════════════
@@ -346,8 +359,10 @@ export class OcrService {
       '  "kdvTevkifat": "0,00",',
       '  "toplam": "1499,56",',
       '  "satici": "ABC LTD",',
+      '  "saticiVkn": "1234567890",',
       '  "kdvOrani": 20,',
       '  "belgeTipi": "EFATURA|EARSIV|OKC_FIS|Z_RAPORU|MAKBUZ|GIDER_PUSULASI|SMM|DEKONT|SEVK_IRSALIYESI|DIGER",',
+      '  "kategori": "yakit|yemek|kirtasiye|telekom|kira|elektrik|su|dogalgaz|tamir|sigorta|danismanlik|nakliye|reklam|temizlik|saglik|diger",',
       '  "kdvBreakdown": [{"oran":20,"tutar":"47,50","matrah":"285,00"}],',
       '  "confidence": {"tarih":0.95,"belgeNo":0.88,"kdvTutari":0.72}',
       '}',
@@ -571,6 +586,30 @@ export class OcrService {
       '"Toplam" etiketi: "Genel Toplam", "Ödenecek", "Fatura Toplamı", "Vergiler Dahil Toplam".',
       'Eğer tutar "₺" ya da "TL" / "TRY" içeriyorsa o işareti KALDIR, sadece sayı kal.',
       '',
+      '╔══ 6b) KATEGORİ — GİDER SINIFLANDIRMASI ══╗',
+      'Satıcı unvanı + ürün/hizmet açıklamasından gider kategorisi belirle:',
+      '  • "yakit"        → akaryakıt, benzin, motorin, LPG, OPET, Shell, BP, Petrol Ofisi, TP, KadooilGaz',
+      '  • "yemek"        → restoran, lokanta, kafe, market gıda, yemek kartı, Sodexo, Multinet, Setcard',
+      '  • "kirtasiye"    → ofis malzemesi, kalem, defter, toner, kağıt, Office Depot',
+      '  • "telekom"      → Turkcell, Vodafone, Türk Telekom, internet, GSM, telefon',
+      '  • "kira"         → işyeri kirası, depo kirası (genelde stopaj 360 hesabı içerir)',
+      '  • "elektrik"     → CK Enerji, Aydem, Boğaziçi Elektrik, ENERJİSA, Trakya Elektrik',
+      '  • "su"           → İSKİ, ASKİ, BUSKİ, ESKİ — su faturası',
+      '  • "dogalgaz"     → İGDAŞ, BAŞKENTGAZ, AGDAŞ, doğalgaz',
+      '  • "tamir"        → bakım, onarım, tamirhane, oto servis, otomobil bakımı',
+      '  • "sigorta"      → kasko, trafik sigortası, dask, hayat sigortası, Allianz, Anadolu Sigorta',
+      '  • "danismanlik"  → SMMM, avukat, mali müşavir, mühendislik, danışmanlık (genelde tevkifatlı)',
+      '  • "nakliye"      → kargo, taşımacılık, ARAS, MNG, Yurtiçi, Sürat, UPS, fedex',
+      '  • "reklam"       → Google Ads, Facebook, ilan, reklam, dijital pazarlama',
+      '  • "temizlik"     → temizlik malzemesi, temizlik hizmeti (tevkifatlı olabilir)',
+      '  • "saglik"       → eczane, hastane, doktor, ilaç, tıbbi malzeme',
+      '  • "diger"        → yukarıdakilerin hiçbirine girmiyor',
+      'Tek kategori ver. Şüphelide "diger" tercih et — yanlış sınıflandırma yapma.',
+      '',
+      '╔══ 6c) SATICI VKN ══╗',
+      'Eğer satıcının VKN/TCKN\'si belgede görünüyorsa "saticiVkn" alanına yaz.',
+      'VKN: 10 hane, TCKN: 11 hane. Sadece rakam, başında 0 olabilir. Görünmüyorsa null.',
+      '',
       '╔══ 7) KARAKTER NETLİĞİ — OCR TUZAKLARI ══╗',
       'Belge no\'da rakam/harf karışıklığı:',
       '  • "O" (harf O) ve "0" (rakam sıfır) — sayısal pattern\'de "0" tercih et.',
@@ -778,6 +817,20 @@ export class OcrService {
       ? String(parsed.satici).trim().slice(0, 200)
       : null;
 
+    // Satıcı VKN/TCKN — varsa reconciliation'da primary key olarak kullanılır
+    const saticiVknRaw = parsed.saticiVkn ? String(parsed.saticiVkn).replace(/\D/g, '') : null;
+    const saticiVkn = saticiVknRaw && (saticiVknRaw.length === 10 || saticiVknRaw.length === 11)
+      ? saticiVknRaw
+      : null;
+
+    // Otomatik kategori — beyanname / gider tablosu / raporlamada kullanılır
+    const VALID_KATEGORI = new Set([
+      'yakit', 'yemek', 'kirtasiye', 'telekom', 'kira', 'elektrik', 'su', 'dogalgaz',
+      'tamir', 'sigorta', 'danismanlik', 'nakliye', 'reklam', 'temizlik', 'saglik', 'diger',
+    ]);
+    const katRaw = parsed.kategori ? String(parsed.kategori).trim().toLowerCase() : null;
+    const kategori = katRaw && VALID_KATEGORI.has(katRaw) ? katRaw : null;
+
     return {
       rawText: JSON.stringify(parsed).slice(0, 2000),
       belgeNo,
@@ -786,13 +839,15 @@ export class OcrService {
       kdvTevkifat: kdvTevkifatOut,
       totalTutari: toplam,
       satici,
+      saticiVkn,
       belgeTipi,
       kdvBreakdown,
+      kategori,
       confidence,
       fieldConfidence,
       engine: MODEL,
       usage,
-    };
+    } as any;
   }
 
   /** Claude'dan gelen confidence değerini 0–1 aralığına sıkıştır (geçersizse 0.5) */
@@ -2547,6 +2602,59 @@ export class OcrService {
       if (allZeroRate) {
         issues.push('KDV tutarı var ama tüm oranlar %0 — okuma hatası olabilir');
         score -= 0.15;
+      }
+    }
+
+    // ─── 6) BELGE NO FORMAT KONTROLÜ — TİPE GÖRE ───
+    // EFATURA/EARSIV: 16 char (3 harf + 4 yıl + 9 sıra) — örn. "EFA2026000000093"
+    // OKC_FIS: 3-12 hane (büyük yazar kasalarda 12 hane, marketlerde 4-6 hane)
+    // Z_RAPORU: 3-6 hane sayı
+    if (result.belgeNo && result.belgeTipi) {
+      const bn = result.belgeNo.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const tipi = String(result.belgeTipi).toUpperCase();
+
+      if (tipi === 'EFATURA' || tipi === 'EARSIV') {
+        // E-fatura/e-arşiv: tam 16 char, 3 harf + 13 hane
+        const eFaturaRegex = /^[A-Z]{3}\d{13}$/;
+        if (!eFaturaRegex.test(bn)) {
+          issues.push(
+            `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: 3 harf + 13 hane = 16 char, örn. EFA2026000000093)`,
+          );
+          score -= 0.3;
+          // Confidence'ı da düşür → NEEDS_REVIEW
+          if (result.fieldConfidence.belgeNo != null) {
+            result.fieldConfidence.belgeNo = Math.max(0, result.fieldConfidence.belgeNo - 0.3);
+          }
+        } else {
+          // Yıl validasyonu (4 hane yıl 2020-2050 arası)
+          const yil = parseInt(bn.slice(3, 7), 10);
+          if (yil < 2020 || yil > 2050) {
+            issues.push(`E-fatura belge no'sundaki yıl mantıksız: ${yil} (beklenen: 2020-2050)`);
+            score -= 0.15;
+          }
+        }
+      } else if (tipi === 'Z_RAPORU') {
+        // Z raporu: 3-6 hane sayı
+        if (!/^\d{1,6}$/.test(bn)) {
+          issues.push(`Z raporu belge no formatı: "${result.belgeNo}" (beklenen 1-6 hane sayı)`);
+          score -= 0.2;
+        }
+      } else if (tipi === 'OKC_FIS') {
+        // OKC fişi: 3-12 hane
+        if (!/^\d{1,12}$/.test(bn)) {
+          issues.push(`OKC fişi belge no formatı: "${result.belgeNo}" (beklenen sayı)`);
+          score -= 0.15;
+        }
+      }
+    }
+
+    // ─── 7) SATICI VKN/TCKN FORMAT KONTROLÜ ───
+    if ((result as any).saticiVkn) {
+      const vkn = String((result as any).saticiVkn).replace(/\D/g, '');
+      if (vkn.length !== 10 && vkn.length !== 11) {
+        issues.push(`Satıcı VKN/TCKN format hatası: "${vkn}" (beklenen 10 veya 11 hane)`);
+        score -= 0.1;
+        (result as any).saticiVkn = null;
       }
     }
 
