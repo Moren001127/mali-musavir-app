@@ -169,6 +169,7 @@ model Taxpayer {
   cariHareketler      CariHareket[]
   earsivFaturalar     EarsivFatura[]
   kdvLucaSnapshots    KdvLucaSnapshot[]
+  isletmeHesapOzetleri IsletmeHesapOzeti[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1715,4 +1716,67 @@ model KdvLucaSnapshot {
   @@unique([tenantId, taxpayerId, donem])
   @@index([tenantId, taxpayerId, cekildiAt])
   @@map("kdv_luca_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────
+// İŞLETME HESAP ÖZETİ — Çeyreklik karşılaştırmalı (TAMAMI MANUEL)
+// ─────────────────────────────────────────────────────────────
+// İşletme defteri tutan (2.sınıf tüccar, basit usul) mükellefler için.
+// Q1-Q4 çeyrek bazlı kayıt; her dönem için stok hareketi + geçici vergi matrahı.
+// HİÇBİR ALAN OTOMATİK ÇEKİLMEZ — kullanıcı tüm tutarları el ile girer.
+//
+// Tek otomatik bağ: Q2-Q4 dönem başı stoğu, önceki çeyreğin kalan stoğunu kullanır.
+//
+// Türetilen alanlar:
+//   - toplamStok          = donemBasiStok + malAlisi
+//   - satilanMalMaliyeti  = toplamStok - kalanStok
+//   - netSatislar         = (satisHasilati + digerGelir) - satilanMalMaliyeti
+//   - donemKari           = netSatislar - donemIciGiderler
+//   - gecVergiMatrahi     = max(0, donemKari - gecmisYilZarari)
+//   - hesaplananGecVergi  = gecVergiMatrahi * 0.15  (işletme için %15)
+//   - odenecekGecVergi    = max(0, hesaplananGecVergi - oncekiOdenenGecVergi)
+model IsletmeHesapOzeti {
+  id              String    @id @default(cuid())
+  tenantId        String
+  taxpayerId      String
+  yil             Int
+  donem           Int
+
+  satisHasilati   Decimal   @db.Decimal(15, 2) @default(0)
+  digerGelir      Decimal   @db.Decimal(15, 2) @default(0)
+
+  malAlisi        Decimal   @db.Decimal(15, 2) @default(0)
+  donemBasiStok   Decimal   @db.Decimal(15, 2) @default(0)
+  kalanStok       Decimal   @db.Decimal(15, 2) @default(0)
+  toplamStok      Decimal   @db.Decimal(15, 2) @default(0)
+  satilanMalMaliyeti Decimal @db.Decimal(15, 2) @default(0)
+  netSatislar     Decimal   @db.Decimal(15, 2) @default(0)
+
+  donemIciGiderler Decimal  @db.Decimal(15, 2) @default(0)
+
+  donemKari       Decimal   @db.Decimal(15, 2) @default(0)
+
+  gecmisYilZarari Decimal   @db.Decimal(15, 2) @default(0)
+  gecVergiMatrahi Decimal   @db.Decimal(15, 2) @default(0)
+  hesaplananGecVergi Decimal @db.Decimal(15, 2) @default(0)
+  oncekiOdenenGecVergi Decimal @db.Decimal(15, 2) @default(0)
+  odenecekGecVergi Decimal  @db.Decimal(15, 2) @default(0)
+
+  not             String?
+
+  locked          Boolean   @default(false)
+  lockedAt        DateTime?
+  lockedBy        String?
+  lockNote        String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdBy       String?
+
+  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, taxpayerId, yil, donem])
+  @@index([tenantId, yil])
+  @@index([taxpayerId, yil, donem])
+  @@map("isletme_hesap_ozetleri")
 }

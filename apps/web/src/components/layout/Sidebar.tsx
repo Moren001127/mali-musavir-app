@@ -65,6 +65,7 @@ const navGroups = [
       { href: '/panel/mizan',         label: 'Mizan',         icon: Table2 },
       { href: '/panel/bilanco',       label: 'Bilanço',       icon: Scale },
       { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
+      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpen },
       { href: '/panel/cari-kasa',     label: 'Cari Kasa',     icon: Wallet },
       { href: '/panel/bordro',        label: 'Bordro & SGK',  icon: Users2 },
     ],
