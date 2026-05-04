@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.7';
+          const AGENT_VER = '1.34.8';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -541,34 +541,32 @@
           }
         } catch {}
       }
-      if (!II1aFn) {
-        // Fallback: text-based menü tıklama (yedek plan)
-        await log('⚠ II1a fonksiyonu hiçbir frame\'de bulunamadı, fallback: menü click');
+      // Önce II1a dene; başarısız olursa text-based menü click fallback
+      let basariliAcildi = false;
+      if (II1aFn) {
+        await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
+        try {
+          // Sahte event obj — bazı Luca buildlerinde gerek
+          const fakeEvent = {
+            type: 'click', target: null, currentTarget: null, srcElement: null,
+            preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
+            returnValue: true, cancelBubble: false,
+          };
+          II1aFn(fakeEvent, ii1aId, '');
+          basariliAcildi = true;
+        } catch (e) {
+          await log(`⚠ II1a('${ii1aId}') başarısız: ${e?.message || e} — fallback: text-based menü click`);
+          basariliAcildi = false;
+        }
+      }
+      if (!basariliAcildi) {
+        // Fallback: menüleri sırayla açıp elementi click et
+        await log('🔄 Text-based menü navigasyonu (yedek plan)');
         await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
-        await sleep(1000);
+        await sleep(1200);
         await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
         await sleep(2000);
         await clickByTextEverywhere(menuLabel, log, { maxMs: 8000 });
-      } else {
-        await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
-        try {
-          // II1a Luca'nın kendi fonksiyonu — null event'le çağırınca event.X okumaya çalışıp patlıyor
-        // Sahte event objesi geç (MouseEvent benzeri)
-        const fakeEvent = {
-          type: 'click',
-          target: null,
-          currentTarget: null,
-          srcElement: null,
-          preventDefault: () => {},
-          stopPropagation: () => {},
-          stopImmediatePropagation: () => {},
-          returnValue: true,
-          cancelBubble: false,
-        };
-        II1aFn(fakeEvent, ii1aId, '');
-        } catch (e) {
-          throw new Error(`II1a('${ii1aId}') çağrısı başarısız: ${e?.message || e}`);
-        }
       }
       await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
       await sleep(6000);
