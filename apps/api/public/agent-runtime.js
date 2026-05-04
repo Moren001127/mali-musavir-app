@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.34.9';
+          const AGENT_VER = '1.34.11';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -434,61 +434,15 @@
       if (!bulundu) {
         await log(`⚠ Firma "${mukellefAdi}" SirketCombo'da bulunamadı, kullanıcının seçili firmasıyla devam`);
       } else if (sc.value !== bulundu.value) {
-        // Luca firma değiştirirken confirm() popup açabilir — override et
-        const collectAllWins = () => {
-          const wins = [window];
-          const dive = (root) => {
-            try {
-              for (const fr of root.querySelectorAll('frame, iframe')) {
-                if (fr.contentWindow) {
-                  wins.push(fr.contentWindow);
-                  if (fr.contentDocument) dive(fr.contentDocument);
-                }
-              }
-            } catch {}
-          };
-          dive(document);
-          return wins;
-        };
-        for (const w of collectAllWins()) {
-          try {
-            w.confirm = () => true;
-            w.alert = () => {};
-          } catch {}
-        }
-
-        sc.value = bulundu.value;
-        sc.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`✓ Firma değiştirildi: "${bulundu.text}" (id=${bulundu.value})`);
-        await sleep(800);
-
-        // Custom dialog "Tamam" butonu otomatik tıkla (DOM'da popup varsa)
-        for (let i = 0; i < 6; i++) {
-          let tamamBulundu = false;
-          for (const w of collectAllWins()) {
-            try {
-              const d = w.document;
-              if (!d) continue;
-              for (const btn of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
-                const t = ((btn.value || btn.innerText) || '').trim().toLocaleLowerCase('tr-TR');
-                if (t === 'tamam' || t === 'ok' || t === 'evet') {
-                  // Görünür mü?
-                  if (btn.offsetParent !== null || btn.tagName === 'INPUT') {
-                    btn.click();
-                    await log(`✓ Onay popup'ında "${(btn.value||btn.innerText).trim()}" otomatik tıklandı`);
-                    tamamBulundu = true;
-                    break;
-                  }
-                }
-              }
-            } catch {}
-            if (tamamBulundu) break;
-          }
-          if (tamamBulundu) break;
-          await sleep(500);
-        }
-        // Luca onchange'inde loadDonem() + sayfa yenileme — daha uzun bekle
-        await sleep(3500);
+        // Firma DEĞİŞTİRMİYORUZ! Çünkü değiştirme = sayfa reload = agent kopar.
+        // Bunun yerine kullanıcıya hata mesajı veriyoruz.
+        const mevcut = sc.options[sc.selectedIndex]?.text?.trim() || '(yok)';
+        throw new Error(
+          `Luca'da yanlış firma seçili: "${mevcut}". ` +
+          `Lütfen Luca üst sağ köşedeki firma listesinden "${bulundu.text}" firmasını seçip ` +
+          `tekrar "Luca'dan Çek" butonuna basın. ` +
+          `(Agent firmayı kendi değiştiremiyor çünkü sayfa yenileniyor.)`
+        );
       } else {
         await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
       }
