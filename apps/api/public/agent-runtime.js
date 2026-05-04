@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.31.0';
+          const AGENT_VER = '1.32.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -183,6 +183,10 @@
             ISLETME_GELIR: 'İşletme defteri (gelir kayıtları)',
             ISLETME_GIDER: 'İşletme defteri (gider kayıtları)',
             IHO_FETCH: 'İşletme defteri ekranı (gelir + gider tek dosya)',
+            EARSIV_SATIS: 'E-Arşiv (Düzenlenen) liste ekranı — ZIP indir',
+            EARSIV_ALIS: 'E-Arşiv (Gelen) liste ekranı — ZIP indir',
+            EFATURA_SATIS: 'E-Fatura (Giden) liste ekranı — ZIP indir',
+            EFATURA_ALIS: 'E-Fatura (Gelen) liste ekranı — ZIP indir',
           }[job.tip] || job.tip;
           await log(`📋 ${tipLabel} açık olmalı`);
 
@@ -192,7 +196,8 @@
 
           // ─── Tipine göre upload endpoint ───
           const fd = new FormData();
-          fd.append('file', blob, `luca-${job.tip}-${job.donem}.xlsx`);
+          const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
+          fd.append('file', blob, `luca-${job.tip}-${job.donem}.${isZipJob ? 'zip' : 'xlsx'}`);
 
           let uploadUrl;
           if (job.tip === 'MIZAN') {
@@ -219,6 +224,20 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-iho?${params.toString()}`;
+          } else if (
+            job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
+            job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS'
+          ) {
+            // E-Arşiv / E-Fatura — Luca'dan ZIP indirme. tip = "<EARSIV|EFATURA>_<SATIS|ALIS>"
+            const [belgeKaynak, satTip] = job.tip.split('_');
+            const params = new URLSearchParams({
+              mukellefId: String(job.mukellefId || ''),
+              donem: String(job.donem || ''),
+              tip: satTip,
+              belgeKaynak,
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-earsiv?${params.toString()}`;
           } else {
             // KDV / İşletme defteri — agent-token kabul eden yan endpoint
             // (eski /kdv-control/.../excel-from-runner endpoint'i JWT bekliyordu)

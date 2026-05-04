@@ -116,7 +116,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="w-full rounded-md border border-stone-200 bg-white px-2.5 py-1.5 text-right text-sm tabular-nums text-stone-900 transition-colors focus:border-amber-400 focus:bg-amber-50/30 focus:outline-none focus:ring-1 focus:ring-amber-200 disabled:bg-stone-100 disabled:text-stone-400"
+      className="w-full rounded-md border border-white/10 px-2.5 py-1.5 text-right text-sm tabular-nums text-stone-100 transition-colors focus:border-amber-400 focus:bg-amber-500/100/5 focus:outline-none focus:ring-1 focus:ring-amber-400/40 disabled:bg-white/[0.05] disabled:text-stone-500"
     />
   );
 }
@@ -270,45 +270,45 @@ export default function IsletmeHesapOzetiPage() {
         {taxpayerId && !hicKayitYok && (
           <button
             onClick={indirExcel}
-            className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-900 hover:bg-stone-50"
+            className="inline-flex items-center gap-2 rounded-md border border-white/15 px-3 py-1.5 text-sm text-stone-100 hover:bg-white/5"
           >
             <Download className="h-4 w-4" /> Excel
           </button>
         )}
       </div>
 
-      <div className="rounded-xl border border-stone-200 bg-white p-4">
+      <div className="rounded-xl border border-white/10 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <div className="relative min-w-[300px]">
-            <label className="mb-1 block text-xs text-stone-600">Mükellef</label>
+            <label className="mb-1 block text-xs text-stone-500">Mükellef</label>
             <button
               onClick={() => setTpDropdownOpen((v) => !v)}
-              className="flex w-full items-center justify-between rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
+              className="flex w-full items-center justify-between rounded-md border border-white/15 px-3 py-2 text-sm text-stone-100"
             >
               <span className="flex items-center gap-2 truncate">
-                <Users className="h-4 w-4 text-stone-400" />
-                <span className={selectedTp ? 'text-stone-900' : 'text-stone-400'}>
+                <Users className="h-4 w-4 text-stone-500" />
+                <span className={selectedTp ? 'text-stone-100' : 'text-stone-500'}>
                   {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
                 </span>
               </span>
-              <ChevronDown className="h-4 w-4 text-stone-400" />
+              <ChevronDown className="h-4 w-4 text-stone-500" />
             </button>
             {tpDropdownOpen && (
-              <div className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md border border-stone-200 bg-white shadow-lg">
-                <div className="sticky top-0 border-b border-stone-100 bg-white p-2">
+              <div className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md border shadow-lg">
+                <div className="sticky top-0 border-b border-white/5 bg-white p-2">
                   <div className="relative">
-                    <Search className="absolute left-2 top-2 h-4 w-4 text-stone-400" />
+                    <Search className="absolute left-2 top-2 h-4 w-4 text-stone-500" />
                     <input
                       autoFocus
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Ad / VKN ara…"
-                      className="w-full rounded border border-stone-200 bg-white py-1.5 pl-8 pr-2 text-sm text-stone-900 outline-none placeholder:text-stone-400"
+                      className="w-full rounded border py-1.5 pl-8 pr-2 text-sm text-stone-100 outline-none placeholder:text-stone-500"
                     />
                   </div>
                 </div>
                 {filteredTp.length === 0 && (
-                  <div className="p-4 text-center text-sm text-stone-400">Sonuç yok</div>
+                  <div className="p-4 text-center text-sm text-stone-500">Sonuç yok</div>
                 )}
                 {filteredTp.map((t) => (
                   <button
@@ -318,9 +318,9 @@ export default function IsletmeHesapOzetiPage() {
                       setTpDropdownOpen(false);
                       setSearch('');
                     }}
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-stone-50"
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
                   >
-                    <div className="font-medium text-stone-900">{taxpayerName(t)}</div>
+                    <div className="font-medium text-stone-100">{taxpayerName(t)}</div>
                     {t.taxNumber && (
                       <div className="text-xs text-stone-500">VKN/TCKN: {t.taxNumber}</div>
                     )}
@@ -331,11 +331,11 @@ export default function IsletmeHesapOzetiPage() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-stone-600">Yıl</label>
+            <label className="mb-1 block text-xs text-stone-500">Yıl</label>
             <select
               value={yil}
               onChange={(e) => setYil(Number(e.target.value))}
-              className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900"
+              className="rounded-md border border-white/15 px-3 py-2 text-sm text-stone-100"
             >
               {Array.from({ length: 6 }).map((_, i) => {
                 const y = currentYear - i;
@@ -352,7 +352,7 @@ export default function IsletmeHesapOzetiPage() {
             <button
               onClick={() => olusturYilMutation.mutate()}
               disabled={olusturYilMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-500/15 disabled:opacity-50"
             >
               {olusturYilMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -366,15 +366,15 @@ export default function IsletmeHesapOzetiPage() {
       </div>
 
       {!taxpayerId ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-12 text-center text-sm text-stone-500">
+        <div className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500">
           Görüntülemek için mükellef seçin.
         </div>
       ) : isLoading ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-12 text-center">
-          <Loader2 className="mx-auto h-6 w-6 animate-spin text-stone-400" />
+        <div className="rounded-xl border border-white/10 p-12 text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-stone-500" />
         </div>
       ) : hicKayitYok ? (
-        <div className="rounded-xl border border-stone-200 bg-white p-12 text-center text-sm text-stone-500">
+        <div className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500">
           {yil} yılı için henüz kayıt açılmamış. Yukarıdaki "Yılı Başlat" butonuyla 4 dönem boş kayıtları
           oluşturup tutarları manuel girebilirsin.
         </div>
@@ -536,7 +536,7 @@ function KarsilastirmaTablosu({
   return (
     <div className="space-y-3">
       {/* Üst aksiyon barı */}
-      <div className="flex items-center justify-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2">
+      <div className="flex items-center justify-end gap-2 rounded-xl border border-white/10 px-3 py-2">
         {tersDonemler.map((d) => {
           const c = yilData?.ceyrekler?.[d - 1];
           if (!c) return null;
@@ -548,7 +548,7 @@ function KarsilastirmaTablosu({
                   onClick={() => onLucaCek(d)}
                   disabled={!!lucaJobs[d] && lucaJobs[d]?.status === 'pending'}
                   title="Luca'dan İşletme Defteri Excel'i çek"
-                  className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-500/15 disabled:opacity-50"
                 >
                   {lucaJobs[d]?.status === 'pending' || lucaJobs[d]?.status === 'running' ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -562,7 +562,7 @@ function KarsilastirmaTablosu({
                 <button
                   onClick={() => onUnlock(c.id)}
                   title="Kilidi aç (ADMIN)"
-                  className="rounded p-1 hover:bg-stone-100"
+                  className="rounded p-1 hover:bg-white/10"
                 >
                   <Lock className="h-3.5 w-3.5 text-amber-600" />
                 </button>
@@ -571,16 +571,16 @@ function KarsilastirmaTablosu({
                   <button
                     onClick={() => onLock(c.id)}
                     title="Kesin kayda al"
-                    className="rounded p-1 hover:bg-stone-100"
+                    className="rounded p-1 hover:bg-white/10"
                   >
-                    <Unlock className="h-3.5 w-3.5 text-stone-400" />
+                    <Unlock className="h-3.5 w-3.5 text-stone-500" />
                   </button>
                   <button
                     onClick={() => onDelete(c.id)}
                     title="Sil"
-                    className="rounded p-1 hover:bg-rose-50"
+                    className="rounded p-1 hover:bg-rose-500/100/15"
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                    <Trash2 className="h-3.5 w-3.5 text-rose-300" />
                   </button>
                 </>
               )}
@@ -606,13 +606,13 @@ function KarsilastirmaTablosu({
           </colgroup>
           <thead>
             <tr>
-              <th className="border-b border-stone-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              <th className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
                 Açıklama
               </th>
               {tersDonemler.map((d) => (
-                <th key={d} className="border-b border-stone-200 px-3 py-2 text-right">
-                  <div className="text-sm font-bold text-stone-900">{DONEM_ROMAN[d]}. Dönem</div>
-                  <div className="text-[10px] font-normal text-stone-400">{yil}</div>
+                <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
+                  <div className="text-sm font-bold text-stone-100">{DONEM_ROMAN[d]}. Dönem</div>
+                  <div className="text-[10px] font-normal text-stone-500">{yil}</div>
                 </th>
               ))}
             </tr>
@@ -660,7 +660,7 @@ function KarsilastirmaTablosu({
               })}
               calc
               bold
-              hl="bg-emerald-50/60"
+              hl="bg-emerald-500/100/10"
             />
             <Row
               label="DÖNEM İÇİ GİDERLER (-)"
@@ -683,7 +683,7 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
                 return (
-                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-600' : 'text-emerald-700'}>
+                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-300' : 'text-emerald-300'}>
                     {formatTR(lc.donemKar)}
                   </span>
                 );
@@ -694,7 +694,7 @@ function KarsilastirmaTablosu({
               })}
               raw
               bold
-              hl="bg-amber-50"
+              hl="bg-amber-500/10"
             />
           </tbody>
         </table>
@@ -716,13 +716,13 @@ function KarsilastirmaTablosu({
           </colgroup>
           <thead>
             <tr>
-              <th className="border-b border-stone-200 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              <th className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
                 Açıklama
               </th>
               {tersDonemler.map((d) => (
-                <th key={d} className="border-b border-stone-200 px-3 py-2 text-right">
-                  <div className="text-sm font-bold text-stone-900">{DONEM_ROMAN[d]}. Dönem</div>
-                  <div className="text-[10px] font-normal text-stone-400">{yil}</div>
+                <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
+                  <div className="text-sm font-bold text-stone-100">{DONEM_ROMAN[d]}. Dönem</div>
+                  <div className="text-[10px] font-normal text-stone-500">{yil}</div>
                 </th>
               ))}
             </tr>
@@ -770,7 +770,7 @@ function KarsilastirmaTablosu({
               })}
               calc
               bold
-              hl="bg-emerald-50/60"
+              hl="bg-emerald-500/100/10"
             />
             <Row
               label="DÖNEM İÇİ GİDERLER (-)"
@@ -793,7 +793,7 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
                 return (
-                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-600' : 'text-emerald-700'}>
+                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-300' : 'text-emerald-300'}>
                     {formatTR(lc.donemKar)}
                   </span>
                 );
@@ -804,7 +804,7 @@ function KarsilastirmaTablosu({
               })}
               raw
               bold
-              hl="bg-amber-50"
+              hl="bg-amber-500/10"
             />
           </tbody>
         </table>
@@ -934,19 +934,19 @@ function KarsilastirmaTablosu({
             <Row
               label="ÖDENECEK GEÇİCİ VERGİ"
               cols={tersDonemler.map((d) => (
-                <span key={d} className="text-base font-bold text-indigo-900">
+                <span key={d} className="text-base font-bold text-indigo-200">
                   {formatTR(liveCalc(d).odenecek)}
                 </span>
               ))}
               raw
               bold
-              hl="bg-indigo-100"
+              hl="bg-indigo-500/20"
             />
           </tbody>
         </table>
       </BlockCard>
 
-      <div className="flex items-center justify-end gap-2 rounded-xl border border-stone-200 bg-white px-3 py-3">
+      <div className="flex items-center justify-end gap-2 rounded-xl border px-3 py-3">
         {tersDonemler.map((d) => {
           const c = yilData?.ceyrekler?.[d - 1];
           if (!c) return null;
@@ -954,7 +954,7 @@ function KarsilastirmaTablosu({
             return (
               <span
                 key={d}
-                className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-3 py-1.5 text-xs text-amber-700 ring-1 ring-amber-200"
+                className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 ring-1 ring-amber-400/40"
               >
                 <Lock className="h-3 w-3" />
                 {DONEM_ROMAN[d]}. Dönem kilitli
@@ -965,7 +965,7 @@ function KarsilastirmaTablosu({
             <button
               key={d}
               onClick={() => saveDraft(d)}
-              className="inline-flex items-center gap-2 rounded-md bg-stone-900 px-3 py-1.5 text-sm text-white hover:bg-stone-800"
+              className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-stone-900 hover:opacity-90"
             >
               <Save className="h-4 w-4" />
               {DONEM_ROMAN[d]}. Dönemi Kaydet
@@ -989,9 +989,9 @@ function BlockCard({
   children: React.ReactNode;
 }) {
   const accentClasses: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-    emerald: { bg: 'bg-emerald-50/40', border: 'border-emerald-200', text: 'text-emerald-900', iconBg: 'bg-emerald-100 text-emerald-700' },
-    amber:   { bg: 'bg-amber-50/40',   border: 'border-amber-200',   text: 'text-amber-900',   iconBg: 'bg-amber-100 text-amber-700' },
-    indigo:  { bg: 'bg-indigo-50/40',  border: 'border-indigo-200',  text: 'text-indigo-900',  iconBg: 'bg-indigo-100 text-indigo-700' },
+    emerald: { bg: 'bg-emerald-500/100/8', border: 'border-emerald-500/30', text: 'text-emerald-200', iconBg: 'bg-emerald-500/20 text-emerald-300' },
+    amber:   { bg: 'bg-amber-500/100/8',   border: 'border-amber-500/30',   text: 'text-amber-200',   iconBg: 'bg-amber-500/15 text-amber-300' },
+    indigo:  { bg: 'bg-indigo-500/100/8',  border: 'border-indigo-500/30',  text: 'text-indigo-200',  iconBg: 'bg-indigo-500/20 text-indigo-700' },
   };
   const a = accentClasses[accent];
   return (
@@ -1029,23 +1029,23 @@ function Row({
   return (
     <tr className={hl || ''}>
       <td
-        className={`border-b border-stone-100 px-3 py-2 text-xs ${
-          bold ? 'font-semibold text-stone-900' : 'text-stone-700'
+        className={`border-b border-white/5 px-3 py-2 text-xs ${
+          bold ? 'font-semibold text-stone-100' : 'text-stone-300'
         }`}
       >
         {label}
-        {hint && <span className="ml-2 text-[10px] font-normal text-stone-400">{hint}</span>}
+        {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
       </td>
       {cols.map((c, i) => (
         <td
           key={i}
-          className={`border-b border-stone-100 px-3 py-2 text-right tabular-nums text-stone-900 ${
+          className={`border-b border-white/5 px-3 py-2 text-right tabular-nums text-stone-100 ${
             bold ? 'font-semibold' : ''
-          } ${calc && !raw ? 'italic text-stone-700' : ''}`}
+          } ${calc && !raw ? 'italic text-stone-300' : ''}`}
         >
           <div className="flex items-center justify-end gap-2">
             {ratios && ratios[i] && ratios[i] !== '—' && (
-              <span className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium not-italic text-stone-500">
+              <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium not-italic text-stone-500">
                 {ratios[i]}
               </span>
             )}

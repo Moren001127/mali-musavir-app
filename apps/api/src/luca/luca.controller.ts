@@ -32,6 +32,7 @@ import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.service';
+import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -49,7 +50,8 @@ export class LucaController {
     private readonly prisma: PrismaService,
     private readonly kdvControl: KdvControlService,
     private readonly kdvBeyanname: KdvBeyannameService,
-    private readonly isletmeHesapOzeti: IsletmeHesapOzetiService
+    private readonly isletmeHesapOzeti: IsletmeHesapOzetiService,
+    private readonly earsiv: EarsivService
   ) {}
 
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
@@ -399,6 +401,51 @@ export class LucaController {
     } catch (e: any) {
       if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
       throw new BadRequestException(`İHÖ Luca uygulama hatası: ${e?.message || 'bilinmeyen'}`);
+    }
+  }
+
+  /**
+   * E-Arşiv / E-Fatura ZIP upload endpoint'i — agent token ile çalışır.
+   * Agent Luca'dan ZIP dosyasını indirir, biz parse edip earsivFatura tablosuna yazarız.
+   */
+  @Post('agent/luca/runner/upload-earsiv')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadEarsivFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('mukellefId') mukellefId: string,
+    @Query('donem') donem: string,
+    @Query('tip') tip: string,
+    @Query('belgeKaynak') belgeKaynak: string,
+    @Query('jobId') jobId?: string,
+  ) {
+    if (!file) throw new BadRequestException('ZIP dosyası gerekli (field: file)');
+    if (!mukellefId || !donem || !tip || !belgeKaynak) {
+      throw new BadRequestException('mukellefId, donem, tip, belgeKaynak query parametreleri gerekli');
+    }
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+
+    try {
+      const result = await this.earsiv.importFromZip({
+        tenantId,
+        taxpayerId: mukellefId,
+        donem,
+        tip: tip as EarsivTip,
+        belgeKaynak: belgeKaynak as BelgeKaynak,
+        fetchJobId: jobId,
+        zipBuffer: file.buffer,
+      });
+      if (jobId) await this.luca.markJobDone(jobId, result.inserted).catch(() => {});
+      return {
+        ok: true,
+        inserted: result.inserted,
+        skipped: result.skipped,
+        total: result.total,
+      };
+    } catch (e: any) {
+      if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
+      throw new BadRequestException(`E-Arşiv ZIP import hatası: ${e?.message || 'bilinmeyen'}`);
     }
   }
 
