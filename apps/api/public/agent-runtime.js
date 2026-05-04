@@ -143,7 +143,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.32.0';
+          const AGENT_VER = '1.33.0';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -316,9 +316,151 @@
       const mode = job.tip === 'ISLETME_GELIR' ? 'gelir' : 'gider';
       return await fetchLucaIsletmeGelirGiderExcel(job, log, mode);
     }
+    if (job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
+        job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS') {
+      return await fetchLucaEarsivZip(job, log);
+    }
     // Bilinmeyen tip için fallback
     return await fetchLucaGenericExcel(job, log);
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // E-ARŞİV / E-FATURA — Luca'dan ZIP çekim
+  // ─────────────────────────────────────────────────────────────
+  // Akış:
+  //   1. SirketCombo → mukellefId/VKN ile firma seç (sayfa otomatik yenilenir)
+  //   2. (Kullanıcı zaten Akıllı Entegrasyon → e-Arşiv/E-Fatura sayfasında)
+  //   3. SORGU 1: Tarih modal aç → ay başı/sonu → Belgeleri Getir → tablo dolar
+  //   4. SORGU 2 (gerekirse): bir sonraki ay başı → bugün → Belgeleri Getir → satırlar EKLENİR
+  //   5. Tümünü Seç → Seçilenleri İndir → ZIP intercept
+  async function fetchLucaEarsivZip(job, log) {
+    const donemStr = String(job.donem || ''); // "YYYY-MM"
+    const [yilS, ayS] = donemStr.split('-');
+    const yil = Number(yilS);
+    const ay = Number(ayS);
+    if (!yil || !ay || ay < 1 || ay > 12) {
+      throw new Error(`Geçersiz dönem formatı: ${donemStr}, beklenen: YYYY-MM`);
+    }
+
+    // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
+    const ayinSonGunu = (y, m) => new Date(y, m, 0).getDate(); // m=1-12, son gün
+    const fmt = (d, m, y) => `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+
+    const sorgu1Bas = fmt(1, ay, yil);
+    const sorgu1Bit = fmt(ayinSonGunu(yil, ay), ay, yil);
+
+    // Sonraki ay (yıl sonu kuralı)
+    const sonAy = ay === 12 ? 1 : ay + 1;
+    const sonYil = ay === 12 ? yil + 1 : yil;
+    const bugun = new Date();
+    const sorgu2Gerekli =
+      bugun >= new Date(sonYil, sonAy - 1, 1) &&
+      bugun <= new Date(sonYil, sonAy - 1, ayinSonGunu(sonYil, sonAy));
+    const sorgu2Bas = fmt(1, sonAy, sonYil);
+    const sorgu2Bit = fmt(bugun.getDate(), bugun.getMonth() + 1, bugun.getFullYear());
+
+    await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
+    if (sorgu2Gerekli) await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit}`);
+
+    // frm3 frame'ini bul (e-arşiv ekranı burada)
+    const frm3 = getLucaFrame('frm3');
+    if (!frm3 || !frm3.contentDocument) {
+      throw new Error('frm3 (e-Arşiv ekranı) bulunamadı — Luca\'da Akıllı Entegrasyon → e-Arşiv/E-Fatura Faturaları açık mı?');
+    }
+    const fdoc = frm3.contentDocument;
+    const fwin = frm3.contentWindow;
+
+    // ZIP intercept: fetch ve XHR'i monkey-patch et — TEK ZIP yakalayacağız
+    let yakalanmisZip = null;
+    const origFetch = fwin.fetch;
+    const origXHROpen = fwin.XMLHttpRequest.prototype.open;
+    const origXHRSend = fwin.XMLHttpRequest.prototype.send;
+
+    fwin.fetch = async function(...args) {
+      const res = await origFetch.apply(this, args);
+      try {
+        const ct = res.headers.get('content-type') || '';
+        const cd = res.headers.get('content-disposition') || '';
+        if (ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream')) {
+          const cloned = res.clone();
+          const blob = await cloned.blob();
+          if (blob && blob.size > 100) {
+            yakalanmisZip = blob;
+            await log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`);
+          }
+        }
+      } catch {}
+      return res;
+    };
+
+    // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
+    async function birSorgu(bas, bit, etiket) {
+      await log(`🔍 ${etiket}: ${bas} → ${bit}`);
+      // Modal aç
+      if (typeof fwin.gonder === 'function') {
+        fwin.gonder('indir-window');
+      } else {
+        throw new Error('window.gonder fonksiyonu yok — Luca sayfası beklenen yapıda değil');
+      }
+      await sleep(800); // modal animasyonu
+
+      // Tarih input'larını doldur (tarih1, tarih2)
+      const t1 = fdoc.getElementById('tarih1');
+      const t2 = fdoc.getElementById('tarih2');
+      if (!t1 || !t2) throw new Error('tarih1/tarih2 input bulunamadı');
+      t1.value = bas;
+      t1.dispatchEvent(new Event('change', { bubbles: true }));
+      t2.value = bit;
+      t2.dispatchEvent(new Event('change', { bubbles: true }));
+      await sleep(200);
+
+      // Belgeleri Getir butonu
+      const getirBtn = fdoc.getElementById('faturalari-getir-btn');
+      if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
+      getirBtn.click();
+      await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
+
+      // Sonuçların gelmesini bekle (15sn timeout, modal kapanır + tablo dolar)
+      await sleep(8000);
+    }
+
+    await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
+    if (sorgu2Gerekli) {
+      await birSorgu(sorgu2Bas, sorgu2Bit, 'Sorgu 2 (sonraki ay başı→bugün)');
+    }
+
+    // Tümünü Seç
+    const tumBtn = fdoc.getElementById('tum_belgeyi_sec_btn');
+    if (tumBtn) {
+      tumBtn.click();
+      await log('✓ Tümünü Seç tıklandı');
+      await sleep(500);
+    } else {
+      await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
+    }
+
+    // Seçilenleri İndir → ZIP modal aç → indirme
+    if (typeof fwin.gonder === 'function') {
+      fwin.gonder('zip-window');
+      await log('📦 Seçilenleri İndir tetiklendi, ZIP bekleniyor…');
+    } else {
+      throw new Error('zip-window gonder yok');
+    }
+
+    // ZIP'in yakalanmasını bekle (max 30sn)
+    for (let i = 0; i < 60; i++) {
+      if (yakalanmisZip) break;
+      await sleep(500);
+    }
+    // Patch'leri geri al
+    fwin.fetch = origFetch;
+
+    if (!yakalanmisZip) {
+      throw new Error('ZIP 30sn içinde yakalanamadı — manuel olarak Seçilenleri İndir tıklamanız gerekebilir');
+    }
+    return yakalanmisZip;
+  }
+
 
   // ─────────────────────────────────────────────────────────────
   // ORTAK YARDIMCILAR — KDV / İşletme akışları için
