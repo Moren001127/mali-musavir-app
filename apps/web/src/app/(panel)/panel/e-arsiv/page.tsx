@@ -498,7 +498,7 @@ export default function EarsivPage() {
 
       {/* Tablo */}
       <div className="rounded-lg overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        {!taxpayerId ? (
+        {taxpayerIds.size === 0 ? (
           <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.4)' }}>
             Önce mükellef seç…
           </div>
