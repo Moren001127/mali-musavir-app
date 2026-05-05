@@ -49,9 +49,101 @@ export class EarsivRenderService {
     return this.htmlShell(inner, opts.autoPrint !== false);
   }
 
-  /** Tek fatura için tam HTML doküman */
+  /** Tek fatura için tam HTML doküman.
+   *  ÖNCELİK: Faturanın XML'inde gömülü XSLT varsa GİB resmi görünüm üretilir
+   *  (tarayıcının native XSLTProcessor'ı ile). Yoksa fallback olarak özet template.
+   */
   renderHtml(fatura: RenderableFatura, opts: { autoPrint?: boolean } = {}): string {
+    if (fatura.xmlContent && this.hasEmbeddedXslt(fatura.xmlContent)) {
+      return this.renderWithEmbeddedXslt(fatura, !!opts.autoPrint);
+    }
     return this.htmlShell(this.renderInvoiceBody(fatura, false), !!opts.autoPrint);
+  }
+
+  /** XML'in içinde EmbeddedDocumentBinaryObject olarak XSLT var mı? */
+  private hasEmbeddedXslt(xml: string): boolean {
+    return /EmbeddedDocumentBinaryObject[^>]*filename="[^"]*\.xslt"/i.test(xml)
+      || /EmbeddedDocumentBinaryObject[^>]*filename="[^"]*\.XSLT"/i.test(xml);
+  }
+
+  /** XML'i tarayıcıya gönder, gömülü XSLT'yi browser tarafında apply et.
+   *  Bu sayede GİB'in resmi e-arşiv görünümü çıkar. */
+  private renderWithEmbeddedXslt(f: RenderableFatura, autoPrint: boolean): string {
+    const xml = f.xmlContent || '';
+    // XML'i HTML script tag'ı içine güvenle göm: </script> ve & sequence'larından kaç
+    const safeXml = xml
+      .replace(/<\/script/gi, '<\\/script')
+      .replace(/<!--/g, '<\\!--');
+    const printScript = autoPrint
+      ? `setTimeout(() => { try { window.print(); } catch(e){} }, 800);`
+      : '';
+    return `<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>e-Arşiv Fatura ${this.esc(f.faturaNo)}</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; font-family: Arial, sans-serif; }
+  #moren-fallback { padding: 20px; color: #555; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div id="moren-fallback">Fatura yükleniyor…</div>
+<script id="moren-xml" type="application/xml">${safeXml}</script>
+<script>
+(function () {
+  function b64DecodeUnicode(str) {
+    try {
+      return decodeURIComponent(atob(str).split('').map(function(c){
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+    } catch(e) { return null; }
+  }
+  function getXsltFromXml(xmlDoc) {
+    var nodes = xmlDoc.getElementsByTagName('cbc:EmbeddedDocumentBinaryObject');
+    if (!nodes || nodes.length === 0) {
+      nodes = xmlDoc.getElementsByTagName('EmbeddedDocumentBinaryObject');
+    }
+    for (var i = 0; i < (nodes && nodes.length); i++) {
+      var n = nodes[i];
+      var fn = n.getAttribute('filename') || '';
+      if (/\\.xslt$/i.test(fn)) {
+        var b64 = (n.textContent || '').trim();
+        var xsltStr = b64DecodeUnicode(b64);
+        if (xsltStr) {
+          try { return new DOMParser().parseFromString(xsltStr, 'text/xml'); } catch(e) {}
+        }
+      }
+    }
+    return null;
+  }
+  try {
+    var xmlText = document.getElementById('moren-xml').textContent;
+    var xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
+    var xslt = getXsltFromXml(xmlDoc);
+    if (!xslt) {
+      document.getElementById('moren-fallback').textContent = 'Gömülü XSLT bulunamadı, resmi görünüm üretilemedi.';
+      return;
+    }
+    var proc = new XSLTProcessor();
+    proc.importStylesheet(xslt);
+    var fragment = proc.transformToFragment(xmlDoc, document);
+    if (!fragment) {
+      document.getElementById('moren-fallback').textContent = 'XSLT dönüşümü başarısız.';
+      return;
+    }
+    var fb = document.getElementById('moren-fallback');
+    if (fb) fb.remove();
+    document.body.appendChild(fragment);
+    ${printScript}
+  } catch (e) {
+    document.getElementById('moren-fallback').textContent = 'Görüntü hatası: ' + (e && e.message ? e.message : e);
+  }
+})();
+</script>
+</body>
+</html>`;
   }
 
   // ─── Private ────────────────────────────────────────────────────
