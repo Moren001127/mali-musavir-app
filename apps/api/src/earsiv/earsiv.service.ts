@@ -27,7 +27,7 @@ export class EarsivService {
     belgeKaynak?: BelgeKaynak;
     fetchJobId?: string;
     zipBuffer: Buffer;
-  }): Promise<{ inserted: number; skipped: number; total: number }> {
+  }): Promise<{ inserted: number; skipped: number; total: number; meta?: any }> {
     const { tenantId, taxpayerId, donem, tip, fetchJobId, zipBuffer } = opts;
     const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
 
