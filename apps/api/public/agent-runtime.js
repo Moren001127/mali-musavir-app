@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.8';
+          const AGENT_VER = '1.35.9';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -934,18 +934,20 @@
           w.fetch = async function(...args) {
             try {
               const url = String(args[0] && args[0].url || args[0] || '').toLowerCase();
-              if (url.includes('zip') || url.includes('indir') || url.includes('download')) zipNetworkInFlight = true;
+              if (url.includes('zip') || url.includes('indir') || url.includes('download') || url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq')) zipNetworkInFlight = true;
             } catch {}
             const res = await orig.origFetch.apply(this, args);
             try {
               const ct = res.headers.get('content-type') || '';
               const cd = res.headers.get('content-disposition') || '';
-              if (ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream') || ct.includes('application/x-zip')) {
+              const isBin = ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream') ||
+                            ct.includes('application/x-zip') || cd.includes('attachment') || cd.includes('filename');
+              if (isBin) {
                 const cloned = res.clone();
                 const blob = await cloned.blob();
                 if (blob && blob.size > 100 && !yakalanmisZip) {
                   yakalanmisZip = blob;
-                  log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                  log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB, ct=${ct.slice(0,40)}, cd=${cd.slice(0,40)})`).catch(() => {});
                 }
               }
             } catch {}
@@ -963,7 +965,8 @@
           w.XMLHttpRequest.prototype.send = function(...args) {
             try {
               const url = String(this.__url || '').toLowerCase();
-              if (url.includes('zip') || url.includes('indir') || url.includes('download')) {
+              if (url.includes('zip') || url.includes('indir') || url.includes('download') ||
+                  url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq')) {
                 zipNetworkInFlight = true;
                 try { this.responseType = 'blob'; } catch {}
                 this.addEventListener('load', () => {
@@ -972,7 +975,9 @@
                     if (blob && blob.size > 100 && !yakalanmisZip) {
                       const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
                       const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                      if (ct.includes('zip') || ct.includes('octet-stream') || ct.includes('application/x-zip') || cd.includes('.zip') || (blob.type && blob.type.includes('zip'))) {
+                      if (ct.includes('zip') || ct.includes('octet-stream') || ct.includes('application/x-zip') ||
+                          cd.includes('.zip') || cd.includes('attachment') || cd.includes('filename') ||
+                          (blob.type && blob.type.includes('zip'))) {
                         yakalanmisZip = blob;
                         log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
                       }
