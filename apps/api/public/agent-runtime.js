@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.10';
+          const AGENT_VER = '1.35.12';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -932,23 +932,27 @@
         // fetch
         if (orig.origFetch) {
           w.fetch = async function(...args) {
+            const url = String(args[0] && args[0].url || args[0] || '');
             try {
-              const url = String(args[0] && args[0].url || args[0] || '').toLowerCase();
-              if (url.includes('zip') || url.includes('indir') || url.includes('download') || url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq')) zipNetworkInFlight = true;
+              const lurl = url.toLowerCase();
+              if (lurl.includes('zip') || lurl.includes('indir') || lurl.includes('download') || lurl.includes('gib_ebelge') || lurl.includes('gib530') || lurl.includes('.jq')) zipNetworkInFlight = true;
             } catch {}
             const res = await orig.origFetch.apply(this, args);
             try {
               const ct = res.headers.get('content-type') || '';
               const cd = res.headers.get('content-disposition') || '';
+              const cloned = res.clone();
+              const blob = await cloned.blob();
               const isBin = ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream') ||
-                            ct.includes('application/x-zip') || cd.includes('attachment') || cd.includes('filename');
-              if (isBin) {
-                const cloned = res.clone();
-                const blob = await cloned.blob();
-                if (blob && blob.size > 100 && !yakalanmisZip) {
-                  yakalanmisZip = blob;
-                  log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB, ct=${ct.slice(0,40)}, cd=${cd.slice(0,40)})`).catch(() => {});
-                }
+                            ct.includes('application/x-zip') || cd.includes('attachment') || cd.includes('filename') ||
+                            (blob && blob.size > 1000 && !ct.startsWith('text/') && !ct.startsWith('application/json') && !ct.startsWith('application/javascript'));
+              // DEBUG: Tüm büyük (>1KB) response'ları logla
+              if (blob && blob.size > 1000) {
+                log(`🔍 FETCH ${url.slice(-80)} → ct=${ct.slice(0,30)}, size=${Math.round(blob.size/1024)}KB, isBin=${isBin}`).catch(() => {});
+              }
+              if (isBin && blob && blob.size > 100 && !yakalanmisZip) {
+                yakalanmisZip = blob;
+                log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
               }
             } catch {}
             return res;
@@ -963,46 +967,48 @@
             return orig.origXHROpen.call(this, method, url, ...rest);
           };
           w.XMLHttpRequest.prototype.send = function(...args) {
+            const sendBody = args[0];
+            const sendMethod = this.__method || 'POST';
+            const fullUrl = this.__url;
             try {
               const url = String(this.__url || '').toLowerCase();
-              if (url.includes('zip') || url.includes('indir') || url.includes('download') ||
-                  url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq')) {
-                zipNetworkInFlight = true;
-                // responseType'u DEĞİŞTİRMİYORUZ (jQuery responseText okuyor, blob yapınca patlıyor)
-                // Yerine: load event'inde URL'i ayrıca fetch'leyip blob'u kendimiz alıyoruz
-                const sendBody = args[0];
-                const sendMethod = this.__method || 'POST';
-                const fullUrl = this.__url;
-                this.addEventListener('load', () => {
-                  try {
-                    const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
-                    const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                    const looksLikeBinary = ct.includes('zip') || ct.includes('octet-stream') ||
-                                            ct.includes('application/x-zip') ||
-                                            cd.includes('attachment') || cd.includes('filename');
-                    if (looksLikeBinary && !yakalanmisZip) {
-                      // Aynı URL'i tekrar fetch et — blob olarak gelsin
-                      log(`🔄 XHR binary tespit edildi (${url.slice(0,60)}), re-fetch ile blob alınıyor`).catch(() => {});
-                      (async () => {
-                        try {
-                          const init = { method: sendMethod, credentials: 'include' };
-                          if (sendMethod !== 'GET' && sendBody !== undefined && sendBody !== null) {
-                            init.body = sendBody;
-                          }
-                          const res = await orig.origFetch.call(w, fullUrl, init);
-                          const blob = await res.blob();
-                          if (blob && blob.size > 100 && !yakalanmisZip) {
-                            yakalanmisZip = blob;
-                            log(`📥 ZIP yakalandı (XHR re-fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                          }
-                        } catch (e) {
-                          log(`⚠ XHR re-fetch hatası: ${e?.message || e}`).catch(() => {});
+              const isCandidate = url.includes('zip') || url.includes('indir') || url.includes('download') ||
+                  url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq');
+              if (isCandidate) zipNetworkInFlight = true;
+              // DEBUG: TÜM XHR'leri load event'inde log'la
+              this.addEventListener('load', () => {
+                try {
+                  const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
+                  const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
+                  const cl = (this.getResponseHeader('content-length') || '').toLowerCase();
+                  const sz = parseInt(cl, 10) || 0;
+                  if (sz > 1000 || isCandidate) {
+                    log(`🔍 XHR ${sendMethod} ${String(fullUrl).slice(-80)} → ct=${ct.slice(0,40)}, cd=${cd.slice(0,40)}, size=${sz ? Math.round(sz/1024)+'KB' : '?'}`).catch(() => {});
+                  }
+                  const looksLikeBinary = ct.includes('zip') || ct.includes('octet-stream') ||
+                                          ct.includes('application/x-zip') ||
+                                          cd.includes('attachment') || cd.includes('filename');
+                  if (looksLikeBinary && !yakalanmisZip) {
+                    log(`🔄 XHR binary tespit edildi (${String(fullUrl).slice(0,60)}), re-fetch ile blob alınıyor`).catch(() => {});
+                    (async () => {
+                      try {
+                        const init = { method: sendMethod, credentials: 'include' };
+                        if (sendMethod !== 'GET' && sendBody !== undefined && sendBody !== null) {
+                          init.body = sendBody;
                         }
-                      })();
-                    }
-                  } catch {}
-                }, { once: true });
-              }
+                        const res = await orig.origFetch.call(w, fullUrl, init);
+                        const blob = await res.blob();
+                        if (blob && blob.size > 100 && !yakalanmisZip) {
+                          yakalanmisZip = blob;
+                          log(`📥 ZIP yakalandı (XHR re-fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                        }
+                      } catch (e) {
+                        log(`⚠ XHR re-fetch hatası: ${e?.message || e}`).catch(() => {});
+                      }
+                    })();
+                  }
+                } catch {}
+              }, { once: true });
             } catch {}
             return orig.origXHRSend.apply(this, args);
           };
@@ -3941,42 +3947,12 @@
     window.addEventListener('message', onBridgeMessage);
     restoreFns.push(() => { window.removeEventListener('message', onBridgeMessage); });
 
-    await log(`🖱 "Rapor" butonu tıklanıyor (Luca'nın kendi flow'u)`);
-    const btnWin = form.ownerDocument.defaultView;
+    await log(`🖱 "Rapor" butonu 1 kez tıklanıyor`);
 
-    // 1) Native click — HTMLElement.prototype.click (en güvenilir, onclick attribute tetikler)
+    // SADE: tek native click — onclick attribute'unu zaten tetikler.
+    // Önceden 4 farklı yöntemle tıklatıyorduk (native + jQuery + onclick eval +
+    // fullActivate), her biri aynı handler'ı tetikleyip 2 mizan indiriyordu.
     try { excelBtn.click(); } catch (e) { await log(`⚠ click() hata: ${e.message}`); }
-    // 2) jQuery click — Luca jQuery handler kullanıyor olabilir, native click tetiklemez.
-    //    Luca gerçek jQuery kullanmıyor (.trigger yok); o yüzden gürültü yapmadan dene.
-    try {
-      const $ = btnWin.$ || btnWin.jQuery;
-      if ($ && typeof $ === 'function' && typeof $.fn?.trigger === 'function') {
-        $(excelBtn).trigger('click');
-        await log(`🔧 jQuery trigger('click') çağrıldı`);
-      }
-    } catch (e) { /* jQuery yok — sessiz geç */ }
-    // 3) Doğrudan gonder() / global submit fonksiyonunu çağır
-    try {
-      const oc = excelBtn.getAttribute && excelBtn.getAttribute('onclick');
-      if (oc) {
-        await log(`🔧 onclick: ${oc.slice(0, 60)}`);
-        // onclick'ten fonksiyon adını çıkar (örn "gonder()" → "gonder")
-        const funcName = (oc.match(/(\w+)\s*\(/) || [])[1];
-        if (funcName && typeof btnWin[funcName] === 'function') {
-          btnWin[funcName]();
-          await log(`🚀 ${funcName}() çağrıldı (window scope)`);
-        } else if (funcName && typeof btnWin.top?.[funcName] === 'function') {
-          btnWin.top[funcName]();
-          await log(`🚀 ${funcName}() çağrıldı (top scope)`);
-        } else {
-          // Eval fallback
-          btnWin.eval(oc);
-          await log(`🔧 eval fallback`);
-        }
-      }
-    } catch (e) { await log(`⚠ gonder hata: ${e.message}`); }
-    // 4) Yedek: fullActivate (mouseover+down+up+click)
-    try { fullActivate(excelBtn, btnWin); } catch (e) {}
 
     // YENİ STRATEJİ: Background script disk'ten Excel'i okuyup bize iletecek.
     // moren-luca-file event'ini dinle.
