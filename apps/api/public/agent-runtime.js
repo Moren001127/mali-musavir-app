@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.33';
+          const AGENT_VER = '1.35.34';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -861,25 +861,23 @@
           throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü Akıllı Entegrasyon submenu\'su açmadı');
         }
 
-        // Akıllı Entegrasyon Noktası'nı bul + tıkla
-        await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
-        await sleep(700);
-
-        // Cascade menü açık kalsın diye Akıllı Entegrasyon Noktası elementi
-        // bulunup üzerinde sürekli mouseover/mouseenter tetikle. Aksi halde
-        // CSS hover state'i kaybolur, alt menü (e-Arşiv Alış vb.) DOM'dan silinir.
-        const findAkilliEl = () => {
+        // Akıllı Entegrasyon Noktası: hover-ONLY (click yapma — submenu kapanır).
+        // Element bul, üzerinde sürekli MouseEvent + PointerEvent fire et,
+        // bu sırada e-Arşiv Alış'ı ara.
+        const findElByText = (text) => {
+          const norm2 = (s) => (s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+          const target = norm2(text);
           const visit = (fw) => {
             try {
               const doc = fw.document;
               if (!doc) return null;
               for (const el of doc.querySelectorAll('*')) {
                 if (el.children && el.children.length > 0) continue;
-                const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                const tag = el.tagName;
+                if (tag === 'HTML' || tag === 'HEAD' || tag === 'BODY' || tag === 'SCRIPT' || tag === 'STYLE') continue;
+                const t = norm2(el.textContent || '');
                 if (!t) continue;
-                if (t.includes('Akıllı Entegrasyon') || t.includes('Akilli Entegrasyon')) {
-                  return el;
-                }
+                if (t === target || t.includes(target)) return el;
               }
               for (const f of doc.querySelectorAll('iframe,frame')) {
                 try { const r = visit(f.contentWindow); if (r) return r; } catch {}
@@ -889,32 +887,52 @@
           };
           return visit(window);
         };
-        const akilliEl = findAkilliEl();
+
+        const akilliEl = findElByText('Akıllı Entegrasyon');
         let hoverTimer = null;
         if (akilliEl) {
-          const fireHover = () => {
+          await log('🎯 Akıllı Entegrasyon elementi bulundu — sürekli hover (click YAPILMAYACAK)');
+          const fireHoverDeep = () => {
             try {
-              const view = akilliEl.ownerDocument.defaultView || window;
+              const doc = akilliEl.ownerDocument;
+              const view = doc.defaultView || window;
               const rect = akilliEl.getBoundingClientRect();
-              const opts = { bubbles: true, cancelable: true, view, clientX: rect.left + 5, clientY: rect.top + 5 };
-              akilliEl.dispatchEvent(new MouseEvent('mouseenter', opts));
-              akilliEl.dispatchEvent(new MouseEvent('mouseover', opts));
-              akilliEl.dispatchEvent(new MouseEvent('mousemove', opts));
-              // Parent zincirinde de hover tutalım
+              const opts = {
+                bubbles: true, cancelable: true, view,
+                clientX: rect.left + rect.width / 2,
+                clientY: rect.top + rect.height / 2,
+                button: 0, buttons: 0, pointerType: 'mouse',
+              };
+              const optsNoBubble = { ...opts, bubbles: false };
+              // Önce parent zincirine fire et (delegasyon için), sonra hedefe
+              const fireOn = (el) => {
+                try { el.dispatchEvent(new MouseEvent('mouseover', opts)); } catch {}
+                try { el.dispatchEvent(new MouseEvent('mouseenter', optsNoBubble)); } catch {}
+                try { el.dispatchEvent(new MouseEvent('mousemove', opts)); } catch {}
+                try { el.dispatchEvent(new PointerEvent('pointerover', opts)); } catch {}
+                try { el.dispatchEvent(new PointerEvent('pointerenter', optsNoBubble)); } catch {}
+                try { el.dispatchEvent(new PointerEvent('pointermove', opts)); } catch {}
+              };
+              fireOn(akilliEl);
               let p = akilliEl.parentElement;
-              for (let i = 0; i < 4 && p; i++) {
-                p.dispatchEvent(new MouseEvent('mouseover', opts));
+              for (let i = 0; i < 5 && p; i++) {
+                fireOn(p);
                 p = p.parentElement;
               }
             } catch {}
           };
-          fireHover();
-          hoverTimer = setInterval(fireHover, 120);
-          await log('🔄 Cascade menüyü açık tutmak için Akıllı Entegrasyon üzerinde sürekli hover…');
+          fireHoverDeep();
+          await sleep(300);
+          fireHoverDeep();
+          hoverTimer = setInterval(fireHoverDeep, 50);
+          await log('🔄 Hover loop aktif (50ms aralıklarla, MouseEvent + PointerEvent)');
+        } else {
+          await log('⚠ Akıllı Entegrasyon elementi bulunamadı, hover atlanıyor');
         }
 
         try {
-          await clickByTextEverywhere(menuLabel, log, { maxMs: 8000 });
+          // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
+          await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
         } finally {
           if (hoverTimer) clearInterval(hoverTimer);
         }
