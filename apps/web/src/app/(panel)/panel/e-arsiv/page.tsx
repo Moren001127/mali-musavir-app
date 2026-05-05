@@ -163,6 +163,30 @@ export default function EarsivPage() {
     onError: (e: any) => toast.error(e?.message || 'Toplu yazdırma başarısız'),
   });
 
+  // Toplu İndir — her faturayı AYRI PDF olarak ZIP içinde döner, tarayıcı ZIP'i indirir
+  const topluIndirMut = useMutation({
+    mutationFn: async () => {
+      if (selected.size === 0) throw new Error('En az bir fatura seç');
+      const r = await api.post(
+        '/earsiv/download-bulk-pdfs',
+        { ids: [...selected] },
+        { responseType: 'blob' },
+      );
+      return { blob: r.data as Blob, count: selected.size };
+    },
+    onSuccess: ({ blob, count }) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `e-arsiv-faturalar-${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+      toast.success(`${count} fatura PDF olarak indiriliyor`);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Toplu indirme başarısız'),
+  });
+
   const toggleSelect = (id: string) => {
     setSelected((s) => {
       const ns = new Set(s);
@@ -307,6 +331,17 @@ export default function EarsivPage() {
         >
           {topluYazdirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
           Toplu Yazdır {selected.size > 0 ? `(${selected.size})` : ''}
+        </button>
+
+        <button
+          disabled={selected.size === 0 || topluIndirMut.isPending}
+          onClick={() => topluIndirMut.mutate()}
+          className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.9)', border: '1px solid rgba(255,255,255,0.1)' }}
+          title="Seçili faturaları AYRI AYRI PDF olarak ZIP içinde indir"
+        >
+          {topluIndirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          Toplu İndir {selected.size > 0 ? `(${selected.size})` : ''}
         </button>
 
         <input

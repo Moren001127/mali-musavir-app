@@ -1,6 +1,8 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EarsivZipParserService, ParsedEarsivFatura } from './earsiv-zip-parser.service';
+import { EarsivRenderService } from './earsiv-render.service';
+import { chromium as pwChromium } from 'playwright-core';
 import * as JSZip from 'jszip';
 
 export type EarsivTip = 'SATIS' | 'ALIS';
@@ -13,7 +15,64 @@ export class EarsivService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly parser: EarsivZipParserService,
+    private readonly render: EarsivRenderService,
   ) {}
+
+  /**
+   * Seçili faturaları AYRI AYRI PDF olarak render et, ZIP içinde dön.
+   * Her PDF'in adı: <faturaNo>.pdf
+   * Browser-based PDF üretimi için playwright-core kullanır (text vector korunur).
+   */
+  async generateBulkPdfsZip(tenantId: string, ids: string[]): Promise<Buffer> {
+    if (!ids || ids.length === 0) throw new BadRequestException('id listesi gerekli');
+    if (ids.length > 200) throw new BadRequestException('En fazla 200 fatura tek seferde indirilebilir');
+
+    const faturas = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId, id: { in: ids } },
+      orderBy: { faturaTarihi: 'asc' },
+    });
+    if (faturas.length === 0) throw new BadRequestException('Fatura bulunamadı');
+
+    this.logger.log(`Bulk PDF üretimi başlıyor: ${faturas.length} fatura`);
+
+    const browser = await pwChromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    const zip = new JSZip();
+    try {
+      const ctx = await browser.newContext();
+      for (const f of faturas) {
+        try {
+          const html = this.render.renderHtml(f as any, { autoPrint: false });
+          const page = await ctx.newPage();
+          // setContent + waitUntil networkidle: gömülü XSLT JS'inin tamamlanmasını bekle
+          await page.setContent(html, { waitUntil: 'networkidle', timeout: 15000 });
+          // XSLT processing biraz daha zaman alabilir
+          await page.waitForTimeout(400);
+          const pdf = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+          });
+          await page.close();
+          const safeName = String(f.faturaNo || f.id).replace(/[^A-Za-z0-9._-]/g, '_');
+          zip.file(`${safeName}.pdf`, pdf);
+        } catch (e: any) {
+          this.logger.warn(`PDF üretim hata (${f.faturaNo}): ${e?.message}`);
+          // Yine de ZIP'e bir hata raporu ekle
+          zip.file(`HATA_${f.faturaNo || f.id}.txt`, `PDF üretilemedi: ${e?.message || 'bilinmeyen'}`);
+        }
+      }
+      await ctx.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+
+    this.logger.log(`Bulk PDF tamam: ZIP oluşturuluyor`);
+    return zip.generateAsync({ type: 'nodebuffer' });
+  }
 
   /**
    * Agent'ın yüklediği ZIP dosyasını parse edip DB'ye yaz.

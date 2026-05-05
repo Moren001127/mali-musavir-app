@@ -160,6 +160,26 @@ export class EarsivController {
   }
 
   /**
+   * Toplu PDF indirme — her faturayı AYRI PDF olarak render edip ZIP içinde döner.
+   * Server-side playwright ile XSLT applied görünüm korunur (text vector).
+   */
+  @Post('earsiv/download-bulk-pdfs')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async downloadBulkPdfs(
+    @Req() req: any,
+    @Body() body: { ids: string[] },
+    @Res() res: Response,
+  ) {
+    if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids dizisi gerekli');
+    }
+    const buf = await this.earsiv.generateBulkPdfsZip(req.user.tenantId, body.ids);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="e-arsiv-pdf-${Date.now()}.zip"`);
+    res.send(buf);
+  }
+
+  /**
    * Manuel ZIP yükleme — kullanıcı kendi indirdiği Luca e-arşiv ZIP'ini portala yükler.
    * Agent endpoint'i ile aynı parser'ı kullanır, sadece auth JWT.
    */
