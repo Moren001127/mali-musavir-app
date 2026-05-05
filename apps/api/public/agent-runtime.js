@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.31';
+          const AGENT_VER = '1.35.33';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -516,12 +516,18 @@
         try {
           // TÜM elementleri tara (sadece belirli tag'ler değil) — Luca menü item'ları
           // <td>, <a>, <div> her şey olabilir.
+          // KRİTİK: Sadece TRUE LEAF (children.length === 0) — yoksa <html>, <body> gibi
+          // büyük container'lar textContent'inde target metni geçiyor diye match alır.
           for (const el of doc.querySelectorAll('*')) {
-            // Sadece leaf veya az çocuklu elementler (text gerçekten burada)
-            if (el.children && el.children.length > 3) continue;
-            if (!allowHidden && el.offsetParent === null && el.tagName !== 'A') continue;
+            if (el.children && el.children.length > 0) continue;
+            // HTML/HEAD/BODY/SCRIPT/STYLE asla menu item değildir
+            const tag = el.tagName;
+            if (tag === 'HTML' || tag === 'HEAD' || tag === 'BODY' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'META' || tag === 'LINK' || tag === 'TITLE') continue;
+            if (!allowHidden && el.offsetParent === null && tag !== 'A') continue;
             const t = norm(el.textContent || '');
             if (!t) continue;
+            // Text uzunluğu sanity check: target 25 char ise text 200 char'tan uzun olmasın
+            if (!exact && t.length > target.length * 4 + 10) continue;
             const match = exact ? (t === target) : (t === target || t.includes(target));
             if (!match) continue;
 
