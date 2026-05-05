@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.9';
+          const AGENT_VER = '1.35.10';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -968,19 +968,37 @@
               if (url.includes('zip') || url.includes('indir') || url.includes('download') ||
                   url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq')) {
                 zipNetworkInFlight = true;
-                try { this.responseType = 'blob'; } catch {}
+                // responseType'u DEĞİŞTİRMİYORUZ (jQuery responseText okuyor, blob yapınca patlıyor)
+                // Yerine: load event'inde URL'i ayrıca fetch'leyip blob'u kendimiz alıyoruz
+                const sendBody = args[0];
+                const sendMethod = this.__method || 'POST';
+                const fullUrl = this.__url;
                 this.addEventListener('load', () => {
                   try {
-                    const blob = this.response;
-                    if (blob && blob.size > 100 && !yakalanmisZip) {
-                      const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
-                      const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                      if (ct.includes('zip') || ct.includes('octet-stream') || ct.includes('application/x-zip') ||
-                          cd.includes('.zip') || cd.includes('attachment') || cd.includes('filename') ||
-                          (blob.type && blob.type.includes('zip'))) {
-                        yakalanmisZip = blob;
-                        log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                      }
+                    const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
+                    const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
+                    const looksLikeBinary = ct.includes('zip') || ct.includes('octet-stream') ||
+                                            ct.includes('application/x-zip') ||
+                                            cd.includes('attachment') || cd.includes('filename');
+                    if (looksLikeBinary && !yakalanmisZip) {
+                      // Aynı URL'i tekrar fetch et — blob olarak gelsin
+                      log(`🔄 XHR binary tespit edildi (${url.slice(0,60)}), re-fetch ile blob alınıyor`).catch(() => {});
+                      (async () => {
+                        try {
+                          const init = { method: sendMethod, credentials: 'include' };
+                          if (sendMethod !== 'GET' && sendBody !== undefined && sendBody !== null) {
+                            init.body = sendBody;
+                          }
+                          const res = await orig.origFetch.call(w, fullUrl, init);
+                          const blob = await res.blob();
+                          if (blob && blob.size > 100 && !yakalanmisZip) {
+                            yakalanmisZip = blob;
+                            log(`📥 ZIP yakalandı (XHR re-fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                          }
+                        } catch (e) {
+                          log(`⚠ XHR re-fetch hatası: ${e?.message || e}`).catch(() => {});
+                        }
+                      })();
                     }
                   } catch {}
                 }, { once: true });
