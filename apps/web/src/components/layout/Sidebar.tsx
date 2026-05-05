@@ -35,7 +35,7 @@ const navGroups = [
     icon: Receipt,
     items: [
       { href: '/panel/faturalar',              label: 'Faturalar',          icon: Receipt },
-      { href: '/panel/e-arsiv',                label: 'E-Arşiv / E-Fatura', icon: Archive },
+      { href: '/panel/e-arsiv',                label: 'Gelen E-Arşiv Sorgulama', icon: Archive },
       { href: '/panel/ajanlar/mihsap',         label: 'Mihsap Fatura',      icon: Bot },
       { href: '/panel/ajanlar/mihsap/incele',  label: 'Düzeltme Bekleyen',  icon: ShieldAlert },
       { href: '/panel/fis-yazdirma',           label: 'Fiş Yazdırma',       icon: Printer },
