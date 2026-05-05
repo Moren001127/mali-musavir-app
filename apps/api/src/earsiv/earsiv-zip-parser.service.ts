@@ -87,6 +87,8 @@ export class EarsivZipParserService {
       this.logger.log(`ZIP içerik (ilk 20): ${allEntries.slice(0, 20).join(' | ')}`);
     }
 
+    const parseDiagnostics: string[] = [];
+
     for (const xml of xmlFiles) {
       try {
         const parsed = this.parseUblInvoice(xml.content);
@@ -95,10 +97,25 @@ export class EarsivZipParserService {
           parsed.zipFileName = xml.name;
           parsed.pdfBuffer = pdfFiles.get(stem);
           results.push(parsed);
+          parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo})`);
         } else {
-          this.logger.warn(`XML parse: root tag bulunamadı (${xml.name}, ${xml.content.length} char, başı: ${xml.content.slice(0, 100)})`);
+          // FALLBACK 1: Top-level keys çıkar
+          const topKeys = this.peekTopKeys(xml.content);
+          // FALLBACK 2: Regex ile faturaNo/UUID çıkar — XML parser çuvallasa bile kayıt oluştur
+          const fb = this.regexFallback(xml.content);
+          if (fb) {
+            fb.zipFileName = xml.name;
+            const stem = xml.name.replace(/\.[^.]+$/, '');
+            fb.pdfBuffer = pdfFiles.get(stem);
+            results.push(fb);
+            parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},keys=${topKeys})`);
+          } else {
+            parseDiagnostics.push(`${xml.name}:FAIL(keys=${topKeys},len=${xml.content.length})`);
+          }
+          this.logger.warn(`XML parse: root tag bulunamadı (${xml.name}, top-keys=${topKeys}, başı: ${xml.content.slice(0, 200).replace(/\s+/g, ' ')})`);
         }
       } catch (e: any) {
+        parseDiagnostics.push(`${xml.name}:ERR(${e.message?.slice(0, 50)})`);
         this.logger.warn(`XML parse hata (${xml.name}): ${e.message}`);
       }
     }
@@ -106,12 +123,70 @@ export class EarsivZipParserService {
     this.logger.log(`Parse sonuç: ${results.length} fatura çıkarıldı (${xmlFiles.length} XML'den)`);
 
     // Meta bilgileri results array'ine ek property olarak attach et
-    // (service.ts bunları okuyup agent'a yansıtacak)
     (results as any).__entries = allEntries;
     (results as any).__xmlCount = xmlFiles.length;
     (results as any).__totalEntries = allEntries.length;
+    (results as any).__diagnostics = parseDiagnostics;
 
     return results;
+  }
+
+  /**
+   * XML'in top-level key'lerini hızlıca çıkar (debug için).
+   */
+  private peekTopKeys(xml: string): string {
+    try {
+      const p = new XMLParser({ removeNSPrefix: true, ignoreAttributes: true });
+      const j = p.parse(xml);
+      return Object.keys(j).slice(0, 5).join('|');
+    } catch {
+      return '?';
+    }
+  }
+
+  /**
+   * XML parser çuvallarsa regex ile temel alanları çıkar — kayıt kaybolmasın.
+   * UBL Invoice XML'inde <cbc:ID>...</cbc:ID> ve <cbc:UUID>...</cbc:UUID> her zaman var.
+   */
+  private regexFallback(xml: string): ParsedEarsivFatura | null {
+    // ID veya cbc:ID veya başka prefix
+    const idMatch = xml.match(/<(?:[a-z0-9]+:)?ID[^>]*>([^<]+)<\/(?:[a-z0-9]+:)?ID>/i);
+    const uuidMatch = xml.match(/<(?:[a-z0-9]+:)?UUID[^>]*>([^<]+)<\/(?:[a-z0-9]+:)?UUID>/i);
+    const dateMatch = xml.match(/<(?:[a-z0-9]+:)?IssueDate[^>]*>([^<]+)<\/(?:[a-z0-9]+:)?IssueDate>/i);
+    const payableMatch = xml.match(/<(?:[a-z0-9]+:)?PayableAmount[^>]*>([\d.,]+)</i);
+    const taxMatch = xml.match(/<(?:[a-z0-9]+:)?TaxAmount[^>]*>([\d.,]+)</i);
+    const lineExtMatch = xml.match(/<(?:[a-z0-9]+:)?LineExtensionAmount[^>]*>([\d.,]+)</i);
+
+    if (!idMatch && !uuidMatch) return null;
+
+    const num = (s?: string) => {
+      if (!s) return undefined;
+      const n = parseFloat(s.replace(',', '.'));
+      return isFinite(n) ? n : undefined;
+    };
+
+    let faturaTarihi = new Date();
+    if (dateMatch) {
+      const d = new Date(dateMatch[1]);
+      if (!isNaN(d.getTime())) faturaTarihi = d;
+    }
+
+    const matrah = num(lineExtMatch?.[1]);
+    const kdvTutari = num(taxMatch?.[1]);
+    const toplamTutar = num(payableMatch?.[1]);
+
+    return {
+      faturaNo: idMatch?.[1]?.trim() || uuidMatch?.[1]?.trim() || 'BILINMIYOR',
+      faturaTarihi,
+      ettn: uuidMatch?.[1]?.trim(),
+      matrah,
+      kdvTutari,
+      kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : undefined,
+      toplamTutar,
+      paraBirimi: 'TL',
+      xmlContent: xml,
+      zipFileName: '',
+    };
   }
 
   /**

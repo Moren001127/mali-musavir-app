@@ -94,6 +94,7 @@ export class EarsivService {
       totalEntries: (parsed as any).__totalEntries || 0,
       xmlCount: (parsed as any).__xmlCount || 0,
       entries: (parsed as any).__entries || [],
+      diagnostics: (parsed as any).__diagnostics || [],
     };
     return { inserted, skipped, total: parsed.length, meta };
   }
