@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.13';
+          const AGENT_VER = '1.35.14';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1182,6 +1182,70 @@
         return origGoster.apply(this, args);
       };
     }
+
+    // ─── Luca.downloadPost HOOK ───
+    // goster() x="save" durumunda Luca.downloadPost(url, data, "_blank") çağırıyor
+    // Bu form submit ile yeni tab açıp native browser download tetikliyor — bizi bypass ediyor
+    // Wrap ederek URL+data'yı yakalıyoruz, kendi fetch'imizle blob alıyoruz
+    try {
+      const winsToHook = [fwin, window, window.top].filter(Boolean);
+      for (const w of winsToHook) {
+        if (w.Luca && typeof w.Luca.downloadPost === 'function' && !w.Luca.__morenDownloadPostHooked) {
+          w.Luca.__morenDownloadPostHooked = true;
+          const origDownloadPost = w.Luca.downloadPost;
+          w.Luca.downloadPost = function(url, data, target) {
+            try {
+              log(`🎯 Luca.downloadPost yakalandı: url=${String(url).slice(0,80)}, target=${target}`).catch(() => {});
+              zipNetworkInFlight = true;
+              // Bizim fetch'imizle aynı POST'u yap, blob al
+              (async () => {
+                try {
+                  // data nesne ise URL-encoded form-data'ya çevir
+                  let body, contentType;
+                  if (typeof data === 'string') {
+                    body = data;
+                    contentType = 'application/x-www-form-urlencoded';
+                  } else if (data instanceof FormData) {
+                    body = data;
+                    contentType = null; // browser auto-set
+                  } else if (data && typeof data === 'object') {
+                    // Luca'nın downloadPost'u {key: value} dict alıyor → URL-encoded form yap
+                    const params = new URLSearchParams();
+                    for (const k of Object.keys(data)) {
+                      const v = data[k];
+                      params.append(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
+                    }
+                    body = params.toString();
+                    contentType = 'application/x-www-form-urlencoded';
+                  } else {
+                    body = String(data || '');
+                    contentType = 'application/x-www-form-urlencoded';
+                  }
+                  const init = { method: 'POST', credentials: 'include', body };
+                  if (contentType) init.headers = { 'Content-Type': contentType };
+                  const res = await fetch(url, init);
+                  const blob = await res.blob();
+                  if (blob && blob.size > 100 && !yakalanmisZip) {
+                    yakalanmisZip = blob;
+                    const ct = (res.headers.get('content-type') || '').slice(0, 40);
+                    const cd = (res.headers.get('content-disposition') || '').slice(0, 60);
+                    log(`📥 ZIP yakalandı (Luca.downloadPost hijack, ${Math.round(blob.size/1024)} KB, ct=${ct}, cd=${cd})`).catch(() => {});
+                  } else if (blob) {
+                    log(`⚠ Luca.downloadPost yanıtı küçük (${blob.size}B) ya da zaten yakalanmış`).catch(() => {});
+                  }
+                } catch (e) {
+                  log(`⚠ Luca.downloadPost hijack fetch hatası: ${e?.message || e}`).catch(() => {});
+                }
+              })();
+              return; // Native download'u TETİKLEME (orijinal fonksiyonu çağırmıyoruz)
+            } catch (e) {
+              // Hook hatası — fallback olarak orijinal davranış
+              return origDownloadPost.call(this, url, data, target);
+            }
+          };
+        }
+      }
+    } catch (e) {}
 
     if (typeof fwin.gonder === 'function' && !fwin.__morenGonderHooked) {
       fwin.__morenGonderHooked = true;
