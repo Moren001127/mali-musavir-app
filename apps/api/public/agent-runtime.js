@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.5';
+          const AGENT_VER = '1.35.6';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -736,8 +736,57 @@
 
     // ZIP intercept: TÜM accessible frame'lerde fetch + XHR + window.open + anchor download
     // hook'la — Luca download'u herhangi bir frame'den fire edebilir.
+    // AYRICA: Mizan/Excel akışında çalışan moren-bridge Chrome extension'ı da
+    // dinle — Luca native browser download yapıyorsa bridge URL/blob iletir.
     let yakalanmisZip = null;
     let zipNetworkInFlight = false;
+
+    // ─── MOREN BRIDGE (Chrome extension) ───
+    // Background script'e "download bekliyorum" sinyali (Excel akışıyla aynı)
+    const postExpectingZip = (val) => {
+      const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
+      try { window.postMessage(payload, '*'); } catch (e) {}
+      try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
+    };
+    postExpectingZip(true);
+    await log('🔔 moren-bridge: download bekleniyor sinyali gönderildi');
+
+    // Bridge'den gelen download URL'ini dinle (background chrome.downloads intercepted)
+    const onBridgeMessage = async (event) => {
+      try {
+        const data = event.data;
+        if (!data || data.source !== 'moren-bridge' || data.type !== 'lucaDownload') return;
+        const dlUrl = data.url;
+        if (!dlUrl || yakalanmisZip) return;
+        await log(`🌉 Bridge: download URL geldi: ${String(dlUrl).split('/').pop().slice(0, 60)}`);
+        try {
+          const r = await fetch(dlUrl, { credentials: 'include' });
+          if (r.ok) {
+            const blob = await r.blob();
+            if (blob && blob.size > 100 && !yakalanmisZip) {
+              yakalanmisZip = blob;
+              await log(`📥 ZIP yakalandı (bridge URL fetch, ${Math.round(blob.size/1024)} KB)`);
+            }
+          }
+        } catch (e) {
+          await log(`⚠ Bridge URL fetch hatası: ${e?.message || e}`);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('message', onBridgeMessage);
+
+    // Bridge dosyayı disk'ten okuyup direkt blob olarak gönderebilir
+    const onLucaFile = async (e) => {
+      try {
+        const detail = e.detail || {};
+        const blob = detail.blob;
+        if (!yakalanmisZip && blob && blob.size > 100) {
+          yakalanmisZip = blob;
+          await log(`📥 ZIP yakalandı (bridge disk → blob, ${Math.round(blob.size/1024)} KB, dosya: ${String(detail.filename || '').split(/[\\\/]/).pop()})`);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('moren-luca-file', onLucaFile);
 
     // Hook'lanan tüm frame'lerin orijinal fonksiyonlarını sakla (cleanup için)
     const hookedFrames = []; // [{ win, origFetch, origXHROpen, origXHRSend, origWindowOpen, origCreateElement }]
@@ -1280,6 +1329,11 @@
         if (h.origFormSubmit) h.win.HTMLFormElement.prototype.submit = h.origFormSubmit;
       } catch {}
     }
+
+    // Bridge listener'larını çıkar + expecting=false sinyali
+    try { window.removeEventListener('message', onBridgeMessage); } catch (e) {}
+    try { window.removeEventListener('moren-luca-file', onLucaFile); } catch (e) {}
+    postExpectingZip(false);
 
     if (!yakalanmisZip) {
       throw new Error('ZIP 60sn içinde yakalanamadı — Luca download mekanizması interceptor\'ları bypass ediyor olabilir');
