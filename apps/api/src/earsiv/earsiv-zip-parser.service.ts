@@ -30,7 +30,7 @@ export class EarsivZipParserService {
    * Tipik içerik: birden fazla XML (UBL) + her XML için PDF.
    * Örnek: GIB202612345.xml, GIB202612345.pdf
    */
-  async parseZip(buf: Buffer): Promise<ParsedEarsivFatura[]> {
+  async parseZip(buf: Buffer): Promise<ParsedEarsivFatura[] & { __entries?: string[]; __xmlCount?: number; __zipError?: string }> {
     const results: ParsedEarsivFatura[] = [];
 
     const xmlFiles: { name: string; content: string }[] = [];

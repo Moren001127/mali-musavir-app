@@ -89,7 +89,13 @@ export class EarsivService {
       }
     }
 
-    return { inserted, skipped, total: parsed.length };
+    const meta: any = {
+      bufferSize: zipBuffer ? zipBuffer.length : 0,
+      totalEntries: (parsed as any).__totalEntries || 0,
+      xmlCount: (parsed as any).__xmlCount || 0,
+      entries: (parsed as any).__entries || [],
+    };
+    return { inserted, skipped, total: parsed.length, meta };
   }
 
   /**
