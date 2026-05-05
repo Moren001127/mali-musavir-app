@@ -44,6 +44,8 @@ export default function EarsivPage() {
   // Sayfa içi fatura önizleme (yeni sekme yerine lightbox)
   const [previewFatura, setPreviewFatura] = useState<EarsivFatura | null>(null);
   const [previewAutoPrint, setPreviewAutoPrint] = useState(false);
+  const [bulkPreviewHtml, setBulkPreviewHtml] = useState<string | null>(null);
+  const [bulkPreviewCount, setBulkPreviewCount] = useState(0);
 
   // Mükellef listesi
   const { data: taxpayers = [] } = useQuery({
@@ -147,29 +149,16 @@ export default function EarsivPage() {
   const topluYazdirMut = useMutation({
     mutationFn: async () => {
       if (selected.size === 0) throw new Error('En az bir fatura seç');
-      // Backend POST endpoint: /earsiv/print-bulk { ids: [...] } → text/html
-      // Çok sayıda ID için fetch ile alıp blob URL ile aç
-      const res = await fetch('/api/earsiv/print-bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ ids: [...selected] }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text().catch(() => '')}`);
-      const html = await res.text();
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-      return URL.createObjectURL(blob);
+      // Auth'lu fetch (api axios → Authorization header otomatik)
+      const r = await api.post('/earsiv/print-bulk', { ids: [...selected] }, { responseType: 'text' });
+      const html = typeof r.data === 'string' ? r.data : String(r.data);
+      return { html, count: selected.size };
     },
-    onSuccess: (blobUrl) => {
-      const w = window.open(blobUrl, '_blank');
-      if (!w) {
-        toast.error('Popup engelli — tarayıcının popup engelleyiciyi kapat');
-        return;
-      }
-      // Yeni sekmede DOM yüklendiğinde print() çağrılsın diye HTML'in içine zaten gömüyoruz.
-      toast.success(`${selected.size} fatura yazdırma için açıldı`);
-      // 60sn sonra blob URL'i temizle
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    onSuccess: ({ html, count }) => {
+      // Sayfa içi modal — yeni sekme açma, popup engelli sorunu yok
+      setBulkPreviewHtml(html);
+      setBulkPreviewCount(count);
+      toast.success(`${count} fatura yazdırma için açıldı`);
     },
     onError: (e: any) => toast.error(e?.message || 'Toplu yazdırma başarısız'),
   });
@@ -519,6 +508,15 @@ export default function EarsivPage() {
           onClose={() => { setPreviewFatura(null); setPreviewAutoPrint(false); }}
         />
       )}
+
+      {/* Toplu yazdırma sayfa içi modal (yeni sekme yerine) */}
+      {bulkPreviewHtml && (
+        <BulkPrintModal
+          html={bulkPreviewHtml}
+          count={bulkPreviewCount}
+          onClose={() => { setBulkPreviewHtml(null); setBulkPreviewCount(0); }}
+        />
+      )}
     </div>
   );
 }
@@ -680,6 +678,113 @@ function EarsivPreviewModal({
               sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
             />
           )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(modalContent, document.body);
+}
+
+/** Toplu yazdırma için sayfa-içi modal — backend POST /earsiv/print-bulk
+ *  cevabındaki birleştirilmiş HTML'i iframe srcDoc içinde gösterir.
+ */
+function BulkPrintModal({
+  html,
+  count,
+  onClose,
+}: {
+  html: string;
+  count: number;
+  onClose: () => void;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const scrollY = window.scrollY;
+    const prev = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev.overflow;
+      document.body.style.position = prev.position;
+      document.body.style.top = prev.top;
+      document.body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [onClose]);
+
+  // İçerik mount olduğunda otomatik print tetiklensin (bulk = yazdırma odaklı)
+  useEffect(() => {
+    const tid = setTimeout(() => {
+      try { iframeRef.current?.contentWindow?.print(); } catch {}
+    }, 700);
+    return () => clearTimeout(tid);
+  }, []);
+
+  const triggerPrint = () => {
+    try { iframeRef.current?.contentWindow?.print(); }
+    catch { toast.error('Yazdırma başlatılamadı'); }
+  };
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,.85)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-xl"
+          style={{ background: 'rgba(15,13,11,.95)', color: '#fff' }}
+        >
+          <div className="text-sm font-semibold">{count} fatura toplu yazdırma</div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={triggerPrint}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+            >
+              <Printer size={12} /> Tekrar Yazdır
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+              title="Kapat (ESC)"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+        </div>
+        <div
+          className="flex-1 rounded-b-xl overflow-hidden"
+          style={{ background: 'rgba(15,13,11,.85)' }}
+        >
+          <iframe
+            ref={iframeRef}
+            srcDoc={html}
+            className="w-full h-full bg-white"
+            title="Toplu yazdırma"
+            sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
+          />
         </div>
       </div>
     </div>
