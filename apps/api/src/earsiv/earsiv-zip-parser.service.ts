@@ -121,19 +121,41 @@ export class EarsivZipParserService {
     const parser = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: '@',
-      removeNSPrefix: false,
+      removeNSPrefix: true, // ← namespace prefix'leri (cbc:, cac:, n0:, ubl:) at — UBL parse için kritik
     });
     const j = parser.parse(xml);
 
-    // Hem Invoice hem CreditNote için root key bul
-    const root = j['Invoice'] || j['CreditNote'] || j['ApplicationResponse'];
-    if (!root) return null;
+    // Hem Invoice hem CreditNote için root key bul.
+    // Bazı XML'lerin <?xml...> sonrası başka envelope'u olabilir, key'leri tara.
+    const findRoot = (obj: any): any => {
+      if (!obj || typeof obj !== 'object') return null;
+      for (const k of Object.keys(obj)) {
+        if (/^(Invoice|CreditNote|ApplicationResponse|DespatchAdvice)$/i.test(k)) {
+          return obj[k];
+        }
+      }
+      // ilk objektif key'i de kontrol et (tek seviyeli envelope)
+      for (const k of Object.keys(obj)) {
+        if (typeof obj[k] === 'object' && obj[k] !== null) {
+          const inner = findRoot(obj[k]);
+          if (inner) return inner;
+        }
+      }
+      return null;
+    };
 
+    const root = findRoot(j);
+    if (!root) {
+      this.logger.warn(`UBL root tag bulunamadı, top-level keys: ${Object.keys(j).join(',')}`);
+      return null;
+    }
+
+    // removeNSPrefix:true sayesinde artık tüm key'ler prefix'siz (Invoice, ID, vb.)
     const get = (path: string[]): any => {
       let cur = root;
       for (const p of path) {
         if (!cur) return undefined;
-        cur = cur[p] || cur[`cbc:${p}`] || cur[`cac:${p}`];
+        cur = cur[p];
       }
       return cur;
     };
@@ -152,59 +174,43 @@ export class EarsivZipParserService {
       return isFinite(n) ? n : undefined;
     };
 
-    const faturaNo = txt(get(['ID'])) || txt(get(['cbc:ID'])) || '';
-    const ettn = txt(get(['UUID'])) || txt(get(['cbc:UUID']));
-    const issueDateRaw = txt(get(['IssueDate'])) || txt(get(['cbc:IssueDate']));
+    const faturaNo = txt(get(['ID'])) || '';
+    const ettn = txt(get(['UUID']));
+    const issueDateRaw = txt(get(['IssueDate']));
     let faturaTarihi = new Date();
     if (issueDateRaw) {
       const d = new Date(issueDateRaw);
       if (!isNaN(d.getTime())) faturaTarihi = d;
     }
 
-    // Satıcı (AccountingSupplierParty)
-    const supplier = get(['AccountingSupplierParty', 'Party'])
-      || get(['cac:AccountingSupplierParty', 'cac:Party']);
+    // Satıcı
+    const supplier = get(['AccountingSupplierParty', 'Party']);
     const satici = txt(supplier?.['PartyName']?.['Name'])
-      || txt(supplier?.['cac:PartyName']?.['cbc:Name'])
-      || txt(supplier?.['PartyLegalEntity']?.['RegistrationName'])
-      || txt(supplier?.['cac:PartyLegalEntity']?.['cbc:RegistrationName']);
+      || txt(supplier?.['PartyLegalEntity']?.['RegistrationName']);
     const saticiVergiNo = txt(supplier?.['PartyTaxScheme']?.['CompanyID'])
-      || txt(supplier?.['cac:PartyTaxScheme']?.['cbc:CompanyID'])
-      || txt(supplier?.['PartyIdentification']?.['ID'])
-      || txt(supplier?.['cac:PartyIdentification']?.['cbc:ID']);
+      || txt(supplier?.['PartyIdentification']?.['ID']);
 
-    // Alıcı (AccountingCustomerParty)
-    const customer = get(['AccountingCustomerParty', 'Party'])
-      || get(['cac:AccountingCustomerParty', 'cac:Party']);
+    // Alıcı
+    const customer = get(['AccountingCustomerParty', 'Party']);
     const alici = txt(customer?.['PartyName']?.['Name'])
-      || txt(customer?.['cac:PartyName']?.['cbc:Name'])
-      || txt(customer?.['PartyLegalEntity']?.['RegistrationName'])
-      || txt(customer?.['cac:PartyLegalEntity']?.['cbc:RegistrationName']);
+      || txt(customer?.['PartyLegalEntity']?.['RegistrationName']);
     const aliciVergiNo = txt(customer?.['PartyTaxScheme']?.['CompanyID'])
-      || txt(customer?.['cac:PartyTaxScheme']?.['cbc:CompanyID'])
-      || txt(customer?.['PartyIdentification']?.['ID'])
-      || txt(customer?.['cac:PartyIdentification']?.['cbc:ID']);
+      || txt(customer?.['PartyIdentification']?.['ID']);
 
-    // Tutarlar (LegalMonetaryTotal)
-    const monetaryTotal = get(['LegalMonetaryTotal']) || get(['cac:LegalMonetaryTotal']);
+    // Tutarlar
+    const monetaryTotal = get(['LegalMonetaryTotal']);
     const matrah = num(monetaryTotal?.['LineExtensionAmount'])
-      ?? num(monetaryTotal?.['cbc:LineExtensionAmount'])
-      ?? num(monetaryTotal?.['TaxExclusiveAmount'])
-      ?? num(monetaryTotal?.['cbc:TaxExclusiveAmount']);
+      ?? num(monetaryTotal?.['TaxExclusiveAmount']);
     const toplamTutar = num(monetaryTotal?.['PayableAmount'])
-      ?? num(monetaryTotal?.['cbc:PayableAmount'])
-      ?? num(monetaryTotal?.['TaxInclusiveAmount'])
-      ?? num(monetaryTotal?.['cbc:TaxInclusiveAmount']);
+      ?? num(monetaryTotal?.['TaxInclusiveAmount']);
 
-    // KDV (TaxTotal)
-    const taxTotal = get(['TaxTotal']) || get(['cac:TaxTotal']);
-    const kdvTutari = num(taxTotal?.['TaxAmount'])
-      ?? num(taxTotal?.['cbc:TaxAmount']);
+    // KDV — TaxTotal array veya tek obje olabilir
+    const taxTotalRaw = get(['TaxTotal']);
+    const taxTotal = Array.isArray(taxTotalRaw) ? taxTotalRaw[0] : taxTotalRaw;
+    const kdvTutari = num(taxTotal?.['TaxAmount']);
 
     // Para birimi
-    const paraBirimi = txt(get(['DocumentCurrencyCode']))
-      || txt(get(['cbc:DocumentCurrencyCode']))
-      || 'TRY';
+    const paraBirimi = txt(get(['DocumentCurrencyCode'])) || 'TRY';
 
     return {
       faturaNo: faturaNo || 'BILINMIYOR',
