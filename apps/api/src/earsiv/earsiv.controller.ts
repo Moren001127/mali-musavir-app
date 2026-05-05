@@ -10,6 +10,7 @@ import type { Response } from 'express';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { EarsivService, EarsivTip, BelgeKaynak } from './earsiv.service';
+import { EarsivRenderService } from './earsiv-render.service';
 import { LucaService } from '../luca/luca.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -17,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export class EarsivController {
   constructor(
     private readonly earsiv: EarsivService,
+    private readonly render: EarsivRenderService,
     private readonly luca: LucaService,
     private readonly prisma: PrismaService,
   ) {}
@@ -96,6 +98,52 @@ export class EarsivController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   async getOne(@Req() req: any, @Param('id') id: string) {
     return this.earsiv.getById(req.user.tenantId, id);
+  }
+
+  /**
+   * Tek fatura için yazdırılabilir HTML görüntü.
+   * ?print=1 parametresi varsa sayfa yüklendikten sonra otomatik window.print() tetikler.
+   */
+  @Get('earsiv/:id/html')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async renderOneHtml(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('print') printFlag: string | undefined,
+    @Res() res: Response,
+  ) {
+    const f = await this.earsiv.getById(req.user.tenantId, id);
+    const html = this.render.renderHtml(f as any, { autoPrint: printFlag === '1' || printFlag === 'true' });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(html);
+  }
+
+  /**
+   * Birden fazla faturayı tek HTML belgesinde, page-break ile birleştirip yazdırılabilir döner.
+   * Tarayıcıda print dialog otomatik açılır → kullanıcı "PDF olarak kaydet" diyerek tek PDF üretir.
+   */
+  @Post('earsiv/print-bulk')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async renderBulkHtml(
+    @Req() req: any,
+    @Body() body: { ids: string[] },
+    @Res() res: Response,
+  ) {
+    if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids dizisi gerekli');
+    }
+    if (body.ids.length > 500) {
+      throw new BadRequestException('En fazla 500 fatura tek seferde yazdırılabilir');
+    }
+    const faturas = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId: req.user.tenantId, id: { in: body.ids } },
+      orderBy: { faturaTarihi: 'asc' },
+    });
+    const html = this.render.renderBulkHtml(faturas, { autoPrint: true });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.send(html);
   }
 
   @Post('earsiv/download-bulk')

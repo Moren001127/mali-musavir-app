@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.2';
+          const AGENT_VER = '1.35.3';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -734,13 +734,81 @@
     const fdoc = frm3.contentDocument;
     const fwin = frm3.contentWindow;
 
-    // ZIP intercept: fetch + XHR'i monkey-patch et — TEK ZIP yakalayacağız
+    // ZIP intercept: fetch + XHR + window.open + anchor download'ı monkey-patch et
+    // (Luca native browser download tetikleyebiliyor — onu da yakalamamız lazım)
     let yakalanmisZip = null;
+    let zipNetworkInFlight = false; // Bir istek başladı mı? (re-click'i durdurmak için)
     const origFetch = fwin.fetch;
     const origXHROpen = fwin.XMLHttpRequest.prototype.open;
     const origXHRSend = fwin.XMLHttpRequest.prototype.send;
+    const origWindowOpen = fwin.open ? fwin.open.bind(fwin) : null;
+    const origCreateElement = fwin.document.createElement.bind(fwin.document);
+
+    // window.open hijack: ZIP/INDIR URL'lerinde popup açmak yerine biz fetch edip blob'u alıyoruz
+    fwin.open = function(url, ...rest) {
+      try {
+        const u = String(url || '').toLowerCase();
+        if (u && (u.includes('zip') || u.includes('indir') || u.includes('download'))) {
+          zipNetworkInFlight = true;
+          // Ayrı bir fetch ile ZIP'i biz alalım — popup açma
+          (async () => {
+            try {
+              const absUrl = new URL(url, fwin.location.href).toString();
+              const res = await origFetch.call(fwin, absUrl, { credentials: 'include' });
+              const blob = await res.blob();
+              if (blob && blob.size > 100) {
+                yakalanmisZip = blob;
+                log(`📥 ZIP yakalandı (window.open hijack ${absUrl.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+              }
+            } catch (e) {
+              log(`⚠ window.open hijack fetch hatası: ${e?.message || e}`).catch(() => {});
+            }
+          })();
+          // Popup açma — null dön (Luca'nın akışı bozulabilir, ama indirme zaten bizim elimizde)
+          return null;
+        }
+      } catch {}
+      return origWindowOpen ? origWindowOpen(url, ...rest) : null;
+    };
+
+    // <a> oluşturma hijack: download attribute'lu anchor click'ini yakala
+    fwin.document.createElement = function(tagName) {
+      const el = origCreateElement(tagName);
+      if (String(tagName).toLowerCase() === 'a') {
+        // click() metodunu wrap et
+        const origClick = el.click.bind(el);
+        el.click = function() {
+          try {
+            const href = String(this.href || '').toLowerCase();
+            const dl = this.getAttribute('download');
+            if ((dl !== null) || href.includes('zip') || href.includes('indir') || href.includes('download')) {
+              zipNetworkInFlight = true;
+              (async () => {
+                try {
+                  const res = await origFetch.call(fwin, this.href, { credentials: 'include' });
+                  const blob = await res.blob();
+                  if (blob && blob.size > 100) {
+                    yakalanmisZip = blob;
+                    log(`📥 ZIP yakalandı (anchor click hijack ${String(this.href).slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                  }
+                } catch (e) {
+                  log(`⚠ anchor hijack fetch hatası: ${e?.message || e}`).catch(() => {});
+                }
+              })();
+              return; // Native click'i tetikleme — browser download başlatmasın
+            }
+          } catch {}
+          return origClick();
+        };
+      }
+      return el;
+    };
 
     fwin.fetch = async function(...args) {
+      try {
+        const url = String(args[0] && args[0].url || args[0] || '').toLowerCase();
+        if (url.includes('zip') || url.includes('indir')) zipNetworkInFlight = true;
+      } catch {}
       const res = await origFetch.apply(this, args);
       try {
         const ct = res.headers.get('content-type') || '';
@@ -765,9 +833,9 @@
     };
     fwin.XMLHttpRequest.prototype.send = function(...args) {
       try {
-        const url = String(this.__url || '');
-        if (url.toLowerCase().includes('zip') || url.toLowerCase().includes('indir')) {
-          const oldType = this.responseType;
+        const url = String(this.__url || '').toLowerCase();
+        if (url.includes('zip') || url.includes('indir')) {
+          zipNetworkInFlight = true;
           try { this.responseType = 'blob'; } catch {}
           this.addEventListener('load', () => {
             try {
@@ -775,7 +843,7 @@
               if (blob && blob.size > 100) {
                 const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
                 const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                if (ct.includes('zip') || ct.includes('octet-stream') || cd.includes('.zip') || blob.type.includes('zip')) {
+                if (ct.includes('zip') || ct.includes('octet-stream') || cd.includes('.zip') || (blob.type && blob.type.includes('zip'))) {
                   yakalanmisZip = blob;
                   log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
                 }
@@ -1042,32 +1110,46 @@
       } catch {}
     };
 
-    // POLLING: ZIP gelene kadar her 4 saniyede bir butona tekrar tıkla (max 45sn toplam)
+    // TEK TIK STRATEJİSİ: bir kez tıkla, sonra sadece bekle (zipNetworkInFlight ya da
+    // yakalanmisZip izlenir). Sadece 8sn boyunca hiçbir network isteği başlamazsa
+    // "click iletmedi" sayıp bir kez daha denenir (max 2 click toplam).
     let popupClicked = 0;
     let popupClickStrategy = '';
     const zipWaitStart = Date.now();
-    const ZIP_TIMEOUT_MS = 45000;
-    const RECLICK_INTERVAL_MS = 4000;
-    let lastClickAt = 0;
+    const ZIP_TIMEOUT_MS = 60000;
 
+    // İlk tıklama: butonu bul ve hemen click et
+    {
+      const firstStart = Date.now();
+      while (Date.now() - firstStart < 4000 && popupClicked === 0) {
+        const found = findPopupDownloadButton();
+        if (found) {
+          clickPopupBtnAggressively(found.btn);
+          popupClicked = 1;
+          popupClickStrategy = found.strategy;
+          await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${found.strategy})`);
+          break;
+        }
+        await sleep(300);
+      }
+      if (popupClicked === 0) {
+        await log('⚠ Popup butonu bulunamadı (4sn poll), ZIP yine de geliyorsa yakalanır');
+      }
+    }
+
+    // Bekleme: ZIP gelene kadar (max 60sn). Eğer 8sn boyunca hiçbir network isteği
+    // başlamazsa (zipNetworkInFlight=false) ve hala click yetersizse 1 kez daha tıkla.
+    let extraClickDone = false;
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
-      // Her RECLICK_INTERVAL_MS'de bir butonu tekrar bul + tıkla
-      if (Date.now() - lastClickAt >= RECLICK_INTERVAL_MS) {
+      if (!extraClickDone && !zipNetworkInFlight && Date.now() - zipWaitStart > 8000 && popupClicked > 0) {
         const found = findPopupDownloadButton();
         if (found) {
           clickPopupBtnAggressively(found.btn);
           popupClicked++;
-          popupClickStrategy = found.strategy;
-          if (popupClicked === 1) {
-            await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${found.strategy})`);
-          } else {
-            await log(`🔁 Popup "Seçilenleri İndir" tekrar tıklandı (#${popupClicked}, ${found.strategy})`);
-          }
-        } else if (popupClicked === 0) {
-          await log('⚠ Popup içindeki "Seçilenleri İndir" henüz bulunamadı, tekrar deneyeceğim');
+          await log(`🔁 8sn'de network başlamadı, "Seçilenleri İndir" 1 kez daha tıklandı`);
+          extraClickDone = true;
         }
-        lastClickAt = Date.now();
       }
       await sleep(500);
     }
@@ -1076,6 +1158,8 @@
     fwin.fetch = origFetch;
     fwin.XMLHttpRequest.prototype.open = origXHROpen;
     fwin.XMLHttpRequest.prototype.send = origXHRSend;
+    if (origWindowOpen) fwin.open = origWindowOpen;
+    fwin.document.createElement = origCreateElement;
 
     if (!yakalanmisZip) {
       throw new Error(`ZIP 45sn içinde yakalanamadı (popup butonuna ${popupClicked} kez tıklandı, strategy: ${popupClickStrategy || 'bulunamadı'})`);
@@ -6830,6 +6914,107 @@
                 if (res === 'already-advanced') {
                   // URL değişti sayılmalı — bir sonraki turda m2 kontrolü saved=true dönecek
                   continue;
+                }
+                continue;
+              }
+              await sleep(400);
+              const m3 = location.href.match(/\/(\d+)\?count=/);
+              if (m3 && m3[1] !== fid) return true;
+            }
+            await sleep(250);
+          }
+          return false;
+        };
+
+        await clickKaydetOnayla();
+        let saved = await waitSaved(12000);
+
+        // Validation hatası varsa retry YAPMA (zaten alan eksik)
+        if (!saved && !validationFailed) {
+          await sleep(800);
+          await clickKaydetOnayla();
+          saved = await waitSaved(12000);
+        }
+
+        if (saved) {
+          counters.onay++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        } else {
+          counters.atla++; counters.toplam++; setCount();
+          const atlamaSebebi = validationFailed
+            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+            : `F2 sonuçlanmadı · ${sebep}`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await clickIleri(fid);
+        }
+      } catch (e) {
+        counters.hata++; counters.toplam++; setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await clickIleri(fid);
+      }
+    }
+  }
+
+  // === KOMUT KUYRUĞU POLLING ===
+  async function pollLoop() {
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: true, meta: { url: location.href } }),
+    }).catch(() => {});
+    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+      try {
+        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
+        if (Array.isArray(cmds) && cmds.length > 0) {
+          for (const cmd of cmds) {
+            try {
+              setStatus(`CMD: ${cmd.action}`);
+              await processBatch({
+                ay: cmd.payload?.ay,
+                mukellefler: cmd.payload?.mukellefler || [],
+                action: cmd.action,
+              });
+              await api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: 'done',
+                  result: {
+                    ...counters,
+                    message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
+                  },
+                }),
+              });
+            } catch (e) {
+              await api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: 'failed', result: { message: String(e) } }),
+              }).catch(() => {});
+            }
+          }
+        } else {
+          setStatus('Komut bekleniyor…');
+        }
+      } catch (e) {
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
+        const msg = String(e?.message || e);
+        if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+          setStatus('Bağlantı bekleniyor…');
+        } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yüklendi');
+})();
                 }
                 continue;
               }

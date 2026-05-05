@@ -32,7 +32,6 @@ export default function YeniMukellefPage() {
     evrakTeslimGunu: '' as string | number,
     whatsappEvrakTalep: false,
     whatsappEvrakGeldi: false,
-    isEFaturaMukellefi: false,
     lucaSlug: '',
     mihsapId: '',
     mihsapDefterTuru: 'BILANCO',
@@ -214,15 +213,6 @@ export default function YeniMukellefPage() {
                 <div>
                   <span className="text-sm font-medium text-gray-700">İşleme Başlama SMS Gönderilsin</span>
                   <p className="text-xs text-gray-400">Evraklar geldi işaretlendiğinde onay mesajı gönderilir</p>
-                </div>
-              </label>
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={form.isEFaturaMukellefi}
-                  onChange={e => setForm(f => ({ ...f, isEFaturaMukellefi: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 accent-[#d4b876]" />
-                <div>
-                  <span className="text-sm font-medium text-gray-700">E-Fatura Mükellefi mi?</span>
-                  <p className="text-xs text-gray-400">İşaretliyse Luca'dan Çek dediğinde E-Faturalar da çekilir; işaretsizse sadece E-Arşiv</p>
                 </div>
               </label>
             </div>

@@ -1,12 +1,12 @@
 'use client';
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   Download, Search, Users, Calendar, Sparkles, Loader2, FileText,
-  ArrowDown, Package, X, CheckSquare, Square, Upload,
+  Package, X, CheckSquare, Square, Eye, Printer,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -17,7 +17,6 @@ type Taxpayer = {
   lastName?: string | null;
   companyName?: string | null;
   taxNumber?: string | null;
-  isEFaturaMukellefi?: boolean;
 };
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
@@ -31,17 +30,16 @@ export default function EarsivPage() {
   const now = new Date();
   const [year, setYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
-  const [tip, setTip] = useState<EarsivTip>('SATIS');
-  const [belgeKaynak, setBelgeKaynak] = useState<BelgeKaynak>('EARSIV');
-  // Çoklu çekim seçimleri — Luca'dan Çek butonuna basınca bunlar üstünden N job yaratılır
-  const [cekimTipleri, setCekimTipleri] = useState<Set<string>>(new Set()); // "EARSIV_SATIS" gibi
+  // Modül artık SADECE Gelen E-Arşiv (ALIS + EARSIV) — satış ve e-fatura kaldırıldı
+  const tip: EarsivTip = 'ALIS';
+  const belgeKaynak: BelgeKaynak = 'EARSIV';
   const [tumMukellefler, setTumMukellefler] = useState<boolean>(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
-  const uploadRef = useRef<HTMLInputElement>(null);
+  const [printingBulk, setPrintingBulk] = useState(false);
 
   // Mükellef listesi
   const { data: taxpayers = [] } = useQuery({
@@ -65,66 +63,44 @@ export default function EarsivPage() {
   });
   const rows = listData?.rows ?? [];
 
-  // Luca'dan Çek — çoklu mükellef × çoklu belge tipi için batch
+  // Luca'dan Çek — sadece Gelen E-Arşiv (ALIS+EARSIV). Tek mükellef ya da tümü.
   const lucaMut = useMutation({
     mutationFn: async () => {
-      // Hangi mükellefler? (tümü veya seçili tek)
       const hedefMukellefler = tumMukellefler
         ? taxpayers
         : (selectedTp ? [selectedTp] : []);
       if (hedefMukellefler.length === 0) {
         throw new Error('Mükellef seçmedin — ya bir mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
-      // Hangi tipler? (işaretli sekmeler) — boşsa şu an aktif tabı kullan
-      const hedefKeyler: string[] = cekimTipleri.size > 0
-        ? Array.from(cekimTipleri)
-        : [`${belgeKaynak}_${tip}`];
-
-      const parseKey = (k: string): { tip: EarsivTip; bk: BelgeKaynak } => {
-        const [bk, t] = k.split('_') as [BelgeKaynak, EarsivTip];
-        return { tip: t, bk };
-      };
-
       const jobIds: string[] = [];
-      let skipped = 0;
       for (const mk of hedefMukellefler) {
-        for (const k of hedefKeyler) {
-          const { tip: tt, bk } = parseKey(k);
-          // E-Fatura mükellefi değilse EFATURA çekimini atla (sessiz skip)
-          if (bk === 'EFATURA' && !mk.isEFaturaMukellefi) {
-            skipped++;
-            continue;
-          }
-          try {
-            const r = await earsivApi.fetchFromLuca({
-              mukellefId: mk.id,
-              donem,
-              tip: tt,
-              belgeKaynak: bk,
-            });
-            jobIds.push(r.jobId);
-          } catch (e) {
-            // tek tek başarısızlıkları görmezden gel — özet aşağıda
-          }
+        try {
+          const r = await earsivApi.fetchFromLuca({
+            mukellefId: mk.id,
+            donem,
+            tip,         // 'ALIS'
+            belgeKaynak, // 'EARSIV'
+          });
+          jobIds.push(r.jobId);
+        } catch (e) {
+          // tek tek başarısızlıkları görmezden gel
         }
       }
-      return { jobIds, skipped, mukellefSayisi: hedefMukellefler.length, tipSayisi: hedefKeyler.length };
+      return { jobIds, mukellefSayisi: hedefMukellefler.length };
     },
     onSuccess: (d) => {
       if (d.jobIds.length === 0) {
-        toast.error('Hiç job oluşturulamadı (e-fatura mükellefi olmayanlar atlandı?)');
+        toast.error('Hiç job oluşturulamadı');
         return;
       }
-      // Tek job ise eski takip ekranı
       if (d.jobIds.length === 1) {
         setLucaJobId(d.jobIds[0]);
         setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
         toast.info('Luca job oluşturuldu');
       } else {
-        // Çoklu — özet göster, ilk job'ı takip et
         setLucaJobId(d.jobIds[0]);
-        setLucaStatus(`Toplam ${d.jobIds.length} job kuyruğa alındı (${d.mukellefSayisi} mükellef × ${d.tipSayisi} tip)`);
-        toast.success(`${d.jobIds.length} job kuyruğa alındı${d.skipped > 0 ? ` · ${d.skipped} adet atlandı (e-fatura mükellefi değil)` : ''}`);
+        setLucaStatus(`Toplam ${d.jobIds.length} mükellef kuyruğa alındı`);
+        toast.success(`${d.jobIds.length} job kuyruğa alındı`);
       }
     },
     onError: (e: any) =>
@@ -161,53 +137,45 @@ export default function EarsivPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lucaJobQuery.data]);
 
-  // Manuel ZIP yükleme
-  const uploadMut = useMutation({
-    mutationFn: (file: File) =>
-      earsivApi.uploadZip({ taxpayerId, donem, tip, belgeKaynak }, file),
-    onSuccess: (d) => {
-      toast.success(`ZIP yüklendi · ${d.inserted} fatura eklendi (${d.skipped} mükerrer atlandı)`);
-      qc.invalidateQueries({ queryKey: ['earsiv-list'] });
-      if (uploadRef.current) uploadRef.current.value = '';
-    },
-    onError: (e: any) => {
-      toast.error(e?.response?.data?.message || e?.message || 'ZIP yüklenemedi');
-      if (uploadRef.current) uploadRef.current.value = '';
-    },
-  });
-  const handleUploadClick = () => {
-    if (!taxpayerId) {
-      toast.error('Önce mükellef seçin');
-      setPickerOpen(true);
+  // Tek faturayı yeni sekmede aç — backend XSLT-rendered HTML döner
+  const openFaturaInNewTab = (faturaId: string, autoPrint = false) => {
+    const url = `/api/earsiv/${faturaId}/html${autoPrint ? '?print=1' : ''}`;
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!w) {
+      toast.error('Popup engelli — tarayıcının popup engelleyiciyi kapat');
       return;
     }
-    uploadRef.current?.click();
-  };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!/\.zip$/i.test(f.name)) {
-      toast.error('Sadece .zip dosyası kabul edilir');
-      return;
-    }
-    uploadMut.mutate(f);
   };
 
-  // Toplu indirme
-  const downloadMut = useMutation({
-    mutationFn: () => earsivApi.downloadBulk([...selected]),
-    onSuccess: (blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `earsiv-${tip.toLowerCase()}-${donem}-${Date.now()}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`${selected.size} fatura ZIP olarak indirildi`);
+  // Toplu yazdır — seçili faturaların hepsini tek HTML'e topla, yeni sekmede aç + print tetikle
+  const topluYazdirMut = useMutation({
+    mutationFn: async () => {
+      if (selected.size === 0) throw new Error('En az bir fatura seç');
+      // Backend POST endpoint: /earsiv/print-bulk { ids: [...] } → text/html
+      // Çok sayıda ID için fetch ile alıp blob URL ile aç
+      const res = await fetch('/api/earsiv/print-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ids: [...selected] }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text().catch(() => '')}`);
+      const html = await res.text();
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      return URL.createObjectURL(blob);
     },
-    onError: (e: any) => toast.error(e?.message || 'İndirme başarısız'),
+    onSuccess: (blobUrl) => {
+      const w = window.open(blobUrl, '_blank');
+      if (!w) {
+        toast.error('Popup engelli — tarayıcının popup engelleyiciyi kapat');
+        return;
+      }
+      // Yeni sekmede DOM yüklendiğinde print() çağrılsın diye HTML'in içine zaten gömüyoruz.
+      toast.success(`${selected.size} fatura yazdırma için açıldı`);
+      // 60sn sonra blob URL'i temizle
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Toplu yazdırma başarısız'),
   });
 
   const toggleSelect = (id: string) => {
@@ -248,98 +216,15 @@ export default function EarsivPage() {
           </span>
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          E-Arşiv / E-Fatura
+          Gelen E-Arşiv Sorgulama
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          Luca'dan toplu fatura çek, portal üzerinden listele ve indirme yap.
+          Luca'dan mükellefin gelen (alış) e-arşiv faturalarını çek, listele, aç ve yazdır.
         </p>
       </div>
 
-      {/* Belge tipi sekme barı — tek tıkla aktif sekme (görüntü), checkbox ile çoklu çekim seçimi */}
-      <div className="flex flex-wrap gap-2 mb-2 items-center">
-        {(() => {
-          // E-fatura mükellefi flag — tüm mükellefler seçildiyse 4 tipi de göster
-          const isEFM = tumMukellefler ? true : !!selectedTp?.isEFaturaMukellefi;
-          const tabs: Array<{ key: string; label: string; tip: EarsivTip; bk: BelgeKaynak; renk: string }> = [
-            { key: 'EARSIV_SATIS', label: 'E-Arşiv · Giden (SATIŞ)', tip: 'SATIS', bk: 'EARSIV', renk: '#22c55e' },
-            { key: 'EARSIV_ALIS', label: 'E-Arşiv · Gelen (ALIŞ)', tip: 'ALIS', bk: 'EARSIV', renk: '#22c55e' },
-          ];
-          if (isEFM) {
-            tabs.push(
-              { key: 'EFATURA_SATIS', label: 'E-Fatura · Giden (SATIŞ)', tip: 'SATIS', bk: 'EFATURA', renk: '#3b82f6' },
-              { key: 'EFATURA_ALIS', label: 'E-Fatura · Gelen (ALIŞ)', tip: 'ALIS', bk: 'EFATURA', renk: '#3b82f6' },
-            );
-          }
-          return (
-            <>
-              {tabs.map((t) => {
-                const aktif = tip === t.tip && belgeKaynak === t.bk;
-                const cekilecek = cekimTipleri.has(t.key);
-                return (
-                  <div
-                    key={t.key}
-                    className="rounded-md flex items-center gap-2 transition"
-                    style={{
-                      background: aktif ? `${t.renk}20` : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${aktif ? t.renk + '50' : cekilecek ? t.renk + '40' : 'rgba(255,255,255,0.08)'}`,
-                      paddingLeft: 6,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={cekilecek}
-                      onChange={(e) => {
-                        setCekimTipleri((prev) => {
-                          const ns = new Set(prev);
-                          if (e.target.checked) ns.add(t.key); else ns.delete(t.key);
-                          return ns;
-                        });
-                      }}
-                      className="cursor-pointer"
-                      title="Bu tipi çekim listesine ekle"
-                      style={{ accentColor: t.renk }}
-                    />
-                    <button
-                      onClick={() => { setTip(t.tip); setBelgeKaynak(t.bk); setSelected(new Set()); }}
-                      className="px-3 py-2 text-sm font-semibold cursor-pointer"
-                      style={{ color: aktif ? t.renk : 'rgba(250,250,249,0.6)', background: 'transparent', border: 0 }}
-                      title="Bu sekmenin listesini görüntüle"
-                    >
-                      {t.label}
-                    </button>
-                  </div>
-                );
-              })}
-              {/* Tümünü seç / temizle */}
-              <button
-                onClick={() => {
-                  if (cekimTipleri.size === tabs.length) {
-                    setCekimTipleri(new Set());
-                  } else {
-                    setCekimTipleri(new Set(tabs.map((t) => t.key)));
-                  }
-                }}
-                className="px-3 py-1.5 rounded text-xs"
-                style={{
-                  background: 'rgba(184,160,111,0.10)',
-                  color: GOLD,
-                  border: '1px solid rgba(184,160,111,0.3)',
-                }}
-              >
-                {cekimTipleri.size === tabs.length ? 'Hiçbirini seçme' : 'Tümünü işaretle'}
-              </button>
-            </>
-          );
-        })()}
-        {selectedTp && !selectedTp.isEFaturaMukellefi && !tumMukellefler && (
-          <span className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>
-            · Bu mükellef e-fatura mükellefi değil; e-fatura sekmeleri kapalı.
-          </span>
-        )}
-      </div>
-
       {/* Tüm mükellefler toggle — toplu çekim için */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-3">
         <label
           className="flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium cursor-pointer"
           style={{
@@ -358,7 +243,7 @@ export default function EarsivPage() {
         </label>
         {tumMukellefler && (
           <span className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            · Tek "Luca'dan Çek" tıklaması ile {taxpayers.length} mükellef × {cekimTipleri.size || 0} tip = {taxpayers.length * (cekimTipleri.size || 0)} ayrı job oluşturulacak
+            · Tek "Luca'dan Çek" tıklaması ile {taxpayers.length} mükellefin gelen e-arşivi çekilecek
           </span>
         )}
       </div>
@@ -415,7 +300,7 @@ export default function EarsivPage() {
       {/* Aksiyonlar */}
       <div className="flex gap-3 flex-wrap items-center">
         <button
-          disabled={(!tumMukellefler && !taxpayerId) || lucaMut.isPending || !!lucaJobId || uploadMut.isPending}
+          disabled={(!tumMukellefler && !taxpayerId) || lucaMut.isPending || !!lucaJobId}
           onClick={() => lucaMut.mutate()}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: GOLD, color: '#1a1a18', border: 0 }}
@@ -424,37 +309,18 @@ export default function EarsivPage() {
           {lucaJobId ? 'Çekiliyor…' : "Luca'dan Çek"}
         </button>
 
-        {/* Manuel ZIP yükleme */}
-        <input
-          ref={uploadRef}
-          type="file"
-          accept=".zip"
-          onChange={handleFileChange}
-          className="hidden"
-        />
         <button
-          disabled={uploadMut.isPending || lucaMut.isPending || !!lucaJobId}
-          onClick={handleUploadClick}
-          className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
-          style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}
-          title="Luca'dan elle indirdiğin ZIP'i yükle"
-        >
-          {uploadMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          ZIP Yükle
-        </button>
-
-        <button
-          disabled={selected.size === 0 || downloadMut.isPending}
-          onClick={() => downloadMut.mutate()}
+          disabled={selected.size === 0 || topluYazdirMut.isPending}
+          onClick={() => topluYazdirMut.mutate()}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}
         >
-          {downloadMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
-          Seçili {selected.size > 0 ? `(${selected.size})` : ''} ZIP İndir
+          {topluYazdirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+          Toplu Yazdır {selected.size > 0 ? `(${selected.size})` : ''}
         </button>
 
         <input
-          placeholder="Fatura no, satıcı, alıcı, vergi no ara…"
+          placeholder="Fatura no, satıcı, vergi no ara…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-[200px] px-3 py-2 rounded-md text-sm"
@@ -557,10 +423,11 @@ export default function EarsivPage() {
                 </th>
                 <th className="px-2 py-2 text-left">Tarih</th>
                 <th className="px-2 py-2 text-left">Fatura No</th>
-                <th className="px-2 py-2 text-left">{tip === 'SATIS' ? 'Alıcı' : 'Satıcı'}</th>
+                <th className="px-2 py-2 text-left">Satıcı</th>
                 <th className="px-2 py-2 text-right">Matrah</th>
                 <th className="px-2 py-2 text-right">KDV</th>
                 <th className="px-2 py-2 text-right">Toplam</th>
+                <th className="px-2 py-2 text-center w-[140px]">İşlem</th>
               </tr>
             </thead>
             <tbody>
@@ -575,10 +442,30 @@ export default function EarsivPage() {
                   </td>
                   <td className="px-2 py-2">{new Date(r.faturaTarihi).toLocaleDateString('tr-TR')}</td>
                   <td className="px-2 py-2 font-mono text-[11.5px]">{r.faturaNo}</td>
-                  <td className="px-2 py-2">{tip === 'SATIS' ? r.alici : r.satici}</td>
+                  <td className="px-2 py-2">{r.satici}</td>
                   <td className="px-2 py-2 text-right">{fmtTRY(r.matrah)}</td>
                   <td className="px-2 py-2 text-right">{fmtTRY(r.kdvTutari)}</td>
                   <td className="px-2 py-2 text-right" style={{ color: GOLD }}>{fmtTRY(r.toplamTutar)}</td>
+                  <td className="px-2 py-2 text-center">
+                    <div className="flex gap-1.5 justify-center">
+                      <button
+                        onClick={() => openFaturaInNewTab(r.id, false)}
+                        className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
+                        title="Faturayı yeni sekmede aç"
+                      >
+                        <Eye size={11} /> Aç
+                      </button>
+                      <button
+                        onClick={() => openFaturaInNewTab(r.id, true)}
+                        className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                        style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}
+                        title="Faturayı aç ve yazıcıya gönder"
+                      >
+                        <Printer size={11} /> Yazdır
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
