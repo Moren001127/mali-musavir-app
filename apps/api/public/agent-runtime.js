@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.6';
+          const AGENT_VER = '1.35.7';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1134,6 +1134,73 @@
       await sleep(500);
     } else {
       await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
+    }
+
+    // ─── gonder() WRAPPER ───
+    // Luca popup butonu tıklanınca fwin.gonder('zip') çağırıyor. Wrap ederek
+    // hem source code'unu görelim hem de URL'i kendimiz fetch'leyelim.
+    if (typeof fwin.gonder === 'function' && !fwin.__morenGonderHooked) {
+      fwin.__morenGonderHooked = true;
+      const origGonder = fwin.gonder;
+      try {
+        // gonder fonksiyonunun source'unu log'la (ilk 800 char)
+        const src = origGonder.toString().slice(0, 800);
+        await log(`🔍 gonder() source: ${src.replace(/\s+/g, ' ').slice(0, 500)}`);
+      } catch (e) {}
+      fwin.gonder = function(...args) {
+        try {
+          const arg0 = String(args[0] || '');
+          log(`🪝 gonder('${arg0}') çağrıldı`).catch(() => {});
+          // 'zip' veya 'indir' içeriyorsa: çağırmadan ÖNCE document'i ve formları snapshot al
+          if (arg0 === 'zip' || arg0.includes('indir') || arg0.includes('download')) {
+            // Form'u bul ve URL'i çıkar
+            try {
+              const allDocs = [];
+              const dive = (root) => {
+                try {
+                  allDocs.push(root);
+                  for (const fr of root.querySelectorAll('frame, iframe')) {
+                    if (fr.contentDocument) dive(fr.contentDocument);
+                  }
+                } catch {}
+              };
+              dive(document);
+              for (const d of allDocs) {
+                for (const f of d.querySelectorAll('form')) {
+                  const action = String(f.action || '').toLowerCase();
+                  if (action.includes('zip') || action.includes('indir') || action.includes('download')) {
+                    log(`📋 Form bulundu: action=${f.action}, method=${f.method}, fields=${f.elements.length}`).catch(() => {});
+                    // Bu form'u kendimiz POST edelim
+                    const fd = new FormData(f);
+                    const method = (f.method || 'POST').toUpperCase();
+                    (async () => {
+                      try {
+                        let res;
+                        if (method === 'GET') {
+                          const params = new URLSearchParams();
+                          for (const entry of fd.entries()) params.append(entry[0], entry[1].toString());
+                          res = await fetch(f.action + (f.action.includes('?') ? '&' : '?') + params.toString(), { credentials: 'include' });
+                        } else {
+                          res = await fetch(f.action, { method: method, body: fd, credentials: 'include' });
+                        }
+                        const blob = await res.blob();
+                        if (blob && blob.size > 100 && !yakalanmisZip) {
+                          yakalanmisZip = blob;
+                          log(`📥 ZIP yakalandı (gonder form fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                        }
+                      } catch (e) {
+                        log(`⚠ gonder form fetch hatası: ${e?.message || e}`).catch(() => {});
+                      }
+                    })();
+                    break;
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+        return origGonder.apply(this, args);
+      };
     }
 
     // Seçilenleri İndir (ALT TOOLBAR) → ZIP popup açılır
