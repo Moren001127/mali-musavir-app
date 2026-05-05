@@ -104,6 +104,13 @@ export class EarsivZipParserService {
     }
 
     this.logger.log(`Parse sonuç: ${results.length} fatura çıkarıldı (${xmlFiles.length} XML'den)`);
+
+    // Meta bilgileri results array'ine ek property olarak attach et
+    // (service.ts bunları okuyup agent'a yansıtacak)
+    (results as any).__entries = allEntries;
+    (results as any).__xmlCount = xmlFiles.length;
+    (results as any).__totalEntries = allEntries.length;
+
     return results;
   }
 

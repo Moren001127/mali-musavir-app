@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.17';
+          const AGENT_VER = '1.35.18';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -280,13 +280,13 @@
             await log(`📋 ${tipLabel} açık olmalı`);
           }
 
+          const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
           const blob = await fetchLucaMuavinExcel(job, log);
-          if (!blob) throw new Error('Excel yakalanamadı');
-          await log(`📥 Excel indirildi (${Math.round(blob.size / 1024)} KB)`);
+          if (!blob) throw new Error(isZipJob ? 'ZIP yakalanamadı' : 'Excel yakalanamadı');
+          await log(`📥 ${isZipJob ? 'ZIP' : 'Excel'} indirildi (${Math.round(blob.size / 1024)} KB)`);
 
           // ─── Tipine göre upload endpoint ───
           const fd = new FormData();
-          const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
           fd.append('file', blob, `luca-${job.tip}-${job.donem}.${isZipJob ? 'zip' : 'xlsx'}`);
 
           let uploadUrl;
