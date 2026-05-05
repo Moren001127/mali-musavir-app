@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.26';
+          const AGENT_VER = '1.35.27';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -710,24 +710,32 @@
         // tıklamadan sonra "Akıllı Entegrasyon Noktası"nın görünür olmasını ARIYORUZ; yoksa diğer kök menüyü dene.
         await log('🔄 Text-based menü navigasyonu (yedek plan)');
 
-        const akilliVisible = async () => {
-          // Tüm frame'lerde Akıllı Entegrasyon Noktası elementinin görünür olup olmadığını probe et
-          const frames = [window, ...Array.from(document.querySelectorAll('iframe')).map(f => f.contentWindow).filter(Boolean)];
-          for (const fw of frames) {
+        // Tüm frame ağacında (recursive) leaf element'lerde "Akıllı Entegrasyon"
+        // metnini ara — whitespace/ok karakteri farklılıklarına toleranslı.
+        const akilliVisible = () => {
+          const visit = (fw) => {
             try {
               const doc = fw.document;
-              if (!doc) continue;
-              const all = doc.querySelectorAll('td,a,div,span,button,li');
+              if (!doc) return false;
+              const all = doc.querySelectorAll('*');
               for (const el of all) {
-                const txt = (el.textContent || '').trim();
-                if (txt === 'Akıllı Entegrasyon Noktası') {
-                  const rect = el.getBoundingClientRect();
-                  if (rect.width > 0 && rect.height > 0) return true;
+                if (el.children && el.children.length > 0) continue; // sadece leaf
+                const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!t) continue;
+                if (t.includes('Akıllı Entegrasyon') || t.includes('Akilli Entegrasyon')) {
+                  const r = el.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0) return true;
                 }
               }
+              // Alt frame'leri recursive tara
+              const subs = doc.querySelectorAll('iframe,frame');
+              for (const f of subs) {
+                try { if (f.contentWindow && visit(f.contentWindow)) return true; } catch {}
+              }
             } catch {}
-          }
-          return false;
+            return false;
+          };
+          return visit(window);
         };
 
         // Hangi sırayla deneneceği: önce İşletme Defteri (daha spesifik metin),
