@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.3';
+          const AGENT_VER = '1.35.4';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -734,126 +734,176 @@
     const fdoc = frm3.contentDocument;
     const fwin = frm3.contentWindow;
 
-    // ZIP intercept: fetch + XHR + window.open + anchor download'ı monkey-patch et
-    // (Luca native browser download tetikleyebiliyor — onu da yakalamamız lazım)
+    // ZIP intercept: TÜM accessible frame'lerde fetch + XHR + window.open + anchor download
+    // hook'la — Luca download'u herhangi bir frame'den fire edebilir.
     let yakalanmisZip = null;
-    let zipNetworkInFlight = false; // Bir istek başladı mı? (re-click'i durdurmak için)
-    const origFetch = fwin.fetch;
-    const origXHROpen = fwin.XMLHttpRequest.prototype.open;
-    const origXHRSend = fwin.XMLHttpRequest.prototype.send;
-    const origWindowOpen = fwin.open ? fwin.open.bind(fwin) : null;
-    const origCreateElement = fwin.document.createElement.bind(fwin.document);
+    let zipNetworkInFlight = false;
 
-    // window.open hijack: ZIP/INDIR URL'lerinde popup açmak yerine biz fetch edip blob'u alıyoruz
-    fwin.open = function(url, ...rest) {
-      try {
-        const u = String(url || '').toLowerCase();
-        if (u && (u.includes('zip') || u.includes('indir') || u.includes('download'))) {
-          zipNetworkInFlight = true;
-          // Ayrı bir fetch ile ZIP'i biz alalım — popup açma
-          (async () => {
-            try {
-              const absUrl = new URL(url, fwin.location.href).toString();
-              const res = await origFetch.call(fwin, absUrl, { credentials: 'include' });
-              const blob = await res.blob();
-              if (blob && blob.size > 100) {
-                yakalanmisZip = blob;
-                log(`📥 ZIP yakalandı (window.open hijack ${absUrl.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-              }
-            } catch (e) {
-              log(`⚠ window.open hijack fetch hatası: ${e?.message || e}`).catch(() => {});
-            }
-          })();
-          // Popup açma — null dön (Luca'nın akışı bozulabilir, ama indirme zaten bizim elimizde)
-          return null;
-        }
-      } catch {}
-      return origWindowOpen ? origWindowOpen(url, ...rest) : null;
-    };
+    // Hook'lanan tüm frame'lerin orijinal fonksiyonlarını sakla (cleanup için)
+    const hookedFrames = []; // [{ win, origFetch, origXHROpen, origXHRSend, origWindowOpen, origCreateElement }]
 
-    // <a> oluşturma hijack: download attribute'lu anchor click'ini yakala
-    fwin.document.createElement = function(tagName) {
-      const el = origCreateElement(tagName);
-      if (String(tagName).toLowerCase() === 'a') {
-        // click() metodunu wrap et
-        const origClick = el.click.bind(el);
-        el.click = function() {
-          try {
-            const href = String(this.href || '').toLowerCase();
-            const dl = this.getAttribute('download');
-            if ((dl !== null) || href.includes('zip') || href.includes('indir') || href.includes('download')) {
-              zipNetworkInFlight = true;
-              (async () => {
-                try {
-                  const res = await origFetch.call(fwin, this.href, { credentials: 'include' });
-                  const blob = await res.blob();
-                  if (blob && blob.size > 100) {
-                    yakalanmisZip = blob;
-                    log(`📥 ZIP yakalandı (anchor click hijack ${String(this.href).slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                  }
-                } catch (e) {
-                  log(`⚠ anchor hijack fetch hatası: ${e?.message || e}`).catch(() => {});
-                }
-              })();
-              return; // Native click'i tetikleme — browser download başlatmasın
-            }
-          } catch {}
-          return origClick();
-        };
-      }
-      return el;
-    };
-
-    fwin.fetch = async function(...args) {
-      try {
-        const url = String(args[0] && args[0].url || args[0] || '').toLowerCase();
-        if (url.includes('zip') || url.includes('indir')) zipNetworkInFlight = true;
-      } catch {}
-      const res = await origFetch.apply(this, args);
-      try {
-        const ct = res.headers.get('content-type') || '';
-        const cd = res.headers.get('content-disposition') || '';
-        if (ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream')) {
-          const cloned = res.clone();
-          const blob = await cloned.blob();
-          if (blob && blob.size > 100) {
-            yakalanmisZip = blob;
-            await log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`);
+    const collectAllWindows = () => {
+      const wins = new Set();
+      const dive = (w) => {
+        try {
+          if (!w || wins.has(w)) return;
+          // Test access (cross-origin'de patlar)
+          void w.location.href;
+          wins.add(w);
+          for (let i = 0; i < (w.frames?.length || 0); i++) {
+            try { dive(w.frames[i]); } catch {}
           }
-        }
-      } catch {}
-      return res;
+        } catch {}
+      };
+      dive(window.top || window);
+      dive(window);
+      dive(fwin);
+      return [...wins];
     };
 
-    // XHR intercept (Luca jQuery $.ajax kullanıyor olabilir)
-    fwin.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-      this.__url = url;
-      this.__method = method;
-      return origXHROpen.call(this, method, url, ...rest);
-    };
-    fwin.XMLHttpRequest.prototype.send = function(...args) {
+    const hookOneFrame = (w) => {
       try {
-        const url = String(this.__url || '').toLowerCase();
-        if (url.includes('zip') || url.includes('indir')) {
-          zipNetworkInFlight = true;
-          try { this.responseType = 'blob'; } catch {}
-          this.addEventListener('load', () => {
+        const orig = {
+          win: w,
+          origFetch: w.fetch,
+          origXHROpen: w.XMLHttpRequest && w.XMLHttpRequest.prototype.open,
+          origXHRSend: w.XMLHttpRequest && w.XMLHttpRequest.prototype.send,
+          origWindowOpen: w.open,
+          origCreateElement: w.document && w.document.createElement,
+        };
+        hookedFrames.push(orig);
+
+        // fetch
+        if (orig.origFetch) {
+          w.fetch = async function(...args) {
             try {
-              const blob = this.response;
-              if (blob && blob.size > 100) {
-                const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
-                const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                if (ct.includes('zip') || ct.includes('octet-stream') || cd.includes('.zip') || (blob.type && blob.type.includes('zip'))) {
+              const url = String(args[0] && args[0].url || args[0] || '').toLowerCase();
+              if (url.includes('zip') || url.includes('indir') || url.includes('download')) zipNetworkInFlight = true;
+            } catch {}
+            const res = await orig.origFetch.apply(this, args);
+            try {
+              const ct = res.headers.get('content-type') || '';
+              const cd = res.headers.get('content-disposition') || '';
+              if (ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream') || ct.includes('application/x-zip')) {
+                const cloned = res.clone();
+                const blob = await cloned.blob();
+                if (blob && blob.size > 100 && !yakalanmisZip) {
                   yakalanmisZip = blob;
-                  log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                  log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
                 }
               }
             } catch {}
-          }, { once: true });
+            return res;
+          };
         }
-      } catch {}
-      return origXHRSend.apply(this, args);
+
+        // XHR
+        if (orig.origXHROpen) {
+          w.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+            this.__url = url;
+            this.__method = method;
+            return orig.origXHROpen.call(this, method, url, ...rest);
+          };
+          w.XMLHttpRequest.prototype.send = function(...args) {
+            try {
+              const url = String(this.__url || '').toLowerCase();
+              if (url.includes('zip') || url.includes('indir') || url.includes('download')) {
+                zipNetworkInFlight = true;
+                try { this.responseType = 'blob'; } catch {}
+                this.addEventListener('load', () => {
+                  try {
+                    const blob = this.response;
+                    if (blob && blob.size > 100 && !yakalanmisZip) {
+                      const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
+                      const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
+                      if (ct.includes('zip') || ct.includes('octet-stream') || ct.includes('application/x-zip') || cd.includes('.zip') || (blob.type && blob.type.includes('zip'))) {
+                        yakalanmisZip = blob;
+                        log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                      }
+                    }
+                  } catch {}
+                }, { once: true });
+              }
+            } catch {}
+            return orig.origXHRSend.apply(this, args);
+          };
+        }
+
+        // window.open
+        if (orig.origWindowOpen) {
+          w.open = function(url, ...rest) {
+            try {
+              const u = String(url || '').toLowerCase();
+              if (u && (u.includes('zip') || u.includes('indir') || u.includes('download'))) {
+                zipNetworkInFlight = true;
+                (async () => {
+                  try {
+                    const absUrl = new URL(url, w.location.href).toString();
+                    const res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
+                    const blob = await res.blob();
+                    if (blob && blob.size > 100 && !yakalanmisZip) {
+                      yakalanmisZip = blob;
+                      log(`📥 ZIP yakalandı (window.open hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                    }
+                  } catch (e) {
+                    log(`⚠ window.open hijack fetch hatası: ${e?.message || e}`).catch(() => {});
+                  }
+                })();
+                return null;
+              }
+            } catch {}
+            return orig.origWindowOpen.call(this, url, ...rest);
+          };
+        }
+
+        // <a> createElement hijack
+        if (orig.origCreateElement) {
+          w.document.createElement = function(tagName) {
+            const el = orig.origCreateElement.call(w.document, tagName);
+            if (String(tagName).toLowerCase() === 'a') {
+              const origClick = el.click.bind(el);
+              el.click = function() {
+                try {
+                  const href = String(this.href || '').toLowerCase();
+                  const dl = this.getAttribute('download');
+                  if ((dl !== null) || href.includes('zip') || href.includes('indir') || href.includes('download')) {
+                    zipNetworkInFlight = true;
+                    (async () => {
+                      try {
+                        const res = await orig.origFetch.call(w, this.href, { credentials: 'include' });
+                        const blob = await res.blob();
+                        if (blob && blob.size > 100 && !yakalanmisZip) {
+                          yakalanmisZip = blob;
+                          log(`📥 ZIP yakalandı (anchor hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                        }
+                      } catch (e) {
+                        log(`⚠ anchor hijack fetch hatası: ${e?.message || e}`).catch(() => {});
+                      }
+                    })();
+                    return;
+                  }
+                } catch {}
+                return origClick();
+              };
+            }
+            return el;
+          };
+        }
+      } catch (e) {
+        // Frame'i hook'layamadık, geç
+      }
     };
+
+    // İlk başta tüm bilinen frame'leri hook'la
+    for (const w of collectAllWindows()) {
+      hookOneFrame(w);
+    }
+    await log(`🔌 ZIP yakalama: ${hookedFrames.length} frame'e hook kuruldu`);
+
+    // Backward compat — alt kodda fwin.fetch, vs. değişti mi diye geri yüklemek için
+    const origFetch = hookedFrames.find(h => h.win === fwin)?.origFetch || fwin.fetch;
+    const origXHROpen = hookedFrames.find(h => h.win === fwin)?.origXHROpen;
+    const origXHRSend = hookedFrames.find(h => h.win === fwin)?.origXHRSend;
 
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
@@ -941,7 +991,7 @@
     // Popup açılma animasyonunu bekle
     await sleep(1500);
 
-    // POPUP içindeki elementleri bul (buraya linki + Seçilenleri İndir butonu)
+    // Tüm doc'ları topla (frame'ler dahil)
     const collectAllDocsForPopup = () => {
       const docs = [document];
       const dive = (root) => {
@@ -958,32 +1008,27 @@
       return docs;
     };
 
-    // Popup container'ını bul: GİB E-BELGE + İNDİR + BURAYA içeren EN İÇTEKİ container
-    // (toolbar'dan başlayıp aramayalım — popup'ın kendisini bulalım)
+    // Popup container'ı bul (zip-window ya da BURAYA + İNDİR içeren container)
     const findPopupContainer = () => {
       for (const d of collectAllDocsForPopup()) {
         try {
-          // Önce bilinen ID/class'ları dene
           for (const sel of ['#zip-window', '.zip-window', '#popup-zip',
                              'div[id*="zip"]', 'div[id*="indir"]', 'div[id*="zipWin"]']) {
             const c = d.querySelector(sel);
             if (c && c.offsetParent !== null) {
               const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
               if (ct.includes('BURAYA') && (ct.includes('İNDİR') || ct.includes('INDIR'))) {
-                return { container: c, doc: d, hint: `id-selector:${sel}` };
+                return { container: c, doc: d };
               }
             }
           }
-          // Fallback: text içeriğine göre bul (popup'a özgü kelimeler)
           for (const c of d.querySelectorAll('div, section, article, form')) {
             if (c.offsetParent === null) continue;
             const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
-            // Tam popup metnini içermeli ama ÇOK BÜYÜK olmamalı (body değil)
             if (ct.includes('BURAYA') &&
                 (ct.includes('TÜM FATURALARI') || ct.includes('TUM FATURALARI')) &&
-                (ct.includes('ONAYLANMIŞ') || ct.includes('ONAYLANMIS')) &&
                 (ct.length < 4000)) {
-              return { container: c, doc: d, hint: 'text-content-match' };
+              return { container: c, doc: d };
             }
           }
         } catch {}
@@ -991,7 +1036,7 @@
       return null;
     };
 
-    // 1) "buraya tıklayınız" linkini click et (Tüm faturaları seçmek için BURAYA)
+    // Popup'ı bekle
     let popupInfo = null;
     const popupSearchStart = Date.now();
     while (Date.now() - popupSearchStart < 5000 && !popupInfo) {
@@ -999,170 +1044,137 @@
       if (!popupInfo) await sleep(300);
     }
 
-    if (popupInfo) {
-      await log(`📍 Popup container bulundu (${popupInfo.hint})`);
-      // İlk "buraya" linkini (Tüm faturaları seçmek için) click et
-      try {
-        const burayaLinks = [];
-        for (const a of popupInfo.container.querySelectorAll('a, span[onclick], div[onclick], button')) {
-          const t = ((a.textContent || a.value || '').trim()).toLocaleLowerCase('tr-TR');
-          if (t === 'buraya' || t.startsWith('buraya')) {
-            if (a.offsetParent !== null || a.tagName === 'A') {
-              burayaLinks.push(a);
-            }
-          }
-        }
-        if (burayaLinks.length > 0) {
-          const ilkBuraya = burayaLinks[0];
-          try { ilkBuraya.click(); } catch {}
-          try {
-            ilkBuraya.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: popupInfo.doc.defaultView }));
-          } catch {}
-          const oc = ilkBuraya.getAttribute('onclick');
-          if (oc) {
-            try { new popupInfo.doc.defaultView.Function('event', oc).call(ilkBuraya, new popupInfo.doc.defaultView.Event('click')); } catch {}
-          }
-          await log(`✓ Popup "buraya" link tıklandı (Tüm faturaları seç)`);
-          await sleep(800); // Selection state'in propagate olması için
-        } else {
-          await log('ℹ Popup "buraya" linki bulunamadı (gerekli olmayabilir)');
-        }
-      } catch (e) {
-        await log(`⚠ "buraya" link click hatası: ${e?.message || e}`);
-      }
-    } else {
-      await log('⚠ Popup container bulunamadı — fallback ile butonu arayacağız');
+    if (!popupInfo) {
+      await log('⚠ Popup container bulunamadı (5sn) — buton aranacak ama emin değil');
     }
 
-    // 2) Popup içindeki "Seçilenleri İndir" butonunu bul + tekrar tekrar tıkla (poll)
+    // Popup içindeki "Seçilenleri İndir" butonunu bul (popup container içinde, kesin)
     const findPopupDownloadButton = () => {
-      // Önce popup container'ı varsa ORADA ara (kesin)
       if (popupInfo) {
-        for (const b of popupInfo.container.querySelectorAll('button, input[type=button], input[type=submit], a, span[onclick], div[onclick]')) {
+        for (const b of popupInfo.container.querySelectorAll('button, input[type=button], input[type=submit]')) {
           const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
-          if ((t === 'seçilenleri indir' || t === 'secilenleri indir' || t.includes('seçilenleri indir') || t.includes('secilenleri indir'))
-              && (b.offsetParent !== null || b.tagName === 'A')) {
-            return { btn: b, strategy: 'inside-popup-container' };
+          if ((t === 'seçilenleri indir' || t === 'secilenleri indir')
+              && b.offsetParent !== null) {
+            return b;
           }
         }
       }
-      // Fallback: tüm dokümanlarda ara, koordinat ile en üsttekini al (popup ortadaysa)
+      // Fallback: birden fazla "Seçilenleri İndir" varsa toolbar'a göre üstte olanı (popup) seç
       for (const d of collectAllDocsForPopup()) {
         const matches = [];
-        for (const b of d.querySelectorAll('button, input[type=button], input[type=submit], a, span[onclick], div[onclick]')) {
+        for (const b of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
           const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
           if (t !== 'seçilenleri indir' && t !== 'secilenleri indir') continue;
-          if (b.offsetParent === null && b.tagName !== 'A') continue;
-          const r = b.getBoundingClientRect ? b.getBoundingClientRect() : { top: 0 };
+          if (b.offsetParent === null) continue;
+          const r = b.getBoundingClientRect();
           matches.push({ b, top: r.top });
         }
         if (matches.length >= 2) {
-          // Birden fazla varsa popup üstte (top değeri küçük), toolbar altta
           matches.sort((a, b) => a.top - b.top);
-          return { btn: matches[0].b, strategy: 'topmost-of-multiple' };
+          return matches[0].b;
         } else if (matches.length === 1) {
-          return { btn: matches[0].b, strategy: 'single-match' };
+          return matches[0].b;
         }
       }
       return null;
     };
 
-    const clickPopupBtnAggressively = (btn) => {
-      try {
-        const view = btn.ownerDocument.defaultView || fwin || window;
-        const r = btn.getBoundingClientRect ? btn.getBoundingClientRect() : null;
-        const x = r ? r.left + r.width / 2 : 0;
-        const y = r ? r.top + r.height / 2 : 0;
-        const fire = (type) => {
-          try {
-            btn.dispatchEvent(new MouseEvent(type, {
-              bubbles: true, cancelable: true, view, clientX: x, clientY: y, button: 0,
-            }));
-          } catch {}
-        };
-        fire('mouseover');
-        fire('mouseenter');
-        fire('mousedown');
-        fire('mouseup');
-        try { btn.click(); } catch {}
-        fire('click');
-        // jQuery handler trigger (Luca jQuery kullanıyor)
-        try {
-          const $ = view.jQuery || view.$;
-          if ($) {
-            $(btn).trigger('click');
-            $(btn).click();
-          }
-        } catch {}
-        // onclick attribute'unu da elle çağır
-        const onclickAttr = btn.getAttribute('onclick');
-        if (onclickAttr) {
-          try { new view.Function('event', onclickAttr).call(btn, new view.Event('click')); } catch {}
+    // POPUP'I X İLE KAPAT
+    const closePopupWithX = () => {
+      if (!popupInfo) return false;
+      // Popup'ın kendi container'ında ve onun yakınında "X" / "Kapat" / kapat ikonu ara
+      const candidates = [];
+      // 1) span/button/a content === "x" ya da "×" ya da "✕" ya da içinde close class
+      for (const el of popupInfo.container.querySelectorAll('button, a, span, div, input[type=button]')) {
+        if (el.offsetParent === null && el.tagName !== 'A') continue;
+        const t = ((el.textContent || el.value || '').trim());
+        const cls = String(el.className || '').toLowerCase();
+        const id = String(el.id || '').toLowerCase();
+        const title = String(el.title || el.getAttribute('aria-label') || '').toLowerCase();
+        const isCloseText = t === 'X' || t === 'x' || t === '×' || t === '✕' || t === '✖';
+        const isCloseAttr = cls.includes('close') || cls.includes('kapat') ||
+                            id.includes('close') || id.includes('kapat') ||
+                            title.includes('close') || title.includes('kapat');
+        const isCloseLabel = ((el.value || '').trim().toLocaleLowerCase('tr-TR') === 'kapat') ||
+                             (t.toLocaleLowerCase('tr-TR') === 'kapat');
+        if (isCloseText || isCloseAttr || isCloseLabel) {
+          candidates.push(el);
         }
-        // Form içindeyse submit dene
+      }
+      // En sağ üstte olanı seç (popup'ın X'i genelde sağ-üstte)
+      if (candidates.length === 0) return false;
+      let best = candidates[0];
+      let bestScore = -Infinity;
+      for (const c of candidates) {
         try {
-          const form = btn.closest('form');
-          if (form && typeof form.submit === 'function') {
-            // submit etmeyelim, sadece dispatch edelim — Luca handler handle eder
-            form.dispatchEvent(new view.Event('submit', { bubbles: true, cancelable: true }));
-          }
+          const r = c.getBoundingClientRect();
+          // Sağ-üst köşe = max(left) + min(top), score = r.left - r.top * 2
+          const score = r.left - r.top * 2;
+          if (score > bestScore) { bestScore = score; best = c; }
         } catch {}
-      } catch {}
+      }
+      try { best.click(); return true; } catch {}
+      return false;
     };
 
-    // TEK TIK STRATEJİSİ: bir kez tıkla, sonra sadece bekle (zipNetworkInFlight ya da
-    // yakalanmisZip izlenir). Sadece 8sn boyunca hiçbir network isteği başlamazsa
-    // "click iletmedi" sayıp bir kez daha denenir (max 2 click toplam).
-    let popupClicked = 0;
-    let popupClickStrategy = '';
+    // ─── TEK TIK ───
+    let popupBtn = null;
+    const findStart = Date.now();
+    while (Date.now() - findStart < 4000 && !popupBtn) {
+      popupBtn = findPopupDownloadButton();
+      if (!popupBtn) await sleep(300);
+    }
+
+    if (popupBtn) {
+      // SADE: tek .click() çağrısı — Luca'nın kendi handler'ları aşırı tetiklenmesin
+      try { popupBtn.click(); } catch (e) {
+        await log(`⚠ btn.click() hatası, native event dispatch ile dene: ${e?.message || e}`);
+        try {
+          popupBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: popupBtn.ownerDocument.defaultView }));
+        } catch {}
+      }
+      await log('✓ Popup "Seçilenleri İndir" 1 kez tıklandı');
+    } else {
+      await log('⚠ Popup içindeki "Seçilenleri İndir" bulunamadı');
+    }
+
+    // Bekleme: ZIP gelene kadar (max 60sn). RE-CLICK YOK — Luca aynı button.click()
+    // çoklu handler'ları tetikliyor, tek tık zaten yeterli.
     const zipWaitStart = Date.now();
     const ZIP_TIMEOUT_MS = 60000;
-
-    // İlk tıklama: butonu bul ve hemen click et
-    {
-      const firstStart = Date.now();
-      while (Date.now() - firstStart < 4000 && popupClicked === 0) {
-        const found = findPopupDownloadButton();
-        if (found) {
-          clickPopupBtnAggressively(found.btn);
-          popupClicked = 1;
-          popupClickStrategy = found.strategy;
-          await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${found.strategy})`);
-          break;
-        }
-        await sleep(300);
-      }
-      if (popupClicked === 0) {
-        await log('⚠ Popup butonu bulunamadı (4sn poll), ZIP yine de geliyorsa yakalanır');
-      }
-    }
-
-    // Bekleme: ZIP gelene kadar (max 60sn). Eğer 8sn boyunca hiçbir network isteği
-    // başlamazsa (zipNetworkInFlight=false) ve hala click yetersizse 1 kez daha tıkla.
-    let extraClickDone = false;
+    let popupClosed = false;
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
-      if (!extraClickDone && !zipNetworkInFlight && Date.now() - zipWaitStart > 8000 && popupClicked > 0) {
-        const found = findPopupDownloadButton();
-        if (found) {
-          clickPopupBtnAggressively(found.btn);
-          popupClicked++;
-          await log(`🔁 8sn'de network başlamadı, "Seçilenleri İndir" 1 kez daha tıklandı`);
-          extraClickDone = true;
+      // ZIP geldikten sonra (ya da 8sn sonra) popup'ı X ile kapat
+      if (!popupClosed && (yakalanmisZip || Date.now() - zipWaitStart > 8000)) {
+        if (closePopupWithX()) {
+          await log('✓ Popup X ile kapatıldı');
+          popupClosed = true;
         }
       }
-      await sleep(500);
+      await sleep(400);
     }
 
-    // Patch'leri geri al
-    fwin.fetch = origFetch;
-    fwin.XMLHttpRequest.prototype.open = origXHROpen;
-    fwin.XMLHttpRequest.prototype.send = origXHRSend;
-    if (origWindowOpen) fwin.open = origWindowOpen;
-    fwin.document.createElement = origCreateElement;
+    // ZIP geldiyse ama popup hala açıksa kapat
+    if (yakalanmisZip && !popupClosed) {
+      if (closePopupWithX()) {
+        await log('✓ Popup X ile kapatıldı (ZIP yakalandıktan sonra)');
+      }
+    }
+
+    // Hook'ları geri al (tüm frame'lerde)
+    for (const h of hookedFrames) {
+      try {
+        if (h.origFetch) h.win.fetch = h.origFetch;
+        if (h.origXHROpen) h.win.XMLHttpRequest.prototype.open = h.origXHROpen;
+        if (h.origXHRSend) h.win.XMLHttpRequest.prototype.send = h.origXHRSend;
+        if (h.origWindowOpen) h.win.open = h.origWindowOpen;
+        if (h.origCreateElement) h.win.document.createElement = h.origCreateElement;
+      } catch {}
+    }
 
     if (!yakalanmisZip) {
-      throw new Error(`ZIP 45sn içinde yakalanamadı (popup butonuna ${popupClicked} kez tıklandı, strategy: ${popupClickStrategy || 'bulunamadı'})`);
+      throw new Error('ZIP 60sn içinde yakalanamadı — Luca download mekanizması interceptor\'ları bypass ediyor olabilir');
     }
     return yakalanmisZip;
   }
