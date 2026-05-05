@@ -8,7 +8,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService, private prisma: PrismaService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Header VEYA query string'den token kabul et — window.open ile yeni sekmede
+      // açılan HTML render endpoint'leri için (Authorization header gönderilmiyor).
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        (req: any) => (req?.query?.token as string) || null,
+      ]),
       ignoreExpiration: false,
       secretOrKey: config.get('JWT_SECRET'),
     });

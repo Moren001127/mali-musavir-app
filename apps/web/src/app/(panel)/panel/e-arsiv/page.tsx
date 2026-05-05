@@ -138,8 +138,15 @@ export default function EarsivPage() {
   }, [lucaJobQuery.data]);
 
   // Tek faturayı yeni sekmede aç — backend XSLT-rendered HTML döner
+  // window.open ile yeni sekme açıldığı için Authorization header gönderilemiyor;
+  // backend JwtStrategy ?token=... query parametresini de kabul ediyor.
   const openFaturaInNewTab = (faturaId: string, autoPrint = false) => {
-    const url = `/api/earsiv/${faturaId}/html${autoPrint ? '?print=1' : ''}`;
+    const tok = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
+    const params = new URLSearchParams();
+    if (autoPrint) params.set('print', '1');
+    if (tok) params.set('token', tok);
+    const qs = params.toString();
+    const url = `/api/earsiv/${faturaId}/html${qs ? `?${qs}` : ''}`;
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     if (!w) {
       toast.error('Popup engelli — tarayıcının popup engelleyiciyi kapat');
@@ -290,8 +297,13 @@ export default function EarsivPage() {
             className="w-full px-3 py-2 rounded-md text-sm"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
           >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>{m}. Ay</option>
+            {[
+              'Ocak','Şubat','Mart','Nisan','Mayıs','Haziran',
+              'Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık',
+            ].map((adi, i) => (
+              <option key={i + 1} value={i + 1} style={{ background: '#1a1a1a', color: '#fafaf9' }}>
+                {adi}
+              </option>
             ))}
           </select>
         </div>
