@@ -138,12 +138,16 @@
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
 
-          // ─── ERKEN FİRMA KONTROLÜ (e-arşiv için) ───
+          // ─── ERKEN FİRMA KONTROLÜ (Luca'dan veri çeken tüm job'lar için) ───
           // /start çağrılmadan ÖNCE Luca'da doğru firma seçili mi kontrol et.
           // Yanlışsa firma değiştir → sayfa yenilenir → bu agent ölür →
           // job pending'de kaldığı için yeni agent aynı job'u tekrar yakalar.
-          const isEarsivJobEarly = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
-          if (isEarsivJobEarly) {
+          // Kapsam: e-arşiv + e-fatura + mizan + kdv kontrol + tüm Luca veri çekmeleri
+          const isLucaDataJob = [
+            'EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS',
+            'MIZAN','KDV_KONTROL','KDV1','KDV2','MUAVIN','ISLETME','GELIR_TABLOSU','BILANCO'
+          ].includes(job.tip);
+          if (isLucaDataJob) {
             let mukellefAdiEarly = '';
             try {
               const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
@@ -208,7 +212,7 @@
                       if (clickedE) break;
                       await sleep(200);
                     }
-                    await sleep(60000);
+                    await sleep(15000);
                     window.__lucaJobRunning = false;
                     return;
                   }
@@ -223,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.1';
+          const AGENT_VER = '1.35.2';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -560,7 +564,7 @@
           if (clicked) break;
           await sleep(200);
         }
-        await sleep(60000);
+        await sleep(15000);
         throw new Error(`Firma değiştirildi ama sayfa yenilenmedi`);
       } else {
         await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
@@ -730,7 +734,7 @@
     const fdoc = frm3.contentDocument;
     const fwin = frm3.contentWindow;
 
-    // ZIP intercept: fetch ve XHR'i monkey-patch et — TEK ZIP yakalayacağız
+    // ZIP intercept: fetch + XHR'i monkey-patch et — TEK ZIP yakalayacağız
     let yakalanmisZip = null;
     const origFetch = fwin.fetch;
     const origXHROpen = fwin.XMLHttpRequest.prototype.open;
@@ -751,6 +755,36 @@
         }
       } catch {}
       return res;
+    };
+
+    // XHR intercept (Luca jQuery $.ajax kullanıyor olabilir)
+    fwin.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      this.__url = url;
+      this.__method = method;
+      return origXHROpen.call(this, method, url, ...rest);
+    };
+    fwin.XMLHttpRequest.prototype.send = function(...args) {
+      try {
+        const url = String(this.__url || '');
+        if (url.toLowerCase().includes('zip') || url.toLowerCase().includes('indir')) {
+          const oldType = this.responseType;
+          try { this.responseType = 'blob'; } catch {}
+          this.addEventListener('load', () => {
+            try {
+              const blob = this.response;
+              if (blob && blob.size > 100) {
+                const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
+                const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
+                if (ct.includes('zip') || ct.includes('octet-stream') || cd.includes('.zip') || blob.type.includes('zip')) {
+                  yakalanmisZip = blob;
+                  log(`📥 ZIP yakalandı (XHR ${this.__method} ${url.slice(0,60)}, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                }
+              }
+            } catch {}
+          }, { once: true });
+        }
+      } catch {}
+      return origXHRSend.apply(this, args);
     };
 
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
@@ -837,11 +871,9 @@
     }
 
     // Popup açılma animasyonunu bekle
-    await sleep(1800);
+    await sleep(1500);
 
-    // POPUP içindeki "Seçilenleri İndir" butonunu bul ve tıkla
-    // Popup'ın başlığı: "GİB E-Belge Entegrasyonu ... - İNDİR"
-    // İçinde "Tüm faturaları seçmek için buraya..." metni + "Seçilenleri İndir" butonu var.
+    // POPUP içindeki elementleri bul (buraya linki + Seçilenleri İndir butonu)
     const collectAllDocsForPopup = () => {
       const docs = [document];
       const dive = (root) => {
@@ -858,134 +890,195 @@
       return docs;
     };
 
-    let popupBtn = null;
-    let popupClickStrategy = '';
-    // 3 sn boyunca popup'ı poll et (animasyon/gec geliyor olabilir)
-    const popupStart = Date.now();
-    while (Date.now() - popupStart < 5000 && !popupBtn) {
+    // Popup container'ını bul: GİB E-BELGE + İNDİR + BURAYA içeren EN İÇTEKİ container
+    // (toolbar'dan başlayıp aramayalım — popup'ın kendisini bulalım)
+    const findPopupContainer = () => {
       for (const d of collectAllDocsForPopup()) {
         try {
-          // STRATEGY 1: "GİB E-Belge" ya da "İNDİR" başlıklı container'ı bul, içindeki butonu yakala
-          const allBtns = [...d.querySelectorAll('button, input[type=button], input[type=submit], a')];
-          for (const b of allBtns) {
-            const bt = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
-            if (bt !== 'seçilenleri indir' && bt !== 'secilenleri indir') continue;
-            // Görünür mü?
-            if (b.offsetParent === null && b.tagName !== 'A') continue;
-            // Popup container içinde mi? (parent hierarchy'de "GİB E-Belge" / "İNDİR" / "buraya" geçen kapsayıcı)
-            let cur = b.parentElement;
-            let inPopup = false;
-            while (cur) {
-              const ct = (cur.textContent || '').toLocaleUpperCase('tr-TR');
-              if ((ct.includes('GİB E-BELGE') || ct.includes('GIB E-BELGE')) &&
-                  (ct.includes('İNDİR') || ct.includes('INDIR')) &&
-                  ct.includes('BURAYA')) {
-                inPopup = true;
-                break;
+          // Önce bilinen ID/class'ları dene
+          for (const sel of ['#zip-window', '.zip-window', '#popup-zip',
+                             'div[id*="zip"]', 'div[id*="indir"]', 'div[id*="zipWin"]']) {
+            const c = d.querySelector(sel);
+            if (c && c.offsetParent !== null) {
+              const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
+              if (ct.includes('BURAYA') && (ct.includes('İNDİR') || ct.includes('INDIR'))) {
+                return { container: c, doc: d, hint: `id-selector:${sel}` };
               }
-              cur = cur.parentElement;
-            }
-            if (inPopup) {
-              popupBtn = b;
-              popupClickStrategy = 'popup-container';
-              break;
             }
           }
-          if (popupBtn) break;
-          // STRATEGY 2: ID/class ile popup butonu (zip-window ya da indirPopup ID'si olabilir)
-          for (const sel of ['#zip-window button', '#zip-window input[type=button]',
-                             '.zip-window button', '#popup-zip button',
-                             'div[id*="zip"] button', 'div[id*="indir"] button']) {
-            try {
-              const cand = d.querySelector(sel);
-              if (cand && cand.offsetParent !== null) {
-                const ct = ((cand.textContent || cand.value || '').trim()).toLocaleLowerCase('tr-TR');
-                if (ct.includes('seçilen') || ct.includes('secilen') || ct.includes('indir')) {
-                  popupBtn = cand;
-                  popupClickStrategy = `selector:${sel}`;
-                  break;
-                }
-              }
-            } catch {}
-          }
-          if (popupBtn) break;
-        } catch {}
-      }
-      if (!popupBtn) await sleep(300);
-    }
-
-    // STRATEGY 3 (fallback): tüm "Seçilenleri İndir" görünür butonları topla,
-    // alt toolbar'daki orijinali eleyip popup'takini bul
-    if (!popupBtn) {
-      for (const d of collectAllDocsForPopup()) {
-        try {
-          const matches = [];
-          for (const b of d.querySelectorAll('button, input[type=button], input[type=submit], a')) {
-            const bt = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
-            if (bt !== 'seçilenleri indir' && bt !== 'secilenleri indir') continue;
-            if (b.offsetParent === null && b.tagName !== 'A') continue;
-            const r = b.getBoundingClientRect ? b.getBoundingClientRect() : { top: 0, left: 0 };
-            matches.push({ b, top: r.top, left: r.left });
-          }
-          if (matches.length >= 2) {
-            // En altta olan = orijinal toolbar butonu, üstündeki = popup
-            matches.sort((a, b) => a.top - b.top);
-            popupBtn = matches[0].b; // üstteki (popup ortada/üstte)
-            popupClickStrategy = 'topmost-of-multiple';
-            break;
-          } else if (matches.length === 1) {
-            // Tek tane var — toolbar butonu zaten clicklendi/devre dışı olabilir, bu popup butonu
-            // (sadece toolbar butonu ile aynı olmadığını görmek için kontrol)
-            popupBtn = matches[0].b;
-            popupClickStrategy = 'single-match';
-            break;
+          // Fallback: text içeriğine göre bul (popup'a özgü kelimeler)
+          for (const c of d.querySelectorAll('div, section, article, form')) {
+            if (c.offsetParent === null) continue;
+            const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
+            // Tam popup metnini içermeli ama ÇOK BÜYÜK olmamalı (body değil)
+            if (ct.includes('BURAYA') &&
+                (ct.includes('TÜM FATURALARI') || ct.includes('TUM FATURALARI')) &&
+                (ct.includes('ONAYLANMIŞ') || ct.includes('ONAYLANMIS')) &&
+                (ct.length < 4000)) {
+              return { container: c, doc: d, hint: 'text-content-match' };
+            }
           }
         } catch {}
       }
+      return null;
+    };
+
+    // 1) "buraya tıklayınız" linkini click et (Tüm faturaları seçmek için BURAYA)
+    let popupInfo = null;
+    const popupSearchStart = Date.now();
+    while (Date.now() - popupSearchStart < 5000 && !popupInfo) {
+      popupInfo = findPopupContainer();
+      if (!popupInfo) await sleep(300);
     }
 
-    if (popupBtn) {
+    if (popupInfo) {
+      await log(`📍 Popup container bulundu (${popupInfo.hint})`);
+      // İlk "buraya" linkini (Tüm faturaları seçmek için) click et
       try {
-        // Multi-strategy click — Luca onclick handler için hem .click() hem MouseEvent
-        const view = popupBtn.ownerDocument.defaultView || window;
-        const r = popupBtn.getBoundingClientRect ? popupBtn.getBoundingClientRect() : null;
+        const burayaLinks = [];
+        for (const a of popupInfo.container.querySelectorAll('a, span[onclick], div[onclick], button')) {
+          const t = ((a.textContent || a.value || '').trim()).toLocaleLowerCase('tr-TR');
+          if (t === 'buraya' || t.startsWith('buraya')) {
+            if (a.offsetParent !== null || a.tagName === 'A') {
+              burayaLinks.push(a);
+            }
+          }
+        }
+        if (burayaLinks.length > 0) {
+          const ilkBuraya = burayaLinks[0];
+          try { ilkBuraya.click(); } catch {}
+          try {
+            ilkBuraya.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: popupInfo.doc.defaultView }));
+          } catch {}
+          const oc = ilkBuraya.getAttribute('onclick');
+          if (oc) {
+            try { new popupInfo.doc.defaultView.Function('event', oc).call(ilkBuraya, new popupInfo.doc.defaultView.Event('click')); } catch {}
+          }
+          await log(`✓ Popup "buraya" link tıklandı (Tüm faturaları seç)`);
+          await sleep(800); // Selection state'in propagate olması için
+        } else {
+          await log('ℹ Popup "buraya" linki bulunamadı (gerekli olmayabilir)');
+        }
+      } catch (e) {
+        await log(`⚠ "buraya" link click hatası: ${e?.message || e}`);
+      }
+    } else {
+      await log('⚠ Popup container bulunamadı — fallback ile butonu arayacağız');
+    }
+
+    // 2) Popup içindeki "Seçilenleri İndir" butonunu bul + tekrar tekrar tıkla (poll)
+    const findPopupDownloadButton = () => {
+      // Önce popup container'ı varsa ORADA ara (kesin)
+      if (popupInfo) {
+        for (const b of popupInfo.container.querySelectorAll('button, input[type=button], input[type=submit], a, span[onclick], div[onclick]')) {
+          const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
+          if ((t === 'seçilenleri indir' || t === 'secilenleri indir' || t.includes('seçilenleri indir') || t.includes('secilenleri indir'))
+              && (b.offsetParent !== null || b.tagName === 'A')) {
+            return { btn: b, strategy: 'inside-popup-container' };
+          }
+        }
+      }
+      // Fallback: tüm dokümanlarda ara, koordinat ile en üsttekini al (popup ortadaysa)
+      for (const d of collectAllDocsForPopup()) {
+        const matches = [];
+        for (const b of d.querySelectorAll('button, input[type=button], input[type=submit], a, span[onclick], div[onclick]')) {
+          const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
+          if (t !== 'seçilenleri indir' && t !== 'secilenleri indir') continue;
+          if (b.offsetParent === null && b.tagName !== 'A') continue;
+          const r = b.getBoundingClientRect ? b.getBoundingClientRect() : { top: 0 };
+          matches.push({ b, top: r.top });
+        }
+        if (matches.length >= 2) {
+          // Birden fazla varsa popup üstte (top değeri küçük), toolbar altta
+          matches.sort((a, b) => a.top - b.top);
+          return { btn: matches[0].b, strategy: 'topmost-of-multiple' };
+        } else if (matches.length === 1) {
+          return { btn: matches[0].b, strategy: 'single-match' };
+        }
+      }
+      return null;
+    };
+
+    const clickPopupBtnAggressively = (btn) => {
+      try {
+        const view = btn.ownerDocument.defaultView || fwin || window;
+        const r = btn.getBoundingClientRect ? btn.getBoundingClientRect() : null;
         const x = r ? r.left + r.width / 2 : 0;
         const y = r ? r.top + r.height / 2 : 0;
         const fire = (type) => {
           try {
-            popupBtn.dispatchEvent(new MouseEvent(type, {
+            btn.dispatchEvent(new MouseEvent(type, {
               bubbles: true, cancelable: true, view, clientX: x, clientY: y, button: 0,
             }));
           } catch {}
         };
         fire('mouseover');
+        fire('mouseenter');
         fire('mousedown');
         fire('mouseup');
-        try { popupBtn.click(); } catch {}
+        try { btn.click(); } catch {}
         fire('click');
-        // onclick attribute'unu da elle çağır (jQuery bind'leri için)
-        const onclickAttr = popupBtn.getAttribute('onclick');
+        // jQuery handler trigger (Luca jQuery kullanıyor)
+        try {
+          const $ = view.jQuery || view.$;
+          if ($) {
+            $(btn).trigger('click');
+            $(btn).click();
+          }
+        } catch {}
+        // onclick attribute'unu da elle çağır
+        const onclickAttr = btn.getAttribute('onclick');
         if (onclickAttr) {
-          try { new view.Function('event', onclickAttr).call(popupBtn, new view.Event('click')); } catch {}
+          try { new view.Function('event', onclickAttr).call(btn, new view.Event('click')); } catch {}
         }
-        await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${popupClickStrategy})`);
-      } catch (e) {
-        await log(`⚠ Popup butonu tıklama hatası: ${e?.message || e}`);
-      }
-    } else {
-      await log('⚠ Popup içindeki "Seçilenleri İndir" bulunamadı — ZIP yine de yakalanabilir');
-    }
+        // Form içindeyse submit dene
+        try {
+          const form = btn.closest('form');
+          if (form && typeof form.submit === 'function') {
+            // submit etmeyelim, sadece dispatch edelim — Luca handler handle eder
+            form.dispatchEvent(new view.Event('submit', { bubbles: true, cancelable: true }));
+          }
+        } catch {}
+      } catch {}
+    };
 
-    // ZIP'in yakalanmasını bekle (max 45sn — popup tıklamadan sonra GİB sorgu uzun sürebilir)
-    for (let i = 0; i < 90; i++) {
+    // POLLING: ZIP gelene kadar her 4 saniyede bir butona tekrar tıkla (max 45sn toplam)
+    let popupClicked = 0;
+    let popupClickStrategy = '';
+    const zipWaitStart = Date.now();
+    const ZIP_TIMEOUT_MS = 45000;
+    const RECLICK_INTERVAL_MS = 4000;
+    let lastClickAt = 0;
+
+    while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
+      // Her RECLICK_INTERVAL_MS'de bir butonu tekrar bul + tıkla
+      if (Date.now() - lastClickAt >= RECLICK_INTERVAL_MS) {
+        const found = findPopupDownloadButton();
+        if (found) {
+          clickPopupBtnAggressively(found.btn);
+          popupClicked++;
+          popupClickStrategy = found.strategy;
+          if (popupClicked === 1) {
+            await log(`✓ Popup "Seçilenleri İndir" tıklandı (strategy: ${found.strategy})`);
+          } else {
+            await log(`🔁 Popup "Seçilenleri İndir" tekrar tıklandı (#${popupClicked}, ${found.strategy})`);
+          }
+        } else if (popupClicked === 0) {
+          await log('⚠ Popup içindeki "Seçilenleri İndir" henüz bulunamadı, tekrar deneyeceğim');
+        }
+        lastClickAt = Date.now();
+      }
       await sleep(500);
     }
+
     // Patch'leri geri al
     fwin.fetch = origFetch;
+    fwin.XMLHttpRequest.prototype.open = origXHROpen;
+    fwin.XMLHttpRequest.prototype.send = origXHRSend;
 
     if (!yakalanmisZip) {
-      throw new Error('ZIP 45sn içinde yakalanamadı — popup içindeki "Seçilenleri İndir" butonuna tıklanamadı veya sunucu yanıt vermedi');
+      throw new Error(`ZIP 45sn içinde yakalanamadı (popup butonuna ${popupClicked} kez tıklandı, strategy: ${popupClickStrategy || 'bulunamadı'})`);
     }
     return yakalanmisZip;
   }
