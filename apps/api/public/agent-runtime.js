@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.25';
+          const AGENT_VER = '1.35.26';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -705,27 +705,58 @@
       }
       if (!basariliAcildi) {
         // Fallback: menüleri sırayla açıp elementi click et.
-        // Bilanço esaslı mükellef → "Muhasebe", İşletme Defteri mükellefi → "İşletme Defteri"
-        // Hangisi varsa onu tıkla; her ikisini sırayla dene (DOM'da aynı anda ikisi yoksa zaten biri patlamaz).
+        // Bilanço esası → "Muhasebe", İşletme Defteri → "İşletme Defteri"
+        // "Muhasebe" yazısı sayfada başka yerlerde de var olabileceğinden tıklandı doğrulaması için
+        // tıklamadan sonra "Akıllı Entegrasyon Noktası"nın görünür olmasını ARIYORUZ; yoksa diğer kök menüyü dene.
         await log('🔄 Text-based menü navigasyonu (yedek plan)');
-        let kokMenuTiklandi = false;
-        try {
-          await clickByTextEverywhere('Muhasebe', log, { maxMs: 3000 });
-          kokMenuTiklandi = true;
-          await log('✓ "Muhasebe" tıklandı (bilanço esası)');
-        } catch (e) {
-          await log('ℹ "Muhasebe" bulunamadı → İşletme Defteri deneniyor');
-        }
-        if (!kokMenuTiklandi) {
+
+        const akilliVisible = async () => {
+          // Tüm frame'lerde Akıllı Entegrasyon Noktası elementinin görünür olup olmadığını probe et
+          const frames = [window, ...Array.from(document.querySelectorAll('iframe')).map(f => f.contentWindow).filter(Boolean)];
+          for (const fw of frames) {
+            try {
+              const doc = fw.document;
+              if (!doc) continue;
+              const all = doc.querySelectorAll('td,a,div,span,button,li');
+              for (const el of all) {
+                const txt = (el.textContent || '').trim();
+                if (txt === 'Akıllı Entegrasyon Noktası') {
+                  const rect = el.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) return true;
+                }
+              }
+            } catch {}
+          }
+          return false;
+        };
+
+        // Hangi sırayla deneneceği: önce İşletme Defteri (daha spesifik metin),
+        // yoksa Muhasebe. Her ikisinde de sonuç doğrulanıyor.
+        const denemeler = ['İşletme Defteri', 'Muhasebe'];
+        let basariliMenu = null;
+
+        for (const menuAdi of denemeler) {
           try {
-            await clickByTextEverywhere('İşletme Defteri', log, { maxMs: 3000 });
-            kokMenuTiklandi = true;
-            await log('✓ "İşletme Defteri" tıklandı (işletme esası)');
-          } catch (e2) {
-            throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü bulunamadı');
+            await clickByTextEverywhere(menuAdi, log, { maxMs: 3000 });
+            await log(`🖱 "${menuAdi}" denendi, submenu kontrol ediliyor…`);
+            // Submenu açılma süresi verilir
+            await sleep(1500);
+            if (await akilliVisible()) {
+              basariliMenu = menuAdi;
+              await log(`✓ "${menuAdi}" doğru menü (Akıllı Entegrasyon submenusu açıldı)`);
+              break;
+            } else {
+              await log(`✗ "${menuAdi}" yanlış (Akıllı Entegrasyon görünmedi) → diğeri denenecek`);
+            }
+          } catch (e) {
+            await log(`ℹ "${menuAdi}" bulunamadı: ${e?.message || e}`);
           }
         }
-        await sleep(1200);
+
+        if (!basariliMenu) {
+          throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü Akıllı Entegrasyon submenu\'su açmadı');
+        }
+
         await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
         await sleep(2000);
         await clickByTextEverywhere(menuLabel, log, { maxMs: 8000 });

@@ -1,12 +1,13 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   Download, Search, Users, Calendar, Sparkles, Loader2, FileText,
-  Package, X, CheckSquare, Square, Eye, Printer,
+  Package, X, CheckSquare, Square, Eye, Printer, AlertCircle, XCircle,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -40,6 +41,9 @@ export default function EarsivPage() {
   const [lucaStatus, setLucaStatus] = useState('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
   const [printingBulk, setPrintingBulk] = useState(false);
+  // Sayfa içi fatura önizleme (yeni sekme yerine lightbox)
+  const [previewFatura, setPreviewFatura] = useState<EarsivFatura | null>(null);
+  const [previewAutoPrint, setPreviewAutoPrint] = useState(false);
 
   // Mükellef listesi
   const { data: taxpayers = [] } = useQuery({
@@ -137,22 +141,7 @@ export default function EarsivPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lucaJobQuery.data]);
 
-  // Tek faturayı yeni sekmede aç — backend XSLT-rendered HTML döner
-  // window.open ile yeni sekme açıldığı için Authorization header gönderilemiyor;
-  // backend JwtStrategy ?token=... query parametresini de kabul ediyor.
-  const openFaturaInNewTab = (faturaId: string, autoPrint = false) => {
-    const tok = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : '';
-    const params = new URLSearchParams();
-    if (autoPrint) params.set('print', '1');
-    if (tok) params.set('token', tok);
-    const qs = params.toString();
-    const url = `/api/earsiv/${faturaId}/html${qs ? `?${qs}` : ''}`;
-    const w = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!w) {
-      toast.error('Popup engelli — tarayıcının popup engelleyiciyi kapat');
-      return;
-    }
-  };
+  // (Eski yeni-sekme akışı kaldırıldı — artık sayfa içi EarsivPreviewModal ile gösteriliyor)
 
   // Toplu yazdır — seçili faturaların hepsini tek HTML'e topla, yeni sekmede aç + print tetikle
   const topluYazdirMut = useMutation({
@@ -461,18 +450,18 @@ export default function EarsivPage() {
                   <td className="px-2 py-2 text-center">
                     <div className="flex gap-1.5 justify-center">
                       <button
-                        onClick={() => openFaturaInNewTab(r.id, false)}
+                        onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
                         className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
                         style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
-                        title="Faturayı yeni sekmede aç"
+                        title="Faturayı önizle"
                       >
                         <Eye size={11} /> Aç
                       </button>
                       <button
-                        onClick={() => openFaturaInNewTab(r.id, true)}
+                        onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
                         className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
                         style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}
-                        title="Faturayı aç ve yazıcıya gönder"
+                        title="Faturayı önizle ve yazıcıya gönder"
                       >
                         <Printer size={11} /> Yazdır
                       </button>
@@ -521,6 +510,180 @@ export default function EarsivPage() {
           </div>
         </div>
       )}
+
+      {/* Sayfa içi fatura önizleme modalı (lightbox) */}
+      {previewFatura && (
+        <EarsivPreviewModal
+          fatura={previewFatura}
+          autoPrint={previewAutoPrint}
+          onClose={() => { setPreviewFatura(null); setPreviewAutoPrint(false); }}
+        />
+      )}
     </div>
   );
+}
+
+/** E-Arşiv fatura sayfa-içi önizleme modalı — backend HTML'i auth'lu fetch ile alır,
+ *  iframe srcDoc içine basar. Yazdır butonu iframe.contentWindow.print() tetikler.
+ */
+function EarsivPreviewModal({
+  fatura,
+  autoPrint,
+  onClose,
+}: {
+  fatura: EarsivFatura;
+  autoPrint: boolean;
+  onClose: () => void;
+}) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  // ESC + body scroll kilit
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    const scrollY = window.scrollY;
+    const prev = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev.overflow;
+      document.body.style.position = prev.position;
+      document.body.style.top = prev.top;
+      document.body.style.width = prev.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, [onClose]);
+
+  // HTML'i auth'lu fetch et (api interceptor Authorization header'ı koyar)
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await api.get(`/earsiv/${fatura.id}/html`, { responseType: 'text' });
+        if (cancel) return;
+        setHtml(typeof res.data === 'string' ? res.data : String(res.data));
+      } catch (e: any) {
+        if (cancel) return;
+        setError(e?.response?.data?.message || e?.message || 'Fatura HTML alınamadı');
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [fatura.id]);
+
+  // İçerik yüklendiğinde autoPrint ise yazdırma tetikle
+  useEffect(() => {
+    if (!html || !autoPrint || !iframeRef.current) return;
+    const tid = setTimeout(() => {
+      try { iframeRef.current?.contentWindow?.print(); } catch {}
+    }, 500);
+    return () => clearTimeout(tid);
+  }, [html, autoPrint]);
+
+  const triggerPrint = () => {
+    try { iframeRef.current?.contentWindow?.print(); }
+    catch { toast.error('Yazdırma başlatılamadı'); }
+  };
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  if (!mounted) return null;
+
+  const tarihStr = new Date(fatura.faturaTarihi).toLocaleDateString('tr-TR');
+
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,.85)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+      onClick={onClose}
+    >
+      <div
+        className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Üst bar */}
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-xl"
+          style={{ background: 'rgba(15,13,11,.95)', color: '#fff' }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <span
+              className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+              style={{ background: 'rgba(59,130,246,.2)', color: '#60a5fa' }}
+            >
+              ALIŞ · E-ARŞİV
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold truncate">{fatura.satici || '—'}</div>
+              <div className="text-xs opacity-70">
+                #{fatura.faturaNo} · {tarihStr} · ₺
+                {Number(fatura.toplamTutar || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={triggerPrint}
+              disabled={!html || loading}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+            >
+              <Printer size={12} /> Yazdır
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
+              title="Kapat (ESC)"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+        </div>
+        {/* İçerik */}
+        <div
+          className="flex-1 rounded-b-xl overflow-hidden"
+          style={{ background: 'rgba(15,13,11,.85)' }}
+        >
+          {loading && (
+            <div className="w-full h-full flex items-center justify-center">
+              <Loader2 size={32} className="animate-spin" style={{ color: '#fff' }} />
+            </div>
+          )}
+          {error && (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center p-8" style={{ color: '#fca5a5' }}>
+                <AlertCircle size={32} className="mx-auto mb-2" />
+                <p className="text-sm">{error}</p>
+              </div>
+            </div>
+          )}
+          {html && !loading && !error && (
+            <iframe
+              ref={iframeRef}
+              srcDoc={html}
+              className="w-full h-full bg-white"
+              title={fatura.faturaNo}
+              sandbox="allow-same-origin allow-scripts allow-modals allow-popups allow-forms"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(modalContent, document.body);
 }
