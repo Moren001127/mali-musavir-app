@@ -464,17 +464,81 @@
       return docs;
     };
 
+    // onclick attribute (veya parent zincirinde) içinde II1a('CODE',...) çağrısı varsa
+    // direkt çıkar — synthetic click yerine fonksiyonu kendimiz tetikleyebiliriz.
+    const extractOnclickInfo = (el) => {
+      let cur = el;
+      let depth = 0;
+      while (cur && depth < 6) {
+        try {
+          const oc = cur.getAttribute && cur.getAttribute('onclick');
+          if (oc) {
+            // II1a(event, 'CODE', ...) veya II1a('CODE', ...) yakala
+            const m = oc.match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
+            if (m) return { onclick: oc, II1aCode: m[1], handlerEl: cur };
+            return { onclick: oc, II1aCode: null, handlerEl: cur };
+          }
+          // onclick property (attribute olmayabilir)
+          if (typeof cur.onclick === 'function') {
+            return { onclick: '[fn]', II1aCode: null, handlerEl: cur };
+          }
+        } catch {}
+        cur = cur.parentElement;
+        depth++;
+      }
+      return null;
+    };
+
+    // Eğer çağrılması gereken II1a kodu bulunduysa direkt fonksiyonu tetikle
+    const callII1aDirect = async (doc, code) => {
+      const fwin = doc.defaultView || window;
+      const candidates = [fwin, fwin.parent, fwin.top, window];
+      for (const w of candidates) {
+        try {
+          if (w && typeof w.II1a === 'function') {
+            const fakeEvent = {
+              type: 'click', target: null, currentTarget: null, srcElement: null,
+              preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
+              returnValue: true, cancelBubble: false,
+            };
+            await log(`🚀 II1a('${code}') doğrudan çağrılıyor (DOM'dan çıkarıldı)`);
+            try { w.II1a(fakeEvent, code, ''); return true; } catch (e) {
+              try { w.II1a(code); return true; } catch {}
+            }
+          }
+        } catch {}
+      }
+      return false;
+    };
+
     const tryOnce = async (allowHidden) => {
       for (const doc of collectAllDocs()) {
         try {
-          for (const el of doc.querySelectorAll('a, span, div, td, li, p, button, label')) {
-            // Görünürlük kontrolü — cascading hover menülerinde offsetParent null olabilir.
-            // İlk tur sadece görünür, ikinci tur hidden'a da izin (DOM click hidden'da da çalışır).
+          // TÜM elementleri tara (sadece belirli tag'ler değil) — Luca menü item'ları
+          // <td>, <a>, <div> her şey olabilir.
+          for (const el of doc.querySelectorAll('*')) {
+            // Sadece leaf veya az çocuklu elementler (text gerçekten burada)
+            if (el.children && el.children.length > 3) continue;
             if (!allowHidden && el.offsetParent === null && el.tagName !== 'A') continue;
             const t = norm(el.textContent || '');
             if (!t) continue;
             const match = exact ? (t === target) : (t === target || t.includes(target));
             if (!match) continue;
+
+            // Element bulundu — önce onclick'ten II1a kodunu çıkarıp doğrudan çağırmayı dene
+            const ocInfo = extractOnclickInfo(el);
+            if (ocInfo && ocInfo.II1aCode) {
+              await log(`🔑 "${text}" → II1a kodu: '${ocInfo.II1aCode}' (onclick'ten)`);
+              if (await callII1aDirect(doc, ocInfo.II1aCode)) {
+                await sleep(800);
+                return true;
+              }
+              await log(`⚠ II1a doğrudan başarısız, DOM click'e geçiliyor`);
+            } else if (ocInfo) {
+              await log(`ℹ "${text}" onclick var ama II1a kodu çıkmadı: ${String(ocInfo.onclick).slice(0, 80)}`);
+            }
+
+            // Fallback: synthetic click
             await log(`🖱 "${text}" tıklanıyor (${el.tagName}${allowHidden && el.offsetParent === null ? ', hidden' : ''})`);
             const view = doc.defaultView || window;
             const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
@@ -488,8 +552,7 @@
                 }));
               } catch {}
             };
-            // Cascading menülerde flyout açık tutulsun: parent zincirinde mouseenter
-            // tetikle → CSS :hover state'leri yenilensin
+            // Parent zincirinde de mouseover (cascading menü açık kalsın)
             let p = el.parentElement;
             let depth = 0;
             while (p && depth < 4) {
@@ -504,7 +567,11 @@
             fire('mouseenter');
             fire('mousemove');
             await sleep(150);
+            // Hem element hem onclick handler'ı olan ata click et
             try { el.click(); } catch {}
+            if (ocInfo && ocInfo.handlerEl && ocInfo.handlerEl !== el) {
+              try { ocInfo.handlerEl.click(); } catch {}
+            }
             fire('mousedown');
             fire('mouseup');
             fire('click');
