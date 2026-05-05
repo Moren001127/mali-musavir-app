@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.12';
+          const AGENT_VER = '1.35.13';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1173,8 +1173,9 @@
       fwin.__morenGosterHooked = true;
       const origGoster = fwin.goster;
       try {
-        const src = origGoster.toString().slice(0, 3000);
-        await log(`🔍 goster() source: ${src.replace(/\s+/g, ' ').slice(0, 2500)}`);
+        const src = origGoster.toString();
+        try { console.log('[Moren] FULL goster() source:', src); } catch (e) {}
+        await log(`🔍 goster() source (uzunluk=${src.length}, FULL Console'da): ${src.slice(0, 200).replace(/\s+/g, ' ')}...`);
       } catch (e) {}
       fwin.goster = function(...args) {
         try { log(`🪝 goster(${args.map(a => JSON.stringify(a)).join(',').slice(0, 100)}) çağrıldı`).catch(() => {}); } catch (e) {}
@@ -1186,9 +1187,9 @@
       fwin.__morenGonderHooked = true;
       const origGonder = fwin.gonder;
       try {
-        // gonder fonksiyonunun source'unu log'la (ilk 800 char)
-        const src = origGonder.toString().slice(0, 3000);
-        await log(`🔍 gonder() source: ${src.replace(/\s+/g, ' ').slice(0, 2500)}`);
+        const src = origGonder.toString();
+        try { console.log('[Moren] FULL gonder() source:', src); } catch (e) {}
+        await log(`🔍 gonder() source (uzunluk=${src.length}, FULL Console'da): ${src.slice(0, 200).replace(/\s+/g, ' ')}...`);
       } catch (e) {}
       fwin.gonder = function(...args) {
         try {
