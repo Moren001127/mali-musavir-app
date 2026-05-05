@@ -442,6 +442,7 @@ export class LucaController {
         inserted: result.inserted,
         skipped: result.skipped,
         total: result.total,
+        meta: (result as any).meta,
       };
     } catch (e: any) {
       if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
