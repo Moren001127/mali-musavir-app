@@ -70,6 +70,7 @@ export default function MukellefDetayPage() {
     evrakTeslimGunu: '' as string | number,
     whatsappEvrakTalep: false,
     whatsappEvrakGeldi: false,
+    isEFaturaMukellefi: false,
     lucaSlug: '',
     mihsapId: '',
     mihsapDefterTuru: 'BILANCO',
@@ -95,6 +96,7 @@ export default function MukellefDetayPage() {
         evrakTeslimGunu: taxpayer.evrakTeslimGunu ?? '',
         whatsappEvrakTalep: taxpayer.whatsappEvrakTalep ?? false,
         whatsappEvrakGeldi: taxpayer.whatsappEvrakGeldi ?? false,
+        isEFaturaMukellefi: (taxpayer as any).isEFaturaMukellefi ?? false,
         lucaSlug: taxpayer.lucaSlug ?? '',
         mihsapId: taxpayer.mihsapId ?? '',
         mihsapDefterTuru: taxpayer.mihsapDefterTuru ?? 'BILANCO',
@@ -368,6 +370,18 @@ export default function MukellefDetayPage() {
                 <div>
                   <span className="text-sm font-medium text-gray-700">Evrak Geldi Mesajı Gönderilsin</span>
                   <p className="text-xs text-gray-500">Evraklar Geldi işaretlendiğinde onay mesajı gönderilir</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isEFaturaMukellefi}
+                  onChange={e => setForm(f => ({ ...f, isEFaturaMukellefi: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-[#d4b876] cursor-pointer"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">E-Fatura Mükellefi</span>
+                  <p className="text-xs text-gray-500">İşaretliyse Gelen/Giden E-Fatura sorgulanabilir; değilse Giden E-Arşiv aktif olur</p>
                 </div>
               </label>
             </div>

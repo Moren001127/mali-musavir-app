@@ -644,7 +644,8 @@ function EarsivPreviewModal({
       onClick={onClose}
     >
       <div
-        className="relative max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col"
+        className="relative w-full max-w-[900px] flex flex-col"
+        style={{ height: 'min(92vh, 1100px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Üst bar */}
