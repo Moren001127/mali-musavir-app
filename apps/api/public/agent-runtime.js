@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.34';
+          const AGENT_VER = '1.35.35';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -744,13 +744,68 @@
       //   e-Arşiv Alış Faturaları    → apy1000m24i11I
       //   e-Fatura Alış Faturaları   → apy1000m24i17I
       //   e-Fatura Satış Faturaları  → apy1000m24i18I
-      const ii1aId = {
-        EARSIV_SATIS: 'apy1000m24i10I',
-        EARSIV_ALIS: 'apy1000m24i11I',
-        EFATURA_ALIS: 'apy1000m24i17I',
-        EFATURA_SATIS: 'apy1000m24i18I',
-      }[job.tip];
-      if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip}`);
+      // Mükellef tipini tespit et: top-level menüde "İşletme Defteri" varsa işletme,
+      // "Muhasebe" varsa bilanço esası.
+      const detectMukellefTipi = () => {
+        for (const fname of ['frm2', 'frm3', 'frm4', 'frm5']) {
+          try {
+            const fr = getLucaFrame(fname);
+            if (!fr || !fr.contentDocument) continue;
+            const txt = (fr.contentDocument.body && fr.contentDocument.body.textContent) || '';
+            if (/İşletme\s+Defteri/i.test(txt) && !/Muhasebe\b/i.test(txt.slice(0, 500))) return 'isletme';
+            if (/Muhasebe/i.test(txt)) return 'bilanco';
+          } catch {}
+        }
+        // Tüm document'tan da tara
+        try {
+          const txt = document.body.textContent || '';
+          if (/İşletme\s+Defteri/i.test(txt)) return 'isletme';
+          if (/Muhasebe/i.test(txt)) return 'bilanco';
+        } catch {}
+        return 'bilanco'; // varsayılan
+      };
+
+      const II1A_CODES = {
+        bilanco: {
+          EARSIV_SATIS: 'apy1000m24i10I',
+          EARSIV_ALIS:  'apy1000m24i11I',
+          EFATURA_ALIS: 'apy1000m24i17I',
+          EFATURA_SATIS:'apy1000m24i18I',
+        },
+        // İşletme defteri için kullanıcının console'dan yakaladığı gerçek kodlar.
+        // e-Arşiv Alış doğrulandı (apy1000m15i9I), diğerleri menü sırasına göre tahmin.
+        isletme: {
+          EARSIV_SATIS: 'apy1000m15i8I',
+          EARSIV_ALIS:  'apy1000m15i9I',
+          EFATURA_ALIS: 'apy1000m15i14I',
+          EFATURA_SATIS:'apy1000m15i15I',
+        },
+      };
+
+      const mukellefTipi = detectMukellefTipi();
+      const ii1aId = II1A_CODES[mukellefTipi]?.[job.tip];
+      await log(`📊 Mükellef tipi: ${mukellefTipi.toUpperCase()} → II1a kodu: ${ii1aId}`);
+      if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip} (${mukellefTipi})`);
+
+      // ÖNCELİK 0: Eğer frm3'te zaten e-arşiv sayfası açıksa menü navigasyonunu ATLA.
+      // Kullanıcı Luca'yı bir kez manuel olarak e-Arşiv Alış sayfasında bıraksın yeter.
+      const sayfaAcikMi = () => {
+        try {
+          const f3 = getLucaFrame('frm3');
+          if (!f3 || !f3.contentDocument) return false;
+          return !!f3.contentDocument.getElementById('faturalari-getir-btn');
+        } catch { return false; }
+      };
+      if (sayfaAcikMi()) {
+        await log(`✅ Sayfa zaten açık (frm3'te faturalari-getir-btn var) — menü navigasyonu atlanıyor`);
+        // navigationDone bayrağı setlemiyoruz; aşağıdaki kod akışı devam etsin
+        // ama II1a/menü adımlarını skip et
+        await sleep(500);
+        // basariliAcildi'yi true yap ki menü blokları çalışmasın
+        var __navSkip = true;
+      } else {
+        var __navSkip = false;
+      }
 
       await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
       // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
