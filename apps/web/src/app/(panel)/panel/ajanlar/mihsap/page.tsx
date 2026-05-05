@@ -146,51 +146,51 @@ export default function MihsapAgentPage() {
     .filter(Boolean) as Taxpayer[];
 
   return (
-    <div className="space-y-5 max-w-7xl">
-      {/* HEADER */}
-      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <div>
-          <div className="flex items-center gap-2.5 mb-2">
+    <div className="space-y-3.5 max-w-7xl">
+      {/* HEADER + KPI tek satırda */}
+      <div className="flex items-end justify-between gap-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2.5 mb-1.5">
             <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
             <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
               <Sparkles size={10} className="inline mr-1" /> Claude Haiku 4.5 · Ajan
             </span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.1 }}>
             Mihsap Fatura İşleyici
           </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
             Bekleyen alış/satış faturalarını OCR ile okur, kodlarla karşılaştırır, karar verir
           </p>
         </div>
-        {calisiyor ? (
-          <span
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] text-[12.5px] font-bold"
-            style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
-          >
-            <Loader2 size={14} className="animate-spin" /> Runner Çalışıyor
-          </span>
-        ) : (
-          <span
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] text-[12.5px] font-bold"
-            style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
-          >
-            <CheckCircle2 size={14} /> Hazır
-          </span>
-        )}
-      </div>
-
-      {/* KPI KARTLARI */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-        <KpiMini label="Son 24s Onay" value={kpi.onay} color="#22c55e" icon="✓" />
-        <KpiMini label="Son 24s Atla" value={kpi.atla} color="#f59e0b" icon="↷" />
-        <KpiMini label="Son 24s Hata" value={kpi.hata} color="#ef4444" icon="✗" />
+        <div className="flex flex-col items-end gap-2">
+          {calisiyor ? (
+            <span
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[11.5px] font-bold"
+              style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e' }}
+            >
+              <Loader2 size={12} className="animate-spin" /> Runner Çalışıyor
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-[11.5px] font-bold"
+              style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.25)', color: '#d4b876' }}
+            >
+              <CheckCircle2 size={12} /> Hazır
+            </span>
+          )}
+          <div className="flex gap-2">
+            <KpiMini label="Onay" value={kpi.onay} color="#22c55e" icon="✓" />
+            <KpiMini label="Atla" value={kpi.atla} color="#f59e0b" icon="↷" />
+            <KpiMini label="Hata" value={kpi.hata} color="#ef4444" icon="✗" />
+          </div>
+        </div>
       </div>
 
       {/* KOMUT BARI */}
       <div
         className="rounded-xl border p-5"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+        style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(184,160,111,0.15)' }}
       >
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex-shrink-0">
@@ -598,20 +598,20 @@ export default function MihsapAgentPage() {
 function KpiMini({ label, value, color, icon }: { label: string; value: number; color: string; icon: string }) {
   return (
     <div
-      className="rounded-xl p-4 border flex items-center gap-4"
+      className="rounded-lg px-3 py-2.5 border flex items-center gap-3"
       style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold flex-shrink-0"
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0"
         style={{ background: color + '18', color }}
       >
         {icon}
       </div>
-      <div>
-        <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+      <div className="min-w-0 flex items-baseline gap-2">
+        <div className="text-[10px] uppercase font-semibold tracking-wider whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.45)' }}>
           {label}
         </div>
-        <div className="text-3xl font-bold tabular-nums leading-none mt-1" style={{ color }}>
+        <div className="text-lg font-bold tabular-nums leading-none" style={{ color }}>
           {value.toLocaleString('tr-TR')}
         </div>
       </div>

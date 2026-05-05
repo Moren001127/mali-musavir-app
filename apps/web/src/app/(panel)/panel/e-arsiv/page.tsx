@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -46,10 +46,9 @@ function isModeAllowedForTaxpayer(mode: Mode, t: Taxpayer): boolean {
 
 export default function EarsivPage() {
   const qc = useQueryClient();
-  // Sorgulama tipi (4 buton)
-  const [mode, setMode] = useState<Mode>('GELEN_EARSIV');
-  const tip: EarsivTip = MODE_INFO[mode].tip;
-  const belgeKaynak: BelgeKaynak = MODE_INFO[mode].belgeKaynak;
+  // Sorgulama tipleri — birden fazla seçilebilir (Gelen E-Arşiv + Gelen E-Fatura gibi)
+  const [modes, setModes] = useState<Set<Mode>>(new Set(['GELEN_EARSIV']));
+  const modeArr = useMemo(() => Array.from(modes), [modes]);
   // Multi-select: birden fazla mükellef seçilebilir
   const [taxpayerIds, setTaxpayerIds] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -76,29 +75,41 @@ export default function EarsivPage() {
     queryFn: () => api.get('/taxpayers').then((r) => r.data as Taxpayer[]),
   });
 
-  // E-arşiv fatura listesi
+  // E-arşiv fatura listesi — her seçili mod için ayrı sorgu, sonra birleştir
   const donem = `${year}-${String(month).padStart(2, '0')}`;
-  // Multi-select: backend tek taxpayerId beklediği için virgülle birleştirip gönderiyoruz
   const idsKey = [...taxpayerIds].sort().join(',');
-  const { data: listData, isLoading } = useQuery({
-    queryKey: ['earsiv-list', idsKey, donem, tip, belgeKaynak, search],
-    queryFn: () => earsivApi.list({
-      taxpayerId: idsKey || undefined,
-      donem,
-      tip,
-      belgeKaynak,
-      search: search || undefined,
-      pageSize: 500,
-    }),
-    enabled: taxpayerIds.size > 0,
+  const queries = useQueries({
+    queries: modeArr.map((m) => ({
+      queryKey: ['earsiv-list', idsKey, donem, MODE_INFO[m].tip, MODE_INFO[m].belgeKaynak, search],
+      queryFn: () => earsivApi.list({
+        taxpayerId: idsKey || undefined,
+        donem,
+        tip: MODE_INFO[m].tip,
+        belgeKaynak: MODE_INFO[m].belgeKaynak,
+        search: search || undefined,
+        pageSize: 500,
+      }),
+      enabled: taxpayerIds.size > 0,
+    })),
   });
-  const rows = listData?.rows ?? [];
+  const isLoading = queries.some((q: any) => q.isLoading);
+  // Mod bazında satırlar (mode tag ekleyerek)
+  const rowsPerMode = useMemo(() => modeArr.map((m, i) => ({
+    mode: m,
+    rows: ((queries[i]?.data as any)?.rows ?? []) as EarsivFatura[],
+  })), [modeArr, queries.map((q) => q.data).join('|')]);  // eslint-disable-line react-hooks/exhaustive-deps
+  // Birleşik satır listesi (her satıra hangi mod'tan geldiği eklenir)
+  const rows = useMemo(() => rowsPerMode.flatMap(({ mode: m, rows: rs }) =>
+    rs.map((r) => ({ ...r, _mode: m } as EarsivFatura & { _mode: Mode }))
+  ), [rowsPerMode]);
 
-  // Luca'dan Çek — mode'a göre tip+belgeKaynak; multi-select mükellef veya tümü
+  // Luca'dan Çek — her (mükellef × seçili mode) kombinasyonu için ayrı job
   const lucaMut = useMutation({
     mutationFn: async () => {
-      // Hedef mükellefler: tümü (mod filtreliyle) veya seçili Set
-      const uygunMukellefler = taxpayers.filter((t) => isModeAllowedForTaxpayer(mode, t));
+      if (modes.size === 0) throw new Error('En az bir sorgulama tipi seç (Gelen E-Arşiv, Giden E-Arşiv vb.)');
+      // Mukellef listesi: her bir seçili moda uygun olanların union'u
+      const isAllowedForAny = (t: Taxpayer) => modeArr.some((m) => isModeAllowedForTaxpayer(m, t));
+      const uygunMukellefler = taxpayers.filter(isAllowedForAny);
       const hedefMukellefler = tumMukellefler
         ? uygunMukellefler
         : taxpayers.filter((t) => taxpayerIds.has(t.id));
@@ -106,20 +117,26 @@ export default function EarsivPage() {
         throw new Error('Mükellef seçmedin — ya mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
       const jobIds: string[] = [];
+      let toplamJob = 0;
       for (const mk of hedefMukellefler) {
-        try {
-          const r = await earsivApi.fetchFromLuca({
-            mukellefId: mk.id,
-            donem,
-            tip,
-            belgeKaynak,
-          });
-          jobIds.push(r.jobId);
-        } catch (e) {
-          // tek tek başarısızlıkları görmezden gel
+        for (const m of modeArr) {
+          // Sadece bu mode için uygun olan mükellefler için job aç
+          if (!isModeAllowedForTaxpayer(m, mk)) continue;
+          toplamJob++;
+          try {
+            const r = await earsivApi.fetchFromLuca({
+              mukellefId: mk.id,
+              donem,
+              tip: MODE_INFO[m].tip,
+              belgeKaynak: MODE_INFO[m].belgeKaynak,
+            });
+            jobIds.push(r.jobId);
+          } catch (e) {
+            // tek tek başarısızlıkları görmezden gel
+          }
         }
       }
-      return { jobIds, mukellefSayisi: hedefMukellefler.length };
+      return { jobIds, mukellefSayisi: hedefMukellefler.length, toplamJob };
     },
     onSuccess: (d) => {
       if (d.jobIds.length === 0) {
@@ -226,10 +243,10 @@ export default function EarsivPage() {
     else setSelected(new Set(rows.map((r) => r.id)));
   };
 
-  // Mükellef filtresi: önce mode kuralına göre uygun olanlar, sonra arama metni
+  // Mükellef filtresi: seçili modlardan EN AZ BİRİNE uygun olanlar (union)
   const uygunMukellefler = useMemo(
-    () => taxpayers.filter((t) => isModeAllowedForTaxpayer(mode, t)),
-    [taxpayers, mode],
+    () => taxpayers.filter((t) => modeArr.some((m) => isModeAllowedForTaxpayer(m, t))),
+    [taxpayers, modeArr],
   );
   const filteredTp = useMemo(
     () => uygunMukellefler.filter((t) => taxpayerName(t).toLowerCase().includes(pickerSearch.toLowerCase())),
@@ -240,15 +257,20 @@ export default function EarsivPage() {
     [taxpayers, taxpayerIds],
   );
 
-  const totals = useMemo(() => {
-    let m = 0, k = 0, t = 0;
-    rows.forEach((r) => {
-      m += parseFloat(String(r.matrah ?? 0)) || 0;
+  // Mod başına totaller (her bir Mode için ayrı toplam) + grand total
+  const totalsPerMode = useMemo(() => rowsPerMode.map(({ mode: m, rows: rs }) => {
+    let mat = 0, k = 0, t = 0;
+    rs.forEach((r: any) => {
+      mat += parseFloat(String(r.matrah ?? 0)) || 0;
       k += parseFloat(String(r.kdvTutari ?? 0)) || 0;
       t += parseFloat(String(r.toplamTutar ?? 0)) || 0;
     });
-    return { matrah: m, kdv: k, toplam: t };
-  }, [rows]);
+    return { mode: m, matrah: mat, kdv: k, toplam: t, count: rs.length };
+  }), [rowsPerMode]);
+  const totals = useMemo(() => totalsPerMode.reduce(
+    (acc, x) => ({ matrah: acc.matrah + x.matrah, kdv: acc.kdv + x.kdv, toplam: acc.toplam + x.toplam, count: acc.count + x.count }),
+    { matrah: 0, kdv: 0, toplam: 0, count: 0 },
+  ), [totalsPerMode]);
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -260,35 +282,45 @@ export default function EarsivPage() {
           </span>
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          {MODE_INFO[mode].title}
+          {modes.size === 1 ? MODE_INFO[modeArr[0]].title : modes.size === 0 ? 'E-Fatura / E-Arşiv Sorgulama' : `Çoklu Sorgulama (${modes.size} tip)`}
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          {MODE_INFO[mode].desc}
+          {modes.size === 1 ? MODE_INFO[modeArr[0]].desc : 'Birden fazla sorgulama tipi seçili. Listede her satırın yanında tipi rozet olarak görünür.'}
         </p>
       </div>
 
-      {/* 4-Tip Sorgulama Seçici — modu değiştirir, mükellef seçimi sıfırlanır */}
+      {/* 4-Tip Sorgulama Seçici — ÇOKLU SEÇİM (toggle) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {(Object.keys(MODE_INFO) as Mode[]).map((m) => {
-          const aktif = mode === m;
+          const aktif = modes.has(m);
           return (
             <button
               key={m}
               onClick={() => {
-                if (m === mode) return;
-                setMode(m);
-                // Mükellef seçimini sıfırla — mod değişince filtrelenmeyen mükellef seçimi kalmasın
+                setModes((s) => {
+                  const ns = new Set(s);
+                  if (ns.has(m)) {
+                    if (ns.size > 1) ns.delete(m); // en az 1 mod seçili kalsın
+                  } else {
+                    ns.add(m);
+                  }
+                  return ns;
+                });
+                // Mükellef seçimini sıfırla — mod kombinasyonu değişince uygunluk değişebilir
                 setTaxpayerIds(new Set());
                 setTumMukellefler(false);
                 setSelected(new Set());
               }}
-              className="px-3 py-2.5 rounded-md text-sm font-medium text-center transition-colors"
+              className="px-3 py-2.5 rounded-md text-sm font-medium text-center transition-colors flex items-center justify-center gap-1.5"
               style={{
                 background: aktif ? GOLD : 'rgba(255,255,255,0.04)',
                 color: aktif ? '#1a1a18' : 'rgba(250,250,249,0.75)',
                 border: `1px solid ${aktif ? GOLD : 'rgba(255,255,255,0.08)'}`,
               }}
+              title={aktif ? 'Tıklayarak kapat' : 'Tıklayarak aç'}
             >
+              {aktif && <CheckSquare size={12} />}
+              {!aktif && <Square size={12} style={{ color: 'rgba(250,250,249,0.4)' }} />}
               {MODE_INFO[m].label}
             </button>
           );
@@ -314,11 +346,11 @@ export default function EarsivPage() {
             }}
             style={{ accentColor: '#d4b876' }}
           />
-          Tüm {MODE_INFO[mode].label.includes('E-Fatura') ? 'E-Fatura Mükellefleri' : MODE_INFO[mode].label.includes('Giden') ? 'E-Arşiv Mükellefleri' : 'Mükellefler'} ({uygunMukellefler.length})
+          Tüm Uygun Mükellefler ({uygunMukellefler.length})
         </label>
         {tumMukellefler && (
           <span className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            · Tek "Luca'dan Çek" tıklaması ile {uygunMukellefler.length} mükellefin {MODE_INFO[mode].label.toLowerCase()} kayıtları çekilecek
+            · Tek "Luca'dan Çek" tıklaması ile {uygunMukellefler.length} mükellef × {modes.size} sorgu tipi (uyumlu kombinasyonlar) işleme alınacak
           </span>
         )}
         {!tumMukellefler && taxpayerIds.size > 0 && (
@@ -478,21 +510,69 @@ export default function EarsivPage() {
         </div>
       )}
 
-      {/* Özet */}
+      {/* Özet — mod başına ayrı + grand total */}
       {rows.length > 0 && (
-        <div className="rounded-lg p-3 grid grid-cols-3 gap-3 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div>
-            <div className="text-[10px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.5)' }}>Matrah</div>
-            <div style={{ color: GOLD, fontSize: 18, fontWeight: 600 }}>{fmtTRY(totals.matrah)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.5)' }}>KDV</div>
-            <div style={{ color: '#fafaf9', fontSize: 18, fontWeight: 600 }}>{fmtTRY(totals.kdv)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.5)' }}>Toplam</div>
-            <div style={{ color: '#fafaf9', fontSize: 18, fontWeight: 600 }}>{fmtTRY(totals.toplam)}</div>
-          </div>
+        <div className="space-y-2">
+          {/* Mod başına satır (tek mod seçiliyse 1 satır, çokluda her biri) */}
+          {totalsPerMode.filter((x) => x.count > 0).map((x) => (
+            <div
+              key={x.mode}
+              className="rounded-lg p-3 grid grid-cols-[160px_1fr_1fr_1fr_80px] gap-3 items-center"
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <div className="text-[12px] font-semibold flex items-center gap-1.5" style={{ color: '#fafaf9' }}>
+                <span
+                  className="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold"
+                  style={{
+                    background: MODE_INFO[x.mode].tip === 'SATIS' ? 'rgba(34,197,94,.15)' : 'rgba(59,130,246,.15)',
+                    color: MODE_INFO[x.mode].tip === 'SATIS' ? '#4ade80' : '#60a5fa',
+                  }}
+                >
+                  {MODE_INFO[x.mode].tip === 'SATIS' ? 'GİDEN' : 'GELEN'}
+                </span>
+                {MODE_INFO[x.mode].belgeKaynak === 'EFATURA' ? 'E-Fatura' : 'E-Arşiv'}
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Matrah</div>
+                <div style={{ color: GOLD, fontSize: 14, fontWeight: 600 }}>{fmtTRY(x.matrah)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.45)' }}>KDV</div>
+                <div style={{ color: '#fafaf9', fontSize: 14, fontWeight: 600 }}>{fmtTRY(x.kdv)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Toplam</div>
+                <div style={{ color: '#fafaf9', fontSize: 14, fontWeight: 600 }}>{fmtTRY(x.toplam)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-[9px] uppercase tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Adet</div>
+                <div style={{ color: '#fafaf9', fontSize: 14, fontWeight: 600 }}>{x.count}</div>
+              </div>
+            </div>
+          ))}
+          {/* Grand total — sadece 2+ mod varsa göster */}
+          {totalsPerMode.filter((x) => x.count > 0).length > 1 && (
+            <div
+              className="rounded-lg p-3 grid grid-cols-[160px_1fr_1fr_1fr_80px] gap-3 items-center"
+              style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.3)' }}
+            >
+              <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+                GENEL TOPLAM
+              </div>
+              <div className="text-right">
+                <div style={{ color: GOLD, fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.matrah)}</div>
+              </div>
+              <div className="text-right">
+                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.kdv)}</div>
+              </div>
+              <div className="text-right">
+                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.toplam)}</div>
+              </div>
+              <div className="text-right">
+                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{totals.count}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -634,7 +714,7 @@ export default function EarsivPage() {
               {filteredTp.length === 0 && (
                 <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   {uygunMukellefler.length === 0
-                    ? `Bu sorgulama tipine uygun mükellef yok (${MODE_INFO[mode].label} → ${mode === 'GIDEN_EARSIV' ? 'e-fatura mükellefi olmayan' : 'e-fatura mükellefi olan'} mükellef gerekli)`
+                    ? `Seçili sorgulama tiplerine uygun mükellef yok (${modeArr.map((m) => MODE_INFO[m].label).join(' / ')})`
                     : 'Aradığın mükellef bulunamadı'}
                 </div>
               )}
