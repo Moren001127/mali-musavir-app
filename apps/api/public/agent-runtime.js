@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.4';
+          const AGENT_VER = '1.35.5';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -770,8 +770,115 @@
           origXHRSend: w.XMLHttpRequest && w.XMLHttpRequest.prototype.send,
           origWindowOpen: w.open,
           origCreateElement: w.document && w.document.createElement,
+          origFormSubmit: w.HTMLFormElement && w.HTMLFormElement.prototype.submit,
         };
         hookedFrames.push(orig);
+
+        // Form submit hijack
+        if (orig.origFormSubmit && orig.origFetch) {
+          w.HTMLFormElement.prototype.submit = function() {
+            try {
+              var action = String(this.action || '').toLowerCase();
+              if (action && (action.indexOf('zip') >= 0 || action.indexOf('indir') >= 0 || action.indexOf('download') >= 0)) {
+                zipNetworkInFlight = true;
+                var fd = new FormData(this);
+                var method = (this.method || 'POST').toUpperCase();
+                var actionUrl = this.action;
+                (async function() {
+                  try {
+                    var res;
+                    if (method === 'GET') {
+                      var params = new URLSearchParams();
+                      for (var entry of fd.entries()) params.append(entry[0], entry[1].toString());
+                      res = await orig.origFetch.call(w, actionUrl + (actionUrl.indexOf('?') >= 0 ? '&' : '?') + params.toString(), { credentials: 'include' });
+                    } else {
+                      res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
+                    }
+                    var blob = await res.blob();
+                    if (blob && blob.size > 100 && !yakalanmisZip) {
+                      yakalanmisZip = blob;
+                      log('📥 ZIP yakalandi (form.submit hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
+                    }
+                  } catch (e) {}
+                })();
+                return;
+              }
+            } catch (e) {}
+            return orig.origFormSubmit.call(this);
+          };
+        }
+
+        // submit event capture
+        try {
+          w.document.addEventListener('submit', function(ev) {
+            try {
+              var f = ev.target;
+              if (!f || !f.action) return;
+              var action = String(f.action || '').toLowerCase();
+              if (action.indexOf('zip') < 0 && action.indexOf('indir') < 0 && action.indexOf('download') < 0) return;
+              zipNetworkInFlight = true;
+              ev.preventDefault();
+              ev.stopPropagation();
+              var fd = new FormData(f);
+              var method = (f.method || 'POST').toUpperCase();
+              var actionUrl = f.action;
+              (async function() {
+                try {
+                  var res;
+                  if (method === 'GET') {
+                    var params = new URLSearchParams();
+                    for (var entry of fd.entries()) params.append(entry[0], entry[1].toString());
+                    res = await orig.origFetch.call(w, actionUrl + (actionUrl.indexOf('?') >= 0 ? '&' : '?') + params.toString(), { credentials: 'include' });
+                  } else {
+                    res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
+                  }
+                  var blob = await res.blob();
+                  if (blob && blob.size > 100 && !yakalanmisZip) {
+                    yakalanmisZip = blob;
+                    log('📥 ZIP yakalandi (submit event, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
+                  }
+                } catch (e) {}
+              })();
+            } catch (e) {}
+          }, true);
+        } catch (e) {}
+
+        // iframe src setter hijack
+        try {
+          var iframeProto = w.HTMLIFrameElement && w.HTMLIFrameElement.prototype;
+          if (iframeProto && !iframeProto.__morenSrcHooked) {
+            var desc = Object.getOwnPropertyDescriptor(iframeProto, 'src');
+            if (desc && desc.set) {
+              iframeProto.__morenSrcHooked = true;
+              var origSet = desc.set;
+              Object.defineProperty(iframeProto, 'src', {
+                configurable: desc.configurable,
+                enumerable: desc.enumerable,
+                get: desc.get,
+                set: function(value) {
+                  try {
+                    var u = String(value || '').toLowerCase();
+                    if (u && (u.indexOf('zip') >= 0 || u.indexOf('indir') >= 0 || u.indexOf('download') >= 0)) {
+                      zipNetworkInFlight = true;
+                      (async function() {
+                        try {
+                          var absUrl = new URL(value, w.location.href).toString();
+                          var res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
+                          var blob = await res.blob();
+                          if (blob && blob.size > 100 && !yakalanmisZip) {
+                            yakalanmisZip = blob;
+                            log('📥 ZIP yakalandi (iframe src hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
+                          }
+                        } catch (e) {}
+                      })();
+                    }
+                  } catch (e) {}
+                  return origSet.call(this, value);
+                },
+              });
+            }
+          }
+        } catch (e) {}
 
         // fetch
         if (orig.origFetch) {
@@ -1170,6 +1277,7 @@
         if (h.origXHRSend) h.win.XMLHttpRequest.prototype.send = h.origXHRSend;
         if (h.origWindowOpen) h.win.open = h.origWindowOpen;
         if (h.origCreateElement) h.win.document.createElement = h.origCreateElement;
+        if (h.origFormSubmit) h.win.HTMLFormElement.prototype.submit = h.origFormSubmit;
       } catch {}
     }
 
