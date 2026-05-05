@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.28';
+          const AGENT_VER = '1.35.29';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -464,45 +464,68 @@
       return docs;
     };
 
-    const start = Date.now();
-    while (Date.now() - start < maxMs) {
+    const tryOnce = async (allowHidden) => {
       for (const doc of collectAllDocs()) {
         try {
-          // Sadece text içeren küçük element'leri (< 4 child) tara
           for (const el of doc.querySelectorAll('a, span, div, td, li, p, button, label')) {
-            // Görünür mü? (offsetParent null = display:none / hidden)
-            if (el.offsetParent === null && el.tagName !== 'A') continue;
+            // Görünürlük kontrolü — cascading hover menülerinde offsetParent null olabilir.
+            // İlk tur sadece görünür, ikinci tur hidden'a da izin (DOM click hidden'da da çalışır).
+            if (!allowHidden && el.offsetParent === null && el.tagName !== 'A') continue;
             const t = norm(el.textContent || '');
             if (!t) continue;
             const match = exact ? (t === target) : (t === target || t.includes(target));
-            if (match) {
-              await log(`🖱 "${text}" tıklanıyor (${el.tagName})`);
-              const view = doc.defaultView || window;
-              const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-              const x = rect ? (rect.left + rect.width / 2) : 0;
-              const y = rect ? (rect.top + rect.height / 2) : 0;
-              const fire = (type) => {
-                try {
-                  el.dispatchEvent(new MouseEvent(type, {
-                    bubbles: true, cancelable: true, view,
-                    clientX: x, clientY: y, button: 0,
-                  }));
-                } catch {}
-              };
-              // Hover + click kombini (Luca menüleri bazen mouseover bekler)
-              fire('mouseover');
-              fire('mouseenter');
-              fire('mousemove');
-              await sleep(150);
-              try { el.click(); } catch {}
-              fire('mousedown');
-              fire('mouseup');
-              fire('click');
-              await sleep(1000);
-              return true;
+            if (!match) continue;
+            await log(`🖱 "${text}" tıklanıyor (${el.tagName}${allowHidden && el.offsetParent === null ? ', hidden' : ''})`);
+            const view = doc.defaultView || window;
+            const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+            const x = rect ? (rect.left + rect.width / 2) : 0;
+            const y = rect ? (rect.top + rect.height / 2) : 0;
+            const fire = (type, on = el) => {
+              try {
+                on.dispatchEvent(new MouseEvent(type, {
+                  bubbles: true, cancelable: true, view,
+                  clientX: x, clientY: y, button: 0,
+                }));
+              } catch {}
+            };
+            // Cascading menülerde flyout açık tutulsun: parent zincirinde mouseenter
+            // tetikle → CSS :hover state'leri yenilensin
+            let p = el.parentElement;
+            let depth = 0;
+            while (p && depth < 4) {
+              try {
+                p.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, cancelable: true, view }));
+                p.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view }));
+              } catch {}
+              p = p.parentElement;
+              depth++;
             }
+            fire('mouseover');
+            fire('mouseenter');
+            fire('mousemove');
+            await sleep(150);
+            try { el.click(); } catch {}
+            fire('mousedown');
+            fire('mouseup');
+            fire('click');
+            await sleep(1000);
+            return true;
           }
         } catch {}
+      }
+      return false;
+    };
+
+    const start = Date.now();
+    let triedHidden = false;
+    while (Date.now() - start < maxMs) {
+      // İlk %60 zaman: sadece görünür elementler — yanlış match riski azalır
+      if (await tryOnce(false)) return true;
+      // Son %40: hidden elementlere de izin (cascading menüler için)
+      if (Date.now() - start > maxMs * 0.6) {
+        if (!triedHidden) await log(`ℹ "${text}" görünür bulunamadı, hidden elementler de aranıyor…`);
+        triedHidden = true;
+        if (await tryOnce(true)) return true;
       }
       await sleep(400);
     }
