@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.15';
+          const AGENT_VER = '1.35.16';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -347,7 +347,17 @@
             const errText = await uploadRes.text().catch(() => '');
             throw new Error(`Upload HTTP ${uploadRes.status}: ${errText.slice(0, 120)}`);
           }
-          await log(`✅ ${job.tip} backend'e yüklendi`);
+          // Backend cevabını log'la — kaç fatura parse edildi göreceğiz
+          let respDetail = '';
+          try {
+            const r = await uploadRes.clone().json();
+            if (typeof r.inserted === 'number' || typeof r.total === 'number') {
+              respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, skipped=${r.skipped != null ? r.skipped : '?'})`;
+            } else {
+              respDetail = ` (resp=${JSON.stringify(r).slice(0, 200)})`;
+            }
+          } catch (e) {}
+          await log(`✅ ${job.tip} backend'e yüklendi${respDetail}`);
 
           // Done sinyali — backend job'u kapatsın (upload endpoint'i kendi içinde
           // yapmıyorsa explicit done çağrısı gerekir)
