@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.7';
+          const AGENT_VER = '1.35.8';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1139,13 +1139,27 @@
     // ─── gonder() WRAPPER ───
     // Luca popup butonu tıklanınca fwin.gonder('zip') çağırıyor. Wrap ederek
     // hem source code'unu görelim hem de URL'i kendimiz fetch'leyelim.
+    // ─── goster() WRAPPER ─── (gonder'dan SONRA çağrılıyor, asıl download burada olabilir)
+    if (typeof fwin.goster === 'function' && !fwin.__morenGosterHooked) {
+      fwin.__morenGosterHooked = true;
+      const origGoster = fwin.goster;
+      try {
+        const src = origGoster.toString().slice(0, 3000);
+        await log(`🔍 goster() source: ${src.replace(/\s+/g, ' ').slice(0, 2500)}`);
+      } catch (e) {}
+      fwin.goster = function(...args) {
+        try { log(`🪝 goster(${args.map(a => JSON.stringify(a)).join(',').slice(0, 100)}) çağrıldı`).catch(() => {}); } catch (e) {}
+        return origGoster.apply(this, args);
+      };
+    }
+
     if (typeof fwin.gonder === 'function' && !fwin.__morenGonderHooked) {
       fwin.__morenGonderHooked = true;
       const origGonder = fwin.gonder;
       try {
         // gonder fonksiyonunun source'unu log'la (ilk 800 char)
-        const src = origGonder.toString().slice(0, 800);
-        await log(`🔍 gonder() source: ${src.replace(/\s+/g, ' ').slice(0, 500)}`);
+        const src = origGonder.toString().slice(0, 3000);
+        await log(`🔍 gonder() source: ${src.replace(/\s+/g, ' ').slice(0, 2500)}`);
       } catch (e) {}
       fwin.gonder = function(...args) {
         try {
@@ -1213,6 +1227,64 @@
 
     // Popup açılma animasyonunu bekle
     await sleep(1500);
+
+    // location.href / location.assign / location.replace hook (Luca direct nav ile download yapıyorsa)
+    try {
+      for (const w of [window, fwin, window.top]) {
+        if (!w || w.__morenLocHooked) continue;
+        try {
+          w.__morenLocHooked = true;
+          const origAssign = w.location.assign && w.location.assign.bind(w.location);
+          const origReplace = w.location.replace && w.location.replace.bind(w.location);
+          if (origAssign) {
+            w.location.assign = function(url) {
+              try {
+                const u = String(url || '').toLowerCase();
+                if (u.includes('zip') || u.includes('indir') || u.includes('download')) {
+                  zipNetworkInFlight = true;
+                  log(`🪝 location.assign(${String(url).slice(0,80)})`).catch(() => {});
+                  (async () => {
+                    try {
+                      const r = await fetch(url, { credentials: 'include' });
+                      const blob = await r.blob();
+                      if (blob && blob.size > 100 && !yakalanmisZip) {
+                        yakalanmisZip = blob;
+                        log(`📥 ZIP yakalandı (location.assign hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                      }
+                    } catch (e) {}
+                  })();
+                  return; // navigate etmeyelim
+                }
+              } catch (e) {}
+              return origAssign(url);
+            };
+          }
+          if (origReplace) {
+            w.location.replace = function(url) {
+              try {
+                const u = String(url || '').toLowerCase();
+                if (u.includes('zip') || u.includes('indir') || u.includes('download')) {
+                  zipNetworkInFlight = true;
+                  log(`🪝 location.replace(${String(url).slice(0,80)})`).catch(() => {});
+                  (async () => {
+                    try {
+                      const r = await fetch(url, { credentials: 'include' });
+                      const blob = await r.blob();
+                      if (blob && blob.size > 100 && !yakalanmisZip) {
+                        yakalanmisZip = blob;
+                        log(`📥 ZIP yakalandı (location.replace hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                      }
+                    } catch (e) {}
+                  })();
+                  return;
+                }
+              } catch (e) {}
+              return origReplace(url);
+            };
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
 
     // Tüm doc'ları topla (frame'ler dahil)
     const collectAllDocsForPopup = () => {
