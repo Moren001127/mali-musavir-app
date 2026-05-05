@@ -115,6 +115,18 @@ export class EarsivZipParserService {
           this.logger.warn(`XML parse: root tag bulunamadı (${xml.name}, top-keys=${topKeys}, başı: ${xml.content.slice(0, 200).replace(/\s+/g, ' ')})`);
         }
       } catch (e: any) {
+        // parseUblInvoice patladı — regex fallback DENE, kayıt kaybolmasın
+        try {
+          const fb = this.regexFallback(xml.content);
+          if (fb) {
+            fb.zipFileName = xml.name;
+            const stem = xml.name.replace(/\.[^.]+$/, '');
+            fb.pdfBuffer = pdfFiles.get(stem);
+            results.push(fb);
+            parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},err=${e.message?.slice(0, 30)})`);
+            continue;
+          }
+        } catch (e2: any) {}
         parseDiagnostics.push(`${xml.name}:ERR(${e.message?.slice(0, 50)})`);
         this.logger.warn(`XML parse hata (${xml.name}): ${e.message}`);
       }
@@ -237,14 +249,21 @@ export class EarsivZipParserService {
 
     const txt = (v: any): string | undefined => {
       if (v == null) return undefined;
-      if (typeof v === 'string' || typeof v === 'number') return String(v);
-      if (typeof v === 'object') return v['#text'] || v['_'] || undefined;
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number') return String(v);
+      if (Array.isArray(v)) return txt(v[0]); // ilk elemanı dene
+      if (typeof v === 'object') {
+        const t = v['#text'] ?? v['_'];
+        if (typeof t === 'string') return t;
+        if (typeof t === 'number') return String(t);
+        return undefined;
+      }
       return undefined;
     };
 
     const num = (v: any): number | undefined => {
       const s = txt(v);
-      if (!s) return undefined;
+      if (typeof s !== 'string') return undefined; // ← KRİTİK GUARD
       const n = parseFloat(s.replace(',', '.'));
       return isFinite(n) ? n : undefined;
     };
