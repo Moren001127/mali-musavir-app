@@ -31,28 +31,61 @@ export class EarsivZipParserService {
    * Örnek: GIB202612345.xml, GIB202612345.pdf
    */
   async parseZip(buf: Buffer): Promise<ParsedEarsivFatura[]> {
-    const zip = await JSZip.loadAsync(buf);
     const results: ParsedEarsivFatura[] = [];
 
-    // Tüm XML dosyalarını bul (alt klasörler dahil)
     const xmlFiles: { name: string; content: string }[] = [];
-    const pdfFiles = new Map<string, Buffer>(); // baseName -> pdf buffer
+    const pdfFiles = new Map<string, Buffer>();
+    const allEntries: string[] = [];
 
-    for (const [path, file] of Object.entries(zip.files)) {
-      if ((file as any).dir) continue;
-      const lower = path.toLowerCase();
-      const baseName = path.split('/').pop() || path;
-      const stem = baseName.replace(/\.[^.]+$/, '');
-      if (lower.endsWith('.xml')) {
-        const content = await (file as any).async('text');
-        xmlFiles.push({ name: baseName, content });
-      } else if (lower.endsWith('.pdf')) {
-        const buf = await (file as any).async('nodebuffer');
-        pdfFiles.set(stem, buf);
+    // Recursive: ZIP içindeki ZIP'leri de aç
+    const processZipBuffer = async (zipBuf: Buffer, prefix = ''): Promise<void> => {
+      let zip;
+      try {
+        zip = await JSZip.loadAsync(zipBuf);
+      } catch (e: any) {
+        this.logger.warn(`ZIP açma hatası (${prefix}): ${e.message}`);
+        return;
       }
-    }
 
-    this.logger.log(`ZIP içeriği: ${xmlFiles.length} XML, ${pdfFiles.size} PDF`);
+      for (const [path, file] of Object.entries(zip.files)) {
+        if ((file as any).dir) continue;
+        const fullPath = prefix ? `${prefix}/${path}` : path;
+        const lower = path.toLowerCase();
+        const baseName = path.split('/').pop() || path;
+        const stem = baseName.replace(/\.[^.]+$/, '');
+        allEntries.push(`${fullPath} (${(file as any)._data?.uncompressedSize || '?'}B)`);
+
+        if (lower.endsWith('.xml') || lower.endsWith('.ubl')) {
+          const content = await (file as any).async('text');
+          xmlFiles.push({ name: baseName, content });
+        } else if (lower.endsWith('.pdf')) {
+          const pdfBuf = await (file as any).async('nodebuffer');
+          pdfFiles.set(stem, pdfBuf);
+        } else if (lower.endsWith('.zip')) {
+          // Nested ZIP — recursively process
+          const nestedBuf = await (file as any).async('nodebuffer');
+          await processZipBuffer(nestedBuf, fullPath);
+        } else {
+          // Uzantısı belirsiz — XML olabilir mi kontrol et (ilk byte'lar)
+          try {
+            const content = await (file as any).async('text');
+            if (content.trim().startsWith('<?xml') || content.includes('<Invoice') || content.includes('<CreditNote')) {
+              xmlFiles.push({ name: baseName, content });
+              this.logger.log(`Uzantısız XML olarak yorumlandı: ${fullPath}`);
+            }
+          } catch {}
+        }
+      }
+    };
+
+    await processZipBuffer(buf);
+
+    this.logger.log(`ZIP toplam entry: ${allEntries.length}, XML: ${xmlFiles.length}, PDF: ${pdfFiles.size}`);
+    if (allEntries.length <= 20) {
+      this.logger.log(`ZIP içerik listesi: ${allEntries.join(' | ')}`);
+    } else {
+      this.logger.log(`ZIP içerik (ilk 20): ${allEntries.slice(0, 20).join(' | ')}`);
+    }
 
     for (const xml of xmlFiles) {
       try {
@@ -62,12 +95,15 @@ export class EarsivZipParserService {
           parsed.zipFileName = xml.name;
           parsed.pdfBuffer = pdfFiles.get(stem);
           results.push(parsed);
+        } else {
+          this.logger.warn(`XML parse: root tag bulunamadı (${xml.name}, ${xml.content.length} char, başı: ${xml.content.slice(0, 100)})`);
         }
       } catch (e: any) {
         this.logger.warn(`XML parse hata (${xml.name}): ${e.message}`);
       }
     }
 
+    this.logger.log(`Parse sonuç: ${results.length} fatura çıkarıldı (${xmlFiles.length} XML'den)`);
     return results;
   }
 
