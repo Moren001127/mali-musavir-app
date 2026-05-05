@@ -173,7 +173,12 @@ export class EarsivService {
   }) {
     const { tenantId, taxpayerId, donem, tip, belgeKaynak, search, page = 1, pageSize = 50 } = opts;
     const where: any = { tenantId };
-    if (taxpayerId) where.taxpayerId = taxpayerId;
+    if (taxpayerId) {
+      // Multi-select: virgülle ayrılmış birden fazla id gelebilir
+      const ids = String(taxpayerId).split(',').map((s) => s.trim()).filter(Boolean);
+      if (ids.length === 1) where.taxpayerId = ids[0];
+      else if (ids.length > 1) where.taxpayerId = { in: ids };
+    }
     if (donem) where.donem = donem;
     if (tip) where.tip = tip;
     if (belgeKaynak) where.belgeKaynak = belgeKaynak;

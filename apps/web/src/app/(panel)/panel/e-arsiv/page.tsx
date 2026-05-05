@@ -18,22 +18,45 @@ type Taxpayer = {
   lastName?: string | null;
   companyName?: string | null;
   taxNumber?: string | null;
+  isEFaturaMukellefi?: boolean;
 };
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
 
+// Sorgulama modu — 4 farklı tipin tip+belgeKaynak ve UI bilgileri
+type Mode = 'GELEN_EARSIV' | 'GIDEN_EARSIV' | 'GELEN_EFATURA' | 'GIDEN_EFATURA';
+const MODE_INFO: Record<Mode, { label: string; tip: EarsivTip; belgeKaynak: BelgeKaynak; title: string; desc: string }> = {
+  GELEN_EARSIV:  { label: 'Gelen E-Arşiv',  tip: 'ALIS',  belgeKaynak: 'EARSIV',  title: 'Gelen E-Arşiv Sorgulama',
+    desc: "Luca'dan mükellefin gelen (alış) e-arşiv faturalarını çek, listele, aç ve yazdır." },
+  GIDEN_EARSIV:  { label: 'Giden E-Arşiv',  tip: 'SATIS', belgeKaynak: 'EARSIV',  title: 'Giden E-Arşiv Sorgulama',
+    desc: "Mükellefin kestiği (satış) e-arşiv faturalarını çek — sadece e-fatura mükellefi olmayan mükellefler." },
+  GELEN_EFATURA: { label: 'Gelen E-Fatura', tip: 'ALIS',  belgeKaynak: 'EFATURA', title: 'Gelen E-Fatura Sorgulama',
+    desc: "Mükellefe gelen (alış) e-faturalar — sadece e-fatura mükellefi olan mükellefler." },
+  GIDEN_EFATURA: { label: 'Giden E-Fatura', tip: 'SATIS', belgeKaynak: 'EFATURA', title: 'Giden E-Fatura Sorgulama',
+    desc: "Mükellefin kestiği (satış) e-faturalar — sadece e-fatura mükellefi olan mükellefler." },
+};
+// Hangi modlarda hangi mükellefler uygun?
+function isModeAllowedForTaxpayer(mode: Mode, t: Taxpayer): boolean {
+  const isEF = !!t.isEFaturaMukellefi;
+  if (mode === 'GELEN_EARSIV') return true;       // herkes
+  if (mode === 'GIDEN_EARSIV') return !isEF;       // sadece e-fatura mükellefi olmayanlar
+  return isEF;                                     // gelen/giden e-fatura → sadece e-fatura mükellefleri
+}
+
 export default function EarsivPage() {
   const qc = useQueryClient();
-  const [taxpayerId, setTaxpayerId] = useState<string>('');
+  // Sorgulama tipi (4 buton)
+  const [mode, setMode] = useState<Mode>('GELEN_EARSIV');
+  const tip: EarsivTip = MODE_INFO[mode].tip;
+  const belgeKaynak: BelgeKaynak = MODE_INFO[mode].belgeKaynak;
+  // Multi-select: birden fazla mükellef seçilebilir
+  const [taxpayerIds, setTaxpayerIds] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const now = new Date();
   const [year, setYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
-  // Modül artık SADECE Gelen E-Arşiv (ALIS + EARSIV) — satış ve e-fatura kaldırıldı
-  const tip: EarsivTip = 'ALIS';
-  const belgeKaynak: BelgeKaynak = 'EARSIV';
   const [tumMukellefler, setTumMukellefler] = useState<boolean>(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -55,28 +78,32 @@ export default function EarsivPage() {
 
   // E-arşiv fatura listesi
   const donem = `${year}-${String(month).padStart(2, '0')}`;
+  // Multi-select: backend tek taxpayerId beklediği için virgülle birleştirip gönderiyoruz
+  const idsKey = [...taxpayerIds].sort().join(',');
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['earsiv-list', taxpayerId, donem, tip, belgeKaynak, search],
+    queryKey: ['earsiv-list', idsKey, donem, tip, belgeKaynak, search],
     queryFn: () => earsivApi.list({
-      taxpayerId: taxpayerId || undefined,
+      taxpayerId: idsKey || undefined,
       donem,
       tip,
       belgeKaynak,
       search: search || undefined,
-      pageSize: 200,
+      pageSize: 500,
     }),
-    enabled: !!taxpayerId,
+    enabled: taxpayerIds.size > 0,
   });
   const rows = listData?.rows ?? [];
 
-  // Luca'dan Çek — sadece Gelen E-Arşiv (ALIS+EARSIV). Tek mükellef ya da tümü.
+  // Luca'dan Çek — mode'a göre tip+belgeKaynak; multi-select mükellef veya tümü
   const lucaMut = useMutation({
     mutationFn: async () => {
+      // Hedef mükellefler: tümü (mod filtreliyle) veya seçili Set
+      const uygunMukellefler = taxpayers.filter((t) => isModeAllowedForTaxpayer(mode, t));
       const hedefMukellefler = tumMukellefler
-        ? taxpayers
-        : (selectedTp ? [selectedTp] : []);
+        ? uygunMukellefler
+        : taxpayers.filter((t) => taxpayerIds.has(t.id));
       if (hedefMukellefler.length === 0) {
-        throw new Error('Mükellef seçmedin — ya bir mükellef seç ya da "Tüm Mükellefler"i işaretle');
+        throw new Error('Mükellef seçmedin — ya mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
       const jobIds: string[] = [];
       for (const mk of hedefMukellefler) {
@@ -84,8 +111,8 @@ export default function EarsivPage() {
           const r = await earsivApi.fetchFromLuca({
             mukellefId: mk.id,
             donem,
-            tip,         // 'ALIS'
-            belgeKaynak, // 'EARSIV'
+            tip,
+            belgeKaynak,
           });
           jobIds.push(r.jobId);
         } catch (e) {
@@ -199,11 +226,19 @@ export default function EarsivPage() {
     else setSelected(new Set(rows.map((r) => r.id)));
   };
 
-  const filteredTp = useMemo(
-    () => taxpayers.filter((t) => taxpayerName(t).toLowerCase().includes(pickerSearch.toLowerCase())),
-    [taxpayers, pickerSearch],
+  // Mükellef filtresi: önce mode kuralına göre uygun olanlar, sonra arama metni
+  const uygunMukellefler = useMemo(
+    () => taxpayers.filter((t) => isModeAllowedForTaxpayer(mode, t)),
+    [taxpayers, mode],
   );
-  const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
+  const filteredTp = useMemo(
+    () => uygunMukellefler.filter((t) => taxpayerName(t).toLowerCase().includes(pickerSearch.toLowerCase())),
+    [uygunMukellefler, pickerSearch],
+  );
+  const selectedTpList = useMemo(
+    () => taxpayers.filter((t) => taxpayerIds.has(t.id)),
+    [taxpayers, taxpayerIds],
+  );
 
   const totals = useMemo(() => {
     let m = 0, k = 0, t = 0;
@@ -225,11 +260,39 @@ export default function EarsivPage() {
           </span>
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          Gelen E-Arşiv Sorgulama
+          {MODE_INFO[mode].title}
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          Luca'dan mükellefin gelen (alış) e-arşiv faturalarını çek, listele, aç ve yazdır.
+          {MODE_INFO[mode].desc}
         </p>
+      </div>
+
+      {/* 4-Tip Sorgulama Seçici — modu değiştirir, mükellef seçimi sıfırlanır */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {(Object.keys(MODE_INFO) as Mode[]).map((m) => {
+          const aktif = mode === m;
+          return (
+            <button
+              key={m}
+              onClick={() => {
+                if (m === mode) return;
+                setMode(m);
+                // Mükellef seçimini sıfırla — mod değişince filtrelenmeyen mükellef seçimi kalmasın
+                setTaxpayerIds(new Set());
+                setTumMukellefler(false);
+                setSelected(new Set());
+              }}
+              className="px-3 py-2.5 rounded-md text-sm font-medium text-center transition-colors"
+              style={{
+                background: aktif ? GOLD : 'rgba(255,255,255,0.04)',
+                color: aktif ? '#1a1a18' : 'rgba(250,250,249,0.75)',
+                border: `1px solid ${aktif ? GOLD : 'rgba(255,255,255,0.08)'}`,
+              }}
+            >
+              {MODE_INFO[m].label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tüm mükellefler toggle — toplu çekim için */}
@@ -245,14 +308,22 @@ export default function EarsivPage() {
           <input
             type="checkbox"
             checked={tumMukellefler}
-            onChange={(e) => setTumMukellefler(e.target.checked)}
+            onChange={(e) => {
+              setTumMukellefler(e.target.checked);
+              if (e.target.checked) setTaxpayerIds(new Set()); // tüm seçildiyse manuel seçimi sıfırla
+            }}
             style={{ accentColor: '#d4b876' }}
           />
-          Tüm Mükellefler ({taxpayers.length})
+          Tüm {MODE_INFO[mode].label.includes('E-Fatura') ? 'E-Fatura Mükellefleri' : MODE_INFO[mode].label.includes('Giden') ? 'E-Arşiv Mükellefleri' : 'Mükellefler'} ({uygunMukellefler.length})
         </label>
         {tumMukellefler && (
           <span className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            · Tek "Luca'dan Çek" tıklaması ile {taxpayers.length} mükellefin gelen e-arşivi çekilecek
+            · Tek "Luca'dan Çek" tıklaması ile {uygunMukellefler.length} mükellefin {MODE_INFO[mode].label.toLowerCase()} kayıtları çekilecek
+          </span>
+        )}
+        {!tumMukellefler && taxpayerIds.size > 0 && (
+          <span className="text-[11px] italic" style={{ color: GOLD }}>
+            · {taxpayerIds.size} mükellef seçildi
           </span>
         )}
       </div>
@@ -269,7 +340,11 @@ export default function EarsivPage() {
             className="w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
           >
-            <span>{selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}</span>
+            <span className="truncate">
+              {selectedTpList.length === 0 ? 'Mükellef seç… (birden fazla seçebilirsin)'
+                : selectedTpList.length === 1 ? taxpayerName(selectedTpList[0])
+                : `${selectedTpList.length} mükellef seçildi: ${selectedTpList.slice(0, 2).map(taxpayerName).join(', ')}${selectedTpList.length > 2 ? '…' : ''}`}
+            </span>
             <Search size={14} style={{ color: GOLD }} />
           </button>
         </div>
@@ -314,7 +389,7 @@ export default function EarsivPage() {
       {/* Aksiyonlar */}
       <div className="flex gap-3 flex-wrap items-center">
         <button
-          disabled={(!tumMukellefler && !taxpayerId) || lucaMut.isPending || !!lucaJobId}
+          disabled={(!tumMukellefler && taxpayerIds.size === 0) || lucaMut.isPending || !!lucaJobId}
           onClick={() => lucaMut.mutate()}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: GOLD, color: '#1a1a18', border: 0 }}
@@ -505,30 +580,63 @@ export default function EarsivPage() {
             <div className="p-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <input
                 autoFocus
-                placeholder="Mükellef ara…"
+                placeholder="Mükellef ara… (birden fazla seçebilirsin)"
                 value={pickerSearch}
                 onChange={(e) => setPickerSearch(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-md text-sm"
                 style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
               />
-              <button onClick={() => setPickerOpen(false)} className="p-1.5 rounded-md" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <X size={16} style={{ color: 'rgba(250,250,249,0.6)' }} />
+              <span className="text-xs" style={{ color: GOLD }}>{taxpayerIds.size} seçili</span>
+              {taxpayerIds.size > 0 && (
+                <button onClick={() => setTaxpayerIds(new Set())} className="px-2 py-1 rounded text-[11px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}>
+                  Temizle
+                </button>
+              )}
+              <button onClick={() => setPickerOpen(false)} className="px-3 py-1.5 rounded-md text-xs font-medium" style={{ background: GOLD, color: '#1a1a18' }}>
+                Tamam
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {filteredTp.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => { setTaxpayerId(t.id); setPickerOpen(false); setPickerSearch(''); setSelected(new Set()); }}
-                  className="w-full text-left px-3 py-2.5 text-sm flex items-center justify-between hover:bg-white/5"
-                  style={{ color: '#fafaf9', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                >
-                  <span>{taxpayerName(t)}</span>
-                  <span style={{ color: 'rgba(250,250,249,0.4)', fontSize: 11 }}>{t.taxNumber}</span>
-                </button>
-              ))}
+              {filteredTp.map((t) => {
+                const checked = taxpayerIds.has(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => {
+                      setTaxpayerIds((s) => {
+                        const ns = new Set(s);
+                        if (ns.has(t.id)) ns.delete(t.id); else ns.add(t.id);
+                        return ns;
+                      });
+                      setTumMukellefler(false);
+                      setSelected(new Set());
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-sm flex items-center justify-between hover:bg-white/5"
+                    style={{
+                      color: '#fafaf9',
+                      borderBottom: '1px solid rgba(255,255,255,0.04)',
+                      background: checked ? 'rgba(184,160,111,0.12)' : 'transparent',
+                    }}
+                  >
+                    <span className="flex items-center gap-2">
+                      {checked
+                        ? <CheckSquare size={14} style={{ color: GOLD }} />
+                        : <Square size={14} style={{ color: 'rgba(250,250,249,0.4)' }} />}
+                      {taxpayerName(t)}
+                      {t.isEFaturaMukellefi && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>e-Fatura</span>
+                      )}
+                    </span>
+                    <span style={{ color: 'rgba(250,250,249,0.4)', fontSize: 11 }}>{t.taxNumber}</span>
+                  </button>
+                );
+              })}
               {filteredTp.length === 0 && (
-                <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.4)' }}>Sonuç yok</div>
+                <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  {uygunMukellefler.length === 0
+                    ? `Bu sorgulama tipine uygun mükellef yok (${MODE_INFO[mode].label} → ${mode === 'GIDEN_EARSIV' ? 'e-fatura mükellefi olmayan' : 'e-fatura mükellefi olan'} mükellef gerekli)`
+                    : 'Aradığın mükellef bulunamadı'}
+                </div>
               )}
             </div>
           </div>
@@ -654,12 +762,22 @@ function EarsivPreviewModal({
           style={{ background: 'rgba(15,13,11,.95)', color: '#fff' }}
         >
           <div className="flex items-center gap-3 min-w-0">
-            <span
-              className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
-              style={{ background: 'rgba(59,130,246,.2)', color: '#60a5fa' }}
-            >
-              ALIŞ · E-ARŞİV
-            </span>
+            {(() => {
+              const tipTxt = (fatura as any).tip === 'SATIS' ? 'SATIŞ' : 'ALIŞ';
+              const kaynakTxt = (fatura as any).belgeKaynak === 'EFATURA' ? 'E-FATURA' : 'E-ARŞİV';
+              const isAlis = (fatura as any).tip !== 'SATIS';
+              return (
+                <span
+                  className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+                  style={{
+                    background: isAlis ? 'rgba(59,130,246,.2)' : 'rgba(34,197,94,.2)',
+                    color: isAlis ? '#60a5fa' : '#4ade80',
+                  }}
+                >
+                  {tipTxt} · {kaynakTxt}
+                </span>
+              );
+            })()}
             <div className="min-w-0">
               <div className="text-sm font-semibold truncate">{fatura.satici || '—'}</div>
               <div className="text-xs opacity-70">
