@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.24';
+          const AGENT_VER = '1.35.25';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -704,9 +704,27 @@
         }
       }
       if (!basariliAcildi) {
-        // Fallback: menüleri sırayla açıp elementi click et
+        // Fallback: menüleri sırayla açıp elementi click et.
+        // Bilanço esaslı mükellef → "Muhasebe", İşletme Defteri mükellefi → "İşletme Defteri"
+        // Hangisi varsa onu tıkla; her ikisini sırayla dene (DOM'da aynı anda ikisi yoksa zaten biri patlamaz).
         await log('🔄 Text-based menü navigasyonu (yedek plan)');
-        await clickByTextEverywhere('Muhasebe', log, { maxMs: 5000 });
+        let kokMenuTiklandi = false;
+        try {
+          await clickByTextEverywhere('Muhasebe', log, { maxMs: 3000 });
+          kokMenuTiklandi = true;
+          await log('✓ "Muhasebe" tıklandı (bilanço esası)');
+        } catch (e) {
+          await log('ℹ "Muhasebe" bulunamadı → İşletme Defteri deneniyor');
+        }
+        if (!kokMenuTiklandi) {
+          try {
+            await clickByTextEverywhere('İşletme Defteri', log, { maxMs: 3000 });
+            kokMenuTiklandi = true;
+            await log('✓ "İşletme Defteri" tıklandı (işletme esası)');
+          } catch (e2) {
+            throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü bulunamadı');
+          }
+        }
         await sleep(1200);
         await clickByTextEverywhere('Akıllı Entegrasyon Noktası', log, { maxMs: 5000 });
         await sleep(2000);
