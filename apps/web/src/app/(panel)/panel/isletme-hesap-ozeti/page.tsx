@@ -584,24 +584,43 @@ function KarsilastirmaTablosu({
 
   return (
     <div className="space-y-3">
-      {/* Üst dönem barı — her dönem kendi bloğunda (gelir-tablosu stili) */}
+      {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div
         className="rounded-xl overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
       >
-        <div className="grid" style={{ gridTemplateColumns: `repeat(${tersDonemler.length}, minmax(0, 1fr))` }}>
+        <div
+          className="grid"
+          style={{
+            // Tablo colgroup ile aynı: 34% boş + 4 dönem × COL_WIDTH
+            gridTemplateColumns: `34% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+          }}
+        >
+          {/* Sol AÇIKLAMA placeholder — tablonun ilk kolonuyla aynı genişlik */}
+          <div
+            className="px-3 py-3 flex items-center"
+            style={{ borderRight: '1px solid rgba(184,160,111,0.28)' }}
+          >
+            <span
+              className="text-[10px] uppercase font-bold tracking-[.18em]"
+              style={{ color: 'rgba(250,250,249,0.4)' }}
+            >
+              Dönem Aksiyonları
+            </span>
+          </div>
           {tersDonemler.map((d, idx) => {
             const c = yilData?.ceyrekler?.[d - 1];
             const locked = !!c?.locked;
             const job = lucaJobs[d];
             const fetching = job?.status === 'pending' || job?.status === 'running';
+            const isLast = idx === tersDonemler.length - 1;
             return (
               <div
                 key={d}
                 className="px-3 py-3 text-center"
                 style={{
                   background: locked ? 'rgba(34,197,94,0.06)' : 'transparent',
-                  borderLeft: idx > 0 ? '1px solid rgba(184,160,111,0.18)' : 'none',
+                  borderRight: !isLast ? '1px solid rgba(184,160,111,0.28)' : 'none',
                 }}
               >
                 {/* Dönem başlığı */}
@@ -730,11 +749,21 @@ function KarsilastirmaTablosu({
           </colgroup>
           <thead>
             <tr>
-              <th className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              <th
+                className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500"
+                style={{ borderRight: '1px solid rgba(184,160,111,0.28)' }}
+              >
                 Açıklama
               </th>
-              {tersDonemler.map((d) => (
-                <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
+              {tersDonemler.map((d, i) => (
+                <th
+                  key={d}
+                  className="border-b border-white/10 px-3 py-2 text-right"
+                  style={{
+                    borderRight:
+                      i < tersDonemler.length - 1 ? '1px solid rgba(184,160,111,0.28)' : 'none',
+                  }}
+                >
                   <div
                     className="text-sm font-bold"
                     style={{
@@ -849,11 +878,21 @@ function KarsilastirmaTablosu({
           </colgroup>
           <thead>
             <tr>
-              <th className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500">
+              <th
+                className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500"
+                style={{ borderRight: '1px solid rgba(184,160,111,0.28)' }}
+              >
                 Açıklama
               </th>
-              {tersDonemler.map((d) => (
-                <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
+              {tersDonemler.map((d, i) => (
+                <th
+                  key={d}
+                  className="border-b border-white/10 px-3 py-2 text-right"
+                  style={{
+                    borderRight:
+                      i < tersDonemler.length - 1 ? '1px solid rgba(184,160,111,0.28)' : 'none',
+                  }}
+                >
                   <div
                     className="text-sm font-bold"
                     style={{
@@ -1209,6 +1248,7 @@ function Row({
         className={`border-b border-white/5 px-3 py-2 text-xs ${
           bold ? 'font-semibold text-stone-100' : 'text-stone-200'
         }`}
+        style={{ borderRight: '1px solid rgba(184,160,111,0.18)' }}
       >
         {label}
         {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
@@ -1219,6 +1259,10 @@ function Row({
           className={`border-b border-white/5 px-3 py-2 text-right tabular-nums text-stone-100 ${
             bold ? 'font-semibold' : ''
           } ${calc && !raw ? 'italic text-stone-200' : ''}`}
+          style={{
+            borderRight:
+              i < cols.length - 1 ? '1px solid rgba(184,160,111,0.18)' : 'none',
+          }}
         >
           <div className="flex items-center justify-end gap-2">
             {ratios && ratios[i] && ratios[i] !== '—' && (
