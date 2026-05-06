@@ -245,6 +245,20 @@ export class AgentEventsController {
     return this.service.updateCommand(tenantId, id, body);
   }
 
+  /** Tek komutu getir - agent cancel-check icin */
+  @Get('commands/:id')
+  getCommandSingle(@Headers('x-agent-token') token: string, @Param('id') id: string) {
+    const tenantId = this.resolveTenantFromToken(token);
+    return this.service.getCommand(tenantId, id);
+  }
+
+  /** Web UI komutu iptal eder */
+  @Post('commands/:id/cancel')
+  @UseGuards(AuthGuard('jwt'))
+  cancelCommand(@Req() req: any, @Param('id') id: string) {
+    return this.service.cancelCommand(req.user.tenantId, id);
+  }
+
   /** Claude ile fatura kararı: onay/atla/emin_degil
    *  YENİ: bosAlanSecenekleri verilirse AI boş alan için hesap kodu önerir.
    *  Öneriler, ${response}.onerilenler objesinde döner. */

@@ -353,6 +353,12 @@ export class AgentEventsService {
   }
 
   async listCommands(tenantId: string, opts: { agent?: string; status?: string; limit?: number } = {}) {
+    // Stale watchdog: 30dk ustu running komutlari failed yap (Mihsap tab kapandiysa)
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+    await this.prisma.agentCommand.updateMany({
+      where: { tenantId, status: 'running', startedAt: { lt: thirtyMinAgo } },
+      data: { status: 'failed', result: { message: 'Zaman asimi (30dk) - agent yanit vermedi', stale: true } as any, finishedAt: new Date() } as any,
+    });
     const { agent, status, limit = 50 } = opts;
     const where: any = { tenantId };
     if (agent) where.agent = agent;
@@ -364,7 +370,27 @@ export class AgentEventsService {
     });
   }
 
-  /** Yerel runner için bekleyen komutları claim eder (status=running yapar) */
+  /** Tek komutu getir - agent her iterasyonda cancel kontrolu icin */
+  async getCommand(tenantId: string, id: string) {
+    return this.prisma.agentCommand.findFirst({ where: { id, tenantId } });
+  }
+
+  /** Komutu iptal et - agent cancel'i gorup duracak */
+  async cancelCommand(tenantId: string, id: string) {
+    const cmd = await this.prisma.agentCommand.findFirst({ where: { id, tenantId } });
+    if (!cmd) return null;
+    if (['done', 'failed', 'cancelled'].includes(cmd.status)) return cmd;
+    return this.prisma.agentCommand.update({
+      where: { id },
+      data: {
+        status: 'cancelled',
+        result: { ...(cmd.result as any || {}), message: 'Kullanici iptal etti' } as any,
+        finishedAt: new Date(),
+      } as any,
+    });
+  }
+
+    /** Yerel runner için bekleyen komutları claim eder (status=running yapar) */
   async claimPendingCommands(tenantId: string, agent?: string) {
     const where: any = { tenantId, status: 'pending' };
     if (agent) where.agent = agent;

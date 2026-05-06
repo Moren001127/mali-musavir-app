@@ -39,7 +39,7 @@ export interface AgentCommand {
   agent: string;
   action: string;
   payload: any;
-  status: 'pending' | 'running' | 'done' | 'failed';
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
   result?: any;
   createdAt: string;
   startedAt?: string | null;
@@ -70,6 +70,8 @@ export const agentsApi = {
     api.post<AgentCommand>('/agent/commands', body).then((r) => r.data),
   listCommands: (params?: { agent?: string; status?: string; limit?: number }) =>
     api.get<AgentCommand[]>('/agent/commands', { params }).then((r) => r.data),
+  cancelCommand: (id: string) =>
+    api.post<AgentCommand>('/agent/commands/' + id + '/cancel').then((r) => r.data),
 
   // MIHSAP entegrasyonu
   mihsapSession: () => api.get('/agent/mihsap/session').then((r) => r.data),

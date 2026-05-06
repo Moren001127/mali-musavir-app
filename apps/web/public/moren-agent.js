@@ -9,6 +9,8 @@
   }
   window.__morenAgent = { running: true, stopRequested: false };
 
+  // Agent versiyon — UI'da gösterilir, debug için kritik
+  const AGENT_VERSION = '1.36.0';
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -367,6 +369,19 @@
   const $status = panel.querySelector('#ma-status');
   const $count = panel.querySelector('#ma-count');
   const counters = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0 };
+  // Per-komut özet — her processBatch kendi sayacını tutar, kümülatif değil
+  let cmdSummary = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0, perMukellef: {}, aiCostUsd: 0, errors: [] };
+  const resetCmdSummary = () => {
+    cmdSummary = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0, perMukellef: {}, aiCostUsd: 0, errors: [] };
+  };
+  const bumpCmd = (mukellefAd, kind) => {
+    cmdSummary[kind]++; cmdSummary.toplam++;
+    if (mukellefAd) {
+      cmdSummary.perMukellef[mukellefAd] = cmdSummary.perMukellef[mukellefAd] || { onay:0, atla:0, demirbas:0, hata:0, toplam:0 };
+      cmdSummary.perMukellef[mukellefAd][kind]++;
+      cmdSummary.perMukellef[mukellefAd].toplam++;
+    }
+  };
   const setStatus = (s) => ($status.textContent = s);
   const setCount = () => ($count.textContent = `✓${counters.onay} ⏭${counters.atla} ⏩${counters.demirbas} ⚠${counters.hata}`);
   document.getElementById('ma-stop').onclick = () => {
@@ -1432,13 +1447,42 @@
   }
 
   async function processBatch({ ay, mukellefler, action }) {
+    // Her komut için temiz sayım — kümülatif değil
+    resetCmdSummary();
+    if (!Array.isArray(mukellefler) || mukellefler.length === 0) {
+      setStatus('Mükellef listesi boş');
+      cmdSummary.errors.push('Mükellef gönderilmedi (frontend payload boş)');
+      return;
+    }
     setStatus(`${mukellefler.length} mükellef / ${ay} · ${action}`);
     for (const m of mukellefler) {
       if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
+      // mihsapId ön doğrulama — logsuz return etmek yerine açık hata yaz
+      if (!m.mihsapId) {
+        bumpCmd(m.ad, 'hata');
+        cmdSummary.errors.push(`${m.ad}: Mihsap ID tanımlı değil (Mükellefler ekranında ekle)`);
+        await logEvent(m.id, m.ad, 'error', 'Mihsap ID tanımlı değil — Mükellefler ekranında bağla');
+        continue;
+      }
+      // Ay-uyumlu tip
+      const tipSegment =
+        action === 'isle_alis' ? 'BILANCO/1' :
+        action === 'isle_satis' ? 'BILANCO/2' :
+        action === 'isle_alis_isletme' ? 'ISLETME/1' :
+        action === 'isle_satis_isletme' ? 'ISLETME/2' : null;
+      if (!tipSegment) {
+        bumpCmd(m.ad, 'hata');
+        cmdSummary.errors.push(`${m.ad}: Bilinmeyen action: ${action}`);
+        await logEvent(m.id, m.ad, 'error', `Bilinmeyen action: ${action}`);
+        continue;
+      }
       setStatus(`→ ${m.ad}`);
+      await logEvent(m.id, m.ad, 'bilgi', `▶ İşleme başlandı · ${action} · ${ay}`);
+      // Komut iptal edildi mi? — DB'den check et
+      if (await isCmdCancelled()) { setStatus('İptal edildi'); return; }
       await processMukellef({ ay, mukellef: m, action });
     }
-    setStatus(`Tamamlandı · ${counters.toplam} fatura`);
+    setStatus(`Tamamlandı · ${cmdSummary.toplam} fatura`);
   }
 
   async function processMukellef({ ay, mukellef, action }) {
@@ -1450,7 +1494,13 @@
       action === 'isle_alis_isletme' ? 'ISLETME/1' :
       action === 'isle_satis_isletme' ? 'ISLETME/2' :
       null;
-    if (!tipSegment || !mukellef.mihsapId) return;
+    if (!tipSegment || !mukellef.mihsapId) {
+      // processBatch'te zaten validasyon var, buraya düşmemeli ama belt-and-suspenders
+      bumpCmd(mukellef.ad, 'hata');
+      cmdSummary.errors.push(`${mukellef.ad}: tipSegment veya mihsapId eksik`);
+      await logEvent(mukellef.id, mukellef.ad, 'error', 'tipSegment/mihsapId eksik (early return)');
+      return;
+    }
     const targetPath = `/documents/${tipSegment}/${mukellef.mihsapId}`;
     const baseList = `https://app.mihsap.com${targetPath}`;
     // URL uygun değilse otomatik navigasyonu dene, başarısızsa kullanıcıdan bekle.
@@ -1460,7 +1510,13 @@
     let autoNavDenemesi = 0;
     while (!location.pathname.startsWith(targetPath)) {
       if (window.__morenAgent.stopRequested) return;
-      if (Date.now() - waitT0 > 180000) { setStatus('URL beklendi, zaman aşımı'); return; }
+      if (Date.now() - waitT0 > 180000) {
+        setStatus('URL beklendi, zaman aşımı');
+        bumpCmd(mukellef.ad, 'hata');
+        cmdSummary.errors.push(`${mukellef.ad}: Mihsap sayfası 3 dakikada açılamadı (${targetPath})`);
+        await logEvent(mukellef.id, mukellef.ad, 'error', `Mihsap sayfası açılmadı (${targetPath}) — 180sn timeout`);
+        return;
+      }
 
       // Otomatik navigasyon — varsayılan açık, __morenAgent.autoNavigate=false ile kapatılır.
       // Maksimum 3 deneme — SPA yanıt vermiyorsa manuel beklemeye düş.
@@ -1486,8 +1542,22 @@
     }
     // Liste sayfasında ise ilk faturayı aç
     if (location.pathname === targetPath) {
+      // Önce bekleyen fatura var mı say (progress için)
+      await sleep(800); // Mihsap'ın liste yüklemesini bekle
+      const tbody = document.querySelector('tbody');
+      const tbodyRows = tbody ? tbody.querySelectorAll('tr').length : 0;
+      const pendingButtons = document.querySelectorAll('tbody tr button .anticon-edit').length;
+      await logEvent(mukellef.id, mukellef.ad, 'bilgi',
+        `📋 Listede ${tbodyRows} satır, ${pendingButtons} bekleyen fatura tespit edildi`);
+
       const firstPen = await waitFor('tbody tr button .anticon-edit', 8000);
-      if (!firstPen) { setStatus('Fatura yok'); return; }
+      if (!firstPen) {
+        setStatus('Fatura yok');
+        bumpCmd(mukellef.ad, 'atla');
+        await logEvent(mukellef.id, mukellef.ad, 'skip',
+          `Bekleyen fatura yok (${tbodyRows} satır listede ama hiçbiri "kalem" ikonlu/işlenmemiş değil)`);
+        return;
+      }
       await click(firstPen.closest('button'));
       await sleep(1200);
     }
@@ -1529,7 +1599,7 @@
       const hedefAy = ay; // "2026-03"
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
-        counters.atla++; counters.toplam++; setCount();
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
@@ -1558,14 +1628,14 @@
         if (!ust.faturaTuru) {
           const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
           if (!ok) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
           ustOzet.push(`FatT:${beklenenFaturaTuru}`);
           ust.faturaTuru = beklenenFaturaTuru;
         } else if (ust.faturaTuru !== beklenenFaturaTuru) {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
           await clickIleri(fid); continue;
         }
@@ -1589,7 +1659,7 @@
             }
           }
           if (!ust.belgeTuru) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
@@ -1605,7 +1675,7 @@
             ust.alisSatisTuru = varsayilan;
             ustOzet.push(`AST:${varsayilan}`);
           } else {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
@@ -1614,7 +1684,7 @@
         // --- 2) BLOK KONTROLÜ ---
         let blok = isletmeBlokDurumu();
         if (!blok.varMi) {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · İşletme: blok bulunamadı`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
@@ -1642,7 +1712,7 @@
           }
         }
         if (doluKontrolHata) {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Doğrulama: ${doluKontrolHata}`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
@@ -1739,7 +1809,7 @@
           }
 
           if (aiHata) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI: ${aiHata}`, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
@@ -1748,7 +1818,7 @@
           // Doldurma bitti — güncel durumu oku
           blok = isletmeBlokDurumu();
           if (!blok.varMi || blok.bosBlokVar) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI sonrası hâlâ boş blok var`, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
@@ -1817,7 +1887,7 @@
             saved = await waitSavedIsletme(12000);
           }
           if (saved) {
-            counters.onay++; counters.toplam++; setCount();
+            counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
             const aiNot = aiKullanildi ? ` · AI` : '';
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
@@ -1825,7 +1895,7 @@
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
           } else {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             // Daha açıklayıcı sebep üret — kullanıcı "neden atladı" anlasın
             let atlamaSebebi;
             if (validationFailed) {
@@ -1843,7 +1913,7 @@
             await clickIleri(fid);
           }
         } catch (e) {
-          counters.hata++; counters.toplam++; setCount();
+          counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'error', `${mTag} · ${String(e)}`, {
             firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
@@ -1856,7 +1926,7 @@
       // ==========================================================
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
-        counters.atla++; counters.toplam++; setCount();
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
@@ -1899,7 +1969,7 @@
             aiOneriOzet = ` | AI hata: ${(e?.message || '').slice(0, 50)}`;
           }
         }
-        counters.atla++; counters.toplam++; setCount();
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `matrah/KDV/cari boş alan var${aiOneriOzet}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
@@ -1918,7 +1988,7 @@
       const karar = decision?.karar || 'emin_degil';
       const sebep = (decision?.sebep || '').slice(0, 120);
       if (karar === 'atla' || karar === 'emin_degil') {
-        counters.atla++; counters.toplam++; setCount();
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         await clickIleri(fid); continue;
       }
@@ -2003,10 +2073,10 @@
         }
 
         if (saved) {
-          counters.onay++; counters.toplam++; setCount();
+          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         } else {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
@@ -2014,7 +2084,7 @@
           await clickIleri(fid);
         }
       } catch (e) {
-        counters.hata++; counters.toplam++; setCount();
+        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
         await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid);
       }
@@ -2022,16 +2092,67 @@
   }
 
   // === KOMUT KUYRUĞU POLLING ===
+  // Aktif komut id'si — heartbeat ve cancel-check için
+  let __activeCmdId = null;
+
+  // Komut DB'de cancel oldu mu? (her mükellef başında check)
+  async function isCmdCancelled() {
+    if (!__activeCmdId) return false;
+    try {
+      const c = await api(`/agent/commands/${__activeCmdId}`);
+      return c?.status === 'cancelled';
+    } catch { return false; }
+  }
+
+  // === HEARTBEAT — agent canlı olduğunu 15sn'de bir bildirir ===
+  async function sendHeartbeat() {
+    try {
+      await api('/agent/status/ping', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent: 'mihsap',
+          running: true,
+          meta: {
+            url: location.href,
+            version: AGENT_VERSION,
+            activeCmdId: __activeCmdId,
+            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
+          },
+        }),
+      });
+    } catch {}
+  }
+  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
+
+  // === RETRY HELPER — geçici hatalar için exponential backoff ===
+  async function withRetry(fn, label, maxTry = 3) {
+    let lastErr;
+    for (let i = 0; i < maxTry; i++) {
+      try { return await fn(); } catch (e) {
+        lastErr = e;
+        const msg = String(e?.message || e);
+        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
+        if (!transient) throw e;
+        const wait = 1000 * Math.pow(2, i);
+        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms`);
+        await sleep(wait);
+      }
+    }
+    throw lastErr;
+  }
+
   async function pollLoop() {
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: true, meta: { url: location.href } }),
-    }).catch(() => {});
+    await sendHeartbeat();
     while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
       try {
-        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
+        const cmds = await withRetry(
+          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
+          'commands/claim',
+        );
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
+            __activeCmdId = cmd.id;
+            const cmdT0 = Date.now();
             try {
               setStatus(`CMD: ${cmd.action}`);
               await processBatch({
@@ -2039,30 +2160,53 @@
                 mukellefler: cmd.payload?.mukellefler || [],
                 action: cmd.action,
               });
-              await api(`/agent/commands/${cmd.id}`, {
+              const elapsedMs = Date.now() - cmdT0;
+              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
+              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
                 method: 'PUT',
                 body: JSON.stringify({
-                  status: 'done',
+                  status: finalStatus,
                   result: {
-                    ...counters,
-                    message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
+                    onay: cmdSummary.onay,
+                    atla: cmdSummary.atla,
+                    demirbas: cmdSummary.demirbas,
+                    hata: cmdSummary.hata,
+                    toplam: cmdSummary.toplam,
+                    perMukellef: cmdSummary.perMukellef,
+                    aiCostUsd: cmdSummary.aiCostUsd,
+                    errors: cmdSummary.errors,
+                    elapsedMs,
+                    agentVersion: AGENT_VERSION,
+                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
                   },
                 }),
-              });
+              }), 'commands/done').catch(() => {});
             } catch (e) {
               await api(`/agent/commands/${cmd.id}`, {
                 method: 'PUT',
-                body: JSON.stringify({ status: 'failed', result: { message: String(e) } }),
+                body: JSON.stringify({
+                  status: 'failed',
+                  result: {
+                    ...cmdSummary,
+                    agentVersion: AGENT_VERSION,
+                    message: String(e?.message || e),
+                    elapsedMs: Date.now() - cmdT0,
+                  },
+                }),
               }).catch(() => {});
             }
+            __activeCmdId = null;
           }
         } else {
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
-        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
-        if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+        if (/401/.test(msg)) {
+          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
+          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire')
+            .catch(() => {});
+        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
         } else {
           setStatus('API hatası, yeniden deneniyor');
@@ -2079,5 +2223,352 @@
     delete window.__morenAgent;
   }
   pollLoop();
-  console.log('[Moren Agent] yüklendi');
+  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
+})();href.match(/\/(\d+)\?count=/);
+              if (m3 && m3[1] !== fid) return true;
+            }
+            await sleep(250);
+          }
+          return false;
+        };
+
+        await clickKaydetOnayla();
+        let saved = await waitSaved(12000);
+
+        // Validation hatası varsa retry YAPMA (zaten alan eksik)
+        if (!saved && !validationFailed) {
+          await sleep(800);
+          await clickKaydetOnayla();
+          saved = await waitSaved(12000);
+        }
+
+        if (saved) {
+          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
+        } else {
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+          const atlamaSebebi = validationFailed
+            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+            : `F2 sonuçlanmadı · ${sebep}`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await clickIleri(fid);
+        }
+      } catch (e) {
+        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
+        await clickIleri(fid);
+      }
+    }
+  }
+
+  // === KOMUT KUYRUĞU POLLING ===
+  // Aktif komut id'si — heartbeat ve cancel-check için
+  let __activeCmdId = null;
+  // Komut DB'de cancel oldu mu? (her mükellef başında check)
+  async function isCmdCancelled() {
+    if (!__activeCmdId) return false;
+    try {
+      const c = await api(`/agent/commands/${__activeCmdId}`);
+      return c?.status === 'cancelled';
+    } catch { return false; }
+  }
+
+  // === HEARTBEAT — agent canlı olduğunu 15sn'de bir bildirir ===
+  let __lastHeartbeat = 0;
+  async function sendHeartbeat() {
+    try {
+      await api('/agent/status/ping', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent: 'mihsap',
+          running: true,
+          meta: {
+            url: location.href,
+            version: AGENT_VERSION,
+            activeCmdId: __activeCmdId,
+            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
+          },
+        }),
+      });
+      __lastHeartbeat = Date.now();
+    } catch {}
+  }
+  // Heartbeat interval — agent'ın yaşamını kanıtlar
+  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
+
+  // === RETRY HELPER — geçici hatalar için ===
+  async function withRetry(fn, label, maxTry = 3) {
+    let lastErr;
+    for (let i = 0; i < maxTry; i++) {
+      try { return await fn(); } catch (e) {
+        lastErr = e;
+        const msg = String(e?.message || e);
+        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
+        if (!transient) throw e;
+        const wait = 1000 * Math.pow(2, i); // 1s, 2s, 4s
+        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms bekleniyor`);
+        await sleep(wait);
+      }
+    }
+    throw lastErr;
+  }
+
+  async function pollLoop() {
+    await sendHeartbeat();
+    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+      try {
+        const cmds = await withRetry(
+          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
+          'commands/claim',
+        );
+        if (Array.isArray(cmds) && cmds.length > 0) {
+          for (const cmd of cmds) {
+            __activeCmdId = cmd.id;
+            const cmdT0 = Date.now();
+            try {
+              setStatus(`CMD: ${cmd.action}`);
+              await processBatch({
+                ay: cmd.payload?.ay,
+                mukellefler: cmd.payload?.mukellefler || [],
+                action: cmd.action,
+              });
+              const elapsedMs = Date.now() - cmdT0;
+              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
+              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: finalStatus,
+                  result: {
+                    onay: cmdSummary.onay,
+                    atla: cmdSummary.atla,
+                    demirbas: cmdSummary.demirbas,
+                    hata: cmdSummary.hata,
+                    toplam: cmdSummary.toplam,
+                    perMukellef: cmdSummary.perMukellef,
+                    aiCostUsd: cmdSummary.aiCostUsd,
+                    errors: cmdSummary.errors,
+                    elapsedMs,
+                    agentVersion: AGENT_VERSION,
+                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
+                  },
+                }),
+              }), 'commands/done').catch(() => {});
+            } catch (e) {
+              await api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: 'failed',
+                  result: {
+                    ...cmdSummary,
+                    agentVersion: AGENT_VERSION,
+                    message: String(e?.message || e),
+                    elapsedMs: Date.now() - cmdT0,
+                  },
+                }),
+              }).catch(() => {});
+            }
+            __activeCmdId = null;
+          }
+        } else {
+          setStatus('Komut bekleniyor…');
+        }
+      } catch (e) {
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
+        const msg = String(e?.message || e);
+        // 401 → Mihsap token expire — kullanıcıya bildir
+        if (/401/.test(msg)) {
+          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
+          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire, yeniden giriş gerekli')
+            .catch(() => {});
+        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+          setStatus('Bağlantı bekleniyor…');
+        } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
+})();
+href.match(/\/(\d+)\?count=/);
+              if (m3 && m3[1] !== fid) return true;
+            }
+            await sleep(250);
+          }
+          return false;
+        };
+
+        await clickKaydetOnayla();
+        let saved = await waitSaved(12000);
+
+        // Validation hatası varsa retry YAPMA (zaten alan eksik)
+        if (!saved && !validationFailed) {
+          await sleep(800);
+          await clickKaydetOnayla();
+          saved = await waitSaved(12000);
+        }
+
+        if (saved) {
+          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
+        } else {
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+          const atlamaSebebi = validationFailed
+            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+            : `F2 sonuçlanmadı · ${sebep}`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await clickIleri(fid);
+        }
+      } catch (e) {
+        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
+        await clickIleri(fid);
+      }
+    }
+  }
+
+  // === KOMUT KUYRUĞU POLLING ===
+  let __activeCmdId = null;
+  async function isCmdCancelled() {
+    if (!__activeCmdId) return false;
+    try {
+      const c = await api(`/agent/commands/${__activeCmdId}`);
+      return c?.status === 'cancelled';
+    } catch { return false; }
+  }
+  async function sendHeartbeat() {
+    try {
+      await api('/agent/status/ping', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent: 'mihsap',
+          running: true,
+          meta: {
+            url: location.href,
+            version: AGENT_VERSION,
+            activeCmdId: __activeCmdId,
+            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
+          },
+        }),
+      });
+    } catch {}
+  }
+  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
+  async function withRetry(fn, label, maxTry = 3) {
+    let lastErr;
+    for (let i = 0; i < maxTry; i++) {
+      try { return await fn(); } catch (e) {
+        lastErr = e;
+        const msg = String(e?.message || e);
+        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
+        if (!transient) throw e;
+        const wait = 1000 * Math.pow(2, i);
+        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms`);
+        await sleep(wait);
+      }
+    }
+    throw lastErr;
+  }
+  async function pollLoop() {
+    await sendHeartbeat();
+    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+      try {
+        const cmds = await withRetry(
+          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
+          'commands/claim',
+        );
+        if (Array.isArray(cmds) && cmds.length > 0) {
+          for (const cmd of cmds) {
+            __activeCmdId = cmd.id;
+            const cmdT0 = Date.now();
+            try {
+              setStatus(`CMD: ${cmd.action}`);
+              await processBatch({
+                ay: cmd.payload?.ay,
+                mukellefler: cmd.payload?.mukellefler || [],
+                action: cmd.action,
+              });
+              const elapsedMs = Date.now() - cmdT0;
+              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
+              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: finalStatus,
+                  result: {
+                    onay: cmdSummary.onay,
+                    atla: cmdSummary.atla,
+                    demirbas: cmdSummary.demirbas,
+                    hata: cmdSummary.hata,
+                    toplam: cmdSummary.toplam,
+                    perMukellef: cmdSummary.perMukellef,
+                    aiCostUsd: cmdSummary.aiCostUsd,
+                    errors: cmdSummary.errors,
+                    elapsedMs,
+                    agentVersion: AGENT_VERSION,
+                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
+                  },
+                }),
+              }), 'commands/done').catch(() => {});
+            } catch (e) {
+              await api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: 'failed',
+                  result: {
+                    ...cmdSummary,
+                    agentVersion: AGENT_VERSION,
+                    message: String(e?.message || e),
+                    elapsedMs: Date.now() - cmdT0,
+                  },
+                }),
+              }).catch(() => {});
+            }
+            __activeCmdId = null;
+          }
+        } else {
+          setStatus('Komut bekleniyor…');
+        }
+      } catch (e) {
+        const msg = String(e?.message || e);
+        if (/401/.test(msg)) {
+          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
+          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire')
+            .catch(() => {});
+        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+          setStatus('Bağlantı bekleniyor…');
+        } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
+})();
+gent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION);
 })();
