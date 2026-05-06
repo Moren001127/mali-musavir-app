@@ -311,7 +311,9 @@ export class EarsivService {
           satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
           matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, paraBirimi: true,
           durum: true, taxpayerId: true, createdAt: true,
-          mihsapUploadedAt: true, mihsapUploadStatus: true, mihsapUploadError: true,
+          // mihsap* alanları liste SELECT'inden kaldırıldı — production DB'de
+          // henüz bu kolonlar olmayabilir, raw query yapıp eksik kolon hatası alıyorduk.
+          // Mihsap status badge'ini şimdilik göstermiyoruz; tekil getById hâlâ döner.
         },
       }),
       (this.prisma as any).earsivFatura.count({ where }),
@@ -321,8 +323,19 @@ export class EarsivService {
   }
 
   async getById(tenantId: string, id: string) {
+    // mihsap* kolonları DB'de olmayabilir — explicit select ile sınırlı tut
     const f = await (this.prisma as any).earsivFatura.findFirst({
       where: { tenantId, id },
+      select: {
+        id: true, tenantId: true, taxpayerId: true,
+        tip: true, belgeKaynak: true, donem: true,
+        faturaNo: true, faturaTarihi: true, ettn: true,
+        satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
+        matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true,
+        paraBirimi: true, aciklama: true, durum: true,
+        xmlContent: true, pdfStorageKey: true, zipSourceName: true,
+        fetchJobId: true, createdAt: true, updatedAt: true,
+      },
     });
     if (!f) throw new NotFoundException('Fatura bulunamadı');
     return f;
