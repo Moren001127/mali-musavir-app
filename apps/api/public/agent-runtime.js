@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.49';
+          const AGENT_VER = '1.35.50';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1023,18 +1023,18 @@
     const sorgu1Bas = fmt(1, ay, yil);
     const sorgu1Bit = fmt(ayinSonGunu(yil, ay), ay, yil);
 
-    // Sonraki ay (yıl sonu kuralı)
+    // Sorgu 2 (sonraki ay başı → bugün) ARTIK DEVRE DIŞI.
+    // Sebep: kullanıcı kafa karıştığını söyledi — Nisan sorgulanırken üstüne Mayıs sorgulanıyor.
+    // Backend liste filtresi artık faturaTarihi'ne göre çalıştığı için (v1.35.48), sonraki ay
+    // faturalarına ihtiyaç yok: kullanıcı Mayıs filtresine geçtiğinde Mayıs tarihliler görünür.
     const sonAy = ay === 12 ? 1 : ay + 1;
     const sonYil = ay === 12 ? yil + 1 : yil;
     const bugun = new Date();
-    const sorgu2Gerekli =
-      bugun >= new Date(sonYil, sonAy - 1, 1) &&
-      bugun <= new Date(sonYil, sonAy - 1, ayinSonGunu(sonYil, sonAy));
+    const sorgu2Gerekli = false; // ⚠ Sabit kapalı
     const sorgu2Bas = fmt(1, sonAy, sonYil);
     const sorgu2Bit = fmt(bugun.getDate(), bugun.getMonth() + 1, bugun.getFullYear());
 
-    await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
-    if (sorgu2Gerekli) await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit}`);
+    await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit}`);
 
     // frm3 frame'ini doğrula (yukarıdaki menü navigasyonu ile yüklendi)
     if (!frm3 || !frm3.contentDocument) {
@@ -1529,7 +1529,32 @@
       } else {
         await log(`⚠ Kapat butonu bulunamadı, popup açık kalmış olabilir`);
       }
+      // Popup'ın gerçekten kapanmasını bekle (max 5sn) — sorgu2 üst üste binmesin
+      const popupCloseStart = Date.now();
+      while (Date.now() - popupCloseStart < 5000) {
+        let popupAcik = false;
+        const allDocsCheck = [document];
+        try {
+          for (const fr of document.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) allDocsCheck.push(fr.contentDocument);
+          }
+        } catch {}
+        for (const d of allDocsCheck) {
+          try {
+            const txt = d.body ? d.body.textContent : '';
+            if (/i[şs]lem\s+takip/i.test(txt) && !/i[şs]lem\s+tamamland[ıi]/i.test(txt.slice(-500))) {
+              // İşlem Takip popup hala açık görünüyor
+              popupAcik = true;
+              break;
+            }
+          } catch {}
+        }
+        if (!popupAcik) break;
+        await sleep(300);
+      }
       await sleep(1500);
+      await log(`📋 ${etiket} tamamlandı`);
+    }
 
       // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
       try {
@@ -2000,12 +2025,24 @@
     const ZIP_TIMEOUT_MS = 5 * 60 * 1000;
     const IDLE_TIMEOUT_MS = 30 * 1000;
     const getActivityCount = () => {
+      let count = 0;
+      const wins = [window];
       try {
-        return performance.getEntriesByType('resource').filter(r =>
-          /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(r.name) &&
-          r.startTime > 0
-        ).length;
-      } catch { return 0; }
+        for (const fr of document.querySelectorAll('frame, iframe')) {
+          if (fr.contentWindow) wins.push(fr.contentWindow);
+        }
+      } catch {}
+      for (const w of wins) {
+        try {
+          const entries = w.performance.getEntriesByType('resource');
+          for (const r of entries) {
+            if (/gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(r.name)) {
+              count++;
+            }
+          }
+        } catch {}
+      }
+      return count;
     };
     let lastActivityCount = getActivityCount();
     let lastActivityTime = Date.now();
