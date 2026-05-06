@@ -116,7 +116,20 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="w-full rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-right text-sm tabular-nums text-stone-100 transition-colors focus:border-amber-400 focus:bg-amber-500/10 focus:outline-none focus:ring-1 focus:ring-amber-400/40 disabled:bg-white/[0.02] disabled:text-stone-500"
+      className="num-input w-full rounded-md px-2.5 py-1.5 text-right text-sm tabular-nums transition-colors focus:outline-none"
+      style={{
+        background: disabled ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        color: disabled ? 'rgba(168, 162, 158, 0.7)' : 'rgba(245, 245, 244, 0.95)',
+        fontVariantNumeric: 'tabular-nums',
+        colorScheme: 'dark',
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled) (e.currentTarget as HTMLInputElement).style.background = 'rgba(255,255,255,0.07)';
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) (e.currentTarget as HTMLInputElement).style.background = 'rgba(255,255,255,0.04)';
+      }}
     />
   );
 }
