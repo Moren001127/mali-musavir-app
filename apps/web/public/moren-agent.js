@@ -3,14 +3,32 @@
      javascript:(function(){if(window.__morenAgent)return alert('Moren Agent zaten açık');var s=document.createElement('script');s.src='https://portal.morenmusavirlik.com/moren-agent.js?v='+Date.now();document.head.appendChild(s);})();
 */
 (function () {
-  if (window.__morenAgent) {
-    console.log('[Moren] zaten çalışıyor');
-    return;
-  }
-  window.__morenAgent = { running: true, stopRequested: false };
-
   // Agent versiyon — UI'da gösterilir, debug için kritik
   const AGENT_VERSION = '1.36.5';
+
+  // === VERSION-AWARE RELOAD ===
+  // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
+  // yeniden başlat. Eski script'in setInterval'ları cleanup edilemez (ID yok),
+  // ama yeni script aynı window'da paralel çalışır — bu kabul edilebilir çünkü
+  // tüm flag'ler (lastSynced*, seenFids) yeni instance'a ait olur.
+  if (window.__morenAgent) {
+    const oldVersion = window.__morenAgent.version || '?';
+    if (oldVersion === AGENT_VERSION) {
+      console.log(`[Moren] v${AGENT_VERSION} zaten çalışıyor`);
+      return;
+    }
+    console.warn(`[Moren] Eski sürüm (v${oldVersion}) tespit edildi, v${AGENT_VERSION}'e yükseltiliyor...`);
+    try { window.__morenAgent.stopRequested = true; } catch {}
+    try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
+    delete window.__morenAgent;
+  }
+  window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION };
+
+  // Loud console banner — kullanıcı F12 açtığında hangi sürümün yüklü olduğunu net görsün
+  console.log(
+    `%c🟢 Moren Agent yüklendi · v${AGENT_VERSION}`,
+    'background:#22c55e;color:#0f0d0b;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:13px',
+  );
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
