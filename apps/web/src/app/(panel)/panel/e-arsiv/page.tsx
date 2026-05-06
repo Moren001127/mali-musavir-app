@@ -538,53 +538,150 @@ export default function EarsivPage() {
         />
       </div>
 
-      {/* Job durumu */}
-      {lucaJobId && (
-        <div className="rounded-lg p-3 text-sm" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.3)', color: '#fafaf9' }}>
-          <div className="flex items-center gap-3">
-            <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+      {/* Job durumu — detaylı per-job status listesi */}
+      {(lucaJobIds.length > 0 || lucaJobId) && (
+        <div className="rounded-lg p-3 text-sm" style={{ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}>
+          <div className="flex items-center gap-3 mb-3">
+            {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura < lucaSummary.total
+              ? <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+              : <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>}
             <div className="flex-1">
-              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>
+                {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura < lucaSummary.total
+                  ? 'Luca sekmesini açık tut — agent çalışıyor'
+                  : 'Tüm işler tamamlandı'}
+              </div>
               <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
-                {lucaStatus || 'moren-agent çalışıyor…'}
+                {lucaStatus}
               </div>
             </div>
+            {/* Sayaç rozetleri */}
+            <div className="flex items-center gap-1.5">
+              {lucaSummary.done > 0 && (
+                <span className="px-2 py-1 rounded text-[11px] font-bold" style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}>
+                  ✓ {lucaSummary.done}
+                </span>
+              )}
+              {lucaSummary.nofatura > 0 && (
+                <span className="px-2 py-1 rounded text-[11px] font-bold" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.3)' }}>
+                  ⊝ {lucaSummary.nofatura} fatura yok
+                </span>
+              )}
+              {lucaSummary.failed > 0 && (
+                <span className="px-2 py-1 rounded text-[11px] font-bold" style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  ✗ {lucaSummary.failed} hata
+                </span>
+              )}
+            </div>
             <button
-              onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
+              onClick={() => {
+                setLucaJobId(null);
+                setLucaJobIds([]);
+                setLucaJobMeta({});
+                setLucaStatus('');
+                setLucaLogLines([]);
+              }}
               className="px-3 py-1.5 rounded-md text-xs"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
             >
-              İptal
+              {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura === lucaSummary.total ? 'Kapat' : 'İptal'}
             </button>
           </div>
-          {/* Log container — agent'tan gelen ilerleme satırları */}
-          <div
-            className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
-            style={{
-              background: 'rgba(0,0,0,0.35)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              color: 'rgba(250,250,249,0.75)',
-              maxHeight: 200,
-              overflowY: 'auto',
-              minHeight: 60,
-            }}
-          >
-            {lucaLogLines.length === 0 ? (
-              <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
-                Agent'tan ilk log satırı bekleniyor… (Luca sekmesi açık ve giriş yapılmış olmalı)
-              </div>
-            ) : (
-              lucaLogLines.map((line, i) => {
+
+          {/* Per-job status grid */}
+          {lucaJobIds.length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {lucaJobIds.map((id, i) => {
+                const q: any = allJobQueries[i];
+                const job = (q?.data?.job ?? q?.data) || null;
+                const meta = lucaJobMeta[id];
+                const errorLog = job?.errorMsg || '';
+                const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
+                const lastLine = lines[lines.length - 1] || '';
+                const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
+                const status = job?.status || 'pending';
+                let icon = <span style={{ color: 'rgba(250,250,249,0.4)' }}>⏸</span>;
+                let badge = 'Sırada';
+                let badgeColor = '#94a3b8';
+                let badgeBg = 'rgba(148,163,184,0.12)';
+                if (status === 'running') {
+                  icon = <Loader2 size={12} className="animate-spin" style={{ color: GOLD }} />;
+                  badge = 'Çalışıyor';
+                  badgeColor = '#d4b876';
+                  badgeBg = 'rgba(212,184,118,0.15)';
+                } else if (status === 'done' && isNoFatura) {
+                  icon = <span>⊝</span>;
+                  badge = 'Fatura yok';
+                  badgeColor = '#fbbf24';
+                  badgeBg = 'rgba(245,158,11,0.15)';
+                } else if (status === 'done') {
+                  icon = <span style={{ color: '#22c55e' }}>✓</span>;
+                  badge = 'Tamamlandı';
+                  badgeColor = '#4ade80';
+                  badgeBg = 'rgba(34,197,94,0.15)';
+                } else if (status === 'failed') {
+                  icon = <span style={{ color: '#ef4444' }}>✗</span>;
+                  badge = 'Hata';
+                  badgeColor = '#fca5a5';
+                  badgeBg = 'rgba(239,68,68,0.15)';
+                }
+                const modeInfo = MODE_INFO[meta?.mode || 'GELEN_EARSIV'];
+                return (
+                  <div
+                    key={id}
+                    className="flex items-center gap-3 px-3 py-2 rounded-md"
+                    style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.04)' }}
+                  >
+                    <div style={{ width: 18, textAlign: 'center', fontSize: 14 }}>{icon}</div>
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+                      style={{ background: modeInfo.bg, color: modeInfo.color, border: `1px solid ${modeInfo.color}33` }}
+                    >
+                      {modeInfo.label}
+                    </span>
+                    <div className="flex-1 text-[12px] truncate" style={{ color: '#fafaf9' }}>
+                      {meta?.mukellef || '—'}
+                    </div>
+                    {status === 'running' && lastLine && (
+                      <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.5)', maxWidth: 300 }}>
+                        {lastLine}
+                      </div>
+                    )}
+                    <span
+                      className="px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+                      style={{ background: badgeBg, color: badgeColor }}
+                    >
+                      {badge}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Live log container — sadece çalışan job'ların son satırları */}
+          {lucaLogLines.length > 0 && (
+            <div
+              className="rounded-md p-2.5 text-[11px] font-mono space-y-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                color: 'rgba(250,250,249,0.65)',
+                maxHeight: 140,
+                overflowY: 'auto',
+              }}
+            >
+              {lucaLogLines.map((line, i) => {
                 const isErr = /✗|hata|error/i.test(line);
                 const isOk = /✓|✅/.test(line);
                 return (
-                  <div key={i} style={{ color: isErr ? '#ef4444' : isOk ? '#10b981' : 'rgba(250,250,249,0.75)' }}>
+                  <div key={i} style={{ color: isErr ? '#ef4444' : isOk ? '#10b981' : 'rgba(250,250,249,0.6)' }}>
                     {line}
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       )}
 

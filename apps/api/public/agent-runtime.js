@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.45';
+          const AGENT_VER = '1.35.46';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
