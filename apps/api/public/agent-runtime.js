@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.50';
+          const AGENT_VER = '1.35.51';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1448,38 +1448,28 @@
         for (const d of allDocs) {
           try {
             const txt = d.body ? d.body.textContent : '';
-            // Tamamlanma sinyalleri: birden fazla varyantı kontrol et
-            //  - "N adet fatura bulundu" → arama tablosu doldu
-            //  - "Fatura kaydetme işlemi sona erdi" → İşlem Takip popup'ı sonu
-            //  - "İşlem tamamlandı" / "tamamlandı" generic
-            //  - "fatura bulunamadı" → boş sonuç (yine done)
-            if (/\d+\s+adet\s+fatura\s+bulundu/i.test(txt)) {
-              foundDoneSignal = true;
-              break;
-            }
+            // KESİN COMPLETION SİNYALİ — Luca'nın gerçek bitiş mesajları:
+            //  1. "Fatura kaydetme işlemi sona erdi" — tüm 333 belge kaydedildi (asıl completion)
+            //  2. "Belirtilen tarih aralığında fatura bulunamadı" — GİB'den boş sonuç
+            //  3. "fatura bulunamadı" / "belge bulunamadı" — generic boş sonuç
+            // BUNLAR DIŞINDA HİÇBİR ŞEY DONE OLARAK SAYILMASIN (yanlış erken trigger önle)
             if (/fatura\s+kaydetme\s+i[şs]lemi\s+sona\s+erdi/i.test(txt)) {
               foundDoneSignal = true;
               break;
             }
-            if (/i[şs]lem\s+tamamland[ıi]/i.test(txt)) {
+            if (/belirtilen\s+tarih\s+aral[ıi][gğ][ıi]nda\s+fatura\s+bulunamad[ıi]/i.test(txt)) {
               foundDoneSignal = true;
               break;
             }
-            if (/fatura\s+bulunamadı|fatura\s+yok/i.test(txt) && !/(error|hata)/i.test(txt.slice(0, 200))) {
-              foundDoneSignal = true;
-              break;
-            }
-            // Progress satırı yakala: "[113/333]" gibi → ilerleme log'u için
+            // Hem "X adet belge kaydı bulundu" hem "X adet fatura bulundu" — saves'ten ÖNCE,
+            // ama tek başına done olarak kabul ETMİYORUZ (saves devam edebilir).
+            // Sadece progress için yakala:
+            const sayim = txt && txt.match(/(\d+)\s+adet\s+(?:belge\s+kaydı|fatura)\s+bulundu/i);
+            if (sayim) progressLine = `${sayim[1]} adet bulundu`;
+            // Save progress: [N/M] formatı — sadece ilerleme log'u için
             const m = txt && txt.match(/\[(\d+)\/(\d+)\][^\[]{0,80}/);
             if (m) {
-              progressLine = `${m[1]}/${m[2]}`;
-              // X/X şeklinde bittiyse de done — son sayı ile ilk sayı eşitse query bitmiş
-              const cur = parseInt(m[1], 10);
-              const tot = parseInt(m[2], 10);
-              if (tot > 0 && cur >= tot) {
-                foundDoneSignal = true;
-                break;
-              }
+              progressLine = `kayıt ${m[1]}/${m[2]}`;
             }
           } catch {}
         }
