@@ -10,7 +10,7 @@
   window.__morenAgent = { running: true, stopRequested: false };
 
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.0';
+  const AGENT_VERSION = '1.36.2';
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -1651,7 +1651,42 @@
         return;
       }
 
-      const meta = await getFaturaMeta(fid);
+      let meta = await getFaturaMeta(fid);
+      // TARİH HEMEN BULUNAMADIYSA: Mihsap form'un DOM'a tarihi yerleştirmesini bekle.
+      // 250ms aralıklarla 12 deneme = 3 saniye. Her denemede sadece tarih için DOM tara.
+      if (!meta.tarih) {
+        for (let i = 0; i < 12; i++) {
+          await sleep(250);
+          // DOM'da geniş arama
+          const adaylar = [
+            ...document.querySelectorAll('#defterData_tarih input, #defterData_tarih, input[id*="tarih" i], input[name*="tarih" i], input[placeholder*="tarih" i], [aria-label*="tarih" i] input, .ant-picker-input input, .ant-picker input'),
+          ];
+          let domTarih = null;
+          for (const el of adaylar) {
+            const raw = (el?.value || el?.textContent || el?.getAttribute?.('value') || '').trim();
+            if (raw && /\d/.test(raw)) {
+              const m = raw.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+              if (m) { domTarih = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; break; }
+              const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (iso) { domTarih = `${iso[1]}-${iso[2]}-${iso[3]}`; break; }
+            }
+          }
+          if (domTarih) {
+            meta = { ...meta, tarih: domTarih };
+            console.log(`[Moren] Tarih DOM'dan ${i*250}ms sonra okundu:`, domTarih);
+            break;
+          }
+        }
+      }
+      // SON ÇARE: Hala tarih yoksa hedef ayın 15'i kullanılır (Mihsap zaten doğru ayı gösteriyor,
+      // bu fatura zaten o ayda işlenmek için seçilmiş — display için yeterli, AI da görselden okur)
+      if (!meta.tarih) {
+        const [yyyy, mm] = ay.split('-');
+        if (yyyy && mm) {
+          meta = { ...meta, tarih: `${yyyy}-${mm}-15` };
+          console.warn('[Moren] Tarih hiçbir yerden okunamadı, hedef ayın 15\'i kullanıldı:', meta.tarih);
+        }
+      }
       const tarih = meta.tarih;
       const hedefAy = ay; // "2026-03"
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);

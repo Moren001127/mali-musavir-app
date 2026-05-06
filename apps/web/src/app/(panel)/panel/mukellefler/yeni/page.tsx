@@ -36,6 +36,7 @@ export default function YeniMukellefPage() {
     lucaSlug: '',
     mihsapId: '',
     mihsapDefterTuru: 'BILANCO',
+    defterTuru: 'BILANCO' as 'BILANCO' | 'ISLETME',
   });
 
   const { mutate: save, isPending } = useMutation({
@@ -259,6 +260,56 @@ export default function YeniMukellefPage() {
                 <option value="DEFTER_BEYAN">Defter Beyan</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        {/* DEFTER TÜRÜ — Banka Takip ve diğer modüller için */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-1" style={{ color: '#d4b876' }}>Defter Türü</h2>
+          <p className="text-xs mb-3" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Bilanço esasında defter tutuyorsa "Banka Takip" listesinde görünür.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label
+              className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border transition-colors"
+              style={{
+                background: form.defterTuru === 'BILANCO' ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.02)',
+                borderColor: form.defterTuru === 'BILANCO' ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <input
+                type="radio"
+                name="defterTuru"
+                value="BILANCO"
+                checked={form.defterTuru === 'BILANCO'}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO' }))}
+                className="accent-[#d4b876]"
+              />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Bilanço</div>
+                <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Bilanço esasında defter</div>
+              </div>
+            </label>
+            <label
+              className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border transition-colors"
+              style={{
+                background: form.defterTuru === 'ISLETME' ? 'rgba(168,85,247,0.10)' : 'rgba(255,255,255,0.02)',
+                borderColor: form.defterTuru === 'ISLETME' ? 'rgba(168,85,247,0.45)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <input
+                type="radio"
+                name="defterTuru"
+                value="ISLETME"
+                checked={form.defterTuru === 'ISLETME'}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME' }))}
+                className="accent-[#a78bfa]"
+              />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>İşletme Defteri</div>
+                <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Basit usul / işletme defteri</div>
+              </div>
+            </label>
           </div>
         </div>
 

@@ -28,6 +28,10 @@ export const CreateTaxpayerSchema = z.object({
   lucaSlug: z.string().optional().nullable(),
   mihsapId: z.string().optional().nullable(),
   mihsapDefterTuru: z.string().optional().nullable(),
+  // Defter Türü — genel alan (Banka Takip ve diğer modüller için).
+  // "BILANCO" → Bilanço esasında defter (Banka Takip listesinde görünür)
+  // "ISLETME" → İşletme defteri (Banka Takip listesine girmez)
+  defterTuru: z.enum(['BILANCO', 'ISLETME']).optional().nullable(),
 });
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;

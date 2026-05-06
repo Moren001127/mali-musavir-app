@@ -8,6 +8,8 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
 import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
+import { bankaTakipApi } from '@/lib/banka-takip';
+import { Landmark, Plus, Trash2, Loader2 } from 'lucide-react';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi (Şirket)' },
@@ -74,6 +76,7 @@ export default function MukellefDetayPage() {
     lucaSlug: '',
     mihsapId: '',
     mihsapDefterTuru: 'BILANCO',
+    defterTuru: 'BILANCO' as 'BILANCO' | 'ISLETME',
   });
 
   useEffect(() => {
@@ -100,6 +103,7 @@ export default function MukellefDetayPage() {
         lucaSlug: taxpayer.lucaSlug ?? '',
         mihsapId: taxpayer.mihsapId ?? '',
         mihsapDefterTuru: taxpayer.mihsapDefterTuru ?? 'BILANCO',
+        defterTuru: ((taxpayer as any).defterTuru ?? 'BILANCO') as 'BILANCO' | 'ISLETME',
       });
     }
   }, [taxpayer]);
@@ -439,6 +443,61 @@ export default function MukellefDetayPage() {
           </div>
         </div>
 
+        {/* DEFTER TÜRÜ — Banka Takip ve diğer modüller için */}
+        <div className="card">
+          <h2 className="text-base font-semibold mb-1" style={{ color: '#d4b876' }}>Defter Türü</h2>
+          <p className="text-xs mb-3" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Bilanço esasında defter tutuyorsa "Banka Takip" listesinde görünür ve banka hesapları yönetilebilir.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <label
+              className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border transition-colors"
+              style={{
+                background: form.defterTuru === 'BILANCO' ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.02)',
+                borderColor: form.defterTuru === 'BILANCO' ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <input
+                type="radio"
+                name="defterTuru"
+                value="BILANCO"
+                checked={form.defterTuru === 'BILANCO'}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO' }))}
+                className="accent-[#d4b876]"
+              />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Bilanço</div>
+                <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Bilanço esasında defter</div>
+              </div>
+            </label>
+            <label
+              className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer border transition-colors"
+              style={{
+                background: form.defterTuru === 'ISLETME' ? 'rgba(168,85,247,0.10)' : 'rgba(255,255,255,0.02)',
+                borderColor: form.defterTuru === 'ISLETME' ? 'rgba(168,85,247,0.45)' : 'rgba(255,255,255,0.08)',
+              }}
+            >
+              <input
+                type="radio"
+                name="defterTuru"
+                value="ISLETME"
+                checked={form.defterTuru === 'ISLETME'}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME' }))}
+                className="accent-[#a78bfa]"
+              />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>İşletme Defteri</div>
+                <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Basit usul / işletme defteri</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        {/* BANKA HESAPLARI — sadece BILANCO seçilmişse + mevcut mükellefte */}
+        {!isNew && form.defterTuru === 'BILANCO' && id && (
+          <BankaHesaplariBolumu taxpayerId={String(id)} />
+        )}
+
         {/* Notlar */}
         <div className="card">
           <h2 className="text-base font-semibold mb-4" style={{ color: '#d4b876' }}>Notlar</h2>
@@ -464,3 +523,161 @@ export default function MukellefDetayPage() {
     </div>
   );
 }
+
+// =============================================================
+// BANKA HESAPLARI BOLUMU — mukellef kartı içinde inline yönetim
+// (sadece defterTuru === 'BILANCO' ise gösterilir)
+// =============================================================
+function BankaHesaplariBolumu({ taxpayerId }: { taxpayerId: string }) {
+  const qc = useQueryClient();
+  const [bankaAdi, setBankaAdi] = useState('');
+  const [iban, setIban] = useState('');
+  const [hesapNo, setHesapNo] = useState('');
+  const [aciklama, setAciklama] = useState('');
+
+  const { data: hesaplar = [], isLoading } = useQuery({
+    queryKey: ['banka-hesaplar', taxpayerId],
+    queryFn: () => bankaTakipApi.hesaplar(taxpayerId),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      bankaTakipApi.createHesap({
+        taxpayerId,
+        bankaAdi: bankaAdi.trim(),
+        iban: iban.trim() || undefined,
+        hesapNo: hesapNo.trim() || undefined,
+        aciklama: aciklama.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Banka hesabı eklendi');
+      setBankaAdi(''); setIban(''); setHesapNo(''); setAciklama('');
+      qc.invalidateQueries({ queryKey: ['banka-hesaplar', taxpayerId] });
+      qc.invalidateQueries({ queryKey: ['banka-takip'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hata'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => bankaTakipApi.deleteHesap(id),
+    onSuccess: () => {
+      toast.success('Hesap silindi');
+      qc.invalidateQueries({ queryKey: ['banka-hesaplar', taxpayerId] });
+      qc.invalidateQueries({ queryKey: ['banka-takip'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hata'),
+  });
+
+  return (
+    <div className="card">
+      <div className="flex items-center gap-2 mb-1">
+        <Landmark size={16} style={{ color: '#d4b876' }} />
+        <h2 className="text-base font-semibold" style={{ color: '#d4b876' }}>
+          Banka Hesapları
+        </h2>
+        <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          ({hesaplar.length})
+        </span>
+      </div>
+      <p className="text-xs mb-3" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        Banka Takip listesinde bu hesaplar görünür ve çeyrek bazlı ekstre durumu izlenir.
+      </p>
+
+      {/* Mevcut hesaplar */}
+      {isLoading ? (
+        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Yükleniyor…</div>
+      ) : hesaplar.length === 0 ? (
+        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          Henüz hesap eklenmemiş. Aşağıdan ekleyebilirsiniz.
+        </div>
+      ) : (
+        <div className="space-y-1.5 mb-3">
+          {hesaplar.map((h: any) => (
+            <div
+              key={h.id}
+              className="flex items-center gap-3 px-3 py-2 rounded-md"
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
+            >
+              <Landmark size={14} style={{ color: '#d4b876', flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-[13px]" style={{ color: '#fafaf9' }}>
+                  {h.bankaAdi}
+                  {h.paraBirimi !== 'TRY' && (
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(168,85,247,0.15)', color: '#a78bfa' }}>
+                      {h.paraBirimi}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                  {h.iban || h.hesapNo || '—'}
+                  {h.aciklama && <span className="ml-2" style={{ color: 'rgba(250,250,249,0.35)' }}>· {h.aciklama}</span>}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`"${h.bankaAdi}" hesabını silmek istediğine emin misin?`)) {
+                    deleteMut.mutate(h.id);
+                  }
+                }}
+                disabled={deleteMut.isPending}
+                className="p-1.5 rounded disabled:opacity-50"
+                style={{ background: 'rgba(244,63,94,0.08)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.2)' }}
+                title="Sil"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Yeni hesap formu */}
+      <div className="space-y-2 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="text-[11px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          Yeni Hesap Ekle
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            placeholder="Banka adı (zorunlu) — örn. Ziraat Bankası"
+            value={bankaAdi}
+            onChange={(e) => setBankaAdi(e.target.value)}
+            className="px-3 py-2 rounded text-sm col-span-2 border border-white/10 bg-black/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+          />
+          <input
+            placeholder="IBAN (TR...)"
+            value={iban}
+            onChange={(e) => setIban(e.target.value)}
+            className="px-3 py-2 rounded text-sm font-mono border border-white/10 bg-black/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+          />
+          <input
+            placeholder="Hesap No (opsiyonel)"
+            value={hesapNo}
+            onChange={(e) => setHesapNo(e.target.value)}
+            className="px-3 py-2 rounded text-sm border border-white/10 bg-black/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+          />
+          <input
+            placeholder="Açıklama / Not (opsiyonel)"
+            value={aciklama}
+            onChange={(e) => setAciklama(e.target.value)}
+            className="px-3 py-2 rounded text-sm col-span-2 border border-white/10 bg-black/20 text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => createMut.mutate()}
+          disabled={!bankaAdi.trim() || createMut.isPending}
+          className="w-full py-2 rounded-lg text-sm font-bold disabled:opacity-50"
+          style={{
+            background: bankaAdi.trim() ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
+            color: bankaAdi.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
+          }}
+        >
+          {createMut.isPending ? <Loader2 size={14} className="inline animate-spin mr-1" /> : <Plus size={14} className="inline mr-1" />}
+          Hesap Ekle
+        </button>
+      </div>
+    </div>
+  );
+}
+

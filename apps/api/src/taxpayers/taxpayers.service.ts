@@ -68,6 +68,7 @@ export class TaxpayersService {
         lucaSlug: true,
         mihsapId: true,
         mihsapDefterTuru: true,
+        defterTuru: true,
         _count: { select: { taxDeclarations: true, documents: true } },
       },
     });
