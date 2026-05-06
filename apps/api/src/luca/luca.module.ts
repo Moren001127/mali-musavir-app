@@ -12,7 +12,8 @@ import { EarsivModule } from '../earsiv/earsiv.module';
 
 @Module({
   imports: [
-    MulterModule.register({ limits: { fileSize: 25 * 1024 * 1024 } }),
+    // 200 MB — büyük e-fatura ZIP'leri (300+ fatura, gib_efatura_alis ≥ 64 MB)
+    MulterModule.register({ limits: { fileSize: 200 * 1024 * 1024 } }),
     PrismaModule,
     forwardRef(() => KdvControlModule),
     forwardRef(() => MizanModule),

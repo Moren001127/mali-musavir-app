@@ -10,8 +10,10 @@ async function bootstrap() {
     bodyParser: false,
   });
 
-  app.useBodyParser('json', { limit: '10mb' });
-  app.useBodyParser('urlencoded', { limit: '10mb', extended: true });
+  // Limit yüksek — multipart upload'larda body-parser çalışmaz ama Luca runner
+  // bazı endpoint'lerde JSON gönderiyor. Büyük e-fatura ZIP'leri için 200mb.
+  app.useBodyParser('json', { limit: '200mb' });
+  app.useBodyParser('urlencoded', { limit: '200mb', extended: true });
 
   // CORS — Helmet'ten ÖNCE kuruluyor ki Access-Control-Allow-Origin her response'a çıksın
   app.enableCors({
