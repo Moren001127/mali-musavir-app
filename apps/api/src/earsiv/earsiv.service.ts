@@ -94,18 +94,23 @@ export class EarsivService {
     const parsed = await this.parser.parseZip(zipBuffer);
     this.logger.log(`ZIP parse: ${parsed.length} fatura bulundu (tip=${tip}, kaynak=${belgeKaynak})`);
 
-    let inserted = 0;
-    let skipped = 0;
+    let inserted = 0;   // gerçekten YENİ eklenen
+    let duplicate = 0;  // önceden vardı, atlandı (mükerrer önleme)
+    let skipped = 0;    // hata nedeniyle atlandı
 
     for (const f of parsed) {
       try {
-        await (this.prisma as any).earsivFatura.upsert({
-          where: {
-            tenantId_taxpayerId_tip_belgeKaynak_faturaNo: {
-              tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo,
-            },
-          },
-          create: {
+        // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
+        const existing = await (this.prisma as any).earsivFatura.findFirst({
+          where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
+          select: { id: true },
+        });
+        if (existing) {
+          duplicate++;
+          continue;
+        }
+        await (this.prisma as any).earsivFatura.create({
+          data: {
             tenantId,
             taxpayerId,
             tip,
@@ -126,20 +131,6 @@ export class EarsivService {
             xmlContent: f.xmlContent,
             zipSourceName: f.zipFileName,
             fetchJobId,
-          },
-          update: {
-            // Mevcut kaydı güncelle (tarih, tutar değişmiş olabilir)
-            faturaTarihi: f.faturaTarihi,
-            ettn: f.ettn,
-            satici: f.satici,
-            saticiVergiNo: f.saticiVergiNo,
-            alici: f.alici,
-            aliciVergiNo: f.aliciVergiNo,
-            matrah: f.matrah,
-            kdvTutari: f.kdvTutari,
-            kdvOrani: f.kdvOrani,
-            toplamTutar: f.toplamTutar,
-            updatedAt: new Date(),
           },
         });
         inserted++;

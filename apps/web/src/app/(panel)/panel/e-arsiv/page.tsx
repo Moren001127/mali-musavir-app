@@ -261,7 +261,7 @@ export default function EarsivPage() {
     [taxpayers, taxpayerIds],
   );
 
-  // Mod başına totaller (her bir Mode için ayrı toplam) + grand total
+  // Mod başına totaller (her bir Mode için ayrı toplam)
   const totalsPerMode = useMemo(() => rowsPerMode.map(({ mode: m, rows: rs }) => {
     let mat = 0, k = 0, t = 0;
     rs.forEach((r: any) => {
@@ -271,10 +271,22 @@ export default function EarsivPage() {
     });
     return { mode: m, matrah: mat, kdv: k, toplam: t, count: rs.length };
   }), [rowsPerMode]);
-  const totals = useMemo(() => totalsPerMode.reduce(
-    (acc, x) => ({ matrah: acc.matrah + x.matrah, kdv: acc.kdv + x.kdv, toplam: acc.toplam + x.toplam, count: acc.count + x.count }),
-    { matrah: 0, kdv: 0, toplam: 0, count: 0 },
-  ), [totalsPerMode]);
+  // Yön bazında toplam (ALIŞ ve SATIŞ ayrı toplanır — gelen+giden toplamak anlamsız)
+  const yonTotals = useMemo(() => {
+    const acc = {
+      ALIS:  { matrah: 0, kdv: 0, toplam: 0, count: 0 },
+      SATIS: { matrah: 0, kdv: 0, toplam: 0, count: 0 },
+    };
+    totalsPerMode.forEach((x) => {
+      if (x.count === 0) return;
+      const yon = MODE_INFO[x.mode].tip; // 'ALIS' | 'SATIS'
+      acc[yon].matrah += x.matrah;
+      acc[yon].kdv    += x.kdv;
+      acc[yon].toplam += x.toplam;
+      acc[yon].count  += x.count;
+    });
+    return acc;
+  }, [totalsPerMode]);
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -311,8 +323,8 @@ export default function EarsivPage() {
                   }
                   return ns;
                 });
-                setTaxpayerIds(new Set());
-                setTumMukellefler(false);
+                // Mükellef seçimi KORUNUYOR — sadece tablo satır seçimi sıfırlanır
+                // (liste yeniden yüklenecek, eski fatura id'leri geçersiz)
                 setSelected(new Set());
               }}
               className="px-3 py-2.5 rounded-md text-sm font-semibold text-center transition-all flex items-center justify-center gap-1.5"
@@ -556,29 +568,45 @@ export default function EarsivPage() {
               </div>
             </div>
           ))}
-          {/* Grand total — sadece 2+ mod varsa göster */}
-          {totalsPerMode.filter((x) => x.count > 0).length > 1 && (
-            <div
-              className="rounded-lg p-3 grid grid-cols-[160px_1fr_1fr_1fr_80px] gap-3 items-center"
-              style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.3)' }}
-            >
-              <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                GENEL TOPLAM
-              </div>
-              <div className="text-right">
-                <div style={{ color: GOLD, fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.matrah)}</div>
-              </div>
-              <div className="text-right">
-                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.kdv)}</div>
-              </div>
-              <div className="text-right">
-                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(totals.toplam)}</div>
-              </div>
-              <div className="text-right">
-                <div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{totals.count}</div>
-              </div>
-            </div>
-          )}
+          {/* Yön bazında toplam — ALIŞ ve SATIŞ ayrı (gelen ile gideni toplamak anlamsız).
+              Sadece bir tipte birden fazla mod seçildiğinde gösterir (örn Gelen E-Arşiv + Gelen E-Fatura → ALIŞ TOPLAM). */}
+          {(() => {
+            // Aynı yönde 2+ mod varsa o yön için toplam göster
+            const alisModeCount = totalsPerMode.filter((x) => x.count > 0 && MODE_INFO[x.mode].tip === 'ALIS').length;
+            const satisModeCount = totalsPerMode.filter((x) => x.count > 0 && MODE_INFO[x.mode].tip === 'SATIS').length;
+            return (
+              <>
+                {alisModeCount > 1 && (
+                  <div
+                    className="rounded-lg p-3 grid grid-cols-[160px_1fr_1fr_1fr_80px] gap-3 items-center"
+                    style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)' }}
+                  >
+                    <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: '#60a5fa' }}>
+                      ALIŞ TOPLAM
+                    </div>
+                    <div className="text-right"><div style={{ color: '#60a5fa', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.ALIS.matrah)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.ALIS.kdv)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.ALIS.toplam)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{yonTotals.ALIS.count}</div></div>
+                  </div>
+                )}
+                {satisModeCount > 1 && (
+                  <div
+                    className="rounded-lg p-3 grid grid-cols-[160px_1fr_1fr_1fr_80px] gap-3 items-center"
+                    style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}
+                  >
+                    <div className="text-[12px] font-bold uppercase tracking-wider" style={{ color: '#4ade80' }}>
+                      SATIŞ TOPLAM
+                    </div>
+                    <div className="text-right"><div style={{ color: '#4ade80', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.SATIS.matrah)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.SATIS.kdv)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{fmtTRY(yonTotals.SATIS.toplam)}</div></div>
+                    <div className="text-right"><div style={{ color: '#fafaf9', fontSize: 16, fontWeight: 700 }}>{yonTotals.SATIS.count}</div></div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
