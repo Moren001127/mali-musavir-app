@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.54';
+          const AGENT_VER = '1.35.55';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1023,18 +1023,26 @@
     const sorgu1Bas = fmt(1, ay, yil);
     const sorgu1Bit = fmt(ayinSonGunu(yil, ay), ay, yil);
 
-    // Sorgu 2 (sonraki ay başı → bugün) ARTIK DEVRE DIŞI.
-    // Sebep: kullanıcı kafa karıştığını söyledi — Nisan sorgulanırken üstüne Mayıs sorgulanıyor.
-    // Backend liste filtresi artık faturaTarihi'ne göre çalıştığı için (v1.35.48), sonraki ay
-    // faturalarına ihtiyaç yok: kullanıcı Mayıs filtresine geçtiğinde Mayıs tarihliler görünür.
+    // Sorgu 2 (sonraki ay başı → bugün) — Luca'nın tarih kesimi her zaman seçili dönem sonunda
+    // bittiği için, bir sonraki ay başından bugüne kadar olan faturaları da yakalamak için 2. sorgu.
+    // Sadece seçili ay GEÇMİŞ ise tetiklenir (örn. Nisan sorgusunda Mayıs 1→bugün de çekilir).
+    // Seçili ay zaten ŞU ANKI ay ise gereksiz (zaten Sorgu1 bugünü kapsıyor).
     const sonAy = ay === 12 ? 1 : ay + 1;
     const sonYil = ay === 12 ? yil + 1 : yil;
     const bugun = new Date();
-    const sorgu2Gerekli = false; // ⚠ Sabit kapalı
+    const buAy = bugun.getMonth() + 1;
+    const buYil = bugun.getFullYear();
+    // Seçili ay bu aydan ÖNCE ise Sorgu2 gerekli
+    const sorgu2Gerekli = (yil < buYil) || (yil === buYil && ay < buAy);
     const sorgu2Bas = fmt(1, sonAy, sonYil);
-    const sorgu2Bit = fmt(bugun.getDate(), bugun.getMonth() + 1, bugun.getFullYear());
+    const sorgu2Bit = fmt(bugun.getDate(), buAy, buYil);
 
-    await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit}`);
+    if (sorgu2Gerekli) {
+      await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
+      await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit} (sonraki ay → bugün)`);
+    } else {
+      await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit} (Sorgu 2 atlandı — seçili ay = bu ay)`);
+    }
 
     // frm3 frame'ini doğrula (yukarıdaki menü navigasyonu ile yüklendi)
     if (!frm3 || !frm3.contentDocument) {

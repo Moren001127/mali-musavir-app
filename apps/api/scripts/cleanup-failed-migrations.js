@@ -63,6 +63,38 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_fetchJobId_idx"
   ON "earsiv_faturalar"("fetchJobId");
 `;
 
+// v1.35.55+: Şema sonradan eklenen alanlar — idempotent ALTER (her startup'ta çalışır)
+const PATCH_SQL = `
+-- belgeKaynak (EFATURA | EARSIV)
+DO $$ BEGIN
+  CREATE TYPE "BelgeKaynak" AS ENUM ('EFATURA', 'EARSIV');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE "earsiv_faturalar"
+  ADD COLUMN IF NOT EXISTS "belgeKaynak" "BelgeKaynak" NOT NULL DEFAULT 'EARSIV';
+
+-- Mihsap upload tracking alanları
+ALTER TABLE "earsiv_faturalar"
+  ADD COLUMN IF NOT EXISTS "mihsapUploadedAt"   TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "mihsapUploadStatus" TEXT,
+  ADD COLUMN IF NOT EXISTS "mihsapUploadError"  TEXT,
+  ADD COLUMN IF NOT EXISTS "mihsapUploadJobId"  TEXT;
+
+-- belgeKaynak içeren UNIQUE/INDEX (eski sürümdekini değiştir)
+-- Eski unique: (tenantId, taxpayerId, tip, faturaNo)
+-- Yeni unique: (tenantId, taxpayerId, tip, belgeKaynak, faturaNo)
+DO $$ BEGIN
+  ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key";
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key"
+  ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo");
+
+CREATE INDEX IF NOT EXISTS "earsiv_faturalar_mihsap_status_idx"
+  ON "earsiv_faturalar"("mihsapUploadStatus");
+CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
+  ON "earsiv_faturalar"("tenantId", "taxpayerId", "donem", "tip", "belgeKaynak");
+`;
+
 (async () => {
   if (!process.env.DATABASE_URL) {
     console.log('[startup] DATABASE_URL yok, atlanıyor');
@@ -112,6 +144,14 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_fetchJobId_idx"
       console.log(`[startup] ${MIGRATION_NAME} "applied" olarak işaretlendi`);
     } else {
       console.log('[startup] earsiv_faturalar zaten var');
+    }
+
+    // PATCH: belgeKaynak + Mihsap kolonları yoksa ekle (idempotent ALTER)
+    try {
+      await prisma.$executeRawUnsafe(PATCH_SQL);
+      console.log('[startup] earsiv patch uygulandı (belgeKaynak + mihsap kolonları)');
+    } catch (e) {
+      console.error('[startup] earsiv patch hatası:', e.message);
     }
   } catch (e) {
     console.error('[startup] HATA:', e.message);
