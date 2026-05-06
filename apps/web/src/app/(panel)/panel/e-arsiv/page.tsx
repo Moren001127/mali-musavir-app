@@ -104,10 +104,19 @@ export default function EarsivPage() {
       // Cache yerine her mount/focus'ta yeniden çek — kullanıcı ay değiştirip
       // geri döndüğünde stale data göstermesin (Mihsap status, yeni faturalar vb.)
       staleTime: 0,
+      gcTime: 0,
       refetchOnMount: 'always' as const,
       refetchOnWindowFocus: true,
     })),
   });
+
+  // Ay/yıl değişince TÜM earsiv-list cache'ini temizle ve refetch tetikle.
+  // Bu sayede dropdown'dan başka aya geçince ekran kesin yenilenir.
+  useEffect(() => {
+    qc.removeQueries({ queryKey: ['earsiv-list'] });
+    qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month]);
   const isLoading = queries.some((q: any) => q.isLoading);
   // Mod bazında satırlar (mode tag ekleyerek)
   const rowsPerMode = useMemo(() => modeArr.map((m, i) => ({

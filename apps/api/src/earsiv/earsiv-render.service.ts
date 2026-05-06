@@ -86,8 +86,29 @@ export class EarsivRenderService {
 <meta charset="utf-8">
 <title>e-Arşiv Fatura ${this.esc(f.faturaNo)}</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #fff; font-family: Arial, sans-serif; }
-  #moren-fallback { padding: 20px; color: #555; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; color: #111; font-size: 12px; }
+  /* Fallback özet sayfası stilleri — XSLT başarısız olunca gösterilir */
+  #moren-fallback .page { width: 210mm; min-height: 297mm; padding: 14mm 16mm; margin: 0 auto; background: #fff; }
+  #moren-fallback h1.title { font-size: 20px; margin: 0 0 4px 0; letter-spacing: 0.5px; }
+  #moren-fallback .subtitle { font-size: 11px; color: #666; margin-bottom: 16px; }
+  #moren-fallback table.meta { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  #moren-fallback table.meta td { padding: 6px 8px; border: 1px solid #999; vertical-align: top; }
+  #moren-fallback table.meta td.label { background: #f3f3f3; font-weight: 600; width: 25%; }
+  #moren-fallback table.lines { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 11px; }
+  #moren-fallback table.lines th, #moren-fallback table.lines td { border: 1px solid #999; padding: 5px 6px; text-align: left; }
+  #moren-fallback table.lines th { background: #f3f3f3; font-weight: 600; }
+  #moren-fallback table.lines td.right { text-align: right; }
+  #moren-fallback table.totals { width: 60%; margin-top: 14px; margin-left: auto; border-collapse: collapse; }
+  #moren-fallback table.totals td { padding: 6px 8px; border: 1px solid #999; }
+  #moren-fallback table.totals td.label { background: #f9f9f9; font-weight: 600; text-align: right; width: 60%; }
+  #moren-fallback table.totals td.value { text-align: right; font-variant-numeric: tabular-nums; }
+  #moren-fallback .grand { background: #e9d9b3 !important; font-size: 13px; }
+  #moren-fallback .small { font-size: 10px; color: #666; }
+  #moren-fallback .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #111; }
+  #moren-fallback .header .right { text-align: right; }
+  #moren-fallback .ettn { font-family: 'Courier New', monospace; font-size: 10px; word-break: break-all; }
+  #moren-fallback .badge { display: inline-block; padding: 2px 8px; border: 1px solid #111; border-radius: 3px; font-size: 10px; letter-spacing: 0.6px; }
   /* Ekranda gösterirken pagination/page-break kapalı, tek sürekli sayfa */
   @media screen {
     * {
@@ -106,6 +127,7 @@ export class EarsivRenderService {
   }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    #moren-fallback .page { padding: 10mm 14mm; }
   }
 </style>
 </head>
