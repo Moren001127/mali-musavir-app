@@ -334,9 +334,8 @@ export class EarsivService {
           satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
           matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, paraBirimi: true,
           durum: true, taxpayerId: true, createdAt: true,
-          // mihsap* alanları liste SELECT'inden kaldırıldı — production DB'de
-          // henüz bu kolonlar olmayabilir, raw query yapıp eksik kolon hatası alıyorduk.
-          // Mihsap status badge'ini şimdilik göstermiyoruz; tekil getById hâlâ döner.
+          // Mihsap upload tracking — DB'de kolon var (cleanup-migrations PATCH ile eklendi)
+          mihsapUploadedAt: true, mihsapUploadStatus: true, mihsapUploadError: true,
         },
       }),
       (this.prisma as any).earsivFatura.count({ where }),

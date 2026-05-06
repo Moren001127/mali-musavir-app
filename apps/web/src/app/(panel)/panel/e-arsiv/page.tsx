@@ -234,7 +234,8 @@ export default function EarsivPage() {
     if (tamamlanan === lucaJobIds.length) {
       // Hepsi bitti — özet göster
       setLucaStatus(`Tamamlandı — ${done} başarılı / ${nofatura} fatura yok / ${failed} hata`);
-      qc.invalidateQueries({ queryKey: ['earsiv-list'] });
+      // Listeyi ZORLA yenile (invalidate queue'lar, refetch hemen tetikler)
+      qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
       // 5sn sonra status'ü temizle
       const t = setTimeout(() => {
         setLucaJobId(null);
@@ -246,8 +247,8 @@ export default function EarsivPage() {
       return () => clearTimeout(t);
     } else {
       setLucaStatus(`İşleniyor ${tamamlanan}/${lucaJobIds.length} · ${running} çalışıyor, ${pending} sırada`);
-      // Bir job done olduysa liste yenile (kısmi sonuç da görünür)
-      if (done > 0 || nofatura > 0) qc.invalidateQueries({ queryKey: ['earsiv-list'] });
+      // Bir job done olduysa liste yenile (kısmi sonuç da görünür) — refetch zorla
+      if (done > 0 || nofatura > 0) qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allJobQueries.map((q: any) => q?.data?.job?.status || q?.data?.status || '').join(',')]);
@@ -302,7 +303,7 @@ export default function EarsivPage() {
       const msg = parts.join(' · ') || `${d.total} fatura işlendi`;
       if (d.failed > 0) toast.error(`Mihsap: ${msg}`);
       else toast.success(`Mihsap: ${msg}`);
-      qc.invalidateQueries({ queryKey: ['earsiv-list'] });
+      qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mihsap yükleme başarısız'),
   });
