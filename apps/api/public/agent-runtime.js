@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.55';
+          const AGENT_VER = '1.35.57';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1465,6 +1465,15 @@
               foundDoneSignal = true;
               break;
             }
+            // Alternatif Luca mesajları:
+            if (/fatura\s+indirme\s+i[şs]lemi\s+tamamland[ıi]/i.test(txt)) {
+              foundDoneSignal = true;
+              break;
+            }
+            if (/i[şs]lem\s+tamamland[ıi]/i.test(txt) && /fatura/i.test(txt)) {
+              foundDoneSignal = true;
+              break;
+            }
             if (/belirtilen\s+tarih\s+aral[ıi][gğ][ıi]nda\s+fatura\s+bulunamad[ıi]/i.test(txt)) {
               foundDoneSignal = true;
               break;
@@ -2019,8 +2028,14 @@
     // - ama 30sn boyunca AKTIVITE OLMAZSA çık (gereksiz beklemenin önüne geç)
     // Aktivite tespiti: gib530/fatura_kaydet/gib_efatura URL'lerinde Performance API resource sayısı artıyor mu?
     const zipWaitStart = Date.now();
-    const ZIP_TIMEOUT_MS = 5 * 60 * 1000;
-    const IDLE_TIMEOUT_MS = 30 * 1000;
+    const ZIP_TIMEOUT_MS = 10 * 60 * 1000;  // 10dk absolute (büyük dosyalar için)
+    const IDLE_BASE_MS = 90 * 1000;         // 90sn baseline (server ZIP paketleme süresi)
+    // Adaptif idle: yapılan iş arttıkça beklemek mantıklı (büyük ZIP daha uzun paketlenir).
+    // 100 XHR'a kadar 90sn, sonrası lineer artar, max 240sn (4dk).
+    const computeIdleTimeout = (xhrCount) => Math.min(
+      240 * 1000,
+      IDLE_BASE_MS + Math.max(0, xhrCount - 100) * 800
+    );
     // ZIP wait için activity tracker — XHR/fetch hook'ları ile gerçek zamanlı sayım.
     // Tüm frame'lere recursive hook kur, her gib530/fatura_kaydet çağrısında counter++.
     if (!window.__morenLucaActivity) window.__morenLucaActivity = { count: 0, lastTs: 0 };
@@ -2072,8 +2087,10 @@
       // Aktivite kontrolü — XHR hook'ları lastTs'i bump ediyor
       const lastTs = getLastActivityTs() || zipWaitStart;
       const idle = Date.now() - lastTs;
-      if (idle > IDLE_TIMEOUT_MS) {
-        await log(`⚠ ${IDLE_TIMEOUT_MS/1000}sn aktivite yok (toplam ${getActivityCount()} XHR), bekleme sonlandırılıyor`);
+      const xhrCount = getActivityCount();
+      const idleLimit = computeIdleTimeout(xhrCount);
+      if (idle > idleLimit) {
+        await log(`⚠ ${Math.round(idleLimit/1000)}sn aktivite yok (toplam ${xhrCount} XHR, ZIP paketleme bitmemiş olabilir), bekleme sonlandırılıyor`);
         break;
       }
       // ZIP geldikten sonra (ya da 8sn sonra) popup'ı X ile kapat
@@ -2112,7 +2129,7 @@
     postExpectingZip(false);
 
     if (!yakalanmisZip) {
-      throw new Error('ZIP 60sn içinde yakalanamadı — Luca download mekanizması interceptor\'ları bypass ediyor olabilir');
+      throw new Error(`ZIP ${Math.round(ZIP_TIMEOUT_MS/1000)}sn içinde yakalanamadı — Luca download mekanizması interceptor'ları bypass ediyor olabilir`);
     }
     return yakalanmisZip;
   }
