@@ -424,13 +424,7 @@ export default function MihsapAgentPage() {
                 AI kararı geçmişle çelişen — onayını bekliyor
               </span>
             </div>
-            <Link
-              href="/panel/onay-kuyrugu"
-              className="text-[11.5px] inline-flex items-center gap-1"
-              style={{ color: 'rgba(250,250,249,0.55)' }}
-            >
-              Detaylı Görünüm <ArrowRight size={11} />
-            </Link>
+
           </div>
           <div className="max-h-[360px] overflow-y-auto">
             {(pendingDecisions as any[]).slice(0, 20).map((row: any) => {
@@ -509,14 +503,7 @@ export default function MihsapAgentPage() {
                     >
                       <ThumbsDown size={12} /> Reddet
                     </button>
-                    <Link
-                      href={`/panel/onay-kuyrugu`}
-                      className="inline-flex items-center gap-1 text-[11px] font-medium px-3 py-1 rounded"
-                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}
-                      title="Detayda kendim düzelterek onayla"
-                    >
-                      <Edit3 size={11} /> Düzelt
-                    </Link>
+
                   </div>
                 </div>
               );
@@ -524,14 +511,6 @@ export default function MihsapAgentPage() {
           </div>
         </div>
       )}
-
-      {/* MÜKELLEF BAZINDA AYLIK ÖZET — portal üzerinden işlenen fatura sayıları */}
-      <MukellefIslemOzeti
-        ay={ay}
-        summary={mukellefSummary}
-        mihsapTaxpayers={mihsapTaxpayers}
-        taxpayerName={taxpayerName}
-      />
 
       {/* CANLI LOG FEED */}
       <div
@@ -746,6 +725,14 @@ export default function MihsapAgentPage() {
           </div>
         </div>
       )}
+
+      {/* MÜKELLEF BAZINDA AYLIK ÖZET — portal üzerinden işlenen fatura sayıları */}
+      <MukellefIslemOzeti
+        ay={ay}
+        summary={mukellefSummary}
+        mihsapTaxpayers={mihsapTaxpayers}
+        taxpayerName={taxpayerName}
+      />
     </div>
   );
 }

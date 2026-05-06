@@ -42,6 +42,8 @@ export default function BankaTakipPage() {
     setDonem(`${yeniYil}-${CEYREK_BASLANGIC[yeniCeyrek]}`);
   };
   const [search, setSearch] = useState('');
+  type FiltreDurum = 'tumu' | 'eksigeldi' | 'hepsigeldi' | 'islenmedi' | 'hepsiislendi' | 'hesapsiz';
+  const [filterDurum, setFilterDurum] = useState<FiltreDurum>('tumu');
   const [hesapModalFor, setHesapModalFor] = useState<BankaTakipItem | null>(null);
 
   const { data, isLoading, isError } = useQuery({
@@ -58,7 +60,29 @@ export default function BankaTakipPage() {
   });
 
   const filtered = useMemo(() => {
-    const items = data?.items || [];
+    let items = data?.items || [];
+    // 1) Durum filtresi
+    if (filterDurum !== 'tumu') {
+      items = items.filter((x) => {
+        switch (filterDurum) {
+          case 'eksigeldi':
+            // Tüm hesapları gelmemiş veya bir kısmı eksik
+            return x.ozet.hesapSayisi > 0 && x.ozet.eksikGeldi > 0;
+          case 'hepsigeldi':
+            return x.ozet.hesapSayisi > 0 && x.ozet.tumGeldi;
+          case 'islenmedi':
+            // Geldi ama henüz işlenmedi
+            return x.ozet.hesapSayisi > 0 && x.ozet.tumGeldi && !x.ozet.tumIslendi;
+          case 'hepsiislendi':
+            return x.ozet.hesapSayisi > 0 && x.ozet.tumIslendi;
+          case 'hesapsiz':
+            return x.ozet.hesapSayisi === 0;
+          default:
+            return true;
+        }
+      });
+    }
+    // 2) Arama
     if (!search.trim()) return items;
     const q = search.toLowerCase();
     return items.filter((x) =>
@@ -66,7 +90,7 @@ export default function BankaTakipPage() {
       x.taxpayer.taxNumber?.includes(q) ||
       x.hesaplar.some((h) => h.bankaHesap.bankaAdi.toLowerCase().includes(q)),
     );
-  }, [data?.items, search]);
+  }, [data?.items, search, filterDurum]);
 
   // Özet sayaçları
   const ozet = useMemo(() => {
@@ -133,18 +157,18 @@ export default function BankaTakipPage() {
         </div>
       </div>
 
-      {/* ÖZET KPI'LAR */}
+      {/* ÖZET KPI'LAR — tıklanabilir filtre kısayolları */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-        <KpiCard label="Toplam Mükellef" value={ozet.total} color="#fafaf9" />
-        <KpiCard label="Tüm Ekstreler Geldi" value={ozet.tumGelmis} color="#22c55e" />
-        <KpiCard label="Hepsi İşlendi" value={ozet.tumIslenmis} color="#4ade80" />
-        <KpiCard label="Eksik / Beklenen" value={ozet.total - ozet.tumGelmis - ozet.hesapsiz} color="#fbbf24" />
-        <KpiCard label="Banka Hesabı Yok" value={ozet.hesapsiz} color="#94a3b8" />
+        <KpiCard label="Toplam Mükellef" value={ozet.total} color="#fafaf9" active={filterDurum === 'tumu'} onClick={() => setFilterDurum('tumu')} />
+        <KpiCard label="Tüm Ekstreler Geldi" value={ozet.tumGelmis} color="#22c55e" active={filterDurum === 'hepsigeldi'} onClick={() => setFilterDurum('hepsigeldi')} />
+        <KpiCard label="Hepsi İşlendi" value={ozet.tumIslenmis} color="#4ade80" active={filterDurum === 'hepsiislendi'} onClick={() => setFilterDurum('hepsiislendi')} />
+        <KpiCard label="Eksik / Beklenen" value={ozet.total - ozet.tumGelmis - ozet.hesapsiz} color="#fbbf24" active={filterDurum === 'eksigeldi'} onClick={() => setFilterDurum('eksigeldi')} />
+        <KpiCard label="Banka Hesabı Yok" value={ozet.hesapsiz} color="#94a3b8" active={filterDurum === 'hesapsiz'} onClick={() => setFilterDurum('hesapsiz')} />
       </div>
 
-      {/* ARAMA */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-md">
+      {/* ARAMA + FİLTRE */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[260px] max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
           <input
             placeholder="Mükellef adı, VKN veya banka adı ara…"
@@ -154,6 +178,31 @@ export default function BankaTakipPage() {
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
           />
         </div>
+        <select
+          value={filterDurum}
+          onChange={(e) => setFilterDurum(e.target.value as FiltreDurum)}
+          className="px-3 py-2 rounded-md text-sm font-medium"
+          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 220 }}
+        >
+          <option value="tumu">Tüm Durumlar</option>
+          <option value="eksigeldi">⚠ Ekstresi Eksik (gelmedi)</option>
+          <option value="hepsigeldi">📥 Hepsi Geldi</option>
+          <option value="islenmedi">⏳ Geldi ama İşlenmedi</option>
+          <option value="hepsiislendi">✓ Hepsi İşlendi</option>
+          <option value="hesapsiz">∅ Banka Hesabı Yok</option>
+        </select>
+        {filterDurum !== 'tumu' && (
+          <button
+            onClick={() => setFilterDurum('tumu')}
+            className="text-[12px] inline-flex items-center gap-1 px-2 py-1 rounded"
+            style={{ color: '#fbbf24', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.30)' }}
+          >
+            <X size={11} /> Filtreyi Kaldır
+          </button>
+        )}
+        <span className="text-[11.5px] ml-auto" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          {filtered.length} mükellef gösteriliyor
+        </span>
       </div>
 
       {/* ANA LİSTE */}
@@ -226,11 +275,26 @@ export default function BankaTakipPage() {
 }
 
 // ===== KPI CARD =====
-function KpiCard({ label, value, color }: { label: string; value: number; color: string }) {
+function KpiCard({
+  label, value, color, active, onClick,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <div
-      className="rounded-lg p-3"
-      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+    <button
+      onClick={onClick}
+      type="button"
+      className="rounded-lg p-3 text-left transition-all hover:brightness-125"
+      style={{
+        background: active ? color + '15' : 'rgba(255,255,255,0.02)',
+        border: active ? `1px solid ${color}66` : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: active ? `0 2px 12px ${color}20` : 'none',
+        cursor: onClick ? 'pointer' : 'default',
+      }}
     >
       <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
         {label}
@@ -238,7 +302,7 @@ function KpiCard({ label, value, color }: { label: string; value: number; color:
       <div className="text-2xl font-bold mt-0.5 tabular-nums" style={{ color }}>
         {value}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -589,15 +653,4 @@ function BankaHesapModal({
             disabled={!bankaAdi.trim() || createMut.isPending}
             className="w-full py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
             style={{
-              background: bankaAdi.trim() ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
-              color: bankaAdi.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
-            }}
-          >
-            {createMut.isPending ? <Loader2 size={14} className="inline animate-spin mr-1" /> : <Plus size={14} className="inline mr-1" />}
-            Hesap Ekle
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+              background:

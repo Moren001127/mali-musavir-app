@@ -77,7 +77,7 @@ const navGroups = [
     items: [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajanlar/luca',      label: 'Luca Çekim',          icon: FileInput },
-      { href: '/panel/onay-kuyrugu',      label: 'Onay Kuyruğu',        icon: AlertTriangle },
+      // Onay Kuyrugu modulu Fatura Isleme'ye entegre edildi (sidebar'dan kaldirildi)
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
       { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
       { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },
@@ -257,8 +257,8 @@ export default function Sidebar() {
 
                       <span className="flex-1 leading-none relative">{label}</span>
 
-                      {/* Onay kuyruğu badge */}
-                      {href === '/panel/onay-kuyrugu' && bekleyenSayisi > 0 && (
+                      {/* Bekleyen onay badge — Fatura İşleme menüsünde göster (Onay Kuyruğu oraya entegre) */}
+                      {href === '/panel/ajanlar/mihsap' && bekleyenSayisi > 0 && (
                         <span
                           className="inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0"
                           style={{
