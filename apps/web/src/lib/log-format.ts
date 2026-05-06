@@ -280,27 +280,19 @@ function extractFaturaTarihi(meta?: any, message?: string, eventTs?: string | Da
     const m2 = message.match(/tarih\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/i);
     if (m2) return normalizeTarih(m2[1]);
   }
-  // 4) SON ÇARE 1 — agent v1.36.3+ her log'a meta.donem ("YYYY-MM") ekliyor.
-  // Tarih hiçbir yerden okunamadıysa o ayın 15'ini göster (yaklaşık tarih).
+  // 4) SON ÇARE — agent v1.36.3+ her log'a meta.donem ("YYYY-MM") ekliyor.
+  // Tarih hiçbir yerden okunamadıysa GERÇEK donemden ayın 15'ini göster.
+  // ÖNEMLI: event.ts (kayıt anı) ASLA kullanılmaz — fatura tarihiyle alakasız,
+  // yanıltıcı olur (örn. Nisan faturasını Mayıs'ta işliyorsan event.ts Mayıs olur).
   if (meta?.donem) {
     const d = String(meta.donem).trim();
     const m = d.match(/^(\d{4})-(\d{1,2})$/);
     if (m) return `15.${m[2].padStart(2, '0')}.${m[1]}`;
   }
-  // 5) SON ÇARE 2 — agent meta.donem de yollamamışsa (eski sürüm bookmarklet
-  // hala çalışıyorsa) event'in atıldığı saatin AY/YIL'ını alıp 15'i göster.
-  // Faturalar genelde işlendiği ay içinde atılır; %95 doğru tahmin.
-  // Bu sayede agent ne durumda olursa olsun Tarih: ✗ kalmaz.
-  if (eventTs) {
-    try {
-      const dt = eventTs instanceof Date ? eventTs : new Date(eventTs);
-      if (!isNaN(dt.getTime())) {
-        const yyyy = dt.getFullYear();
-        const mm = String(dt.getMonth() + 1).padStart(2, '0');
-        return `15.${mm}.${yyyy}`;
-      }
-    } catch {}
-  }
+  // Hiçbir güvenilir kaynak yoksa undefined dön → UI "—" gösterir.
+  // Bu durumda kullanıcının agent'ı yenilemesi (v1.36.4+) gerekiyor demek.
+  // eventTs param burada KULLANILMAZ — bilerek atlandı (yanıltıcı tarih riskine karşı).
+  void eventTs;
   return undefined;
 }
 
