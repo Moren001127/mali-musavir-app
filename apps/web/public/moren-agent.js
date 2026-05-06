@@ -657,30 +657,54 @@
         }
       }
       if (!tarih && v.faturaTarihiStr) tarih = parseTr(v.faturaTarihiStr);
-      // EK FALLBACK'LER — yeni/işlenmemiş faturalarda Mihsap farklı alan adları kullanabilir
-      if (!tarih && v.duzenlemeTarihi) tarih = parseTr(v.duzenlemeTarihi);
-      if (!tarih && v.belgeTarihi) tarih = parseTr(v.belgeTarihi);
-      if (!tarih && v.fatBelgeTarihi) tarih = parseTr(v.fatBelgeTarihi);
-      if (!tarih && v.evrakTarihi) tarih = parseTr(v.evrakTarihi);
-      if (!tarih && v.tarihi) tarih = parseTr(v.tarihi);
-      // DOM fallback — fatura editör açıksa form input'undan oku
+      // EK FALLBACK'LER — Mihsap farklı alan adları kullanabilir
+      const tarihAdaylari = [
+        'duzenlemeTarihi','duzenlemeTarihiStr','belgeTarihi','belgeTarihiStr',
+        'fatBelgeTarihi','evrakTarihi','tarihi','tarih2','kayitTarihi',
+        'ilkKayitTarihi','olusturmaTarihi','tarihStr','duzenlemeTarihiTr'
+      ];
+      for (const k of tarihAdaylari) {
+        if (!tarih && v[k]) tarih = parseTr(v[k]);
+      }
+      // Sub-objelerde de ara (v.fatura?, v.belge?, v.detay?)
+      if (!tarih) {
+        for (const sub of ['fatura','belge','detay','faturaBilgi','belgeBilgi']) {
+          const o = v[sub];
+          if (o && typeof o === 'object') {
+            for (const k of ['tarih','faturaTarihi','duzenlemeTarihi','belgeTarihi']) {
+              if (!tarih && o[k]) { tarih = parseTr(o[k]); break; }
+            }
+          }
+        }
+      }
+      // DOM fallback — fatura editör açıksa input'tan oku (geniş seçici)
       if (!tarih) {
         try {
-          const el = document.querySelector('#defterData_tarih, input[id*="tarih"][type], [aria-label*="Tarih"] input, .ant-picker-input input');
-          const v2 = (el?.value || el?.textContent || '').trim();
-          if (v2) tarih = parseTr(v2);
+          const adaylar = [
+            ...document.querySelectorAll('#defterData_tarih input, #defterData_tarih, input[id*="tarih" i], input[name*="tarih" i], input[placeholder*="tarih" i], [aria-label*="tarih" i] input, .ant-picker-input input, .ant-picker input'),
+          ];
+          for (const el of adaylar) {
+            const raw = (el?.value || el?.textContent || el?.getAttribute?.('value') || '').trim();
+            if (raw && /\d/.test(raw)) {
+              const t = parseTr(raw);
+              if (t) { tarih = t; break; }
+            }
+          }
         } catch {}
       }
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
-      // Hala yoksa - debug için API yanıtının anahtarlarını log'a yaz (sadece ilk seferde)
-      if (!tarih && !window.__morenMetaDumped) {
-        window.__morenMetaDumped = true;
-        try {
-          const keys = Object.keys(v).slice(0, 50);
-          console.warn('[Moren] getFaturaMeta: tarih bulunamadı. API yanıt anahtarları:', keys);
-        } catch {}
+      // Hala yoksa — debug: Mihsap API yanıtının ilk 1500 karakterini console'a yaz.
+      // Window flag ile sadece ilk 5 başarısız faturada yazılır (console spam olmasın).
+      if (!tarih) {
+        window.__morenTarihDebugCount = (window.__morenTarihDebugCount || 0) + 1;
+        if (window.__morenTarihDebugCount <= 5) {
+          try {
+            const dump = JSON.stringify(v, null, 2).slice(0, 1500);
+            console.warn(`[Moren] getFaturaMeta TARİH BULUNAMADI #${window.__morenTarihDebugCount} fid=${fid}\nAPI yanıt:\n` + dump);
+          } catch {}
+        }
       }
       // Belge türü — 3 kanaldan ara: 1) API, 2) faturaTuru türetim, 3) DOM (işletme defteri için)
       let belgeTuru = v.belgeTuru || v.belgeTipi || v.belgeTipiKod || null;

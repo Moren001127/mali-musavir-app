@@ -18,8 +18,29 @@ export default function BankaTakipPage() {
   const qc = useQueryClient();
   const [donem, setDonem] = useState(() => {
     const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    // Çeyreğin ilk ayını dönem olarak sakla (Q1=01, Q2=04, Q3=07, Q4=10)
+    const m = d.getMonth() + 1;
+    const qStartMonth = m <= 3 ? 1 : m <= 6 ? 4 : m <= 9 ? 7 : 10;
+    return `${d.getFullYear()}-${String(qStartMonth).padStart(2, '0')}`;
   });
+
+  // Donem'den yıl ve çeyrek numarası türet
+  const [yStr, mStr] = donem.split('-');
+  const yil = Number(yStr);
+  const ayBaslangic = Number(mStr);
+  const ceyrek = ayBaslangic <= 3 ? 1 : ayBaslangic <= 6 ? 2 : ayBaslangic <= 9 ? 3 : 4;
+  const CEYREK_LABELS: Record<number, string> = {
+    1: 'I. Çeyrek (Ocak – Mart)',
+    2: 'II. Çeyrek (Nisan – Haziran)',
+    3: 'III. Çeyrek (Temmuz – Eylül)',
+    4: 'IV. Çeyrek (Ekim – Aralık)',
+  };
+  const CEYREK_BASLANGIC: Record<number, string> = {
+    1: '01', 2: '04', 3: '07', 4: '10',
+  };
+  const setDonemFromQuarter = (yeniYil: number, yeniCeyrek: number) => {
+    setDonem(`${yeniYil}-${CEYREK_BASLANGIC[yeniCeyrek]}`);
+  };
   const [search, setSearch] = useState('');
   const [hesapModalFor, setHesapModalFor] = useState<BankaTakipItem | null>(null);
 
@@ -73,23 +94,41 @@ export default function BankaTakipPage() {
             Banka Ekstre Takibi
           </h1>
           <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Bilanço esasında mükelleflerin banka hesapları ve aylık ekstre durumu
+            Bilanço esasında mükelleflerin banka hesapları ve 3 aylık dönem ekstre durumu
           </p>
         </div>
 
-        {/* Dönem seçici */}
+        {/* Dönem seçici — 3 aylık çeyrek */}
         <div className="flex items-end gap-2">
           <div>
             <label className="block text-[10px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              <Calendar size={10} className="inline mr-1" /> Dönem
+              <Calendar size={10} className="inline mr-1" /> Yıl
             </label>
-            <input
-              type="month"
-              value={donem}
-              onChange={(e) => setDonem(e.target.value)}
+            <select
+              value={yil}
+              onChange={(e) => setDonemFromQuarter(Number(e.target.value), ceyrek)}
               className="px-3 py-2 rounded-lg text-sm font-semibold border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 160 }}
-            />
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
+            >
+              {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Çeyrek
+            </label>
+            <select
+              value={ceyrek}
+              onChange={(e) => setDonemFromQuarter(yil, Number(e.target.value))}
+              className="px-3 py-2 rounded-lg text-sm font-semibold border outline-none"
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 220 }}
+            >
+              {[1, 2, 3, 4].map((q) => (
+                <option key={q} value={q}>{CEYREK_LABELS[q]}</option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
