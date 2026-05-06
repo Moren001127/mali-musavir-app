@@ -10,7 +10,7 @@
   window.__morenAgent = { running: true, stopRequested: false };
 
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.3';
+  const AGENT_VERSION = '1.36.4';
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -102,14 +102,20 @@
       console.warn('[Moren] Luca sync hata:', e?.message);
     }
   }
-  syncLucaSession();
-  setInterval(syncLucaSession, 60000);
+  // Luca token sync de kapatildi — modul devre disi.
+  // Modul tekrar acildiginda bu iki satiri yeniden aktive et:
+  // syncLucaSession();
+  // setInterval(syncLucaSession, 60000);
 
   // === LUCA MUAVİN İŞ İŞLEYİCİSİ ===
   // Backend'den bekleyen job'ları çeker ve Luca sayfasında Excel
   // indirme butonuna tıklayarak muavin dosyasını yakalar, backend'e
   // geri yükler.
   async function processLucaJobs() {
+    // Luca modülü gecici olarak kapatıldı (kullanici istegi).
+    // Polling devam edip backend'den bekleyen Luca işlerini almasin diye
+    // burada erken çıkıyoruz. Modül tekrar açıldığında bu satırı kaldır.
+    return;
     try {
       if (!isLucaOrigin()) return;
       if (window.__morenAgent.stopRequested) return;
@@ -210,7 +216,9 @@
       console.warn('[Moren] processLucaJobs:', e?.message);
     }
   }
-  setInterval(processLucaJobs, 15000);
+  // Luca polling kapatildi — modul gecici olarak devre disi (kullanici istegi).
+  // Modul tekrar acilirsa bu satiri yeniden aktive et:
+  // setInterval(processLucaJobs, 15000);
 
   /**
    * Luca'da mizan Excel'ini ÇEKER — TAM OTOMASYON (multi-frame + form POST).
