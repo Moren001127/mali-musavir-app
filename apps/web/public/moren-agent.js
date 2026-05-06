@@ -657,8 +657,30 @@
         }
       }
       if (!tarih && v.faturaTarihiStr) tarih = parseTr(v.faturaTarihiStr);
+      // EK FALLBACK'LER — yeni/işlenmemiş faturalarda Mihsap farklı alan adları kullanabilir
+      if (!tarih && v.duzenlemeTarihi) tarih = parseTr(v.duzenlemeTarihi);
+      if (!tarih && v.belgeTarihi) tarih = parseTr(v.belgeTarihi);
+      if (!tarih && v.fatBelgeTarihi) tarih = parseTr(v.fatBelgeTarihi);
+      if (!tarih && v.evrakTarihi) tarih = parseTr(v.evrakTarihi);
+      if (!tarih && v.tarihi) tarih = parseTr(v.tarihi);
+      // DOM fallback — fatura editör açıksa form input'undan oku
+      if (!tarih) {
+        try {
+          const el = document.querySelector('#defterData_tarih, input[id*="tarih"][type], [aria-label*="Tarih"] input, .ant-picker-input input');
+          const v2 = (el?.value || el?.textContent || '').trim();
+          if (v2) tarih = parseTr(v2);
+        } catch {}
+      }
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
+      }
+      // Hala yoksa - debug için API yanıtının anahtarlarını log'a yaz (sadece ilk seferde)
+      if (!tarih && !window.__morenMetaDumped) {
+        window.__morenMetaDumped = true;
+        try {
+          const keys = Object.keys(v).slice(0, 50);
+          console.warn('[Moren] getFaturaMeta: tarih bulunamadı. API yanıt anahtarları:', keys);
+        } catch {}
       }
       // Belge türü — 3 kanaldan ara: 1) API, 2) faturaTuru türetim, 3) DOM (işletme defteri için)
       let belgeTuru = v.belgeTuru || v.belgeTipi || v.belgeTipiKod || null;
@@ -678,6 +700,17 @@
           const domVal = (span?.textContent || sel?.value || '').trim();
           if (domVal && domVal !== 'Seçiniz') belgeTuru = domVal;
         } catch {}
+      }
+      // BELGE NO PREFİX'ten türet (E-Arşiv ETTN'leri belirli prefiks taşır)
+      if (!belgeTuru) {
+        const bn = String(v.faturaNo || v.belgeNo || '').toUpperCase().trim();
+        if (bn) {
+          // BEA / GIB / EAR prefiksleri = e-Arşiv
+          if (/^(BEA|EAR|GIB|EARSIV)/.test(bn)) belgeTuru = 'E_ARSIV';
+          // EFATURA için yaygın prefiksler (ABC2026..., AN42026..., GIB2024...)
+          else if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9])\d/.test(bn)) belgeTuru = 'E_FATURA';
+          else if (/FIS|OKC|ZRP/.test(bn)) belgeTuru = 'FIS';
+        }
       }
 
       return {
@@ -2224,351 +2257,4 @@
   }
   pollLoop();
   console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
-})();href.match(/\/(\d+)\?count=/);
-              if (m3 && m3[1] !== fid) return true;
-            }
-            await sleep(250);
-          }
-          return false;
-        };
-
-        await clickKaydetOnayla();
-        let saved = await waitSaved(12000);
-
-        // Validation hatası varsa retry YAPMA (zaten alan eksik)
-        if (!saved && !validationFailed) {
-          await sleep(800);
-          await clickKaydetOnayla();
-          saved = await waitSaved(12000);
-        }
-
-        if (saved) {
-          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
-        } else {
-          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
-          const atlamaSebebi = validationFailed
-            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-            : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
-          await clickIleri(fid);
-        }
-      } catch (e) {
-        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
-        await clickIleri(fid);
-      }
-    }
-  }
-
-  // === KOMUT KUYRUĞU POLLING ===
-  // Aktif komut id'si — heartbeat ve cancel-check için
-  let __activeCmdId = null;
-  // Komut DB'de cancel oldu mu? (her mükellef başında check)
-  async function isCmdCancelled() {
-    if (!__activeCmdId) return false;
-    try {
-      const c = await api(`/agent/commands/${__activeCmdId}`);
-      return c?.status === 'cancelled';
-    } catch { return false; }
-  }
-
-  // === HEARTBEAT — agent canlı olduğunu 15sn'de bir bildirir ===
-  let __lastHeartbeat = 0;
-  async function sendHeartbeat() {
-    try {
-      await api('/agent/status/ping', {
-        method: 'POST',
-        body: JSON.stringify({
-          agent: 'mihsap',
-          running: true,
-          meta: {
-            url: location.href,
-            version: AGENT_VERSION,
-            activeCmdId: __activeCmdId,
-            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
-          },
-        }),
-      });
-      __lastHeartbeat = Date.now();
-    } catch {}
-  }
-  // Heartbeat interval — agent'ın yaşamını kanıtlar
-  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
-
-  // === RETRY HELPER — geçici hatalar için ===
-  async function withRetry(fn, label, maxTry = 3) {
-    let lastErr;
-    for (let i = 0; i < maxTry; i++) {
-      try { return await fn(); } catch (e) {
-        lastErr = e;
-        const msg = String(e?.message || e);
-        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
-        if (!transient) throw e;
-        const wait = 1000 * Math.pow(2, i); // 1s, 2s, 4s
-        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms bekleniyor`);
-        await sleep(wait);
-      }
-    }
-    throw lastErr;
-  }
-
-  async function pollLoop() {
-    await sendHeartbeat();
-    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
-      try {
-        const cmds = await withRetry(
-          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
-          'commands/claim',
-        );
-        if (Array.isArray(cmds) && cmds.length > 0) {
-          for (const cmd of cmds) {
-            __activeCmdId = cmd.id;
-            const cmdT0 = Date.now();
-            try {
-              setStatus(`CMD: ${cmd.action}`);
-              await processBatch({
-                ay: cmd.payload?.ay,
-                mukellefler: cmd.payload?.mukellefler || [],
-                action: cmd.action,
-              });
-              const elapsedMs = Date.now() - cmdT0;
-              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
-              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                  status: finalStatus,
-                  result: {
-                    onay: cmdSummary.onay,
-                    atla: cmdSummary.atla,
-                    demirbas: cmdSummary.demirbas,
-                    hata: cmdSummary.hata,
-                    toplam: cmdSummary.toplam,
-                    perMukellef: cmdSummary.perMukellef,
-                    aiCostUsd: cmdSummary.aiCostUsd,
-                    errors: cmdSummary.errors,
-                    elapsedMs,
-                    agentVersion: AGENT_VERSION,
-                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
-                  },
-                }),
-              }), 'commands/done').catch(() => {});
-            } catch (e) {
-              await api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                  status: 'failed',
-                  result: {
-                    ...cmdSummary,
-                    agentVersion: AGENT_VERSION,
-                    message: String(e?.message || e),
-                    elapsedMs: Date.now() - cmdT0,
-                  },
-                }),
-              }).catch(() => {});
-            }
-            __activeCmdId = null;
-          }
-        } else {
-          setStatus('Komut bekleniyor…');
-        }
-      } catch (e) {
-        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
-        const msg = String(e?.message || e);
-        // 401 → Mihsap token expire — kullanıcıya bildir
-        if (/401/.test(msg)) {
-          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
-          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire, yeniden giriş gerekli')
-            .catch(() => {});
-        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
-          setStatus('Bağlantı bekleniyor…');
-        } else {
-          setStatus('API hatası, yeniden deneniyor');
-          console.warn('[Moren]', msg);
-        }
-      }
-      await sleep(5000);
-    }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    panel.remove();
-    delete window.__morenAgent;
-  }
-  pollLoop();
-  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
-})();
-href.match(/\/(\d+)\?count=/);
-              if (m3 && m3[1] !== fid) return true;
-            }
-            await sleep(250);
-          }
-          return false;
-        };
-
-        await clickKaydetOnayla();
-        let saved = await waitSaved(12000);
-
-        // Validation hatası varsa retry YAPMA (zaten alan eksik)
-        if (!saved && !validationFailed) {
-          await sleep(800);
-          await clickKaydetOnayla();
-          saved = await waitSaved(12000);
-        }
-
-        if (saved) {
-          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
-        } else {
-          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
-          const atlamaSebebi = validationFailed
-            ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-            : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
-          await clickIleri(fid);
-        }
-      } catch (e) {
-        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
-        await clickIleri(fid);
-      }
-    }
-  }
-
-  // === KOMUT KUYRUĞU POLLING ===
-  let __activeCmdId = null;
-  async function isCmdCancelled() {
-    if (!__activeCmdId) return false;
-    try {
-      const c = await api(`/agent/commands/${__activeCmdId}`);
-      return c?.status === 'cancelled';
-    } catch { return false; }
-  }
-  async function sendHeartbeat() {
-    try {
-      await api('/agent/status/ping', {
-        method: 'POST',
-        body: JSON.stringify({
-          agent: 'mihsap',
-          running: true,
-          meta: {
-            url: location.href,
-            version: AGENT_VERSION,
-            activeCmdId: __activeCmdId,
-            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
-          },
-        }),
-      });
-    } catch {}
-  }
-  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
-  async function withRetry(fn, label, maxTry = 3) {
-    let lastErr;
-    for (let i = 0; i < maxTry; i++) {
-      try { return await fn(); } catch (e) {
-        lastErr = e;
-        const msg = String(e?.message || e);
-        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
-        if (!transient) throw e;
-        const wait = 1000 * Math.pow(2, i);
-        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms`);
-        await sleep(wait);
-      }
-    }
-    throw lastErr;
-  }
-  async function pollLoop() {
-    await sendHeartbeat();
-    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
-      try {
-        const cmds = await withRetry(
-          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
-          'commands/claim',
-        );
-        if (Array.isArray(cmds) && cmds.length > 0) {
-          for (const cmd of cmds) {
-            __activeCmdId = cmd.id;
-            const cmdT0 = Date.now();
-            try {
-              setStatus(`CMD: ${cmd.action}`);
-              await processBatch({
-                ay: cmd.payload?.ay,
-                mukellefler: cmd.payload?.mukellefler || [],
-                action: cmd.action,
-              });
-              const elapsedMs = Date.now() - cmdT0;
-              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
-              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                  status: finalStatus,
-                  result: {
-                    onay: cmdSummary.onay,
-                    atla: cmdSummary.atla,
-                    demirbas: cmdSummary.demirbas,
-                    hata: cmdSummary.hata,
-                    toplam: cmdSummary.toplam,
-                    perMukellef: cmdSummary.perMukellef,
-                    aiCostUsd: cmdSummary.aiCostUsd,
-                    errors: cmdSummary.errors,
-                    elapsedMs,
-                    agentVersion: AGENT_VERSION,
-                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
-                  },
-                }),
-              }), 'commands/done').catch(() => {});
-            } catch (e) {
-              await api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                  status: 'failed',
-                  result: {
-                    ...cmdSummary,
-                    agentVersion: AGENT_VERSION,
-                    message: String(e?.message || e),
-                    elapsedMs: Date.now() - cmdT0,
-                  },
-                }),
-              }).catch(() => {});
-            }
-            __activeCmdId = null;
-          }
-        } else {
-          setStatus('Komut bekleniyor…');
-        }
-      } catch (e) {
-        const msg = String(e?.message || e);
-        if (/401/.test(msg)) {
-          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
-          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire')
-            .catch(() => {});
-        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
-          setStatus('Bağlantı bekleniyor…');
-        } else {
-          setStatus('API hatası, yeniden deneniyor');
-          console.warn('[Moren]', msg);
-        }
-      }
-      await sleep(5000);
-    }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    panel.remove();
-    delete window.__morenAgent;
-  }
-  pollLoop();
-  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
-})();
-gent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    panel.remove();
-    delete window.__morenAgent;
-  }
-  pollLoop();
-  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION);
 })();

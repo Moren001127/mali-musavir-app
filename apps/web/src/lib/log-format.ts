@@ -259,16 +259,26 @@ export function buildFieldRows(event: {
  * event.ts ASLA kullanılmaz: o kayıt zamanı (bugün), fatura tarihi değil.
  */
 function extractFaturaTarihi(meta?: any, message?: string): string | undefined {
-  // 1) meta.tarih
+  // 1) meta.tarih (en yaygın)
   if (meta?.tarih) {
     const t = String(meta.tarih).trim();
     if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
   }
-  // 2) Mesaj prefix'inden parse
+  // 2) meta.faturaTarihi / meta.belgeTarihi / meta.duzenlemeTarihi fallback
+  for (const key of ['faturaTarihi', 'belgeTarihi', 'duzenlemeTarihi', 'evrakTarihi', 'tarihi']) {
+    const v = meta?.[key];
+    if (v) {
+      const t = String(v).trim();
+      if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
+    }
+  }
+  // 3) Mesaj prefix'inden parse — "31.03.2026 · ..." veya "2026-03-31 · ..."
   if (message) {
-    // "31.03.2026 · ..." veya "2026-03-31 · ..."
     const m = message.match(/^\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\s*[·\-—]/);
     if (m) return normalizeTarih(m[1]);
+    // Mesaj ortasında "tarih X ≠ Y" pattern (ay-skip log mesajı)
+    const m2 = message.match(/tarih\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/i);
+    if (m2) return normalizeTarih(m2[1]);
   }
   return undefined;
 }
@@ -287,18 +297,54 @@ function normalizeTarih(raw: string): string {
   return s;
 }
 
+// Raw belge türü kodlarını kullanıcı-dostu Türkçeye çevir
+function formatBelgeTuru(raw: string): string {
+  const map: Record<string, string> = {
+    'E_ARSIV': 'e-Arşiv Fatura',
+    'EARSIV': 'e-Arşiv Fatura',
+    'E_FATURA': 'e-Fatura',
+    'EFATURA': 'e-Fatura',
+    'FAT': 'Fatura',
+    'FATURA': 'Fatura',
+    'FIS': 'Yazarkasa Fişi',
+    'OKC': 'Yazarkasa Fişi',
+    'IRSALIYE': 'İrsaliye',
+    'IRSALIYELI_FATURA': 'İrsaliyeli Fatura',
+    'GIDER_PUSULASI': 'Gider Pusulası',
+    'SMM': 'Serbest Meslek Makbuzu',
+    'PMM': 'Perakende Makbuz',
+    'MUSTAHSIL': 'Müstahsil Makbuzu',
+    'BANKA_DEKONTU': 'Banka Dekontu',
+  };
+  const key = raw.toUpperCase().replace(/[\s-]/g, '_');
+  return map[key] || raw;
+}
+
 function inferBelgeTuru(action?: string, meta?: any, message?: string): string | undefined {
-  // 1) meta.belgeTuru — extension explicit göndermişse en doğru
-  if (meta?.belgeTuru) return String(meta.belgeTuru);
-  // 2) Mesajdan "BT:..." parse et — agent.js mTag/log formatında ekliyor
+  // 1) meta.belgeTuru — extension explicit göndermişse en doğru (insanca formatla)
+  if (meta?.belgeTuru) return formatBelgeTuru(String(meta.belgeTuru));
+  // 2) meta.faturaTuru — bazı durumlarda belgeTuru yok ama faturaTuru var
+  if (meta?.faturaTuru) {
+    const ft = String(meta.faturaTuru).toUpperCase();
+    if (ft.includes('EARSIV') || ft.includes('E_ARSIV') || ft.includes('ARSIV')) return 'e-Arşiv Fatura';
+    if (ft.includes('EFATURA') || ft.includes('E_FATURA') || ft === 'FATURA') return 'e-Fatura';
+    if (ft.includes('FIS') || ft.includes('OKC')) return 'Yazarkasa Fişi';
+    if (ft.includes('IRSALIYE')) return 'İrsaliye';
+  }
+  // 3) Mesajdan "BT:..." parse et — agent.js mTag/log formatında ekliyor
   if (message) {
     const m = message.match(/\bBT\s*:\s*([^·\n]+?)(?=\s*[·|]|\s+(?:AST|FatT|B\d+)\s*:|$)/i);
     if (m) {
       const v = m[1].trim();
-      if (v) return v;
+      if (v) return formatBelgeTuru(v);
     }
   }
-  // 3) Gerçek Belge Türü gelmediyse — "İşl. Defteri Alış" gibi action türetimi YAPMA.
-  //    Yanlış bilgi vermektense boş bırak; UI tarafı "—" gösterir.
+  // 4) BelgeNo prefix'inden tahmin (BEA → e-Arşiv vb.)
+  const fisNo = (meta as any)?.fisNo || (meta as any)?.belgeNo;
+  if (fisNo) {
+    const bn = String(fisNo).toUpperCase();
+    if (/^(BEA|EAR|EARSIV|GIB)\d/.test(bn)) return 'e-Arşiv Fatura';
+    if (/^(EFA|EFATURA|FAT|F)\d/.test(bn) || /^[A-Z]{2,4}\d{4}\d+$/.test(bn)) return 'e-Fatura';
+  }
   return undefined;
 }
