@@ -627,92 +627,197 @@ export default function EarsivPage() {
         ) : (
           <table className="w-full text-[12.5px]">
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.6)' }}>
-                <th className="px-2 py-2 w-8 text-left">
+              <tr style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.55)' }}>
+                <th className="px-3 py-3 w-8 text-left">
                   <button onClick={toggleAll}>
                     {selected.size === rows.length && rows.length > 0
                       ? <CheckSquare size={14} style={{ color: GOLD }} />
                       : <Square size={14} />}
                   </button>
                 </th>
-                <th className="px-2 py-2 text-left">Tarih</th>
-                <th className="px-2 py-2 text-left">Fatura No</th>
-                <th className="px-2 py-2 text-left">Satıcı</th>
-                <th className="px-2 py-2 text-right">Matrah</th>
-                <th className="px-2 py-2 text-right">KDV</th>
-                <th className="px-2 py-2 text-right">Toplam</th>
-                <th className="px-2 py-2 text-center w-[140px]">İşlem</th>
+                <th className="px-3 py-3 text-left text-[11px] uppercase tracking-wider font-semibold w-[120px]">Tür</th>
+                <th className="px-3 py-3 text-left text-[11px] uppercase tracking-wider font-semibold">Belge No</th>
+                <th className="px-3 py-3 text-left text-[11px] uppercase tracking-wider font-semibold">Karşı Firma</th>
+                <th className="px-3 py-3 text-left text-[11px] uppercase tracking-wider font-semibold w-[100px]">Tarih</th>
+                <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">Matrah</th>
+                <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">KDV</th>
+                <th className="px-3 py-3 text-right text-[11px] uppercase tracking-wider font-semibold">Toplam</th>
+                <th className="px-3 py-3 text-center text-[11px] uppercase tracking-wider font-semibold w-[140px]">İşlem</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: '#fafaf9' }}>
-                  <td className="px-2 py-2">
-                    <button onClick={() => toggleSelect(r.id)}>
-                      {selected.has(r.id)
-                        ? <CheckSquare size={14} style={{ color: GOLD }} />
-                        : <Square size={14} />}
-                    </button>
-                  </td>
-                  <td className="px-2 py-2">{new Date(r.faturaTarihi).toLocaleDateString('tr-TR')}</td>
-                  <td className="px-2 py-2 font-mono text-[11.5px]">{r.faturaNo}</td>
-                  <td className="px-2 py-2">{r.satici}</td>
-                  <td className="px-2 py-2 text-right">{fmtTRY(r.matrah)}</td>
-                  <td className="px-2 py-2 text-right">{fmtTRY(r.kdvTutari)}</td>
-                  <td className="px-2 py-2 text-right" style={{ color: GOLD }}>{fmtTRY(r.toplamTutar)}</td>
-                  <td className="px-2 py-2 text-center">
-                    <div className="flex gap-1.5 justify-center">
-                      <button
-                        onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
-                        className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                        style={{ background: 'rgba(184,160,111,0.12)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
-                        title="Faturayı önizle"
-                      >
-                        <Eye size={11} /> Aç
+              {rows.map((r) => {
+                const isAlis = (r as any).tip !== 'SATIS';
+                const isEFatura = (r as any).belgeKaynak === 'EFATURA';
+                const tipColor = isAlis ? '#60a5fa' : '#4ade80';
+                const tipBg    = isAlis ? 'rgba(59,130,246,0.15)' : 'rgba(34,197,94,0.15)';
+                const tipBorder= isAlis ? 'rgba(59,130,246,0.3)'  : 'rgba(34,197,94,0.3)';
+                return (
+                  <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: '#fafaf9' }}>
+                    <td className="px-3 py-3">
+                      <button onClick={() => toggleSelect(r.id)}>
+                        {selected.has(r.id)
+                          ? <CheckSquare size={14} style={{ color: GOLD }} />
+                          : <Square size={14} style={{ color: 'rgba(250,250,249,0.3)' }} />}
                       </button>
-                      <button
-                        onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
-                        className="px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                        style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.85)', border: '1px solid rgba(255,255,255,0.1)' }}
-                        title="Faturayı önizle ve yazıcıya gönder"
-                      >
-                        <Printer size={11} /> Yazdır
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className="inline-block px-2 py-0.5 rounded text-[10px] font-bold tracking-wider w-fit"
+                          style={{ background: tipBg, color: tipColor, border: `1px solid ${tipBorder}` }}
+                        >
+                          {isAlis ? 'ALIŞ' : 'SATIŞ'}
+                        </span>
+                        <span className="text-[10px] font-medium" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                          {isEFatura ? 'E-FATURA' : 'E-ARŞİV'}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="font-mono text-[11.5px] font-medium">{r.faturaNo}</div>
+                      <div className="text-[10px] mt-0.5" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                        {r.aliciVergiNo || r.saticiVergiNo || ''}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="text-[12.5px] font-medium truncate" style={{ maxWidth: 280 }}>
+                        {isAlis ? r.satici : r.alici}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-[12px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+                      {new Date(r.faturaTarihi).toLocaleDateString('tr-TR')}
+                    </td>
+                    <td className="px-3 py-3 text-right text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                      {fmtTRY(r.matrah)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.65)' }}>
+                      {fmtTRY(r.kdvTutari)}
+                    </td>
+                    <td className="px-3 py-3 text-right text-[13px] tabular-nums font-semibold" style={{ color: GOLD }}>
+                      {fmtTRY(r.toplamTutar)}
+                    </td>
+                    <td className="px-3 py-3 text-center">
+                      <div className="flex gap-1.5 justify-center">
+                        <button
+                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
+                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                          style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}
+                          title="Faturayı önizle"
+                        >
+                          <Eye size={11} /> Aç
+                        </button>
+                        <button
+                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
+                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                          style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}
+                          title="Faturayı önizle ve yazıcıya gönder"
+                        >
+                          <Printer size={11} /> Yazdır
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {/* Mükellef picker modal */}
+      {/* Mükellef picker modal — modern, sayısal görsel */}
       {pickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setPickerOpen(false)}>
-          <div className="w-[600px] max-w-[90vw] max-h-[80vh] flex flex-col rounded-lg" style={{ background: '#1a1a18', border: '1px solid rgba(255,255,255,0.08)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="p-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              <input
-                autoFocus
-                placeholder="Mükellef ara… (birden fazla seçebilirsin)"
-                value={pickerSearch}
-                onChange={(e) => setPickerSearch(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-md text-sm"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
-              />
-              <span className="text-xs" style={{ color: GOLD }}>{taxpayerIds.size} seçili</span>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setPickerOpen(false)}
+        >
+          <div
+            className="w-[700px] max-w-[95vw] max-h-[85vh] flex flex-col rounded-xl shadow-2xl overflow-hidden"
+            style={{ background: '#15140f', border: '1px solid rgba(184,160,111,0.2)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(184,160,111,0.05)', borderBottom: '1px solid rgba(184,160,111,0.15)' }}>
+              <div>
+                <div className="text-[15px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+                  <Users size={16} style={{ color: GOLD }} /> Mükellef Seçimi
+                </div>
+                <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                  {filteredTp.length} mükellef listede · birden fazla seçebilirsin
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {taxpayerIds.size > 0 && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ background: 'rgba(184,160,111,0.15)', color: GOLD, border: '1px solid rgba(184,160,111,0.3)' }}>
+                    {taxpayerIds.size} seçildi
+                  </span>
+                )}
+                <button
+                  onClick={() => setPickerOpen(false)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center hover:opacity-80"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}
+                  title="Kapat (ESC)"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Arama + Toplu eylem barı */}
+            <div className="px-4 py-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
+                <input
+                  autoFocus
+                  placeholder="Mükellef adı veya VKN/TCKN ara…"
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-lg text-sm"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                />
+              </div>
+              <button
+                onClick={() => {
+                  // Listede görünenlerin tümünü seç (filtreliye göre)
+                  setTaxpayerIds((s) => {
+                    const ns = new Set(s);
+                    filteredTp.forEach((t) => ns.add(t.id));
+                    return ns;
+                  });
+                  setTumMukellefler(false);
+                  setSelected(new Set());
+                }}
+                className="px-3 py-2 rounded-lg text-xs font-medium hover:opacity-80"
+                style={{ background: 'rgba(184,160,111,0.1)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
+                title="Şu an listede görünenleri seç"
+              >
+                Tümünü Seç
+              </button>
               {taxpayerIds.size > 0 && (
-                <button onClick={() => setTaxpayerIds(new Set())} className="px-2 py-1 rounded text-[11px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.7)' }}>
+                <button
+                  onClick={() => setTaxpayerIds(new Set())}
+                  className="px-3 py-2 rounded-lg text-xs font-medium hover:opacity-80"
+                  style={{ background: 'rgba(239,68,68,0.08)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)' }}
+                >
                   Temizle
                 </button>
               )}
-              <button onClick={() => setPickerOpen(false)} className="px-3 py-1.5 rounded-md text-xs font-medium" style={{ background: GOLD, color: '#1a1a18' }}>
+              <button
+                onClick={() => setPickerOpen(false)}
+                className="px-4 py-2 rounded-lg text-xs font-bold hover:opacity-90"
+                style={{ background: GOLD, color: '#1a1a18' }}
+              >
                 Tamam
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
+
+            {/* Mükellef listesi */}
+            <div className="flex-1 overflow-y-auto px-2 py-2">
               {filteredTp.map((t) => {
                 const checked = taxpayerIds.has(t.id);
+                const ad = taxpayerName(t);
+                const initial = (ad || '?').trim().charAt(0).toLocaleUpperCase('tr-TR');
                 return (
                   <button
                     key={t.id}
@@ -725,23 +830,46 @@ export default function EarsivPage() {
                       setTumMukellefler(false);
                       setSelected(new Set());
                     }}
-                    className="w-full text-left px-3 py-2.5 text-sm flex items-center justify-between hover:bg-white/5"
+                    className="w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors mb-1"
                     style={{
                       color: '#fafaf9',
-                      borderBottom: '1px solid rgba(255,255,255,0.04)',
-                      background: checked ? 'rgba(184,160,111,0.12)' : 'transparent',
+                      background: checked ? 'rgba(184,160,111,0.14)' : 'transparent',
+                      border: `1px solid ${checked ? 'rgba(184,160,111,0.3)' : 'transparent'}`,
                     }}
+                    onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                    onMouseLeave={(e) => { if (!checked) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                   >
-                    <span className="flex items-center gap-2">
-                      {checked
-                        ? <CheckSquare size={14} style={{ color: GOLD }} />
-                        : <Square size={14} style={{ color: 'rgba(250,250,249,0.4)' }} />}
-                      {taxpayerName(t)}
-                      {t.isEFaturaMukellefi && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa' }}>e-Fatura</span>
-                      )}
-                    </span>
-                    <span style={{ color: 'rgba(250,250,249,0.4)', fontSize: 11 }}>{t.taxNumber}</span>
+                    {/* Checkbox */}
+                    {checked
+                      ? <CheckSquare size={16} style={{ color: GOLD, flexShrink: 0 }} />
+                      : <Square size={16} style={{ color: 'rgba(250,250,249,0.3)', flexShrink: 0 }} />}
+                    {/* Avatar (ilk harf) */}
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                      style={{
+                        background: checked ? 'rgba(184,160,111,0.25)' : 'rgba(255,255,255,0.05)',
+                        color: checked ? GOLD : 'rgba(250,250,249,0.6)',
+                        border: `1px solid ${checked ? 'rgba(184,160,111,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      }}
+                    >
+                      {initial}
+                    </div>
+                    {/* İsim + VKN */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{ad}</div>
+                      <div className="text-[11px] mt-0.5 font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                        VKN/TCKN: {t.taxNumber || '—'}
+                      </div>
+                    </div>
+                    {/* E-Fatura badge */}
+                    {t.isEFaturaMukellefi && (
+                      <span
+                        className="px-2 py-0.5 rounded text-[9px] font-semibold flex-shrink-0"
+                        style={{ background: 'rgba(59,130,246,0.18)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}
+                      >
+                        e-Fatura
+                      </span>
+                    )}
                   </button>
                 );
               })}

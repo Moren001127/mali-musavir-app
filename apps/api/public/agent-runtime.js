@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.42';
+          const AGENT_VER = '1.35.44';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -375,15 +375,27 @@
 
           setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
         } catch (e) {
-          console.error('[Moren] Luca job hata:', e);
-          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Agent-Token': TOKEN,
-            },
-            body: JSON.stringify({ error: e?.message || 'bilinmeyen hata' }),
-          });
+          // "Fatura yok" durumu hata değil — temiz mesajla bitir
+          const msg = (e)?.message || 'bilinmeyen hata';
+          const isNoFatura = (e)?.isNoFatura === true || /^NO_FATURA:/i.test(msg);
+          if (isNoFatura) {
+            await log(`ℹ ${job.tip}: Bu dönem için fatura bulunamadı, atlandı`);
+            // Backend'e done olarak işaretle (fail değil) — 0 inserted
+            await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+              body: JSON.stringify({ inserted: 0, noFatura: true }),
+            }).catch(() => {});
+            setStatus(`Luca: ${job.tip} — fatura yok`);
+          } else {
+            console.error('[Moren] Luca job hata:', e);
+            await log(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
+            await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+              body: JSON.stringify({ error: msg }),
+            });
+          }
         }
       }
       window.__lucaJobRunning = false;
@@ -1460,6 +1472,36 @@
       await sleep(500);
     } else {
       await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
+    }
+
+    // ─── NO-FATURA TESPİTİ ───
+    // Hiç fatura yoksa "Tümünü Seç" 0 checkbox işaretler, indirme akışı 60sn boşa bekler.
+    // Önceden tespit edip temiz mesajla çık.
+    try {
+      const secimSayisi = fdoc.querySelectorAll('.sec:checked').length;
+      const tablodaToplam = fdoc.querySelectorAll('.sec').length;
+      if (secimSayisi === 0 && tablodaToplam === 0) {
+        await log(`ℹ Bu dönem için fatura bulunamadı (${etiket}). İndirme akışı atlandı.`);
+        // Special signal — caller bunu yakalayıp temiz "fatura yok" mesajı göstersin
+        const noFaturaErr = new Error('NO_FATURA: Bu dönem için kayıtlı fatura yok');
+        (noFaturaErr).isNoFatura = true;
+        throw noFaturaErr;
+      } else if (secimSayisi === 0 && tablodaToplam > 0) {
+        await log(`⚠ Tablodan ${tablodaToplam} fatura tespit edildi ama Tümünü Seç çalışmadı (0 checkbox checked). Manuel seçim deneniyor…`);
+        // Bütün .sec'leri elle işaretle
+        for (const cb of fdoc.querySelectorAll('.sec')) { try { (cb).click(); } catch {} }
+        await sleep(400);
+        const yeni = fdoc.querySelectorAll('.sec:checked').length;
+        if (yeni === 0) {
+          throw new Error('NO_FATURA: Faturalar listede ama seçim yapılamadı');
+        }
+        await log(`✓ Manuel seçim sonucu: ${yeni} fatura işaretli`);
+      } else {
+        await log(`✓ ${secimSayisi} fatura işaretli (toplam ${tablodaToplam})`);
+      }
+    } catch (e) {
+      if ((e).isNoFatura) throw e; // re-throw — caller temiz mesaj gösterecek
+      await log(`⚠ No-fatura kontrolü hatası (devam): ${(e)?.message || e}`);
     }
 
     // ─── gonder() WRAPPER ───

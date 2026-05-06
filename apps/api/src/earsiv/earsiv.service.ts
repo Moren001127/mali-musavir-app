@@ -58,12 +58,19 @@ export class EarsivService {
             margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
           });
           await page.close();
+          // Tipe göre dosya adı: <yön>-<kaynak>-<faturaNo>.pdf, klasöre de gruplanır
+          // Örn: gelen-e-arsiv/SR0202600005.pdf, giden-e-fatura/YJC2026...pdf
+          const yon = f.tip === 'SATIS' ? 'giden' : 'gelen';
+          const kaynak = f.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
+          const klasor = `${yon}-${kaynak}`;
           const safeName = String(f.faturaNo || f.id).replace(/[^A-Za-z0-9._-]/g, '_');
-          zip.file(`${safeName}.pdf`, pdf);
+          zip.file(`${klasor}/${yon}-${kaynak}-${safeName}.pdf`, pdf);
         } catch (e: any) {
           this.logger.warn(`PDF üretim hata (${f.faturaNo}): ${e?.message}`);
-          // Yine de ZIP'e bir hata raporu ekle
-          zip.file(`HATA_${f.faturaNo || f.id}.txt`, `PDF üretilemedi: ${e?.message || 'bilinmeyen'}`);
+          // Yine de ZIP'e bir hata raporu ekle (aynı klasör mantığı)
+          const yon = f.tip === 'SATIS' ? 'giden' : 'gelen';
+          const kaynak = f.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
+          zip.file(`${yon}-${kaynak}/HATA_${f.faturaNo || f.id}.txt`, `PDF üretilemedi: ${e?.message || 'bilinmeyen'}`);
         }
       }
       await ctx.close();
