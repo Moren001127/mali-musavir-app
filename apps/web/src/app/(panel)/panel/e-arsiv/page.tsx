@@ -910,25 +910,8 @@ export default function EarsivPage() {
                       {fmtTRY(r.toplamTutar)}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <div className="flex flex-col gap-1 items-center">
-                        <div className="flex gap-1.5 justify-center">
-                          <button
-                            onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
-                            className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                            style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}
-                            title="Faturayı önizle"
-                          >
-                            <Eye size={11} /> Aç
-                          </button>
-                          <button
-                            onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
-                            className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                            style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}
-                            title="Faturayı önizle ve yazıcıya gönder"
-                          >
-                            <Printer size={11} /> Yazdır
-                          </button>
-                        </div>
+                      <div className="flex gap-1.5 justify-center items-center">
+                        {/* Mihsap durum işareti — küçük icon-only rozet (Aç butonundan ÖNCE) */}
                         {(() => {
                           const ms = (r as any).mihsapUploadStatus as string | undefined;
                           const at = (r as any).mihsapUploadedAt as string | null | undefined;
@@ -936,27 +919,60 @@ export default function EarsivPage() {
                           if (ms === 'uploaded' || at) {
                             return (
                               <span
-                                className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
-                                style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
-                                title={at ? `Mihsap'a yüklendi: ${new Date(at).toLocaleString('tr-TR')}` : 'Mihsap\'a yüklendi'}
+                                className="inline-flex items-center justify-center rounded-full"
+                                style={{
+                                  width: 22, height: 22,
+                                  background: 'rgba(34,197,94,0.18)',
+                                  color: '#4ade80',
+                                  border: '1px solid rgba(34,197,94,0.4)',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  lineHeight: 1,
+                                }}
+                                title={at ? `Mihsap'a yüklendi · ${new Date(at).toLocaleString('tr-TR')}` : 'Mihsap\'a yüklendi'}
                               >
-                                ✓ Mihsap
+                                ✓
                               </span>
                             );
                           }
                           if (ms === 'failed') {
                             return (
                               <span
-                                className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
-                                style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}
-                                title={err || 'Mihsap yükleme başarısız'}
+                                className="inline-flex items-center justify-center rounded-full"
+                                style={{
+                                  width: 22, height: 22,
+                                  background: 'rgba(239,68,68,0.18)',
+                                  color: '#fca5a5',
+                                  border: '1px solid rgba(239,68,68,0.4)',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  lineHeight: 1,
+                                }}
+                                title={`Mihsap'a yükleme hatası: ${err || 'bilinmeyen hata'}`}
                               >
-                                ✗ Mihsap
+                                ✗
                               </span>
                             );
                           }
-                          return null;
+                          // Henüz Mihsap'a yüklenmemiş — boş yer (kolonlar hizalı kalsın)
+                          return <span style={{ width: 22, height: 22, display: 'inline-block' }} />;
                         })()}
+                        <button
+                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
+                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                          style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}
+                          title="Faturayı önizle"
+                        >
+                          <Eye size={11} /> Aç
+                        </button>
+                        <button
+                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
+                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                          style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}
+                          title="Faturayı önizle ve yazıcıya gönder"
+                        >
+                          <Printer size={11} /> Yazdır
+                        </button>
                       </div>
                     </td>
                   </tr>

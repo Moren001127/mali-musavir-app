@@ -67,13 +67,16 @@ export class EarsivRenderService {
   }
 
   /** XML'i tarayıcıya gönder, gömülü XSLT'yi browser tarafında apply et.
-   *  Bu sayede GİB'in resmi e-arşiv görünümü çıkar. */
+   *  Bu sayede GİB'in resmi e-arşiv görünümü çıkar.
+   *  XSLT başarısız olursa basit fatura özeti gösterilir (boş ekran kalmasın). */
   private renderWithEmbeddedXslt(f: RenderableFatura, autoPrint: boolean): string {
     const xml = f.xmlContent || '';
     // XML'i HTML script tag'ı içine güvenle göm: </script> ve & sequence'larından kaç
     const safeXml = xml
       .replace(/<\/script/gi, '<\\/script')
       .replace(/<!--/g, '<\\!--');
+    // Fallback: XSLT başarısız olursa gösterilecek basit fatura özeti
+    const fallbackBody = this.renderInvoiceBody(f, false);
     const printScript = autoPrint
       ? `setTimeout(() => { try { window.print(); } catch(e){} }, 800);`
       : '';
@@ -107,7 +110,7 @@ export class EarsivRenderService {
 </style>
 </head>
 <body>
-<div id="moren-fallback">Fatura yükleniyor…</div>
+<div id="moren-fallback">${fallbackBody}</div>
 <script id="moren-xml" type="application/xml">${safeXml}</script>
 <script>
 (function () {
@@ -141,22 +144,33 @@ export class EarsivRenderService {
     var xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
     var xslt = getXsltFromXml(xmlDoc);
     if (!xslt) {
-      document.getElementById('moren-fallback').textContent = 'Gömülü XSLT bulunamadı, resmi görünüm üretilemedi.';
+      // XSLT yoksa fallback özeti göster (zaten içerikte var)
+      ${printScript}
       return;
     }
     var proc = new XSLTProcessor();
-    proc.importStylesheet(xslt);
-    var fragment = proc.transformToFragment(xmlDoc, document);
+    var fragment = null;
+    try {
+      proc.importStylesheet(xslt);
+      fragment = proc.transformToFragment(xmlDoc, document);
+    } catch(eXslt) {
+      // XSLT parse/import/transform hatası — fallback özet kalsın
+      console.warn('[Moren] XSLT hatası, fallback özet gösteriliyor:', eXslt && eXslt.message);
+    }
     if (!fragment) {
-      document.getElementById('moren-fallback').textContent = 'XSLT dönüşümü başarısız.';
+      // Dönüşüm başarısız — fallback özeti göster (zaten içerikte var)
+      ${printScript}
       return;
     }
+    // XSLT başarılı — fallback'i kaldır, GİB görünümünü göster
     var fb = document.getElementById('moren-fallback');
     if (fb) fb.remove();
     document.body.appendChild(fragment);
     ${printScript}
   } catch (e) {
-    document.getElementById('moren-fallback').textContent = 'Görüntü hatası: ' + (e && e.message ? e.message : e);
+    // Beklenmedik hata — fallback özet zaten görünür
+    console.warn('[Moren] Render hatası, fallback özet gösteriliyor:', e && e.message);
+    ${printScript}
   }
 })();
 </script>
