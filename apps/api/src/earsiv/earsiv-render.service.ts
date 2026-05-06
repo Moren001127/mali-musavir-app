@@ -109,6 +109,28 @@ export class EarsivRenderService {
   #moren-fallback .header .right { text-align: right; }
   #moren-fallback .ettn { font-family: 'Courier New', monospace; font-size: 10px; word-break: break-all; }
   #moren-fallback .badge { display: inline-block; padding: 2px 8px; border: 1px solid #111; border-radius: 3px; font-size: 10px; letter-spacing: 0.6px; }
+  /* GİB e-Arşiv resmi görünüm replikası */
+  #moren-fallback .gib-header { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  #moren-fallback .gib-sender { font-size: 11px; line-height: 1.45; }
+  #moren-fallback .gib-sender .title-line { height: 3px; background: #111; margin: 6px 0; }
+  #moren-fallback .gib-sender .firma-adi { font-weight: 700; font-size: 12px; margin: 4px 0 6px; }
+  #moren-fallback .gib-sender .addr { font-size: 11px; }
+  #moren-fallback .gib-center { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 8px; }
+  #moren-fallback .gib-stamp { width: 110px; height: 110px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+  #moren-fallback .gib-stamp .stamp-circle { width: 100px; height: 100px; border: 1.5px solid #c0392b; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #c0392b; font-size: 8px; line-height: 1.2; text-align: center; padding: 6px; }
+  #moren-fallback .gib-stamp .stamp-tc { font-weight: 700; font-size: 11px; }
+  #moren-fallback .gib-stamp .stamp-text { font-size: 8px; margin-top: 2px; }
+  #moren-fallback .gib-stamp .stamp-arc { font-size: 7px; margin-top: 4px; font-weight: 600; }
+  #moren-fallback .gib-title { font-size: 16px; font-weight: 700; color: #111; }
+  #moren-fallback .gib-info { display: flex; align-items: flex-end; justify-content: flex-end; padding-top: 30px; }
+  #moren-fallback .info-table { border-collapse: collapse; font-size: 10.5px; min-width: 220px; }
+  #moren-fallback .info-table td { padding: 4px 8px; border: 1px solid #999; vertical-align: top; }
+  #moren-fallback .info-table td.lbl { background: #f3f3f3; font-weight: 600; width: 110px; }
+  #moren-fallback .gib-sayin { margin: 4px 0 12px; font-size: 11px; line-height: 1.45; }
+  #moren-fallback .gib-sayin .title-line { height: 3px; background: #111; margin: 6px 0; }
+  #moren-fallback .gib-sayin .sayin-label { font-weight: 700; font-size: 11px; margin-bottom: 2px; }
+  #moren-fallback .gib-sayin .sayin-name { font-weight: 700; font-size: 12px; }
+  #moren-fallback .gib-sayin .addr { font-size: 11px; }
   /* Ekranda gösterirken pagination/page-break kapalı, tek sürekli sayfa */
   @media screen {
     * {
@@ -235,6 +257,28 @@ export class EarsivRenderService {
   .header .right { text-align: right; }
   .ettn { font-family: 'Courier New', monospace; font-size: 10px; word-break: break-all; }
   .badge { display: inline-block; padding: 2px 8px; border: 1px solid #111; border-radius: 3px; font-size: 10px; letter-spacing: 0.6px; }
+  /* GİB e-Arşiv resmi görünüm replikası */
+  .gib-header { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .gib-sender { font-size: 11px; line-height: 1.45; }
+  .gib-sender .title-line { height: 3px; background: #111; margin: 6px 0; }
+  .gib-sender .firma-adi { font-weight: 700; font-size: 12px; margin: 4px 0 6px; }
+  .gib-sender .addr { font-size: 11px; }
+  .gib-center { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 8px; }
+  .gib-stamp { width: 110px; height: 110px; display: flex; align-items: center; justify-content: center; margin-bottom: 6px; }
+  .gib-stamp .stamp-circle { width: 100px; height: 100px; border: 1.5px solid #c0392b; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #c0392b; font-size: 8px; line-height: 1.2; text-align: center; padding: 6px; }
+  .gib-stamp .stamp-tc { font-weight: 700; font-size: 11px; }
+  .gib-stamp .stamp-text { font-size: 8px; margin-top: 2px; }
+  .gib-stamp .stamp-arc { font-size: 7px; margin-top: 4px; font-weight: 600; }
+  .gib-title { font-size: 16px; font-weight: 700; color: #111; }
+  .gib-info { display: flex; align-items: flex-end; justify-content: flex-end; padding-top: 30px; }
+  .info-table { border-collapse: collapse; font-size: 10.5px; min-width: 220px; }
+  .info-table td { padding: 4px 8px; border: 1px solid #999; vertical-align: top; }
+  .info-table td.lbl { background: #f3f3f3; font-weight: 600; width: 110px; }
+  .gib-sayin { margin: 4px 0 12px; font-size: 11px; line-height: 1.45; }
+  .gib-sayin .title-line { height: 3px; background: #111; margin: 6px 0; }
+  .gib-sayin .sayin-label { font-weight: 700; font-size: 11px; margin-bottom: 2px; }
+  .gib-sayin .sayin-name { font-weight: 700; font-size: 12px; }
+  .gib-sayin .addr { font-size: 11px; }
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .page { padding: 10mm 14mm; }
@@ -288,37 +332,141 @@ ${body}
           Kalem detayı XML'den okunamadı — yalnızca özet tutarlar görüntüleniyor.
         </div>`;
 
+    // XML'den ek satıcı/alıcı bilgilerini çıkar (varsa)
+    const meta = this.extractInvoiceMeta(f.xmlContent || '');
+
     return `<section class="page">
-      <div class="header">
-        <div>
-          <h1 class="title">${escape(f.satici) || 'Satıcı'}</h1>
-          <div class="subtitle">VKN/TCKN: ${escape(f.saticiVergiNo) || '-'}</div>
+      <!-- ÜÇ KOLON: SOL = satıcı, ORTA = stamp + başlık, SAĞ = info -->
+      <div class="gib-header">
+        <div class="gib-sender">
+          <div class="title-line"></div>
+          <div class="firma-adi">${escape(f.satici) || ''}</div>
+          ${meta.senderAddress ? `<div class="addr">${escape(meta.senderAddress)}</div>` : ''}
+          ${meta.senderTelFax ? `<div class="addr">${escape(meta.senderTelFax)}</div>` : ''}
+          ${meta.senderEmail ? `<div class="addr">E-Posta: ${escape(meta.senderEmail)}</div>` : ''}
+          ${meta.senderTaxOffice ? `<div class="addr">Vergi Dairesi: ${escape(meta.senderTaxOffice)}</div>` : ''}
+          <div class="addr">VKN: ${escape(f.saticiVergiNo) || '-'}</div>
+          ${meta.senderTicSicil ? `<div class="addr">TİCARETSİCİLNO: ${escape(meta.senderTicSicil)}</div>` : ''}
+          ${meta.senderMersis ? `<div class="addr">MERSİSNO: ${escape(meta.senderMersis)}</div>` : ''}
+          <div class="title-line"></div>
         </div>
-        <div class="right">
-          <div class="badge">e-ARŞİV FATURA</div>
-          <div class="subtitle" style="margin-top:6px">${tarih}</div>
+        <div class="gib-center">
+          <div class="gib-stamp">
+            <div class="stamp-circle">
+              <div class="stamp-tc">T.C.</div>
+              <div class="stamp-text">Hazine ve Maliye<br/>Bakanlığı</div>
+              <div class="stamp-arc">Gelir İdaresi Başkanlığı</div>
+            </div>
+          </div>
+          <div class="gib-title">e-Arşiv Fatura</div>
+        </div>
+        <div class="gib-info">
+          <table class="info-table">
+            <tr><td class="lbl">Özelleştirme No:</td><td>${escape(meta.customizationId) || 'TR1.2'}</td></tr>
+            <tr><td class="lbl">Senaryo:</td><td>${escape(meta.scenario) || 'EARSIVFATURA'}</td></tr>
+            <tr><td class="lbl">Fatura Tipi:</td><td>${meta.faturaTipi || 'SATIS'}</td></tr>
+            <tr><td class="lbl">Fatura No:</td><td>${escape(f.faturaNo)}</td></tr>
+            <tr><td class="lbl">Fatura Tarihi:</td><td>${tarih}</td></tr>
+          </table>
         </div>
       </div>
 
-      <table class="meta">
-        <tr>
-          <td class="label">Fatura No</td><td>${escape(f.faturaNo)}</td>
-          <td class="label">Tarih</td><td>${tarih}</td>
-        </tr>
-        <tr>
-          <td class="label">Alıcı</td><td colspan="3">${escape(f.alici) || '-'}</td>
-        </tr>
-        <tr>
-          <td class="label">Alıcı VKN/TCKN</td><td>${escape(f.aliciVergiNo) || '-'}</td>
-          <td class="label">Para Birimi</td><td>${para}</td>
-        </tr>
-        ${f.ettn ? `<tr><td class="label">ETTN</td><td colspan="3" class="ettn">${escape(f.ettn)}</td></tr>` : ''}
-      </table>
+      <!-- SAYIN bloğu -->
+      <div class="gib-sayin">
+        <div class="title-line"></div>
+        <div class="sayin-label">SAYIN</div>
+        <div class="sayin-name">${escape(f.alici) || '-'}</div>
+        ${meta.receiverAddress ? `<div class="addr">${escape(meta.receiverAddress)}</div>` : ''}
+        ${meta.receiverEmail ? `<div class="addr">E-Posta: ${escape(meta.receiverEmail)}</div>` : ''}
+        ${meta.receiverTelFax ? `<div class="addr">${escape(meta.receiverTelFax)}</div>` : ''}
+        ${(f.aliciVergiNo && f.aliciVergiNo.length === 11) ? `<div class="addr">TCKN: ${escape(f.aliciVergiNo)}</div>` : (f.aliciVergiNo ? `<div class="addr">VKN: ${escape(f.aliciVergiNo)}</div>` : '')}
+        ${f.ettn ? `<div class="addr ettn">ETTN: ${escape(f.ettn)}</div>` : ''}
+        <div class="title-line"></div>
+      </div>
 
       ${linesHtml}
 
       ${this.renderTotalsTable(f, lines, fmt)}
     </section>`;
+  }
+
+  /** XML'den ek satıcı/alıcı detaylarını çek (adres, vergi dairesi, telefon, email, mersis) */
+  private extractInvoiceMeta(xml: string): {
+    senderAddress?: string;
+    senderTelFax?: string;
+    senderEmail?: string;
+    senderTaxOffice?: string;
+    senderTicSicil?: string;
+    senderMersis?: string;
+    receiverAddress?: string;
+    receiverTelFax?: string;
+    receiverEmail?: string;
+    customizationId?: string;
+    scenario?: string;
+    faturaTipi?: string;
+  } {
+    const out: any = {};
+    if (!xml) return out;
+    try {
+      const j = this.parser.parse(xml);
+      const root = j['Invoice'] || j['CreditNote'] || {};
+      out.customizationId = this.text(root['CustomizationID']);
+      out.scenario = this.text(root['ProfileID']);
+      out.faturaTipi = this.text(root['InvoiceTypeCode']) || 'SATIS';
+
+      const supplier = root['AccountingSupplierParty']?.['Party'];
+      if (supplier) {
+        const addr = supplier['PostalAddress'];
+        if (addr) {
+          out.senderAddress = [
+            this.text(addr['StreetName']),
+            this.text(addr['BuildingNumber']),
+            this.text(addr['CitySubdivisionName']),
+            this.text(addr['PostalZone']),
+            this.text(addr['CityName']),
+          ].filter(Boolean).join(' ');
+        }
+        const contact = supplier['Contact'];
+        if (contact) {
+          const tel = this.text(contact['Telephone']);
+          const fax = this.text(contact['Telefax']);
+          if (tel || fax) out.senderTelFax = [tel ? `Tel: ${tel}` : '', fax ? `Fax: ${fax}` : ''].filter(Boolean).join(' ');
+          out.senderEmail = this.text(contact['ElectronicMail']);
+        }
+        const taxScheme = supplier['PartyTaxScheme'];
+        if (taxScheme) out.senderTaxOffice = this.text(taxScheme['TaxScheme']?.['Name']);
+        const legal = supplier['PartyLegalEntity'];
+        if (legal) out.senderTicSicil = this.text(legal['CompanyID']);
+        const ids = Array.isArray(supplier['PartyIdentification']) ? supplier['PartyIdentification'] : [supplier['PartyIdentification']];
+        for (const idObj of ids) {
+          const idText = this.text(idObj?.['ID']);
+          const schemeId = this.attr(idObj?.['ID'], '@schemeID') || '';
+          if (/MERSIS/i.test(schemeId)) out.senderMersis = idText;
+        }
+      }
+
+      const customer = root['AccountingCustomerParty']?.['Party'];
+      if (customer) {
+        const addr = customer['PostalAddress'];
+        if (addr) {
+          out.receiverAddress = [
+            this.text(addr['StreetName']),
+            this.text(addr['BuildingNumber']),
+            this.text(addr['CitySubdivisionName']),
+            this.text(addr['PostalZone']),
+            this.text(addr['CityName']),
+          ].filter(Boolean).join(' ');
+        }
+        const contact = customer['Contact'];
+        if (contact) {
+          const tel = this.text(contact['Telephone']);
+          const fax = this.text(contact['Telefax']);
+          if (tel || fax) out.receiverTelFax = [tel ? `Tel: ${tel}` : '', fax ? `Fax: ${fax}` : ''].filter(Boolean).join(' ');
+          out.receiverEmail = this.text(contact['ElectronicMail']);
+        }
+      }
+    } catch {}
+    return out;
   }
 
   /** Toplam tablosu — KDV'yi orana göre breakdown'la (karma oranlı faturalarda doğru görünür) */
