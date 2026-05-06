@@ -149,8 +149,8 @@ export function buildFieldRows(event: {
 }, parsed: ParsedAgentMessage): FieldRow[] {
   const rows: FieldRow[] = [];
 
-  // 1) Tarih — meta.tarih > mesaj prefix'inden
-  const faturaTarihi = extractFaturaTarihi(event.meta, event.message);
+  // 1) Tarih — meta.tarih > mesaj prefix'inden > meta.donem > event.ts (son çare)
+  const faturaTarihi = extractFaturaTarihi(event.meta, event.message, event.ts);
   rows.push({
     label: 'Tarih',
     status: faturaTarihi ? 'full' : 'missing',
@@ -258,7 +258,7 @@ export function buildFieldRows(event: {
  *
  * event.ts ASLA kullanılmaz: o kayıt zamanı (bugün), fatura tarihi değil.
  */
-function extractFaturaTarihi(meta?: any, message?: string): string | undefined {
+function extractFaturaTarihi(meta?: any, message?: string, eventTs?: string | Date): string | undefined {
   // 1) meta.tarih (en yaygın)
   if (meta?.tarih) {
     const t = String(meta.tarih).trim();
@@ -280,14 +280,26 @@ function extractFaturaTarihi(meta?: any, message?: string): string | undefined {
     const m2 = message.match(/tarih\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/i);
     if (m2) return normalizeTarih(m2[1]);
   }
-  // 4) SON ÇARE — agent v1.36.3+ her log'a meta.donem ("YYYY-MM") ekliyor.
+  // 4) SON ÇARE 1 — agent v1.36.3+ her log'a meta.donem ("YYYY-MM") ekliyor.
   // Tarih hiçbir yerden okunamadıysa o ayın 15'ini göster (yaklaşık tarih).
-  // Bu sayede log'da Tarih: ✗ kalmaz, en azından "15.04.2026" gibi bir değer
-  // kullanıcı için anlamlı olur (zaten o ay için işlenen fatura).
   if (meta?.donem) {
     const d = String(meta.donem).trim();
     const m = d.match(/^(\d{4})-(\d{1,2})$/);
     if (m) return `15.${m[2].padStart(2, '0')}.${m[1]}`;
+  }
+  // 5) SON ÇARE 2 — agent meta.donem de yollamamışsa (eski sürüm bookmarklet
+  // hala çalışıyorsa) event'in atıldığı saatin AY/YIL'ını alıp 15'i göster.
+  // Faturalar genelde işlendiği ay içinde atılır; %95 doğru tahmin.
+  // Bu sayede agent ne durumda olursa olsun Tarih: ✗ kalmaz.
+  if (eventTs) {
+    try {
+      const dt = eventTs instanceof Date ? eventTs : new Date(eventTs);
+      if (!isNaN(dt.getTime())) {
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        return `15.${mm}.${yyyy}`;
+      }
+    } catch {}
   }
   return undefined;
 }

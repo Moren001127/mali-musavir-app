@@ -107,8 +107,30 @@ export function LogCard({ event }: { event: LogEvent }) {
         )}
 
         {event.mukellef && (
-          <div className="text-[10px] mt-1 truncate uppercase tracking-wide" style={{ color: '#4a4a4a' }}>
-            {event.mukellef}
+          <div className="text-[10px] mt-1 truncate uppercase tracking-wide flex items-center gap-2" style={{ color: '#4a4a4a' }}>
+            <span>{event.mukellef}</span>
+            {/* Agent versiyonu — eski cache'den çalışan bookmarklet'i tespit etmek için.
+                Beklenen sürüm v1.36.4. Daha eski görünüyorsa kullanıcı bookmarklet'i yenilemeli. */}
+            {event.meta?.agentVersion && (
+              <span
+                className="text-[9px] px-1 rounded font-mono"
+                title={
+                  event.meta.agentVersion === '1.36.4'
+                    ? 'Agent güncel'
+                    : `Agent eski sürüm (${event.meta.agentVersion}) — bookmarklet'i yenile, hard reload yap`
+                }
+                style={{
+                  background:
+                    event.meta.agentVersion === '1.36.4'
+                      ? 'rgba(34,197,94,0.10)'
+                      : 'rgba(239,68,68,0.15)',
+                  color:
+                    event.meta.agentVersion === '1.36.4' ? '#22c55e' : '#ef4444',
+                }}
+              >
+                v{event.meta.agentVersion}
+              </span>
+            )}
           </div>
         )}
       </div>
