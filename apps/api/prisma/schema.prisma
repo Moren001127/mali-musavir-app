@@ -1671,6 +1671,11 @@ model EarsivFatura {
   pdfStorageKey  String?    // S3 key veya disk path; ham PDF
   zipSourceName  String?    // Hangi ZIP'ten geldi
   fetchJobId     String?    // Hangi LucaFetchJob ile çekildi
+  // Mihsap upload tracking — gelen e-arşiv faturasını gider faturası olarak Mihsap'a yükleme
+  mihsapUploadedAt    DateTime?  // başarıyla yüklendi
+  mihsapUploadStatus  String?    // pending | uploaded | failed
+  mihsapUploadError   String?    // hata mesajı (varsa)
+  mihsapUploadJobId   String?    // takip için job referansı
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -1680,6 +1685,7 @@ model EarsivFatura {
   @@index([tenantId, taxpayerId, donem, tip, belgeKaynak])
   @@index([tenantId, faturaTarihi])
   @@index([fetchJobId])
+  @@index([mihsapUploadStatus])
   @@map("earsiv_faturalar")
 }
 

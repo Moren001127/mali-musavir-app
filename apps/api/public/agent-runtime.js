@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.51';
+          const AGENT_VER = '1.35.52';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1544,7 +1544,6 @@
       }
       await sleep(1500);
       await log(`📋 ${etiket} tamamlandı`);
-    }
 
       // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
       try {
