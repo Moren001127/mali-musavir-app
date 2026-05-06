@@ -178,7 +178,18 @@ export class EarsivService {
       if (ids.length === 1) where.taxpayerId = ids[0];
       else if (ids.length > 1) where.taxpayerId = { in: ids };
     }
-    if (donem) where.donem = donem;
+    // Liste filtresi faturaTarihi'ne göre — donem (sorgu dönemi) yerine fatura'nın gerçek tarihine göre.
+    // Bu sayede Mayıs sorgusunda Mayıs tarihli faturalar görünür (Nisan'da çekilmiş olsa bile).
+    if (donem) {
+      const [y, m] = String(donem).split('-').map((s: string) => parseInt(s, 10));
+      if (y && m >= 1 && m <= 12) {
+        const baslangic = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+        const bitis = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1, 0, 0, 0));
+        where.faturaTarihi = { gte: baslangic, lt: bitis };
+      } else {
+        where.donem = donem; // beklenmedik format → eski davranış
+      }
+    }
     if (tip) where.tip = tip;
     if (belgeKaynak) where.belgeKaynak = belgeKaynak;
     if (search && search.trim()) {

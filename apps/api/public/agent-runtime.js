@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.46';
+          const AGENT_VER = '1.35.48';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1426,8 +1426,61 @@
       getirBtn.click();
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
 
-      // İşlem Takip popup'ı açılır, GİB sorgu yapar (~8sn). Sonra Kapat butonu ile kapat.
-      await sleep(8000);
+      // İşlem Takip popup'ı açılır, GİB sorgu yapar.
+      // Çok fatura varsa bu 60-90sn sürebilir (örn 333 belge → her biri ayrı GİB sorgusu).
+      // Sabit 8sn yetersiz — POLLING ile bekle: max 5 dk, "N adet fatura bulundu" ya da
+      // "İşlem tamamlandı" gibi tamamlanma sinyalini bekle.
+      const POLL_INTERVAL = 1000;
+      const POLL_MAX_MS = 5 * 60 * 1000; // 5 dakika
+      const pollStart = Date.now();
+      let queryDone = false;
+      let lastProgress = '';
+      let lastProgressLogTs = 0;
+      while (Date.now() - pollStart < POLL_MAX_MS) {
+        const allDocs = [document];
+        try {
+          for (const fr of document.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) allDocs.push(fr.contentDocument);
+          }
+        } catch {}
+        let foundDoneSignal = false;
+        let progressLine = '';
+        for (const d of allDocs) {
+          try {
+            const txt = d.body ? d.body.textContent : '';
+            // Tamamlanma sinyali: "N adet fatura bulundu" ya da "fatura bulunamadı"
+            if (/\d+\s+adet\s+fatura\s+bulundu/i.test(txt)) {
+              foundDoneSignal = true;
+              break;
+            }
+            if (/fatura\s+bulunamadı|fatura\s+yok/i.test(txt) && !/(error|hata)/i.test(txt.slice(0, 200))) {
+              // İşlem Takip kontrol — "fatura bulunamadı" ise de iş bitti demektir
+              foundDoneSignal = true;
+              break;
+            }
+            // Progress satırı yakala: "[113/333]" gibi
+            const m = txt && txt.match(/\[(\d+)\/(\d+)\][^\[]{0,80}/);
+            if (m) progressLine = `${m[1]}/${m[2]}`;
+          } catch {}
+        }
+        if (foundDoneSignal) { queryDone = true; break; }
+        // Her 5sn'de bir progress log'la (kullanıcı boş ekran görmesin)
+        const now = Date.now();
+        if (progressLine && progressLine !== lastProgress && now - lastProgressLogTs > 5000) {
+          await log(`📊 GİB sorgu ilerleme: ${progressLine}`);
+          lastProgress = progressLine;
+          lastProgressLogTs = now;
+        }
+        await sleep(POLL_INTERVAL);
+      }
+      if (!queryDone) {
+        await log(`⚠ GİB sorgu 5 dk içinde tamamlanmadı (son ilerleme: ${lastProgress || '?'}). Mevcut sonuçlarla devam ediliyor…`);
+      } else {
+        const elapsed = Math.round((Date.now() - pollStart) / 1000);
+        await log(`✓ GİB sorgu tamamlandı (${elapsed}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
+      }
+      // Sonuç tablosuna geçilmesi için kısa bir sleep
+      await sleep(500);
 
       // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
       const findAndClick = (label) => {
@@ -1457,6 +1510,36 @@
         await log(`⚠ Kapat butonu bulunamadı, popup açık kalmış olabilir`);
       }
       await sleep(1500);
+
+      // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
+      try {
+        let bulunanText = '';
+        const allDocs = [document];
+        try {
+          for (const fr of document.querySelectorAll('frame, iframe')) {
+            if (fr.contentDocument) allDocs.push(fr.contentDocument);
+          }
+        } catch {}
+        for (const d of allDocs) {
+          try {
+            const txt = d.body ? d.body.textContent : '';
+            const m = txt && txt.match(/(\d+)\s+adet\s+fatura\s+bulundu[^.]*Sayfa\s+No:\s*(\d+)/i);
+            if (m) { bulunanText = `${m[1]} fatura, sayfa ${m[2]}`; break; }
+          } catch {}
+        }
+        const tabloDakiFatura = fdoc.querySelectorAll('.sec').length;
+        if (bulunanText) {
+          const toplamMatch = bulunanText.match(/^(\d+)/);
+          const toplam = toplamMatch ? parseInt(toplamMatch[1], 10) : 0;
+          if (toplam > tabloDakiFatura) {
+            await log(`⚠ DİKKAT: Luca'da TOPLAM ${toplam} fatura var ama tabloda sadece ${tabloDakiFatura} görünüyor (pagination). Bu sürümde sadece 1. sayfa indiriliyor — kalan ${toplam - tabloDakiFatura} fatura için pagination iteration desteği gelecek.`);
+          } else {
+            await log(`✓ ${bulunanText} (tümü tabloda)`);
+          }
+        }
+      } catch (e) {
+        // Detection hatası — sessiz geç
+      }
     }
 
     await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
@@ -1889,13 +1972,37 @@
       await log('⚠ Popup içindeki "Seçilenleri İndir" bulunamadı');
     }
 
-    // Bekleme: ZIP gelene kadar (max 60sn). RE-CLICK YOK — Luca aynı button.click()
-    // çoklu handler'ları tetikliyor, tek tık zaten yeterli.
+    // ADAPTIVE TIMEOUT:
+    // - max 5 dk (büyük datasetlerde GİB sorgu uzar)
+    // - ama 30sn boyunca AKTIVITE OLMAZSA çık (gereksiz beklemenin önüne geç)
+    // Aktivite tespiti: gib530/fatura_kaydet/gib_efatura URL'lerinde Performance API resource sayısı artıyor mu?
     const zipWaitStart = Date.now();
-    const ZIP_TIMEOUT_MS = 60000;
+    const ZIP_TIMEOUT_MS = 5 * 60 * 1000;
+    const IDLE_TIMEOUT_MS = 30 * 1000;
+    const getActivityCount = () => {
+      try {
+        return performance.getEntriesByType('resource').filter(r =>
+          /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(r.name) &&
+          r.startTime > 0
+        ).length;
+      } catch { return 0; }
+    };
+    let lastActivityCount = getActivityCount();
+    let lastActivityTime = Date.now();
     let popupClosed = false;
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
+      // Aktivite kontrolü
+      const cur = getActivityCount();
+      if (cur > lastActivityCount) {
+        lastActivityCount = cur;
+        lastActivityTime = Date.now();
+      }
+      const idle = Date.now() - lastActivityTime;
+      if (idle > IDLE_TIMEOUT_MS) {
+        await log(`⚠ ${IDLE_TIMEOUT_MS/1000}sn aktivite yok, bekleme sonlandırılıyor`);
+        break;
+      }
       // ZIP geldikten sonra (ya da 8sn sonra) popup'ı X ile kapat
       if (!popupClosed && (yakalanmisZip || Date.now() - zipWaitStart > 8000)) {
         if (closePopupWithX()) {
