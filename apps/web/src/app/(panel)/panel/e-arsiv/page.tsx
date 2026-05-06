@@ -568,10 +568,11 @@ export default function EarsivPage() {
         <button
           disabled={mihsapEligibleIds.length === 0 || mihsapYukleMut.isPending}
           onClick={() => mihsapYukleMut.mutate()}
-          title={mihsapEligibleIds.length === 0 ? 'Sadece Gelen E-Arşiv faturalarını Mihsap\'a yükleyebilirsin' : `${mihsapEligibleIds.length} Gelen E-Arşiv fatura Mihsap\'a yüklenecek`}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}
-          title="Seçili Gelen E-Arşiv faturalarını Mihsap'a Gider Faturası olarak yükle"
+          title={mihsapEligibleIds.length === 0
+            ? 'Sadece Gelen E-Arşiv faturalarını Mihsap\'a yükleyebilirsin'
+            : `${mihsapEligibleIds.length} Gelen E-Arşiv fatura Mihsap\'a Gider Faturası olarak yüklenecek`}
         >
           {mihsapYukleMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
           Mihsap'a Yükle {mihsapEligibleIds.length > 0 ? `(${mihsapEligibleIds.length})` : ''}
