@@ -28,6 +28,7 @@ import { KdvBeyannameModule } from './kdv-beyanname/kdv-beyanname.module';
 import { GaleriModule } from './galeri/galeri.module';
 import { CariKasaModule } from './cari-kasa/cari-kasa.module';
 import { IsletmeHesapOzetiModule } from './isletme-hesap-ozeti/isletme-hesap-ozeti.module';
+import { BankaTakipModule } from './banka-takip/banka-takip.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -62,6 +63,7 @@ import { HgsCron } from './schedule/hgs.cron';
     GaleriModule,
     CariKasaModule,
     IsletmeHesapOzetiModule,
+    BankaTakipModule,
   ],
   providers: [ReminderCron, HgsCron],
 })

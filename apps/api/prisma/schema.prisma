@@ -146,6 +146,10 @@ model Taxpayer {
   lucaSlug           String?  // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
   mihsapId           String?  // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
   mihsapDefterTuru   String?  // "BILANCO" | "DEFTER_BEYAN"
+  // Defter türü — Banka Takip modülü ve diğer modüller için genel alan.
+  // "BILANCO" → Bilanço esasında tutuluyor (bankalar, cari, vs.)
+  // "ISLETME" → İşletme defteri tutuluyor
+  defterTuru         String?  // "BILANCO" | "ISLETME"
   hattatId           String?  // Hattat yazılımındaki iç mükellef kodu (ZIP import eşleştirme için)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -170,6 +174,8 @@ model Taxpayer {
   earsivFaturalar     EarsivFatura[]
   kdvLucaSnapshots    KdvLucaSnapshot[]
   isletmeHesapOzetleri IsletmeHesapOzeti[]
+  bankaHesaplar       BankaHesap[]
+  bankaEkstreKayitlari BankaEkstreKaydi[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1786,3 +1792,61 @@ model IsletmeHesapOzeti {
   @@index([taxpayerId, yil, donem])
   @@map("isletme_hesap_ozetleri")
 }
+
+// ============================================================
+// BANKA HESAPLARI — Bilanço mükelleflerinin banka hesap bilgileri
+// Mükellef başına birden fazla hesap (Ziraat, İş Bankası, Garanti vb.)
+// ============================================================
+model BankaHesap {
+  id          String    @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  bankaAdi    String    // "Ziraat Bankası", "İş Bankası", "Garanti BBVA" vb.
+  hesapNo     String?   // hesap numarası (opsiyonel - IBAN yeterli olabilir)
+  iban        String?
+  sube        String?
+  paraBirimi  String    @default("TRY") // TRY, USD, EUR
+  aciklama    String?   // "Ana hesap", "Maaş hesabı" gibi notlar
+  aktif       Boolean   @default(true)
+  sira        Int       @default(0) // gösterim sırası
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  taxpayer    Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  ekstreler   BankaEkstreKaydi[]
+
+  @@index([tenantId])
+  @@index([taxpayerId])
+  @@map("banka_hesaplari")
+}
+
+// ============================================================
+// BANKA EKSTRE KAYITLARI — Aylık ekstre takip
+// Hem mükellef başına (genel ekstre durumu) hem hesap-bazında detay
+// ============================================================
+model BankaEkstreKaydi {
+  id              String    @id @default(cuid())
+  tenantId        String
+  taxpayerId      String
+  bankaHesapId    String?   // null ise mükellef-genel ekstre durumu (tüm hesaplar birlikte)
+  donem           String    // "YYYY-MM" — örn "2026-04"
+  // Ekstre geldi mi? (ne zaman alındığı bilgisi varsa geldiTarihi)
+  ekstreGeldi     Boolean   @default(false)
+  geldiTarihi     DateTime?
+  // Ekstre işlendi mi? (cari kasaya/muhasebeye işlendi mi?)
+  ekstreIslendi   Boolean   @default(false)
+  islenmeTarihi   DateTime?
+  islenmeNotu     String?   // "31.12 itibariyle hareketler işlendi" vb.
+  notlar          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  taxpayer        Taxpayer    @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  bankaHesap      BankaHesap? @relation(fields: [bankaHesapId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, taxpayerId, bankaHesapId, donem])
+  @@index([tenantId, donem])
+  @@index([taxpayerId, donem])
+  @@map("banka_ekstre_kayitlari")
+}
+

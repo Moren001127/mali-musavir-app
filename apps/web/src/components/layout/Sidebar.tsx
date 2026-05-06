@@ -8,8 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet, Megaphone, Archive,
-} from 'lucide-react';
+  Car, Gavel, Wallet, Megaphone, Archive, Landmark} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
@@ -67,6 +66,7 @@ const navGroups = [
       { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
       { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpen },
       { href: '/panel/cari-kasa',     label: 'Cari Kasa',     icon: Wallet },
+      { href: '/panel/banka-takip',   label: 'Banka Takip',   icon: Landmark },
       { href: '/panel/bordro',        label: 'Bordro & SGK',  icon: Users2 },
     ],
   },
