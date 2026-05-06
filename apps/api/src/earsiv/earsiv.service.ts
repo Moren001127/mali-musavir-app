@@ -210,6 +210,7 @@ export class EarsivService {
     let inserted = 0;   // gerçekten YENİ eklenen
     let duplicate = 0;  // önceden vardı, atlandı (mükerrer önleme)
     let skipped = 0;    // hata nedeniyle atlandı
+    const errors: string[] = []; // ilk birkaç hata sebebi (debugging için)
 
     for (const f of parsed) {
       try {
@@ -250,6 +251,11 @@ export class EarsivService {
       } catch (e: any) {
         this.logger.warn(`Fatura kaydetme hata (${f.faturaNo}): ${e.message}`);
         skipped++;
+        if (errors.length < 5) {
+          // Prisma error code + kısa mesaj — agent loguna düşsün
+          const code = e?.code || '';
+          errors.push(`${f.faturaNo}: ${code} ${(e?.message || '').slice(0, 200)}`);
+        }
       }
     }
 
@@ -259,6 +265,7 @@ export class EarsivService {
       xmlCount: (parsed as any).__xmlCount || 0,
       entries: (parsed as any).__entries || [],
       diagnostics: (parsed as any).__diagnostics || [],
+      errors,
     };
     return { inserted, duplicate, skipped, total: parsed.length, meta };
   }

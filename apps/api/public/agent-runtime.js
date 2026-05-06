@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.58';
+          const AGENT_VER = '1.35.59';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -360,8 +360,10 @@
             if (r.meta) {
               const e = (r.meta.entries || []).slice(0, 10).join(' | ');
               const diag = (r.meta.diagnostics || []).slice(0, 6).join(' || ');
+              const errs = (r.meta.errors || []).slice(0, 5).join(' || ');
               metaDetail = ` | bufferSize=${r.meta.bufferSize}B, totalEntries=${r.meta.totalEntries}, xmlCount=${r.meta.xmlCount}, entries=[${e}]`;
               if (diag) metaDetail += ` || diag=[${diag}]`;
+              if (errs) metaDetail += ` || ❌ insert hatalari=[${errs}]`;
             }
           } catch (e) {}
           await log(`✅ ${job.tip} backend'e yüklendi${respDetail}${metaDetail}`);

@@ -81,10 +81,15 @@ ALTER TABLE "earsiv_faturalar"
   ADD COLUMN IF NOT EXISTS "mihsapUploadJobId"  TEXT;
 
 -- belgeKaynak içeren UNIQUE/INDEX (eski sürümdekini değiştir)
--- Eski unique: (tenantId, taxpayerId, tip, faturaNo)
+-- Eski unique INDEX: (tenantId, taxpayerId, tip, faturaNo) — bu E-Fatura ve E-Arşiv'in
+-- aynı fatura numaralı kayıtlarının çakışmasına sebep oluyordu (insert hata).
 -- Yeni unique: (tenantId, taxpayerId, tip, belgeKaynak, faturaNo)
+DROP INDEX IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key";
 DO $$ BEGIN
   ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key";
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenantId_taxpayerId_tip_faturaNo_key";
 EXCEPTION WHEN undefined_object THEN NULL; END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key"
   ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo");

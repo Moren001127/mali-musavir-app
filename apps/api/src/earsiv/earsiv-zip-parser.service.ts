@@ -166,6 +166,8 @@ export class EarsivZipParserService {
     const uuidMatch = xml.match(/<(?:[a-z0-9]+:)?UUID[^>]*>([^<]+)<\/(?:[a-z0-9]+:)?UUID>/i);
     const dateMatch = xml.match(/<(?:[a-z0-9]+:)?IssueDate[^>]*>([^<]+)<\/(?:[a-z0-9]+:)?IssueDate>/i);
     const payableMatch = xml.match(/<(?:[a-z0-9]+:)?PayableAmount[^>]*>([\d.,]+)</i);
+    const taxInclusiveMatch = xml.match(/<(?:[a-z0-9]+:)?TaxInclusiveAmount[^>]*>([\d.,]+)</i);
+    const taxExclusiveMatch = xml.match(/<(?:[a-z0-9]+:)?TaxExclusiveAmount[^>]*>([\d.,]+)</i);
     const taxMatch = xml.match(/<(?:[a-z0-9]+:)?TaxAmount[^>]*>([\d.,]+)</i);
     const lineExtMatch = xml.match(/<(?:[a-z0-9]+:)?LineExtensionAmount[^>]*>([\d.,]+)</i);
 
@@ -183,9 +185,12 @@ export class EarsivZipParserService {
       if (!isNaN(d.getTime())) faturaTarihi = d;
     }
 
-    const matrah = num(lineExtMatch?.[1]);
+    // Türk muhasebe görünümü: matrah = TaxExclusiveAmount (indirimler düşülmüş, KDV'siz);
+    // toplam = TaxInclusiveAmount (KDV dahil brüt). PayableAmount tevkifat/öndepoziti
+    // düştüğü için "genel toplam" amacıyla yanıltıcı.
+    const matrah = num(taxExclusiveMatch?.[1]) ?? num(lineExtMatch?.[1]);
     const kdvTutari = num(taxMatch?.[1]);
-    const toplamTutar = num(payableMatch?.[1]);
+    const toplamTutar = num(taxInclusiveMatch?.[1]) ?? num(payableMatch?.[1]);
 
     return {
       faturaNo: idMatch?.[1]?.trim() || uuidMatch?.[1]?.trim() || 'BILINMIYOR',
@@ -291,12 +296,15 @@ export class EarsivZipParserService {
     const aliciVergiNo = txt(customer?.['PartyTaxScheme']?.['CompanyID'])
       || txt(customer?.['PartyIdentification']?.['ID']);
 
-    // Tutarlar
+    // Tutarlar — TaxExclusive ve TaxInclusive AYNI seviyede (KDV'siz / KDV dahil)
+    // ki matrah + KDV = toplam tutmasın diye değil, TUTSUN diye.
+    // LineExtensionAmount indirimden önce, PayableAmount tevkifat/öndepozit sonrası
+    // → ikisini ana alan olarak kullanmak matematiği bozuyor.
     const monetaryTotal = get(['LegalMonetaryTotal']);
-    const matrah = num(monetaryTotal?.['LineExtensionAmount'])
-      ?? num(monetaryTotal?.['TaxExclusiveAmount']);
-    const toplamTutar = num(monetaryTotal?.['PayableAmount'])
-      ?? num(monetaryTotal?.['TaxInclusiveAmount']);
+    const matrah = num(monetaryTotal?.['TaxExclusiveAmount'])
+      ?? num(monetaryTotal?.['LineExtensionAmount']);
+    const toplamTutar = num(monetaryTotal?.['TaxInclusiveAmount'])
+      ?? num(monetaryTotal?.['PayableAmount']);
 
     // KDV — TaxTotal array veya tek obje olabilir
     const taxTotalRaw = get(['TaxTotal']);
