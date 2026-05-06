@@ -1105,19 +1105,54 @@ function BlockCard({
   accent: 'emerald' | 'amber' | 'indigo';
   children: React.ReactNode;
 }) {
-  const accentClasses: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
-    emerald: { bg: 'bg-emerald-500/100/8', border: 'border-emerald-500/30', text: 'text-emerald-200', iconBg: 'bg-emerald-500/20 text-emerald-300' },
-    amber:   { bg: 'bg-amber-500/100/8',   border: 'border-amber-500/30',   text: 'text-amber-200',   iconBg: 'bg-amber-500/15 text-amber-300' },
-    indigo:  { bg: 'bg-indigo-500/100/8',  border: 'border-indigo-500/30',  text: 'text-indigo-200',  iconBg: 'bg-indigo-500/20 text-indigo-700' },
+  const accentColors: Record<string, { headerBg: string; border: string; text: string; iconBg: string; iconText: string }> = {
+    emerald: {
+      headerBg: 'rgba(16,185,129,0.08)',
+      border: 'rgba(16,185,129,0.25)',
+      text: '#6ee7b7',
+      iconBg: 'rgba(16,185,129,0.18)',
+      iconText: '#6ee7b7',
+    },
+    amber: {
+      headerBg: 'rgba(245,158,11,0.08)',
+      border: 'rgba(245,158,11,0.25)',
+      text: '#fcd34d',
+      iconBg: 'rgba(245,158,11,0.15)',
+      iconText: '#fcd34d',
+    },
+    indigo: {
+      headerBg: 'rgba(99,102,241,0.08)',
+      border: 'rgba(99,102,241,0.25)',
+      text: '#a5b4fc',
+      iconBg: 'rgba(99,102,241,0.18)',
+      iconText: '#a5b4fc',
+    },
   };
-  const a = accentClasses[accent];
+  const c = accentColors[accent];
   return (
-    <div className={`overflow-hidden rounded-xl border ${a.border} bg-white`}>
-      <div className={`flex items-center gap-2 border-b ${a.border} ${a.bg} px-4 py-2`}>
-        <span className={`inline-flex h-6 w-6 items-center justify-center rounded ${a.iconBg}`}>
+    <div
+      className="overflow-hidden rounded-xl"
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: `1px solid ${c.border}`,
+      }}
+    >
+      <div
+        className="flex items-center gap-2 px-4 py-2"
+        style={{
+          background: c.headerBg,
+          borderBottom: `1px solid ${c.border}`,
+        }}
+      >
+        <span
+          className="inline-flex h-6 w-6 items-center justify-center rounded"
+          style={{ background: c.iconBg, color: c.iconText }}
+        >
           {icon}
         </span>
-        <h2 className={`text-xs font-bold uppercase tracking-wider ${a.text}`}>{title}</h2>
+        <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: c.text }}>
+          {title}
+        </h2>
       </div>
       <div className="overflow-x-auto">{children}</div>
     </div>
