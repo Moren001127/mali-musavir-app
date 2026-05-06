@@ -101,6 +101,11 @@ export default function EarsivPage() {
       }),
       // Mükellef seçilmemiş olsa bile listeyi yükle — kullanıcı seçili dönem/tip için tüm faturaları görür
       enabled: true,
+      // Cache yerine her mount/focus'ta yeniden çek — kullanıcı ay değiştirip
+      // geri döndüğünde stale data göstermesin (Mihsap status, yeni faturalar vb.)
+      staleTime: 0,
+      refetchOnMount: 'always' as const,
+      refetchOnWindowFocus: true,
     })),
   });
   const isLoading = queries.some((q: any) => q.isLoading);
