@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.57';
+          const AGENT_VER = '1.35.58';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1407,6 +1407,72 @@
     const origXHROpen = hookedFrames.find(h => h.win === fwin)?.origXHROpen;
     const origXHRSend = hookedFrames.find(h => h.win === fwin)?.origXHRSend;
 
+    // ─── Aktivite sayacı (birSorgu silence-wait + ZIP wait için) ───
+    // fatura_kaydet/gib530 XHR'larını sayar; lastTs'i bump eder.
+    // birSorgu done sinyali görüldükten sonra "X sn aktivite yok" garantisini bu sağlar.
+    if (!window.__morenLucaActivity) window.__morenLucaActivity = { count: 0, lastTs: Date.now() };
+    const installAgentActivityHooks = (w, depth = 0) => {
+      if (depth > 6 || !w) return;
+      try {
+        if (w.__morenAgentActHooked) return;
+        w.__morenAgentActHooked = true;
+        const oOpen = w.XMLHttpRequest && w.XMLHttpRequest.prototype.open;
+        if (oOpen) {
+          w.XMLHttpRequest.prototype.open = function(m, u) {
+            if (u && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(String(u))) {
+              window.__morenLucaActivity.count++;
+              window.__morenLucaActivity.lastTs = Date.now();
+            }
+            return oOpen.apply(this, arguments);
+          };
+        }
+        const oFetch = w.fetch;
+        if (oFetch) {
+          w.fetch = function(input, init) {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (url && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(url)) {
+              window.__morenLucaActivity.count++;
+              window.__morenLucaActivity.lastTs = Date.now();
+            }
+            return oFetch.apply(this, arguments);
+          };
+        }
+        const frames = w.document && w.document.querySelectorAll('frame, iframe');
+        if (frames) for (const f of frames) {
+          try { if (f.contentWindow) installAgentActivityHooks(f.contentWindow, depth + 1); } catch {}
+        }
+      } catch {}
+    };
+    installAgentActivityHooks(window);
+    const agentActHookInterval = setInterval(() => installAgentActivityHooks(window), 2000);
+    const getAgentActivityCount = () => window.__morenLucaActivity.count;
+    const getAgentLastActivityTs = () => window.__morenLucaActivity.lastTs;
+
+    // birSorgu done sinyali sonrası: XHR aktivitesi N saniye boyunca durana kadar bekle.
+    // Bu sayede "fatura kaydetme işlemi sona erdi" mesajı çıktı ama hâlâ son fatura_kaydet'ler
+    // yoldaysa onları da bekleriz; sonra Sorgu 2'ye veya download'a geçeriz.
+    async function waitForActivitySilence(label, silenceMs = 5000, maxWaitMs = 60000) {
+      const startTs = Date.now();
+      const startCount = getAgentActivityCount();
+      // İlk başta lastTs'i şimdiye çek (eski işlemden kalan değer beklemeyi yanlış kısaltmasın)
+      let lastSeenCount = startCount;
+      let lastChangeTs = Date.now();
+      while (Date.now() - startTs < maxWaitMs) {
+        const c = getAgentActivityCount();
+        if (c !== lastSeenCount) {
+          lastSeenCount = c;
+          lastChangeTs = Date.now();
+        }
+        const silentFor = Date.now() - lastChangeTs;
+        if (silentFor >= silenceMs) {
+          await log(`✓ ${label}: ${silenceMs/1000}sn XHR sessizliği (toplam ${c - startCount} ek XHR), devam ediliyor`);
+          return;
+        }
+        await sleep(500);
+      }
+      await log(`⚠ ${label}: ${maxWaitMs/1000}sn boyunca aktivite kesilmedi, yine de devam ediliyor`);
+    }
+
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
       await log(`🔍 ${etiket}: ${bas} → ${bit}`);
@@ -1461,16 +1527,12 @@
             //  2. "Belirtilen tarih aralığında fatura bulunamadı" — GİB'den boş sonuç
             //  3. "fatura bulunamadı" / "belge bulunamadı" — generic boş sonuç
             // BUNLAR DIŞINDA HİÇBİR ŞEY DONE OLARAK SAYILMASIN (yanlış erken trigger önle)
+            // SADECE BU İKİ MESAJI DONE OLARAK KABUL ET — saves bittiğinin garantisi:
+            //  1. "Fatura kaydetme işlemi sona erdi" — tüm fatura_kaydet stream bitti
+            //  2. "Belirtilen tarih aralığında fatura bulunamadı" — boş sonuç
+            // ⚠ "fatura indirme işlemi tamamlandı" / "işlem tamamlandı" bunlar GİB query
+            // bitince fire ediyor ama save'ler hala devam ediyor — KULLANMA.
             if (/fatura\s+kaydetme\s+i[şs]lemi\s+sona\s+erdi/i.test(txt)) {
-              foundDoneSignal = true;
-              break;
-            }
-            // Alternatif Luca mesajları:
-            if (/fatura\s+indirme\s+i[şs]lemi\s+tamamland[ıi]/i.test(txt)) {
-              foundDoneSignal = true;
-              break;
-            }
-            if (/i[şs]lem\s+tamamland[ıi]/i.test(txt) && /fatura/i.test(txt)) {
               foundDoneSignal = true;
               break;
             }
@@ -1506,6 +1568,9 @@
         const elapsed = Math.round((Date.now() - pollStart) / 1000);
         await log(`✓ GİB sorgu tamamlandı (${elapsed}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
       }
+      // KRİTİK: done mesajı gelse bile son fatura_kaydet'ler arka planda devam edebilir.
+      // Sonraki sorguya/indirmeye geçmeden ÖNCE 5sn XHR sessizliği bekle.
+      await waitForActivitySilence(`${etiket} fatura_kaydet sessizlik`, 5000, 90000);
       // Sonuç tablosuna geçilmesi için kısa bir sleep
       await sleep(500);
 
@@ -2103,6 +2168,7 @@
       await sleep(400);
     }
     try { clearInterval(activityHookInterval); } catch {}
+    try { clearInterval(agentActHookInterval); } catch {}
 
     // ZIP geldiyse ama popup hala açıksa kapat
     if (yakalanmisZip && !popupClosed) {
