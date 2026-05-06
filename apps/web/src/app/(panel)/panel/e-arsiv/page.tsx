@@ -47,6 +47,8 @@ function isModeAllowedForTaxpayer(mode: Mode, t: Taxpayer): boolean {
   if (mode === 'GIDEN_EARSIV') return !isEF;       // sadece e-fatura mükellefi olmayanlar
   return isEF;                                     // gelen/giden e-fatura → sadece e-fatura mükellefleri
 }
+// Job kuyruğa atılma sırası — sabit (tıklama sırası önemli değil, kullanıcıya tutarlı görünüm)
+const MODE_ORDER: Mode[] = ['GELEN_EARSIV', 'GIDEN_EARSIV', 'GELEN_EFATURA', 'GIDEN_EFATURA'];
 
 export default function EarsivPage() {
   const qc = useQueryClient();
@@ -66,6 +68,10 @@ export default function EarsivPage() {
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
+  // Multi-job: her bir mükellef × mod için job ID + meta
+  const [lucaJobIds, setLucaJobIds] = useState<string[]>([]);
+  const [lucaJobMeta, setLucaJobMeta] = useState<Record<string, { mode: Mode; mukellef: string }>>({});
+  const [lucaSummary, setLucaSummary] = useState<{ done: number; failed: number; nofatura: number; total: number }>({ done: 0, failed: 0, nofatura: 0, total: 0 });
   const [printingBulk, setPrintingBulk] = useState(false);
   // Sayfa içi fatura önizleme (yeni sekme yerine lightbox)
   const [previewFatura, setPreviewFatura] = useState<EarsivFatura | null>(null);
@@ -120,11 +126,14 @@ export default function EarsivPage() {
       if (hedefMukellefler.length === 0) {
         throw new Error('Mükellef seçmedin — ya mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
+      // SABIT SIRA: önce Gelen E-Arşiv, sonra Giden E-Arşiv, sonra E-Fatura'lar
+      // Mükellef bazlı dış döngü — bir mükellef için tüm tipler bittikten sonra diğeri
+      const sortedModes = MODE_ORDER.filter((m) => modes.has(m));
       const jobIds: string[] = [];
+      const jobMeta: Record<string, { mode: Mode; mukellef: string }> = {};
       let toplamJob = 0;
       for (const mk of hedefMukellefler) {
-        for (const m of modeArr) {
-          // Sadece bu mode için uygun olan mükellefler için job aç
+        for (const m of sortedModes) {
           if (!isModeAllowedForTaxpayer(m, mk)) continue;
           toplamJob++;
           try {
@@ -135,61 +144,112 @@ export default function EarsivPage() {
               belgeKaynak: MODE_INFO[m].belgeKaynak,
             });
             jobIds.push(r.jobId);
+            jobMeta[r.jobId] = { mode: m, mukellef: taxpayerName(mk) };
           } catch (e) {
             // tek tek başarısızlıkları görmezden gel
           }
         }
       }
-      return { jobIds, mukellefSayisi: hedefMukellefler.length, toplamJob };
+      return { jobIds, jobMeta, mukellefSayisi: hedefMukellefler.length, toplamJob };
     },
     onSuccess: (d) => {
       if (d.jobIds.length === 0) {
         toast.error('Hiç job oluşturulamadı');
         return;
       }
-      if (d.jobIds.length === 1) {
-        setLucaJobId(d.jobIds[0]);
-        setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
-        toast.info('Luca job oluşturuldu');
-      } else {
-        setLucaJobId(d.jobIds[0]);
-        setLucaStatus(`Toplam ${d.jobIds.length} mükellef kuyruğa alındı`);
-        toast.success(`${d.jobIds.length} job kuyruğa alındı`);
-      }
+      // Tüm jobIds'i + meta'yı state'e koy — multi-job polling devreye girecek
+      setLucaJobIds(d.jobIds);
+      setLucaJobMeta(d.jobMeta);
+      setLucaSummary({ done: 0, failed: 0, nofatura: 0, total: d.jobIds.length });
+      setLucaJobId(d.jobIds[0]); // tekil progress için ilk job (eski UI uyumluluğu)
+      setLucaStatus(`Toplam ${d.jobIds.length} iş kuyruğa alındı (sıraya göre işlenecek)`);
+      toast.success(`${d.jobIds.length} iş kuyruğa alındı`);
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message || e?.message || 'Job oluşturulamadı'),
   });
 
-  // Job polling
-  const lucaJobQuery = useQuery({
-    queryKey: ['earsiv-luca-job', lucaJobId],
-    queryFn: () => earsivApi.getLucaJob(lucaJobId!),
-    enabled: !!lucaJobId,
-    refetchInterval: 3000,
+  // Multi-job polling — TÜM job'ları paralel olarak takip eder
+  const allJobQueries = useQueries({
+    queries: lucaJobIds.map((id) => ({
+      queryKey: ['earsiv-luca-job', id],
+      queryFn: () => earsivApi.getLucaJob(id),
+      enabled: !!id,
+      refetchInterval: (query: any) => {
+        const data: any = query.state.data;
+        const job = data?.job ?? data;
+        if (job?.status === 'done' || job?.status === 'failed') return false; // bitti, durdur
+        return 3000;
+      },
+    })),
   });
 
+  // Eski tekli query (geriye uyumluluk için ilk job'u izler)
+  const lucaJobQuery = allJobQueries[0] || { data: null };
+
+  // Tüm job'ların durumunu birleştir
   useEffect(() => {
-    const d: any = lucaJobQuery.data;
-    if (!d) return;
-    const job = d?.job ?? d;
-    if (!job?.status) return;
-    const errorLog = job.errorMsg || '';
-    const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
-    setLucaLogLines(lines);
-    const lastLine = lines[lines.length - 1] || '';
-    if (job.status === 'pending' || job.status === 'running') {
-      setLucaStatus(lastLine || 'Agent çalışıyor…');
-    } else if (job.status === 'done') {
-      setLucaStatus('Tamamlandı ✓');
-      toast.success('E-arşiv faturalar Luca\'dan çekildi');
+    if (lucaJobIds.length === 0) return;
+    let done = 0, failed = 0, nofatura = 0, running = 0, pending = 0;
+    const liveLogLines: string[] = [];
+    const sonuclar: { mode: Mode; mukellef: string; status: string; sonLog: string; isNoFatura: boolean }[] = [];
+    for (let i = 0; i < lucaJobIds.length; i++) {
+      const id = lucaJobIds[i];
+      const q: any = allJobQueries[i];
+      const job = (q?.data?.job ?? q?.data) || null;
+      const meta = lucaJobMeta[id];
+      const errorLog = job?.errorMsg || '';
+      const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
+      const lastLine = lines[lines.length - 1] || '';
+      const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
+
+      if (job?.status === 'done') {
+        if (isNoFatura) nofatura++; else done++;
+      } else if (job?.status === 'failed') {
+        failed++;
+      } else if (job?.status === 'running') {
+        running++;
+      } else {
+        pending++;
+      }
+
+      sonuclar.push({
+        mode: meta?.mode || 'GELEN_EARSIV',
+        mukellef: meta?.mukellef || '?',
+        status: job?.status || 'pending',
+        sonLog: lastLine,
+        isNoFatura,
+      });
+
+      // Live log: o anda çalışan job'ın son satırını ekle
+      if (job?.status === 'running' && lastLine) {
+        liveLogLines.push(`[${MODE_INFO[meta?.mode || 'GELEN_EARSIV'].label} · ${meta?.mukellef || '?'}] ${lastLine}`);
+      }
+    }
+    setLucaSummary({ done, failed, nofatura, total: lucaJobIds.length });
+    setLucaLogLines(liveLogLines.slice(-30));
+
+    const tamamlanan = done + failed + nofatura;
+    if (tamamlanan === lucaJobIds.length) {
+      // Hepsi bitti — özet göster
+      setLucaStatus(`Tamamlandı — ${done} başarılı / ${nofatura} fatura yok / ${failed} hata`);
       qc.invalidateQueries({ queryKey: ['earsiv-list'] });
-      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
-    } else if (job.status === 'failed') {
-      setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal`);
+      // 5sn sonra status'ü temizle
+      const t = setTimeout(() => {
+        setLucaJobId(null);
+        setLucaJobIds([]);
+        setLucaJobMeta({});
+        setLucaStatus('');
+        setLucaLogLines([]);
+      }, 5000);
+      return () => clearTimeout(t);
+    } else {
+      setLucaStatus(`İşleniyor ${tamamlanan}/${lucaJobIds.length} · ${running} çalışıyor, ${pending} sırada`);
+      // Bir job done olduysa liste yenile (kısmi sonuç da görünür)
+      if (done > 0 || nofatura > 0) qc.invalidateQueries({ queryKey: ['earsiv-list'] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lucaJobQuery.data]);
+  }, [allJobQueries.map((q: any) => q?.data?.job?.status || q?.data?.status || '').join(',')]);
 
   // (Eski yeni-sekme akışı kaldırıldı — artık sayfa içi EarsivPreviewModal ile gösteriliyor)
 
