@@ -99,7 +99,8 @@ export default function EarsivPage() {
         search: search || undefined,
         pageSize: 500,
       }),
-      enabled: taxpayerIds.size > 0,
+      // Mükellef seçilmemiş olsa bile listeyi yükle — kullanıcı seçili dönem/tip için tüm faturaları görür
+      enabled: true,
     })),
   });
   const isLoading = queries.some((q: any) => q.isLoading);
