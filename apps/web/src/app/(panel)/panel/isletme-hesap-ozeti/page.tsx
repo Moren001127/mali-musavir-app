@@ -290,7 +290,10 @@ export default function IsletmeHesapOzetiPage() {
         )}
       </div>
 
-      <div className="rounded-xl border border-white/10 p-4">
+      <div
+        className="rounded-xl border border-white/10 p-4"
+        style={{ background: 'rgba(255,255,255,0.02)' }}
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div className="relative min-w-[300px]">
             <label className="mb-1 block text-xs text-stone-500">Mükellef</label>
@@ -307,8 +310,17 @@ export default function IsletmeHesapOzetiPage() {
               <ChevronDown className="h-4 w-4 text-stone-500" />
             </button>
             {tpDropdownOpen && (
-              <div className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md border shadow-lg">
-                <div className="sticky top-0 border-b border-white/5 bg-white p-2">
+              <div
+                className="absolute top-full left-0 z-10 mt-1 max-h-72 w-full overflow-auto rounded-md shadow-lg"
+                style={{
+                  background: '#12100c',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                }}
+              >
+                <div
+                  className="sticky top-0 border-b border-white/5 p-2"
+                  style={{ background: '#12100c' }}
+                >
                   <div className="relative">
                     <Search className="absolute left-2 top-2 h-4 w-4 text-stone-500" />
                     <input
@@ -316,7 +328,11 @@ export default function IsletmeHesapOzetiPage() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Ad / VKN ara…"
-                      className="w-full rounded border py-1.5 pl-8 pr-2 text-sm text-stone-100 outline-none placeholder:text-stone-500"
+                      className="w-full rounded py-1.5 pl-8 pr-2 text-sm text-stone-100 outline-none placeholder:text-stone-500"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                      }}
                     />
                   </div>
                 </div>
@@ -379,15 +395,24 @@ export default function IsletmeHesapOzetiPage() {
       </div>
 
       {!taxpayerId ? (
-        <div className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500">
+        <div
+          className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
+          style={{ background: 'rgba(255,255,255,0.02)' }}
+        >
           Görüntülemek için mükellef seçin.
         </div>
       ) : isLoading ? (
-        <div className="rounded-xl border border-white/10 p-12 text-center">
+        <div
+          className="rounded-xl border border-white/10 p-12 text-center"
+          style={{ background: 'rgba(255,255,255,0.02)' }}
+        >
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-stone-500" />
         </div>
       ) : hicKayitYok ? (
-        <div className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500">
+        <div
+          className="rounded-xl border border-white/10 p-12 text-center text-sm text-stone-500"
+          style={{ background: 'rgba(255,255,255,0.02)' }}
+        >
           {yil} yılı için henüz kayıt açılmamış. Yukarıdaki "Yılı Başlat" butonuyla 4 dönem boş kayıtları
           oluşturup tutarları manuel girebilirsin.
         </div>

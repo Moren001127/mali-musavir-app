@@ -72,6 +72,10 @@ export default function EarsivPage() {
   const [lucaJobIds, setLucaJobIds] = useState<string[]>([]);
   const [lucaJobMeta, setLucaJobMeta] = useState<Record<string, { mode: Mode; mukellef: string }>>({});
   const [lucaSummary, setLucaSummary] = useState<{ done: number; failed: number; nofatura: number; total: number }>({ done: 0, failed: 0, nofatura: 0, total: 0 });
+  // En son log/progress alan job — canlı görüş için banner & highlight kullanılır
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  // Live log container ref'i — yeni satır geldiğinde otomatik en alta kaydır
+  const liveLogRef = useRef<HTMLDivElement>(null);
   const [printingBulk, setPrintingBulk] = useState(false);
   // Sayfa içi fatura önizleme (yeni sekme yerine lightbox)
   const [previewFatura, setPreviewFatura] = useState<EarsivFatura | null>(null);
@@ -194,7 +198,10 @@ export default function EarsivPage() {
         const data: any = query.state.data;
         const job = data?.job ?? data;
         if (job?.status === 'done' || job?.status === 'failed') return false; // bitti, durdur
-        return 3000;
+        // Çalışan job'lar için hızlı polling (1.5s) — anlık ilerleme görünsün.
+        // Pending'ler için biraz daha rahat (2.5s) — gereksiz network'ten kaçın.
+        if (job?.status === 'running') return 1500;
+        return 2500;
       },
     })),
   });
@@ -207,6 +214,8 @@ export default function EarsivPage() {
     if (lucaJobIds.length === 0) return;
     let done = 0, failed = 0, nofatura = 0, running = 0, pending = 0;
     const liveLogLines: string[] = [];
+    let activeJobIdLocal: string | null = null;
+    let activeJobLastTs = 0;
     const sonuclar: { mode: Mode; mukellef: string; status: string; sonLog: string; isNoFatura: boolean }[] = [];
     for (let i = 0; i < lucaJobIds.length; i++) {
       const id = lucaJobIds[i];
@@ -214,7 +223,10 @@ export default function EarsivPage() {
       const job = (q?.data?.job ?? q?.data) || null;
       const meta = lucaJobMeta[id];
       const errorLog = job?.errorMsg || '';
-      const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
+      // [META] satırlarını filtrele — kullanıcıya gösterme
+      const lines = errorLog
+        ? errorLog.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
+        : [];
       const lastLine = lines[lines.length - 1] || '';
       const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
 
@@ -236,13 +248,31 @@ export default function EarsivPage() {
         isNoFatura,
       });
 
-      // Live log: o anda çalışan job'ın son satırını ekle
-      if (job?.status === 'running' && lastLine) {
+      // Live log: hem RUNNING hem de PENDING job'lardan progress mesajı varsa al.
+      // Agent firma değiştirme sırasında /start öncesi de log gönderiyor; pending de
+      // olsa son satırı göster ki kullanıcı hareket görebilsin.
+      const isActiveStatus = job?.status === 'running' || job?.status === 'pending';
+      if (isActiveStatus && lastLine) {
         liveLogLines.push(`[${MODE_INFO[meta?.mode || 'GELEN_EARSIV'].label} · ${meta?.mukellef || '?'}] ${lastLine}`);
+      }
+
+      // En son güncellenen aktif job'ı bul — UI'da üste çıkar/highlight et
+      if (isActiveStatus && lastLine) {
+        // updatedAt yoksa errorMsg'in son timestamp'ini parse etmeyi dene
+        const tsMatch = lastLine.match(/^\[(\d{2}):(\d{2}):(\d{2})\]/);
+        let ts = 0;
+        if (tsMatch) {
+          ts = parseInt(tsMatch[1], 10) * 3600 + parseInt(tsMatch[2], 10) * 60 + parseInt(tsMatch[3], 10);
+        }
+        if (ts >= activeJobLastTs) {
+          activeJobLastTs = ts;
+          activeJobIdLocal = id;
+        }
       }
     }
     setLucaSummary({ done, failed, nofatura, total: lucaJobIds.length });
     setLucaLogLines(liveLogLines.slice(-30));
+    setActiveJobId(activeJobIdLocal);
 
     const tamamlanan = done + failed + nofatura;
     if (tamamlanan === lucaJobIds.length) {
@@ -257,6 +287,7 @@ export default function EarsivPage() {
         setLucaJobMeta({});
         setLucaStatus('');
         setLucaLogLines([]);
+        setActiveJobId(null);
       }, 5000);
       return () => clearTimeout(t);
     } else {
@@ -266,6 +297,13 @@ export default function EarsivPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allJobQueries.map((q: any) => q?.data?.job?.status || q?.data?.status || '').join(',')]);
+
+  // Live log auto-scroll — yeni satır geldikçe en alta in
+  useEffect(() => {
+    if (liveLogRef.current) {
+      liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight;
+    }
+  }, [lucaLogLines]);
 
   // (Eski yeni-sekme akışı kaldırıldı — artık sayfa içi EarsivPreviewModal ile gösteriliyor)
 
@@ -644,6 +682,7 @@ export default function EarsivPage() {
                 setLucaJobMeta({});
                 setLucaStatus('');
                 setLucaLogLines([]);
+                setActiveJobId(null);
               }}
               className="px-3 py-1.5 rounded-md text-xs"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
@@ -652,18 +691,65 @@ export default function EarsivPage() {
             </button>
           </div>
 
+          {/* AKTİF JOB BANNER — şu an Luca'da hangi mükellef işleniyor */}
+          {(() => {
+            const activeIdx = activeJobId ? lucaJobIds.indexOf(activeJobId) : -1;
+            if (activeIdx < 0) return null;
+            const activeMeta = lucaJobMeta[activeJobId!];
+            const activeQ: any = allJobQueries[activeIdx];
+            const activeJob = (activeQ?.data?.job ?? activeQ?.data) || null;
+            const activeErr = activeJob?.errorMsg || '';
+            const activeLines = activeErr
+              ? activeErr.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
+              : [];
+            const activeLast = activeLines[activeLines.length - 1] || 'Hazırlanıyor…';
+            const activeMode = MODE_INFO[activeMeta?.mode || 'GELEN_EARSIV'];
+            return (
+              <div
+                className="mb-3 p-3 rounded-md flex items-center gap-3"
+                style={{
+                  background: 'rgba(212,184,118,0.10)',
+                  border: '1px solid rgba(212,184,118,0.4)',
+                  animation: 'pulse 2s ease-in-out infinite',
+                }}
+              >
+                <Loader2 size={18} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+                      style={{ background: activeMode.bg, color: activeMode.color, border: `1px solid ${activeMode.color}33` }}
+                    >
+                      {activeMode.label}
+                    </span>
+                    <span style={{ color: GOLD, fontWeight: 700, fontSize: 13 }}>
+                      ŞU AN: {activeMeta?.mukellef || '?'}
+                    </span>
+                  </div>
+                  <div className="text-[12px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.75)' }}>
+                    {activeLast}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Per-job status grid */}
           {lucaJobIds.length > 0 && (
-            <div className="space-y-1.5 mb-3">
+            <div className="space-y-1.5 mb-3" style={{ maxHeight: 260, overflowY: 'auto' }}>
               {lucaJobIds.map((id, i) => {
                 const q: any = allJobQueries[i];
                 const job = (q?.data?.job ?? q?.data) || null;
                 const meta = lucaJobMeta[id];
                 const errorLog = job?.errorMsg || '';
-                const lines = errorLog ? errorLog.split('\n').filter((l: string) => l.trim()) : [];
+                // [META] satırlarını UI'da gösterme
+                const lines = errorLog
+                  ? errorLog.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
+                  : [];
                 const lastLine = lines[lines.length - 1] || '';
                 const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
                 const status = job?.status || 'pending';
+                const isActiveRow = id === activeJobId;
                 let icon = <span style={{ color: 'rgba(250,250,249,0.4)' }}>⏸</span>;
                 let badge = 'Sırada';
                 let badgeColor = '#94a3b8';
@@ -688,13 +774,25 @@ export default function EarsivPage() {
                   badge = 'Hata';
                   badgeColor = '#fca5a5';
                   badgeBg = 'rgba(239,68,68,0.15)';
+                } else if (status === 'pending' && lastLine) {
+                  // Pending ama log var → agent firma değiştiriyor / hazırlık aşamasında
+                  icon = <Loader2 size={12} className="animate-spin" style={{ color: '#a78bfa' }} />;
+                  badge = 'Hazırlanıyor';
+                  badgeColor = '#a78bfa';
+                  badgeBg = 'rgba(167,139,250,0.15)';
                 }
                 const modeInfo = MODE_INFO[meta?.mode || 'GELEN_EARSIV'];
                 return (
                   <div
                     key={id}
                     className="flex items-center gap-3 px-3 py-2 rounded-md"
-                    style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.04)' }}
+                    style={{
+                      background: isActiveRow ? 'rgba(212,184,118,0.10)' : 'rgba(0,0,0,0.25)',
+                      border: isActiveRow
+                        ? '1px solid rgba(212,184,118,0.45)'
+                        : '1px solid rgba(255,255,255,0.04)',
+                      boxShadow: isActiveRow ? '0 0 0 1px rgba(212,184,118,0.15)' : 'none',
+                    }}
                   >
                     <div style={{ width: 18, textAlign: 'center', fontSize: 14 }}>{icon}</div>
                     <span
@@ -706,8 +804,9 @@ export default function EarsivPage() {
                     <div className="flex-1 text-[12px] truncate" style={{ color: '#fafaf9' }}>
                       {meta?.mukellef || '—'}
                     </div>
-                    {status === 'running' && lastLine && (
-                      <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.5)', maxWidth: 300 }}>
+                    {/* Çalışan VE hazırlanan job'larda son log satırı görünür */}
+                    {(status === 'running' || status === 'pending') && lastLine && (
+                      <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.55)', maxWidth: 360 }}>
                         {lastLine}
                       </div>
                     )}
@@ -723,23 +822,36 @@ export default function EarsivPage() {
             </div>
           )}
 
-          {/* Live log container — sadece çalışan job'ların son satırları */}
+          {/* Live log container — çalışan + hazırlanan job'ların son satırları, auto-scroll */}
           {lucaLogLines.length > 0 && (
             <div
+              ref={liveLogRef}
               className="rounded-md p-2.5 text-[11px] font-mono space-y-0.5"
               style={{
                 background: 'rgba(0,0,0,0.35)',
                 border: '1px solid rgba(255,255,255,0.05)',
                 color: 'rgba(250,250,249,0.65)',
-                maxHeight: 140,
+                maxHeight: 180,
                 overflowY: 'auto',
               }}
             >
               {lucaLogLines.map((line, i) => {
-                const isErr = /✗|hata|error/i.test(line);
-                const isOk = /✓|✅/.test(line);
+                const isErr = /✗|hata|error|başarısız/i.test(line);
+                const isOk = /✓|✅|tamamlandı|başarılı|yüklendi/i.test(line);
+                const isProgress = /🔄|📥|🔍|⏳|hazırlanıyor|değiştiriliyor|indiriliyor|çekiliyor/i.test(line);
                 return (
-                  <div key={i} style={{ color: isErr ? '#ef4444' : isOk ? '#10b981' : 'rgba(250,250,249,0.6)' }}>
+                  <div
+                    key={i}
+                    style={{
+                      color: isErr
+                        ? '#ef4444'
+                        : isOk
+                        ? '#10b981'
+                        : isProgress
+                        ? '#d4b876'
+                        : 'rgba(250,250,249,0.6)',
+                    }}
+                  >
                     {line}
                   </div>
                 );

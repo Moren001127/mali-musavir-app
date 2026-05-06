@@ -138,6 +138,19 @@
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
 
+          // ─── EARLY-LOG HELPER ─── /start öncesinde de portal'a log gönder.
+          // Job pending durumdayken errorMsg field'ına yazılır → portal canlı görür.
+          // Bu sayede firma değişimi gibi /start öncesi aşamalar da kullanıcıya görünür.
+          const earlyLog = async (line) => {
+            try {
+              await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ msg: line, line }),
+              });
+            } catch {}
+          };
+
           // ─── ERKEN FİRMA KONTROLÜ (Luca'dan veri çeken tüm job'lar için) ───
           // /start çağrılmadan ÖNCE Luca'da doğru firma seçili mi kontrol et.
           // Yanlışsa firma değiştir → sayfa yenilenir → bu agent ölür →
@@ -148,6 +161,7 @@
             'MIZAN','KDV_KONTROL','KDV1','KDV2','MUAVIN','ISLETME','GELIR_TABLOSU','BILANCO'
           ].includes(job.tip);
           if (isLucaDataJob) {
+            await earlyLog(`🔍 Sıra geldi — Luca firma kontrolü yapılıyor`);
             let mukellefAdiEarly = '';
             try {
               const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
@@ -171,6 +185,7 @@
                     const mevcutEarly = scEarly.options[scEarly.selectedIndex]?.text?.trim() || '(yok)';
                     console.log(`[Moren] 🔄 Firma değiştiriliyor: "${mevcutEarly}" → "${bulunduEarly.text}" (job pending kalacak, reload sonrası devam)`);
                     setStatus(`Firma değiştiriliyor: ${bulunduEarly.text}`);
+                    await earlyLog(`🔄 Firma değiştiriliyor: "${mevcutEarly}" → "${bulunduEarly.text}" — sayfa yenilenecek`);
                     const overrideOnWin = (w) => {
                       try { w.confirm = () => true; } catch {}
                       try { w.alert = () => undefined; } catch {}
@@ -212,6 +227,7 @@
                       if (clickedE) break;
                       await sleep(200);
                     }
+                    await earlyLog(`⏳ Sayfa yenileniyor, 15sn bekleniyor…`);
                     await sleep(15000);
                     window.__lucaJobRunning = false;
                     return;
@@ -227,7 +243,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.64';
+          const AGENT_VER = '1.35.65';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
