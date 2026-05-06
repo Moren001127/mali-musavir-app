@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.60';
+          const AGENT_VER = '1.35.64';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -2147,7 +2147,10 @@
     const getActivityCount = () => window.__morenLucaActivity.count;
     const getLastActivityTs = () => window.__morenLucaActivity.lastTs;
     // Başlangıçta lastTs'i şimdi yap ki ilk anda 30sn idle gibi görünmesin
-    if (window.__morenLucaActivity.lastTs === 0) window.__morenLucaActivity.lastTs = Date.now();
+    // ⚠ ÖNEMLİ: ZIP wait loop başlamadan ÖNCE lastTs'i ŞİMDİ olarak resetle.
+    // Aksi takdirde önceki Sorgu/birSorgu sırasındaki XHR'lerin lastTs'i kalıyor,
+    // tıklama anında "90sn idle" yanlışlıkla fire edip ZIP gelmeden vazgeçiyordu.
+    window.__morenLucaActivity.lastTs = Date.now();
     let popupClosed = false;
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
