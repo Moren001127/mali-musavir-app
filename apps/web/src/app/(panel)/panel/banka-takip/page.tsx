@@ -364,22 +364,22 @@ function HesapRow({
         </div>
       </div>
 
-      {/* Ekstre Geldi toggle */}
+      {/* Ekstre Geldi toggle — pembe sabit kategori */}
       <ToggleButton
         label="Ekstre Geldi"
         checked={hesap.ekstreGeldi}
         tarih={hesap.geldiTarihi}
-        color="#d4b876"
+        kategoriColor="#f43f5e"
         disabled={isPending}
         onClick={() => onToggle(!hesap.ekstreGeldi, undefined)}
       />
 
-      {/* Ekstre İşlendi toggle */}
+      {/* Ekstre İşlendi toggle — yeşil sabit kategori */}
       <ToggleButton
         label="İşlendi"
         checked={hesap.ekstreIslendi}
         tarih={hesap.islenmeTarihi}
-        color="#22c55e"
+        kategoriColor="#22c55e"
         disabled={isPending || !hesap.ekstreGeldi}
         onClick={() => onToggle(undefined, !hesap.ekstreIslendi)}
         hint={!hesap.ekstreGeldi ? 'Önce ekstrenin geldiğini işaretle' : undefined}
@@ -389,11 +389,14 @@ function HesapRow({
 }
 
 // ===== TOGGLE BUTONU =====
+// Renk sabit kategoriyi temsil eder (Ekstre Geldi → pembe, İşlendi → yeşil).
+// Checked: solid dolgu + beyaz yazı + ✓
+// Unchecked: ince border + soluk zemin + ✗ (ama kategori rengi her zaman görünür)
 function ToggleButton({
   label,
   checked,
   tarih,
-  color,
+  kategoriColor,
   onClick,
   disabled,
   hint,
@@ -401,7 +404,7 @@ function ToggleButton({
   label: string;
   checked: boolean;
   tarih?: string | null;
-  color: string;
+  kategoriColor: string;
   onClick: () => void;
   disabled?: boolean;
   hint?: string;
@@ -411,11 +414,14 @@ function ToggleButton({
       onClick={onClick}
       disabled={disabled}
       title={hint || (tarih ? `${label}: ${new Date(tarih).toLocaleString('tr-TR')}` : label)}
-      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold disabled:opacity-50 transition-colors"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold disabled:opacity-50 transition-all hover:brightness-110"
       style={{
-        background: checked ? color + '22' : 'rgba(255,255,255,0.03)',
-        color: checked ? color : 'rgba(250,250,249,0.55)',
-        border: checked ? `1px solid ${color}66` : '1px solid rgba(255,255,255,0.08)',
+        background: checked ? kategoriColor : kategoriColor + '18',
+        color: checked ? '#fff' : kategoriColor,
+        border: `1px solid ${kategoriColor}${checked ? 'ff' : '55'}`,
+        minWidth: 120,
+        justifyContent: 'center',
+        boxShadow: checked ? `0 2px 8px ${kategoriColor}40` : 'none',
       }}
     >
       {checked ? <Check size={12} /> : <X size={12} />}
