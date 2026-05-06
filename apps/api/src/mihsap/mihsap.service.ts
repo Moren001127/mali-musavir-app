@@ -76,6 +76,59 @@ export class MihsapService {
     return s.token;
   }
 
+  /**
+   * Gider faturası (gelen e-arşiv) PDF dosyasını Mihsap'a yükler.
+   * Endpoint: POST /api/fileUploadFromMusavir/{mihsapId}/ALIS
+   * @param tenantId Bizim tenant
+   * @param mihsapId Mukellefin Mihsap'taki internal ID (taxpayer.mihsapId)
+   * @param pdfBuffer PDF içeriği
+   * @param fileName Dosya adı (örn "fatura-no.pdf")
+   * @returns Mihsap response detayı
+   */
+  async uploadGiderFatura(
+    tenantId: string,
+    mihsapId: string | number,
+    pdfBuffer: Buffer,
+    fileName: string,
+  ): Promise<{ ok: boolean; status: number; body?: any; error?: string }> {
+    if (!mihsapId) return { ok: false, status: 0, error: 'mihsapId yok (mukellefte tanımlı değil)' };
+    if (!pdfBuffer || pdfBuffer.length < 5 * 1024) {
+      return { ok: false, status: 0, error: `PDF çok küçük (${pdfBuffer?.length || 0} byte) — Mihsap min 5KB istiyor` };
+    }
+    const token = await this.getToken(tenantId);
+    const url = `${MIHSAP_BASE}/api/fileUploadFromMusavir/${mihsapId}/ALIS`;
+    // FormData inşa et
+    const fd = new FormData();
+    const blob = new Blob([new Uint8Array(pdfBuffer)], { type: 'application/pdf' });
+    fd.append('file', blob, fileName || 'fatura.pdf');
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json, text/plain, */*',
+          Origin: MIHSAP_BASE,
+          Referer: `${MIHSAP_BASE}/`,
+        },
+        body: fd as any,
+      });
+    } catch (e: any) {
+      return { ok: false, status: 0, error: `network: ${e?.message || e}` };
+    }
+    let body: any = null;
+    try {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('json')) body = await res.json();
+      else body = await res.text();
+    } catch {}
+    if (!res.ok) {
+      const errMsg = typeof body === 'string' ? body.slice(0, 200) : JSON.stringify(body || {}).slice(0, 200);
+      return { ok: false, status: res.status, error: errMsg, body };
+    }
+    return { ok: true, status: res.status, body };
+  }
+
   // ==================== MIHSAP API PROXY ====================
 
   /** Belirli mükellef + ay için fatura listesini MIHSAP'tan çeker */

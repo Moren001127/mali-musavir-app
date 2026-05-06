@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { PrismaService } from '../prisma/prisma.service';
 import { EarsivZipParserService, ParsedEarsivFatura } from './earsiv-zip-parser.service';
 import { EarsivRenderService } from './earsiv-render.service';
+import { MihsapService } from '../mihsap/mihsap.service';
 import { chromium as pwChromium } from 'playwright-core';
 import * as JSZip from 'jszip';
 
@@ -16,7 +17,112 @@ export class EarsivService {
     private readonly prisma: PrismaService,
     private readonly parser: EarsivZipParserService,
     private readonly render: EarsivRenderService,
+    private readonly mihsap: MihsapService,
   ) {}
+
+  /**
+   * Seçili Gelen E-Arşiv faturalarını Mihsap'a "Gider Faturası" olarak yükler.
+   * Sadece tip=ALIS, belgeKaynak=EARSIV faturalar kabul edilir.
+   * Her biri için PDF üretir (playwright), Mihsap API'sine POST atar.
+   */
+  async uploadFaturasToMihsap(tenantId: string, ids: string[]): Promise<{
+    total: number;
+    uploaded: number;
+    failed: number;
+    skipped: number;
+    details: Array<{ id: string; faturaNo: string; status: 'uploaded' | 'failed' | 'skipped'; error?: string }>;
+  }> {
+    if (!ids || ids.length === 0) throw new BadRequestException('id listesi gerekli');
+    if (ids.length > 200) throw new BadRequestException('En fazla 200 fatura tek seferde yüklenebilir');
+
+    const faturas = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId, id: { in: ids } },
+      include: { taxpayer: { select: { id: true, mihsapId: true, companyName: true, firstName: true, lastName: true } } },
+    });
+    if (faturas.length === 0) throw new BadRequestException('Fatura bulunamadı');
+
+    this.logger.log(`Mihsap upload başlıyor: ${faturas.length} fatura`);
+
+    const browser = await pwChromium.launch({
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    const details: Array<{ id: string; faturaNo: string; status: 'uploaded' | 'failed' | 'skipped'; error?: string }> = [];
+    let uploaded = 0, failed = 0, skipped = 0;
+
+    try {
+      const ctx = await browser.newContext();
+      for (const f of faturas) {
+        // Sadece Gelen E-Arşiv (ALIS+EARSIV)
+        if (f.tip !== 'ALIS' || f.belgeKaynak !== 'EARSIV') {
+          skipped++;
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'skipped', error: 'Sadece Gelen E-Arşiv yüklenir' });
+          await this.markMihsapStatus(f.id, { status: 'skipped', error: 'Tip uygun değil' });
+          continue;
+        }
+        const mihsapId = f.taxpayer?.mihsapId;
+        if (!mihsapId) {
+          failed++;
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'failed', error: 'Mukellefin mihsapId tanımlı değil' });
+          await this.markMihsapStatus(f.id, { status: 'failed', error: 'Mukellefin mihsapId tanımlı değil' });
+          continue;
+        }
+        let pdfBuffer: Buffer;
+        try {
+          const html = this.render.renderHtml(f as any, { autoPrint: false });
+          const page = await ctx.newPage();
+          await page.setContent(html, { waitUntil: 'networkidle', timeout: 20000 });
+          await page.waitForTimeout(500);
+          pdfBuffer = await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+          });
+          await page.close();
+        } catch (e: any) {
+          failed++;
+          const msg = `PDF render hatası: ${e?.message || e}`;
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'failed', error: msg });
+          await this.markMihsapStatus(f.id, { status: 'failed', error: msg });
+          continue;
+        }
+        // Mihsap'a yükle
+        const safeName = String(f.faturaNo || f.id).replace(/[^A-Za-z0-9._-]/g, '_');
+        const result = await this.mihsap.uploadGiderFatura(tenantId, mihsapId, pdfBuffer, `${safeName}.pdf`);
+        if (result.ok) {
+          uploaded++;
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'uploaded' });
+          await this.markMihsapStatus(f.id, { status: 'uploaded' });
+        } else {
+          failed++;
+          const msg = `Mihsap red: ${result.error || `HTTP ${result.status}`}`;
+          details.push({ id: f.id, faturaNo: f.faturaNo, status: 'failed', error: msg });
+          await this.markMihsapStatus(f.id, { status: 'failed', error: msg });
+        }
+      }
+      await ctx.close();
+    } finally {
+      await browser.close().catch(() => {});
+    }
+
+    this.logger.log(`Mihsap upload tamam: ${uploaded} yüklendi, ${failed} hata, ${skipped} atlandı`);
+    return { total: faturas.length, uploaded, failed, skipped, details };
+  }
+
+  private async markMihsapStatus(faturaId: string, opts: { status: 'uploaded' | 'failed' | 'skipped'; error?: string }) {
+    try {
+      const data: any = {
+        mihsapUploadStatus: opts.status,
+        mihsapUploadError: opts.error || null,
+      };
+      if (opts.status === 'uploaded') data.mihsapUploadedAt = new Date();
+      await (this.prisma as any).earsivFatura.update({ where: { id: faturaId }, data });
+    } catch (e: any) {
+      this.logger.warn(`Mihsap status update hatası (${faturaId}): ${e?.message}`);
+    }
+  }
 
   /**
    * Seçili faturaları AYRI AYRI PDF olarak render et, ZIP içinde dön.
@@ -214,6 +320,7 @@ export class EarsivService {
           satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
           matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, paraBirimi: true,
           durum: true, taxpayerId: true, createdAt: true,
+          mihsapUploadedAt: true, mihsapUploadStatus: true, mihsapUploadError: true,
         },
       }),
       (this.prisma as any).earsivFatura.count({ where }),

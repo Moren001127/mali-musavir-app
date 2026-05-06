@@ -271,6 +271,26 @@ export default function EarsivPage() {
     onError: (e: any) => toast.error(e?.message || 'Toplu yazdırma başarısız'),
   });
 
+  // Mihsap'a Yükle — Gelen E-Arşiv faturalarını Gider Faturası olarak Mihsap'a aktar
+  const mihsapYukleMut = useMutation({
+    mutationFn: async () => {
+      if (selected.size === 0) throw new Error('En az bir fatura seç');
+      const r = await api.post('/earsiv/upload-to-mihsap', { ids: [...selected] });
+      return r.data as { total: number; uploaded: number; failed: number; skipped: number };
+    },
+    onSuccess: (d) => {
+      const parts: string[] = [];
+      if (d.uploaded) parts.push(`${d.uploaded} yüklendi`);
+      if (d.failed) parts.push(`${d.failed} hata`);
+      if (d.skipped) parts.push(`${d.skipped} atlandı`);
+      const msg = parts.join(' · ') || `${d.total} fatura işlendi`;
+      if (d.failed > 0) toast.error(`Mihsap: ${msg}`);
+      else toast.success(`Mihsap: ${msg}`);
+      qc.invalidateQueries({ queryKey: ['earsiv-list'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mihsap yükleme başarısız'),
+  });
+
   // Toplu İndir — her faturayı AYRI PDF olarak ZIP içinde döner, tarayıcı ZIP'i indirir
   const topluIndirMut = useMutation({
     mutationFn: async () => {
@@ -527,6 +547,17 @@ export default function EarsivPage() {
         >
           {topluIndirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
           Toplu İndir {selected.size > 0 ? `(${selected.size})` : ''}
+        </button>
+
+        <button
+          disabled={selected.size === 0 || mihsapYukleMut.isPending}
+          onClick={() => mihsapYukleMut.mutate()}
+          className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
+          style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}
+          title="Seçili Gelen E-Arşiv faturalarını Mihsap'a Gider Faturası olarak yükle"
+        >
+          {mihsapYukleMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Mihsap'a Yükle {selected.size > 0 ? `(${selected.size})` : ''}
         </button>
 
         <input
@@ -855,23 +886,53 @@ export default function EarsivPage() {
                       {fmtTRY(r.toplamTutar)}
                     </td>
                     <td className="px-3 py-3 text-center">
-                      <div className="flex gap-1.5 justify-center">
-                        <button
-                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
-                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                          style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}
-                          title="Faturayı önizle"
-                        >
-                          <Eye size={11} /> Aç
-                        </button>
-                        <button
-                          onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
-                          className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
-                          style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}
-                          title="Faturayı önizle ve yazıcıya gönder"
-                        >
-                          <Printer size={11} /> Yazdır
-                        </button>
+                      <div className="flex flex-col gap-1 items-center">
+                        <div className="flex gap-1.5 justify-center">
+                          <button
+                            onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(false); }}
+                            className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                            style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}
+                            title="Faturayı önizle"
+                          >
+                            <Eye size={11} /> Aç
+                          </button>
+                          <button
+                            onClick={() => { setPreviewFatura(r); setPreviewAutoPrint(true); }}
+                            className="px-2.5 py-1 rounded text-[11px] font-medium flex items-center gap-1 hover:opacity-80"
+                            style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.25)' }}
+                            title="Faturayı önizle ve yazıcıya gönder"
+                          >
+                            <Printer size={11} /> Yazdır
+                          </button>
+                        </div>
+                        {(() => {
+                          const ms = (r as any).mihsapUploadStatus as string | undefined;
+                          const at = (r as any).mihsapUploadedAt as string | null | undefined;
+                          const err = (r as any).mihsapUploadError as string | undefined;
+                          if (ms === 'uploaded' || at) {
+                            return (
+                              <span
+                                className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+                                style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.3)' }}
+                                title={at ? `Mihsap'a yüklendi: ${new Date(at).toLocaleString('tr-TR')}` : 'Mihsap\'a yüklendi'}
+                              >
+                                ✓ Mihsap
+                              </span>
+                            );
+                          }
+                          if (ms === 'failed') {
+                            return (
+                              <span
+                                className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold"
+                                style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}
+                                title={err || 'Mihsap yükleme başarısız'}
+                              >
+                                ✗ Mihsap
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     </td>
                   </tr>

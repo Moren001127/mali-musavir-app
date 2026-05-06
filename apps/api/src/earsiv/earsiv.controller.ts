@@ -160,6 +160,25 @@ export class EarsivController {
   }
 
   /**
+   * Seçili Gelen E-Arşiv faturalarını Mihsap'a "Gider Faturası" olarak yükle.
+   * Sadece tip=ALIS, belgeKaynak=EARSIV faturalar yüklenir.
+   * Backend playwright ile PDF üretip Mihsap API'sine doğrudan POST atar.
+   */
+  @Post('earsiv/upload-to-mihsap')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async uploadToMihsap(
+    @Req() req: any,
+    @Body() body: { ids: string[] },
+  ) {
+    if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+      throw new BadRequestException('ids dizisi gerekli');
+    }
+    return this.earsiv.uploadFaturasToMihsap(req.user.tenantId, body.ids);
+  }
+
+  /**
    * Toplu PDF indirme — her faturayı AYRI PDF olarak render edip ZIP içinde döner.
    * Server-side playwright ile XSLT applied görünüm korunur (text vector).
    */
