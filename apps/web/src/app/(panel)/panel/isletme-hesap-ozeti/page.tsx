@@ -710,8 +710,17 @@ function KarsilastirmaTablosu({
               </th>
               {tersDonemler.map((d) => (
                 <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
-                  <div className="text-sm font-bold text-stone-100">{DONEM_ROMAN[d]}. Dönem</div>
-                  <div className="text-[10px] font-normal text-stone-500">{yil}</div>
+                  <div
+                    className="text-sm font-bold"
+                    style={{
+                      color: GOLD,
+                      fontFamily: 'Fraunces, serif',
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {yil} · {DONEM_ROMAN[d]}. Dönem
+                  </div>
+                  <div className="text-[10px] font-normal text-stone-500 mt-0.5">{DONEM_RANGE[d]}</div>
                 </th>
               ))}
             </tr>
@@ -820,8 +829,17 @@ function KarsilastirmaTablosu({
               </th>
               {tersDonemler.map((d) => (
                 <th key={d} className="border-b border-white/10 px-3 py-2 text-right">
-                  <div className="text-sm font-bold text-stone-100">{DONEM_ROMAN[d]}. Dönem</div>
-                  <div className="text-[10px] font-normal text-stone-500">{yil}</div>
+                  <div
+                    className="text-sm font-bold"
+                    style={{
+                      color: GOLD,
+                      fontFamily: 'Fraunces, serif',
+                      letterSpacing: '-0.01em',
+                    }}
+                  >
+                    {yil} · {DONEM_ROMAN[d]}. Dönem
+                  </div>
+                  <div className="text-[10px] font-normal text-stone-500 mt-0.5">{DONEM_RANGE[d]}</div>
                 </th>
               ))}
             </tr>
