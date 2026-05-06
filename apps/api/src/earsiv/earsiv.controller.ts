@@ -90,7 +90,8 @@ export class EarsivController {
       tenantId: req.user.tenantId,
       taxpayerId, donem, tip, belgeKaynak, search,
       page: page ? parseInt(page, 10) : 1,
-      pageSize: pageSize ? Math.min(parseInt(pageSize, 10), 200) : 50,
+      // Sınırsız — bir mükellefin aylık 2-5 bin faturası olabilir, hepsi tek listede dönsün.
+      pageSize: pageSize ? Math.max(parseInt(pageSize, 10), 1) : 50,
     });
   }
 

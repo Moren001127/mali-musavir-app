@@ -97,7 +97,7 @@ export default function EarsivPage() {
         tip: MODE_INFO[m].tip,
         belgeKaynak: MODE_INFO[m].belgeKaynak,
         search: search || undefined,
-        pageSize: 500,
+        pageSize: 5000,
       }),
       // Mükellef seçilmemiş olsa bile listeyi yükle — kullanıcı seçili dönem/tip için tüm faturaları görür
       enabled: true,
@@ -272,11 +272,26 @@ export default function EarsivPage() {
     onError: (e: any) => toast.error(e?.message || 'Toplu yazdırma başarısız'),
   });
 
-  // Mihsap'a Yükle — Gelen E-Arşiv faturalarını Gider Faturası olarak Mihsap'a aktar
+  // Seçili faturaların ne kadarı GELEN E-ARŞİV — Mihsap upload sadece bunları kabul eder.
+  const mihsapEligibleIds = useMemo(() => {
+    const eligible: string[] = [];
+    for (const r of rows) {
+      if (!selected.has(r.id)) continue;
+      // Sadece tip=ALIS ve belgeKaynak=EARSIV olanlar
+      if ((r as any).tip === 'ALIS' && (r as any).belgeKaynak === 'EARSIV') {
+        eligible.push(r.id);
+      }
+    }
+    return eligible;
+  }, [rows, selected]);
+
+  // Mihsap'a Yükle — sadece Gelen E-Arşiv faturalarını Gider Faturası olarak Mihsap'a aktar
   const mihsapYukleMut = useMutation({
     mutationFn: async () => {
-      if (selected.size === 0) throw new Error('En az bir fatura seç');
-      const r = await api.post('/earsiv/upload-to-mihsap', { ids: [...selected] });
+      if (mihsapEligibleIds.length === 0) {
+        throw new Error('Seçimde Gelen E-Arşiv fatura yok — Mihsap sadece bunları kabul eder');
+      }
+      const r = await api.post('/earsiv/upload-to-mihsap', { ids: mihsapEligibleIds });
       return r.data as { total: number; uploaded: number; failed: number; skipped: number };
     },
     onSuccess: (d) => {
@@ -551,14 +566,15 @@ export default function EarsivPage() {
         </button>
 
         <button
-          disabled={selected.size === 0 || mihsapYukleMut.isPending}
+          disabled={mihsapEligibleIds.length === 0 || mihsapYukleMut.isPending}
           onClick={() => mihsapYukleMut.mutate()}
+          title={mihsapEligibleIds.length === 0 ? 'Sadece Gelen E-Arşiv faturalarını Mihsap\'a yükleyebilirsin' : `${mihsapEligibleIds.length} Gelen E-Arşiv fatura Mihsap\'a yüklenecek`}
           className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 disabled:opacity-50"
           style={{ background: 'rgba(168,85,247,0.12)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.35)' }}
           title="Seçili Gelen E-Arşiv faturalarını Mihsap'a Gider Faturası olarak yükle"
         >
           {mihsapYukleMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          Mihsap'a Yükle {selected.size > 0 ? `(${selected.size})` : ''}
+          Mihsap'a Yükle {mihsapEligibleIds.length > 0 ? `(${mihsapEligibleIds.length})` : ''}
         </button>
 
         <input

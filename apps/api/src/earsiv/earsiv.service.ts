@@ -201,8 +201,19 @@ export class EarsivService {
     fetchJobId?: string;
     zipBuffer: Buffer;
   }): Promise<{ inserted: number; duplicate: number; skipped: number; total: number; meta?: any }> {
-    const { tenantId, taxpayerId, donem, tip, fetchJobId, zipBuffer } = opts;
+    const { tenantId, taxpayerId, donem: jobDonem, tip, fetchJobId, zipBuffer } = opts;
     const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
+
+    // Fatura tarihinden donem türet — Sorgu 2 (sonraki ay başı→bugün) faturaları
+    // job.donem (örn 2026-04) ile gelse bile, faturanın gerçek ay'ına yazılsın.
+    const donemFromTarih = (d?: Date | null): string => {
+      if (!d) return jobDonem;
+      const dt = d instanceof Date ? d : new Date(d as any);
+      if (isNaN(dt.getTime())) return jobDonem;
+      const y = dt.getUTCFullYear();
+      const m = dt.getUTCMonth() + 1;
+      return `${y}-${String(m).padStart(2, '0')}`;
+    };
 
     const parsed = await this.parser.parseZip(zipBuffer);
     this.logger.log(`ZIP parse: ${parsed.length} fatura bulundu (tip=${tip}, kaynak=${belgeKaynak})`);
@@ -229,7 +240,9 @@ export class EarsivService {
             taxpayerId,
             tip,
             belgeKaynak,
-            donem,
+            // Fatura tarihinden türetilen donem (Sorgu 2'deki Mayıs faturaları
+            // Nisan job'ında bile gelse '2026-05' olarak kaydedilir).
+            donem: donemFromTarih(f.faturaTarihi),
             faturaNo: f.faturaNo,
             faturaTarihi: f.faturaTarihi,
             ettn: f.ettn,
@@ -313,7 +326,7 @@ export class EarsivService {
     const [rows, total] = await Promise.all([
       (this.prisma as any).earsivFatura.findMany({
         where,
-        orderBy: { faturaTarihi: 'desc' },
+        orderBy: { faturaTarihi: 'asc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
         select: {
