@@ -22,11 +22,16 @@ export class VendorMemoryController {
 
   /** Tum firmalar, en cok kullanilana gore sirali. Arama destekli. */
   @Get()
-  list(@Req() req: any, @Query('search') search?: string, @Query('limit') limit?: string) {
+  list(
+    @Req() req: any,
+    @Query('search') search?: string,
+    @Query('limit') limit?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
     const tenantId = req?.user?.tenantId;
     if (!tenantId) throw new BadRequestException('tenantId yok');
     const lim = limit ? Math.min(1000, Math.max(1, parseInt(limit, 10))) : 200;
-    return this.service.listVendorMemory(tenantId, { search, limit: lim });
+    return this.service.listVendorMemory(tenantId, { search, limit: lim, taxpayerId });
   }
 
   /**

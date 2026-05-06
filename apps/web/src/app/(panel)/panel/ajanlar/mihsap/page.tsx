@@ -2,12 +2,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/agents';
+import { pendingDecisionsApi } from '@/lib/pending-decisions';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import {
-  Play, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock, Sparkles,
-  Receipt, ArrowRight, Zap, ChevronDown, X,
+  Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock, Sparkles,
+  Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { LogCard, LogEvent } from '../_components/LogCard';
 
 interface Taxpayer {
@@ -73,6 +75,23 @@ export default function MihsapAgentPage() {
     refetchInterval: 3000,
   });
 
+  // Bekleyen onaylar — Onay Kuyruğu modülünden inline gösterilir
+  const { data: pendingDecisions = [] } = useQuery({
+    queryKey: ['pending-decisions', 'bekliyor'],
+    queryFn: () => pendingDecisionsApi.list({ durum: 'bekliyor', limit: 50 }),
+    refetchInterval: 5000,
+  });
+
+  const onaylaPendingMut = useMutation({
+    mutationFn: (id: string) => pendingDecisionsApi.onayla(id, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-decisions'] }),
+  });
+
+  const reddetPendingMut = useMutation({
+    mutationFn: (id: string) => pendingDecisionsApi.reddet(id, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-decisions'] }),
+  });
+
   // Ay bazında mükellef başına işlenen fatura özeti (portal üzerinden sistem içi işlemler)
   type MukellefSummaryItem = {
     mukellef: string;
@@ -130,8 +149,24 @@ export default function MihsapAgentPage() {
       }
       return sonuclar;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['agent-commands'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-commands'] });
+      toast.success('Komut kuyruğa atıldı');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Komut gönderilemedi'),
   });
+
+  // Çalışan komutu iptal et
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => agentsApi.cancelCommand(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agent-commands'] });
+      toast.success('Komut iptal edildi');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal başarısız'),
+  });
+  // Aktif (running) komut — Durdur butonu için
+  const aktifKomut = (commands as any[]).find((c) => c.status === 'running');
 
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const recentEvents = events.filter((e) => e.ts >= dayAgo);
@@ -369,6 +404,126 @@ export default function MihsapAgentPage() {
           </div>
         )}
       </div>
+
+      {/* BEKLEYEN ONAYLAR — Onay Kuyruğu (inline) */}
+      {pendingDecisions.length > 0 && (
+        <div
+          className="rounded-xl border overflow-hidden"
+          style={{ background: 'rgba(245,158,11,0.06)', borderColor: 'rgba(245,158,11,0.30)' }}
+        >
+          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(245,158,11,0.20)' }}>
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle size={16} style={{ color: '#f59e0b' }} />
+              <h2 className="font-semibold" style={{ color: '#fbbf24' }}>
+                Bekleyen Onaylar
+                <span className="ml-2 text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+                  {pendingDecisions.length}
+                </span>
+              </h2>
+              <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                AI kararı geçmişle çelişen — onayını bekliyor
+              </span>
+            </div>
+            <Link
+              href="/panel/onay-kuyrugu"
+              className="text-[11.5px] inline-flex items-center gap-1"
+              style={{ color: 'rgba(250,250,249,0.55)' }}
+            >
+              Detaylı Görünüm <ArrowRight size={11} />
+            </Link>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto">
+            {(pendingDecisions as any[]).slice(0, 20).map((row: any) => {
+              const ai = row.aiKarari || {};
+              const aiOzet = row.kararTipi === 'fatura'
+                ? (ai.hesapKodu || ai.kategori || '(boş)')
+                : [ai.kayitTuru, ai.altTuru].filter(Boolean).join(' → ') || '(boş)';
+              const gecmis = row.gecmisBeklenen?.enCok
+                ? `${row.gecmisBeklenen.enCok}${row.gecmisBeklenen.enCokSayisi ? ` (${row.gecmisBeklenen.enCokSayisi}×)` : ''}`
+                : '—';
+              const isPending = onaylaPendingMut.isPending || reddetPendingMut.isPending;
+              return (
+                <div
+                  key={row.id}
+                  className="grid grid-cols-[1fr_auto] gap-3 items-start px-4 py-3"
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+                        {row.kararTipi}
+                      </span>
+                      <span className="font-semibold text-[13px] truncate" style={{ color: '#fafaf9' }}>
+                        {row.firmaUnvan || row.firmaKimlikNo || '(firma yok)'}
+                      </span>
+                      {row.belgeNo && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+                          #{row.belgeNo}
+                        </span>
+                      )}
+                      {row.tutar && (
+                        <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+                          {row.tutar}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11.5px] mb-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      Mükellef: <span style={{ color: '#fafaf9' }}>{row.mukellef || '—'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11.5px]">
+                      <div className="px-2 py-1 rounded" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' }}>
+                        <div className="text-[10px] uppercase font-semibold" style={{ color: '#fbbf24' }}>AI Önerisi</div>
+                        <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{aiOzet}</div>
+                      </div>
+                      <div className="px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div className="text-[10px] uppercase font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Geçmiş Beklenen</div>
+                        <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{gecmis}</div>
+                      </div>
+                    </div>
+                    {row.sapmaSebep && (
+                      <div className="text-[11px] mt-1.5 italic" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                        {row.sapmaSebep}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      onClick={() => onaylaPendingMut.mutate(row.id)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
+                      style={{ background: 'rgba(34,197,94,0.18)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.4)' }}
+                      title="AI önerisini onayla — sonraki Çalıştır'da uygulanır"
+                    >
+                      <ThumbsUp size={12} /> Onayla
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm('Bu kararı reddet — tekrar onay kuyruğuna düşmesin diye sebep belirtmen gerekirse Detaylı Görünüm sayfasına git.')) {
+                          reddetPendingMut.mutate(row.id);
+                        }
+                      }}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
+                      style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.35)' }}
+                      title="Reddet"
+                    >
+                      <ThumbsDown size={12} /> Reddet
+                    </button>
+                    <Link
+                      href={`/panel/onay-kuyrugu`}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium px-3 py-1 rounded"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}
+                      title="Detayda kendim düzelterek onayla"
+                    >
+                      <Edit3 size={11} /> Düzelt
+                    </Link>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* MÜKELLEF BAZINDA AYLIK ÖZET — portal üzerinden işlenen fatura sayıları */}
       <MukellefIslemOzeti

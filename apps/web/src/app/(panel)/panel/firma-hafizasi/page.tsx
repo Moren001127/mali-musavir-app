@@ -8,18 +8,33 @@ import {
   VendorMukellefOzet,
   VendorMukellefDetay,
 } from '@/lib/vendor-memory';
-import { Brain, Search, Trash2, X, Users, RefreshCw } from 'lucide-react';
+import { api } from '@/lib/api';
+import { Brain, Search, Trash2, X, Users, RefreshCw, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function FirmaHafizasiPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedVkn, setSelectedVkn] = useState<string | null>(null);
+  const [filterMukellef, setFilterMukellef] = useState<string>('');
+
+  // Mükellef listesi (filtre dropdown için)
+  const { data: taxpayers = [] } = useQuery({
+    queryKey: ['taxpayers'],
+    queryFn: () => api.get('/taxpayers').then((r) => r.data as any[]),
+  });
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ['vendor-memory', search],
-    queryFn: () => vendorMemoryApi.list({ search: search || undefined, limit: 500 }),
+    queryKey: ['vendor-memory', search, filterMukellef],
+    queryFn: () => vendorMemoryApi.list({
+      search: search || undefined,
+      limit: 500,
+      taxpayerId: filterMukellef || undefined,
+    }),
   });
+
+  const taxpayerName = (t: any) =>
+    t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 
   const { data: detail } = useQuery({
     queryKey: ['vendor-memory-detail', selectedVkn],
@@ -98,17 +113,49 @@ export default function FirmaHafizasiPage() {
         </button>
       </div>
 
-      {/* Arama */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
-        <input
-          type="text"
-          placeholder="VKN veya unvan ile ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:border-amber-300"
-        />
+      {/* Arama + Mükellef filtresi */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[300px] max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+          <input
+            type="text"
+            placeholder="VKN veya unvan ile ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:border-amber-300"
+          />
+        </div>
+        <div className="relative">
+          <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+          <select
+            value={filterMukellef}
+            onChange={(e) => setFilterMukellef(e.target.value)}
+            className="pl-9 pr-8 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:border-amber-300 bg-white min-w-[260px]"
+          >
+            <option value="">Tüm Mükellefler (ortak dahil)</option>
+            {taxpayers.map((t: any) => (
+              <option key={t.id} value={t.id}>{taxpayerName(t)}</option>
+            ))}
+          </select>
+        </div>
+        {filterMukellef && (
+          <button
+            onClick={() => setFilterMukellef('')}
+            className="text-xs text-amber-700 hover:text-amber-900 inline-flex items-center gap-1"
+          >
+            <X size={12} /> Filtreyi Kaldır
+          </button>
+        )}
       </div>
+
+      {/* Aktif filtre durumu */}
+      {filterMukellef && (
+        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5 inline-flex items-center gap-1.5">
+          <Users size={12} />
+          <strong>{taxpayerName(taxpayers.find((t: any) => t.id === filterMukellef) || {})}</strong>
+          <span>için kararlar gösteriliyor — diğer mükelleflerin kararları gizlendi.</span>
+        </div>
+      )}
 
       {isLoading && <div className="text-stone-500 text-sm">Yükleniyor...</div>}
 

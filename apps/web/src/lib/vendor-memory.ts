@@ -58,7 +58,7 @@ export interface VendorMemoryDetail extends Omit<VendorMemoryRow, 'mukellefler'>
 }
 
 export const vendorMemoryApi = {
-  list: (params?: { search?: string; limit?: number }) =>
+  list: (params?: { search?: string; limit?: number; taxpayerId?: string }) =>
     api.get<VendorMemoryRow[]>('/vendor-memory', { params }).then((r) => r.data),
   detail: (firmaKimlikNo: string) =>
     api.get<VendorMemoryDetail>(`/vendor-memory/${encodeURIComponent(firmaKimlikNo)}`).then((r) => r.data),

@@ -211,8 +211,8 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
   /**
    * Panel listesi — her firma için mükellef-bazlı dağılım bilgisi de döner.
    */
-  async listVendorMemory(tenantId: string, opts: { search?: string; limit?: number } = {}) {
-    const { search, limit = 200 } = opts;
+  async listVendorMemory(tenantId: string, opts: { search?: string; limit?: number; taxpayerId?: string } = {}) {
+    const { search, limit = 200, taxpayerId } = opts;
     const where: any = { tenantId };
     if (search && search.trim()) {
       const q = search.trim();
@@ -221,12 +221,18 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         { firmaUnvan: { contains: q, mode: 'insensitive' } },
       ];
     }
+    // taxpayerId filter: sadece bu mükellefin kararlarını içeren firmaları getir
+    if (taxpayerId) {
+      where.decisions = { some: { taxpayerId } };
+    }
     const rows = await (this.prisma as any).vendorMemory.findMany({
       where,
       orderBy: [{ toplamOnay: 'desc' }, { sonKullanim: 'desc' }],
       take: limit,
       include: {
         decisions: {
+          // Mukellef filtresi varsa sadece o mukellefin kararlari + ortak (taxpayerId null) atla
+          where: taxpayerId ? { taxpayerId } : undefined,
           orderBy: { onayAdedi: 'desc' },
           take: 50,
           include: {
