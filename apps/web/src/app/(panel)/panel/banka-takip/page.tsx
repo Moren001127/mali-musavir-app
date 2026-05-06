@@ -653,4 +653,15 @@ function BankaHesapModal({
             disabled={!bankaAdi.trim() || createMut.isPending}
             className="w-full py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
             style={{
-              background:
+              background: bankaAdi.trim() ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
+              color: bankaAdi.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
+            }}
+          >
+            {createMut.isPending ? <Loader2 size={14} className="inline animate-spin mr-1" /> : <Plus size={14} className="inline mr-1" />}
+            Hesap Ekle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
