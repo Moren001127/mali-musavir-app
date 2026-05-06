@@ -317,21 +317,56 @@ ${body}
 
       ${linesHtml}
 
-      <table class="totals">
+      ${this.renderTotalsTable(f, lines, fmt)}
+    </section>`;
+  }
+
+  /** Toplam tablosu — KDV'yi orana göre breakdown'la (karma oranlı faturalarda doğru görünür) */
+  private renderTotalsTable(
+    f: RenderableFatura,
+    lines: ParsedLine[],
+    fmt: (v: any) => string,
+  ): string {
+    // Kalemlerden orana göre KDV grupla
+    const kdvByRate: Record<string, { matrah: number; kdv: number }> = {};
+    for (const ln of lines) {
+      const rate = String(ln.kdvOrani ?? '').trim();
+      const matrah = parseFloat(String(ln.tutar ?? '0').replace(',', '.')) || 0;
+      const kdv = parseFloat(String(ln.kdvTutari ?? '0').replace(',', '.')) || 0;
+      if (!rate) continue;
+      if (!kdvByRate[rate]) kdvByRate[rate] = { matrah: 0, kdv: 0 };
+      kdvByRate[rate].matrah += matrah;
+      kdvByRate[rate].kdv += kdv;
+    }
+    const rateRows = Object.keys(kdvByRate)
+      .sort((a, b) => parseFloat(a) - parseFloat(b))
+      .map((rate) => {
+        const r = kdvByRate[rate];
+        return `<tr>
+          <td class="label">Hesaplanan KDV (%${rate})</td>
+          <td class="value">${fmt(r.kdv)}</td>
+        </tr>`;
+      });
+
+    // Eğer kalem-bazlı KDV breakdown yoksa (kalemler XML'den okunamadıysa) tek satır göster
+    const kdvSection = rateRows.length > 0
+      ? rateRows.join('')
+      : `<tr>
+          <td class="label">Hesaplanan KDV</td>
+          <td class="value">${fmt(f.kdvTutari)}</td>
+        </tr>`;
+
+    return `<table class="totals">
         <tr>
           <td class="label">Mal/Hizmet Toplam Tutarı</td>
           <td class="value">${fmt(f.matrah)}</td>
         </tr>
-        <tr>
-          <td class="label">Hesaplanan KDV${f.kdvOrani ? ` (%${escape(String(f.kdvOrani))})` : ''}</td>
-          <td class="value">${fmt(f.kdvTutari)}</td>
-        </tr>
+        ${kdvSection}
         <tr class="grand">
           <td class="label">Vergiler Dahil Toplam</td>
           <td class="value">${fmt(f.toplamTutar)}</td>
         </tr>
-      </table>
-    </section>`;
+      </table>`;
   }
 
   private extractLines(xml: string): ParsedLine[] {
