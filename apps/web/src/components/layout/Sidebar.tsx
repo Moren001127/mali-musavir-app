@@ -36,10 +36,7 @@ const navGroups = [
       { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
       { href: '/panel/e-arsiv',                label: 'E-Fatura / E-Arşiv Fatura Sorgulama', icon: Archive },
       { href: '/panel/ajanlar/mihsap',         label: 'Fatura İşleme',      icon: Bot },
-      { href: '/panel/ajanlar/mihsap/incele',  label: 'Düzeltme Bekleyen',  icon: ShieldAlert },
       { href: '/panel/fis-yazdirma',           label: 'Fiş Yazdırma',       icon: Printer },
-      { href: '/panel/evraklar',               label: 'Evrak Yönetimi',     icon: FolderOpen },
-      { href: '/panel/evraklar/yenileme',      label: 'Evrak Yenileme',     icon: AlertTriangle },
     ],
   },
   {
@@ -49,11 +46,8 @@ const navGroups = [
     items: [
       { href: '/panel/kdv-kontrol',          label: 'KDV Kontrol',     icon: FileCheck },
       { href: '/panel/kdv-beyanname',        label: 'KDV Beyanname',   icon: FileCheck },
-      { href: '/panel/ajanlar/kdv-hazirlik', label: 'KDV Ön-Hazırlık', icon: Calculator },
       { href: '/panel/beyannameler',         label: 'Beyannameler',    icon: FileText },
       { href: '/panel/ajanlar/e-defter',     label: 'E-Defter Kontrol', icon: BookOpen },
-      { href: '/panel/ajanlar/sgk',          label: 'SGK Bildirge',    icon: ShieldCheck },
-      { href: '/panel/ajanlar/tebligat',     label: 'Tebligat Özet',   icon: Mailbox },
     ],
   },
   {
@@ -67,7 +61,6 @@ const navGroups = [
       { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpen },
       { href: '/panel/cari-kasa',     label: 'Cari Kasa',     icon: Wallet },
       { href: '/panel/banka-takip',   label: 'Banka Takip',   icon: Landmark },
-      { href: '/panel/bordro',        label: 'Bordro & SGK',  icon: Users2 },
     ],
   },
   {
@@ -76,8 +69,8 @@ const navGroups = [
     icon: Zap,
     items: [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
-      { href: '/panel/ajanlar/luca',      label: 'Luca Çekim',          icon: FileInput },
       // Onay Kuyrugu modulu Fatura Isleme'ye entegre edildi (sidebar'dan kaldirildi)
+      // Luca Cekim modulu kaldirildi - islem yapildikca eklenecek
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
       { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
       { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },

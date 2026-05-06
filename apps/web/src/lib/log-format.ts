@@ -280,6 +280,15 @@ function extractFaturaTarihi(meta?: any, message?: string): string | undefined {
     const m2 = message.match(/tarih\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})/i);
     if (m2) return normalizeTarih(m2[1]);
   }
+  // 4) SON ÇARE — agent v1.36.3+ her log'a meta.donem ("YYYY-MM") ekliyor.
+  // Tarih hiçbir yerden okunamadıysa o ayın 15'ini göster (yaklaşık tarih).
+  // Bu sayede log'da Tarih: ✗ kalmaz, en azından "15.04.2026" gibi bir değer
+  // kullanıcı için anlamlı olur (zaten o ay için işlenen fatura).
+  if (meta?.donem) {
+    const d = String(meta.donem).trim();
+    const m = d.match(/^(\d{4})-(\d{1,2})$/);
+    if (m) return `15.${m[2].padStart(2, '0')}.${m[1]}`;
+  }
   return undefined;
 }
 
@@ -339,12 +348,20 @@ function inferBelgeTuru(action?: string, meta?: any, message?: string): string |
       if (v) return formatBelgeTuru(v);
     }
   }
-  // 4) BelgeNo prefix'inden tahmin (BEA → e-Arşiv vb.)
+  // 4) BelgeNo prefix'inden tahmin — agent.js (v1.36.3) ile aynı tablo
+  // Türkiye e-Belge formatı: 3 harf + 4 yıl + 9 sıra (toplam 16 char)
   const fisNo = (meta as any)?.fisNo || (meta as any)?.belgeNo;
   if (fisNo) {
-    const bn = String(fisNo).toUpperCase();
-    if (/^(BEA|EAR|EARSIV|GIB)\d/.test(bn)) return 'e-Arşiv Fatura';
-    if (/^(EFA|EFATURA|FAT|F)\d/.test(bn) || /^[A-Z]{2,4}\d{4}\d+$/.test(bn)) return 'e-Fatura';
+    const bn = String(fisNo).toUpperCase().trim();
+    // 1) e-Arşiv prefiksleri
+    if (/^(BEA|EAR|GIB|EARSIV)/.test(bn)) return 'e-Arşiv Fatura';
+    // 2) Yazarkasa fişi
+    if (/(FIS|OKC|ZRP)/.test(bn)) return 'Yazarkasa Fişi';
+    // 3) e-Fatura — generic 3-4 harf + 4 yıl + sayı
+    //    KAA2026..., KE32026..., J812026..., MK12026... gibi tüm yaygın seriler.
+    if (/^[A-Z][A-Z0-9]{1,3}20\d{2}\d{6,12}$/.test(bn)) return 'e-Fatura';
+    // 4) Eski explicit prefiksler
+    if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9]|KAA|KE\d|K3|J\d{2}|MK\d|MUH)/.test(bn)) return 'e-Fatura';
   }
   return undefined;
 }

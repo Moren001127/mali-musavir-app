@@ -10,7 +10,7 @@
   window.__morenAgent = { running: true, stopRequested: false };
 
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.2';
+  const AGENT_VERSION = '1.36.3';
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -421,8 +421,20 @@
     }
     return null;
   }
+  // İşlenen donem'i log'lar arasında taşımak için modül seviyesi state.
+  // processBatch başında set edilir, her log'a otomatik koyulur ki frontend
+  // tarih boş kalmış kayıtlarda bile en azından "Nisan 2026 ortası" gibi
+  // bir tarih gösterebilsin.
+  let __currentAy = null;
   async function logEvent(mukellefId, mukellefAd, status, detail, extra = {}) {
     try {
+      // Otomatik enjeksiyon: donem (komutun ay'ı) + agentVersion.
+      // Çağıran taraf manuel vermişse (extra.donem) onu ezme.
+      const enrichedExtra = {
+        donem: extra.donem || __currentAy || null,
+        agentVersion: AGENT_VERSION,
+        ...extra,
+      };
       await api('/agent/events/ingest', {
         method: 'POST',
         body: JSON.stringify({
@@ -430,12 +442,12 @@
           mukellef: mukellefAd,
           status,
           message: detail,
-          firma: extra.firma || null,
-          fisNo: extra.belgeNo || null,
-          tutar: extra.tutar ? Number(extra.tutar) : null,
-          hesapKodu: extra.hesapKodu || null,
-          kdv: extra.kdv || null,
-          meta: { mukellefId, ...extra },
+          firma: enrichedExtra.firma || null,
+          fisNo: enrichedExtra.belgeNo || null,
+          tutar: enrichedExtra.tutar ? Number(enrichedExtra.tutar) : null,
+          hesapKodu: enrichedExtra.hesapKodu || null,
+          kdv: enrichedExtra.kdv || null,
+          meta: { mukellefId, ...enrichedExtra },
         }),
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
@@ -725,15 +737,22 @@
           if (domVal && domVal !== 'Seçiniz') belgeTuru = domVal;
         } catch {}
       }
-      // BELGE NO PREFİX'ten türet (E-Arşiv ETTN'leri belirli prefiks taşır)
+      // BELGE NO PREFİX'ten türet (e-Arşiv/e-Fatura ETTN'leri belirli prefiks taşır)
+      // Türkiye e-Belge formatı: 3 harf + 4 yıl + 9 sıra (toplam 16 char)
       if (!belgeTuru) {
         const bn = String(v.faturaNo || v.belgeNo || '').toUpperCase().trim();
         if (bn) {
-          // BEA / GIB / EAR prefiksleri = e-Arşiv
+          // 1) e-Arşiv prefiksleri — BEA, EAR, GIB, EARSIV
           if (/^(BEA|EAR|GIB|EARSIV)/.test(bn)) belgeTuru = 'E_ARSIV';
-          // EFATURA için yaygın prefiksler (ABC2026..., AN42026..., GIB2024...)
-          else if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9])\d/.test(bn)) belgeTuru = 'E_FATURA';
-          else if (/FIS|OKC|ZRP/.test(bn)) belgeTuru = 'FIS';
+          // 2) Yazarkasa fişi
+          else if (/(FIS|OKC|ZRP)/.test(bn)) belgeTuru = 'FIS';
+          // 3) e-Fatura — Türkiye standart formatı: 3 harf + 4 yıl + 9 rakam = 16 karakter.
+          //    Hattat/MIHSAP'ta gördüğümüz gerçek prefiksler:
+          //    KAA2026..., KE32026..., J812026..., MK12026..., GIB2024..., EFA..., FAT..., AN..., ABC...
+          //    Generic kural: 2-4 alfanumerik prefiks + 4 yıl (20XX) + sayı → e-Fatura kabul.
+          else if (/^[A-Z][A-Z0-9]{1,3}20\d{2}\d{6,12}$/.test(bn)) belgeTuru = 'E_FATURA';
+          // 4) Eski explicit prefiksler (kapsam genişletildi)
+          else if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9]|KAA|KE\d|K3|J\d{2}|MK\d|MUH)/.test(bn)) belgeTuru = 'E_FATURA';
         }
       }
 
@@ -1506,6 +1525,9 @@
   async function processBatch({ ay, mukellefler, action }) {
     // Her komut için temiz sayım — kümülatif değil
     resetCmdSummary();
+    // Donem state'i — logEvent otomatik olarak meta.donem olarak ekleyecek
+    // (frontend tarih X kalmasın diye fallback olarak ortasını gösterir)
+    __currentAy = ay;
     if (!Array.isArray(mukellefler) || mukellefler.length === 0) {
       setStatus('Mükellef listesi boş');
       cmdSummary.errors.push('Mükellef gönderilmedi (frontend payload boş)');
