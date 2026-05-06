@@ -200,7 +200,7 @@ export class EarsivService {
     belgeKaynak?: BelgeKaynak;
     fetchJobId?: string;
     zipBuffer: Buffer;
-  }): Promise<{ inserted: number; skipped: number; total: number; meta?: any }> {
+  }): Promise<{ inserted: number; duplicate: number; skipped: number; total: number; meta?: any }> {
     const { tenantId, taxpayerId, donem, tip, fetchJobId, zipBuffer } = opts;
     const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
 
@@ -260,7 +260,7 @@ export class EarsivService {
       entries: (parsed as any).__entries || [],
       diagnostics: (parsed as any).__diagnostics || [],
     };
-    return { inserted, skipped, total: parsed.length, meta };
+    return { inserted, duplicate, skipped, total: parsed.length, meta };
   }
 
   /**
@@ -284,18 +284,9 @@ export class EarsivService {
       if (ids.length === 1) where.taxpayerId = ids[0];
       else if (ids.length > 1) where.taxpayerId = { in: ids };
     }
-    // Liste filtresi faturaTarihi'ne göre — donem (sorgu dönemi) yerine fatura'nın gerçek tarihine göre.
-    // Bu sayede Mayıs sorgusunda Mayıs tarihli faturalar görünür (Nisan'da çekilmiş olsa bile).
-    if (donem) {
-      const [y, m] = String(donem).split('-').map((s: string) => parseInt(s, 10));
-      if (y && m >= 1 && m <= 12) {
-        const baslangic = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
-        const bitis = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1, 0, 0, 0));
-        where.faturaTarihi = { gte: baslangic, lt: bitis };
-      } else {
-        where.donem = donem; // beklenmedik format → eski davranış
-      }
-    }
+    // Liste filtresi donem (kayıt saklama anahtarı) — kayıtlar bu alanla saklanır.
+    // (Daha önce faturaTarihi aralığına çevrilmişti, eski kayıtlar görünmüyordu — geri alındı.)
+    if (donem) where.donem = donem;
     if (tip) where.tip = tip;
     if (belgeKaynak) where.belgeKaynak = belgeKaynak;
     if (search && search.trim()) {

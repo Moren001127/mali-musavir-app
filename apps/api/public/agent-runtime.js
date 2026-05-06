@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.53';
+          const AGENT_VER = '1.35.54';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -353,7 +353,7 @@
           try {
             const r = await uploadRes.clone().json();
             if (typeof r.inserted === 'number' || typeof r.total === 'number') {
-              respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, skipped=${r.skipped != null ? r.skipped : '?'})`;
+              respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, mükerrer=${r.duplicate != null ? r.duplicate : '?'}, hata=${r.skipped != null ? r.skipped : '?'})`;
             } else {
               respDetail = ` (resp=${JSON.stringify(r).slice(0, 200)})`;
             }
@@ -2013,40 +2013,59 @@
     const zipWaitStart = Date.now();
     const ZIP_TIMEOUT_MS = 5 * 60 * 1000;
     const IDLE_TIMEOUT_MS = 30 * 1000;
-    const getActivityCount = () => {
-      let count = 0;
-      const wins = [window];
+    // ZIP wait için activity tracker — XHR/fetch hook'ları ile gerçek zamanlı sayım.
+    // Tüm frame'lere recursive hook kur, her gib530/fatura_kaydet çağrısında counter++.
+    if (!window.__morenLucaActivity) window.__morenLucaActivity = { count: 0, lastTs: 0 };
+    const installActivityHooks = (w, depth = 0) => {
+      if (depth > 6 || !w) return;
       try {
-        for (const fr of document.querySelectorAll('frame, iframe')) {
-          if (fr.contentWindow) wins.push(fr.contentWindow);
+        if (w.__morenActHooked) return;
+        w.__morenActHooked = true;
+        const origOpen = w.XMLHttpRequest && w.XMLHttpRequest.prototype.open;
+        if (origOpen) {
+          w.XMLHttpRequest.prototype.open = function(m, u) {
+            if (u && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(String(u))) {
+              window.__morenLucaActivity.count++;
+              window.__morenLucaActivity.lastTs = Date.now();
+            }
+            return origOpen.apply(this, arguments);
+          };
+        }
+        const origFetch = w.fetch;
+        if (origFetch) {
+          w.fetch = function(input, init) {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (url && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(url)) {
+              window.__morenLucaActivity.count++;
+              window.__morenLucaActivity.lastTs = Date.now();
+            }
+            return origFetch.apply(this, arguments);
+          };
+        }
+        // Recursive: alt frame'ler
+        const frames = w.document && w.document.querySelectorAll('frame, iframe');
+        if (frames) {
+          for (const f of frames) {
+            try { if (f.contentWindow) installActivityHooks(f.contentWindow, depth + 1); } catch {}
+          }
         }
       } catch {}
-      for (const w of wins) {
-        try {
-          const entries = w.performance.getEntriesByType('resource');
-          for (const r of entries) {
-            if (/gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(r.name)) {
-              count++;
-            }
-          }
-        } catch {}
-      }
-      return count;
     };
-    let lastActivityCount = getActivityCount();
-    let lastActivityTime = Date.now();
+    installActivityHooks(window);
+    // Yeni eklenmiş frame'ler için periyodik olarak da kur
+    const activityHookInterval = setInterval(() => installActivityHooks(window), 2000);
+    const getActivityCount = () => window.__morenLucaActivity.count;
+    const getLastActivityTs = () => window.__morenLucaActivity.lastTs;
+    // Başlangıçta lastTs'i şimdi yap ki ilk anda 30sn idle gibi görünmesin
+    if (window.__morenLucaActivity.lastTs === 0) window.__morenLucaActivity.lastTs = Date.now();
     let popupClosed = false;
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
-      // Aktivite kontrolü
-      const cur = getActivityCount();
-      if (cur > lastActivityCount) {
-        lastActivityCount = cur;
-        lastActivityTime = Date.now();
-      }
-      const idle = Date.now() - lastActivityTime;
+      // Aktivite kontrolü — XHR hook'ları lastTs'i bump ediyor
+      const lastTs = getLastActivityTs() || zipWaitStart;
+      const idle = Date.now() - lastTs;
       if (idle > IDLE_TIMEOUT_MS) {
-        await log(`⚠ ${IDLE_TIMEOUT_MS/1000}sn aktivite yok, bekleme sonlandırılıyor`);
+        await log(`⚠ ${IDLE_TIMEOUT_MS/1000}sn aktivite yok (toplam ${getActivityCount()} XHR), bekleme sonlandırılıyor`);
         break;
       }
       // ZIP geldikten sonra (ya da 8sn sonra) popup'ı X ile kapat
@@ -2058,6 +2077,7 @@
       }
       await sleep(400);
     }
+    try { clearInterval(activityHookInterval); } catch {}
 
     // ZIP geldiyse ama popup hala açıksa kapat
     if (yakalanmisZip && !popupClosed) {
