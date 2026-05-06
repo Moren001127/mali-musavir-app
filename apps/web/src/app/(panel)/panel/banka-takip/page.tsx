@@ -1,0 +1,558 @@
+'use client';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { bankaTakipApi, BankaTakipItem, BankaHesap } from '@/lib/banka-takip';
+import { toast } from 'sonner';
+import {
+  Landmark, Calendar, Search, Plus, Check, X, Edit2, Trash2,
+  Loader2, AlertCircle, CheckCircle2, FileText, Building2,
+} from 'lucide-react';
+
+const GOLD = '#d4b876';
+
+function taxpayerName(t: BankaTakipItem['taxpayer']): string {
+  return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
+}
+
+export default function BankaTakipPage() {
+  const qc = useQueryClient();
+  const [donem, setDonem] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [search, setSearch] = useState('');
+  const [hesapModalFor, setHesapModalFor] = useState<BankaTakipItem | null>(null);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['banka-takip', donem],
+    queryFn: () => bankaTakipApi.list(donem),
+    refetchInterval: 30000,
+  });
+
+  const ekstreMut = useMutation({
+    mutationFn: (body: Parameters<typeof bankaTakipApi.upsertEkstre>[0]) =>
+      bankaTakipApi.upsertEkstre(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['banka-takip', donem] }),
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Hata'),
+  });
+
+  const filtered = useMemo(() => {
+    const items = data?.items || [];
+    if (!search.trim()) return items;
+    const q = search.toLowerCase();
+    return items.filter((x) =>
+      taxpayerName(x.taxpayer).toLowerCase().includes(q) ||
+      x.taxpayer.taxNumber?.includes(q) ||
+      x.hesaplar.some((h) => h.bankaHesap.bankaAdi.toLowerCase().includes(q)),
+    );
+  }, [data?.items, search]);
+
+  // Özet sayaçları
+  const ozet = useMemo(() => {
+    const items = data?.items || [];
+    const total = items.length;
+    const tumGelmis = items.filter((x) => x.ozet.tumGeldi).length;
+    const tumIslenmis = items.filter((x) => x.ozet.tumIslendi).length;
+    const hicbiriGelmemis = items.filter((x) => x.ozet.eksikGeldi === x.ozet.hesapSayisi && x.ozet.hesapSayisi > 0).length;
+    const hesapsiz = items.filter((x) => x.ozet.hesapSayisi === 0).length;
+    return { total, tumGelmis, tumIslenmis, hicbiriGelmemis, hesapsiz };
+  }, [data?.items]);
+
+  return (
+    <div className="space-y-4 max-w-7xl">
+      {/* HEADER */}
+      <div className="flex items-end justify-between gap-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2.5 mb-1.5">
+            <span className="w-[26px] h-px" style={{ background: GOLD }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+              <Landmark size={10} className="inline mr-1" /> Mükellef Banka Takip
+            </span>
+          </div>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.1 }}>
+            Banka Ekstre Takibi
+          </h1>
+          <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Bilanço esasında mükelleflerin banka hesapları ve aylık ekstre durumu
+          </p>
+        </div>
+
+        {/* Dönem seçici */}
+        <div className="flex items-end gap-2">
+          <div>
+            <label className="block text-[10px] uppercase font-semibold tracking-wider mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <Calendar size={10} className="inline mr-1" /> Dönem
+            </label>
+            <input
+              type="month"
+              value={donem}
+              onChange={(e) => setDonem(e.target.value)}
+              className="px-3 py-2 rounded-lg text-sm font-semibold border outline-none"
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 160 }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ÖZET KPI'LAR */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <KpiCard label="Toplam Mükellef" value={ozet.total} color="#fafaf9" />
+        <KpiCard label="Tüm Ekstreler Geldi" value={ozet.tumGelmis} color="#22c55e" />
+        <KpiCard label="Hepsi İşlendi" value={ozet.tumIslenmis} color="#4ade80" />
+        <KpiCard label="Eksik / Beklenen" value={ozet.total - ozet.tumGelmis - ozet.hesapsiz} color="#fbbf24" />
+        <KpiCard label="Banka Hesabı Yok" value={ozet.hesapsiz} color="#94a3b8" />
+      </div>
+
+      {/* ARAMA */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-md">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
+          <input
+            placeholder="Mükellef adı, VKN veya banka adı ara…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 rounded-md text-sm"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+        </div>
+      </div>
+
+      {/* ANA LİSTE */}
+      {isLoading && (
+        <div className="rounded-xl border border-white/10 p-12 text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <Loader2 size={28} className="mx-auto animate-spin" style={{ color: GOLD }} />
+          <div className="text-sm mt-3" style={{ color: 'rgba(250,250,249,0.45)' }}>Yükleniyor…</div>
+        </div>
+      )}
+
+      {isError && (
+        <div className="rounded-xl border p-6 flex items-start gap-3" style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.25)' }}>
+          <AlertCircle size={18} style={{ color: '#ef4444' }} />
+          <div>
+            <div style={{ color: '#fafaf9', fontWeight: 600 }}>Liste yüklenemedi</div>
+            <div className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              Sunucu yanıt vermedi. Bir kaç saniye sonra tekrar dene.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length === 0 && (
+        <div className="rounded-xl border border-white/10 p-12 text-center" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <Landmark size={32} className="mx-auto mb-3" style={{ color: 'rgba(250,250,249,0.2)' }} />
+          <div style={{ color: '#fafaf9', fontWeight: 600 }}>
+            {(data?.items.length || 0) === 0 ? 'Bilanço esasında mükellef yok' : 'Aramaya uygun sonuç yok'}
+          </div>
+          <div className="text-sm mt-2" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            {(data?.items.length || 0) === 0
+              ? 'Mükellef kartında "Defter Türü" alanını "BILANCO" olarak işaretle.'
+              : 'Farklı bir terim dene veya filtreyi temizle.'}
+          </div>
+        </div>
+      )}
+
+      {!isLoading && filtered.length > 0 && (
+        <div className="space-y-2">
+          {filtered.map((item) => (
+            <MukellefRow
+              key={item.taxpayer.id}
+              item={item}
+              donem={donem}
+              onToggleEkstre={(bankaHesapId, ekstreGeldi, ekstreIslendi) => {
+                ekstreMut.mutate({
+                  taxpayerId: item.taxpayer.id,
+                  bankaHesapId,
+                  donem,
+                  ekstreGeldi,
+                  ekstreIslendi,
+                });
+              }}
+              onManageHesaplar={() => setHesapModalFor(item)}
+              isPending={ekstreMut.isPending}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* HESAP YÖNETİM MODALI */}
+      {hesapModalFor && (
+        <BankaHesapModal
+          item={hesapModalFor}
+          onClose={() => setHesapModalFor(null)}
+          onChanged={() => qc.invalidateQueries({ queryKey: ['banka-takip', donem] })}
+        />
+      )}
+    </div>
+  );
+}
+
+// ===== KPI CARD =====
+function KpiCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div
+      className="rounded-lg p-3"
+      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+    >
+      <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        {label}
+      </div>
+      <div className="text-2xl font-bold mt-0.5 tabular-nums" style={{ color }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ===== MÜKELLEF SATIRI =====
+function MukellefRow({
+  item,
+  donem,
+  onToggleEkstre,
+  onManageHesaplar,
+  isPending,
+}: {
+  item: BankaTakipItem;
+  donem: string;
+  onToggleEkstre: (bankaHesapId: string, ekstreGeldi: boolean | undefined, ekstreIslendi: boolean | undefined) => void;
+  onManageHesaplar: () => void;
+  isPending: boolean;
+}) {
+  const ad = taxpayerName(item.taxpayer);
+  const tumGelmis = item.ozet.tumGeldi;
+  const tumIslenmis = item.ozet.tumIslendi;
+  const hicHesap = item.ozet.hesapSayisi === 0;
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: tumIslenmis
+          ? '1px solid rgba(34,197,94,0.25)'
+          : tumGelmis
+          ? '1px solid rgba(212,184,118,0.25)'
+          : '1px solid rgba(255,255,255,0.05)',
+      }}
+    >
+      {/* Üst başlık */}
+      <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <Building2 size={16} style={{ color: GOLD, flexShrink: 0 }} />
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{ad}</div>
+          <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            VKN/TCKN: {item.taxpayer.taxNumber} · {item.ozet.hesapSayisi} hesap
+          </div>
+        </div>
+
+        {/* Özet rozetleri */}
+        <div className="flex items-center gap-1.5">
+          {tumIslenmis && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ background: 'rgba(34,197,94,0.18)', color: '#22c55e' }}>
+              ✓ TÜMÜ İŞLENDİ
+            </span>
+          )}
+          {!tumIslenmis && tumGelmis && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ background: 'rgba(212,184,118,0.18)', color: GOLD }}>
+              EKSTRELER GELDİ
+            </span>
+          )}
+          {!tumGelmis && item.ozet.eksikGeldi > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded" style={{ background: 'rgba(245,158,11,0.18)', color: '#fbbf24' }}>
+              {item.ozet.eksikGeldi} EKSİK
+            </span>
+          )}
+        </div>
+
+        <button
+          onClick={onManageHesaplar}
+          className="text-[11px] font-semibold px-2.5 py-1.5 rounded inline-flex items-center gap-1"
+          style={{ background: 'rgba(184,160,111,0.1)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
+          title="Banka hesaplarını yönet"
+        >
+          <Edit2 size={11} /> Hesaplar
+        </button>
+      </div>
+
+      {/* Hesap satırları */}
+      {hicHesap ? (
+        <div className="px-4 py-3 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          Bu mükellefe henüz banka hesabı tanımlanmamış. Sağdaki "Hesaplar" butonu ile ekleyin.
+        </div>
+      ) : (
+        <div>
+          {item.hesaplar.map((h) => (
+            <HesapRow
+              key={h.bankaHesap.id}
+              hesap={h}
+              isPending={isPending}
+              onToggle={(geldi, islendi) => onToggleEkstre(h.bankaHesap.id, geldi, islendi)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== HESAP SATIRI =====
+function HesapRow({
+  hesap,
+  isPending,
+  onToggle,
+}: {
+  hesap: BankaTakipItem['hesaplar'][number];
+  isPending: boolean;
+  onToggle: (geldi: boolean | undefined, islendi: boolean | undefined) => void;
+}) {
+  const bh = hesap.bankaHesap;
+  return (
+    <div
+      className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-4 py-2.5"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
+    >
+      <div className="min-w-0">
+        <div className="font-medium text-[13px] truncate" style={{ color: '#fafaf9' }}>
+          {bh.bankaAdi}
+          {bh.paraBirimi !== 'TRY' && (
+            <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(168,85,247,0.15)', color: '#a78bfa' }}>
+              {bh.paraBirimi}
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] mt-0.5 truncate font-mono" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          {bh.iban || bh.hesapNo || (bh.sube ? `Şube: ${bh.sube}` : '—')}
+          {bh.aciklama && <span className="ml-2" style={{ color: 'rgba(250,250,249,0.35)' }}>· {bh.aciklama}</span>}
+        </div>
+      </div>
+
+      {/* Ekstre Geldi toggle */}
+      <ToggleButton
+        label="Ekstre Geldi"
+        checked={hesap.ekstreGeldi}
+        tarih={hesap.geldiTarihi}
+        color="#d4b876"
+        disabled={isPending}
+        onClick={() => onToggle(!hesap.ekstreGeldi, undefined)}
+      />
+
+      {/* Ekstre İşlendi toggle */}
+      <ToggleButton
+        label="İşlendi"
+        checked={hesap.ekstreIslendi}
+        tarih={hesap.islenmeTarihi}
+        color="#22c55e"
+        disabled={isPending || !hesap.ekstreGeldi}
+        onClick={() => onToggle(undefined, !hesap.ekstreIslendi)}
+        hint={!hesap.ekstreGeldi ? 'Önce ekstrenin geldiğini işaretle' : undefined}
+      />
+    </div>
+  );
+}
+
+// ===== TOGGLE BUTONU =====
+function ToggleButton({
+  label,
+  checked,
+  tarih,
+  color,
+  onClick,
+  disabled,
+  hint,
+}: {
+  label: string;
+  checked: boolean;
+  tarih?: string | null;
+  color: string;
+  onClick: () => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={hint || (tarih ? `${label}: ${new Date(tarih).toLocaleString('tr-TR')}` : label)}
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold disabled:opacity-50 transition-colors"
+      style={{
+        background: checked ? color + '22' : 'rgba(255,255,255,0.03)',
+        color: checked ? color : 'rgba(250,250,249,0.55)',
+        border: checked ? `1px solid ${color}66` : '1px solid rgba(255,255,255,0.08)',
+      }}
+    >
+      {checked ? <Check size={12} /> : <X size={12} />}
+      {label}
+    </button>
+  );
+}
+
+// ===== BANKA HESABI YÖNETİM MODALI =====
+function BankaHesapModal({
+  item,
+  onClose,
+  onChanged,
+}: {
+  item: BankaTakipItem;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const qc = useQueryClient();
+  const [bankaAdi, setBankaAdi] = useState('');
+  const [iban, setIban] = useState('');
+  const [hesapNo, setHesapNo] = useState('');
+  const [aciklama, setAciklama] = useState('');
+
+  const { data: hesaplar = [], refetch } = useQuery({
+    queryKey: ['banka-hesaplar', item.taxpayer.id],
+    queryFn: () => bankaTakipApi.hesaplar(item.taxpayer.id),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      bankaTakipApi.createHesap({
+        taxpayerId: item.taxpayer.id,
+        bankaAdi: bankaAdi.trim(),
+        iban: iban.trim() || undefined,
+        hesapNo: hesapNo.trim() || undefined,
+        aciklama: aciklama.trim() || undefined,
+      }),
+    onSuccess: () => {
+      toast.success('Banka hesabı eklendi');
+      setBankaAdi(''); setIban(''); setHesapNo(''); setAciklama('');
+      refetch();
+      onChanged();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hata'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => bankaTakipApi.deleteHesap(id),
+    onSuccess: () => {
+      toast.success('Hesap silindi');
+      refetch();
+      onChanged();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hata'),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.7)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto"
+        style={{ background: '#12100c', border: '1px solid rgba(255,255,255,0.1)' }}
+      >
+        <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div>
+            <div className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Banka Hesapları
+            </div>
+            <div className="font-semibold mt-0.5" style={{ color: '#fafaf9' }}>{taxpayerName(item.taxpayer)}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded hover:bg-white/5"
+            style={{ color: 'rgba(250,250,249,0.55)' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Mevcut hesaplar */}
+        <div className="p-5 space-y-2">
+          <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Mevcut Hesaplar ({hesaplar.length})
+          </div>
+          {hesaplar.length === 0 ? (
+            <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              Henüz banka hesabı eklenmemiş.
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {hesaplar.map((h) => (
+                <div
+                  key={h.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-md"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}
+                >
+                  <Landmark size={14} style={{ color: GOLD, flexShrink: 0 }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-[13px]" style={{ color: '#fafaf9' }}>{h.bankaAdi}</div>
+                    <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                      {h.iban || h.hesapNo || '—'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm(`"${h.bankaAdi}" hesabını silmek istediğine emin misin?`)) {
+                        deleteMut.mutate(h.id);
+                      }
+                    }}
+                    disabled={deleteMut.isPending}
+                    className="p-1.5 rounded disabled:opacity-50"
+                    style={{ background: 'rgba(244,63,94,0.08)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.2)' }}
+                    title="Sil"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Yeni hesap formu */}
+        <div className="px-5 pb-5 space-y-3">
+          <div className="text-[11px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            Yeni Hesap Ekle
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              placeholder="Banka adı (zorunlu) — örn. Ziraat Bankası"
+              value={bankaAdi}
+              onChange={(e) => setBankaAdi(e.target.value)}
+              className="px-3 py-2 rounded text-sm col-span-2"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fafaf9' }}
+            />
+            <input
+              placeholder="IBAN (TR...)"
+              value={iban}
+              onChange={(e) => setIban(e.target.value)}
+              className="px-3 py-2 rounded text-sm font-mono"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fafaf9' }}
+            />
+            <input
+              placeholder="Hesap No (opsiyonel)"
+              value={hesapNo}
+              onChange={(e) => setHesapNo(e.target.value)}
+              className="px-3 py-2 rounded text-sm"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fafaf9' }}
+            />
+            <input
+              placeholder="Açıklama / Not (opsiyonel)"
+              value={aciklama}
+              onChange={(e) => setAciklama(e.target.value)}
+              className="px-3 py-2 rounded text-sm col-span-2"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fafaf9' }}
+            />
+          </div>
+          <button
+            onClick={() => createMut.mutate()}
+            disabled={!bankaAdi.trim() || createMut.isPending}
+            className="w-full py-2.5 rounded-lg text-sm font-bold disabled:opacity-50"
+            style={{
+              background: bankaAdi.trim() ? 'linear-gradient(135deg, #b8a06f, #8b7649)' : 'rgba(255,255,255,0.05)',
+              color: bankaAdi.trim() ? '#0f0d0b' : 'rgba(250,250,249,0.45)',
+            }}
+          >
+            {createMut.isPending ? <Loader2 size={14} className="inline animate-spin mr-1" /> : <Plus size={14} className="inline mr-1" />}
+            Hesap Ekle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
