@@ -533,60 +533,146 @@ function KarsilastirmaTablosu({
 
   const COL_WIDTH = `${66 / tersDonemler.length}%`;
 
+  // Gelir tablosuyla aynı altın renk
+  const GOLD = '#b8a06f';
+
+  // Dönem aralık metinleri
+  const DONEM_RANGE: Record<number, string> = {
+    1: 'Ocak – Mart',
+    2: 'Nisan – Haziran',
+    3: 'Temmuz – Eylül',
+    4: 'Ekim – Aralık',
+  };
+
   return (
     <div className="space-y-3">
-      {/* Üst aksiyon barı */}
-      <div className="flex items-center justify-end gap-2 rounded-xl border border-white/10 px-3 py-2">
-        {tersDonemler.map((d) => {
-          const c = yilData?.ceyrekler?.[d - 1];
-          if (!c) return null;
-          return (
-            <div key={d} className="flex items-center gap-1">
-              <span className="text-xs text-stone-500">{DONEM_FULL[d]}:</span>
-              {!c.locked && (
-                <button
-                  onClick={() => onLucaCek(d)}
-                  disabled={!!lucaJobs[d] && lucaJobs[d]?.status === 'pending'}
-                  title="Luca'dan İşletme Defteri Excel'i çek"
-                  className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 ring-1 ring-amber-400/40 hover:bg-amber-500/15 disabled:opacity-50"
+      {/* Üst dönem barı — her dönem kendi bloğunda (gelir-tablosu stili) */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+      >
+        <div className="grid" style={{ gridTemplateColumns: `repeat(${tersDonemler.length}, minmax(0, 1fr))` }}>
+          {tersDonemler.map((d, idx) => {
+            const c = yilData?.ceyrekler?.[d - 1];
+            const locked = !!c?.locked;
+            const job = lucaJobs[d];
+            const fetching = job?.status === 'pending' || job?.status === 'running';
+            return (
+              <div
+                key={d}
+                className="px-3 py-3 text-center"
+                style={{
+                  background: locked ? 'rgba(34,197,94,0.06)' : 'transparent',
+                  borderLeft: idx > 0 ? '1px solid rgba(184,160,111,0.18)' : 'none',
+                }}
+              >
+                {/* Dönem başlığı */}
+                <div
+                  style={{
+                    color: c ? GOLD : 'rgba(250,250,249,0.4)',
+                    fontFamily: 'Fraunces, serif',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    letterSpacing: '-0.01em',
+                  }}
                 >
-                  {lucaJobs[d]?.status === 'pending' || lucaJobs[d]?.status === 'running' ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <CloudDownload className="h-3 w-3" />
+                  {yil} · {DONEM_ROMAN[d]}. DÖNEM
+                </div>
+                <div
+                  className="mt-0.5"
+                  style={{
+                    fontSize: 11,
+                    color: c ? 'rgba(250,250,249,0.55)' : 'rgba(250,250,249,0.3)',
+                    fontFamily: 'Plus Jakarta Sans, sans-serif',
+                  }}
+                >
+                  {DONEM_RANGE[d]}
+                </div>
+
+                {/* Locked rozet */}
+                {locked && (
+                  <span
+                    className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                  >
+                    <Lock size={9} /> KESİN
+                  </span>
+                )}
+
+                {/* Aksiyon butonları */}
+                <div className="flex items-center justify-center gap-1.5 mt-2">
+                  {!locked && (
+                    <button
+                      onClick={() => onLucaCek(d)}
+                      disabled={fetching}
+                      title="Luca'dan İşletme Defteri Excel'i çek"
+                      className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-1 rounded disabled:opacity-50"
+                      style={{
+                        background: 'rgba(184,160,111,0.1)',
+                        color: GOLD,
+                        border: '1px solid rgba(184,160,111,0.25)',
+                      }}
+                    >
+                      {fetching ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <CloudDownload className="h-3 w-3" />
+                      )}
+                      {fetching ? 'Çekiliyor…' : "Luca'dan Çek"}
+                    </button>
                   )}
-                  {lucaJobs[d]?.status === 'pending' || lucaJobs[d]?.status === 'running' ? 'Çekiliyor…' : "Luca'dan Çek"}
-                </button>
-              )}
-              {c.locked ? (
-                <button
-                  onClick={() => onUnlock(c.id)}
-                  title="Kilidi aç (ADMIN)"
-                  className="rounded p-1 hover:bg-white/10"
-                >
-                  <Lock className="h-3.5 w-3.5 text-amber-600" />
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => onLock(c.id)}
-                    title="Kesin kayda al"
-                    className="rounded p-1 hover:bg-white/10"
-                  >
-                    <Unlock className="h-3.5 w-3.5 text-stone-500" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(c.id)}
-                    title="Sil"
-                    className="rounded p-1 hover:bg-rose-500/100/15"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-rose-300" />
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
+                  {c && !locked && (
+                    <>
+                      <button
+                        onClick={() => onLock(c.id)}
+                        title="Kesin kayda al"
+                        className="text-[10.5px] font-semibold px-2 py-1 rounded"
+                        style={{
+                          background: 'rgba(184,160,111,0.1)',
+                          color: GOLD,
+                          border: '1px solid rgba(184,160,111,0.25)',
+                        }}
+                      >
+                        Kesin Kayıt
+                      </button>
+                      <button
+                        onClick={() => onDelete(c.id)}
+                        title="Sil"
+                        className="p-1 rounded"
+                        style={{
+                          background: 'rgba(244,63,94,0.08)',
+                          color: '#f43f5e',
+                          border: '1px solid rgba(244,63,94,0.2)',
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
+                  )}
+                  {locked && (
+                    <button
+                      onClick={() => onUnlock(c!.id)}
+                      title="Kilidi aç (ADMIN)"
+                      className="text-[10.5px] font-semibold px-2 py-1 rounded"
+                      style={{
+                        background: 'rgba(244,63,94,0.1)',
+                        color: '#f43f5e',
+                        border: '1px solid rgba(244,63,94,0.25)',
+                      }}
+                    >
+                      Kilidi Aç
+                    </button>
+                  )}
+                  {!c && (
+                    <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.3)' }}>
+                      Veri yok
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════
