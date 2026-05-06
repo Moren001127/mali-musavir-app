@@ -405,6 +405,39 @@ export default function MihsapAgentPage() {
         )}
       </div>
 
+      {/* CANLI LOG FEED — üst sırada (kullanıcı işlerken canlı akışı önce görsün) */}
+      <div
+        className="rounded-xl border overflow-hidden"
+        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+      >
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <div>
+            <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+              <Zap size={14} style={{ color: '#b8a06f' }} /> Canlı İşlem Akışı
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Son {events.length} işlem — 3 saniyede bir yenilenir
+            </p>
+          </div>
+          <Link
+            href="/panel/ajanlar/loglar?agent=mihsap"
+            className="text-xs inline-flex items-center gap-1"
+            style={{ color: 'rgba(250,250,249,0.45)' }}
+          >
+            Tümü <ArrowRight size={11} />
+          </Link>
+        </div>
+        <div className="p-3 space-y-1.5 max-h-[600px] overflow-y-auto">
+          {events.length === 0 ? (
+            <div className="text-center py-12 text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              Henüz işlem yok. Bir komut çalıştırdığında buraya akar.
+            </div>
+          ) : (
+            events.map((e) => <LogCard key={e.id} event={e} />)
+          )}
+        </div>
+      </div>
+
       {/* BEKLEYEN ONAYLAR — Onay Kuyruğu (inline) */}
       {pendingDecisions.length > 0 && (
         <div
@@ -511,39 +544,6 @@ export default function MihsapAgentPage() {
           </div>
         </div>
       )}
-
-      {/* CANLI LOG FEED */}
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
-      >
-        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          <div>
-            <h2 className="font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-              <Zap size={14} style={{ color: '#b8a06f' }} /> Canlı İşlem Akışı
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Son {events.length} işlem — 3 saniyede bir yenilenir
-            </p>
-          </div>
-          <Link
-            href="/panel/ajanlar/loglar?agent=mihsap"
-            className="text-xs inline-flex items-center gap-1"
-            style={{ color: 'rgba(250,250,249,0.45)' }}
-          >
-            Tümü <ArrowRight size={11} />
-          </Link>
-        </div>
-        <div className="p-3 space-y-1.5 max-h-[600px] overflow-y-auto">
-          {events.length === 0 ? (
-            <div className="text-center py-12 text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              Henüz işlem yok. Bir komut çalıştırdığında buraya akar.
-            </div>
-          ) : (
-            events.map((e) => <LogCard key={e.id} event={e} />)
-          )}
-        </div>
-      </div>
 
       {/* MÜKELLEF PICKER MODAL */}
       {pickerOpen && (
