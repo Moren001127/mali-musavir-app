@@ -10,7 +10,7 @@
   window.__morenAgent = { running: true, stopRequested: false };
 
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.4';
+  const AGENT_VERSION = '1.36.5';
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -788,17 +788,44 @@
   }
 
   async function getFaturaImageBase64() {
-    // Mihsap fatura editöründe görsel CANVAS elementlerinde render ediliyor.
-    // Birden fazla sayfa varsa hepsini dikey birleştir.
+    // Mihsap fatura editöründe görsel CANVAS / IMG / IFRAME elementlerinde render ediliyor.
+    // Önce: top-level + tüm iframe'leri tara. Canvas, img ve PDF.js embed/object dene.
+    // Boyut eşiği esnetildi (150x150) — küçük thumbnail bile AI için yeterli.
     const t0 = Date.now();
-    while (Date.now() - t0 < 10000) {
-      const canvases = [...document.querySelectorAll('canvas')].filter(
-        (c) => c.width > 200 && c.height > 200,
-      );
-      if (canvases.length > 0) {
+    let lastDebug = 0;
+    const TIMEOUT = 15000; // 10sn → 15sn (PDF render süresi için)
+    while (Date.now() - t0 < TIMEOUT) {
+      // 1) Tüm document'leri topla — top-level + iframe'ler (cross-origin değilse)
+      const docs = [document];
+      try {
+        document.querySelectorAll('iframe, frame').forEach((f) => {
+          try {
+            const d = f.contentDocument;
+            if (d) docs.push(d);
+            // İframe'in iframe'i (multi-frame yapı) için 1 derin daha
+            d?.querySelectorAll?.('iframe, frame')?.forEach?.((f2) => {
+              try { if (f2.contentDocument) docs.push(f2.contentDocument); } catch {}
+            });
+          } catch {} // cross-origin
+        });
+      } catch {}
+
+      // 2) Tüm doc'larda canvas ara — boyut eşiği 150x150
+      let allCanvases = [];
+      for (const d of docs) {
         try {
-          // İlk sayfa yeterli (detaylar görünsün diye çözünürlük artır)
-          const pages = canvases.slice(0, 1);
+          allCanvases.push(
+            ...[...d.querySelectorAll('canvas')].filter(
+              (c) => c.width > 150 && c.height > 150,
+            ),
+          );
+        } catch {}
+      }
+      if (allCanvases.length > 0) {
+        try {
+          // En büyük canvas'ı seç (genelde fatura görseli)
+          allCanvases.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+          const pages = allCanvases.slice(0, 1);
           const targetW = Math.min(pages[0].width, 1100);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
@@ -816,11 +843,54 @@
           }
           return out.toDataURL('image/jpeg', 0.7).split(',')[1];
         } catch (e) {
-          console.warn('[Moren] canvas merge fail', e);
+          console.warn('[Moren] canvas merge fail (CORS olabilir):', e?.message);
         }
       }
-      await sleep(500);
+
+      // 3) Canvas yoksa <img> dene (Mihsap bazı yerlerde direkt img kullanıyor)
+      let allImgs = [];
+      for (const d of docs) {
+        try {
+          allImgs.push(
+            ...[...d.querySelectorAll('img')].filter(
+              (i) => i.naturalWidth > 200 && i.naturalHeight > 200 && i.complete,
+            ),
+          );
+        } catch {}
+      }
+      if (allImgs.length > 0) {
+        try {
+          allImgs.sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
+          const img = allImgs[0];
+          const targetW = Math.min(img.naturalWidth, 1100);
+          const h = Math.round(targetW * (img.naturalHeight / img.naturalWidth));
+          const out = document.createElement('canvas');
+          out.width = targetW;
+          out.height = h;
+          out.getContext('2d').drawImage(img, 0, 0, targetW, h);
+          return out.toDataURL('image/jpeg', 0.7).split(',')[1];
+        } catch (e) {
+          console.warn('[Moren] img convert fail (CORS olabilir):', e?.message);
+        }
+      }
+
+      // 4) Hâlâ yoksa — debug için durumu raporla (her 2sn'de bir, spam olmasın)
+      if (Date.now() - lastDebug > 2000) {
+        lastDebug = Date.now();
+        const tum = docs.flatMap((d) => {
+          try { return [...d.querySelectorAll('canvas')]; } catch { return []; }
+        });
+        console.warn('[Moren] Fatura görseli aranıyor —',
+          'docs:', docs.length,
+          'canvas tüm:', tum.length,
+          'canvas büyük (>150):', allCanvases.length,
+          'img büyük:', allImgs.length,
+          tum.length > 0 ? `(canvas boyutları: ${tum.map((c) => `${c.width}x${c.height}`).join(', ').slice(0, 200)})` : '');
+      }
+
+      await sleep(400);
     }
+    console.warn('[Moren] getFaturaImageBase64: 15sn boyunca canvas/img bulunamadı — fatura editörü açık değil olabilir');
     return null;
   }
 
