@@ -36,6 +36,7 @@ export class EarsivService {
     this.logger.log(`Bulk PDF üretimi başlıyor: ${faturas.length} fatura`);
 
     const browser = await pwChromium.launch({
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
       headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });

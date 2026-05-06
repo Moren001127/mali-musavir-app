@@ -85,7 +85,25 @@ export class EarsivRenderService {
 <style>
   html, body { margin: 0; padding: 0; background: #fff; font-family: Arial, sans-serif; }
   #moren-fallback { padding: 20px; color: #555; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  /* Ekranda gösterirken pagination/page-break kapalı, tek sürekli sayfa */
+  @media screen {
+    * {
+      page-break-before: avoid !important;
+      page-break-after: avoid !important;
+      page-break-inside: avoid !important;
+      break-before: avoid !important;
+      break-after: avoid !important;
+    }
+    html, body { height: auto !important; min-height: 0 !important; }
+    /* GİB XSLT bazen .page, .sayfa, [class*="page"] kullanır — hepsini block yapıp
+       sayfa kuralı dışına çıkarıyoruz */
+    .page, .sayfa, .invoice-page, [class*="page-break"] { page-break-before: avoid !important; page-break-after: avoid !important; }
+    /* GİB XSLT'sinin üst seviye sarmalı genelde sabit yükseklik veriyor; ekranda bunu serbest bırak */
+    body > div, body > table { height: auto !important; }
+  }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>
 </head>
 <body>

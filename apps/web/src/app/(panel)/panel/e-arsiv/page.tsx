@@ -26,15 +26,19 @@ function taxpayerName(t: Taxpayer): string {
 
 // Sorgulama modu — 4 farklı tipin tip+belgeKaynak ve UI bilgileri
 type Mode = 'GELEN_EARSIV' | 'GIDEN_EARSIV' | 'GELEN_EFATURA' | 'GIDEN_EFATURA';
-const MODE_INFO: Record<Mode, { label: string; tip: EarsivTip; belgeKaynak: BelgeKaynak; title: string; desc: string }> = {
+const MODE_INFO: Record<Mode, { label: string; tip: EarsivTip; belgeKaynak: BelgeKaynak; title: string; desc: string; color: string; bg: string }> = {
   GELEN_EARSIV:  { label: 'Gelen E-Arşiv',  tip: 'ALIS',  belgeKaynak: 'EARSIV',  title: 'Gelen E-Arşiv Sorgulama',
-    desc: "Luca'dan mükellefin gelen (alış) e-arşiv faturalarını çek, listele, aç ve yazdır." },
+    desc: "Luca'dan mükellefin gelen (alış) e-arşiv faturalarını çek, listele, aç ve yazdır.",
+    color: '#d4b876', bg: 'rgba(212,184,118,0.15)' },
   GIDEN_EARSIV:  { label: 'Giden E-Arşiv',  tip: 'SATIS', belgeKaynak: 'EARSIV',  title: 'Giden E-Arşiv Sorgulama',
-    desc: "Mükellefin kestiği (satış) e-arşiv faturalarını çek — sadece e-fatura mükellefi olmayan mükellefler." },
+    desc: "Mükellefin kestiği (satış) e-arşiv faturalarını çek — sadece e-fatura mükellefi olmayan mükellefler.",
+    color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
   GELEN_EFATURA: { label: 'Gelen E-Fatura', tip: 'ALIS',  belgeKaynak: 'EFATURA', title: 'Gelen E-Fatura Sorgulama',
-    desc: "Mükellefe gelen (alış) e-faturalar — sadece e-fatura mükellefi olan mükellefler." },
+    desc: "Mükellefe gelen (alış) e-faturalar — sadece e-fatura mükellefi olan mükellefler.",
+    color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
   GIDEN_EFATURA: { label: 'Giden E-Fatura', tip: 'SATIS', belgeKaynak: 'EFATURA', title: 'Giden E-Fatura Sorgulama',
-    desc: "Mükellefin kestiği (satış) e-faturalar — sadece e-fatura mükellefi olan mükellefler." },
+    desc: "Mükellefin kestiği (satış) e-faturalar — sadece e-fatura mükellefi olan mükellefler.",
+    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
 };
 // Hangi modlarda hangi mükellefler uygun?
 function isModeAllowedForTaxpayer(mode: Mode, t: Taxpayer): boolean {
@@ -282,17 +286,18 @@ export default function EarsivPage() {
           </span>
         </div>
         <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-          {modes.size === 1 ? MODE_INFO[modeArr[0]].title : modes.size === 0 ? 'E-Fatura / E-Arşiv Sorgulama' : `Çoklu Sorgulama (${modes.size} tip)`}
+          E-Fatura / E-Arşiv Fatura Sorgulama
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          {modes.size === 1 ? MODE_INFO[modeArr[0]].desc : 'Birden fazla sorgulama tipi seçili. Listede her satırın yanında tipi rozet olarak görünür.'}
+          Luca'dan gelen/giden e-arşiv ve e-fatura kayıtlarını çek, listele, aç ve yazdır. Birden fazla tip aynı anda sorgulanabilir.
         </p>
       </div>
 
-      {/* 4-Tip Sorgulama Seçici — ÇOKLU SEÇİM (toggle) */}
+      {/* 4-Tip Sorgulama Seçici — ÇOKLU SEÇİM (toggle) — her tip kendi renginde */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         {(Object.keys(MODE_INFO) as Mode[]).map((m) => {
           const aktif = modes.has(m);
+          const info = MODE_INFO[m];
           return (
             <button
               key={m}
@@ -306,22 +311,23 @@ export default function EarsivPage() {
                   }
                   return ns;
                 });
-                // Mükellef seçimini sıfırla — mod kombinasyonu değişince uygunluk değişebilir
                 setTaxpayerIds(new Set());
                 setTumMukellefler(false);
                 setSelected(new Set());
               }}
-              className="px-3 py-2.5 rounded-md text-sm font-medium text-center transition-colors flex items-center justify-center gap-1.5"
+              className="px-3 py-2.5 rounded-md text-sm font-semibold text-center transition-all flex items-center justify-center gap-1.5"
               style={{
-                background: aktif ? GOLD : 'rgba(255,255,255,0.04)',
-                color: aktif ? '#1a1a18' : 'rgba(250,250,249,0.75)',
-                border: `1px solid ${aktif ? GOLD : 'rgba(255,255,255,0.08)'}`,
+                background: aktif ? info.bg : 'rgba(255,255,255,0.03)',
+                color: aktif ? info.color : 'rgba(250,250,249,0.6)',
+                border: `1.5px solid ${aktif ? info.color : 'rgba(255,255,255,0.08)'}`,
+                boxShadow: aktif ? `0 0 0 2px ${info.bg}` : 'none',
               }}
               title={aktif ? 'Tıklayarak kapat' : 'Tıklayarak aç'}
             >
-              {aktif && <CheckSquare size={12} />}
-              {!aktif && <Square size={12} style={{ color: 'rgba(250,250,249,0.4)' }} />}
-              {MODE_INFO[m].label}
+              {aktif
+                ? <CheckSquare size={12} style={{ color: info.color }} />
+                : <Square size={12} style={{ color: 'rgba(250,250,249,0.3)' }} />}
+              {info.label}
             </button>
           );
         })}
