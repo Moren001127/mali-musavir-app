@@ -227,7 +227,7 @@
           });
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.48';
+          const AGENT_VER = '1.35.49';
           // Job log helper — kullanıcıya canlı progress göster
           // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
           // Global log buffer — kullanıcı DevTools Console'da
@@ -1448,19 +1448,39 @@
         for (const d of allDocs) {
           try {
             const txt = d.body ? d.body.textContent : '';
-            // Tamamlanma sinyali: "N adet fatura bulundu" ya da "fatura bulunamadı"
+            // Tamamlanma sinyalleri: birden fazla varyantı kontrol et
+            //  - "N adet fatura bulundu" → arama tablosu doldu
+            //  - "Fatura kaydetme işlemi sona erdi" → İşlem Takip popup'ı sonu
+            //  - "İşlem tamamlandı" / "tamamlandı" generic
+            //  - "fatura bulunamadı" → boş sonuç (yine done)
             if (/\d+\s+adet\s+fatura\s+bulundu/i.test(txt)) {
               foundDoneSignal = true;
               break;
             }
-            if (/fatura\s+bulunamadı|fatura\s+yok/i.test(txt) && !/(error|hata)/i.test(txt.slice(0, 200))) {
-              // İşlem Takip kontrol — "fatura bulunamadı" ise de iş bitti demektir
+            if (/fatura\s+kaydetme\s+i[şs]lemi\s+sona\s+erdi/i.test(txt)) {
               foundDoneSignal = true;
               break;
             }
-            // Progress satırı yakala: "[113/333]" gibi
+            if (/i[şs]lem\s+tamamland[ıi]/i.test(txt)) {
+              foundDoneSignal = true;
+              break;
+            }
+            if (/fatura\s+bulunamadı|fatura\s+yok/i.test(txt) && !/(error|hata)/i.test(txt.slice(0, 200))) {
+              foundDoneSignal = true;
+              break;
+            }
+            // Progress satırı yakala: "[113/333]" gibi → ilerleme log'u için
             const m = txt && txt.match(/\[(\d+)\/(\d+)\][^\[]{0,80}/);
-            if (m) progressLine = `${m[1]}/${m[2]}`;
+            if (m) {
+              progressLine = `${m[1]}/${m[2]}`;
+              // X/X şeklinde bittiyse de done — son sayı ile ilk sayı eşitse query bitmiş
+              const cur = parseInt(m[1], 10);
+              const tot = parseInt(m[2], 10);
+              if (tot > 0 && cur >= tot) {
+                foundDoneSignal = true;
+                break;
+              }
+            }
           } catch {}
         }
         if (foundDoneSignal) { queryDone = true; break; }
