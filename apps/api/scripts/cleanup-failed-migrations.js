@@ -152,12 +152,34 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
     }
 
     // PATCH: belgeKaynak + Mihsap kolonları yoksa ekle (idempotent ALTER)
-    try {
-      await prisma.$executeRawUnsafe(PATCH_SQL);
-      console.log('[startup] earsiv patch uygulandı (belgeKaynak + mihsap kolonları)');
-    } catch (e) {
-      console.error('[startup] earsiv patch hatası:', e.message);
+    // Her statement'ı ayrı çalıştır — biri patlasa diğeri çalışsın.
+    const patches = [
+      `DO $$ BEGIN CREATE TYPE "BelgeKaynak" AS ENUM ('EFATURA', 'EARSIV'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "belgeKaynak" "BelgeKaynak" NOT NULL DEFAULT 'EARSIV';`,
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "mihsapUploadedAt"   TIMESTAMP(3);`,
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "mihsapUploadStatus" TEXT;`,
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "mihsapUploadError"  TEXT;`,
+      `ALTER TABLE "earsiv_faturalar" ADD COLUMN IF NOT EXISTS "mihsapUploadJobId"  TEXT;`,
+      // Eski unique INDEX (tip+faturaNo) düşür — yeni unique (tip+belgeKaynak+faturaNo) ile çakışmasın
+      `DROP INDEX IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key";`,
+      `DO $$ BEGIN ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_no_key"; EXCEPTION WHEN undefined_object THEN NULL; END $$;`,
+      `DO $$ BEGIN ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenantId_taxpayerId_tip_faturaNo_key"; EXCEPTION WHEN undefined_object THEN NULL; END $$;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key" ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo");`,
+      `CREATE INDEX IF NOT EXISTS "earsiv_faturalar_mihsap_status_idx" ON "earsiv_faturalar"("mihsapUploadStatus");`,
+      `CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx" ON "earsiv_faturalar"("tenantId", "taxpayerId", "donem", "tip", "belgeKaynak");`,
+    ];
+    let patchOk = 0;
+    let patchFail = 0;
+    for (const sql of patches) {
+      try {
+        await prisma.$executeRawUnsafe(sql);
+        patchOk++;
+      } catch (e) {
+        patchFail++;
+        console.error(`[startup] patch failed: ${sql.slice(0, 60)}... -> ${e.message}`);
+      }
     }
+    console.log(`[startup] earsiv patch: ${patchOk} ok, ${patchFail} fail (${patches.length} total)`);
   } catch (e) {
     console.error('[startup] HATA:', e.message);
     // Devam et, deploy'u durdurma

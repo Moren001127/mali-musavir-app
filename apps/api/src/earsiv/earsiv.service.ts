@@ -246,6 +246,9 @@ export class EarsivService {
             zipSourceName: f.zipFileName,
             fetchJobId,
           },
+          // Sadece id'yi geri al — mihsap* kolonları production DB'de
+          // olmayabilir, default geri dönüşte SELECT ediyor ve patlıyordu (P2022).
+          select: { id: true },
         });
         inserted++;
       } catch (e: any) {
