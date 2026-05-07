@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.8';
+  const AGENT_VERSION = '1.36.9';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -165,7 +165,20 @@
         console.log('[Moren Job ' + jobId.slice(-6) + ']', msg);
       };
       window.__lucaJobLog = jobLog;
+      // Agent yalniz IHO_FETCH ve MIZAN tiplerini destekler.
+      // Eski/bekleyen KDV Kontrol job lari (EARSIV_ALIS, KDV_191/391 vb.) hemen
+      // failed isaretlenip atlanir — yoksa polling spam yapip Mihsap a yanlis formu sorar.
+      const SUPPORTED_TIPLER = ['IHO_FETCH', 'MIZAN'];
       for (const job of jobs) {
+        if (!SUPPORTED_TIPLER.includes(job.tip)) {
+          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ error: `Desteklenmeyen tip: ${job.tip} (agent v1.36.x sadece IHO_FETCH/MIZAN)` }),
+          }).catch(() => {});
+          console.warn(`[Moren] Eski Luca job atlandi (${job.tip}) — failed isaretlendi: ${job.id.slice(-6)}`);
+          continue;
+        }
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
           await fetch(API + `/agent/luca/jobs/${job.id}/start`, {

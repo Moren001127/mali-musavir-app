@@ -306,6 +306,8 @@ export default function DuyurularPage() {
   const [duyurular, setDuyurular] = useState<Duyuru[]>([]);
   const [seciliId, setSeciliId] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
+  // Önizleme modu: form-tabanlı poster veya yüklenen hazır şablon (iframe)
+  const [onizlemeModu, setOnizlemeModu] = useState<'form' | 'sablon'>('form');
   const onzRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -718,23 +720,68 @@ export default function DuyurularPage() {
           className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col"
           style={{ position: 'sticky', top: 0, alignSelf: 'flex-start' }}
         >
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
               <Eye size={14} /> Canlı Önizleme
             </h3>
-            <span className="text-xs text-gray-400">
-              {form.format === 'story' ? '1080×1920 · Story' : '1080×1080 · Post'}
-            </span>
+            <div className="flex items-center gap-2">
+              {/* Önizleme modu toggle */}
+              <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                <button
+                  type="button"
+                  onClick={() => setOnizlemeModu('form')}
+                  className={`px-3 py-1.5 font-medium transition ${
+                    onizlemeModu === 'form'
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Form
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOnizlemeModu('sablon')}
+                  className={`px-3 py-1.5 font-medium transition border-l border-gray-200 ${
+                    onizlemeModu === 'sablon'
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Hazır Şablon
+                </button>
+              </div>
+              <span className="text-xs text-gray-400">
+                {onizlemeModu === 'form'
+                  ? form.format === 'story'
+                    ? '1080×1920 · Story'
+                    : '1080×1080 · Post'
+                  : 'HTML şablon'}
+              </span>
+            </div>
           </div>
           <div
             ref={onzRef}
-            className="flex items-start justify-center p-6 overflow-auto"
+            className="flex items-start justify-center overflow-auto"
             style={{
               background: '#f5f5f5',
               minHeight: 720,
+              padding: onizlemeModu === 'form' ? 24 : 0,
             }}
           >
-            <PosterTemplate d={form} scale={form.format === 'story' ? 0.34 : 0.4} />
+            {onizlemeModu === 'form' ? (
+              <PosterTemplate d={form} scale={form.format === 'story' ? 0.34 : 0.4} />
+            ) : (
+              <iframe
+                src="/duyuru-sablonu.html"
+                title="Duyuru Şablonu"
+                style={{
+                  width: '100%',
+                  minHeight: 900,
+                  border: 'none',
+                  background: '#fff',
+                }}
+              />
+            )}
           </div>
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 flex items-center gap-2">
             <FileImage size={12} />
