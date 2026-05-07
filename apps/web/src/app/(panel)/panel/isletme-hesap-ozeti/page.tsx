@@ -576,7 +576,7 @@ function KarsilastirmaTablosu({
     return `%${pct.toFixed(1)}`;
   };
 
-  const COL_WIDTH = `${66 / tersDonemler.length}%`;
+  const COL_WIDTH = `${76 / tersDonemler.length}%`;
 
   // Gelir tablosuyla aynı altın renk
   const GOLD = '#b8a06f';
@@ -602,7 +602,7 @@ function KarsilastirmaTablosu({
           className="grid"
           style={{
             // Tablo colgroup ile aynı: 34% boş + 4 dönem × COL_WIDTH
-            gridTemplateColumns: `34% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
+            gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           }}
         >
           {/* Sol AÇIKLAMA placeholder — tablonun ilk kolonuyla aynı genişlik */}
@@ -763,7 +763,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: '34%' }} />
+            <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
               <col key={d} style={{ width: COL_WIDTH }} />
             ))}
@@ -863,7 +863,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: '34%' }} />
+            <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
               <col key={d} style={{ width: COL_WIDTH }} />
             ))}
@@ -930,7 +930,7 @@ function KarsilastirmaTablosu({
       >
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <colgroup>
-            <col style={{ width: '34%' }} />
+            <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
               <col key={d} style={{ width: COL_WIDTH }} />
             ))}
