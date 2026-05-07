@@ -8171,20 +8171,3 @@
   pollLoop();
   console.log('[Moren Agent] yüklendi');
 })();
-{
-          setStatus('API hatası, yeniden deneniyor');
-          console.warn('[Moren]', msg);
-        }
-      }
-      await sleep(5000);
-    }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    panel.remove();
-    delete window.__morenAgent;
-  }
-  pollLoop();
-  console.log('[Moren Agent] yüklendi');
-})();
