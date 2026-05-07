@@ -1133,7 +1133,7 @@ function Row({
     <tr
       className={hl || ''}
       style={{
-        borderTop: '1px solid rgba(255,255,255,0.04)',
+        borderTop: '1px solid rgba(255,255,255,0.10)',
         background: manuel ? 'rgba(212,184,118,0.07)' : undefined,
       }}
     >
