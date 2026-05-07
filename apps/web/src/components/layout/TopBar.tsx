@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useState } from 'react';
+import SystemHealthBell from './SystemHealthBell';
 
 const THEMES = [
   { id: 'A', label: 'Editorial', desc: 'Klasik gazete' },
@@ -100,6 +101,9 @@ export default function TopBar({ user }: { user: any }) {
             </div>
           )}
         </div>
+
+        {/* Sistem Sağlık Durumu — kritik sorun varsa yanıp söner */}
+        <SystemHealthBell />
 
         {/* Bildirim */}
         <Link

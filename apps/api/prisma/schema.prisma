@@ -1850,3 +1850,30 @@ model BankaEkstreKaydi {
   @@map("banka_ekstre_kayitlari")
 }
 
+
+// ============================================================
+// SISTEM SAGLIK KONTROLU (System Health Watchdog)
+// Backend cron service her 5 dk'da bir kritik bilesenleri kontrol eder
+// ve sonuclari buraya yazar. Frontend top-bar dashboard bell butonu
+// /system/health endpoint'inden bunlari okur.
+// ============================================================
+model SystemHealthCheck {
+  id          String   @id @default(cuid())
+  tenantId    String?  // null = tum tenantlari etkileyen sistem-genel kontrol
+  type        String   // "AGENT_PING_MIHSAP", "AGENT_PING_LUCA", "LUCA_TOKEN_AGE",
+                       // "MIHSAP_TOKEN_AGE", "PENDING_QUEUE", "FAILED_RATIO",
+                       // "MODULE_HASH", "AGENT_VERSION", "DB_HEALTH"
+  severity    String   // "OK" | "WARNING" | "CRITICAL"
+  status      String   // "HEALTHY" | "DEGRADED" | "DOWN"
+  message     String   // kullaniciya gosterilecek aciklama
+  detail      Json?    // metric: pendingCount, lastPingAge, hash, etc.
+  acilTavsiye String?  // "Bookmarklet'i kapat-ac" gibi action
+  resolved    Boolean  @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, severity, resolved])
+  @@index([type, createdAt])
+  @@map("system_health_checks")
+}

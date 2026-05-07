@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Husky pre-commit hook — kilitli modül hash kontrolü.
+# Bypass için: MOREN_UNLOCK=1 git commit ...
+
+. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
+
+node scripts/check-locked-modules.cjs

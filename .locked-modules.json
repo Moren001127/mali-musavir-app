@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
+    "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
+    "baseline_date": "2026-05-07",
+    "baseline_version": "v1.36.16"
+  },
+  "modules": {
+    "apps/web/src/app/(panel)/panel/mizan/page.tsx": {
+      "sha256": "4dd1dc23157346b4a4ad862d34b537a220b40967061e4e66b87b6c89bd6882dd",
+      "reason": "Mizan modulu — tam otomasyon, dokunma",
+      "lockedBy": "muzaffer"
+    },
+    "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
+      "sha256": "05d92b8aa176d63ac614d11a66bb1c8fa15ee1055ce211ecfa1785de941c1e1d",
+      "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/public/agent-runtime.js": {
+      "sha256": "0a9a2daf1c5b3a79ca7457963d46f36900636c0d3856c74a366112b98fdeea62",
+      "reason": "Moren Agent v1.36.16 — fetchLuca tum tipler + IHO menu navigation",
+      "lockedBy": "muzaffer"
+    },
+    "apps/web/public/moren-agent.js": {
+      "sha256": "0a9a2daf1c5b3a79ca7457963d46f36900636c0d3856c74a366112b98fdeea62",
+      "reason": "Moren Agent v1.36.16 (web ayna kopya)",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/kdv-control/kdv-control.controller.ts": {
+      "sha256": "1c73b4cb76b3ba97a6b560746d106e4f3989f3cacb9e25a489de19845469cca8",
+      "reason": "KDV Kontrol controller — endpoint stable",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/kdv-control/kdv-control.service.ts": {
+      "sha256": "a1fb1df4f434b0846590a469192e537f9a55a4784e69dbe15dec611ccc7ad28b",
+      "reason": "KDV Kontrol service — Luca queueing + reconciliation",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/mizan/mizan.controller.ts": {
+      "sha256": "4393471cc82892d634ee4431c690621ab61d03b9ca5ead3eb2788180679d3e0b",
+      "reason": "Mizan controller — Luca import endpoint",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/mizan/mizan.service.ts": {
+      "sha256": "180837e372ccebfe56c888e0d3a5cfce0d08ec1fcaed09e16fdadef1831a63d5",
+      "reason": "Mizan service — Luca import logic",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/earsiv/earsiv.controller.ts": {
+      "sha256": "c6f6235e5598af77314919ebafe592a87635c8e8634376117eeb7e001f7c7655",
+      "reason": "E-Arsiv controller — Mihsap upload endpoint",
+      "lockedBy": "muzaffer"
+    },
+    "apps/api/src/earsiv/earsiv.service.ts": {
+      "sha256": "cca295145efe36e85fc8c80c6371f35498dd5da4cf12380f3fd932996d1a141d",
+      "reason": "E-Arsiv service — uploadFaturasToMihsap",
+      "lockedBy": "muzaffer"
+    }
+  }
+}
