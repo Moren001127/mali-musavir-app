@@ -798,6 +798,7 @@ function KarsilastirmaTablosu({
                 return oran(lc.smm, lc.sat);
               })}
               raw
+              manuel
             />
             <Row
               label="BRÜT SATIŞ KARI"
@@ -953,6 +954,7 @@ function KarsilastirmaTablosu({
                 />
               ))}
               raw
+              manuel
             />
             <Row
               label="GEÇİCİ VERGİ MATRAHI"
@@ -1103,6 +1105,7 @@ function Row({
   hint,
   calc,
   raw,
+  manuel,
 }: {
   label: string;
   cols: React.ReactNode[];
@@ -1112,6 +1115,7 @@ function Row({
   hint?: string;
   calc?: boolean;
   raw?: boolean;
+  manuel?: boolean; // v1.36.30: manuel giriş satırı — altın tint vurgu
 }) {
   // v1.36.23: Oran sade renk — sadece text rengi değişir, rozet/border yok
   const ratioColor = (r: string): string => {
@@ -1126,13 +1130,22 @@ function Row({
 
   // v1.36.24: Gelir Tablosu stilinde kompakt — px-3 py-2 + küçük fontlar + tek satır rakam
   return (
-    <tr className={hl || ''} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+    <tr
+      className={hl || ''}
+      style={{
+        borderTop: '1px solid rgba(255,255,255,0.04)',
+        background: manuel ? 'rgba(212,184,118,0.07)' : undefined,
+      }}
+    >
       <td
         className={`px-3 py-1.5 ${
           bold ? 'text-[12px] font-semibold text-stone-50 tracking-wide' : 'text-[11.5px] font-medium text-stone-300'
         }`}
         style={{
           letterSpacing: bold ? '0.02em' : 'normal',
+          color: manuel ? '#d4b876' : undefined,
+          fontWeight: manuel ? 600 : undefined,
+          borderLeft: manuel ? '3px solid #d4b876' : undefined,
         }}
       >
         {label}
