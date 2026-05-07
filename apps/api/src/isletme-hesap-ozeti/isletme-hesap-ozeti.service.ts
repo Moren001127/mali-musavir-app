@@ -449,10 +449,12 @@ export class IsletmeHesapOzetiService {
   // LUCA ÇEKİM — İşletme Defteri Excel'den otomatik doldurma
   // ═══════════════════════════════════════════════════════
 
-  /** Bir İHÖ kaydı için Luca çekim job'u yarat (agent runner alacak) */
+  /** Bir İHÖ kaydı için Luca çekim job'u yarat (agent runner alacak).
+   * Agent IHO_FETCH job'unu görünce: Luca'da firmaya geçer + Gelir/Gider Listesi
+   * ekranını açar + tarih aralığını girer + Excel'i çeker + upload-iho'ya yükler. */
   async lucaCek(params: {
     tenantId: string;
-    id: string; // İHÖ kaydı id
+    id: string;
     createdBy?: string;
   }) {
     const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
@@ -461,14 +463,30 @@ export class IsletmeHesapOzetiService {
     if (!ozet) throw new NotFoundException('İHÖ kaydı bulunamadı');
     if (ozet.locked) throw new BadRequestException('Kesin kayıt — Luca çekim yapılamaz');
 
-    const aralik = this.donemAraligi(ozet.yil, ozet.donem);
+    // Mukellef adı — agent Luca'da firma seçimi için kullanır (#SirketCombo text match)
+    const taxpayer = await (this.prisma as any).taxpayer.findUnique({
+      where: { id: ozet.taxpayerId },
+    });
+    const mukellefAdi =
+      taxpayer?.companyName ||
+      [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
+      taxpayer?.taxNumber || '';
+
+    // Çeyreğin başlangıç-bitiş tarihleri (DD/MM/YYYY için backend'den YYYY-MM-DD_YYYY-MM-DD)
+    const baslangicAyi = (ozet.donem - 1) * 3 + 1;
+    const bitisAyi = ozet.donem * 3;
+    const sonGun = new Date(ozet.yil, bitisAyi, 0).getDate(); // ay sonu
+    const ay = (n: number) => String(n).padStart(2, '0');
+    const donemAralik = `${ozet.yil}-${ay(baslangicAyi)}-01_${ozet.yil}-${ay(bitisAyi)}-${ay(sonGun)}`;
+
     const job = await this.luca.createFetchJob({
       tenantId: params.tenantId,
-      sessionId: ozet.id, // İHÖ kaydı id'si sessionId olarak tutuluyor (job → İHÖ bağı)
+      sessionId: ozet.id, // İHÖ kaydı id (agent upload-iho?ihoId=... için kullanır)
       mukellefId: ozet.taxpayerId,
-      donem: aralik.gte, // Q için ilk ay (YYYY-MM); kullanıcı Luca'da aralığı kendi seçer
+      donem: donemAralik, // "YYYY-MM-DD_YYYY-MM-DD"
       tip: 'IHO_FETCH',
       createdBy: params.createdBy,
+      mukellefAdi, // [META] mukellefAdi=... olarak errorMsg'e konur
     });
 
     return {
@@ -476,7 +494,7 @@ export class IsletmeHesapOzetiService {
       status: 'queued',
       donem: ozet.donem,
       yil: ozet.yil,
-      message: `Luca'da İşletme Defteri ekranını ${ozet.yil} yılı ${aralik.gte}-${aralik.lte} aralığı için açıp Moren Agent'ı çalıştır`,
+      message: `Luca sekmesini açık tut — agent firma seçip Gelir/Gider Listesi'ni otomatik çekecek`,
     };
   }
 

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.6';
+  const AGENT_VERSION = '1.36.7';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -177,7 +177,7 @@
           await jobLog(job.id, `Job alındı · ${job.tip} · ${job.donem}`);
 
           window.__currentLucaJobId = job.id;
-          const blob = await fetchLucaMuavinExcel(job);
+          const blob = job.tip === 'IHO_FETCH' ? await fetchLucaGelirGiderListesi(job) : await fetchLucaMuavinExcel(job);
           if (!blob) throw new Error('Excel yakalanamadı');
           await jobLog(job.id, `✓ Excel yakalandı (${(blob.size/1024).toFixed(1)} KB)`);
 
@@ -192,6 +192,12 @@
               donemTipi: 'AYLIK',
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params}`;
+          } else if (job.tip === 'IHO_FETCH') {
+            const params = new URLSearchParams({
+              ihoId: job.sessionId,
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-iho?${params}`;
           } else {
             uploadUrl = `${API}/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`;
           }
@@ -206,8 +212,8 @@
             await jobLog(job.id, `✗ Backend hatası: ${errBody.slice(0, 200)}`);
             throw new Error(`Upload HTTP ${uploadRes.status}: ${errBody.slice(0, 200)}`);
           }
-          if (job.tip === 'MIZAN') {
-            await jobLog(job.id, `✓ Mizan parse edildi, DB'ye yazıldı`);
+          if (job.tip === 'MIZAN' || job.tip === 'IHO_FETCH') {
+            await jobLog(job.id, `✓ ${job.tip === 'IHO_FETCH' ? 'İHÖ' : 'Mizan'} parse edildi, DB'ye yazıldı`);
             await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
@@ -372,6 +378,151 @@
       const txt = await blob.text();
       throw new Error('Luca HTML döndü: ' + txt.slice(0, 200));
     }
+    return blob;
+  }
+
+
+  /**
+   * İHÖ için Luca'da "İşletme Defteri → Gider İşlemleri → Gelir/Gider Listesi"
+   * ekranına gidip Excel'i çeker. Job:
+   *   - errorMsg: "[META] mukellefAdi=ADEM CAN" (firma seçim için)
+   *   - donem: "YYYY-MM-DD_YYYY-MM-DD" (çeyrek başı_sonu)
+   * Akış (kullanıcı spy çıktısına göre):
+   *   1) #SirketCombo'da firma adı text match → seç → button.no-bold "Tamam"
+   *   2) Menü: "İşletme Defteri" → "Gider İşlemleri" → "Gelir/Gider Listesi"
+   *   3) input[name=tarih_ilk/son] (DD/MM/YYYY) + #report_type=XLSX
+   *   4) button.green-btn "Rapor" → window.open intercept → Excel
+   */
+  async function fetchLucaGelirGiderListesi(job) {
+    const log = (msg) => {
+      if (window.__currentLucaJobId && window.__lucaJobLog) {
+        window.__lucaJobLog(window.__currentLucaJobId, msg);
+      } else { console.log('[Moren İHÖ]', msg); }
+    };
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
+    const allDocs = () => {
+      const docs = [document];
+      document.querySelectorAll('iframe, frame').forEach((f) => {
+        try { if (f.contentDocument) docs.push(f.contentDocument); } catch {}
+      });
+      return docs;
+    };
+
+    // 1) Firma seç
+    const metaMatch = String(job.errorMsg || '').match(/mukellefAdi=([^,]+)/);
+    const mukellefAdi = metaMatch ? metaMatch[1].trim() : '';
+    if (mukellefAdi) {
+      log('Firma seçiliyor: ' + mukellefAdi);
+      let sirketCombo = null;
+      for (const doc of allDocs()) {
+        sirketCombo = doc.querySelector('#SirketCombo, select[id*="Sirket" i], select[name*="Sirket" i]');
+        if (sirketCombo) break;
+      }
+      if (sirketCombo) {
+        const target = [...sirketCombo.options].find((o) => norm(o.text).includes(norm(mukellefAdi)));
+        if (target) {
+          sirketCombo.value = target.value;
+          sirketCombo.dispatchEvent(new Event('change', { bubbles: true }));
+          log('✓ Firma seçildi: ' + target.text.trim());
+          await sleep(300);
+          let tamamBtn = null;
+          for (const doc of allDocs()) {
+            const btns = [...doc.querySelectorAll('button, input[type="button"], input[type="submit"]')];
+            tamamBtn = btns.find((b) => /^tamam$/i.test((b.textContent || b.value || '').trim()));
+            if (tamamBtn) break;
+          }
+          if (tamamBtn) { tamamBtn.click(); log('✓ Tamam tıklandı'); await sleep(2500); }
+        } else { log('⚠ Firma SirketCombo\'da yok: ' + mukellefAdi); }
+      }
+    }
+
+    // 2) Menü navigasyonu
+    const clickByText = async (texts, label) => {
+      const targets = Array.isArray(texts) ? texts : [texts];
+      for (let attempt = 0; attempt < 8; attempt++) {
+        for (const doc of allDocs()) {
+          const all = [...doc.querySelectorAll('font, span, a, td, div')];
+          const found = all.find((el) => {
+            const t = (el.textContent || '').trim();
+            return targets.some((target) => t === target);
+          });
+          if (found) { found.click(); log('✓ ' + label + ' tıklandı'); await sleep(800); return true; }
+        }
+        await sleep(500);
+      }
+      throw new Error(label + ' menüsü 8 denemede bulunamadı');
+    };
+
+    log('Menü: İşletme Defteri → Gider İşlemleri → Gelir/Gider Listesi');
+    await clickByText('İşletme Defteri', 'İşletme Defteri');
+    await clickByText('Gider İşlemleri', 'Gider İşlemleri');
+    await clickByText('Gelir/Gider Listesi', 'Gelir/Gider Listesi');
+
+    // 3) Form doldur
+    const [donemBas, donemSon] = String(job.donem || '').split('_');
+    if (!donemBas || !donemSon) throw new Error('İHÖ donem formati hatali: ' + job.donem);
+    const toLucaDate = (iso) => {
+      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? (m[3] + '/' + m[2] + '/' + m[1]) : iso;
+    };
+    const tarihIlk = toLucaDate(donemBas);
+    const tarihSon = toLucaDate(donemSon);
+
+    let formDoc = null, tarihIlkInput = null, tarihSonInput = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      for (const doc of allDocs()) {
+        const ti = doc.querySelector('input[name="tarih_ilk"]');
+        const ts = doc.querySelector('input[name="tarih_son"]');
+        if (ti && ts) { formDoc = doc; tarihIlkInput = ti; tarihSonInput = ts; break; }
+      }
+      if (formDoc) break;
+      await sleep(500);
+    }
+    if (!formDoc) throw new Error('Gelir/Gider Listesi formu bulunamadı (tarih input yok)');
+
+    tarihIlkInput.value = tarihIlk;
+    tarihIlkInput.dispatchEvent(new Event('change', { bubbles: true }));
+    tarihSonInput.value = tarihSon;
+    tarihSonInput.dispatchEvent(new Event('change', { bubbles: true }));
+    log('✓ Tarihler: ' + tarihIlk + ' → ' + tarihSon);
+
+    const reportTypeSel = formDoc.querySelector('#report_type, select[name="report_type"]');
+    if (reportTypeSel) {
+      const xlsxOpt = [...reportTypeSel.options].find((o) => /xlsx|excel/i.test(o.value || o.text));
+      if (xlsxOpt) {
+        reportTypeSel.value = xlsxOpt.value;
+        reportTypeSel.dispatchEvent(new Event('change', { bubbles: true }));
+        log('✓ Rapor türü: ' + xlsxOpt.text.trim());
+      }
+    }
+
+    // 4) Rapor butonu + Excel yakala
+    const win = formDoc.defaultView || window;
+    const origOpen = win.open;
+    let capturedBlob = null, capturedUrl = null;
+    win.open = function (url) { capturedUrl = url; return { closed: false, close: () => {}, focus: () => {}, document: { write: () => {} } }; };
+
+    const raporBtn = [...formDoc.querySelectorAll('button, input[type="button"], input[type="submit"]')]
+      .find((el) => /^rapor$/i.test((el.textContent || el.value || '').trim()))
+      || formDoc.querySelector('button.green-btn');
+    if (!raporBtn) { win.open = origOpen; throw new Error('Rapor butonu yok'); }
+    log('Rapor butonuna tıklanıyor…');
+    raporBtn.click();
+
+    const t0 = Date.now();
+    while (!capturedUrl && !capturedBlob && Date.now() - t0 < 30000) await sleep(300);
+    win.open = origOpen;
+    if (!capturedUrl && !capturedBlob) throw new Error('30sn icinde Excel yakalanamadi');
+
+    if (capturedUrl && !capturedBlob) {
+      const resp = await fetch(capturedUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Excel HTTP ' + resp.status);
+      capturedBlob = await resp.blob();
+    }
+    const blob = capturedBlob;
+    log('✓ Luca yanıtı: ' + (blob.size/1024).toFixed(1) + ' KB');
+    if (blob.size < 500) throw new Error('Bos yanit');
+    if (blob.type.includes('html')) throw new Error('HTML dondu');
     return blob;
   }
 
