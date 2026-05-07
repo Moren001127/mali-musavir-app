@@ -4990,44 +4990,14 @@
       }
     }
 
-    // 2) Menü navigasyonu — hover + click, multi-frame, sabırlı (20 deneme × 750ms)
-    const clickByText = async (texts, label) => {
-      const targets = Array.isArray(texts) ? texts : [texts];
-      for (let attempt = 0; attempt < 20; attempt++) {
-        for (const doc of allDocs()) {
-          const all = [...doc.querySelectorAll('font, span, a, td, div')];
-          let found = all.find((el) => {
-            const t = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
-            return targets.some((target) => t === target);
-          });
-          if (!found) {
-            found = all.find((el) => {
-              const t = (el.textContent || '').replace(/\u00a0/g, ' ').trim();
-              if (t.length > 50) return false;
-              return targets.some((target) => t.includes(target));
-            });
-          }
-          if (found) {
-            try {
-              found.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-              found.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-            } catch {}
-            await sleep(150);
-            found.click();
-            log('✓ ' + label + ' tıklandı (deneme ' + (attempt+1) + ')');
-            await sleep(1000);
-            return true;
-          }
-        }
-        await sleep(750);
-      }
-      throw new Error(label + ' menüsü 20 denemede bulunamadı (15sn)');
-    };
-
-    log('Menü: İşletme Defteri → Gider İşlemleri → Gelir/Gider Listesi');
-    await clickByText('İşletme Defteri', 'İşletme Defteri');
-    await clickByText('Gider İşlemleri', 'Gider İşlemleri');
-    await clickByText('Gelir/Gider Listesi', 'Gelir/Gider Listesi');
+    // 2) Menü navigasyonu — DOĞRU yöntem: navigateToIsletmeGiderListesi + clickLucaRightMenu
+    //    Naive clickByText yetmiyor — Luca menüleri hover+onclick handler bekliyor.
+    //    findLucaMenuItem + fullActivate proper attribute handler invoke eder, menü alt
+    //    seviyesi gerçekten DOM'da görünür/clickable hale gelir.
+    log('Menü: İşletme Defteri → Gider İşlemleri → Gider Listesi');
+    await navigateToIsletmeGiderListesi(log);
+    log('✓ İşletme Gider Listesi sayfası açıldı, Gelir/Gider Listesi sağ menüsü tıklanıyor');
+    await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
 
     // 3) Form doldur
     const [donemBas, donemSon] = String(job.donem || '').split('_');
@@ -8301,4 +8271,4 @@
   }
   pollLoop();
   console.log('[Moren Agent] yüklendi');
-})();
+})
