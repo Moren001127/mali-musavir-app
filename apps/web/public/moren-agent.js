@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.16';
+  const AGENT_VERSION = '1.36.17';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -475,8 +475,20 @@
           // "Fatura yok" durumu hata değil — temiz mesajla bitir
           const msg = (e)?.message || 'bilinmeyen hata';
           const isNoFatura = (e)?.isNoFatura === true || /^NO_FATURA:/i.test(msg);
+          // SAFE LOG: 'log' const try-block scope'da tanımlı, catch'ten erişilemez (v1.36.17 fix).
+          // Doğrudan backend POST + console.warn yap, log() çağırma.
+          const safeLog = async (line) => {
+            try { console.log('[Moren-safe]', line); } catch {}
+            try {
+              await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ msg: line, line }),
+              });
+            } catch {}
+          };
           if (isNoFatura) {
-            await log(`ℹ ${job.tip}: Bu dönem için fatura bulunamadı, atlandı`);
+            await safeLog(`ℹ ${job.tip}: Bu dönem için fatura bulunamadı, atlandı`);
             // Backend'e done olarak işaretle (fail değil) — 0 inserted
             await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
               method: 'POST',
@@ -486,12 +498,14 @@
             setStatus(`Luca: ${job.tip} — fatura yok`);
           } else {
             console.error('[Moren] Luca job hata:', e);
-            await log(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
+            await safeLog(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
+            // KRİTİK: /fail çağrısı SADECE try-catch içinde, log undefined olsa bile çalışır.
+            // Bu yapılmazsa job pending'de kalır, sonsuz döngü olur!
             await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
               body: JSON.stringify({ error: msg }),
-            });
+            }).catch((fe) => console.error('[Moren] /fail çağrısı bile başarısız:', fe?.message));
           }
         }
       }
@@ -3171,17 +3185,24 @@
     //      ISLETME_GIDER → GIDER1='0', GELIR1='1' → Excel: SADECE GİDERLER
     {
       const isGelir = mode === 'gelir';
+      const isBoth = mode === 'both';  // IHO_FETCH için: gelir+gider birlikte
       const gelirCb = form.querySelector('#gelir, input[name="gelir"][type="checkbox"]');
       const giderCb = form.querySelector('#gider, input[name="gider"][type="checkbox"]');
       const gelir1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
       const gider1 = form.querySelector('#GIDER1, input[name="GIDER1"]');
 
-      // Visible checkbox'lara dokunmayalım — Luca'nın onclick handler'ı GELIR1/GIDER1'i resetleyebilir.
-      // Sadece HIDDEN flag'leri override et.
-      if (gelir1) gelir1.value = isGelir ? '0' : '1';   // GELIR mode → GELIR1='0' (only GELIR)
-      if (gider1) gider1.value = !isGelir ? '0' : '1';  // GIDER mode → GIDER1='0' (only GIDER)
-
-      await log(`🚩 Hidden flag set: GELIR1=${gelir1?.value} | GIDER1=${gider1?.value} — hedef: ${isGelir ? 'GELİRLER' : 'GİDERLER'}`);
+      if (isBoth) {
+        // BOTH: GELIR1=1, GIDER1=1 (default — her iki bölümü göster) — IHO için
+        if (gelir1) gelir1.value = '1';
+        if (gider1) gider1.value = '1';
+        await log(`🚩 Hidden flag set: GELIR1=1 | GIDER1=1 — hedef: GELİR+GİDER (IHO)`);
+      } else {
+        // Visible checkbox'lara dokunmayalım — Luca'nın onclick handler'ı GELIR1/GIDER1'i resetleyebilir.
+        // Sadece HIDDEN flag'leri override et.
+        if (gelir1) gelir1.value = isGelir ? '0' : '1';   // GELIR mode → GELIR1='0' (only GELIR)
+        if (gider1) gider1.value = !isGelir ? '0' : '1';  // GIDER mode → GIDER1='0' (only GIDER)
+        await log(`🚩 Hidden flag set: GELIR1=${gelir1?.value} | GIDER1=${gider1?.value} — hedef: ${isGelir ? 'GELİRLER' : 'GİDERLER'}`);
+      }
     }
     await sleep(200);
 
@@ -3213,10 +3234,16 @@
     //   (Luca araya girip default'a resetlemiş olabilir)
     {
       const isGelirMode = mode === 'gelir';
+      const isBothMode = mode === 'both';
       const g1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
       const g2 = form.querySelector('#GIDER1, input[name="GIDER1"]');
-      if (g1) g1.value = isGelirMode ? '0' : '1';
-      if (g2) g2.value = !isGelirMode ? '0' : '1';
+      if (isBothMode) {
+        if (g1) g1.value = '1';
+        if (g2) g2.value = '1';
+      } else {
+        if (g1) g1.value = isGelirMode ? '0' : '1';
+        if (g2) g2.value = !isGelirMode ? '0' : '1';
+      }
       await log(`🚩 Rapor öncesi son set: GELIR1=${g1?.value} | GIDER1=${g2?.value}`);
     }
 
@@ -4923,13 +4950,8 @@
 
   /**
    * İHÖ (İşletme Hesap Özeti) — Luca'da menü yolu izleyerek Excel indirir.
-   * Kullanıcı Luca'nın HERHANGİ BİR sayfasında olabilir; agent kendisi:
-   *   1) Firma seç (job.errorMsg meta'sından mukellefAdi varsa SirketCombo)
-   *   2) Menü: "İşletme Defteri" → "Gider İşlemleri" → "Gelir/Gider Listesi"
-   *   3) input[name=tarih_ilk/son] (DD/MM/YYYY) + #report_type=XLSX
-   *   4) button.green-btn "Rapor" → window.open intercept → Excel
-   * Reload sonrası devam: Tamam butonu sayfa yeniliyor → checkIhoResume (yukarıda)
-   * yeni script yüklendiğinde menü adımından devam eder.
+   * v1.36.17: artık fetchLucaIsletmeGelirGiderExcel'e mode='both' ile delegate eder.
+   * Bu sayede proper XHR/Fetch/Download hook'ları kullanılır (PDF değil Excel iner).
    */
   async function fetchLucaGelirGiderListesi(job) {
     const log = (msg) => {
@@ -4937,137 +4959,8 @@
         window.__lucaJobLog(window.__currentLucaJobId, msg);
       } else { console.log('[Moren İHÖ]', msg); }
     };
-    const resumeStep = job.__resumeStep || 'firma';
-    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
-    const allDocs = () => {
-      const docs = [document];
-      document.querySelectorAll('iframe, frame').forEach((f) => {
-        try { if (f.contentDocument) docs.push(f.contentDocument); } catch {}
-      });
-      return docs;
-    };
-
-    // 1) Firma seç (resume modda atla)
-    if (resumeStep === 'menu') {
-      log('▶ Resume: firma seçim atlandı, doğrudan menüye gidiliyor');
-    }
-    const metaMatch = String(job.errorMsg || '').match(/mukellefAdi=([^,]+)/);
-    const mukellefAdi = resumeStep === 'menu' ? '' : (metaMatch ? metaMatch[1].trim() : '');
-    if (mukellefAdi) {
-      log('Firma seçiliyor: ' + mukellefAdi);
-      let sirketCombo = null;
-      for (const doc of allDocs()) {
-        sirketCombo = doc.querySelector('#SirketCombo, select[id*="Sirket" i], select[name*="Sirket" i]');
-        if (sirketCombo) break;
-      }
-      if (sirketCombo) {
-        const target = [...sirketCombo.options].find((o) => norm(o.text).includes(norm(mukellefAdi)));
-        if (target) {
-          sirketCombo.value = target.value;
-          sirketCombo.dispatchEvent(new Event('change', { bubbles: true }));
-          log('✓ Firma seçildi: ' + target.text.trim());
-          await sleep(300);
-          let tamamBtn = null;
-          for (const doc of allDocs()) {
-            const btns = [...doc.querySelectorAll('button, input[type="button"], input[type="submit"]')];
-            tamamBtn = btns.find((b) => /^tamam$/i.test((b.textContent || b.value || '').trim()));
-            if (tamamBtn) break;
-          }
-          if (tamamBtn) {
-            try {
-              localStorage.setItem(IHO_RESUME_KEY, JSON.stringify({
-                ...job,
-                __resumeStep: 'menu',
-                __savedAt: Date.now(),
-              }));
-            } catch {}
-            tamamBtn.click();
-            log('✓ Tamam tıklandı (reload bekleniyor — yeni script devam edecek)');
-            await sleep(4000);
-            try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
-          }
-        } else { log('⚠ Firma SirketCombo\'da yok: ' + mukellefAdi); }
-      }
-    }
-
-    // 2) Menü navigasyonu — DOĞRU yöntem: navigateToIsletmeGiderListesi + clickLucaRightMenu
-    //    Naive clickByText yetmiyor — Luca menüleri hover+onclick handler bekliyor.
-    //    findLucaMenuItem + fullActivate proper attribute handler invoke eder, menü alt
-    //    seviyesi gerçekten DOM'da görünür/clickable hale gelir.
-    log('Menü: İşletme Defteri → Gider İşlemleri → Gider Listesi');
-    await navigateToIsletmeGiderListesi(log);
-    log('✓ İşletme Gider Listesi sayfası açıldı, Gelir/Gider Listesi sağ menüsü tıklanıyor');
-    await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
-
-    // 3) Form doldur
-    const [donemBas, donemSon] = String(job.donem || '').split('_');
-    if (!donemBas || !donemSon) throw new Error('İHÖ donem formati hatali: ' + job.donem);
-    const toLucaDate = (iso) => {
-      const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      return m ? (m[3] + '/' + m[2] + '/' + m[1]) : iso;
-    };
-    const tarihIlk = toLucaDate(donemBas);
-    const tarihSon = toLucaDate(donemSon);
-
-    let formDoc = null, tarihIlkInput = null, tarihSonInput = null;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      for (const doc of allDocs()) {
-        const ti = doc.querySelector('input[name="tarih_ilk"]');
-        const ts = doc.querySelector('input[name="tarih_son"]');
-        if (ti && ts) { formDoc = doc; tarihIlkInput = ti; tarihSonInput = ts; break; }
-      }
-      if (formDoc) break;
-      await sleep(500);
-    }
-    if (!formDoc) throw new Error('Gelir/Gider Listesi formu bulunamadı (tarih input yok)');
-
-    tarihIlkInput.value = tarihIlk;
-    tarihIlkInput.dispatchEvent(new Event('change', { bubbles: true }));
-    tarihSonInput.value = tarihSon;
-    tarihSonInput.dispatchEvent(new Event('change', { bubbles: true }));
-    log('✓ Tarihler: ' + tarihIlk + ' → ' + tarihSon);
-
-    const reportTypeSel = formDoc.querySelector('#report_type, select[name="report_type"]');
-    if (reportTypeSel) {
-      const xlsxOpt = [...reportTypeSel.options].find((o) => /xlsx|excel/i.test(o.value || o.text));
-      if (xlsxOpt) {
-        reportTypeSel.value = xlsxOpt.value;
-        reportTypeSel.dispatchEvent(new Event('change', { bubbles: true }));
-        log('✓ Rapor türü: ' + xlsxOpt.text.trim());
-      }
-    }
-
-    // 4) Rapor butonu + Excel yakala (window.open intercept)
-    const win = formDoc.defaultView || window;
-    const origOpen = win.open;
-    let capturedBlob = null, capturedUrl = null;
-    win.open = function (url) {
-      capturedUrl = url;
-      return { closed: false, close: () => {}, focus: () => {}, document: { write: () => {} } };
-    };
-
-    const raporBtn = [...formDoc.querySelectorAll('button, input[type="button"], input[type="submit"]')]
-      .find((el) => /^rapor$/i.test((el.textContent || el.value || '').trim()))
-      || formDoc.querySelector('button.green-btn');
-    if (!raporBtn) { win.open = origOpen; throw new Error('Rapor butonu yok'); }
-    log('Rapor butonuna tıklanıyor…');
-    raporBtn.click();
-
-    const t0 = Date.now();
-    while (!capturedUrl && !capturedBlob && Date.now() - t0 < 30000) await sleep(300);
-    win.open = origOpen;
-    if (!capturedUrl && !capturedBlob) throw new Error('30sn içinde Excel yakalanamadı');
-
-    if (capturedUrl && !capturedBlob) {
-      const resp = await fetch(capturedUrl, { credentials: 'include' });
-      if (!resp.ok) throw new Error('Excel HTTP ' + resp.status);
-      capturedBlob = await resp.blob();
-    }
-    log('✓ Luca yanıtı: ' + (capturedBlob.size/1024).toFixed(1) + ' KB');
-    if (capturedBlob.size < 500) throw new Error('Boş yanıt');
-    if (capturedBlob.type.includes('html')) throw new Error('HTML döndü');
-    try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
-    return capturedBlob;
+    log('İHÖ → fetchLucaIsletmeGelirGiderExcel(mode=both) ile delegate ediliyor');
+    return await fetchLucaIsletmeGelirGiderExcel(job, log, 'both');
   }
 
   /**
