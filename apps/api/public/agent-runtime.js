@@ -2330,4 +2330,108 @@
           },
         }),
       });
-    } ca
+    } catch {}
+  }
+  setInterval(() => { sendHeartbeat().catch(() => {}); }, 15000);
+
+  // === RETRY HELPER — geçici hatalar için exponential backoff ===
+  async function withRetry(fn, label, maxTry = 3) {
+    let lastErr;
+    for (let i = 0; i < maxTry; i++) {
+      try { return await fn(); } catch (e) {
+        lastErr = e;
+        const msg = String(e?.message || e);
+        const transient = /Failed to fetch|NetworkError|Load failed|429|5\d\d/i.test(msg);
+        if (!transient) throw e;
+        const wait = 1000 * Math.pow(2, i);
+        console.warn(`[Moren] ${label} retry ${i+1}/${maxTry} (${msg}) - ${wait}ms`);
+        await sleep(wait);
+      }
+    }
+    throw lastErr;
+  }
+
+  async function pollLoop() {
+    await sendHeartbeat();
+    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+      try {
+        const cmds = await withRetry(
+          () => api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) }),
+          'commands/claim',
+        );
+        if (Array.isArray(cmds) && cmds.length > 0) {
+          for (const cmd of cmds) {
+            __activeCmdId = cmd.id;
+            const cmdT0 = Date.now();
+            try {
+              setStatus(`CMD: ${cmd.action}`);
+              await processBatch({
+                ay: cmd.payload?.ay,
+                mukellefler: cmd.payload?.mukellefler || [],
+                action: cmd.action,
+              });
+              const elapsedMs = Date.now() - cmdT0;
+              const finalStatus = (await isCmdCancelled()) ? 'cancelled' : 'done';
+              await withRetry(() => api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: finalStatus,
+                  result: {
+                    onay: cmdSummary.onay,
+                    atla: cmdSummary.atla,
+                    demirbas: cmdSummary.demirbas,
+                    hata: cmdSummary.hata,
+                    toplam: cmdSummary.toplam,
+                    perMukellef: cmdSummary.perMukellef,
+                    aiCostUsd: cmdSummary.aiCostUsd,
+                    errors: cmdSummary.errors,
+                    elapsedMs,
+                    agentVersion: AGENT_VERSION,
+                    message: `✓ ${cmdSummary.onay} onaylandı · ⏭ ${cmdSummary.atla} atlandı · ⏩ ${cmdSummary.demirbas} demirbaş · ⚠ ${cmdSummary.hata} hata (toplam ${cmdSummary.toplam})${cmdSummary.errors.length > 0 ? ' · ' + cmdSummary.errors[0] : ''}`,
+                  },
+                }),
+              }), 'commands/done').catch(() => {});
+            } catch (e) {
+              await api(`/agent/commands/${cmd.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                  status: 'failed',
+                  result: {
+                    ...cmdSummary,
+                    agentVersion: AGENT_VERSION,
+                    message: String(e?.message || e),
+                    elapsedMs: Date.now() - cmdT0,
+                  },
+                }),
+              }).catch(() => {});
+            }
+            __activeCmdId = null;
+          }
+        } else {
+          setStatus('Komut bekleniyor…');
+        }
+      } catch (e) {
+        const msg = String(e?.message || e);
+        if (/401/.test(msg)) {
+          setStatus('Mihsap oturumu süresi dolmuş — yeniden giriş yap');
+          await logEvent('', 'sistem', 'auth-expired', 'Mihsap 401 — token expire')
+            .catch(() => {});
+        } else if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+          setStatus('Bağlantı bekleniyor…');
+        } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yüklendi · v' + AGENT_VERSION);
+})();
