@@ -4,7 +4,7 @@
   if (window.__morenAutoAgentInjected) return;
   window.__morenAutoAgentInjected = true;
 
-  const RUNTIME_URL = 'https://mali-musavir-app-production.up.railway.app/agent-runtime.js';
+  const RUNTIME_URL = 'https://portal.morenmusavirlik.com/moren-agent.js';
 
   function injectAndRun() {
     if (window.__morenAgent && window.__morenAgent.running) {
