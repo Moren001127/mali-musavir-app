@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.13';
+  const AGENT_VERSION = '1.36.14';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -341,15 +341,21 @@
     let mizanForm = null;
     let mizanDoc = null;
     for (const doc of allDocs) {
+      // Tip bazli arama — kullanici Luca da hangi ekrani actiysa o formu bul
+      // (mizan, kebir, kdv, isletme tum varyantlari kapsanir)
       const f = doc.querySelector(
-        'form[name="raporMizanForm"], form[action*="raporMizan"], form[action*="mizan"]',
+        'form[name="raporMizanForm"], form[name="raporKebirForm"], form[name*="rapor" i], ' +
+        'form[action*="raporMizan"], form[action*="raporKebir"], form[action*="rapor"], ' +
+        'form[action*="mizan"], form[action*="kebir"]',
       );
       if (f) { mizanForm = f; mizanDoc = doc; break; }
     }
     if (!mizanForm) {
       throw new Error(
-        'Luca\'da mizan formu (raporMizanForm) bulunamadı. ' +
-          'Luca\'da Muhasebe → Mizan ekranını açıp tekrar deneyin.',
+        'Luca\'da rapor formu bulunamadı. ' +
+          'Luca\'da DOĞRU ekranı açın: ' +
+          '(Mizan için Muhasebe→Mizan, KDV-191/391 için Defteri Kebir, ' +
+          'İşletme için İşletme Defteri→Gelir/Gider Listesi). Ekran açıkken tekrar deneyin.',
       );
     }
     log(`✓ Mizan formu bulundu`);
