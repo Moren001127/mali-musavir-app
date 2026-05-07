@@ -1182,4 +1182,10 @@ function Row({
               </div>
             ) : (
               <span className="tabular-nums">{c}</span>
-     
+            )}
+          </td>
+        );
+      })}
+    </tr>
+  );
+}
