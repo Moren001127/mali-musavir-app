@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.17';
+  const AGENT_VERSION = '1.36.18';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -3379,6 +3379,9 @@
   function parseAylikDonemBaslangic(donem) {
     if (!donem) return null;
     const s = String(donem).trim();
+    // YENİ: IHO range format "YYYY-MM-DD_YYYY-MM-DD" → ilk tarihi DD/MM/YYYY ile döndür
+    let r = s.match(/^(\d{4})-(\d{2})-(\d{2})_\d{4}-\d{2}-\d{2}$/);
+    if (r) return `${r[3]}/${r[2]}/${r[1]}`;
     let yil, ay;
     let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
     if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
@@ -3389,6 +3392,9 @@
   function parseAylikDonemBitis(donem) {
     if (!donem) return null;
     const s = String(donem).trim();
+    // YENİ: IHO range format "YYYY-MM-DD_YYYY-MM-DD" → son tarihi DD/MM/YYYY ile döndür
+    let r = s.match(/^\d{4}-\d{2}-\d{2}_(\d{4})-(\d{2})-(\d{2})$/);
+    if (r) return `${r[3]}/${r[2]}/${r[1]}`;
     let yil, ay;
     let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
     if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
@@ -8149,6 +8155,23 @@
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
         } else {
+          setStatus('API hatası, yeniden deneniyor');
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yüklendi');
+})();
+{
           setStatus('API hatası, yeniden deneniyor');
           console.warn('[Moren]', msg);
         }
