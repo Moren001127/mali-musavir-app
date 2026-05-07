@@ -116,14 +116,20 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2 py-1 text-right text-sm font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2 py-1 text-right text-[14px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
         borderBottom: focused ? '1px solid rgba(184,160,111,0.6)' : '1px solid transparent',
-        color: disabled ? 'rgba(168, 162, 158, 0.45)' : 'rgba(245, 245, 244, 0.95)',
+        // Boş değer (0) çok soluk; dolu değer net görünür
+        color: disabled
+          ? 'rgba(168, 162, 158, 0.4)'
+          : !value
+          ? 'rgba(250, 250, 249, 0.22)'  // boş "0,00" çok soluk
+          : 'rgba(250, 250, 249, 0.96)', // dolu değer net
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
+        fontWeight: !value ? 400 : 500,
       }}
       onMouseEnter={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid rgba(184,160,111,0.25)';
@@ -1119,22 +1125,21 @@ function Row({
   calc?: boolean;
   raw?: boolean;
 }) {
-  // v1.36.22: Oran rozet rengi — değere göre semantik
-  // pozitif kar/oran → yeşil, negatif → kırmızı, 0 → gri
-  const ratioStyle = (r: string): { bg: string; color: string; border: string } => {
-    if (!r || r === '—') return { bg: 'rgba(255,255,255,0.04)', color: 'rgba(168,162,158,0.7)', border: 'rgba(255,255,255,0.06)' };
+  // v1.36.23: Oran sade renk — sadece text rengi değişir, rozet/border yok
+  const ratioColor = (r: string): string => {
+    if (!r || r === '—') return 'rgba(168,162,158,0.55)';
     const isNeg = r.includes('-');
     const num = parseFloat(r.replace(/[%,\s]/g, '').replace(',', '.')) || 0;
-    if (isNeg) return { bg: 'rgba(244,63,94,0.12)', color: '#fb7185', border: 'rgba(244,63,94,0.25)' };
-    if (num === 0) return { bg: 'rgba(255,255,255,0.04)', color: 'rgba(168,162,158,0.7)', border: 'rgba(255,255,255,0.06)' };
-    if (num >= 50) return { bg: 'rgba(34,197,94,0.14)', color: '#4ade80', border: 'rgba(34,197,94,0.3)' };
-    return { bg: 'rgba(212,184,118,0.12)', color: '#d4b876', border: 'rgba(212,184,118,0.25)' };
+    if (isNeg) return 'rgba(251,113,133,0.85)'; // pembe-kırmızı
+    if (num === 0) return 'rgba(168,162,158,0.5)';
+    if (num >= 50) return 'rgba(74,222,128,0.85)'; // yeşil
+    return 'rgba(212,184,118,0.85)'; // altın
   };
 
   return (
     <tr className={hl || ''} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td
-        className={`px-4 py-2.5 ${
+        className={`px-4 py-3 ${
           bold ? 'text-[13px] font-semibold text-stone-50 tracking-wide' : 'text-[12.5px] font-medium text-stone-200'
         }`}
         style={{
@@ -1145,31 +1150,37 @@ function Row({
         {hint && <span className="ml-2 text-[10.5px] font-normal text-stone-500">{hint}</span>}
       </td>
       {cols.map((c, i) => {
-        const rs = ratios && ratios[i] ? ratioStyle(ratios[i]) : null;
+        const rColor = ratios && ratios[i] ? ratioColor(ratios[i]) : null;
+        // c bir string ise (calc satırlar) "0,00" boş demek — soluklaştır
+        const cStr = typeof c === 'string' ? c : '';
+        const isEmpty = cStr === '0,00' || cStr === '0';
         return (
           <td
             key={i}
-            className={`px-3 py-2.5 text-right font-mono tabular-nums text-stone-100 ${
+            className={`px-4 py-3 text-right font-mono tabular-nums ${
               bold ? 'text-[15px] font-semibold' : 'text-[14px]'
-            } ${calc && !raw ? 'italic text-stone-200' : ''}`}
+            }`}
             style={{
               borderLeft: '1px solid rgba(184,160,111,0.12)',
               fontVariantNumeric: 'tabular-nums',
+              color: isEmpty
+                ? 'rgba(250, 250, 249, 0.22)'  // boş 0,00 çok soluk
+                : 'rgba(250, 250, 249, 0.96)', // dolu net
             }}
           >
-            <div className="flex items-center justify-end gap-2">
-              {rs && ratios![i] !== '—' && (
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-right tabular-nums leading-tight">{c}</span>
+              {rColor && ratios![i] && ratios![i] !== '—' && !isEmpty && (
                 <span
-                  className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold not-italic shrink-0 font-sans"
+                  className="text-[10.5px] not-italic font-sans tracking-wide"
                   style={{
-                    background: rs.bg,
-                    color: rs.color,
+                    color: rColor,
+                    fontWeight: 500,
                   }}
                 >
                   {ratios![i]}
                 </span>
               )}
-              <span className="text-right tabular-nums">{c}</span>
             </div>
           </td>
         );
