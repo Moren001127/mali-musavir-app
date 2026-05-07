@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.5';
+  const AGENT_VERSION = '1.36.6';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -572,21 +572,23 @@
     //    count=0 durumunda editör yok, direk return.
     if (/count=0/.test(location.href)) { await sleep(500); return; }
 
-    const minWaitMs = 5000; // kullanıcı talebi: ekran güncellensin diye asgari 5 sn
+    // HIZLANDIRMA (v1.36.6): asgari 5sn → 1.5sn, polling 200ms → 100ms.
+    // Editör DOM'u hazır olur olmaz çık, yapay bekleme yok.
+    const minWaitMs = 1500;
     const maxWaitMs = 8000;
     const tStart = Date.now();
-    // Asgari bekleme süresince DOM stabilize olmasını bekle
     while (Date.now() - tStart < minWaitMs) {
       if (getVisibleModals().length > 0) { await handleDialogs(); }
-      await sleep(200);
+      // Editör hazırsa asgari süre dolmasa bile çık (gereksiz bekleme yok)
+      const hasEditor = document.querySelector('.ant-select-selector, input[placeholder*="Hesap"], input[placeholder*="Matrah"]');
+      if (hasEditor) return;
+      await sleep(100);
     }
-    // Asgari süre doldu — şimdi editör DOM'u gerçekten hazır mı diye bak; değilse max'e kadar bekle
     while (Date.now() - tStart < maxWaitMs) {
       if (getVisibleModals().length > 0) { await handleDialogs(); }
-      // Hesap kodu / matrah select'leri sayfaya yüklendiyse hazırız
       const hasEditor = document.querySelector('.ant-select-selector, input[placeholder*="Hesap"], input[placeholder*="Matrah"]');
       if (hasEditor) break;
-      await sleep(200);
+      await sleep(100);
     }
   }
 
@@ -615,22 +617,25 @@
   // işlem log'suz atlanmış gibi görünür).
   // Dönüş: 'f2' (F2 basıldı) | 'already-advanced' (URL değişti, F2 gereksiz)
   async function onaylaSonrasiF2(fidBefore) {
-    await sleep(5000);
-    const fidNow = getCurrentFid();
-    if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
-      // MIHSAP 5 sn içinde kendisi kaydedip ilerledi — F2 basma
-      return 'already-advanced';
+    // v1.36.6: 5sn sabit bekleme yerine 3sn'lik akıllı polling
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) {
+      const fidNow = getCurrentFid();
+      if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
+        return 'already-advanced';
+      }
+      await sleep(150);
     }
     await pressF2Once();
-    await sleep(1500);
+    await sleep(700); // 1500 → 700
     return 'f2';
   }
 
   async function clickKaydetOnayla() {
     const fidAtStart = getCurrentFid();
     await pressF2Once();
-    // F2 sonrası MIHSAP'ın modal/onay üretmesi için ilk kısa bekleme
-    await sleep(1200);
+    // v1.36.6: 1200 → 600 (F2 sonrası modal kısa sürede gelir)
+    await sleep(600);
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
     // "resubmit" dönerse (tutar farkı onayı) — onayladıktan sonra F2'yi tekrar basıp
     // sonra yeniden dialog kontrolü yap. Aksi halde kaydetme tamamlanmaz.
@@ -906,7 +911,7 @@
           tum.length > 0 ? `(canvas boyutları: ${tum.map((c) => `${c.width}x${c.height}`).join(', ').slice(0, 200)})` : '');
       }
 
-      await sleep(400);
+      await sleep(200); // v1.36.6 hızlandırma: 400ms → 200ms polling
     }
     console.warn('[Moren] getFaturaImageBase64: 15sn boyunca canvas/img bulunamadı — fatura editörü açık değil olabilir');
     return null;
@@ -2044,7 +2049,8 @@
           let validationFailed = null;
           const waitSavedIsletme = async (timeoutMs) => {
             const t0 = Date.now();
-            const minWaitMs = 5000;
+            // v1.36.6 hızlandırma: minWait 5sn → 1.5sn, polling 250→100ms
+            const minWaitMs = 1500;
             while (Date.now() - t0 < minWaitMs) {
               const validationMsg = validationDialogVarMi();
               if (validationMsg) {
@@ -2052,6 +2058,9 @@
                 await handleDialogs();
                 return false;
               }
+              const mEarly = location.href.match(/\/(\d+)\?count=/);
+              if (mEarly && mEarly[1] !== fid) return true;
+              if (/count=0/.test(location.href)) return true;
               if (getVisibleModals().length > 0) {
                 const r = await handleDialogs();
                 if (r === 'resubmit') {
@@ -2059,7 +2068,7 @@
                   if (res === 'already-advanced') break;
                 }
               }
-              await sleep(250);
+              await sleep(100);
             }
             while (Date.now() - t0 < timeoutMs) {
               const m2 = location.href.match(/\/(\d+)\?count=/);
@@ -2080,11 +2089,11 @@
                   if (res === 'already-advanced') continue;
                   continue;
                 }
-                await sleep(400);
+                await sleep(200);
                 const m3 = location.href.match(/\/(\d+)\?count=/);
                 if (m3 && m3[1] !== fid) return true;
               }
-              await sleep(250);
+              await sleep(100);
             }
             return false;
           };
@@ -2212,9 +2221,8 @@
         // Ayrıca "tutar farkı onay" dialog'u (resubmit) gelirse Onayla + tekrar F2 yapıyoruz.
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
-          const minWaitMs = 5000;
-          // 1) Asgari bekleme penceresi — bu sürede sadece validation / dialog işle,
-          //    URL değişimine "saved" denip hemen dönme. Ekran gerçekten oturduktan sonra karar ver.
+          // v1.36.6 hızlandırma: minWait 5sn → 1.5sn, polling 250→100ms
+          const minWaitMs = 1500;
           while (Date.now() - t0 < minWaitMs) {
             const validationMsg = validationDialogVarMi();
             if (validationMsg) {
@@ -2222,21 +2230,21 @@
               await handleDialogs();
               return false;
             }
+            // URL hızlıca değiştiyse minWait'i bile bekleme — direkt saved say
+            const mEarly = location.href.match(/\/(\d+)\?count=/);
+            if (mEarly && mEarly[1] !== fid) return true;
+            if (/count=0/.test(location.href)) return true;
             if (getVisibleModals().length > 0) {
               const r = await handleDialogs();
               if (r === 'resubmit') {
-                // Onayla → 5 sn bekle → fid değişmediyse F2 (aksi halde F2
-                // sonraki faturayı tetikler ve mevcut işlem log'suz kalır).
                 const res = await onaylaSonrasiF2(fid);
                 if (res === 'already-advanced') {
-                  // Kaydedilip ilerlendi; phase 2 URL kontrolünde saved=true dönecek
                   break;
                 }
               }
             }
-            await sleep(250);
+            await sleep(100);
           }
-          // 2) Asgari süre sonrası saved kriterlerini kontrol et
           while (Date.now() - t0 < timeoutMs) {
             const m2 = location.href.match(/\/(\d+)\?count=/);
             if (m2 && m2[1] !== fid) return true;
@@ -2254,20 +2262,17 @@
             if (getVisibleModals().length > 0) {
               const r = await handleDialogs();
               if (r === 'resubmit') {
-                // Onayla → 5 sn bekle → fid değişmediyse F2.
-                // URL değiştiyse ana loop zaten sonraki turda saved=true görür.
                 const res = await onaylaSonrasiF2(fid);
                 if (res === 'already-advanced') {
-                  // URL değişti sayılmalı — bir sonraki turda m2 kontrolü saved=true dönecek
                   continue;
                 }
                 continue;
               }
-              await sleep(400);
+              await sleep(200);
               const m3 = location.href.match(/\/(\d+)\?count=/);
               if (m3 && m3[1] !== fid) return true;
             }
-            await sleep(250);
+            await sleep(100);
           }
           return false;
         };

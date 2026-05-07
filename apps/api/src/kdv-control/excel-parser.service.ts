@@ -595,7 +595,7 @@ export class ExcelParserService {
 
     if (headers.length === 0) {
       this.logger.warn('İHÖ Detaylı: Excel\'de hiç KDV header satırı bulunamadı');
-      return { gelirToplam, malAlisToplam, giderToplam, gelirSatirAdet, giderSatirAdet };
+      return { gelirToplam, malAlisToplam, giderToplam, donemBasiStok: 0, gelirSatirAdet, giderSatirAdet };
     }
 
     // GELİRLER bölümü (Hesaplanan KDV): Gelir + Satılan Emtia kolonlarını topla
