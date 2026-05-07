@@ -1150,7 +1150,7 @@ function Row({
               bold ? 'text-[15px] font-semibold' : 'text-[14px]'
             }`}
             style={{
-              borderLeft: '1px solid rgba(184,160,111,0.12)',
+              borderLeft: '1px solid rgba(184,160,111,0.28)',
               fontVariantNumeric: 'tabular-nums',
               color: isEmpty
                 ? 'rgba(250, 250, 249, 0.22)'
