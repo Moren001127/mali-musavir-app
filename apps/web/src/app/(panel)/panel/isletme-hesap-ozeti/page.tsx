@@ -116,7 +116,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2 py-0.5 text-right text-[13px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2 py-0.5 text-center text-[13px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
@@ -1159,11 +1159,19 @@ function Row({
             }}
           >
             {showRatio ? (
-              <div className="flex flex-col items-center" style={{ gap: 0 }}>
-                <span className="tabular-nums leading-tight">{c}</span>
+              // v1.36.27: rakam ortalı, oran hücrenin sağ kenarına absolute
+              <div className="relative flex items-center justify-center">
+                <span className="tabular-nums">{c}</span>
                 <span
-                  className="text-[10px] not-italic font-sans"
-                  style={{ color: rColor!, fontWeight: 600, letterSpacing: '0.02em', lineHeight: 1 }}
+                  className="absolute text-[10px] not-italic font-sans"
+                  style={{
+                    color: rColor!,
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    right: 4,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
                 >
                   {ratios![i]}
                 </span>
