@@ -4,19 +4,13 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.12';
+  const AGENT_VERSION = '1.36.13';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
   // yeniden başlat. Eski script'in setInterval'ları cleanup edilemez (ID yok),
   // ama yeni script aynı window'da paralel çalışır — bu kabul edilebilir çünkü
   // tüm flag'ler (lastSynced*, seenFids) yeni instance'a ait olur.
-  // Sadece top window'da calis — Luca multi-frame yapısında her iframe'de
-  // ayrı agent yüklenmesin (paralel job çakışması önlemi).
-  if (window !== window.top) {
-    console.log('[Moren] iframe icindeyiz, agent yalniz top window de calisir');
-    return;
-  }
   if (window.__morenAgent) {
     const oldVersion = window.__morenAgent.version || '?';
     if (oldVersion === AGENT_VERSION) {
