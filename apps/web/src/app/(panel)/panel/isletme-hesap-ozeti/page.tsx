@@ -122,14 +122,17 @@ function NumInput({
         border: 'none',
         borderBottom: focused ? '1px solid rgba(184,160,111,0.6)' : '1px solid transparent',
         // Boş değer (0) çok soluk; dolu değer net görünür
-        color: disabled
-          ? 'rgba(168, 162, 158, 0.4)'
+        // v1.36.33: locked (kesin kayıt) rakam altın renkte net görünür, silikleşmesin
+        color: disabled && value
+          ? '#d4b876'  // locked + dolu → altın net görünür (kesin kayıt vurgu)
+          : disabled
+          ? 'rgba(168, 162, 158, 0.45)'  // locked + boş → soluk gri
           : !value
-          ? 'rgba(250, 250, 249, 0.22)'  // boş "0,00" çok soluk
-          : 'rgba(250, 250, 249, 0.96)', // dolu değer net
+          ? 'rgba(250, 250, 249, 0.22)'  // editable + boş → çok soluk
+          : 'rgba(250, 250, 249, 0.96)', // editable + dolu → net beyaz
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
-        fontWeight: !value ? 400 : 500,
+        fontWeight: disabled && value ? 600 : !value ? 400 : 500,
       }}
       onMouseEnter={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid rgba(184,160,111,0.25)';
