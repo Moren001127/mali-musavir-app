@@ -182,7 +182,6 @@ export class GelirTablosuService {
       tekHesap('153'), // Ticari Mallar
       tekHesap('157'), // Diğer Stoklar
     ];
-    const toplamStok = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
 
     const maliyetHesaplari = [
       tekHesap('720'), // Direkt İlk Madde Malzeme Gideri
@@ -191,8 +190,15 @@ export class GelirTablosuService {
       tekHesap('731'), // Genel Üretim Giderleri Yansıtma (-)
     ];
 
-    // Kalan Stok = Toplam Stok - Satılan Malın Maliyeti (satisMal.toplam)
-    const kalanStok = toplamStok - satisMal.toplam;
+    // v1.36.31: Envanter formülü düzeltildi.
+    // Mizan'daki 150-157 hesap bakiyeleri DÖNEM SONU (kapanış) stoğunu gösterir,
+    // bu yüzden Kalan Stok'tur — Toplam Stok değil.
+    // Eski formül: toplamStok = stokHesaplari, kalanStok = toplamStok - SMM (NEGATİF üretiyordu!)
+    // Yeni formül (envanter):
+    //   Kalan Stok    = Mizan kapanış bakiyeleri toplamı (150+151+152+153+157)
+    //   Toplam Stok   = Kalan Stok + Satılan Malın Maliyeti (= Açılış + Net Alış)
+    const kalanStok = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
+    const toplamStok = kalanStok + satisMal.toplam;
 
     // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
     // Eğer 950 nazım hesabı kullanılıyorsa o öncelikli, yoksa 689
@@ -532,14 +538,4 @@ export class GelirTablosuService {
       ['', 'I. OLAĞANDIŞI GELİR VE KARLAR', Number(gt.olaganDisiGelir), ''],
       ['', 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', Number(gt.olaganDisiGider), ''],
       ['', 'DÖNEM KARI VEYA ZARARI', Number(gt.donemKari), pct(Number(gt.donemKari))],
-      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.vergiKarsiligi), ''],
-      ['', 'DÖNEM NET KARI VEYA ZARARI', Number(gt.donemNetKari), pct(Number(gt.donemNetKari))],
-    ];
-
-    const ws = xlsx.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 8 }, { wch: 52 }, { wch: 18 }, { wch: 10 }];
-    const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, ws, 'Gelir Tablosu');
-    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
-  }
-}
+      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.
