@@ -1877,3 +1877,26 @@ model SystemHealthCheck {
   @@index([type, createdAt])
   @@map("system_health_checks")
 }
+
+// ============================================================
+// KILITLI MODUL — admin'in panelden yonettigi modul kilit listesi.
+// SystemHealth her 5 dk dosyalarin hash'ini hesaplar, DB ile karsilastirir,
+// uyumsuzlukta MODULE_HASH alarmi atar.
+// .locked-modules.json sadece SEED kaynagi — DB master.
+// ============================================================
+model LockedModule {
+  id          String   @id @default(cuid())
+  path        String   @unique // "apps/web/src/.../page.tsx" gibi repo-relative path
+  sha256      String   // beklenen baseline hash (re-baseline yapilirsa guncellenir)
+  reason      String   // kilitlenme sebebi: "tam otomasyon, dokunma" gibi
+  lockedBy    String   // userId (kilitleyen admin)
+  lockedAt    DateTime @default(now())
+  rebaselined Int      @default(0) // kac kez baseline guncellendi
+  notes       String?  // ek not
+  active      Boolean  @default(true) // false = unlock (audit icin satir kalir)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+  @@map("locked_modules")
+}
