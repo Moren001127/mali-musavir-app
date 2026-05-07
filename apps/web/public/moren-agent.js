@@ -8271,4 +8271,4 @@
   }
   pollLoop();
   console.log('[Moren Agent] yüklendi');
-})
+})();
