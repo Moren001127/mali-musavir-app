@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.22';
+  const AGENT_VERSION = '1.36.25';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -3624,9 +3624,9 @@
 
     // Luca'nın onchange'i sadece UI hazırlığı yapıyor (loadDonem, showButton).
     // Asıl firma değişimi için showButton()'ın gösterdiği "Tamam/Seç/Onayla" butonuna
-    // tıklanması gerek. 800ms bekle (showButton DOM'a buton koymak için zaman),
-    // sonra frm4'te VISIBLE bir button/input[type=submit]/input[type=button] ara ve tıkla.
-    await sleep(800);
+    // tıklanması gerek. v1.36.25: 800ms→300ms bekle (showButton DOM'a buton koymak için
+    // genellikle 100-200ms yeterli, fazla bekleme = boş zaman).
+    await sleep(300);
 
     let onayClicked = false;
     try {
@@ -3687,9 +3687,10 @@
 
     // DOĞRULAMA: SirketCombo'da seçili option gerçekten hedef mi?
     // (frm4 reload sonrası DOM yeniden oluştuğu için tekrar fetch ediyoruz)
+    // v1.36.25: HIZLANDIRMA — verify 18s→8s + polling 500ms→200ms (daha sık check)
     let verified = false;
     let lastSelectedText = currentText;
-    const verifyDeadline = Date.now() + 18000;
+    const verifyDeadline = Date.now() + 8000;
     while (Date.now() < verifyDeadline) {
       const frm4Now = getLucaFrame('frm4');
       const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
@@ -3703,7 +3704,7 @@
           break;
         }
       }
-      await sleep(500);
+      await sleep(200);
     }
     if (!verified) {
       throw new Error(
@@ -3712,16 +3713,21 @@
       );
     }
 
-    // Menünün yeni firma için hazır olmasını bekle
+    // v1.36.25: Menü wait 15s→5s. Ayrıca "Mizan" yerine herhangi bir menü item'i yeterli
+    // (bazı firmalarda Mizan yok ama menü zaten hazır).
     await waitUntil(() => {
       const frm5 = getLucaFrame('frm5');
       if (!frm5 || !frm5.contentDocument) return false;
-      const all = frm5.contentDocument.querySelectorAll('*');
+      const all = frm5.contentDocument.querySelectorAll('a, span, td, div');
       for (const el of all) {
-        if ((el.textContent || '').trim() === 'Mizan' && el.children.length === 0) return true;
+        const t = (el.textContent || '').trim();
+        if (el.children.length === 0 && t.length >= 4 && t.length <= 40 &&
+            /^[A-Za-zÇĞİÖŞÜçğıöşü\s\/\-]+$/.test(t)) {
+          return true; // herhangi bir menü-tipi text yeterli
+        }
       }
       return false;
-    }, 15000);
+    }, 5000, 150);
     await log(`✓ Firma değişti → ${targetText}, menü hazır`);
     return { changed: true, alreadyCorrect: false, skipped: false };
   }
@@ -4481,7 +4487,7 @@
         const ct = res.headers.get('content-type') || '';
         const cloned = res.clone();
         const blob = await cloned.blob();
-        if (blob.size > 5000 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
+        if (blob.size > 1500 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
           if (!capturedBlob) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Blob yakalandı: ${url.split('/').pop().slice(0, 60)} (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
@@ -4557,7 +4563,7 @@
 
             // 1) XHR response Blob ise (Excel) — Luca'nın rapor_indir.jq response'unu yakalama şansı
             if (this.response && this.response instanceof Blob) {
-              if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
+              if (this.response.size > 1500 && (isExcelResponse(ct) || isExcelUrl(url))) {
                 if (!capturedBlob) {
                   capturedBlob = this.response;
                   await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB) url=${url.split('/').pop().slice(0, 40)}`);
@@ -4582,7 +4588,7 @@
                     : (this.responseText
                         ? new Blob([this.responseText], { type: ct || 'application/vnd.ms-excel' })
                         : null);
-                  if (data && data.size > 5000) {
+                  if (data && data.size > 1500) {
                     capturedBlob = data;
                     await log(`✅ ${url.split('/').pop().slice(0, 30)} → Blob yakalandı (${Math.round(data.size / 1024)} KB)`);
                   }
@@ -4703,7 +4709,7 @@
                 }
                 const ct = r.headers.get('content-type') || '';
                 const blob = await r.blob();
-                if (blob.size > 5000) {
+                if (blob.size > 1500) {
                   if (!capturedBlob) {
                     capturedBlob = blob; window.__morenCapturedBlob = blob; window.__morenCapturedBlob = blob;
                     await log(`✅ form intercept Blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
@@ -4770,7 +4776,7 @@
         const r = await fetch(dlUrl, { credentials: 'include' });
         if (r.ok) {
           const blob = await r.blob();
-          if (blob.size > 5000) {
+          if (blob.size > 1500) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Bridge URL fetch ile blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
           } else {
@@ -4799,7 +4805,7 @@
       const detail = e.detail || {};
       const blob = detail.blob;
       if (capturedBlob) return;
-      if (blob && blob.size > 5000) {
+      if (blob && blob.size > 1500) {
         capturedBlob = blob; window.__morenCapturedBlob = blob;
         await log(`✅ Background'tan Excel disk'ten alındı (${Math.round(blob.size / 1024)} KB, dosya: ${(detail.filename || '').split(/[\\/]/).pop()})`);
       } else if (detail.filename) {
@@ -4900,7 +4906,7 @@
         if (r3.ok) {
           const ct = r3.headers.get('content-type') || '';
           const blob = await r3.blob();
-          if (blob.size > 5000) {
+          if (blob.size > 1500) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Paralel flow ile blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
           } else {
@@ -4910,7 +4916,7 @@
             const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
             if (r4.ok) {
               const blob4 = await r4.blob();
-              if (blob4.size > 5000) {
+              if (blob4.size > 1500) {
                 capturedBlob = blob4;
                 await log(`✅ rapor_indir GET ile blob (${Math.round(blob4.size / 1024)} KB)`);
               }
@@ -4935,7 +4941,7 @@
           const r = await fetch(capturedUrl, { credentials: 'include' });
           if (r.ok) {
             const blob = await r.blob();
-            if (blob.size > 5000) {
+            if (blob.size > 1500) {
               capturedBlob = blob; window.__morenCapturedBlob = blob;
               break;
             }
@@ -5538,7 +5544,7 @@
               if (obj instanceof Blob && obj.size > 1000 && window.__lucaJobOverrides) {
                 const ct = obj.type || '';
                 // Excel/xlsx/binary — büyük olasılıkla rapor dosyası
-                const isLikelyReport = obj.size > 5000 || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
+                const isLikelyReport = obj.size > 1500 || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
                 if (isLikelyReport) {
                   window.__morenCapturedBlob = obj;
                   if (Array.isArray(window.__morenLogs)) {
@@ -8339,18 +8345,4 @@
           setStatus('Bağlantı bekleniyor…');
         } else {
           setStatus('API hatası, yeniden deneniyor');
-          console.warn('[Moren]', msg);
-        }
-      }
-      await sleep(5000);
-    }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    if (panel) panel.remove();
-    delete window.__morenAgent;
-  }
-  pollLoop();
-  console.log('[Moren Agent] yüklendi');
-})();
+          

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.22';
+  const AGENT_VERSION = '1.36.25';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -4481,7 +4481,7 @@
         const ct = res.headers.get('content-type') || '';
         const cloned = res.clone();
         const blob = await cloned.blob();
-        if (blob.size > 5000 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
+        if (blob.size > 1500 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
           if (!capturedBlob) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Blob yakalandı: ${url.split('/').pop().slice(0, 60)} (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
@@ -4557,7 +4557,7 @@
 
             // 1) XHR response Blob ise (Excel) — Luca'nın rapor_indir.jq response'unu yakalama şansı
             if (this.response && this.response instanceof Blob) {
-              if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
+              if (this.response.size > 1500 && (isExcelResponse(ct) || isExcelUrl(url))) {
                 if (!capturedBlob) {
                   capturedBlob = this.response;
                   await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB) url=${url.split('/').pop().slice(0, 40)}`);
@@ -4582,7 +4582,7 @@
                     : (this.responseText
                         ? new Blob([this.responseText], { type: ct || 'application/vnd.ms-excel' })
                         : null);
-                  if (data && data.size > 5000) {
+                  if (data && data.size > 1500) {
                     capturedBlob = data;
                     await log(`✅ ${url.split('/').pop().slice(0, 30)} → Blob yakalandı (${Math.round(data.size / 1024)} KB)`);
                   }
@@ -4703,7 +4703,7 @@
                 }
                 const ct = r.headers.get('content-type') || '';
                 const blob = await r.blob();
-                if (blob.size > 5000) {
+                if (blob.size > 1500) {
                   if (!capturedBlob) {
                     capturedBlob = blob; window.__morenCapturedBlob = blob; window.__morenCapturedBlob = blob;
                     await log(`✅ form intercept Blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
@@ -4770,7 +4770,7 @@
         const r = await fetch(dlUrl, { credentials: 'include' });
         if (r.ok) {
           const blob = await r.blob();
-          if (blob.size > 5000) {
+          if (blob.size > 1500) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Bridge URL fetch ile blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
           } else {
@@ -4799,7 +4799,7 @@
       const detail = e.detail || {};
       const blob = detail.blob;
       if (capturedBlob) return;
-      if (blob && blob.size > 5000) {
+      if (blob && blob.size > 1500) {
         capturedBlob = blob; window.__morenCapturedBlob = blob;
         await log(`✅ Background'tan Excel disk'ten alındı (${Math.round(blob.size / 1024)} KB, dosya: ${(detail.filename || '').split(/[\\/]/).pop()})`);
       } else if (detail.filename) {
@@ -4900,7 +4900,7 @@
         if (r3.ok) {
           const ct = r3.headers.get('content-type') || '';
           const blob = await r3.blob();
-          if (blob.size > 5000) {
+          if (blob.size > 1500) {
             capturedBlob = blob; window.__morenCapturedBlob = blob;
             await log(`✅ Paralel flow ile blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
           } else {
@@ -4910,7 +4910,7 @@
             const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
             if (r4.ok) {
               const blob4 = await r4.blob();
-              if (blob4.size > 5000) {
+              if (blob4.size > 1500) {
                 capturedBlob = blob4;
                 await log(`✅ rapor_indir GET ile blob (${Math.round(blob4.size / 1024)} KB)`);
               }
@@ -4935,7 +4935,7 @@
           const r = await fetch(capturedUrl, { credentials: 'include' });
           if (r.ok) {
             const blob = await r.blob();
-            if (blob.size > 5000) {
+            if (blob.size > 1500) {
               capturedBlob = blob; window.__morenCapturedBlob = blob;
               break;
             }
@@ -5538,7 +5538,7 @@
               if (obj instanceof Blob && obj.size > 1000 && window.__lucaJobOverrides) {
                 const ct = obj.type || '';
                 // Excel/xlsx/binary — büyük olasılıkla rapor dosyası
-                const isLikelyReport = obj.size > 5000 || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
+                const isLikelyReport = obj.size > 1500 || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
                 if (isLikelyReport) {
                   window.__morenCapturedBlob = obj;
                   if (Array.isArray(window.__morenLogs)) {

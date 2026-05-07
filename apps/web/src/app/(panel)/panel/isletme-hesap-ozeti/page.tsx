@@ -591,10 +591,12 @@ function KarsilastirmaTablosu({
 
   return (
     <div className="space-y-3">
+      {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
+      <div className="space-y-0">
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div
-        className="rounded-xl overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+        className="rounded-t-xl overflow-hidden"
+        style={{ background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.05)', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
       >
         <div
           className="grid"
@@ -757,6 +759,7 @@ function KarsilastirmaTablosu({
         title="KAR / ZARAR ÖZETİ"
         icon={<TrendingUp className="h-4 w-4" />}
         accent="emerald"
+        attached
       >
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <colgroup>
@@ -765,29 +768,7 @@ function KarsilastirmaTablosu({
               <col key={d} style={{ width: COL_WIDTH }} />
             ))}
           </colgroup>
-          <thead>
-            <tr>
-              <th
-                className="border-b border-white/10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-stone-500"
-                style={{ borderRight: '1px solid rgba(184,160,111,0.28)' }}
-              >
-                Açıklama
-              </th>
-              {tersDonemler.map((d, i) => (
-                <th
-                  key={d}
-                  className="border-b border-white/10 px-3 py-1 text-center"
-                  style={{
-                    borderRight:
-                      i < tersDonemler.length - 1 ? '1px solid rgba(184,160,111,0.28)' : 'none',
-                    height: 4,
-                  }}
-                >
-                  {/* Dönem başlığı kaldırıldı — üstteki Dönem Aksiyonları zaten gösteriyor */}
-                </th>
-              ))}
-            </tr>
-          </thead>
+          {/* v1.36.25: thead kaldirildi - boş yeşil çizgi yapıyordu, başlık direkt tablo */}
           <tbody>
             <Row
               label="DÖNEM İÇİ SATIŞLAR"
@@ -870,6 +851,7 @@ function KarsilastirmaTablosu({
           </tbody>
         </table>
       </BlockCard>
+      </div>{/* /space-y-0 — Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok bitti */}
 
       {/* ═══════════════════════════════════════════
           BLOK 2 — STOK HAREKETİ
@@ -1046,11 +1028,13 @@ function BlockCard({
   icon,
   accent,
   children,
+  attached,
 }: {
   title: string;
   icon: React.ReactNode;
   accent: 'emerald' | 'amber' | 'indigo';
   children: React.ReactNode;
+  attached?: boolean; // v1.36.26: üstteki kutuya bitişikse top-rounded ve top-border kaldır
 }) {
   const accentColors: Record<string, { headerBg: string; border: string; text: string; iconBg: string; iconText: string }> = {
     emerald: {
@@ -1078,10 +1062,13 @@ function BlockCard({
   const c = accentColors[accent];
   return (
     <div
-      className="overflow-hidden rounded-xl"
+      className={`overflow-hidden ${attached ? 'rounded-b-xl' : 'rounded-xl'}`}
       style={{
         background: 'rgba(255,255,255,0.02)',
-        border: `1px solid ${c.border}`,
+        borderLeft: `1px solid ${c.border}`,
+        borderRight: `1px solid ${c.border}`,
+        borderBottom: `1px solid ${c.border}`,
+        borderTop: attached ? 'none' : `1px solid ${c.border}`,
       }}
     >
       <div
@@ -1158,8 +1145,8 @@ function Row({
         return (
           <td
             key={i}
-            className={`px-3 py-2 text-right font-mono tabular-nums ${
-              bold ? 'text-[13.5px] font-semibold' : 'text-[13px]'
+            className={`px-3 py-2 text-center font-mono tabular-nums ${
+              bold ? 'text-[15.5px] font-semibold' : 'text-[15px]'
             }`}
             style={{
               borderLeft: '1px solid rgba(184,160,111,0.12)',
@@ -1167,15 +1154,15 @@ function Row({
               color: isEmpty
                 ? 'rgba(250, 250, 249, 0.22)'
                 : 'rgba(250, 250, 249, 0.96)',
-              lineHeight: 1.15,
+              lineHeight: 1.2,
             }}
           >
             {showRatio ? (
-              <div className="flex flex-col items-end" style={{ gap: 1 }}>
+              <div className="flex flex-col items-center" style={{ gap: 2 }}>
                 <span className="tabular-nums">{c}</span>
                 <span
-                  className="text-[9.5px] not-italic font-sans"
-                  style={{ color: rColor!, fontWeight: 500, letterSpacing: '0.02em' }}
+                  className="text-[11px] not-italic font-sans"
+                  style={{ color: rColor!, fontWeight: 600, letterSpacing: '0.02em' }}
                 >
                   {ratios![i]}
                 </span>
