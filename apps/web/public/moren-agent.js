@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.21';
+  const AGENT_VERSION = '1.36.22';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -3211,10 +3211,20 @@
     await sleep(500);
 
     // 9) Hook'lar + override
+    // v1.36.22: Top window'a + tüm frame'lere hook kur (URL.createObjectURL özellikle)
     installXhrHook(frm3win);
     installFetchHook(frm3win);
     installNativeDownloadHook(frm3win);
-    await log(`🔗 frm3 hook'lar kuruldu`);
+    // YENİ: top window ve tüm visible frame'lere de URL.createObjectURL hook
+    try {
+      installNativeDownloadHook(window);
+      installNativeDownloadHook(window.top);
+      const allFrames = [...document.querySelectorAll('frame, iframe')];
+      for (const f of allFrames) {
+        try { if (f.contentWindow) installNativeDownloadHook(f.contentWindow); } catch {}
+      }
+    } catch {}
+    await log(`🔗 Hook'lar kuruldu (frm3 + top + ${document.querySelectorAll('frame,iframe').length} frame)`);
 
     window.__lucaJobOverrides = {
       TARIH_ILK,
@@ -5515,6 +5525,32 @@
       const w = targetWin || window;
       if (!w || w.__morenNativeDlInstalled) return false;
       w.__morenNativeDlInstalled = true;
+
+      // 0) URL.createObjectURL hook — KRİTİK: Luca sıkça blob → ObjectURL → anchor.click() ile indiriyor.
+      //    Blob URL.createObjectURL'ye geçtiği an yakala, bu en güvenilir yol.
+      try {
+        const URLClass = w.URL || URL;
+        const origCreateObjectURL = URLClass.createObjectURL;
+        if (origCreateObjectURL && !URLClass.__morenCreateUrlHooked) {
+          URLClass.__morenCreateUrlHooked = true;
+          URLClass.createObjectURL = function (obj) {
+            try {
+              if (obj instanceof Blob && obj.size > 1000 && window.__lucaJobOverrides) {
+                const ct = obj.type || '';
+                // Excel/xlsx/binary — büyük olasılıkla rapor dosyası
+                const isLikelyReport = obj.size > 5000 || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
+                if (isLikelyReport) {
+                  window.__morenCapturedBlob = obj;
+                  if (Array.isArray(window.__morenLogs)) {
+                    window.__morenLogs.push(`[CREATE-OBJ-URL] ${Math.round(obj.size / 1024)} KB ct=${ct.slice(0, 40)} → BLOB yakalandı`);
+                  }
+                }
+              }
+            } catch (e) {}
+            return origCreateObjectURL.apply(this, arguments);
+          };
+        }
+      } catch (e) {}
 
       // 1) window.open intercept — Luca yeni tab/window ile dosya açabilir
       const origOpen = w.open;
@@ -8267,7 +8303,7 @@
     }).catch(() => {});
     while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
       try {
-        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
+                const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
             try {
@@ -8312,7 +8348,7 @@
       method: 'POST',
       body: JSON.stringify({ agent: 'mihsap', running: false }),
     }).catch(() => {});
-    panel.remove();
+    if (panel) panel.remove();
     delete window.__morenAgent;
   }
   pollLoop();

@@ -769,28 +769,14 @@ function KarsilastirmaTablosu({
               {tersDonemler.map((d, i) => (
                 <th
                   key={d}
-                  className="border-b border-white/10 px-3 py-3 text-center"
+                  className="border-b border-white/10 px-3 py-1 text-center"
                   style={{
                     borderRight:
                       i < tersDonemler.length - 1 ? '1px solid rgba(184,160,111,0.28)' : 'none',
+                    height: 4,
                   }}
                 >
-                  <div
-                    className="text-[15px] font-bold"
-                    style={{
-                      color: GOLD,
-                      fontFamily: 'Fraunces, serif',
-                      letterSpacing: '-0.01em',
-                    }}
-                  >
-                    {yil} · {DONEM_ROMAN[d]}. Dönem
-                  </div>
-                  <div
-                    className="text-[11px] font-medium mt-1"
-                    style={{ color: 'rgba(212,184,118,0.6)', letterSpacing: '0.04em' }}
-                  >
-                    {DONEM_RANGE[d]}
-                  </div>
+                  {/* Dönem başlığı kaldırıldı — üstteki Dönem Aksiyonları zaten gösteriyor */}
                 </th>
               ))}
             </tr>
