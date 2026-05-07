@@ -1072,9 +1072,10 @@ function BlockCard({
       }}
     >
       <div
-        className="flex items-center gap-2 px-4 py-2"
+        className="flex items-center gap-2 px-3 py-1.5"
         style={{
-          background: c.headerBg,
+          // v1.36.26: attached durumda yeşil tint kaldırıldı, sadece çizgi kalır
+          background: attached ? 'transparent' : c.headerBg,
           borderBottom: `1px solid ${c.border}`,
         }}
       >
@@ -1127,7 +1128,7 @@ function Row({
   return (
     <tr className={hl || ''} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td
-        className={`px-3 py-2 ${
+        className={`px-3 py-1.5 ${
           bold ? 'text-[12px] font-semibold text-stone-50 tracking-wide' : 'text-[11.5px] font-medium text-stone-300'
         }`}
         style={{
@@ -1145,8 +1146,8 @@ function Row({
         return (
           <td
             key={i}
-            className={`px-3 py-2 text-center font-mono tabular-nums ${
-              bold ? 'text-[15.5px] font-semibold' : 'text-[15px]'
+            className={`px-3 py-1.5 text-center font-mono tabular-nums ${
+              bold ? 'text-[15px] font-semibold' : 'text-[14px]'
             }`}
             style={{
               borderLeft: '1px solid rgba(184,160,111,0.12)',
@@ -1154,15 +1155,15 @@ function Row({
               color: isEmpty
                 ? 'rgba(250, 250, 249, 0.22)'
                 : 'rgba(250, 250, 249, 0.96)',
-              lineHeight: 1.2,
+              lineHeight: 1.15,
             }}
           >
             {showRatio ? (
-              <div className="flex flex-col items-center" style={{ gap: 2 }}>
-                <span className="tabular-nums">{c}</span>
+              <div className="flex flex-col items-center" style={{ gap: 0 }}>
+                <span className="tabular-nums leading-tight">{c}</span>
                 <span
-                  className="text-[11px] not-italic font-sans"
-                  style={{ color: rColor!, fontWeight: 600, letterSpacing: '0.02em' }}
+                  className="text-[10px] not-italic font-sans"
+                  style={{ color: rColor!, fontWeight: 600, letterSpacing: '0.02em', lineHeight: 1 }}
                 >
                   {ratios![i]}
                 </span>
