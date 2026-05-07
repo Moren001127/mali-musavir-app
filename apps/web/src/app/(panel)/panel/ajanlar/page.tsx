@@ -9,6 +9,7 @@ import {
   Activity, CheckCircle2, Clock, ArrowRight, Sparkles, TrendingUp, AlertCircle, Zap,
   Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
+import AgentControlCard from './_components/AgentControlCard';
 
 // Luca, Tebligat, KDV On-Hazirlik, SGK ajanlari gecici olarak kapatildi
 // (islem yapildikca yeniden acilacak - eski kayitlar git history'de)
@@ -87,6 +88,9 @@ export default function AjanlarDashboard() {
           icon={Clock}
         />
       </div>
+
+      {/* v1.36.34: Auto-Agent extension kontrolü — tek tuş Luca+Mihsap başlatma */}
+      <AgentControlCard />
 
       {/* AI Kullanım Widget'ı */}
       <AiUsageWidget data={aiUsage} />

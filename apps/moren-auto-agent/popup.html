@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Moren Auto Agent</title>
+<style>
+  body { margin: 0; padding: 16px; min-width: 280px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; background: #0c0a09; color: #fafaf9; font-size: 13px; }
+  h1 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: #d4b876; letter-spacing: 0.04em; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid rgba(255,255,255,0.06); }
+  .row:first-of-type { border-top: none; }
+  .label { color: rgba(250,250,249,0.78); }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .badge.ok { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .badge.dead { background: rgba(251,113,133,0.15); color: #fb7185; }
+  .badge.idle { background: rgba(168,162,158,0.15); color: #a8a29e; }
+  button { width: 100%; padding: 10px; background: #d4b876; color: #0c0a09; border: 0; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+  button:hover { background: #c9a85f; }
+  button:active { transform: scale(0.98); }
+  .empty { padding: 14px 0; text-align: center; color: rgba(250,250,249,0.4); font-size: 12px; }
+  .version { font-size: 10.5px; color: rgba(250,250,249,0.4); text-align: center; padding-top: 10px; }
+</style>
+</head>
+<body>
+<h1>Moren Auto Agent</h1>
+<div id="rows"></div>
+<button id="restart">Hepsini Yeniden Başlat</button>
+<div class="version" id="ver"></div>
+<script src="popup.js"></script>
+</body>
+</html>
