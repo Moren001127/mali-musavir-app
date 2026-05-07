@@ -520,10 +520,16 @@ export class IsletmeHesapOzetiService {
     if (ozet.locked) throw new BadRequestException('Kesin kayıt — Luca verisi uygulanamaz');
 
     // Excel parse — gelir, mal alışı, gider, dönem başı stok ayrı ayrı
-    const parsed = this.excelParser.parseIsletmeExcelDetayli(params.buffer);
+    // YENİ: Çeyreğin tarih aralığını parser'a geçir — Luca cumulative dönerse filtrele.
+    const yil = Number(ozet.yil);
+    const cYrl = Number(ozet.donem); // 1=Q1(Oca-Mar), 2=Q2(Nis-Haz), 3=Q3(Tem-Eyl), 4=Q4(Eki-Ara)
+    const startMonth = (cYrl - 1) * 3; // 0,3,6,9
+    const start = new Date(yil, startMonth, 1);
+    const end = new Date(yil, startMonth + 3, 0); // ay sonu (sonraki ayın 0'ı)
+    const parsed = this.excelParser.parseIsletmeExcelDetayli(params.buffer, { start, end });
 
     this.logger.log(
-      `İHÖ Luca uygulanıyor (id=${params.ihoId}): ` +
+      `İHÖ Luca uygulanıyor (id=${params.ihoId}, Q${cYrl} ${yil} ${start.toISOString().slice(0,10)}..${end.toISOString().slice(0,10)}): ` +
         `satışlar=${parsed.gelirToplam}, mal=${parsed.malAlisToplam}, ` +
         `gider=${parsed.giderToplam}, donemBasiStok=${parsed.donemBasiStok}`,
     );
@@ -541,6 +547,13 @@ export class IsletmeHesapOzetiService {
     if (parsed.donemBasiStok > 0) {
       updatePayload.donemBasiStok = parsed.donemBasiStok;
     }
+    // KULLANICI İSTEĞİ: Satılan Malın Maliyeti (SMM) MANUEL girilmeli, Luca'dan gelen
+    // veride otomatik hesaplanmasın. Bunun için kalanStok = toplamStok set ediyoruz
+    // → SMM = toplamStok - kalanStok = 0 → kullanıcı boş görüp elle yazsın.
+    // donemBasiStok yeni değer mi mevcut mu, ona göre toplamStok hesapla:
+    const dbsForCalc = parsed.donemBasiStok > 0 ? parsed.donemBasiStok : Number(ozet.donemBasiStok || 0);
+    const toplamStokYeni = (dbsForCalc + parsed.malAlisToplam);
+    updatePayload.kalanStok = toplamStokYeni; // → SMM = 0 (manuel girilecek)
     return this.updateManuel(updatePayload);
   }
 

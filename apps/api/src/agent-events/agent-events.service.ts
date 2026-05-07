@@ -857,6 +857,10 @@ Fatura görüntüsünden şu alanları da çıkarıp JSON'a ekle (okunamazsa nul
 • cari: fatura üzerindeki karşı tarafın tam ünvanı
 • belgeTuru: "E_FATURA" | "E_ARSIV" | "FIS" | "IRSALIYE" (görüntüden tespit ettiğin)
 • kdvOrani: "0" | "1" | "10" | "20" (ana KDV oranı, birden fazla varsa dominant olan)
+• ocrToplam: faturadaki TOPLAM (ödenecek/genel toplam) tutarı, sayı olarak (örn: 3316.00). Para birimi/TL/virgül olmadan.
+• ocrMatrah: faturadaki MATRAH (KDV hariç toplam) tutarı, sayı olarak. Birden fazla matrah varsa AYNI orandakileri topla.
+• ocrKdvTutari: faturadaki TOPLAM KDV tutarı, sayı olarak.
+NOT: Bu üç değer ÇOK ÖNEMLİ — Mihsap'a giriş hatası kontrolü için kullanılacak. Görüntüden tam okunmuyorsa null dön, asla tahmin etme.
 
 Sadece JSON döndür: {
   "karar": "onay|atla|onay_bekliyor|emin_degil",
@@ -867,7 +871,10 @@ Sadece JSON döndür: {
   "belgeNo": "TEE2026000000384" | null,
   "cari": "Karşı Firma Tam Ünvanı" | null,
   "belgeTuru": "E_FATURA|E_ARSIV|FIS|IRSALIYE" | null,
-  "kdvOrani": "20" | null${
+  "kdvOrani": "20" | null,
+  "ocrToplam": 3316.00 | null,
+  "ocrMatrah": 2763.33 | null,
+  "ocrKdvTutari": 552.67 | null${
     input.action === 'isle_satis' && input.bosAlanSecenekleri
       ? `,
   "onerilenler": {

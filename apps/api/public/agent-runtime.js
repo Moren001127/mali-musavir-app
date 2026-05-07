@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.20';
+  const AGENT_VERSION = '1.36.21';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5210,38 +5210,77 @@
   }
 
   // === UI ===
-  const panel = document.createElement('div');
-  panel.id = 'moren-agent-panel';
-  panel.style.cssText =
-    'position:fixed;top:70px;right:8px;z-index:2147483647;background:rgba(15,13,11,.92);color:#fafaf9;font:12px/1.3 -apple-system,sans-serif;border-radius:8px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:200px;border:1px solid #b8a06f;cursor:move;user-select:none';
-  panel.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <div style="width:8px;height:8px;border-radius:50%;background:#10b981;animation:pulse 1.5s infinite"></div>
-      <b style="color:#b8a06f;letter-spacing:.08em;font-size:11px;text-transform:uppercase">MOREN AGENT</b>
-      <button id="ma-stop" style="margin-left:auto;background:rgba(239,68,68,.2);color:#ef4444;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">DUR</button>
-    </div>
-    <div id="ma-status" style="color:rgba(250,250,249,.7);font-size:12px">Bekleniyor…</div>
-    <div id="ma-count" style="margin-top:6px;font-size:11px;color:rgba(250,250,249,.5)"></div>`;
-  document.body.appendChild(panel);
-  const style = document.createElement('style');
-  style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
-  document.head.appendChild(style);
-  const $status = panel.querySelector('#ma-status');
-  const $count = panel.querySelector('#ma-count');
+  // v1.36.21: SADECE TOP frame'de panel olustur (Luca FRAMESET'inde 11 frame'de
+  // ayrı ayrı panel yaratiyordu — kullanici 2+ panel goruyordu).
+  // Counter'lar her zaman hazir (frame'lerden cagrilir), panel sadece top'ta.
   const counters = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0 };
-  const setStatus = (s) => ($status.textContent = s);
-  const setCount = () => ($count.textContent = `✓${counters.onay} ⏭${counters.atla} ⏩${counters.demirbas} ⚠${counters.hata}`);
-  document.getElementById('ma-stop').onclick = () => {
-    window.__morenAgent.stopRequested = true;
-    setStatus('Durduruluyor…');
-  };
-  // Sürükle-bırak
-  (function(){
-    let dx=0,dy=0,dragging=false;
-    panel.addEventListener('mousedown',(e)=>{if(e.target.tagName==='BUTTON')return;dragging=true;const r=panel.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;e.preventDefault();});
-    document.addEventListener('mousemove',(e)=>{if(!dragging)return;panel.style.left=(e.clientX-dx)+'px';panel.style.top=(e.clientY-dy)+'px';panel.style.right='auto';panel.style.bottom='auto';});
-    document.addEventListener('mouseup',()=>{dragging=false;});
-  })();
+  let panel = null;
+  let $status = null;
+  let $count = null;
+  let setStatus = (_s) => {};
+  let setCount = () => {};
+
+  if (window === window.top) {
+    // Pozisyon kalici: localStorage'da sakla, default sag alt kose
+    const POS_KEY = 'moren_agent_panel_pos';
+    let savedPos = null;
+    try { savedPos = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); } catch {}
+
+    panel = document.createElement('div');
+    panel.id = 'moren-agent-panel';
+    // Default pozisyon: sag alt kose (right:8px;bottom:8px)
+    // Kayitli pozisyon varsa onu kullan
+    const posStyle = savedPos && typeof savedPos.left === 'number'
+      ? `left:${savedPos.left}px;top:${savedPos.top}px;`
+      : 'right:8px;bottom:8px;';
+    panel.style.cssText =
+      `position:fixed;${posStyle}z-index:2147483647;background:rgba(15,13,11,.92);color:#fafaf9;font:12px/1.3 -apple-system,sans-serif;border-radius:8px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:220px;border:1px solid #b8a06f;cursor:move;user-select:none`;
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div style="width:8px;height:8px;border-radius:50%;background:#10b981;animation:pulse 1.5s infinite"></div>
+        <b style="color:#b8a06f;letter-spacing:.08em;font-size:11px;text-transform:uppercase">MOREN AGENT</b>
+        <button id="ma-stop" style="margin-left:auto;background:rgba(239,68,68,.2);color:#ef4444;border:none;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">DUR</button>
+      </div>
+      <div id="ma-status" style="color:rgba(250,250,249,.7);font-size:12px">Bekleniyor…</div>
+      <div id="ma-count" style="margin-top:6px;font-size:11px;color:rgba(250,250,249,.5)"></div>`;
+    document.body.appendChild(panel);
+    const style = document.createElement('style');
+    style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
+    document.head.appendChild(style);
+    $status = panel.querySelector('#ma-status');
+    $count = panel.querySelector('#ma-count');
+    setStatus = (s) => { if ($status) $status.textContent = s; };
+    setCount = () => { if ($count) $count.textContent = `✓${counters.onay} ⏭${counters.atla} ⏩${counters.demirbas} ⚠${counters.hata}`; };
+    document.getElementById('ma-stop').onclick = () => {
+      window.__morenAgent.stopRequested = true;
+      setStatus('Durduruluyor…');
+    };
+    // Sürükle-bırak + pozisyonu localStorage'a yaz
+    (function(){
+      let dx=0,dy=0,dragging=false;
+      panel.addEventListener('mousedown',(e)=>{if(e.target.tagName==='BUTTON')return;dragging=true;const r=panel.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;e.preventDefault();});
+      document.addEventListener('mousemove',(e)=>{
+        if(!dragging)return;
+        const left = e.clientX-dx;
+        const top = e.clientY-dy;
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+      });
+      document.addEventListener('mouseup',()=>{
+        if (dragging) {
+          dragging = false;
+          // Pozisyonu kaydet
+          try {
+            const r = panel.getBoundingClientRect();
+            localStorage.setItem(POS_KEY, JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top) }));
+          } catch {}
+        }
+      });
+    })();
+  }
+  // Frame'lerden cagrilirsa setStatus/setCount sessizce calistir (no-op)
 
   // === HELPERS ===
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

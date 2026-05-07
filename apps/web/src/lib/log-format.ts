@@ -188,11 +188,54 @@ export function buildFieldRows(event: {
   }
 
   // 5-6) Matrah / KDV — boş alan + öneri durumuna göre
+  // YENİ (v1.36.21): Matrah/KDV satırlarında hesaplanan TUTAR + oran + kod birlikte gösterilir.
+  //   Matrah: "2.763,33 TL · 153.01.020-%20 TİCARİ MAL ALIŞLARI"
+  //   KDV   : "552,67 TL · %20 · [kod varsa]"
+  const fmtTL = (n: number) =>
+    `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
+
+  // event.tutar = toplam (KDV dahil), event.kdv = oran string ("%20" / "20" / "0.20")
+  const toplamNum = Number(event.tutar);
+  const kdvRateStr = String(event.kdv || '').replace('%', '').replace(',', '.').trim();
+  const kdvRateNum = Number(kdvRateStr);
+  // Oran 0-100 ise yüzde, 0-1 ise oran olarak gelmiş olabilir
+  const kdvOran =
+    Number.isFinite(kdvRateNum) && kdvRateNum > 0
+      ? (kdvRateNum > 1 ? kdvRateNum / 100 : kdvRateNum)
+      : null;
+
+  let matrahTutar: number | null = null;
+  let kdvTutar: number | null = null;
+  if (Number.isFinite(toplamNum) && toplamNum > 0 && kdvOran !== null) {
+    matrahTutar = toplamNum / (1 + kdvOran);
+    kdvTutar = toplamNum - matrahTutar;
+  }
+
   const checkField = (label: 'Matrah' | 'KDV', existingValue?: string) => {
     const isBos = parsed.bosAlanlar.some((b) => b.toLowerCase() === label.toLowerCase());
     const oneri = parsed.oneriler[label];
+
+    // Tutar bilgisi (Matrah ve KDV için ayrı hesaplanmış)
+    const tutar = label === 'Matrah' ? matrahTutar : kdvTutar;
+    const tutarStr = tutar !== null ? fmtTL(tutar) : null;
+
+    // Display value oluştur — tutar + asıl içerik (kod / oran)
+    const buildValue = (raw: string) => {
+      if (!tutarStr) return raw;
+      // KDV için oran zaten raw'da yazıyor olabilir (%20 gibi); değilse ekle
+      if (label === 'KDV' && kdvOran !== null) {
+        const oranStr = `%${(kdvOran * 100).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
+        // raw oran ile aynıysa duplicate'i sil
+        if (raw.includes(oranStr) || raw === oranStr) {
+          return `${tutarStr} · ${raw}`;
+        }
+        return `${tutarStr} · ${oranStr}${raw && raw !== '—' ? ' · ' + raw : ''}`;
+      }
+      return `${tutarStr} · ${raw}`;
+    };
+
     if (!isBos && existingValue) {
-      rows.push({ label, status: 'full', value: existingValue });
+      rows.push({ label, status: 'full', value: buildValue(existingValue) });
       return;
     }
     if (isBos && oneri) {
@@ -205,17 +248,20 @@ export function buildFieldRows(event: {
       rows.push({
         label,
         status: yok ? 'missing' : 'empty-with-suggestion',
-        value: yok ? 'öneri yok' : oneri.kod,
+        value: yok ? 'öneri yok' : buildValue(oneri.kod),
         meta,
       });
       return;
     }
     if (isBos) {
-      rows.push({ label, status: 'missing', value: 'boş' });
+      // Tutar varsa onu bile göster ("552,67 TL · boş"), yoksa "boş"
+      rows.push({ label, status: 'missing', value: tutarStr ? `${tutarStr} · boş` : 'boş' });
       return;
     }
     if (existingValue) {
-      rows.push({ label, status: 'full', value: existingValue });
+      rows.push({ label, status: 'full', value: buildValue(existingValue) });
+    } else if (tutarStr) {
+      rows.push({ label, status: 'full', value: tutarStr });
     } else {
       rows.push({ label, status: 'missing', value: '—' });
     }

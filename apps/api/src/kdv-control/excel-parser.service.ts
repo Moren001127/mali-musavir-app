@@ -537,7 +537,7 @@ export class ExcelParserService {
    *       malAlisToplam = "Alınan Emtia" matrah toplamı
    *       giderToplam   = "Gider" matrah toplamı
    */
-  parseIsletmeExcelDetayli(buffer: Buffer): {
+  parseIsletmeExcelDetayli(buffer: Buffer, dateRange?: { start: Date; end: Date }): {
     gelirToplam: number;
     malAlisToplam: number;
     giderToplam: number;
@@ -593,6 +593,32 @@ export class ExcelParserService {
     let gelirSatirAdet = 0;
     let giderSatirAdet = 0;
 
+    // YENİ: Tarih aralığı filtresi — Luca bazen tüm tarihleri döner,
+    // donem dışındaki satırları filtrele.
+    const isInDateRange = (raw: any): boolean => {
+      if (!dateRange) return true; // filtre yoksa hepsini al
+      if (!raw) return false; // tarihsiz satır şüpheli, atla
+      // Luca format: DD.MM.YYYY veya DD/MM/YYYY veya Date objesi
+      let d: Date | null = null;
+      if (raw instanceof Date) {
+        d = raw;
+      } else {
+        const s = String(raw).trim();
+        const m = s.match(/^(\d{1,2})[./\-](\d{1,2})[./\-](\d{4})/);
+        if (m) {
+          d = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+        } else {
+          // ISO format YYYY-MM-DD
+          const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (m2) {
+            d = new Date(parseInt(m2[1], 10), parseInt(m2[2], 10) - 1, parseInt(m2[3], 10));
+          }
+        }
+      }
+      if (!d || isNaN(d.getTime())) return false;
+      return d >= dateRange.start && d <= dateRange.end;
+    };
+
     if (headers.length === 0) {
       this.logger.warn('İHÖ Detaylı: Excel\'de hiç KDV header satırı bulunamadı');
       return { gelirToplam, malAlisToplam, giderToplam, donemBasiStok: 0, gelirSatirAdet, giderSatirAdet };
@@ -619,6 +645,9 @@ export class ExcelParserService {
         const ilkHucre = norm(row[0]);
         if (!tarihRaw && !ilkHucre) continue;
         if (ilkHucre.includes('toplam') || ilkHucre.includes('genel')) continue;
+
+        // YENİ: Tarih aralığı dışındaki satırları atla (Luca tüm tarihleri dönerse)
+        if (dateRange && !isInDateRange(tarihRaw)) continue;
 
         const gelirVal = gelirCol >= 0 ? this.toDecimal(row[gelirCol]) : 0;
         const satilanVal = satilanCol >= 0 ? this.toDecimal(row[satilanCol]) : 0;
@@ -660,6 +689,7 @@ export class ExcelParserService {
 
         // DÖNEM BAŞI STOK satırı — Alınan Emtia değeri donemBasiStok'a yazılır,
         // Satın Alınan Mal Bedeli (malAlis) toplamına EKLENMEZ.
+        // Bu satır TARİH FİLTRESİNDEN MUAF (donem başı genelde periyot dışı tarihli olabilir)
         const isDonemBasi =
           aciklamaText.includes('donem basi stok') ||
           aciklamaText.includes('dönem başı stok');
@@ -668,6 +698,9 @@ export class ExcelParserService {
           donemBasiStok += alinanVal || 0;
           continue;
         }
+
+        // YENİ: Tarih aralığı dışındaki satırları atla (Luca tüm tarihleri dönerse)
+        if (dateRange && !isInDateRange(tarihRaw)) continue;
 
         if ((giderVal || 0) > 0 || (alinanVal || 0) > 0) {
           giderToplam += giderVal || 0;
