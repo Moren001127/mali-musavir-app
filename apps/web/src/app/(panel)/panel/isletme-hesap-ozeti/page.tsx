@@ -116,19 +116,20 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full rounded-md px-2.5 py-1.5 text-right text-sm tabular-nums transition-colors focus:outline-none"
+      className="num-input w-full px-2 py-1 text-right text-sm font-mono tabular-nums transition-all focus:outline-none"
       style={{
-        background: disabled ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        color: disabled ? 'rgba(168, 162, 158, 0.7)' : 'rgba(245, 245, 244, 0.95)',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: focused ? '1px solid rgba(184,160,111,0.6)' : '1px solid transparent',
+        color: disabled ? 'rgba(168, 162, 158, 0.45)' : 'rgba(245, 245, 244, 0.95)',
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
       }}
       onMouseEnter={(e) => {
-        if (!disabled) (e.currentTarget as HTMLInputElement).style.background = 'rgba(255,255,255,0.07)';
+        if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid rgba(184,160,111,0.25)';
       }}
       onMouseLeave={(e) => {
-        if (!disabled) (e.currentTarget as HTMLInputElement).style.background = 'rgba(255,255,255,0.04)';
+        if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid transparent';
       }}
     />
   );
@@ -1131,40 +1132,38 @@ function Row({
   };
 
   return (
-    <tr className={hl || ''}>
+    <tr className={hl || ''} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td
-        className={`border-b border-white/5 px-4 py-2.5 text-[12.5px] ${
-          bold ? 'font-bold text-stone-50 tracking-wide' : 'font-medium text-stone-200'
+        className={`px-4 py-2.5 ${
+          bold ? 'text-[13px] font-semibold text-stone-50 tracking-wide' : 'text-[12.5px] font-medium text-stone-200'
         }`}
         style={{
-          borderRight: '1px solid rgba(184,160,111,0.18)',
           letterSpacing: bold ? '0.02em' : 'normal',
         }}
       >
         {label}
-        {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
+        {hint && <span className="ml-2 text-[10.5px] font-normal text-stone-500">{hint}</span>}
       </td>
       {cols.map((c, i) => {
         const rs = ratios && ratios[i] ? ratioStyle(ratios[i]) : null;
         return (
           <td
             key={i}
-            className={`border-b border-white/5 px-3 py-2.5 text-right tabular-nums text-stone-100 ${
-              bold ? 'font-semibold text-base' : 'text-sm'
+            className={`px-3 py-2.5 text-right font-mono tabular-nums text-stone-100 ${
+              bold ? 'text-[15px] font-semibold' : 'text-[14px]'
             } ${calc && !raw ? 'italic text-stone-200' : ''}`}
             style={{
-              borderRight: i < cols.length - 1 ? '1px solid rgba(184,160,111,0.18)' : 'none',
+              borderLeft: '1px solid rgba(184,160,111,0.12)',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
             <div className="flex items-center justify-end gap-2">
               {rs && ratios![i] !== '—' && (
                 <span
-                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold not-italic shrink-0"
+                  className="rounded-md px-1.5 py-0.5 text-[10px] font-semibold not-italic shrink-0 font-sans"
                   style={{
                     background: rs.bg,
                     color: rs.color,
-                    border: `1px solid ${rs.border}`,
                   }}
                 >
                   {ratios![i]}
