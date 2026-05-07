@@ -65,6 +65,7 @@ import { HgsCron } from './schedule/hgs.cron';
     CariKasaModule,
     IsletmeHesapOzetiModule,
     BankaTakipModule,
+    SystemHealthModule,
   ],
   providers: [ReminderCron, HgsCron],
 })
