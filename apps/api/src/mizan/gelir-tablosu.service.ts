@@ -538,4 +538,14 @@ export class GelirTablosuService {
       ['', 'I. OLAĞANDIŞI GELİR VE KARLAR', Number(gt.olaganDisiGelir), ''],
       ['', 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', Number(gt.olaganDisiGider), ''],
       ['', 'DÖNEM KARI VEYA ZARARI', Number(gt.donemKari), pct(Number(gt.donemKari))],
-      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.
+      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.vergiKarsiligi), ''],
+      ['', 'DÖNEM NET KARI VEYA ZARARI', Number(gt.donemNetKari), pct(Number(gt.donemNetKari))],
+    ];
+
+    const ws = xlsx.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 8 }, { wch: 52 }, { wch: 18 }, { wch: 10 }];
+    const wb = xlsx.utils.book_new();
+    xlsx.utils.book_append_sheet(wb, ws, 'Gelir Tablosu');
+    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+}
