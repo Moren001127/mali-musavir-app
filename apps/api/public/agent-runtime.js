@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.9';
+  const AGENT_VERSION = '1.36.10';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -129,6 +129,58 @@
   // Backend'den bekleyen job'ları çeker ve Luca sayfasında Excel
   // indirme butonuna tıklayarak muavin dosyasını yakalar, backend'e
   // geri yükler.
+  // Agent yüklendiğinde resume kontrolü — reload öncesi yarım kalan IHO job varsa
+  // direkt menü navigasyonundan devam et
+  async function checkIhoResume() {
+    try {
+      if (!isLucaOrigin()) return;
+      const raw = localStorage.getItem(IHO_RESUME_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      // 5 dakikadan eski state'leri yoksay (kullanıcı manuel temizlememişse)
+      if (!saved.__savedAt || Date.now() - saved.__savedAt > 5 * 60 * 1000) {
+        localStorage.removeItem(IHO_RESUME_KEY);
+        return;
+      }
+      console.log('[Moren İHÖ] Resume tespit edildi — menüden devam ediliyor:', saved.id?.slice(-6));
+      window.__currentLucaJobId = saved.id;
+      window.__lucaJobRunning = true;
+      try {
+        const blob = await fetchLucaGelirGiderListesi(saved);
+        if (blob) {
+          // Excel'i upload et
+          const fd = new FormData();
+          fd.append('file', blob, `luca-IHO_FETCH-resume-${saved.donem}.xlsx`);
+          const params = new URLSearchParams({ ihoId: saved.sessionId, jobId: saved.id });
+          await fetch(`${API}/agent/luca/runner/upload-iho?${params}`, {
+            method: 'POST',
+            headers: { 'X-Agent-Token': TOKEN },
+            body: fd,
+          });
+          await fetch(`${API}/agent/luca/jobs/${saved.id}/done`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ recordCount: 0 }),
+          }).catch(() => {});
+          console.log('[Moren İHÖ] ✓ Resume tamamlandı');
+        }
+      } catch (e) {
+        console.warn('[Moren İHÖ] Resume hata:', e?.message);
+        await fetch(`${API}/agent/luca/jobs/${saved.id}/fail`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+          body: JSON.stringify({ error: 'Resume: ' + (e?.message || 'bilinmeyen') }),
+        }).catch(() => {});
+        try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
+      } finally {
+        window.__lucaJobRunning = false;
+        window.__currentLucaJobId = null;
+      }
+    } catch (e) { console.warn('[Moren] checkIhoResume hata:', e?.message); }
+  }
+  // İlk yüklemede 2sn sonra resume kontrolü çalıştır (sayfa stabilize olsun)
+  setTimeout(() => { checkIhoResume(); }, 2000);
+
   async function processLucaJobs() {
     // Luca polling — her 15sn'de bir backend'den bekleyen IHO_FETCH veya
     // KDV Kontrol job'larini ceker, agent Luca sayfasinda ise calisir.
@@ -403,12 +455,18 @@
    *   3) input[name=tarih_ilk/son] (DD/MM/YYYY) + #report_type=XLSX
    *   4) button.green-btn "Rapor" → window.open intercept → Excel
    */
+  // Reload sonrası devam: agent yüklendiğinde localStorage'da bekleyen IHO job varsa
+  // onu menü navigasyonundan başlat (firma seçim atla)
+  const IHO_RESUME_KEY = '__morenIhoJobResume';
+
   async function fetchLucaGelirGiderListesi(job) {
     const log = (msg) => {
       if (window.__currentLucaJobId && window.__lucaJobLog) {
         window.__lucaJobLog(window.__currentLucaJobId, msg);
       } else { console.log('[Moren İHÖ]', msg); }
     };
+    // Eğer bu çağrı resume ise (job.__resumeStep set), ilgili adımdan başla
+    const resumeStep = job.__resumeStep || 'firma';
     const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
     const allDocs = () => {
       const docs = [document];
@@ -418,9 +476,12 @@
       return docs;
     };
 
-    // 1) Firma seç
+    // 1) Firma seç (resume modda atla — zaten reload öncesi yapılmıştı)
+    if (resumeStep === 'menu') {
+      log('▶ Resume: firma seçim atlandı, doğrudan menüye gidiliyor');
+    }
     const metaMatch = String(job.errorMsg || '').match(/mukellefAdi=([^,]+)/);
-    const mukellefAdi = metaMatch ? metaMatch[1].trim() : '';
+    const mukellefAdi = resumeStep === 'menu' ? '' : (metaMatch ? metaMatch[1].trim() : '');
     if (mukellefAdi) {
       log('Firma seçiliyor: ' + mukellefAdi);
       let sirketCombo = null;
@@ -441,7 +502,22 @@
             tamamBtn = btns.find((b) => /^tamam$/i.test((b.textContent || b.value || '').trim()));
             if (tamamBtn) break;
           }
-          if (tamamBtn) { tamamBtn.click(); log('✓ Tamam tıklandı'); await sleep(2500); }
+          if (tamamBtn) {
+            // Tamam butonu sayfa reload tetikleyebilir — reload sonrası devam edebilmek
+            // için job state'i localStorage'a kaydet. Yeni agent yüklendiğinde okur.
+            try {
+              localStorage.setItem(IHO_RESUME_KEY, JSON.stringify({
+                ...job,
+                __resumeStep: 'menu',
+                __savedAt: Date.now(),
+              }));
+            } catch {}
+            tamamBtn.click();
+            log('✓ Tamam tıklandı (reload bekleniyor — yeni script devam edecek)');
+            await sleep(4000); // Reload tamamlanmasını bekle (4sn)
+            // Buraya geldiysek reload OLMADI; localStorage temizle, normal akışa devam
+            try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
+          }
         } else { log('⚠ Firma SirketCombo\'da yok: ' + mukellefAdi); }
       }
     }
@@ -533,6 +609,7 @@
     log('✓ Luca yanıtı: ' + (blob.size/1024).toFixed(1) + ' KB');
     if (blob.size < 500) throw new Error('Bos yanit');
     if (blob.type.includes('html')) throw new Error('HTML dondu');
+    try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
     return blob;
   }
 
