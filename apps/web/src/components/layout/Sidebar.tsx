@@ -8,7 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet, Megaphone, Archive, Landmark} from 'lucide-react';
+  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
@@ -98,8 +98,9 @@ const navGroups = [
     color: COPPER,
     icon: Settings,
     items: [
-      { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: ShieldCheck },
-      { href: '/panel/ayarlar',         label: 'Ayarlar',         icon: Settings },
+      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: Lock },
+      { href: '/panel/ayarlar/denetim',         label: 'Denetim Günlüğü', icon: ShieldCheck },
+      { href: '/panel/ayarlar',                 label: 'Ayarlar',         icon: Settings },
     ],
   },
 ];
