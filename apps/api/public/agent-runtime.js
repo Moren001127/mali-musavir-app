@@ -3,12 +3,32 @@
      javascript:(function(){if(window.__morenAgent)return alert('Moren Agent zaten açık');var s=document.createElement('script');s.src='https://portal.morenmusavirlik.com/moren-agent.js?v='+Date.now();document.head.appendChild(s);})();
 */
 (function () {
-  if (window.__morenAgent) {
-    console.log('[Moren] zaten çalışıyor');
-    return;
-  }
-  window.__morenAgent = { running: true, stopRequested: false };
+  // Agent versiyon — UI'da gösterilir, debug için kritik
+  const AGENT_VERSION = '1.36.5';
 
+  // === VERSION-AWARE RELOAD ===
+  // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
+  // yeniden başlat. Eski script'in setInterval'ları cleanup edilemez (ID yok),
+  // ama yeni script aynı window'da paralel çalışır — bu kabul edilebilir çünkü
+  // tüm flag'ler (lastSynced*, seenFids) yeni instance'a ait olur.
+  if (window.__morenAgent) {
+    const oldVersion = window.__morenAgent.version || '?';
+    if (oldVersion === AGENT_VERSION) {
+      console.log(`[Moren] v${AGENT_VERSION} zaten çalışıyor`);
+      return;
+    }
+    console.warn(`[Moren] Eski sürüm (v${oldVersion}) tespit edildi, v${AGENT_VERSION}'e yükseltiliyor...`);
+    try { window.__morenAgent.stopRequested = true; } catch {}
+    try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
+    delete window.__morenAgent;
+  }
+  window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION };
+
+  // Loud console banner — kullanıcı F12 açtığında hangi sürümün yüklü olduğunu net görsün
+  console.log(
+    `%c🟢 Moren Agent yüklendi · v${AGENT_VERSION}`,
+    'background:#22c55e;color:#0f0d0b;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:13px',
+  );
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
   if (!TOKEN) {
@@ -100,320 +120,112 @@
       console.warn('[Moren] Luca sync hata:', e?.message);
     }
   }
-  syncLucaSession();
-  setInterval(syncLucaSession, 60000);
+  // Luca token sync de kapatildi — modul devre disi.
+  // Modul tekrar acildiginda bu iki satiri yeniden aktive et:
+  // syncLucaSession();
+  // setInterval(syncLucaSession, 60000);
 
   // === LUCA MUAVİN İŞ İŞLEYİCİSİ ===
   // Backend'den bekleyen job'ları çeker ve Luca sayfasında Excel
   // indirme butonuna tıklayarak muavin dosyasını yakalar, backend'e
   // geri yükler.
   async function processLucaJobs() {
+    // Luca modülü gecici olarak kapatıldı (kullanici istegi).
+    // Polling devam edip backend'den bekleyen Luca işlerini almasin diye
+    // burada erken çıkıyoruz. Modül tekrar açıldığında bu satırı kaldır.
+    return;
     try {
       if (!isLucaOrigin()) return;
-      // SADECE klasik Luca tab'ında job CLAIM ET. Diğer Luca sayfalarında
-      // (www.luca.com.tr landing, agiris.luca LUCASSO v2.1) job alma →
-      // klasik Luca sekmesine bırak.
-      const isClassicLuca = location.hostname === 'auygs.luca.com.tr'
-        && location.pathname.startsWith('/Luca/');
-      if (!isClassicLuca) {
-        return;
-      }
-      // Sadece TOP frame'de poll yap — Luca FRAMESET olduğu için her frame'de
-      // agent çalışıyor (manifest all_frames:true). Job poll/işleme tek elden,
-      // yani üst pencerede yürür. İçerik frame'lerinde agent sadece DOM yardımcı
-      // (frame-aware Excel button arama vs.).
-      if (window !== window.top) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
+      // 403 "cooldown" — token/deploy sorunu varsa polling'i yavaşlat
+      if (window.__lucaAuthFailUntil && Date.now() < window.__lucaAuthFailUntil) return;
 
       const r = await fetch(API + '/agent/luca/jobs/pending', {
         headers: { 'X-Agent-Token': TOKEN },
       });
+      if (r.status === 401 || r.status === 403) {
+        // 2 dakika cooldown; kullanıcı token'ı düzelttiğinde manuel reload yapar
+        window.__lucaAuthFailUntil = Date.now() + 2 * 60 * 1000;
+        console.warn('[Moren] Luca agent ' + r.status + ' — token kabul edilmiyor, 2 dk beklenecek');
+        return;
+      }
       if (!r.ok) return;
       const jobs = await r.json();
       if (!Array.isArray(jobs) || jobs.length === 0) return;
 
       window.__lucaJobRunning = true;
+      // Progress log helper — agent her adımda Mizan sayfasına bildirir
+      const jobLog = async (jobId, msg) => {
+        try {
+          await fetch(API + `/agent/luca/jobs/${jobId}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ msg }),
+          });
+        } catch {}
+        console.log('[Moren Job ' + jobId.slice(-6) + ']', msg);
+      };
+      window.__lucaJobLog = jobLog;
       for (const job of jobs) {
         try {
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
-
-          // ─── EARLY-LOG HELPER ─── /start öncesinde de portal'a log gönder.
-          // Job pending durumdayken errorMsg field'ına yazılır → portal canlı görür.
-          // Bu sayede firma değişimi gibi /start öncesi aşamalar da kullanıcıya görünür.
-          const earlyLog = async (line) => {
-            try {
-              await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                body: JSON.stringify({ msg: line, line }),
-              });
-            } catch {}
-          };
-
-          // ─── ERKEN FİRMA KONTROLÜ (Luca'dan veri çeken tüm job'lar için) ───
-          // /start çağrılmadan ÖNCE Luca'da doğru firma seçili mi kontrol et.
-          // Yanlışsa firma değiştir → sayfa yenilenir → bu agent ölür →
-          // job pending'de kaldığı için yeni agent aynı job'u tekrar yakalar.
-          // Kapsam: e-arşiv + e-fatura + mizan + kdv kontrol + tüm Luca veri çekmeleri
-          const isLucaDataJob = [
-            'EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS',
-            'MIZAN','KDV_KONTROL','KDV1','KDV2','MUAVIN','ISLETME','GELIR_TABLOSU','BILANCO'
-          ].includes(job.tip);
-          if (isLucaDataJob) {
-            await earlyLog(`🔍 Sıra geldi — Luca firma kontrolü yapılıyor`);
-            let mukellefAdiEarly = '';
-            try {
-              const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
-              if (m) mukellefAdiEarly = m[1].trim();
-            } catch {}
-            if (mukellefAdiEarly) {
-              const frm4Early = getLucaFrame('frm4');
-              if (frm4Early && frm4Early.contentDocument) {
-                const scEarly = frm4Early.contentDocument.getElementById('SirketCombo');
-                if (scEarly) {
-                  const targetEarly = mukellefAdiEarly.toLocaleUpperCase('tr-TR').slice(0, 10).trim();
-                  let bulunduEarly = null;
-                  for (const opt of scEarly.options) {
-                    const t = (opt.text || '').toLocaleUpperCase('tr-TR').trim();
-                    if (t === targetEarly || t.startsWith(targetEarly.slice(0, Math.min(targetEarly.length, 8)))) {
-                      bulunduEarly = opt;
-                      break;
-                    }
-                  }
-                  if (bulunduEarly && scEarly.value !== bulunduEarly.value) {
-                    const mevcutEarly = scEarly.options[scEarly.selectedIndex]?.text?.trim() || '(yok)';
-                    console.log(`[Moren] 🔄 Firma değiştiriliyor: "${mevcutEarly}" → "${bulunduEarly.text}" (job pending kalacak, reload sonrası devam)`);
-                    setStatus(`Firma değiştiriliyor: ${bulunduEarly.text}`);
-                    await earlyLog(`🔄 Firma değiştiriliyor: "${mevcutEarly}" → "${bulunduEarly.text}" — sayfa yenilenecek`);
-                    const overrideOnWin = (w) => {
-                      try { w.confirm = () => true; } catch {}
-                      try { w.alert = () => undefined; } catch {}
-                      try { w.prompt = () => ''; } catch {}
-                    };
-                    try { overrideOnWin(window); } catch {}
-                    try { overrideOnWin(window.top); } catch {}
-                    try { overrideOnWin(frm4Early.contentWindow); } catch {}
-                    ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
-                      try {
-                        const fr = getLucaFrame(name);
-                        if (fr && fr.contentWindow) overrideOnWin(fr.contentWindow);
-                      } catch {}
-                    });
-                    scEarly.value = bulunduEarly.value;
-                    scEarly.dispatchEvent(new Event('input', { bubbles: true }));
-                    scEarly.dispatchEvent(new Event('change', { bubbles: true }));
-                    const onChangeAttrEarly = scEarly.getAttribute('onchange');
-                    if (onChangeAttrEarly) {
-                      try {
-                        new frm4Early.contentWindow.Function('event', onChangeAttrEarly).call(scEarly, new frm4Early.contentWindow.Event('change'));
-                      } catch {}
-                    }
-                    const startEarly = Date.now();
-                    while (Date.now() - startEarly < 5000) {
-                      let clickedE = false;
-                      ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
-                        try {
-                          const fr = getLucaFrame(name);
-                          if (!fr || !fr.contentDocument) return;
-                          for (const btn of fr.contentDocument.querySelectorAll('button, input[type=button], input[type=submit]')) {
-                            const t = ((btn.textContent || btn.value || '').trim()).toLocaleLowerCase('tr-TR');
-                            if ((t === 'tamam' || t === 'evet' || t === 'ok') && btn.offsetParent !== null) {
-                              try { btn.click(); clickedE = true; } catch {}
-                            }
-                          }
-                        } catch {}
-                      });
-                      if (clickedE) break;
-                      await sleep(200);
-                    }
-                    await earlyLog(`⏳ Sayfa yenileniyor, 15sn bekleniyor…`);
-                    await sleep(15000);
-                    window.__lucaJobRunning = false;
-                    return;
-                  }
-                }
-              }
-            }
-          }
-
           await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN },
           });
+          await jobLog(job.id, `Job alındı · ${job.tip} · ${job.donem}`);
 
-          // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
-          const AGENT_VER = '1.35.65';
-          // Job log helper — kullanıcıya canlı progress göster
-          // Backend `body.msg` bekliyor (luca.controller.ts logJob endpoint).
-          // Global log buffer — kullanıcı DevTools Console'da
-          //    copy(window.__morenLogs.join('\n'))
-          // ile bütün log'u bir seferde clipboard'a alabilir.
-          window.__morenLogs = window.__morenLogs || [];
-          const log = async (line) => {
-            try {
-              const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
-              const formatted = `[${ts}] ${line}`;
-              // 1) DevTools Console (kalıcı, kopyalanabilir, F12 → Console → sağ-tık → Save as)
-              try { console.log('[Moren]', formatted); } catch {}
-              // 2) window dizisi — istediği zaman copy(window.__morenLogs.join('\n')) ile alır
-              window.__morenLogs.push(formatted);
-              if (window.__morenLogs.length > 5000) window.__morenLogs.splice(0, 1000);
-              // 3) Backend POST (mevcut akış — portal job ekranında gösteriliyor)
-              await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                body: JSON.stringify({ msg: line, line }),
-              });
-            } catch {}
-          };
+          window.__currentLucaJobId = job.id;
+          const blob = await fetchLucaMuavinExcel(job);
+          if (!blob) throw new Error('Excel yakalanamadı');
+          await jobLog(job.id, `✓ Excel yakalandı (${(blob.size/1024).toFixed(1)} KB)`);
 
-          // İlk satır: agent versiyonu — cache debug için kritik
-          await log(`🤖 Moren Agent v${AGENT_VER} | URL=${location.href.slice(0, 80)}`);
-
-          // ─── Job tipine göre rapor sayfası kontrolü ───
-          // MIZAN          → Luca'da Mizan ekranı açık olmalı
-          // KDV_191/KDV_391 → Defteri Kebir (Tüm Yazıcılar) ekranı + hesap kodu girilmiş
-          // ISLETME_GELIR/GIDER → İşletme defteri ekranı
-          const tipLabel = {
-            MIZAN: 'Mizan ekranı (Genel Raporlar > Mizan)',
-            KDV_MIZAN: 'KDV Beyanname için Mizan ekranı',
-            KDV_191: 'Defteri Kebir (Tüm Yazıcılar) — 191 hesap kodu',
-            KDV_391: 'Defteri Kebir (Tüm Yazıcılar) — 391 hesap kodu',
-            ISLETME_GELIR: 'İşletme defteri (gelir kayıtları)',
-            ISLETME_GIDER: 'İşletme defteri (gider kayıtları)',
-            IHO_FETCH: 'İşletme defteri ekranı (gelir + gider tek dosya)',
-            EARSIV_SATIS: 'e-Arşiv Satış Faturaları',
-            EARSIV_ALIS: 'e-Arşiv Alış Faturaları',
-            EFATURA_SATIS: 'e-Fatura Satış Faturaları',
-            EFATURA_ALIS: 'e-Fatura Alış Faturaları',
-          }[job.tip] || job.tip;
-          // E-arşiv tipleri için agent kendisi sayfayı açar — "açık olmalı" yerine "açılacak"
-          const isEarsivJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
-          if (isEarsivJob) {
-            await log(`📋 ${tipLabel} sayfasını agent kendisi açacak…`);
-          } else {
-            await log(`📋 ${tipLabel} açık olmalı`);
-          }
-
-          const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
-          const blob = await fetchLucaMuavinExcel(job, log);
-          if (!blob) throw new Error(isZipJob ? 'ZIP yakalanamadı' : 'Excel yakalanamadı');
-          await log(`📥 ${isZipJob ? 'ZIP' : 'Excel'} indirildi (${Math.round(blob.size / 1024)} KB)`);
-
-          // ─── Tipine göre upload endpoint ───
+          // Backend'e gönder — tip bazlı endpoint seçimi
           const fd = new FormData();
-          fd.append('file', blob, `luca-${job.tip}-${job.donem}.${isZipJob ? 'zip' : 'xlsx'}`);
-
+          fd.append('file', blob, `luca-${job.tip}-${job.donem}.xlsx`);
           let uploadUrl;
           if (job.tip === 'MIZAN') {
-            // Mizan'ın kendi upload endpoint'i — query string ile mukellef + dönem
             const params = new URLSearchParams({
-              mukellefId: String(job.mukellefId || ''),
-              donem: String(job.donem || ''),
-              donemTipi: String(job.donemTipi || 'AY'),
-              jobId: job.id,
+              mukellefId: job.mukellefId,
+              donem: job.donem,
+              donemTipi: 'AYLIK',
             });
-            uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params.toString()}`;
-          } else if (job.tip === 'KDV_MIZAN') {
-            // KDV beyanname için bağımsız mizan snapshot — mizan flow'u aynı, upload yolu farklı
-            const params = new URLSearchParams({
-              mukellefId: String(job.mukellefId || ''),
-              donem: String(job.donem || ''),
-              jobId: job.id,
-            });
-            uploadUrl = `${API}/agent/luca/runner/upload-kdv-mizan?${params.toString()}`;
-          } else if (job.tip === 'IHO_FETCH') {
-            // İşletme Hesap Özeti — sessionId = İHÖ kayıt id'si
-            const params = new URLSearchParams({
-              ihoId: String(job.sessionId || ''),
-              jobId: job.id,
-            });
-            uploadUrl = `${API}/agent/luca/runner/upload-iho?${params.toString()}`;
-          } else if (
-            job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
-            job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS'
-          ) {
-            // E-Arşiv / E-Fatura — Luca'dan ZIP indirme. tip = "<EARSIV|EFATURA>_<SATIS|ALIS>"
-            const [belgeKaynak, satTip] = job.tip.split('_');
-            const params = new URLSearchParams({
-              mukellefId: String(job.mukellefId || ''),
-              donem: String(job.donem || ''),
-              tip: satTip,
-              belgeKaynak,
-              jobId: job.id,
-            });
-            uploadUrl = `${API}/agent/luca/runner/upload-earsiv?${params.toString()}`;
+            uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params}`;
           } else {
-            // KDV / İşletme defteri — agent-token kabul eden yan endpoint
-            // (eski /kdv-control/.../excel-from-runner endpoint'i JWT bekliyordu)
-            const params = new URLSearchParams({
-              sessionId: String(job.sessionId || ''),
-              jobId: job.id,
-            });
-            uploadUrl = `${API}/agent/luca/runner/upload-kdv?${params.toString()}`;
+            uploadUrl = `${API}/kdv-control/sessions/${job.sessionId}/excel-from-runner/${job.id}`;
           }
-
+          await jobLog(job.id, `Backend'e yükleniyor…`);
           const uploadRes = await fetch(uploadUrl, {
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN },
             body: fd,
           });
           if (!uploadRes.ok) {
-            const errText = await uploadRes.text().catch(() => '');
-            throw new Error(`Upload HTTP ${uploadRes.status}: ${errText.slice(0, 120)}`);
+            const errBody = await uploadRes.text().catch(() => '');
+            await jobLog(job.id, `✗ Backend hatası: ${errBody.slice(0, 200)}`);
+            throw new Error(`Upload HTTP ${uploadRes.status}: ${errBody.slice(0, 200)}`);
           }
-          // Backend cevabını log'la — kaç fatura parse edildi göreceğiz
-          let respDetail = '';
-          let metaDetail = '';
-          try {
-            const r = await uploadRes.clone().json();
-            if (typeof r.inserted === 'number' || typeof r.total === 'number') {
-              respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, mükerrer=${r.duplicate != null ? r.duplicate : '?'}, hata=${r.skipped != null ? r.skipped : '?'})`;
-            } else {
-              respDetail = ` (resp=${JSON.stringify(r).slice(0, 200)})`;
-            }
-            if (r.meta) {
-              const e = (r.meta.entries || []).slice(0, 10).join(' | ');
-              const diag = (r.meta.diagnostics || []).slice(0, 6).join(' || ');
-              const errs = (r.meta.errors || []).slice(0, 5).join(' || ');
-              metaDetail = ` | bufferSize=${r.meta.bufferSize}B, totalEntries=${r.meta.totalEntries}, xmlCount=${r.meta.xmlCount}, entries=[${e}]`;
-              if (diag) metaDetail += ` || diag=[${diag}]`;
-              if (errs) metaDetail += ` || ❌ insert hatalari=[${errs}]`;
-            }
-          } catch (e) {}
-          await log(`✅ ${job.tip} backend'e yüklendi${respDetail}${metaDetail}`);
-
-          // Done sinyali — backend job'u kapatsın (upload endpoint'i kendi içinde
-          // yapmıyorsa explicit done çağrısı gerekir)
-          await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
-            method: 'POST',
-            headers: { 'X-Agent-Token': TOKEN },
-          }).catch(() => {});
-
-          setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
-        } catch (e) {
-          // "Fatura yok" durumu hata değil — temiz mesajla bitir
-          const msg = (e)?.message || 'bilinmeyen hata';
-          const isNoFatura = (e)?.isNoFatura === true || /^NO_FATURA:/i.test(msg);
-          if (isNoFatura) {
-            await log(`ℹ ${job.tip}: Bu dönem için fatura bulunamadı, atlandı`);
-            // Backend'e done olarak işaretle (fail değil) — 0 inserted
+          if (job.tip === 'MIZAN') {
+            await jobLog(job.id, `✓ Mizan parse edildi, DB'ye yazıldı`);
             await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-              body: JSON.stringify({ inserted: 0, noFatura: true }),
+              body: JSON.stringify({ recordCount: 0 }),
             }).catch(() => {});
-            setStatus(`Luca: ${job.tip} — fatura yok`);
-          } else {
-            console.error('[Moren] Luca job hata:', e);
-            await log(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
-            await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-              body: JSON.stringify({ error: msg }),
-            });
           }
+          window.__currentLucaJobId = null;
+          setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
+        } catch (e) {
+          console.error('[Moren] Luca job hata:', e);
+          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Agent-Token': TOKEN,
+            },
+            body: JSON.stringify({ error: e?.message || 'bilinmeyen hata' }),
+          });
         }
       }
       window.__lucaJobRunning = false;
@@ -422,4659 +234,145 @@
       console.warn('[Moren] processLucaJobs:', e?.message);
     }
   }
-  setInterval(processLucaJobs, 15000);
+  // Luca polling kapatildi — modul gecici olarak devre disi (kullanici istegi).
+  // Modul tekrar acilirsa bu satiri yeniden aktive et:
+  // setInterval(processLucaJobs, 15000);
 
   /**
-   * Luca sayfasında job tipine göre rapor formunu submit eder ve
-   * dönen Excel blob'unu yakalar.
+   * Luca'da mizan Excel'ini ÇEKER — TAM OTOMASYON (multi-frame + form POST).
    *
-   * STRATEJİ: "Rapor" butonunu tıklamak yerine form'u doğrudan fetch ile
-   * POST ediyoruz. Bu sayede:
-   *   - Yeni tab açılmıyor (Luca normalde target="_blank" ile açıyor)
-   *   - Blob direkt elimizde — tarayıcı download dialog'u açmıyor
-   *   - Cookie/session credentials: include ile korunuyor
+   * Luca v2.1 yapısı (DOM keşfiyle doğrulandı):
+   *   - Multi-frame uygulama: top frame boş, asıl içerik iframe `frm3` içinde
+   *   - Form: name="raporMizanForm" action="raporMizanAction.do" method=POST
+   *   - Tarih input: name="tarih_ilk" / "tarih_son" (DD/MM/YYYY format)
+   *   - Buton: <button class="green bold">Rapor</button>
+   *   - Rapor Türü dropdown varsayılan "Excel Liste (xlsx)"
    *
-   * Desteklenen tipler:
-   *   MIZAN          → frm3 / raporMizanForm / raporMizanAction.do
-   *   KDV_191/391    → Defteri Kebir formu (sonradan eklenecek — frame keşif lazım)
-   *   ISLETME_*      → İşletme defteri formu (sonradan)
+   * Strateji: tüm iframe'leri tara → mizan formunu bul → tarihleri donem'e
+   * göre ayarla → form action'a FormData ile POST → response.blob() = Excel.
+   * Click YOK — yeni pencere açma riski yok.
    */
-  async function fetchLucaMuavinExcel(job, log = (() => {})) {
-    // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
-    // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
-    if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
-      return await fetchLucaMizanExcel(job, log);
-    }
-    if (job.tip === 'KDV_191' || job.tip === 'KDV_391') {
-      const hesap = job.tip === 'KDV_191' ? '191' : '391';
-      return await fetchLucaDefteriKebirExcel(job, log, hesap);
-    }
-    if (job.tip === 'ISLETME_GELIR' || job.tip === 'ISLETME_GIDER') {
-      const mode = job.tip === 'ISLETME_GELIR' ? 'gelir' : 'gider';
-      return await fetchLucaIsletmeGelirGiderExcel(job, log, mode);
-    }
-    if (job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
-        job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS') {
-      return await fetchLucaEarsivZip(job, log);
-    }
-    // Bilinmeyen tip için fallback
-    return await fetchLucaGenericExcel(job, log);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // E-ARŞİV / E-FATURA — Luca'dan ZIP çekim
-  // ─────────────────────────────────────────────────────────────
-  // Akış:
-  //   1. SirketCombo → mukellefId/VKN ile firma seç (sayfa otomatik yenilenir)
-  //   2. (Kullanıcı zaten Akıllı Entegrasyon → e-Arşiv/E-Fatura sayfasında)
-  //   3. SORGU 1: Tarih modal aç → ay başı/sonu → Belgeleri Getir → tablo dolar
-  //   4. SORGU 2 (gerekirse): bir sonraki ay başı → bugün → Belgeleri Getir → satırlar EKLENİR
-  //   5. Tümünü Seç → Seçilenleri İndir → ZIP intercept
-  // Tüm document/frame'lerde text'i arayıp HOVER + TIKLAR
-  // Luca'nın menü dropdown'ları bazen sadece hover ile açılıyor.
-  async function clickByTextEverywhere(text, log, opts = {}) {
-    const { maxMs = 12000, exact = false } = opts;
-    // Normalize: whitespace fazlalığı, case-insensitive, Türkçe karakterler korunur
-    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
-    const target = norm(text);
-
-    const collectAllDocs = () => {
-      const docs = [document];
-      const dive = (root) => {
-        try {
-          for (const fr of root.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) {
-              docs.push(fr.contentDocument);
-              dive(fr.contentDocument);
-            }
-          }
-        } catch {}
-      };
-      dive(document);
-      return docs;
-    };
-
-    // onclick attribute (veya parent zincirinde) içinde II1a('CODE',...) çağrısı varsa
-    // direkt çıkar — synthetic click yerine fonksiyonu kendimiz tetikleyebiliriz.
-    const extractOnclickInfo = (el) => {
-      let cur = el;
-      let depth = 0;
-      while (cur && depth < 6) {
-        try {
-          const oc = cur.getAttribute && cur.getAttribute('onclick');
-          if (oc) {
-            // II1a(event, 'CODE', ...) veya II1a('CODE', ...) yakala
-            const m = oc.match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
-            if (m) return { onclick: oc, II1aCode: m[1], handlerEl: cur };
-            return { onclick: oc, II1aCode: null, handlerEl: cur };
-          }
-          // onclick property (attribute olmayabilir)
-          if (typeof cur.onclick === 'function') {
-            return { onclick: '[fn]', II1aCode: null, handlerEl: cur };
-          }
-        } catch {}
-        cur = cur.parentElement;
-        depth++;
-      }
-      return null;
-    };
-
-    // Eğer çağrılması gereken II1a kodu bulunduysa direkt fonksiyonu tetikle
-    const callII1aDirect = async (doc, code) => {
-      const fwin = doc.defaultView || window;
-      const candidates = [fwin, fwin.parent, fwin.top, window];
-      for (const w of candidates) {
-        try {
-          if (w && typeof w.II1a === 'function') {
-            const fakeEvent = {
-              type: 'click', target: null, currentTarget: null, srcElement: null,
-              preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
-              returnValue: true, cancelBubble: false,
-            };
-            await log(`🚀 II1a('${code}') doğrudan çağrılıyor (DOM'dan çıkarıldı)`);
-            try { w.II1a(fakeEvent, code, ''); return true; } catch (e) {
-              try { w.II1a(code); return true; } catch {}
-            }
-          }
-        } catch {}
-      }
-      return false;
-    };
-
-    const tryOnce = async (allowHidden) => {
-      for (const doc of collectAllDocs()) {
-        try {
-          // TÜM elementleri tara (sadece belirli tag'ler değil) — Luca menü item'ları
-          // <td>, <a>, <div> her şey olabilir.
-          // KRİTİK: Sadece TRUE LEAF (children.length === 0) — yoksa <html>, <body> gibi
-          // büyük container'lar textContent'inde target metni geçiyor diye match alır.
-          for (const el of doc.querySelectorAll('*')) {
-            if (el.children && el.children.length > 0) continue;
-            // HTML/HEAD/BODY/SCRIPT/STYLE asla menu item değildir
-            const tag = el.tagName;
-            if (tag === 'HTML' || tag === 'HEAD' || tag === 'BODY' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'META' || tag === 'LINK' || tag === 'TITLE') continue;
-            if (!allowHidden && el.offsetParent === null && tag !== 'A') continue;
-            const t = norm(el.textContent || '');
-            if (!t) continue;
-            // Text uzunluğu sanity check: target 25 char ise text 200 char'tan uzun olmasın
-            if (!exact && t.length > target.length * 4 + 10) continue;
-            const match = exact ? (t === target) : (t === target || t.includes(target));
-            if (!match) continue;
-
-            // Element bulundu — önce onclick'ten II1a kodunu çıkarıp doğrudan çağırmayı dene
-            const ocInfo = extractOnclickInfo(el);
-            if (ocInfo && ocInfo.II1aCode) {
-              await log(`🔑 "${text}" → II1a kodu: '${ocInfo.II1aCode}' (onclick'ten)`);
-              if (await callII1aDirect(doc, ocInfo.II1aCode)) {
-                await sleep(800);
-                return true;
-              }
-              await log(`⚠ II1a doğrudan başarısız, DOM click'e geçiliyor`);
-            } else if (ocInfo) {
-              await log(`ℹ "${text}" onclick var ama II1a kodu çıkmadı: ${String(ocInfo.onclick).slice(0, 80)}`);
-            }
-
-            // Fallback: synthetic click
-            await log(`🖱 "${text}" tıklanıyor (${el.tagName}${allowHidden && el.offsetParent === null ? ', hidden' : ''})`);
-            const view = doc.defaultView || window;
-            const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-            const x = rect ? (rect.left + rect.width / 2) : 0;
-            const y = rect ? (rect.top + rect.height / 2) : 0;
-            const fire = (type, on = el) => {
-              try {
-                on.dispatchEvent(new MouseEvent(type, {
-                  bubbles: true, cancelable: true, view,
-                  clientX: x, clientY: y, button: 0,
-                }));
-              } catch {}
-            };
-            // Parent zincirinde de mouseover (cascading menü açık kalsın)
-            let p = el.parentElement;
-            let depth = 0;
-            while (p && depth < 4) {
-              try {
-                p.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, cancelable: true, view }));
-                p.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, view }));
-              } catch {}
-              p = p.parentElement;
-              depth++;
-            }
-            fire('mouseover');
-            fire('mouseenter');
-            fire('mousemove');
-            await sleep(150);
-            // Hem element hem onclick handler'ı olan ata click et
-            try { el.click(); } catch {}
-            if (ocInfo && ocInfo.handlerEl && ocInfo.handlerEl !== el) {
-              try { ocInfo.handlerEl.click(); } catch {}
-            }
-            fire('mousedown');
-            fire('mouseup');
-            fire('click');
-            await sleep(1000);
-            return true;
-          }
-        } catch {}
-      }
-      return false;
-    };
-
-    const start = Date.now();
-    let triedHidden = false;
-    while (Date.now() - start < maxMs) {
-      // İlk %60 zaman: sadece görünür elementler — yanlış match riski azalır
-      if (await tryOnce(false)) return true;
-      // Son %40: hidden elementlere de izin (cascading menüler için)
-      if (Date.now() - start > maxMs * 0.6) {
-        if (!triedHidden) await log(`ℹ "${text}" görünür bulunamadı, hidden elementler de aranıyor…`);
-        triedHidden = true;
-        if (await tryOnce(true)) return true;
-      }
-      await sleep(400);
-    }
-    throw new Error(`"${text}" element'i ${maxMs/1000}sn içinde bulunamadı`);
-  }
-
-  // Luca firma/dönem seçici — frm4'teki SirketCombo + DonemCombo
-  async function selectLucaSirketDonem(mukellefAdi, yil, log) {
-    const frm4 = getLucaFrame('frm4');
-    if (!frm4 || !frm4.contentDocument) {
-      throw new Error('frm4 (firma seçici) bulunamadı');
-    }
-    const fdoc = frm4.contentDocument;
-    const fwin = frm4.contentWindow;
-
-    // 1) Firma seç (SirketCombo)
-    if (mukellefAdi) {
-      const sc = fdoc.getElementById('SirketCombo');
-      if (!sc) throw new Error('SirketCombo select bulunamadı');
-      // Luca text'i 10 karaktere truncate ediyor — ilk 10 karaktere göre eşleştir
-      const target = mukellefAdi.toLocaleUpperCase('tr-TR').slice(0, 10).trim();
-      let bulundu = null;
-      for (const opt of sc.options) {
-        const t = (opt.text || '').toLocaleUpperCase('tr-TR').trim();
-        if (t === target || t.startsWith(target.slice(0, Math.min(target.length, 8)))) {
-          bulundu = opt;
-          break;
-        }
-      }
-      if (!bulundu) {
-        await log(`⚠ Firma "${mukellefAdi}" SirketCombo'da bulunamadı, kullanıcının seçili firmasıyla devam`);
-      } else if (sc.value !== bulundu.value) {
-        // Firma değiştir — sayfa yenilenecek, fakat /start henüz çağrılmadığı için
-        // job 'pending' kalır. Sayfa yenilendikten sonra agent yine aynı pending
-        // job'u yakalar ve bu sefer firma zaten doğru olduğu için devam eder.
-        const mevcut = sc.options[sc.selectedIndex]?.text?.trim() || '(yok)';
-        await log(`🔄 Firma değiştiriliyor: "${mevcut}" → "${bulundu.text}" (sayfa yenilenecek, agent otomatik devam edecek)`);
-        const overrideOnWin = (w) => {
-          try { w.confirm = () => true; } catch {}
-          try { w.alert = () => undefined; } catch {}
-          try { w.prompt = () => ''; } catch {}
-        };
-        try { overrideOnWin(window); } catch {}
-        try { overrideOnWin(window.top); } catch {}
-        try { overrideOnWin(fwin); } catch {}
-        ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
-          try {
-            const fr = getLucaFrame(name);
-            if (fr && fr.contentWindow) overrideOnWin(fr.contentWindow);
-          } catch {}
-        });
-        sc.value = bulundu.value;
-        sc.dispatchEvent(new Event('input', { bubbles: true }));
-        sc.dispatchEvent(new Event('change', { bubbles: true }));
-        const onChangeAttr = sc.getAttribute('onchange');
-        if (onChangeAttr) {
-          try {
-            new fwin.Function('event', onChangeAttr).call(sc, new fwin.Event('change'));
-          } catch {}
-        }
-        const start = Date.now();
-        while (Date.now() - start < 5000) {
-          let clicked = false;
-          ['frm1','frm2','frm3','frm4','frm5','frm6','frm7'].forEach(name => {
-            try {
-              const fr = getLucaFrame(name);
-              if (!fr || !fr.contentDocument) return;
-              for (const btn of fr.contentDocument.querySelectorAll('button, input[type=button], input[type=submit]')) {
-                const t = ((btn.textContent || btn.value || '').trim()).toLocaleLowerCase('tr-TR');
-                if ((t === 'tamam' || t === 'evet' || t === 'ok') && btn.offsetParent !== null) {
-                  try { btn.click(); clicked = true; } catch {}
-                }
-              }
-            } catch {}
-          });
-          if (clicked) break;
-          await sleep(200);
-        }
-        await sleep(15000);
-        throw new Error(`Firma değiştirildi ama sayfa yenilenmedi`);
+  async function fetchLucaMuavinExcel(job) {
+    const log = (msg) => {
+      if (window.__currentLucaJobId && window.__lucaJobLog) {
+        window.__lucaJobLog(window.__currentLucaJobId, msg);
       } else {
-        await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
-      }
-    }
-
-    // 2) Yıl seç (DonemCombo: "01/01/2026 - 31" gibi)
-    if (yil) {
-      const fdoc2 = getLucaFrame('frm4').contentDocument;
-      const dc = fdoc2 && fdoc2.getElementById('DonemCombo');
-      if (dc) {
-        const yilStr = String(yil);
-        let bulundu = null;
-        for (const opt of dc.options) {
-          if ((opt.text || '').includes(yilStr)) {
-            bulundu = opt;
-            break;
-          }
-        }
-        if (bulundu && dc.value !== bulundu.value) {
-          dc.value = bulundu.value;
-          dc.dispatchEvent(new Event('change', { bubbles: true }));
-          await log(`✓ Dönem (yıl) seçildi: "${bulundu.text}"`);
-          await sleep(2000);
-        }
-      }
-    }
-  }
-
-  async function fetchLucaEarsivZip(job, log) {
-    const donemStr = String(job.donem || ''); // "YYYY-MM"
-    const [yilS, ayS] = donemStr.split('-');
-    const yil = Number(yilS);
-    const ay = Number(ayS);
-    if (!yil || !ay || ay < 1 || ay > 12) {
-      throw new Error(`Geçersiz dönem formatı: ${donemStr}, beklenen: YYYY-MM`);
-    }
-
-    // mukellefAdi backend tarafından job.errorMsg'e [META] formatında eklendi
-    let mukellefAdi = '';
-    try {
-      const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
-      if (m) mukellefAdi = m[1].trim();
-    } catch {}
-
-    // Firma + yıl seçimini yap (kullanıcı yanlış firmadaysa düzelt)
-    await selectLucaSirketDonem(mukellefAdi, yil, log);
-
-    // job.tip → açılacak menü item'ı
-    const menuLabel = {
-      EARSIV_SATIS: 'e-Arşiv Satış Faturaları',
-      EARSIV_ALIS: 'e-Arşiv Alış Faturaları',
-      EFATURA_SATIS: 'e-Fatura Satış Faturaları',
-      EFATURA_ALIS: 'e-Fatura Alış Faturaları',
-    }[job.tip];
-    if (!menuLabel) throw new Error(`Bilinmeyen e-arşiv tipi: ${job.tip}`);
-
-    // Her zaman doğru sayfayı II1a ile aç — "faturalari-getir-btn" hem alış hem satışta
-    // var olduğu için sayfa kontrolü güvenilir değil. Yanlış sayfada olabiliriz.
-    let frm3 = getLucaFrame('frm3');
-    {
-      // Kullanıcı keşfinde bulunan direct II1a ID'leri (menü tıklama gerek yok!):
-      //   e-Arşiv Satış Faturaları   → apy1000m24i10I
-      //   e-Arşiv Alış Faturaları    → apy1000m24i11I
-      //   e-Fatura Alış Faturaları   → apy1000m24i17I
-      //   e-Fatura Satış Faturaları  → apy1000m24i18I
-      // Mükellef tipini tespit et: top-level menüde "İşletme Defteri" varsa işletme,
-      // "Muhasebe" varsa bilanço esası.
-      const detectMukellefTipi = () => {
-        for (const fname of ['frm2', 'frm3', 'frm4', 'frm5']) {
-          try {
-            const fr = getLucaFrame(fname);
-            if (!fr || !fr.contentDocument) continue;
-            const txt = (fr.contentDocument.body && fr.contentDocument.body.textContent) || '';
-            if (/İşletme\s+Defteri/i.test(txt) && !/Muhasebe\b/i.test(txt.slice(0, 500))) return 'isletme';
-            if (/Muhasebe/i.test(txt)) return 'bilanco';
-          } catch {}
-        }
-        // Tüm document'tan da tara
-        try {
-          const txt = document.body.textContent || '';
-          if (/İşletme\s+Defteri/i.test(txt)) return 'isletme';
-          if (/Muhasebe/i.test(txt)) return 'bilanco';
-        } catch {}
-        return 'bilanco'; // varsayılan
-      };
-
-      const II1A_CODES = {
-        bilanco: {
-          EARSIV_SATIS: 'apy1000m24i10I',
-          EARSIV_ALIS:  'apy1000m24i11I',
-          EFATURA_ALIS: 'apy1000m24i17I',
-          EFATURA_SATIS:'apy1000m24i18I',
-        },
-        // İşletme defteri için kullanıcının console'dan yakaladığı gerçek kodlar.
-        // e-Arşiv Alış doğrulandı (apy1000m15i9I), diğerleri menü sırasına göre tahmin.
-        isletme: {
-          EARSIV_SATIS: 'apy1000m15i8I',
-          EARSIV_ALIS:  'apy1000m15i9I',
-          EFATURA_ALIS: 'apy1000m15i14I',
-          EFATURA_SATIS:'apy1000m15i15I',
-        },
-      };
-
-      const mukellefTipi = detectMukellefTipi();
-      const ii1aId = II1A_CODES[mukellefTipi]?.[job.tip];
-      await log(`📊 Mükellef tipi: ${mukellefTipi.toUpperCase()} → II1a kodu: ${ii1aId}`);
-      if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip} (${mukellefTipi})`);
-
-      // ÖNCELİK 0: Eğer frm3'te zaten e-arşiv sayfası açıksa menü navigasyonunu ATLA.
-      // Kullanıcı Luca'yı bir kez manuel olarak e-Arşiv Alış sayfasında bıraksın yeter.
-      const sayfaAcikMi = () => {
-        try {
-          const f3 = getLucaFrame('frm3');
-          if (!f3 || !f3.contentDocument) return false;
-          return !!f3.contentDocument.getElementById('faturalari-getir-btn');
-        } catch { return false; }
-      };
-      if (sayfaAcikMi()) {
-        await log(`✅ Sayfa zaten açık (frm3'te faturalari-getir-btn var) — menü navigasyonu atlanıyor`);
-        // navigationDone bayrağı setlemiyoruz; aşağıdaki kod akışı devam etsin
-        // ama II1a/menü adımlarını skip et
-        await sleep(500);
-        // basariliAcildi'yi true yap ki menü blokları çalışmasın
-        var __navSkip = true;
-      } else {
-        var __navSkip = false;
-      }
-
-      await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
-      // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
-      let II1aFn = null, II1aSrc = '';
-      const candidateFrames = ['frm2','frm5','frm3','frm4','frm1','frm6','frm7'];
-      for (const name of candidateFrames) {
-        const fr = getLucaFrame(name);
-        try {
-          if (fr && fr.contentWindow && typeof fr.contentWindow.II1a === 'function') {
-            II1aFn = fr.contentWindow.II1a.bind(fr.contentWindow);
-            II1aSrc = name;
-            break;
-          }
-        } catch {}
-      }
-      // top window'da da deneyelim
-      if (!II1aFn) {
-        try {
-          if (typeof window.II1a === 'function') {
-            II1aFn = window.II1a;
-            II1aSrc = 'top';
-          }
-        } catch {}
-        try {
-          if (!II1aFn && typeof parent.II1a === 'function') {
-            II1aFn = parent.II1a;
-            II1aSrc = 'parent';
-          }
-        } catch {}
-      }
-      // Önce II1a dene; başarısız olursa text-based menü click fallback
-      let basariliAcildi = false;
-      if (II1aFn) {
-        await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
-        try {
-          // Sahte event obj — bazı Luca buildlerinde gerek
-          const fakeEvent = {
-            type: 'click', target: null, currentTarget: null, srcElement: null,
-            preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
-            returnValue: true, cancelBubble: false,
-          };
-          II1aFn(fakeEvent, ii1aId, '');
-          basariliAcildi = true;
-        } catch (e) {
-          await log(`⚠ II1a('${ii1aId}') başarısız: ${e?.message || e} — fallback: text-based menü click`);
-          basariliAcildi = false;
-        }
-      }
-      if (!basariliAcildi) {
-        // Fallback: menüleri sırayla açıp elementi click et.
-        // Bilanço esası → "Muhasebe", İşletme Defteri → "İşletme Defteri"
-        // "Muhasebe" yazısı sayfada başka yerlerde de var olabileceğinden tıklandı doğrulaması için
-        // tıklamadan sonra "Akıllı Entegrasyon Noktası"nın görünür olmasını ARIYORUZ; yoksa diğer kök menüyü dene.
-        await log('🔄 Text-based menü navigasyonu (yedek plan)');
-
-        // Tüm frame ağacında (recursive) leaf element'lerde "Akıllı Entegrasyon"
-        // metnini ara — whitespace/ok karakteri farklılıklarına toleranslı.
-        const akilliVisible = () => {
-          const visit = (fw) => {
-            try {
-              const doc = fw.document;
-              if (!doc) return false;
-              const all = doc.querySelectorAll('*');
-              for (const el of all) {
-                if (el.children && el.children.length > 0) continue; // sadece leaf
-                const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-                if (!t) continue;
-                if (t.includes('Akıllı Entegrasyon') || t.includes('Akilli Entegrasyon')) {
-                  const r = el.getBoundingClientRect();
-                  if (r.width > 0 && r.height > 0) return true;
-                }
-              }
-              // Alt frame'leri recursive tara
-              const subs = doc.querySelectorAll('iframe,frame');
-              for (const f of subs) {
-                try { if (f.contentWindow && visit(f.contentWindow)) return true; } catch {}
-              }
-            } catch {}
-            return false;
-          };
-          return visit(window);
-        };
-
-        // Hangi sırayla deneneceği: önce İşletme Defteri (daha spesifik metin),
-        // yoksa Muhasebe. Her ikisinde de sonuç doğrulanıyor.
-        const denemeler = ['İşletme Defteri', 'Muhasebe'];
-        let basariliMenu = null;
-
-        for (const menuAdi of denemeler) {
-          try {
-            await clickByTextEverywhere(menuAdi, log, { maxMs: 3000 });
-            await log(`🖱 "${menuAdi}" denendi, submenu kontrol ediliyor…`);
-            // Submenu açılma süresi verilir
-            await sleep(1500);
-            if (await akilliVisible()) {
-              basariliMenu = menuAdi;
-              await log(`✓ "${menuAdi}" doğru menü (Akıllı Entegrasyon submenusu açıldı)`);
-              break;
-            } else {
-              await log(`✗ "${menuAdi}" yanlış (Akıllı Entegrasyon görünmedi) → diğeri denenecek`);
-            }
-          } catch (e) {
-            await log(`ℹ "${menuAdi}" bulunamadı: ${e?.message || e}`);
-          }
-        }
-
-        if (!basariliMenu) {
-          throw new Error('Ne "Muhasebe" ne de "İşletme Defteri" menüsü Akıllı Entegrasyon submenu\'su açmadı');
-        }
-
-        // Akıllı Entegrasyon Noktası: hover-ONLY (click yapma — submenu kapanır).
-        // Element bul, üzerinde sürekli MouseEvent + PointerEvent fire et,
-        // bu sırada e-Arşiv Alış'ı ara.
-        const findElByText = (text) => {
-          const norm2 = (s) => (s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
-          const target = norm2(text);
-          const visit = (fw) => {
-            try {
-              const doc = fw.document;
-              if (!doc) return null;
-              for (const el of doc.querySelectorAll('*')) {
-                if (el.children && el.children.length > 0) continue;
-                const tag = el.tagName;
-                if (tag === 'HTML' || tag === 'HEAD' || tag === 'BODY' || tag === 'SCRIPT' || tag === 'STYLE') continue;
-                const t = norm2(el.textContent || '');
-                if (!t) continue;
-                if (t === target || t.includes(target)) return el;
-              }
-              for (const f of doc.querySelectorAll('iframe,frame')) {
-                try { const r = visit(f.contentWindow); if (r) return r; } catch {}
-              }
-            } catch {}
-            return null;
-          };
-          return visit(window);
-        };
-
-        const akilliEl = findElByText('Akıllı Entegrasyon');
-        let hoverTimer = null;
-        if (akilliEl) {
-          await log('🎯 Akıllı Entegrasyon elementi bulundu — sürekli hover (click YAPILMAYACAK)');
-          const fireHoverDeep = () => {
-            try {
-              const doc = akilliEl.ownerDocument;
-              const view = doc.defaultView || window;
-              const rect = akilliEl.getBoundingClientRect();
-              const opts = {
-                bubbles: true, cancelable: true, view,
-                clientX: rect.left + rect.width / 2,
-                clientY: rect.top + rect.height / 2,
-                button: 0, buttons: 0, pointerType: 'mouse',
-              };
-              const optsNoBubble = { ...opts, bubbles: false };
-              // Önce parent zincirine fire et (delegasyon için), sonra hedefe
-              const fireOn = (el) => {
-                try { el.dispatchEvent(new MouseEvent('mouseover', opts)); } catch {}
-                try { el.dispatchEvent(new MouseEvent('mouseenter', optsNoBubble)); } catch {}
-                try { el.dispatchEvent(new MouseEvent('mousemove', opts)); } catch {}
-                try { el.dispatchEvent(new PointerEvent('pointerover', opts)); } catch {}
-                try { el.dispatchEvent(new PointerEvent('pointerenter', optsNoBubble)); } catch {}
-                try { el.dispatchEvent(new PointerEvent('pointermove', opts)); } catch {}
-              };
-              fireOn(akilliEl);
-              let p = akilliEl.parentElement;
-              for (let i = 0; i < 5 && p; i++) {
-                fireOn(p);
-                p = p.parentElement;
-              }
-            } catch {}
-          };
-          fireHoverDeep();
-          await sleep(300);
-          fireHoverDeep();
-          hoverTimer = setInterval(fireHoverDeep, 50);
-          await log('🔄 Hover loop aktif (50ms aralıklarla, MouseEvent + PointerEvent)');
-        } else {
-          await log('⚠ Akıllı Entegrasyon elementi bulunamadı, hover atlanıyor');
-        }
-
-        try {
-          // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
-          await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
-        } finally {
-          if (hoverTimer) clearInterval(hoverTimer);
-        }
-      }
-      await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
-      await sleep(6000);
-      // frm3'ü tekrar al (yeniden yüklenmiş olabilir)
-      frm3 = getLucaFrame('frm3');
-      // Sayfa açıldığını doğrula
-      if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
-        await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
-        await sleep(4000);
-        frm3 = getLucaFrame('frm3');
-      }
-    }
-
-    // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
-    const ayinSonGunu = (y, m) => new Date(y, m, 0).getDate(); // m=1-12, son gün
-    const fmt = (d, m, y) => `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
-
-    const sorgu1Bas = fmt(1, ay, yil);
-    const sorgu1Bit = fmt(ayinSonGunu(yil, ay), ay, yil);
-
-    // Sorgu 2 (sonraki ay başı → bugün) — Luca'nın tarih kesimi her zaman seçili dönem sonunda
-    // bittiği için, bir sonraki ay başından bugüne kadar olan faturaları da yakalamak için 2. sorgu.
-    // Sadece seçili ay GEÇMİŞ ise tetiklenir (örn. Nisan sorgusunda Mayıs 1→bugün de çekilir).
-    // Seçili ay zaten ŞU ANKI ay ise gereksiz (zaten Sorgu1 bugünü kapsıyor).
-    const sonAy = ay === 12 ? 1 : ay + 1;
-    const sonYil = ay === 12 ? yil + 1 : yil;
-    const bugun = new Date();
-    const buAy = bugun.getMonth() + 1;
-    const buYil = bugun.getFullYear();
-    // Seçili ay bu aydan ÖNCE ise Sorgu2 gerekli
-    const sorgu2Gerekli = (yil < buYil) || (yil === buYil && ay < buAy);
-    const sorgu2Bas = fmt(1, sonAy, sonYil);
-    const sorgu2Bit = fmt(bugun.getDate(), buAy, buYil);
-
-    if (sorgu2Gerekli) {
-      await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
-      await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit} (sonraki ay → bugün)`);
-    } else {
-      await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit} (Sorgu 2 atlandı — seçili ay = bu ay)`);
-    }
-
-    // frm3 frame'ini doğrula (yukarıdaki menü navigasyonu ile yüklendi)
-    if (!frm3 || !frm3.contentDocument) {
-      throw new Error('frm3 (e-Arşiv ekranı) yüklenemedi — menü açılmamış olabilir');
-    }
-    const fdoc = frm3.contentDocument;
-    const fwin = frm3.contentWindow;
-
-    // ZIP intercept: TÜM accessible frame'lerde fetch + XHR + window.open + anchor download
-    // hook'la — Luca download'u herhangi bir frame'den fire edebilir.
-    // AYRICA: Mizan/Excel akışında çalışan moren-bridge Chrome extension'ı da
-    // dinle — Luca native browser download yapıyorsa bridge URL/blob iletir.
-    let yakalanmisZip = null;
-    let zipNetworkInFlight = false;
-
-    // ─── MOREN BRIDGE (Chrome extension) ───
-    // Background script'e "download bekliyorum" sinyali (Excel akışıyla aynı)
-    const postExpectingZip = (val) => {
-      const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
-      try { window.postMessage(payload, '*'); } catch (e) {}
-      try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
-    };
-    postExpectingZip(true);
-    await log('🔔 moren-bridge: download bekleniyor sinyali gönderildi');
-
-    // Bridge'den gelen download URL'ini dinle (background chrome.downloads intercepted)
-    const onBridgeMessage = async (event) => {
-      try {
-        const data = event.data;
-        if (!data || data.source !== 'moren-bridge' || data.type !== 'lucaDownload') return;
-        const dlUrl = data.url;
-        if (!dlUrl || yakalanmisZip) return;
-        await log(`🌉 Bridge: download URL geldi: ${String(dlUrl).split('/').pop().slice(0, 60)}`);
-        try {
-          const r = await fetch(dlUrl, { credentials: 'include' });
-          if (r.ok) {
-            const blob = await r.blob();
-            if (blob && blob.size > 100 && !yakalanmisZip) {
-              yakalanmisZip = blob;
-              await log(`📥 ZIP yakalandı (bridge URL fetch, ${Math.round(blob.size/1024)} KB)`);
-            }
-          }
-        } catch (e) {
-          await log(`⚠ Bridge URL fetch hatası: ${e?.message || e}`);
-        }
-      } catch (e) {}
-    };
-    window.addEventListener('message', onBridgeMessage);
-
-    // Bridge dosyayı disk'ten okuyup direkt blob olarak gönderebilir
-    const onLucaFile = async (e) => {
-      try {
-        const detail = e.detail || {};
-        const blob = detail.blob;
-        if (!yakalanmisZip && blob && blob.size > 100) {
-          yakalanmisZip = blob;
-          await log(`📥 ZIP yakalandı (bridge disk → blob, ${Math.round(blob.size/1024)} KB, dosya: ${String(detail.filename || '').split(/[\\\/]/).pop()})`);
-        }
-      } catch (e) {}
-    };
-    window.addEventListener('moren-luca-file', onLucaFile);
-
-    // Hook'lanan tüm frame'lerin orijinal fonksiyonlarını sakla (cleanup için)
-    const hookedFrames = []; // [{ win, origFetch, origXHROpen, origXHRSend, origWindowOpen, origCreateElement }]
-
-    const collectAllWindows = () => {
-      const wins = new Set();
-      const dive = (w) => {
-        try {
-          if (!w || wins.has(w)) return;
-          // Test access (cross-origin'de patlar)
-          void w.location.href;
-          wins.add(w);
-          for (let i = 0; i < (w.frames?.length || 0); i++) {
-            try { dive(w.frames[i]); } catch {}
-          }
-        } catch {}
-      };
-      dive(window.top || window);
-      dive(window);
-      dive(fwin);
-      return [...wins];
-    };
-
-    const hookOneFrame = (w) => {
-      try {
-        const orig = {
-          win: w,
-          origFetch: w.fetch,
-          origXHROpen: w.XMLHttpRequest && w.XMLHttpRequest.prototype.open,
-          origXHRSend: w.XMLHttpRequest && w.XMLHttpRequest.prototype.send,
-          origWindowOpen: w.open,
-          origCreateElement: w.document && w.document.createElement,
-          origFormSubmit: w.HTMLFormElement && w.HTMLFormElement.prototype.submit,
-        };
-        hookedFrames.push(orig);
-
-        // Form submit hijack
-        if (orig.origFormSubmit && orig.origFetch) {
-          w.HTMLFormElement.prototype.submit = function() {
-            try {
-              var action = String(this.action || '').toLowerCase();
-              if (action && (action.indexOf('zip') >= 0 || action.indexOf('indir') >= 0 || action.indexOf('download') >= 0)) {
-                zipNetworkInFlight = true;
-                var fd = new FormData(this);
-                var method = (this.method || 'POST').toUpperCase();
-                var actionUrl = this.action;
-                (async function() {
-                  try {
-                    var res;
-                    if (method === 'GET') {
-                      var params = new URLSearchParams();
-                      for (var entry of fd.entries()) params.append(entry[0], entry[1].toString());
-                      res = await orig.origFetch.call(w, actionUrl + (actionUrl.indexOf('?') >= 0 ? '&' : '?') + params.toString(), { credentials: 'include' });
-                    } else {
-                      res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
-                    }
-                    var blob = await res.blob();
-                    if (blob && blob.size > 100 && !yakalanmisZip) {
-                      yakalanmisZip = blob;
-                      log('📥 ZIP yakalandi (form.submit hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                    }
-                  } catch (e) {}
-                })();
-                return;
-              }
-            } catch (e) {}
-            return orig.origFormSubmit.call(this);
-          };
-        }
-
-        // submit event capture
-        try {
-          w.document.addEventListener('submit', function(ev) {
-            try {
-              var f = ev.target;
-              if (!f || !f.action) return;
-              var action = String(f.action || '').toLowerCase();
-              if (action.indexOf('zip') < 0 && action.indexOf('indir') < 0 && action.indexOf('download') < 0) return;
-              zipNetworkInFlight = true;
-              ev.preventDefault();
-              ev.stopPropagation();
-              var fd = new FormData(f);
-              var method = (f.method || 'POST').toUpperCase();
-              var actionUrl = f.action;
-              (async function() {
-                try {
-                  var res;
-                  if (method === 'GET') {
-                    var params = new URLSearchParams();
-                    for (var entry of fd.entries()) params.append(entry[0], entry[1].toString());
-                    res = await orig.origFetch.call(w, actionUrl + (actionUrl.indexOf('?') >= 0 ? '&' : '?') + params.toString(), { credentials: 'include' });
-                  } else {
-                    res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
-                  }
-                  var blob = await res.blob();
-                  if (blob && blob.size > 100 && !yakalanmisZip) {
-                    yakalanmisZip = blob;
-                    log('📥 ZIP yakalandi (submit event, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                  }
-                } catch (e) {}
-              })();
-            } catch (e) {}
-          }, true);
-        } catch (e) {}
-
-        // iframe src setter hijack
-        try {
-          var iframeProto = w.HTMLIFrameElement && w.HTMLIFrameElement.prototype;
-          if (iframeProto && !iframeProto.__morenSrcHooked) {
-            var desc = Object.getOwnPropertyDescriptor(iframeProto, 'src');
-            if (desc && desc.set) {
-              iframeProto.__morenSrcHooked = true;
-              var origSet = desc.set;
-              Object.defineProperty(iframeProto, 'src', {
-                configurable: desc.configurable,
-                enumerable: desc.enumerable,
-                get: desc.get,
-                set: function(value) {
-                  try {
-                    var u = String(value || '').toLowerCase();
-                    if (u && (u.indexOf('zip') >= 0 || u.indexOf('indir') >= 0 || u.indexOf('download') >= 0)) {
-                      zipNetworkInFlight = true;
-                      (async function() {
-                        try {
-                          var absUrl = new URL(value, w.location.href).toString();
-                          var res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
-                          var blob = await res.blob();
-                          if (blob && blob.size > 100 && !yakalanmisZip) {
-                            yakalanmisZip = blob;
-                            log('📥 ZIP yakalandi (iframe src hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                          }
-                        } catch (e) {}
-                      })();
-                    }
-                  } catch (e) {}
-                  return origSet.call(this, value);
-                },
-              });
-            }
-          }
-        } catch (e) {}
-
-        // fetch
-        if (orig.origFetch) {
-          w.fetch = async function(...args) {
-            const url = String(args[0] && args[0].url || args[0] || '');
-            try {
-              const lurl = url.toLowerCase();
-              if (lurl.includes('zip') || lurl.includes('indir') || lurl.includes('download') || lurl.includes('gib_ebelge') || lurl.includes('gib530') || lurl.includes('.jq')) zipNetworkInFlight = true;
-            } catch {}
-            const res = await orig.origFetch.apply(this, args);
-            try {
-              const ct = res.headers.get('content-type') || '';
-              const cd = res.headers.get('content-disposition') || '';
-              const cloned = res.clone();
-              const blob = await cloned.blob();
-              const isBin = ct.includes('zip') || cd.includes('.zip') || ct.includes('octet-stream') ||
-                            ct.includes('application/x-zip') || cd.includes('attachment') || cd.includes('filename') ||
-                            (blob && blob.size > 1000 && !ct.startsWith('text/') && !ct.startsWith('application/json') && !ct.startsWith('application/javascript'));
-              // DEBUG: Tüm büyük (>1KB) response'ları logla
-              if (blob && blob.size > 1000) {
-                log(`🔍 FETCH ${url.slice(-80)} → ct=${ct.slice(0,30)}, size=${Math.round(blob.size/1024)}KB, isBin=${isBin}`).catch(() => {});
-              }
-              if (isBin && blob && blob.size > 100 && !yakalanmisZip) {
-                yakalanmisZip = blob;
-                log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-              }
-            } catch {}
-            return res;
-          };
-        }
-
-        // XHR
-        if (orig.origXHROpen) {
-          w.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-            this.__url = url;
-            this.__method = method;
-            return orig.origXHROpen.call(this, method, url, ...rest);
-          };
-          w.XMLHttpRequest.prototype.send = function(...args) {
-            const sendBody = args[0];
-            const sendMethod = this.__method || 'POST';
-            const fullUrl = this.__url;
-            try {
-              const url = String(this.__url || '').toLowerCase();
-              const isCandidate = url.includes('zip') || url.includes('indir') || url.includes('download') ||
-                  url.includes('gib_ebelge') || url.includes('gib530') || url.includes('.jq');
-              if (isCandidate) zipNetworkInFlight = true;
-              // DEBUG: TÜM XHR'leri load event'inde log'la
-              this.addEventListener('load', () => {
-                try {
-                  const ct = (this.getResponseHeader('content-type') || '').toLowerCase();
-                  const cd = (this.getResponseHeader('content-disposition') || '').toLowerCase();
-                  const cl = (this.getResponseHeader('content-length') || '').toLowerCase();
-                  const sz = parseInt(cl, 10) || 0;
-                  if (sz > 1000 || isCandidate) {
-                    log(`🔍 XHR ${sendMethod} ${String(fullUrl).slice(-80)} → ct=${ct.slice(0,40)}, cd=${cd.slice(0,40)}, size=${sz ? Math.round(sz/1024)+'KB' : '?'}`).catch(() => {});
-                  }
-                  const looksLikeBinary = ct.includes('zip') || ct.includes('octet-stream') ||
-                                          ct.includes('application/x-zip') ||
-                                          cd.includes('attachment') || cd.includes('filename');
-                  if (looksLikeBinary && !yakalanmisZip) {
-                    log(`🔄 XHR binary tespit edildi (${String(fullUrl).slice(0,60)}), re-fetch ile blob alınıyor`).catch(() => {});
-                    (async () => {
-                      try {
-                        const init = { method: sendMethod, credentials: 'include' };
-                        if (sendMethod !== 'GET' && sendBody !== undefined && sendBody !== null) {
-                          init.body = sendBody;
-                        }
-                        const res = await orig.origFetch.call(w, fullUrl, init);
-                        const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (XHR re-fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
-                      } catch (e) {
-                        log(`⚠ XHR re-fetch hatası: ${e?.message || e}`).catch(() => {});
-                      }
-                    })();
-                  }
-                } catch {}
-              }, { once: true });
-            } catch {}
-            return orig.origXHRSend.apply(this, args);
-          };
-        }
-
-        // window.open
-        if (orig.origWindowOpen) {
-          w.open = function(url, ...rest) {
-            try {
-              const u = String(url || '').toLowerCase();
-              if (u && (u.includes('zip') || u.includes('indir') || u.includes('download'))) {
-                zipNetworkInFlight = true;
-                (async () => {
-                  try {
-                    const absUrl = new URL(url, w.location.href).toString();
-                    const res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
-                    const blob = await res.blob();
-                    if (blob && blob.size > 100 && !yakalanmisZip) {
-                      yakalanmisZip = blob;
-                      log(`📥 ZIP yakalandı (window.open hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                    }
-                  } catch (e) {
-                    log(`⚠ window.open hijack fetch hatası: ${e?.message || e}`).catch(() => {});
-                  }
-                })();
-                return null;
-              }
-            } catch {}
-            return orig.origWindowOpen.call(this, url, ...rest);
-          };
-        }
-
-        // <a> createElement hijack
-        if (orig.origCreateElement) {
-          w.document.createElement = function(tagName) {
-            const el = orig.origCreateElement.call(w.document, tagName);
-            if (String(tagName).toLowerCase() === 'a') {
-              const origClick = el.click.bind(el);
-              el.click = function() {
-                try {
-                  const href = String(this.href || '').toLowerCase();
-                  const dl = this.getAttribute('download');
-                  if ((dl !== null) || href.includes('zip') || href.includes('indir') || href.includes('download')) {
-                    zipNetworkInFlight = true;
-                    (async () => {
-                      try {
-                        const res = await orig.origFetch.call(w, this.href, { credentials: 'include' });
-                        const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (anchor hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
-                      } catch (e) {
-                        log(`⚠ anchor hijack fetch hatası: ${e?.message || e}`).catch(() => {});
-                      }
-                    })();
-                    return;
-                  }
-                } catch {}
-                return origClick();
-              };
-            }
-            return el;
-          };
-        }
-      } catch (e) {
-        // Frame'i hook'layamadık, geç
+        console.log('[Moren]', msg);
       }
     };
 
-    // İlk başta tüm bilinen frame'leri hook'la
-    for (const w of collectAllWindows()) {
-      hookOneFrame(w);
+    // 1) Multi-frame tarama
+    const allDocs = [document];
+    document.querySelectorAll('iframe, frame').forEach((iframe) => {
+      try { if (iframe.contentDocument) allDocs.push(iframe.contentDocument); }
+      catch (e) { /* cross-origin */ }
+    });
+    log(`Luca sekmesi tarandı · ${allDocs.length} frame`);
+
+    // 2) Mizan formunu bul (frm3'te olmalı)
+    let mizanForm = null;
+    let mizanDoc = null;
+    for (const doc of allDocs) {
+      const f = doc.querySelector(
+        'form[name="raporMizanForm"], form[action*="raporMizan"], form[action*="mizan"]',
+      );
+      if (f) { mizanForm = f; mizanDoc = doc; break; }
     }
-    await log(`🔌 ZIP yakalama: ${hookedFrames.length} frame'e hook kuruldu`);
+    if (!mizanForm) {
+      throw new Error(
+        'Luca\'da mizan formu (raporMizanForm) bulunamadı. ' +
+          'Luca\'da Muhasebe → Mizan ekranını açıp tekrar deneyin.',
+      );
+    }
+    log(`✓ Mizan formu bulundu`);
 
-    // Backward compat — alt kodda fwin.fetch, vs. değişti mi diye geri yüklemek için
-    const origFetch = hookedFrames.find(h => h.win === fwin)?.origFetch || fwin.fetch;
-    const origXHROpen = hookedFrames.find(h => h.win === fwin)?.origXHROpen;
-    const origXHRSend = hookedFrames.find(h => h.win === fwin)?.origXHRSend;
-
-    // ─── Aktivite sayacı (birSorgu silence-wait + ZIP wait için) ───
-    // fatura_kaydet/gib530 XHR'larını sayar; lastTs'i bump eder.
-    // birSorgu done sinyali görüldükten sonra "X sn aktivite yok" garantisini bu sağlar.
-    if (!window.__morenLucaActivity) window.__morenLucaActivity = { count: 0, lastTs: Date.now() };
-    const installAgentActivityHooks = (w, depth = 0) => {
-      if (depth > 6 || !w) return;
-      try {
-        if (w.__morenAgentActHooked) return;
-        w.__morenAgentActHooked = true;
-        const oOpen = w.XMLHttpRequest && w.XMLHttpRequest.prototype.open;
-        if (oOpen) {
-          w.XMLHttpRequest.prototype.open = function(m, u) {
-            if (u && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(String(u))) {
-              window.__morenLucaActivity.count++;
-              window.__morenLucaActivity.lastTs = Date.now();
-            }
-            return oOpen.apply(this, arguments);
-          };
-        }
-        const oFetch = w.fetch;
-        if (oFetch) {
-          w.fetch = function(input, init) {
-            const url = typeof input === 'string' ? input : (input && input.url) || '';
-            if (url && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(url)) {
-              window.__morenLucaActivity.count++;
-              window.__morenLucaActivity.lastTs = Date.now();
-            }
-            return oFetch.apply(this, arguments);
-          };
-        }
-        const frames = w.document && w.document.querySelectorAll('frame, iframe');
-        if (frames) for (const f of frames) {
-          try { if (f.contentWindow) installAgentActivityHooks(f.contentWindow, depth + 1); } catch {}
-        }
-      } catch {}
-    };
-    installAgentActivityHooks(window);
-    const agentActHookInterval = setInterval(() => installAgentActivityHooks(window), 2000);
-    const getAgentActivityCount = () => window.__morenLucaActivity.count;
-    const getAgentLastActivityTs = () => window.__morenLucaActivity.lastTs;
-
-    // birSorgu done sinyali sonrası: XHR aktivitesi N saniye boyunca durana kadar bekle.
-    // Bu sayede "fatura kaydetme işlemi sona erdi" mesajı çıktı ama hâlâ son fatura_kaydet'ler
-    // yoldaysa onları da bekleriz; sonra Sorgu 2'ye veya download'a geçeriz.
-    async function waitForActivitySilence(label, silenceMs = 5000, maxWaitMs = 60000) {
-      const startTs = Date.now();
-      const startCount = getAgentActivityCount();
-      // İlk başta lastTs'i şimdiye çek (eski işlemden kalan değer beklemeyi yanlış kısaltmasın)
-      let lastSeenCount = startCount;
-      let lastChangeTs = Date.now();
-      while (Date.now() - startTs < maxWaitMs) {
-        const c = getAgentActivityCount();
-        if (c !== lastSeenCount) {
-          lastSeenCount = c;
-          lastChangeTs = Date.now();
-        }
-        const silentFor = Date.now() - lastChangeTs;
-        if (silentFor >= silenceMs) {
-          await log(`✓ ${label}: ${silenceMs/1000}sn XHR sessizliği (toplam ${c - startCount} ek XHR), devam ediliyor`);
-          return;
-        }
-        await sleep(500);
+    // 3) Tarihleri donem'e göre ayarla — "2026-03" → "01/03/2026" → "31/03/2026"
+    const [year, month] = (job.donem || '').split('-');
+    if (year && month) {
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const tarihIlk = `01/${month}/${year}`;
+      const tarihSon = `${String(lastDay).padStart(2, '0')}/${month}/${year}`;
+      const ilkInput = mizanDoc.querySelector('input[name="tarih_ilk"]');
+      const sonInput = mizanDoc.querySelector('input[name="tarih_son"]');
+      if (ilkInput) {
+        ilkInput.value = tarihIlk;
+        ilkInput.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      await log(`⚠ ${label}: ${maxWaitMs/1000}sn boyunca aktivite kesilmedi, yine de devam ediliyor`);
+      if (sonInput) {
+        sonInput.value = tarihSon;
+        sonInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      log(`✓ Tarihler: ${tarihIlk} → ${tarihSon}`);
     }
 
-    // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
-    async function birSorgu(bas, bit, etiket) {
-      await log(`🔍 ${etiket}: ${bas} → ${bit}`);
-      // Modal aç
-      if (typeof fwin.gonder === 'function') {
-        fwin.gonder('indir-window');
-      } else {
-        throw new Error('window.gonder fonksiyonu yok — Luca sayfası beklenen yapıda değil');
-      }
-      await sleep(800); // modal animasyonu
-
-      // Tarih input'larını doldur (tarih1, tarih2)
-      const t1 = fdoc.getElementById('tarih1');
-      const t2 = fdoc.getElementById('tarih2');
-      if (!t1 || !t2) throw new Error('tarih1/tarih2 input bulunamadı');
-      t1.value = bas;
-      t1.dispatchEvent(new Event('change', { bubbles: true }));
-      t2.value = bit;
-      t2.dispatchEvent(new Event('change', { bubbles: true }));
-      await sleep(200);
-
-      // Belgeleri Getir butonu
-      const getirBtn = fdoc.getElementById('faturalari-getir-btn');
-      if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
-      getirBtn.click();
-      await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
-
-      // İşlem Takip popup'ı açılır, GİB sorgu yapar.
-      // Çok fatura varsa bu 60-90sn sürebilir (örn 333 belge → her biri ayrı GİB sorgusu).
-      // Sabit 8sn yetersiz — POLLING ile bekle: max 5 dk, "N adet fatura bulundu" ya da
-      // "İşlem tamamlandı" gibi tamamlanma sinyalini bekle.
-      const POLL_INTERVAL = 1000;
-      const POLL_MAX_MS = 5 * 60 * 1000; // 5 dakika
-      const pollStart = Date.now();
-      let queryDone = false;
-      let lastProgress = '';
-      let lastProgressLogTs = 0;
-      while (Date.now() - pollStart < POLL_MAX_MS) {
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
-        let foundDoneSignal = false;
-        let progressLine = '';
-        for (const d of allDocs) {
-          try {
-            const txt = d.body ? d.body.textContent : '';
-            // KESİN COMPLETION SİNYALİ — Luca'nın gerçek bitiş mesajları:
-            //  1. "Fatura kaydetme işlemi sona erdi" — tüm 333 belge kaydedildi (asıl completion)
-            //  2. "Belirtilen tarih aralığında fatura bulunamadı" — GİB'den boş sonuç
-            //  3. "fatura bulunamadı" / "belge bulunamadı" — generic boş sonuç
-            // BUNLAR DIŞINDA HİÇBİR ŞEY DONE OLARAK SAYILMASIN (yanlış erken trigger önle)
-            // SADECE BU İKİ MESAJI DONE OLARAK KABUL ET — saves bittiğinin garantisi:
-            //  1. "Fatura kaydetme işlemi sona erdi" — tüm fatura_kaydet stream bitti
-            //  2. "Belirtilen tarih aralığında fatura bulunamadı" — boş sonuç
-            // ⚠ "fatura indirme işlemi tamamlandı" / "işlem tamamlandı" bunlar GİB query
-            // bitince fire ediyor ama save'ler hala devam ediyor — KULLANMA.
-            if (/fatura\s+kaydetme\s+i[şs]lemi\s+sona\s+erdi/i.test(txt)) {
-              foundDoneSignal = true;
-              break;
-            }
-            if (/belirtilen\s+tarih\s+aral[ıi][gğ][ıi]nda\s+fatura\s+bulunamad[ıi]/i.test(txt)) {
-              foundDoneSignal = true;
-              break;
-            }
-            // Hem "X adet belge kaydı bulundu" hem "X adet fatura bulundu" — saves'ten ÖNCE,
-            // ama tek başına done olarak kabul ETMİYORUZ (saves devam edebilir).
-            // Sadece progress için yakala:
-            const sayim = txt && txt.match(/(\d+)\s+adet\s+(?:belge\s+kaydı|fatura)\s+bulundu/i);
-            if (sayim) progressLine = `${sayim[1]} adet bulundu`;
-            // Save progress: [N/M] formatı — sadece ilerleme log'u için
-            const m = txt && txt.match(/\[(\d+)\/(\d+)\][^\[]{0,80}/);
-            if (m) {
-              progressLine = `kayıt ${m[1]}/${m[2]}`;
-            }
-          } catch {}
-        }
-        if (foundDoneSignal) { queryDone = true; break; }
-        // Her 5sn'de bir progress log'la (kullanıcı boş ekran görmesin)
-        const now = Date.now();
-        if (progressLine && progressLine !== lastProgress && now - lastProgressLogTs > 5000) {
-          await log(`📊 GİB sorgu ilerleme: ${progressLine}`);
-          lastProgress = progressLine;
-          lastProgressLogTs = now;
-        }
-        await sleep(POLL_INTERVAL);
-      }
-      if (!queryDone) {
-        await log(`⚠ GİB sorgu 5 dk içinde tamamlanmadı (son ilerleme: ${lastProgress || '?'}). Mevcut sonuçlarla devam ediliyor…`);
-      } else {
-        const elapsed = Math.round((Date.now() - pollStart) / 1000);
-        await log(`✓ GİB sorgu tamamlandı (${elapsed}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
-      }
-      // KRİTİK: done mesajı gelse bile son fatura_kaydet'ler arka planda devam edebilir.
-      // Sonraki sorguya/indirmeye geçmeden ÖNCE 5sn XHR sessizliği bekle.
-      await waitForActivitySilence(`${etiket} fatura_kaydet sessizlik`, 5000, 90000);
-      // Sonuç tablosuna geçilmesi için kısa bir sleep
-      await sleep(500);
-
-      // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
-      const findAndClick = (label) => {
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
-        for (const d of allDocs) {
-          try {
-            for (const btn of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
-              const t = ((btn.value || btn.innerText) || '').trim().toLocaleLowerCase('tr-TR');
-              if (t === label.toLocaleLowerCase('tr-TR') && (btn.offsetParent !== null || btn.tagName === 'INPUT')) {
-                btn.click();
-                return btn;
-              }
-            }
-          } catch {}
-        }
-        return null;
-      };
-      const kapatBtn = findAndClick('Kapat');
-      if (kapatBtn) {
-        await log(`✓ İşlem Takip popup'ı "Kapat" ile kapatıldı`);
-      } else {
-        await log(`⚠ Kapat butonu bulunamadı, popup açık kalmış olabilir`);
-      }
-      // Popup'ın gerçekten kapanmasını bekle (max 5sn) — sorgu2 üst üste binmesin
-      const popupCloseStart = Date.now();
-      while (Date.now() - popupCloseStart < 5000) {
-        let popupAcik = false;
-        const allDocsCheck = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocsCheck.push(fr.contentDocument);
-          }
-        } catch {}
-        for (const d of allDocsCheck) {
-          try {
-            const txt = d.body ? d.body.textContent : '';
-            if (/i[şs]lem\s+takip/i.test(txt) && !/i[şs]lem\s+tamamland[ıi]/i.test(txt.slice(-500))) {
-              // İşlem Takip popup hala açık görünüyor
-              popupAcik = true;
-              break;
-            }
-          } catch {}
-        }
-        if (!popupAcik) break;
-        await sleep(300);
-      }
-      await sleep(1500);
-      await log(`📋 ${etiket} tamamlandı`);
-
-      // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
-      try {
-        let bulunanText = '';
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
-        for (const d of allDocs) {
-          try {
-            const txt = d.body ? d.body.textContent : '';
-            const m = txt && txt.match(/(\d+)\s+adet\s+fatura\s+bulundu[^.]*Sayfa\s+No:\s*(\d+)/i);
-            if (m) { bulunanText = `${m[1]} fatura, sayfa ${m[2]}`; break; }
-          } catch {}
-        }
-        const tabloDakiFatura = fdoc.querySelectorAll('.sec').length;
-        if (bulunanText) {
-          const toplamMatch = bulunanText.match(/^(\d+)/);
-          const toplam = toplamMatch ? parseInt(toplamMatch[1], 10) : 0;
-          if (toplam > tabloDakiFatura) {
-            await log(`⚠ DİKKAT: Luca'da TOPLAM ${toplam} fatura var ama tabloda sadece ${tabloDakiFatura} görünüyor (pagination). Bu sürümde sadece 1. sayfa indiriliyor — kalan ${toplam - tabloDakiFatura} fatura için pagination iteration desteği gelecek.`);
-          } else {
-            await log(`✓ ${bulunanText} (tümü tabloda)`);
-          }
-        }
-      } catch (e) {
-        // Detection hatası — sessiz geç
-      }
-    }
-
-    await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
-    if (sorgu2Gerekli) {
-      await birSorgu(sorgu2Bas, sorgu2Bit, 'Sorgu 2 (sonraki ay başı→bugün)');
-    }
-
-    // Tümünü Seç
-    const tumBtn = fdoc.getElementById('tum_belgeyi_sec_btn');
-    if (tumBtn) {
-      tumBtn.click();
-      await log('✓ Tümünü Seç tıklandı');
-      await sleep(500);
-    } else {
-      await log('⚠ tum_belgeyi_sec_btn bulunamadı (belki sayfada başka isimle)');
-    }
-
-    // ─── NO-FATURA TESPİTİ ───
-    // Hiç fatura yoksa "Tümünü Seç" 0 checkbox işaretler, indirme akışı 60sn boşa bekler.
-    // Önceden tespit edip temiz mesajla çık.
-    try {
-      const secimSayisi = fdoc.querySelectorAll('.sec:checked').length;
-      const tablodaToplam = fdoc.querySelectorAll('.sec').length;
-      if (secimSayisi === 0 && tablodaToplam === 0) {
-        await log(`ℹ Bu dönem için fatura bulunamadı (${etiket}). İndirme akışı atlandı.`);
-        // Special signal — caller bunu yakalayıp temiz "fatura yok" mesajı göstersin
-        const noFaturaErr = new Error('NO_FATURA: Bu dönem için kayıtlı fatura yok');
-        (noFaturaErr).isNoFatura = true;
-        throw noFaturaErr;
-      } else if (secimSayisi === 0 && tablodaToplam > 0) {
-        await log(`⚠ Tablodan ${tablodaToplam} fatura tespit edildi ama Tümünü Seç çalışmadı (0 checkbox checked). Manuel seçim deneniyor…`);
-        // Bütün .sec'leri elle işaretle
-        for (const cb of fdoc.querySelectorAll('.sec')) { try { (cb).click(); } catch {} }
-        await sleep(400);
-        const yeni = fdoc.querySelectorAll('.sec:checked').length;
-        if (yeni === 0) {
-          throw new Error('NO_FATURA: Faturalar listede ama seçim yapılamadı');
-        }
-        await log(`✓ Manuel seçim sonucu: ${yeni} fatura işaretli`);
-      } else {
-        await log(`✓ ${secimSayisi} fatura işaretli (toplam ${tablodaToplam})`);
-      }
-    } catch (e) {
-      if ((e).isNoFatura) throw e; // re-throw — caller temiz mesaj gösterecek
-      await log(`⚠ No-fatura kontrolü hatası (devam): ${(e)?.message || e}`);
-    }
-
-    // ─── gonder() WRAPPER ───
-    // Luca popup butonu tıklanınca fwin.gonder('zip') çağırıyor. Wrap ederek
-    // hem source code'unu görelim hem de URL'i kendimiz fetch'leyelim.
-    // ─── goster() WRAPPER ─── (gonder'dan SONRA çağrılıyor, asıl download burada olabilir)
-    if (typeof fwin.goster === 'function' && !fwin.__morenGosterHooked) {
-      fwin.__morenGosterHooked = true;
-      const origGoster = fwin.goster;
-      try {
-        const src = origGoster.toString();
-        try { console.log('[Moren] FULL goster() source:', src); } catch (e) {}
-        await log(`🔍 goster() source (uzunluk=${src.length}, FULL Console'da): ${src.slice(0, 200).replace(/\s+/g, ' ')}...`);
-      } catch (e) {}
-      fwin.goster = function(...args) {
-        try { log(`🪝 goster(${args.map(a => JSON.stringify(a)).join(',').slice(0, 100)}) çağrıldı`).catch(() => {}); } catch (e) {}
-        return origGoster.apply(this, args);
-      };
-    }
-
-    // ─── Luca.downloadPost HOOK ───
-    // goster() x="save" durumunda Luca.downloadPost(url, data, "_blank") çağırıyor
-    // Bu form submit ile yeni tab açıp native browser download tetikliyor
-    try {
-      const winsToHook = [fwin, window, window.top].filter(Boolean);
-      let hookedAt = [];
-      for (const w of winsToHook) {
-        if (w.Luca && typeof w.Luca.downloadPost === 'function' && !w.Luca.__morenDownloadPostHooked) {
-          w.Luca.__morenDownloadPostHooked = true;
-          const origDownloadPost = w.Luca.downloadPost;
-          hookedAt.push(w === fwin ? 'fwin' : (w === window ? 'window' : 'top'));
-          w.Luca.downloadPost = function(url, data, target) {
-            try {
-              const dataKeys = data && typeof data === 'object' ? Object.keys(data).join(',') : typeof data;
-              log(`🎯 Luca.downloadPost yakalandı: url=${String(url).slice(0,100)}, dataKeys=[${dataKeys}], target=${target}`).catch(() => {});
-              zipNetworkInFlight = true;
-              (async () => {
-                try {
-                  // FORM submit gibi davran — multipart/form-data ya da URL-encoded
-                  // Önce URL-encoded dene
-                  let body;
-                  if (typeof data === 'string') {
-                    body = data;
-                  } else if (data instanceof FormData) {
-                    body = data;
-                  } else if (data && typeof data === 'object') {
-                    const params = new URLSearchParams();
-                    for (const k of Object.keys(data)) {
-                      const v = data[k];
-                      params.append(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : String(v)));
-                    }
-                    body = params.toString();
-                  } else {
-                    body = String(data || '');
-                  }
-                  const init = {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: body,
-                    headers: typeof body === 'string' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : undefined,
-                  };
-                  const res = await fetch(url, init);
-                  const ct = (res.headers.get('content-type') || '').toLowerCase();
-                  const cd = (res.headers.get('content-disposition') || '').toLowerCase();
-                  const cl = res.headers.get('content-length') || '';
-                  const blob = await res.blob();
-                  log(`📦 downloadPost response: status=${res.status}, ct=${ct.slice(0,40)}, cd=${cd.slice(0,80)}, size=${blob ? Math.round(blob.size/1024)+'KB' : '?'}, content-length=${cl}`).catch(() => {});
-
-                  // ZIP/binary olduğunu doğrula
-                  const isZip = ct.includes('zip') || ct.includes('octet-stream') || ct.includes('application/x-zip') ||
-                                cd.includes('.zip') || cd.includes('attachment') || cd.includes('filename') ||
-                                (blob && blob.size > 1000 && !ct.startsWith('text/') && !ct.startsWith('application/json') && !ct.startsWith('application/javascript'));
-
-                  if (isZip && blob && blob.size > 100 && !yakalanmisZip) {
-                    yakalanmisZip = blob;
-                    log(`📥 ZIP yakalandı (Luca.downloadPost hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                  } else if (!isZip) {
-                    // Beklenmeyen response — Luca'nın orijinal flow'unu da dene (native download)
-                    log(`⚠ downloadPost response binary değil (ct=${ct.slice(0,30)}), orijinal Luca.downloadPost da çağrılacak`).catch(() => {});
-                    // İlk 500 char text önizleme (debug için)
-                    try {
-                      const text = await blob.text();
-                      log(`🔍 response text önizleme: ${text.slice(0, 500)}`).catch(() => {});
-                    } catch (e) {}
-                    // Native flow'u da tetikle ki dosya gelsin (zorunlu fallback)
-                    try { origDownloadPost.call(w.Luca, url, data, target); } catch (e) {}
-                  }
-                } catch (e) {
-                  log(`⚠ Luca.downloadPost hijack fetch hatası: ${e?.message || e}`).catch(() => {});
-                  // Hata durumunda native flow'u tetikle (kullanıcı tamamen kayıp olmasın)
-                  try { origDownloadPost.call(w.Luca, url, data, target); } catch (e) {}
-                }
-              })();
-              return;
-            } catch (e) {
-              return origDownloadPost.call(this, url, data, target);
-            }
-          };
-        }
-      }
-      if (hookedAt.length > 0) {
-        await log(`🪝 Luca.downloadPost wrap edildi (${hookedAt.join(', ')})`);
-      } else {
-        await log(`⚠ Luca.downloadPost hiçbir frame'de bulunamadı, hook kurulamadı`);
-      }
-    } catch (e) {}
-
-    if (typeof fwin.gonder === 'function' && !fwin.__morenGonderHooked) {
-      fwin.__morenGonderHooked = true;
-      const origGonder = fwin.gonder;
-      try {
-        const src = origGonder.toString();
-        try { console.log('[Moren] FULL gonder() source:', src); } catch (e) {}
-        await log(`🔍 gonder() source (uzunluk=${src.length}, FULL Console'da): ${src.slice(0, 200).replace(/\s+/g, ' ')}...`);
-      } catch (e) {}
-      fwin.gonder = function(...args) {
-        try {
-          const arg0 = String(args[0] || '');
-          log(`🪝 gonder('${arg0}') çağrıldı`).catch(() => {});
-          // 'zip' veya 'indir' içeriyorsa: çağırmadan ÖNCE document'i ve formları snapshot al
-          if (arg0 === 'zip' || arg0.includes('indir') || arg0.includes('download')) {
-            // Form'u bul ve URL'i çıkar
-            try {
-              const allDocs = [];
-              const dive = (root) => {
-                try {
-                  allDocs.push(root);
-                  for (const fr of root.querySelectorAll('frame, iframe')) {
-                    if (fr.contentDocument) dive(fr.contentDocument);
-                  }
-                } catch {}
-              };
-              dive(document);
-              for (const d of allDocs) {
-                for (const f of d.querySelectorAll('form')) {
-                  const action = String(f.action || '').toLowerCase();
-                  if (action.includes('zip') || action.includes('indir') || action.includes('download')) {
-                    log(`📋 Form bulundu: action=${f.action}, method=${f.method}, fields=${f.elements.length}`).catch(() => {});
-                    // Bu form'u kendimiz POST edelim
-                    const fd = new FormData(f);
-                    const method = (f.method || 'POST').toUpperCase();
-                    (async () => {
-                      try {
-                        let res;
-                        if (method === 'GET') {
-                          const params = new URLSearchParams();
-                          for (const entry of fd.entries()) params.append(entry[0], entry[1].toString());
-                          res = await fetch(f.action + (f.action.includes('?') ? '&' : '?') + params.toString(), { credentials: 'include' });
-                        } else {
-                          res = await fetch(f.action, { method: method, body: fd, credentials: 'include' });
-                        }
-                        const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (gonder form fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
-                      } catch (e) {
-                        log(`⚠ gonder form fetch hatası: ${e?.message || e}`).catch(() => {});
-                      }
-                    })();
-                    break;
-                  }
-                }
-              }
-            } catch (e) {}
-          }
-        } catch (e) {}
-        return origGonder.apply(this, args);
-      };
-    }
-
-    // Seçilenleri İndir (ALT TOOLBAR) → ZIP popup açılır
-    if (typeof fwin.gonder === 'function') {
-      fwin.gonder('zip-window');
-      await log('📦 Alt toolbar "Seçilenleri İndir" tetiklendi → popup açılıyor');
-    } else {
-      throw new Error('zip-window gonder yok');
-    }
-
-    // Popup açılma animasyonunu bekle
-    await sleep(1500);
-
-    // location.href / location.assign / location.replace hook (Luca direct nav ile download yapıyorsa)
-    try {
-      for (const w of [window, fwin, window.top]) {
-        if (!w || w.__morenLocHooked) continue;
-        try {
-          w.__morenLocHooked = true;
-          const origAssign = w.location.assign && w.location.assign.bind(w.location);
-          const origReplace = w.location.replace && w.location.replace.bind(w.location);
-          if (origAssign) {
-            w.location.assign = function(url) {
-              try {
-                const u = String(url || '').toLowerCase();
-                if (u.includes('zip') || u.includes('indir') || u.includes('download')) {
-                  zipNetworkInFlight = true;
-                  log(`🪝 location.assign(${String(url).slice(0,80)})`).catch(() => {});
-                  (async () => {
-                    try {
-                      const r = await fetch(url, { credentials: 'include' });
-                      const blob = await r.blob();
-                      if (blob && blob.size > 100 && !yakalanmisZip) {
-                        yakalanmisZip = blob;
-                        log(`📥 ZIP yakalandı (location.assign hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                      }
-                    } catch (e) {}
-                  })();
-                  return; // navigate etmeyelim
-                }
-              } catch (e) {}
-              return origAssign(url);
-            };
-          }
-          if (origReplace) {
-            w.location.replace = function(url) {
-              try {
-                const u = String(url || '').toLowerCase();
-                if (u.includes('zip') || u.includes('indir') || u.includes('download')) {
-                  zipNetworkInFlight = true;
-                  log(`🪝 location.replace(${String(url).slice(0,80)})`).catch(() => {});
-                  (async () => {
-                    try {
-                      const r = await fetch(url, { credentials: 'include' });
-                      const blob = await r.blob();
-                      if (blob && blob.size > 100 && !yakalanmisZip) {
-                        yakalanmisZip = blob;
-                        log(`📥 ZIP yakalandı (location.replace hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                      }
-                    } catch (e) {}
-                  })();
-                  return;
-                }
-              } catch (e) {}
-              return origReplace(url);
-            };
-          }
-        } catch (e) {}
-      }
-    } catch (e) {}
-
-    // Tüm doc'ları topla (frame'ler dahil)
-    const collectAllDocsForPopup = () => {
-      const docs = [document];
-      const dive = (root) => {
-        try {
-          for (const fr of root.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) {
-              docs.push(fr.contentDocument);
-              dive(fr.contentDocument);
-            }
-          }
-        } catch {}
-      };
-      dive(document);
-      return docs;
-    };
-
-    // Popup container'ı bul (zip-window ya da BURAYA + İNDİR içeren container)
-    const findPopupContainer = () => {
-      for (const d of collectAllDocsForPopup()) {
-        try {
-          for (const sel of ['#zip-window', '.zip-window', '#popup-zip',
-                             'div[id*="zip"]', 'div[id*="indir"]', 'div[id*="zipWin"]']) {
-            const c = d.querySelector(sel);
-            if (c && c.offsetParent !== null) {
-              const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
-              if (ct.includes('BURAYA') && (ct.includes('İNDİR') || ct.includes('INDIR'))) {
-                return { container: c, doc: d };
-              }
-            }
-          }
-          for (const c of d.querySelectorAll('div, section, article, form')) {
-            if (c.offsetParent === null) continue;
-            const ct = (c.textContent || '').toLocaleUpperCase('tr-TR');
-            if (ct.includes('BURAYA') &&
-                (ct.includes('TÜM FATURALARI') || ct.includes('TUM FATURALARI')) &&
-                (ct.length < 4000)) {
-              return { container: c, doc: d };
-            }
-          }
-        } catch {}
-      }
-      return null;
-    };
-
-    // Popup'ı bekle
-    let popupInfo = null;
-    const popupSearchStart = Date.now();
-    while (Date.now() - popupSearchStart < 5000 && !popupInfo) {
-      popupInfo = findPopupContainer();
-      if (!popupInfo) await sleep(300);
-    }
-
-    if (!popupInfo) {
-      await log('⚠ Popup container bulunamadı (5sn) — buton aranacak ama emin değil');
-    }
-
-    // Popup içindeki "Seçilenleri İndir" butonunu bul (popup container içinde, kesin)
-    const findPopupDownloadButton = () => {
-      if (popupInfo) {
-        for (const b of popupInfo.container.querySelectorAll('button, input[type=button], input[type=submit]')) {
-          const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
-          if ((t === 'seçilenleri indir' || t === 'secilenleri indir')
-              && b.offsetParent !== null) {
-            return b;
-          }
-        }
-      }
-      // Fallback: birden fazla "Seçilenleri İndir" varsa toolbar'a göre üstte olanı (popup) seç
-      for (const d of collectAllDocsForPopup()) {
-        const matches = [];
-        for (const b of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
-          const t = ((b.textContent || b.value || '').trim()).toLocaleLowerCase('tr-TR');
-          if (t !== 'seçilenleri indir' && t !== 'secilenleri indir') continue;
-          if (b.offsetParent === null) continue;
-          const r = b.getBoundingClientRect();
-          matches.push({ b, top: r.top });
-        }
-        if (matches.length >= 2) {
-          matches.sort((a, b) => a.top - b.top);
-          return matches[0].b;
-        } else if (matches.length === 1) {
-          return matches[0].b;
-        }
-      }
-      return null;
-    };
-
-    // POPUP'I X İLE KAPAT
-    const closePopupWithX = () => {
-      if (!popupInfo) return false;
-      // Popup'ın kendi container'ında ve onun yakınında "X" / "Kapat" / kapat ikonu ara
-      const candidates = [];
-      // 1) span/button/a content === "x" ya da "×" ya da "✕" ya da içinde close class
-      for (const el of popupInfo.container.querySelectorAll('button, a, span, div, input[type=button]')) {
-        if (el.offsetParent === null && el.tagName !== 'A') continue;
-        const t = ((el.textContent || el.value || '').trim());
-        const cls = String(el.className || '').toLowerCase();
-        const id = String(el.id || '').toLowerCase();
-        const title = String(el.title || el.getAttribute('aria-label') || '').toLowerCase();
-        const isCloseText = t === 'X' || t === 'x' || t === '×' || t === '✕' || t === '✖';
-        const isCloseAttr = cls.includes('close') || cls.includes('kapat') ||
-                            id.includes('close') || id.includes('kapat') ||
-                            title.includes('close') || title.includes('kapat');
-        const isCloseLabel = ((el.value || '').trim().toLocaleLowerCase('tr-TR') === 'kapat') ||
-                             (t.toLocaleLowerCase('tr-TR') === 'kapat');
-        if (isCloseText || isCloseAttr || isCloseLabel) {
-          candidates.push(el);
-        }
-      }
-      // En sağ üstte olanı seç (popup'ın X'i genelde sağ-üstte)
-      if (candidates.length === 0) return false;
-      let best = candidates[0];
-      let bestScore = -Infinity;
-      for (const c of candidates) {
-        try {
-          const r = c.getBoundingClientRect();
-          // Sağ-üst köşe = max(left) + min(top), score = r.left - r.top * 2
-          const score = r.left - r.top * 2;
-          if (score > bestScore) { bestScore = score; best = c; }
-        } catch {}
-      }
-      try { best.click(); return true; } catch {}
-      return false;
-    };
-
-    // ─── TEK TIK ───
-    let popupBtn = null;
-    const findStart = Date.now();
-    while (Date.now() - findStart < 4000 && !popupBtn) {
-      popupBtn = findPopupDownloadButton();
-      if (!popupBtn) await sleep(300);
-    }
-
-    if (popupBtn) {
-      // SADE: tek .click() çağrısı — Luca'nın kendi handler'ları aşırı tetiklenmesin
-      try { popupBtn.click(); } catch (e) {
-        await log(`⚠ btn.click() hatası, native event dispatch ile dene: ${e?.message || e}`);
-        try {
-          popupBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: popupBtn.ownerDocument.defaultView }));
-        } catch {}
-      }
-      await log('✓ Popup "Seçilenleri İndir" 1 kez tıklandı');
-    } else {
-      await log('⚠ Popup içindeki "Seçilenleri İndir" bulunamadı');
-    }
-
-    // ADAPTIVE TIMEOUT:
-    // - max 5 dk (büyük datasetlerde GİB sorgu uzar)
-    // - ama 30sn boyunca AKTIVITE OLMAZSA çık (gereksiz beklemenin önüne geç)
-    // Aktivite tespiti: gib530/fatura_kaydet/gib_efatura URL'lerinde Performance API resource sayısı artıyor mu?
-    const zipWaitStart = Date.now();
-    const ZIP_TIMEOUT_MS = 10 * 60 * 1000;  // 10dk absolute (büyük dosyalar için)
-    const IDLE_BASE_MS = 90 * 1000;         // 90sn baseline (server ZIP paketleme süresi)
-    // Adaptif idle: yapılan iş arttıkça beklemek mantıklı (büyük ZIP daha uzun paketlenir).
-    // 100 XHR'a kadar 90sn, sonrası lineer artar, max 240sn (4dk).
-    const computeIdleTimeout = (xhrCount) => Math.min(
-      240 * 1000,
-      IDLE_BASE_MS + Math.max(0, xhrCount - 100) * 800
+    // 4) Rapor Türü dropdown — Excel olduğundan emin ol
+    const raporTuruSelect = mizanDoc.querySelector(
+      'select[name*="rapor"], select[name*="Rapor"], select[name*="tip"]',
     );
-    // ZIP wait için activity tracker — XHR/fetch hook'ları ile gerçek zamanlı sayım.
-    // Tüm frame'lere recursive hook kur, her gib530/fatura_kaydet çağrısında counter++.
-    if (!window.__morenLucaActivity) window.__morenLucaActivity = { count: 0, lastTs: 0 };
-    const installActivityHooks = (w, depth = 0) => {
-      if (depth > 6 || !w) return;
-      try {
-        if (w.__morenActHooked) return;
-        w.__morenActHooked = true;
-        const origOpen = w.XMLHttpRequest && w.XMLHttpRequest.prototype.open;
-        if (origOpen) {
-          w.XMLHttpRequest.prototype.open = function(m, u) {
-            if (u && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(String(u))) {
-              window.__morenLucaActivity.count++;
-              window.__morenLucaActivity.lastTs = Date.now();
-            }
-            return origOpen.apply(this, arguments);
-          };
-        }
-        const origFetch = w.fetch;
-        if (origFetch) {
-          w.fetch = function(input, init) {
-            const url = typeof input === 'string' ? input : (input && input.url) || '';
-            if (url && /gib530|fatura_kaydet|gib_efatura|gib_ebelge|topluFatura/i.test(url)) {
-              window.__morenLucaActivity.count++;
-              window.__morenLucaActivity.lastTs = Date.now();
-            }
-            return origFetch.apply(this, arguments);
-          };
-        }
-        // Recursive: alt frame'ler
-        const frames = w.document && w.document.querySelectorAll('frame, iframe');
-        if (frames) {
-          for (const f of frames) {
-            try { if (f.contentWindow) installActivityHooks(f.contentWindow, depth + 1); } catch {}
-          }
-        }
-      } catch {}
-    };
-    installActivityHooks(window);
-    // Yeni eklenmiş frame'ler için periyodik olarak da kur
-    const activityHookInterval = setInterval(() => installActivityHooks(window), 2000);
-    const getActivityCount = () => window.__morenLucaActivity.count;
-    const getLastActivityTs = () => window.__morenLucaActivity.lastTs;
-    // Başlangıçta lastTs'i şimdi yap ki ilk anda 30sn idle gibi görünmesin
-    // ⚠ ÖNEMLİ: ZIP wait loop başlamadan ÖNCE lastTs'i ŞİMDİ olarak resetle.
-    // Aksi takdirde önceki Sorgu/birSorgu sırasındaki XHR'lerin lastTs'i kalıyor,
-    // tıklama anında "90sn idle" yanlışlıkla fire edip ZIP gelmeden vazgeçiyordu.
-    window.__morenLucaActivity.lastTs = Date.now();
-    let popupClosed = false;
-    while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
-      if (yakalanmisZip) break;
-      // Aktivite kontrolü — XHR hook'ları lastTs'i bump ediyor
-      const lastTs = getLastActivityTs() || zipWaitStart;
-      const idle = Date.now() - lastTs;
-      const xhrCount = getActivityCount();
-      const idleLimit = computeIdleTimeout(xhrCount);
-      if (idle > idleLimit) {
-        await log(`⚠ ${Math.round(idleLimit/1000)}sn aktivite yok (toplam ${xhrCount} XHR, ZIP paketleme bitmemiş olabilir), bekleme sonlandırılıyor`);
-        break;
-      }
-      // ZIP geldikten sonra (ya da 8sn sonra) popup'ı X ile kapat
-      if (!popupClosed && (yakalanmisZip || Date.now() - zipWaitStart > 8000)) {
-        if (closePopupWithX()) {
-          await log('✓ Popup X ile kapatıldı');
-          popupClosed = true;
-        }
-      }
-      await sleep(400);
-    }
-    try { clearInterval(activityHookInterval); } catch {}
-    try { clearInterval(agentActHookInterval); } catch {}
-
-    // ZIP geldiyse ama popup hala açıksa kapat
-    if (yakalanmisZip && !popupClosed) {
-      if (closePopupWithX()) {
-        await log('✓ Popup X ile kapatıldı (ZIP yakalandıktan sonra)');
-      }
-    }
-
-    // Hook'ları geri al (tüm frame'lerde)
-    for (const h of hookedFrames) {
-      try {
-        if (h.origFetch) h.win.fetch = h.origFetch;
-        if (h.origXHROpen) h.win.XMLHttpRequest.prototype.open = h.origXHROpen;
-        if (h.origXHRSend) h.win.XMLHttpRequest.prototype.send = h.origXHRSend;
-        if (h.origWindowOpen) h.win.open = h.origWindowOpen;
-        if (h.origCreateElement) h.win.document.createElement = h.origCreateElement;
-        if (h.origFormSubmit) h.win.HTMLFormElement.prototype.submit = h.origFormSubmit;
-      } catch {}
-    }
-
-    // Bridge listener'larını çıkar + expecting=false sinyali
-    try { window.removeEventListener('message', onBridgeMessage); } catch (e) {}
-    try { window.removeEventListener('moren-luca-file', onLucaFile); } catch (e) {}
-    postExpectingZip(false);
-
-    if (!yakalanmisZip) {
-      throw new Error(`ZIP ${Math.round(ZIP_TIMEOUT_MS/1000)}sn içinde yakalanamadı — Luca download mekanizması interceptor'ları bypass ediyor olabilir`);
-    }
-    return yakalanmisZip;
-  }
-
-
-  // ─────────────────────────────────────────────────────────────
-  // ORTAK YARDIMCILAR — KDV / İşletme akışları için
-  // ─────────────────────────────────────────────────────────────
-
-  /**
-   * Sağ menüde verilen text'i içeren öğelere tıkla. nthOccurrence: 1 = ilk match, 2 = ikinci.
-   * "Defteri Kebir" iki kez var (Nokta Vuruşlu + Tüm Yazıcılar) — Tüm Yazıcılar = 2. occurrence.
-   */
-  async function clickLucaRightMenu(text, log, opts = {}) {
-    const { nth = 1, maxMs = 8000 } = opts;
-    await log(`🔍 Sağ menüde "${text}" aranıyor (${nth}. occurrence)...`);
-    const found = await waitUntil(() => {
-      const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
-      const matches = [];
-      for (const fname of candidates) {
-        const f = getLucaFrame(fname);
-        if (!f || !f.contentDocument) continue;
-        for (const el of f.contentDocument.querySelectorAll('*')) {
-          if ((el.textContent || '').trim() === text && el.children.length === 0) {
-            matches.push({ el, frame: f, frameName: fname });
-          }
-        }
-      }
-      return matches.length >= nth ? matches[nth - 1] : null;
-    }, maxMs);
-
-    if (!found) {
-      throw new Error(`Sağ menüde "${text}" (${nth}. occurrence) bulunamadı — Fiş Listesi sayfası açık mı?`);
-    }
-    await log(`🖱 "${text}" tıklanıyor (${found.frameName} → ${found.el.tagName})`);
-    let cur = found.el;
-    const view = found.frame.contentWindow || found.frame;
-    for (let i = 0; i < 5 && cur; i++) {
-      try {
-        cur.click();
-        cur.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
-      } catch {}
-      cur = cur.parentElement;
-    }
-    await sleep(1500);
-  }
-
-  /**
-   * frm3'te (veya herhangi bir frame'de) form aranır — formNamePattern regex ile
-   * eşleşen ilk form'u döndürür. İlk koşumda form bulunamazsa tüm form/input
-   * listesini log'a düşürür → user görsün, biz fix edelim.
-   */
-  async function waitForLucaAnyForm(log, formNamePattern, maxMs = 15000, label = 'form') {
-    await log(`⏳ ${label} (pattern: ${formNamePattern}) yüklenmesi bekleniyor…`);
-    const collectFrames = (root, depth = 0, acc = []) => {
-      if (depth > 5) return acc;
-      try {
-        for (const f of root.querySelectorAll('frame, iframe')) {
-          acc.push(f);
-          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
-        }
-      } catch (e) {}
-      return acc;
-    };
-    const form = await waitUntil(() => {
-      for (const f of collectFrames(document)) {
-        if (!f.contentDocument) continue;
-        try {
-          for (const fm of f.contentDocument.querySelectorAll('form')) {
-            if (formNamePattern.test(fm.name || '') ||
-                formNamePattern.test(fm.id || '') ||
-                formNamePattern.test(fm.action || '')) {
-              return fm;
-            }
-          }
-        } catch {}
-      }
-      return null;
-    }, maxMs);
-
-    if (!form) {
-      // Diagnostic: tüm form'ları listele
-      const all = [];
-      for (const f of collectFrames(document)) {
-        if (!f.contentDocument) continue;
-        try {
-          for (const fm of f.contentDocument.querySelectorAll('form')) {
-            all.push(`name="${fm.name || '?'}" action="${(fm.action || '?').split('/').pop().slice(0, 40)}"`);
-          }
-        } catch {}
-      }
-      throw new Error(`${label} bulunamadı (pattern: ${formNamePattern}). Mevcut form'lar: ${all.join(' | ') || '(yok)'}`);
-    }
-    await log(`✓ ${label} yüklendi: name="${form.name || '?'}" action="${(form.action || '?').split('/').pop().slice(0, 50)}"`);
-    return form;
-  }
-
-  /**
-   * Form içindeki bütün input/select/button'ları log'a düşür — keşif amaçlı.
-   * v1.36.0 için: ilk koşum kullanıcıya neye tıklayacağımı gösterir.
-   */
-  async function dumpLucaFormStructure(form, log) {
-    const inputs = [...form.querySelectorAll('input')].map(i => `${i.type || '?'}#${i.name || i.id || '?'}=${(i.value || '').slice(0, 20)}`).slice(0, 30);
-    const selects = [...form.querySelectorAll('select')].map(s => `select#${s.name || s.id || '?'}(${s.options.length}opt)`).slice(0, 10);
-    const buttons = [...form.querySelectorAll('button, input[type=submit], input[type=button]')].map(b => `${b.tagName}#${b.name || b.id || '?'}="${(b.textContent || b.value || '').trim().slice(0, 20)}"`).slice(0, 10);
-    await log(`🔬 Form yapısı: inputs[${inputs.join(' | ')}]`);
-    if (selects.length) await log(`🔬 selects[${selects.join(' | ')}]`);
-    if (buttons.length) await log(`🔬 buttons[${buttons.join(' | ')}]`);
-  }
-
-  /**
-   * Form'da "Rapor Türü" select'ini bul ve "Excel" seçeneğini seç.
-   * Olası name/id'ler: RAPOR_TURU, raporTuru, format, TIP, dosyaTuru
-   */
-  async function setRaporTuruExcel(form, log) {
-    // Rapor Türü select'ini İÇERİĞE göre bul. Üç katman:
-    //   1) PDF + Word + Excel(xlsx) üçü birden — gerçek "Rapor Türü" (PDF/Word/Excel/ODT/Liste/RTF)
-    //   2) Opt sayısı >= 5 + Excel(xlsx) — yine Rapor Türü kesinlikle (REPORT_TYPE 3 opt'lu skip olur)
-    //   3) PDF + Excel — son çare (eski mantık)
-    // ÖNEMLİ: Form dışındaki select'ler için form.ownerDocument'i tara (frm3 tümü).
-    const doc = form.ownerDocument;
-    const selects = [
-      ...form.querySelectorAll('select'),
-      ...doc.querySelectorAll('select'),
-    ].filter((sel, i, arr) => arr.indexOf(sel) === i); // dedupe
-    const analyzeSelect = (sel) => {
-      let hasPdf = false, hasWord = false, hasOdt = false, hasRtf = false;
-      let excelXlsxOpt = null, excelOpt = null;
-      for (const opt of sel.options) {
-        const t = (opt.text || '').toLocaleLowerCase('tr-TR').trim();
-        const v = (opt.value || '').toLocaleLowerCase().trim();
-        if (/\bpdf\b/.test(t) || /\bpdf\b/.test(v)) hasPdf = true;
-        if (/\bword\b/.test(t) || /docx/.test(t) || /docx/.test(v)) hasWord = true;
-        if (/\bodt\b/.test(t) || /\bodt\b/.test(v) || /open\s*document/.test(t)) hasOdt = true;
-        if (/\brtf\b/.test(t) || /\brtf\b/.test(v)) hasRtf = true;
-        // "Excel (xlsx)" tam tercih (Excel Liste hariç)
-        if (!excelXlsxOpt && /excel\s*\(xlsx\)/.test(t) && !/liste/.test(t)) excelXlsxOpt = opt;
-        // Genel Excel opt
-        if (!excelOpt && /^excel\b/.test(t) && !/liste/.test(t)) excelOpt = opt;
-        if (!excelOpt && (/xlsx/.test(v) || v === 'xlsx') && !/liste/.test(t) && !/liste/.test(v)) excelOpt = opt;
-      }
-      const formatCount = (hasPdf?1:0) + (hasWord?1:0) + (hasOdt?1:0) + (hasRtf?1:0);
-      return { sel, hasPdf, hasWord, hasOdt, hasRtf, formatCount, optCount: sel.options.length, excelXlsxOpt, excelOpt };
-    };
-
-    const analyses = selects.map(analyzeSelect);
-
-    // Katman 1: PDF + Word + Excel — bu kesinlikle "Rapor Türü"
-    for (const a of analyses) {
-      if (a.hasPdf && a.hasWord && (a.excelXlsxOpt || a.excelOpt)) {
-        const target = a.excelXlsxOpt || a.excelOpt;
-        const oldText = a.sel.selectedOptions[0]?.text || '?';
-        // Çoklu strategy — Luca farklı dispatch yöntemleri kullanabilir
-        const targetIdx = [...a.sel.options].indexOf(target);
-        a.sel.selectedIndex = targetIdx;
-        a.sel.value = target.value;
-        a.sel.dispatchEvent(new Event('input', { bubbles: true }));
-        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        // Inline onchange attribute'unu da çağır (Luca'nın gerçek handler'ı)
-        const onChangeAttr = a.sel.getAttribute('onchange');
-        if (onChangeAttr) {
-          try {
-            const win = a.sel.ownerDocument.defaultView;
-            new win.Function('event', onChangeAttr).call(a.sel, new win.Event('change'));
-          } catch (e) {}
-        }
-        await log(`📑 Rapor Türü [PDF+Word+Excel]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt, idx=${targetIdx})`);
-        return true;
-      }
-    }
-    // Katman 2: Opt sayısı >= 5 + Excel(xlsx) — "Rapor Türü" minimum 5+ format
-    for (const a of analyses) {
-      if (a.optCount >= 5 && (a.excelXlsxOpt || a.excelOpt)) {
-        const target = a.excelXlsxOpt || a.excelOpt;
-        const oldText = a.sel.selectedOptions[0]?.text || '?';
-        a.sel.value = target.value;
-        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [opt>=5]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt)`);
-        return true;
-      }
-    }
-    // Katman 3: PDF + Excel (son çare) — REPORT_TYPE'i de kabul eder
-    for (const a of analyses) {
-      if (a.hasPdf && (a.excelXlsxOpt || a.excelOpt)) {
-        const target = a.excelXlsxOpt || a.excelOpt;
-        const oldText = a.sel.selectedOptions[0]?.text || '?';
-        a.sel.value = target.value;
-        a.sel.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📑 Rapor Türü [PDF+Excel fallback]: ${oldText} → ${target.text} (select#${a.sel.name || a.sel.id}, ${a.optCount} opt) — ⚠ uyarı: opt<5 olduğu için yanlış select olabilir`);
-        return true;
-      }
-    }
-
-    // Diagnostic — hiçbir select Excel içermiyor.
-    // Her select'in opsiyonlarını da log'a düşür (en fazla 6 opt'lu olanları)
-    const summary = analyses.map((a) =>
-      `${a.sel.name || a.sel.id || '?'}(opt=${a.optCount},pdf=${a.hasPdf},word=${a.hasWord},xlsx=${!!a.excelXlsxOpt},excel=${!!a.excelOpt})`,
-    ).join(' | ');
-    await log(`⚠ Rapor Türü select'i bulunamadı. Selects: ${summary}`);
-    // 4+ opt'lu select'lerin opsiyonlarını ayrıntılı log
-    for (const a of analyses) {
-      if (a.optCount >= 4 && a.optCount <= 12) {
-        const opts = [...a.sel.options].slice(0, 8).map((o) => `"${(o.text || '').trim().slice(0, 25)}"=${o.value}`).join(' | ');
-        await log(`🔬 ${a.sel.name || a.sel.id || '?'} opts: ${opts}`);
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Form'da hesap kodu input'unu bul ve doldur. KDV 191/391 için.
-   * Olası name'ler: HESAP_KODU, hesapKodu, BAS_HESAP_KODU, BIT_HESAP_KODU
-   * "Tek hesap kodu" alanı varsa onu, yoksa BAS+BIT'i aynı değerle doldurur.
-   */
-  async function fillLucaHesapKodu(form, hesapKodu, log) {
-    // GERÇEK TYPING SİMÜLASYONU — Luca synthetic value set'ini kabul etmiyor;
-    // klavyede gerçekten yazılmış gibi karakter-karakter event chain göndermek lazım.
-    // Strateji: focus + boşalt + her karakter için keydown/keypress/input/keyup
-    // + tüm karakterler bittikten sonra blur (server'a session'a yaz).
-    const typeChar = (inp, ch) => {
-      const win = inp.ownerDocument.defaultView;
-      const code = ch.charCodeAt(0);
-      try {
-        // beforeinput
-        inp.dispatchEvent(new win.InputEvent('beforeinput', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
-        // keydown
-        inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
-        // keypress
-        inp.dispatchEvent(new win.KeyboardEvent('keypress', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
-        // value'yu uzat (native setter ile)
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, (inp.value || '') + ch);
-        // input event (typing'i bildirir)
-        inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
-        // keyup
-        inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: ch, code: 'Digit' + ch, keyCode: code, which: code }));
-      } catch (e) { /* fallback: native value set */ }
-    };
-
-    const typeText = async (inp, text) => {
-      if (!inp) return false;
-      const win = inp.ownerDocument.defaultView;
-      try {
-        // 1. Focus
-        inp.focus();
-        inp.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }));
-        inp.dispatchEvent(new win.FocusEvent('focus', { bubbles: true }));
-        // 2. Önceki değeri seç + sil (Luca yazılı değer üstüne yazmayı kabul etmeyebilir)
-        try {
-          const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-          setter.call(inp, '');
-          inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
-        } catch {}
-        // 3. Karakter karakter yaz
-        for (const ch of text) {
-          typeChar(inp, ch);
-          await sleep(50); // gerçek typing speed
-        }
-        // 4. Final change + blur
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }));
-        inp.dispatchEvent(new Event('blur', { bubbles: true }));
-        // 5. Inline onblur/onchange execute (Luca lookup)
-        const onBlurAttr = inp.getAttribute('onblur');
-        if (onBlurAttr) {
-          try { new win.Function('event', onBlurAttr).call(inp, new win.Event('blur')); } catch (e) {}
-        }
-        const onChangeAttr = inp.getAttribute('onchange');
-        if (onChangeAttr) {
-          try { new win.Function('event', onChangeAttr).call(inp, new win.Event('change')); } catch (e) {}
-        }
-        return true;
-      } catch (e) { return false; }
-    };
-
-    // Eski sync setNative'u typing fonksiyonuyla değiştir (geri uyumlu wrap)
-    const setNative = (inp, value) => {
-      // Sync bağlamda kullanılan fonksiyon — sadece native setter (fallback için)
-      if (!inp) return false;
-      const win = inp.ownerDocument.defaultView;
-      try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, value);
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.dispatchEvent(new Event('blur', { bubbles: true }));
-        return true;
-      } catch (e) { return false; }
-    };
-
-    // Önce tek hesap kodu input'u dene
-    const single = form.querySelector('input[name="HESAP_KODU"], input[id="HESAP_KODU"], input[name="hesapKodu"]');
-    if (single) {
-      setNative(single, hesapKodu);
-      await log(`💼 Hesap kodu set: ${hesapKodu} (input#${single.name || single.id})`);
-      return true;
-    }
-
-    // BAS + BIT (alt çizgili: BAS_HESAP_KODU)
-    const bas = form.querySelector('input[name="BAS_HESAP_KODU"], input[id="BAS_HESAP_KODU"], input[name="basHesapKodu"], input[name*="BAS" i][name*="HESAP" i]');
-    const bit = form.querySelector('input[name="BIT_HESAP_KODU"], input[id="BIT_HESAP_KODU"], input[name="bitHesapKodu"], input[name*="BIT" i][name*="HESAP" i]');
-    if (bas && bit) {
-      setNative(bas, hesapKodu);
-      setNative(bit, hesapKodu);
-      await log(`💼 Hesap kodu (BAS+BIT) set: ${hesapKodu}`);
-      return true;
-    }
-
-    // ILK + SON (Luca'nın gerçek isimleri: HESAPKODU_ILK + HESAPKODU_SON, alt çizgisiz)
-    const ilk = form.querySelector('input[name="HESAPKODU_ILK"], input[id="HESAPKODU_ILK"], input[name="hesapkoduIlk"]');
-    const son = form.querySelector('input[name="HESAPKODU_SON"], input[id="HESAPKODU_SON"], input[name="hesapkoduSon"]');
-    if (ilk && son) {
-      // Karakter karakter typing simulate — Luca synthetic value set'ini kabul etmiyor
-      await typeText(ilk, hesapKodu);
-      await sleep(400); // ILK onblur'un Luca AJAX'i tamamlansın
-      await typeText(son, hesapKodu);
-      await sleep(800); // SON onblur'un AJAX'i de tamamlansın
-      const v1 = ilk.value, v2 = son.value;
-      await log(`💼 Hesap kodu (typed) set: ${hesapKodu} (input.value: ILK="${v1}" SON="${v2}")`);
-      // Doğrulama — boşaldıysa setNative ile tekrar yaz (son çare)
-      if (v1 !== hesapKodu || v2 !== hesapKodu) {
-        setNative(ilk, hesapKodu);
-        setNative(son, hesapKodu);
-        await sleep(400);
-        await log(`💼 Hesap kodu re-set (native): ILK="${ilk.value}" SON="${son.value}"`);
-      }
-      return true;
-    }
-
-    // Fallback: name'inde "hesap" geçen ilk text input
-    const anyHesap = form.querySelector('input[name*="hesap" i], input[id*="hesap" i]');
-    if (anyHesap) {
-      setNative(anyHesap, hesapKodu);
-      await log(`💼 Hesap kodu (fallback) set: ${hesapKodu} → ${anyHesap.name || anyHesap.id}`);
-      return true;
-    }
-
-    await log(`⚠ Hesap kodu input'u bulunamadı (form yapısını yukarıdaki dump'tan kontrol et)`);
-    return false;
-  }
-
-  /**
-   * İşletme defteri formunda Gelir/Gider checkbox'larını ayarla.
-   * Mode: 'gelir' → sadece Gelir işaretli; 'gider' → sadece Gider işaretli.
-   */
-  async function fillLucaGelirGider(form, mode, log) {
-    const allCheckboxes = [...form.querySelectorAll('input[type=checkbox]')];
-    let gelirCb = null, giderCb = null;
-    for (const cb of allCheckboxes) {
-      const key = ((cb.name || '') + ' ' + (cb.id || '') + ' ' + (cb.value || '')).toLocaleLowerCase('tr-TR');
-      // Yakındaki label/text'e de bak
-      const label = (cb.closest('tr')?.textContent || cb.parentElement?.textContent || '').toLocaleLowerCase('tr-TR');
-      const combined = key + ' ' + label;
-      if (/gelir/.test(combined) && !gelirCb) gelirCb = cb;
-      if (/gider/.test(combined) && !giderCb) giderCb = cb;
-    }
-
-    const setCb = (cb, want) => {
-      if (!cb) return;
-      if (cb.checked !== want) {
-        cb.checked = want;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
-        cb.dispatchEvent(new Event('click', { bubbles: true }));
-      }
-    };
-
-    if (mode === 'gelir') {
-      setCb(gelirCb, true);
-      setCb(giderCb, false);
-      await log(`🟢 Gelir=ON, Gider=OFF (gelir#${gelirCb?.name || '?'} gider#${giderCb?.name || '?'})`);
-    } else {
-      setCb(gelirCb, false);
-      setCb(giderCb, true);
-      await log(`🔴 Gelir=OFF, Gider=ON`);
-    }
-  }
-
-  /**
-   * Form'daki TARIH_ILK / TARIH_SON'u job.donem'a göre doldur (Mizan'la aynı format).
-   */
-  async function fillLucaTarih(form, job, log) {
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-    const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
-    const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
-    if (!tarihIlk || !tarihSon) throw new Error('TARIH_ILK / TARIH_SON bulunamadı');
-    const slashBas = tarih.bas.replace(/\./g, '/');
-    const slashBit = tarih.bit.replace(/\./g, '/');
-
-    // Tarih için setNative — Luca tarih input'larında datepicker mask var,
-    // synthetic keypress'i mask plugin'i reddediyor. Mizan'da setNative çalışıyor;
-    // KDV'de de setNative kullanmak doğru.
-    const setNative = (inp, value) => {
-      const win = inp.ownerDocument.defaultView;
-      try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, value);
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      } catch {}
-    };
-    setNative(tarihIlk, slashBas);
-    setNative(tarihSon, slashBit);
-    await sleep(300);
-    // Doğrula — boşsa tekrar yaz
-    if (!tarihIlk.value || !tarihSon.value) {
-      setNative(tarihIlk, slashBas);
-      setNative(tarihSon, slashBit);
-      await sleep(200);
-    }
-    await log(`📅 Tarih: ${tarihIlk.value} → ${tarihSon.value}`);
-  }
-
-  /**
-   * Generic typing simulator — fillLucaHesapKodu içinde tanımlı typeText ile aynı.
-   * Modüler kullanım için dışarı çıkarıldı: tarih + hesap kodu + diğer text input'lar.
-   */
-  async function typeLucaInput(inp, text) {
-    if (!inp) return false;
-    const win = inp.ownerDocument.defaultView;
-    try {
-      inp.focus();
-      inp.dispatchEvent(new win.FocusEvent('focusin', { bubbles: true }));
-      inp.dispatchEvent(new win.FocusEvent('focus', { bubbles: true }));
-      // Önceki değeri temizle
-      try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, '');
-        inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
-      } catch {}
-      // Karakter karakter yaz
-      for (const ch of text) {
-        const code = ch.charCodeAt(0);
-        try {
-          inp.dispatchEvent(new win.InputEvent('beforeinput', { bubbles: true, cancelable: true, data: ch, inputType: 'insertText' }));
-          inp.dispatchEvent(new win.KeyboardEvent('keydown', { bubbles: true, key: ch, keyCode: code, which: code }));
-          inp.dispatchEvent(new win.KeyboardEvent('keypress', { bubbles: true, key: ch, keyCode: code, which: code }));
-          const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-          setter.call(inp, (inp.value || '') + ch);
-          inp.dispatchEvent(new win.InputEvent('input', { bubbles: true, data: ch, inputType: 'insertText' }));
-          inp.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: ch, keyCode: code, which: code }));
-        } catch (e) {}
-        await sleep(40);
-      }
-      // Final
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-      inp.dispatchEvent(new win.FocusEvent('focusout', { bubbles: true }));
-      inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      // Inline onblur/onchange execute
-      const onBlurAttr = inp.getAttribute('onblur');
-      if (onBlurAttr) { try { new win.Function('event', onBlurAttr).call(inp, new win.Event('blur')); } catch {} }
-      const onChangeAttr = inp.getAttribute('onchange');
-      if (onChangeAttr) { try { new win.Function('event', onChangeAttr).call(inp, new win.Event('change')); } catch {} }
-      return true;
-    } catch (e) { return false; }
-  }
-
-  /**
-   * Form'da "Rapor" butonunu bul ve tıkla — Mizan'da yaptığımız form intercept blob'u
-   * yakalayacak (fetchMizanByClickIntercept'in son kısmıyla aynı mantık).
-   */
-  async function clickLucaRaporButton(form, log) {
-    // Luca'da "Rapor" butonu form'un DIŞINDA ayrı div'de — mizan akışındaki
-    // findExcelButton ile aynı strateji: form.ownerDocument tüm DOM'u tara.
-    const doc = form.ownerDocument;
-    const all = [
-      ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
-      ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
-    ];
-
-    // 1) Tam eşleşme: "Rapor" / "RAPOR"
-    let btn = all.find((el) => {
-      const txt = (el.value || el.textContent || '').trim();
-      return txt === 'Rapor' || txt === 'RAPOR';
-    });
-
-    // 2) "Rapor Al" / "Raporu Hazırla" / "Excel'e Aktar"
-    if (!btn) {
-      btn = all.find((el) => {
-        const txt = (el.value || el.textContent || '').trim();
-        return /^rapor( al|u? hazırla|u? olustur)?$/i.test(txt) ||
-               /excel.*aktar|aktar.*excel/i.test(txt);
-      });
-    }
-
-    // 3) onclick içinde raporIndir/jasper/submitForm/gonder
-    if (!btn) {
-      btn = all.find((el) => {
-        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
-        return /raporIndir|jasper|rapor_tur|raporGetir|submitForm|raporAl|gonder/i.test(oc);
-      });
-    }
-
-    if (!btn) {
-      const sample = all
-        .filter((el) => el.offsetParent !== null) // visible
-        .slice(0, 15)
-        .map((el) => {
-          const t = (el.value || el.textContent || '').trim().slice(0, 20);
-          const oc = ((el.getAttribute && el.getAttribute('onclick')) || '').slice(0, 30);
-          return `[${el.tagName}]"${t || '∅'}"${oc ? `|oc=${oc}` : ''}`;
-        })
-        .filter((s, i, arr) => arr.indexOf(s) === i)
-        .join(' || ');
-      throw new Error(`"Rapor" butonu bulunamadı (form+frame DOM tarandı). Visible elements: ${sample || '(yok)'}`);
-    }
-
-    const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
-    await log(`🎯 Buton bulundu: "${label}" [${btn.tagName}]`);
-    await log(`🖱 "${label}" butonu tıklanıyor (gerçek user click sim)`);
-    // Gerçek user click — focus + mousedown + mouseup + click sırası
-    const win = doc.defaultView || window;
-    try {
-      if (typeof btn.focus === 'function') btn.focus();
-      btn.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      btn.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-      btn.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true }));
-      btn.click();
-    } catch (e) {
-      try { btn.click(); } catch {}
-    }
-    // NOT: onclick attribute eval'i KALDIRILDI — Mizan'da gerekiyordu
-    // (gonder() fonksiyonu) ama KDV Defteri Kebir akışında Luca'nın kendi click
-    // handler'ı zaten dispatch edilen MouseEvent ile tetikleniyor. Ekstra eval
-    // bazen flow'u 2 kez tetikleyip yanlış sonuçlara sebep oluyor.
-  }
-
-  /**
-   * Form üzerindeki "Yenile" butonunu bul ve tıkla — Defteri Kebir akışında
-   * hesap kodu set sonrası Luca session'ını güncellemek için ŞART.
-   * frm3 doc'unda "Yenile" text'li link/button arar (form'un dışında olabilir).
-   */
-  async function clickLucaYenileButton(form, log) {
-    const doc = form.ownerDocument;
-    const all = [
-      ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
-      ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a, td, font, span, div'),
-    ];
-
-    // 1) Tam eşleşme: "Yenile" / "YENİLE"
-    let btn = all.find((el) => {
-      const txt = (el.value || el.textContent || '').trim();
-      // Sadece kendi içeriği "Yenile" olan (parent/wrapper değil)
-      if (el.children && el.children.length > 0) return false;
-      return txt === 'Yenile' || txt === 'YENİLE' || txt === 'YENILE';
-    });
-
-    // 2) onclick içinde "yenile|refresh|reload|loadhesap"
-    if (!btn) {
-      btn = all.find((el) => {
-        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
-        return /yenile|refresh|reload|loadHesap|loadhesap|hesapAra|hesapPlani/i.test(oc);
-      });
-    }
-
-    if (!btn) {
-      await log('ℹ️ Yenile butonu bulunamadı — devam ediliyor (Luca session zaten güncel olabilir)');
-      return false;
-    }
-
-    const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
-    await log(`🔄 Yenile butonu tıklanıyor: "${label}" [${btn.tagName}]`);
-    try {
-      btn.click();
-      btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    } catch {}
-    // onclick attribute'unu da execute et
-    try {
-      const oc = btn.getAttribute && btn.getAttribute('onclick');
-      if (oc) {
-        const win = doc.defaultView || window;
-        new win.Function(oc).call(btn);
-      }
-    } catch {}
-    return true;
-  }
-
-  /**
-   * Defteri Kebir flow (KDV 191 / 391) — Mizan'dan BAĞIMSIZ, sıfırdan yazıldı.
-   *
-   * Yaklaşım: Luca'nın UI butonlarına tıklamak yerine doğrudan form parametrelerini
-   * topla, kendi fetch POST'umuzu at. Server'dan dönen JSON'daki rapor_id ile
-   * rapor_takip + rapor_indir zincirini bizim parametrelerimizle yürüt.
-   * Bu sayede Luca'nın frontend "input.value submit'e geçmiyor" sorunu bypass.
-   */
-  async function fetchLucaDefteriKebirExcel(job, log, hesapKodu) {
-    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
-      throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
-    }
-    job = { ...job, donemTipi: 'AYLIK' };
-
-    // 1-2. Firma + Fiş Listesi
-    await ensureLucaFirma(job, log);
-    await navigateToFisListesi(log);
-
-    // 3. Defteri Kebir (Tüm Yazıcılar) — 2. occurrence
-    await clickLucaRightMenu('Defteri Kebir', log, { nth: 2 });
-
-    // 4. Form yüklensin
-    const form = await waitForLucaAnyForm(log, /raporKebir|kebir/i, 15000, 'Defteri Kebir formu');
-    const frm3doc = form.ownerDocument;
-    const frm3win = frm3doc.defaultView;
-
-    // 5. Form'un tam yüklenmesi için ekstra bekleme — UI elements lazy load
-    await sleep(800);
-
-    // 6. Tarih hesabı (AYLIK)
-    const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
-    const TARIH_SON = parseAylikDonemBitis(job.donem);
-    if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
-
-    // Helper — input'a native setter ile değer yaz + event'leri dispatch
-    const setInput = (sel, value) => {
-      const inp = form.querySelector(sel);
-      if (!inp) return false;
-      const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
-      setter.call(inp, value);
-      inp.dispatchEvent(new Event('input', { bubbles: true }));
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-      inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      return true;
-    };
-
-    // ── DOĞRU SIRA (manuel kullanıcı gibi) ──
-    // 7. ÖNCE Hesap Kodu (hesap planı state'i en kritik)
-    setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
-    setInput('input[name="HESAPKODU_SON"]', hesapKodu);
-    await sleep(400); // Luca onblur AJAX'i için
-    // VERIFICATION — input gerçekten dolu mu, UI'da görünür mü?
-    const hkIlkActual = form.querySelector('input[name="HESAPKODU_ILK"]')?.value;
-    const hkSonActual = form.querySelector('input[name="HESAPKODU_SON"]')?.value;
-    await log(`💼 Hesap kodu set sonrası: ILK="${hkIlkActual}" SON="${hkSonActual}"`);
-
-    // 8. SONRA Tarih
-    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
-    setInput('input[name="TARIH_SON"]', TARIH_SON);
-    await sleep(400);
-    const tIlkActual = form.querySelector('input[name="TARIH_ILK"]')?.value;
-    const tSonActual = form.querySelector('input[name="TARIH_SON"]')?.value;
-    await log(`📅 Tarih set sonrası: ILK="${tIlkActual}" SON="${tSonActual}"`);
-
-    // 9. EN SON Rapor Türü = Excel (xlsx)
-    await setRaporTuruExcel(form, log);
-
-    // 10. XHR + fetch hook frm3'e (Luca jasper.jq POST'unu yakalamak için)
-    installXhrHook(frm3win);
-    installFetchHook(frm3win);
-    installNativeDownloadHook(frm3win);
-    await log(`🔗 frm3 XHR+fetch+native-download hook kuruldu`);
-
-    // 11. __lucaJobOverrides — XHR hook body inject etsin
-    window.__lucaJobOverrides = {
-      TARIH_ILK,
-      TARIH_SON,
-      HESAPKODU_ILK: hesapKodu,
-      HESAPKODU_SON: hesapKodu,
-      REPORT_TYPE: 'xlsx',
-    };
-
-    // 12. UZUN BEKLEME — Luca state'i sindirsin
-    await sleep(2000);
-
-    // 12.5. Hook'ları yeniden kur (form yüklenirken yeni frame oluşmuş olabilir)
-    installXhrHookOnAllFrames();
-    installXhrHook(frm3win);
-    installFetchHook(frm3win);
-    installNativeDownloadHook(frm3win);
-    await log(`🔗 Rapor öncesi hook'lar yeniden kuruldu`);
-
-    // 13. Rapor butonu — GERÇEK USER CLICK simülasyonu (gonder() DEĞİL)
-    // gonder() Luca'nın iç state'inden okuyor; gerçek click form input.value'ları
-    // submit body'sine alıyor. Manuel kullanıcı davranışıyla aynı.
-    await clickLucaRaporButton(form, log);
-
-    // 14. Blob yakala — iki yol: form intercept VEYA rapor_takip durum=150 → kendi rapor_indir fetch
-    try {
-      const blob = await waitForKdvBlob(log, frm3win, 60000);
-      return blob;
-    } finally {
-      delete window.__lucaJobOverrides;
-      delete window.__morenRaporHazir;
-    }
-  }
-
-  /**
-   * KDV blob yakalama — form intercept VEYA rapor_takip durum=150 yakalandığında
-   * agent kendi rapor_indir fetch'ini atar. Çünkü Luca rapor_indir'i bazen
-   * <a download> veya window.open ile yapıyor → form intercept tutmuyor.
-   */
-  async function waitForKdvBlob(log, frm3win, maxMs) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < maxMs) {
-      // Yol 1: form intercept blob yakaladı (Mizan tarzı)
-      if (window.__morenCapturedBlob) {
-        const b = window.__morenCapturedBlob;
-        window.__morenCapturedBlob = null;
-        await log(`✅ Blob (form intercept) alındı (${Math.round(b.size / 1024)} KB)`);
-        return b;
-      }
-      // Yol 2: rapor_takip durum=150 → kendi rapor_indir fetch
-      // ÜÇ varyant deniyoruz: JSON, form-encoded, GET — hangisi blob dönerse onu al
-      if (window.__morenRaporHazir && window.__morenRaporHazir.durum === 150) {
-        const rh = window.__morenRaporHazir;
-        window.__morenRaporHazir = null;
-        await log(`📥 rapor hazır — agent 3 varyant deniyor (JSON/form-encoded/GET)`);
-        const indirUrl = rh.takipUrl.replace(/rapor_takip\.jq/i, 'rapor_indir.jq');
-
-        // takipBody'yi parse et (params değerlerini extract için)
-        let donemId = '', raporTur = '';
-        try {
-          const parsed = JSON.parse(rh.takipBody || '{}');
-          donemId = parsed.donem_id || '';
-          raporTur = parsed.params?.raporTur || '';
-        } catch {}
-
-        const tryFetch = async (label, opts, urlOverride) => {
-          try {
-            const targetUrl = urlOverride || indirUrl;
-            const res = await frm3win.fetch(targetUrl, opts);
-            const ct = res.headers.get('content-type') || '';
-            if (res.ok) {
-              // Önce text olarak oku (JSON ise içeriği görmek için)
-              const text = await res.clone().text();
-              const sz = text.length;
-              if (/xlsx|spreadsheet|excel|octet-stream/i.test(ct) || (sz > 5000 && !/json|html/i.test(ct))) {
-                const blob = await res.blob();
-                await log(`📦 ${label}: ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)} → BLOB`);
-                return blob;
-              }
-              // JSON ise içeriği log'la (debug için kritik)
-              await log(`📦 ${label}: ${Math.round(sz / 1024)} KB ct=${ct.slice(0, 40)} body=${text.slice(0, 250)}`);
-              // JSON içinde URL/path var mı? Otomatik takip
-              try {
-                const json = JSON.parse(text);
-                const possibleUrlFields = [
-                  json.dosya_url, json.dosyaUrl, json.url, json.fileUrl, json.file_url,
-                  json.download_url, json.downloadUrl, json.path, json.filePath, json.file_path,
-                  json.indirme_url, json.indirmeUrl,
-                  json.data?.dosya_url, json.data?.url, json.data?.path,
-                  json.dosyaAdi, json.dosya_adi, json.fileName, json.file_name,
-                ];
-                const downloadUrl = possibleUrlFields.find(u => u && typeof u === 'string');
-                const fileId = json.dosya_id || json.dosyaId || json.file_id || json.fileId || json.id;
-                if (downloadUrl) {
-                  const fullUrl = downloadUrl.startsWith('http') ? downloadUrl :
-                    new URL(downloadUrl, indirUrl).href;
-                  await log(`🔗 ${label} JSON içinde URL bulundu: ${downloadUrl.slice(0, 80)} → fetch...`);
-                  const followRes = await frm3win.fetch(fullUrl, { method: 'GET', credentials: 'include' });
-                  if (followRes.ok) {
-                    const fct = followRes.headers.get('content-type') || '';
-                    const followBlob = await followRes.blob();
-                    await log(`📦 follow: ${Math.round(followBlob.size / 1024)} KB ct=${fct.slice(0, 40)}`);
-                    if (followBlob.size > 1000) return followBlob;
-                  }
-                }
-                if (fileId) {
-                  await log(`🔗 ${label} JSON içinde fileId=${fileId} — alternatif endpoint deneniyor`);
-                }
-              } catch (e) {}
-            } else {
-              await log(`⚠ ${label}: HTTP ${res.status}`);
-            }
-          } catch (e) {
-            await log(`⚠ ${label} hata: ${e?.message || e}`);
-          }
-          return null;
-        };
-
-        // Varyant 1: form-encoded (Mizan tarzı)
-        const formParams = new URLSearchParams();
-        if (donemId) formParams.set('donem_id', donemId);
-        if (raporTur) formParams.set('raporTur', raporTur);
-        formParams.set('dosya_tipi', 'xlsx');
-        const blob1 = await tryFetch('form-encoded', {
-          method: 'POST',
-          credentials: 'include',
-          body: formParams.toString(),
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        });
-        if (blob1) return blob1;
-
-        // Varyant 2: JSON (orijinal takipBody)
-        const blob2 = await tryFetch('JSON', {
-          method: 'POST',
-          credentials: 'include',
-          body: rh.takipBody || '{}',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        if (blob2) return blob2;
-
-        // Varyant 3: GET
-        const getUrl = indirUrl + (indirUrl.includes('?') ? '&' : '?') +
-          `donem_id=${donemId}&raporTur=${raporTur}&dosya_tipi=xlsx`;
-        const blob3 = await tryFetch('GET', {
-          method: 'GET',
-          credentials: 'include',
-        });
-        if (blob3) return blob3;
-
-        await log(`⚠ 3 varyant da blob dönmedi — form intercept beklemeye devam`);
-      }
-      await sleep(300);
-    }
-    throw new Error('KDV blob 60sn içinde yakalanamadı (ne form intercept ne rapor_takip)');
-  }
-
-  async function fetchLucaIsletmeGelirGiderExcel(job, log, mode) {
-    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
-      throw new Error('Bu Luca v2.1 sürümü; klasik Luca kullanın.');
-    }
-
-    job = { ...job, donemTipi: 'AYLIK' };
-    await log(`📊 İşletme akışı başlıyor — mode=${mode} (${mode === 'gelir' ? 'Satış' : 'Alış'})`);
-
-    // 1) Firma değiştir
-    await ensureLucaFirma(job, log);
-
-    // 2) İşletme Defteri → Gider İşlemleri → Gider Listesi (yeni helper)
-    await navigateToIsletmeGiderListesi(log);
-
-    // 3) Sağ menüde "Gelir/Gider Listesi" tıkla → form yüklenir
-    await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
-
-    // 4) Form yüklensin
-    const form = await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme|raporGelirGider/i, 15000, 'İşletme Gelir/Gider formu');
-    const frm3doc = form.ownerDocument;
-    const frm3win = frm3doc.defaultView;
-
-    // 5) Form yapısını dump et (debug — gerçek alan isimleri için)
-    await dumpLucaFormStructure(form, log);
-    await sleep(800);
-
-    // 6) Tarih (AYLIK) — birden fazla muhtemel selector dene
-    const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
-    const TARIH_SON = parseAylikDonemBitis(job.donem);
-    if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
-    await log(`📅 Tarih: ${TARIH_ILK} → ${TARIH_SON}`);
-
-    // Tarih input — KESIN id (FORM_DUMP'tan): #TARIH_ILK, #TARIH_SON
-    const setDateInput = (sel, value) => {
-      const inp = form.querySelector(sel);
-      if (!inp) return false;
-      // Focus → değer set → input/change/blur (Luca calendar widget'i için)
-      try { inp.focus(); } catch(e){}
-      const setter = Object.getOwnPropertyDescriptor(frm3win.HTMLInputElement.prototype, 'value').set;
-      setter.call(inp, value);
-      inp.dispatchEvent(new Event('input', { bubbles: true }));
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-      inp.dispatchEvent(new Event('keyup', { bubbles: true }));
-      inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      try { inp.blur(); } catch(e){}
-      return inp.value === value;
-    };
-    const ilkOk = setDateInput('#TARIH_ILK', TARIH_ILK);
-    const sonOk = setDateInput('#TARIH_SON', TARIH_SON);
-    await log(`📅 Tarih set: TARIH_ILK=${TARIH_ILK} (ok=${ilkOk}) | TARIH_SON=${TARIH_SON} (ok=${sonOk})`);
-    await sleep(300);
-
-    // 7) ⚠ KRİTİK: Bölüm seçimi VISIBLE checkbox değil HIDDEN GELIR1/GIDER1 ile kontrol ediliyor!
-    //    EMPIRICAL (v1.75 testi):
-    //      agent set GELIR1=0, GIDER1=1 → Excel: SADECE GELİR
-    //    Sonuç: GELIR1=0 ya da GIDER1=0 = "sadece o bölümü göster"
-    //           (1,1) default = her iki bölümü göster
-    //
-    //    Doğru mantık:
-    //      ISLETME_GELIR → GELIR1='0', GIDER1='1' → Excel: SADECE GELİRLER
-    //      ISLETME_GIDER → GIDER1='0', GELIR1='1' → Excel: SADECE GİDERLER
-    {
-      const isGelir = mode === 'gelir';
-      const gelirCb = form.querySelector('#gelir, input[name="gelir"][type="checkbox"]');
-      const giderCb = form.querySelector('#gider, input[name="gider"][type="checkbox"]');
-      const gelir1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
-      const gider1 = form.querySelector('#GIDER1, input[name="GIDER1"]');
-
-      // Visible checkbox'lara dokunmayalım — Luca'nın onclick handler'ı GELIR1/GIDER1'i resetleyebilir.
-      // Sadece HIDDEN flag'leri override et.
-      if (gelir1) gelir1.value = isGelir ? '0' : '1';   // GELIR mode → GELIR1='0' (only GELIR)
-      if (gider1) gider1.value = !isGelir ? '0' : '1';  // GIDER mode → GIDER1='0' (only GIDER)
-
-      await log(`🚩 Hidden flag set: GELIR1=${gelir1?.value} | GIDER1=${gider1?.value} — hedef: ${isGelir ? 'GELİRLER' : 'GİDERLER'}`);
-    }
-    await sleep(200);
-
-    // 8) Rapor Türü Excel
-    await setRaporTuruExcel(form, log);
-    await sleep(500);
-
-    // 9) Hook'lar + override
-    installXhrHook(frm3win);
-    installFetchHook(frm3win);
-    installNativeDownloadHook(frm3win);
-    await log(`🔗 frm3 hook'lar kuruldu`);
-
-    window.__lucaJobOverrides = {
-      TARIH_ILK,
-      TARIH_SON,
-      REPORT_TYPE: 'xlsx',
-      // İşletme için ek parametre — backend hangi mode kullanılacak
-      isletme_mode: mode,
-      // Hidden flag override (Luca submit'inde kullanır)
-      GELIR1: mode === 'gelir' ? '0' : '1',
-      GIDER1: mode === 'gider' ? '0' : '1',
-    };
-
-    // 10) Rapor butonu — gerçek user click
-    await sleep(500);
-
-    // ⚠ Hidden GELIR1/GIDER1 flag'lerini Rapor click'inden HEMEN ÖNCE bir kez daha override et
-    //   (Luca araya girip default'a resetlemiş olabilir)
-    {
-      const isGelirMode = mode === 'gelir';
-      const g1 = form.querySelector('#GELIR1, input[name="GELIR1"]');
-      const g2 = form.querySelector('#GIDER1, input[name="GIDER1"]');
-      if (g1) g1.value = isGelirMode ? '0' : '1';
-      if (g2) g2.value = !isGelirMode ? '0' : '1';
-      await log(`🚩 Rapor öncesi son set: GELIR1=${g1?.value} | GIDER1=${g2?.value}`);
-    }
-
-    await clickLucaRaporButton(form, log);
-
-    // 11) Blob yakala
-    try {
-      return await waitForKdvBlob(log, frm3win, 60000);
-    } finally {
-      delete window.__lucaJobOverrides;
-      delete window.__morenRaporHazir;
-    }
-  }
-
-  /**
-   * İşletme Gelir/Gider formunda "Sadece Gelir" / "Sadece Gider" seçimi.
-   * Form yapısı bilinmediği için MULTI-STRATEJİ:
-   *   1) radio[name=...][value=GELIR/GIDER]
-   *   2) checkbox[name*=gelir/gider] (sadece istediği işaretli kalır)
-   *   3) select[name*=tip] → option text "Sadece Gelir"/"Sadece Gider"
-   * Hangisi tutarsa onunla devam eder, log'a yazar.
-   */
-  async function fillLucaIsletmeGelirGiderSecim(form, mode, log) {
-    const win = form.ownerDocument.defaultView;
-    const isGelir = mode === 'gelir';
-    const targetText = isGelir ? 'sadece gelir' : 'sadece gider';
-    const targetUpper = isGelir ? 'GELIR' : 'GIDER';
-
-    // Strateji 1: radio button — value veya yakındaki label "Sadece Gelir/Gider"
-    const radios = [...form.querySelectorAll('input[type=radio]')];
-    for (const r of radios) {
-      const v = (r.value || '').toLowerCase();
-      const labelText = (r.closest('tr')?.textContent || r.parentElement?.textContent || '').toLowerCase();
-      const combined = v + ' ' + labelText;
-      if (isGelir && /sadece\s*gelir|^gelir$|gelir_only/.test(combined) && !/gider/.test(v)) {
-        r.checked = true;
-        r.dispatchEvent(new Event('change', { bubbles: true }));
-        r.dispatchEvent(new Event('click', { bubbles: true }));
-        await log(`🟢 Radio: "Sadece Gelir" seçildi (name=${r.name}, value=${r.value})`);
-        return true;
-      }
-      if (!isGelir && /sadece\s*gider|^gider$|gider_only/.test(combined) && !/gelir/.test(v)) {
-        r.checked = true;
-        r.dispatchEvent(new Event('change', { bubbles: true }));
-        r.dispatchEvent(new Event('click', { bubbles: true }));
-        await log(`🔴 Radio: "Sadece Gider" seçildi (name=${r.name}, value=${r.value})`);
-        return true;
-      }
-    }
-
-    // Strateji 2: select dropdown — option text "Sadece Gelir"/"Sadece Gider"
-    const selects = [...form.querySelectorAll('select')];
-    for (const sel of selects) {
-      for (const opt of sel.options) {
-        const t = (opt.text || '').toLowerCase().trim();
-        if (t.includes(targetText)) {
-          const setter = Object.getOwnPropertyDescriptor(win.HTMLSelectElement.prototype, 'value').set;
-          setter.call(sel, opt.value);
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-          await log(`📋 Select: "${opt.text}" seçildi (select#${sel.name || sel.id})`);
-          return true;
-        }
-      }
-    }
-
-    // Strateji 3: checkbox — sadece istediği işaretli kalır
-    const checkboxes = [...form.querySelectorAll('input[type=checkbox]')];
-    let gelirCb = null, giderCb = null;
-    for (const cb of checkboxes) {
-      const key = ((cb.name || '') + ' ' + (cb.id || '') + ' ' + (cb.value || '')).toLowerCase();
-      const label = (cb.closest('tr')?.textContent || cb.parentElement?.textContent || '').toLowerCase();
-      const combined = key + ' ' + label;
-      if (/gelir/.test(combined) && !gelirCb) gelirCb = cb;
-      if (/gider/.test(combined) && !giderCb) giderCb = cb;
-    }
-    const setCb = (cb, want) => {
-      if (!cb) return;
-      if (cb.checked !== want) {
-        cb.checked = want;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
-        cb.dispatchEvent(new Event('click', { bubbles: true }));
-      }
-    };
-    if (isGelir) {
-      setCb(gelirCb, true);
-      setCb(giderCb, false);
-      await log(`🟢 Checkbox: Gelir=ON, Gider=OFF (gelir#${gelirCb?.name || '?'} gider#${giderCb?.name || '?'})`);
-    } else {
-      setCb(gelirCb, false);
-      setCb(giderCb, true);
-      await log(`🔴 Checkbox: Gelir=OFF, Gider=ON (gelir#${gelirCb?.name || '?'} gider#${giderCb?.name || '?'})`);
-    }
-    if (gelirCb || giderCb) return true;
-
-    // Hiçbir strateji tutmadıysa diagnostic
-    const diag = {
-      radios: radios.length,
-      selects: selects.length,
-      checkboxes: checkboxes.length,
-      radioValues: radios.map(r => `${r.name}=${r.value}`).slice(0, 10).join(' | '),
-      selectNames: selects.map(s => s.name || s.id).slice(0, 10).join(' | '),
-      checkboxNames: checkboxes.map(c => c.name || c.id).slice(0, 10).join(' | '),
-    };
-    await log(`⚠ Sadece Gelir/Gider seçimi yapılamadı. Form: ${JSON.stringify(diag)}`);
-    return false;
-  }
-
-  /**
-   * Form intercept tarafından set edilen window.__capturedBlob'u bekle.
-   * Mizan'daki form.submit intercept zaten bunu populate ediyor.
-   */
-  async function waitForCapturedBlob(log, maxMs) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < maxMs) {
-      if (window.__morenCapturedBlob) {
-        const b = window.__morenCapturedBlob;
-        window.__morenCapturedBlob = null;
-        await log(`✅ Blob alındı (${Math.round(b.size / 1024)} KB)`);
-        return b;
-      }
-      await sleep(250);
-    }
-    throw new Error('Blob 30sn içinde yakalanamadı — Rapor butonu cevap vermedi olabilir');
-  }
-
-  // ─── LUCA TAM OTOMATİK YARDIMCILARI ───
-
-  /**
-   * "2026-03" → "01/03/2026" (AYLIK ay başlangıcı)
-   * "2026-3"  → "01/03/2026"
-   * "032026"  → "01/03/2026"
-   */
-  function parseAylikDonemBaslangic(donem) {
-    if (!donem) return null;
-    const s = String(donem).trim();
-    let yil, ay;
-    let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
-    if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
-    if (!yil) { m = s.match(/^(\d{2})(\d{4})$/); if (m) { ay = m[1]; yil = m[2]; } }
-    if (!yil || !ay) return null;
-    return `01/${ay}/${yil}`;
-  }
-  function parseAylikDonemBitis(donem) {
-    if (!donem) return null;
-    const s = String(donem).trim();
-    let yil, ay;
-    let m = s.match(/^(\d{4})-(\d{1,2})$/); if (m) { yil = m[1]; ay = m[2].padStart(2, '0'); }
-    if (!yil) { m = s.match(/^(\d{1,2})\/(\d{4})$/); if (m) { ay = m[1].padStart(2, '0'); yil = m[2]; } }
-    if (!yil) { m = s.match(/^(\d{2})(\d{4})$/); if (m) { ay = m[1]; yil = m[2]; } }
-    if (!yil || !ay) return null;
-    // Ayın son günü
-    const lastDay = new Date(parseInt(yil), parseInt(ay), 0).getDate();
-    return `${String(lastDay).padStart(2, '0')}/${ay}/${yil}`;
-  }
-
-  /** Bir frame referansını adıyla al */
-  function getLucaFrame(name) {
-    return [...document.querySelectorAll('frame, iframe')].find((f) => f.name === name);
-  }
-
-  /** Bir koşul sağlanana kadar bekle (max ms) */
-  async function waitUntil(predicate, maxMs = 10000, intervalMs = 200) {
-    const t0 = Date.now();
-    while (Date.now() - t0 < maxMs) {
-      try {
-        const r = await predicate();
-        if (r) return r;
-      } catch {}
-      await sleep(intervalMs);
-    }
-    return null;
-  }
-
-  /**
-   * Luca'da hedef firma açık değilse SirketCombo'yu değiştirip sayfa
-   * yenilenmesini bekler. Eşleştirme önceliği:
-   *   1) job.taxNumber (VKN/TCKN) — option text içinde geçiyorsa kesin eşleşme
-   *   2) job.lucaSlug — Luca'daki firma adının normalize hali (örn. "OZ ELA TUR")
-   *   3) job.mukellefAdi — son çare: tam mükellef adı substring eşleşme
-   */
-  /**
-   * Returns: { changed: boolean, alreadyCorrect: boolean, skipped: boolean }
-   *   - changed = true        → firma gerçekten YGS→ÖZ ELA gibi değişti, formlar STALE
-   *   - alreadyCorrect = true → firma zaten doğru, hiçbir şey yapılmadı
-   *   - skipped = true        → kontrol edilemedi (slug/tax/ad yok ya da DOM eksik)
-   */
-  async function ensureLucaFirma(job, log) {
-    const candidates = [job.taxNumber, job.lucaSlug, job.mukellefAdi].filter(Boolean);
-    if (candidates.length === 0) {
-      await log('ℹ️ Mükellef için lucaSlug/taxNumber/ad yok — firma kontrolü atlanıyor');
-      return { changed: false, alreadyCorrect: false, skipped: true };
-    }
-    const frm4 = getLucaFrame('frm4');
-    if (!frm4 || !frm4.contentDocument) {
-      throw new Error('frm4 (firma seçici) bulunamadı');
-    }
-    const combo = frm4.contentDocument.getElementById('SirketCombo');
-    if (!combo) {
-      await log('⚠ SirketCombo bulunamadı, firma kontrolü atlanıyor');
-      return { changed: false, alreadyCorrect: false, skipped: true };
-    }
-    const currentText = (combo.selectedOptions[0]?.text || '').trim();
-
-    // ASCII-fold + slug — TR karakter ve boşluk/alt çizgi farklarını sıfırlar.
-    // "OZ ELA TURİZM TAŞIMACILIK İNŞAAT TİCARET" → "oz_ela_turizm_tasimacilik_insaat_ticaret"
-    // "oz_ela_turizm_tasimacilik_insaat_ticaret"  → "oz_ela_turizm_tasimacilik_insaat_ticaret"
-    const slugify = (s) => String(s || '')
-      .toLocaleLowerCase('tr-TR')
-      .replace(/[ıİ]/g, 'i')
-      .replace(/[şŞ]/g, 's')
-      .replace(/[çÇ]/g, 'c')
-      .replace(/[ğĞ]/g, 'g')
-      .replace(/[üÜ]/g, 'u')
-      .replace(/[öÖ]/g, 'o')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-
-    // Geçerli option mu? — boş, separator (--, ===), <option value=""> hariç
-    const isRealOption = (opt) => {
-      const v = String(opt.value || '').trim();
-      const t = String(opt.text || '').trim();
-      if (!v || !t) return false;
-      if (t.length < 3) return false;
-      if (/^[-=_•·\s]+$/.test(t)) return false; // separator
-      return true;
-    };
-
-    // Mevcut açık firma istenen mükellef mi?
-    const currentSlug = slugify(currentText);
-    for (const c of candidates) {
-      const cSlug = slugify(c);
-      if (!cSlug) continue;
-      // VKN ise tam string match (option text'inde geçiyor mu)
-      if (/^\d{10,11}$/.test(String(c)) && currentText.includes(String(c))) {
-        await log(`✓ Firma zaten doğru: ${currentText}`);
-        return;
-      }
-      // İsim/slug ise: slug eşitliği ya da currentSlug, target slug'ı kapsıyor mu
-      if (cSlug.length >= 6 && (currentSlug === cSlug || currentSlug.includes(cSlug) || cSlug.includes(currentSlug))) {
-        await log(`✓ Firma zaten doğru: ${currentText}`);
-        return { changed: false, alreadyCorrect: true, skipped: false };
-      }
-    }
-
-    // Hedef firma option'unu bul — taxNumber > lucaSlug > ad sırası
-    let targetOpt = null;
-    let matchedBy = '';
-
-    // 1) VKN/TCKN tam match
-    if (job.taxNumber) {
-      const tn = String(job.taxNumber).replace(/\D/g, '');
-      if (tn) {
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          if (opt.text.includes(tn)) {
-            targetOpt = opt; matchedBy = `VKN/TCKN ${tn}`; break;
-          }
-        }
-      }
-    }
-
-    // 2) lucaSlug — ASCII-fold + slugify her iki tarafa
-    if (!targetOpt && job.lucaSlug) {
-      const wanted = slugify(job.lucaSlug);
-      if (wanted.length >= 4) {
-        // Önce tam eşitlik
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          if (slugify(opt.text) === wanted) {
-            targetOpt = opt; matchedBy = `lucaSlug eşitlik "${job.lucaSlug}"`; break;
-          }
-        }
-        // Tam eşitlik yoksa "wanted, optSlug'ı kapsıyor" (ör. slug uzun versiyon, option kısaltılmış)
-        if (!targetOpt) {
-          for (const opt of combo.options) {
-            if (!isRealOption(opt)) continue;
-            const optSlug = slugify(opt.text);
-            if (optSlug.length < 4) continue;
-            if (wanted.includes(optSlug) || optSlug.includes(wanted)) {
-              targetOpt = opt; matchedBy = `lucaSlug substring "${job.lucaSlug}"`; break;
-            }
-          }
-        }
-      }
-    }
-
-    // 3) Mükellef adı — token bazlı (en az 2 anlamlı token slugify edilmiş halde option slug'ında geçmeli)
-    if (!targetOpt && job.mukellefAdi) {
-      const wantedSlug = slugify(job.mukellefAdi);
-      const tokens = wantedSlug.split('_').filter((w) => w.length >= 3).slice(0, 4);
-      if (tokens.length >= 2) {
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          const optSlug = slugify(opt.text);
-          if (optSlug.length < 4) continue;
-          const matches = tokens.filter((tok) => optSlug.includes(tok)).length;
-          if (matches >= Math.min(tokens.length, 2)) {
-            targetOpt = opt; matchedBy = `ad tokens "${tokens.join('+')}"`; break;
-          }
-        }
-      }
-    }
-
-    if (!targetOpt) {
-      const realOpts = [...combo.options].filter(isRealOption);
-      const sample = realOpts.slice(0, 8).map((o) => o.text.trim().slice(0, 50)).join(' | ');
-      throw new Error(
-        `Firma bulunamadı: VKN=${job.taxNumber || '?'} slug="${job.lucaSlug || '?'}" ad="${job.mukellefAdi || '?'}". ` +
-        `Luca firma listesinde yok ya da yetkiniz yok. ` +
-        `Toplam ${combo.options.length} option (${realOpts.length} geçerli). İlk geçerli 8: ${sample}`,
+    if (raporTuruSelect) {
+      const excelOpt = [...raporTuruSelect.options].find((o) =>
+        /excel/i.test(o.text || o.value),
       );
-    }
-
-    const targetText = targetOpt.text.trim();
-    const targetValue = String(targetOpt.value || '').trim();
-    if (!targetValue) {
-      throw new Error(`Eşleşen option boş value taşıyor: "${targetText}". Luca DOM yapısı değişmiş olabilir.`);
-    }
-
-    await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetText}`);
-    combo.value = targetValue;
-
-    // Luca'nın KENDI onchange handler'ını tetikle — synthetic event yetmiyor çünkü
-    // Luca server-side session cookie'yi onchange'in yaptığı POST/redirect ile günceller.
-    // 3 katmanlı tetikleme:
-    //   a) Inline onchange="..." attribute'unu frm4 window context'inde çalıştır
-    //   b) HTMLSelectElement.prototype.onchange property'si (jQuery bindings için)
-    //   c) Synthetic change event (bubble) — kalan listener'lar için
-    //   d) Eğer hiçbiri sirket değişikliğini server'a iletmezse: form submit fallback
-    const frm4Win = frm4.contentWindow;
-    let dispatchedNative = false;
-    try {
-      const onChangeAttr = combo.getAttribute('onchange');
-      if (onChangeAttr && onChangeAttr.trim().length > 0) {
-        await log(`🔧 Luca onchange="${onChangeAttr.slice(0, 80)}" çağrılıyor`);
-        // frm4 window context'inde execute (frm4'teki global JS fonksiyonlara erişebilsin)
-        try {
-          // eslint-disable-next-line no-new-func
-          const fn = new frm4Win.Function('event', onChangeAttr);
-          fn.call(combo, new frm4Win.Event('change'));
-          dispatchedNative = true;
-        } catch (e) {
-          await log(`⚠ onchange attr execute hatası: ${e?.message || e}`);
-        }
-      }
-    } catch (e) { /* cross-origin? */ }
-
-    // Property handler (jQuery .change(fn) bind'leri buraya gelir)
-    try {
-      if (typeof combo.onchange === 'function') {
-        combo.onchange();
-        dispatchedNative = true;
-      }
-    } catch (e) {}
-
-    // Synthetic change event — yine de dispatch et (delegated listener'lar için)
-    try {
-      combo.dispatchEvent(new frm4Win.Event('change', { bubbles: true }));
-    } catch (e) {
-      combo.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    // Luca'nın onchange'i sadece UI hazırlığı yapıyor (loadDonem, showButton).
-    // Asıl firma değişimi için showButton()'ın gösterdiği "Tamam/Seç/Onayla" butonuna
-    // tıklanması gerek. 800ms bekle (showButton DOM'a buton koymak için zaman),
-    // sonra frm4'te VISIBLE bir button/input[type=submit]/input[type=button] ara ve tıkla.
-    await sleep(800);
-
-    let onayClicked = false;
-    try {
-      const frm4Doc = frm4.contentDocument;
-      // Olası onay buton selector'ları:
-      //   1. input[type=submit] / input[type=button] / button
-      //   2. Text/value: Tamam, Seç, Onayla, Aç, Değiştir, Giriş
-      //   3. ID/name: btnTamam, btnSec, btnOnay, sirketSec
-      const candidates = [];
-      const allButtons = frm4Doc.querySelectorAll('input[type=submit], input[type=button], button, a[onclick]');
-      for (const b of allButtons) {
-        // Görünür mü? (offsetParent !== null = visible)
-        if (!b.offsetParent && b.tagName !== 'A') continue; // a tag offsetParent unstable
-        const txt = ((b.value || '') + ' ' + (b.textContent || '') + ' ' + (b.id || '') + ' ' + (b.name || '') + ' ' + (b.getAttribute('onclick') || '')).toLocaleLowerCase('tr-TR');
-        // Negatif eleme: kapat/iptal/çık olanları reddet
-        if (/iptal|kapat|cancel|close|geri|exit|cikis/.test(txt)) continue;
-        // Pozitif: tamam/seç/onay/değiştir/aç/giriş/sec/sirket
-        if (/tamam|onay|sec|seç|değiştir|degistir|aç|ac|giriş|giris|sirket\s*sec|sirketsec|btnsec|btnonay|btntamam/.test(txt)) {
-          candidates.push({ btn: b, score: 2, txt: txt.slice(0, 40) });
-          continue;
-        }
-        // Fallback: SirketCombo'ya yakın (parent zinciri 5 seviye) bir buton
-        let cur = b;
-        for (let i = 0; i < 5 && cur; i++) {
-          if (cur.contains(combo)) { candidates.push({ btn: b, score: 1, txt: txt.slice(0, 40) }); break; }
-          cur = cur.parentElement;
-        }
-      }
-      candidates.sort((a, b) => b.score - a.score);
-      if (candidates.length > 0) {
-        const chosen = candidates[0];
-        await log(`🔘 Onay butonu tıklanıyor (score=${chosen.score}): "${chosen.txt}"`);
-        try {
-          chosen.btn.click();
-          chosen.btn.dispatchEvent(new frm4Win.MouseEvent('click', { bubbles: true, cancelable: true }));
-          onayClicked = true;
-        } catch (e) {
-          await log(`⚠ Onay butonu tıklama hatası: ${e?.message || e}`);
-        }
-      } else {
-        await log('ℹ️ Onay butonu bulunamadı — form submit fallback denenecek');
-      }
-    } catch (e) {
-      await log(`⚠ Onay butonu arama hatası: ${e?.message || e}`);
-    }
-
-    // Hâlâ aktivasyon yapılmadıysa parent form submit fallback
-    if (!onayClicked && !dispatchedNative) {
-      const parentForm = combo.closest('form');
-      if (parentForm) {
-        await log(`🔧 Parent form submit ediliyor (${(parentForm.action || 'no-action').slice(-40)})`);
-        try { parentForm.submit(); } catch (e) {}
+      if (excelOpt && raporTuruSelect.value !== excelOpt.value) {
+        raporTuruSelect.value = excelOpt.value;
+        raporTuruSelect.dispatchEvent(new Event('change', { bubbles: true }));
       }
     }
 
-    // Sayfa yenilenmesini bekle — frm4 reload edecek
-    await sleep(2500);
-
-    // DOĞRULAMA: SirketCombo'da seçili option gerçekten hedef mi?
-    // (frm4 reload sonrası DOM yeniden oluştuğu için tekrar fetch ediyoruz)
-    let verified = false;
-    let lastSelectedText = currentText;
-    const verifyDeadline = Date.now() + 18000;
-    while (Date.now() < verifyDeadline) {
-      const frm4Now = getLucaFrame('frm4');
-      const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
-      if (comboNow) {
-        const selText = (comboNow.selectedOptions[0]?.text || '').trim();
-        const selSlug = slugify(selText);
-        const tgtSlug = slugify(targetText);
-        lastSelectedText = selText;
-        if (selSlug && tgtSlug && (selSlug === tgtSlug || selSlug.includes(tgtSlug) || tgtSlug.includes(selSlug))) {
-          verified = true;
-          break;
-        }
-      }
-      await sleep(500);
-    }
-    if (!verified) {
-      throw new Error(
-        `Firma DEĞİŞMEDİ: hedef "${targetText}", hâlâ seçili olan "${lastSelectedText}". ` +
-        `Luca change event'i kabul etmedi olabilir — manuel olarak Luca'da firma seçip tekrar dene.`,
-      );
-    }
-
-    // Menünün yeni firma için hazır olmasını bekle
-    await waitUntil(() => {
-      const frm5 = getLucaFrame('frm5');
-      if (!frm5 || !frm5.contentDocument) return false;
-      const all = frm5.contentDocument.querySelectorAll('*');
-      for (const el of all) {
-        if ((el.textContent || '').trim() === 'Mizan' && el.children.length === 0) return true;
-      }
-      return false;
-    }, 15000);
-    await log(`✓ Firma değişti → ${targetText}, menü hazır`);
-    return { changed: true, alreadyCorrect: false, skipped: false };
-  }
-
-  /**
-   * Sağ menüde "Mizan" element'ini bul — frm5 öncelikli, yoksa tüm frame'leri tara.
-   * Sayfa yenilenmesinden sonra menü 1-2 saniye sürebilir; bu yüzden waitUntil ile
-   * X saniye boyunca yeniden dene.
-   */
-  async function findLucaMenuItem(text, _log, maxMs = 8000) {
-    const result = await waitUntil(() => {
-      // Önce frm5 (sağ menü)
-      const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
-      for (const fname of candidates) {
-        const f = getLucaFrame(fname);
-        if (!f || !f.contentDocument) continue;
-        const doc = f.contentDocument;
-        for (const el of doc.querySelectorAll('*')) {
-          if ((el.textContent || '').trim() === text && el.children.length === 0) {
-            return { el, frame: f, frameName: fname };
-          }
-        }
-      }
-      // Top document'ta da bak (her ihtimale karşı)
-      for (const el of document.querySelectorAll('*')) {
-        if ((el.textContent || '').trim() === text && el.children.length === 0) {
-          return { el, frame: window, frameName: 'top' };
-        }
-      }
-      return null;
-    }, maxMs, 250);
-    return result;
-  }
-
-  /**
-   * Bir element'e click event dispatch et — hem element.click() hem de
-   * MouseEvent dispatch (jQuery handler bubbling için).
-   */
-  function clickElement(el, viewWindow) {
-    try { el.click(); } catch {}
-    try {
-      el.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: viewWindow || window,
-      }));
-    } catch {}
-  }
-
-  /**
-   * Luca menü elementi için "tam paket" tetikleme — hover + click + onclick eval.
-   * Luca menüleri jQuery hover ile açılıyor olabilir; bu yüzden mouse event
-   * sırasını gerçekçi tetikleriz: mouseover → mouseenter → mousedown → mouseup
-   * → click. Ek olarak onclick attribute varsa o fonksiyonu eval ile direkt
-   * çağırırız (II1a gibi Luca menü açma fonksiyonları event parametresi
-   * gerektirebilir).
-   */
-  function fullActivate(el, viewWindow) {
-    const view = viewWindow || window;
-    const rect = el.getBoundingClientRect?.() || { left: 0, top: 0, width: 10, height: 10 };
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-
-    const sequence = ['mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'click'];
-    for (const type of sequence) {
-      try {
-        el.dispatchEvent(new MouseEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          view,
-          clientX: x,
-          clientY: y,
-          button: 0,
-        }));
-      } catch {}
-    }
-
-    // Ek olarak element.click() — bazı durumlarda dispatchEvent yetmiyor
-    try { el.click(); } catch {}
-
-    // onclick attribute'u doğrudan değerlendir (II1a fonksiyonu gibi inline JS)
-    const onclickAttr = el.getAttribute('onclick');
-    if (onclickAttr) {
-      try {
-        // Sahte event objesi ile çalıştır
-        const fakeEvent = { type: 'click', clientX: x, clientY: y, target: el, currentTarget: el, preventDefault: () => {}, stopPropagation: () => {} };
-        const fn = new view.Function('event', onclickAttr);
-        fn.call(el, fakeEvent);
-      } catch (e) {
-        // Sessiz: onclick eval başarısız olabilir, mouseevent zaten tetiklendi
-      }
-    }
-  }
-
-  /**
-   * Sayfa Fiş Listesi sayfasında değilse (Mizan menüsü yoksa), Muhasebe →
-   * Fiş İşlemleri → Fiş Listesi sırasıyla menü tıklayarak gider.
-   */
-  async function navigateToFisListesi(log) {
-    // Önce Mizan menüsü görünür mü? (Fiş Listesi'ndeyse var demektir)
-    const quick = await findLucaMenuItem('Mizan', null, 1500);
-    if (quick) {
-      await log('✓ Fiş Listesi sayfasında (Mizan menüsü hazır)');
-      return;
-    }
-    await log('🧭 Ana sayfada — Fiş Listesi sayfasına geçiliyor');
-
-    // Tüm frame'leri RECURSIVE olarak topla (nested iframe yapısı için).
-    const collectAllFrames = (rootDoc, depth = 0, acc = []) => {
-      if (depth > 5) return acc;
-      try {
-        for (const f of rootDoc.querySelectorAll('frame, iframe')) {
-          acc.push(f);
-          if (f.contentDocument) {
-            collectAllFrames(f.contentDocument, depth + 1, acc);
-          }
-        }
-      } catch (e) { /* cross-origin */ }
-      return acc;
-    };
-
-    const allFrameElements = collectAllFrames(document);
-    const allFrames = allFrameElements
-      .map((f) => `${f.name || '(isimsiz)'}@${f.src ? f.src.split('/').pop().slice(0, 30) : '?'}`)
-      .join(' | ');
-    await log(`🧩 Mevcut frame'ler (${allFrameElements.length}): ${allFrames || '(hiç yok)'}`);
-
-    // 1. "Muhasebe" text'i olan ilk frame'i bul (recursive arama).
-    let menuFrame = null;
-    let muhasebeEl = null;
-    for (const f of allFrameElements) {
-      if (!f.contentDocument) continue;
-      try {
-        for (const el of f.contentDocument.querySelectorAll('*')) {
-          const txt = (el.textContent || '').trim();
-          if (txt === 'Muhasebe' && el.children.length === 0) {
-            menuFrame = f;
-            muhasebeEl = el;
-            break;
-          }
-        }
-        if (menuFrame) break;
-        // Fallback: onclick içinde apy1000 var mı?
-        for (const el of f.contentDocument.querySelectorAll('[onclick]')) {
-          if ((el.getAttribute('onclick') || '').includes('apy1000')) {
-            menuFrame = f;
-            muhasebeEl = el;
-            break;
-          }
-        }
-        if (menuFrame) break;
-      } catch (e) { /* cross-origin frame, atla */ }
-    }
-
-    // Top document'ta da bak (frameset olmayan tek-sayfa Luca için)
-    if (!muhasebeEl) {
-      try {
-        for (const el of document.querySelectorAll('*')) {
-          const txt = (el.textContent || '').trim();
-          if (txt === 'Muhasebe' && el.children.length === 0) {
-            menuFrame = { contentDocument: document, contentWindow: window, name: 'TOP' };
-            muhasebeEl = el;
-            break;
-          }
-        }
-      } catch (e) {}
-    }
-
-    if (!muhasebeEl) {
-      throw new Error(`"Muhasebe" menü öğesi hiçbir frame'de bulunamadı. URL=${location.href}, Frame'ler: ${allFrames}`);
-    }
-    await log(`✓ Muhasebe menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
-
-    await log('🖱 Muhasebe menüsü açılıyor (hover+click+onclick)');
-    fullActivate(muhasebeEl, menuFrame.contentWindow);
-    await sleep(800);
-
-    // 2. "Fiş İşlemleri" submenüsü açıldı mı?
-    await log('🔍 Fiş İşlemleri aranıyor');
-    const fisIslemleri = await findLucaMenuItem('Fiş İşlemleri', null, 4000);
-    if (!fisIslemleri) {
-      throw new Error('Muhasebe menüsü açıldı ama "Fiş İşlemleri" görünmedi (menü hover-only olabilir)');
-    }
-    await log('🖱 Fiş İşlemleri açılıyor (hover+click+onclick)');
-    fullActivate(fisIslemleri.el, fisIslemleri.frame.contentWindow || fisIslemleri.frame);
-    await sleep(800);
-
-    // 3. "Fiş Listesi" tıkla
-    await log('🔍 Fiş Listesi linki aranıyor');
-    const fisListesi = await findLucaMenuItem('Fiş Listesi', null, 4000);
-    if (!fisListesi) throw new Error('"Fiş Listesi" linki açılmadı');
-    await log('🖱 Fiş Listesi tıklanıyor');
-    fullActivate(fisListesi.el, fisListesi.frame.contentWindow || fisListesi.frame);
-
-    // 4. Sayfa yüklensin diye Mizan menüsü çıkana kadar bekle
-    await log('⏳ Fiş Listesi sayfası yüklensini bekliyor');
-    const mizanReady = await findLucaMenuItem('Mizan', null, 15000);
-    if (!mizanReady) throw new Error('Fiş Listesi açıldı ama Mizan menüsü hazır olmadı (timeout 15sn)');
-    await log('✓ Fiş Listesi hazır, Mizan menüsü görünür');
-  }
-
-  /**
-   * İŞLETME DEFTERİ akışı — KDV Kontrol İşletme Alış/Satış için.
-   * Akış: Üst menü "İşletme Defteri" → "Gider İşlemleri" hover → "Gider Listesi" tıkla.
-   * Sayfa yenilenir ve sağ menüde "Gelir/Gider Listesi" gözükür.
-   */
-  async function navigateToIsletmeGiderListesi(log) {
-    // Quick check — sağ menüde Gelir/Gider Listesi varsa zaten orada
-    const quick = await findLucaMenuItem('Gelir/Gider Listesi', null, 1500);
-    if (quick) {
-      await log('✓ İşletme Gider Listesi sayfasında (Gelir/Gider Listesi menüsü hazır)');
-      return;
-    }
-    await log('🧭 İşletme Defteri → Gider İşlemleri → Gider Listesi navigasyonu');
-
-    const collectAllFrames = (rootDoc, depth = 0, acc = []) => {
-      if (depth > 5) return acc;
-      try {
-        for (const f of rootDoc.querySelectorAll('frame, iframe')) {
-          acc.push(f);
-          if (f.contentDocument) collectAllFrames(f.contentDocument, depth + 1, acc);
-        }
-      } catch (e) {}
-      return acc;
-    };
-
-    // 1. "İşletme Defteri" üst menü
-    const allFrameElements = collectAllFrames(document);
-    let menuFrame = null;
-    let isletmeEl = null;
-    for (const f of allFrameElements) {
-      if (!f.contentDocument) continue;
-      try {
-        for (const el of f.contentDocument.querySelectorAll('*')) {
-          const txt = (el.textContent || '').trim();
-          if (txt === 'İşletme Defteri' && el.children.length === 0) {
-            menuFrame = f;
-            isletmeEl = el;
-            break;
-          }
-        }
-        if (menuFrame) break;
-      } catch (e) {}
-    }
-    if (!isletmeEl) {
-      // Top document'ta dene
-      try {
-        for (const el of document.querySelectorAll('*')) {
-          const txt = (el.textContent || '').trim();
-          if (txt === 'İşletme Defteri' && el.children.length === 0) {
-            menuFrame = { contentDocument: document, contentWindow: window, name: 'TOP' };
-            isletmeEl = el;
-            break;
-          }
-        }
-      } catch (e) {}
-    }
-    if (!isletmeEl) {
-      throw new Error('"İşletme Defteri" üst menüsü bulunamadı. Bu mükellef bilanço firması olabilir — Defteri Kebir akışı kullanın.');
-    }
-    await log(`✓ İşletme Defteri menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
-    await log('🖱 İşletme Defteri açılıyor (hover+click+onclick)');
-    fullActivate(isletmeEl, menuFrame.contentWindow);
-    await sleep(800);
-
-    // 2. "Gider İşlemleri" submenü
-    await log('🔍 Gider İşlemleri aranıyor');
-    const giderIslemleri = await findLucaMenuItem('Gider İşlemleri', null, 4000);
-    if (!giderIslemleri) {
-      throw new Error('İşletme Defteri menüsü açıldı ama "Gider İşlemleri" görünmedi');
-    }
-    await log('🖱 Gider İşlemleri açılıyor (hover+click+onclick)');
-    fullActivate(giderIslemleri.el, giderIslemleri.frame.contentWindow || giderIslemleri.frame);
-    await sleep(800);
-
-    // 3. "Gider Listesi" tıkla
-    await log('🔍 Gider Listesi linki aranıyor');
-    const giderListesi = await findLucaMenuItem('Gider Listesi', null, 4000);
-    if (!giderListesi) throw new Error('"Gider Listesi" linki açılmadı');
-    await log('🖱 Gider Listesi tıklanıyor');
-    fullActivate(giderListesi.el, giderListesi.frame.contentWindow || giderListesi.frame);
-
-    // 4. Sayfa yüklensin — sağ menüde "Gelir/Gider Listesi" çıksın
-    await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
-    const ggReady = await findLucaMenuItem('Gelir/Gider Listesi', null, 15000);
-    if (!ggReady) throw new Error('Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 15sn)');
-    await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
-  }
-
-  /**
-   * Sağ menüde "Mizan" linkine tıkla — frm5 öncelikli. Element FONT içinde olabilir,
-   * click bubbling ile parent jQuery handler tetiklenir.
-   */
-  async function openLucaMizan(log) {
-    await log('🔍 Sağ menüde Mizan linki aranıyor...');
-    const found = await findLucaMenuItem('Mizan', log);
-    if (!found) {
-      // Mizan ana sayfada yoktur — Fiş Listesi sayfasına geçilmesi gerekir
-      throw new Error(
-        'Luca\'da Fiş Listesi sayfasını açın: Muhasebe → Fiş İşlemleri → Fiş Listesi. ' +
-        'Mizan linki bu sayfanın sağ menüsünde görünür.',
-      );
-    }
-    await log(`🖱 Mizan tıklanıyor (${found.frameName} → ${found.el.tagName})`);
-
-    // Tıklama: element + parent zinciri (5 seviye, click event bubbling)
-    let cur = found.el;
-    const view = found.frame.contentWindow || found.frame;
-    for (let i = 0; i < 5 && cur; i++) {
-      try {
-        cur.click();
-        cur.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
-      } catch {}
-      cur = cur.parentElement;
-    }
-    // about:blank reset sonrası taze form yüklenmesi 1-2sn sürebilir
-    await sleep(1500);
-  }
-
-  /**
-   * frm3'te raporMizanForm yüklenmesini bekle (Mizan tıklamasından sonra
-   * form yüklenir — bazen 1-3 saniye sürer).
-   */
-  async function waitForLucaMizanForm(log, maxMs = 15000) {
-    await log(`⏳ raporMizanForm yüklenmesi bekleniyor…`);
-    const form = await waitUntil(() => {
-      // Tüm frame'leri RECURSIVE tara (frm3 hardcoded değil)
-      const collectFrames = (root, depth = 0, acc = []) => {
-        if (depth > 5) return acc;
-        try {
-          for (const f of root.querySelectorAll('frame, iframe')) {
-            acc.push(f);
-            if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
-          }
-        } catch (e) {}
-        return acc;
-      };
-
-      for (const f of collectFrames(document)) {
-        if (!f.contentDocument) continue;
-        try {
-          const found =
-            f.contentDocument.querySelector('form[name="raporMizanForm"]') ||
-            f.contentDocument.querySelector('form[action*="raporMizan"]') ||
-            f.contentDocument.querySelector('form[action*="Mizan"]') ||
-            f.contentDocument.querySelector('form input[name="TARIH_ILK"]')?.form;
-          if (found) return found;
-        } catch (e) {}
-      }
-      return null;
-    }, maxMs);
-
-    if (!form) {
-      // Diagnostic: tüm frame'lerdeki form'ları listele
-      const allForms = [];
-      const collectFrames = (root, depth = 0, acc = []) => {
-        if (depth > 5) return acc;
-        try {
-          for (const f of root.querySelectorAll('frame, iframe')) {
-            acc.push(f);
-            if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
-          }
-        } catch (e) {}
-        return acc;
-      };
-      for (const f of collectFrames(document)) {
-        if (!f.contentDocument) continue;
-        try {
-          for (const fr of f.contentDocument.querySelectorAll('form')) {
-            allForms.push(`${f.name || '?'}:form[name="${fr.name || ''}",action="${(fr.action || '').split('/').pop().slice(0, 40)}"]`);
-          }
-        } catch (e) {}
-      }
-      await log(`🔍 Bulunan form'lar: ${allForms.length > 0 ? allForms.join(' | ') : '(hiç yok)'}`);
-      throw new Error('raporMizanForm yüklenmedi (timeout) — yukarıdaki form listesinde gerçek isim göründü mü?');
-    }
-    await log(`✓ Form yüklendi: name="${form.name || '?'}" action="${(form.action || '').split('/').pop()}"`);
-    return form;
-  }
-
-  /**
-   * Luca tarih formatına çevir — donem string'inden başlangıç + bitiş tarihleri
-   * Örnek: "2026-Q1" → {bas:"01.01.2026", bit:"31.03.2026"}
-   *        "2026-03" → {bas:"01.03.2026", bit:"31.03.2026"}  (aylık)
-   */
-  function donemToTarihAraligi(donem, donemTipi) {
-    const s = String(donem || '').trim();
-
-    // Format 1: "2026-Q1", "2026Q1", "2026_Q1" — çeyrek
-    const qMatch = s.match(/(\d{4})[-_/]?Q(\d)/i);
-    if (qMatch) {
-      const yil = +qMatch[1];
-      const ceyrek = +qMatch[2];
-      const basAy = (ceyrek - 1) * 3 + 1;
-      const bitAy = ceyrek * 3;
-      const basMM = String(basAy).padStart(2, '0');
-      const bitMM = String(bitAy).padStart(2, '0');
-      const bitGun = new Date(yil, bitAy, 0).getDate();
-      return {
-        bas: `01.${basMM}.${yil}`,
-        bit: `${bitGun}.${bitMM}.${yil}`,
-      };
-    }
-
-    // Format 2: "2026-03", "2026/3", "2026_03" — aylık
-    const mMatch = s.match(/(\d{4})[-_/](\d{1,2})$/);
-    if (mMatch) {
-      const yil = +mMatch[1];
-      const ayMo = +mMatch[2];
-
-      if (donemTipi === 'AY' || donemTipi === 'MONTH') {
-        const lastDay = new Date(yil, ayMo, 0).getDate();
-        const mm = String(ayMo).padStart(2, '0');
-        return {
-          bas: `01.${mm}.${yil}`,
-          bit: `${lastDay}.${mm}.${yil}`,
-        };
-      }
-      // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al
-      const ceyrek = Math.ceil(ayMo / 3);
-      const basAy = (ceyrek - 1) * 3 + 1;
-      const bitAy = ceyrek * 3;
-      const basMM = String(basAy).padStart(2, '0');
-      const bitMM = String(bitAy).padStart(2, '0');
-      const bitGun = new Date(yil, bitAy, 0).getDate();
-      return {
-        bas: `01.${basMM}.${yil}`,
-        bit: `${bitGun}.${bitMM}.${yil}`,
-      };
-    }
-
-    // Format 3: sadece yıl "2026" → tüm yıl
-    const yMatch = s.match(/^(\d{4})$/);
-    if (yMatch) {
-      const yil = +yMatch[1];
-      return { bas: `01.01.${yil}`, bit: `31.12.${yil}` };
-    }
-
-    return null;
-  }
-
-  /**
-   * Mizan formunda tarih input'larını ve "Rapor Türü"nü ayarla.
-   */
-  async function fillMizanForm(form, job, log) {
-    // 1) Rapor türü Excel
-    let raporTuruSet = false;
-    for (const sel of form.querySelectorAll('select')) {
-      for (const opt of sel.options) {
-        const txt = (opt.text || '').toLowerCase();
-        const val = (opt.value || '').toLowerCase();
-        if ((txt.includes('excel') && txt.includes('xlsx')) || val === 'xlsx' || val === 'excel_liste') {
-          sel.value = opt.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-          raporTuruSet = true;
-          await log(`📊 Rapor türü: ${opt.text.trim()}`);
-          break;
-        }
-      }
-      if (raporTuruSet) break;
-    }
-
-    // 2) Tarih input'ları
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) {
-      throw new Error(
-        `Tarih hesaplanamadı (donem="${job.donem}", tipi="${job.donemTipi}"). ` +
-        `Beklenen format: "2026-Q1", "2026-03" veya "2026".`,
-      );
-    }
-    // Tarih input'larını bul — Luca convention: TARIH_ILK + TARIH_SON
-    // ÖNEMLI: kurTarih (para birimi tarihi) farklı bir alan, ona dokunma!
-    const setInputValue = (inp, value) => {
-      if (!inp) return false;
-      inp.value = value;
-      inp.dispatchEvent(new Event('input', { bubbles: true }));
-      inp.dispatchEvent(new Event('change', { bubbles: true }));
-      inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      return true;
-    };
-
-    // Önce spesifik isimle ara: TARIH_ILK / TARIH_SON
-    let tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"]');
-    let tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"]');
-
-    // Bulunamazsa generic filter (kurTarih hariç tut)
-    if (!tarihIlk || !tarihSon) {
-      const fallback = [...form.querySelectorAll('input[type="text"], input:not([type])')]
-        .filter((inp) => {
-          const n = (inp.name || '') + ' ' + (inp.id || '');
-          return /tarih|date/i.test(n) && !/kur/i.test(n);
-        });
-      if (!tarihIlk) tarihIlk = fallback[0];
-      if (!tarihSon) tarihSon = fallback[1];
-    }
-
-    if (!tarihIlk || !tarihSon) {
-      const allInputs = [...form.querySelectorAll('input')]
-        .map((i) => `${i.type || 'text'}#${i.name || i.id || '?'}`)
-        .slice(0, 30)
-        .join(', ');
-      throw new Error(
-        `TARIH_ILK/TARIH_SON input'ları bulunamadı. Form input'ları: ${allInputs}`,
-      );
-    }
-
-    // Tarih input'larının attribute'larını incele — readonly/disabled mı?
-    const inputAttrs = (i) => `readonly=${i.readOnly}, disabled=${i.disabled}, type=${i.type}, value="${i.value}"`;
-    await log(`🔎 TARIH_ILK öncesi: ${inputAttrs(tarihIlk)}`);
-    await log(`🔎 TARIH_SON öncesi: ${inputAttrs(tarihSon)}`);
-
-    setInputValue(tarihIlk, tarih.bas);
-    setInputValue(tarihSon, tarih.bit);
-
-    // Set'ten HEMEN sonra value'yu tekrar oku — sıfırlanıyor mu?
-    await log(`📅 Set sonrası: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
-
-    // 200ms bekleyip tekrar oku — Luca async handler sıfırlıyor mu?
-    await sleep(300);
-    await log(`📅 300ms sonra: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
-
-    // Eğer hâlâ boşsa, native setter ile zorla yaz (Luca custom getter override etmiş olabilir)
-    if (!tarihIlk.value || !tarihSon.value) {
-      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      if (tarihIlk.ownerDocument && tarihIlk.ownerDocument.defaultView) {
-        const win = tarihIlk.ownerDocument.defaultView;
-        const winNativeSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        winNativeSetter.call(tarihIlk, tarih.bas);
-        winNativeSetter.call(tarihSon, tarih.bit);
-      } else {
-        nativeSetter.call(tarihIlk, tarih.bas);
-        nativeSetter.call(tarihSon, tarih.bit);
-      }
-      tarihIlk.dispatchEvent(new Event('input', { bubbles: true }));
-      tarihSon.dispatchEvent(new Event('input', { bubbles: true }));
-      await log(`🔧 Native setter ile zorla: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
-    }
-
-    // 3) Hesap kodu aralığı — Luca mizan formu genelde "kodBas/kodBit" veya
-    //    "hesapKoduBaslangic/hesapKoduBitis" inputları içerir. Boşsa default
-    //    1 → 999.99.999.999 ata (Türkiye Tek Düzen Hesap Planı maksimum derinliği).
-    const kodInputs = [...form.querySelectorAll('input[type="text"], input:not([type])')]
-      .filter((inp) => /kod/i.test((inp.name || '') + ' ' + (inp.id || '')));
-    if (kodInputs.length >= 2) {
-      if (!kodInputs[0].value) kodInputs[0].value = '1';
-      if (!kodInputs[1].value) kodInputs[1].value = '999.99.999.999';
-      kodInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-      kodInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
-      await log(`🔢 Hesap kodu: ${kodInputs[0].value} → ${kodInputs[1].value}`);
-    }
-
-    // 4) Seviye (kademe) input'u — varsayılan en derin (9) bırak ki tüm hesaplar gelsin.
-    const seviyeInputs = [...form.querySelectorAll('input, select')]
-      .filter((inp) => /seviye|kademe|derinlik/i.test((inp.name || '') + ' ' + (inp.id || '')));
-    for (const sv of seviyeInputs) {
-      if (!sv.value || sv.value === '0') {
-        sv.value = sv.tagName === 'SELECT' && sv.options.length > 0
-          ? sv.options[sv.options.length - 1].value
-          : '9';
-        sv.dispatchEvent(new Event('change', { bubbles: true }));
-        await log(`📊 Seviye: ${sv.value}`);
-      }
-    }
-
-    // 5) Diagnostic — submit öncesi tüm form state'ini log'a düş
-    const allFields = [...form.querySelectorAll('input, select, textarea')]
-      .map((el) => `${el.name || el.id || '?'}=${(el.value || '').slice(0, 30) || '∅'}`)
-      .filter((s) => !s.startsWith('?='))
-      .slice(0, 30)
-      .join(' | ');
-    await log(`🧾 Form alanları: ${allFields}`);
-  }
-
-  /**
-   * Mizan akışı — tam otomatik (firma değiştir + menü tıkla + form + submit):
-   *   1) frm4 SirketCombo: hedef firma değilse değiştir, sayfa bekle
-   *   2) frm5 Mizan menüsüne click() simulate
-   *   3) frm3 raporMizanForm yüklensini bekle
-   *   4) Tarih + Rapor türü doldur
-   *   5) FormData → fetch POST → blob yakala
-   */
-  async function fetchLucaMizanExcel(job, log) {
-    // 0) Luca sürüm kontrolü
-    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
-      throw new Error(
-        'Bu Luca v2.1 (LUCASSO) sürümü. Lütfen klasik Luca\'ya geçin: ' +
-        'auygs.luca.com.tr/Luca/luca.do — giriş ekranında "Mali Müşavir Girişi" ile (v2.1 BETAYA basmadan).',
-      );
-    }
-
-    // 1) Hedef firma açık mı?
-    const firmaResult = await ensureLucaFirma(job, log);
-
-    // 2) Fiş Listesi sayfasına geç
-    await navigateToFisListesi(log);
-
-    // 3) Mizan formu yüklü mü?
-    // ÖNEMLİ: Firma DEĞİŞTİYSE eski form STALE (eski sirketId/donemId hidden input'ları
-    // taşıyor) → submit eski firmanın mizanını çekiyor. Bu durumda formAlreadyLoaded'u
-    // yok say, openLucaMizan'ı çağırarak frm3'ü yeni firma context'inde yenile.
-    let frm3 = getLucaFrame('frm3');
-    let formAlreadyLoaded =
-      frm3?.contentDocument?.querySelector('form[name="raporMizanForm"]');
-    if (firmaResult?.changed) {
-      await log('🔁 Firma değişti — frm3 sıfırlanıyor (stale form önleme)');
-      // Kritik: Luca, Mizan link'ine 2. tıklamada eski form'u sadece öne getiriyor,
-      // yeni form fetch'lemiyor. frm3.src'yi about:blank'e çekip ZORLA bir Mizan
-      // tıklamasıyla server'dan taze form alıyoruz.
-      try {
-        const f3 = getLucaFrame('frm3');
-        if (f3) {
-          f3.src = 'about:blank';
-          await sleep(700);
-        }
-      } catch (e) {
-        await log(`⚠ frm3 sıfırlama hatası: ${e?.message || e}`);
-      }
-      formAlreadyLoaded = null;
-    }
-    if (!formAlreadyLoaded) {
-      await openLucaMizan(log);
-    } else {
-      await log('✓ Mizan formu zaten açık');
-    }
-
-    // 4) Form yüklensin
-    const form = await waitForLucaMizanForm(log);
-    frm3 = getLucaFrame('frm3');
-
-    // 5) YENİ AKIŞ: Luca'nın kendi "Excel'e Aktar" butonuna tıkla, fetch'i
-    //    intercept ederek inen Excel'i yakala. Bu jasper.jq+rapor_takip+rapor_indir
-    //    zincirini reverse engineer etmekten çok daha güvenilir — Luca kendi
-    //    JS'iyle doğru body'yi hazırlıyor, biz sonucu yakalıyoruz.
-    return await fetchMizanByClickIntercept(form, job, log);
-  }
-
-  /**
-   * Luca'nın "Excel'e Aktar" butonuna programmatik tıkla, fetch'i monkey-patch
-   * ederek rapor_indir.jq response'unu (Excel blob) yakala.
-   */
-  async function fetchMizanByClickIntercept(form, job, log) {
-    // Önce tarihleri formda elle doldur (button click bunları kullanacak)
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-
-    const setNative = (inp, value) => {
-      if (!inp) return;
-      const win = inp.ownerDocument.defaultView;
-      try {
-        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
-        setter.call(inp, value);
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-        inp.dispatchEvent(new Event('blur', { bubbles: true }));
-      } catch (e) {}
-    };
-
-    const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
-    const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
-    if (tarihIlk && tarihSon) {
-      // Luca slash formatı kullanıyor (network'ten görüldü: "01/03/2026")
-      const slashBas = tarih.bas.replace(/\./g, '/');
-      const slashBit = tarih.bit.replace(/\./g, '/');
-
-      // Set + 5 kez deneme — Luca async olarak silebilir
-      let setOk = false;
-      for (let i = 0; i < 5; i++) {
-        setNative(tarihIlk, slashBas);
-        setNative(tarihSon, slashBit);
-        await sleep(200);
-        if (tarihIlk.value && tarihSon.value) {
-          setOk = true;
-          break;
-        }
-      }
-
-      // Slash başarısızsa nokta dene
-      if (!setOk) {
-        for (let i = 0; i < 3; i++) {
-          setNative(tarihIlk, tarih.bas);
-          setNative(tarihSon, tarih.bit);
-          await sleep(200);
-          if (tarihIlk.value && tarihSon.value) {
-            setOk = true;
-            break;
-          }
-        }
-      }
-
-      await log(`📅 Tarih: ${tarihIlk.value || '∅'} → ${tarihSon.value || '∅'} (set ${setOk ? 'OK' : 'FAIL'})`);
-    }
-
-    // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
-    // DİKKAT: "Kümülatif Rapor" butonunu seçme — sadece "Rapor".
-    const findExcelButton = () => {
-      const doc = form.ownerDocument;
-      const all = [
-        ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
-        ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
-      ];
-      // 1. Tam eşleşme: text/value === "Rapor"
-      for (const el of all) {
-        const txt = (el.value || el.textContent || '').trim();
-        if (txt === 'Rapor' || txt === 'RAPOR') return el;
-      }
-      // 2. Tam eşleşme: "Rapor Al" / "Excel'e Aktar" gibi
-      for (const el of all) {
-        const txt = (el.value || el.textContent || '').trim();
-        if (/^rapor( al|u? hazırla|u? olustur)?$/i.test(txt)) return el;
-        if (/excel.*aktar|aktar.*excel/i.test(txt)) return el;
-      }
-      // 3. onclick'inde "rapor", "jasper", "submitForm" var
-      for (const el of all) {
-        const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
-        if (/raporIndir|jasper|rapor_tur|raporGetir|submitForm|raporAl/i.test(oc)) return el;
-      }
-      return null;
-    };
-
-    const excelBtn = findExcelButton();
-    if (!excelBtn) {
-      // Diagnostic: tüm tıklanabilir elementleri logla
-      const doc = form.ownerDocument;
-      const all = [...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a, img[onclick]')];
-      const list = all
-        .map((el) => {
-          const t = (el.value || el.textContent || el.title || el.alt || '').trim().slice(0, 25);
-          const oc = (el.getAttribute && el.getAttribute('onclick') || '').slice(0, 40);
-          return `[${el.tagName}]${t || '∅'}${oc ? `|onclick=${oc}` : ''}`;
-        })
-        .filter((s, i, arr) => arr.indexOf(s) === i)
-        .slice(0, 20)
-        .join(' || ');
-      throw new Error(`Excel butonu bulunamadı. Form'daki tıklanabilir elementler: ${list}`);
-    }
-    await log(`🎯 Buton bulundu: "${(excelBtn.value || excelBtn.textContent || excelBtn.title || excelBtn.alt || '').trim().slice(0, 30)}" [${excelBtn.tagName}]`);
-
-    // PARALEL FLOW STRATEJİSİ — Luca button click → jasper.jq POST body yakala
-    // → biz aynı body ile YENİ jasper.jq POST atalım → kendi rapor_id'mizle
-    // rapor_takip + rapor_indir yapıp blob alalım. Luca'nın orijinal rapor_id'si
-    // native download'da consume olur, bizimki bağımsız.
+    // 5) Luca'nın doğal akışı — "Rapor" butonunu tıklat + window.open intercept
+    // Direct form POST mükellef context'ini kaybediyordu (boş Excel geliyordu).
+    // Luca'nın kendi JS'i ile butona basmak session/state'i koruyor.
+    const win = mizanDoc.defaultView || window;
+    const origOpen = win.open;
     let capturedBlob = null;
     let capturedUrl = null;
-    let jasperBody = null;
-    let jasperUrl = null;
-    const seenUrls = [];
-
-    const isExcelResponse = (ct, blob) => {
-      if (!ct) return false;
-      return /excel|xlsx|spreadsheet|officedocument|octet-stream/i.test(ct);
-    };
-    const isExcelUrl = (url) => /\.xlsx|rapor_indir|raporIndir|jasper|download/i.test(url);
-
-    const tryCapture = async (res, url) => {
-      try {
-        if (!res.ok) return;
-        const ct = res.headers.get('content-type') || '';
-        const cloned = res.clone();
-        const blob = await cloned.blob();
-        if (blob.size > 5000 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
-          if (!capturedBlob) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Blob yakalandı: ${url.split('/').pop().slice(0, 60)} (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-          }
-        }
-      } catch (e) {}
+    win.open = function (url, ...rest) {
+      capturedUrl = url;
+      log(`Luca yeni pencere URL'i yakalandı`);
+      // Açılmış pencereyi taklit et (Luca yine de mutlu olsun)
+      return { closed: false, close: () => {}, focus: () => {}, document: { write: () => {} } };
     };
 
-    // ─── FETCH override (top + tüm frameler) ───
-    const collectFrames = (root, depth = 0, acc = []) => {
-      if (depth > 5) return acc;
-      try {
-        for (const f of root.querySelectorAll('frame, iframe')) {
-          acc.push(f);
-          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
-        }
-      } catch (e) {}
-      return acc;
-    };
+    // Rapor butonunu bul ve tıklat
+    const raporBtn = [...mizanDoc.querySelectorAll('button, input[type=button], input[type=submit]')]
+      .find((el) => /^rapor$/i.test((el.textContent || el.value || '').trim()));
+    if (!raporBtn) {
+      win.open = origOpen;
+      throw new Error('Luca\'da "Rapor" butonu bulunamadı (mizanDoc içinde)');
+    }
+    log(`Rapor butonuna tıklanıyor…`);
+    raporBtn.click();
 
-    const restoreFns = [];
+    // URL veya direct download bekle (max 30 sn)
+    const t0 = Date.now();
+    while (!capturedUrl && !capturedBlob && Date.now() - t0 < 30000) {
+      await sleep(300);
+    }
+    win.open = origOpen;
 
-    // Background script'e "şu andan itibaren Luca download'ı bekliyorum"
-    // sinyali gönder. Bridge.js (sadece top frame'de yüklü) bunu
-    // chrome.runtime.sendMessage ile background.js'e iletir. Flag yoksa
-    // background download'a hiç dokunmuyor → moren-luca-file event'i hiç
-    // ateşlemiyor → 90sn timeout. window.top kullan ki child frame'den
-    // çağrılırsa bile bridge yakalasın.
-    const postExpecting = (val) => {
-      const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
-      try { window.postMessage(payload, '*'); } catch (e) {}
-      try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
-    };
-    postExpecting(true);
-    await log('🔔 Background\'a "download bekliyorum" sinyali gönderildi');
-    restoreFns.push(() => postExpecting(false));
-
-    const installFetchOverride = (win, label) => {
-      if (!win.fetch) return;
-      const orig = win.fetch;
-      restoreFns.push(() => { try { win.fetch = orig; } catch (e) {} });
-      win.fetch = function (input, init) {
-        const url = typeof input === 'string' ? input : (input?.url || '');
-        seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
-        // PASIF: Luca akışını engelleme, sadece izle. Background script
-        // disk'ten dosyayı okuyup bize iletecek.
-        const promise = orig.apply(this, arguments);
-        promise.then((res) => tryCapture(res, url)).catch(() => {});
-        return promise;
-      };
-    };
-
-    // ─── XHR override (rapor_takip polling izle, hazır olunca rapor_indir fetch et) ───
-    const installXhrOverride = (win, label) => {
-      if (!win.XMLHttpRequest) return;
-      const proto = win.XMLHttpRequest.prototype;
-      const origOpen = proto.open;
-      const origSend = proto.send;
-      restoreFns.push(() => { try { proto.open = origOpen; proto.send = origSend; } catch (e) {} });
-      proto.open = function (method, url) {
-        this._capturedUrl = url;
-        this._capturedMethod = method;
-        return origOpen.apply(this, arguments);
-      };
-      proto.send = function (body) {
-        const url = this._capturedUrl || '';
-        this._capturedBody = body;
-        seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
-        // PASIF: Luca akışını engelleme, native download'a izin ver.
-        this.addEventListener('load', async () => {
-          try {
-            const ct = this.getResponseHeader('content-type') || '';
-
-            // 1) XHR response Blob ise (Excel) — Luca'nın rapor_indir.jq response'unu yakalama şansı
-            if (this.response && this.response instanceof Blob) {
-              if (this.response.size > 5000 && (isExcelResponse(ct) || isExcelUrl(url))) {
-                if (!capturedBlob) {
-                  capturedBlob = this.response;
-                  await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB) url=${url.split('/').pop().slice(0, 40)}`);
-                  return;
-                }
-              }
-            }
-            // Tanı için: rapor_indir veya jasper.jq XHR'ı görüldüyse logla
-            if (/rapor_indir|jasper\.jq|raporIndir/i.test(url)) {
-              const sz = (this.response && this.response.size) || (this.responseText || '').length;
-              await log(`📡 ${url.split('?')[0].split('/').pop()} XHR: ${this.status} · ct=${(ct || '').slice(0, 40)} · size≈${sz}`);
-
-              // Luca yeni akışta jasper.jq direkt Excel binary dönüyor olabilir.
-              // Response Blob değilse de arrayBuffer yorumlamayı deneyelim — content-type
-              // excel/spreadsheet/octet-stream içeriyorsa.
-              if (!capturedBlob && this.status === 200 && sz > 5000 &&
-                  /excel|xlsx|spreadsheet|officedocument|octet-stream/i.test(ct || '')) {
-                try {
-                  // responseType blob değilse, responseText'ten Blob yarat
-                  const data = this.response instanceof Blob
-                    ? this.response
-                    : (this.responseText
-                        ? new Blob([this.responseText], { type: ct || 'application/vnd.ms-excel' })
-                        : null);
-                  if (data && data.size > 5000) {
-                    capturedBlob = data;
-                    await log(`✅ ${url.split('/').pop().slice(0, 30)} → Blob yakalandı (${Math.round(data.size / 1024)} KB)`);
-                  }
-                } catch (e) {
-                  await log(`⚠ ${url.split('/').pop()} blob convert hata: ${e.message}`);
-                }
-              }
-            }
-
-            // KAPATILDI — Önceden agent burada rapor_takip durum=150 görür görmez
-            // kendi rapor_indir.jq POST'unu atıyordu, ama Luca o body'yi
-            // (rapor_takip body'si) reddediyor: "Parameter okhttp3.FormBody.add null".
-            // Native flow zaten gonder() ile doğru istekleri yapıyor; biz sadece
-            // chrome.downloads ile inen dosyayı bridge üzerinden yakalıyoruz.
-            // Diagnostic log bırakıldı — durum görünür kalsın:
-            if (/rapor_takip/i.test(url) && !this._loggedDiag) {
-              this._loggedDiag = true;
-              const respStr = (this.responseText || '').slice(0, 200);
-              const durum = (respStr.match(/"durum"\s*:\s*(\d+)/) || [])[1];
-              log(`🔍 rapor_takip durum=${durum || '?'} (Luca'nın native flow'u sürdürülüyor)`).catch(() => {});
-            }
-          } catch (e) {}
-        });
-        return origSend.apply(this, arguments);
-      };
-    };
-
-    // ─── ANCHOR <a download> click override (native download intercept) ───
-    const installAnchorOverride = (win, label) => {
-      if (!win.HTMLAnchorElement) return;
-      const proto = win.HTMLAnchorElement.prototype;
-      const origClick = proto.click;
-      restoreFns.push(() => { try { proto.click = origClick; } catch (e) {} });
-      proto.click = function () {
-        const href = this.href || '';
-        seenUrls.push(`${label}aclick:${href.split('?')[0].split('/').pop()}`);
-        if (isExcelUrl(href)) {
-          // URL'i yakala, biz fetch ederiz (native download tetikletme)
-          capturedUrl = href;
-          log(`🔗 Anchor download URL yakalandı: ${href.split('/').pop().slice(0, 80)}`).catch(() => {});
-          return; // native click'i atla
-        }
-        return origClick.apply(this, arguments);
-      };
-    };
-
-    // ─── window.open override — Luca gonder() yeni tab açıyorsa URL'i yakala ───
-    const installWindowOpenOverride = (win, label) => {
-      const origOpen = win.open;
-      if (typeof origOpen !== 'function') return;
-      restoreFns.push(() => { try { win.open = origOpen; } catch (e) {} });
-      win.open = function (url, name, features) {
-        try {
-          const urlStr = url ? String(url) : '';
-          seenUrls.push(`${label}open:${urlStr.split('?')[0].split('/').pop()}`);
-          log(`🪟 window.open: ${urlStr.slice(0, 100)}`).catch(() => {});
-          if (urlStr && (isExcelUrl(urlStr) || /rapor|jasper|indir|download|export/i.test(urlStr))) {
-            capturedUrl = urlStr.startsWith('http') ? urlStr : `${win.location.origin}${urlStr.startsWith('/') ? '' : '/'}${urlStr}`;
-            log(`🎯 window.open yakalandı, fetch'leyeceğiz: ${capturedUrl.split('/').pop().slice(0, 80)}`).catch(() => {});
-            // Yeni tab açtırmıyoruz — biz fetch edeceğiz
-            return null;
-          }
-        } catch (e) {}
-        return origOpen.apply(this, arguments);
-      };
-    };
-
-    // ─── form submit override — gonder() form.submit() yapıyorsa intercept et ───
-    // Luca'nın akışı: rapor_takip durum=150 → <form action="rapor_indir.jq" method="POST">.submit()
-    // → frame yenileniyor, Excel response geliyor ama interceptor'lar kayboluyor.
-    // Çözüm: submit'i engelle, biz fetch ile POST'layıp Blob'u yakala.
-    const installFormSubmitOverride = (win, label) => {
-      if (!win.HTMLFormElement) return;
-      const proto = win.HTMLFormElement.prototype;
-      const origSubmit = proto.submit;
-      restoreFns.push(() => { try { proto.submit = origSubmit; } catch (e) {} });
-      proto.submit = function () {
-        try {
-          const action = this.action || '';
-          const method = (this.method || 'GET').toUpperCase();
-          const target = this.target || '';
-          seenUrls.push(`${label}submit:${action.split('?')[0].split('/').pop()}@${target}`);
-          log(`📝 form.submit() action=${action.split('/').pop().slice(0, 50)} method=${method} target=${target}`).catch(() => {});
-
-          const isExcelForm =
-            isExcelUrl(action) || /rapor_indir|raporIndir|jasper|export|download/i.test(action);
-
-          if (isExcelForm && !this._morenSubmitting) {
-            this._morenSubmitting = true; // aynı form için 4 submit'i tek POST'a indir
-            (async () => {
-              try {
-                // FormData ile tüm input değerlerini topla — Luca POST body'sini hazırlamış olur
-                const fd = new FormData(this);
-                // Multipart yerine application/x-www-form-urlencoded'a çevir — Luca genelde bunu bekler
-                const params = new URLSearchParams();
-                fd.forEach((v, k) => params.append(k, String(v)));
-
-                const fullUrl = action.startsWith('http')
-                  ? action
-                  : new URL(action, win.location.href).toString();
-                const bodyPreview = params.toString().slice(0, 200);
-                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte) body: ${bodyPreview}`);
-
-                const fetchOpts = {
-                  method,
-                  credentials: 'include',
-                  headers: {},
-                };
-                if (method === 'POST') {
-                  fetchOpts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-                  fetchOpts.body = params.toString();
-                }
-
-                const r = await win.fetch(method === 'GET' ? `${fullUrl}?${params.toString()}` : fullUrl, fetchOpts);
-                if (!r.ok) {
-                  await log(`⚠ form fetch HTTP ${r.status}`);
-                  return;
-                }
-                const ct = r.headers.get('content-type') || '';
-                const blob = await r.blob();
-                if (blob.size > 5000) {
-                  if (!capturedBlob) {
-                    capturedBlob = blob; window.__morenCapturedBlob = blob; window.__morenCapturedBlob = blob;
-                    await log(`✅ form intercept Blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-                  }
-                } else {
-                  const txt = await blob.text();
-                  await log(`⚠ form fetch küçük (${blob.size}B): ${txt.slice(0, 120)}`);
-                }
-              } catch (e) {
-                await log(`⚠ form intercept hata: ${e.message}`);
-              } finally {
-                this._morenSubmitting = false;
-              }
-            })().catch(() => {});
-
-            return; // native submit'i atla — frame yenilenmesin
-          }
-
-          // target="_blank" ise eski hale çek (Excel olmayan formlar için)
-          if (target === '_blank' || target === 'new' || /win\d+/.test(target)) {
-            try {
-              this.removeAttribute('target');
-              log(`🔧 form target="_blank" kaldırıldı`).catch(() => {});
-            } catch (e) {}
-          }
-        } catch (e) {}
-        return origSubmit.apply(this, arguments);
-      };
-    };
-
-    // Top + tüm frame'lere yükle
-    installFetchOverride(window, '');
-    installXhrOverride(window, '');
-    installAnchorOverride(window, '');
-    installWindowOpenOverride(window, '');
-    installFormSubmitOverride(window, '');
-    for (const f of collectFrames(document)) {
-      try {
-        const fwin = f.contentWindow;
-        if (!fwin || fwin === window) continue;
-        const lbl = `[${f.name || '?'}]`;
-        installFetchOverride(fwin, lbl);
-        installXhrOverride(fwin, lbl);
-        installAnchorOverride(fwin, lbl);
-        installWindowOpenOverride(fwin, lbl);
-        installFormSubmitOverride(fwin, lbl);
-      } catch (e) {}
+    if (!capturedUrl && !capturedBlob) {
+      throw new Error('Rapor tıklandı ama 30 sn içinde URL/Excel yakalanamadı');
     }
 
-    // Tıklama öncesi tarih input value'sunu kontrol et
-    if (tarihIlk && tarihSon) {
-      await log(`🔎 Click öncesi: TARIH_ILK="${tarihIlk.value}" | TARIH_SON="${tarihSon.value}"`);
+    // URL yakalandıysa kendi fetch'imle indir (cookies same-origin gider)
+    if (capturedUrl && !capturedBlob) {
+      log(`URL'den Excel indiriliyor…`);
+      const resp = await fetch(capturedUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error(`Excel HTTP ${resp.status}`);
+      capturedBlob = await resp.blob();
     }
 
-    // Bridge'den gelen Luca download URL'ini dinle (background script chrome.downloads
-    // intercepted etti + iptal etti, URL'i bize gönderiyor)
-    const onBridgeMessage = async (event) => {
-      const data = event.data;
-      if (data?.source !== 'moren-bridge' || data?.type !== 'lucaDownload') return;
-      const dlUrl = data.url;
-      if (!dlUrl || capturedBlob) return;
-      await log(`🌉 Background'tan download URL geldi: ${dlUrl.split('/').pop().slice(0, 60)}`);
-      try {
-        const r = await fetch(dlUrl, { credentials: 'include' });
-        if (r.ok) {
-          const blob = await r.blob();
-          if (blob.size > 5000) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Bridge URL fetch ile blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
-          } else {
-            await log(`⚠ Bridge URL fetch küçük dosya (${blob.size}B)`);
-          }
-        } else {
-          await log(`⚠ Bridge URL fetch HTTP ${r.status}`);
-        }
-      } catch (e) {
-        await log(`⚠ Bridge URL fetch hata: ${e.message}`);
-      }
-    };
-    window.addEventListener('message', onBridgeMessage);
-    restoreFns.push(() => { window.removeEventListener('message', onBridgeMessage); });
+    const blob = capturedBlob;
+    log(`✓ Luca yanıtı: ${(blob.size/1024).toFixed(1)} KB · ${blob.type}`);
 
-    await log(`🖱 "Rapor" butonu 1 kez tıklanıyor`);
-
-    // SADE: tek native click — onclick attribute'unu zaten tetikler.
-    // Önceden 4 farklı yöntemle tıklatıyorduk (native + jQuery + onclick eval +
-    // fullActivate), her biri aynı handler'ı tetikleyip 2 mizan indiriyordu.
-    try { excelBtn.click(); } catch (e) { await log(`⚠ click() hata: ${e.message}`); }
-
-    // YENİ STRATEJİ: Background script disk'ten Excel'i okuyup bize iletecek.
-    // moren-luca-file event'ini dinle.
-    const onLucaFile = async (e) => {
-      const detail = e.detail || {};
-      const blob = detail.blob;
-      if (capturedBlob) return;
-      if (blob && blob.size > 5000) {
-        capturedBlob = blob; window.__morenCapturedBlob = blob;
-        await log(`✅ Background'tan Excel disk'ten alındı (${Math.round(blob.size / 1024)} KB, dosya: ${(detail.filename || '').split(/[\\/]/).pop()})`);
-      } else if (detail.filename) {
-        await log(`⚠ Background dosyayı diskten okuyamadı: ${detail.filename}. file:// permission yok olabilir.`);
-      }
-    };
-    window.addEventListener('moren-luca-file', onLucaFile);
-    restoreFns.push(() => window.removeEventListener('moren-luca-file', onLucaFile));
-
-    // Eski paralel flow KAPATILDI — Luca native download'a izin veriyoruz, biz disk'ten alıyoruz
-    if (false && jasperBody) (async () => {
-      // Body yakalanmasını bekle (max 15 sn)
-      for (let i = 0; i < 75; i++) {
-        if (jasperBody) break;
-        await sleep(200);
-      }
-      if (!jasperBody) {
-        await log(`⚠ jasper.jq body 15sn içinde yakalanamadı`);
-        return;
-      }
-
-      try {
-        await log(`🔄 Agent flow başlıyor (Luca abort edildi, tek session)`);
-        // Bizim isteklerimizi interceptor'dan koruma flag'i
-        const agentInit = (extra = {}) => ({
-          ...extra,
-          credentials: 'include',
-          // Init objesinin değişmesi için fetch interceptor da bunu görsün
-          _morenAgentRequest: true,
-        });
-        // Native fetch'i interceptor'dan kaçırmak için — direct origFetch kullan
-        const directFetch = (url, init) => {
-          const realInit = { ...init, credentials: 'include' };
-          // Custom flag interceptor için
-          realInit._morenAgentRequest = true;
-          return form.ownerDocument.defaultView.fetch(url, realInit);
-        };
-
-        // 1) Yeni jasper.jq POST → bizim rapor_id
-        const fullJasperUrl = jasperUrl.startsWith('http') ? jasperUrl : `${form.ownerDocument.defaultView.location.origin}/Luca/${jasperUrl.replace(/^\//, '')}`;
-        const r1 = await directFetch(fullJasperUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: jasperBody,
-        });
-        if (!r1.ok) {
-          await log(`⚠ Yeni jasper.jq HTTP ${r1.status}`);
-          return;
-        }
-        const r1text = await r1.text();
-        await log(`📥 Yeni jasper.jq response (${r1text.length}B): ${r1text.slice(0, 150)}`);
-
-        // 2) rapor_takip polling (genel/rapor_takip.jq POST)
-        // Body: {"donem_id":"X","params":{"raporTur":"mizan"}}
-        let donemId = '';
-        try { donemId = JSON.parse(jasperBody).donem_id || JSON.parse(jasperBody)?.donem_id || ''; } catch (e) {}
-        if (!donemId) {
-          // jasperBody'den manual olarak çıkar
-          const dm = jasperBody.match(/"donem_id"\s*:\s*"?(\d+)"?/);
-          donemId = dm ? dm[1] : '';
-        }
-        const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: 'mizan' } });
-        const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
-
-        for (let i = 0; i < 30; i++) {
-          if (capturedBlob) return;
-          await sleep(2000);
-          try {
-            const r2 = await directFetch(`${baseGenelUrl}/rapor_takip.jq`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: takipBody,
-            });
-            const r2text = await r2.text();
-            const durum = (r2text.match(/"durum"\s*:\s*(\d+)/) || [])[1];
-            if (i === 0 || i % 5 === 0) {
-              await log(`⏳ Polling ${i + 1}/30: durum=${durum || '?'}`);
-            }
-            // Durum 150 = tamamlandı
-            if (durum === '150' || /başarılı bir şekilde oluştur/i.test(r2text)) {
-              await log(`✓ Bizim rapor hazır (durum=${durum})`);
-              break;
-            }
-          } catch (e) {
-            await log(`⚠ Polling hata: ${e.message}`);
-          }
-        }
-
-        if (capturedBlob) return;
-
-        // 3) rapor_indir POST → Excel binary
-        await log(`📥 rapor_indir.jq POST atılıyor`);
-        const r3 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: jasperBody,
-        });
-        if (r3.ok) {
-          const ct = r3.headers.get('content-type') || '';
-          const blob = await r3.blob();
-          if (blob.size > 5000) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Paralel flow ile blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-          } else {
-            const t = await blob.text();
-            await log(`⚠ rapor_indir POST küçük (${blob.size}B): ${t.slice(0, 150)}`);
-            // GET fallback
-            const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
-            if (r4.ok) {
-              const blob4 = await r4.blob();
-              if (blob4.size > 5000) {
-                capturedBlob = blob4;
-                await log(`✅ rapor_indir GET ile blob (${Math.round(blob4.size / 1024)} KB)`);
-              }
-            }
-          }
-        } else {
-          await log(`⚠ rapor_indir HTTP ${r3.status}: ${(await r3.text()).slice(0, 100)}`);
-        }
-      } catch (e) {
-        await log(`⚠ Paralel flow hata: ${e.message}`);
-      }
-    })().catch(() => {});
-
-    // 90 saniye bekle: blob yakalanana veya download URL yakalanana kadar
-    let waited = 0;
-    while (waited < 90000) {
-      if (capturedBlob) break;
-      // Anchor click intercept ettiysek, URL'i biz fetch edelim
-      if (capturedUrl) {
-        try {
-          await log(`🌐 Yakalanan URL fetch ediliyor: ${capturedUrl.split('/').pop().slice(0, 60)}`);
-          const r = await fetch(capturedUrl, { credentials: 'include' });
-          if (r.ok) {
-            const blob = await r.blob();
-            if (blob.size > 5000) {
-              capturedBlob = blob; window.__morenCapturedBlob = blob;
-              break;
-            }
-          }
-        } catch (e) {
-          await log(`⚠ URL fetch hata: ${e.message}`);
-        }
-        capturedUrl = null; // tekrar tekrar denememe
-      }
-      await sleep(500);
-      waited += 500;
-      if (waited === 5000 || waited === 15000 || waited === 30000 || waited === 60000) {
-        await log(`⏳ ${waited / 1000}sn bekledi — istekler: ${seenUrls.slice(-12).join(' | ')}`);
-      }
+    if (blob.size < 500) {
+      throw new Error('Luca boş yanıt (' + blob.size + ' byte) — Luca oturumu dolmuş olabilir');
     }
-
-    // Tüm interceptor'ları restore et
-    for (const restore of restoreFns) {
-      try { restore(); } catch (e) {}
+    if (blob.type.includes('html')) {
+      const txt = await blob.text();
+      throw new Error('Luca HTML döndü: ' + txt.slice(0, 200));
     }
-
-    if (!capturedBlob) {
-      throw new Error(`Excel yakalanamadı (90sn). İstekler: ${seenUrls.slice(-20).join(' | ')}`);
-    }
-
-    return capturedBlob;
-  }
-
-  /**
-   * Luca yeni API (jasper.jq) ile Mizan Excel'i indir.
-   * Eski raporMizanAction.do form-urlencoded → boş Excel dönüyordu.
-   */
-  async function fetchMizanViaJasperJq(form, job, log) {
-    // donem_id formdan oku
-    const donemId = form.querySelector('input[name="DONEM_ID"]')?.value
-      || form.querySelector('input[name="donem_id"]')?.value
-      || '';
-
-    // sirket_id form'da yok — frm4'teki SirketCombo veya başka bir yerden bulmalı.
-    // Tüm frame'leri RECURSIVE tara, "irket" içeren select bul.
-    const collectFrames = (root, depth = 0, acc = []) => {
-      if (depth > 5) return acc;
-      try {
-        for (const f of root.querySelectorAll('frame, iframe')) {
-          acc.push(f);
-          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
-        }
-      } catch (e) {}
-      return acc;
-    };
-
-    let sirketId = '';
-    const frames = collectFrames(document);
-    for (const f of frames) {
-      if (!f.contentDocument) continue;
-      try {
-        const combo = f.contentDocument.querySelector('select[name="SirketCombo"]')
-          || f.contentDocument.querySelector('select[name*="irket"]')
-          || f.contentDocument.querySelector('select[name*="Sirket"]')
-          || f.contentDocument.querySelector('select[name*="firma"]')
-          || f.contentDocument.querySelector('select[name*="Firma"]');
-        if (combo && combo.value) {
-          sirketId = combo.value;
-          await log(`✓ sirket_id frame "${f.name || '?'}" / select "${combo.name}"den okundu: ${sirketId}`);
-          break;
-        }
-      } catch (e) {}
-    }
-
-    // Hâlâ bulunamadıysa, top window'da global JS variable arayalım
-    if (!sirketId) {
-      try {
-        sirketId = String(window.SIRKET_ID || window.sirketId || window.SirketId
-          || window.top?.SIRKET_ID || window.top?.sirketId || '');
-      } catch (e) {}
-    }
-
-    if (!donemId) {
-      throw new Error('DONEM_ID form\'da bulunamadı');
-    }
-    if (!sirketId) {
-      // Diagnostic: tüm frame'lerdeki tüm select'leri logla
-      const allSelects = [];
-      for (const f of frames) {
-        if (!f.contentDocument) continue;
-        try {
-          for (const s of f.contentDocument.querySelectorAll('select')) {
-            allSelects.push(`${f.name || '?'}:${s.name || s.id || '?'}=${(s.value || '').slice(0, 20)}`);
-          }
-        } catch (e) {}
-      }
-      throw new Error(`sirket_id bulunamadı. Mevcut select'ler: ${allSelects.slice(0, 10).join(' | ')}`);
-    }
-
-    // Tarihleri slash formatına çevir
-    const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
-    if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-    const slash = (s) => String(s).replace(/\./g, '/');
-
-    const payload = {
-      kurTarihYeni: '',
-      tarih_ilk: slash(tarih.bas),
-      tarih_son: slash(tarih.bit),
-      hesap_bas: '',
-      hesap_bit: '',
-      hesap_boyu_bas: '',
-      hesap_boyu_bit: '',
-      hesap_tipi: null,
-      hesap_plani_dovizi_goster: '1',
-      fis_tipi: null,
-      fis_kodu: null,
-      bakiye_goster: '1',
-      bakiye_tipi: '1',
-      dil: 'tr',
-      alanlar: '2',
-      genel_toplam_goster: '2',
-      kurKodYeni: '0',
-      kurTypeYeni: '1',
-      tutarYeni: '',
-      doviz_multiple: 'tl',
-      sistem_doviz_sembol: 'TL',
-      tarih_yazdir: 'H',
-      sayfa_numarasi_yazdir: 'H',
-      report_type: 'LIST',
-      font: 'Calibri',
-      alt_bilgi_yazdir: 'H',
-      donem_id: donemId,
-      sirket_id: sirketId,
-      tur: 'mizan',
-      doviz: ['tl'],
-      email_hesap: null,
-    };
-
-    await log(`🆕 jasper.jq akışı: tarih=${payload.tarih_ilk}→${payload.tarih_son}, donem_id=${donemId}, sirket_id=${sirketId}`);
-
-    // 1) jasper.jq → rapor_id al
-    const jasperUrl = `${location.origin}/Luca/jasper.jq?rapor_tur=mizan`;
-    await log(`🚀 POST ${jasperUrl.split('/').pop()}`);
-    const jasperRes = await fetch(jasperUrl, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!jasperRes.ok) {
-      throw new Error(`jasper.jq HTTP ${jasperRes.status}`);
-    }
-    const jasperText = await jasperRes.text();
-    await log(`📥 jasper.jq response (${jasperText.length}B): ${jasperText.slice(0, 200)}`);
-
-    // Response'u parse et — rapor_id veya benzeri ID dönmesi bekleniyor
-    let raporId = null;
-    try {
-      const parsed = JSON.parse(jasperText);
-      raporId = parsed.rapor_id || parsed.raporId || parsed.id || parsed.reportId;
-      if (!raporId && parsed.data) {
-        raporId = parsed.data.rapor_id || parsed.data.raporId || parsed.data.id;
-      }
-    } catch (e) {
-      // JSON değilse, direkt string'i ID kabul et (bazı eski API'ler öyle)
-      if (/^\d+$/.test(jasperText.trim())) raporId = jasperText.trim();
-    }
-
-    if (!raporId) {
-      throw new Error(`jasper.jq response'dan rapor_id alınamadı: ${jasperText.slice(0, 300)}`);
-    }
-    await log(`✓ rapor_id alındı: ${raporId}`);
-
-    // 2) rapor_takip.jq — rapor hazırlanıyor, polling
-    const takipUrl = `${location.origin}/Luca/rapor_takip.jq?rapor_id=${raporId}`;
-    let attempts = 0;
-    const maxAttempts = 30; // 30 * 2s = 60s timeout
-    let raporHazir = false;
-    while (attempts < maxAttempts) {
-      attempts++;
-      try {
-        const takipRes = await fetch(takipUrl, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rapor_id: raporId }),
-        });
-        const takipText = await takipRes.text();
-        // "ready" / "tamam" / "1" gibi durum bekleniyor
-        if (/ready|tamam|finish|done|hazir|complete|"1"|^1$/i.test(takipText.trim())) {
-          raporHazir = true;
-          await log(`✓ Rapor hazır (deneme ${attempts}/${maxAttempts})`);
-          break;
-        }
-        if (attempts === 1 || attempts % 5 === 0) {
-          await log(`⏳ Polling ${attempts}/${maxAttempts}: ${takipText.slice(0, 80)}`);
-        }
-      } catch (e) {
-        await log(`⚠ Polling hata: ${e.message}`);
-      }
-      await sleep(2000);
-    }
-
-    if (!raporHazir) {
-      await log(`⚠ Polling timeout — yine de indirme deneniyor`);
-    }
-
-    // 3) rapor_indir.jq → Excel binary
-    const indirUrl = `${location.origin}/Luca/rapor_indir.jq?rapor_id=${raporId}`;
-    await log(`📥 GET ${indirUrl.split('/').pop()}`);
-    const indirRes = await fetch(indirUrl, {
-      method: 'GET',
-      credentials: 'include',
-    });
-    if (!indirRes.ok) {
-      throw new Error(`rapor_indir.jq HTTP ${indirRes.status}`);
-    }
-    const blob = await indirRes.blob();
-    if (blob.size < 1000) {
-      const text = await blob.text().catch(() => '');
-      throw new Error(`Dönen dosya çok küçük (${blob.size}B): ${text.slice(0, 120)}`);
-    }
-    await log(`✅ Excel yakalandı (${Math.round(blob.size / 1024)} KB)`);
     return blob;
-  }
-
-  /**
-   * Generic fallback — eski mantık. Job tipi henüz Mizan dışındaysa
-   * sayfada "Excel" yazan butonu arar + tıklar, fetch interceptor ile blob yakalar.
-   */
-  async function fetchLucaGenericExcel(job, log) {
-    await log('⚠ Generic Excel button arama (job tipi henüz tam otomatik değil)');
-    const excelBtn =
-      [...document.querySelectorAll('button,a')].find((el) =>
-        /excel|xlsx/i.test(el.textContent || ''),
-      ) || document.querySelector('a[href*=".xlsx"]');
-    if (!excelBtn) {
-      throw new Error(
-        'Luca ekranında Excel indirme butonu bulunamadı — ekranı manuel açıp tekrar deneyin',
-      );
-    }
-
-    const originalFetch = window.fetch;
-    let captured = null;
-    window.fetch = async function (...args) {
-      const res = await originalFetch.apply(this, args);
-      try {
-        const ct = res.headers.get('content-type') || '';
-        if (
-          ct.includes('spreadsheet') ||
-          ct.includes('excel') ||
-          (typeof args[0] === 'string' && args[0].includes('.xlsx'))
-        ) {
-          const clone = res.clone();
-          captured = await clone.blob();
-        }
-      } catch {}
-      return res;
-    };
-
-    try {
-      excelBtn.click();
-      const t0 = Date.now();
-      while (!captured && Date.now() - t0 < 20000) {
-        await sleep(250);
-      }
-    } finally {
-      window.fetch = originalFetch;
-    }
-    return captured;
   }
 
   // === UI ===
@@ -5097,6 +395,19 @@
   const $status = panel.querySelector('#ma-status');
   const $count = panel.querySelector('#ma-count');
   const counters = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0 };
+  // Per-komut özet — her processBatch kendi sayacını tutar, kümülatif değil
+  let cmdSummary = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0, perMukellef: {}, aiCostUsd: 0, errors: [] };
+  const resetCmdSummary = () => {
+    cmdSummary = { onay: 0, atla: 0, demirbas: 0, hata: 0, toplam: 0, perMukellef: {}, aiCostUsd: 0, errors: [] };
+  };
+  const bumpCmd = (mukellefAd, kind) => {
+    cmdSummary[kind]++; cmdSummary.toplam++;
+    if (mukellefAd) {
+      cmdSummary.perMukellef[mukellefAd] = cmdSummary.perMukellef[mukellefAd] || { onay:0, atla:0, demirbas:0, hata:0, toplam:0 };
+      cmdSummary.perMukellef[mukellefAd][kind]++;
+      cmdSummary.perMukellef[mukellefAd].toplam++;
+    }
+  };
   const setStatus = (s) => ($status.textContent = s);
   const setCount = () => ($count.textContent = `✓${counters.onay} ⏭${counters.atla} ⏩${counters.demirbas} ⚠${counters.hata}`);
   document.getElementById('ma-stop').onclick = () => {
@@ -5113,516 +424,6 @@
 
   // === HELPERS ===
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-  // ─────────────────────────────────────────────────────────────────────
-  // XHR HOOK — jasper.jq POST'larına window.__lucaJobOverrides body inject
-  // ÖNEMLI: Luca jasper.jq'yu frm3.contentWindow'dan atıyor; her frame'in
-  // KENDI XMLHttpRequest objesi var. Top window'a hook kurmak yetmiyor —
-  // her frame'e ayrı ayrı kurmamız lazım. installXhrHook(targetWindow)
-  // helper'ı bunu idempotent şekilde yapar (zaten kurulmuşsa atla).
-  function installXhrHook(targetWin) {
-    try {
-      const w = targetWin || window;
-      if (!w || !w.XMLHttpRequest || w.__morenXhrHookInstalled) return false;
-      w.__morenXhrHookInstalled = true;
-      const proto = w.XMLHttpRequest.prototype;
-      const origOpen = proto.open;
-      const origSend = proto.send;
-      proto.open = function (method, url) {
-        this.__morenUrl = url;
-        this.__morenMethod = method;
-        return origOpen.apply(this, arguments);
-      };
-      proto.send = function (body) {
-        // DEBUG: __lucaJobOverrides aktifken TÜM XHR URL'lerini log'la
-        try {
-          if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
-            const url = this.__morenUrl || '';
-            if (!/rapor_takip|jasper/i.test(url)) {
-              window.__morenLogs.push(`[XHR-OTHER] ${this.__morenMethod || '?'} ${url.slice(0, 120)}`);
-            }
-          }
-        } catch {}
-        // rapor_takip.jq response listener — durum=150 + rapor_id → global'e yaz
-        try {
-          const url = this.__morenUrl || '';
-          if (/rapor_takip\.jq/i.test(url)) {
-            // Rapor_takip request body'sini sakla (rapor_indir aynı body ile çağrılacak)
-            const takipBody = body;
-            this.addEventListener('load', function () {
-              try {
-                const respText = this.responseText || '{}';
-                const resp = JSON.parse(respText);
-                if (Array.isArray(window.__morenLogs)) {
-                  const preview = respText.length > 300 ? respText.slice(0, 300) + '...' : respText;
-                  window.__morenLogs.push(`[RAPOR-TAKIP-RESP] durum=${resp.durum} body=${preview}`);
-                }
-                if (resp.durum === 150 || resp.durum === '150') {
-                  window.__morenRaporHazir = {
-                    durum: 150,
-                    takipUrl: url,
-                    takipBody: takipBody,  // KRİTİK: rapor_indir aynı body ile çağrılacak
-                    response: resp,
-                    timestamp: Date.now(),
-                  };
-                  if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[RAPOR-HAZIR] durum=150 (session-based, rapor_indir aynı body ile)`);
-                  }
-                }
-              } catch (e) {}
-            });
-          }
-        } catch (e) {}
-        try {
-          const url = this.__morenUrl || '';
-          const ov = window.__lucaJobOverrides;
-          if (ov && typeof body === 'string' && /jasper\.jq|raporKebir|raporIslem|raporMuavin|raporIndir|rapor_takip|rapor_indir/i.test(url)) {
-            // Body orijinalini log'a düşür (debug — modification yapmıyoruz)
-            if (Array.isArray(window.__morenLogs)) {
-              const origPreview = body.length > 800 ? body.slice(0, 800) + '...' : body;
-              window.__morenLogs.push(`[XHR-ORIG] ${url.split('/').pop().slice(0, 40)} body=${origPreview}`);
-            }
-            // BODY MODIFICATION DISABLED — Luca'nın doğal davranışına bırak.
-            // Önceki regex inject body'yi bozup 500 Internal Server Error döndürüyordu.
-            // Önce input.value'lardan gerçekten 191/tarih okunduğunu kanıtlayalım.
-            // Yine de hesap kodu uygulanmazsa, body inject'ini doğru regex ile aktive ederiz.
-            // ── JSON-AWARE BODY INJECT ──
-            // Luca jasper.jq body formatı:
-            //   {"donem":"<JSON1>","form":"<JSON2>"}
-            //   form içinde: {"hesap_bas":"","hesap_bit":"","tarih_bas":"","tarih_bit":"",...}
-            // form'u parse → hesap_bas/bit + tarih_bas/bit override → re-stringify
-            const isJasper = /jasper\.jq/i.test(url);
-            if (isJasper) {
-              try {
-                let parsed;
-                try { parsed = JSON.parse(body); } catch { parsed = null; }
-                if (parsed && typeof parsed.form === 'string') {
-                  let formObj;
-                  try { formObj = JSON.parse(parsed.form); } catch { formObj = null; }
-                  if (formObj && typeof formObj === 'object') {
-                    if (ov.HESAPKODU_ILK) {
-                      formObj.hesap_bas = String(ov.HESAPKODU_ILK);
-                      formObj.hesap_bit = String(ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
-                    }
-                    if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
-                    if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
-                    // İŞLETME: GELIR1/GIDER1 hidden flag override
-                    if (ov.GELIR1 !== undefined) formObj.GELIR1 = String(ov.GELIR1);
-                    if (ov.GIDER1 !== undefined) formObj.GIDER1 = String(ov.GIDER1);
-                    parsed.form = JSON.stringify(formObj);
-                    body = JSON.stringify(parsed);
-                    if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[XHR-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
-                    }
-                  } else if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[XHR-FORM-PARSE-FAIL]`);
-                  }
-                } else if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[XHR-OUTER-PARSE-FAIL]`);
-                }
-              } catch (e) {
-                if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[XHR-INJECT-ERR] ${e?.message || e}`);
-                }
-              }
-            }
-          }
-        } catch (e) {}
-        return origSend.call(this, body);
-      };
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────────────
-  // FETCH HOOK — Luca XHR yerine fetch kullanıyorsa onu da yakalar
-  // Aynı body inject mantığı (JSON-aware) — window.__lucaJobOverrides aktifse
-  // form.hesap_bas/bit + tarih_bas/bit override eder.
-  function installFetchHook(targetWin) {
-    try {
-      const w = targetWin || window;
-      if (!w || !w.fetch || w.__morenFetchHookInstalled) return false;
-      w.__morenFetchHookInstalled = true;
-      const origFetch = w.fetch;
-      w.fetch = async function (input, init) {
-        // DEBUG: __lucaJobOverrides aktifken TÜM fetch URL'lerini log'la
-        try {
-          const dbgUrl = typeof input === 'string' ? input : (input && input.url) || '';
-          if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
-            if (!/rapor_takip|jasper/i.test(dbgUrl)) {
-              window.__morenLogs.push(`[FETCH-OTHER] ${dbgUrl.slice(0, 120)}`);
-            }
-          }
-        } catch {}
-        try {
-          const url = typeof input === 'string' ? input : (input && input.url) || '';
-          // rapor_takip.jq response listener
-          if (/rapor_takip\.jq/i.test(url)) {
-            const takipBody = init && typeof init.body === 'string' ? init.body : null;
-            const res = await origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
-            try {
-              const cloned = res.clone();
-              const text = await cloned.text();
-              const resp = JSON.parse(text || '{}');
-              if (Array.isArray(window.__morenLogs)) {
-                const preview = text.length > 300 ? text.slice(0, 300) + '...' : text;
-                window.__morenLogs.push(`[FETCH-RAPOR-TAKIP-RESP] durum=${resp.durum} body=${preview}`);
-              }
-              if (resp.durum === 150 || resp.durum === '150') {
-                window.__morenRaporHazir = {
-                  durum: 150,
-                  takipUrl: url,
-                  takipBody: takipBody,
-                  response: resp,
-                  timestamp: Date.now(),
-                };
-                if (Array.isArray(window.__morenLogs)) {
-                  window.__morenLogs.push(`[FETCH-RAPOR-HAZIR] durum=150 session-based`);
-                }
-              }
-            } catch (e) {}
-            return res;
-          }
-          const ov = window.__lucaJobOverrides;
-          const isJasper = /jasper\.jq/i.test(url);
-          if (ov && isJasper && init && typeof init.body === 'string') {
-            // Body orijinalini log'a düşür
-            if (Array.isArray(window.__morenLogs)) {
-              const orig = init.body.length > 800 ? init.body.slice(0, 800) + '...' : init.body;
-              window.__morenLogs.push(`[FETCH-ORIG] ${url.split('/').pop().slice(0, 40)} body=${orig}`);
-            }
-            try {
-              let parsed;
-              try { parsed = JSON.parse(init.body); } catch { parsed = null; }
-              if (parsed && typeof parsed.form === 'string') {
-                let formObj;
-                try { formObj = JSON.parse(parsed.form); } catch { formObj = null; }
-                if (formObj && typeof formObj === 'object') {
-                  if (ov.HESAPKODU_ILK) {
-                    formObj.hesap_bas = String(ov.HESAPKODU_ILK);
-                    formObj.hesap_bit = String(ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
-                  }
-                  if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
-                  if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
-                  // İŞLETME: GELIR1/GIDER1 hidden flag override
-                  if (ov.GELIR1 !== undefined) {
-                    formObj.GELIR1 = String(ov.GELIR1);
-                    formObj.gelir = String(ov.GELIR1) === '0' ? '1' : '0';
-                  }
-                  if (ov.GIDER1 !== undefined) {
-                    formObj.GIDER1 = String(ov.GIDER1);
-                    formObj.gider = String(ov.GIDER1) === '0' ? '1' : '0';
-                  }
-                  parsed.form = JSON.stringify(formObj);
-                  init = { ...init, body: JSON.stringify(parsed) };
-                  if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
-                  }
-                }
-              }
-            } catch (e) {
-              if (Array.isArray(window.__morenLogs)) {
-                window.__morenLogs.push(`[FETCH-INJECT-ERR] ${e?.message || e}`);
-              }
-            }
-          }
-        } catch (e) {}
-        return origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
-      };
-      return true;
-    } catch (e) { return false; }
-  }
-
-    // ─────────────────────────────────────────────────────────────────────
-  // NATIVE DOWNLOAD HOOK — Luca rapor_indir sonrası dosyayı window.open()
-  // veya <a download href=URL> ile veriyor olabilir. Bu URL'yi yakalayıp
-  // bizim fetch'imizle blob alıp __morenCapturedBlob'a yazıyoruz.
-  function installNativeDownloadHook(targetWin) {
-    try {
-      const w = targetWin || window;
-      if (!w || w.__morenNativeDlInstalled) return false;
-      w.__morenNativeDlInstalled = true;
-
-      // 1) window.open intercept — Luca yeni tab/window ile dosya açabilir
-      const origOpen = w.open;
-      w.open = function (url, ...rest) {
-        try {
-          if (url && typeof url === 'string' && window.__lucaJobOverrides) {
-            if (Array.isArray(window.__morenLogs)) {
-              window.__morenLogs.push(`[NATIVE-OPEN] ${url.slice(0, 120)}`);
-            }
-            // URL Luca dosya indirme'ye benziyorsa fetch et
-            if (/rapor_indir|rapor_dosya|excel|xlsx|indir|download/i.test(url)) {
-              w.fetch(url, { credentials: 'include' })
-                .then(r => r.blob())
-                .then(blob => {
-                  if (blob.size > 1000) {
-                    window.__morenCapturedBlob = blob;
-                    if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[NATIVE-OPEN-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
-                    }
-                  }
-                })
-                .catch(() => {});
-              // Luca'nın native window.open'ını engelleme — bizim fetch paralel
-            }
-          }
-        } catch (e) {}
-        return origOpen.apply(this, [url, ...rest]);
-      };
-
-      // 2) <a download> click intercept — addEventListener capture
-      try {
-        const doc = w.document;
-        if (doc) {
-          doc.addEventListener('click', function (ev) {
-            try {
-              const a = ev.target && ev.target.closest && ev.target.closest('a[href]');
-              if (a && window.__lucaJobOverrides) {
-                const href = a.href;
-                const hasDownload = a.hasAttribute('download');
-                if (hasDownload || /rapor_indir|excel|xlsx|indir/i.test(href)) {
-                  if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[NATIVE-A-CLICK] href=${href.slice(0, 120)} download=${hasDownload}`);
-                  }
-                  // Paralel fetch
-                  w.fetch(href, { credentials: 'include' })
-                    .then(r => r.blob())
-                    .then(blob => {
-                      if (blob.size > 1000) {
-                        window.__morenCapturedBlob = blob;
-                        if (Array.isArray(window.__morenLogs)) {
-                          window.__morenLogs.push(`[NATIVE-A-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
-                        }
-                      }
-                    })
-                    .catch(() => {});
-                }
-              }
-            } catch (e) {}
-          }, true);
-        }
-      } catch (e) {}
-
-      // 3.5) window.location.href / document.location.href setter intercept
-      try {
-        const captureLocationDownload = (url) => {
-          try {
-            if (url && window.__lucaJobOverrides && /rapor_indir|excel|xlsx|indir|download|jasper|raporKebir/i.test(url)) {
-              if (Array.isArray(window.__morenLogs)) {
-                window.__morenLogs.push(`[NATIVE-LOC-SET] ${String(url).slice(0, 120)}`);
-              }
-              w.fetch(url, { credentials: 'include' })
-                .then(r => r.blob())
-                .then(blob => {
-                  if (blob.size > 1000) {
-                    window.__morenCapturedBlob = blob;
-                    if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[NATIVE-LOC-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
-                    }
-                  }
-                })
-                .catch(() => {});
-            }
-          } catch {}
-        };
-        // window.location.assign + window.location.replace intercept
-        const origAssign = w.location.assign;
-        const origReplace = w.location.replace;
-        w.location.assign = function (url) {
-          captureLocationDownload(url);
-          return origAssign.apply(this, arguments);
-        };
-        w.location.replace = function (url) {
-          captureLocationDownload(url);
-          return origReplace.apply(this, arguments);
-        };
-      } catch (e) {}
-
-      // 3.6) MutationObserver — DOM'a yeni eklenen <a href> elementlerini izle
-      try {
-        if (w.MutationObserver && w.document) {
-          const observer = new w.MutationObserver((mutations) => {
-            try {
-              if (!window.__lucaJobOverrides) return;
-              for (const m of mutations) {
-                for (const n of (m.addedNodes || [])) {
-                  if (!n.tagName) continue;
-                  // Yeni eklenen <a> veya çocuğunda <a> var mı
-                  const anchors = n.tagName === 'A' ? [n] :
-                    (n.querySelectorAll ? [...n.querySelectorAll('a[href]')] : []);
-                  for (const a of anchors) {
-                    const href = a.href || '';
-                    if (/rapor_indir|excel|xlsx|indir|download|jasper|raporKebir/i.test(href)) {
-                      if (Array.isArray(window.__morenLogs)) {
-                        window.__morenLogs.push(`[NATIVE-DOM-A] href=${href.slice(0, 120)}`);
-                      }
-                      w.fetch(href, { credentials: 'include' })
-                        .then(r => r.blob())
-                        .then(blob => {
-                          if (blob.size > 1000) {
-                            window.__morenCapturedBlob = blob;
-                            if (Array.isArray(window.__morenLogs)) {
-                              window.__morenLogs.push(`[NATIVE-DOM-A-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
-                            }
-                          }
-                        })
-                        .catch(() => {});
-                    }
-                  }
-                  // Yeni form'lar — Luca rapor_indir formu inject edildiyse:
-                  // 1. Luca submit'ini PREVENT et (yoksa server bize boş döndürür - session race)
-                  // 2. Agent kendi fetch'i ile blob'u al
-                  const forms = n.tagName === 'FORM' ? [n] :
-                    (n.querySelectorAll ? [...n.querySelectorAll('form')] : []);
-                  for (const f of forms) {
-                    if (f.action && /rapor_indir/i.test(f.action)) {
-                      if (Array.isArray(window.__morenLogs)) {
-                        window.__morenLogs.push(`[NATIVE-DOM-FORM] action=${f.action.slice(0, 100)}`);
-                      }
-                      // KRİTİK: form.submit'i monkey-patch — Luca submit edemesin
-                      const origSubmit = f.submit.bind(f);
-                      f.submit = function () {
-                        if (Array.isArray(window.__morenLogs)) {
-                          window.__morenLogs.push(`[NATIVE-DOM-FORM-SUBMIT-PREVENTED] Luca submit'i bloklandı (session race önlendi)`);
-                        }
-                        // Luca submit ETME — bizim fetch'imiz çalışsın
-                      };
-                      // Click listener da ekle (form içindeki submit button'ını engelle)
-                      f.addEventListener('submit', (ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        if (Array.isArray(window.__morenLogs)) {
-                          window.__morenLogs.push(`[NATIVE-DOM-FORM-SUBMIT-EVT-PREVENTED]`);
-                        }
-                      }, true);
-
-                      // Agent'ın kendi fetch'i — Luca submit'inden ÖNCE
-                      try {
-                        const fd = new FormData(f);
-                        const params = new URLSearchParams();
-                        for (const [k, v] of fd) params.append(k, String(v));
-                        const bodyStr = params.toString();
-                        if (Array.isArray(window.__morenLogs)) {
-                          window.__morenLogs.push(`[NATIVE-DOM-FORM-POST] action=${f.action.slice(0, 60)} body=${bodyStr.slice(0, 200)}`);
-                        }
-                        w.fetch(f.action, {
-                          method: 'POST',
-                          body: bodyStr,
-                          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                          credentials: 'include',
-                        })
-                          .then(r => r.blob().then(blob => ({ blob, ct: r.headers.get('content-type') || '' })))
-                          .then(({ blob, ct }) => {
-                            if (Array.isArray(window.__morenLogs)) {
-                              window.__morenLogs.push(`[NATIVE-DOM-FORM-RESP] ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 40)}`);
-                            }
-                            if (blob.size > 1000) {
-                              window.__morenCapturedBlob = blob;
-                              if (Array.isArray(window.__morenLogs)) {
-                                window.__morenLogs.push(`[NATIVE-DOM-FORM-BLOB] ✓ yakalandı: ${Math.round(blob.size / 1024)} KB`);
-                              }
-                            }
-                          })
-                          .catch(e => {
-                            if (Array.isArray(window.__morenLogs)) {
-                              window.__morenLogs.push(`[NATIVE-DOM-FORM-ERR] ${e?.message || e}`);
-                            }
-                          });
-                      } catch (e) {
-                        if (Array.isArray(window.__morenLogs)) {
-                          window.__morenLogs.push(`[NATIVE-DOM-FORM-CATCH] ${e?.message || e}`);
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } catch {}
-          });
-          observer.observe(w.document.documentElement || w.document.body, {
-            childList: true,
-            subtree: true,
-          });
-        }
-      } catch (e) {}
-
-      // 4) iframe.src setter intercept — yeni iframe URL'si dosya olabilir
-      try {
-        const HTMLIFrameElementProto = w.HTMLIFrameElement && w.HTMLIFrameElement.prototype;
-        if (HTMLIFrameElementProto) {
-          const origSrcDesc = Object.getOwnPropertyDescriptor(HTMLIFrameElementProto, 'src');
-          if (origSrcDesc && origSrcDesc.set) {
-            Object.defineProperty(HTMLIFrameElementProto, 'src', {
-              get: origSrcDesc.get,
-              set: function (url) {
-                try {
-                  if (url && window.__lucaJobOverrides && /rapor_indir|excel|xlsx|indir/i.test(url)) {
-                    if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[NATIVE-IFRAME-SRC] ${url.slice(0, 120)}`);
-                    }
-                    w.fetch(url, { credentials: 'include' })
-                      .then(r => r.blob())
-                      .then(blob => {
-                        if (blob.size > 1000) {
-                          window.__morenCapturedBlob = blob;
-                          if (Array.isArray(window.__morenLogs)) {
-                            window.__morenLogs.push(`[NATIVE-IFRAME-BLOB] ${Math.round(blob.size / 1024)} KB yakalandı`);
-                          }
-                        }
-                      })
-                      .catch(() => {});
-                  }
-                } catch (e) {}
-                return origSrcDesc.set.call(this, url);
-              },
-              configurable: true,
-            });
-          }
-        }
-      } catch (e) {}
-
-      return true;
-    } catch (e) { return false; }
-  }
-
-    // Tüm frame'lere XHR hook kur (recursive). Yeni yüklenen frame'ler için
-  // periyodik tarama da yapıyoruz (Luca frm3'ü dinamik yüklüyor).
-  function installXhrHookOnAllFrames() {
-    let count = 0;
-    if (installXhrHook(window)) count++;
-    if (installFetchHook(window)) count++;
-    if (installNativeDownloadHook(window)) count++;
-    const collect = (root, depth = 0) => {
-      if (depth > 5) return;
-      try {
-        for (const f of root.querySelectorAll('frame, iframe')) {
-          try {
-            if (f.contentWindow) {
-              if (installXhrHook(f.contentWindow)) count++;
-              if (installFetchHook(f.contentWindow)) count++;
-              if (installNativeDownloadHook(f.contentWindow)) count++;
-            }
-            if (f.contentDocument) collect(f.contentDocument, depth + 1);
-          } catch {}
-        }
-      } catch {}
-    };
-    collect(document);
-    return count;
-  }
-
-  // Top + ilk taramayı hemen yap
-  installXhrHookOnAllFrames();
-  // Periyodik — yeni frame'ler yüklendikçe (her 2sn'de yeniden tara)
-  setInterval(() => {
-    try { installXhrHookOnAllFrames(); } catch {}
-  }, 500);
-  try { console.log('[Moren] XHR hook kuruldu (multi-frame)'); } catch {}
-
-
   async function api(path, opts = {}) {
     const res = await fetch(API + path, {
       ...opts,
@@ -5646,25 +447,33 @@
     }
     return null;
   }
+  // İşlenen donem'i log'lar arasında taşımak için modül seviyesi state.
+  // processBatch başında set edilir, her log'a otomatik koyulur ki frontend
+  // tarih boş kalmış kayıtlarda bile en azından "Nisan 2026 ortası" gibi
+  // bir tarih gösterebilsin.
+  let __currentAy = null;
   async function logEvent(mukellefId, mukellefAd, status, detail, extra = {}) {
     try {
-      // v1.14.1 — action ve tarih de gönderilsin: mükellef özeti backend'i
-      // bunlara göre groupby yapıyor (önce yoktu, hep NULL gidiyordu).
-      const currentAction = window.__morenAgent?.currentAction || extra.action || null;
+      // Otomatik enjeksiyon: donem (komutun ay'ı) + agentVersion.
+      // Çağıran taraf manuel vermişse (extra.donem) onu ezme.
+      const enrichedExtra = {
+        donem: extra.donem || __currentAy || null,
+        agentVersion: AGENT_VERSION,
+        ...extra,
+      };
       await api('/agent/events/ingest', {
         method: 'POST',
         body: JSON.stringify({
           agent: 'mihsap',
-          action: currentAction,
           mukellef: mukellefAd,
           status,
           message: detail,
-          firma: extra.firma || null,
-          fisNo: extra.belgeNo || null,
-          tutar: extra.tutar ? Number(extra.tutar) : null,
-          hesapKodu: extra.hesapKodu || null,
-          kdv: extra.kdv || null,
-          meta: { mukellefId, tarih: extra.tarih || null, ...extra },
+          firma: enrichedExtra.firma || null,
+          fisNo: enrichedExtra.belgeNo || null,
+          tutar: enrichedExtra.tutar ? Number(enrichedExtra.tutar) : null,
+          hesapKodu: enrichedExtra.hesapKodu || null,
+          kdv: enrichedExtra.kdv || null,
+          meta: { mukellefId, ...enrichedExtra },
         }),
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
@@ -5886,40 +695,155 @@
         }
       }
       if (!tarih && v.faturaTarihiStr) tarih = parseTr(v.faturaTarihiStr);
+      // EK FALLBACK'LER — Mihsap farklı alan adları kullanabilir
+      const tarihAdaylari = [
+        'duzenlemeTarihi','duzenlemeTarihiStr','belgeTarihi','belgeTarihiStr',
+        'fatBelgeTarihi','evrakTarihi','tarihi','tarih2','kayitTarihi',
+        'ilkKayitTarihi','olusturmaTarihi','tarihStr','duzenlemeTarihiTr'
+      ];
+      for (const k of tarihAdaylari) {
+        if (!tarih && v[k]) tarih = parseTr(v[k]);
+      }
+      // Sub-objelerde de ara (v.fatura?, v.belge?, v.detay?)
+      if (!tarih) {
+        for (const sub of ['fatura','belge','detay','faturaBilgi','belgeBilgi']) {
+          const o = v[sub];
+          if (o && typeof o === 'object') {
+            for (const k of ['tarih','faturaTarihi','duzenlemeTarihi','belgeTarihi']) {
+              if (!tarih && o[k]) { tarih = parseTr(o[k]); break; }
+            }
+          }
+        }
+      }
+      // DOM fallback — fatura editör açıksa input'tan oku (geniş seçici)
+      if (!tarih) {
+        try {
+          const adaylar = [
+            ...document.querySelectorAll('#defterData_tarih input, #defterData_tarih, input[id*="tarih" i], input[name*="tarih" i], input[placeholder*="tarih" i], [aria-label*="tarih" i] input, .ant-picker-input input, .ant-picker input'),
+          ];
+          for (const el of adaylar) {
+            const raw = (el?.value || el?.textContent || el?.getAttribute?.('value') || '').trim();
+            if (raw && /\d/.test(raw)) {
+              const t = parseTr(raw);
+              if (t) { tarih = t; break; }
+            }
+          }
+        } catch {}
+      }
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
+      // Hala yoksa — debug: Mihsap API yanıtının ilk 1500 karakterini console'a yaz.
+      // Window flag ile sadece ilk 5 başarısız faturada yazılır (console spam olmasın).
+      if (!tarih) {
+        window.__morenTarihDebugCount = (window.__morenTarihDebugCount || 0) + 1;
+        if (window.__morenTarihDebugCount <= 5) {
+          try {
+            const dump = JSON.stringify(v, null, 2).slice(0, 1500);
+            console.warn(`[Moren] getFaturaMeta TARİH BULUNAMADI #${window.__morenTarihDebugCount} fid=${fid}\nAPI yanıt:\n` + dump);
+          } catch {}
+        }
+      }
+      // Belge türü — 3 kanaldan ara: 1) API, 2) faturaTuru türetim, 3) DOM (işletme defteri için)
+      let belgeTuru = v.belgeTuru || v.belgeTipi || v.belgeTipiKod || null;
+      if (!belgeTuru) {
+        const ft = String(v.faturaTuru || '').toUpperCase();
+        if (ft.includes('EARSIV') || ft.includes('E_ARSIV') || ft.includes('ARSIV')) belgeTuru = 'E_ARSIV';
+        else if (ft.includes('EFATURA') || ft.includes('E_FATURA') || ft.includes('E-FATURA') || ft === 'FATURA') belgeTuru = 'E_FATURA';
+        else if (ft.includes('FIS') || ft.includes('ÖKC') || ft.includes('OKC')) belgeTuru = 'FIS';
+        else if (ft.includes('IRSALIYE')) belgeTuru = 'IRSALIYE';
+      }
+      // Son çare — Mihsap ekranındaki defterData_belgeTuru select'inden oku
+      if (!belgeTuru) {
+        try {
+          const sel = document.querySelector('#defterData_belgeTuru, [id*="belgeTuru"]');
+          const span = sel?.querySelector('.ant-select-selection-item') ||
+                       sel?.querySelector('.ant-select-selection-selected-value');
+          const domVal = (span?.textContent || sel?.value || '').trim();
+          if (domVal && domVal !== 'Seçiniz') belgeTuru = domVal;
+        } catch {}
+      }
+      // BELGE NO PREFİX'ten türet (e-Arşiv/e-Fatura ETTN'leri belirli prefiks taşır)
+      // Türkiye e-Belge formatı: 3 harf + 4 yıl + 9 sıra (toplam 16 char)
+      if (!belgeTuru) {
+        const bn = String(v.faturaNo || v.belgeNo || '').toUpperCase().trim();
+        if (bn) {
+          // 1) e-Arşiv prefiksleri — BEA, EAR, GIB, EARSIV
+          if (/^(BEA|EAR|GIB|EARSIV)/.test(bn)) belgeTuru = 'E_ARSIV';
+          // 2) Yazarkasa fişi
+          else if (/(FIS|OKC|ZRP)/.test(bn)) belgeTuru = 'FIS';
+          // 3) e-Fatura — Türkiye standart formatı: 3 harf + 4 yıl + 9 rakam = 16 karakter.
+          //    Hattat/MIHSAP'ta gördüğümüz gerçek prefiksler:
+          //    KAA2026..., KE32026..., J812026..., MK12026..., GIB2024..., EFA..., FAT..., AN..., ABC...
+          //    Generic kural: 2-4 alfanumerik prefiks + 4 yıl (20XX) + sayı → e-Fatura kabul.
+          else if (/^[A-Z][A-Z0-9]{1,3}20\d{2}\d{6,12}$/.test(bn)) belgeTuru = 'E_FATURA';
+          // 4) Eski explicit prefiksler (kapsam genişletildi)
+          else if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9]|KAA|KE\d|K3|J\d{2}|MK\d|MUH)/.test(bn)) belgeTuru = 'E_FATURA';
+        }
+      }
+
       return {
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
-        belgeTuru: v.belgeTuru || null,
+        belgeTuru,
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
         firma: v.faturaFirmaAdi || v.firmaUnvan || null,
-        // Firma Hafizasi icin VKN/TCKN — Mihsap payload'inda birkac farkli alan olabilir
+        // Karşı firma VKN/TCKN — Firma Hafızası için. Mihsap API'de birkaç farklı isimde olabilir:
         firmaKimlikNo:
           v.faturaFirmaKimlikNo ||
           v.firmaKimlikNo ||
           v.karsiFirmaKimlikNo ||
           v.vergiKimlikNo ||
           v.vknTckn ||
+          v.faturaFirmaVkn ||
+          v.firmaVkn ||
+          v.vkn ||
+          v.tckn ||
           null,
       };
     } catch { return {}; }
   }
 
   async function getFaturaImageBase64() {
-    // Mihsap fatura editöründe görsel CANVAS elementlerinde render ediliyor.
-    // Birden fazla sayfa varsa hepsini dikey birleştir.
+    // Mihsap fatura editöründe görsel CANVAS / IMG / IFRAME elementlerinde render ediliyor.
+    // Önce: top-level + tüm iframe'leri tara. Canvas, img ve PDF.js embed/object dene.
+    // Boyut eşiği esnetildi (150x150) — küçük thumbnail bile AI için yeterli.
     const t0 = Date.now();
-    while (Date.now() - t0 < 10000) {
-      const canvases = [...document.querySelectorAll('canvas')].filter(
-        (c) => c.width > 200 && c.height > 200,
-      );
-      if (canvases.length > 0) {
+    let lastDebug = 0;
+    const TIMEOUT = 15000; // 10sn → 15sn (PDF render süresi için)
+    while (Date.now() - t0 < TIMEOUT) {
+      // 1) Tüm document'leri topla — top-level + iframe'ler (cross-origin değilse)
+      const docs = [document];
+      try {
+        document.querySelectorAll('iframe, frame').forEach((f) => {
+          try {
+            const d = f.contentDocument;
+            if (d) docs.push(d);
+            // İframe'in iframe'i (multi-frame yapı) için 1 derin daha
+            d?.querySelectorAll?.('iframe, frame')?.forEach?.((f2) => {
+              try { if (f2.contentDocument) docs.push(f2.contentDocument); } catch {}
+            });
+          } catch {} // cross-origin
+        });
+      } catch {}
+
+      // 2) Tüm doc'larda canvas ara — boyut eşiği 150x150
+      let allCanvases = [];
+      for (const d of docs) {
         try {
-          // İlk sayfa yeterli (detaylar görünsün diye çözünürlük artır)
-          const pages = canvases.slice(0, 1);
+          allCanvases.push(
+            ...[...d.querySelectorAll('canvas')].filter(
+              (c) => c.width > 150 && c.height > 150,
+            ),
+          );
+        } catch {}
+      }
+      if (allCanvases.length > 0) {
+        try {
+          // En büyük canvas'ı seç (genelde fatura görseli)
+          allCanvases.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+          const pages = allCanvases.slice(0, 1);
           const targetW = Math.min(pages[0].width, 1100);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
@@ -5937,15 +861,58 @@
           }
           return out.toDataURL('image/jpeg', 0.7).split(',')[1];
         } catch (e) {
-          console.warn('[Moren] canvas merge fail', e);
+          console.warn('[Moren] canvas merge fail (CORS olabilir):', e?.message);
         }
       }
-      await sleep(500);
+
+      // 3) Canvas yoksa <img> dene (Mihsap bazı yerlerde direkt img kullanıyor)
+      let allImgs = [];
+      for (const d of docs) {
+        try {
+          allImgs.push(
+            ...[...d.querySelectorAll('img')].filter(
+              (i) => i.naturalWidth > 200 && i.naturalHeight > 200 && i.complete,
+            ),
+          );
+        } catch {}
+      }
+      if (allImgs.length > 0) {
+        try {
+          allImgs.sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
+          const img = allImgs[0];
+          const targetW = Math.min(img.naturalWidth, 1100);
+          const h = Math.round(targetW * (img.naturalHeight / img.naturalWidth));
+          const out = document.createElement('canvas');
+          out.width = targetW;
+          out.height = h;
+          out.getContext('2d').drawImage(img, 0, 0, targetW, h);
+          return out.toDataURL('image/jpeg', 0.7).split(',')[1];
+        } catch (e) {
+          console.warn('[Moren] img convert fail (CORS olabilir):', e?.message);
+        }
+      }
+
+      // 4) Hâlâ yoksa — debug için durumu raporla (her 2sn'de bir, spam olmasın)
+      if (Date.now() - lastDebug > 2000) {
+        lastDebug = Date.now();
+        const tum = docs.flatMap((d) => {
+          try { return [...d.querySelectorAll('canvas')]; } catch { return []; }
+        });
+        console.warn('[Moren] Fatura görseli aranıyor —',
+          'docs:', docs.length,
+          'canvas tüm:', tum.length,
+          'canvas büyük (>150):', allCanvases.length,
+          'img büyük:', allImgs.length,
+          tum.length > 0 ? `(canvas boyutları: ${tum.map((c) => `${c.width}x${c.height}`).join(', ').slice(0, 200)})` : '');
+      }
+
+      await sleep(400);
     }
+    console.warn('[Moren] getFaturaImageBase64: 15sn boyunca canvas/img bulunamadı — fatura editörü açık değil olabilir');
     return null;
   }
 
-  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, action, bosAlanSecenekleri }) {
+  async function aiDecide({ codes, tarih, hedefAy, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, action, bosAlanSecenekleri }) {
     const img = await getFaturaImageBase64();
     if (!img) return { karar: 'emin_degil', sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-fatura', {
@@ -5960,7 +927,6 @@
         faturaTuru,
         mukellef,
         firma,
-        firmaKimlikNo, // Firma Hafizasi icin VKN/TCKN
         tutar,
         action,
         // Aşama 2a: boş alan seçenekleri gönderilirse AI öneri verir
@@ -6057,50 +1023,8 @@
   }
 
   // ==========================================================
-  // v1.12.3 — Bir Hesap Kodu select'inin "satırındaki tutar"ı oku.
-  // Y-koordinat tabanlı eşleme: select'in dikey hizasına EN YAKIN tutar input'u
-  // bulunur. searchAndReadOptions sırasında DOM değişse (Mihsap "+ekle" satırı
-  // ekler) bile doğru satırı bulur.
-  // ==========================================================
-  function getRowTutarValue(selectEl) {
-    if (!selectEl) return 0;
-    const sRect = selectEl.getBoundingClientRect();
-    if (sRect.height === 0) return 0;
-    const sCenterY = sRect.top + sRect.height / 2;
-    // Yukarı 6 seviye container ara, her birinde dikey olarak en yakın input
-    let p = selectEl;
-    for (let i = 0; i < 6 && p; i++) {
-      p = p.parentElement;
-      if (!p) break;
-      const inputs = [...p.querySelectorAll('input')].filter((inp) => inp.offsetParent !== null);
-      let bestVal = null;
-      let bestDy = Infinity;
-      for (const inp of inputs) {
-        const v = (inp.value || '').trim();
-        // TR formatı: "21.782,18", "0,00", "1.234.567,89", "300.000"
-        if (!/^-?[\d.]+,\d{2}$/.test(v) && !/^-?\d{1,3}(\.\d{3})*$/.test(v) && !/^-?\d+$/.test(v)) continue;
-        const r = inp.getBoundingClientRect();
-        if (r.height === 0) continue;
-        const dy = Math.abs((r.top + r.height / 2) - sCenterY);
-        // 30px dikey tolerans (aynı satırın yüksekliği genelde ~32px)
-        if (dy < 30 && dy < bestDy) {
-          bestDy = dy;
-          bestVal = v;
-        }
-      }
-      if (bestVal !== null) {
-        const numStr = bestVal.replace(/\./g, '').replace(',', '.');
-        const n = parseFloat(numStr);
-        if (!isNaN(n)) return n;
-      }
-    }
-    return 0;
-  }
-
-  // ==========================================================
-  // v1.12.1 — Bir bölümün BOŞ "Hesap Kodu" select'ini bulur.
-  // Birden çok boş varsa (ana satır + "+yeni" satırı), tutar > 0 olanı tercih eder.
-  // Tüm select'ler doluysa ilk Hesap Kodu select'ini döndürür (geri uyumluluk).
+  // AŞAMA 2a — AI Hesap Kodu Önerisi (Gölge Mod)
+  // Bir bölümün (Matrah/Vergi/Cari) "Hesap Kodu" select'ini bulur.
   // ==========================================================
   function findHesapKoduSelect(etiketRegex) {
     const all = [...document.querySelectorAll('div, span, td, label, th, h3, h4')];
@@ -6114,39 +1038,15 @@
     let container = header.parentElement;
     for (let i = 0; i < 5 && container; i++) {
       const selects = [...container.querySelectorAll('.ant-select')].filter((s) => s.offsetParent !== null);
-      const hkAll = selects.filter((s) => {
+      const hk = selects.find((s) => {
         const ph = s.querySelector('.ant-select-selection-placeholder');
         const phTxt = (ph?.textContent || '').trim();
         const it = s.querySelector('.ant-select-selection-item');
         const itTxt = (it?.textContent || '').trim();
         return /hesap kodu/i.test(phTxt) || /hesap kodu/i.test(itTxt) || /^\d{3}\.\d/.test(itTxt);
       });
-      if (hkAll.length === 0) {
-        container = container.parentElement;
-        continue;
-      }
-      // SADECE BOŞ olanlar
-      const bosOlanlar = hkAll.filter((s) => !selectDolu(s));
-      if (bosOlanlar.length === 0) {
-        // Hepsi dolu → eski davranış, ilki
-        return hkAll[0];
-      }
-      if (bosOlanlar.length === 1) return bosOlanlar[0];
-      // Birden fazla boş select → satırında tutar > 0 olanı seç (asıl satır)
-      let best = null;
-      let bestTutar = -1;
-      const debug = [];
-      for (const s of bosOlanlar) {
-        const t = getRowTutarValue(s);
-        debug.push(t);
-        if (t > bestTutar) {
-          bestTutar = t;
-          best = s;
-        }
-      }
-      console.log(`[Moren.fill] findHesapKoduSelect ${etiketRegex} — ${bosOlanlar.length} boş select, tutarlar:`, debug, `→ seçilen tutar: ${bestTutar}`);
-      // Tutarı > 0 olan varsa onu, yoksa ilk boşu döndür
-      return bestTutar > 0 ? best : bosOlanlar[0];
+      if (hk) return hk;
+      container = container.parentElement;
     }
     return null;
   }
@@ -6196,20 +1096,6 @@
     }
   }
 
-  // ===========================================================
-  // v1.12.0 — AŞAMA 1: Boş alan otomatik doldurma (kayıt YOK)
-  // Tüm gerekli alanlar eşik ÜSTÜNDEYSE doldur, F2'ye BASMA.
-  // Kullanıcı manuel kaydetsin (60s bekle). Eşik altıysa atla.
-  // ===========================================================
-  // v1.13.3 — Eşikler düşürüldü (kullanıcı isteği üzerine).
-  // Tek sondaj sonucu varsa zaten o; AI null dönmediyse genellikle güvenilir.
-  const BOS_ALAN_ESIKLERI = {
-    cari:   0.70,
-    matrah: 0.70,
-    kdv:    0.70,
-  };
-  const BOS_ALAN_BEKLEME_MS = 60000; // Manuel F2 için bekleme
-
   // Boş alanlar için arama-bazlı seçenek okuma.
   // Matrah: 600/601/602 yazıp tüm yurtiçi satış kodlarını topla (SATIŞ modu için).
   // KDV: 391 yazıp hesaplanan KDV kodlarını topla.
@@ -6229,13 +1115,16 @@
       return optText.split(/[\s\-]/)[0].trim();
     };
 
-    // Matrah: SATIŞ modunda 600/601/602 prefix sondajı (yurtiçi/yurtdışı/diğer).
-    // AI tümünü görür, fatura içeriğine göre doğru kategoriyi seçer.
+    // Matrah: SATIŞ modunda 600/601/602 prefix'leriyle ara
     if (matrahDolu === false) {
       const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
       if (sel) {
         const isSatis = action === 'isle_satis';
-        const prefixler = isSatis ? ['600', '601', '602'] : ['153', '740', '770', '760'];
+        // Sabit kıymet (253/254/255) KASTEN YOK — fatura içeriği demirbaş/araç/makine ise
+        // AI bu koda yönlenmeyecek, zaten backend "Demirbaş → atla" diyecek.
+        const prefixler = isSatis
+          ? ['600', '601', '602']
+          : ['153', '150', '152', '157', '740', '760', '770'];
         const all = new Set();
         for (const pre of prefixler) {
           const opts = await searchAndReadOptions(sel, pre);
@@ -6265,22 +1154,18 @@
     }
 
     // Cari: firma adının ilk kısmıyla ara (minimum 3, maks 10 karakter)
-    // v1.13.1: SADECE 120.x kodları (alıcılar). 320 (satıcılar) SATIŞ faturasında yanlış kategori.
     if (cariDolu === false) {
       const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
       if (sel && firmaAdi && firmaAdi.length >= 3) {
+        // Firma adından ilk 3 anlamlı karakter (boşluk/noktalama olmayan)
         const temiz = firmaAdi.replace(/[^\wÇĞİÖŞÜçğıöşü\s]/g, '').trim();
         const ilkKelime = temiz.split(/\s+/)[0] || '';
         const anahtar = ilkKelime.slice(0, Math.min(8, ilkKelime.length));
         if (anahtar.length >= 3) {
           const opts = await searchAndReadOptions(sel, anahtar, 1800);
           console.log(`[Moren.debug] cari "${anahtar}" → ${opts.length} sonuç`, opts.slice(0, 3));
-          const isSatis = action === 'isle_satis';
-          // SATIŞ → sadece 120.x (alıcılar). ALIŞ → sadece 320.x (satıcılar).
-          const cariRegex = isSatis ? /^120\./ : /^320\./;
-          const kodlar = opts.map(extractKod).filter((c) => cariRegex.test(c));
+          const kodlar = opts.map(extractKod).filter((c) => /^\d{3}\.\w/.test(c));
           if (kodlar.length > 0) sonuc.cariKodlari = kodlar;
-          else console.log(`[Moren.debug] cari — ${isSatis ? '120.x' : '320.x'} kodu bulunamadı`);
         }
       } else if (sel) {
         console.log('[Moren.debug] cari — firma adı yok veya çok kısa, atlandı');
@@ -6289,168 +1174,6 @@
 
     console.log('[Moren.debug] readBosAlanSecenekleri — SONUÇ:', sonuc);
     return sonuc;
-  }
-
-  // v1.12.6 — AŞAMA 1 yeniden aktif. searchAndReadOptions × 5 kaldırıldı (Mihsap state
-  // bozuyordu). Artık hesap planından (codes) filtreleyerek AI'a öneri istiyoruz, sonra
-  // pickAntSelectByKodPrefix ile TEK SEFERDE yaz+Enter — manuel test mantığıyla aynı.
-  const ASAMA_1_AKTIF = true;
-
-  // v1.12.6 — Boş alan seçeneklerini dropdown sondajıyla DEĞİL, hesap planından
-  // (codes) filtreleyerek üretir. Codes faturada görünen kodlar — yetersizse standart
-  // Türk hesap kodları ile fallback. Mihsap DOM'una hiç dokunmaz, state bozulmaz.
-  // Standart Türk Tek Düzen Hesap Planı (en yaygın yurtiçi satış / KDV kodları)
-  const STANDART_MATRAH_SATIS = [
-    '600.01.001', '600.01.002', '600.01.005', '600.01.006', '600.01.018', '600.01.020',
-    '601.01.001',
-    '602.01.001',
-  ];
-  const STANDART_KDV_SATIS = [
-    '391.01.001', '391.01.002', '391.01.006', '391.01.018', '391.01.020',
-  ];
-
-  // v1.12.8 — Cari için TEK SEFER dropdown sondajı (firma adı prefix ile).
-  // Mihsap state'i bozulmaz (manuel testteki gibi 1 dropdown açma+kapama).
-  async function cariSecenekleriBul(firmaAdi) {
-    if (!firmaAdi || firmaAdi.length < 3) return [];
-    const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
-    if (!sel) return [];
-    // Firma adının ilk anlamlı 3-8 harfini al (ör "ÖZENİR TURİZM" → "ÖZENİR")
-    const temiz = firmaAdi.replace(/[^\wÇĞİÖŞÜçğıöşü\s]/g, '').trim();
-    const ilkKelime = temiz.split(/\s+/)[0] || '';
-    const anahtar = ilkKelime.slice(0, Math.min(8, ilkKelime.length));
-    if (anahtar.length < 3) return [];
-    try {
-      const opts = await searchAndReadOptions(sel, anahtar, 1800);
-      console.log(`[Moren.fill] cari "${anahtar}" → ${opts.length} sonuç`, opts.slice(0, 3));
-      // Kod kısmını çıkar (ör "120.01.N002-NECAT GÖKTAŞ" → "120.01.N002")
-      const kodlar = opts.map((t) => {
-        const m = t.match(/^(\d{3}\.[A-Z0-9Öİ]+(?:\.[A-Z0-9Öİ]+)*)/i);
-        return m ? m[1].trim() : t.split(/[\s\-]/)[0].trim();
-      }).filter((c) => /^12[01]\./.test(c));
-      return kodlar;
-    } catch (e) {
-      console.warn('[Moren.fill] cariSecenekleriBul hata:', e?.message);
-      return [];
-    }
-  }
-
-  async function readBosAlanSecenekleriHizli({ action, codes, firmaAdi } = {}) {
-    const sonuc = {};
-    const matrahDolu = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
-    const vergiDolu  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
-    const cariDolu   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
-    const isSatis = action === 'isle_satis';
-    const arr = Array.isArray(codes) ? codes : [];
-
-    if (matrahDolu === false) {
-      const re = isSatis ? /^60[012]\./ : /^(153|740|770|760)\./;
-      let list = arr.filter((c) => re.test(c));
-      if (list.length === 0 && isSatis) list = [...STANDART_MATRAH_SATIS];
-      if (list.length > 0) sonuc.matrahKodlari = list;
-    }
-    if (vergiDolu === false) {
-      const re = isSatis ? /^391\./ : /^191\./;
-      let list = arr.filter((c) => re.test(c));
-      if (list.length === 0 && isSatis) list = [...STANDART_KDV_SATIS];
-      if (list.length > 0) sonuc.kdvKodlari = list;
-    }
-    if (cariDolu === false) {
-      // Önce codes'tan dene, yoksa firma adıyla TEK SEFER sondaj yap
-      const re = /^12[01]\./;
-      let list = arr.filter((c) => re.test(c));
-      if (list.length === 0 && firmaAdi) {
-        list = await cariSecenekleriBul(firmaAdi);
-      }
-      if (list.length > 0) sonuc.cariKodlari = list;
-    }
-    console.log('[Moren.fill] readBosAlanSecenekleriHizli:', { matrahDolu, vergiDolu, cariDolu, codesAdet: arr.length, sonuc });
-    return sonuc;
-  }
-
-  async function tryFillBosAlanlar({ secenekler, oneri, durumlar }) {
-    if (!ASAMA_1_AKTIF) {
-      return { dolduruldu: false, sebep: 'Aşama 1 devre dışı (Mihsap UX araştırılıyor)' };
-    }
-    const o = oneri || {};
-    const cf = o.confidence || {};
-    const ihtiyac = {
-      matrah: durumlar.matrahDolu === false && (secenekler.matrahKodlari || []).length > 0,
-      kdv:    durumlar.vergiDolu  === false && (secenekler.kdvKodlari    || []).length > 0,
-      cari:   durumlar.cariDolu   === false && (secenekler.cariKodlari   || []).length > 0,
-    };
-    const eslestir = {
-      matrah: { kod: o.matrahHesapKodu, conf: cf.matrah || 0, esik: BOS_ALAN_ESIKLERI.matrah },
-      kdv:    { kod: o.kdvHesapKodu,    conf: cf.kdv    || 0, esik: BOS_ALAN_ESIKLERI.kdv },
-      cari:   { kod: o.cariHesapKodu,   conf: cf.cari   || 0, esik: BOS_ALAN_ESIKLERI.cari },
-    };
-    // Eşik kontrolü — ihtiyacı olan TÜM alanlar eşik üstünde olmalı, biri eksikse hiçbiri doldurulmaz
-    const eksikler = [];
-    for (const [k, v] of Object.entries(ihtiyac)) {
-      if (!v) continue;
-      const e = eslestir[k];
-      if (!e.kod || e.conf < e.esik) {
-        eksikler.push(`${k}=%${Math.round(e.conf * 100)}<%${Math.round(e.esik * 100)}`);
-      }
-    }
-    if (eksikler.length > 0) {
-      return { dolduruldu: false, sebep: `eşik altı: ${eksikler.join(', ')}` };
-    }
-    // Tüm gerekli alanlar eşik üstünde → sırayla doldur
-    const sonuclar = [];
-    // v1.13.2 — alanlar arasında 1.5s bekleme (Mihsap rahat olsun)
-    if (ihtiyac.matrah) {
-      const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
-      const ok = sel ? await pickAntSelectByKodPrefix(sel, eslestir.matrah.kod, '[MATRAH]') : false;
-      sonuclar.push(`M:${ok ? 'OK' : 'X'}`);
-      if (!ok) {
-        await closeAllAntDropdowns();
-        return { dolduruldu: false, sebep: `matrah seçilemedi (${eslestir.matrah.kod})` };
-      }
-      await sleep(1500);
-    }
-    if (ihtiyac.kdv) {
-      const sel = findHesapKoduSelect(/^Vergi\s*\(/i) || findHesapKoduSelect(/^KDV/i) || findHesapKoduSelect(/^Vergi$/i);
-      const ok = sel ? await pickAntSelectByKodPrefix(sel, eslestir.kdv.kod, '[KDV]') : false;
-      sonuclar.push(`K:${ok ? 'OK' : 'X'}`);
-      if (!ok) {
-        await closeAllAntDropdowns();
-        return { dolduruldu: false, sebep: `kdv seçilemedi (${eslestir.kdv.kod})` };
-      }
-      await sleep(1500);
-    }
-    if (ihtiyac.cari) {
-      const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
-      const ok = sel ? await pickAntSelectByKodPrefix(sel, eslestir.cari.kod, '[CARI]') : false;
-      sonuclar.push(`C:${ok ? 'OK' : 'X'}`);
-      if (!ok) {
-        await closeAllAntDropdowns();
-        return { dolduruldu: false, sebep: `cari seçilemedi (${eslestir.cari.kod})` };
-      }
-      await sleep(1500);
-    }
-    return { dolduruldu: true, sebep: `dolduruldu ${sonuclar.join(' ')}` };
-  }
-
-  // v1.12.0 — Doldurma sonrası kullanıcının manuel F2'sini bekle.
-  // fid değişirse 'saved', DUR'a basılırsa 'stopped', süre dolarsa 'timeout'.
-  async function manuelKayitBekle(fid, mukellefAd) {
-    const t0 = Date.now();
-    let lastLog = 0;
-    while (Date.now() - t0 < BOS_ALAN_BEKLEME_MS) {
-      if (window.__morenAgent.stopRequested) return 'stopped';
-      const m = location.href.match(/\/(\d+)\?count=/);
-      if (m && m[1] !== fid) return 'saved';
-      if (/count=0/.test(location.href)) return 'saved';
-      if (Date.now() - lastLog > 10000) {
-        const kalan = Math.round((BOS_ALAN_BEKLEME_MS - (Date.now() - t0)) / 1000);
-        setStatus(`${mukellefAd} · #${fid} ✏️ Dolduruldu — F2 bekliyor (${kalan}s)`);
-        console.log(`[Moren.fill] Dolduruldu, manuel F2 bekleniyor — kalan ${kalan}s`);
-        lastLog = Date.now();
-      }
-      await sleep(500);
-    }
-    return 'timeout';
   }
 
   // F2 sonrası validation uyarısı kontrolü
@@ -6599,13 +1322,6 @@
       'Yıllara Yaygın İnşaat Maliyetleri',
       'Çalışan Tedavi ve İlaç Gideri (GVK 40/2)',
     ],
-    // === SATIŞ tarafı kayıt türleri (ISLETME/2 için) ===
-    // Mihsap'ta dropdown şu 4 seçeneği veriyor: Diğer Gelir, Diğer Hasılat,
-    // Hizmet Satışı, Mal Satışı. K. Alt Türü her birinde aynı adda tek seçenek.
-    'Mal Satışı': ['Mal Satışı'],
-    'Hizmet Satışı': ['Hizmet Satışı'],
-    'Diğer Gelir': ['Diğer Gelir'],
-    'Diğer Hasılat': ['Diğer Hasılat'],
   };
   const ISLETME_KAYIT_TURU_LIST_ALIS = Object.keys(ISLETME_KAYIT_ALT_MAP);
   // ALIŞ (ISLETME/1) için sabit üst liste — Fatura Türü hep "Gider"
@@ -6875,382 +1591,17 @@
     return await pickAntSelectOption(sel, target);
   }
 
-  // v1.14.2 — Dropdown aç + opsiyonel olarak prefix ile arama yap +
-  // belirli bir prefix ile başlayan İLK option'ı (yoksa kayıtsız ilk option'ı) tıkla.
-  // Mihsap "İşlem Türü" gibi remote-search olmayan select'lerde de çalışır:
-  //  - Dropdown açılır → option'lar zaten var → prefix match ile ilk uygun seçilir.
-  // Search input ile remote-search'lü select'lerde:
-  //  - Dropdown açılır → input.value=prefix + 'input' event → 1.5s bekler → ilk seçer.
-  async function pickFirstOptionByPrefix(antSelectEl, prefix) {
-    if (!antSelectEl || !prefix) return null;
-    const dd = await openAntSelect(antSelectEl);
-    if (!dd) {
-      console.warn('[Moren.pickFirst] dropdown açılamadı', { prefix });
-      return null;
-    }
-
-    // İlk olarak — dropdown'a dropdown render zamanı için kısa bekleme
-    await sleep(250);
-
-    const collect = () => {
-      // hem .ant-select-item-option hem ...item kombinasyonu — Mihsap her ikisini de kullanabilir
-      const items = Array.from(
-        dd.querySelectorAll('.ant-select-item-option, .ant-select-item-option-content'),
-      );
-      // option-content de yakalanırsa parent'a normalize et
-      return items
-        .map((el) => {
-          if (el.classList.contains('ant-select-item-option-content')) {
-            return el.closest('.ant-select-item-option') || el;
-          }
-          return el;
-        })
-        // unique + visible
-        .filter((el, i, arr) => arr.indexOf(el) === i && el.offsetParent !== null);
-    };
-
-    const findByPrefix = (items) => {
-      const prefLower = prefix.toLowerCase().trim();
-      return items.find((el) => (el.textContent || '').trim().toLowerCase().startsWith(prefLower)) || null;
-    };
-
-    let items = collect();
-    let hit = findByPrefix(items);
-    console.log('[Moren.pickFirst] dropdown açık, ilk taram:', { itemCount: items.length, prefix, found: !!hit });
-
-    // Yoksa — search input'a prefix yaz (remote search varsa backend cevap vermeli)
-    if (!hit) {
-      const searchInput =
-        antSelectEl.querySelector('input.ant-select-selection-search-input') ||
-        antSelectEl.querySelector('input');
-      if (searchInput) {
-        try {
-          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-          nativeSetter.call(searchInput, prefix);
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          console.log('[Moren.pickFirst] search yazıldı:', prefix);
-        } catch (e) {
-          console.warn('[Moren.pickFirst] search yazma hatası', e);
-        }
-        const t0 = Date.now();
-        while (Date.now() - t0 < 2000) {
-          await sleep(100);
-          items = collect();
-          hit = findByPrefix(items);
-          if (hit) break;
-        }
-      }
-    }
-
-    // Hala yoksa — virtualized scroll ile kaydırarak ara
-    if (!hit) {
-      const scroller = dd.querySelector('.rc-virtual-list-holder') || dd;
-      for (let i = 0; i < 30; i++) {
-        scroller.scrollTop += 200;
-        await sleep(60);
-        items = collect();
-        hit = findByPrefix(items);
-        if (hit) break;
-      }
-      // Hâlâ bulamadıysa scroll'u başa al ve İLK option'u seç (kullanıcı "en üstteki" demişti)
-      if (!hit && items.length > 0) {
-        scroller.scrollTop = 0;
-        await sleep(80);
-        items = collect();
-        hit = items[0];
-        console.log('[Moren.pickFirst] prefix bulunamadı, en üstteki seçildi:', (hit?.textContent || '').trim());
-      }
-    }
-
-    if (!hit) {
-      console.warn('[Moren.pickFirst] hiçbir option bulunamadı', { prefix, totalItems: items.length });
-      await closeAllAntDropdowns();
-      return null;
-    }
-
-    const text = (hit.textContent || '').trim();
-    hit.scrollIntoView({ block: 'center' });
-    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    hit.click();
-    await sleep(300);
-    const ok = isAntSelectFilled(antSelectEl);
-    console.log('[Moren.pickFirst] tıklandı, dolu mu:', { text, ok });
-    return ok ? text : null;
-  }
-
-  async function pickFirstOptionByPrefixById(inputId, prefix) {
-    const input = document.getElementById(inputId);
-    if (!input) return null;
-    const sel = input.closest('.ant-select');
-    return await pickFirstOptionByPrefix(sel, prefix);
-  }
-
-  // v1.14.3 — Manuel kullanıcı davranışını taklit et:
-  //  1. Dropdown aç (focus + click)
-  //  2. Search input'a TAM metni yaz
-  //  3. Mihsap remote-search backend cevap verene kadar bekle (1.5s)
-  //  4. Enter tuşuna bas → açık dropdown'da match olan ilk option seçilir
-  //  5. Seçim doğrulandıktan sonra select'in dolu metnini geri döner.
-  async function typeAndEnter(antSelectEl, fullText) {
-    if (!antSelectEl || !fullText) return null;
-    try {
-      await closeAllAntDropdowns();
-      await sleep(150);
-      antSelectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
-      await sleep(100);
-
-      const selector = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
-      const input =
-        antSelectEl.querySelector('input.ant-select-selection-search-input') ||
-        antSelectEl.querySelector('input');
-
-      // Aç
-      selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      selector.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      selector.click();
-      if (input) try { input.focus(); } catch {}
-      await sleep(250);
-
-      // Yaz (native setter — React state ile uyumlu)
-      if (input) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        nativeSetter.call(input, fullText);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        console.log('[Moren.typeAndEnter] yazıldı:', fullText);
-      } else {
-        console.warn('[Moren.typeAndEnter] input bulunamadı');
-        return null;
-      }
-
-      // Backend cevabını bekle
-      await sleep(1500);
-
-      // Enter tuşu — Ant Select açık dropdown'da ilk vurgu olan option'ı seçer
-      const fireKey = (type, key, code, keyCode) => {
-        const ev = new KeyboardEvent(type, {
-          key, code, keyCode, which: keyCode, bubbles: true, cancelable: true,
-        });
-        input.dispatchEvent(ev);
-      };
-      fireKey('keydown', 'Enter', 'Enter', 13);
-      fireKey('keypress', 'Enter', 'Enter', 13);
-      fireKey('keyup', 'Enter', 'Enter', 13);
-      console.log('[Moren.typeAndEnter] Enter gönderildi');
-      await sleep(400);
-
-      // Doğrulama: select dolu mu, içeriği fullText (veya benzeri) mi
-      if (isAntSelectFilled(antSelectEl)) {
-        const itemText =
-          (antSelectEl.querySelector('.ant-select-selection-item')?.textContent || '').trim();
-        console.log('[Moren.typeAndEnter] başarılı:', itemText);
-        return itemText || fullText;
-      }
-
-      // Enter çalışmadıysa: dropdown'dan ilk option'ı manuel tıkla
-      const dd = findDropdownForSelect(antSelectEl);
-      if (dd) {
-        const firstOpt = dd.querySelector('.ant-select-item-option');
-        if (firstOpt) {
-          firstOpt.scrollIntoView({ block: 'center' });
-          firstOpt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-          firstOpt.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-          firstOpt.click();
-          await sleep(300);
-          if (isAntSelectFilled(antSelectEl)) {
-            const itemText =
-              (antSelectEl.querySelector('.ant-select-selection-item')?.textContent || '').trim();
-            console.log('[Moren.typeAndEnter] manuel tıklama başarılı:', itemText);
-            return itemText || fullText;
-          }
-        }
-      }
-
-      console.warn('[Moren.typeAndEnter] başarısız — Enter ve manuel tıklama ikisi de boş');
-      await closeAllAntDropdowns();
-      return null;
-    } catch (e) {
-      console.warn('[Moren.typeAndEnter] hata:', e?.message);
-      return null;
-    }
-  }
-
-  // v1.12.2 — Mihsap remote-search select için: tam hesap kodu ("600.01.005") yaz,
-  // backend cevabını bekle, kod ile başlayan ilk option'ı seç.
-  // YENİ: detaylı log + tıklama öncesi tutar doğrulama + seçim sonrası
-  // gerçekten DOĞRU satırın dolduğunu kontrol et (Mihsap ekstra satır eklerse fark eder).
-  async function pickAntSelectByKodPrefix(antSelectEl, kod, debugTag = '') {
-    if (!antSelectEl || !kod) return false;
-    const tutarOnce = getRowTutarValue(antSelectEl);
-    const inputId = antSelectEl.querySelector('input')?.id || '?';
-    console.log(`[Moren.fill] ${debugTag} pick BAŞLA — kod=${kod} | hedef tutar=${tutarOnce} | inputId=${inputId}`);
-    if (tutarOnce <= 0) {
-      console.warn(`[Moren.fill] ${debugTag} hedef satırın tutarı tespit edilemedi (0) — yine de denenecek`);
-    }
-    try {
-      await closeAllAntDropdowns();
-      await sleep(300);
-
-      // v1.13.5 — ÖNCE asıl satırın TUTAR input'una focus ver (Mihsap "buradayım" anlasın,
-      // başka satıra "+ekle" satırı eklemesin). Manuel kullanıcı davranışına yakın.
-      const sRect0 = antSelectEl.getBoundingClientRect();
-      const sCenterY0 = sRect0.top + sRect0.height / 2;
-      let p0 = antSelectEl;
-      let tutarInp = null;
-      for (let i = 0; i < 5 && p0; i++) {
-        p0 = p0.parentElement;
-        if (!p0) break;
-        const inputs = [...p0.querySelectorAll('input')].filter((inp) => inp.offsetParent !== null);
-        for (const inp of inputs) {
-          if (antSelectEl.contains(inp)) continue; // hesap kodu input'u atla
-          const r = inp.getBoundingClientRect();
-          if (r.height === 0) continue;
-          const dy = Math.abs((r.top + r.height / 2) - sCenterY0);
-          if (dy < 30) { tutarInp = inp; break; }
-        }
-        if (tutarInp) break;
-      }
-      if (tutarInp) {
-        try {
-          tutarInp.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-          tutarInp.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-          tutarInp.click();
-          tutarInp.focus();
-          console.log(`[Moren.fill] ${debugTag} satır tutar input'una önce focus verildi (asıl satır işareti)`);
-          await sleep(300);
-          tutarInp.blur();
-          await sleep(200);
-        } catch {}
-      }
-
-      antSelectEl.scrollIntoView({ block: 'center', behavior: 'instant' });
-      await sleep(200);
-      const selector = antSelectEl.querySelector('.ant-select-selector') || antSelectEl;
-      selector.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      selector.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      selector.click();
-      const input = antSelectEl.querySelector('input.ant-select-selection-search-input') || antSelectEl.querySelector('input');
-      if (!input) {
-        console.warn(`[Moren.fill] ${debugTag} input bulunamadı`);
-        await closeAllAntDropdowns();
-        return false;
-      }
-      try { input.focus(); } catch {}
-      await sleep(250);  // Mihsap için biraz daha uzun bekleme
-      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-      nativeSetter.call(input, '');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      await sleep(120);
-
-      // v1.13.5 — TAM KODU TEK SEFERDE YAZ (kademeli yazma değil — Mihsap "600" yazınca
-      // tek sonuç varsa hemen seçim deniyordu). Doğrudan tam kodu yaz, 3sn bekle.
-      nativeSetter.call(input, kod);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log(`[Moren.fill] ${debugTag} tam kod "${kod}" yazıldı, dropdown bekleniyor (3s)...`);
-      await sleep(3000);
-      const dd = findDropdownForSelect(antSelectEl);
-      if (!dd) {
-        console.warn(`[Moren.fill] ${debugTag} dropdown render edilmedi, kod:`, kod);
-        await closeAllAntDropdowns();
-        return false;
-      }
-      const items = Array.from(dd.querySelectorAll('.ant-select-item-option'));
-      console.log(`[Moren.fill] ${debugTag} dropdown'da ${items.length} option:`, items.map(i => (i.textContent || '').trim()).slice(0, 5));
-      // Hangi option'ın seçileceğini bul (sıra: tam eşleşme → kod ile başlayan → tek option)
-      let hitIdx = items.findIndex((el) => {
-        const txt = (el.textContent || '').trim();
-        return txt === kod
-          || txt.startsWith(kod + '-')
-          || txt.startsWith(kod + ' ')
-          || txt.startsWith(kod + '\t');
-      });
-      if (hitIdx < 0) hitIdx = items.findIndex((el) => (el.textContent || '').trim().startsWith(kod));
-      if (hitIdx < 0 && items.length === 1) hitIdx = 0;
-      if (hitIdx < 0) {
-        console.warn(`[Moren.fill] ${debugTag} kod eşleşmedi`);
-        await closeAllAntDropdowns();
-        return false;
-      }
-      const hit = items[hitIdx];
-      console.log(`[Moren.fill] ${debugTag} seçilecek (idx=${hitIdx}): "${hit.textContent.trim()}"`);
-
-      // v1.12.4 — Mihsap, fare click ile seçimi yanlış satıra atıyor.
-      // KLAVYE ile seç: ArrowDown ile highlight, Enter ile seç. Focus orijinal input'ta kalır,
-      // dolayısıyla seçim DOĞRU satıra gider (Mihsap "+ekle" satırına atayamaz).
-      const fireKey = (key, code, keyCode) => {
-        const init = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true, composed: true };
-        input.dispatchEvent(new KeyboardEvent('keydown', init));
-        input.dispatchEvent(new KeyboardEvent('keypress', init));
-        input.dispatchEvent(new KeyboardEvent('keyup', init));
-      };
-      // İstenen option'a kadar ArrowDown bas (hitIdx kadar)
-      // İlk ArrowDown highlight'ı 1. option'a koyar, sonraki her biri bir aşağı.
-      for (let i = 0; i <= hitIdx; i++) {
-        fireKey('ArrowDown', 'ArrowDown', 40);
-        await sleep(60);
-      }
-      // Enter ile seç
-      fireKey('Enter', 'Enter', 13);
-      await sleep(500);
-
-      // Doğrulama: hedef select gerçekten doldu mu? (Mihsap başka satıra atamadı mı?)
-      const targetFilled = isAntSelectFilled(antSelectEl);
-      const targetItem = antSelectEl.querySelector('.ant-select-selection-item')?.textContent?.trim() || '';
-      const tutarSonra = getRowTutarValue(antSelectEl);
-      console.log(`[Moren.fill] ${debugTag} ENTER SONRASI — hedef dolu?=${targetFilled} item="${targetItem}" tutar=${tutarSonra}`);
-      if (!targetFilled || !targetItem.startsWith(kod)) {
-        console.warn(`[Moren.fill] ${debugTag} HEDEF DOLMADI — Mihsap başka satıra atamış olabilir`);
-        // Fallback: belki Mihsap başka satıra atadı, dropdown'ı kapat ve abort
-        await closeAllAntDropdowns();
-        return false;
-      }
-      return true;
-    } catch (e) {
-      console.warn(`[Moren.fill] ${debugTag} pickAntSelectByKodPrefix hata:`, e?.message);
-      await closeAllAntDropdowns();
-      return false;
-    }
-  }
-
-  // === İşletme Defteri: Üst alan durumu oku (Fatura Türü / Belge Türü / Alış-Satış Türü / İşlem Türü) ===
+  // === İşletme Defteri: Üst alan durumu oku (Fatura Türü / Belge Türü / Alış-Satış Türü) ===
   function isletmeUstAlanDurumu() {
     const read = (id) => getAntSelectValueById(id);
-    // İşlem Türü ID'si: defterData_islemTuru tahmin (yoksa label ile bul)
-    let islemTuru = read('defterData_islemTuru');
-    if (!islemTuru) {
-      // Label'dan bul
-      const sel = findSelectByLabel('İşlem Türü');
-      if (sel) islemTuru = (sel.querySelector('.ant-select-selection-item')?.textContent || '').trim();
-    }
-    if (islemTuru && /seçiniz/i.test(islemTuru)) islemTuru = '';
     return {
       faturaTuru: read('faturaTuru'),
       belgeTuru: read('defterData_belgeTuru'),
       alisSatisTuru: read('defterData_alisSatisTuru'),
-      islemTuru,
     };
   }
 
-  // v1.13.8 — Label metnine göre Ant Select bul (ör "İşlem Türü")
-  function findSelectByLabel(labelText) {
-    const re = new RegExp(`^\\s*${labelText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
-    const labels = [...document.querySelectorAll('label, div, span, td, th')].filter((el) => {
-      if (el.offsetParent === null) return false;
-      const t = (el.textContent || '').trim();
-      return t.length < 30 && re.test(t);
-    });
-    for (const lbl of labels) {
-      let c = lbl.parentElement;
-      for (let i = 0; i < 4 && c; i++) {
-        const sel = c.querySelector('.ant-select');
-        if (sel && sel.offsetParent !== null) return sel;
-        c = c.parentElement;
-      }
-    }
-    return null;
-  }
-
-  async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
+  async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
     const img = await getFaturaImageBase64();
     if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-isletme', {
@@ -7261,25 +1612,52 @@
         altTuruOptions: altOptions,
         faturaTarihi: tarih,
         belgeNo, belgeTuru, faturaTuru,
-        mukellef, firma,
-        firmaKimlikNo, // Firma Hafizasi icin VKN/TCKN
-        tutar, matrah, kdv,
+        mukellef, firma, tutar, matrah, kdv,
         action, blokIndex, blokToplam,
       }),
     });
   }
 
   async function processBatch({ ay, mukellefler, action }) {
+    // Her komut için temiz sayım — kümülatif değil
+    resetCmdSummary();
+    // Donem state'i — logEvent otomatik olarak meta.donem olarak ekleyecek
+    // (frontend tarih X kalmasın diye fallback olarak ortasını gösterir)
+    __currentAy = ay;
+    if (!Array.isArray(mukellefler) || mukellefler.length === 0) {
+      setStatus('Mükellef listesi boş');
+      cmdSummary.errors.push('Mükellef gönderilmedi (frontend payload boş)');
+      return;
+    }
     setStatus(`${mukellefler.length} mükellef / ${ay} · ${action}`);
-    // v1.14.1 — logEvent içinde global olarak okunsun (her event'e action eklensin)
-    if (window.__morenAgent) window.__morenAgent.currentAction = action;
     for (const m of mukellefler) {
       if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
+      // mihsapId ön doğrulama — logsuz return etmek yerine açık hata yaz
+      if (!m.mihsapId) {
+        bumpCmd(m.ad, 'hata');
+        cmdSummary.errors.push(`${m.ad}: Mihsap ID tanımlı değil (Mükellefler ekranında ekle)`);
+        await logEvent(m.id, m.ad, 'error', 'Mihsap ID tanımlı değil — Mükellefler ekranında bağla');
+        continue;
+      }
+      // Ay-uyumlu tip
+      const tipSegment =
+        action === 'isle_alis' ? 'BILANCO/1' :
+        action === 'isle_satis' ? 'BILANCO/2' :
+        action === 'isle_alis_isletme' ? 'ISLETME/1' :
+        action === 'isle_satis_isletme' ? 'ISLETME/2' : null;
+      if (!tipSegment) {
+        bumpCmd(m.ad, 'hata');
+        cmdSummary.errors.push(`${m.ad}: Bilinmeyen action: ${action}`);
+        await logEvent(m.id, m.ad, 'error', `Bilinmeyen action: ${action}`);
+        continue;
+      }
       setStatus(`→ ${m.ad}`);
+      await logEvent(m.id, m.ad, 'bilgi', `▶ İşleme başlandı · ${action} · ${ay}`);
+      // Komut iptal edildi mi? — DB'den check et
+      if (await isCmdCancelled()) { setStatus('İptal edildi'); return; }
       await processMukellef({ ay, mukellef: m, action });
     }
-    setStatus(`Tamamlandı · ${counters.toplam} fatura`);
-    if (window.__morenAgent) window.__morenAgent.currentAction = null;
+    setStatus(`Tamamlandı · ${cmdSummary.toplam} fatura`);
   }
 
   async function processMukellef({ ay, mukellef, action }) {
@@ -7291,7 +1669,13 @@
       action === 'isle_alis_isletme' ? 'ISLETME/1' :
       action === 'isle_satis_isletme' ? 'ISLETME/2' :
       null;
-    if (!tipSegment || !mukellef.mihsapId) return;
+    if (!tipSegment || !mukellef.mihsapId) {
+      // processBatch'te zaten validasyon var, buraya düşmemeli ama belt-and-suspenders
+      bumpCmd(mukellef.ad, 'hata');
+      cmdSummary.errors.push(`${mukellef.ad}: tipSegment veya mihsapId eksik`);
+      await logEvent(mukellef.id, mukellef.ad, 'error', 'tipSegment/mihsapId eksik (early return)');
+      return;
+    }
     const targetPath = `/documents/${tipSegment}/${mukellef.mihsapId}`;
     const baseList = `https://app.mihsap.com${targetPath}`;
     // URL uygun değilse otomatik navigasyonu dene, başarısızsa kullanıcıdan bekle.
@@ -7301,7 +1685,13 @@
     let autoNavDenemesi = 0;
     while (!location.pathname.startsWith(targetPath)) {
       if (window.__morenAgent.stopRequested) return;
-      if (Date.now() - waitT0 > 180000) { setStatus('URL beklendi, zaman aşımı'); return; }
+      if (Date.now() - waitT0 > 180000) {
+        setStatus('URL beklendi, zaman aşımı');
+        bumpCmd(mukellef.ad, 'hata');
+        cmdSummary.errors.push(`${mukellef.ad}: Mihsap sayfası 3 dakikada açılamadı (${targetPath})`);
+        await logEvent(mukellef.id, mukellef.ad, 'error', `Mihsap sayfası açılmadı (${targetPath}) — 180sn timeout`);
+        return;
+      }
 
       // Otomatik navigasyon — varsayılan açık, __morenAgent.autoNavigate=false ile kapatılır.
       // Maksimum 3 deneme — SPA yanıt vermiyorsa manuel beklemeye düş.
@@ -7327,8 +1717,22 @@
     }
     // Liste sayfasında ise ilk faturayı aç
     if (location.pathname === targetPath) {
+      // Önce bekleyen fatura var mı say (progress için)
+      await sleep(800); // Mihsap'ın liste yüklemesini bekle
+      const tbody = document.querySelector('tbody');
+      const tbodyRows = tbody ? tbody.querySelectorAll('tr').length : 0;
+      const pendingButtons = document.querySelectorAll('tbody tr button .anticon-edit').length;
+      await logEvent(mukellef.id, mukellef.ad, 'bilgi',
+        `📋 Listede ${tbodyRows} satır, ${pendingButtons} bekleyen fatura tespit edildi`);
+
       const firstPen = await waitFor('tbody tr button .anticon-edit', 8000);
-      if (!firstPen) { setStatus('Fatura yok'); return; }
+      if (!firstPen) {
+        setStatus('Fatura yok');
+        bumpCmd(mukellef.ad, 'atla');
+        await logEvent(mukellef.id, mukellef.ad, 'skip',
+          `Bekleyen fatura yok (${tbodyRows} satır listede ama hiçbiri "kalem" ikonlu/işlenmemiş değil)`);
+        return;
+      }
       await click(firstPen.closest('button'));
       await sleep(1200);
     }
@@ -7365,13 +1769,48 @@
         return;
       }
 
-      const meta = await getFaturaMeta(fid);
+      let meta = await getFaturaMeta(fid);
+      // TARİH HEMEN BULUNAMADIYSA: Mihsap form'un DOM'a tarihi yerleştirmesini bekle.
+      // 250ms aralıklarla 12 deneme = 3 saniye. Her denemede sadece tarih için DOM tara.
+      if (!meta.tarih) {
+        for (let i = 0; i < 12; i++) {
+          await sleep(250);
+          // DOM'da geniş arama
+          const adaylar = [
+            ...document.querySelectorAll('#defterData_tarih input, #defterData_tarih, input[id*="tarih" i], input[name*="tarih" i], input[placeholder*="tarih" i], [aria-label*="tarih" i] input, .ant-picker-input input, .ant-picker input'),
+          ];
+          let domTarih = null;
+          for (const el of adaylar) {
+            const raw = (el?.value || el?.textContent || el?.getAttribute?.('value') || '').trim();
+            if (raw && /\d/.test(raw)) {
+              const m = raw.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);
+              if (m) { domTarih = `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; break; }
+              const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              if (iso) { domTarih = `${iso[1]}-${iso[2]}-${iso[3]}`; break; }
+            }
+          }
+          if (domTarih) {
+            meta = { ...meta, tarih: domTarih };
+            console.log(`[Moren] Tarih DOM'dan ${i*250}ms sonra okundu:`, domTarih);
+            break;
+          }
+        }
+      }
+      // SON ÇARE: Hala tarih yoksa hedef ayın 15'i kullanılır (Mihsap zaten doğru ayı gösteriyor,
+      // bu fatura zaten o ayda işlenmek için seçilmiş — display için yeterli, AI da görselden okur)
+      if (!meta.tarih) {
+        const [yyyy, mm] = ay.split('-');
+        if (yyyy && mm) {
+          meta = { ...meta, tarih: `${yyyy}-${mm}-15` };
+          console.warn('[Moren] Tarih hiçbir yerden okunamadı, hedef ayın 15\'i kullanıldı:', meta.tarih);
+        }
+      }
       const tarih = meta.tarih;
       const hedefAy = ay; // "2026-03"
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
-        counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
 
@@ -7394,19 +1833,20 @@
         let ustOzet = [];
 
         // Fatura Türü: deterministik — Alış→Gider, Satış→Gelir
+        // Boş → ata. Dolu ve farklı → ATLA (yanlış sınıflandırma yapma).
         const beklenenFaturaTuru = isAlis ? 'Gider' : 'Gelir';
         if (!ust.faturaTuru) {
           const ok = await pickAntSelectById('faturaTuru', beklenenFaturaTuru);
           if (!ok) {
-            counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü seçilemedi: ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
           ustOzet.push(`FatT:${beklenenFaturaTuru}`);
           ust.faturaTuru = beklenenFaturaTuru;
         } else if (ust.faturaTuru !== beklenenFaturaTuru) {
-          counters.atla++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Fatura Türü hatalı: ${ust.faturaTuru} ≠ ${beklenenFaturaTuru}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
           await clickIleri(fid); continue;
         }
 
@@ -7418,9 +1858,7 @@
             kayitOptions: ISLETME_BELGE_TURU_LIST,
             altOptions: [],
             tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: '', faturaTuru: ust.faturaTuru,
-            mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma,
-            firmaKimlikNo: meta.firmaKimlikNo, // Firma Hafizasi icin — mukellef-bazli ogrenme
-            tutar: meta.tutar,
+            mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
             action, blokIndex: 0, blokToplam: 0,
           });
           if (kararBelge?.emin && kararBelge.kayitTuru) {
@@ -7431,8 +1869,8 @@
             }
           }
           if (!ust.belgeTuru) {
-            counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Belge Türü AI karar veremedi`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
         }
@@ -7447,31 +1885,8 @@
             ust.alisSatisTuru = varsayilan;
             ustOzet.push(`AST:${varsayilan}`);
           } else {
-            counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
-            await clickIleri(fid); continue;
-          }
-        }
-
-        // --- İŞLEM TÜRÜ (yalnızca SATIŞ + Normal Satış için) ---
-        // v1.14.3: Tam metin yaz + Enter tuşu ile direkt seç.
-        // Mihsap dropdown'da seçenek görünüyor ama tıklayamayan koddan dolayı
-        // önceki sürümde takılıyordu. Bu yöntem manuel kullanım gibi davranır.
-        if (!isAlis && /Normal Satış/i.test(ust.alisSatisTuru || '') && !ust.islemTuru) {
-          const islemSel = document.getElementById('defterData_islemTuru')?.closest('.ant-select')
-            || findSelectByLabel('İşlem Türü');
-          let secilen = null;
-          if (islemSel) {
-            secilen = await typeAndEnter(islemSel, 'Yurtiçi Teslim ve Hizmetleri');
-          }
-          if (secilen) {
-            ust.islemTuru = secilen;
-            ustOzet.push(`İT:${secilen}`);
-          } else {
-            counters.atla++; counters.toplam++; setCount();
-            await logEvent(mukellef.id, mukellef.ad, 'skip',
-              `${mTag} · İşlem Türü seçilemedi (Yurtiçi Teslim ve Hizmetleri yazıldı, Enter tıklamadı)`,
-              { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih });
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+            await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Alış/Satış Türü seçilemedi: ${varsayilan}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
             await clickIleri(fid); continue;
           }
         }
@@ -7479,24 +1894,26 @@
         // --- 2) BLOK KONTROLÜ ---
         let blok = isletmeBlokDurumu();
         if (!blok.varMi) {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · İşletme: blok bulunamadı`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid); continue;
         }
 
         // --- 3) DOLU BLOK DOĞRULAMA (bilanço benzeri) ---
-        // Doğrulama YAPILIR — Mihsap otomatik doldursa bile hatalı olabilir.
-        // Bilinmeyen Kayıt Türü/Alt Türü gelirse atla, kullanıcı manuel kontrol etsin.
+        // Dolu bloklar için logda detay göster: tarih/firma/belge no vb.
+        // Matrah veya KDV 0 ise uyar ama atlamaz (geçerli olabilir)
         let doluKontrolHata = null;
         for (let bi = 0; bi < blok.detay.length; bi++) {
           const d = blok.detay[bi];
           if (d.kayitDolu && d.altDolu) {
+            // Doğrulama: Kayıt Türü bilinen listede mi?
             if (!ISLETME_KAYIT_ALT_MAP[d.kayitDeger]) {
               doluKontrolHata = `B${bi + 1} bilinmeyen Kayıt Türü: ${d.kayitDeger}`;
               break;
             }
+            // Doğrulama: K. Alt Türü, ilgili Kayıt Türü'nün listesinde mi?
             const gecerliAltlar = ISLETME_KAYIT_ALT_MAP[d.kayitDeger] || [];
             if (gecerliAltlar.length > 0 && !gecerliAltlar.includes(d.altDeger)) {
               doluKontrolHata = `B${bi + 1} K.Alt Türü eşleşmez: ${d.altDeger} ∉ ${d.kayitDeger}`;
@@ -7505,9 +1922,9 @@
           }
         }
         if (doluKontrolHata) {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · Doğrulama: ${doluKontrolHata}`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid); continue;
         }
@@ -7540,9 +1957,7 @@
                 kayitOptions: [d.kayitDeger],
                 altOptions,
                 tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
-                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma,
-                firmaKimlikNo: meta.firmaKimlikNo, // Firma Hafizasi — mukellef-bazli
-                tutar: meta.tutar,
+                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
               });
@@ -7553,18 +1968,10 @@
                 kayitOptions,
                 altOptions: tumAltOptions,
                 tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: ust.belgeTuru, faturaTuru: ust.faturaTuru,
-                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma,
-                firmaKimlikNo: meta.firmaKimlikNo, // Firma Hafizasi — mukellef-bazli
-                tutar: meta.tutar,
+                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
                 matrah: d.matrah, kdv: d.kdv,
                 action, blokIndex: bi + 1, blokToplam: blok.detay.length,
               });
-            }
-
-            // onay_bekliyor: AI karari gecmisle celisiyor, AUTO ONAY yok
-            if (karar?.karar === 'onay_bekliyor') {
-              aiHata = `⏸ Onay kuyruguna dustu: ${(karar?.sapmaSebep || karar?.sebep || '').slice(0, 120)}`;
-              break;
             }
 
             if (!karar?.emin || !karar.kayitTuru) {
@@ -7612,18 +2019,18 @@
           }
 
           if (aiHata) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI: ${aiHata}`, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid); continue;
           }
           // Doldurma bitti — güncel durumu oku
           blok = isletmeBlokDurumu();
           if (!blok.varMi || blok.bosBlokVar) {
-            counters.atla++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
             await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · AI sonrası hâlâ boş blok var`, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid); continue;
           }
@@ -7690,27 +2097,35 @@
             saved = await waitSavedIsletme(12000);
           }
           if (saved) {
-            counters.onay++; counters.toplam++; setCount();
+            counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
             const aiNot = aiKullanildi ? ` · AI` : '';
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
           } else {
-            counters.atla++; counters.toplam++; setCount();
-            const atlamaSebebi = validationFailed
-              ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} · İşletme F2 sonuçlanmadı`;
+            counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+            // Daha açıklayıcı sebep üret — kullanıcı "neden atladı" anlasın
+            let atlamaSebebi;
+            if (validationFailed) {
+              atlamaSebebi = `${mTag} · MIHSAP eksik alan: ${validationFailed.slice(0, 60)}`;
+            } else if (aiHata) {
+              atlamaSebebi = `${mTag} · AI karar veremedi: ${(aiHata || '').slice(0, 60)}`;
+            } else if (sonBlokStat && sonBlokStat.includes('boş')) {
+              atlamaSebebi = `${mTag} · Dolu alanlar eksik (Matrah/KDV/Cari kontrolü başarısız)`;
+            } else {
+              atlamaSebebi = `${mTag} · F2 sonrası Mihsap onay vermedi (uyarı modalı / duplicate / fatura bilgisi eksik)`;
+            }
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
             });
             await clickIleri(fid);
           }
         } catch (e) {
-          counters.hata++; counters.toplam++; setCount();
+          counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
           await logEvent(mukellef.id, mukellef.ad, 'error', `${mTag} · ${String(e)}`, {
-            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+            firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma,
           });
           await clickIleri(fid);
         }
@@ -7721,36 +2136,25 @@
       // ==========================================================
       const codes = await readHesapKodlari();
       if (!tumKodlarDolu(codes)) {
-        counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
-      // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari)
+      // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari) → F2 denemeden atla
       if (bosSelectVarMi()) {
         // ================================================================
-        // v1.12.0 — AŞAMA 1 (Doldur, kaydetme) — SADECE Bilanço SATIŞ:
-        // Eşikler: Cari %95, Matrah %90, KDV %90.
-        // Tüm gerekli alanlar eşik ÜSTÜNDEYSE doldur, F2'ye BASMA.
-        // Kullanıcı manuel kaydetsin (60s bekleme). Eşik altıysa veya
-        // doldurma başarısızsa eski davranış: atla.
+        // AŞAMA 2a (Gölge Mod) — SADECE Bilanço SATIŞ için:
+        // Boş alanların dropdown seçeneklerini okuyup AI'a danış, öneriyi log'a yaz.
+        // Gerçek uygulama yapmaz — yine atlar. Şu öneriler uygun mu değerlendiriyoruz.
         // ================================================================
-        // v1.13.6 — Okunabilir log formatı
-        let logMesaji = '';
-        let kaydedildiBaslangic = false;
+        let aiOneriOzet = '';
         if (action === 'isle_satis') {
           try {
-            setStatus(`${mukellef.ad} · #${fid} AI öneri istiyor…`);
+            setStatus(`${mukellef.ad} · #${fid} AI öneriyor (gölge)…`);
             const secenekler = await readBosAlanSecenekleri({ action, firmaAdi: meta.firma });
             const adetM = (secenekler.matrahKodlari || []).length;
             const adetK = (secenekler.kdvKodlari || []).length;
             const adetC = (secenekler.cariKodlari || []).length;
-
-            // Hangi alanlar boş?
-            const matrahBos = bolumHesapKoduDolu(/^Matrah\s*\(/i) === false || bolumHesapKoduDolu(/^Matrah$/i) === false;
-            const vergiBos  = bolumHesapKoduDolu(/^Vergi\s*\(/i) === false || bolumHesapKoduDolu(/^KDV/i) === false || bolumHesapKoduDolu(/^Vergi$/i) === false;
-            const cariBos   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) === false || bolumHesapKoduDolu(/^Cari Hesap$/i) === false || bolumHesapKoduDolu(/^Cari$/i) === false;
-            const bosAlanlar = [matrahBos && 'Matrah', vergiBos && 'KDV', cariBos && 'Cari'].filter(Boolean);
-
             if (adetM + adetK + adetC > 0) {
               const oneriKarari = await aiDecide({
                 codes: codes, tarih, hedefAy,
@@ -7760,95 +2164,23 @@
               });
               const o = oneriKarari?.onerilenler || {};
               const cf = o.confidence || {};
-              const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '?';
-              console.log('[Moren] AI önerisi:', { secenekler, oneri: o });
-
-              // Eşik kontrolü + doldurma
-              const matrahDolu2 = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
-              const vergiDolu2  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
-              const cariDolu2   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
-              setStatus(`${mukellef.ad} · #${fid} alanlar dolduruluyor…`);
-              const fillResult = await tryFillBosAlanlar({
-                secenekler,
-                oneri: o,
-                durumlar: { matrahDolu: matrahDolu2, vergiDolu: vergiDolu2, cariDolu: cariDolu2 },
-              });
-              console.log('[Moren.fill] Doldurma sonucu:', fillResult);
-
-              // Çok satırlı, alt alta okunabilir özet
-              const satirlar = [];
-              satirlar.push(`Boş alanlar: ${bosAlanlar.join(', ') || '(yok)'}`);
-              satirlar.push('');
-              satirlar.push('AI önerisi:');
-              if (matrahBos) satirlar.push(`  Matrah : ${o.matrahHesapKodu || '(öneri yok)'}  güven ${fmtC(cf.matrah)}  (sondaj: ${adetM} sonuç)`);
-              if (vergiBos)  satirlar.push(`  KDV    : ${o.kdvHesapKodu    || '(öneri yok)'}  güven ${fmtC(cf.kdv)}  (sondaj: ${adetK} sonuç)`);
-              if (cariBos)   satirlar.push(`  Cari   : ${o.cariHesapKodu   || '(öneri yok)'}  güven ${fmtC(cf.cari)}  (sondaj: ${adetC} sonuç)`);
-              satirlar.push('');
-
-              if (fillResult.dolduruldu) {
-                setStatus(`${mukellef.ad} · #${fid} F2 ile kaydediyor…`);
-                await sleep(800);
-                await pressF2Once();
-                const t0 = Date.now();
-                let kaydedildi = false;
-                let validasyonHatasi = null;
-                while (Date.now() - t0 < 12000) {
-                  if (window.__morenAgent.stopRequested) return;
-                  const m = location.href.match(/\/(\d+)\?count=/);
-                  if (m && m[1] !== fid) { kaydedildi = true; break; }
-                  if (/count=0/.test(location.href)) { kaydedildi = true; break; }
-                  const vMsg = validationDialogVarMi();
-                  if (vMsg) { validasyonHatasi = vMsg; await handleDialogs(); break; }
-                  if (getVisibleModals().length > 0) await handleDialogs();
-                  await sleep(300);
-                }
-                if (kaydedildi) {
-                  satirlar.push('Sonuç: ✓ Doldurma başarılı, F2 ile otomatik kaydedildi');
-                  counters.onay++; counters.toplam++; setCount();
-                  await logEvent(mukellef.id, mukellef.ad, 'ok', satirlar.join('\n'),
-                    { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
-                  continue;
-                }
-                // F2 başarısız
-                if (validasyonHatasi) {
-                  satirlar.push(`Sonuç: ✗ Dolduruldu ama Mihsap kayıt etmedi`);
-                  satirlar.push(`Mihsap uyarısı: "${validasyonHatasi.slice(0, 80)}"`);
-                } else {
-                  satirlar.push(`Sonuç: ✗ Dolduruldu ama F2 sonrası kayıt onaylanmadı`);
-                  const eksikler = [];
-                  if (cariBos && !o.cariHesapKodu) eksikler.push('Cari');
-                  if (matrahBos && !o.matrahHesapKodu) eksikler.push('Matrah');
-                  if (vergiBos && !o.kdvHesapKodu) eksikler.push('KDV');
-                  if (eksikler.length > 0) satirlar.push(`Muhtemel sebep: ${eksikler.join('/')} alanı için öneri yoktu, boş kaldı`);
-                }
-              } else {
-                if (fillResult.sebep && fillResult.sebep.startsWith('eşik altı')) {
-                  satirlar.push('Sonuç: ↷ AI yeterince emin değil — atlandı');
-                  const altlar = [];
-                  if (matrahBos && (cf.matrah || 0) < BOS_ALAN_ESIKLERI.matrah) altlar.push(`Matrah ${fmtC(cf.matrah)} < %${Math.round(BOS_ALAN_ESIKLERI.matrah*100)}`);
-                  if (vergiBos && (cf.kdv || 0) < BOS_ALAN_ESIKLERI.kdv)        altlar.push(`KDV ${fmtC(cf.kdv)} < %${Math.round(BOS_ALAN_ESIKLERI.kdv*100)}`);
-                  if (cariBos && (cf.cari || 0) < BOS_ALAN_ESIKLERI.cari)       altlar.push(`Cari ${fmtC(cf.cari)} < %${Math.round(BOS_ALAN_ESIKLERI.cari*100)}`);
-                  altlar.forEach((a) => satirlar.push(`  • ${a}`));
-                } else if (fillResult.sebep && fillResult.sebep.includes('seçilemedi')) {
-                  satirlar.push(`Sonuç: ✗ Mihsap'ta seçim başarısız`);
-                  satirlar.push(`Detay: ${fillResult.sebep}`);
-                } else {
-                  satirlar.push(`Sonuç: ✗ ${fillResult.sebep}`);
-                }
-              }
-              logMesaji = satirlar.join('\n');
+              const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '—';
+              const parts = [];
+              if (adetM > 0) parts.push(`M:${o.matrahHesapKodu || '—'}(${fmtC(cf.matrah)})`);
+              if (adetK > 0) parts.push(`K:${o.kdvHesapKodu || '—'}(${fmtC(cf.kdv)})`);
+              if (adetC > 0) parts.push(`C:${o.cariHesapKodu || '—'}(${fmtC(cf.cari)})`);
+              aiOneriOzet = ` | AI öneri: ${parts.join(' ')} [seçenek sayısı: M=${adetM} K=${adetK} C=${adetC}]`;
+              console.log('[Moren] AI hesap kodu önerisi (gölge mod):', { secenekler, oneri: o });
             } else {
-              logMesaji = `Boş alanlar: ${bosAlanlar.join(', ')}\nAI öneri için seçenek bulunamadı (sondaj boş döndü)`;
+              aiOneriOzet = ' | AI: dropdown seçeneği okunamadı';
             }
           } catch (e) {
-            console.warn('[Moren] AI öneri/doldurma hatası:', e?.message);
-            logMesaji = `Hata: ${(e?.message || '').slice(0, 60)}`;
+            console.warn('[Moren] AI öneri hatası (gölge mod):', e?.message);
+            aiOneriOzet = ` | AI hata: ${(e?.message || '').slice(0, 50)}`;
           }
-        } else {
-          logMesaji = 'Boş alan var (sadece SATIŞ için doldurma aktif)';
         }
-        counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', logMesaji, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `matrah/KDV/cari boş alan var${aiOneriOzet}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid); continue;
       }
       // LLM karar
@@ -7857,7 +2189,7 @@
         codes, tarih, hedefAy,
         belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
         mukellef: mukellef.ad,
-        mukellefId: mukellef.id, // Firma Hafizasi — mukellef-bazli ogrenme
+        mukellefId: mukellef.id,
         firma: meta.firma,
         firmaKimlikNo: meta.firmaKimlikNo,
         tutar: meta.tutar,
@@ -7865,19 +2197,9 @@
       });
       const karar = decision?.karar || 'emin_degil';
       const sebep = (decision?.sebep || '').slice(0, 120);
-      // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
-      // AUTO ONAY YAPMA, sadece ileri gec ve log'a dus.
-      if (karar === 'onay_bekliyor') {
-        counters.atla++; counters.toplam++; setCount();
-        const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
-        await logEvent(mukellef.id, mukellef.ad, 'skip',
-          `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
-        await clickIleri(fid); continue;
-      }
       if (karar === 'atla' || karar === 'emin_degil') {
-        counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         await clickIleri(fid); continue;
       }
       try {
@@ -7961,81 +2283,51 @@
         }
 
         if (saved) {
-          counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          counters.onay++; counters.toplam++; bumpCmd(mukellef.ad, 'onay'); setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
         } else {
-          counters.atla++; counters.toplam++; setCount();
+          counters.atla++; counters.toplam++; bumpCmd(mukellef.ad, 'atla'); setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma, hesapKodu: codes[0], kdv: readKdvOrani() });
           await clickIleri(fid);
         }
       } catch (e) {
-        counters.hata++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        counters.hata++; counters.toplam++; bumpCmd(mukellef.ad, 'hata'); setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'error', String(e), { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih, belgeTuru: meta.belgeTuru, cari: meta.firma });
         await clickIleri(fid);
       }
     }
   }
 
   // === KOMUT KUYRUĞU POLLING ===
-  async function pollLoop() {
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: true, meta: { url: location.href } }),
-    }).catch(() => {});
-    while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
-      try {
-        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
-        if (Array.isArray(cmds) && cmds.length > 0) {
-          for (const cmd of cmds) {
-            try {
-              setStatus(`CMD: ${cmd.action}`);
-              await processBatch({
-                ay: cmd.payload?.ay,
-                mukellefler: cmd.payload?.mukellefler || [],
-                action: cmd.action,
-              });
-              await api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({
-                  status: 'done',
-                  result: {
-                    ...counters,
-                    message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
-                  },
-                }),
-              });
-            } catch (e) {
-              await api(`/agent/commands/${cmd.id}`, {
-                method: 'PUT',
-                body: JSON.stringify({ status: 'failed', result: { message: String(e) } }),
-              }).catch(() => {});
-            }
-          }
-        } else {
-          setStatus('Komut bekleniyor…');
-        }
-      } catch (e) {
-        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
-        const msg = String(e?.message || e);
-        if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
-          setStatus('Bağlantı bekleniyor…');
-        } else {
-          setStatus('API hatası, yeniden deneniyor');
-          console.warn('[Moren]', msg);
-        }
-      }
-      await sleep(5000);
-    }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
-    }).catch(() => {});
-    panel.remove();
-    delete window.__morenAgent;
+  // Aktif komut id'si — heartbeat ve cancel-check için
+  let __activeCmdId = null;
+
+  // Komut DB'de cancel oldu mu? (her mükellef başında check)
+  async function isCmdCancelled() {
+    if (!__activeCmdId) return false;
+    try {
+      const c = await api(`/agent/commands/${__activeCmdId}`);
+      return c?.status === 'cancelled';
+    } catch { return false; }
   }
-  pollLoop();
-  console.log('[Moren Agent] yüklendi');
-})();
+
+  // === HEARTBEAT — agent canlı olduğunu 15sn'de bir bildirir ===
+  async function sendHeartbeat() {
+    try {
+      await api('/agent/status/ping', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent: 'mihsap',
+          running: true,
+          meta: {
+            url: location.href,
+            version: AGENT_VERSION,
+            activeCmdId: __activeCmdId,
+            cmdProgress: __activeCmdId ? cmdSummary.toplam : null,
+          },
+        }),
+      });
+    } ca
