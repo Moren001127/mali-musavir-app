@@ -207,27 +207,18 @@ export class IsletmeHesapOzetiService {
 
     const toplamStok = r2(donemBasiStok + malAlisi);
 
-    // v1.36.22: SMM ve kalanStok ikisi de MANUEL — kullanıcı isteği.
-    // Luca import bu alanlara dokunmaz, kullanıcı manuel girer.
-    // İki yönlü auto-derive sadece KULLANICI bu alanlardan birini explicit set ettiğinde devreye girer:
-    //   - SMM girilirse → kalanStok = toplamStok - SMM
-    //   - kalanStok girilirse → SMM = toplamStok - kalanStok
-    //   - Hiçbiri params'ta yoksa → mevcut DB değerleri korunur (default 0)
-    let kalanStok: number;
-    let satilanMalMaliyeti: number;
-    if (typeof params.satilanMalMaliyeti === 'number') {
-      // Kullanıcı SMM'i set etti
-      satilanMalMaliyeti = r2(params.satilanMalMaliyeti);
-      kalanStok = r2(toplamStok - satilanMalMaliyeti);
-    } else if (typeof params.kalanStok === 'number') {
-      // Kullanıcı kalanStok'u set etti
-      kalanStok = r2(params.kalanStok);
-      satilanMalMaliyeti = r2(toplamStok - kalanStok);
-    } else {
-      // Hiçbiri set edilmedi → mevcut değerleri koru (default 0)
-      satilanMalMaliyeti = Number(ozet.satilanMalMaliyeti) || 0;
-      kalanStok = Number(ozet.kalanStok) || 0;
-    }
+    // v1.36.24: SMM ve kalanStok TAM MANUEL — bidirectional auto-derive YOK.
+    // Kullanıcı her birini bağımsız olarak girer. Luca import bunlara dokunmaz.
+    // Önceki versiyonda SMM<->kalanStok arası auto-derive Q1'in stok bilgisinin
+    // Q2'ye sızmasına neden oluyordu — tamamen kaldırıldı.
+    const satilanMalMaliyeti =
+      typeof params.satilanMalMaliyeti === 'number'
+        ? r2(params.satilanMalMaliyeti)
+        : Number(ozet.satilanMalMaliyeti) || 0;
+    const kalanStok =
+      typeof params.kalanStok === 'number'
+        ? r2(params.kalanStok)
+        : Number(ozet.kalanStok) || 0;
 
     // Türetilen alanlar (kalan)
     const toplamSatis = r2(satisHasilati + digerGelir);
@@ -260,26 +251,9 @@ export class IsletmeHesapOzetiService {
       include: { taxpayer: true },
     });
 
-    // Bu çeyreğin kalan stoğu değiştiyse → sonraki çeyreğin dönem başı stoğunu güncelle
-    if (typeof params.kalanStok === 'number' && ozet.donem < 4) {
-      const sonraki = await (this.prisma as any).isletmeHesapOzeti.findUnique({
-        where: {
-          tenantId_taxpayerId_yil_donem: {
-            tenantId: params.tenantId,
-            taxpayerId: ozet.taxpayerId,
-            yil: ozet.yil,
-            donem: ozet.donem + 1,
-          },
-        },
-      });
-      if (sonraki && !sonraki.locked) {
-        await this.updateManuel({
-          tenantId: params.tenantId,
-          id: sonraki.id,
-          donemBasiStok: kalanStok,
-        });
-      }
-    }
+    // v1.36.24: kalanStok → sonraki çeyrek donemBasiStok PROPAGATION KALDIRILDI.
+    // Bu propagation Q1 stoğunun Q2'ye sızmasına ve phantom SMM oluşmasına yol açıyordu.
+    // Her çeyreğin donemBasiStok'u manuel veya Luca'dan ayrı ayrı set edilir.
 
     // Bu çeyreğin hesaplananGecVergi değiştiyse → sonraki çeyreğin oncekiOdenenGecVergi'sini güncelle
     if (

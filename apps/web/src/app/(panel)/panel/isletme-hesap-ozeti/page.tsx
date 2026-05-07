@@ -116,7 +116,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2 py-1 text-right text-[14px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2 py-0.5 text-right text-[13px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
@@ -1136,55 +1136,50 @@ function Row({
     return 'rgba(212,184,118,0.85)'; // altın
   };
 
+  // v1.36.24: Gelir Tablosu stilinde kompakt — px-3 py-2 + küçük fontlar + tek satır rakam
   return (
     <tr className={hl || ''} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td
-        className={`px-4 py-3 ${
-          bold ? 'text-[13px] font-semibold text-stone-50 tracking-wide' : 'text-[12.5px] font-medium text-stone-200'
+        className={`px-3 py-2 ${
+          bold ? 'text-[12px] font-semibold text-stone-50 tracking-wide' : 'text-[11.5px] font-medium text-stone-300'
         }`}
         style={{
           letterSpacing: bold ? '0.02em' : 'normal',
         }}
       >
         {label}
-        {hint && <span className="ml-2 text-[10.5px] font-normal text-stone-500">{hint}</span>}
+        {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
       </td>
       {cols.map((c, i) => {
         const rColor = ratios && ratios[i] ? ratioColor(ratios[i]) : null;
-        // c bir string ise (calc satırlar) "0,00" boş demek — soluklaştır
         const cStr = typeof c === 'string' ? c : '';
         const isEmpty = cStr === '0,00' || cStr === '0';
+        const showRatio = rColor && ratios![i] && ratios![i] !== '—' && !isEmpty;
         return (
           <td
             key={i}
-            className={`px-4 py-3 text-right font-mono tabular-nums ${
-              bold ? 'text-[15px] font-semibold' : 'text-[14px]'
+            className={`px-3 py-2 text-right font-mono tabular-nums ${
+              bold ? 'text-[13.5px] font-semibold' : 'text-[13px]'
             }`}
             style={{
               borderLeft: '1px solid rgba(184,160,111,0.12)',
               fontVariantNumeric: 'tabular-nums',
               color: isEmpty
-                ? 'rgba(250, 250, 249, 0.22)'  // boş 0,00 çok soluk
-                : 'rgba(250, 250, 249, 0.96)', // dolu net
+                ? 'rgba(250, 250, 249, 0.22)'
+                : 'rgba(250, 250, 249, 0.96)',
+              lineHeight: 1.15,
             }}
           >
-            <div className="flex flex-col items-end gap-0.5">
-              <span className="text-right tabular-nums leading-tight">{c}</span>
-              {rColor && ratios![i] && ratios![i] !== '—' && !isEmpty && (
+            {showRatio ? (
+              <div className="flex flex-col items-end" style={{ gap: 1 }}>
+                <span className="tabular-nums">{c}</span>
                 <span
-                  className="text-[10.5px] not-italic font-sans tracking-wide"
-                  style={{
-                    color: rColor,
-                    fontWeight: 500,
-                  }}
+                  className="text-[9.5px] not-italic font-sans"
+                  style={{ color: rColor!, fontWeight: 500, letterSpacing: '0.02em' }}
                 >
                   {ratios![i]}
                 </span>
-              )}
-            </div>
-          </td>
-        );
-      })}
-    </tr>
-  );
-}
+              </div>
+            ) : (
+              <span className="tabular-nums">{c}</span>
+     
