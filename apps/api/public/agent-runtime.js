@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.14';
+  const AGENT_VERSION = '1.36.15';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -240,7 +240,7 @@
           await jobLog(job.id, `Job alındı · ${job.tip} · ${job.donem}`);
 
           window.__currentLucaJobId = job.id;
-          const blob = job.tip === 'IHO_FETCH' ? await fetchLucaGelirGiderListesi(job) : await fetchLucaMuavinExcel(job);
+          let blob; if (job.tip === 'IHO_FETCH' || job.tip === 'ISLETME_GELIR' || job.tip === 'ISLETME_GIDER') { blob = await fetchLucaGelirGiderListesi(job); } else if (job.tip === 'MIZAN' || job.tip === 'KDV_191' || job.tip === 'KDV_391') { blob = await fetchLucaTipBazli(job); } else { blob = await fetchLucaMuavinExcel(job); }
           if (!blob) throw new Error('Excel yakalanamadı');
           await jobLog(job.id, `✓ Excel yakalandı (${(blob.size/1024).toFixed(1)} KB)`);
 
@@ -639,6 +639,196 @@
     if (blob.type.includes('html')) throw new Error('HTML dondu');
     try { localStorage.removeItem(IHO_RESUME_KEY); } catch {}
     return blob;
+  }
+
+
+  /**
+   * Generic Luca Excel çekim — Mizan ve KDV (Defteri Kebir) için.
+   * job.tip'e göre Luca menü yolunu seçer:
+   *   MIZAN     → Muhasebe → Mizan
+   *   KDV_191   → Muhasebe → Defteri Kebir
+   *   KDV_391   → Muhasebe → Defteri Kebir
+   * Sonra: firma seç (SirketCombo) + menüye git + tarih_ilk/son + report_type=XLSX + Rapor
+   */
+  async function fetchLucaTipBazli(job) {
+    const log = (msg) => {
+      if (window.__currentLucaJobId && window.__lucaJobLog) {
+        window.__lucaJobLog(window.__currentLucaJobId, msg);
+      } else { console.log('[Moren ' + job.tip + ']', msg); }
+    };
+    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('tr-TR');
+    const allDocs = () => {
+      const docs = [document];
+      document.querySelectorAll('iframe, frame').forEach((f) => {
+        try { if (f.contentDocument) docs.push(f.contentDocument); } catch {}
+      });
+      return docs;
+    };
+
+    // Tip → menü yolu
+    const MENU_MAP = {
+      'MIZAN': ['Muhasebe', 'Mizan'],
+      'KDV_191': ['Muhasebe', 'Defteri Kebir'],
+      'KDV_391': ['Muhasebe', 'Defteri Kebir'],
+    };
+    const menuPath = MENU_MAP[job.tip];
+    if (!menuPath) throw new Error('Bilinmeyen tip: ' + job.tip);
+
+    // 1) Firma seç (errorMsg meta'sından mukellefAdi)
+    const metaMatch = String(job.errorMsg || '').match(/mukellefAdi=([^,]+)/);
+    const mukellefAdi = metaMatch ? metaMatch[1].trim() : '';
+    if (mukellefAdi) {
+      log('Firma seçiliyor: ' + mukellefAdi);
+      let sirketCombo = null;
+      for (const doc of allDocs()) {
+        sirketCombo = doc.querySelector('#SirketCombo, select[id*="Sirket" i], select[name*="Sirket" i]');
+        if (sirketCombo) break;
+      }
+      if (sirketCombo) {
+        const target = [...sirketCombo.options].find((o) => norm(o.text).includes(norm(mukellefAdi)));
+        if (target) {
+          sirketCombo.value = target.value;
+          sirketCombo.dispatchEvent(new Event('change', { bubbles: true }));
+          log('✓ Firma seçildi: ' + target.text.trim());
+          await sleep(300);
+          let tamamBtn = null;
+          for (const doc of allDocs()) {
+            const btns = [...doc.querySelectorAll('button, input[type="button"], input[type="submit"]')];
+            tamamBtn = btns.find((b) => /^tamam$/i.test((b.textContent || b.value || '').trim()));
+            if (tamamBtn) break;
+          }
+          if (tamamBtn) {
+            // Reload öncesi job state'i kaydet — yeni script kaldığı yerden devam etsin
+            try {
+              localStorage.setItem('__morenLucaTipResume', JSON.stringify({
+                ...job, __resumeStep: 'menu', __savedAt: Date.now(),
+              }));
+            } catch {}
+            tamamBtn.click();
+            log('✓ Tamam tıklandı (reload bekleniyor)');
+            await sleep(4000);
+            try { localStorage.removeItem('__morenLucaTipResume'); } catch {}
+          }
+        } else { log('⚠ Firma SirketCombo\'da yok: ' + mukellefAdi); }
+      }
+    }
+
+    // 2) Menü navigasyonu
+    const clickByText = async (texts, label) => {
+      const targets = Array.isArray(texts) ? texts : [texts];
+      for (let attempt = 0; attempt < 20; attempt++) {
+        for (const doc of allDocs()) {
+          const all = [...doc.querySelectorAll('font, span, a, td, div')];
+          let found = all.find((el) => {
+            const t = (el.textContent || '').replace(/ /g, ' ').trim();
+            return targets.some((target) => t === target);
+          });
+          if (!found) {
+            found = all.find((el) => {
+              const t = (el.textContent || '').replace(/ /g, ' ').trim();
+              if (t.length > 50) return false;
+              return targets.some((target) => t.includes(target));
+            });
+          }
+          if (found) {
+            try {
+              found.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+              found.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            } catch {}
+            await sleep(150);
+            found.click();
+            log('✓ ' + label + ' tıklandı');
+            await sleep(1000);
+            return true;
+          }
+        }
+        await sleep(750);
+      }
+      throw new Error(label + ' menüsü bulunamadı (15sn)');
+    };
+
+    log('Menü: ' + menuPath.join(' → '));
+    for (const item of menuPath) {
+      await clickByText(item, item);
+    }
+
+    // 3) Form bul + tarih doldur
+    const [donemBas, donemSon] = String(job.donem || '').split('_');
+    const toLucaDate = (iso) => {
+      const m = (iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? (m[3] + '/' + m[2] + '/' + m[1]) : iso;
+    };
+    // Donem 'YYYY-MM' veya 'YYYY-MM-DD_YYYY-MM-DD' — fallback
+    let tarihIlk, tarihSon;
+    if (donemBas && donemSon) {
+      tarihIlk = toLucaDate(donemBas);
+      tarihSon = toLucaDate(donemSon);
+    } else {
+      // 'YYYY-MM' formatı — o ayın 1'i ve son günü
+      const m = (job.donem || '').match(/^(\d{4})-(\d{2})$/);
+      if (m) {
+        const lastDay = new Date(Number(m[1]), Number(m[2]), 0).getDate();
+        tarihIlk = '01/' + m[2] + '/' + m[1];
+        tarihSon = String(lastDay).padStart(2, '0') + '/' + m[2] + '/' + m[1];
+      }
+    }
+
+    let formDoc = null, tarihIlkInput = null, tarihSonInput = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      for (const doc of allDocs()) {
+        const ti = doc.querySelector('input[name="tarih_ilk"]');
+        const ts = doc.querySelector('input[name="tarih_son"]');
+        if (ti && ts) { formDoc = doc; tarihIlkInput = ti; tarihSonInput = ts; break; }
+      }
+      if (formDoc) break;
+      await sleep(500);
+    }
+    if (!formDoc) throw new Error('Form bulunamadı (tarih input yok)');
+
+    if (tarihIlk && tarihSon) {
+      tarihIlkInput.value = tarihIlk;
+      tarihIlkInput.dispatchEvent(new Event('change', { bubbles: true }));
+      tarihSonInput.value = tarihSon;
+      tarihSonInput.dispatchEvent(new Event('change', { bubbles: true }));
+      log('✓ Tarihler: ' + tarihIlk + ' → ' + tarihSon);
+    }
+
+    const reportTypeSel = formDoc.querySelector('#report_type, select[name="report_type"]');
+    if (reportTypeSel) {
+      const xlsxOpt = [...reportTypeSel.options].find((o) => /xlsx|excel/i.test(o.value || o.text));
+      if (xlsxOpt) {
+        reportTypeSel.value = xlsxOpt.value;
+        reportTypeSel.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    // 4) Rapor butonu + Excel yakala
+    const win = formDoc.defaultView || window;
+    const origOpen = win.open;
+    let capturedBlob = null, capturedUrl = null;
+    win.open = function (url) { capturedUrl = url; return { closed: false, close: () => {}, focus: () => {}, document: { write: () => {} } }; };
+
+    const raporBtn = [...formDoc.querySelectorAll('button, input[type="button"], input[type="submit"]')]
+      .find((el) => /^rapor$/i.test((el.textContent || el.value || '').trim()))
+      || formDoc.querySelector('button.green-btn');
+    if (!raporBtn) { win.open = origOpen; throw new Error('Rapor butonu yok'); }
+    raporBtn.click();
+    log('Rapor tıklandı, Excel bekleniyor...');
+
+    const t0 = Date.now();
+    while (!capturedUrl && !capturedBlob && Date.now() - t0 < 30000) await sleep(300);
+    win.open = origOpen;
+    if (!capturedUrl && !capturedBlob) throw new Error('30sn icinde Excel yakalanamadi');
+
+    if (capturedUrl && !capturedBlob) {
+      const resp = await fetch(capturedUrl, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Excel HTTP ' + resp.status);
+      capturedBlob = await resp.blob();
+    }
+    log('✓ Excel: ' + (capturedBlob.size/1024).toFixed(1) + ' KB');
+    if (capturedBlob.size < 500) throw new Error('Bos yanit');
+    if (capturedBlob.type.includes('html')) throw new Error('HTML dondu');
+    return capturedBlob;
   }
 
   // === UI ===
