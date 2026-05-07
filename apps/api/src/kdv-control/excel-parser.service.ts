@@ -541,6 +541,7 @@ export class ExcelParserService {
     gelirToplam: number;
     malAlisToplam: number;
     giderToplam: number;
+    donemBasiStok: number;
     gelirSatirAdet: number;
     giderSatirAdet: number;
   } {
@@ -629,7 +630,8 @@ export class ExcelParserService {
       }
     }
 
-    // GİDERLER bölümü (İndirilecek KDV): Alınan Emtia + Gider ayrı ayrı
+    // GİDERLER bölümü (İndirilecek KDV): Alınan Emtia + Gider + DÖNEM BAŞI STOK ayrı ayrı
+    let donemBasiStok = 0;
     const giderHeader = headers.find((h) => h.hasIndirilecek);
     if (giderHeader) {
       const next = headers.find((h) => h.idx > giderHeader.idx);
@@ -638,9 +640,11 @@ export class ExcelParserService {
       const giderCol = cells.findIndex((c) => c === 'gider' || c.startsWith('gider'));
       const alinanCol = cells.findIndex((c) => c.includes('alinan') || c.includes('alınan'));
       const tarihCol = cells.findIndex((c) => c === 'tarih' || c.includes('tarih'));
+      const aciklamaCol = cells.findIndex((c) => c.includes('aciklama') || c.includes('açıklama'));
 
       this.logger.log(
-        `İHÖ GİDER bölümü: header=${giderHeader.idx + 1}, end=${sectionEnd}, giderCol=${giderCol}, alinanCol=${alinanCol}`,
+        `İHÖ GİDER bölümü: header=${giderHeader.idx + 1}, end=${sectionEnd}, ` +
+          `giderCol=${giderCol}, alinanCol=${alinanCol}, aciklamaCol=${aciklamaCol}`,
       );
 
       for (let i = giderHeader.idx + 1; i < sectionEnd; i++) {
@@ -652,6 +656,19 @@ export class ExcelParserService {
 
         const giderVal = giderCol >= 0 ? this.toDecimal(row[giderCol]) : 0;
         const alinanVal = alinanCol >= 0 ? this.toDecimal(row[alinanCol]) : 0;
+        const aciklamaText = aciklamaCol >= 0 ? norm(row[aciklamaCol]) : '';
+
+        // DÖNEM BAŞI STOK satırı — Alınan Emtia değeri donemBasiStok'a yazılır,
+        // Satın Alınan Mal Bedeli (malAlis) toplamına EKLENMEZ.
+        const isDonemBasi =
+          aciklamaText.includes('donem basi stok') ||
+          aciklamaText.includes('dönem başı stok');
+
+        if (isDonemBasi) {
+          donemBasiStok += alinanVal || 0;
+          continue;
+        }
+
         if ((giderVal || 0) > 0 || (alinanVal || 0) > 0) {
           giderToplam += giderVal || 0;
           malAlisToplam += alinanVal || 0;
@@ -665,6 +682,7 @@ export class ExcelParserService {
       gelirToplam: r2(gelirToplam),
       malAlisToplam: r2(malAlisToplam),
       giderToplam: r2(giderToplam),
+      donemBasiStok: r2(donemBasiStok),
       gelirSatirAdet,
       giderSatirAdet,
     };

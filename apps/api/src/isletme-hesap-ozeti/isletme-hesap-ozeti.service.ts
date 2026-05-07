@@ -501,21 +501,29 @@ export class IsletmeHesapOzetiService {
     if (!ozet) throw new NotFoundException('İHÖ kaydı bulunamadı');
     if (ozet.locked) throw new BadRequestException('Kesin kayıt — Luca verisi uygulanamaz');
 
-    // Excel parse — gelir, mal alışı, gider ayrı ayrı
+    // Excel parse — gelir, mal alışı, gider, dönem başı stok ayrı ayrı
     const parsed = this.excelParser.parseIsletmeExcelDetayli(params.buffer);
 
     this.logger.log(
-      `İHÖ Luca uygulanıyor (id=${params.ihoId}): satışlar=${parsed.gelirToplam}, mal=${parsed.malAlisToplam}, gider=${parsed.giderToplam}`,
+      `İHÖ Luca uygulanıyor (id=${params.ihoId}): ` +
+        `satışlar=${parsed.gelirToplam}, mal=${parsed.malAlisToplam}, ` +
+        `gider=${parsed.giderToplam}, donemBasiStok=${parsed.donemBasiStok}`,
     );
 
     // Mevcut türetilen alanları yeniden hesaplamak için updateManuel kullan
-    return this.updateManuel({
+    // donemBasiStok > 0 ise (Q1'de Excel'de "DÖNEM BAŞI STOK" satırı varsa) o değeri yaz,
+    // yoksa mevcut değeri koru (Q2-Q4 önceki kalan stoğu kullanır).
+    const updatePayload: any = {
       tenantId: params.tenantId,
       id: params.ihoId,
       satisHasilati: parsed.gelirToplam,
       malAlisi: parsed.malAlisToplam,
       donemIciGiderler: parsed.giderToplam,
-    });
+    };
+    if (parsed.donemBasiStok > 0) {
+      updatePayload.donemBasiStok = parsed.donemBasiStok;
+    }
+    return this.updateManuel(updatePayload);
   }
 
   /** Job durumunu kontrol et (frontend polling için) */
