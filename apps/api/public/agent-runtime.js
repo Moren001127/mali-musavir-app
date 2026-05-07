@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.7';
+  const AGENT_VERSION = '1.36.8';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
@@ -130,10 +130,8 @@
   // indirme butonuna tıklayarak muavin dosyasını yakalar, backend'e
   // geri yükler.
   async function processLucaJobs() {
-    // Luca modülü gecici olarak kapatıldı (kullanici istegi).
-    // Polling devam edip backend'den bekleyen Luca işlerini almasin diye
-    // burada erken çıkıyoruz. Modül tekrar açıldığında bu satırı kaldır.
-    return;
+    // Luca polling — her 15sn'de bir backend'den bekleyen IHO_FETCH veya
+    // KDV Kontrol job'larini ceker, agent Luca sayfasinda ise calisir.
     try {
       if (!isLucaOrigin()) return;
       if (window.__morenAgent.stopRequested) return;
@@ -240,9 +238,8 @@
       console.warn('[Moren] processLucaJobs:', e?.message);
     }
   }
-  // Luca polling kapatildi — modul gecici olarak devre disi (kullanici istegi).
-  // Modul tekrar acilirsa bu satiri yeniden aktive et:
-  // setInterval(processLucaJobs, 15000);
+  // Luca polling — IHO_FETCH ve KDV Kontrol job'lari icin (agent Luca da ise)
+  setInterval(processLucaJobs, 15000);
 
   /**
    * Luca'da mizan Excel'ini ÇEKER — TAM OTOMASYON (multi-frame + form POST).
