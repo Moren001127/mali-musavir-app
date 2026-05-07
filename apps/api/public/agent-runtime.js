@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.18';
+  const AGENT_VERSION = '1.36.20';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5783,6 +5783,10 @@
       // v1.14.1 — action ve tarih de gönderilsin: mükellef özeti backend'i
       // bunlara göre groupby yapıyor (önce yoktu, hep NULL gidiyordu).
       const currentAction = window.__morenAgent?.currentAction || extra.action || null;
+      // v1.36.4 fix: meta'ya OTOMATIK donem (komutun ay'i) + agentVersion ekle.
+      // Bu sayede tarih hicbir yerden okunamasa bile log-format.ts meta.donem'den
+      // ayin 15'ini turetebilir (yaniltici "kayit ani" yerine gercek donem).
+      const currentDonem = window.__morenAgent?.currentDonem || extra.donem || null;
       await api('/agent/events/ingest', {
         method: 'POST',
         body: JSON.stringify({
@@ -5796,7 +5800,13 @@
           tutar: extra.tutar ? Number(extra.tutar) : null,
           hesapKodu: extra.hesapKodu || null,
           kdv: extra.kdv || null,
-          meta: { mukellefId, tarih: extra.tarih || null, ...extra },
+          meta: {
+            mukellefId,
+            tarih: extra.tarih || null,
+            donem: currentDonem,
+            agentVersion: AGENT_VERSION,
+            ...extra,
+          },
         }),
       });
     } catch (e) { console.warn('[Moren] log fail', e); }
@@ -5895,7 +5905,7 @@
     //    count=0 durumunda editör yok, direk return.
     if (/count=0/.test(location.href)) { await sleep(500); return; }
 
-    const minWaitMs = 5000; // kullanıcı talebi: ekran güncellensin diye asgari 5 sn
+    const minWaitMs = 1500; // v1.36.20 hızlandırma // kullanıcı talebi: ekran güncellensin diye asgari 5 sn
     const maxWaitMs = 8000;
     const tStart = Date.now();
     // Asgari bekleme süresince DOM stabilize olmasını bekle
@@ -5938,11 +5948,14 @@
   // işlem log'suz atlanmış gibi görünür).
   // Dönüş: 'f2' (F2 basıldı) | 'already-advanced' (URL değişti, F2 gereksiz)
   async function onaylaSonrasiF2(fidBefore) {
-    await sleep(5000);
-    const fidNow = getCurrentFid();
-    if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
-      // MIHSAP 5 sn içinde kendisi kaydedip ilerledi — F2 basma
-      return 'already-advanced';
+    // v1.36.20 hızlandırma: 5sn sabit bekleme yerine 3sn akıllı polling
+    const __t0 = Date.now();
+    while (Date.now() - __t0 < 3000) {
+      const fidNow = getCurrentFid();
+      if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
+        return 'already-advanced';
+      }
+      await sleep(150);
     }
     await pressF2Once();
     await sleep(1500);
@@ -5952,8 +5965,8 @@
   async function clickKaydetOnayla() {
     const fidAtStart = getCurrentFid();
     await pressF2Once();
-    // F2 sonrası MIHSAP'ın modal/onay üretmesi için ilk kısa bekleme
-    await sleep(1200);
+    // v1.36.20 hızlandırma: 1200ms → 600ms (F2 sonrası modal kısa sürede gelir)
+    await sleep(600);
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
     // "resubmit" dönerse (tutar farkı onayı) — onayladıktan sonra F2'yi tekrar basıp
     // sonra yeniden dialog kontrolü yap. Aksi halde kaydetme tamamlanmaz.
@@ -6021,6 +6034,41 @@
       if (!tarih && v.donemYil && v.donemAy) {
         tarih = `${v.donemYil}-${String(v.donemAy).padStart(2, '0')}-01`;
       }
+      // v1.36.4 fix — TARIH KOKTEN COZUM: API yaniti bos donerse DOM polling
+      // 250ms araliklarla 12 deneme (3sn toplam) — Mihsap form yuklenirken yakala
+      if (!tarih) {
+        for (let attempt = 0; attempt < 12; attempt++) {
+          // Form input'larindan tarih alanini ara
+          const tarihInputs = [...document.querySelectorAll('input')].filter(inp => {
+            const id = (inp.id || '').toLowerCase();
+            const name = (inp.name || '').toLowerCase();
+            const placeholder = (inp.placeholder || '').toLowerCase();
+            return /tarih|date/.test(id + ' ' + name + ' ' + placeholder);
+          });
+          for (const inp of tarihInputs) {
+            const val = (inp.value || '').trim();
+            if (val) {
+              const parsed = parseTr(val);
+              if (parsed) { tarih = parsed; break; }
+            }
+          }
+          if (tarih) break;
+          // DOM text icinde "DD.MM.YYYY" pattern ara
+          const allText = document.body?.innerText || '';
+          const m = allText.match(/(\d{2})[.\-\/](\d{2})[.\-\/](\d{4})/);
+          if (m) {
+            const yil = parseInt(m[3], 10);
+            const ay = parseInt(m[2], 10);
+            const gun = parseInt(m[1], 10);
+            // Mantikli tarih kontrolu (2020-2030, ay 1-12, gun 1-31)
+            if (yil >= 2020 && yil <= 2030 && ay >= 1 && ay <= 12 && gun >= 1 && gun <= 31) {
+              tarih = `${m[3]}-${String(ay).padStart(2,'0')}-${String(gun).padStart(2,'0')}`;
+              break;
+            }
+          }
+          await sleep(250);
+        }
+      }
       return {
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
@@ -6072,7 +6120,7 @@
           console.warn('[Moren] canvas merge fail', e);
         }
       }
-      await sleep(500);
+      await sleep(200); // v1.36.20 hızlandırma: 500 → 200
     }
     return null;
   }
@@ -7405,6 +7453,8 @@
     setStatus(`${mukellefler.length} mükellef / ${ay} · ${action}`);
     // v1.14.1 — logEvent içinde global olarak okunsun (her event'e action eklensin)
     if (window.__morenAgent) window.__morenAgent.currentAction = action;
+    // v1.36.4 — donem bilgisini de logEvent'e otomatik ek (tarih fallback için)
+    if (window.__morenAgent) window.__morenAgent.currentDonem = ay || null;
     for (const m of mukellefler) {
       if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
       setStatus(`→ ${m.ad}`);
@@ -7412,6 +7462,7 @@
     }
     setStatus(`Tamamlandı · ${counters.toplam} fatura`);
     if (window.__morenAgent) window.__morenAgent.currentAction = null;
+    if (window.__morenAgent) window.__morenAgent.currentDonem = null;
   }
 
   async function processMukellef({ ay, mukellef, action }) {
@@ -7769,7 +7820,7 @@
           let validationFailed = null;
           const waitSavedIsletme = async (timeoutMs) => {
             const t0 = Date.now();
-            const minWaitMs = 5000;
+            const minWaitMs = 1500; // v1.36.20 hızlandırma
             while (Date.now() - t0 < minWaitMs) {
               const validationMsg = validationDialogVarMi();
               if (validationMsg) {
@@ -8022,7 +8073,7 @@
         // Ayrıca "tutar farkı onay" dialog'u (resubmit) gelirse Onayla + tekrar F2 yapıyoruz.
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
-          const minWaitMs = 5000;
+          const minWaitMs = 1500; // v1.36.20 hızlandırma
           // 1) Asgari bekleme penceresi — bu sürede sadece validation / dialog işle,
           //    URL değişimine "saved" denip hemen dönme. Ekran gerçekten oturduktan sonra karar ver.
           while (Date.now() - t0 < minWaitMs) {
@@ -8044,7 +8095,7 @@
                 }
               }
             }
-            await sleep(250);
+            await sleep(100); // v1.36.20
           }
           // 2) Asgari süre sonrası saved kriterlerini kontrol et
           while (Date.now() - t0 < timeoutMs) {
@@ -8150,7 +8201,6 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
-        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
