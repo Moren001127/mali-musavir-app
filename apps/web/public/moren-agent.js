@@ -4,13 +4,19 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.10';
+  const AGENT_VERSION = '1.36.11';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında SESSIZCE ÖLDÜR ve
   // yeniden başlat. Eski script'in setInterval'ları cleanup edilemez (ID yok),
   // ama yeni script aynı window'da paralel çalışır — bu kabul edilebilir çünkü
   // tüm flag'ler (lastSynced*, seenFids) yeni instance'a ait olur.
+  // Sadece top window'da calis — Luca multi-frame yapısında her iframe'de
+  // ayrı agent yüklenmesin (paralel job çakışması önlemi).
+  if (window !== window.top) {
+    console.log('[Moren] iframe icindeyiz, agent yalniz top window de calisir');
+    return;
+  }
   if (window.__morenAgent) {
     const oldVersion = window.__morenAgent.version || '?';
     if (oldVersion === AGENT_VERSION) {
@@ -179,7 +185,7 @@
     } catch (e) { console.warn('[Moren] checkIhoResume hata:', e?.message); }
   }
   // İlk yüklemede 2sn sonra resume kontrolü çalıştır (sayfa stabilize olsun)
-  setTimeout(() => { checkIhoResume(); }, 2000);
+  setTimeout(() => { checkIhoResume(); }, 5000);
 
   async function processLucaJobs() {
     // Luca polling — her 15sn'de bir backend'den bekleyen IHO_FETCH veya
@@ -525,18 +531,40 @@
     // 2) Menü navigasyonu
     const clickByText = async (texts, label) => {
       const targets = Array.isArray(texts) ? texts : [texts];
-      for (let attempt = 0; attempt < 8; attempt++) {
+      // 20 deneme × 750ms = 15sn (eski 8×500 = 4sn yetmiyordu)
+      // Hem exact match hem includes match dener (Luca menülerde nbsp/whitespace olabilir)
+      for (let attempt = 0; attempt < 20; attempt++) {
         for (const doc of allDocs()) {
           const all = [...doc.querySelectorAll('font, span, a, td, div')];
-          const found = all.find((el) => {
-            const t = (el.textContent || '').trim();
+          // Önce exact match
+          let found = all.find((el) => {
+            const t = (el.textContent || '').replace(/ /g, ' ').trim();
             return targets.some((target) => t === target);
           });
-          if (found) { found.click(); log('✓ ' + label + ' tıklandı'); await sleep(800); return true; }
+          // Yoksa includes (kısa metin için)
+          if (!found) {
+            found = all.find((el) => {
+              const t = (el.textContent || '').replace(/ /g, ' ').trim();
+              if (t.length > 50) return false; // çok uzun metin = başka şey
+              return targets.some((target) => t.includes(target));
+            });
+          }
+          if (found) {
+            // Hover + click (Luca alt menüleri hover ile açılıyor olabilir)
+            try {
+              found.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+              found.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+            } catch {}
+            await sleep(150);
+            found.click();
+            log('✓ ' + label + ' tıklandı (deneme ' + (attempt+1) + ')');
+            await sleep(1000);
+            return true;
+          }
         }
-        await sleep(500);
+        await sleep(750);
       }
-      throw new Error(label + ' menüsü 8 denemede bulunamadı');
+      throw new Error(label + ' menüsü 20 denemede bulunamadı (15sn)');
     };
 
     log('Menü: İşletme Defteri → Gider İşlemleri → Gelir/Gider Listesi');
