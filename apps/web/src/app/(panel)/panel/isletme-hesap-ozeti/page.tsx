@@ -277,7 +277,7 @@ export default function IsletmeHesapOzetiPage() {
           <BookOpen className="h-5 w-5" style={{ color: GOLD }} />
           <h1 className="text-xl font-semibold">İşletme Hesap Özeti</h1>
           <span className="text-xs text-stone-500">
-            (İşletme defteri tutan mükellefler · tüm tutarlar manuel girilir)
+            (Luca'dan otomatik çekim · sadece Satılan Malın Maliyeti ve Geçmiş Yıl Zararı manuel girilir)
           </span>
         </div>
         {taxpayerId && !hicKayitYok && (
@@ -656,18 +656,21 @@ function KarsilastirmaTablosu({
                   </span>
                 )}
 
-                {/* Aksiyon butonları */}
-                <div className="flex items-center justify-center gap-1.5 mt-2">
+                {/* Aksiyon butonları — v1.36.22 tutarlı boyut + ortalı */}
+                <div className="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
                   {!locked && (
                     <button
                       onClick={() => onLucaCek(d)}
                       disabled={fetching}
                       title="Luca'dan İşletme Defteri Excel'i çek"
-                      className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-1 rounded disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded disabled:opacity-50"
                       style={{
-                        background: 'rgba(184,160,111,0.1)',
+                        background: 'rgba(184,160,111,0.12)',
                         color: GOLD,
-                        border: '1px solid rgba(184,160,111,0.25)',
+                        border: '1px solid rgba(184,160,111,0.3)',
+                        height: 28,
+                        padding: '0 10px',
+                        minWidth: 100,
                       }}
                     >
                       {fetching ? (
@@ -683,23 +686,28 @@ function KarsilastirmaTablosu({
                       <button
                         onClick={() => onLock(c.id)}
                         title="Kesin kayda al"
-                        className="text-[10.5px] font-semibold px-2 py-1 rounded"
+                        className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
                         style={{
-                          background: 'rgba(184,160,111,0.1)',
+                          background: 'rgba(184,160,111,0.12)',
                           color: GOLD,
-                          border: '1px solid rgba(184,160,111,0.25)',
+                          border: '1px solid rgba(184,160,111,0.3)',
+                          height: 28,
+                          padding: '0 10px',
+                          minWidth: 88,
                         }}
                       >
                         Kesin Kayıt
                       </button>
                       <button
                         onClick={() => onDelete(c.id)}
-                        title="Sil"
-                        className="p-1 rounded"
+                        title="İçerikleri temizle (kayıt kalır)"
+                        className="inline-flex items-center justify-center rounded"
                         style={{
-                          background: 'rgba(244,63,94,0.08)',
+                          background: 'rgba(244,63,94,0.1)',
                           color: '#f43f5e',
-                          border: '1px solid rgba(244,63,94,0.2)',
+                          border: '1px solid rgba(244,63,94,0.25)',
+                          height: 28,
+                          width: 28,
                         }}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -710,11 +718,14 @@ function KarsilastirmaTablosu({
                     <button
                       onClick={() => onUnlock(c!.id)}
                       title="Kilidi aç (ADMIN)"
-                      className="text-[10.5px] font-semibold px-2 py-1 rounded"
+                      className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
                       style={{
-                        background: 'rgba(244,63,94,0.1)',
+                        background: 'rgba(244,63,94,0.12)',
                         color: '#f43f5e',
-                        border: '1px solid rgba(244,63,94,0.25)',
+                        border: '1px solid rgba(244,63,94,0.3)',
+                        height: 28,
+                        padding: '0 10px',
+                        minWidth: 80,
                       }}
                     >
                       Kilidi Aç
@@ -758,14 +769,14 @@ function KarsilastirmaTablosu({
               {tersDonemler.map((d, i) => (
                 <th
                   key={d}
-                  className="border-b border-white/10 px-3 py-2 text-right"
+                  className="border-b border-white/10 px-3 py-3 text-center"
                   style={{
                     borderRight:
                       i < tersDonemler.length - 1 ? '1px solid rgba(184,160,111,0.28)' : 'none',
                   }}
                 >
                   <div
-                    className="text-sm font-bold"
+                    className="text-[15px] font-bold"
                     style={{
                       color: GOLD,
                       fontFamily: 'Fraunces, serif',
@@ -774,7 +785,12 @@ function KarsilastirmaTablosu({
                   >
                     {yil} · {DONEM_ROMAN[d]}. Dönem
                   </div>
-                  <div className="text-[10px] font-normal text-stone-500 mt-0.5">{DONEM_RANGE[d]}</div>
+                  <div
+                    className="text-[11px] font-medium mt-1"
+                    style={{ color: 'rgba(212,184,118,0.6)', letterSpacing: '0.04em' }}
+                  >
+                    {DONEM_RANGE[d]}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -1116,38 +1132,63 @@ function Row({
   calc?: boolean;
   raw?: boolean;
 }) {
+  // v1.36.22: Oran rozet rengi — değere göre semantik
+  // pozitif kar/oran → yeşil, negatif → kırmızı, 0 → gri
+  const ratioStyle = (r: string): { bg: string; color: string; border: string } => {
+    if (!r || r === '—') return { bg: 'rgba(255,255,255,0.04)', color: 'rgba(168,162,158,0.7)', border: 'rgba(255,255,255,0.06)' };
+    const isNeg = r.includes('-');
+    const num = parseFloat(r.replace(/[%,\s]/g, '').replace(',', '.')) || 0;
+    if (isNeg) return { bg: 'rgba(244,63,94,0.12)', color: '#fb7185', border: 'rgba(244,63,94,0.25)' };
+    if (num === 0) return { bg: 'rgba(255,255,255,0.04)', color: 'rgba(168,162,158,0.7)', border: 'rgba(255,255,255,0.06)' };
+    if (num >= 50) return { bg: 'rgba(34,197,94,0.14)', color: '#4ade80', border: 'rgba(34,197,94,0.3)' };
+    return { bg: 'rgba(212,184,118,0.12)', color: '#d4b876', border: 'rgba(212,184,118,0.25)' };
+  };
+
   return (
     <tr className={hl || ''}>
       <td
-        className={`border-b border-white/5 px-3 py-2 text-xs ${
-          bold ? 'font-semibold text-stone-100' : 'text-stone-200'
+        className={`border-b border-white/5 px-4 py-2.5 text-[12.5px] ${
+          bold ? 'font-bold text-stone-50 tracking-wide' : 'font-medium text-stone-200'
         }`}
-        style={{ borderRight: '1px solid rgba(184,160,111,0.18)' }}
+        style={{
+          borderRight: '1px solid rgba(184,160,111,0.18)',
+          letterSpacing: bold ? '0.02em' : 'normal',
+        }}
       >
         {label}
         {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
       </td>
-      {cols.map((c, i) => (
-        <td
-          key={i}
-          className={`border-b border-white/5 px-3 py-2 text-right tabular-nums text-stone-100 ${
-            bold ? 'font-semibold' : ''
-          } ${calc && !raw ? 'italic text-stone-200' : ''}`}
-          style={{
-            borderRight:
-              i < cols.length - 1 ? '1px solid rgba(184,160,111,0.18)' : 'none',
-          }}
-        >
-          <div className="flex items-center justify-end gap-2">
-            {ratios && ratios[i] && ratios[i] !== '—' && (
-              <span className="rounded bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium not-italic text-stone-500">
-                {ratios[i]}
-              </span>
-            )}
-            <span>{c}</span>
-          </div>
-        </td>
-      ))}
+      {cols.map((c, i) => {
+        const rs = ratios && ratios[i] ? ratioStyle(ratios[i]) : null;
+        return (
+          <td
+            key={i}
+            className={`border-b border-white/5 px-3 py-2.5 text-right tabular-nums text-stone-100 ${
+              bold ? 'font-semibold text-base' : 'text-sm'
+            } ${calc && !raw ? 'italic text-stone-200' : ''}`}
+            style={{
+              borderRight: i < cols.length - 1 ? '1px solid rgba(184,160,111,0.18)' : 'none',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <div className="flex items-center justify-end gap-2">
+              {rs && ratios![i] !== '—' && (
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold not-italic shrink-0"
+                  style={{
+                    background: rs.bg,
+                    color: rs.color,
+                    border: `1px solid ${rs.border}`,
+                  }}
+                >
+                  {ratios![i]}
+                </span>
+              )}
+              <span className="text-right tabular-nums">{c}</span>
+            </div>
+          </td>
+        );
+      })}
     </tr>
   );
 }

@@ -207,17 +207,26 @@ export class IsletmeHesapOzetiService {
 
     const toplamStok = r2(donemBasiStok + malAlisi);
 
-    // SMM ↔ Kalan Stok iki yönlü:
-    // - Eğer SMM doğrudan gönderildiyse: kalanStok = toplamStok - SMM
-    // - Aksi halde kalanStok'tan SMM hesaplanır (eski davranış)
+    // v1.36.22: SMM ve kalanStok ikisi de MANUEL — kullanıcı isteği.
+    // Luca import bu alanlara dokunmaz, kullanıcı manuel girer.
+    // İki yönlü auto-derive sadece KULLANICI bu alanlardan birini explicit set ettiğinde devreye girer:
+    //   - SMM girilirse → kalanStok = toplamStok - SMM
+    //   - kalanStok girilirse → SMM = toplamStok - kalanStok
+    //   - Hiçbiri params'ta yoksa → mevcut DB değerleri korunur (default 0)
     let kalanStok: number;
     let satilanMalMaliyeti: number;
     if (typeof params.satilanMalMaliyeti === 'number') {
+      // Kullanıcı SMM'i set etti
       satilanMalMaliyeti = r2(params.satilanMalMaliyeti);
       kalanStok = r2(toplamStok - satilanMalMaliyeti);
-    } else {
-      kalanStok = num(params.kalanStok, ozet.kalanStok);
+    } else if (typeof params.kalanStok === 'number') {
+      // Kullanıcı kalanStok'u set etti
+      kalanStok = r2(params.kalanStok);
       satilanMalMaliyeti = r2(toplamStok - kalanStok);
+    } else {
+      // Hiçbiri set edilmedi → mevcut değerleri koru (default 0)
+      satilanMalMaliyeti = Number(ozet.satilanMalMaliyeti) || 0;
+      kalanStok = Number(ozet.kalanStok) || 0;
     }
 
     // Türetilen alanlar (kalan)
@@ -337,14 +346,40 @@ export class IsletmeHesapOzetiService {
     });
   }
 
+  /**
+   * v1.36.22 — KULLANICI İSTEĞİ: "Sil" butonu artık kayıt SİLMEZ, sadece tüm
+   * tutar alanlarını 0'a çekip kayıt boş hale getirir. Mukellef + dönem kaydı kalır,
+   * tekrar Luca'dan çekim yapılabilir.
+   */
   async remove(tenantId: string, id: string) {
     const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
       where: { id, tenantId },
     });
     if (!ozet) throw new NotFoundException('Kayıt bulunamadı');
-    if (ozet.locked) throw new BadRequestException('Kesin kayıtta silinemez');
-    await (this.prisma as any).isletmeHesapOzeti.delete({ where: { id } });
-    return { deleted: true };
+    if (ozet.locked) throw new BadRequestException('Kesin kayıtta temizleme yapılamaz');
+    // SOFT-CLEAR: tüm tutar alanlarını sıfırla, kayıt kalsın
+    await (this.prisma as any).isletmeHesapOzeti.update({
+      where: { id },
+      data: {
+        satisHasilati: 0,
+        digerGelir: 0,
+        malAlisi: 0,
+        donemBasiStok: 0,
+        kalanStok: 0,
+        toplamStok: 0,
+        satilanMalMaliyeti: 0,
+        donemIciGiderler: 0,
+        gecmisYilZarari: 0,
+        oncekiOdenenGecVergi: 0,
+        netSatislar: 0,
+        donemKari: 0,
+        gecVergiMatrahi: 0,
+        hesaplananGecVergi: 0,
+        odenecekGecVergi: 0,
+        not: null,
+      },
+    });
+    return { cleared: true };
   }
 
   /** Excel — Yılın 4 çeyreği yan yana karşılaştırmalı (Q4 → Q1 ters sıra) */
@@ -534,9 +569,9 @@ export class IsletmeHesapOzetiService {
         `gider=${parsed.giderToplam}, donemBasiStok=${parsed.donemBasiStok}`,
     );
 
-    // Mevcut türetilen alanları yeniden hesaplamak için updateManuel kullan
-    // donemBasiStok > 0 ise (Q1'de Excel'de "DÖNEM BAŞI STOK" satırı varsa) o değeri yaz,
-    // yoksa mevcut değeri koru (Q2-Q4 önceki kalan stoğu kullanır).
+    // Mevcut türetilen alanları yeniden hesaplamak için updateManuel kullan.
+    // KULLANICI İSTEĞİ (v1.36.22): SMM ve kalanStok MANUEL — Luca import bunlara dokunmaz.
+    // updateManuel artık SMM/kalanStok params'ta yoksa mevcut değerleri korur (auto-derive yok).
     const updatePayload: any = {
       tenantId: params.tenantId,
       id: params.ihoId,
@@ -547,13 +582,6 @@ export class IsletmeHesapOzetiService {
     if (parsed.donemBasiStok > 0) {
       updatePayload.donemBasiStok = parsed.donemBasiStok;
     }
-    // KULLANICI İSTEĞİ: Satılan Malın Maliyeti (SMM) MANUEL girilmeli, Luca'dan gelen
-    // veride otomatik hesaplanmasın. Bunun için kalanStok = toplamStok set ediyoruz
-    // → SMM = toplamStok - kalanStok = 0 → kullanıcı boş görüp elle yazsın.
-    // donemBasiStok yeni değer mi mevcut mu, ona göre toplamStok hesapla:
-    const dbsForCalc = parsed.donemBasiStok > 0 ? parsed.donemBasiStok : Number(ozet.donemBasiStok || 0);
-    const toplamStokYeni = (dbsForCalc + parsed.malAlisToplam);
-    updatePayload.kalanStok = toplamStokYeni; // → SMM = 0 (manuel girilecek)
     return this.updateManuel(updatePayload);
   }
 
