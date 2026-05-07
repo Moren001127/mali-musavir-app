@@ -10,6 +10,8 @@ import {
   Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
 
+// Luca, Tebligat, KDV On-Hazirlik, SGK ajanlari gecici olarak kapatildi
+// (islem yapildikca yeniden acilacak - eski kayitlar git history'de)
 const AGENTS = [
   {
     id: 'mihsap', href: '/panel/ajanlar/mihsap', title: 'Mihsap Fatura',
@@ -17,29 +19,9 @@ const AGENTS = [
     icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)', aktif: true,
   },
   {
-    id: 'luca', href: '/panel/ajanlar/luca', title: 'Luca E-Arşiv',
-    desc: 'E-arşiv zip indir, XML ayrıştır, Drive\'a koy',
-    icon: FileInput, gradient: 'linear-gradient(135deg, #0ea5e9, #6366f1)', aktif: false,
-  },
-  {
-    id: 'tebligat', href: '/panel/ajanlar/tebligat', title: 'Tebligat Özet',
-    desc: 'Hattat tebligatları sınıflandırır, kritik olanları bildirir',
-    icon: Mailbox, gradient: 'linear-gradient(135deg, #f59e0b, #ec4899)', aktif: false,
-  },
-  {
-    id: 'kdv-hazirlik', href: '/panel/ajanlar/kdv-hazirlik', title: 'KDV Ön-Hazırlık',
-    desc: 'KDV1/KDV2 beyanname taslakları ve anomali tespiti',
-    icon: Calculator, gradient: 'linear-gradient(135deg, #10b981, #06b6d4)', aktif: false,
-  },
-  {
     id: 'e-defter', href: '/panel/ajanlar/e-defter', title: 'E-Defter Kontrol',
     desc: 'Berat durumları ve yevmiye mukayese',
     icon: BookOpen, gradient: 'linear-gradient(135deg, #6366f1, #a855f7)', aktif: false,
-  },
-  {
-    id: 'sgk', href: '/panel/ajanlar/sgk', title: 'SGK Bildirge',
-    desc: 'İşe giriş/çıkış, MUHSGK takip, tahakkuk hazırlığı',
-    icon: ShieldCheck, gradient: 'linear-gradient(135deg, #dc2626, #991b1b)', aktif: false,
   },
 ];
 
