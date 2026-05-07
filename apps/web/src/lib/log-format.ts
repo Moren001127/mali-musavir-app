@@ -173,14 +173,31 @@ export function buildFieldRows(event: {
     value: belgeTuru || '—',
   });
 
-  // 4) Toplam Tutar
+  // 4) Toplam Tutar — v1.36.21: belge ↔ mihsap karşılaştırma satırı eklendi
+  const fmtTLLocal = (n: number) =>
+    `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
   if (event.tutar != null && event.tutar !== '') {
     const n = Number(event.tutar);
     if (Number.isFinite(n)) {
+      // Belge ↔ Mihsap tutar karşılaştırma (agent v1.36.21+ meta'da gönderir)
+      const belgeToplam = Number(event.meta?.belgeToplam);
+      const TOLERANS = 1.00;
+      let cmpStatus: any = 'full';
+      let cmpMeta: string | undefined;
+      if (Number.isFinite(belgeToplam) && belgeToplam > 0) {
+        const diff = Math.abs(belgeToplam - n);
+        if (diff <= TOLERANS) {
+          cmpMeta = `✓ belge ile uyumlu`;
+        } else {
+          cmpStatus = 'missing';
+          cmpMeta = `✗ belgede: ${fmtTLLocal(belgeToplam)} (fark ${fmtTLLocal(diff)})`;
+        }
+      }
       rows.push({
         label: 'Toplam Tutar',
-        status: 'full',
-        value: `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`,
+        status: cmpStatus,
+        value: fmtTLLocal(n),
+        meta: cmpMeta,
       });
     }
   } else {
@@ -211,6 +228,20 @@ export function buildFieldRows(event: {
     kdvTutar = toplamNum - matrahTutar;
   }
 
+  // v1.36.21: Belge OCR tutarları (AI fatura görselinden okudu)
+  const belgeMatrah = Number(event.meta?.belgeMatrah);
+  const belgeKdv = Number(event.meta?.belgeKdvTutari);
+  const TOL_FIELD = 1.00;
+  // Karşılaştırma sonucu — eşleşme/uyuşmazlık string'i
+  const compareWithBelge = (label: 'Matrah' | 'KDV', mihsapTutar: number | null): string | null => {
+    if (mihsapTutar === null) return null;
+    const belgeVal = label === 'Matrah' ? belgeMatrah : belgeKdv;
+    if (!Number.isFinite(belgeVal) || belgeVal <= 0) return null;
+    const diff = Math.abs(belgeVal - mihsapTutar);
+    if (diff <= TOL_FIELD) return '✓ belge ile uyumlu';
+    return `✗ belgede: ${belgeVal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`;
+  };
+
   const checkField = (label: 'Matrah' | 'KDV', existingValue?: string) => {
     const isBos = parsed.bosAlanlar.some((b) => b.toLowerCase() === label.toLowerCase());
     const oneri = parsed.oneriler[label];
@@ -234,8 +265,17 @@ export function buildFieldRows(event: {
       return `${tutarStr} · ${raw}`;
     };
 
+    // Belge karşılaştırma — uyumsuzluk varsa status kırmızıya çek
+    const cmp = compareWithBelge(label, tutar);
+    const cmpMismatch = cmp && cmp.startsWith('✗');
+
     if (!isBos && existingValue) {
-      rows.push({ label, status: 'full', value: buildValue(existingValue) });
+      rows.push({
+        label,
+        status: cmpMismatch ? 'missing' : 'full',
+        value: buildValue(existingValue),
+        meta: cmp || undefined,
+      });
       return;
     }
     if (isBos && oneri) {

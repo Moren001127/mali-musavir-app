@@ -17,12 +17,12 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "339a97b27f648c66f89f096ea501bdac11c2a2ea217b7bcc8e407ca2605eefad",
+      "sha256": "0ebe0fb021beaa284607cbef7aa8cc6b7607ed24b8320a3dc2a4fda47a5f2ac4",
       "reason": "Moren Agent v1.36.16 — fetchLuca tum tipler + IHO menu navigation",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "339a97b27f648c66f89f096ea501bdac11c2a2ea217b7bcc8e407ca2605eefad",
+      "sha256": "0ebe0fb021beaa284607cbef7aa8cc6b7607ed24b8320a3dc2a4fda47a5f2ac4",
       "reason": "Moren Agent v1.36.16 (web ayna kopya)",
       "lockedBy": "muzaffer"
     },

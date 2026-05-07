@@ -986,6 +986,11 @@ model AgentStatus {
   hedefAy   String?
   lastPing  DateTime @default(now())
   meta      Json?
+  // Pause/Resume kontrolu - portaldan set edilir, agent okur
+  // null veya 'RUNNING' = devam, 'PAUSED' = durdur, 'STOP' = tamamen kapat
+  controlState String? @default("RUNNING")
+  controlSetBy String?
+  controlSetAt DateTime?
 
   @@unique([tenantId, agent])
   @@map("agent_status")

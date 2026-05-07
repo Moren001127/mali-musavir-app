@@ -317,6 +317,39 @@ export class AgentEventsService {
     });
   }
 
+  // === PAUSE/RESUME (control state) ===
+  // Portaldan set edilir, agent her iterasyonda okur, RUNNING/PAUSED/STOP'a göre davranır.
+  async setControlState(
+    tenantId: string,
+    agent: string,
+    state: 'RUNNING' | 'PAUSED' | 'STOP',
+    setBy: string,
+  ) {
+    return (this.prisma as any).agentStatus.upsert({
+      where: { tenantId_agent: { tenantId, agent } },
+      update: {
+        controlState: state,
+        controlSetBy: setBy,
+        controlSetAt: new Date(),
+      },
+      create: {
+        tenantId,
+        agent,
+        controlState: state,
+        controlSetBy: setBy,
+        controlSetAt: new Date(),
+      },
+    });
+  }
+
+  async getControlState(tenantId: string, agent: string) {
+    const s = await (this.prisma as any).agentStatus.findUnique({
+      where: { tenantId_agent: { tenantId, agent } },
+      select: { controlState: true, controlSetBy: true, controlSetAt: true, running: true, lastPing: true },
+    });
+    return s || { controlState: 'RUNNING', running: false, lastPing: null };
+  }
+
   async listStatus(tenantId: string) {
     return this.prisma.agentStatus.findMany({ where: { tenantId } });
   }

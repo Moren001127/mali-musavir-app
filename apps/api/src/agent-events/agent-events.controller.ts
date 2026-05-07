@@ -160,6 +160,45 @@ export class AgentEventsController {
     return this.service.listStatus(req.user.tenantId);
   }
 
+  // === PAUSE/RESUME ===
+  /** Portaldan agent durdur/devam — JWT'li (admin/staff) */
+  @Post('control/state')
+  @UseGuards(AuthGuard('jwt'))
+  async setControlState(
+    @Req() req: any,
+    @Body() body: { agent: string; state: 'RUNNING' | 'PAUSED' | 'STOP' },
+  ) {
+    if (!body?.agent) throw new BadRequestException('agent zorunlu');
+    if (!['RUNNING', 'PAUSED', 'STOP'].includes(body?.state)) {
+      throw new BadRequestException('state RUNNING|PAUSED|STOP olmalı');
+    }
+    return this.service.setControlState(
+      req.user.tenantId,
+      body.agent,
+      body.state,
+      req.user?.email || req.user?.userId || 'unknown',
+    );
+  }
+
+  /** Frontend buton durumu için */
+  @Get('control/state')
+  @UseGuards(AuthGuard('jwt'))
+  async getControlStateUi(@Req() req: any, @Query('agent') agent: string) {
+    if (!agent) throw new BadRequestException('agent gerekli');
+    return this.service.getControlState(req.user.tenantId, agent);
+  }
+
+  /** Agent kendi durumunu okur (X-Agent-Token ile) */
+  @Get('control/state/agent-read')
+  async getControlStateForAgent(
+    @Headers('x-agent-token') token: string,
+    @Query('agent') agent: string,
+  ) {
+    const tenantId = this.resolveTenantFromToken(token);
+    if (!agent) throw new BadRequestException('agent gerekli');
+    return this.service.getControlState(tenantId, agent);
+  }
+
   @Get('rules')
   @UseGuards(AuthGuard('jwt'))
   rules(@Req() req: any) {

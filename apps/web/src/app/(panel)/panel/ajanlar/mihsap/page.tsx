@@ -8,9 +8,82 @@ import Link from 'next/link';
 import {
   Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock, Sparkles,
   Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
+  PlayCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogCard, LogEvent } from '../_components/LogCard';
+
+// Pause/Resume Button — agent durumunu portaldan kontrol eder.
+// State: RUNNING (devam ediyor) / PAUSED (durdurulmuş)
+// 5sn polling ile state'i takip eder, agent her mükellef arası bu state'i okur.
+function AgentPauseResumeButton() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<{ controlState?: string; running?: boolean; lastPing?: string | null }>({
+    queryKey: ['agent-control-state', 'mihsap'],
+    queryFn: () => api.get('/agent/control/state?agent=mihsap').then((r) => r.data),
+    refetchInterval: 5000,
+  });
+  const setMut = useMutation({
+    mutationFn: (state: 'RUNNING' | 'PAUSED' | 'STOP') =>
+      api.post('/agent/control/state', { agent: 'mihsap', state }).then((r) => r.data),
+    onSuccess: (_, state) => {
+      qc.invalidateQueries({ queryKey: ['agent-control-state', 'mihsap'] });
+      toast.success(state === 'PAUSED' ? 'Agent durduruldu' : state === 'RUNNING' ? 'Agent devam ediyor' : 'Agent kapatıldı');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Komut başarısız'),
+  });
+  const isPaused = (data?.controlState || 'RUNNING') === 'PAUSED';
+  // Agent ping eski mi? (5 dk+) → "Agent kapalı" göster
+  const lastPingMs = data?.lastPing ? new Date(data.lastPing).getTime() : 0;
+  const stale = lastPingMs ? (Date.now() - lastPingMs) > 5 * 60 * 1000 : true;
+  const offline = stale && !data?.running;
+
+  if (isLoading) {
+    return (
+      <button disabled className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.45)', height: 42 }}>
+        <Loader2 size={14} className="animate-spin" /> ...
+      </button>
+    );
+  }
+
+  if (isPaused) {
+    return (
+      <button
+        onClick={() => setMut.mutate('RUNNING')}
+        disabled={setMut.isPending}
+        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
+        style={{
+          background: 'rgba(245,158,11,0.15)',
+          border: '1px solid rgba(245,158,11,0.4)',
+          color: '#f59e0b',
+          height: 42,
+        }}
+        title="Agent şu an duraklatılmış — devam ettir"
+      >
+        {setMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <PlayCircle size={14} />}
+        Devam Et
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => setMut.mutate('PAUSED')}
+      disabled={setMut.isPending || offline}
+      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
+      style={{
+        background: 'rgba(239,68,68,0.12)',
+        border: '1px solid rgba(239,68,68,0.35)',
+        color: '#ef4444',
+        height: 42,
+      }}
+      title={offline ? 'Agent çalışmıyor — Mihsap sekmesini aç' : 'Çalışan agent\'ı duraklat (kaldığı yerden devam edebilir)'}
+    >
+      {setMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+      Durdur
+    </button>
+  );
+}
 
 interface Taxpayer {
   id: string;
@@ -313,7 +386,7 @@ export default function MihsapAgentPage() {
             </button>
           </div>
 
-          <div className="flex-shrink-0 flex items-end">
+          <div className="flex-shrink-0 flex items-end gap-2">
             <button
               onClick={() => runMut.mutate()}
               disabled={selectedIds.length === 0 || runMut.isPending}
@@ -328,6 +401,8 @@ export default function MihsapAgentPage() {
               {runMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
               Çalıştır
             </button>
+            {/* Durdur/Devam Et — agent paused state'ine göre toggle */}
+            <AgentPauseResumeButton />
           </div>
         </div>
 

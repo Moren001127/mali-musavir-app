@@ -7488,6 +7488,32 @@
     });
   }
 
+  // v1.36.21: Pause/Resume kontrolü — portaldan set edilen state'i her mükellef
+  // arasında kontrol et. PAUSED ise resume olana kadar bekle (5sn polling).
+  async function checkPauseAndWait() {
+    while (true) {
+      try {
+        const r = await fetch(API + '/agent/control/state/agent-read?agent=mihsap', {
+          headers: { 'X-Agent-Token': TOKEN },
+        });
+        if (r.ok) {
+          const j = await r.json();
+          const state = j?.controlState || 'RUNNING';
+          if (state === 'STOP') {
+            window.__morenAgent.stopRequested = true;
+            return;
+          }
+          if (state === 'PAUSED') {
+            setStatus('⏸ Duraklatıldı (portaldan)');
+            await sleep(5000);
+            continue; // tekrar kontrol et
+          }
+        }
+      } catch {}
+      return; // RUNNING — devam et
+    }
+  }
+
   async function processBatch({ ay, mukellefler, action }) {
     setStatus(`${mukellefler.length} mükellef / ${ay} · ${action}`);
     // v1.14.1 — logEvent içinde global olarak okunsun (her event'e action eklensin)
@@ -7495,6 +7521,9 @@
     // v1.36.4 — donem bilgisini de logEvent'e otomatik ek (tarih fallback için)
     if (window.__morenAgent) window.__morenAgent.currentDonem = ay || null;
     for (const m of mukellefler) {
+      if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
+      // v1.36.21: Pause kontrolü
+      await checkPauseAndWait();
       if (window.__morenAgent.stopRequested) { setStatus('Durduruldu'); return; }
       setStatus(`→ ${m.ad}`);
       await processMukellef({ ay, mukellef: m, action });
@@ -7558,6 +7587,9 @@
     const seenFids = new Set();
     let initialCount = null;
     for (let i = 0; i < 600; i++) {
+      if (window.__morenAgent.stopRequested) return;
+      // v1.36.21: Her fatura öncesi pause kontrolü
+      if (typeof checkPauseAndWait === 'function') await checkPauseAndWait();
       if (window.__morenAgent.stopRequested) return;
       const fidMatch = location.href.match(/\/(\d+)\?count=/);
       const count = parseInt(location.href.match(/count=(-?\d+)/)?.[1] || '1', 10);
@@ -8087,6 +8119,32 @@
       });
       const karar = decision?.karar || 'emin_degil';
       const sebep = (decision?.sebep || '').slice(0, 120);
+      // === v1.36.21: BELGE ↔ MIHSAP TUTAR KARŞILAŞTIRMA ===
+      // AI fatura görselinden ocrToplam, ocrMatrah, ocrKdvTutari çıkarıyor.
+      // Mihsap'taki değer (meta.tutar = toplam) ile karşılaştır — uyuşmuyorsa ATLA.
+      // Kullanıcının istediği insan-tarzı kontrol: belgeye bak, mihsap'a bak, eşleşmiyorsa F2 yapma.
+      const TOLERANS = 1.00; // 1 TL tolerans (yuvarlama farkları için)
+      const belgeToplam = Number(decision?.ocrToplam) || null;
+      const belgeMatrah = Number(decision?.ocrMatrah) || null;
+      const belgeKdvTutari = Number(decision?.ocrKdvTutari) || null;
+      const mihsapToplam = Number(meta.tutar) || null;
+      // Mismatch tespiti — belge değerleri varsa karşılaştır
+      let mismatchSebep = null;
+      if (belgeToplam !== null && mihsapToplam !== null && Math.abs(belgeToplam - mihsapToplam) > TOLERANS) {
+        mismatchSebep = `Toplam tutar uyuşmadı (belge: ${belgeToplam.toFixed(2)} ≠ mihsap: ${mihsapToplam.toFixed(2)})`;
+      }
+      // Karşılaştırma meta'sı — log'da görünsün
+      const compareMeta = {
+        belgeToplam, belgeMatrah, belgeKdvTutari,
+        mihsapToplam,
+      };
+      if (mismatchSebep) {
+        counters.atla++; counters.toplam++; setCount();
+        await logEvent(mukellef.id, mukellef.ad, 'skip',
+          `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+        await clickIleri(fid); continue;
+      }
       // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
       // AUTO ONAY YAPMA, sadece ileri gec ve log'a dus.
       if (karar === 'onay_bekliyor') {
@@ -8094,12 +8152,12 @@
         const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
         await clickIleri(fid); continue;
       }
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
         await clickIleri(fid); continue;
       }
       try {
