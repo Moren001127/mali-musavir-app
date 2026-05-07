@@ -452,6 +452,16 @@ export default function DuyurularPage() {
           </h2>
         </div>
         <div className="flex gap-2 flex-wrap">
+          {/* Statik HTML şablon — public/duyuru-sablonu.html (2.7MB JS gömülü, DB'ye sığmaz) */}
+          <a
+            href="/duyuru-sablonu.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 text-sm font-semibold bg-white border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+            title="Hazır duyuru şablonu (yeni sekmede açılır)"
+          >
+            <FileImage size={16} /> Hazır Şablon
+          </a>
           <button
             onClick={yeni}
             className="px-4 py-2 text-sm font-semibold bg-white border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-2"
