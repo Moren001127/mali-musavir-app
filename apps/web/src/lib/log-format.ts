@@ -215,10 +215,12 @@ export function buildFieldRows(event: {
   const toplamNum = Number(event.tutar);
   const kdvRateStr = String(event.kdv || '').replace('%', '').replace(',', '.').trim();
   const kdvRateNum = Number(kdvRateStr);
-  // Oran 0-100 ise yüzde, 0-1 ise oran olarak gelmiş olabilir
+  // FIX v1.36.23: %1 hatalı parse → %100 oluyordu (1 > 1 değil, ratio olarak alınıyordu).
+  // TR KDV oranları: 1, 8, 10, 18, 20 — hepsi >= 1. 0-1 arası hiç gelmez normalde.
+  // Eşik: >= 1 ise yüzde olarak gelmiş, /100 yap. < 1 ise (0.20 gibi) zaten ratio.
   const kdvOran =
     Number.isFinite(kdvRateNum) && kdvRateNum > 0
-      ? (kdvRateNum > 1 ? kdvRateNum / 100 : kdvRateNum)
+      ? (kdvRateNum >= 1 ? kdvRateNum / 100 : kdvRateNum)
       : null;
 
   let matrahTutar: number | null = null;

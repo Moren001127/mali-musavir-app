@@ -842,6 +842,32 @@ Mevcut seçenekler aşağıda. HER ALAN İÇİN tam olarak bu listelerden BİRİ
 
 A) MATRAH HESABI (faturanın KDV'siz bedeli hangi ${islemTuru === 'SATIŞ' ? 'satış' : 'alış/gider'} hesabına yazılacak):
    Seçenekler: ${input.bosAlanSecenekleri.matrahKodlari?.join(', ') || '(runner listelemedi — önerme)'}
+
+   🔴 KRİTİK KURAL (v1.36.23) — KDV ORAN EŞLEŞMESİ (KOŞULLU):
+   ÖNCE listedeki hesap kodu AÇIKLAMALARINDA KDV oranı (%1, %01, %8, %08, %10, %18, %20) yazıyor mu kontrol et.
+
+   ───────────────────────────────────────────────────────────
+   DURUM 1: Hesaplardan EN AZ İKİSİ farklı KDV oranı içeriyor
+   ───────────────────────────────────────────────────────────
+   Örn: "153.01.010-%10 TİCARİ MAL ALIŞLARI" + "153.01.020-%20 TİCARİ MAL ALIŞLARI"
+   → KDV oran eşleşmesi ZORUNLU. Faturanın KDV oranıyla AYNI %X içeren kodu seç.
+   → Eşleşmezse matrahHesapKodu: null + onay_bekliyor.
+   → Geçmişte farklı oranda kullanıldıysa bile bu faturanın oranına göre git.
+
+   ───────────────────────────────────────────────────────────
+   DURUM 2: Hesaplardan HİÇBİRİNDE KDV oranı YAZMIYOR (veya hepsi aynı)
+   ───────────────────────────────────────────────────────────
+   Örn: sadece "153.01.001 TİCARİ MAL ALIŞLARI" + "150.01.001 İLK MADDE"
+   → KDV oran eşleşmesi UYGULANMAZ. Sektör/içerik mantığıyla seç.
+   → Tek kod varsa direkt onu seç.
+
+   ───────────────────────────────────────────────────────────
+   DURUM 3: Bazı kodlarda %X var, bazılarında yok (KARIŞIK)
+   ───────────────────────────────────────────────────────────
+   → Önce %X yazan kodlar arasında oran eşleşeni bul. Bulursan onu seç.
+   → Bulamazsan: %X yazmayan kodlardan içeriğe en uyanı seç.
+   → Hiçbiri uymadıysa null + onay_bekliyor.
+
    ${islemTuru === 'SATIŞ' ? `SATIŞ kuralı:
      • 600.xx → Yurtiçi Mal/Hizmet Satışı (en yaygın)
      • 601.xx → Yurtdışı Satış (İHRACAT faturalarında)
@@ -855,14 +881,16 @@ A) MATRAH HESABI (faturanın KDV'siz bedeli hangi ${islemTuru === 'SATIŞ' ? 'sa
      ⛔ **SABİT KIYMET (253/254/255) YASAK**: Fatura içeriği bilgisayar/mobilya/makine/taşıt ise
      → karar: "atla", sebep: "Sabit kıymet alımı — kullanıcı elle işlesin"
      → Bu ürünler amortisman gerektirir, AI otomatik işlemez.`}
-   Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA + mükellef sektörüne bak ve en uygun kodu seç.
-   Eğer mükellefin sadece 1 uygun kodu varsa → onu seç.
+   Fatura satırındaki ÜRÜN/HİZMET AÇIKLAMASINA + mükellef sektörüne bak.
+   ÖNCELİK: KDV oran eşleşmesi → sektör/içerik uygunluğu → tek kod ise direkt seç.
 
 B) KDV HESABI:
    Seçenekler: ${input.bosAlanSecenekleri.kdvKodlari?.join(', ') || '(runner listelemedi — önerme)'}
    ${islemTuru === 'SATIŞ' ? `Kural: Satışta KDV hep 391 grubunda (Hesaplanan KDV).`
     : `Kural: Alışta KDV hep 191 grubunda (İndirilecek KDV).`}
+   🔴 KDV oran eşleşmesi MATRAH ile aynı kuralda: hesap kodu açıklamasındaki %X faturanın KDV oranı ile eşleşmeli.
    Listede birden fazla alt kod varsa, MATRAH seçtiğin kodla AYNI alt gruplama mantığı önceliklidir.
+   ⚠ KDV oran eşleşmiyorsa → kdvHesapKodu: null + onay_bekliyor.
 
 C) CARİ HESAP:
    Seçenekler: ${input.bosAlanSecenekleri.cariKodlari?.join(', ') || '(runner listelemedi — önerme)'}
