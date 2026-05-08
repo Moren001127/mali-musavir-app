@@ -1008,26 +1008,52 @@ function KarsilastirmaTablosu({
         </table>
       </BlockCard>
 
-      <div className="flex items-center justify-end gap-2 rounded-xl border px-3 py-3">
+      {/* v1.36.65: Her dönem altında BELİRGİN, RENKLİ kaydet butonu — sütun başlıklarıyla hizalı */}
+      <div
+        className="grid gap-2 rounded-xl px-3 py-3 mt-2"
+        style={{
+          gridTemplateColumns: `220px repeat(${tersDonemler.length}, 1fr)`,
+          background: 'rgba(212,184,118,0.05)',
+          border: '1px solid rgba(212,184,118,0.20)',
+        }}
+      >
+        <div
+          className="flex items-center justify-end pr-3 text-[12.5px] font-semibold"
+          style={{ color: 'rgba(250,250,249,0.55)' }}
+        >
+          DÖNEM AKSİYONLARI
+        </div>
         {tersDonemler.map((d) => {
           const c = yilData?.ceyrekler?.[d - 1];
-          if (!c) return null;
+          if (!c) {
+            return <div key={d} />;
+          }
           if (c.locked) {
             return (
-              <span
+              <div
                 key={d}
-                className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-3 py-1.5 text-xs text-amber-300 ring-1 ring-amber-400/40"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-semibold"
+                style={{
+                  background: 'rgba(245,158,11,0.10)',
+                  color: '#fbbf24',
+                  border: '1px solid rgba(245,158,11,0.40)',
+                }}
               >
-                <Lock className="h-3 w-3" />
+                <Lock className="h-3.5 w-3.5" />
                 {DONEM_ROMAN[d]}. Dönem kilitli
-              </span>
+              </div>
             );
           }
           return (
             <button
               key={d}
               onClick={() => saveDraft(d)}
-              className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-stone-900 hover:opacity-90"
+              className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-bold transition-all hover:brightness-110"
+              style={{
+                background: '#22c55e',
+                color: '#0c0a09',
+                boxShadow: '0 0 12px rgba(34,197,94,0.25)',
+              }}
             >
               <Save className="h-4 w-4" />
               {DONEM_ROMAN[d]}. Dönemi Kaydet

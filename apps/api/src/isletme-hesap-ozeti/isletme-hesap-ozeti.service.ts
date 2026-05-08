@@ -73,8 +73,10 @@ export class IsletmeHesapOzetiService {
         where: { tenantId, taxpayerId, yil, donem: { lt: donem } },
         select: { hesaplananGecVergi: true },
       });
+      // v1.36.65: kümülatif odenecekGecVergi (gerçekten ödenen). Önceden hesaplananGecVergi
+      // kullanılıyordu — yanlış çünkü hesaplanan vergiden önceki ödenenler düşülmüyordu.
       oncekiOdenenGecVergi = oncekiDonemler.reduce(
-        (acc: number, x: any) => acc + Number(x.hesaplananGecVergi || 0),
+        (acc: number, x: any) => acc + Number(x.odenecekGecVergi || 0),
         0,
       );
     }
@@ -271,7 +273,7 @@ export class IsletmeHesapOzetiService {
       });
       for (const sonraki of sonrakiCeyrekler) {
         if (sonraki.locked) continue;
-        // Bu çeyrekten önceki tüm hesaplananGecVergi toplamı
+        // v1.36.65: Önceki dönem ÖDENEN kümülatif → odenecekGecVergi (hesaplanan değil)
         const onceki = await (this.prisma as any).isletmeHesapOzeti.findMany({
           where: {
             tenantId: params.tenantId,
@@ -279,10 +281,10 @@ export class IsletmeHesapOzetiService {
             yil: ozet.yil,
             donem: { lt: sonraki.donem },
           },
-          select: { hesaplananGecVergi: true },
+          select: { odenecekGecVergi: true },
         });
         const yeniOnceki = onceki.reduce(
-          (acc: number, x: any) => acc + Number(x.hesaplananGecVergi || 0),
+          (acc: number, x: any) => acc + Number(x.odenecekGecVergi || 0),
           0,
         );
         await this.updateManuel({
