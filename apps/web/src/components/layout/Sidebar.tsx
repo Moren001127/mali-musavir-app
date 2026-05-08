@@ -29,8 +29,20 @@ const navGroups = [
       { href: '/panel',              label: 'Gösterge Paneli',   icon: LayoutDashboard },
       { href: '/panel/is-yuku',      label: 'İş Akışı',           icon: Workflow },        // YENİ
       { href: '/panel/gorevler',     label: 'Görevler & Notlar',  icon: CheckSquare },
-      { href: '/panel/mukellefler',  label: 'Mükellefler',        icon: Users },
       { href: '/panel/moren-ai',     label: 'Moren AI',           icon: MessageSquare },
+    ],
+  },
+  {
+    // v1.36.75: Mükellef-bazlı tüm modüller burada toplanır.
+    // Banka Takip (mükellef ekstreleri), Mükellef Profilleri (otomasyon config),
+    // ileride Belge Takibi ve Profil Tamamlık da buraya ekleniyor.
+    label: 'Mükellefler',
+    color: GOLD,
+    icon: Users,
+    items: [
+      { href: '/panel/mukellefler',       label: 'Mükellef Listesi',    icon: Users },
+      { href: '/panel/banka-takip',       label: 'Banka Takip',         icon: Landmark },
+      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
     ],
   },
   {
@@ -46,8 +58,8 @@ const navGroups = [
       { href: '/panel/bilanco',                label: 'Bilanço',            icon: Scale },
       { href: '/panel/gelir-tablosu',          label: 'Gelir Tablosu',      icon: TrendingUp },
       { href: '/panel/isletme-hesap-ozeti',    label: 'İşletme Hesap Özeti',icon: BookOpen },
-      { href: '/panel/banka-takip',            label: 'Banka Takip',        icon: Landmark },
-      // NOT: Cari Kasa Ofis grubuna taşındı (senin ofisinin tahsilatı, mükellef muhasebesi değil)
+      // NOT: Banka Takip → Mükellefler grubuna taşındı (mükellef-bazlı)
+      // NOT: Cari Kasa → Ofis grubuna taşındı (senin ofisinin tahsilatı)
     ],
   },
   {
@@ -68,9 +80,9 @@ const navGroups = [
     items: [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
-      { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
       { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },
       { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },
+      // NOT: Mükellef Profilleri → Mükellefler grubuna taşındı (mükellef-bazlı config)
     ],
   },
   {
