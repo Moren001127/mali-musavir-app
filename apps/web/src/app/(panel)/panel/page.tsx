@@ -926,15 +926,15 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı */}
+      {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
+          v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
         <div
           className="rounded-2xl px-5 py-4 flex items-center gap-4 flex-wrap"
           style={{
             background: 'linear-gradient(135deg, rgba(244,63,94,0.12), rgba(239,68,68,0.08))',
             border: '1px solid rgba(244,63,94,0.4)',
-            boxShadow: '0 0 0 1px rgba(244,63,94,0.15), 0 8px 24px rgba(244,63,94,0.12)',
-            animation: 'moren-pulse 2.4s ease-in-out infinite',
+            animation: 'moren-banner-pulse 2.8s ease-in-out infinite',
           }}
         >
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(244,63,94,0.2)', border: '1px solid rgba(244,63,94,0.5)' }}>

@@ -136,6 +136,19 @@
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.6; transform: scale(1.2); }
 }
+/* v1.36.74: Banner / geniş kapsayıcı elemanlar için scale-siz pulse.
+   Eski moren-pulse %20 büyüyordu — geniş elemanlarda ekran taşması yapıyordu.
+   Bu sürüm sadece opacity + box-shadow ile "nefes alır" hissi verir. */
+@keyframes moren-banner-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px rgba(244,63,94,0.20), 0 6px 20px rgba(244,63,94,0.10);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(244,63,94,0.45), 0 10px 28px rgba(244,63,94,0.22);
+    opacity: 0.96;
+  }
+}
 @keyframes moren-feed-scroll {
   0% { transform: translateY(0); }
   100% { transform: translateY(-50%); }
