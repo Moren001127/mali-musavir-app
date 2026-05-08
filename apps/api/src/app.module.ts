@@ -30,6 +30,7 @@ import { CariKasaModule } from './cari-kasa/cari-kasa.module';
 import { IsletmeHesapOzetiModule } from './isletme-hesap-ozeti/isletme-hesap-ozeti.module';
 import { BankaTakipModule } from './banka-takip/banka-takip.module';
 import { SystemHealthModule } from './system-health/system-health.module';
+import { TasksModule } from './tasks/tasks.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -66,6 +67,7 @@ import { HgsCron } from './schedule/hgs.cron';
     IsletmeHesapOzetiModule,
     BankaTakipModule,
     SystemHealthModule,
+    TasksModule,
   ],
   providers: [ReminderCron, HgsCron],
 })

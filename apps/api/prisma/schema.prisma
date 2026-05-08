@@ -52,6 +52,12 @@ model User {
   auditLogs    AuditLog[]
   notifications Notification[]
 
+  // v1.36.74 Faz 1: Gorevler & Hatirlatmalar iliskileri
+  createdTasks       Task[]             @relation("TaskCreator")
+  taskNotes          TaskNote[]
+  taskAttachments    TaskAttachment[]
+  pushSubscriptions  PushSubscription[]
+
   @@unique([tenantId, email])
   @@map("users")
 }
@@ -176,6 +182,8 @@ model Taxpayer {
   isletmeHesapOzetleri IsletmeHesapOzeti[]
   bankaHesaplar       BankaHesap[]
   bankaEkstreKayitlari BankaEkstreKaydi[]
+  // v1.36.74 Faz 1: Gorevler iliskisi
+  tasks               Task[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -1904,4 +1912,164 @@ model LockedModule {
 
   @@index([active])
   @@map("locked_modules")
+}
+
+// ============================================================
+// GOREVLER & HATIRLATMALAR (v1.36.74 Faz 1)
+// Mali musavirlik is akisi icin merkezi gorev sistemi.
+// - Tek seferlik veya tekrarli (gunluk/haftalik/aylik/yillik)
+// - Mukellef bagi opsiyonel
+// - Cok kanalli bildirim: in-app, email (Google Workspace SMTP), browser push
+// - Eskalasyon: vade gectikce uyarilar siklasir
+// ============================================================
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  SNOOZED
+  MISSED
+  CANCELLED
+}
+
+model Task {
+  id              String       @id @default(cuid())
+  tenantId        String
+
+  // Icerik
+  title           String
+  description     String?      @db.Text
+  category        String?      // BEYANNAME, BORDRO, MIHSAP, OFIS, MUKELLEF, vb.
+  priority        TaskPriority @default(MEDIUM)
+  color           String?      // hex (UI icin)
+  tags            String[]     @default([])
+
+  // Mukellef bagi (opsiyonel)
+  taxpayerId      String?
+  taxpayer        Taxpayer?    @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
+
+  // Atayan
+  createdById     String
+  createdBy       User         @relation("TaskCreator", fields: [createdById], references: [id])
+
+  // Zaman
+  dueDate         DateTime?
+  dueTime         String?      // "09:00" formati (HH:mm), null ise tum gun
+  allDay          Boolean      @default(true)
+
+  // Tekrar
+  recurrence      Json?        // RecurrenceConfig (TS interface)
+  parentTaskId    String?
+  parent          Task?        @relation("TaskRecurrence", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  children        Task[]       @relation("TaskRecurrence")
+  isTemplate      Boolean      @default(false) // Tekrar sablonu mu, gercek instance mi
+  nextOccurrence  DateTime?    // Bir sonraki olusturulacak tekrar tarihi
+
+  // Hatirlatma stratejisi
+  reminderConfig  Json?        // RemindConfig (TS interface)
+
+  // Bildirim kanallari
+  notifyInApp     Boolean      @default(true)
+  notifyEmail     Boolean      @default(false)
+  notifyBrowser   Boolean      @default(true)
+  notifySound     Boolean      @default(false)
+
+  // Durum
+  status          TaskStatus   @default(OPEN)
+  completedAt     DateTime?
+  completedById   String?
+  snoozedUntil    DateTime?
+
+  // Eskalasyon
+  escalationLevel Int          @default(0) // 0..5 arasi (5=mali musavire mail gitti)
+  lastReminderAt  DateTime?
+
+  // Audit
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Iliskiler
+  notes           TaskNote[]
+  attachments     TaskAttachment[]
+  reminderLogs    TaskReminderLog[]
+
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, taxpayerId])
+  @@index([tenantId, parentTaskId])
+  @@index([tenantId, isTemplate])
+  @@index([nextOccurrence])
+  @@map("tasks")
+}
+
+model TaskNote {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@map("task_notes")
+}
+
+model TaskAttachment {
+  id            String   @id @default(cuid())
+  taskId        String
+  filename      String
+  s3Key         String
+  size          Int
+  mimeType      String?
+  uploadedById  String
+  createdAt     DateTime @default(now())
+
+  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy    User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([taskId])
+  @@map("task_attachments")
+}
+
+model TaskReminderLog {
+  id           String    @id @default(cuid())
+  taskId       String
+  scheduledFor DateTime
+  sentAt       DateTime?
+  channel      String    // IN_APP | EMAIL | PUSH | SOUND
+  status       String    // PENDING | SENT | FAILED | SKIPPED
+  recipientId  String?
+  errorMsg     String?
+  createdAt    DateTime  @default(now())
+
+  task         Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, status])
+  @@index([scheduledFor, status])
+  @@map("task_reminder_logs")
+}
+
+// Browser Push abonelikleri (her cihaz/tarayici icin)
+model PushSubscription {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  endpoint     String   @unique // Browser push service URL
+  p256dh       String   // Public key
+  auth         String   // Auth secret
+  userAgent    String?  // Hangi tarayici/OS
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
 }
