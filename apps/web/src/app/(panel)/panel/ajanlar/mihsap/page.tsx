@@ -155,9 +155,21 @@ export default function MihsapAgentPage() {
     refetchInterval: 5000,
   });
 
+  // v1.36.39 — onayla override destekli. Kullanici farkli hesap kodu yazdiysa
+  // VendorMemory bu kodu ogrenir, ayni firma + ayni KDV oraninda otomatik dogru kod secer.
   const onaylaPendingMut = useMutation({
-    mutationFn: (id: string) => pendingDecisionsApi.onayla(id, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['pending-decisions'] }),
+    mutationFn: (params: { id: string; override?: string }) =>
+      pendingDecisionsApi.onayla(
+        params.id,
+        params.override && params.override.trim().length > 0
+          ? { override: { kategori: params.override.trim() } }
+          : {},
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pending-decisions'] });
+      toast.success('Karar onaylandı — VendorMemory güncellendi');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Onaylama başarısız'),
   });
 
   const reddetPendingMut = useMutation({
@@ -502,87 +514,14 @@ export default function MihsapAgentPage() {
 
           </div>
           <div className="max-h-[360px] overflow-y-auto">
-            {(pendingDecisions as any[]).slice(0, 20).map((row: any) => {
-              const ai = row.aiKarari || {};
-              const aiOzet = row.kararTipi === 'fatura'
-                ? (ai.hesapKodu || ai.kategori || '(boş)')
-                : [ai.kayitTuru, ai.altTuru].filter(Boolean).join(' → ') || '(boş)';
-              const gecmis = row.gecmisBeklenen?.enCok
-                ? `${row.gecmisBeklenen.enCok}${row.gecmisBeklenen.enCokSayisi ? ` (${row.gecmisBeklenen.enCokSayisi}×)` : ''}`
-                : '—';
-              const isPending = onaylaPendingMut.isPending || reddetPendingMut.isPending;
-              return (
-                <div
-                  key={row.id}
-                  className="grid grid-cols-[1fr_auto] gap-3 items-start px-4 py-3"
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
-                        {row.kararTipi}
-                      </span>
-                      <span className="font-semibold text-[13px] truncate" style={{ color: '#fafaf9' }}>
-                        {row.firmaUnvan || row.firmaKimlikNo || '(firma yok)'}
-                      </span>
-                      {row.belgeNo && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
-                          #{row.belgeNo}
-                        </span>
-                      )}
-                      {row.tutar && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
-                          {row.tutar}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11.5px] mb-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                      Mükellef: <span style={{ color: '#fafaf9' }}>{row.mukellef || '—'}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11.5px]">
-                      <div className="px-2 py-1 rounded" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' }}>
-                        <div className="text-[10px] uppercase font-semibold" style={{ color: '#fbbf24' }}>AI Önerisi</div>
-                        <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{aiOzet}</div>
-                      </div>
-                      <div className="px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div className="text-[10px] uppercase font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Geçmiş Beklenen</div>
-                        <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{gecmis}</div>
-                      </div>
-                    </div>
-                    {row.sapmaSebep && (
-                      <div className="text-[11px] mt-1.5 italic" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                        {row.sapmaSebep}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <button
-                      onClick={() => onaylaPendingMut.mutate(row.id)}
-                      disabled={isPending}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
-                      style={{ background: 'rgba(34,197,94,0.18)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.4)' }}
-                      title="AI önerisini onayla — sonraki Çalıştır'da uygulanır"
-                    >
-                      <ThumbsUp size={12} /> Onayla
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm('Bu kararı reddet — tekrar onay kuyruğuna düşmesin diye sebep belirtmen gerekirse Detaylı Görünüm sayfasına git.')) {
-                          reddetPendingMut.mutate(row.id);
-                        }
-                      }}
-                      disabled={isPending}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
-                      style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.35)' }}
-                      title="Reddet"
-                    >
-                      <ThumbsDown size={12} /> Reddet
-                    </button>
-
-                  </div>
-                </div>
-              );
-            })}
+            {(pendingDecisions as any[]).slice(0, 20).map((row: any) => (
+              <PendingDecisionRow
+                key={row.id}
+                row={row}
+                onaylaPendingMut={onaylaPendingMut}
+                reddetPendingMut={reddetPendingMut}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -808,6 +747,142 @@ export default function MihsapAgentPage() {
         mihsapTaxpayers={mihsapTaxpayers}
         taxpayerName={taxpayerName}
       />
+    </div>
+  );
+}
+
+/**
+ * Bekleyen onay satiri — kullanici hesap kodunu duzeltip onaylayabilir.
+ * Override edilen kod VendorMemory'ye yazilir → ayni firma + ayni KDV oranindaki
+ * fatura bir daha onaya dusmez.
+ */
+function PendingDecisionRow({ row, onaylaPendingMut, reddetPendingMut }: {
+  row: any;
+  onaylaPendingMut: any;
+  reddetPendingMut: any;
+}) {
+  const ai = row.aiKarari || {};
+  const aiKodu: string = row.kararTipi === 'fatura'
+    ? (ai.hesapKodu || ai.kategori || '')
+    : [ai.kayitTuru, ai.altTuru].filter(Boolean).join(' → ');
+  const [override, setOverride] = useState<string>(aiKodu);
+  const isFatura = row.kararTipi === 'fatura';
+  const editilmis = override.trim() !== aiKodu.trim() && override.trim().length > 0;
+  const gecmis = row.gecmisBeklenen?.enCok
+    ? `${row.gecmisBeklenen.enCok}${row.gecmisBeklenen.enCokSayisi ? ` (${row.gecmisBeklenen.enCokSayisi}×)` : ''}`
+    : '—';
+  const isPending = onaylaPendingMut.isPending || reddetPendingMut.isPending;
+
+  return (
+    <div
+      className="grid grid-cols-[1fr_auto] gap-3 items-start px-4 py-3"
+      style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
+            {row.kararTipi}
+          </span>
+          <span className="font-semibold text-[13px] truncate" style={{ color: '#fafaf9' }}>
+            {row.firmaUnvan || row.firmaKimlikNo || '(firma yok)'}
+          </span>
+          {row.belgeNo && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+              #{row.belgeNo}
+            </span>
+          )}
+          {row.tutar && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+              {row.tutar}
+            </span>
+          )}
+        </div>
+        <div className="text-[11.5px] mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          Mükellef: <span style={{ color: '#fafaf9' }}>{row.mukellef || '—'}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-[11.5px] mb-1.5">
+          <div className="px-2 py-1 rounded" style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.20)' }}>
+            <div className="text-[10px] uppercase font-semibold" style={{ color: '#fbbf24' }}>AI Önerisi</div>
+            <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{aiKodu || '(boş)'}</div>
+          </div>
+          <div className="px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="text-[10px] uppercase font-semibold" style={{ color: 'rgba(250,250,249,0.55)' }}>Geçmiş Beklenen</div>
+            <div className="font-mono mt-0.5" style={{ color: '#fafaf9' }}>{gecmis}</div>
+          </div>
+        </div>
+        {isFatura && (
+          <div className="px-2 py-1.5 rounded mb-1.5" style={{ background: editilmis ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.025)', border: editilmis ? '1px solid rgba(212,184,118,0.30)' : '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: editilmis ? '#d4b876' : 'rgba(250,250,249,0.55)' }}>
+                {editilmis ? 'Override Edilecek Kod' : 'Onaylanacak Kod (gerekirse düzelt)'}
+              </div>
+              {editilmis && (
+                <button
+                  type="button"
+                  onClick={() => setOverride(aiKodu)}
+                  className="text-[10px] underline"
+                  style={{ color: 'rgba(250,250,249,0.45)' }}
+                  title="AI önerisine geri dön"
+                >
+                  sıfırla
+                </button>
+              )}
+            </div>
+            <input
+              type="text"
+              value={override}
+              onChange={(e) => setOverride(e.target.value)}
+              placeholder="Hesap kodu (ör. 153.01.001-%01 TICARI MAL ALISLAR)"
+              spellCheck={false}
+              className="w-full text-[12px] font-mono outline-none"
+              style={{
+                background: 'transparent',
+                color: '#fafaf9',
+                borderBottom: '1px dashed rgba(255,255,255,0.15)',
+                padding: '2px 0',
+              }}
+            />
+            {editilmis && (
+              <div className="text-[10.5px] mt-1" style={{ color: '#d4b876' }}>
+                Onaylayınca VendorMemory bu kodu öğrenir — aynı firma + KDV oranı bir daha onaya düşmez.
+              </div>
+            )}
+          </div>
+        )}
+        {row.sapmaSebep && (
+          <div className="text-[11px] italic" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            {row.sapmaSebep}
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={() => onaylaPendingMut.mutate({ id: row.id, override: editilmis ? override : undefined })}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
+          style={{
+            background: editilmis ? 'rgba(212,184,118,0.20)' : 'rgba(34,197,94,0.18)',
+            color: editilmis ? '#d4b876' : '#22c55e',
+            border: editilmis ? '1px solid rgba(212,184,118,0.45)' : '1px solid rgba(34,197,94,0.4)',
+          }}
+          title={editilmis ? 'Düzeltilmiş kodu onayla' : "AI önerisini onayla"}
+        >
+          <ThumbsUp size={12} /> {editilmis ? 'Onayla (override)' : 'Onayla'}
+        </button>
+        <button
+          onClick={() => {
+            if (confirm('Bu kararı reddet — tekrar onay kuyruğuna düşmesin diye sebep belirtmen gerekirse Detaylı Görünüm sayfasına git.')) {
+              reddetPendingMut.mutate(row.id);
+            }
+          }}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
+          style={{ background: 'rgba(244,63,94,0.12)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.35)' }}
+          title="Reddet"
+        >
+          <ThumbsDown size={12} /> Reddet
+        </button>
+      </div>
     </div>
   );
 }

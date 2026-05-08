@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.41';
+  const AGENT_VERSION = '1.36.42';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8324,13 +8324,20 @@
 
   // === KOMUT KUYRUĞU POLLING ===
   async function pollLoop() {
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: true, meta: { url: location.href } }),
-    }).catch(() => {});
+    // v1.36.42: Origin'e göre agent adı (luca vs mihsap) — backend her iki agent için ayrı status tutar.
+    const AGENT_NAME = isLucaOrigin() ? 'luca' : 'mihsap';
+    let lastPingAt = 0;
+    const sendPing = () =>
+      api('/agent/status/ping', {
+        method: 'POST',
+        body: JSON.stringify({ agent: AGENT_NAME, running: true, meta: { url: location.href } }),
+      }).then(() => { lastPingAt = Date.now(); }).catch(() => {});
+    await sendPing();
     while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
+      // Heartbeat: 30 sn'de bir ping at — backend "agent canlı" görsün
+      if (Date.now() - lastPingAt > 30000) await sendPing();
       try {
-                const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: 'mihsap' }) });
+                const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME }) });
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
             try {
@@ -8374,11 +8381,11 @@
     }
     await api('/agent/status/ping', {
       method: 'POST',
-      body: JSON.stringify({ agent: 'mihsap', running: false }),
+      body: JSON.stringify({ agent: AGENT_NAME, running: false }),
     }).catch(() => {});
-    panel.remove();
+    if (panel) panel.remove();
     delete window.__morenAgent;
   }
   pollLoop();
-  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION);
+  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION + ' (' + (isLucaOrigin() ? 'luca' : 'mihsap') + ')');
 })();

@@ -157,6 +157,18 @@ export default function AgentControlCard() {
           onOpen={handleOpenMihsap}
         />
       </div>
+      <div className="mt-3 pt-3 flex items-center justify-between text-[11px]" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}>
+        <span>Başka bilgisayara kurmak için:</span>
+        <a
+          href="/moren-auto-agent.zip"
+          download="moren-auto-agent.zip"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded transition-all"
+          style={{ background: 'rgba(212,184,118,0.12)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.25)' }}
+          title="Extension .zip dosyasını indir"
+        >
+          <Download size={11} /> Extension İndir (.zip)
+        </a>
+      </div>
     </div>
   );
 }
