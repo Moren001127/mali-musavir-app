@@ -190,19 +190,17 @@ export class GelirTablosuService {
       tekHesap('731'), // Genel Üretim Giderleri Yansıtma (-)
     ];
 
-    // v1.36.31: Envanter formülü düzeltildi.
-    // Mizan'daki 150-157 hesap bakiyeleri DÖNEM SONU (kapanış) stoğunu gösterir,
-    // bu yüzden Kalan Stok'tur — Toplam Stok değil.
-    // Eski formül: toplamStok = stokHesaplari, kalanStok = toplamStok - SMM (NEGATİF üretiyordu!)
-    // Yeni formül (envanter):
-    //   Kalan Stok    = Mizan kapanış bakiyeleri toplamı (150+151+152+153+157)
-    //   Toplam Stok   = Kalan Stok + Satılan TICARI MALLARIN Maliyeti (621) (= Açılış + Net Alış)
-    // v1.36.35: Stok bölümünde SADECE 621 (Satılan Ticari Mallar Maliyeti) kullanılır.
-    //   622 (Hizmet) ve 740 (Üretim 7/B) maliyetleri stok hareketi değildir, dahil edilmez.
-    //   Ana gelir tablosundaki "D. Satışların Maliyeti" yine tüm 620-623+740 toplamıdır (TDHP standardı).
+    // v1.36.36: Stok bolumu kullanici mental modeli — Toplam Stok = TUM goruntulenen
+    // satirlarin toplami (150-157 + 720-731). SMM = sadece 621 (Ticari Mallar).
+    // Kalan Stok = Toplam Stok - SMM (envanter dengesi).
+    // 622 (Hizmet) ve 740 (Uretim 7/B) STOK BOLUMUNDE dahil edilmez — kullanici
+    // sadece 621 (ticari mal) maliyetinin dusulmesini istiyor.
+    // Ana gelir tablosundaki "D. Satislarin Maliyeti" yine tum 620-623+740 toplamidir.
     const satisMaliyeti621 = tekHesap('621').bakiye;
-    const kalanStok = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
-    const toplamStok = kalanStok + satisMaliyeti621;
+    const stokToplam150_157 = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
+    const maliyetToplam720_731 = maliyetHesaplari.reduce((s, h) => s + h.bakiye, 0);
+    const toplamStok = stokToplam150_157 + maliyetToplam720_731;
+    const kalanStok = toplamStok - satisMaliyeti621;
 
     // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
     // Eğer 950 nazım hesabı kullanılıyorsa o öncelikli, yoksa 689
