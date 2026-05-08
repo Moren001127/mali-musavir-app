@@ -1,5 +1,5 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Users, FileText, AlertTriangle, ArrowRight, Receipt, FileCheck, Plus, Bot, FileInput, Mailbox, Calculator, BookOpen, Printer, CheckCircle2, X as IconX, Check, Download, FileCheck2, Search as SearchIcon, Settings } from 'lucide-react';
 import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/beyanname-takip';
@@ -23,9 +23,8 @@ type Task = {
   lastReminderAt?: string; // Son uyarının zamanı (sürekli bildirim tekrarı için)
   reminderDismissed?: boolean; // Kullanıcı "Anladım" derse bu oturumda bir daha uyarma
 };
-const TKEY = 'moren-dashboard-tasks';
-const loadT = (): Task[] => { if (typeof window === 'undefined') return []; try { const r = localStorage.getItem(TKEY); return r ? JSON.parse(r) : []; } catch { return []; } };
-const saveT = (t: Task[]) => { if (typeof window !== 'undefined') localStorage.setItem(TKEY, JSON.stringify(t)); };
+// v1.36.74: localStorage tabanlı görev sistemi kaldırıldı — backend tasks API kullanılıyor.
+// const TKEY = 'moren-dashboard-tasks'; (deprecated)
 const fmtDue = (iso: string): { label: string; kind: 'danger' | 'warn' | 'gold' | 'ok' } => {
   const t = new Date(); t.setHours(0,0,0,0);
   const d = new Date(iso); d.setHours(0,0,0,0);
@@ -714,7 +713,37 @@ export default function DashboardPage() {
   const { data: agentStatuses = [] } = useQuery<any[]>({ queryKey: ['agent-statuses'], queryFn: () => api.get('/agent/status').then((r) => r.data).catch(() => []), refetchInterval: 30_000 });
 
   const feed = (agentEvents as any[]).slice(0, 20).map(agentEventToFeed);
-  const [tasks, setTasks] = useState<Task[]>([]);
+
+  // v1.36.74: Görevler artık backend'den geliyor (Görevler & Notlar modülüyle ortak veri).
+  // Eskiden localStorage tabanlıydı — yeni `/panel/gorevler` sayfasıyla senkron olsun diye API'ye geçildi.
+  const qcDash = useQueryClient();
+  const { data: backendTasksData } = useQuery({
+    queryKey: ['dashboard-tasks'],
+    queryFn: () => api.get('/tasks', { params: { isTemplate: 'false', limit: 200 } }).then((r) => r.data).catch(() => ({ items: [] })),
+    refetchInterval: 30_000,
+  });
+  // Reminder banner dismiss durumu — session-bazlı, sadece tarayıcıda
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = sessionStorage.getItem('moren-dismissed-task-ids');
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch { return new Set(); }
+  });
+  // Backend Task'ı dashboard'da kullanılan eski Task tipine map et — JSX'i bozmamak için
+  const tasks: Task[] = useMemo(() => {
+    const items = (backendTasksData as any)?.items || [];
+    return items.map((t: any) => ({
+      id: t.id,
+      title: t.title,
+      dueDate: t.dueDate ? String(t.dueDate).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      note: t.description || undefined,
+      done: t.status === 'DONE',
+      createdAt: t.createdAt,
+      reminderDismissed: dismissedIds.has(t.id),
+    } as Task));
+  }, [backendTasksData, dismissedIds]);
+
   const [modal, setModal] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [nT, setNT] = useState('');
@@ -725,21 +754,45 @@ export default function DashboardPage() {
   // Bu oturumda hangi görevler için uyarı gösterildi
   const [dueShown, setDueShown] = useState<Record<string, number>>({});
 
-  useEffect(() => { setTasks(loadT()); }, []);
-  useEffect(() => { saveT(tasks); }, [tasks]);
+  // v1.36.74: setTasks artık API tarafına yazıp local cache'i invalide eder.
+  // Eski state-base API ile uyumlu kalmak için "(p) => Task[]" pattern destekleniyor.
+  const setTasks: React.Dispatch<React.SetStateAction<Task[]>> = (updater) => {
+    const next = typeof updater === 'function' ? (updater as (p: Task[]) => Task[])(tasks) : updater;
+    // Hangisi sildi, hangisi toggle etti, hangisi eklendi — diff hesapla
+    const oldIds = new Set(tasks.map((t) => t.id));
+    const newIds = new Set(next.map((t) => t.id));
+    // SİLİNEN
+    for (const old of tasks) {
+      if (!newIds.has(old.id)) {
+        api.delete(`/tasks/${old.id}`).catch(() => {});
+      }
+    }
+    // TOGGLE (done değişimi)
+    for (const n of next) {
+      const old = tasks.find((t) => t.id === n.id);
+      if (old && old.done !== n.done) {
+        if (n.done) api.post(`/tasks/${n.id}/complete`).catch(() => {});
+        else api.patch(`/tasks/${n.id}`, { status: 'OPEN' }).catch(() => {});
+      }
+    }
+    qcDash.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+    qcDash.invalidateQueries({ queryKey: ['task-counts'] });
+  };
 
   const addT = () => {
     if (!nT.trim()) return;
-    setTasks((p) => [{
-      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+    api.post('/tasks', {
       title: nT.trim(),
-      dueDate: nD,
-      note: nN.trim() || undefined,
-      done: false,
-      createdAt: new Date().toISOString(),
-      whatsappPhone: nWA.trim() || undefined,
-      emailAddr: nEM.trim() || undefined,
-    }, ...p]);
+      description: nN.trim() || undefined,
+      dueDate: nD ? new Date(nD).toISOString() : undefined,
+      allDay: true,
+      priority: 'MEDIUM',
+      notifyInApp: true,
+      notifyBrowser: true,
+    }).then(() => {
+      qcDash.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+      qcDash.invalidateQueries({ queryKey: ['task-counts'] });
+    }).catch(() => {});
     setNT(''); setNN(''); setNWA(''); setNEM('');
     setND(new Date().toISOString().slice(0, 10));
     setModal(false);
@@ -797,7 +850,13 @@ export default function DashboardPage() {
   }, [dueTasks, dueShown]);
 
   const dismissReminder = (id: string) => {
-    setTasks((p) => p.map((x) => x.id === id ? { ...x, reminderDismissed: true } : x));
+    // v1.36.74: Backend'e dokunmadan oturum-içi dismiss — sessionStorage'da sakla
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try { sessionStorage.setItem('moren-dismissed-task-ids', JSON.stringify([...next])); } catch {}
+      return next;
+    });
   };
   const sorted = [...tasks].sort((a, b) => a.done !== b.done ? (a.done ? 1 : -1) : new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
