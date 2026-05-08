@@ -1050,24 +1050,23 @@ function KarsilastirmaTablosu({
             <button
               key={d}
               onClick={() => saveDraft(d)}
-              className="group inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[12px] font-bold transition-all whitespace-nowrap"
+              className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all whitespace-nowrap"
               style={{
-                background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                background: 'rgba(244,63,94,0.06)',
                 color: '#fafaf9',
-                border: '1px solid rgba(34,197,94,0.5)',
-                boxShadow: '0 2px 8px rgba(34,197,94,0.18), inset 0 1px 0 rgba(255,255,255,0.15)',
+                border: '1px solid rgba(244,63,94,0.20)',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(34,197,94,0.35), inset 0 1px 0 rgba(255,255,255,0.2)';
+                e.currentTarget.style.background = 'rgba(244,63,94,0.12)';
+                e.currentTarget.style.borderColor = 'rgba(244,63,94,0.35)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(34,197,94,0.18), inset 0 1px 0 rgba(255,255,255,0.15)';
+                e.currentTarget.style.background = 'rgba(244,63,94,0.06)';
+                e.currentTarget.style.borderColor = 'rgba(244,63,94,0.20)';
               }}
               title={`${DONEM_ROMAN[d]}. Dönem manuel düzeltmelerini kaydet`}
             >
-              <Save className="h-3.5 w-3.5 shrink-0" />
+              <Save className="h-4 w-4 shrink-0" style={{ color: 'rgba(250,250,249,0.85)' }} />
               <span className="truncate">{DONEM_ROMAN[d]}. Dönemi Kaydet</span>
             </button>
           );
