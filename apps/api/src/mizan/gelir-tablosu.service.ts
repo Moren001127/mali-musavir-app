@@ -306,7 +306,7 @@ export class GelirTablosuService {
     if (!gt) throw new NotFoundException('Gelir tablosu bulunamadı');
     const tp = await (this.prisma as any).taxpayer.findFirst({
       where: { id: gt.taxpayerId, tenantId },
-      select: { id: true, firstName: true, lastName: true, companyName: true },
+      select: { id: true, firstName: true, lastName: true, companyName: true, type: true },
     });
     gt.taxpayer = tp || null;
 
@@ -319,11 +319,15 @@ export class GelirTablosuService {
     // DB'de detay.toplamStok eski formulle saklanmis olabilir — biz arrays'ten
     // her acilista yeniden hesaplariz, eski kayitlar da dogru gorunur.
     // Toplam Stok = stokHesaplari (150-157) + maliyetHesaplari (720-731) toplami
-    // SMM = duzeltmeler.satisMaliyeti (ana GT manuel input) — yoksa 0
+    // SMM = SADECE duzeltmeler.satisMaliyetiManuel (kullanicinin yeni manuel input'u)
+    // Eski kayitlardaki duzeltmeler.satisMaliyeti otomatik 622-Hizmet Maliyeti ile
+    // doldurulmus olabiliyordu — onu artik OKUMUYORUZ. Boylece eski kayitlarda da
+    // yanlis hizmet maliyeti SMM olarak gorunmez, sifir gosterir; kullanici yeni
+    // ana GT'de "Manuel Satilan Ticari Mallar Maliyeti"e yazinca dogru deger gelir.
     // Kalan Stok = Toplam Stok - SMM
     const toplamStok = stokHesaplari.reduce((s: number, h: any) => s + Number(h.bakiye || 0), 0)
                      + maliyetHesaplari.reduce((s: number, h: any) => s + Number(h.bakiye || 0), 0);
-    const satisMaliyeti = Number(duzeltmeler.satisMaliyeti || duzeltmeler.satisMaliyetiManuel || 0);
+    const satisMaliyeti = Number(duzeltmeler.satisMaliyetiManuel || 0);
     const kalanStok = toplamStok - satisMaliyeti;
     const kkeg = Number(detay.kkeg || 0);
 
@@ -364,7 +368,8 @@ export class GelirTablosuService {
         const dToplamKar = Number(o.donemNetKari || 0) + dKkeg;
         const dGecmisYil = Number(dDuz.gecmisYilZarari || 0);
         const dMatrah = Math.max(0, dToplamKar - dGecmisYil);
-        const dHesap = dMatrah * 0.25;
+        // v1.36.47: önceki dönem hesabında da aynı oran uygulanmalı
+        const dHesap = dMatrah * (tp?.type === 'GERCEK_KISI' ? 0.15 : 0.25);
         // O dönemin "önceki ödenen" değerini de dikkate al (kümülatif zincir)
         const dOncekiOdenen = Number(dDuz.oncekiDonemOdenenGeciciVergi || 0);
         const dOdenecek = Math.max(0, dHesap - dOncekiOdenen);
@@ -379,7 +384,10 @@ export class GelirTablosuService {
 
     const toplamKar = donemNetKari + kkeg;
     const gecicVergiMatrahi = Math.max(0, toplamKar - gecmisYilZarari);
-    const gecicVergiOrani = 0.25; // %25 kurumlar vergisi oranı (2026)
+    // v1.36.47: Mükellef tipine göre geçici vergi oranı:
+    //   - TUZEL_KISI → %25 (kurumlar vergisi)
+    //   - GERCEK_KISI → %15 (gelir vergisi geçici taksit dilimi)
+    const gecicVergiOrani = tp?.type === 'GERCEK_KISI' ? 0.15 : 0.25;
     const hesaplananGeciciVergi = gecicVergiMatrahi * gecicVergiOrani;
     const odenecekGeciciVergi = Math.max(0, hesaplananGeciciVergi - oncekiDonemOdenenGeciciVergi);
 
