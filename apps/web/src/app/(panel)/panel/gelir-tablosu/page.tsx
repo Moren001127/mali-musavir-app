@@ -721,7 +721,15 @@ export default function GelirTablosuPage() {
                           key={qi}
                           className="px-3 py-2.5 text-center font-mono"
                           style={{
-                            color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : row.final ? (v < 0 ? '#fb7185' : '#4ade80') : row.total ? GOLD : (v < 0 ? '#fb7185' : '#fafaf9'),
+                            // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)
+                            // → pozitif yeşil, negatif kırmızı (önceden total altın renkti, kar/zarar belli olmuyordu)
+                            color:
+                              !hasData ? 'rgba(250,250,249,0.2)' :
+                              v === 0 ? 'rgba(250,250,249,0.35)' :
+                              ['brutSatisKari','faaliyetKari','olaganKar','donemKari','donemNetKari'].includes(row.k as string)
+                                ? (v < 0 ? '#fb7185' : '#4ade80')
+                                : row.total ? GOLD
+                                : (v < 0 ? '#fb7185' : '#fafaf9'),
                             fontSize: row.final ? 18 : row.total ? 15 : 14,
                             fontWeight: row.final || row.total ? 700 : 500,
                             borderLeft: '1px solid rgba(184,160,111,0.28)',

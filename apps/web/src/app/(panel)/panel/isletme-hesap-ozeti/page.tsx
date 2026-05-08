@@ -942,7 +942,14 @@ function KarsilastirmaTablosu({
           <tbody>
             <Row
               label="DÖNEM KARI"
-              cols={tersDonemler.map((d) => formatTR(liveCalc(d).donemKar))}
+              cols={tersDonemler.map((d) => {
+                const v = liveCalc(d).donemKar;
+                return (
+                  <span key={d} style={{ color: v < 0 ? '#fb7185' : v > 0 ? '#4ade80' : undefined, fontWeight: 700 }}>
+                    {formatTR(v)}
+                  </span>
+                );
+              })}
               calc
               bold
             />
