@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.44';
+  const AGENT_VERSION = '1.36.56';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6248,6 +6248,14 @@
     return kdv || null;
   }
 
+  // v1.36.54: Çok satırlı fatura için TÜM KDV oranlarını array olarak döner.
+  // DOM'da matrah ve kdv select'leri aynı satır sırasıyla geldiği için index eşleşir:
+  // codes[0] ↔ kdvOranlari[0], codes[1] ↔ kdvOranlari[1] ...
+  function readAllKdvOranlari() {
+    const els = [...document.querySelectorAll('.ant-select-selection-item')];
+    return els.map((e) => (e.textContent || '').trim()).filter((t) => /^%\d/.test(t));
+  }
+
   function tumKodlarDolu(codes) {
     return codes.length > 0 && codes.every((c) => c && /^\d/.test(c));
   }
@@ -8184,7 +8192,7 @@
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
       // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
@@ -8194,33 +8202,41 @@
         const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
-      // === v1.36.39: KDV ORAN GÜVENLİK NETİ ===
-      // AI karar verdi 'onay' ama hesap adında %X yazıyorsa fatura KDV oranı X olmak zorunda.
-      // (Örn: hesap "153.01.010-%10 TİCARİ MAL ALIŞLARI" ama KDV %1 → tutarsızlık → onay_bekliyor.)
-      // Bu kontrol AI prompt'una rağmen kayan vakaları yakalar.
+      // === v1.36.54: KDV ORAN GÜVENLİK NETİ — ÇOK SATIRLI FATURA DESTEĞİ ===
+      // Faturada birden fazla KDV oranı olabilir (ör. %1 ve %10).
+      // Her matrah satırı kendi KDV oranıyla pozisyonel eşleşir: codes[i] ↔ kdvOranlari[i].
+      // Hesap adında %X yazıyorsa o satırın KDV oranı da %X olmak zorunda — değilse onay_bekliyor.
       try {
-        const matrahKoduFull = codes[0] || '';
-        const matrahKoduPctMatch = matrahKoduFull.match(/-?%(\d{1,2})\b/);
-        const faturaKdv = (readKdvOrani() || '').replace(/^%/, '').trim();
-        if (matrahKoduPctMatch && faturaKdv) {
-          const koduPct = String(parseInt(matrahKoduPctMatch[1], 10));
-          const fatPct = String(parseInt(faturaKdv, 10));
+        const kdvOranlari = readAllKdvOranlari();
+        const tutarsizSatirlar = [];
+        const minLen = Math.min(codes.length, kdvOranlari.length);
+        for (let i = 0; i < minLen; i++) {
+          const koduFull = codes[i] || '';
+          const pctMatch = koduFull.match(/-?%(\d{1,2})\b/);
+          if (!pctMatch) continue; // hesap adında oran yoksa kontrol edilmez
+          const fatKdvStr = (kdvOranlari[i] || '').replace(/^%/, '').trim();
+          if (!fatKdvStr) continue;
+          const koduPct = String(parseInt(pctMatch[1], 10));
+          const fatPct = String(parseInt(fatKdvStr, 10));
           if (koduPct !== fatPct) {
-            counters.atla++; counters.toplam++; setCount();
-            const sapma = `KDV oran tutarsiz: hesap %${koduPct} ama fatura %${fatPct}`;
-            await logEvent(mukellef.id, mukellef.ad, 'skip',
-              `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
-              { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
-            await clickIleri(fid); continue;
+            tutarsizSatirlar.push(`satir ${i + 1}: hesap %${koduPct} ≠ KDV %${fatPct}`);
           }
+        }
+        if (tutarsizSatirlar.length > 0) {
+          counters.atla++; counters.toplam++; setCount();
+          const sapma = `KDV oran tutarsiz · ${tutarsizSatirlar.join(' · ')}`;
+          await logEvent(mukellef.id, mukellef.ad, 'skip',
+            `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
+            { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodlari: codes, kdvOranlari, satirSayisi: codes.length, ...compareMeta });
+          await clickIleri(fid); continue;
         }
       } catch (kdvCheckErr) { /* sessizce gec — guvenlik neti hata yapsa bile akis bozulmasin */ }
       try {
@@ -8305,13 +8321,13 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
           await clickIleri(fid);
         }
       } catch (e) {
@@ -8352,7 +8368,6 @@
                 body: JSON.stringify({
                   status: 'done',
                   result: {
-                    ...counters,
                     message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
                   },
                 }),

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.44';
+  const AGENT_VERSION = '1.36.56';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8192,7 +8192,7 @@
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
       // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
@@ -8202,12 +8202,12 @@
         const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
         await clickIleri(fid); continue;
       }
       // === v1.36.54: KDV ORAN GÜVENLİK NETİ — ÇOK SATIRLI FATURA DESTEĞİ ===
@@ -8321,13 +8321,13 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed
             ? `eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
             : `F2 sonuçlanmadı · ${sebep}`;
-          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani() });
+          await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
           await clickIleri(fid);
         }
       } catch (e) {
@@ -8368,7 +8368,6 @@
                 body: JSON.stringify({
                   status: 'done',
                   result: {
-                    ...counters,
                     message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
                   },
                 }),
