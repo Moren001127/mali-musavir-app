@@ -1008,67 +1008,71 @@ function KarsilastirmaTablosu({
         </table>
       </BlockCard>
 
-      {/* v1.36.66: DÖNEM AKSİYONLARI — şık, hizalı kaydet butonları (taşma yok, modern görünüm).
-          Grid kolonlar üst tablodaki dönem sütunlarıyla aynı genişlikte (180px) hizalı. */}
+      {/* v1.36.70: DÖNEM AKSİYONLARI — üst tablonun sütun genişlikleriyle BİREBİR aynı grid.
+          Her buton kendi sütunu içinde kalır, yan sütuna taşmaz. */}
       <div
-        className="grid gap-3 rounded-xl px-4 py-3.5 mt-3 items-center"
+        className="grid rounded-xl py-3 mt-3 items-center"
         style={{
-          gridTemplateColumns: `220px repeat(${tersDonemler.length}, minmax(140px, 1fr))`,
+          // Üst tablo ile aynı: 24% etiket + N × COL_WIDTH (her dönem 19%)
+          gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
           border: '1px solid rgba(212,184,118,0.25)',
         }}
       >
         <div
-          className="flex items-center text-[11px] font-bold uppercase tracking-[.08em]"
+          className="flex items-center px-3 text-[11px] font-bold uppercase tracking-[.08em]"
           style={{ color: 'rgba(212,184,118,0.85)' }}
         >
           DÖNEM AKSİYONLARI
         </div>
         {tersDonemler.map((d) => {
           const c = yilData?.ceyrekler?.[d - 1];
+          // Her butonu kendi sütun hücresine sar — px-2 hücre içi soluk + buton sütun sınırını geçmez.
           if (!c) {
-            return <div key={d} />;
+            return <div key={d} className="px-2" />;
           }
           if (c.locked) {
             return (
-              <div
-                key={d}
-                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11.5px] font-semibold whitespace-nowrap"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06))',
-                  color: '#fbbf24',
-                  border: '1px solid rgba(245,158,11,0.35)',
-                }}
-                title={`${DONEM_ROMAN[d]}. Dönem kesin kayıtla kilitlendi`}
-              >
-                <Lock className="h-3 w-3 shrink-0" />
-                <span className="truncate">{DONEM_ROMAN[d]}. Kilitli</span>
+              <div key={d} className="px-2 flex items-center justify-center">
+                <div
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11.5px] font-semibold whitespace-nowrap w-full"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06))',
+                    color: '#fbbf24',
+                    border: '1px solid rgba(245,158,11,0.35)',
+                  }}
+                  title={`${DONEM_ROMAN[d]}. Dönem kesin kayıtla kilitlendi`}
+                >
+                  <Lock className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{DONEM_ROMAN[d]}. Kilitli</span>
+                </div>
               </div>
             );
           }
           return (
-            <button
-              key={d}
-              onClick={() => saveDraft(d)}
-              className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all whitespace-nowrap"
-              style={{
-                background: 'rgba(244,63,94,0.06)',
-                color: '#fafaf9',
-                border: '1px solid rgba(244,63,94,0.20)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(244,63,94,0.12)';
-                e.currentTarget.style.borderColor = 'rgba(244,63,94,0.35)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(244,63,94,0.06)';
-                e.currentTarget.style.borderColor = 'rgba(244,63,94,0.20)';
-              }}
-              title={`${DONEM_ROMAN[d]}. Dönem manuel düzeltmelerini kaydet`}
-            >
-              <Save className="h-4 w-4 shrink-0" style={{ color: 'rgba(250,250,249,0.85)' }} />
-              <span className="truncate">{DONEM_ROMAN[d]}. Dönemi Kaydet</span>
-            </button>
+            <div key={d} className="px-2 flex items-center justify-center">
+              <button
+                onClick={() => saveDraft(d)}
+                className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all whitespace-nowrap w-full"
+                style={{
+                  background: 'rgba(244,63,94,0.06)',
+                  color: '#fafaf9',
+                  border: '1px solid rgba(244,63,94,0.20)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(244,63,94,0.12)';
+                  e.currentTarget.style.borderColor = 'rgba(244,63,94,0.35)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(244,63,94,0.06)';
+                  e.currentTarget.style.borderColor = 'rgba(244,63,94,0.20)';
+                }}
+                title={`${DONEM_ROMAN[d]}. Dönem manuel düzeltmelerini kaydet`}
+              >
+                <Save className="h-4 w-4 shrink-0" style={{ color: 'rgba(250,250,249,0.85)' }} />
+                <span className="truncate">{DONEM_ROMAN[d]}. Dönemi Kaydet</span>
+              </button>
+            </div>
           );
         })}
       </div>
