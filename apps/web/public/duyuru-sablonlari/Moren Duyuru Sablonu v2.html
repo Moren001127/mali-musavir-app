@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Moren Mali Müşavirlik — Duyuru Şablonu v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700;800;900&family=DM+Serif+Display&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1a2470;
+    --navy-2: #131a52;
+    --navy-deep: #0d1238;
+    --gold: #b08a4a;
+    --gold-2: #c9a874;
+    --gold-3: #e6d4a8;
+    --paper: #f7f4ec;
+    --paper-2: #efe9d9;
+    --cream: #fbf9f3;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #d9d2bf;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #e9e6df;
+    font-family: 'Inter', sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 48px 24px 120px;
+  }
+
+  .page-header { max-width: 1200px; margin: 0 auto 40px; text-align: center; }
+  .page-header h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 600; font-size: 32px;
+    color: var(--navy-deep); margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .page-header p { font-size: 14px; color: var(--muted); margin: 0; }
+
+  .grid {
+    max-width: 1200px; margin: 0 auto;
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 48px; justify-items: center;
+  }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+  .variant-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .variant-label {
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500;
+  }
+
+  .card {
+    width: 540px; height: 540px;
+    position: relative; overflow: hidden;
+    box-shadow: 0 24px 60px -20px rgba(13, 18, 56, 0.25), 0 4px 12px rgba(0,0,0,0.06);
+  }
+  .card-inner {
+    width: 1080px; height: 1080px;
+    transform: scale(0.5); transform-origin: top left;
+    position: absolute; inset: 0;
+  }
+
+  /* ================================================================
+     V1 — MONOGRAM ARMA (Lacivert + Altın damga, sadece M işareti)
+     ================================================================ */
+  .v1 { background: var(--navy-deep); color: white; font-family: 'Inter', sans-serif; overflow: hidden; }
+  /* radial gradient depth */
+  .v1::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(176, 138, 74, 0.18), transparent 60%),
+                radial-gradient(ellipse at 50% 100%, rgba(176, 138, 74, 0.08), transparent 50%);
+  }
+  /* dot grid pattern */
+  .v1::after {
+    content: ''; position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1.5px, transparent 1.5px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(to bottom, black, transparent 40%, transparent 60%, black);
+  }
+
+  .v1 .badge {
+    position: absolute;
+    top: 70px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 14px;
+    color: var(--gold-2); font-size: 14px;
+    letter-spacing: 0.4em; text-transform: uppercase;
+    font-weight: 500; z-index: 2;
+  }
+  .v1 .badge::before, .v1 .badge::after {
+    content: ''; width: 36px; height: 1px; background: var(--gold-2);
+  }
+
+  /* Big M monogram crest */
+  .v1 .monogram {
+    position: absolute; top: 130px; left: 50%; transform: translateX(-50%);
+    width: 280px; height: 280px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2;
+  }
+  .v1 .monogram .ring {
+    position: absolute; inset: 0;
+    border: 1px solid rgba(201, 168, 116, 0.4);
+    border-radius: 50%;
+  }
+  .v1 .monogram .ring-2 {
+    position: absolute; inset: 14px;
+    border: 1px solid rgba(201, 168, 116, 0.2);
+    border-radius: 50%;
+  }
+  .v1 .monogram .M {
+    font-family: 'DM Serif Display', 'Playfair Display', serif;
+    font-size: 200px; line-height: 1; color: var(--gold-2);
+    letter-spacing: -0.04em;
+    margin-top: -14px;
+  }
+  /* small "m" superscript matching logo */
+  .v1 .monogram .m-sup {
+    position: absolute;
+    top: 70px; right: 56px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 32px; color: var(--gold-2);
+    background: var(--navy-deep);
+    padding: 4px 10px;
+    border: 1px solid var(--gold-2);
+    border-radius: 50%;
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+
+  .v1 .content {
+    position: absolute;
+    top: 460px; left: 100px; right: 100px;
+    text-align: center; z-index: 2;
+  }
+  .v1 .title {
+    font-family: 'Playfair Display', serif;
+    font-size: 64px; line-height: 1.05;
+    font-weight: 600; margin: 0 0 28px;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  .v1 .body {
+    font-size: 22px; line-height: 1.6;
+    color: rgba(255,255,255,0.78);
+    font-weight: 300;
+    text-wrap: pretty;
+    max-width: 760px; margin: 0 auto;
+  }
+
+  .v1 .signature {
+    position: absolute;
+    bottom: 60px; left: 0; right: 0;
+    text-align: center; z-index: 2;
+  }
+  .v1 .signature .firm {
+    font-family: 'Playfair Display', serif;
+    font-size: 26px; letter-spacing: 0.32em;
+    color: white; font-weight: 500;
+  }
+  .v1 .signature .sub {
+    font-size: 11px; letter-spacing: 0.45em;
+    color: var(--gold-2); margin-top: 6px;
+    text-transform: uppercase;
+  }
+  .v1 .signature .contact {
+    margin-top: 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.05em;
+    display: flex; justify-content: center; gap: 28px;
+  }
+  .v1 .signature .contact span::before {
+    content: '·'; margin-right: 28px; color: var(--gold-2); margin-left: -14px;
+  }
+  .v1 .signature .contact span:first-child::before { display: none; }
+
+  /* ================================================================
+     V2 — DEV TİPOGRAFİ + LOGO İŞARET (Editorial poster)
+     ================================================================ */
+  .v2 {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+  }
+  /* Top hero band with massive type */
+  .v2 .hero {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 580px;
+    overflow: hidden;
+    background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%);
+  }
+  .v2 .hero::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: 100% 64px;
+  }
+  .v2 .hero-mega {
+    position: absolute;
+    top: 80px; left: 80px;
+    font-family: 'Playfair Display', serif;
+    font-weight: 800;
+    font-size: 280px;
+    line-height: 0.85;
+    color: rgba(255, 255, 255, 0.06);
+    letter-spacing: -0.04em;
+    user-select: none;
+    text-transform: uppercase;
+  }
+  .v2 .hero-content {
+    position: absolute;
+    top: 80px; left: 80px; right: 80px; bottom: 80px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: white;
+    z-index: 2;
+  }
+  .v2 .hero-top {
+    display: flex; justify-content: space-between; align-items: flex-start;
+  }
+  .v2 .hero-logo {
+    width: 80px; height: 80px;
+  }
+  .v2 .hero-logo img { width: 100%; height: 100%; object-fit: contain; }
+  .v2 .hero-meta {
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--gold-2);
+    letter-spacing: 0.08em;
+    line-height: 1.6;
+  }
+  .v2 .hero-meta .ref { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 2px; }
+
+  .v2 .hero-bottom {
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  .v2 .hero-eyebrow {
+    font-size: 14px; letter-spacing: 0.42em; text-transform: uppercase;
+    color: var(--gold-2); font-weight: 500;
+  }
+  .v2 .hero-num {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 36px; color: rgba(255,255,255,0.4);
+  }
+
+  .v2 .body-area {
+    position: absolute;
+    top: 580px; left: 0; right: 0; bottom: 0;
+    padding: 70px 80px 60px;
+    display: flex; flex-direction: column;
+  }
+  .v2 .v2-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 64px; line-height: 1.05;
+    font-weight: 700; color: var(--navy-deep);
+    margin: 0 0 24px;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .v2 .v2-body {
+    font-size: 21px; line-height: 1.55; color: #2a2a2a;
+    text-wrap: pretty;
+    max-width: 820px;
+    margin-bottom: auto;
+  }
+  .v2 .v2-foot {
+    border-top: 1px solid var(--line);
+    padding-top: 22px;
+    display: grid; grid-template-columns: auto 1fr auto;
+    gap: 32px; align-items: center;
+    font-size: 14px; color: var(--navy-deep);
+  }
+  .v2 .v2-foot .firmname {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px; font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .v2 .v2-foot .firmname small {
+    display: block;
+    font-family: 'Inter', sans-serif;
+    font-size: 10px; letter-spacing: 0.3em;
+    color: var(--gold); text-transform: uppercase;
+    margin-top: 2px; font-weight: 600;
+  }
+  .v2 .v2-foot .lines {
+    text-align: center; line-height: 1.7;
+    font-size: 13px; color: #555;
+  }
+  .v2 .v2-foot .lines b { color: var(--navy-deep); font-weight: 600; }
+  .v2 .v2-foot .web {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--gold);
+    font-size: 13px; letter-spacing: 0.05em;
+  }
+
+  /* ================================================================
+     V3 — FILIGRAN MONOGRAM + DAMGA ROZET (Premium document)
+     ================================================================ */
+  .v3 {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+  /* paper texture */
+  .v3::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(176, 138, 74, 0.08), transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(26, 36, 112, 0.05), transparent 50%);
+    pointer-events: none;
+  }
+  /* big watermark M in background */
+  .v3 .wm {
+    position: absolute;
+    right: -160px; bottom: -260px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 1100px; line-height: 0.8;
+    color: rgba(26, 36, 112, 0.04);
+    user-select: none; pointer-events: none;
+  }
+
+  .v3 .v3-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 100px;
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 0 80px;
+    border-bottom: 1px solid var(--line);
+  }
+  .v3 .v3-top::after {
+    content: ''; position: absolute;
+    bottom: -1px; left: 80px; width: 60px; height: 2px;
+    background: var(--gold);
+  }
+  .v3 .v3-mark {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .v3 .v3-mark img { height: 56px; width: auto; }
+  .v3 .v3-mark .txt {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px; color: var(--navy-deep);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .v3 .v3-mark .txt small {
+    display: block;
+    font-family: 'Inter', sans-serif;
+    font-size: 9px; letter-spacing: 0.32em;
+    color: var(--gold); margin-top: 4px;
+    text-transform: uppercase; font-weight: 600;
+  }
+  .v3 .v3-meta {
+    font-family: 'JetBrains Mono', monospace;
+    text-align: right;
+    font-size: 12px; color: var(--muted);
+    letter-spacing: 0.05em; line-height: 1.6;
+  }
+  .v3 .v3-meta .date {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px; font-weight: 600;
+    color: var(--navy-deep); letter-spacing: 0;
+  }
+
+  /* Stamp/seal in corner */
+  .v3 .seal {
+    position: absolute;
+    top: 160px; right: 80px;
+    width: 140px; height: 140px;
+    border: 2px solid var(--gold);
+    border-radius: 50%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--gold);
+    font-family: 'Playfair Display', serif;
+    transform: rotate(-12deg);
+    z-index: 2;
+  }
+  .v3 .seal::before {
+    content: ''; position: absolute; inset: 6px;
+    border: 1px dashed rgba(176, 138, 74, 0.5);
+    border-radius: 50%;
+  }
+  .v3 .seal .seal-top {
+    font-size: 10px; letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--gold); font-weight: 600;
+    font-family: 'Inter', sans-serif;
+  }
+  .v3 .seal .seal-big {
+    font-size: 36px; font-weight: 700;
+    line-height: 1; margin: 4px 0;
+    letter-spacing: -0.02em;
+  }
+  .v3 .seal .seal-bot {
+    font-size: 9px; letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--gold); font-weight: 500;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .v3 .v3-content {
+    position: absolute;
+    top: 180px; left: 80px; right: 280px; bottom: 220px;
+    display: flex; flex-direction: column;
+    z-index: 2;
+  }
+  .v3 .v3-eyebrow {
+    font-size: 13px; letter-spacing: 0.35em; text-transform: uppercase;
+    color: var(--gold); font-weight: 600;
+    margin-bottom: 24px;
+    display: inline-flex; align-items: center; gap: 12px;
+  }
+  .v3 .v3-eyebrow::before {
+    content: ''; width: 32px; height: 1px; background: var(--gold);
+  }
+  .v3 .v3-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 70px; line-height: 1.0;
+    font-weight: 700; color: var(--navy-deep);
+    margin: 0 0 28px;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .v3 .v3-body {
+    font-size: 22px; line-height: 1.55;
+    color: #2a2a2a;
+    font-weight: 400;
+    text-wrap: pretty;
+  }
+
+  .v3 .v3-foot {
+    position: absolute;
+    bottom: 60px; left: 80px; right: 80px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 24px;
+    padding-top: 30px;
+    border-top: 1px solid var(--line);
+    z-index: 2;
+  }
+  .v3 .v3-foot::before {
+    content: ''; position: absolute;
+    top: -1px; left: 0; width: 60px; height: 2px;
+    background: var(--gold);
+  }
+  .v3 .f-cell .f-lbl {
+    font-size: 10px; letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--gold); font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .v3 .f-cell .f-val {
+    font-size: 14px; color: var(--navy-deep);
+    font-weight: 500; line-height: 1.5;
+  }
+
+  /* ================================================================
+     V4 — DİAGONAL SPLIT + BÜYÜK İŞARET (Modern duyuru)
+     ================================================================ */
+  .v4 {
+    background: var(--cream);
+    font-family: 'Inter', sans-serif;
+    color: var(--ink);
+  }
+  /* navy block — top portion only, with diagonal cut at the bottom */
+  .v4 .v4-bg {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 360px;
+    background: var(--navy);
+    clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
+  }
+  .v4 .v4-bg::before {
+    content: ''; position: absolute;
+    bottom: -3px; left: 0; right: 0;
+    height: 100%;
+    background: var(--gold);
+    clip-path: polygon(0 100%, 100% 78%, 100% calc(78% + 4px), 0 calc(100% + 4px));
+  }
+  /* huge logo monogram on navy block */
+  .v4 .v4-mark {
+    position: absolute;
+    top: 70px; left: 90px;
+    z-index: 2;
+  }
+  .v4 .v4-mark img {
+    height: 90px; width: auto;
+    filter: brightness(0) invert(1);
+  }
+  .v4 .v4-stamp {
+    position: absolute;
+    top: 80px; right: 90px;
+    z-index: 2;
+    text-align: right;
+    color: white;
+  }
+  .v4 .v4-stamp .lbl {
+    font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--gold-2); font-weight: 600;
+  }
+  .v4 .v4-stamp .date {
+    font-family: 'Playfair Display', serif;
+    font-size: 30px; font-weight: 600;
+    line-height: 1; margin-top: 6px;
+    color: white;
+  }
+  .v4 .v4-stamp .ref {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: rgba(255,255,255,0.55);
+    letter-spacing: 0.05em; margin-top: 6px;
+  }
+
+  /* big M as background graphic in the navy band */
+  .v4 .v4-letter {
+    position: absolute;
+    top: -120px; left: 50%;
+    transform: translateX(-50%);
+    font-family: 'DM Serif Display', serif;
+    font-size: 600px;
+    line-height: 1;
+    color: rgba(255,255,255,0.05);
+    user-select: none; pointer-events: none;
+    z-index: 1;
+  }
+
+  .v4 .v4-eyebrow-side {
+    position: absolute;
+    top: 430px; left: 90px;
+    z-index: 2;
+    color: var(--gold);
+    font-size: 14px; letter-spacing: 0.4em;
+    text-transform: uppercase;
+    font-weight: 600;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .v4 .v4-eyebrow-side::after {
+    content: ''; width: 36px; height: 1px; background: var(--gold);
+  }
+
+  .v4 .v4-content {
+    position: absolute;
+    top: 490px; left: 90px; right: 90px;
+    z-index: 2;
+  }
+  .v4 .v4-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 80px; line-height: 0.98;
+    font-weight: 700; color: var(--navy-deep);
+    margin: 0 0 32px;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+    max-width: 850px;
+  }
+  .v4 .v4-rule {
+    width: 80px; height: 4px;
+    background: var(--gold);
+    margin-bottom: 28px;
+  }
+  .v4 .v4-body {
+    font-size: 22px; line-height: 1.55;
+    color: #2a2a2a;
+    text-wrap: pretty;
+    max-width: 820px;
+  }
+
+  .v4 .v4-foot {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--navy-deep);
+    padding: 36px 90px;
+    display: grid;
+    grid-template-columns: auto 1px 1fr 1px auto;
+    gap: 32px;
+    align-items: center;
+    z-index: 2;
+  }
+  .v4 .v4-foot .div { width: 1px; height: 50px; background: rgba(255,255,255,0.15); }
+  .v4 .v4-foot .cell { color: white; }
+  .v4 .v4-foot .cell .lbl {
+    font-size: 10px; letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--gold-2); font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .v4 .v4-foot .cell .val {
+    font-size: 16px; color: white;
+    font-weight: 500;
+  }
+  .v4 .v4-foot .cell.brand .val {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ===== Editable elements ===== */
+  [contenteditable="true"] { outline: none; cursor: text; }
+  [contenteditable="true"]:focus {
+    background: rgba(255, 220, 100, 0.18);
+    box-shadow: 0 0 0 2px rgba(255, 220, 100, 0.4);
+  }
+  body.editing [contenteditable="true"]:hover {
+    background: rgba(255, 220, 100, 0.08);
+    box-shadow: 0 0 0 1px rgba(255, 220, 100, 0.3);
+  }
+
+  /* Print */
+  @media print {
+    body { background: white; padding: 0; }
+    .page-header, .util-row, .twk-panel, .hint { display: none !important; }
+    .grid { display: block; }
+    .variant-wrap { page-break-after: always; margin: 0; padding: 20mm; }
+    .variant-label { display: none; }
+    .card { width: 170mm; height: 170mm; box-shadow: none; margin: 0 auto; }
+    .card-inner { transform: scale(0.157407); }
+  }
+
+  .util-row {
+    max-width: 1200px; margin: 32px auto 0;
+    display: flex; justify-content: center; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .util-btn {
+    background: var(--navy); color: white; border: none;
+    padding: 12px 22px; font-size: 13px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .util-btn:hover { background: var(--navy-2); transform: translateY(-1px); }
+  .util-btn.gold { background: var(--gold); color: var(--navy-deep); }
+  .util-btn.gold:hover { background: var(--gold-2); }
+
+  .hint {
+    max-width: 1200px;
+    margin: 0 auto 32px;
+    padding: 14px 20px;
+    background: rgba(176, 138, 74, 0.1);
+    border-left: 3px solid var(--gold);
+    color: var(--navy-deep);
+    font-size: 13px;
+  }
+  .hint strong { color: var(--navy); }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Moren Mali Müşavirlik · Duyuru Şablonu</h1>
+  <p>Yeni 4 kurumsal düzen · 1080 × 1080 · Logo öğeleri tipografik biçimde kullanılmıştır</p>
+</div>
+
+<div class="hint">
+  <strong>İpucu:</strong> Başlık, içerik ve tarih alanlarına doğrudan tıklayıp metni değiştirebilirsiniz.
+  Sağ üst <strong>Tweaks</strong> düğmesi ile tüm varyasyonları aynı anda düzenleyebilir, yazdırabilir veya PDF olarak alabilirsiniz.
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="util-row">
+  <button class="util-btn" onclick="window.print()">Yazdır / PDF</button>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="duyuru-app.jsx"></script>
+
+</body>
+</html>

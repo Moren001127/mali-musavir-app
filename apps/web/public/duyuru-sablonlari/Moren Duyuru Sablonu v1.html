@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Moren Mali Müşavirlik — Duyuru Şablonu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #1a2470;
+    --navy-deep: #131a52;
+    --navy-ink: #0d1238;
+    --gold: #b08a4a;
+    --gold-soft: #c9a874;
+    --paper: #f7f4ec;
+    --paper-warm: #efe9d9;
+    --cream: #fbf9f3;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #d9d2bf;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #e9e6df;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+    padding: 48px 24px 120px;
+  }
+
+  .page-header {
+    max-width: 1200px;
+    margin: 0 auto 40px;
+    text-align: center;
+  }
+  .page-header h1 {
+    font-family: 'Playfair Display', serif;
+    font-weight: 600;
+    font-size: 32px;
+    color: var(--navy-ink);
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .page-header p {
+    font-size: 14px;
+    color: var(--muted);
+    margin: 0;
+    letter-spacing: 0.02em;
+  }
+
+  .grid {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 40px;
+    justify-items: center;
+  }
+  @media (max-width: 1100px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+
+  .variant-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .variant-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  /* ============ CARD BASE — 1080×1080 ============ */
+  .card {
+    width: 540px;
+    height: 540px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -20px rgba(13, 18, 56, 0.25), 0 4px 12px rgba(0,0,0,0.06);
+    /* internal coords are 1080, scaled */
+    container-type: size;
+  }
+  .card-inner {
+    width: 1080px;
+    height: 1080px;
+    transform: scale(0.5);
+    transform-origin: top left;
+    position: absolute;
+    inset: 0;
+  }
+
+  /* ============================================
+     V1 — KLASİK ÇERÇEVE (Lacivert + Altın)
+     ============================================ */
+  .v1 {
+    background: var(--navy);
+    color: white;
+    font-family: 'Inter', sans-serif;
+  }
+  .v1 .frame {
+    position: absolute;
+    inset: 60px;
+    border: 1px solid rgba(201, 168, 116, 0.45);
+  }
+  .v1 .frame-inner {
+    position: absolute;
+    inset: 76px;
+    border: 1px solid rgba(201, 168, 116, 0.25);
+  }
+  .v1 .corner {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border: 1.5px solid var(--gold-soft);
+  }
+  .v1 .corner.tl { top: 48px; left: 48px; border-right: none; border-bottom: none; }
+  .v1 .corner.tr { top: 48px; right: 48px; border-left: none; border-bottom: none; }
+  .v1 .corner.bl { bottom: 48px; left: 48px; border-right: none; border-top: none; }
+  .v1 .corner.br { bottom: 48px; right: 48px; border-left: none; border-top: none; }
+
+  .v1 .content {
+    position: absolute;
+    inset: 130px 110px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .v1 .logo-mark {
+    width: 200px;
+    height: 200px;
+    background: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 10px;
+    box-shadow: 0 0 0 8px rgba(255,255,255,0.06), 0 0 0 1px rgba(201, 168, 116, 0.3);
+  }
+  .v1 .logo-mark img {
+    width: 76%;
+    height: 76%;
+    object-fit: contain;
+  }
+  .v1 .eyebrow {
+    margin-top: 36px;
+    font-size: 13px;
+    letter-spacing: 0.42em;
+    color: var(--gold-soft);
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .v1 .divider {
+    width: 60px;
+    height: 1px;
+    background: var(--gold-soft);
+    margin: 22px 0 28px;
+  }
+  .v1 .title {
+    font-family: 'Playfair Display', serif;
+    font-size: 64px;
+    line-height: 1.05;
+    font-weight: 600;
+    margin: 0 0 30px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .v1 .body {
+    font-size: 22px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.86);
+    font-weight: 300;
+    max-width: 720px;
+    text-wrap: pretty;
+  }
+  .v1 .footer {
+    position: absolute;
+    bottom: 130px;
+    left: 110px;
+    right: 110px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(201, 168, 116, 0.3);
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+  }
+  .v1 .footer-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .v1 .footer-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.85; }
+
+  /* ============================================
+     V2 — MODERN ASIMETRIK (Krem + Lacivert)
+     ============================================ */
+  .v2 {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+  }
+  .v2 .header-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    background: var(--navy);
+    display: flex;
+    align-items: center;
+    padding: 0 80px;
+    justify-content: space-between;
+  }
+  .v2 .header-bar::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: var(--gold);
+  }
+  .v2 .brand {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+  .v2 .brand-mark {
+    width: 110px;
+    height: 110px;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    padding: 8px;
+  }
+  .v2 .brand-mark img { width: 100%; height: 100%; object-fit: contain; }
+  .v2 .brand-text { color: white; }
+  .v2 .brand-text .top {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .v2 .brand-text .sub {
+    font-size: 13px;
+    letter-spacing: 0.24em;
+    color: var(--gold-soft);
+    text-transform: uppercase;
+    margin-top: 4px;
+  }
+  .v2 .badge {
+    background: var(--gold);
+    color: var(--navy-ink);
+    font-size: 12px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 12px 22px;
+  }
+
+  .v2 .content {
+    position: absolute;
+    top: 240px;
+    left: 80px;
+    right: 80px;
+    bottom: 220px;
+  }
+  .v2 .label {
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+    margin-bottom: 18px;
+  }
+  .v2 .title {
+    font-family: 'Playfair Display', serif;
+    font-size: 76px;
+    line-height: 1.0;
+    font-weight: 700;
+    color: var(--navy-ink);
+    margin: 0 0 36px;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .v2 .accent-line {
+    width: 80px;
+    height: 4px;
+    background: var(--gold);
+    margin-bottom: 30px;
+  }
+  .v2 .body {
+    font-size: 22px;
+    line-height: 1.55;
+    color: #2a2a2a;
+    font-weight: 400;
+    max-width: 780px;
+    text-wrap: pretty;
+  }
+
+  .v2 .footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 180px;
+    background: var(--paper-warm);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    padding: 0 80px;
+    gap: 20px;
+  }
+  .v2 .f-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .v2 .f-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .v2 .f-icon svg { width: 20px; height: 20px; }
+  .v2 .f-text { font-size: 15px; line-height: 1.35; color: var(--navy-ink); font-weight: 500; }
+  .v2 .f-text .lbl {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  /* ============================================
+     V3 — DESEN + FILIGRAN LOGO
+     ============================================ */
+  .v3 {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+  .v3 .pattern {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(26, 36, 112, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26, 36, 112, 0.04) 1px, transparent 1px);
+    background-size: 36px 36px;
+    opacity: 1;
+  }
+  .v3 .watermark {
+    position: absolute;
+    right: -180px;
+    bottom: -180px;
+    width: 720px;
+    height: 720px;
+    opacity: 0.05;
+    pointer-events: none;
+  }
+  .v3 .watermark img { width: 100%; height: 100%; object-fit: contain; }
+
+  .v3 .top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 8px;
+    background: var(--navy);
+  }
+  .v3 .top-bar::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 240px;
+    height: 8px;
+    background: var(--gold);
+  }
+
+  .v3 .header {
+    position: absolute;
+    top: 60px;
+    left: 80px;
+    right: 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .v3 .v3-logo {
+    width: 130px;
+    height: 100px;
+    display: flex;
+    align-items: center;
+  }
+  .v3 .v3-logo img { width: 100%; height: 100%; object-fit: contain; object-position: left; }
+  .v3 .v3-meta {
+    text-align: right;
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    line-height: 1.5;
+  }
+  .v3 .v3-meta .date {
+    font-family: 'Playfair Display', serif;
+    font-size: 20px;
+    color: var(--navy-ink);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .v3 .v3-meta .ref {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    margin-top: 4px;
+  }
+
+  .v3 .center-card {
+    position: absolute;
+    top: 240px;
+    left: 80px;
+    right: 80px;
+    bottom: 200px;
+    background: white;
+    border: 1px solid var(--line);
+    padding: 64px 70px;
+    display: flex;
+    flex-direction: column;
+  }
+  .v3 .stamp {
+    position: absolute;
+    top: -30px;
+    left: 64px;
+    background: var(--gold);
+    color: var(--navy-ink);
+    padding: 14px 26px;
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .v3 .icon-row {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 30px;
+  }
+  .v3 .icon-pill {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--navy);
+  }
+  .v3 .icon-pill svg { width: 24px; height: 24px; }
+
+  .v3 .title {
+    font-family: 'Playfair Display', serif;
+    font-size: 56px;
+    line-height: 1.05;
+    font-weight: 600;
+    color: var(--navy-ink);
+    margin: 0 0 24px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .v3 .accent { width: 50px; height: 3px; background: var(--gold); margin-bottom: 24px; }
+  .v3 .body {
+    font-size: 21px;
+    line-height: 1.6;
+    color: #333;
+    text-wrap: pretty;
+  }
+
+  .v3 .footer {
+    position: absolute;
+    bottom: 60px;
+    left: 80px;
+    right: 80px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+  .v3 .f-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--navy-ink);
+  }
+  .v3 .f-cell svg { width: 16px; height: 16px; color: var(--gold); flex-shrink: 0; }
+
+  /* ============================================
+     V4 — MİNİMAL EDITORIAL (Geniş Lacivert Bant)
+     ============================================ */
+  .v4 {
+    background: var(--cream);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+  }
+  .v4 .left-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 360px;
+    background: var(--navy-deep);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 70px 50px;
+    color: white;
+  }
+  .v4 .left-band::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--gold);
+  }
+  .v4 .v4-logo {
+    background: white;
+    padding: 16px;
+    width: 220px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .v4 .v4-logo img { width: 100%; height: 100%; object-fit: contain; }
+  .v4 .v4-rotate {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: var(--gold-soft);
+    align-self: center;
+  }
+  .v4 .v4-bottom-info {
+    font-size: 13px;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 0.02em;
+  }
+  .v4 .v4-bottom-info .bigword {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px;
+    color: white;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  .v4 .right-content {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 360px;
+    right: 0;
+    padding: 100px 80px 80px;
+    display: flex;
+    flex-direction: column;
+  }
+  .v4 .v4-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 600;
+    margin-bottom: 36px;
+  }
+  .v4 .v4-eyebrow::before {
+    content: '';
+    width: 40px;
+    height: 1px;
+    background: var(--gold);
+  }
+  .v4 .v4-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 72px;
+    line-height: 1.0;
+    font-weight: 700;
+    color: var(--navy-ink);
+    margin: 0 0 30px;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .v4 .v4-body {
+    font-size: 21px;
+    line-height: 1.55;
+    color: #2a2a2a;
+    margin-bottom: auto;
+    text-wrap: pretty;
+  }
+  .v4 .v4-meta {
+    border-top: 1px solid var(--line);
+    padding-top: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .v4 .v4-meta .lbl {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .v4 .v4-meta .val {
+    font-family: 'Playfair Display', serif;
+    font-size: 24px;
+    color: var(--navy-ink);
+    font-weight: 600;
+  }
+  .v4 .v4-meta .web {
+    font-size: 14px;
+    color: var(--navy);
+    letter-spacing: 0.02em;
+  }
+
+  /* ===== Editable elements ===== */
+  [contenteditable="true"] {
+    outline: none;
+    cursor: text;
+  }
+  [contenteditable="true"]:focus {
+    background: rgba(255, 220, 100, 0.18);
+    box-shadow: 0 0 0 2px rgba(255, 220, 100, 0.4);
+  }
+  body.editing [contenteditable="true"]:hover {
+    background: rgba(255, 220, 100, 0.08);
+    box-shadow: 0 0 0 1px rgba(255, 220, 100, 0.3);
+  }
+
+  /* Print: A4 / single card */
+  @media print {
+    body { background: white; padding: 0; }
+    .page-header, .download-row, .tweaks-toolbar { display: none !important; }
+    .grid { display: block; }
+    .variant-wrap { page-break-after: always; margin: 0; padding: 20mm; }
+    .variant-label { display: none; }
+    .card {
+      width: 170mm; height: 170mm;
+      box-shadow: none;
+      margin: 0 auto;
+    }
+    .card-inner { transform: scale(0.157407); /* 170mm/1080px */ }
+  }
+
+  /* Download / utility row */
+  .util-row {
+    max-width: 1200px;
+    margin: 32px auto 0;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .util-btn {
+    background: var(--navy);
+    color: white;
+    border: none;
+    padding: 12px 22px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .util-btn:hover { background: var(--navy-deep); transform: translateY(-1px); }
+  .util-btn.gold { background: var(--gold); color: var(--navy-ink); }
+  .util-btn.gold:hover { background: var(--gold-soft); }
+
+  /* Tweak panel hint */
+  .hint {
+    max-width: 1200px;
+    margin: 0 auto 32px;
+    padding: 14px 20px;
+    background: rgba(176, 138, 74, 0.1);
+    border-left: 3px solid var(--gold);
+    color: var(--navy-ink);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+  }
+  .hint strong { color: var(--navy); }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Moren Mali Müşavirlik · Duyuru Şablonu</h1>
+  <p>4 farklı kurumsal düzen · 1080 × 1080 · WhatsApp / Sosyal Medya uyumlu</p>
+</div>
+
+<div class="hint">
+  <strong>İpucu:</strong> Şablonlardaki başlık, içerik ve tarih alanlarına doğrudan tıklayıp metni değiştirebilirsiniz. Sağ üstteki <strong>Tweaks</strong> düğmesi ile tüm varyasyonları aynı anda düzenleyebilir, yazdırabilir veya PDF olarak alabilirsiniz.
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="util-row">
+  <button class="util-btn" onclick="window.print()">Yazdır / PDF</button>
+  <button class="util-btn gold" onclick="downloadPNG()">PNG indir (görünen)</button>
+</div>
+
+<!-- Speaker / icon SVG defs (re-used inline) -->
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="duyuru-app.jsx"></script>
+
+<script>
+  function downloadPNG() {
+    alert('PNG indirme: tarayıcının "Sayfayı kaydet" veya yazdırma diyalogundan PDF/PNG seçeneğini kullanabilirsiniz. Yüksek çözünürlüklü PNG çıktısı için ekran görüntüsü almanız önerilir.');
+  }
+</script>
+
+</body>
+</html>
