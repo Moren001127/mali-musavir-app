@@ -1,37 +1,39 @@
 // Portal sayfasında MAIN world'e enjekte edilir.
 // Portal koduna `window.__morenAutoAgent` bridge'ini sağlar.
 //
-// Mimari: main world chrome.* API'lerine erişemediği için
-// postMessage ile ISOLATED world'deki portal-relay.js'e mesaj atar,
-// o da chrome.runtime.sendMessage ile background'a yönlendirir.
+// v1.36.62: Stabil deviceId DOM dataset'ten okunur (extension geneli, tüm origin'lerde aynı).
+// device-id-injector.js (ISOLATED world) chrome.storage.local'dan okuyup dataset'e yazar.
 
 (function portalBridge() {
   if (window.__morenAutoAgent) return;
 
   const pendingResponses = new Map();
 
-  // v1.36.61: Stabil deviceId — portal sayfasından gönderilen komutlar bu PC'ye target'lanır.
-  // Aynı kullanıcının her tarayıcı/profil için farklı deviceId olur ama aynı tarayıcıda
-  // sabit kalır (localStorage). Aynı PC'de açılan agent runtime'ı da aynı deviceId'yi kullanır.
-  let deviceId = '';
-  try {
-    deviceId = localStorage.getItem('moren_device_id') || '';
-    if (!deviceId) {
-      deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-      localStorage.setItem('moren_device_id', deviceId);
-    }
-  } catch (e) {
-    deviceId = 'DEV-FALLBACK-' + Date.now().toString(36);
+  let deviceId = (document.documentElement?.dataset?.morenDeviceId || '').trim();
+  if (!deviceId) {
+    try { deviceId = localStorage.getItem('moren_device_id') || ''; } catch (_) {}
+  }
+  if (!deviceId) {
+    deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    try { localStorage.setItem('moren_device_id', deviceId); } catch (_) {}
   }
 
   window.__morenAutoAgent = {
     installed: true,
-    version: '1.0.0',
-    deviceId,                              // ← Portal createCommand bunu okuyup targetDeviceId olarak gönderir
+    version: '1.0.1',
+    deviceId,
     restartAll: () => sendCommand('restart_all'),
     status: () => sendCommand('status'),
     ping: () => sendCommand('ping'),
   };
+
+  // Injector geç gelirse deviceId güncelle
+  window.addEventListener('moren-device-id-ready', (ev) => {
+    try {
+      const newId = ev?.detail?.deviceId;
+      if (newId && window.__morenAutoAgent) window.__morenAutoAgent.deviceId = newId;
+    } catch (_) {}
+  });
 
   function sendCommand(action) {
     return new Promise((resolve, reject) => {
@@ -57,5 +59,5 @@
     else pending.resolve(payload);
   });
 
-  console.log('[Moren Auto-Agent] Portal bridge hazır → window.__morenAutoAgent');
+  console.log('[Moren Auto-Agent] Portal bridge hazır → window.__morenAutoAgent (deviceId: ' + deviceId + ')');
 })();

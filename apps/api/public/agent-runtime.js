@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.59';
+  const AGENT_VERSION = '1.36.62';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -33,14 +33,27 @@
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
 
-  // v1.36.61: Device-aware komutlar — her PC için stabil deviceId.
-  // localStorage'dan oku, yoksa üret + sakla. Bu PC için kalıcı kimlik.
-  // Aynı PC'deki Luca + Mihsap aynı deviceId'yi paylaşır (çoklu sekme tek bilgisayar).
-  let DEVICE_ID = localStorage.getItem('moren_device_id') || '';
+  // v1.36.62: Device-aware komutlar — extension geneli (chrome.storage) deviceId.
+  // device-id-injector.js (ISOLATED world) chrome.storage'dan okuyup DOM dataset'e yazıyor.
+  // Tüm origin'ler (Luca, Mihsap, Portal) AYNI deviceId'yi paylaşır.
+  // Eğer dataset henüz hazır değilse fallback olarak localStorage kullanılır.
+  let DEVICE_ID = (document.documentElement?.dataset?.morenDeviceId || '').trim();
+  if (!DEVICE_ID) {
+    DEVICE_ID = localStorage.getItem('moren_device_id') || '';
+  }
   if (!DEVICE_ID) {
     DEVICE_ID = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    localStorage.setItem('moren_device_id', DEVICE_ID);
+    try { localStorage.setItem('moren_device_id', DEVICE_ID); } catch (_) {}
   }
+  // injector geç hazır olursa update et
+  window.addEventListener('moren-device-id-ready', (ev) => {
+    try {
+      const newId = ev?.detail?.deviceId;
+      if (newId && newId !== DEVICE_ID) {
+        DEVICE_ID = newId;
+      }
+    } catch (_) {}
+  });
   if (window.__morenAgent) window.__morenAgent.deviceId = DEVICE_ID;
   if (!TOKEN) {
     TOKEN = prompt('Moren Agent Token:') || '';
@@ -8416,7 +8429,7 @@
                   result: {
                     ...counters,
                     message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
-                  },
+                   },
                 }),
               });
             } catch (e) {
@@ -8430,6 +8443,7 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
@@ -8442,7 +8456,7 @@
     }
     await api('/agent/status/ping', {
       method: 'POST',
-      body: JSON.stringify({ agent: AGENT_NAME, running: false }),
+      body: JSON.stringify({ agent: AGENT_NAME, running: false, meta: { deviceId: DEVICE_ID } }),
     }).catch(() => {});
     if (panel) panel.remove();
     delete window.__morenAgent;
