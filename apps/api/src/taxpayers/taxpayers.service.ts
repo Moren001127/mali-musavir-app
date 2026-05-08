@@ -255,6 +255,98 @@ export class TaxpayersService {
   }
 
   /**
+   * v1.36.77: Belge Takibi matrix — mükellef × dönem, FATURA + BANKA durumu.
+   * Her mükellef için belirli bir dönemin (YYYY-MM):
+   *   - Fatura geldi mi (MihsapInvoice'dan: o donem'de en az 1 fatura)
+   *   - Banka ekstresi geldi mi (BankaEkstreKaydi'ndan: aktif bankalar için ekstreGeldi=true sayısı)
+   * @param donem "YYYY-MM" formatında
+   */
+  async getBelgeTakipMatrix(tenantId: string, donem: string) {
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true,
+      },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    // Tüm mükelleflerin o donem fatura sayısı (MihsapInvoice — donem alanı)
+    const invoiceCounts = await (this.prisma as any).mihsapInvoice.groupBy({
+      by: ['mukellefId'],
+      where: { tenantId, donem },
+      _count: { _all: true },
+    });
+    const invoiceMap = new Map<string, number>();
+    invoiceCounts.forEach((r: any) => invoiceMap.set(r.mukellefId, r._count._all));
+
+    // Tüm mükelleflerin aktif banka hesapları
+    const bankaHesaplar = await (this.prisma as any).bankaHesap.findMany({
+      where: { tenantId, aktif: true },
+      select: { id: true, taxpayerId: true },
+    });
+    const hesapMap = new Map<string, string[]>(); // taxpayerId → hesap id'leri
+    bankaHesaplar.forEach((h: any) => {
+      if (!hesapMap.has(h.taxpayerId)) hesapMap.set(h.taxpayerId, []);
+      hesapMap.get(h.taxpayerId)!.push(h.id);
+    });
+
+    // O donem için banka ekstresi durumları
+    const ekstreler = await (this.prisma as any).bankaEkstreKaydi.findMany({
+      where: { donem, hesapId: { in: bankaHesaplar.map((b: any) => b.id) } },
+      select: { hesapId: true, ekstreGeldi: true, islendi: true },
+    });
+    const ekstreMap = new Map<string, { geldi: boolean; islendi: boolean }>();
+    ekstreler.forEach((e: any) => ekstreMap.set(e.hesapId, { geldi: !!e.ekstreGeldi, islendi: !!e.islendi }));
+
+    // Her mükellef için durumu hesapla
+    const items = taxpayers.map((t) => {
+      const ad = t.companyName || `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+      const fatCount = invoiceMap.get(t.id) || 0;
+      const hesapIds = hesapMap.get(t.id) || [];
+      const toplamHesap = hesapIds.length;
+      const gelenHesap = hesapIds.filter((id) => ekstreMap.get(id)?.geldi).length;
+      const islenenHesap = hesapIds.filter((id) => ekstreMap.get(id)?.islendi).length;
+
+      // Durum kategorisi
+      const fatOk = fatCount > 0;
+      const bankaOk = toplamHesap === 0 ? null : gelenHesap === toplamHesap;
+      const bankaIslendiOk = toplamHesap === 0 ? null : islenenHesap === toplamHesap;
+
+      let durum: 'TAM' | 'EKSIK' | 'KRITIK' | 'YOK';
+      if (toplamHesap === 0 && fatCount === 0) durum = 'YOK';
+      else if ((fatOk || fatCount === 0) && (bankaOk === null || bankaOk)) durum = 'TAM';
+      else if (!fatOk && (bankaOk === null || !bankaOk) && gelenHesap === 0) durum = 'KRITIK';
+      else durum = 'EKSIK';
+
+      return {
+        taxpayerId: t.id,
+        ad,
+        taxNumber: t.taxNumber,
+        type: t.type,
+        fatura: { count: fatCount, ok: fatOk },
+        banka: {
+          toplam: toplamHesap,
+          gelen: gelenHesap,
+          islenen: islenenHesap,
+          ok: bankaOk,
+          islendiOk: bankaIslendiOk,
+        },
+        durum,
+      };
+    });
+
+    return {
+      donem,
+      total: items.length,
+      tam: items.filter((i) => i.durum === 'TAM').length,
+      eksik: items.filter((i) => i.durum === 'EKSIK').length,
+      kritik: items.filter((i) => i.durum === 'KRITIK').length,
+      yok: items.filter((i) => i.durum === 'YOK').length,
+      items,
+    };
+  }
+
+  /**
    * v1.36.76: Tüm mükelleflerin tamamlık özeti (dashboard widget için).
    * Her mükellefin score'unu hesaplar — N+1 query'den kaçınmak için tek transaction.
    */

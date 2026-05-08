@@ -125,4 +125,17 @@ export class TaxpayersController {
   getCompletenessSummary(@Req() req: any) {
     return this.taxpayersService.getCompletenessSummary(req.user.tenantId);
   }
+
+  /**
+   * v1.36.77: Belge Takibi matrix — mükellef × dönem, FATURA + BANKA durumu.
+   * @param donem "YYYY-MM" formatında (örn. "2026-04")
+   */
+  @Get('belge-takip/matrix')
+  getBelgeTakipMatrix(@Req() req: any, @Query('donem') donem: string) {
+    if (!donem || !/^\d{4}-\d{2}$/.test(donem)) {
+      const now = new Date();
+      donem = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return this.taxpayersService.getBelgeTakipMatrix(req.user.tenantId, donem);
+  }
 }

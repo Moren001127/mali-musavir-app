@@ -8,7 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building} from 'lucide-react';
+  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building, FolderCheck} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
@@ -41,7 +41,8 @@ const navGroups = [
     icon: Users,
     items: [
       { href: '/panel/mukellefler',       label: 'Mükellef Listesi',    icon: Users },
-      { href: '/panel/banka-takip',       label: 'Banka Takip',         icon: Landmark },
+      { href: '/panel/belge-takip',       label: 'Belge Takibi',        icon: FolderCheck },
+      { href: '/panel/banka-takip',       label: 'Banka Takip (Detay)', icon: Landmark },
       { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
     ],
   },
