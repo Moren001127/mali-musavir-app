@@ -1008,18 +1008,19 @@ function KarsilastirmaTablosu({
         </table>
       </BlockCard>
 
-      {/* v1.36.65: Her dönem altında BELİRGİN, RENKLİ kaydet butonu — sütun başlıklarıyla hizalı */}
+      {/* v1.36.66: DÖNEM AKSİYONLARI — şık, hizalı kaydet butonları (taşma yok, modern görünüm).
+          Grid kolonlar üst tablodaki dönem sütunlarıyla aynı genişlikte (180px) hizalı. */}
       <div
-        className="grid gap-2 rounded-xl px-3 py-3 mt-2"
+        className="grid gap-3 rounded-xl px-4 py-3.5 mt-3 items-center"
         style={{
-          gridTemplateColumns: `220px repeat(${tersDonemler.length}, 1fr)`,
-          background: 'rgba(212,184,118,0.05)',
-          border: '1px solid rgba(212,184,118,0.20)',
+          gridTemplateColumns: `220px repeat(${tersDonemler.length}, minmax(140px, 1fr))`,
+          background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
+          border: '1px solid rgba(212,184,118,0.25)',
         }}
       >
         <div
-          className="flex items-center justify-end pr-3 text-[12.5px] font-semibold"
-          style={{ color: 'rgba(250,250,249,0.55)' }}
+          className="flex items-center text-[11px] font-bold uppercase tracking-[.08em]"
+          style={{ color: 'rgba(212,184,118,0.85)' }}
         >
           DÖNEM AKSİYONLARI
         </div>
@@ -1032,15 +1033,16 @@ function KarsilastirmaTablosu({
             return (
               <div
                 key={d}
-                className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-semibold"
+                className="inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11.5px] font-semibold whitespace-nowrap"
                 style={{
-                  background: 'rgba(245,158,11,0.10)',
+                  background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(245,158,11,0.06))',
                   color: '#fbbf24',
-                  border: '1px solid rgba(245,158,11,0.40)',
+                  border: '1px solid rgba(245,158,11,0.35)',
                 }}
+                title={`${DONEM_ROMAN[d]}. Dönem kesin kayıtla kilitlendi`}
               >
-                <Lock className="h-3.5 w-3.5" />
-                {DONEM_ROMAN[d]}. Dönem kilitli
+                <Lock className="h-3 w-3 shrink-0" />
+                <span className="truncate">{DONEM_ROMAN[d]}. Kilitli</span>
               </div>
             );
           }
@@ -1048,15 +1050,25 @@ function KarsilastirmaTablosu({
             <button
               key={d}
               onClick={() => saveDraft(d)}
-              className="inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-[12.5px] font-bold transition-all hover:brightness-110"
+              className="group inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[12px] font-bold transition-all whitespace-nowrap"
               style={{
-                background: '#22c55e',
-                color: '#0c0a09',
-                boxShadow: '0 0 12px rgba(34,197,94,0.25)',
+                background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                color: '#fafaf9',
+                border: '1px solid rgba(34,197,94,0.5)',
+                boxShadow: '0 2px 8px rgba(34,197,94,0.18), inset 0 1px 0 rgba(255,255,255,0.15)',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(34,197,94,0.35), inset 0 1px 0 rgba(255,255,255,0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(34,197,94,0.18), inset 0 1px 0 rgba(255,255,255,0.15)';
+              }}
+              title={`${DONEM_ROMAN[d]}. Dönem manuel düzeltmelerini kaydet`}
             >
-              <Save className="h-4 w-4" />
-              {DONEM_ROMAN[d]}. Dönemi Kaydet
+              <Save className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{DONEM_ROMAN[d]}. Dönemi Kaydet</span>
             </button>
           );
         })}
