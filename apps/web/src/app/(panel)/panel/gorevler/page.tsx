@@ -7,7 +7,7 @@ import {
   Filter, Search, Trash2, X, Edit3, MessageSquare, Bell, BellOff,
   Loader2, Tag, User as UserIcon, Building2, Repeat, Mail,
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { toast } from 'sonner';
 import {
   tasksApi, Task, TaskCounts, CreateTaskInput, RecurrenceConfig,
   PRIORITY_LABEL, PRIORITY_COLOR, STATUS_LABEL, CATEGORY_OPTIONS, WEEKDAY_LABEL,
