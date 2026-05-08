@@ -46,8 +46,8 @@ const navGroups = [
       { href: '/panel/bilanco',                label: 'Bilanço',            icon: Scale },
       { href: '/panel/gelir-tablosu',          label: 'Gelir Tablosu',      icon: TrendingUp },
       { href: '/panel/isletme-hesap-ozeti',    label: 'İşletme Hesap Özeti',icon: BookOpen },
-      { href: '/panel/cari-kasa',              label: 'Cari Kasa',          icon: Wallet },
       { href: '/panel/banka-takip',            label: 'Banka Takip',        icon: Landmark },
+      // NOT: Cari Kasa Ofis grubuna taşındı (senin ofisinin tahsilatı, mükellef muhasebesi değil)
     ],
   },
   {
@@ -78,9 +78,11 @@ const navGroups = [
     color: CHAMPAGNE,
     icon: Building,
     items: [
-      { href: '/panel/tahsilat',    label: 'Tahsilat & Cari',    icon: Coins },          // YENİ
-      { href: '/panel/bildirimler', label: 'Bildirimler',         icon: Bell },
-      { href: '/panel/duyurular',   label: 'Duyurular',           icon: Megaphone },
+      // Cari Kasa Faturalar & Muhasebe altından buraya taşındı —
+      // mükellef muhasebesi DEĞİL, senin ofisinin mali müşavirlik ücret tahsilatı.
+      { href: '/panel/cari-kasa',   label: 'Cari Kasa & Tahsilat', icon: Coins },
+      { href: '/panel/bildirimler', label: 'Bildirimler',           icon: Bell },
+      { href: '/panel/duyurular',   label: 'Duyurular',             icon: Megaphone },
     ],
   },
   {
