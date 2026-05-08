@@ -190,17 +190,18 @@ export class GelirTablosuService {
       tekHesap('731'), // Genel Üretim Giderleri Yansıtma (-)
     ];
 
-    // v1.36.36: Stok bolumu kullanici mental modeli — Toplam Stok = TUM goruntulenen
-    // satirlarin toplami (150-157 + 720-731). SMM = sadece 621 (Ticari Mallar).
-    // Kalan Stok = Toplam Stok - SMM (envanter dengesi).
-    // 622 (Hizmet) ve 740 (Uretim 7/B) STOK BOLUMUNDE dahil edilmez — kullanici
-    // sadece 621 (ticari mal) maliyetinin dusulmesini istiyor.
-    // Ana gelir tablosundaki "D. Satislarin Maliyeti" yine tum 620-623+740 toplamidir.
-    const satisMaliyeti621 = tekHesap('621').bakiye;
+    // v1.36.37: Stok bolumu kullanici mental modeli (FINAL):
+    //   Toplam Stok = TUM goruntulenen satirlarin toplami (150-157 + 720-731)
+    //   SMM         = MANUEL giris (duzeltmeler.satisMaliyetiManuel) — backend
+    //                 otomatik 621'den almaz. User elinde girer.
+    //   Kalan Stok  = Toplam Stok - SMM
+    // Ana gelir tablosundaki D. Satislarin Maliyeti yine 620-623+740 toplami.
     const stokToplam150_157 = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
     const maliyetToplam720_731 = maliyetHesaplari.reduce((s, h) => s + h.bakiye, 0);
     const toplamStok = stokToplam150_157 + maliyetToplam720_731;
-    const kalanStok = toplamStok - satisMaliyeti621;
+    // SMM ve Kalan Stok manuel — create sirasinda 0 default, kullanici sonra girer
+    const satisMaliyeti621 = 0;
+    const kalanStok = toplamStok;
 
     // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
     // Eğer 950 nazım hesabı kullanılıyorsa o öncelikli, yoksa 689
@@ -315,16 +316,11 @@ export class GelirTablosuService {
     const stokHesaplari = Array.isArray(detay.stokHesaplari) ? detay.stokHesaplari : [];
     const maliyetHesaplari = Array.isArray(detay.maliyetHesaplari) ? detay.maliyetHesaplari : [];
     const toplamStok = Number(detay.toplamStok || 0);
-    // v1.36.35: Stok bölümü için SADECE 621 (Satılan Ticari Mallar Maliyeti).
-    // Manuel düzeltme varsa onu, yoksa detay.satisMaliyeti621 (yeni kayıtlar),
-    // yoksa fallback gt.satisMaliyeti (eski kayıtlar — 620-623 toplamı).
-    const satisMaliyetiManuel = Number(duzeltmeler.satisMaliyetiManuel || 0);
-    const detaySatisMaliyeti621 = Number(detay.satisMaliyeti621 || 0);
-    const satisMaliyeti =
-      satisMaliyetiManuel > 0 ? satisMaliyetiManuel
-        : detaySatisMaliyeti621 > 0 ? detaySatisMaliyeti621
-        : Number(gt.satisMaliyeti || 0);
-    // Kalan Stok = mizandaki 150-157 toplam bakiyesi (kapanış stoğu)
+    // v1.36.37: SMM TAMAMEN MANUEL — kullanici ana gelir tablosundaki
+    // "2. Satilan Ticari Mallar Maliyeti" satirinda manuel duzeltme olarak girer,
+    // duzeltmeler.satisMaliyeti key'inde saklanir (frontend ile ayni key).
+    // 0 ise Kalan Stok = Toplam Stok.
+    const satisMaliyeti = Number(duzeltmeler.satisMaliyeti || duzeltmeler.satisMaliyetiManuel || 0);
     const kalanStok = toplamStok - satisMaliyeti;
     const kkeg = Number(detay.kkeg || 0);
 
