@@ -433,7 +433,7 @@ export class MorenAiService {
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/```\s*$/i, '')
         .trim();
-      let parsed: BrifingPayload | null = null;
+      let parsed: BrifingPayload;
       try {
         const obj = JSON.parse(cleaned);
         parsed = this.validatePayload(obj);
@@ -443,7 +443,7 @@ export class MorenAiService {
           summary: rawText.slice(0, 500),
           alerts: [],
           suggestions: [],
-          focus: 'genel',
+          focus: 'busy',
           metrics: ctx.metrics,
         };
       }
