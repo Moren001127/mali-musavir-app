@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.56';
+  const AGENT_VERSION = '1.36.59';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -306,8 +306,20 @@
                       if (clickedE) break;
                       await sleep(200);
                     }
-                    await earlyLog(`⏳ Sayfa yenileniyor, 15sn bekleniyor…`);
-                    await sleep(15000);
+                    // v1.36.59: Sabit 15sn bekleme yerine akıllı polling — frame yüklenince devam.
+                    await earlyLog(`⏳ Sayfa yenileniyor, hazır olunca devam edilecek…`);
+                    const earlyWaitStart = Date.now();
+                    while (Date.now() - earlyWaitStart < 15000) {
+                      await sleep(300);
+                      try {
+                        const fdocE = getLucaFrame('frm4')?.contentDocument;
+                        if (fdocE && fdocE.getElementById('DonemCombo') && fdocE.body && fdocE.body.children.length > 0) {
+                          await earlyLog(`✓ Sayfa hazır (${((Date.now() - earlyWaitStart) / 1000).toFixed(1)}sn)`);
+                          break;
+                        }
+                      } catch {}
+                    }
+                    await sleep(800); // tampon
                     window.__lucaJobRunning = false;
                     return;
                   }
@@ -805,8 +817,32 @@
           if (clicked) break;
           await sleep(200);
         }
-        await sleep(15000);
-        throw new Error(`Firma değiştirildi ama sayfa yenilenmedi`);
+        // v1.36.59: Sabit 15sn bekleme yerine akıllı polling — frame yüklenir yüklenmez devam et.
+        // Üst başlık alanında "AYHAN BOZO 2026" gibi yeni firma adı belirir → o zaman hazır demektir.
+        // Genelde 2-4sn sürer; max 15sn bekleriz, sonrasında error fırlar.
+        const waitStart = Date.now();
+        let firmaReady = false;
+        while (Date.now() - waitStart < 15000) {
+          await sleep(300);
+          try {
+            // frm4 (üst başlık frame) yenilenmiş mi — DonemCombo hazırsa hazırdır
+            const fdoc = getLucaFrame('frm4')?.contentDocument;
+            if (fdoc && fdoc.getElementById('DonemCombo') && fdoc.body && fdoc.body.children.length > 0) {
+              firmaReady = true;
+              break;
+            }
+            // alternatif: ana frame'de yeni mukellef adı görünür hale geldi mi
+            const topTitle = (document.title || '').includes(bulundu.text) || (document.body?.textContent || '').includes(bulundu.text);
+            if (topTitle) { firmaReady = true; break; }
+          } catch {}
+        }
+        if (firmaReady) {
+          await log(`✓ Firma değişti ve sayfa hazır (${((Date.now() - waitStart) / 1000).toFixed(1)}sn)`);
+          // Tamponun oturmasi icin minimum 800ms ek bekleme
+          await sleep(800);
+        } else {
+          throw new Error(`Firma değiştirildi ama sayfa 15sn'de yenilenmedi`);
+        }
       } else {
         await log(`✓ Firma zaten doğru: "${bulundu.text}"`);
       }
@@ -8353,7 +8389,7 @@
       // Heartbeat: 30 sn'de bir ping at — backend "agent canlı" görsün
       if (Date.now() - lastPingAt > 30000) await sendPing();
       try {
-                const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME }) });
+        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME }) });
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
             try {
@@ -8368,6 +8404,7 @@
                 body: JSON.stringify({
                   status: 'done',
                   result: {
+                    ...counters,
                     message: `✓ ${counters.onay} onaylandı · ⏭ ${counters.atla} atlandı · ⏩ ${counters.demirbas} demirbaş · ⚠ ${counters.hata} hata (toplam ${counters.toplam})`,
                   },
                 }),
@@ -8383,7 +8420,6 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
-        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
