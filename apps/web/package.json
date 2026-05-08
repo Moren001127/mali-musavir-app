@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "next dev -p 3000",
+    "prebuild": "node scripts/build-extension-zip.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
