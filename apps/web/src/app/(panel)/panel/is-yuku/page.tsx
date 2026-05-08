@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import {
-  Workflow, Calendar, Clock, ChevronRight, FileText, Receipt,
-  FileCheck, Loader2, Bot, Building2, ArrowRight, AlertCircle,
+  Workflow, Clock, ChevronRight, FileText, Receipt, FileCheck,
+  Loader2, Building2, ArrowRight, AlertTriangle, CheckCircle2,
+  SkipForward, Sparkles, Calendar, Flame,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
+const GOLD_SOFT = '#b8a06f';
 
 type Stage = 'EVRAK_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
 
@@ -42,27 +44,28 @@ interface WorkflowData {
 
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
-const STAGE_CONFIG: Record<Stage, { label: string; color: string; icon: any; bgRgba: string }> = {
-  ISLENMEYI_BEKLIYOR: { label: 'İşlenmeyi Bekliyor', color: '#3b82f6', icon: Receipt, bgRgba: 'rgba(59,130,246,0.1)' },
-  KONTROL_BEKLIYOR:   { label: 'KDV Kontrol Bekliyor', color: '#f59e0b', icon: FileCheck, bgRgba: 'rgba(245,158,11,0.1)' },
-  BEYANNAME_BEKLIYOR: { label: 'Beyanname Hazırlanacak', color: '#a855f7', icon: FileText, bgRgba: 'rgba(168,85,247,0.1)' },
-  EVRAK_BEKLIYOR:     { label: 'Evrak Bekleniyor', color: '#94a3b8', icon: Clock, bgRgba: 'rgba(148,163,184,0.1)' },
-  TAMAM:              { label: 'Tamamlandı', color: '#22c55e', icon: FileCheck, bgRgba: 'rgba(34,197,94,0.1)' },
+const STAGE_CONFIG: Record<Stage, { label: string; short: string; color: string; icon: any; gradient: string }> = {
+  EVRAK_BEKLIYOR:     { label: 'Evrak Bekleniyor',       short: 'BEKLİYOR',  color: '#94a3b8', icon: Clock,    gradient: 'rgba(148,163,184,0.08)' },
+  ISLENMEYI_BEKLIYOR: { label: 'İşlenmeyi Bekliyor',     short: 'İŞLENECEK', color: '#3b82f6', icon: Receipt,  gradient: 'rgba(59,130,246,0.08)' },
+  KONTROL_BEKLIYOR:   { label: 'KDV Kontrol Bekliyor',   short: 'KONTROL',   color: '#f59e0b', icon: FileCheck, gradient: 'rgba(245,158,11,0.08)' },
+  BEYANNAME_BEKLIYOR: { label: 'Beyanname Hazırlanacak', short: 'BEYAN',     color: '#a855f7', icon: FileText,  gradient: 'rgba(168,85,247,0.08)' },
+  TAMAM:              { label: 'Tamamlandı',             short: 'TAMAM',     color: '#22c55e', icon: CheckCircle2, gradient: 'rgba(34,197,94,0.08)' },
 };
 
 /**
- * v1.36.78: İş Akışı sayfası — FIFO sıralı görev listesi.
- * "Kim önce hazır geldiyse → o önce işlensin" mantığıyla sıralanır.
- * Aşamalar:
- *  1. KONTROL_BEKLIYOR (en acil — beyanname için sıradaki adım)
- *  2. ISLENMEYI_BEKLIYOR (evrak geldi, işlenmeyi bekliyor)
- *  3. BEYANNAME_BEKLIYOR (kontrol tamam, beyanname hazırlanacak)
- *  4. EVRAK_BEKLIYOR (evrak henüz gelmedi)
+ * v1.36.79: İş Akışı sayfası — HERO + KANBAN + GEÇ KALANLAR hibrit tasarımı.
+ *
+ *  ┌─ ŞİMDİ YAPILACAK (büyük hero kart) ──────┐
+ *  │ #1 mükellef + aksiyon butonu              │
+ *  └────────────────────────────────────────────┘
+ *
+ *  Pipeline (5 sütunlu yatay)  Geç Kalanlar (5+ gün)
  */
 export default function IsYukuPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [skipIndex, setSkipIndex] = useState(0); // "Sonraki" tıklandığında hero'da kaçıncı item gösterilecek
 
   const { data, isLoading } = useQuery<WorkflowData>({
     queryKey: ['workflow-queue', year, month],
@@ -71,57 +74,48 @@ export default function IsYukuPage() {
     refetchInterval: 30_000,
   });
 
+  // Hero'daki aktif item — atlama ile değişebilir
+  const heroItem = data?.siradaki?.[skipIndex] || null;
+  const nextItems = (data?.siradaki || []).slice(skipIndex + 1, skipIndex + 5);
+
+  // Geç kalanlar — 5+ gün bekleyenler
+  const gecKalanlar = useMemo(() => {
+    if (!data) return [];
+    return [...data.siradaki].filter((i) => i.bekleyenGun >= 5).slice(0, 8);
+  }, [data]);
+
   return (
-    <div className="space-y-5 max-w-7xl">
-      {/* Header */}
+    <div className="space-y-6 max-w-7xl">
+      {/* HEADER */}
       <div className="pb-5 flex items-end justify-between flex-wrap gap-3"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={{ background: GOLD }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
+            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
               <Workflow size={10} className="inline mr-1" /> İŞ AKIŞI
             </span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
-            İş Akışı — Sıralı Görev Listesi
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 38, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1 }}>
+            İş Akışı
           </h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Kimin evrakı önce hazır geldiyse o önce işlenir — sistem sırayı söylüyor
+          <p className="text-[13px] mt-2" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={month}
-            onChange={(e) => setMonth(Number(e.target.value))}
+          <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
             className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-          >
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
             {AYLAR.map((a, i) => <option key={i} value={i + 1} style={{ background: '#0f0d0b' }}>{a}</option>)}
           </select>
-          <select
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
+          <select value={year} onChange={(e) => setYear(Number(e.target.value))}
             className="px-3 py-2 rounded-lg text-sm border outline-none cursor-pointer"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-          >
-            {[year - 1, year, year + 1].map((y) => (
-              <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>
-            ))}
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}>
+            {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={{ background: '#0f0d0b' }}>{y}</option>)}
           </select>
         </div>
       </div>
-
-      {/* Aşama sayaçları */}
-      {data && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <SayacKarti label="Bekliyor" value={data.counts.evrak} stage="EVRAK_BEKLIYOR" />
-          <SayacKarti label="İşlenecek" value={data.counts.islenme} stage="ISLENMEYI_BEKLIYOR" pulse={data.counts.islenme > 0} />
-          <SayacKarti label="Kontrol" value={data.counts.kontrol} stage="KONTROL_BEKLIYOR" pulse={data.counts.kontrol > 0} />
-          <SayacKarti label="Beyanname" value={data.counts.beyanname} stage="BEYANNAME_BEKLIYOR" />
-          <SayacKarti label="Tamam" value={data.counts.tamam} stage="TAMAM" />
-        </div>
-      )}
 
       {isLoading ? (
         <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>
@@ -131,141 +125,338 @@ export default function IsYukuPage() {
         <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>Veri yok</div>
       ) : (
         <>
-          {/* Sıradaki 10 İş — büyük öne çıkan kart */}
-          {data.siradaki.length > 0 && (
-            <div className="rounded-2xl overflow-hidden"
-              style={{
-                background: 'linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))',
-                border: '1px solid rgba(212,184,118,0.30)',
-              }}>
-              <div className="flex items-center gap-2.5 px-5 py-4"
-                style={{ borderBottom: '1px solid rgba(212,184,118,0.20)' }}>
-                <ArrowRight size={16} style={{ color: GOLD }} />
-                <h3 className="text-[14px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
-                  SIRADAKİ {data.siradaki.length} İŞ — FIFO
-                </h3>
-                <span className="ml-auto text-[10.5px] uppercase tracking-wider"
-                  style={{ color: 'rgba(250,250,249,0.5)' }}>
-                  En uzun bekleyen önce
+          {/* HERO — ŞİMDİ YAP */}
+          {heroItem ? (
+            <HeroCard
+              item={heroItem}
+              sira={skipIndex + 1}
+              total={data.siradaki.length}
+              onSkip={() => setSkipIndex((idx) => Math.min(idx + 1, data.siradaki.length - 1))}
+              canGoBack={skipIndex > 0}
+              onBack={() => setSkipIndex((idx) => Math.max(0, idx - 1))}
+            />
+          ) : data.counts.tamam === data.total && data.total > 0 ? (
+            <AllDoneCard total={data.total} />
+          ) : (
+            <EmptyHero />
+          )}
+
+          {/* SIRADAKİ MINI KARTLAR */}
+          {nextItems.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+                  Sıradakiler
                 </span>
+                <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
               </div>
-              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                {data.siradaki.map((item, idx) => (
-                  <SiraSatir key={item.statusId} item={item} sira={idx + 1} />
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {nextItems.map((item, idx) => (
+                  <MiniSiraKart key={item.statusId} item={item} sira={skipIndex + idx + 2} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Aşamaya göre detaylı liste */}
-          <div className="space-y-4">
-            {(['ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'EVRAK_BEKLIYOR', 'TAMAM'] as Stage[]).map((stage) => {
-              const items = data.grouped[stage];
-              if (!items || items.length === 0) return null;
-              const cfg = STAGE_CONFIG[stage];
-              const Icon = cfg.icon;
-              return (
-                <div key={stage} className="rounded-xl overflow-hidden"
-                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center gap-2.5 px-4 py-3"
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                    <Icon size={14} style={{ color: cfg.color }} />
-                    <h4 className="text-[12.5px] font-bold uppercase tracking-wider"
-                      style={{ color: cfg.color }}>
-                      {cfg.label}
-                    </h4>
-                    <span className="ml-auto text-[11px] tabular-nums px-2 py-0.5 rounded"
-                      style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.6)' }}>
-                      {items.length}
-                    </span>
-                  </div>
-                  <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                    {items.slice(0, 10).map((item) => (
-                      <SiraSatir key={item.statusId} item={item} sira={null} />
-                    ))}
-                    {items.length > 10 && (
-                      <div className="px-5 py-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                        +{items.length - 10} daha
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          {/* PIPELINE — Yatay 5 sütun */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
+                Aşamalara Göre Akış
+              </span>
+              <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {(['EVRAK_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'] as Stage[]).map((stage) => (
+                <PipelineSutun key={stage} stage={stage} items={data.grouped[stage] || []} />
+              ))}
+            </div>
           </div>
+
+          {/* GEÇ KALANLAR — uyarı kartı */}
+          {gecKalanlar.length > 0 && (
+            <div className="rounded-2xl overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02))',
+                border: '1px solid rgba(239,68,68,0.25)',
+              }}>
+              <div className="flex items-center gap-2.5 px-5 py-4"
+                style={{ borderBottom: '1px solid rgba(239,68,68,0.20)' }}>
+                <Flame size={16} style={{ color: '#ef4444' }} />
+                <h3 className="text-[14px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+                  Geç Kalanlar
+                </h3>
+                <span className="text-[10.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1"
+                  style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+                  {gecKalanlar.length} mükellef · 5+ gün
+                </span>
+              </div>
+              <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                {gecKalanlar.map((item) => <GecKalanSatir key={item.statusId} item={item} />)}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function SayacKarti({ label, value, stage, pulse }: { label: string; value: number; stage: Stage; pulse?: boolean }) {
-  const cfg = STAGE_CONFIG[stage];
+// ════════════════════════════════════════════════════════════════════
+// HERO CARD — ŞİMDİ YAPILACAK (büyük öne çıkan kart)
+// ════════════════════════════════════════════════════════════════════
+function HeroCard({
+  item, sira, total, onSkip, canGoBack, onBack,
+}: {
+  item: QueueItem; sira: number; total: number;
+  onSkip: () => void; canGoBack: boolean; onBack: () => void;
+}) {
+  const cfg = STAGE_CONFIG[item.stage];
   const Icon = cfg.icon;
+  const isUrgent = item.bekleyenGun >= 5;
+
   return (
-    <div className="rounded-xl p-4"
-      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex items-center gap-2 mb-2 text-[11px] font-medium uppercase tracking-wider"
-        style={{ color: 'rgba(250,250,249,0.55)' }}>
-        <Icon size={12} style={{ color: cfg.color }} />
-        <span>{label}</span>
-        {pulse && value > 0 && <span className="w-1.5 h-1.5 rounded-full ml-auto"
-          style={{ background: cfg.color, boxShadow: `0 0 8px ${cfg.color}` }} />}
+    <div className="rounded-3xl overflow-hidden relative"
+      style={{
+        background: `radial-gradient(circle at 30% 0%, ${cfg.gradient}, transparent 70%), linear-gradient(135deg, rgba(212,184,118,0.08), rgba(212,184,118,0.02))`,
+        border: '1px solid rgba(212,184,118,0.30)',
+        boxShadow: '0 12px 48px rgba(0,0,0,0.3)',
+      }}>
+      {/* Üst etiket bandı */}
+      <div className="flex items-center justify-between px-7 pt-6 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles size={14} style={{ color: GOLD }} />
+            <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: GOLD_SOFT }}>
+              ŞİMDİ YAPILACAK
+            </span>
+          </div>
+          {isUrgent && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+              style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+              <Flame size={10} /> ACIL
+            </span>
+          )}
+        </div>
+        <div className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          Sıra {sira}/{total}
+        </div>
       </div>
-      <p className="leading-none tabular-nums"
-        style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 700, color: '#fafaf9' }}>
-        {value}
+
+      {/* Mükellef adı — büyük serif */}
+      <div className="px-7 pt-2 pb-4">
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <Building2 size={20} style={{ color: 'rgba(250,250,249,0.4)' }} />
+          <h2 style={{
+            fontFamily: 'Fraunces, serif',
+            fontSize: 42,
+            fontWeight: 600,
+            color: '#fafaf9',
+            letterSpacing: '-.03em',
+            lineHeight: 1.05,
+          }}>
+            {item.taxpayerName}
+          </h2>
+        </div>
+        <div className="flex items-center gap-3 mt-3 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded"
+            style={{ background: cfg.gradient, color: cfg.color, border: `1px solid ${cfg.color}33` }}>
+            <Icon size={11} /> {cfg.label}
+          </span>
+          <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <Clock size={12} className="inline mr-1" />
+            {item.bekleyenGun} gündür bekliyor
+          </span>
+          <span className="text-[12px] font-mono" style={{ color: 'rgba(250,250,249,0.35)' }}>
+            {item.taxNumber}
+          </span>
+        </div>
+      </div>
+
+      {/* Aksiyon butonları */}
+      <div className="px-7 pb-7 pt-2 flex items-center gap-3 flex-wrap">
+        <Link
+          href={item.actionPath}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-bold transition-all hover:scale-[1.02]"
+          style={{
+            background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
+            color: '#0f0d0b',
+            boxShadow: `0 8px 24px ${GOLD}33`,
+          }}
+        >
+          {item.actionLabel} <ArrowRight size={16} />
+        </Link>
+        <button onClick={onSkip}
+          className="inline-flex items-center gap-2 px-4 py-3 rounded-xl text-[12.5px] font-medium transition"
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            color: 'rgba(250,250,249,0.7)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+          Sonraki <SkipForward size={13} />
+        </button>
+        {canGoBack && (
+          <button onClick={onBack}
+            className="text-[11.5px] underline-offset-2 hover:underline"
+            style={{ color: 'rgba(250,250,249,0.5)' }}>
+            ← Önceki
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyHero() {
+  return (
+    <div className="rounded-3xl py-16 px-8 text-center"
+      style={{
+        background: 'linear-gradient(135deg, rgba(34,197,94,0.06), rgba(34,197,94,0.02))',
+        border: '1px solid rgba(34,197,94,0.20)',
+      }}>
+      <CheckCircle2 size={36} className="mx-auto mb-4" style={{ color: '#22c55e' }} />
+      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 28, fontWeight: 600, color: '#fafaf9' }}>
+        Sıra boş
+      </h2>
+      <p className="text-[13.5px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        Şu an işlenmeyi bekleyen veya kontrol bekleyen iş yok. Mükellef evrakları geldikçe burada görünür.
       </p>
     </div>
   );
 }
 
-function SiraSatir({ item, sira }: { item: QueueItem; sira: number | null }) {
-  const cfg = STAGE_CONFIG[item.stage];
-  const isGecikmis = item.bekleyenGun >= 5;
+function AllDoneCard({ total }: { total: number }) {
   return (
-    <Link
-      href={item.actionPath}
-      className="grid items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition group"
-      style={{ gridTemplateColumns: sira !== null ? '32px 1.5fr 1.2fr 100px 36px' : '4px 1.5fr 1.2fr 100px 36px' }}
-    >
-      {sira !== null ? (
-        <span className="tabular-nums text-[16px] font-bold"
-          style={{ fontFamily: 'Fraunces, serif', color: GOLD }}>
+    <div className="rounded-3xl py-12 px-8 text-center"
+      style={{
+        background: 'linear-gradient(135deg, rgba(34,197,94,0.10), rgba(34,197,94,0.04))',
+        border: '1px solid rgba(34,197,94,0.30)',
+      }}>
+      <Sparkles size={36} className="mx-auto mb-4" style={{ color: '#22c55e' }} />
+      <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 600, color: '#fafaf9' }}>
+        Bu ay tamamen kapandı 🎉
+      </h2>
+      <p className="text-[14px] mt-2" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        Tüm <strong style={{ color: '#22c55e' }}>{total} mükellefin</strong> beyannameleri verildi.
+      </p>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MİNİ SIRA KARTI — Sıradaki 4 iş (yatay grid)
+// ════════════════════════════════════════════════════════════════════
+function MiniSiraKart({ item, sira }: { item: QueueItem; sira: number }) {
+  const cfg = STAGE_CONFIG[item.stage];
+  return (
+    <Link href={item.actionPath}
+      className="rounded-xl p-3.5 transition-all hover:scale-[1.02] block"
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.05)',
+      }}>
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <span className="tabular-nums" style={{
+          fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: GOLD, lineHeight: 1,
+        }}>
           {sira}
         </span>
-      ) : (
-        <span className="w-1 h-6 rounded-sm" style={{ background: cfg.color }} />
-      )}
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <Building2 size={11} style={{ color: 'rgba(250,250,249,0.4)' }} />
-          <span className="text-[13.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>
-            {item.taxpayerName}
-          </span>
-          {isGecikmis && (
-            <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded shrink-0"
-              style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
-              {item.bekleyenGun}gün
-            </span>
-          )}
-        </div>
-        <div className="text-[11px] mt-0.5 truncate"
-          style={{ color: 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
-          {item.taxNumber}
-        </div>
-      </div>
-      <div className="min-w-0">
-        <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded"
-          style={{ background: cfg.bgRgba, color: cfg.color }}>
-          <cfg.icon size={11} /> {cfg.label}
+        <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: cfg.color }}>
+          {cfg.short}
         </span>
       </div>
-      <div className="text-[12px] font-semibold text-right"
-        style={{ color: cfg.color }}>
-        {item.actionLabel}
+      <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+        {item.taxpayerName}
       </div>
-      <ChevronRight size={14} className="opacity-30 group-hover:opacity-100 transition justify-self-end"
+      <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+        {item.bekleyenGun} gün · {item.actionLabel}
+      </div>
+    </Link>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// PIPELINE SÜTUNU — Aşama bazlı 5 sütun (Kanban)
+// ════════════════════════════════════════════════════════════════════
+function PipelineSutun({ stage, items }: { stage: Stage; items: QueueItem[] }) {
+  const cfg = STAGE_CONFIG[stage];
+  const Icon = cfg.icon;
+  const sirali = [...items].sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+
+  return (
+    <div className="rounded-xl overflow-hidden"
+      style={{
+        background: `linear-gradient(180deg, ${cfg.gradient}, transparent 60%)`,
+        border: `1px solid ${cfg.color}22`,
+        minHeight: 200,
+      }}>
+      <div className="px-3.5 py-3 flex items-center gap-2"
+        style={{ borderBottom: `1px solid ${cfg.color}1a` }}>
+        <Icon size={13} style={{ color: cfg.color }} />
+        <span className="text-[10.5px] uppercase font-bold tracking-wider" style={{ color: cfg.color }}>
+          {cfg.short}
+        </span>
+        <span className="ml-auto tabular-nums text-[16px] font-bold"
+          style={{ fontFamily: 'Fraunces, serif', color: '#fafaf9' }}>
+          {items.length}
+        </span>
+      </div>
+      <div className="p-2 space-y-1.5">
+        {sirali.length === 0 ? (
+          <div className="text-center py-6 text-[11px]" style={{ color: 'rgba(250,250,249,0.3)' }}>
+            —
+          </div>
+        ) : (
+          sirali.slice(0, 5).map((item) => (
+            <Link key={item.statusId} href={item.actionPath}
+              className="block rounded-lg px-2.5 py-2 transition hover:bg-white/[0.04]"
+              style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <div className="text-[12px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                {item.taxpayerName}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[10.5px]"
+                style={{ color: item.bekleyenGun >= 5 ? '#ef4444' : 'rgba(250,250,249,0.5)' }}>
+                <Clock size={9} />
+                <span>{item.bekleyenGun}gün</span>
+                {item.bekleyenGun >= 5 && <Flame size={9} />}
+              </div>
+            </Link>
+          ))
+        )}
+        {sirali.length > 5 && (
+          <div className="text-center text-[11px] py-1.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+            +{sirali.length - 5} daha
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// GEÇ KALAN SATIRI
+// ════════════════════════════════════════════════════════════════════
+function GecKalanSatir({ item }: { item: QueueItem }) {
+  const cfg = STAGE_CONFIG[item.stage];
+  return (
+    <Link href={item.actionPath}
+      className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.03] transition group">
+      <Flame size={14} style={{ color: '#ef4444' }} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+            {item.taxpayerName}
+          </span>
+          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded"
+            style={{ background: 'rgba(239,68,68,0.18)', color: '#ef4444' }}>
+            {item.bekleyenGun}gün
+          </span>
+        </div>
+        <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          {cfg.label} · {item.actionLabel}
+        </div>
+      </div>
+      <ChevronRight size={14} className="opacity-30 group-hover:opacity-100 transition"
         style={{ color: GOLD }} />
     </Link>
   );
