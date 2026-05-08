@@ -955,12 +955,33 @@ export class OcrService {
    *  - Hiç alan okunmadıysa  → true (LOW_CONFIDENCE)
    *  - Herhangi bir alan FIELD_CONFIDENCE_THRESHOLD altındaysa → true (NEEDS_REVIEW)
    *  - Aksi halde → false (SUCCESS)
+   *
+   * v1.36.73: VALIDATION-AWARE EŞİK
+   *   Eğer validationScore >= 0.99 (matematik tamamen tutarlı: KDV=matrah×oran,
+   *   breakdown.tutar.sum = kdvTutari, vb.) → eşik 0.7'den 0.5'e düşer.
+   *   Sebep: math zaten doğru ise, Claude'un alan-bazlı utangaçlığı yapay
+   *   "needs review" yaratıyor (Z RAPORU/ÖKC FIŞI'nde tarih confidence sık
+   *   düşer çünkü iki haneli yıl "01/04/26" Claude'a belirsiz geliyor).
+   *   v1.36.73: Z_RAPORU + OKC_FIS için ek gevşetme (yapısal belge):
+   *     Validation %95+ ve breakdown sum = kdvTutari ise eşik 0.4.
    */
   needsReview(result: OcrResult): { needs: boolean; reason: 'none' | 'empty' | 'low_field' } {
     if (this.isLowConfidence(result)) return { needs: true, reason: 'empty' };
     const { belgeNo, date, kdvTutari } = result.fieldConfidence;
     const scores = [belgeNo, date, kdvTutari].filter((v): v is number => typeof v === 'number');
-    if (scores.some((s) => s < FIELD_CONFIDENCE_THRESHOLD)) {
+
+    // Validation-aware eşik
+    const validation = result.validationScore ?? 0;
+    const isStructuredReceipt =
+      result.belgeTipi === 'Z_RAPORU' || result.belgeTipi === 'OKC_FIS';
+    let effectiveThreshold = FIELD_CONFIDENCE_THRESHOLD; // 0.7
+    if (isStructuredReceipt && validation >= 0.95) {
+      effectiveThreshold = 0.4;
+    } else if (validation >= 0.99) {
+      effectiveThreshold = 0.5;
+    }
+
+    if (scores.some((s) => s < effectiveThreshold)) {
       return { needs: true, reason: 'low_field' };
     }
     return { needs: false, reason: 'none' };
