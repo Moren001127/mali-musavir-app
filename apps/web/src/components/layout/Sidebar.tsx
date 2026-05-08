@@ -8,7 +8,7 @@ import {
   Bell, Settings, FileCheck, Printer, LogOut, Bot, Activity, Sliders,
   Zap, Sparkles, ChevronRight, Cpu, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck, ShieldAlert,
   Scale, TrendingUp, Table2, MessageSquare, AlertTriangle, Brain,
-  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare} from 'lucide-react';
+  Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 
@@ -17,27 +17,37 @@ const GOLD      = '#d4b876';  // Ana altın
 const CHAMPAGNE = '#e8d6a0';  // Parlak şampanya
 const BRONZE    = '#c0a079';  // Bronz
 const COPPER    = '#d99560';  // Bakır
+// v1.36.75: Sidebar yeniden organize — 8 grup → 6 grup.
+// Mevcut hiçbir sayfa silinmedi/taşınmadı, sadece menüdeki gruplandırma değişti.
+// Tüm href'ler aynen korundu. Yeni eklenen 2 öğe: /panel/is-yuku ve /panel/tahsilat.
 const navGroups = [
   {
     label: 'Genel',
     color: GOLD,
     icon: Sparkles,
     items: [
-      { href: '/panel',              label: 'Gösterge Paneli', icon: LayoutDashboard },
-      { href: '/panel/moren-ai',     label: 'Moren AI',         icon: MessageSquare },
-      { href: '/panel/mukellefler',  label: 'Mükellefler',      icon: Users },
-      { href: '/panel/gorevler',     label: 'Görevler & Notlar', icon: CheckSquare },
+      { href: '/panel',              label: 'Gösterge Paneli',   icon: LayoutDashboard },
+      { href: '/panel/is-yuku',      label: 'İş Akışı',           icon: Workflow },        // YENİ
+      { href: '/panel/gorevler',     label: 'Görevler & Notlar',  icon: CheckSquare },
+      { href: '/panel/mukellefler',  label: 'Mükellefler',        icon: Users },
+      { href: '/panel/moren-ai',     label: 'Moren AI',           icon: MessageSquare },
     ],
   },
   {
-    label: 'Faturalar & Belgeler',
+    label: 'Faturalar & Muhasebe',
     color: CHAMPAGNE,
     icon: Receipt,
     items: [
       { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
-      { href: '/panel/e-arsiv',                label: 'E-Fatura / E-Arşiv Fatura Sorgulama', icon: Archive },
+      { href: '/panel/e-arsiv',                label: 'E-Fatura / E-Arşiv Sorgulama', icon: Archive },
       { href: '/panel/ajanlar/mihsap',         label: 'Fatura İşleme',      icon: Bot },
       { href: '/panel/fis-yazdirma',           label: 'Fiş Yazdırma',       icon: Printer },
+      { href: '/panel/mizan',                  label: 'Mizan',              icon: Table2 },
+      { href: '/panel/bilanco',                label: 'Bilanço',            icon: Scale },
+      { href: '/panel/gelir-tablosu',          label: 'Gelir Tablosu',      icon: TrendingUp },
+      { href: '/panel/isletme-hesap-ozeti',    label: 'İşletme Hesap Özeti',icon: BookOpen },
+      { href: '/panel/cari-kasa',              label: 'Cari Kasa',          icon: Wallet },
+      { href: '/panel/banka-takip',            label: 'Banka Takip',        icon: Landmark },
     ],
   },
   {
@@ -52,46 +62,25 @@ const navGroups = [
     ],
   },
   {
-    label: 'Muhasebe & Raporlar',
-    color: GOLD,
-    icon: Table2,
-    items: [
-      { href: '/panel/mizan',         label: 'Mizan',         icon: Table2 },
-      { href: '/panel/bilanco',       label: 'Bilanço',       icon: Scale },
-      { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
-      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpen },
-      { href: '/panel/cari-kasa',     label: 'Cari Kasa',     icon: Wallet },
-      { href: '/panel/banka-takip',   label: 'Banka Takip',   icon: Landmark },
-    ],
-  },
-  {
     label: 'Otomasyon',
     color: BRONZE,
     icon: Zap,
     items: [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
-      // Onay Kuyrugu modulu Fatura Isleme'ye entegre edildi (sidebar'dan kaldirildi)
-      // Luca Cekim modulu kaldirildi - islem yapildikca eklenecek
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
       { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
       { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },
+      { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },
     ],
   },
   {
-    label: 'Galeri',
-    color: COPPER,
-    icon: Car,
-    items: [
-      { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
-    ],
-  },
-  {
-    label: 'İletişim',
+    label: 'Ofis',
     color: CHAMPAGNE,
-    icon: Bell,
+    icon: Building,
     items: [
-      { href: '/panel/bildirimler', label: 'Bildirimler', icon: Bell },
-      { href: '/panel/duyurular',   label: 'Duyurular',   icon: Megaphone },
+      { href: '/panel/tahsilat',    label: 'Tahsilat & Cari',    icon: Coins },          // YENİ
+      { href: '/panel/bildirimler', label: 'Bildirimler',         icon: Bell },
+      { href: '/panel/duyurular',   label: 'Duyurular',           icon: Megaphone },
     ],
   },
   {
@@ -100,8 +89,8 @@ const navGroups = [
     icon: Settings,
     items: [
       { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: Lock },
-      { href: '/panel/ayarlar/denetim',         label: 'Denetim Günlüğü', icon: ShieldCheck },
-      { href: '/panel/ayarlar',                 label: 'Ayarlar',         icon: Settings },
+      { href: '/panel/ayarlar/denetim',         label: 'Denetim Günlüğü',  icon: ShieldCheck },
+      { href: '/panel/ayarlar',                 label: 'Ayarlar',          icon: Settings },
     ],
   },
 ];
