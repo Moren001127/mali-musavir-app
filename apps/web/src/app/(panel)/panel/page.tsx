@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
 import { ProfilEksikWidget } from '@/components/mukellef/ProfilEksikWidget';
+import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 
 const GOLD = '#d4b876';
 
@@ -1008,28 +1009,18 @@ export default function DashboardPage() {
           trendKind={pendingTasks.length > 0 ? 'down' : 'flat'}
           accent="champagne"
         />
+        {/* v1.36.78: "Ajan İşlemleri" yerine "Aktif İş Yükü" — İş Akışı sayfasına link.
+            FIFO sıralı görev listesi orada. */}
         <StatCard
-          title="Ajan İşlemleri (Bugün)"
-          value={todayCount}
+          title="Aktif İş Yükü"
+          value={pendingTasks.length /* placeholder — gerçek workflow count gelecek */ || 0}
           icon={Bot}
-          href="/panel/ajanlar"
-          sub={todayEvents.length > 0 ? `${tKayit} kayıt · ${tAtla} atla · ${tHata} hata` : 'Henüz işlem yok'}
-          trend={successRate != null ? `%${Math.round(successRate)} başarı` : undefined}
-          trendKind={successRate != null ? (successRate >= 80 ? 'up' : successRate >= 50 ? 'flat' : 'down') : undefined}
+          href="/panel/is-yuku"
+          sub="Sıradaki yapılacak işleri gör"
           accent="bronze"
         />
-        <div title="Bugünkü ajan işlem hataları + okunmamış tebligat/sistem bildirimleri toplamı. Tıklayınca Bildirimler sayfasına gider.">
-          <StatCard
-            title="Kritik Uyarı"
-            value={criticalCount}
-            icon={AlertTriangle}
-            href="/panel/bildirimler"
-            sub={criticalCount > 0 ? `${tHata} ajan hatası · ${unread} okunmamış bildirim` : 'Sorun yok — her şey yolunda'}
-            trend={criticalCount === 0 ? 'değişmedi' : undefined}
-            trendKind={criticalCount === 0 ? 'flat' : undefined}
-            accent={criticalCount > 0 ? 'burgundy' : 'copper'}
-          />
-        </div>
+        {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
+        <KritikUyariStatCard />
       </div>
 
       <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>

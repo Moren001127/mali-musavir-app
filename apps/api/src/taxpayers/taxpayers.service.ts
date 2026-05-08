@@ -255,6 +255,129 @@ export class TaxpayersService {
   }
 
   /**
+   * v1.36.78: İş Akışı — sıralı görev listesi.
+   * Mükellef × dönem monthly status'u okur, aşamalara böler, FIFO sıralar.
+   * Aşamalar (öncelik sırası):
+   *   1. KONTROL_BEKLIYOR   — evrak işlendi ama kontrol edilmedi
+   *   2. ISLENMEYI_BEKLIYOR — evrak geldi ama işlenmedi (kim önce geldi → o önce)
+   *   3. BEYANNAME_BEKLIYOR — kontrol tamam ama beyanname verilmedi
+   *   4. EVRAK_BEKLIYOR     — evrak henüz gelmedi
+   * Her aşamada updatedAt ASC (en eski güncelleme önce — yani en uzun bekleyen önce işlenir).
+   */
+  async getWorkflowQueue(tenantId: string, year?: number, month?: number) {
+    const now = new Date();
+    const y = year ?? now.getFullYear();
+    const m = month ?? now.getMonth() + 1;
+
+    const statuses = await this.prisma.taxpayerMonthlyStatus.findMany({
+      where: { tenantId, year: y, month: m },
+      include: {
+        taxpayer: {
+          select: { id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true, isActive: true },
+        },
+      },
+    });
+
+    // Aktif olmayan mükellefleri filtrele
+    const aktifStatuses = statuses.filter((s) => s.taxpayer.isActive);
+
+    // Aşamayı belirle
+    const items = aktifStatuses.map((s) => {
+      const ad = s.taxpayer.companyName || `${s.taxpayer.firstName ?? ''} ${s.taxpayer.lastName ?? ''}`.trim();
+
+      // Hangi aşamada?
+      let stage: 'EVRAK_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
+      let actionLabel: string;
+      let actionPath: string;
+
+      if (s.beyannameVerildi) {
+        stage = 'TAMAM';
+        actionLabel = 'Tamamlandı';
+        actionPath = `/panel/mukellefler/${s.taxpayer.id}`;
+      } else if (s.kontrolEdildi || (s.kdvKontrolEdildi && s.indirilecekKdvKontrol && s.hesaplananKdvKontrol)) {
+        stage = 'BEYANNAME_BEKLIYOR';
+        actionLabel = 'Beyanname Hazırla';
+        actionPath = `/panel/beyannameler`;
+      } else if (s.evraklarIslendi) {
+        stage = 'KONTROL_BEKLIYOR';
+        actionLabel = 'KDV Kontrol Yap';
+        actionPath = `/panel/kdv-kontrol`;
+      } else if (s.evraklarGeldi) {
+        stage = 'ISLENMEYI_BEKLIYOR';
+        actionLabel = 'Faturaları İşle';
+        actionPath = `/panel/ajanlar/mihsap`;
+      } else {
+        stage = 'EVRAK_BEKLIYOR';
+        actionLabel = 'Evrak Bekleniyor';
+        actionPath = `/panel/mukellefler/${s.taxpayer.id}`;
+      }
+
+      // Bekleme süresi: updatedAt'ten şimdiye kaç gün
+      const bekleyenGun = Math.floor(
+        (now.getTime() - new Date(s.updatedAt).getTime()) / (1000 * 60 * 60 * 24),
+      );
+
+      return {
+        statusId: s.id,
+        taxpayerId: s.taxpayer.id,
+        taxpayerName: ad,
+        taxNumber: s.taxpayer.taxNumber,
+        type: s.taxpayer.type,
+        stage,
+        actionLabel,
+        actionPath,
+        bekleyenGun,
+        updatedAt: s.updatedAt,
+        evraklarGeldi: s.evraklarGeldi,
+        evraklarIslendi: s.evraklarIslendi,
+        kontrolEdildi: s.kontrolEdildi || (s.kdvKontrolEdildi && s.indirilecekKdvKontrol && s.hesaplananKdvKontrol),
+        beyannameVerildi: s.beyannameVerildi,
+      };
+    });
+
+    // Aşamaya göre öncelik (acil olan önce)
+    const stageOrder = {
+      KONTROL_BEKLIYOR: 1,
+      ISLENMEYI_BEKLIYOR: 2,
+      BEYANNAME_BEKLIYOR: 3,
+      EVRAK_BEKLIYOR: 4,
+      TAMAM: 5,
+    };
+
+    // Sırala: aşama önceliği DESC, sonra updatedAt ASC (en eski önce — kim önce hazır geldiyse o işlensin)
+    const siralanmis = [...items].sort((a, b) => {
+      const stageDiff = stageOrder[a.stage] - stageOrder[b.stage];
+      if (stageDiff !== 0) return stageDiff;
+      return new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+    });
+
+    // Aşama bazında grupla
+    const grouped = {
+      KONTROL_BEKLIYOR: items.filter((i) => i.stage === 'KONTROL_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
+      ISLENMEYI_BEKLIYOR: items.filter((i) => i.stage === 'ISLENMEYI_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
+      BEYANNAME_BEKLIYOR: items.filter((i) => i.stage === 'BEYANNAME_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
+      EVRAK_BEKLIYOR: items.filter((i) => i.stage === 'EVRAK_BEKLIYOR'),
+      TAMAM: items.filter((i) => i.stage === 'TAMAM'),
+    };
+
+    return {
+      year: y,
+      month: m,
+      donem: `${y}-${String(m).padStart(2, '0')}`,
+      total: items.length,
+      counts: {
+        evrak: grouped.EVRAK_BEKLIYOR.length,
+        islenme: grouped.ISLENMEYI_BEKLIYOR.length,
+        kontrol: grouped.KONTROL_BEKLIYOR.length,
+        beyanname: grouped.BEYANNAME_BEKLIYOR.length,
+        tamam: grouped.TAMAM.length,
+      },
+      siradaki: siralanmis.filter((i) => i.stage !== 'TAMAM' && i.stage !== 'EVRAK_BEKLIYOR').slice(0, 10),
+      grouped,
+    };
+  }
+
+  /**
    * v1.36.77: Belge Takibi matrix — mükellef × dönem, FATURA + BANKA durumu.
    * Her mükellef için belirli bir dönemin (YYYY-MM):
    *   - Fatura geldi mi (MihsapInvoice'dan: o donem'de en az 1 fatura)

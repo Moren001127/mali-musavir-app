@@ -151,9 +151,10 @@ export default function SystemHealthBell() {
         </div>
       )}
 
-      <button
-        onClick={() => setOpen(true)}
-        className="relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:opacity-80"
+      {/* v1.36.78: Sağ üst sistem sağlık göstergesi — TIKLANMAZ.
+          Sadece görsel uyarı; detay için Gösterge Paneli'ndeki Kritik Uyarı kartı kullanılır. */}
+      <div
+        className="relative w-9 h-9 rounded-lg flex items-center justify-center cursor-default"
         style={{
           border: `1px solid ${isCritical ? 'rgba(244,63,94,0.5)' : 'rgba(255,255,255,0.05)'}`,
           background: isCritical ? 'rgba(244,63,94,0.1)' : 'transparent',
@@ -163,8 +164,8 @@ export default function SystemHealthBell() {
           isOk
             ? 'Sistem sağlıklı'
             : isCritical
-            ? `${critical} kritik sorun`
-            : `${warning} uyarı`
+            ? `${critical} kritik sorun — Gösterge Paneli'nde Kritik Uyarı kartını aç`
+            : `${warning} uyarı — Gösterge Paneli'nde Kritik Uyarı kartını aç`
         }
       >
         <Icon size={16} style={{ color: buttonColor }} />
@@ -176,7 +177,7 @@ export default function SystemHealthBell() {
             {total > 9 ? '9+' : total}
           </span>
         )}
-      </button>
+      </div>
 
       {/* MODAL */}
       {open && (

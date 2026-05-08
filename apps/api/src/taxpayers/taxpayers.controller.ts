@@ -138,4 +138,22 @@ export class TaxpayersController {
     }
     return this.taxpayersService.getBelgeTakipMatrix(req.user.tenantId, donem);
   }
+
+  /**
+   * v1.36.78: İş Akışı kuyruğu — sıralı görev listesi (FIFO).
+   * Mükelleflerin monthly status'una göre aşamalara böler ve sıraya koyar.
+   * Kim önce hazır geldiyse o önce işlenir.
+   */
+  @Get('workflow/queue')
+  getWorkflowQueue(
+    @Req() req: any,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    return this.taxpayersService.getWorkflowQueue(
+      req.user.tenantId,
+      year ? parseInt(year, 10) : undefined,
+      month ? parseInt(month, 10) : undefined,
+    );
+  }
 }

@@ -41,8 +41,7 @@ const navGroups = [
     icon: Users,
     items: [
       { href: '/panel/mukellefler',       label: 'Mükellef Listesi',    icon: Users },
-      { href: '/panel/belge-takip',       label: 'Belge Takibi',        icon: FolderCheck },
-      { href: '/panel/banka-takip',       label: 'Banka Takip (Detay)', icon: Landmark },
+      { href: '/panel/banka-takip',       label: 'Banka Takip',         icon: Landmark },
       { href: '/panel/ajanlar/profiller', label: 'Mükellef Profilleri', icon: Sliders },
     ],
   },
