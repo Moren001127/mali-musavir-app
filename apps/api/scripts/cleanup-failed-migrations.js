@@ -167,6 +167,19 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
       `CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key" ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo");`,
       `CREATE INDEX IF NOT EXISTS "earsiv_faturalar_mihsap_status_idx" ON "earsiv_faturalar"("mihsapUploadStatus");`,
       `CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx" ON "earsiv_faturalar"("tenantId", "taxpayerId", "donem", "tip", "belgeKaynak");`,
+
+      // v1.36.71: receipt_images — 20260504 migration drift fix
+      // Production DB'de bu kolonlar yoktu (migration "applied" işaretlenmiş ama
+      // kolon eklenmemiş). Idempotent ALTER ile garantiye al.
+      `ALTER TABLE "receipt_images" ADD COLUMN IF NOT EXISTS "imageHash"   VARCHAR(64);`,
+      `ALTER TABLE "receipt_images" ADD COLUMN IF NOT EXISTS "ocrKategori" TEXT;`,
+      `ALTER TABLE "receipt_images" ADD COLUMN IF NOT EXISTS "ocrSaticiVkn" TEXT;`,
+      `CREATE INDEX IF NOT EXISTS "receipt_images_imageHash_idx" ON "receipt_images"("imageHash");`,
+
+      // v1.36.71: ai_usage_logs — aynı 20260504 migration drift
+      `ALTER TABLE "ai_usage_logs" ADD COLUMN IF NOT EXISTS "taxpayerId" TEXT;`,
+      `ALTER TABLE "ai_usage_logs" ADD COLUMN IF NOT EXISTS "cacheHit"   BOOLEAN NOT NULL DEFAULT FALSE;`,
+      `CREATE INDEX IF NOT EXISTS "ai_usage_logs_tenantId_taxpayerId_createdAt_idx" ON "ai_usage_logs"("tenantId", "taxpayerId", "createdAt");`,
     ];
     let patchOk = 0;
     let patchFail = 0;
