@@ -668,12 +668,17 @@ export class OcrService {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // v1.36.64: Prompt caching — system prompt 5dk cache, ardışık fatura çağrılarında %80-90 input maliyet düşer
+          'anthropic-beta': 'prompt-caching-2024-07-31',
         },
         body: JSON.stringify({
           model: MODEL,
           // PDF çok sayfalı olabilir → token limitini biraz artır
           max_tokens: isPdf ? 800 : 400,
-          system: systemPrompt,
+          // v1.36.64: system prompt array + cache_control → tekrar eden 3-5K token cache'lenir
+          system: [
+            { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+          ],
           messages: [
             {
               role: 'user',
@@ -707,13 +712,19 @@ export class OcrService {
     const raw = textBlock?.text?.trim() || '';
 
     // Token kullanımı + maliyet (model bazlı)
+    // v1.36.64: cache_creation ve cache_read token'ları da hesaba katılır.
+    // Haiku 4.5 fiyatlama: input $1, output $5, cache write $1.25 (1.25x), cache read $0.10 (0.1x).
     const inputTokens = Number(payload?.usage?.input_tokens || 0);
     const outputTokens = Number(payload?.usage?.output_tokens || 0);
+    const cacheCreationTokens = Number(payload?.usage?.cache_creation_input_tokens || 0);
+    const cacheReadTokens = Number(payload?.usage?.cache_read_input_tokens || 0);
     const price = CLAUDE_PRICES[MODEL] || CLAUDE_PRICES['claude-sonnet-4-5'];
     const costUsd =
       (inputTokens / 1_000_000) * price.input +
-      (outputTokens / 1_000_000) * price.output;
-    const usage = { inputTokens, outputTokens, costUsd };
+      (outputTokens / 1_000_000) * price.output +
+      (cacheCreationTokens / 1_000_000) * (price.input * 1.25) +
+      (cacheReadTokens / 1_000_000) * (price.input * 0.1);
+    const usage = { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, costUsd };
 
     // JSON block'unu çıkar (Claude bazen markdown içine sararken)
     const jsonMatch = raw.match(/\{[\s\S]*\}/);

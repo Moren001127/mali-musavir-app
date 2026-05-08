@@ -361,7 +361,9 @@ export class ReconciliationEngine {
           // %95+ similarity (1 karakter farkı 20+ char'da) — exact kabul
           score += belgeNoWeight;
           belgeNoExact = true;
-        } else if (similarity >= 0.75) {
+        } else if (similarity >= 0.85) {
+          // v1.36.64: %75 → %85 sıkılaştırma. Kısa belge no'larda (4-5 hane) %75 çok loose,
+          // permutasyon (0125 ↔ 0521) yanlış match'leri geçirebiliyordu.
           score += belgeNoWeight * 0.55;
           reasons.push(`Belge no kısmi: ${record.belgeNo} ≠ ${imgBelgeNo}`);
         } else {
@@ -383,7 +385,13 @@ export class ReconciliationEngine {
       : null;
     const imageBreakdown = getImageBreakdown(image);
 
-    if (record.kdvTutari && imgKdv) {
+    // v1.36.64: Çelişki düzeltmesi — virtual multi-rate record + breakdown varsa
+    // klasik toplam kontrolü skip edilsin (line 547'deki kalem-kalem kontrol yeterli).
+    // Önceden hem toplam bonus hem kalem uyumsuzluk warning aynı anda yazılıyordu.
+    const hasMultiRateBreakdown =
+      expectedBreakdown && expectedBreakdown.length > 1 && imageBreakdown.length > 0;
+
+    if (record.kdvTutari && imgKdv && !hasMultiRateBreakdown) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
 
       // Bu BİR ORANLI Luca kaydı + OCR breakdown var → oran-bazlı karşılaştırma
