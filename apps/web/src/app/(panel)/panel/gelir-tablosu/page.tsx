@@ -1013,8 +1013,8 @@ export default function GelirTablosuPage() {
                   { key: 'toplamKar', label: 'Toplam Kar', bold: true, color: GOLD },
                   { key: 'gecmisYilZarari', label: 'Geçmiş Yıl Zararı', manual: 'gecmisYil' as const, negSign: true },
                   { key: 'gecicVergiMatrahi', label: 'Geçici Vergi Matrahı', bold: true, color: '#22c55e', bg: 'rgba(34,197,94,0.04)' },
-                  // v1.36.52: dinamik vergi oranı etiketi (TUZEL %25 / GERCEK %15)
-                  { key: 'hesaplananGeciciVergi', label: `Hesaplanan Geçici Vergi %${Math.round((Number(detail?.geciciVergiHesabi?.gecicVergiOrani) || 0.25) * 100)}` },
+                  // v1.36.53: dinamik vergi oranı etiketi (TUZEL %25 / GERCEK %15) — quarterDetails'tan ilk dolu olanı kullan
+                  { key: 'hesaplananGeciciVergi', label: `Hesaplanan Geçici Vergi %${Math.round((Number(quarterDetails.find((qd) => qd?.data?.geciciVergiHesabi)?.data?.geciciVergiHesabi?.gecicVergiOrani) || 0.25) * 100)}` },
                   { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
