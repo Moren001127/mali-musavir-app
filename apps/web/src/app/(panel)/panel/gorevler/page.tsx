@@ -176,12 +176,12 @@ export default function GorevlerPage() {
         </div>
       ) : (
         <div className="space-y-5">
-          <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="BUGÜN" tasks={grouped.today} accent="#3b82f6" onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="YARIN" tasks={grouped.tomorrow} accent="#f59e0b" onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="BU HAFTA" tasks={grouped.thisWeek} accent={GOLD} onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="DAHA SONRA" tasks={grouped.later} accent="rgba(250,250,249,0.4)" onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="TARİHSİZ" tasks={grouped.none} accent="rgba(250,250,249,0.3)" onComplete={(id) => completeMut.mutate(id)} onDelete={(id) => deleteMut.mutate(id)} onEdit={(t) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="BUGÜN" tasks={grouped.today} accent="#3b82f6" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="YARIN" tasks={grouped.tomorrow} accent="#f59e0b" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="BU HAFTA" tasks={grouped.thisWeek} accent={GOLD} onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="DAHA SONRA" tasks={grouped.later} accent="rgba(250,250,249,0.4)" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="TARİHSİZ" tasks={grouped.none} accent="rgba(250,250,249,0.3)" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
         </div>
       )}
 
