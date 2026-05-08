@@ -150,18 +150,33 @@ export class AgentEventsService {
     const ALIS_ACTIONS = ['isle_alis', 'isle_alis_isletme'];
     const SATIS_ACTIONS = ['isle_satis', 'isle_satis_isletme'];
 
-    // v1.14.1 — action filtresi kaldırıldı. Eski extension kayıtlarında
-    // action NULL geliyordu, onlar da yoksayılıyordu. Şimdi action varsa
-    // alış/satış olarak ayır, yoksa "atlanan" sayacında say (bilinmiyor).
-    const rows = await this.prisma.agentEvent.findMany({
+    // v1.36.39: Geniş ts penceresi → meta.donem ile filtre.
+    // Eski mantık ts (log yazıldığı an) bazlıydı; nisan faturalarını mayısın 2'sinde
+    // işlersek nisan istatistiğinde gözükmüyordu. Artık agent her log'a meta.donem
+    // (komutun ay'i, ör. "2026-04") yazıyor, biz onu kullanıyoruz.
+    // donem yoksa (eski kayıtlar) ts'e fallback.
+    const donemStr = `${year}-${String(month).padStart(2, '0')}`;
+    const wideStart = new Date(year, month - 3, 1);
+    const wideEnd = new Date(year, month + 2, 1);
+
+    const allRows = await this.prisma.agentEvent.findMany({
       where: {
         tenantId,
         agent,
         status: { in: SUCCESS_STATUSES },
-        ts: { gte: periodStart, lt: periodEnd },
+        ts: { gte: wideStart, lt: wideEnd },
         mukellef: { not: null },
       },
-      select: { mukellef: true, action: true, status: true },
+      select: { mukellef: true, action: true, status: true, ts: true, meta: true },
+    });
+
+    const rows = allRows.filter((r) => {
+      const m = (r.meta as any) || {};
+      if (typeof m.donem === 'string' && m.donem.length > 0) {
+        return m.donem === donemStr;
+      }
+      // Fallback: meta.donem yoksa (eski kayıt) → ts ile orijinal pencereye düş.
+      return r.ts >= periodStart && r.ts < periodEnd;
     });
 
     // Mükellef → { alis, satis, atlanan }
@@ -981,12 +996,21 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // v1.36.40: Prompt caching aktif — system prompt 5 dk cache'lenir.
+          // Haiku 4.5 fiyatlama: cache write 1.25×, cache read 0.1× (10× ucuz).
+          // Aynı islemTuru + benzer hesap planı ardışık çağrılarda input maliyeti düşer.
+          'anthropic-beta': 'prompt-caching-2024-07-31',
         },
         body: JSON.stringify({
           model: MODEL,
           // Öneri modunda cevap daha uzun (onerilenler JSON'u eklenir) → 900 token güvenli
           max_tokens: input.bosAlanSecenekleri ? 900 : 600,
-          system,
+          // v1.36.40: system'i array yap + cache_control ekle.
+          // Tüm system bloğu önbelleğe alınır; benzer prefix'li çağrılar input maliyetinde
+          // ~%80-90 tasarruf sağlar (cache hit halinde $1.0/M → $0.1/M).
+          system: [
+            { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+          ],
           messages: [
             {
               role: 'user',
@@ -1393,11 +1417,15 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
+          // v1.36.40: Prompt caching aktif (decideIsletme).
+          'anthropic-beta': 'prompt-caching-2024-07-31',
         },
         body: JSON.stringify({
           model: MODEL,
           max_tokens: 500,
-          system,
+          system: [
+            { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+          ],
           messages: [
             {
               role: 'user',
