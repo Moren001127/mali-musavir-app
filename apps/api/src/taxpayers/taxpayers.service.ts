@@ -144,6 +144,154 @@ export class TaxpayersService {
     return this.prisma.taxpayer.update({ where: { id }, data: { isActive: false } });
   }
 
+  /**
+   * v1.36.76: Mükellef profil tamamlığı.
+   * Üç katman puanlama (toplam 100):
+   *  - KRİTİK (50p): Ad/VKN/Vergi Dairesi/Defter Türü/En az 1 mükellefiyet türü
+   *  - ÖNEMLİ (30p): Hukuki tip + telefon + email + adres + mali müşavirlik ücreti
+   *  - YARARLI (20p): Faaliyet, WA, evrak günü, Luca slug, Mihsap ID, banka, e-posta tercih
+   */
+  async getCompleteness(id: string, tenantId: string) {
+    const tp: any = await this.prisma.taxpayer.findFirst({
+      where: { id, tenantId },
+      include: {
+        beyanConfig: true,
+        bankaHesaplar: { where: { aktif: true }, select: { id: true } },
+      },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+
+    // Mali müşavirlik ücreti — Cari Hizmet'te kayıt var mı (aktif)
+    const cariHizmetCount = await (this.prisma as any).cariHizmet.count({
+      where: { tenantId, taxpayerId: id, aktif: true },
+    });
+
+    type Field = { key: string; label: string; tier: 'KRITIK' | 'ONEMLI' | 'YARARLI'; value: any; ok: boolean };
+    const fields: Field[] = [];
+
+    // === KRİTİK ===
+    const adVar = tp.companyName || (tp.firstName && tp.lastName);
+    fields.push({ key: 'ad', label: 'Ad / Ünvan', tier: 'KRITIK', value: adVar, ok: !!adVar });
+    fields.push({ key: 'taxNumber', label: 'VKN / TCKN', tier: 'KRITIK', value: tp.taxNumber, ok: !!tp.taxNumber });
+    fields.push({ key: 'taxOffice', label: 'Vergi Dairesi', tier: 'KRITIK', value: tp.taxOffice, ok: !!tp.taxOffice });
+    fields.push({ key: 'defterTuru', label: 'Defter Türü', tier: 'KRITIK', value: tp.defterTuru, ok: !!tp.defterTuru });
+
+    // En az 1 mükellefiyet seçili mi (TaxpayerBeyanConfig)
+    const cfg = tp.beyanConfig;
+    const hasAnyMukellefiyet = !!cfg && (
+      !!cfg.kdv1Period || !!cfg.kdv2Enabled || !!cfg.muhtasarPeriod ||
+      !!cfg.damgaEnabled || !!cfg.posetEnabled || !!cfg.sgkBildirgeEnabled ||
+      !!cfg.eDefterPeriod || !!cfg.incomeTaxType
+    );
+    fields.push({
+      key: 'mukellefiyetler', label: 'Mükellefiyet Türleri (KDV/Muhtasar/vb.)',
+      tier: 'KRITIK', value: hasAnyMukellefiyet, ok: hasAnyMukellefiyet,
+    });
+
+    // === ÖNEMLİ ===
+    fields.push({ key: 'type', label: 'Hukuki Tip (Gerçek/Tüzel)', tier: 'ONEMLI', value: tp.type, ok: !!tp.type });
+    fields.push({
+      key: 'telefon', label: 'Telefon', tier: 'ONEMLI',
+      value: tp.phone || (tp.phones || []).filter(Boolean).length > 0,
+      ok: !!(tp.phone || (tp.phones || []).filter(Boolean).length > 0),
+    });
+    fields.push({
+      key: 'email', label: 'E-posta', tier: 'ONEMLI',
+      value: tp.email || (tp.emails || []).filter(Boolean).length > 0,
+      ok: !!(tp.email || (tp.emails || []).filter(Boolean).length > 0),
+    });
+    fields.push({ key: 'adres', label: 'Adres', tier: 'ONEMLI', value: tp.address, ok: !!tp.address });
+    fields.push({
+      key: 'mmUcret', label: 'Mali Müşavirlik Ücreti (Cari Hizmet)',
+      tier: 'ONEMLI', value: cariHizmetCount > 0, ok: cariHizmetCount > 0,
+    });
+
+    // === YARARLI ===
+    fields.push({ key: 'evrakGunu', label: 'Evrak Teslim Günü', tier: 'YARARLI', value: tp.evrakTeslimGunu, ok: !!tp.evrakTeslimGunu });
+    fields.push({ key: 'lucaSlug', label: 'Luca Slug', tier: 'YARARLI', value: tp.lucaSlug, ok: !!tp.lucaSlug });
+    fields.push({ key: 'mihsapId', label: 'Mihsap ID', tier: 'YARARLI', value: tp.mihsapId, ok: !!tp.mihsapId });
+    fields.push({
+      key: 'banka', label: 'Banka Hesabı (en az 1)',
+      tier: 'YARARLI', value: tp.bankaHesaplar?.length > 0, ok: (tp.bankaHesaplar?.length ?? 0) > 0,
+    });
+    fields.push({
+      key: 'baslangic', label: 'İşe Başlama Tarihi',
+      tier: 'YARARLI', value: tp.startDate, ok: !!tp.startDate,
+    });
+
+    // Puanlama
+    const kritik = fields.filter((f) => f.tier === 'KRITIK');
+    const onemli = fields.filter((f) => f.tier === 'ONEMLI');
+    const yararli = fields.filter((f) => f.tier === 'YARARLI');
+
+    const kritikScore = (kritik.filter((f) => f.ok).length / kritik.length) * 50;
+    const onemliScore = (onemli.filter((f) => f.ok).length / onemli.length) * 30;
+    const yararliScore = (yararli.filter((f) => f.ok).length / yararli.length) * 20;
+    const totalScore = Math.round(kritikScore + onemliScore + yararliScore);
+
+    let durum: 'TAM' | 'IYI' | 'EKSIK' | 'KRITIK_EKSIK';
+    if (totalScore >= 95) durum = 'TAM';
+    else if (totalScore >= 80) durum = 'IYI';
+    else if (totalScore >= 60) durum = 'EKSIK';
+    else durum = 'KRITIK_EKSIK';
+
+    const eksikler = fields.filter((f) => !f.ok);
+    const kritikEksikSayisi = eksikler.filter((f) => f.tier === 'KRITIK').length;
+
+    return {
+      taxpayerId: id,
+      score: totalScore,
+      durum,
+      kritikEksikSayisi,
+      eksikSayisi: eksikler.length,
+      fields,
+      eksikler,
+      breakdown: {
+        kritik: { dolu: kritik.filter((f) => f.ok).length, toplam: kritik.length, puan: Math.round(kritikScore) },
+        onemli: { dolu: onemli.filter((f) => f.ok).length, toplam: onemli.length, puan: Math.round(onemliScore) },
+        yararli: { dolu: yararli.filter((f) => f.ok).length, toplam: yararli.length, puan: Math.round(yararliScore) },
+      },
+    };
+  }
+
+  /**
+   * v1.36.76: Tüm mükelleflerin tamamlık özeti (dashboard widget için).
+   * Her mükellefin score'unu hesaplar — N+1 query'den kaçınmak için tek transaction.
+   */
+  async getCompletenessSummary(tenantId: string) {
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, firstName: true, lastName: true, companyName: true },
+    });
+    const items = await Promise.all(
+      taxpayers.map(async (t) => {
+        try {
+          const c = await this.getCompleteness(t.id, tenantId);
+          return {
+            id: t.id,
+            ad: t.companyName || `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim(),
+            score: c.score,
+            durum: c.durum,
+            kritikEksikSayisi: c.kritikEksikSayisi,
+            eksikSayisi: c.eksikSayisi,
+          };
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const valid = items.filter(Boolean) as any[];
+    return {
+      total: valid.length,
+      tam: valid.filter((i) => i.durum === 'TAM').length,
+      iyi: valid.filter((i) => i.durum === 'IYI').length,
+      eksik: valid.filter((i) => i.durum === 'EKSIK').length,
+      kritikEksik: valid.filter((i) => i.durum === 'KRITIK_EKSIK').length,
+      averageScore: Math.round(valid.reduce((s, i) => s + i.score, 0) / (valid.length || 1)),
+      taxpayers: valid.sort((a, b) => a.score - b.score), // en eksik üstte
+    };
+  }
+
   async getMonthlyStatus(taxpayerId: string, tenantId: string, year: number, month: number) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');

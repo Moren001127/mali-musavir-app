@@ -8,6 +8,8 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
 import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
+import { ProfilTamamlikBanner } from '@/components/mukellef/ProfilTamamlikBanner';
+import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 
 
 const TAXPAYER_TYPES = [
@@ -173,12 +175,22 @@ export default function MukellefDetayPage() {
         )}
       </div>
 
+      {/* v1.36.76: Profil tamamlık banner (eksikse görünür) */}
+      {!isNew && id && (
+        <ProfilTamamlikBanner taxpayerId={id} />
+      )}
+
       {/* Karlılık & evrak yenileme widget'ları (sadece kayıtlı mükellefte) */}
       {!isNew && id && (
         <div className="space-y-3 mb-6">
           <TaxpayerStatsCard taxpayerId={id} />
           <DocumentExpiryWidget taxpayerId={id} compact={false} daysAhead={90} />
         </div>
+      )}
+
+      {/* v1.36.76: Mükellefiyetler bölümü — beyanname türleri + dönemleri */}
+      {!isNew && id && (
+        <MukellefiyetlerCard taxpayerId={id} />
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">

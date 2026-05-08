@@ -107,4 +107,22 @@ export class TaxpayersController {
       months ? Math.min(parseInt(months, 10), 12) : 1,
     );
   }
+
+  /**
+   * v1.36.76: Mükellef profil tamamlığı (skor 0-100, eksik alanlar listesi).
+   * Banner ve detay panel için kullanılır.
+   */
+  @Get(':id/completeness')
+  getCompleteness(@Req() req: any, @Param('id') id: string) {
+    return this.taxpayersService.getCompleteness(id, req.user.tenantId);
+  }
+
+  /**
+   * v1.36.76: Tüm mükelleflerin tamamlık özeti (dashboard widget).
+   * Profili eksik mükellefleri listeler — en eksik üstte sıralı.
+   */
+  @Get('completeness/summary')
+  getCompletenessSummary(@Req() req: any) {
+    return this.taxpayersService.getCompletenessSummary(req.user.tenantId);
+  }
 }
