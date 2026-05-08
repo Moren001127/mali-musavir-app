@@ -290,11 +290,16 @@ export class TaxpayersService {
       let actionLabel: string;
       let actionPath: string;
 
+      // v1.36.80 FIX: Mükellef listesi ile uyumlu — 3 KDV checkbox (indirilecek + hesaplanan + e-arşiv)
+      // hepsi tıklı olunca KONTROL TAMAM sayılır (eski: kdvKontrolEdildi legacy field aranıyordu)
+      const kdvKontrolHepsiTamam =
+        s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+
       if (s.beyannameVerildi) {
         stage = 'TAMAM';
         actionLabel = 'Tamamlandı';
         actionPath = `/panel/mukellefler/${s.taxpayer.id}`;
-      } else if (s.kontrolEdildi || (s.kdvKontrolEdildi && s.indirilecekKdvKontrol && s.hesaplananKdvKontrol)) {
+      } else if (s.kontrolEdildi || kdvKontrolHepsiTamam) {
         stage = 'BEYANNAME_BEKLIYOR';
         actionLabel = 'Beyanname Hazırla';
         actionPath = `/panel/beyannameler`;
@@ -330,7 +335,7 @@ export class TaxpayersService {
         updatedAt: s.updatedAt,
         evraklarGeldi: s.evraklarGeldi,
         evraklarIslendi: s.evraklarIslendi,
-        kontrolEdildi: s.kontrolEdildi || (s.kdvKontrolEdildi && s.indirilecekKdvKontrol && s.hesaplananKdvKontrol),
+        kontrolEdildi: s.kontrolEdildi || kdvKontrolHepsiTamam,
         beyannameVerildi: s.beyannameVerildi,
       };
     });

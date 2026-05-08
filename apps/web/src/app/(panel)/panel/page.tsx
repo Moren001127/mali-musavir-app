@@ -714,6 +714,17 @@ export default function DashboardPage() {
   const { data: agentStats } = useQuery<any>({ queryKey: ['agent-stats'], queryFn: () => api.get('/agent/stats').then((r) => r.data).catch(() => null) });
   const { data: agentStatuses = [] } = useQuery<any[]>({ queryKey: ['agent-statuses'], queryFn: () => api.get('/agent/status').then((r) => r.data).catch(() => []), refetchInterval: 30_000 });
 
+  // v1.36.80: Aktif İş Yükü — gerçek workflow queue count'u (KONTROL/İŞLEME/BEYAN bekleyenler toplamı)
+  const { data: workflowData } = useQuery<{ counts?: { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
+    queryKey: ['dashboard-workflow-queue'],
+    queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ counts: { evrak: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
+    refetchInterval: 60_000,
+  });
+  const aktifIsYuku =
+    (workflowData?.counts?.islenme ?? 0) +
+    (workflowData?.counts?.kontrol ?? 0) +
+    (workflowData?.counts?.beyanname ?? 0);
+
   const feed = (agentEvents as any[]).slice(0, 20).map(agentEventToFeed);
 
   // v1.36.74: Görevler artık backend'den geliyor (Görevler & Notlar modülüyle ortak veri).
@@ -1009,14 +1020,18 @@ export default function DashboardPage() {
           trendKind={pendingTasks.length > 0 ? 'down' : 'flat'}
           accent="champagne"
         />
-        {/* v1.36.78: "Ajan İşlemleri" yerine "Aktif İş Yükü" — İş Akışı sayfasına link.
-            FIFO sıralı görev listesi orada. */}
+        {/* v1.36.80: "Aktif İş Yükü" — gerçek workflow queue count'u
+            (İŞLENECEK + KONTROL + BEYAN aşamalarındaki mükellef sayısı toplamı) */}
         <StatCard
           title="Aktif İş Yükü"
-          value={pendingTasks.length /* placeholder — gerçek workflow count gelecek */ || 0}
+          value={aktifIsYuku}
           icon={Bot}
           href="/panel/is-yuku"
-          sub="Sıradaki yapılacak işleri gör"
+          sub={
+            workflowData?.counts
+              ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
+              : 'Sıradaki yapılacak işleri gör'
+          }
           accent="bronze"
         />
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
@@ -1121,6 +1136,55 @@ export default function DashboardPage() {
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>Not (opsiyonel)</label>
                 <textarea value={nN} onChange={(e) => setNN(e.target.value)} rows={3} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] outline-none resize-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+              </div>
+
+              {/* Hatırlatma kanalları — şimdilik bilgi toplama, entegrasyon ileride */}
+              <div className="pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-2 mb-2 mt-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>Hatırlatma Kanalları</span>
+                  <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.3)' }}>Yakında Aktif</span>
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📱 WhatsApp numarası (Örn: 0535 058 74 75)</label>
+                    <input
+                      type="tel"
+                      value={nWA}
+                      onChange={(e) => setNWA(e.target.value)}
+                      placeholder="05xx xxx xx xx"
+                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>📧 E-posta adresi</label>
+                    <input
+                      type="email"
+                      value={nEM}
+                      onChange={(e) => setNEM(e.target.value)}
+                      placeholder="ornek@mail.com"
+                      className="w-full px-3.5 py-2 rounded-[10px] text-[13.5px] outline-none"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: '#fafaf9' }}
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] mt-2" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                  Hatırlatma günü geldiğinde bu kanallara da bildirim gidecek. Şimdilik bilgi kaydediliyor, entegrasyon yakında.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button onClick={() => setModal(false)} className="px-4 py-2 rounded-[10px] text-[13px] font-medium" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}>İptal</button>
+                <button onClick={addT} disabled={!nT.trim()} className="px-5 py-2 rounded-[10px] text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>Ekle</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
               </div>
 
               {/* Hatırlatma kanalları — şimdilik bilgi toplama, entegrasyon ileride */}
