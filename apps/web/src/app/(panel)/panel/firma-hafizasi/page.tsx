@@ -221,45 +221,87 @@ export default function FirmaHafizasiPage() {
         </div>
       )}
 
-      {/* Detail Modal — mükellef bazlı kategori dağılımı */}
+      {/* Detail Modal — mükellef bazlı kategori dağılımı (v1.36.46: dark theme) */}
       {selectedVkn && detail && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSelectedVkn(null)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setSelectedVkn(null)}
+        >
           <div
-            className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-auto"
+            className="rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-auto"
+            style={{ background: 'rgb(15,13,11)', border: '1px solid rgba(255,255,255,0.08)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6 border-b border-stone-200 flex items-center justify-between">
+            <div className="p-6 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               <div>
-                <h2 className="text-xl font-semibold text-stone-800">{detail.firmaUnvan || '(unvan yok)'}</h2>
-                <p className="text-sm text-stone-500 font-mono mt-1">{detail.firmaKimlikNo}</p>
+                <h2 className="text-xl font-semibold" style={{ color: '#fafaf9' }}>{detail.firmaUnvan || '(unvan yok)'}</h2>
+                <p className="text-sm font-mono mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>{detail.firmaKimlikNo}</p>
               </div>
-              <button onClick={() => setSelectedVkn(null)} className="text-stone-400 hover:text-stone-700">
+              <button onClick={() => setSelectedVkn(null)} className="hover:opacity-80" style={{ color: 'rgba(250,250,249,0.55)' }}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="bg-stone-50 rounded p-3">
-                  <div className="text-xs text-stone-500 uppercase">Toplam Onay</div>
-                  <div className="text-2xl font-semibold text-stone-800">{detail.toplamOnay}</div>
+                <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="text-xs uppercase" style={{ color: 'rgba(250,250,249,0.5)' }}>Toplam Onay</div>
+                  <div className="text-2xl font-semibold" style={{ color: '#fafaf9' }}>{detail.toplamOnay}</div>
                 </div>
-                <div className="bg-stone-50 rounded p-3">
-                  <div className="text-xs text-stone-500 uppercase">Mükellef Sayısı</div>
-                  <div className="text-2xl font-semibold text-stone-800">{detail.mukellefler?.length || 0}</div>
+                <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="text-xs uppercase" style={{ color: 'rgba(250,250,249,0.5)' }}>Mükellef Sayısı</div>
+                  <div className="text-2xl font-semibold" style={{ color: '#fafaf9' }}>{detail.mukellefler?.length || 0}</div>
                 </div>
-                <div className="bg-stone-50 rounded p-3">
-                  <div className="text-xs text-stone-500 uppercase">Son Kullanım</div>
-                  <div className="text-sm font-medium text-stone-700 mt-1">
+                <div className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div className="text-xs uppercase" style={{ color: 'rgba(250,250,249,0.5)' }}>Son Kullanım</div>
+                  <div className="text-sm font-medium mt-1" style={{ color: 'rgba(250,250,249,0.85)' }}>
                     {new Date(detail.sonKullanim).toLocaleString('tr-TR')}
                   </div>
                 </div>
               </div>
 
+              {/* v1.36.46: SIFIRLA / SIL — yanlış öğrenilmiş hafızayı temizle */}
+              <div
+                className="rounded-lg p-3 flex items-start justify-between gap-4"
+                style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.25)' }}
+              >
+                <div className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                  <div className="font-semibold mb-0.5" style={{ color: '#f43f5e' }}>Yanlış öğrenme tespit ettiysen</div>
+                  <div style={{ color: 'rgba(250,250,249,0.65)' }}>
+                    Bu firma için tüm VendorMemory kayıtları silinir. AI sıfırdan öğrenmeye başlar — bir sonraki faturada onay kuyruğuna düşer ve sen doğru kodla onaylarsın.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `${detail.firmaUnvan || detail.firmaKimlikNo} için tüm hafıza silinecek (${detail.toplamOnay} kayıt). Devam edilsin mi?`,
+                      )
+                    ) {
+                      deleteMut.mutate(detail.firmaKimlikNo, {
+                        onSuccess: () => {
+                          toast.success('Firma hafızası sıfırlandı');
+                        },
+                        onError: (e: any) => {
+                          toast.error(e?.response?.data?.message || 'Silme başarısız');
+                        },
+                      });
+                    }
+                  }}
+                  disabled={deleteMut.isPending}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12px] font-bold disabled:opacity-50 whitespace-nowrap"
+                  style={{ background: '#f43f5e', color: '#fff' }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {deleteMut.isPending ? 'Siliniyor...' : 'Hafızayı Sıfırla'}
+                </button>
+              </div>
+
               {/* Mükellef bazlı kategori dağılımı */}
               <div>
-                <h3 className="text-sm font-semibold text-stone-700 mb-3 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                  <Users className="w-4 h-4" style={{ color: '#d4b876' }} />
                   Mükellef Bazlı Kategori Dağılımı
                 </h3>
                 {detail.mukellefler && detail.mukellefler.length > 0 ? (
@@ -267,18 +309,33 @@ export default function FirmaHafizasiPage() {
                     {detail.mukellefler.map((m: VendorMukellefDetay, idx) => (
                       <div
                         key={m.taxpayerId || `ortak-${idx}`}
-                        className="bg-white border border-stone-200 rounded-lg overflow-hidden"
+                        className="rounded-lg overflow-hidden"
+                        style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}
                       >
-                        <div className={`px-4 py-2.5 border-b border-stone-100 flex items-center justify-between ${m.taxpayerId ? 'bg-amber-50/40' : 'bg-stone-50'}`}>
+                        <div
+                          className="px-4 py-2.5 flex items-center justify-between"
+                          style={{
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            background: m.taxpayerId ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.02)',
+                          }}
+                        >
                           <div className="flex items-center gap-2">
-                            <span className={`text-sm font-semibold ${m.taxpayerId ? 'text-stone-800' : 'text-stone-500 italic'}`}>
+                            <span
+                              className={`text-sm font-semibold ${!m.taxpayerId ? 'italic' : ''}`}
+                              style={{ color: m.taxpayerId ? '#fafaf9' : 'rgba(250,250,249,0.55)' }}
+                            >
                               {m.ad}
                             </span>
                             {!m.taxpayerId && (
-                              <span className="text-xs px-2 py-0.5 bg-stone-200 text-stone-600 rounded">eski kayıt</span>
+                              <span
+                                className="text-xs px-2 py-0.5 rounded"
+                                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.55)' }}
+                              >
+                                eski kayıt
+                              </span>
                             )}
                           </div>
-                          <span className="text-sm font-medium text-amber-700">
+                          <span className="text-sm font-medium" style={{ color: '#d4b876' }}>
                             {m.toplamOnay} toplam onay
                           </span>
                         </div>
@@ -286,19 +343,20 @@ export default function FirmaHafizasiPage() {
                           {m.kategoriler.map((k, ki) => (
                             <div
                               key={ki}
-                              className="flex items-center justify-between px-2.5 py-1.5 rounded hover:bg-stone-50"
+                              className="flex items-center justify-between px-2.5 py-1.5 rounded"
+                              style={{ background: 'transparent' }}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <span className="text-[10px] font-semibold text-stone-400 uppercase w-14">
+                                <span className="text-[10px] font-semibold uppercase w-14" style={{ color: 'rgba(250,250,249,0.4)' }}>
                                   {k.kararTipi}
                                 </span>
-                                <span className="text-sm text-stone-800 font-mono truncate">
+                                <span className="text-sm font-mono truncate" style={{ color: '#fafaf9' }}>
                                   {k.altKategori ? `${k.kategori} → ${k.altKategori}` : k.kategori}
                                 </span>
                               </div>
-                              <div className="text-sm text-stone-700 flex items-center gap-3">
+                              <div className="text-sm flex items-center gap-3" style={{ color: 'rgba(250,250,249,0.85)' }}>
                                 <span className="font-semibold">{k.onayAdedi} kez</span>
-                                <span className="text-xs text-stone-400">
+                                <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
                                   {new Date(k.sonKullanim).toLocaleDateString('tr-TR')}
                                 </span>
                               </div>
@@ -309,11 +367,11 @@ export default function FirmaHafizasiPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-stone-500 text-sm">Henüz kategori kaydı yok.</div>
+                  <div className="text-sm" style={{ color: 'rgba(250,250,249,0.55)' }}>Henüz kategori kaydı yok.</div>
                 )}
               </div>
 
-              <div className="text-xs text-stone-400 text-right">
+              <div className="text-xs text-right" style={{ color: 'rgba(250,250,249,0.4)' }}>
                 Oluşturma: {new Date(detail.createdAt).toLocaleString('tr-TR')}
               </div>
             </div>
