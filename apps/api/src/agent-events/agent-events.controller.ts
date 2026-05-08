@@ -317,14 +317,15 @@ export class AgentEventsController {
     });
   }
 
-  /** Yerel runner bekleyen komutları çeker ve claim eder */
+  /** Yerel runner bekleyen komutları çeker ve claim eder.
+   * v1.36.61: deviceId varsa SADECE bu device'a atanmış (veya target-yok) komutlar döner. */
   @Post('commands/claim')
   claimCommands(
     @Headers('x-agent-token') token: string,
-    @Body() body: { agent?: string } = {},
+    @Body() body: { agent?: string; deviceId?: string } = {},
   ) {
     const tenantId = this.resolveTenantFromToken(token);
-    return this.service.claimPendingCommands(tenantId, body?.agent);
+    return this.service.claimPendingCommands(tenantId, body?.agent, body?.deviceId);
   }
 
   /** Yerel runner komutu sonucunu günceller */

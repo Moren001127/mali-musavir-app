@@ -314,22 +314,57 @@ export function buildFieldRows(event: {
       rows.push({ label, status: 'missing', value: '—' });
     }
   };
-  // v1.36.60: Çok satırlı faturada her matrah/kdv satırını ayrı göster
+  // v1.36.61: Çok satırlı faturada hesap kodlarını TÜRE göre AYIR.
+  // DOM'dan tüm select item'lar geliyor — Matrah / KDV-Hesap / Cari hepsi karışık.
+  // Sadece MATRAH tipindeki kodları "Matrah N" olarak göster.
+  // KDV oranları array'i kendi içinde KDV satırlarına gider, ayraç ile (%X · etiket).
+  // Cari ve KDV kod hesapları (191/391/120/320) artık Matrah'a karışmaz.
   if (cokSatir) {
-    const lineCount = Math.max(hesapKodlari.length, kdvOranlari.length);
+    // MATRAH kodları: stok grupları (150-157), satış (600-602), maliyet (740, 770)
+    const matrahPrefixes = /^(150|151|152|153|157|600|601|602|740|770)\./;
+    const matrahKodlari = hesapKodlari.filter((k) => matrahPrefixes.test(k));
+    // KDV-hesap kodları (191/391) — ayrı satır olarak göster, matrah'a karışmasın
+    const kdvHesapKodlari = hesapKodlari.filter((k) => /^(191|391)\./.test(k));
+    // Cari kodlar (120/320) — bilgi olarak göster
+    const cariKodlari = hesapKodlari.filter((k) => /^(120|320)\./.test(k));
+
+    // Her matrah satırını sırayla yaz, karşısına KDV oranını koy ( ayraç · ile )
+    const lineCount = Math.max(matrahKodlari.length, kdvOranlari.length);
     for (let i = 0; i < lineCount; i++) {
-      const kodu = hesapKodlari[i] || '—';
-      const oranStr = kdvOranlari[i] || '—';
+      const kodu = matrahKodlari[i];
+      const oran = kdvOranlari[i];
+      if (kodu) {
+        rows.push({
+          label: `Matrah ${i + 1}`,
+          status: 'full',
+          value: kodu, // "153.01.010-%10 TICARI MAL ALISLARI" — zaten kod-açıklama formatı
+        });
+      }
+      if (oran) {
+        // KDV satırı: "%10" — net oran. Eğer fazladan etiket varsa ayraç ile.
+        const oranTemiz = oran.trim();
+        rows.push({
+          label: `KDV ${i + 1}`,
+          status: 'full',
+          value: oranTemiz, // "%10" veya "%10 Kdv" gibi gelse de orijinal stringi koru
+        });
+      }
+    }
+
+    // KDV-hesap kodları varsa info satırı ekle
+    if (kdvHesapKodlari.length > 0) {
       rows.push({
-        label: `Matrah ${i + 1}`,
+        label: 'KDV Hesapları',
         status: 'full',
-        value: kodu,
-        // OCR ile karşılaştırma çoklu satırda zor — sadece toplam üzerinden işaretliyoruz
+        value: kdvHesapKodlari.join(' · '),
       });
+    }
+    // Cari kodu varsa
+    if (cariKodlari.length > 0) {
       rows.push({
-        label: `KDV ${i + 1}`,
+        label: 'Cari Hesabı',
         status: 'full',
-        value: oranStr,
+        value: cariKodlari.join(' · '),
       });
     }
   } else {

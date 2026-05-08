@@ -438,8 +438,13 @@ export class AgentEventsService {
     });
   }
 
-    /** Yerel runner için bekleyen komutları claim eder (status=running yapar) */
-  async claimPendingCommands(tenantId: string, agent?: string) {
+    /** Yerel runner için bekleyen komutları claim eder (status=running yapar)
+     * v1.36.61: Device-aware filter — backward-compatible.
+     * - Komut payload.targetDeviceId yok ise → herkes alabilir (eski davranış, etki yok)
+     * - Komut payload.targetDeviceId var ise → sadece o deviceId'li agent alır
+     * - Agent deviceId göndermezse → eski davranış (filter uygulanmaz)
+     */
+  async claimPendingCommands(tenantId: string, agent?: string, deviceId?: string) {
     const where: any = { tenantId, status: 'pending' };
     if (agent) where.agent = agent;
     const pending = await this.prisma.agentCommand.findMany({
@@ -448,11 +453,20 @@ export class AgentEventsService {
       take: 10,
     });
     if (pending.length === 0) return [];
+    // Device filter: targetDeviceId varsa eşleşmesi gerekir
+    const matched = deviceId
+      ? pending.filter((p) => {
+          const target = (p.payload as any)?.targetDeviceId;
+          // target yoksa herkesin (eski davranış); varsa sadece eşleşen device alır
+          return !target || target === deviceId;
+        })
+      : pending;
+    if (matched.length === 0) return [];
     await this.prisma.agentCommand.updateMany({
-      where: { id: { in: pending.map((p) => p.id) } },
+      where: { id: { in: matched.map((p) => p.id) } },
       data: { status: 'running', startedAt: new Date() },
     });
-    return pending;
+    return matched;
   }
 
   /**

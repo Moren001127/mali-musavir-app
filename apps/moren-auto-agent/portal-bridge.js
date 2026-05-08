@@ -10,9 +10,24 @@
 
   const pendingResponses = new Map();
 
+  // v1.36.61: Stabil deviceId — portal sayfasından gönderilen komutlar bu PC'ye target'lanır.
+  // Aynı kullanıcının her tarayıcı/profil için farklı deviceId olur ama aynı tarayıcıda
+  // sabit kalır (localStorage). Aynı PC'de açılan agent runtime'ı da aynı deviceId'yi kullanır.
+  let deviceId = '';
+  try {
+    deviceId = localStorage.getItem('moren_device_id') || '';
+    if (!deviceId) {
+      deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+      localStorage.setItem('moren_device_id', deviceId);
+    }
+  } catch (e) {
+    deviceId = 'DEV-FALLBACK-' + Date.now().toString(36);
+  }
+
   window.__morenAutoAgent = {
     installed: true,
     version: '1.0.0',
+    deviceId,                              // ← Portal createCommand bunu okuyup targetDeviceId olarak gönderir
     restartAll: () => sendCommand('restart_all'),
     status: () => sendCommand('status'),
     ping: () => sendCommand('ping'),

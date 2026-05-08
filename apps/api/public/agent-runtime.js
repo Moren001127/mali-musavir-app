@@ -32,6 +32,16 @@
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
+
+  // v1.36.61: Device-aware komutlar — her PC için stabil deviceId.
+  // localStorage'dan oku, yoksa üret + sakla. Bu PC için kalıcı kimlik.
+  // Aynı PC'deki Luca + Mihsap aynı deviceId'yi paylaşır (çoklu sekme tek bilgisayar).
+  let DEVICE_ID = localStorage.getItem('moren_device_id') || '';
+  if (!DEVICE_ID) {
+    DEVICE_ID = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    localStorage.setItem('moren_device_id', DEVICE_ID);
+  }
+  if (window.__morenAgent) window.__morenAgent.deviceId = DEVICE_ID;
   if (!TOKEN) {
     TOKEN = prompt('Moren Agent Token:') || '';
     if (!TOKEN) {
@@ -8382,14 +8392,14 @@
     const sendPing = () =>
       api('/agent/status/ping', {
         method: 'POST',
-        body: JSON.stringify({ agent: AGENT_NAME, running: true, meta: { url: location.href } }),
+        body: JSON.stringify({ agent: AGENT_NAME, running: true, meta: { url: location.href, deviceId: DEVICE_ID } }),
       }).then(() => { lastPingAt = Date.now(); }).catch(() => {});
     await sendPing();
     while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
       // Heartbeat: 30 sn'de bir ping at — backend "agent canlı" görsün
       if (Date.now() - lastPingAt > 30000) await sendPing();
       try {
-        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME }) });
+        const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME, deviceId: DEVICE_ID }) });
         if (Array.isArray(cmds) && cmds.length > 0) {
           for (const cmd of cmds) {
             try {

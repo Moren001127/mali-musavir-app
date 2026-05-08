@@ -66,8 +66,20 @@ export const agentsApi = {
     api.delete(`/agent/rules/${encodeURIComponent(mukellef)}`).then((r) => r.data),
 
   // Komutlar
-  createCommand: (body: { agent: string; action: string; payload: any }) =>
-    api.post<AgentCommand>('/agent/commands', body).then((r) => r.data),
+  // v1.36.61: Otomatik olarak current PC'nin deviceId'sini payload.targetDeviceId'ye ekler.
+  // Böylece komut hangi tarayıcıdan gönderildiyse o PC'deki agent alır.
+  // Eğer extension yüklü değilse (deviceId yoksa) targetDeviceId boş kalır → eski davranış (any agent).
+  createCommand: (body: { agent: string; action: string; payload: any }) => {
+    const deviceId =
+      typeof window !== 'undefined' && (window as any).__morenAutoAgent?.deviceId;
+    const enrichedPayload =
+      deviceId && body.payload && typeof body.payload === 'object'
+        ? { ...body.payload, targetDeviceId: deviceId }
+        : body.payload;
+    return api
+      .post<AgentCommand>('/agent/commands', { ...body, payload: enrichedPayload })
+      .then((r) => r.data);
+  },
   listCommands: (params?: { agent?: string; status?: string; limit?: number }) =>
     api.get<AgentCommand[]>('/agent/commands', { params }).then((r) => r.data),
   cancelCommand: (id: string) =>
