@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 // useMemo zaten import edildi
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, gelirTablosuApi, fmtTRY } from '@/lib/mizan';
@@ -272,10 +272,19 @@ export default function GelirTablosuPage() {
   const effectiveVal = (gt: any, key: string): number => {
     const base = Number(gt[key]) || 0;
     const draft = duzeltmelerDraft[gt.id]?.[key];
-    if (draft !== undefined) return base + draft;
     const saved = gt.duzeltmeler?.[key];
-    if (typeof saved === 'number') return base + saved;
-    return base;
+    let val = base;
+    if (typeof draft === 'number') val += draft;
+    else if (typeof saved === 'number') val += saved;
+    // v1.36.51: satisMaliyeti için ayrıca satisMaliyetiManuel field'ını da ekle.
+    // Manuel input bu field'a yazıyor (v1.36.47); brüt kar/dönem net karı manuel değeri yansıtsın.
+    if (key === 'satisMaliyeti') {
+      const draftManuel = duzeltmelerDraft[gt.id]?.satisMaliyetiManuel;
+      const savedManuel = gt.duzeltmeler?.satisMaliyetiManuel;
+      if (typeof draftManuel === 'number') val += draftManuel;
+      else if (typeof savedManuel === 'number') val += savedManuel;
+    }
+    return val;
   };
 
   /** Türevler (Net Satışlar, Brüt Kar vb.) manuel düzeltmeye göre yeniden hesaplanır */
@@ -642,32 +651,15 @@ export default function GelirTablosuPage() {
                             <td key={qi} style={{ borderLeft: '1px solid rgba(184,160,111,0.28)' }}></td>
                           );
                         }
-                        const draftVal = duzeltmelerDraft[gt.id]?.[row.manual!];
-                        const savedVal = gt.duzeltmeler?.[row.manual!] as number | undefined;
-                        const currentVal = draftVal !== undefined ? draftVal : (savedVal ?? 0);
-                        const isLocked = gt.locked;
-                        // Türkçe formatla: 1000000 → "1.000.000,00"
-                        const displayVal = currentVal === 0 ? '' : currentVal.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                         return (
                           <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: '1px solid rgba(184,160,111,0.28)' }}>
-                            <input
-                              type="text"
-                              value={displayVal}
-                              onChange={(e) => {
-                                if (isLocked) return;
-                                // Önce nokta (binlik) sil, virgülü noktaya çevir, sonra parse et
-                                const raw = e.target.value.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
-                                const n = parseFloat(raw) || 0;
-                                setDuzeltme(gt.id, row.manual!, n);
-                              }}
-                              disabled={isLocked}
-                              placeholder={isLocked ? 'Kilitli' : '0,00'}
-                              className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border disabled:opacity-50"
-                              style={{
-                                background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
-                                borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
-                                color: isLocked ? 'rgba(34,197,94,0.7)' : '#60a5fa',
-                              }}
+                            <ManuelInput
+                              gtId={gt.id}
+                              field={row.manual!}
+                              draftVal={duzeltmelerDraft[gt.id]?.[row.manual!]}
+                              savedVal={gt.duzeltmeler?.[row.manual!] as number | undefined}
+                              isLocked={gt.locked}
+                              onChange={(n) => setDuzeltme(gt.id, row.manual!, n)}
                             />
                           </td>
                         );
@@ -1432,6 +1424,74 @@ export default function GelirTablosuPage() {
  * Backend'in `detay` JSON'undan bir alt hesap kodunun tutarını çıkarır.
  * detay yapısı: { brutSatis: { detay: [{kod, tutar, hesapAdi}] }, satisMal: {...}, ... }
  */
+/**
+ * v1.36.51: Focus-stable manuel sayı input.
+ * Önceki versiyon her keystroke'ta value'yu Türkçe formatlıyordu (1.000,00) →
+ * cursor pozisyonu kayıyordu, kullanıcı tekrar tıklamak zorunda kalıyordu.
+ * Bu versiyon: kullanıcı yazarken raw text saklar, blur'da formatlar.
+ */
+function ManuelInput({
+  gtId, field, draftVal, savedVal, isLocked, onChange,
+}: {
+  gtId: string;
+  field: string;
+  draftVal: number | undefined;
+  savedVal: number | undefined;
+  isLocked: boolean;
+  onChange: (n: number) => void;
+}) {
+  const numericVal = draftVal !== undefined ? draftVal : (savedVal ?? 0);
+  const formattedVal = numericVal === 0 ? '' : numericVal.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const [focused, setFocused] = useState(false);
+  const [rawText, setRawText] = useState(formattedVal);
+
+  // Eğer biz odaklı değilsek (kaydetme veya başka bir kaynaktan değer geldiyse) sync et
+  useEffect(() => {
+    if (!focused) setRawText(formattedVal);
+  }, [formattedVal, focused]);
+
+  const parse = (s: string): number => {
+    // Önce binlik nokta sil, virgülü noktaya çevir, parse
+    const cleaned = s.replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  return (
+    <input
+      type="text"
+      value={focused ? rawText : formattedVal}
+      onFocus={(e) => {
+        setFocused(true);
+        // Focus aldığında format'lı görünümü ham text'e çevir (kullanıcı kolayca silsin)
+        setRawText(numericVal === 0 ? '' : String(numericVal).replace('.', ','));
+        // Tüm metni seç → "Üzerine yaz" deneyimi
+        setTimeout(() => e.target.select?.(), 0);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        const n = parse(rawText);
+        if (n !== numericVal) onChange(n);
+      }}
+      onChange={(e) => {
+        if (isLocked) return;
+        setRawText(e.target.value);
+        // Hemen parent state'i de güncelle (Kaydet düğmesi taslak kontrolü görsün)
+        onChange(parse(e.target.value));
+      }}
+      disabled={isLocked}
+      placeholder={isLocked ? 'Kilitli' : '0,00'}
+      className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border disabled:opacity-50"
+      style={{
+        background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
+        borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
+        color: isLocked ? 'rgba(34,197,94,0.7)' : '#60a5fa',
+      }}
+    />
+  );
+}
+
 function getSubAccountAmount(gt: any, kod: string): number {
   const d = gt?.detay;
   if (!d) return 0;
