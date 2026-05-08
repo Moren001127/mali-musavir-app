@@ -42,6 +42,9 @@ export class ExcelParserService {
     });
 
     const results: ParsedKdvRow[] = [];
+    // v1.36.67: Detaylı skip log — kaç satır neden atlandı, hangi satırlar görüldü
+    const skipDetail: Array<{ row: number; reason: string; aciklama: string }> = [];
+    const skipCounts: Record<string, number> = {};
 
     // 191: BORÇ önce, 391: ALACAK önce
     const is191 = type === '191';
@@ -108,8 +111,11 @@ export class ExcelParserService {
         !!belgeDate && (madeNo || fisNo || belgeNo);
 
       if (isHeaderOrSummaryRow || tarihMissing || !looksLikeTransaction) {
+        const reason = isHeaderOrSummaryRow ? 'başlık/özet/devir' : tarihMissing ? 'tarih yok' : 'belge no/madde/fiş eksik';
+        skipDetail.push({ row: i + 2, reason, aciklama: aciklamaText.slice(0, 60) });
+        skipCounts[reason] = (skipCounts[reason] || 0) + 1;
         this.logger.debug(
-          `Satır atlandı (header/özet/devir): row=${i + 2} aciklama="${aciklamaText.slice(0, 40)}" tarih=${tarihMissing ? 'YOK' : 'var'}`,
+          `Satır atlandı (${reason}): row=${i + 2} aciklama="${aciklamaText.slice(0, 40)}"`,
         );
         continue;
       }
@@ -145,7 +151,17 @@ export class ExcelParserService {
       });
     }
 
-    this.logger.log(`KDV Excel (${type ?? 'auto'}) parse: ${results.length} satır bulundu.`);
+    // v1.36.67: Yüklenen + atlanan + sebepleri özet log
+    const skipSummary = Object.entries(skipCounts).map(([r, c]) => `${r}: ${c}`).join(', ') || 'yok';
+    this.logger.log(
+      `KDV Excel (${type ?? 'auto'}) parse: ${results.length} satır yüklendi · ${skipDetail.length} atlandı (${skipSummary})`,
+    );
+    if (skipDetail.length > 0 && skipDetail.length <= 20) {
+      // Az sayıda atlandıysa hepsini göster
+      for (const s of skipDetail) {
+        this.logger.debug(`  → row ${s.row}: ${s.reason} · "${s.aciklama}"`);
+      }
+    }
     return results;
   }
 
@@ -167,6 +183,7 @@ export class ExcelParserService {
   parseIsletmeExcel(
     buffer: Buffer,
     type: 'ISLETME_GELIR' | 'ISLETME_GIDER',
+    dateRange?: { start: Date; end: Date }, // v1.36.67: Luca tüm dönemleri verirse filtrele
   ): ParsedKdvRow[] {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
@@ -357,6 +374,12 @@ export class ExcelParserService {
         if (sampleSkipped.length < 3) {
           sampleSkipped.push(`row#${i+1} tarihRaw="${tarihRaw}" → null | evrakNo="${evrakNo}" kdv="${kdvRaw}"`);
         }
+        continue;
+      }
+
+      // v1.36.67: Tarih aralığı dışını atla (Luca tüm dönemleri verirse)
+      if (dateRange && (belgeDate < dateRange.start || belgeDate > dateRange.end)) {
+        skipReason.toplam++; // mevcut sayaç kullan
         continue;
       }
 

@@ -1635,7 +1635,7 @@ export class KdvControlService {
 
   /** Oturum özet istatistikleri (sayaç) */
   async getSessionStats(sessionId: string, tenantId: string) {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
 
     const [totalRecords, totalImages, results] = await Promise.all([
       this.prisma.kdvRecord.count({ where: { sessionId } }),
@@ -1658,10 +1658,11 @@ export class KdvControlService {
       },
     });
 
-    // Kullanıcının onayladığı eşleşmeler (CONFIRMED) otomatik eşleşmeler (MATCHED)
-    // ile birlikte tek "Tam Eşleşme" sayacında gösterilir — bu sayede kullanıcı
-    // İncele panelinde bir eşleşmeyi Onayladığında sayaç İncele'den düşüp
-    // Tam Eşleşme sayacına geçer.
+    // v1.36.67: SERİ TAKİBİ — sadece SATIŞ tipi (KDV_391, ISLETME_GELIR) için
+    // Aynı oturumdaki belge no'larını numerik sırala, eksik aralık tespit et
+    // + bir önceki dönemin son belge no'su ile cross-month süreklilik kontrolü
+    const seriUyarilari = await this.checkBelgeSeriContinuity(session, sessionId, tenantId);
+
     return {
       totalRecords,
       totalImages,
@@ -1672,7 +1673,128 @@ export class KdvControlService {
       confirmed: statusMap['CONFIRMED'] ?? 0,
       rejected: statusMap['REJECTED'] ?? 0,
       needsOcrConfirm: needsConfirm,
+      seriUyarilari, // ← yeni alan: array of {tip: 'eksik'|'cross_break', mesaj: string}
     };
+  }
+
+  /**
+   * v1.36.67: Belge seri takibi.
+   * - Sadece SATIŞ oturumlarında çalışır (KDV_391 / ISLETME_GELIR)
+   * - Belge no'larını prefix + numerik kısma ayırır
+   * - Bu oturum içi gap'leri tespit eder
+   * - Bir önceki dönemin son belge no'su ile cross-month süreklilik kontrolü
+   * Sonuç: array of warning messages — kullanıcıya gösterilecek.
+   */
+  private async checkBelgeSeriContinuity(
+    session: any,
+    sessionId: string,
+    tenantId: string,
+  ): Promise<Array<{ tip: string; mesaj: string }>> {
+    const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
+    if (!isSatis) return [];
+    const records = await this.prisma.kdvRecord.findMany({
+      where: { sessionId, belgeNo: { not: null } },
+      select: { belgeNo: true, belgeDate: true },
+    });
+    if (records.length < 2) return [];
+
+    // Belge no'yu prefix + numeric kısma ayır
+    const parse = (no: string): { prefix: string; num: number } | null => {
+      const cleaned = no.trim().toUpperCase();
+      // Trailing rakam grubunu yakala
+      const m = cleaned.match(/^(.*?)(\d+)$/);
+      if (!m) return null;
+      return { prefix: m[1], num: parseInt(m[2], 10) };
+    };
+
+    const grouped: Record<string, number[]> = {};
+    for (const r of records) {
+      if (!r.belgeNo) continue;
+      const p = parse(String(r.belgeNo));
+      if (!p) continue;
+      if (!grouped[p.prefix]) grouped[p.prefix] = [];
+      grouped[p.prefix].push(p.num);
+    }
+
+    const uyarilar: Array<{ tip: string; mesaj: string }> = [];
+
+    // Bu oturum içi gap kontrolü
+    for (const [prefix, nums] of Object.entries(grouped)) {
+      const sorted = [...new Set(nums)].sort((a, b) => a - b);
+      if (sorted.length < 2) continue;
+      const eksikler: number[] = [];
+      for (let i = 1; i < sorted.length; i++) {
+        for (let n = sorted[i - 1] + 1; n < sorted[i]; n++) {
+          eksikler.push(n);
+        }
+      }
+      if (eksikler.length > 0) {
+        const padLen = String(sorted[sorted.length - 1]).length;
+        const eksikStr = eksikler.slice(0, 10).map((n) => prefix + String(n).padStart(padLen, '0')).join(', ');
+        const fazla = eksikler.length > 10 ? ` (+${eksikler.length - 10} tane daha)` : '';
+        uyarilar.push({
+          tip: 'gap',
+          mesaj: `${eksikler.length} numaralı fatura seri takibi kontrolünde eksik tespit edildi: ${eksikStr}${fazla}`,
+        });
+      }
+    }
+
+    // Cross-month: önceki dönem son belge no
+    if (session.taxpayerId && session.periodLabel) {
+      const [yilStr, ayStr] = session.periodLabel.split(/[/-]/);
+      const yil = parseInt(yilStr, 10);
+      const ay = parseInt(ayStr, 10);
+      if (Number.isFinite(yil) && Number.isFinite(ay)) {
+        // Önceki ayı hesapla
+        let oncekiAy = ay - 1;
+        let oncekiYil = yil;
+        if (oncekiAy < 1) { oncekiAy = 12; oncekiYil = yil - 1; }
+        const oncekiPeriod1 = `${oncekiYil}/${String(oncekiAy).padStart(2, '0')}`;
+        const oncekiPeriod2 = `${oncekiYil}-${String(oncekiAy).padStart(2, '0')}`;
+
+        const oncekiSession = await this.prisma.kdvControlSession.findFirst({
+          where: {
+            tenantId,
+            taxpayerId: session.taxpayerId,
+            type: session.type,
+            periodLabel: { in: [oncekiPeriod1, oncekiPeriod2] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (oncekiSession) {
+          const oncekiRecords = await this.prisma.kdvRecord.findMany({
+            where: { sessionId: oncekiSession.id, belgeNo: { not: null } },
+            select: { belgeNo: true },
+          });
+          // Önceki ayın son belge no'su (her prefix için)
+          const oncekiByPrefix: Record<string, number> = {};
+          for (const r of oncekiRecords) {
+            if (!r.belgeNo) continue;
+            const p = parse(String(r.belgeNo));
+            if (!p) continue;
+            oncekiByPrefix[p.prefix] = Math.max(oncekiByPrefix[p.prefix] || 0, p.num);
+          }
+
+          // Bu ayın ilk belge no'su her prefix için
+          for (const [prefix, nums] of Object.entries(grouped)) {
+            const sorted = [...new Set(nums)].sort((a, b) => a - b);
+            const buAyIlk = sorted[0];
+            const oncekiSon = oncekiByPrefix[prefix];
+            if (oncekiSon != null && buAyIlk > oncekiSon + 1) {
+              const padLen = String(buAyIlk).length;
+              const eksikSayi = buAyIlk - oncekiSon - 1;
+              uyarilar.push({
+                tip: 'cross_break',
+                mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son belge ${prefix}${String(oncekiSon).padStart(padLen, '0')} → bu dönem ilk belge ${prefix}${String(buAyIlk).padStart(padLen, '0')}. Aralarda ${eksikSayi} belge no atlanmış.`,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return uyarilar;
   }
 
   /** Eşleşmeyi kullanıcı teyit eder */
