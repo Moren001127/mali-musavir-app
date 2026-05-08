@@ -173,6 +173,18 @@ export function buildFieldRows(event: {
     value: belgeTuru || '—',
   });
 
+  // v1.36.63: Gider Türü / Fatura Tipi — message içinden FatT:... ve AST:... parse
+  // "FatT:Gider BT:ÖKC Fişi AST:Normal Alım" gibi alt satırlardan çıkar
+  const msg = String(event.message || '');
+  const fatTuruMatch = msg.match(/FatT:([^·\n]+?)(?:\s+BT:|$)/);
+  const astTuruMatch = msg.match(/AST:([^·\n]+?)(?:\s+B\d:|·|$)/);
+  if (fatTuruMatch) {
+    rows.push({ label: 'Fatura Tipi', status: 'full', value: fatTuruMatch[1].trim() });
+  }
+  if (astTuruMatch) {
+    rows.push({ label: 'Alış/Satış Türü', status: 'full', value: astTuruMatch[1].trim() });
+  }
+
   // 4) Toplam Tutar — v1.36.21: belge ↔ mihsap karşılaştırma satırı eklendi
   const fmtTLLocal = (n: number) =>
     `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
@@ -373,8 +385,30 @@ export function buildFieldRows(event: {
       });
     }
   } else {
-    checkField('Matrah', event.hesapKodu);
-    checkField('KDV', event.kdv);
+    // v1.36.63: ÖKC Fişi vb. tek-kalem belgelerde mesaj içinden "B1:..." parse'la
+    // (Matrah için hesap kodu kaynağı). Eğer event.hesapKodu boşsa B1'i fallback olarak göster.
+    const b1Match = msg.match(/B\d:([^·\n]+?)(?:\s+B\d:|·|$)/);
+    const b1Hesap = b1Match ? b1Match[1].trim() : '';
+    const giderHesabi = event.hesapKodu || b1Hesap;
+    if (giderHesabi) {
+      // Genelde KDV ayrımı yok ÖKC Fişlerinde — sadece hesap kodu göster
+      rows.push({
+        label: belgeTuru === 'ÖKC Fişi' || belgeTuru === 'FİS' ? 'Gider Hesabı' : 'Matrah',
+        status: 'full',
+        value: giderHesabi,
+      });
+      // KDV oranı varsa onu da göster
+      if (event.kdv) {
+        rows.push({
+          label: 'KDV',
+          status: 'full',
+          value: String(event.kdv),
+        });
+      }
+    } else {
+      checkField('Matrah', event.hesapKodu);
+      checkField('KDV', event.kdv);
+    }
   }
 
   // 7) İçerik (AI ocrOzet veya meta.icerik)
