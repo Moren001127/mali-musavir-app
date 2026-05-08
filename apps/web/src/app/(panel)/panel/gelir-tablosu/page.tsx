@@ -271,19 +271,24 @@ export default function GelirTablosuPage() {
   /** Bir kalem için manuel düzeltme dahil efektif tutar */
   const effectiveVal = (gt: any, key: string): number => {
     const base = Number(gt[key]) || 0;
+    // v1.36.52: satisMaliyeti için ÖZEL OVERRİDE mantığı.
+    // Manuel SMM input SADECE 621 (Satılan Ticari Mallar Maliyeti) yerine geçer.
+    // Diğer kalemler (620, 622, 623, 740) otomatik kalır.
+    // Formül: gt.satisMaliyeti (auto 620+621+622+623+740) - gt.detay.satisMaliyeti621 + manuel
+    if (key === 'satisMaliyeti') {
+      const draftManuel = duzeltmelerDraft[gt.id]?.satisMaliyetiManuel;
+      const savedManuel = gt.duzeltmeler?.satisMaliyetiManuel;
+      const manuelVal = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
+      if (manuelVal > 0) {
+        const auto621 = Number(gt?.detay?.satisMaliyeti621) || 0;
+        return base - auto621 + manuelVal;
+      }
+    }
     const draft = duzeltmelerDraft[gt.id]?.[key];
     const saved = gt.duzeltmeler?.[key];
     let val = base;
     if (typeof draft === 'number') val += draft;
     else if (typeof saved === 'number') val += saved;
-    // v1.36.51: satisMaliyeti için ayrıca satisMaliyetiManuel field'ını da ekle.
-    // Manuel input bu field'a yazıyor (v1.36.47); brüt kar/dönem net karı manuel değeri yansıtsın.
-    if (key === 'satisMaliyeti') {
-      const draftManuel = duzeltmelerDraft[gt.id]?.satisMaliyetiManuel;
-      const savedManuel = gt.duzeltmeler?.satisMaliyetiManuel;
-      if (typeof draftManuel === 'number') val += draftManuel;
-      else if (typeof savedManuel === 'number') val += savedManuel;
-    }
     return val;
   };
 
@@ -835,7 +840,8 @@ export default function GelirTablosuPage() {
                           { key: 'toplamKar', label: 'Toplam Kar', bold: true, color: GOLD },
                           { key: 'gecmisYilZarari', label: 'Geçmiş Yıl Zararı', manual: 'gecmisYil' as const, negSign: true },
                           { key: 'gecicVergiMatrahi', label: 'Geçici Vergi Matrahı', bold: true, color: '#22c55e', bg: 'rgba(34,197,94,0.04)' },
-                          { key: 'hesaplananGeciciVergi', label: 'Hesaplanan Geçici Vergi %25' },
+                          // v1.36.52: oran etiket backend'den gelen v.gecicVergiOrani'a göre dinamik (TUZEL %25, GERCEK %15)
+                          { key: 'hesaplananGeciciVergi', label: `Hesaplanan Geçici Vergi %${Math.round((v.gecicVergiOrani || 0.25) * 100)}` },
                           { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                           { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                         ].map((row: any, ri) => {
@@ -1007,7 +1013,8 @@ export default function GelirTablosuPage() {
                   { key: 'toplamKar', label: 'Toplam Kar', bold: true, color: GOLD },
                   { key: 'gecmisYilZarari', label: 'Geçmiş Yıl Zararı', manual: 'gecmisYil' as const, negSign: true },
                   { key: 'gecicVergiMatrahi', label: 'Geçici Vergi Matrahı', bold: true, color: '#22c55e', bg: 'rgba(34,197,94,0.04)' },
-                  { key: 'hesaplananGeciciVergi', label: 'Hesaplanan Geçici Vergi %25' },
+                  // v1.36.52: dinamik vergi oranı etiketi (TUZEL %25 / GERCEK %15)
+                  { key: 'hesaplananGeciciVergi', label: `Hesaplanan Geçici Vergi %${Math.round((Number(detail?.geciciVergiHesabi?.gecicVergiOrani) || 0.25) * 100)}` },
                   { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (

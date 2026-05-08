@@ -99,12 +99,12 @@ export class GelirTablosuService {
     const satisInd = giderBy(['610', '611', '612']);
     // C. Net Satışlar = A - B
     const netSatis = brutSatis.toplam - satisInd.toplam;
-    // D. Satışların Maliyeti — v1.36.49: SADECE 620 + 621
-    // Önceden 622 (Hizmet Maliyeti) + 623 + 740 (Hizmet Üretim Maliyeti) da dahildi.
-    // Frontend'de bu alt kalemler görünmediği için "Hizmet maliyeti SMM'ye geliyor" diye
-    // karışıklık çıkıyordu. Kullanıcı SMM'yi Manuel input ile yönetecek; mizandan sadece
-    // 620 (Satılan Mamuller) + 621 (Satılan Ticari Mallar) otomatik gelir.
-    const satisMal = giderBy(['620', '621']);
+    // D. Satışların Maliyeti — v1.36.52: 620 + 621 + 622 + 623 + 740 dahil (TDHP standartı).
+    // Manuel SMM input SADECE 621 (Satılan Ticari Mallar Maliyeti) yerine geçer; diğerleri (620, 622, 623, 740) otomatik kalır.
+    // Bu sayede hizmet firmasında 740 (Hizmet Üretim Maliyeti) bakiyesi otomatik yansır,
+    // kullanıcı sadece ticari mal maliyetini elinde girer.
+    const satisMal = giderBy(['620', '621', '622', '623', '740']);
+    const satisMal621Auto = giderBy(['621']).toplam; // 621 ayrı sakla (manuel override için)
     // Brüt Satış Karı = C - D
     const brutKar = netSatis - satisMal.toplam;
     // E. Faaliyet Giderleri (631, 632, 633 + 750, 760, 770)
@@ -203,8 +203,9 @@ export class GelirTablosuService {
     const stokToplam150_157 = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
     const maliyetToplam720_731 = maliyetHesaplari.reduce((s, h) => s + h.bakiye, 0);
     const toplamStok = stokToplam150_157 + maliyetToplam720_731;
-    // SMM ve Kalan Stok manuel — create sirasinda 0 default, kullanici sonra girer
-    const satisMaliyeti621 = 0;
+    // v1.36.52: 621'in OTOMATİK değerini sakla — manuel override için referans gerekli.
+    // Kullanıcı manuel SMM girmediyse bu değer kullanılır; girdiyse manuel onun yerine geçer.
+    const satisMaliyeti621 = satisMal621Auto;
     const kalanStok = toplamStok;
 
     // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
@@ -504,7 +505,13 @@ export class GelirTablosuService {
     const brutSatislar = effective('brutSatislar');
     const satisIndirimleri = effective('satisIndirimleri');
     const netSatislar = brutSatislar - satisIndirimleri;
-    const satisMaliyeti = effective('satisMaliyeti');
+    // v1.36.52: SMM için override mantığı — Manuel SMM input SADECE 621'i (Satılan Ticari Mallar Maliyeti) ezer.
+    // 620, 622, 623, 740 otomatik kalır. Hizmet firmasında 740 yansır + kullanıcı 621'i elinde girer.
+    // Formül: total = baseSMM (otomatik 620+621+622+623+740) - satisMaliyeti621 (ortomatik 621) + manuelSMM
+    const manuelSMM = Number((cleaned as any).satisMaliyetiManuel) || 0;
+    const baseSMM = effective('satisMaliyeti');
+    const auto621 = Number((gt.detay as any)?.satisMaliyeti621) || 0;
+    const satisMaliyeti = manuelSMM > 0 ? (baseSMM - auto621 + manuelSMM) : baseSMM;
     const brutSatisKari = netSatislar - satisMaliyeti;
     const faaliyetGiderleri = effective('faaliyetGiderleri');
     const faaliyetKari = brutSatisKari - faaliyetGiderleri;
