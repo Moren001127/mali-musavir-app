@@ -1052,7 +1052,9 @@ export default function GelirTablosuPage() {
                         const gecmisYil = draftGY !== null ? draftGY : Number(v.gecmisYilZarari || 0);
                         const oncekiOdenen = draftOO !== null ? draftOO : Number(v.oncekiDonemOdenen || 0);
                         const matrah = Math.max(0, liveToplamKar - gecmisYil);
-                        const hesaplanan = matrah * 0.25;
+                        // v1.36.57: Vergi oranı backend'den (TUZEL %25, GERCEK %15) — hardcoded 0.25 değildi BUG idi
+                        const oran = Number(v.gecicVergiOrani) || 0.25;
+                        const hesaplanan = matrah * oran;
                         const odenecek = Math.max(0, hesaplanan - oncekiOdenen);
                         if (row.key === 'toplamKar') val = liveToplamKar;
                         else if (row.key === 'gecmisYilZarari') val = gecmisYil;
