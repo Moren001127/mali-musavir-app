@@ -315,11 +315,14 @@ export class GelirTablosuService {
     const duzeltmeler = (gt.duzeltmeler as any) || {};
     const stokHesaplari = Array.isArray(detay.stokHesaplari) ? detay.stokHesaplari : [];
     const maliyetHesaplari = Array.isArray(detay.maliyetHesaplari) ? detay.maliyetHesaplari : [];
-    const toplamStok = Number(detay.toplamStok || 0);
-    // v1.36.37: SMM TAMAMEN MANUEL — kullanici ana gelir tablosundaki
-    // "2. Satilan Ticari Mallar Maliyeti" satirinda manuel duzeltme olarak girer,
-    // duzeltmeler.satisMaliyeti key'inde saklanir (frontend ile ayni key).
-    // 0 ise Kalan Stok = Toplam Stok.
+    // v1.36.38: Toplam Stok her zaman hesaplari toplamindan dinamik hesaplanir.
+    // DB'de detay.toplamStok eski formulle saklanmis olabilir — biz arrays'ten
+    // her acilista yeniden hesaplariz, eski kayitlar da dogru gorunur.
+    // Toplam Stok = stokHesaplari (150-157) + maliyetHesaplari (720-731) toplami
+    // SMM = duzeltmeler.satisMaliyeti (ana GT manuel input) — yoksa 0
+    // Kalan Stok = Toplam Stok - SMM
+    const toplamStok = stokHesaplari.reduce((s: number, h: any) => s + Number(h.bakiye || 0), 0)
+                     + maliyetHesaplari.reduce((s: number, h: any) => s + Number(h.bakiye || 0), 0);
     const satisMaliyeti = Number(duzeltmeler.satisMaliyeti || duzeltmeler.satisMaliyetiManuel || 0);
     const kalanStok = toplamStok - satisMaliyeti;
     const kkeg = Number(detay.kkeg || 0);
