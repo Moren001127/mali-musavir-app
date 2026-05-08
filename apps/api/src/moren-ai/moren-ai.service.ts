@@ -42,7 +42,7 @@ interface BrifingPayload {
   focus: 'calm' | 'busy' | 'critical' | 'review';
   metrics: Record<string, any>;
 }
-interface BrifingResponse extends BrifingPayload {
+export interface BrifingResponse extends BrifingPayload {
   generatedAt: string;
   fromCache: boolean;
 }
@@ -256,7 +256,7 @@ export class MorenAiService {
       // Tool'ları paralel çalıştır
       const toolResults = await Promise.all(
         toolUseBlocks.map(async (tb: any) => {
-          const result = await this.toolExecutor.execute(tb.name, tb.input || {}, { tenantId });
+          const result = await this.toolExecutor.execute(tb.name, tb.input || {}, { tenantId, userId });
           toolUsesLog.push({ name: tb.name, input: tb.input, result });
           return {
             type: 'tool_result',

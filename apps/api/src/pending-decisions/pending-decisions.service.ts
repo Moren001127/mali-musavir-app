@@ -16,6 +16,7 @@ export class PendingDecisionsService {
   /** Yeni bekleyen karar olustur (decideFatura / decideIsletme icinden cagrilir) */
   async create(params: {
     tenantId: string;
+    taxpayerId?: string | null;
     mukellef?: string | null;
     firmaKimlikNo?: string | null;
     firmaUnvan?: string | null;
@@ -31,6 +32,7 @@ export class PendingDecisionsService {
   }) {
     const {
       tenantId,
+      taxpayerId,
       mukellef,
       firmaKimlikNo,
       firmaUnvan,
@@ -51,9 +53,27 @@ export class PendingDecisionsService {
 
     const tarih = faturaTarihi ? new Date(faturaTarihi) : null;
 
+    const existing = await (this.prisma as any).pendingDecision.findFirst({
+      where: {
+        tenantId,
+        taxpayerId: taxpayerId || null,
+        firmaKimlikNo: firmaKimlikNo || null,
+        belgeNo: belgeNo || null,
+        kararTipi,
+        durum: 'bekliyor',
+      },
+      select: {
+        id: true,
+        durum: true,
+        sapmaSebep: true,
+      },
+    });
+    if (existing) return existing;
+
     return (this.prisma as any).pendingDecision.create({
       data: {
         tenantId,
+        taxpayerId: taxpayerId || null,
         mukellef: mukellef || null,
         firmaKimlikNo: firmaKimlikNo || null,
         firmaUnvan: firmaUnvan || null,

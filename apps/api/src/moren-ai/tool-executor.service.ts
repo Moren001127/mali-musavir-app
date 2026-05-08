@@ -18,7 +18,7 @@ export class ToolExecutorService {
   async execute(
     name: string,
     input: any,
-    ctx: { tenantId: string },
+    ctx: { tenantId: string; userId?: string | null },
   ): Promise<any> {
     try {
       switch (name) {
@@ -45,6 +45,9 @@ export class ToolExecutorService {
         case 'list_araclar_hgs':      return this.listAraclarHgs(input, ctx);
         case 'get_beyanname_config':  return this.getBeyannameConfig(input, ctx);
         case 'get_beyan_ozet':        return this.getBeyanOzet(input, ctx);
+        case 'get_agent_status':      return this.getAgentStatus(input, ctx);
+        case 'create_agent_command':  return this.createAgentCommand(input, ctx);
+        case 'get_ai_cost_summary':   return this.getAiCostSummary(input, ctx);
         default:
           return { error: `Bilinmeyen tool: ${name}` };
       }
@@ -1131,6 +1134,137 @@ export class ToolExecutorService {
         hatali: v.hatali,
         yuzde: v.toplam > 0 ? Math.round((v.onaylanan / v.toplam) * 100) : 0,
       })),
+    };
+  }
+
+  private async getAgentStatus(input: any, ctx: { tenantId: string }) {
+    const agent = input?.agent || undefined;
+    const limit = Math.min(input?.limit || 10, 50);
+    const [statuses, commands] = await Promise.all([
+      (this.prisma as any).agentStatus.findMany({
+        where: { tenantId: ctx.tenantId, ...(agent ? { agent } : {}) },
+        orderBy: { lastPing: 'desc' },
+      }),
+      (this.prisma as any).agentCommand.findMany({
+        where: { tenantId: ctx.tenantId, ...(agent ? { agent } : {}) },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+    ]);
+    return {
+      ajanlar: statuses.map((s: any) => ({
+        agent: s.agent,
+        calisiyor: s.running,
+        sonPing: s.lastPing,
+        hedefAy: s.hedefAy,
+        meta: s.meta,
+      })),
+      sonKomutlar: commands.map((c: any) => ({
+        id: c.id,
+        agent: c.agent,
+        action: c.action,
+        status: c.status,
+        payload: c.payload,
+        result: c.result,
+        createdAt: c.createdAt,
+        startedAt: c.startedAt,
+        finishedAt: c.finishedAt,
+      })),
+    };
+  }
+
+  private async createAgentCommand(input: any, ctx: { tenantId: string; userId?: string | null }) {
+    const confirmation = String(input?.confirmationText || '').trim().toLocaleUpperCase('tr-TR');
+    if (confirmation !== 'ONAYLIYORUM') {
+      return {
+        error: 'Komut oluşturulmadı. Önce kullanıcıya yapılacak işlemi özetle ve net onay iste.',
+        requiresConfirmation: true,
+      };
+    }
+    const agent = String(input?.agent || '').trim();
+    const action = String(input?.action || '').trim();
+    const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
+    const allowedAgents = ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'];
+    const allowedMihsapActions = ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'];
+    if (!allowedAgents.includes(agent)) return { error: `Desteklenmeyen agent: ${agent}` };
+    if (agent === 'mihsap' && !allowedMihsapActions.includes(action)) {
+      return { error: `Mihsap için desteklenmeyen action: ${action}` };
+    }
+    if (agent === 'mihsap') {
+      if (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0) {
+        return { error: 'Mihsap komutu için payload.ay ve payload.mukellefler zorunlu.' };
+      }
+    }
+    const cmd = await (this.prisma as any).agentCommand.create({
+      data: {
+        tenantId: ctx.tenantId,
+        agent,
+        action,
+        payload,
+        createdBy: ctx.userId || null,
+      },
+    });
+    return {
+      ok: true,
+      commandId: cmd.id,
+      agent: cmd.agent,
+      action: cmd.action,
+      status: cmd.status,
+      createdAt: cmd.createdAt,
+    };
+  }
+
+  private async getAiCostSummary(input: any, ctx: { tenantId: string }) {
+    const now = new Date();
+    const period = input?.period || 'month';
+    const where: any = { tenantId: ctx.tenantId };
+    if (period === 'today') where.createdAt = { gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) };
+    if (period === 'month') where.createdAt = { gte: new Date(now.getFullYear(), now.getMonth(), 1) };
+    if (input?.source) where.source = input.source;
+
+    const [usageRows, faturaEvents] = await Promise.all([
+      (this.prisma as any).aiUsageLog.findMany({
+        where,
+        select: { source: true, costUsd: true, inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true, karar: true },
+      }),
+      (this.prisma as any).agentEvent.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          agent: 'mihsap',
+          status: { in: ['onaylandi', 'ok', 'basarili'] },
+          ...(where.createdAt ? { ts: where.createdAt } : {}),
+        },
+        select: { id: true, action: true },
+      }),
+    ]);
+
+    const bySource: Record<string, any> = {};
+    for (const r of usageRows) {
+      const key = r.source || 'other';
+      bySource[key] ||= { source: key, sorguSayisi: 0, maliyetUsd: 0, inputTokens: 0, outputTokens: 0, kararlar: {} };
+      bySource[key].sorguSayisi++;
+      bySource[key].maliyetUsd += Number(r.costUsd || 0);
+      bySource[key].inputTokens += r.inputTokens || 0;
+      bySource[key].outputTokens += r.outputTokens || 0;
+      bySource[key].kararlar[r.karar || 'unknown'] = (bySource[key].kararlar[r.karar || 'unknown'] || 0) + 1;
+    }
+    const totalUsd = usageRows.reduce((s: number, r: any) => s + Number(r.costUsd || 0), 0);
+    const faturaCostUsd = usageRows
+      .filter((r: any) => r.source === 'mihsap-fatura')
+      .reduce((s: number, r: any) => s + Number(r.costUsd || 0), 0);
+    const successfulInvoices = faturaEvents.filter((e: any) => ['isle_alis', 'isle_satis'].includes(e.action)).length;
+    return {
+      period,
+      toplam: {
+        sorguSayisi: usageRows.length,
+        maliyetUsd: totalUsd,
+      },
+      moduller: Object.values(bySource),
+      fatura: {
+        basariliF2Adedi: successfulInvoices,
+        aiMaliyetUsd: faturaCostUsd,
+        birimMaliyetUsd: successfulInvoices > 0 ? faturaCostUsd / successfulInvoices : null,
+      },
     };
   }
 }

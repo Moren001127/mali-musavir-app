@@ -394,6 +394,50 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
 
+  // ============ AJAN KOMUTLARI + MALİYET ============
+  {
+    name: 'get_agent_status',
+    description:
+      'Mihsap/Luca gibi yerel ajanların canlı durumunu ve son komutlarını getirir. "Fatura agent çalışıyor mu?", ' +
+      '"Son komut ne oldu?", "Mihsap agent son durum" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'], description: 'Opsiyonel ajan filtresi.' },
+        limit: { type: 'number', description: 'Son komut sayısı. Varsayılan 10.' },
+      },
+    },
+  },
+  {
+    name: 'create_agent_command',
+    description:
+      'Kullanıcı AÇIKÇA ONAYLADIKTAN sonra yerel ajana işlem komutu gönderir. İlk istekte bu tool kullanılmaz; önce yapılacak işi özetle ve onay iste. ' +
+      'Sadece kullanıcı "onaylıyorum", "başlat", "evet başlat" gibi net ikinci onay verdikten sonra çağır. ' +
+      'Fatura işleme için agent="mihsap", action="isle_alis" veya "isle_satis", payload.ay="YYYY-MM", payload.mukellefler=[{id, ad, mihsapId?}] gönder.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        action: { type: 'string', description: 'Örn: isle_alis, isle_satis, isle_alis_isletme, isle_satis_isletme.' },
+        payload: { type: 'object', description: 'Ajanın beklediği komut yükü.' },
+        confirmationText: { type: 'string', description: 'Güvenlik için kullanıcı onay metni. ONAYLIYORUM olmalı.' },
+      },
+      required: ['agent', 'action', 'payload', 'confirmationText'],
+    },
+  },
+  {
+    name: 'get_ai_cost_summary',
+    description:
+      'AI maliyetlerini modül bazında özetler. Fatura başı maliyet, Moren AI sohbet maliyeti, toplam günlük/aylık harcama gibi sorularda kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['today', 'month', 'all'], description: 'Varsayılan month.' },
+        source: { type: 'string', description: 'Opsiyonel kaynak filtresi: mihsap-fatura, mihsap-isletme, moren-ai vb.' },
+      },
+    },
+  },
+
   // ============ GENEL SORGULAMA ============
   {
     name: 'search_all',

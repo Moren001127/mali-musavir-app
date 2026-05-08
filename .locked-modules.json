@@ -2,7 +2,7 @@
   "_meta": {
     "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
     "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
-    "baseline_date": "2026-05-07",
+    "baseline_date": "2026-05-08",
     "baseline_version": "v1.36.16"
   },
   "modules": {
@@ -12,18 +12,18 @@
       "lockedBy": "muzaffer"
     },
     "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
-      "sha256": "05d92b8aa176d63ac614d11a66bb1c8fa15ee1055ce211ecfa1785de941c1e1d",
+      "sha256": "6d1fca298271fab9ee23821f6605a312b1b1edaace4afbedead72d52eccda598",
       "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "9d4c9e065570be0c9bc3e95a3302cb46e6298ae46dd5853301f55f1bcbf7e806",
-      "reason": "Moren Agent v1.36.16 — fetchLuca tum tipler + IHO menu navigation",
+      "sha256": "17ddcd2d2dd62b0231733d287c3038e931a5847c74f15e259bc1b3bff498f6c0",
+      "reason": "Moren Agent v1.36.63 - fatura bos kod otomatik doldurma + guvenli hafiza",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "9d4c9e065570be0c9bc3e95a3302cb46e6298ae46dd5853301f55f1bcbf7e806",
-      "reason": "Moren Agent v1.36.16 (web ayna kopya)",
+      "sha256": "0e08ac153812024c91eb3246f6f50eb7530474ecd2cea1c33935c0a347087f33",
+      "reason": "Moren Agent v1.36.63 (web ayna kopya) - fatura bos kod otomatik doldurma + guvenli hafiza",
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.controller.ts": {
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "a1fb1df4f434b0846590a469192e537f9a55a4784e69dbe15dec611ccc7ad28b",
+      "sha256": "e859b359346e77a838e751dc2d166bc59a0322334e1088e42f04c86505e9939d",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation",
       "lockedBy": "muzaffer"
     },

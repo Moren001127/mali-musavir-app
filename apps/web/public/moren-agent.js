@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.62';
+  const AGENT_VERSION = '1.36.63';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8119,13 +8119,14 @@
       // BİLANÇO DALI (BILANCO/1 · BILANCO/2) — mevcut akış
       // ==========================================================
       const codes = await readHesapKodlari();
-      if (!tumKodlarDolu(codes)) {
+      const hasBosSelect = bosSelectVarMi();
+      if (!tumKodlarDolu(codes) && !hasBosSelect) {
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
         await clickIleri(fid); continue;
       }
       // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari)
-      if (bosSelectVarMi()) {
+      if (hasBosSelect) {
         // ================================================================
         // v1.12.0 — AŞAMA 1 (Doldur, kaydetme) — SADECE Bilanço SATIŞ:
         // Eşikler: Cari %95, Matrah %90, KDV %90.
@@ -8136,7 +8137,7 @@
         // v1.13.6 — Okunabilir log formatı
         let logMesaji = '';
         let kaydedildiBaslangic = false;
-        if (action === 'isle_satis') {
+        if (action === 'isle_satis' || action === 'isle_alis') {
           try {
             setStatus(`${mukellef.ad} · #${fid} AI öneri istiyor…`);
             const secenekler = await readBosAlanSecenekleri({ action, firmaAdi: meta.firma });
@@ -8205,7 +8206,16 @@
                   satirlar.push('Sonuç: ✓ Doldurma başarılı, F2 ile otomatik kaydedildi');
                   counters.onay++; counters.toplam++; setCount();
                   await logEvent(mukellef.id, mukellef.ad, 'ok', satirlar.join('\n'),
-                    { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+                    {
+                      firma: meta.firma,
+                      firmaKimlikNo: meta.firmaKimlikNo,
+                      belgeNo: meta.belgeNo,
+                      tutar: meta.tutar,
+                      hesapKodu: o.matrahHesapKodu || codes[0] || null,
+                      hesapKodlari: [o.matrahHesapKodu, o.kdvHesapKodu, o.cariHesapKodu].filter(Boolean),
+                      decisionTrace: oneriKarari?.decisionTrace || null,
+                      faturaDecisionCandidate: oneriKarari?.faturaDecisionCandidate || null,
+                    });
                   continue;
                 }
                 // F2 başarısız
@@ -8264,6 +8274,8 @@
       });
       const karar = decision?.karar || 'emin_degil';
       const sebep = (decision?.sebep || '').slice(0, 120);
+      const decisionTrace = decision?.decisionTrace || null;
+      const faturaDecisionCandidate = decision?.faturaDecisionCandidate || null;
       // === v1.36.21: BELGE ↔ MIHSAP TUTAR KARŞILAŞTIRMA ===
       // AI fatura görselinden ocrToplam, ocrMatrah, ocrKdvTutari çıkarıyor.
       // Mihsap'taki değer (meta.tutar = toplam) ile karşılaştır — uyuşmuyorsa ATLA.
@@ -8287,7 +8299,7 @@
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
         await clickIleri(fid); continue;
       }
       // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
@@ -8297,12 +8309,12 @@
         const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
+          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
         await clickIleri(fid); continue;
       }
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, ...compareMeta });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
         await clickIleri(fid); continue;
       }
       // === v1.36.54: KDV ORAN GÜVENLİK NETİ — ÇOK SATIRLI FATURA DESTEĞİ ===
@@ -8416,7 +8428,7 @@
 
         if (saved) {
           counters.onay++; counters.toplam++; setCount();
-          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length });
+          await logEvent(mukellef.id, mukellef.ad, 'ok', `F2 · ${sebep}`, { firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, faturaDecisionCandidate });
         } else {
           counters.atla++; counters.toplam++; setCount();
           const atlamaSebebi = validationFailed

@@ -56,7 +56,7 @@ export class AgentEventsService {
       if (Number.isFinite(n)) normalizedTutar = n;
     }
 
-    return this.prisma.agentEvent.create({
+    const event = await this.prisma.agentEvent.create({
       data: {
         tenantId,
         agent: input.agent,
@@ -72,6 +72,37 @@ export class AgentEventsService {
         meta: input.meta ?? undefined,
         ts: input.ts ? new Date(input.ts) : new Date(),
       },
+    });
+    if (input.agent === 'mihsap' && normalizedStatus === 'onaylandi') {
+      await this.recordFaturaMemoryAfterSuccessfulSave(tenantId, input).catch(() => {});
+    }
+    return event;
+  }
+
+  private async recordFaturaMemoryAfterSuccessfulSave(tenantId: string, input: AgentEventInput) {
+    const meta = input.meta || {};
+    const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || null;
+    const kararTipi = candidate?.kararTipi || meta.kararTipi || 'fatura';
+    if (kararTipi !== 'fatura') return;
+
+    const firmaKimlikNo = meta.firmaKimlikNo || candidate?.firmaKimlikNo || null;
+    const firmaUnvan = input.firma || meta.firma || candidate?.firmaUnvan || null;
+    const kategori =
+      candidate?.hesapKodu ||
+      candidate?.kategori ||
+      meta.finalHesapKodu ||
+      input.hesapKodu ||
+      null;
+    if (!firmaKimlikNo || !kategori) return;
+
+    await this.vendorMemory.recordDecision({
+      tenantId,
+      firmaKimlikNo,
+      firmaUnvan,
+      kararTipi: 'fatura',
+      kategori,
+      altKategori: null,
+      taxpayerId: meta.mukellefId || candidate?.taxpayerId || null,
     });
   }
 
@@ -1063,7 +1094,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
 
       // kategori key (Firma Hafizasi icin) — fatura modunda ilk hesap kodu
       // (Mihsap satirinda AI bu kodu onayladi sayilir). Liste bossa memory skip edilir.
-      const kategoriKey = (input.hesapKodlari?.[0] || '').trim();
+      const ekranKategoriAdayi = (input.hesapKodlari?.[0] || '').trim();
 
       for (const c of candidates) {
         try {
@@ -1107,6 +1138,34 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                 input.bosAlanSecenekleri,
               );
             }
+            const memoryCategory = this.resolveFaturaMemoryCategory(parsed, ekranKategoriAdayi);
+            const decisionTrace = {
+              belge: {
+                tarih: parsed.tarih || null,
+                belgeNo: parsed.belgeNo || null,
+                cari: parsed.cari || null,
+                belgeTuru: parsed.belgeTuru || null,
+                kdvOrani: parsed.kdvOrani ?? null,
+                ocrToplam: parsed.ocrToplam ?? null,
+                ocrMatrah: parsed.ocrMatrah ?? null,
+                ocrKdvTutari: parsed.ocrKdvTutari ?? null,
+              },
+              ekran: {
+                tarih: input.faturaTarihi || null,
+                belgeNo: input.belgeNo || null,
+                belgeTuru: input.belgeTuru || null,
+                faturaTuru: input.faturaTuru || null,
+                tutar: input.tutar ?? null,
+                hesapKodlari: input.hesapKodlari || [],
+              },
+              karar: {
+                sonuc: parsed.karar,
+                sebep: parsed.sebep || null,
+                icerikSinifi: parsed.icerikSinifi || null,
+                memoryCategory: memoryCategory || null,
+                vendorHintUsed: !!vendorHint,
+              },
+            };
 
             // === FIRMA HAFIZASI ENTEGRASYONU ===
             // Sadece AI "onay" derse memory'ye yansit. "atla"/"emin_degil" etkilemez.
@@ -1114,13 +1173,13 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
               parsed.karar === 'onay' &&
               input.tenantId &&
               input.firmaKimlikNo &&
-              kategoriKey
+              memoryCategory
             ) {
               // Sapma var mi?
               if (vendorHint) {
                 const sapma = this.vendorMemory.detectDeviation({
                   topKategoriler: vendorHint.topKategoriler,
-                  aiKategori: kategoriKey,
+                  aiKategori: memoryCategory,
                   aiAltKategori: null,
                 });
                 if (sapma.isSapma) {
@@ -1128,6 +1187,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                   try {
                     const pending = await this.pendingDecisions.create({
                       tenantId: input.tenantId,
+                      taxpayerId: input.mukellefId || null,
                       mukellef: input.mukellef,
                       firmaKimlikNo: input.firmaKimlikNo,
                       firmaUnvan: input.firma,
@@ -1136,7 +1196,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                       faturaTarihi: input.faturaTarihi,
                       tutar: typeof input.tutar === 'number' ? input.tutar : (input.tutar ? Number(input.tutar) : null),
                       kararTipi: 'fatura',
-                      aiKarari: { ...parsed, hesapKodu: kategoriKey },
+                      aiKarari: { ...parsed, hesapKodu: memoryCategory, decisionTrace },
                       gecmisBeklenen: {
                         topKategoriler: vendorHint.topKategoriler,
                         enCok: sapma.enCokGecmisKategori,
@@ -1155,27 +1215,29 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                   } catch (e: any) {
                     // Pending olusturma basarisizsa AI kararina gec — guvenli fallback
                     await logUsage(parsed.karar, `pending create failed: ${e?.message}`, usage);
-                    return parsed;
+                    return {
+                      karar: 'onay_bekliyor',
+                      sebep: `Onay kuyruğu oluşturulamadı: ${e?.message || 'bilinmeyen hata'}`,
+                      decisionTrace,
+                    };
                   }
                 }
               }
-              // Sapma yok (veya hint yok) → memory'ye kaydet
-              try {
-                await this.vendorMemory.recordDecision({
-                  tenantId: input.tenantId,
-                  firmaKimlikNo: input.firmaKimlikNo,
-                  firmaUnvan: input.firma,
-                  kararTipi: 'fatura',
-                  kategori: kategoriKey,
-                  altKategori: null,
-                  taxpayerId: input.mukellefId || null, // Mükellef-bazlı kayıt
-                });
-              } catch {
-                // Memory kaydi basarisiz olsa bile ana akis devam eder
-              }
+              // Sapma yoksa hafiza kaydi burada yapilmaz; F2 basari log'u geldikten
+              // sonra createEvent icinde kaydedilir.
             }
             // === /FIRMA HAFIZASI ===
 
+            if (parsed.karar === 'onay' && memoryCategory) {
+              parsed.faturaDecisionCandidate = {
+                kararTipi: 'fatura',
+                hesapKodu: memoryCategory,
+                firmaKimlikNo: input.firmaKimlikNo || null,
+                firmaUnvan: input.firma || null,
+                taxpayerId: input.mukellefId || null,
+              };
+            }
+            parsed.decisionTrace = decisionTrace;
             await logUsage(parsed.karar, parsed.sebep, usage);
             return parsed;
           }
@@ -1207,7 +1269,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     oneriler: any,
     secenekler: { matrahKodlari?: string[]; kdvKodlari?: string[]; cariKodlari?: string[] },
   ): any {
-    const MIN_CONFIDENCE = 0.8;
+    const MIN_CONFIDENCE = 0.7;
     const conf = (oneriler?.confidence as Record<string, number>) || {};
     const validateKod = (
       kod: any,
@@ -1230,6 +1292,16 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       cariHesapKodu: validateKod(oneriler?.cariHesapKodu, secenekler.cariKodlari, conf.cari),
       confidence: conf,
     };
+  }
+
+  private resolveFaturaMemoryCategory(parsed: any, ekranKategoriAdayi: string): string {
+    const direct =
+      parsed?.hesapKodu ||
+      parsed?.kategori ||
+      parsed?.matrahHesapKodu ||
+      parsed?.onerilenler?.matrahHesapKodu ||
+      ekranKategoriAdayi;
+    return typeof direct === 'string' ? direct.trim() : '';
   }
 
   /**
