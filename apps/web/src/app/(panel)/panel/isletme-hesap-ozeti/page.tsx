@@ -155,6 +155,7 @@ export default function IsletmeHesapOzetiPage() {
   const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => r.data?.data ?? r.data ?? []),
+    staleTime: 10 * 60 * 1000, // 10 dk cache — taxpayer listesi nadiren değişir
   });
 
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
@@ -163,6 +164,9 @@ export default function IsletmeHesapOzetiPage() {
     queryKey: ['iho-yil', taxpayerId, yil],
     queryFn: () => isletmeHesapOzetiApi.getYil(taxpayerId, yil),
     enabled: !!taxpayerId && !!yil,
+    // v1.36.58: Firma değiştirme hızlandırması
+    staleTime: 5 * 60 * 1000, // 5 dk: aynı firma+yıl tekrar açılırsa anında gelir
+    placeholderData: (prev: any) => prev, // yeni firma yüklenirken eski veri ekranda kalır → blank screen yok
   });
 
   const olusturYilMutation = useMutation({
