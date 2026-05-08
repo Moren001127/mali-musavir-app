@@ -1217,16 +1217,19 @@ export default function GelirTablosuPage() {
                       );
                     })}
                   </tr>
-                  {/* Satılan Malın Maliyeti — manuel düzeltme + Toplam Stok'tan büyükse kırmızı uyarı */}
+                  {/* Satılan Malın Maliyeti — v1.36.55: SADECE Manuel girilen değer (toplam SMM değil).
+                      User'ın talep ettiği: yukarıdaki "Manuel: 2. Satılan Ticari Mallar Maliyeti" alanına yazdığı değer
+                      buraya birebir gelir; D. SATIŞLARIN MALİYETİ toplamına 740 vs eklenmiş halde gelmez. */}
                   <tr style={{ borderTop: '1px solid rgba(244,63,94,0.2)', background: 'rgba(244,63,94,0.04)' }}>
                     <td></td>
                     <td className="px-3 py-2.5 font-semibold" style={{ color: '#f43f5e' }}>Satılan Malın Maliyeti</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      // Manuel düzeltme varsa onu kullan, yoksa backend stokMaliyetOzet.satisMaliyeti
                       const slot = quarterSlots[qi];
-                      const der = slot ? derived(slot) : null;
-                      const v = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                      // SADECE manuel input (taslak veya kayıtlı). Toplam SMM (846k) DEĞİL.
+                      const draftManuel = slot ? duzeltmelerDraft[slot.id]?.satisMaliyetiManuel : undefined;
+                      const savedManuel = slot ? slot.duzeltmeler?.satisMaliyetiManuel : undefined;
+                      const v = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
                       const toplamStok = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
                       const ihlal = d?.stokMaliyetOzet && v > toplamStok && toplamStok > 0;
                       return (
@@ -1255,10 +1258,11 @@ export default function GelirTablosuPage() {
                     <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: '#22c55e' }}>Kalan Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
-                      // Kalan Stok = Toplam Stok − (manuel) Satılan Maliyet
+                      // v1.36.55: Kalan Stok = Toplam Stok − Manuel SMM (toplam SMM değil)
                       const slot = quarterSlots[qi];
-                      const der = slot ? derived(slot) : null;
-                      const sm = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                      const draftManuel = slot ? duzeltmelerDraft[slot.id]?.satisMaliyetiManuel : undefined;
+                      const savedManuel = slot ? slot.duzeltmeler?.satisMaliyetiManuel : undefined;
+                      const sm = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
                       const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
                       const v = d?.stokMaliyetOzet ? ts - sm : 0;
                       const negatif = d?.stokMaliyetOzet && v < 0;
@@ -1286,8 +1290,10 @@ export default function GelirTablosuPage() {
                   {DISPLAY_ORDER.some((qi) => {
                     const d = quarterDetails[qi]?.data as any;
                     const slot = quarterSlots[qi];
-                    const der = slot ? derived(slot) : null;
-                    const sm = der ? der.satisMaliyeti : Number(d?.stokMaliyetOzet?.satisMaliyeti ?? 0);
+                    // v1.36.55: tutarsızlık kontrolü manuel SMM'ye göre
+                    const draftManuel = slot ? duzeltmelerDraft[slot.id]?.satisMaliyetiManuel : undefined;
+                    const savedManuel = slot ? slot.duzeltmeler?.satisMaliyetiManuel : undefined;
+                    const sm = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
                     const ts = Number(d?.stokMaliyetOzet?.toplamStok ?? 0);
                     return d?.stokMaliyetOzet && ((sm > ts && ts > 0) || (ts - sm) < 0);
                   }) && (
