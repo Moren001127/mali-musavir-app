@@ -99,8 +99,12 @@ export class GelirTablosuService {
     const satisInd = giderBy(['610', '611', '612']);
     // C. Net Satışlar = A - B
     const netSatis = brutSatis.toplam - satisInd.toplam;
-    // D. Satışların Maliyeti (620, 621, 622, 623 + 740 7/A)
-    const satisMal = giderBy(['620', '621', '622', '623', '740']);
+    // D. Satışların Maliyeti — v1.36.49: SADECE 620 + 621
+    // Önceden 622 (Hizmet Maliyeti) + 623 + 740 (Hizmet Üretim Maliyeti) da dahildi.
+    // Frontend'de bu alt kalemler görünmediği için "Hizmet maliyeti SMM'ye geliyor" diye
+    // karışıklık çıkıyordu. Kullanıcı SMM'yi Manuel input ile yönetecek; mizandan sadece
+    // 620 (Satılan Mamuller) + 621 (Satılan Ticari Mallar) otomatik gelir.
+    const satisMal = giderBy(['620', '621']);
     // Brüt Satış Karı = C - D
     const brutKar = netSatis - satisMal.toplam;
     // E. Faaliyet Giderleri (631, 632, 633 + 750, 760, 770)
