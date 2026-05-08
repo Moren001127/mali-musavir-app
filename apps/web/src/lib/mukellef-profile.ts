@@ -20,6 +20,10 @@ export interface MukellefProfile {
   malSatisMatrah?: KdvOranBazli;    // 600.x
   hizmetSatisMatrah?: KdvOranBazli; // 600.x
 
+  // v1.36.60: Alış matrahları — Ticari Mal Alışı (153.x) — TDHP standartı
+  // Hizmet alışı (740.x) profile'a alınmadı çünkü sürekli değişebilir, mizandan alınır.
+  malAlisMatrah?: KdvOranBazli;     // 153.x
+
   // KDV hesapları (oran bazlı)
   hesaplananKdv?: KdvOranBazli;     // 391.x
   indirilecekKdv?: KdvOranBazli;    // 191.x
@@ -59,6 +63,8 @@ export function profileToPromptText(p: MukellefProfile | null | undefined): stri
 
   oranSatir('Mal Satışı Matrahı', p.malSatisMatrah);
   oranSatir('Hizmet Satışı Matrahı', p.hizmetSatisMatrah);
+  // v1.36.60: Mal Alışı zorunlu önceliklendirme — AI bu kodları VendorMemory'den önce kullanır.
+  oranSatir('Mal Alışı Matrahı (ZORUNLU ÖNCELİK)', p.malAlisMatrah);
   oranSatir('Hesaplanan KDV', p.hesaplananKdv);
   oranSatir('İndirilecek KDV', p.indirilecekKdv);
 

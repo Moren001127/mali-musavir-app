@@ -234,15 +234,21 @@ export function buildFieldRows(event: {
   const belgeMatrah = Number(event.meta?.belgeMatrah);
   const belgeKdv = Number(event.meta?.belgeKdvTutari);
   const TOL_FIELD = 1.00;
-  // Karşılaştırma sonucu — eşleşme/uyuşmazlık string'i
+  // v1.36.60: Karşılaştırma sonucu — eşleşme / uyuşmazlık / okunamadı
   const compareWithBelge = (label: 'Matrah' | 'KDV', mihsapTutar: number | null): string | null => {
     if (mihsapTutar === null) return null;
     const belgeVal = label === 'Matrah' ? belgeMatrah : belgeKdv;
-    if (!Number.isFinite(belgeVal) || belgeVal <= 0) return null;
+    // AI bu alanı belge görselinden okuyamadıysa açıkça belirt — kullanıcı şüpheyle baksın
+    if (!Number.isFinite(belgeVal) || belgeVal <= 0) return '⚠ belgeden okunamadı';
     const diff = Math.abs(belgeVal - mihsapTutar);
     if (diff <= TOL_FIELD) return '✓ belge ile uyumlu';
     return `✗ belgede: ${belgeVal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} TL`;
   };
+
+  // v1.36.60: Çok satırlı fatura — meta'da hesapKodlari (array) varsa her satırı ayrı göster
+  const hesapKodlari: string[] = Array.isArray(event.meta?.hesapKodlari) ? event.meta.hesapKodlari : [];
+  const kdvOranlari: string[] = Array.isArray(event.meta?.kdvOranlari) ? event.meta.kdvOranlari : [];
+  const cokSatir = hesapKodlari.length > 1 || kdvOranlari.length > 1;
 
   const checkField = (label: 'Matrah' | 'KDV', existingValue?: string) => {
     const isBos = parsed.bosAlanlar.some((b) => b.toLowerCase() === label.toLowerCase());
@@ -308,8 +314,28 @@ export function buildFieldRows(event: {
       rows.push({ label, status: 'missing', value: '—' });
     }
   };
-  checkField('Matrah', event.hesapKodu);
-  checkField('KDV', event.kdv);
+  // v1.36.60: Çok satırlı faturada her matrah/kdv satırını ayrı göster
+  if (cokSatir) {
+    const lineCount = Math.max(hesapKodlari.length, kdvOranlari.length);
+    for (let i = 0; i < lineCount; i++) {
+      const kodu = hesapKodlari[i] || '—';
+      const oranStr = kdvOranlari[i] || '—';
+      rows.push({
+        label: `Matrah ${i + 1}`,
+        status: 'full',
+        value: kodu,
+        // OCR ile karşılaştırma çoklu satırda zor — sadece toplam üzerinden işaretliyoruz
+      });
+      rows.push({
+        label: `KDV ${i + 1}`,
+        status: 'full',
+        value: oranStr,
+      });
+    }
+  } else {
+    checkField('Matrah', event.hesapKodu);
+    checkField('KDV', event.kdv);
+  }
 
   // 7) İçerik (AI ocrOzet veya meta.icerik)
   const icerik = (event.meta?.icerik || event.meta?.ocrOzet || '').toString().trim();

@@ -27,6 +27,7 @@ const EMPTY_PROFILE: MukellefProfile = {
   defterTuru: '',
   malSatisMatrah: { yuzde1: '', yuzde10: '', yuzde20: '' },
   hizmetSatisMatrah: { yuzde1: '', yuzde10: '', yuzde20: '' },
+  malAlisMatrah: { yuzde1: '', yuzde10: '', yuzde20: '' },
   hesaplananKdv: { yuzde1: '', yuzde10: '', yuzde20: '' },
   indirilecekKdv: { yuzde1: '', yuzde10: '', yuzde20: '' },
   cariFormat: '',
@@ -88,7 +89,7 @@ export default function ProfillerPage() {
     setProfile((p) => ({ ...p, [key]: value }));
 
   const updKdv = (
-    key: 'malSatisMatrah' | 'hizmetSatisMatrah' | 'hesaplananKdv' | 'indirilecekKdv',
+    key: 'malSatisMatrah' | 'hizmetSatisMatrah' | 'malAlisMatrah' | 'hesaplananKdv' | 'indirilecekKdv',
     oran: keyof KdvOranBazli,
     value: string,
   ) => setProfile((p) => ({ ...p, [key]: { ...(p[key] || {}), [oran]: value } }));
@@ -190,7 +191,7 @@ function ProfileForm({
   has: boolean;
   onUpdate: <K extends keyof MukellefProfile>(k: K, v: MukellefProfile[K]) => void;
   onUpdateKdv: (
-    key: 'malSatisMatrah' | 'hizmetSatisMatrah' | 'hesaplananKdv' | 'indirilecekKdv',
+    key: 'malSatisMatrah' | 'hizmetSatisMatrah' | 'malAlisMatrah' | 'hesaplananKdv' | 'indirilecekKdv',
     oran: keyof KdvOranBazli, value: string,
   ) => void;
   onSave: () => void;
@@ -242,6 +243,13 @@ function ProfileForm({
         <Input label="%1 kodu"  value={profile.hizmetSatisMatrah?.yuzde1  || ''} onChange={(v) => onUpdateKdv('hizmetSatisMatrah', 'yuzde1', v)}  placeholder="600.02.001" />
         <Input label="%10 kodu" value={profile.hizmetSatisMatrah?.yuzde10 || ''} onChange={(v) => onUpdateKdv('hizmetSatisMatrah', 'yuzde10', v)} placeholder="600.02.010" />
         <Input label="%20 kodu" value={profile.hizmetSatisMatrah?.yuzde20 || ''} onChange={(v) => onUpdateKdv('hizmetSatisMatrah', 'yuzde20', v)} placeholder="600.02.020" />
+      </Section>
+
+      {/* v1.36.60: TICARI MAL ALIŞI MATRAH (KDV oranı bazında) — AI bu kodları VendorMemory'den önce uygular */}
+      <Section title="Ticari Mal Alışı Matrah Hesapları (KDV oranı bazında) · ZORUNLU ÖNCELİK">
+        <Input label="%1 kodu"  value={profile.malAlisMatrah?.yuzde1  || ''} onChange={(v) => onUpdateKdv('malAlisMatrah', 'yuzde1', v)}  placeholder="153.01.001" />
+        <Input label="%10 kodu" value={profile.malAlisMatrah?.yuzde10 || ''} onChange={(v) => onUpdateKdv('malAlisMatrah', 'yuzde10', v)} placeholder="153.01.010" />
+        <Input label="%20 kodu" value={profile.malAlisMatrah?.yuzde20 || ''} onChange={(v) => onUpdateKdv('malAlisMatrah', 'yuzde20', v)} placeholder="153.01.020" />
       </Section>
 
       {/* HESAPLANAN KDV */}
