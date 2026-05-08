@@ -202,7 +202,14 @@ export default function GorevlerPage() {
   );
 }
 
-function CountCard({ label, value, icon: Icon, color, pulse }: any) {
+interface CountCardProps {
+  label: string;
+  value: number;
+  icon: any;
+  color: string;
+  pulse?: boolean;
+}
+function CountCard({ label, value, icon: Icon, color, pulse }: CountCardProps) {
   return (
     <div className="rounded-xl p-4" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
       <div className="flex items-center gap-2 mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
@@ -217,7 +224,14 @@ function CountCard({ label, value, icon: Icon, color, pulse }: any) {
   );
 }
 
-function SelectField({ label, value, onChange, options }: any) {
+interface SelectOption { value: string; label: string }
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: SelectOption[];
+}
+function SelectField({ label, value, onChange, options }: SelectFieldProps) {
   return (
     <div>
       <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
@@ -229,7 +243,7 @@ function SelectField({ label, value, onChange, options }: any) {
         className="px-3 py-2 rounded-lg text-sm border outline-none"
         style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 140 }}
       >
-        {options.map((o: any) => (
+        {options.map((o) => (
           <option key={o.value} value={o.value} style={{ background: '#0f0d0b' }}>{o.label}</option>
         ))}
       </select>
@@ -237,7 +251,16 @@ function SelectField({ label, value, onChange, options }: any) {
   );
 }
 
-function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }: any) {
+interface TaskGroupProps {
+  title: string;
+  tasks: Task[];
+  accent: string;
+  pulse?: boolean;
+  onComplete: (id: string) => void;
+  onDelete: (id: string) => void;
+  onEdit: (t: Task) => void;
+}
+function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }: TaskGroupProps) {
   if (tasks.length === 0) return null;
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
@@ -259,7 +282,13 @@ function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }
   );
 }
 
-function TaskRow({ task, onComplete, onDelete, onEdit }: any) {
+interface TaskRowProps {
+  task: Task;
+  onComplete: (id: string) => void;
+  onDelete: (id: string) => void;
+  onEdit: (t: Task) => void;
+}
+function TaskRow({ task, onComplete, onDelete, onEdit }: TaskRowProps) {
   const isDone = task.status === 'DONE';
   return (
     <div
@@ -517,7 +546,11 @@ function TaskModal({ task, taxpayers, onClose, onSaved }: { task: Task | null; t
   );
 }
 
-function Field({ label, children }: any) {
+interface FieldProps {
+  label: React.ReactNode;
+  children: React.ReactNode;
+}
+function Field({ label, children }: FieldProps) {
   return (
     <div>
       <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
