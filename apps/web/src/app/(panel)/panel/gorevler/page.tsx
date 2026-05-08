@@ -6,6 +6,7 @@ import {
   CheckSquare, Plus, Calendar, AlertTriangle, Clock, CheckCircle2,
   Filter, Search, Trash2, X, Edit3, MessageSquare, Bell, BellOff,
   Loader2, Tag, User as UserIcon, Building2, Repeat, Mail,
+  MoreVertical, Play, Ban, Pause, RotateCcw, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -67,6 +68,55 @@ export default function GorevlerPage() {
     },
   });
 
+  // v1.36.74: Tamamlanmış görevi geri al (DONE → OPEN)
+  const reopenMut = useMutation({
+    mutationFn: (id: string) => tasksApi.update(id, { status: 'OPEN' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task-counts'] });
+      toast.success('Görev tekrar açıldı');
+    },
+  });
+
+  // Devam Ediyor (IN_PROGRESS) — başlandığını işaretle
+  const startMut = useMutation({
+    mutationFn: (id: string) => tasksApi.update(id, { status: 'IN_PROGRESS' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task-counts'] });
+      toast.success('Görev başlatıldı');
+    },
+  });
+
+  // İptal et — yapılmayacak görev (CANCELLED)
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => tasksApi.update(id, { status: 'CANCELLED' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task-counts'] });
+      toast.success('Görev iptal edildi');
+    },
+  });
+
+  // Ertele — kullanıcının seçtiği tarihe kadar SNOOZED durumuna geçir
+  const snoozeMut = useMutation({
+    mutationFn: ({ id, until }: { id: string; until: string }) => tasksApi.snooze(id, until),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task-counts'] });
+      toast.success('Görev ertelendi');
+    },
+  });
+
+  // Not ekle
+  const addNoteMut = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) => tasksApi.addNote(id, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Not eklendi');
+    },
+  });
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => tasksApi.remove(id),
     onSuccess: () => {
@@ -75,6 +125,14 @@ export default function GorevlerPage() {
       toast.success('Görev silindi');
     },
   });
+
+  // Snooze dialog state
+  const [snoozeTarget, setSnoozeTarget] = useState<Task | null>(null);
+  const [snoozeUntil, setSnoozeUntil] = useState('');
+
+  // Note dialog state
+  const [noteTarget, setNoteTarget] = useState<Task | null>(null);
+  const [noteContent, setNoteContent] = useState('');
 
   const tasks = listData?.items || [];
 
@@ -176,12 +234,12 @@ export default function GorevlerPage() {
         </div>
       ) : (
         <div className="space-y-5">
-          <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="BUGÜN" tasks={grouped.today} accent="#3b82f6" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="YARIN" tasks={grouped.tomorrow} accent="#f59e0b" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="BU HAFTA" tasks={grouped.thisWeek} accent={GOLD} onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="DAHA SONRA" tasks={grouped.later} accent="rgba(250,250,249,0.4)" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
-          <TaskGroup title="TARİHSİZ" tasks={grouped.none} accent="rgba(250,250,249,0.3)" onComplete={(id: string) => completeMut.mutate(id)} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="BUGÜN" tasks={grouped.today} accent="#3b82f6" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="YARIN" tasks={grouped.tomorrow} accent="#f59e0b" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="BU HAFTA" tasks={grouped.thisWeek} accent={GOLD} onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="DAHA SONRA" tasks={grouped.later} accent="rgba(250,250,249,0.4)" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
+          <TaskGroup title="TARİHSİZ" tasks={grouped.none} accent="rgba(250,250,249,0.3)" onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
         </div>
       )}
 
@@ -198,6 +256,113 @@ export default function GorevlerPage() {
           }}
         />
       )}
+
+      {/* Snooze (Erteleme) dialog'u */}
+      {snoozeTarget && (
+        <MiniDialog title="Görevi Ertele" onClose={() => setSnoozeTarget(null)}>
+          <p className="text-[12px] mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
+            <strong style={{ color: '#fafaf9' }}>{snoozeTarget.title}</strong> görevini ne zamana kadar erteleyelim?
+          </p>
+          <div className="flex gap-2 mb-3 flex-wrap">
+            {[
+              { label: 'Yarın', days: 1 },
+              { label: '3 gün', days: 3 },
+              { label: '1 hafta', days: 7 },
+              { label: '2 hafta', days: 14 },
+            ].map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => {
+                  const d = new Date(); d.setDate(d.getDate() + opt.days);
+                  setSnoozeUntil(d.toISOString().slice(0, 10));
+                }}
+                className="px-3 py-1.5 rounded-md text-[11.5px] font-semibold"
+                style={{ background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.3)', color: '#a855f7' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="date"
+            value={snoozeUntil}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setSnoozeUntil(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setSnoozeTarget(null)} className="px-3 py-2 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+              Vazgeç
+            </button>
+            <button
+              onClick={() => {
+                if (!snoozeUntil) return toast.error('Tarih seç');
+                snoozeMut.mutate({ id: snoozeTarget.id, until: new Date(snoozeUntil).toISOString() });
+                setSnoozeTarget(null);
+              }}
+              className="px-4 py-2 rounded-lg text-[12.5px] font-semibold inline-flex items-center gap-2"
+              style={{ background: 'rgba(168,85,247,0.18)', border: '1px solid rgba(168,85,247,0.4)', color: '#c084fc' }}
+            >
+              <Pause size={12} /> Ertele
+            </button>
+          </div>
+        </MiniDialog>
+      )}
+
+      {/* Not ekleme dialog'u */}
+      {noteTarget && (
+        <MiniDialog title="Not Ekle" onClose={() => setNoteTarget(null)}>
+          <p className="text-[12px] mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
+            <strong style={{ color: '#fafaf9' }}>{noteTarget.title}</strong>
+          </p>
+          <textarea
+            value={noteContent}
+            onChange={(e) => setNoteContent(e.target.value)}
+            rows={4}
+            placeholder="Görev hakkında not ekle..."
+            className="w-full px-3 py-2 rounded-lg text-sm border outline-none resize-none"
+            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setNoteTarget(null)} className="px-3 py-2 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.7)' }}>
+              Vazgeç
+            </button>
+            <button
+              onClick={() => {
+                if (!noteContent.trim()) return toast.error('Not boş olamaz');
+                addNoteMut.mutate({ id: noteTarget.id, content: noteContent.trim() });
+                setNoteTarget(null);
+              }}
+              className="px-4 py-2 rounded-lg text-[12.5px] font-semibold inline-flex items-center gap-2"
+              style={{ background: GOLD, color: '#0f0d0b' }}
+            >
+              <MessageSquare size={12} /> Kaydet
+            </button>
+          </div>
+        </MiniDialog>
+      )}
+    </div>
+  );
+}
+
+interface MiniDialogProps {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}
+function MiniDialog({ title, children, onClose }: MiniDialogProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="w-full max-w-md rounded-xl overflow-hidden" style={{ background: '#0f0d0b', border: `1px solid ${BORDER}` }}>
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <h3 className="text-[14px] font-bold" style={{ color: '#fafaf9' }}>{title}</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-white/5">
+            <X size={14} style={{ color: 'rgba(250,250,249,0.5)' }} />
+          </button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
     </div>
   );
 }
@@ -257,10 +422,15 @@ interface TaskGroupProps {
   accent: string;
   pulse?: boolean;
   onComplete: (id: string) => void;
+  onReopen: (id: string) => void;
+  onStart: (id: string) => void;
+  onCancel: (id: string) => void;
+  onSnooze: (t: Task) => void;
+  onAddNote: (t: Task) => void;
   onDelete: (id: string) => void;
   onEdit: (t: Task) => void;
 }
-function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }: TaskGroupProps) {
+function TaskGroup({ title, tasks, accent, pulse, onComplete, onReopen, onStart, onCancel, onSnooze, onAddNote, onDelete, onEdit }: TaskGroupProps) {
   if (tasks.length === 0) return null;
   return (
     <div className="rounded-xl overflow-hidden" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
@@ -275,7 +445,18 @@ function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }
       </div>
       <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
         {tasks.map((t: Task) => (
-          <TaskRow key={t.id} task={t} onComplete={onComplete} onDelete={onDelete} onEdit={onEdit} />
+          <TaskRow
+            key={t.id}
+            task={t}
+            onComplete={onComplete}
+            onReopen={onReopen}
+            onStart={onStart}
+            onCancel={onCancel}
+            onSnooze={onSnooze}
+            onAddNote={onAddNote}
+            onDelete={onDelete}
+            onEdit={onEdit}
+          />
         ))}
       </div>
     </div>
@@ -285,25 +466,50 @@ function TaskGroup({ title, tasks, accent, pulse, onComplete, onDelete, onEdit }
 interface TaskRowProps {
   task: Task;
   onComplete: (id: string) => void;
+  onReopen: (id: string) => void;
+  onStart: (id: string) => void;
+  onCancel: (id: string) => void;
+  onSnooze: (t: Task) => void;
+  onAddNote: (t: Task) => void;
   onDelete: (id: string) => void;
   onEdit: (t: Task) => void;
 }
-function TaskRow({ task, onComplete, onDelete, onEdit }: TaskRowProps) {
+function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAddNote, onDelete, onEdit }: TaskRowProps) {
   const isDone = task.status === 'DONE';
+  const isInProgress = task.status === 'IN_PROGRESS';
+  const isSnoozed = task.status === 'SNOOZED';
+  const isCancelled = task.status === 'CANCELLED';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  // Menu dışına tıklayınca kapansın
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
   return (
     <div
       className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.02] transition group"
       style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
     >
+      {/* Tamamla / Geri Al — checkbox toggle */}
       <button
-        onClick={() => !isDone && onComplete(task.id)}
-        className="mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0"
+        onClick={() => isDone ? onReopen(task.id) : onComplete(task.id)}
+        title={isDone ? 'Tekrar aç (geri al)' : 'Tamamla'}
+        className="mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition hover:scale-110"
         style={{
           borderColor: isDone ? '#22c55e' : 'rgba(250,250,249,0.3)',
-          background: isDone ? 'rgba(34,197,94,0.15)' : 'transparent',
+          background: isDone ? 'rgba(34,197,94,0.18)' : 'transparent',
         }}
       >
-        {isDone && <CheckCircle2 size={12} style={{ color: '#22c55e' }} />}
+        {isDone && <CheckCircle2 size={13} style={{ color: '#22c55e' }} />}
       </button>
 
       <div className="flex-1 min-w-0">
@@ -329,8 +535,24 @@ function TaskRow({ task, onComplete, onDelete, onEdit }: TaskRowProps) {
               <Building2 size={9} /> {taxpayerName(task.taxpayer)}
             </span>
           )}
+          {/* Durum rozetleri — DONE/IN_PROGRESS/SNOOZED/CANCELLED için ek görsel */}
+          {isInProgress && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6' }}>
+              <Play size={8} /> Devam
+            </span>
+          )}
+          {isSnoozed && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>
+              <Pause size={8} /> Ertelendi
+            </span>
+          )}
+          {isCancelled && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded" style={{ background: 'rgba(148,163,184,0.15)', color: '#94a3b8' }}>
+              <Ban size={8} /> İptal
+            </span>
+          )}
         </div>
-        <h4 className={`text-[13.5px] mt-1 ${isDone ? 'line-through opacity-50' : ''}`} style={{ color: '#fafaf9', fontWeight: 500 }}>
+        <h4 className={`text-[13.5px] mt-1 ${isDone || isCancelled ? 'line-through opacity-50' : ''}`} style={{ color: '#fafaf9', fontWeight: 500 }}>
           {task.title}
         </h4>
         {task.description && (
@@ -338,32 +560,96 @@ function TaskRow({ task, onComplete, onDelete, onEdit }: TaskRowProps) {
             {task.description}
           </p>
         )}
-        {task.dueDate && (
-          <div className="flex items-center gap-1 mt-1.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            <Calendar size={10} /> {formatDueDate(task)}
-          </div>
-        )}
+        <div className="flex items-center gap-3 mt-1.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          {task.dueDate && (
+            <span className="inline-flex items-center gap-1">
+              <Calendar size={10} /> {formatDueDate(task)}
+            </span>
+          )}
+          {isSnoozed && task.snoozedUntil && (
+            <span className="inline-flex items-center gap-1" style={{ color: '#a855f7' }}>
+              <Pause size={10} /> {new Date(task.snoozedUntil).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} kadar ertelendi
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-        <button
-          onClick={() => onEdit(task)}
-          className="p-1.5 rounded hover:bg-white/5"
-          title="Düzenle"
-        >
-          <Edit3 size={13} style={{ color: 'rgba(250,250,249,0.5)' }} />
-        </button>
-        <button
-          onClick={() => {
-            if (confirm('Bu görevi silmek istediğinden emin misin?')) onDelete(task.id);
-          }}
-          className="p-1.5 rounded hover:bg-red-500/10"
-          title="Sil"
-        >
-          <Trash2 size={13} style={{ color: 'rgba(239,68,68,0.7)' }} />
-        </button>
+      {/* Aksiyon butonları — daima görünür kısa-yol + üç nokta menü */}
+      <div className="flex items-center gap-1 shrink-0">
+        {/* Sık kullanılan kısa-yol: tamamla DEĞİL ise Devam Ediyor (başla) */}
+        {!isDone && !isCancelled && !isInProgress && !isSnoozed && (
+          <button
+            onClick={() => onStart(task.id)}
+            className="p-1.5 rounded hover:bg-blue-500/10 opacity-0 group-hover:opacity-100 transition"
+            title="Başla (Devam Ediyor)"
+          >
+            <Play size={13} style={{ color: '#3b82f6' }} />
+          </button>
+        )}
+
+        {/* Üç nokta menüsü — diğer aksiyonlar */}
+        <div ref={menuRef} className="relative">
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="p-1.5 rounded hover:bg-white/5 opacity-60 group-hover:opacity-100 transition"
+            title="Aksiyonlar"
+          >
+            <MoreVertical size={14} style={{ color: 'rgba(250,250,249,0.7)' }} />
+          </button>
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg shadow-2xl overflow-hidden"
+              style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}
+            >
+              {!isDone && !isCancelled && (
+                <MenuItem icon={CheckCircle2} label="Tamamlandı işaretle" color="#22c55e" onClick={() => { onComplete(task.id); setMenuOpen(false); }} />
+              )}
+              {isDone && (
+                <MenuItem icon={RotateCcw} label="Tekrar aç (geri al)" color="#3b82f6" onClick={() => { onReopen(task.id); setMenuOpen(false); }} />
+              )}
+              {!isDone && !isCancelled && !isInProgress && (
+                <MenuItem icon={Play} label="Devam Ediyor" color="#3b82f6" onClick={() => { onStart(task.id); setMenuOpen(false); }} />
+              )}
+              {!isDone && !isCancelled && (
+                <MenuItem icon={Pause} label="Ertele (Snooze)" color="#a855f7" onClick={() => { onSnooze(task); setMenuOpen(false); }} />
+              )}
+              {!isDone && !isCancelled && (
+                <MenuItem icon={Ban} label="İptal et" color="#94a3b8" onClick={() => {
+                  if (confirm('Bu görevi iptal etmek istediğinden emin misin?')) onCancel(task.id);
+                  setMenuOpen(false);
+                }} />
+              )}
+              <MenuItem icon={MessageSquare} label="Not ekle" color={GOLD} onClick={() => { onAddNote(task); setMenuOpen(false); }} />
+              <MenuItem icon={Edit3} label="Düzenle" color="rgba(250,250,249,0.7)" onClick={() => { onEdit(task); setMenuOpen(false); }} />
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+              <MenuItem icon={Trash2} label="Sil" color="#ef4444" onClick={() => {
+                if (confirm('Bu görevi silmek istediğinden emin misin?')) onDelete(task.id);
+                setMenuOpen(false);
+              }} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+interface MenuItemProps {
+  icon: any;
+  label: string;
+  color: string;
+  onClick: () => void;
+}
+function MenuItem({ icon: Icon, label, color, onClick }: MenuItemProps) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-[12.5px] hover:bg-white/[0.04] transition"
+      style={{ color: 'rgba(250,250,249,0.85)' }}
+    >
+      <Icon size={13} style={{ color }} />
+      <span>{label}</span>
+    </button>
   );
 }
 
