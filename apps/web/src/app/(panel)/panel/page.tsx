@@ -6,6 +6,7 @@ import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/be
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
+import { ProfilEksikWidget } from '@/components/mukellef/ProfilEksikWidget';
 
 const GOLD = '#d4b876';
 
@@ -1044,6 +1045,9 @@ export default function DashboardPage() {
           <AgentMini href="/panel/ajanlar/kdv-hazirlik" icon={Calculator} name="KDV Ön-Hazırlık" stat={(stFor('KDV') as any)?.meta?.summary || (running('KDV') ? 'Çalışıyor' : 'Beklemede')} running={running('KDV')} />
         </div>
       </div>
+
+      {/* v1.36.76: Profili eksik mükellefler widget — sadece eksik varsa görünür */}
+      <ProfilEksikWidget />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         <Section title="Notlar & Görevler" accent="champagne" action={

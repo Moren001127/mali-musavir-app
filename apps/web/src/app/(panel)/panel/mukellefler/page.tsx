@@ -95,6 +95,18 @@ export default function MukelleflerPage() {
       api.get('/taxpayers', { params: { search: search || undefined, year, month } }).then(r => r.data),
   });
 
+  // v1.36.76: Tüm mükelleflerin profil tamamlığı — tek toplu fetch
+  const { data: completenessSummary } = useQuery<{ taxpayers: Array<{ id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number }> }>({
+    queryKey: ['taxpayers-completeness-summary'],
+    queryFn: () => api.get('/taxpayers/completeness/summary').then(r => r.data).catch(() => ({ taxpayers: [] })),
+    staleTime: 60_000, // 1 dk cache — sürekli yeniden hesaplamasın
+  });
+  const completenessMap = useMemo(() => {
+    const m = new Map<string, { score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number }>();
+    (completenessSummary?.taxpayers || []).forEach((t) => m.set(t.id, t));
+    return m;
+  }, [completenessSummary]);
+
   // Checkbox toggle — optimistic update
   const toggleStatus = useMutation({
     mutationFn: async ({ id, key, value }: { id: string; key: StatusKey; value: boolean }) => {
@@ -340,6 +352,7 @@ export default function MukelleflerPage() {
             <TaxpayerRow
               key={t.id}
               taxpayer={t}
+              completeness={completenessMap.get(t.id)}
               onToggle={(key, value) => toggleStatus.mutate({ id: t.id, key, value })}
             />
           ))
@@ -414,14 +427,26 @@ function StatCard({
 
 function TaxpayerRow({
   taxpayer,
+  completeness,
   onToggle,
 }: {
   taxpayer: Taxpayer;
+  completeness?: { score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
   onToggle: (key: StatusKey, value: boolean) => void;
 }) {
   const s = taxpayer.monthlyStatus;
   const isCompany = taxpayer.type === 'TUZEL_KISI';
   const beyanname = deriveBeyannameStatus(s);
+
+  // v1.36.76: Profil tamamlık göstergesi rengi
+  const compColor =
+    !completeness ? 'rgba(255,255,255,0.10)' :
+    completeness.durum === 'TAM' ? '#22c55e' :
+    completeness.durum === 'IYI' ? '#84cc16' :
+    completeness.durum === 'EKSIK' ? '#f59e0b' : '#ef4444';
+  const compTooltip = completeness
+    ? `Profil: %${completeness.score}${completeness.kritikEksikSayisi > 0 ? ` · ${completeness.kritikEksikSayisi} KRİTİK eksik` : completeness.eksikSayisi > 0 ? ` · ${completeness.eksikSayisi} eksik` : ' · TAM'}`
+    : 'Profil yükleniyor...';
 
   return (
     <div
@@ -434,16 +459,39 @@ function TaxpayerRow({
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(184,160,111,0.04)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
     >
-      {/* Avatar */}
+      {/* Avatar — sağ üst köşede tamamlık göstergesi noktası */}
       <div className="flex justify-center">
-        <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[12px] font-bold" style={{ background: 'rgba(184,160,111,0.08)', color: GOLD, border: '1px solid rgba(184,160,111,0.15)' }}>
-          {getInitials(taxpayer)}
+        <div className="relative">
+          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[12px] font-bold" style={{ background: 'rgba(184,160,111,0.08)', color: GOLD, border: '1px solid rgba(184,160,111,0.15)' }}>
+            {getInitials(taxpayer)}
+          </div>
+          {/* v1.36.76: Profil tamamlık dot — avatar'ın sağ üst köşesinde */}
+          <div
+            className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+            style={{
+              background: compColor,
+              border: '1.5px solid #0f0d0b',
+              boxShadow: completeness?.kritikEksikSayisi ? `0 0 6px ${compColor}` : undefined,
+            }}
+            title={compTooltip}
+          />
         </div>
       </div>
 
       {/* Mükellef adı + alt bilgi */}
       <div className="min-w-0">
-        <p className="text-[13.5px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>{getName(taxpayer)}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[13.5px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>{getName(taxpayer)}</p>
+          {completeness && completeness.score < 80 && (
+            <span
+              className="text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded shrink-0"
+              style={{ background: `${compColor}22`, color: compColor }}
+              title={compTooltip}
+            >
+              %{completeness.score}
+            </span>
+          )}
+        </div>
         <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
           {taxpayer.taxNumber} · {taxpayer.taxOffice || '—'} · {isCompany ? 'Şirket' : 'Şahıs'}
         </p>
