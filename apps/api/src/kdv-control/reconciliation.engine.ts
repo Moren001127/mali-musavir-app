@@ -628,17 +628,29 @@ export class ReconciliationEngine {
     // User: "tarih + evrak no + KDV üçü aynı anda eşleşmezse kabul edilmeyecek"
     // EK KURAL: Multi-rate faturalarda Luca'nın KDV oranı OCR breakdown'unda
     // bulunamıyorsa MATCHED ASLA verilmez (oran uyumsuzluğu = farklı belge).
-    // EK KURAL 2: Satıcı bilgisi varsa ve uyumsuzsa MATCHED ASLA verilmez
-    // (aynı belge no'lu farklı firma).
-    const strictMatch = belgeNoExact && kdvExact && dateExact && !rateMismatched && !saticiMismatch;
+    //
+    // v1.36.72: Satıcı isim uyumsuzluğu kuralı GEVŞETİLDİ.
+    // Belge no + tarih + KDV üçü TAM eşleşiyorsa, satıcı isminde
+    // yazım farkı (kısaltma, ünvan farkı) MATCHED'ı ENGELLEMEZ.
+    // Sebep: 3 kritik alan birden eşleşince farklı firmaya ait olma
+    // ihtimali ~0. Sadece VKN açıkça farklıysa (10/11 hane sayı match
+    // değilse) hâlâ block — VKN lexically kesin işarettir.
+    const vknMismatchHard =
+      saticiMismatch &&
+      reasons.some((r) => r.includes('VKN/TCKN uyumsuz'));
+    const strictMatch =
+      belgeNoExact && kdvExact && dateExact && !rateMismatched && !vknMismatchHard;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
       score = Math.max(0, score - 0.4);
     }
     // Satıcı uyumsuzsa: aday listesine bile girmesin
+    // v1.36.72: Ama 3 kritik alan zaten eşleşiyorsa cezayı azalt (sadece -0.1
+    // — strictMatch zaten devreye girip MATCHED veriyor, score görsel için)
     if (saticiMismatch) {
-      score = Math.max(0, score - 0.5);
+      const allCritExact = belgeNoExact && kdvExact && dateExact;
+      score = Math.max(0, score - (allCritExact ? 0.1 : 0.5));
     }
 
     return { score: Math.min(score, 1), reasons, strictMatch };
@@ -661,37 +673,111 @@ export class ReconciliationEngine {
    *   4. Edge: çok kısa (1-2 kelime) firma adlarında string similarity'ye düş
    */
   private companyNameSimilarity(a: string, b: string): number {
+    // v1.36.72: Türkçe muhasebede sık kullanılan firma adı kısaltmaları.
+    // Token genişlet: "MLZ" → "MALZEME" gibi. Sonra prefix-match ile
+    // "MALZEME" ↔ "MALZEMELERI" eşit sayılır.
+    // Türkçe karakterleri normalize ettiğimiz için tablo I-Z bazlı (Ş→S, İ→I).
+    const ABBREV: Record<string, string> = {
+      MLZ: 'MALZEME', MALZ: 'MALZEME',
+      INS: 'INSAAT',
+      TIC: 'TICARET',
+      SAN: 'SANAYI',
+      TUR: 'TURIZM', TURZ: 'TURIZM',
+      GID: 'GIDA',
+      TEKN: 'TEKNOLOJI', TEKNO: 'TEKNOLOJI',
+      NAK: 'NAKLIYAT', NAKL: 'NAKLIYAT', NAKLIY: 'NAKLIYAT',
+      LOJ: 'LOJISTIK',
+      KOZ: 'KOZMETIK',
+      TEKS: 'TEKSTIL', TEKST: 'TEKSTIL',
+      PETR: 'PETROL', PET: 'PETROL',
+      OTOM: 'OTOMOTIV', OTM: 'OTOMOTIV',
+      BIL: 'BILISIM',
+      MAK: 'MAKINE',
+      MOB: 'MOBILYA',
+      KIRT: 'KIRTASIYE',
+      PAZ: 'PAZARLAMA',
+      DAG: 'DAGITIM',
+      ITH: 'ITHALAT',
+      IHR: 'IHRACAT',
+      PERAK: 'PERAKENDE',
+      TOPT: 'TOPTAN',
+      HIZ: 'HIZMET',
+      MUH: 'MUHASEBE',
+      IMA: 'IMALAT',
+      EM: 'EMLAK',
+      GAY: 'GAYRIMENKUL',
+      ECZ: 'ECZACILIK',
+      EGT: 'EGITIM',
+      KIM: 'KIMYA',
+      ELEK: 'ELEKTRIK', ELEKT: 'ELEKTRIK',
+      AKAR: 'AKARYAKIT',
+      MED: 'MEDIKAL',
+      DEK: 'DEKORASYON', DEKO: 'DEKORASYON',
+    };
+
     const normalize = (s: string): string[] => {
+      // Türkçe karakter sadeleştirme: Ş→S, İ→I, vb.
+      // Hem ABBREV tablosu hem prefix-match için tutarlı zemin lazım.
       const upper = s
         .toLocaleUpperCase('tr-TR')
-        .replace(/[.,;:'"\-/\\()]/g, ' ')
+        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+        .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
+        .replace(/[.,;:'"\-/\\()&]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      // Yaygın firma suffix/prefix'lerini at — varyasyon yaratıyorlar
+      // Yaygın firma suffix/prefix'lerini at — varyasyon yaratıyorlar.
+      // v1.36.72: "AS" eklendi (A.Ş.→AS sonrası), "ANONIM SIRKETI" varyasyonları.
       const SUFFIX_REMOVE = new Set([
-        'LTD', 'ŞTİ', 'STI', 'AŞ', 'A.Ş', 'A.Ş.', 'ANONİM', 'ANONIM', 'LİMİTED', 'LIMITED',
-        'ŞİRKETİ', 'SIRKETI', 'TİCARET', 'TICARET', 'TİC', 'TIC',
-        'SANAYİ', 'SANAYI', 'SAN', 'İNŞAAT', 'INSAAT', 'İNŞ', 'INS',
-        'VE', 'İLE', 'ILE',
+        'LTD', 'STI', 'AS', 'ANONIM', 'LIMITED',
+        'SIRKETI', 'SIRKET',
+        'TICARET', 'TIC',
+        'SANAYI', 'SAN',
+        'INSAAT', 'INS',
+        'VE', 'ILE',
       ]);
-      return upper.split(' ').filter((w) => w.length > 1 && !SUFFIX_REMOVE.has(w));
+      return upper
+        .split(' ')
+        .map((w) => (w.length > 1 && ABBREV[w] ? ABBREV[w] : w)) // kısaltmaları genişlet
+        .filter((w) => w.length > 1 && !SUFFIX_REMOVE.has(w));
     };
 
     const tokensA = normalize(a);
     const tokensB = normalize(b);
     if (tokensA.length === 0 || tokensB.length === 0) {
-      // Fallback: ham string similarity
-      return this.stringSimilarity(
-        a.toLocaleUpperCase('tr-TR').replace(/\s+/g, ''),
-        b.toLocaleUpperCase('tr-TR').replace(/\s+/g, ''),
-      );
+      // Fallback: ham string similarity (Türkçe karakter sadeleştirme ile)
+      const flat = (s: string) => s.toLocaleUpperCase('tr-TR')
+        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+        .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
+        .replace(/\s+/g, '');
+      return this.stringSimilarity(flat(a), flat(b));
     }
 
-    // Jaccard similarity
-    const setA = new Set(tokensA);
-    const setB = new Set(tokensB);
-    const intersection = [...setA].filter((t) => setB.has(t)).length;
-    const union = new Set([...setA, ...setB]).size;
+    // v1.36.72: Prefix-match destekli Jaccard.
+    // İki token "match" sayılır eğer:
+    //   - tam eşitse, VEYA
+    //   - biri diğerinin prefix'i ise ve kısa olan ≥ 3 karakter
+    //     (örn. MALZEME ↔ MALZEMELERI, INSAAT ↔ INSAATCILIK)
+    const tokensMatch = (x: string, y: string): boolean => {
+      if (x === y) return true;
+      if (x.length < 3 || y.length < 3) return false;
+      return x.startsWith(y) || y.startsWith(x);
+    };
+
+    // Custom intersection: A'daki her token B'de eşleşmesi var mı?
+    const matchedA: Set<string> = new Set();
+    const matchedB: Set<string> = new Set();
+    for (const ta of tokensA) {
+      for (const tb of tokensB) {
+        if (tokensMatch(ta, tb)) {
+          matchedA.add(ta);
+          matchedB.add(tb);
+        }
+      }
+    }
+    const intersection = matchedA.size; // A tarafından bakınca eşleşen unique token
+    const union = new Set([...tokensA, ...tokensB]).size;
     const jaccard = union > 0 ? intersection / union : 0;
 
     // Tek-kelime kısa firma adları için ek string similarity (Jaccard yetersiz)

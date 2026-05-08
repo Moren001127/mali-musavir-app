@@ -385,11 +385,12 @@ export class OcrService {
       '  • EFATURA/EARSIV → "Fatura No" / "Belge No" etiketindeki değer.',
       '    Pattern: 3 harf + 4 rakam (yıl) + 9 rakam (sıra) = 16 char, örn. "EFA2026000000093".',
       '    EĞER 13-14 KARAKTER OKUDUYSAN SIFIRLARI ATLADIN — TEKRAR SAY.',
-      '  • Z_RAPORU → SADECE "Z NO" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO / SAAT / TARİH ASLA DEĞİL!',
+      '  • Z_RAPORU → SADECE "Z NO" / "Z SAYAÇ" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO / SAAT / TARİH ASLA DEĞİL!',
       '    ► KRİTİK: "FIŞ NO. 45" görsen bile o "FIŞ NO" — Z_RAPORU\'nda belge no DEĞİL.',
-      '    ► Z raporunda doğru alan: belgenin alt kısmında "Z NO: 670" / "Z NO 670" şeklinde geçer.',
-      '    ► Örnek: "FIŞ NO. 45 ... TOPLAM ... Z NO: 670" → belgeNo = "670" (45 DEĞİL).',
-      '    ► Bazen "Z NO" en altta tek başına yazar (örn. "Z NO 670") — orayı bul.',
+      '    ► Z raporunda doğru alan: "Z NO: 670" / "Z NO 670" / "Z SAYAÇ 896" / "Z SAYAÇ: 896" / "Z SAYACI 896" şeklinde geçer.',
+      '    ► v1.36.72: BAZI ÖKC MODELLERİ "Z NO" YERİNE "Z SAYAÇ" KULLANIR (aynı anlam, aynı numara).',
+      '    ► Örnek: "FIŞ NO. 45 ... TOPLAM ... Z SAYAÇ 896" → belgeNo = "896" (45 DEĞİL).',
+      '    ► Bazen "Z NO" / "Z SAYAÇ" en altta tek başına yazar — orayı bul.',
       '  • OKC_FIS → "FİŞ NO" / "FIS NO" / "BELGE NO" (3-6 hane).',
       '  • GIDER_PUSULASI → "MAKBUZ NO" / "BELGE NO" / "SERİ NO".',
       '  • SMM → "MAKBUZ NO" / "SERİ NO-SIRA NO" birleşik.',
@@ -1073,12 +1074,21 @@ export class OcrService {
   }
 
   private extractBelgeNo(text: string): string | null {
-    // Z RAPORU tespiti — eğer metinde Z RAPORU geçiyorsa Z NO'yu al
-    const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report/i.test(text);
+    // Z RAPORU tespiti — eğer metinde Z RAPORU geçiyorsa Z NO/Z SAYAÇ'ı al
+    const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report|z\s*g[uü]nl[uü]k/i.test(text);
     if (isZRapor) {
+      // v1.36.72: "Z SAYAÇ 896" / "Z SAYAC: 896" / "Z SAYACI 896" desenleri ekledim
+      // (bazı ÖKC modelleri "Z NO" yerine "Z SAYAÇ" yazıyor)
+      const zSayac = text.match(/z\s*saya[cç][ıi]?\s*[:\-.#\s]*(\d{1,8})/i);
+      if (zSayac?.[1]) return zSayac[1].trim();
+
       // "Z NO: 666" formatını ara (iki nokta, tire veya boşluk sonrası rakam)
       const zNo = text.match(/z\s*no\s*[:\-.#\s]+(\d{1,8})/i);
       if (zNo?.[1]) return zNo[1].trim();
+
+      // Son çare: belgenin alt kısmındaki çıplak Z numarası ("Z 0896" gibi)
+      const zBare = text.match(/(?:^|\n|\s)z\s*[:\-]?\s*(\d{2,8})\s*(?:$|\n)/im);
+      if (zBare?.[1]) return zBare[1].trim();
     }
 
     const patterns = [
