@@ -26,6 +26,8 @@ declare global {
 export default function AgentControlCard() {
   const [status, setStatus] = useState<ExtStatus>({ installed: false, loading: true });
   const [busy, setBusy] = useState(false);
+  // v1.36.44: Backend'deki en güncel versiyon — yüklü versiyondan yeni ise banner çıkar.
+  const [latest, setLatest] = useState<{ runtime?: string; extensionManifest?: string } | null>(null);
 
   const refresh = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -45,6 +47,19 @@ export default function AgentControlCard() {
     } catch (e: any) {
       setStatus({ installed: true, loading: false, error: String(e?.message || e) });
     }
+  }, []);
+
+  // Backend'in raporladığı en güncel versiyonu çek (5 dk'da bir yenile)
+  useEffect(() => {
+    const fetchLatest = async () => {
+      try {
+        const r = await fetch('/api/v1/agent/version/latest');
+        if (r.ok) setLatest(await r.json());
+      } catch {}
+    };
+    fetchLatest();
+    const t = setInterval(fetchLatest, 5 * 60 * 1000);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -118,6 +133,11 @@ export default function AgentControlCard() {
   const lucaTabs = status.luca?.tabs || 0;
   const mihsapTabs = status.mihsap?.tabs || 0;
 
+  // v1.36.44: Versiyon karşılaştırma — yüklü < latest ise güncelleme banner'ı göster
+  const installedVersion = status.luca?.version || status.mihsap?.version || null;
+  const latestRuntime = latest?.runtime && latest.runtime !== 'unknown' ? latest.runtime : null;
+  const guncellemeVar = installedVersion && latestRuntime && installedVersion !== latestRuntime;
+
   return (
     <div style={cardStyle}>
       <div className="flex items-center justify-between mb-3">
@@ -140,6 +160,31 @@ export default function AgentControlCard() {
           {busy ? 'Yeniden başlatılıyor...' : 'Hepsini Başlat'}
         </button>
       </div>
+
+      {guncellemeVar && (
+        <div
+          className="mb-3 p-2.5 rounded-md flex items-center justify-between gap-3"
+          style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.35)' }}
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} style={{ color: '#d4b876' }} />
+            <div className="text-[12px]" style={{ color: '#fafaf9' }}>
+              <div className="font-semibold">Yeni güncelleme var: <span style={{ color: '#d4b876' }}>v{latestRuntime}</span></div>
+              <div className="text-[11px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                Yüklü: v{installedVersion} — Sayfayı yenile (Ctrl+F5). Hâlâ eski ise extension'ı zip'ten yeniden yükle.
+              </div>
+            </div>
+          </div>
+          <a
+            href="/moren-auto-agent.zip"
+            download="moren-auto-agent.zip"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded text-[11.5px] font-semibold transition-all"
+            style={{ background: '#d4b876', color: '#0c0a09', whiteSpace: 'nowrap' }}
+          >
+            <Download size={12} /> Yeni .zip
+          </a>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2.5">
         <StatusPill

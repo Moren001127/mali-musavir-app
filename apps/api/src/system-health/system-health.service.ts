@@ -333,9 +333,10 @@ export class SystemHealthService {
     try {
       // Son 1 saatte ping atan agent'ların version dağılımı
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      // v1.36.43: lastPing field (lastSeen şemada yok)
       const agents = await (this.prisma as any).agentStatus.findMany({
-        where: { lastSeen: { gte: oneHourAgo } },
-        select: { agent: true, meta: true, lastSeen: true },
+        where: { lastPing: { gte: oneHourAgo } },
+        select: { agent: true, meta: true, lastPing: true },
       }).catch(() => []);
 
       const versionCounts: Record<string, number> = {};

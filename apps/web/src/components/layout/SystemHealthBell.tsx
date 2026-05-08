@@ -1,7 +1,8 @@
 'use client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ShieldCheck, X, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, X, RefreshCw, Lock, ExternalLink } from 'lucide-react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 /**
@@ -83,6 +84,21 @@ export default function SystemHealthBell() {
     );
   }, [data?.checks]);
 
+  // v1.36.44: Kilitli modül drift'i için özel prominent banner
+  const moduleHashCheck = useMemo(
+    () =>
+      (data?.checks || []).find(
+        (c) => c.type === 'MODULE_HASH' && c.severity === 'CRITICAL',
+      ),
+    [data?.checks],
+  );
+  const driftCount = (moduleHashCheck?.detail as any)?.mismatches?.length || 0;
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  // Yeni drift gelirse banner tekrar açılır
+  useEffect(() => {
+    if (driftCount > 0) setBannerDismissed(false);
+  }, [driftCount, moduleHashCheck?.id]);
+
   return (
     <>
       {/* Pulse animation CSS — tek seferlik enjekte */}
@@ -96,6 +112,44 @@ export default function SystemHealthBell() {
           }
         }
       `}</style>
+
+      {/* v1.36.44: Kilitli modül drift banner — sayfa üstünde sabit, dismiss edilebilir.
+          Yeni drift gelirse otomatik tekrar görünür. */}
+      {driftCount > 0 && !bannerDismissed && (
+        <div
+          className="fixed top-0 left-0 right-0 z-[200] px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg"
+          style={{
+            background: 'linear-gradient(90deg, rgba(244,63,94,0.92), rgba(220,38,38,0.92))',
+            color: '#fff',
+            borderBottom: '1px solid rgba(0,0,0,0.3)',
+          }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Lock size={16} className="shrink-0" />
+            <div className="text-[13px] truncate">
+              <span className="font-bold">KİLİTLİ MODÜL DRİFT — </span>
+              <span>{driftCount} dosya beklenmedik şekilde değişmiş.</span>
+              <span className="opacity-80 ml-1">Kasıtlıysa baseline güncelle, değilse revert et.</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/panel/sistem/kilitli-moduller"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-all hover:opacity-90"
+              style={{ background: '#fff', color: '#dc2626' }}
+            >
+              <ExternalLink size={12} /> Kontrol Et
+            </Link>
+            <button
+              onClick={() => setBannerDismissed(true)}
+              className="w-7 h-7 rounded flex items-center justify-center hover:bg-white/15"
+              title="Geçici olarak kapat"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <button
         onClick={() => setOpen(true)}

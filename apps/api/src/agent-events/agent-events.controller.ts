@@ -45,6 +45,60 @@ export class AgentEventsController {
     return tenantId;
   }
 
+  // ---- VERSION LATEST (extension auto-update banner için) ----
+  /**
+   * v1.36.44: Frontend AgentControlCard bunu çağırıp kullanıcının yüklü versiyonu
+   * ile karşılaştırır. Eski ise sarı "Yeni güncelleme var" banner'ı gösterir.
+   * Public endpoint — auth gerekmez (sadece versiyon string'i döner).
+   */
+  @Get('version/latest')
+  async latestVersion() {
+    // agent-runtime.js'in baş kısmından AGENT_VERSION'u dinamik oku.
+    // Böylece her deploy'da otomatik güncel kalır, manuel constant tutulması gerekmez.
+    try {
+      const fs = await import('fs');
+      const path = await import('path');
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'apps/api/public/agent-runtime.js'),
+        path.resolve(process.cwd(), 'public/agent-runtime.js'),
+        path.resolve(__dirname, '../../public/agent-runtime.js'),
+      ];
+      let runtimeContent = '';
+      for (const p of candidatePaths) {
+        try {
+          if (fs.existsSync(p)) {
+            runtimeContent = fs.readFileSync(p, 'utf8').slice(0, 4000);
+            break;
+          }
+        } catch {}
+      }
+      const m = runtimeContent.match(/AGENT_VERSION\s*=\s*['"`]([^'"`]+)['"`]/);
+      const runtime = m ? m[1] : null;
+      // Extension manifest version (loader update gerektirir)
+      let extensionManifest: string | null = null;
+      const extPaths = [
+        path.resolve(process.cwd(), 'apps/moren-auto-agent/manifest.json'),
+        path.resolve(__dirname, '../../../moren-auto-agent/manifest.json'),
+      ];
+      for (const p of extPaths) {
+        try {
+          if (fs.existsSync(p)) {
+            const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+            extensionManifest = j.version || null;
+            break;
+          }
+        } catch {}
+      }
+      return {
+        runtime: runtime || 'unknown',
+        extensionManifest: extensionManifest || 'unknown',
+        zipUrl: '/moren-auto-agent.zip',
+      };
+    } catch (e: any) {
+      return { runtime: 'unknown', extensionManifest: 'unknown', error: e?.message };
+    }
+  }
+
   // ---- INGEST (local script → portal) ----
 
   /** Yerel ajan bir olay kaydeder */
