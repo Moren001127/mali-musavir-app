@@ -196,9 +196,13 @@ export class GelirTablosuService {
     // Eski formül: toplamStok = stokHesaplari, kalanStok = toplamStok - SMM (NEGATİF üretiyordu!)
     // Yeni formül (envanter):
     //   Kalan Stok    = Mizan kapanış bakiyeleri toplamı (150+151+152+153+157)
-    //   Toplam Stok   = Kalan Stok + Satılan Malın Maliyeti (= Açılış + Net Alış)
+    //   Toplam Stok   = Kalan Stok + Satılan TICARI MALLARIN Maliyeti (621) (= Açılış + Net Alış)
+    // v1.36.35: Stok bölümünde SADECE 621 (Satılan Ticari Mallar Maliyeti) kullanılır.
+    //   622 (Hizmet) ve 740 (Üretim 7/B) maliyetleri stok hareketi değildir, dahil edilmez.
+    //   Ana gelir tablosundaki "D. Satışların Maliyeti" yine tüm 620-623+740 toplamıdır (TDHP standardı).
+    const satisMaliyeti621 = tekHesap('621').bakiye;
     const kalanStok = stokHesaplari.reduce((s, h) => s + h.bakiye, 0);
-    const toplamStok = kalanStok + satisMal.toplam;
+    const toplamStok = kalanStok + satisMaliyeti621;
 
     // KKEG — 689 hesap bakiyesi (Math.abs ile + işaretli pozitif olarak gelsin)
     // Eğer 950 nazım hesabı kullanılıyorsa o öncelikli, yoksa 689
@@ -225,6 +229,8 @@ export class GelirTablosuService {
       maliyetHesaplari,
       kalanStok,
       kkeg,
+      // v1.36.35: stok bölümü için sadece 621 (ticari mal) maliyeti
+      satisMaliyeti621,
     };
 
     // Eski kaydı sil — kesin kayıtlı ise reddet
@@ -311,13 +317,17 @@ export class GelirTablosuService {
     const stokHesaplari = Array.isArray(detay.stokHesaplari) ? detay.stokHesaplari : [];
     const maliyetHesaplari = Array.isArray(detay.maliyetHesaplari) ? detay.maliyetHesaplari : [];
     const toplamStok = Number(detay.toplamStok || 0);
-    // Satılan Malın Maliyeti: kullanıcının gelir tablosunda manuel girdiği değer
-    // (duzeltmeler.satisMaliyetiManuel) varsa onu kullan, yoksa 621 bakiyesi.
-    // Eğer manuel girilmemişse 0 göster — çünkü 153 bakiyesi zaten maliyet düşülmüş halde geliyor.
+    // v1.36.35: Stok bölümü için SADECE 621 (Satılan Ticari Mallar Maliyeti).
+    // Manuel düzeltme varsa onu, yoksa detay.satisMaliyeti621 (yeni kayıtlar),
+    // yoksa fallback gt.satisMaliyeti (eski kayıtlar — 620-623 toplamı).
     const satisMaliyetiManuel = Number(duzeltmeler.satisMaliyetiManuel || 0);
-    const satisMaliyeti = satisMaliyetiManuel > 0 ? satisMaliyetiManuel : Number(gt.satisMaliyeti || 0);
-    // Kalan Stok = mizandaki 150-157 toplam bakiyesi (zaten net, maliyet düşülmüş)
-    const kalanStok = toplamStok;
+    const detaySatisMaliyeti621 = Number(detay.satisMaliyeti621 || 0);
+    const satisMaliyeti =
+      satisMaliyetiManuel > 0 ? satisMaliyetiManuel
+        : detaySatisMaliyeti621 > 0 ? detaySatisMaliyeti621
+        : Number(gt.satisMaliyeti || 0);
+    // Kalan Stok = mizandaki 150-157 toplam bakiyesi (kapanış stoğu)
+    const kalanStok = toplamStok - satisMaliyeti;
     const kkeg = Number(detay.kkeg || 0);
 
     // ── GEÇİCİ VERGİ MATRAHI HESAPLAMASI ──────────────────────────────────
