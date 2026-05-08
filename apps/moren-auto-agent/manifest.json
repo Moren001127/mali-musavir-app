@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Moren Auto Agent",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Luca + Mihsap sayfalarına Moren Agent'ı otomatik enjekte eder, portal'dan tek tuş kontrol sağlar.",
   "permissions": [
     "scripting",
@@ -66,4 +66,21 @@
     {
       "matches": [
         "https://portal.morenmusavirlik.com/*",
-        "https://*
+        "https://*.morenmusavirlik.com/*",
+        "http://localhost:3000/*"
+      ],
+      "js": ["portal-relay.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Moren Auto Agent"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
