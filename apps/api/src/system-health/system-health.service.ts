@@ -82,13 +82,15 @@ export class SystemHealthService {
 
   private async checkAgentPing(agent: 'mihsap' | 'luca', type: string, label: string) {
     try {
+      // v1.36.43 FIX: AgentStatus modelinde alan adı 'lastPing' (lastSeen değil).
+      // Önceki yanlış field adı yüzünden lastSeen hep undefined geliyor → "hiç ping atmamış" yanlış uyarısı.
       const ping = await (this.prisma as any).agentStatus.findFirst({
         where: { agent },
-        orderBy: { lastSeen: 'desc' },
+        orderBy: { lastPing: 'desc' },
       }).catch(() => null);
 
       const now = Date.now();
-      const lastSeen = ping?.lastSeen ? new Date(ping.lastSeen).getTime() : 0;
+      const lastSeen = ping?.lastPing ? new Date(ping.lastPing).getTime() : 0;
       const ageMs = now - lastSeen;
       const ageMin = Math.floor(ageMs / 60000);
 
