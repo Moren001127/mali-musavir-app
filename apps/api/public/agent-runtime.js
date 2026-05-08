@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.25';
+  const AGENT_VERSION = '1.36.41';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8202,6 +8202,27 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
         await clickIleri(fid); continue;
       }
+      // === v1.36.39: KDV ORAN GÜVENLİK NETİ ===
+      // AI karar verdi 'onay' ama hesap adında %X yazıyorsa fatura KDV oranı X olmak zorunda.
+      // (Örn: hesap "153.01.010-%10 TİCARİ MAL ALIŞLARI" ama KDV %1 → tutarsızlık → onay_bekliyor.)
+      // Bu kontrol AI prompt'una rağmen kayan vakaları yakalar.
+      try {
+        const matrahKoduFull = codes[0] || '';
+        const matrahKoduPctMatch = matrahKoduFull.match(/-?%(\d{1,2})\b/);
+        const faturaKdv = (readKdvOrani() || '').replace(/^%/, '').trim();
+        if (matrahKoduPctMatch && faturaKdv) {
+          const koduPct = String(parseInt(matrahKoduPctMatch[1], 10));
+          const fatPct = String(parseInt(faturaKdv, 10));
+          if (koduPct !== fatPct) {
+            counters.atla++; counters.toplam++; setCount();
+            const sapma = `KDV oran tutarsiz: hesap %${koduPct} ama fatura %${fatPct}`;
+            await logEvent(mukellef.id, mukellef.ad, 'skip',
+              `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
+              { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+            await clickIleri(fid); continue;
+          }
+        }
+      } catch (kdvCheckErr) { /* sessizce gec — guvenlik neti hata yapsa bile akis bozulmasin */ }
       try {
         let validationFailed = null;
 
@@ -8340,9 +8361,24 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
         } else {
           setStatus('API hatası, yeniden deneniyor');
-          
+          console.warn('[Moren]', msg);
+        }
+      }
+      await sleep(5000);
+    }
+    await api('/agent/status/ping', {
+      method: 'POST',
+      body: JSON.stringify({ agent: 'mihsap', running: false }),
+    }).catch(() => {});
+    panel.remove();
+    delete window.__morenAgent;
+  }
+  pollLoop();
+  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION);
+})();

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.25';
+  const AGENT_VERSION = '1.36.41';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -3624,9 +3624,9 @@
 
     // Luca'nın onchange'i sadece UI hazırlığı yapıyor (loadDonem, showButton).
     // Asıl firma değişimi için showButton()'ın gösterdiği "Tamam/Seç/Onayla" butonuna
-    // tıklanması gerek. 800ms bekle (showButton DOM'a buton koymak için zaman),
-    // sonra frm4'te VISIBLE bir button/input[type=submit]/input[type=button] ara ve tıkla.
-    await sleep(800);
+    // tıklanması gerek. v1.36.25: 800ms→300ms bekle (showButton DOM'a buton koymak için
+    // genellikle 100-200ms yeterli, fazla bekleme = boş zaman).
+    await sleep(300);
 
     let onayClicked = false;
     try {
@@ -3687,9 +3687,10 @@
 
     // DOĞRULAMA: SirketCombo'da seçili option gerçekten hedef mi?
     // (frm4 reload sonrası DOM yeniden oluştuğu için tekrar fetch ediyoruz)
+    // v1.36.25: HIZLANDIRMA — verify 18s→8s + polling 500ms→200ms (daha sık check)
     let verified = false;
     let lastSelectedText = currentText;
-    const verifyDeadline = Date.now() + 18000;
+    const verifyDeadline = Date.now() + 8000;
     while (Date.now() < verifyDeadline) {
       const frm4Now = getLucaFrame('frm4');
       const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
@@ -3703,7 +3704,7 @@
           break;
         }
       }
-      await sleep(500);
+      await sleep(200);
     }
     if (!verified) {
       throw new Error(
@@ -3712,16 +3713,21 @@
       );
     }
 
-    // Menünün yeni firma için hazır olmasını bekle
+    // v1.36.25: Menü wait 15s→5s. Ayrıca "Mizan" yerine herhangi bir menü item'i yeterli
+    // (bazı firmalarda Mizan yok ama menü zaten hazır).
     await waitUntil(() => {
       const frm5 = getLucaFrame('frm5');
       if (!frm5 || !frm5.contentDocument) return false;
-      const all = frm5.contentDocument.querySelectorAll('*');
+      const all = frm5.contentDocument.querySelectorAll('a, span, td, div');
       for (const el of all) {
-        if ((el.textContent || '').trim() === 'Mizan' && el.children.length === 0) return true;
+        const t = (el.textContent || '').trim();
+        if (el.children.length === 0 && t.length >= 4 && t.length <= 40 &&
+            /^[A-Za-zÇĞİÖŞÜçğıöşü\s\/\-]+$/.test(t)) {
+          return true; // herhangi bir menü-tipi text yeterli
+        }
       }
       return false;
-    }, 15000);
+    }, 5000, 150);
     await log(`✓ Firma değişti → ${targetText}, menü hazır`);
     return { changed: true, alreadyCorrect: false, skipped: false };
   }
@@ -8196,6 +8202,27 @@
         await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
         await clickIleri(fid); continue;
       }
+      // === v1.36.39: KDV ORAN GÜVENLİK NETİ ===
+      // AI karar verdi 'onay' ama hesap adında %X yazıyorsa fatura KDV oranı X olmak zorunda.
+      // (Örn: hesap "153.01.010-%10 TİCARİ MAL ALIŞLARI" ama KDV %1 → tutarsızlık → onay_bekliyor.)
+      // Bu kontrol AI prompt'una rağmen kayan vakaları yakalar.
+      try {
+        const matrahKoduFull = codes[0] || '';
+        const matrahKoduPctMatch = matrahKoduFull.match(/-?%(\d{1,2})\b/);
+        const faturaKdv = (readKdvOrani() || '').replace(/^%/, '').trim();
+        if (matrahKoduPctMatch && faturaKdv) {
+          const koduPct = String(parseInt(matrahKoduPctMatch[1], 10));
+          const fatPct = String(parseInt(faturaKdv, 10));
+          if (koduPct !== fatPct) {
+            counters.atla++; counters.toplam++; setCount();
+            const sapma = `KDV oran tutarsiz: hesap %${koduPct} ama fatura %${fatPct}`;
+            await logEvent(mukellef.id, mukellef.ad, 'skip',
+              `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
+              { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], kdv: readKdvOrani(), ...compareMeta });
+            await clickIleri(fid); continue;
+          }
+        }
+      } catch (kdvCheckErr) { /* sessizce gec — guvenlik neti hata yapsa bile akis bozulmasin */ }
       try {
         let validationFailed = null;
 
@@ -8334,6 +8361,7 @@
           setStatus('Komut bekleniyor…');
         }
       } catch (e) {
+        // Network hataları sessizce geç (Railway deploy, geçici bağlantı kopması vb.)
         const msg = String(e?.message || e);
         if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
           setStatus('Bağlantı bekleniyor…');
@@ -8348,9 +8376,9 @@
       method: 'POST',
       body: JSON.stringify({ agent: 'mihsap', running: false }),
     }).catch(() => {});
-    if (panel) panel.remove();
+    panel.remove();
     delete window.__morenAgent;
   }
   pollLoop();
-  console.log('[Moren Agent] yüklendi');
+  console.log('[Moren Agent] yuklendi · v' + AGENT_VERSION);
 })();
