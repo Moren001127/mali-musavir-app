@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
 import { useMe } from '@/hooks/useAuth';
-import { ProfilEksikWidget } from '@/components/mukellef/ProfilEksikWidget';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
@@ -1058,8 +1057,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* v1.36.76: Profili eksik mükellefler widget — sadece eksik varsa görünür */}
-      <ProfilEksikWidget />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
         <Section title="Notlar & Görevler" accent="champagne" action={

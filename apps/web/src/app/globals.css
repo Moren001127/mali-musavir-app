@@ -153,6 +153,16 @@
   0% { transform: translateY(0); }
   100% { transform: translateY(-50%); }
 }
+/* v1.36.82: Takvim satırı görev/hatırlatma indikatörü — sade, sadece opacity nefesi.
+   Yanıp söner hissi vermek için ama göz yormamak için %62-100 opacity arası,
+   3.2s yavaş döngü. Sadece pulse-noktasında uygulanır, satırın kendisinde değil. */
+@keyframes moren-task-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.moren-task-pulse {
+  animation: moren-task-pulse 3.2s ease-in-out infinite;
+}
 .moren-feed-wrap {
   position: relative;
   max-height: 380px;

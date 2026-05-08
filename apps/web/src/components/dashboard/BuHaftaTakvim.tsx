@@ -1,95 +1,136 @@
 'use client';
 
 /**
- * v1.36.81 — Bu Hafta Takvimi
+ * v1.36.82 — Yaklaşan Beyanname Son Tarihleri (canlı liste)
  *
- * Bugün + sonraki 6 gün için yatay takvim. Her gün için:
- *  - Beyanname son tarihleri (KDV1=28, MUHTASAR=26, DAMGA=26, GECICI=17, BA-BS=ay sonu)
- *  - Bugün'ün vurgulu gösterimi
- *  - Hafta sonları farklı ton
+ * Sonraki 14 gün içindeki tüm beyanname son tarihleri tek tek listelenir.
+ * Aciliyete göre renk tonu (Bugün=kırmızı yoğun → 14gün=sakin gri-altın).
  *
- * Mali müşavir için en kritik bilgi son tarihler — bu yüzden takvim
- * dashboard'da "şu hafta ne yetişiyor" sorusunu net cevaplıyor.
+ * v1.36.82 ek:
+ *   - Görev/hatırlatma var mı diye `/tasks` endpoint'ini sorar
+ *   - O tarihte görev varsa sağda küçük bir "nokta" indikator'u sade pulse ile yanar
+ *   - Hover edince görev başlıkları tooltip
  */
 
-import { Calendar, AlertCircle, FileText, Receipt, FileCheck } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Calendar, FileText, Receipt, FileCheck, Bell, Bookmark } from 'lucide-react';
+import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 
-interface BeyanDeadline {
-  tip: string;
-  short: string;
+interface DeadlineRow {
+  date: Date;
+  gunFark: number;
+  title: string;
+  subtitle: string;
   icon: any;
-  color: string;
 }
 
-const DAYS_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+interface TaskItem {
+  id: string;
+  title: string;
+  dueDate: string;
+  isCompleted?: boolean;
+  done?: boolean;
+}
 
-/** Belirli ay-gün için beyanname son tarihleri */
-function deadlinesForDay(date: Date): BeyanDeadline[] {
+const MONTHS_TR = ['OCAK', 'ŞUBAT', 'MART', 'NİSAN', 'MAYIS', 'HAZİRAN', 'TEMMUZ', 'AĞUSTOS', 'EYLÜL', 'EKİM', 'KASIM', 'ARALIK'];
+
+function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
   const day = date.getDate();
-  const month = date.getMonth() + 1; // 1-12
-  const isLastDayOfMonth = (() => {
+  const month = date.getMonth() + 1;
+  const isLastDay = (() => {
     const next = new Date(date);
     next.setDate(next.getDate() + 1);
     return next.getMonth() !== date.getMonth();
   })();
 
-  const out: BeyanDeadline[] = [];
+  const out: Omit<DeadlineRow, 'date' | 'gunFark'>[] = [];
 
-  // KDV1 (aylık) — her ayın 28'i
-  if (day === 28) out.push({ tip: 'KDV Beyannamesi', short: 'KDV', icon: FileText, color: '#a855f7' });
-  // MUHTASAR + DAMGA — her ayın 26'sı
+  if (day === 25) {
+    out.push({
+      title: "KDV2 Tevkifat Beyannamesi (2 No'lu KDV)",
+      subtitle: "Tevkifata tâbi işlemler · 164 Sıra No'lu VUK Sirküleri · izleyen ayın 25'i",
+      icon: FileText,
+    });
+  }
   if (day === 26) {
-    out.push({ tip: 'Muhtasar Beyanname', short: 'Muhtasar', icon: FileText, color: '#3b82f6' });
-    out.push({ tip: 'Damga Vergisi', short: 'Damga', icon: FileCheck, color: '#f59e0b' });
+    out.push({ title: 'Muhtasar ve Prim Hizmet Beyannamesi (MUHSGK)', subtitle: 'Bir önceki ay dönemi — birleşik muhtasar + SGK', icon: FileText });
+    out.push({ title: 'Damga Vergisi Beyannamesi', subtitle: 'Önceki ay damga vergisi beyan ve ödeme', icon: FileCheck });
+    out.push({ title: 'Konaklama Vergisi Beyannamesi', subtitle: 'Otel/pansiyon/tatil köyü · önceki ay · %2', icon: Bell });
   }
-  // BA-BS — ay sonu
-  if (isLastDayOfMonth) out.push({ tip: 'Ba-Bs Bildirimi', short: 'Ba-Bs', icon: Receipt, color: '#22c55e' });
-
-  // Geçici Vergi — sadece Şubat (Q4), Mayıs (Q1), Ağustos (Q2), Kasım (Q3) ayının 17'si
+  if (day === 28) {
+    out.push({ title: 'KDV Beyannamesi (KDV1)', subtitle: "Önceki ay KDV beyan ve ödeme · izleyen ayın 28'i", icon: Receipt });
+  }
+  if (isLastDay) {
+    out.push({ title: 'Form Ba-Bs Bildirimi', subtitle: 'Mal ve hizmet alım/satım bildirimi · ay sonu', icon: FileText });
+    out.push({ title: 'Turizm Payı Beyannamesi', subtitle: 'Konaklama, yat, seyahat acentesi · izleyen ayın SON GÜNÜ (23:59)', icon: Bell });
+  }
   if (day === 17 && [2, 5, 8, 11].includes(month)) {
-    out.push({ tip: 'Geçici Vergi', short: 'Geçici', icon: FileText, color: '#ef4444' });
+    out.push({ title: 'Geçici Vergi Beyannamesi', subtitle: '3 aylık dönem geçici vergi', icon: FileText });
   }
-  // Yıllık Gelir Vergisi — Mart sonu (31)
   if (month === 3 && day === 31) {
-    out.push({ tip: 'Yıllık Gelir Vergisi', short: 'GV', icon: FileText, color: '#ef4444' });
+    out.push({ title: 'Yıllık Gelir Vergisi Beyannamesi', subtitle: 'Önceki yıl gelirleri · Mart sonu', icon: FileText });
   }
-  // Kurumlar Vergisi — Nisan sonu
   if (month === 4 && day === 30) {
-    out.push({ tip: 'Kurumlar Vergisi', short: 'KV', icon: FileText, color: '#ef4444' });
+    out.push({ title: 'Yıllık Kurumlar Vergisi Beyannamesi', subtitle: 'Önceki takvim yılı kurumlar vergisi · 1-30 Nisan', icon: FileText });
   }
 
   return out;
 }
 
-function buildDays(start: Date, count: number): Array<{ date: Date; isToday: boolean; isWeekend: boolean; deadlines: BeyanDeadline[] }> {
+function urgencyTone(gunFark: number) {
+  if (gunFark <= 0) return { accent: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.45)', pillBg: 'rgba(239,68,68,0.15)', pillBorder: 'rgba(239,68,68,0.55)', pillText: '#fca5a5', label: 'Bugün' };
+  if (gunFark === 1) return { accent: '#ef4444', bg: 'rgba(239,68,68,0.04)', border: 'rgba(239,68,68,0.40)', pillBg: 'rgba(239,68,68,0.12)', pillBorder: 'rgba(239,68,68,0.45)', pillText: '#fca5a5', label: 'Yarın' };
+  if (gunFark <= 3) return { accent: '#f43f5e', bg: 'rgba(244,63,94,0.04)', border: 'rgba(244,63,94,0.32)', pillBg: 'rgba(244,63,94,0.10)', pillBorder: 'rgba(244,63,94,0.40)', pillText: '#fb7185', label: `${gunFark} gün` };
+  if (gunFark <= 5) return { accent: '#f59e0b', bg: 'rgba(245,158,11,0.04)', border: 'rgba(245,158,11,0.30)', pillBg: 'rgba(245,158,11,0.10)', pillBorder: 'rgba(245,158,11,0.40)', pillText: '#fbbf24', label: `${gunFark} gün` };
+  if (gunFark <= 7) return { accent: '#d4b876', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.26)', pillBg: 'rgba(212,184,118,0.10)', pillBorder: 'rgba(212,184,118,0.34)', pillText: '#d4b876', label: `${gunFark} gün` };
+  return { accent: '#94a3b8', bg: 'rgba(148,163,184,0.04)', border: 'rgba(148,163,184,0.22)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.28)', pillText: '#cbd5e1', label: `${gunFark} gün` };
+}
+
+function buildDeadlineList(daysAhead: number): DeadlineRow[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const dCopy = new Date(d);
-    dCopy.setHours(0, 0, 0, 0);
-    out.push({
-      date: d,
-      isToday: dCopy.getTime() === today.getTime(),
-      isWeekend: d.getDay() === 0 || d.getDay() === 6,
-      deadlines: deadlinesForDay(d),
-    });
+  const out: DeadlineRow[] = [];
+  for (let i = 0; i < daysAhead; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const items = deadlinesForDate(d);
+    for (const it of items) {
+      out.push({ ...it, date: d, gunFark: i });
+    }
   }
   return out;
+}
+
+/** Tasks API'den gelen tüm aktif görevleri tarih→başlık[] map'i olarak döndürür */
+function tasksByDate(tasks: TaskItem[]): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const t of tasks) {
+    if ((t as any).done || (t as any).isCompleted) continue;
+    const d = new Date(t.dueDate);
+    if (isNaN(d.getTime())) continue;
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    if (!m.has(key)) m.set(key, []);
+    m.get(key)!.push(t.title);
+  }
+  return m;
 }
 
 export function BuHaftaTakvim() {
+  const rows = buildDeadlineList(14);
   const today = new Date();
-  const days = buildDays(today, 7);
+  const ikiHaftaSonra = new Date(today.getTime() + 13 * 86400000);
 
-  // Toplam yaklaşan deadline sayısı
-  const yaklaşanDeadlineSayisi = days.reduce((acc, d) => acc + d.deadlines.length, 0);
+  // Görev API — backend bekleyen görev verir
+  const { data: tasksData } = useQuery<{ items: TaskItem[] } | TaskItem[]>({
+    queryKey: ['takvim-gorevler'],
+    queryFn: () => api.get('/tasks', { params: { isTemplate: 'false', limit: 200 } }).then((r) => r.data).catch(() => ({ items: [] })),
+    staleTime: 60 * 1000,
+  });
+  const tasks: TaskItem[] = Array.isArray(tasksData) ? tasksData : ((tasksData as any)?.items || []);
+  const taskMap = tasksByDate(tasks);
 
   return (
     <div>
@@ -97,109 +138,127 @@ export function BuHaftaTakvim() {
         <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
         <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
           <Calendar size={14} style={{ color: GOLD_SOFT }} />
-          Bu Hafta Takvimi
+          Yaklaşan Beyanname Son Tarihleri
         </h3>
-        {yaklaşanDeadlineSayisi > 0 && (
+        {rows.length > 0 && (
           <span
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1"
             style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}
           >
-            {yaklaşanDeadlineSayisi} son tarih
+            {rows.length} son tarih
           </span>
         )}
         <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
-          {today.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} - {days[6].date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+          {today.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {ikiHaftaSonra.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
 
-      <div className="grid grid-cols-7 gap-2">
-        {days.map((d, idx) => (
-          <DayCell key={idx} day={d} />
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            Önümüzdeki 14 günde beyanname son tarihi yok.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r, i) => {
+            const key = `${r.date.getFullYear()}-${r.date.getMonth() + 1}-${r.date.getDate()}`;
+            const dayTasks = taskMap.get(key) || [];
+            return <DeadlineRowItem key={i} row={r} dayTasks={dayTasks} />;
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-function DayCell({ day }: { day: ReturnType<typeof buildDays>[number] }) {
-  const hasDeadline = day.deadlines.length > 0;
-  const date = day.date;
+function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string[] }) {
+  const tone = urgencyTone(row.gunFark);
+  const Icon = row.icon;
+  const month = row.date.getMonth();
+  const hasTask = dayTasks.length > 0;
 
   return (
     <div
-      className="rounded-xl px-3 py-3 transition-all relative overflow-hidden"
+      className="rounded-2xl flex items-center gap-4 pl-1 pr-4 py-3 transition-all hover:translate-x-[2px] relative"
       style={{
-        background: day.isToday
-          ? 'linear-gradient(180deg, rgba(212,184,118,0.16), rgba(212,184,118,0.04))'
-          : day.isWeekend
-            ? 'rgba(255,255,255,0.015)'
-            : 'rgba(255,255,255,0.025)',
-        border: day.isToday
-          ? '1px solid rgba(212,184,118,0.5)'
-          : hasDeadline
-            ? '1px solid rgba(212,184,118,0.18)'
-            : '1px solid rgba(255,255,255,0.05)',
-        minHeight: 110,
+        background: tone.bg,
+        border: `1px solid ${tone.border}`,
+        boxShadow: row.gunFark <= 1 ? `inset 4px 0 0 ${tone.accent}` : `inset 3px 0 0 ${tone.accent}`,
       }}
     >
-      <div className="flex items-baseline justify-between mb-1.5">
-        <span
-          className="text-[10px] uppercase font-bold tracking-wider"
-          style={{
-            color: day.isToday ? GOLD : day.isWeekend ? 'rgba(250,250,249,0.3)' : 'rgba(250,250,249,0.5)',
-          }}
-        >
-          {DAYS_TR[date.getDay()]}
-        </span>
+      {/* Sol: tarih bloğu */}
+      <div className="pl-4 pr-2 min-w-[68px] flex flex-col items-start">
         <span
           className="tabular-nums leading-none"
           style={{
             fontFamily: 'Fraunces, serif',
-            fontSize: 22,
+            fontSize: 26,
             fontWeight: 700,
-            color: day.isToday ? GOLD : '#fafaf9',
+            color: '#fafaf9',
             letterSpacing: '-.03em',
           }}
         >
-          {date.getDate()}
+          {row.date.getDate()}
+        </span>
+        <span className="text-[10px] uppercase font-bold tracking-wider mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          {MONTHS_TR[month]}
         </span>
       </div>
-      {day.isToday && (
-        <div className="text-[9px] font-bold uppercase tracking-[.18em] mb-1.5" style={{ color: GOLD }}>
-          Bugün
+
+      {/* Orta: ikon + başlık + altyazı */}
+      <div className="flex-1 min-w-0 flex items-center gap-3">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{
+            background: tone.pillBg,
+            border: `1px solid ${tone.pillBorder}`,
+            color: tone.pillText,
+          }}
+        >
+          <Icon size={15} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>
+            {row.title}
+          </div>
+          <div className="text-[11.5px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            {row.subtitle}
+          </div>
+        </div>
+      </div>
+
+      {/* Sağ: görev göstergesi (eğer bu güne not/hatırlatma varsa) + pill badge */}
+      {hasTask && (
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md flex-shrink-0"
+          style={{
+            background: 'rgba(212,184,118,0.10)',
+            border: '1px solid rgba(212,184,118,0.28)',
+          }}
+          title={dayTasks.slice(0, 5).join('\n')}
+        >
+          <span
+            className="moren-task-pulse w-1.5 h-1.5 rounded-full"
+            style={{ background: GOLD, boxShadow: `0 0 6px ${GOLD}66` }}
+          />
+          <Bookmark size={11} style={{ color: GOLD_SOFT }} />
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: GOLD }}>
+            {dayTasks.length}
+          </span>
         </div>
       )}
-      <div className="space-y-1">
-        {day.deadlines.length === 0 ? (
-          <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.3)' }}>—</span>
-        ) : (
-          day.deadlines.map((d, i) => {
-            const Icon = d.icon;
-            return (
-              <div
-                key={i}
-                className="flex items-center gap-1 text-[10.5px] font-semibold rounded px-1.5 py-0.5"
-                style={{
-                  background: `${d.color}15`,
-                  color: d.color,
-                  border: `1px solid ${d.color}30`,
-                }}
-                title={d.tip}
-              >
-                <Icon size={9} />
-                <span className="truncate">{d.short}</span>
-              </div>
-            );
-          })
-        )}
-      </div>
-      {/* Bugün vurgu çubuğu */}
-      {day.isToday && (
-        <span
-          className="absolute bottom-0 left-2 right-2 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
-        />
-      )}
+
+      <span
+        className="text-[11.5px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full flex-shrink-0"
+        style={{
+          background: tone.pillBg,
+          color: tone.pillText,
+          border: `1px solid ${tone.pillBorder}`,
+        }}
+      >
+        {tone.label}
+      </span>
     </div>
   );
 }
