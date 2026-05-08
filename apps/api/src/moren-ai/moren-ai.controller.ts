@@ -49,6 +49,14 @@ export class MorenAiController {
     return this.service.chat(req.user.tenantId, req.user.sub, body);
   }
 
+  // -------- v1.36.81 SABAH BRİFİNGİ --------
+  // Dashboard üst kartında gösterilir. 4 saat in-memory cache.
+  // ?force=true ile cache'i bypass edip yenisini üretir.
+  @Get('brifing')
+  async brifing(@Req() req: any, @Query('force') force?: string) {
+    return this.service.getBrifing(req.user.tenantId, force === 'true' || force === '1');
+  }
+
   // -------- SESLİ GİRİŞ (Whisper STT) --------
   @Post('voice/transcribe')
   @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))

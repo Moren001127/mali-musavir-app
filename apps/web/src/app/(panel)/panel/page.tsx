@@ -6,8 +6,11 @@ import { beyannameTakipApi, BEYAN_ETIKETLER, OzetRow, BeyanTipi } from '@/lib/be
 import Link from 'next/link';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import MorenAiChat, { MorenAiButton, MorenAiFab } from '@/components/MorenAiChat';
+import { useMe } from '@/hooks/useAuth';
 import { ProfilEksikWidget } from '@/components/mukellef/ProfilEksikWidget';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
+import { BrifingKart } from '@/components/dashboard/BrifingKart';
+import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
 const GOLD = '#d4b876';
 
@@ -713,6 +716,7 @@ export default function DashboardPage() {
   const { data: agentEvents = [] } = useQuery<any[]>({ queryKey: ['agent-events', 'dashboard'], queryFn: () => api.get('/agent/events?limit=100').then((r) => r.data).catch(() => []), refetchInterval: 15_000 });
   const { data: agentStats } = useQuery<any>({ queryKey: ['agent-stats'], queryFn: () => api.get('/agent/stats').then((r) => r.data).catch(() => null) });
   const { data: agentStatuses = [] } = useQuery<any[]>({ queryKey: ['agent-statuses'], queryFn: () => api.get('/agent/status').then((r) => r.data).catch(() => []), refetchInterval: 30_000 });
+  const { data: meUser } = useMe();
 
   // v1.36.80: Aktif İş Yükü — gerçek workflow queue count'u (KONTROL/İŞLEME/BEYAN bekleyenler toplamı)
   const { data: workflowData } = useQuery<{ counts?: { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
@@ -1002,6 +1006,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* v1.36.81: AI sabah brifingi — günün özetini 2-3 cümlede anlatır */}
+      <BrifingKart userName={(meUser as any)?.firstName} />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
         <StatCard
           title="Toplam Mükellef"
@@ -1038,9 +1045,8 @@ export default function DashboardPage() {
         <KritikUyariStatCard />
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <ToplubeyannameTable />
-      </div>
+      {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
+      <BuHaftaTakvim />
 
       <div>
         <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />Ajan Durumu</h3>
@@ -1084,33 +1090,11 @@ export default function DashboardPage() {
               <p className="text-[11.5px] mt-2" style={{ color: 'rgba(250,250,249,0.3)' }}>Ajanlar çalıştığında buradan akar.</p>
             </div>
           ) : feed.length < 5 ? (
-            <div className="py-1.5 max-h-[380px] overflow-y-auto">{feed.map((item, i) => <FeedRow key={i} {...item} />)}</div>
+            <div className="py-1.5 max-h-[260px] overflow-y-auto">{feed.map((item, i) => <FeedRow key={i} {...item} />)}</div>
           ) : (
             <div className="moren-feed-wrap"><div className="moren-feed-track">{[...feed, ...feed].map((item, i) => <FeedRow key={i} {...item} />)}</div></div>
           )}
         </Section>
-      </div>
-
-      <div>
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: ACCENT_TONES.copper.color }} />Hızlı Erişim</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: 'Mükellef Ekle',  href: '/panel/mukellefler/yeni',   icon: Plus,         accent: 'gold' as StatAccent },
-            { label: 'KDV Kontrolü',    href: '/panel/kdv-kontrol/yeni',   icon: CheckCircle2, accent: 'champagne' as StatAccent },
-            { label: 'Fiş Yazdırma',    href: '/panel/fis-yazdirma',       icon: Printer,      accent: 'bronze' as StatAccent },
-            { label: 'Evrak Yönetimi',  href: '/panel/evraklar',           icon: FileText,     accent: 'copper' as StatAccent },
-          ].map(({ label, href, icon: Icon, accent }) => {
-            const t = ACCENT_TONES[accent];
-            return (
-            <Link key={href} href={href} className="flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 group" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = t.hoverBg; e.currentTarget.style.borderColor = t.hoverBorder; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}>
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110" style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color }}><Icon size={15} /></div>
-              <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{label}</span>
-              <ArrowRight size={14} className="ml-auto transition-all opacity-30 group-hover:opacity-100" style={{ color: t.color }} />
-            </Link>);
-          })}
-        </div>
       </div>
 
       {/* Moren AI — floating button & chat sheet */}

@@ -351,4 +351,171 @@ export class MorenAiService {
     const name = t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim();
     return `## Aktif Mükellef Kontekst\nSoru özellikle bu mükellefle ilgili:\n- İsim: ${name}\n- VKN/TCKN: ${t.taxNumber}\n- Vergi Dairesi: ${t.taxOffice}\n- Tip: ${t.type}\n- Sistem ID (taxpayerId): ${taxpayerId}\n\nTool çağırırken bu taxpayerId'yi kullan.`;
   }
+  // ==========================================================
+  // v1.36.81 — SABAH BRİFİNGİ
+  // Dashboard'da gösterilecek 2-3 cümlelik AI özetini üretir.
+  // 4 saat in-memory cache (tenant başına).
+  // ==========================================================
+  private brifingCache = new Map<string, { text: string; generatedAt: Date }>();
+  private readonly BRIFING_TTL_MS = 4 * 60 * 60 * 1000; // 4 saat
+
+  async getBrifing(tenantId: string, force = false): Promise<{ text: string; generatedAt: string; fromCache: boolean }> {
+    const cached = this.brifingCache.get(tenantId);
+    if (!force && cached && (Date.now() - cached.generatedAt.getTime()) < this.BRIFING_TTL_MS) {
+      return { text: cached.text, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      const fallback = await this.buildFallbackBrifing(tenantId);
+      return { text: fallback, generatedAt: new Date().toISOString(), fromCache: false };
+    }
+
+    const ctx = await this.buildBrifingContext(tenantId);
+
+    const prompt = `Aşağıda mali müşavir Muzaffer Bey'in bugünkü ofis durumu var:\n\n${ctx}\n\nBu verilere bakarak Muzaffer Bey için **2-3 cümle uzunluğunda, doğal, profesyonel Türkçe** bir sabah brifingi yaz. Kurallar:\n- En önemli 2-3 maddeyi öne çıkar (acil işler, son tarih yaklaşanlar, hatalar)\n- Sayıları kullan ama listeleme — akıcı cümle\n- "Günaydın" deme (UI zaten diyor)\n- Doğrudan duruma gir: "Bugün ..." veya "Şu an ..." gibi\n- Asla 3 cümleyi aşma\n- Markdown KULLANMA, düz metin\n- Eğer her şey iyiyse rahatlatıcı bir cümle yaz`;
+
+    try {
+      const res = await fetch(ANTHROPIC_URL, {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: DEFAULT_MODEL, max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+      });
+      if (!res.ok) {
+        this.logger.warn(`Brifing AI failed ${res.status}`);
+        const fallback = await this.buildFallbackBrifing(tenantId);
+        return { text: fallback, generatedAt: new Date().toISOString(), fromCache: false };
+      }
+      const data: any = await res.json();
+      const text = (data?.content?.[0]?.text || '').trim() || (await this.buildFallbackBrifing(tenantId));
+
+      try {
+        const inT = data?.usage?.input_tokens || 0;
+        const outT = data?.usage?.output_tokens || 0;
+        await this.prisma.aiUsageLog.create({
+          data: {
+            tenantId, source: 'brifing', model: DEFAULT_MODEL,
+            inputTokens: inT, outputTokens: outT, cacheReadTokens: 0, cacheWriteTokens: 0,
+            costUsd: computeCostUsd(DEFAULT_MODEL, { input: inT, output: outT, cacheRead: 0, cacheWrite: 0 }),
+            karar: 'ok', durationMs: 0,
+          },
+        });
+      } catch {}
+
+      const generatedAt = new Date();
+      this.brifingCache.set(tenantId, { text, generatedAt });
+      return { text, generatedAt: generatedAt.toISOString(), fromCache: false };
+    } catch (e: any) {
+      this.logger.warn(`Brifing exception: ${e?.message}`);
+      const fallback = await this.buildFallbackBrifing(tenantId);
+      return { text: fallback, generatedAt: new Date().toISOString(), fromCache: false };
+    }
+  }
+
+  private async buildBrifingContext(tenantId: string): Promise<string> {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth() + 1;
+    const day = today.getDate();
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const sevenDaysOut = new Date(today.getTime() + 7 * 86400000);
+
+    const monthlyStatuses = await this.prisma.taxpayerMonthlyStatus.findMany({
+      where: { tenantId, year, month },
+      include: { taxpayer: { select: { isActive: true, companyName: true, firstName: true, lastName: true } } },
+    });
+    const aktif = monthlyStatuses.filter((s: any) => s.taxpayer?.isActive);
+    let bekliyorEvrak = 0, isleniyor = 0, kontrol = 0, beyan = 0, tamam = 0;
+    let enUzunBekleyen: { ad: string; gun: number; stage: string } | null = null;
+    for (const s of aktif as any[]) {
+      const kdvHepsi = s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+      let stage: string;
+      if (s.beyannameVerildi) { stage = 'TAMAM'; tamam++; }
+      else if (s.kontrolEdildi || kdvHepsi) { stage = 'BEYAN'; beyan++; }
+      else if (s.evraklarIslendi) { stage = 'KONTROL'; kontrol++; }
+      else if (s.evraklarGeldi) { stage = 'ISLENIYOR'; isleniyor++; }
+      else { stage = 'EVRAK_BEKLIYOR'; bekliyorEvrak++; }
+      if (stage !== 'TAMAM' && stage !== 'EVRAK_BEKLIYOR') {
+        const gun = Math.floor((today.getTime() - new Date(s.updatedAt).getTime()) / 86400000);
+        if (!enUzunBekleyen || gun > enUzunBekleyen.gun) {
+          const ad = s.taxpayer?.companyName || `${s.taxpayer?.firstName ?? ''} ${s.taxpayer?.lastName ?? ''}`.trim();
+          enUzunBekleyen = { ad, gun, stage };
+        }
+      }
+    }
+
+    const deadlines: { gun: number; tip: string }[] = [];
+    const sonuncuGun = new Date(year, month, 0).getDate();
+    const inWindow = (g: number) => g >= day && (g - day) <= 7;
+    if (inWindow(17)) deadlines.push({ gun: 17, tip: 'Geçici Vergi' });
+    if (inWindow(26)) deadlines.push({ gun: 26, tip: 'Muhtasar/Damga' });
+    if (inWindow(28)) deadlines.push({ gun: 28, tip: 'KDV' });
+    if (inWindow(sonuncuGun)) deadlines.push({ gun: sonuncuGun, tip: 'BA-BS / Ay sonu' });
+
+    let bugunGorev = 0, haftaGorev = 0;
+    try {
+      const tasks = await (this.prisma as any).task.findMany({
+        where: { tenantId, isCompleted: false, dueDate: { lte: sevenDaysOut } },
+        select: { dueDate: true },
+      });
+      for (const t of tasks as any[]) {
+        const d = new Date(t.dueDate); d.setHours(0, 0, 0, 0);
+        if (d.getTime() === todayStart.getTime()) bugunGorev++;
+        haftaGorev++;
+      }
+    } catch {}
+
+    let agentHata = 0;
+    try {
+      const events = await (this.prisma as any).agentEvent.findMany({
+        where: { tenantId, ts: { gte: todayStart } },
+        select: { status: true },
+      });
+      agentHata = (events as any[]).filter((e) => ['HATA', 'ERROR', 'FAIL', 'FAILED', 'HATALI'].includes(String(e.status || '').toUpperCase())).length;
+    } catch {}
+
+    return [
+      `Tarih: ${today.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`,
+      ``,
+      `İŞ AKIŞI:`,
+      `- ${isleniyor} mükellef evrakları işlenmeyi bekliyor`,
+      `- ${kontrol} mükellef KDV kontrol bekliyor`,
+      `- ${beyan} mükellef beyanname hazırlanacak`,
+      `- ${tamam} mükellef tamamlandı (${aktif.length} aktif mükelleften)`,
+      enUzunBekleyen ? `- En uzun bekleyen: "${enUzunBekleyen.ad}" ${enUzunBekleyen.gun} gündür ${enUzunBekleyen.stage} aşamasında` : '',
+      ``,
+      `BU HAFTA SON TARİHLER:`,
+      ...(deadlines.length === 0 ? ['- Bu hafta beyanname son tarihi yok'] : deadlines.map((d) => `- ${d.gun} ${today.toLocaleDateString('tr-TR', { month: 'long' })}: ${d.tip}`)),
+      ``,
+      `GÖREVLER:`,
+      `- Bugün ${bugunGorev} görev, bu hafta ${haftaGorev} görev`,
+      ``,
+      `AJANLAR:`,
+      `- Bugün ${agentHata} ajan hatası`,
+    ].filter(Boolean).join('\n');
+  }
+
+  private async buildFallbackBrifing(tenantId: string): Promise<string> {
+    const today = new Date();
+    try {
+      const ms = await this.prisma.taxpayerMonthlyStatus.findMany({
+        where: { tenantId, year: today.getFullYear(), month: today.getMonth() + 1 },
+        include: { taxpayer: { select: { isActive: true } } },
+      });
+      const aktif = ms.filter((s: any) => s.taxpayer?.isActive);
+      let kontrol = 0, beyan = 0;
+      for (const s of aktif as any[]) {
+        const kdvHepsi = s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+        if (!s.beyannameVerildi) {
+          if (s.kontrolEdildi || kdvHepsi) beyan++;
+          else if (s.evraklarIslendi) kontrol++;
+        }
+      }
+      if (kontrol === 0 && beyan === 0) return 'Bu sabah acil bekleyen iş yok. Yeni evraklar geldikçe panelde görünür.';
+      return `Bu sabah ${kontrol} mükellefte KDV kontrol, ${beyan} mükellefte beyanname işin var. İş Akışı sayfasından sırayla devam edebilirsin.`;
+    } catch {
+      return 'İyi çalışmalar. Bugünkü işlerini İş Akışı sayfasından takip edebilirsin.';
+    }
+  }
+
 }
