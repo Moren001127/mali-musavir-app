@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { Cpu, Power, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Cpu, Power, AlertTriangle, CheckCircle2, RefreshCw, ExternalLink, Download } from 'lucide-react';
 
 type ExtStatus = {
   installed: boolean;
@@ -92,11 +92,19 @@ export default function AgentControlCard() {
             <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
               Tek tuşla Luca + Mihsap agent'larını otomatik başlatmak için Chrome extension'ını yükle:
             </p>
-            <ol className="text-[12px] mb-3 space-y-1 list-decimal list-inside" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            <a
+              href="/moren-auto-agent.zip"
+              download="moren-auto-agent.zip"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12.5px] font-semibold mb-3 transition-all"
+              style={{ background: '#d4b876', color: '#0c0a09' }}
+            >
+              <Download size={13} /> Extension İndir (.zip)
+            </a>
+            <ol className="text-[12px] mb-1 space-y-1 list-decimal list-inside" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <li>İndirilen <code style={codeStyle}>moren-auto-agent.zip</code> dosyasını <strong style={{ color: '#fafaf9' }}>masaüstü</strong>na çıkart</li>
               <li><code style={codeStyle}>chrome://extensions/</code> aç</li>
               <li>Sağ üstten <strong style={{ color: '#fafaf9' }}>Geliştirici modu</strong> aç</li>
-              <li><strong style={{ color: '#fafaf9' }}>Paketlenmemiş öğe yükle</strong> tıkla</li>
-              <li>Repo'daki <code style={codeStyle}>apps/moren-auto-agent/</code> klasörünü seç</li>
+              <li><strong style={{ color: '#fafaf9' }}>Paketlenmemiş yükle</strong> → çıkartılan klasörü seç</li>
               <li>Bu sayfayı yenile</li>
             </ol>
           </div>
