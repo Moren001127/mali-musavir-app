@@ -3622,13 +3622,49 @@
       }
     }
 
+    // 4) v1.36.74: PREFIX BENZERLİĞİ — Luca kısa ad kullandığında uzun ad slug'ı ile
+    //    substring uyumu kurulamıyor. Örn. portal "TALHA BOZOĞLU" → slug "talha_bozoglu",
+    //    Luca dropdown'da "TALHA BOZG" → slug "talha_bozg". Ne tam eşit ne substring.
+    //    Bu adım: ilk 6+ karakter aynıysa "kısaltılmış uzun ad" kabul et.
+    if (!targetOpt) {
+      const wanted = job.lucaSlug ? slugify(job.lucaSlug) : (job.mukellefAdi ? slugify(job.mukellefAdi) : '');
+      if (wanted.length >= 6) {
+        for (const opt of combo.options) {
+          if (!isRealOption(opt)) continue;
+          const optSlug = slugify(opt.text);
+          if (optSlug.length < 6) continue;
+          const minLen = Math.min(wanted.length, optSlug.length);
+          const prefixLen = Math.min(8, Math.max(6, minLen - 2));
+          if (wanted.slice(0, prefixLen) === optSlug.slice(0, prefixLen)) {
+            targetOpt = opt; matchedBy = `prefix benzerliği "${wanted.slice(0, prefixLen)}…"`; break;
+          }
+        }
+      }
+    }
+
+    // 5) v1.36.74: Tek token tam eşleşmesi — kısa ad sadece 1 anlamlı token taşıyabilir.
+    //    Token uzunluğu ≥4 ve EŞSİZ ise (başka mükellef adında geçmiyorsa) eşleştir.
+    if (!targetOpt && job.mukellefAdi) {
+      const wantedSlug = slugify(job.mukellefAdi);
+      const tokens = wantedSlug.split('_').filter((w) => w.length >= 4);
+      if (tokens.length >= 1) {
+        for (const tok of tokens) {
+          const matchingOpts = combo.options.filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
+          if (matchingOpts.length === 1) {
+            targetOpt = matchingOpts[0]; matchedBy = `eşsiz token "${tok}"`; break;
+          }
+        }
+      }
+    }
+
     if (!targetOpt) {
       const realOpts = [...combo.options].filter(isRealOption);
       const sample = realOpts.slice(0, 8).map((o) => o.text.trim().slice(0, 50)).join(' | ');
       throw new Error(
         `Firma bulunamadı: VKN=${job.taxNumber || '?'} slug="${job.lucaSlug || '?'}" ad="${job.mukellefAdi || '?'}". ` +
         `Luca firma listesinde yok ya da yetkiniz yok. ` +
-        `Toplam ${combo.options.length} option (${realOpts.length} geçerli). İlk geçerli 8: ${sample}`,
+        `Toplam ${combo.options.length} option (${realOpts.length} geçerli). İlk geçerli 8: ${sample}. ` +
+        `İPUCU: Mükellef profilinden Luca Slug alanına Luca'da gözüken kısa adı (örn. "talha_bozg") yazabilirsin.`,
       );
     }
 
