@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.65';
+  const AGENT_VERSION = '1.36.66';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6577,6 +6577,7 @@
     cari:   0.70,
     matrah: 0.70,
     kdv:    0.70,
+    odeme:  0.70,
   };
   const BOS_ALAN_BEKLEME_MS = 60000; // Manuel F2 için bekleme
 
@@ -6688,6 +6689,9 @@
   ];
   const STANDART_CARI_ALIS = ['100.01.001', '102.01.001', '320.01.001'];
   const STANDART_CARI_SATIS = ['100.01.001', '102.01.001', '120.01.001'];
+  const STANDART_ODEME_ALIS = ['100.01.001', '102.01.001', '320.01.001'];
+  const STANDART_ODEME_SATIS = ['100.01.001', '102.01.001', '120.01.001'];
+  const ODEME_HESABI_RE = /^(Tahsilat\s*\/\s*.*deme|.*deme|Tahsilat).*Hesab/i;
 
   // v1.12.8 — Cari için TEK SEFER dropdown sondajı (firma adı prefix ile).
   // Mihsap state'i bozulmaz (manuel testteki gibi 1 dropdown açma+kapama).
@@ -6722,6 +6726,7 @@
     const matrahDolu = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
     const vergiDolu  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
     const cariDolu   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
+    const odemeDolu  = bolumHesapKoduDolu(ODEME_HESABI_RE);
     const isSatis = action === 'isle_satis';
     const arr = Array.isArray(codes) ? codes : [];
 
@@ -6747,7 +6752,13 @@
       if (list.length === 0) list = isSatis ? [...STANDART_CARI_SATIS] : [...STANDART_CARI_ALIS];
       if (list.length > 0) sonuc.cariKodlari = list;
     }
-    console.log('[Moren.fill] readBosAlanSecenekleriHizli:', { matrahDolu, vergiDolu, cariDolu, codesAdet: arr.length, sonuc });
+    if (odemeDolu === false) {
+      const re = isSatis ? /^(100|102|120)\./ : /^(100|102|320)\./;
+      let list = arr.filter((c) => re.test(c));
+      if (list.length === 0) list = isSatis ? [...STANDART_ODEME_SATIS] : [...STANDART_ODEME_ALIS];
+      if (list.length > 0) sonuc.odemeKodlari = list;
+    }
+    console.log('[Moren.fill] readBosAlanSecenekleriHizli:', { matrahDolu, vergiDolu, cariDolu, odemeDolu, codesAdet: arr.length, sonuc });
     return sonuc;
   }
 
@@ -6761,11 +6772,16 @@
       matrah: durumlar.matrahDolu === false && (secenekler.matrahKodlari || []).length > 0,
       kdv:    durumlar.vergiDolu  === false && (secenekler.kdvKodlari    || []).length > 0,
       cari:   durumlar.cariDolu   === false && (secenekler.cariKodlari   || []).length > 0,
+      odeme:  durumlar.odemeDolu  === false && (secenekler.odemeKodlari  || []).length > 0,
     };
+    const ilkOdemeKodu = (secenekler.odemeKodlari || []).includes('100.01.001')
+      ? '100.01.001'
+      : (secenekler.odemeKodlari || [])[0];
     const eslestir = {
       matrah: { kod: o.matrahHesapKodu, conf: cf.matrah || 0, esik: BOS_ALAN_ESIKLERI.matrah },
       kdv:    { kod: o.kdvHesapKodu,    conf: cf.kdv    || 0, esik: BOS_ALAN_ESIKLERI.kdv },
       cari:   { kod: o.cariHesapKodu,   conf: cf.cari   || 0, esik: BOS_ALAN_ESIKLERI.cari },
+      odeme:  { kod: o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || ilkOdemeKodu, conf: cf.odeme || cf.cari || 0.95, esik: BOS_ALAN_ESIKLERI.odeme },
     };
     // Eşik kontrolü — ihtiyacı olan TÜM alanlar eşik üstünde olmalı, biri eksikse hiçbiri doldurulmaz
     const eksikler = [];
@@ -6811,6 +6827,16 @@
         return { dolduruldu: false, sebep: `cari seçilemedi (${eslestir.cari.kod})` };
       }
       await sleep(1500);
+    }
+    if (ihtiyac.odeme) {
+      const sel = findHesapKoduSelect(ODEME_HESABI_RE);
+      const ok = sel ? await pickAntSelectByKodPrefix(sel, eslestir.odeme.kod, '[ODEME]') : false;
+      sonuclar.push(`O:${ok ? 'OK' : 'X'}`);
+      if (!ok) {
+        await closeAllAntDropdowns();
+        return { dolduruldu: false, sebep: `odeme hesabi secilemedi (${eslestir.odeme.kod})` };
+      }
+      await sleep(900);
     }
     return { dolduruldu: true, sebep: `dolduruldu ${sonuclar.join(' ')}` };
   }
@@ -8163,20 +8189,24 @@
             const adetM = (secenekler.matrahKodlari || []).length;
             const adetK = (secenekler.kdvKodlari || []).length;
             const adetC = (secenekler.cariKodlari || []).length;
+            const adetO = (secenekler.odemeKodlari || []).length;
 
             // Hangi alanlar boş?
             const matrahBos = bolumHesapKoduDolu(/^Matrah\s*\(/i) === false || bolumHesapKoduDolu(/^Matrah$/i) === false;
             const vergiBos  = bolumHesapKoduDolu(/^Vergi\s*\(/i) === false || bolumHesapKoduDolu(/^KDV/i) === false || bolumHesapKoduDolu(/^Vergi$/i) === false;
             const cariBos   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) === false || bolumHesapKoduDolu(/^Cari Hesap$/i) === false || bolumHesapKoduDolu(/^Cari$/i) === false;
-            const bosAlanlar = [matrahBos && 'Matrah', vergiBos && 'KDV', cariBos && 'Cari'].filter(Boolean);
+            const odemeBos  = bolumHesapKoduDolu(ODEME_HESABI_RE) === false;
+            const bosAlanlar = [matrahBos && 'Matrah', vergiBos && 'KDV', cariBos && 'Cari', odemeBos && 'Tahsilat/Odeme'].filter(Boolean);
 
-            if (adetM + adetK + adetC > 0) {
-              const oneriKarari = await aiDecide({
-                codes: codes, tarih, hedefAy,
-                belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
-                mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
-                action, bosAlanSecenekleri: secenekler,
-              });
+            if (adetM + adetK + adetC + adetO > 0) {
+              const oneriKarari = (adetM + adetK + adetC > 0)
+                ? await aiDecide({
+                    codes: codes, tarih, hedefAy,
+                    belgeNo: meta.belgeNo, belgeTuru: meta.belgeTuru, faturaTuru: meta.faturaTuru,
+                    mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma, firmaKimlikNo: meta.firmaKimlikNo, tutar: meta.tutar,
+                    action, bosAlanSecenekleri: secenekler,
+                  })
+                : { onerilenler: { confidence: { odeme: 0.95 } } };
               const o = oneriKarari?.onerilenler || {};
               const cf = o.confidence || {};
               const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '?';
@@ -8186,11 +8216,12 @@
               const matrahDolu2 = bolumHesapKoduDolu(/^Matrah\s*\(/i) ?? bolumHesapKoduDolu(/^Matrah$/i);
               const vergiDolu2  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
               const cariDolu2   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
+              const odemeDolu2  = bolumHesapKoduDolu(ODEME_HESABI_RE);
               setStatus(`${mukellef.ad} · #${fid} alanlar dolduruluyor…`);
               const fillResult = await tryFillBosAlanlar({
                 secenekler,
                 oneri: o,
-                durumlar: { matrahDolu: matrahDolu2, vergiDolu: vergiDolu2, cariDolu: cariDolu2 },
+                durumlar: { matrahDolu: matrahDolu2, vergiDolu: vergiDolu2, cariDolu: cariDolu2, odemeDolu: odemeDolu2 },
               });
               console.log('[Moren.fill] Doldurma sonucu:', fillResult);
 
@@ -8202,6 +8233,7 @@
               if (matrahBos) satirlar.push(`  Matrah : ${o.matrahHesapKodu || '(öneri yok)'}  güven ${fmtC(cf.matrah)}  (sondaj: ${adetM} sonuç)`);
               if (vergiBos)  satirlar.push(`  KDV    : ${o.kdvHesapKodu    || '(öneri yok)'}  güven ${fmtC(cf.kdv)}  (sondaj: ${adetK} sonuç)`);
               if (cariBos)   satirlar.push(`  Cari   : ${o.cariHesapKodu   || '(öneri yok)'}  güven ${fmtC(cf.cari)}  (sondaj: ${adetC} sonuç)`);
+              if (odemeBos)  satirlar.push(`  Odeme  : ${o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || (secenekler.odemeKodlari || [])[0] || '(oneri yok)'}  guven ${fmtC(cf.odeme || cf.cari || 0.95)}  (liste: ${adetO} sonuc)`);
               satirlar.push('');
 
               if (fillResult.dolduruldu) {
@@ -8231,7 +8263,7 @@
                       belgeNo: meta.belgeNo,
                       tutar: meta.tutar,
                       hesapKodu: o.matrahHesapKodu || codes[0] || null,
-                      hesapKodlari: [o.matrahHesapKodu, o.kdvHesapKodu, o.cariHesapKodu].filter(Boolean),
+                      hesapKodlari: [o.matrahHesapKodu, o.kdvHesapKodu, o.cariHesapKodu, o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || (secenekler.odemeKodlari || [])[0]].filter(Boolean),
                       decisionTrace: oneriKarari?.decisionTrace || null,
                       faturaDecisionCandidate: oneriKarari?.faturaDecisionCandidate || null,
                     });

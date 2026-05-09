@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Megaphone, Download, Save, Trash2, Plus,
-  Eye, FileImage, Share2,
+  Megaphone, Save, Trash2, Plus,
+  Eye, FileImage,
   Square, RectangleVertical,
 } from 'lucide-react';
 
@@ -307,8 +307,6 @@ export default function DuyurularPage() {
   const [seciliId, setSeciliId] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   // Önizleme modu: form-tabanlı poster veya yüklenen hazır şablon (iframe)
-  const [onizlemeModu, setOnizlemeModu] = useState<'form' | 'sablon'>('form');
-  const onzRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -477,26 +475,10 @@ export default function DuyurularPage() {
           >
             <Save size={16} /> {seciliId ? 'Güncelle' : 'Kaydet'}
           </button>
-          <button
-            onClick={pngIndir}
-            disabled={exportLoading}
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg flex items-center gap-2 disabled:opacity-50 hover:opacity-90"
-            style={{ background: '#525252' }}
-          >
-            <Download size={16} /> {exportLoading ? 'İşleniyor...' : 'PNG İndir'}
-          </button>
-          <button
-            onClick={whatsappPaylas}
-            disabled={exportLoading}
-            className="px-4 py-2 text-sm font-semibold text-white rounded-lg flex items-center gap-2 disabled:opacity-50 hover:opacity-90"
-            style={{ background: '#25D366' }}
-          >
-            <Share2 size={16} /> WhatsApp
-          </button>
         </div>
       </div>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: '260px 1fr 460px' }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: '260px minmax(360px, 1fr) minmax(560px, 720px)' }}>
         {/* SOL: Kayıtlı duyurular listesi */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -715,77 +697,41 @@ export default function DuyurularPage() {
           </div>
         </div>
 
-        {/* SAĞ: Canlı önizleme */}
+        {/* SAĞ: Kurumsal şablon */}
         <div
           className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col"
           style={{ position: 'sticky', top: 0, alignSelf: 'flex-start' }}
         >
           <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              <Eye size={14} /> Canlı Önizleme
+              <Eye size={14} /> Moren Duyuru Şablonu
             </h3>
             <div className="flex items-center gap-2">
-              {/* Önizleme modu toggle */}
-              <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs">
-                <button
-                  type="button"
-                  onClick={() => setOnizlemeModu('form')}
-                  className={`px-3 py-1.5 font-medium transition ${
-                    onizlemeModu === 'form'
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Form
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOnizlemeModu('sablon')}
-                  className={`px-3 py-1.5 font-medium transition border-l border-gray-200 ${
-                    onizlemeModu === 'sablon'
-                      ? 'bg-gray-900 text-white'
-                      : 'bg-white text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Hazır Şablon
-                </button>
-              </div>
-              <span className="text-xs text-gray-400">
-                {onizlemeModu === 'form'
-                  ? form.format === 'story'
-                    ? '1080×1920 · Story'
-                    : '1080×1080 · Post'
-                  : 'HTML şablon'}
-              </span>
+              <span className="text-xs text-gray-400">HTML şablon</span>
             </div>
           </div>
           <div
-            ref={onzRef}
             className="flex items-start justify-center overflow-auto"
             style={{
-              background: '#f5f5f5',
+              background: '#111827',
               minHeight: 720,
-              padding: onizlemeModu === 'form' ? 24 : 0,
+              padding: 0,
             }}
           >
-            {onizlemeModu === 'form' ? (
-              <PosterTemplate d={form} scale={form.format === 'story' ? 0.34 : 0.4} />
-            ) : (
-              <iframe
-                src="/duyuru-sablonu.html"
-                title="Duyuru Şablonu"
-                style={{
-                  width: '100%',
-                  minHeight: 900,
-                  border: 'none',
-                  background: '#fff',
-                }}
-              />
-            )}
+            <iframe
+              src="/duyuru-sablonu.html"
+              title="Moren Duyuru Şablonu"
+              className="w-full"
+              style={{
+                minHeight: 900,
+                border: 'none',
+                background: '#fff',
+              }}
+            />
           </div>
           <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 flex items-center gap-2">
             <FileImage size={12} />
-            PNG indirildiğinde {form.format === 'story' ? '1080×1920' : '1080×1080'} tam çözünürlükte üretilir
+            Şablon yeni sekmede açılarak düzenlenebilir ve paylaşım çıktısı alınabilir.
           </div>
         </div>
       </div>
