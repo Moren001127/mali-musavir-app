@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.66';
+  const AGENT_VERSION = '1.36.67';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8181,7 +8181,7 @@
         if (action === 'isle_satis' || action === 'isle_alis') {
           try {
             setStatus(`${mukellef.ad} · #${fid} AI öneri istiyor…`);
-            const secenekler = await readBosAlanSecenekleri({ action, firmaAdi: meta.firma });
+            const secenekler = await readBosAlanSecenekleriHizli({ action, codes, firmaAdi: meta.firma });
             const adetM = (secenekler.matrahKodlari || []).length;
             const adetK = (secenekler.kdvKodlari || []).length;
             const adetC = (secenekler.cariKodlari || []).length;
