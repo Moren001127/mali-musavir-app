@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.88';
+  const AGENT_VERSION = '1.36.89';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5944,7 +5944,16 @@
       (b) => b.textContent.trim() === label && b.offsetParent !== null,
     );
   }
-  async function click(el) { el?.click(); await sleep(250); }
+  async function click(el) {
+    if (!el) return;
+    try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch {}
+    try {
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    } catch {}
+    el.click();
+    await sleep(250);
+  }
   async function waitFor(sel, t = 10000) {
     const t0 = Date.now();
     while (Date.now() - t0 < t) {
@@ -6130,7 +6139,6 @@
     while (Date.now() - t0 < timeoutMs) {
       if (faturaAdvancedFrom(fidBefore)) return true;
       if (getVisibleModals().length > 0) return true;
-      if (document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info')) return true;
       if (typeof validationDialogVarMi === 'function' && validationDialogVarMi()) return true;
       await sleep(75);
     }
