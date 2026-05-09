@@ -351,7 +351,7 @@ export class EarsivService {
               pdfBackfilled++;
             }
           }
-          if (!existing.htmlStorageKey && f.htmlContent?.trim()) {
+          if (f.htmlContent?.trim()) {
             const htmlStorageKey = await this.storeOriginalHtml({
               tenantId,
               taxpayerId,
