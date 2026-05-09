@@ -227,33 +227,49 @@ export class AgentEventsService {
     // AI maliyeti — bu ay her mukellef için harcanan USD (Claude/Anthropic + OCR)
     // ai-usage-logger'dan dönemdeki tüm kayıtları al; mukellef dolu olanları
     // mukellefe yaz, boş olanları (eski extension kayıtları) "diger" toplamına ekle.
-    const { perMukellef: maliyetMap, digerUsd, toplamAiUsd } =
+    const { perMukellef: maliyetMap, digerUsd, toplamAiUsd, toplamCagri } =
       await this.aiMaliyetByMukellef(tenantId, periodStart, periodEnd);
 
     const items = Array.from(map.entries())
-      .map(([mukellef, counts]) => ({
-        mukellef,
-        alis: counts.alis,
-        satis: counts.satis,
-        atlanan: counts.atlanan,
-        toplam: counts.alis + counts.satis,
-        maliyetUsd: Number((maliyetMap.get(mukellef) || 0).toFixed(4)),
-      }))
+      .map(([mukellef, counts]) => {
+        const toplamIslem = counts.alis + counts.satis + counts.atlanan;
+        const maliyet = maliyetMap.get(mukellef)?.usd || 0;
+        return {
+          mukellef,
+          alis: counts.alis,
+          satis: counts.satis,
+          atlanan: counts.atlanan,
+          toplam: counts.alis + counts.satis,
+          maliyetUsd: Number(maliyet.toFixed(4)),
+          aiCagriSayisi: maliyetMap.get(mukellef)?.count || 0,
+          birimMaliyetUsd: toplamIslem > 0 ? Number((maliyet / toplamIslem).toFixed(6)) : 0,
+        };
+      })
       .sort((a, b) => b.toplam - a.toplam);
 
-    const toplam = items.reduce(
+    const toplam = items.reduce<{
+      alis: number;
+      satis: number;
+      toplam: number;
+      mukellefSayisi: number;
+      maliyetUsd: number;
+      birimMaliyetUsd: number;
+    }>(
       (acc, i) => ({
         alis: acc.alis + i.alis,
         satis: acc.satis + i.satis,
         toplam: acc.toplam + i.toplam,
         mukellefSayisi: acc.mukellefSayisi + 1,
         maliyetUsd: acc.maliyetUsd + i.maliyetUsd,
+        birimMaliyetUsd: acc.birimMaliyetUsd,
       }),
-      { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0, maliyetUsd: 0 },
+      { alis: 0, satis: 0, toplam: 0, mukellefSayisi: 0, maliyetUsd: 0, birimMaliyetUsd: 0 },
     );
     // Toplam maliyete mukellef-bağsız harcamayı da ekle (Toplam Maliyet kpi için).
     // Eski extension kayıtları mukellef field'ı yok — yine de ödendiği gerçek.
     toplam.maliyetUsd = Number((toplamAiUsd || (toplam.maliyetUsd + digerUsd)).toFixed(4));
+    const toplamIslem = items.reduce((acc, i) => acc + i.alis + i.satis + i.atlanan, 0);
+    toplam.birimMaliyetUsd = toplamIslem > 0 ? Number((toplam.maliyetUsd / toplamIslem).toFixed(6)) : 0;
 
     return {
       period: { year, month },
@@ -263,6 +279,9 @@ export class AgentEventsService {
         toplamAiUsd: Number((toplamAiUsd || 0).toFixed(4)),
         mukellefBagliUsd: Number((toplam.maliyetUsd - digerUsd).toFixed(4)),
         digerUsd: Number((digerUsd || 0).toFixed(4)),
+        toplamCagri,
+        toplamIslem,
+        birimMaliyetUsd: toplam.birimMaliyetUsd,
       },
     };
   }
@@ -326,10 +345,11 @@ export class AgentEventsService {
     tenantId: string,
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ perMukellef: Map<string, number>; digerUsd: number; toplamAiUsd: number }> {
-    const perMukellef = new Map<string, number>();
+  ): Promise<{ perMukellef: Map<string, { usd: number; count: number }>; digerUsd: number; toplamAiUsd: number; toplamCagri: number }> {
+    const perMukellef = new Map<string, { usd: number; count: number }>();
     let digerUsd = 0;
     let toplamAiUsd = 0;
+    let toplamCagri = 0;
     try {
       const rows = await this.prisma.aiUsageLog.findMany({
         where: {
@@ -342,9 +362,11 @@ export class AgentEventsService {
         const cost = Number(r.costUsd || 0);
         if (!Number.isFinite(cost) || cost <= 0) continue;
         toplamAiUsd += cost;
+        toplamCagri++;
         const muk = (r.mukellef || '').trim();
         if (muk) {
-          perMukellef.set(muk, (perMukellef.get(muk) || 0) + cost);
+          const prev = perMukellef.get(muk) || { usd: 0, count: 0 };
+          perMukellef.set(muk, { usd: prev.usd + cost, count: prev.count + 1 });
         } else {
           digerUsd += cost;
         }
@@ -352,7 +374,7 @@ export class AgentEventsService {
     } catch (e) {
       console.warn('[summary-by-mukellef] aiMaliyetByMukellef hatası:', e);
     }
-    return { perMukellef, digerUsd, toplamAiUsd };
+    return { perMukellef, digerUsd, toplamAiUsd, toplamCagri };
   }
 
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {

@@ -1,77 +1,95 @@
 /**
- * AgentRule.profile JSON'unu Claude prompt'una insan-okunur format çevirir.
- * Frontend'deki aynı dönüştürücüyle simetri.
+ * AgentRule.profile JSON'unu fatura karar prompt'una insan-okunur formatta çevirir.
+ * Frontend'deki profil şemasıyla geriye uyumlu çalışır.
  */
 
 import { SISTEM_KURALLARI } from './sistem-kurallari';
 
 interface KdvOranBazli {
   yuzde1?: string;
+  yuzde8?: string;
   yuzde10?: string;
+  yuzde18?: string;
   yuzde20?: string;
 }
 
 export function profileToPromptText(p: any): string {
   if (!p || typeof p !== 'object') return '';
+
   const lines: string[] = [];
-  lines.push('=== MÜKELLEF PROFİLİ ===');
-  if (p.sektor) lines.push(`Sektör: ${p.sektor}`);
-  if (p.defterTuru) lines.push(`Defter: ${p.defterTuru === 'bilanco' ? 'Bilanço' : 'İşletme'}`);
+  lines.push('=== MUKELLEF PROFILI ===');
+  if (p.sektor) lines.push(`Sektor/Faaliyet: ${p.sektor}`);
+  if (p.defterTuru) lines.push(`Defter: ${p.defterTuru === 'bilanco' ? 'Bilanco' : 'Isletme'}`);
 
   const oranSatir = (label: string, k?: KdvOranBazli) => {
     if (!k) return;
     const parts: string[] = [];
-    if (k.yuzde1)  parts.push(`%1: ${k.yuzde1}`);
+    if (k.yuzde1) parts.push(`%1: ${k.yuzde1}`);
+    if (k.yuzde8) parts.push(`%8: ${k.yuzde8}`);
     if (k.yuzde10) parts.push(`%10: ${k.yuzde10}`);
+    if (k.yuzde18) parts.push(`%18: ${k.yuzde18}`);
     if (k.yuzde20) parts.push(`%20: ${k.yuzde20}`);
-    if (parts.length) lines.push(`${label}: ${parts.join(' · ')}`);
+    if (parts.length) lines.push(`${label}: ${parts.join(' | ')}`);
   };
 
-  oranSatir('Mal Satışı Matrahı', p.malSatisMatrah);
-  oranSatir('Hizmet Satışı Matrahı', p.hizmetSatisMatrah);
-  // v1.36.60: Mal Alışı Matrahı — ZORUNLU ÖNCELİK
-  oranSatir('Mal Alışı Matrahı (ZORUNLU ÖNCELİK)', p.malAlisMatrah);
+  const faturaSatis = p.faturaSatisMatrah || p.malSatisMatrah;
+  const perakendeSatis = p.perakendeSatisMatrah || p.hizmetSatisMatrah;
+  oranSatir('Fatura/e-Belge Satis Matrahi', faturaSatis);
+  oranSatir('Perakende/Z Raporu Satis Matrahi', perakendeSatis);
+  oranSatir('Ticari Mal Alis Matrahi (ZORUNLU ONCELIK)', p.malAlisMatrah);
   oranSatir('Hesaplanan KDV', p.hesaplananKdv);
-  oranSatir('İndirilecek KDV', p.indirilecekKdv);
+  oranSatir('Indirilecek KDV', p.indirilecekKdv);
 
-  // v1.36.60: Mal alışı tanımlıysa AI'ya net direktif — VendorMemory'den önceliklidir
-  if (p.malAlisMatrah && (p.malAlisMatrah.yuzde1 || p.malAlisMatrah.yuzde10 || p.malAlisMatrah.yuzde20)) {
+  lines.push('');
+  lines.push('=== SATIS KODU KARAR KURALI ===');
+  lines.push('Profildeki 600 kodlari otomatik dogru karar degildir; belge tipi ve fatura icerigiyle uyumluysa kullanilir.');
+  lines.push('e-Fatura/e-Arsiv/Fatura belge turleri normal mal/hizmet satisi ise fatura/e-belge satis matrahina gider.');
+  lines.push('Z Raporu/OKC/Perakende belgeler normal perakende satis ise perakende/Z raporu satis matrahina gider.');
+  lines.push('Arac, demirbas, sabit kiymet, istisnai varlik satisi veya faaliyet disi satis gorursen 600 koduna otomatik F2 yapma; onay_bekliyor karari ver.');
+
+  if (p.malAlisMatrah && (p.malAlisMatrah.yuzde1 || p.malAlisMatrah.yuzde8 || p.malAlisMatrah.yuzde10 || p.malAlisMatrah.yuzde18 || p.malAlisMatrah.yuzde20)) {
     lines.push('');
-    lines.push('🔴 ZORUNLU KURAL — TICARI MAL ALIŞI:');
-    lines.push('Mükellef profili "Mal Alışı Matrahı" tanımlıdır. Alış faturası için:');
-    lines.push('1. Faturanın KDV oranını belirle (%1, %10, %20)');
-    lines.push('2. Profilde o orana karşılık gelen Mal Alışı kodunu KULLAN');
-    lines.push('3. VendorMemory geçmişi farklı kod gösterse bile profil önceliklidir');
-    lines.push('4. Hesap kodu profil ile uyumluysa "onay" karar ver, "onay_bekliyor" YOK');
-    lines.push('5. Sadece profilde tanımlı OLMAYAN bir KDV oranı (%8 vs.) gelirse onay_bekliyor');
+    lines.push('ZORUNLU KURAL - TICARI MAL ALISI:');
+    lines.push('Normal ticari mal alis faturasi ise fatura KDV oranina karsilik gelen profil Mal Alis kodunu VendorMemoryden once kullan.');
+    lines.push('Ancak fatura icerigi demirbas/sabit kiymet/hizmet/gider gibi gorunuyorsa profil 153 koduna kor sekilde onay verme; onay_bekliyor karari ver.');
+    lines.push('Profilde ilgili KDV orani tanimli degilse otomatik F2 yapma; onay_bekliyor karari ver.');
   }
 
   if (p.cariFormat) lines.push(`Cari format: ${p.cariFormat}`);
-  if (p.tahsilatHesabi) {
-    lines.push(`Tahsilat: ${p.tahsilatHesabi}${p.tahsilatHesapTuru ? ` (${p.tahsilatHesapTuru})` : ''}`);
+  if (p.cariTakipPolitikasi) lines.push(`Cari takip politikasi: ${p.cariTakipPolitikasi}`);
+  if (p.cariYoksaHesap) lines.push(`Cari yoksa kullanilacak hesap: ${p.cariYoksaHesap}`);
+  if (p.surekliTedarikciler) lines.push(`Cari takip edilecek surekli tedarikciler: ${p.surekliTedarikciler}`);
+  if (p.cariTakipPolitikasi) {
+    lines.push('Cari karar kurali: cari sadece profil politikasina ve surekli tedarikci listesine uygunsa kullanilir. Tek seferlik/emin olunmayan firmalarda cari acmayi varsayma.');
   }
-  if (p.odemeHesabi) {
-    lines.push(`Ödeme: ${p.odemeHesabi}${p.odemeHesapTuru ? ` (${p.odemeHesapTuru})` : ''}`);
-  }
-  if (typeof p.tevkifataTabi === 'boolean') {
-    lines.push(`Tevkifata tabi: ${p.tevkifataTabi ? 'Evet' : 'Hayır'}`);
+  if (p.tahsilatHesabi) lines.push(`Tahsilat: ${p.tahsilatHesabi}${p.tahsilatHesapTuru ? ` (${p.tahsilatHesapTuru})` : ''}`);
+  if (p.odemeHesabi) lines.push(`Odeme: ${p.odemeHesabi}${p.odemeHesapTuru ? ` (${p.odemeHesapTuru})` : ''}`);
+  if (typeof p.tevkifataTabi === 'boolean') lines.push(`Tevkifata tabi: ${p.tevkifataTabi ? 'Evet' : 'Hayir'}`);
+
+  if (p.demirbasKontrolAktif !== false) {
+    lines.push('');
+    lines.push('=== DEMIRBAS / OLAĞAN DISI FATURA KONTROLU ===');
+    lines.push('Gercek mali musavir gibi bak: belge uzerindeki mal/hizmet aciklamasi, tutar, satici/alici, sektor, belge turu ve gecmis hafizayi birlikte degerlendir.');
+    lines.push('Arac, bilgisayar, telefon, klima, TV, mobilya, makine, ekipman, cihaz veya uzun omurlu varlik satis/alisinda otomatik F2 yapma; karar onay_bekliyor olsun.');
+    lines.push('Profilde satis/alıs kodu tanimli olmasi demirbas veya faaliyet disi islem riskini ortadan kaldirmaz.');
+    if (p.demirbasAnahtarKelimeler) lines.push(`Demirbas anahtar kelimeleri: ${p.demirbasAnahtarKelimeler}`);
+    if (p.demirbasTalimat) lines.push(`Demirbas talimati: ${p.demirbasTalimat}`);
   }
 
-  // Sistem kuralları (her mükellef için aynı)
   lines.push('');
-  lines.push('=== SİSTEM KURALLARI ===');
+  lines.push('=== SISTEM KURALLARI ===');
   if (SISTEM_KURALLARI.tevkifat.aktif) {
-    lines.push(`• Tevkifat: ${SISTEM_KURALLARI.tevkifat.tetikleyiciIcerikler.join(', ')} içerikli faturalar KDV dahil ${SISTEM_KURALLARI.tevkifat.kdvDahilEsik.toLocaleString('tr-TR')} TL ve üzeri ise tevkifatlı olmalı.`);
+    lines.push(`Tevkifat: ${SISTEM_KURALLARI.tevkifat.tetikleyiciIcerikler.join(', ')} icerikli faturalar KDV dahil ${SISTEM_KURALLARI.tevkifat.kdvDahilEsik.toLocaleString('tr-TR')} TL ve uzeri ise tevkifat acisindan kontrol edilir.`);
   }
   if (SISTEM_KURALLARI.kasaLimit.aktif) {
-    lines.push(`• Kasa limiti: Tahsilat/Ödeme hesabı ${SISTEM_KURALLARI.kasaLimit.hesapPrefix}.x (kasa) ise tutar ${SISTEM_KURALLARI.kasaLimit.maxTutar.toLocaleString('tr-TR')} TL üstü olamaz.`);
+    lines.push(`Kasa limiti: Tahsilat/odeme hesabi ${SISTEM_KURALLARI.kasaLimit.hesapPrefix}.x ise tutar ${SISTEM_KURALLARI.kasaLimit.maxTutar.toLocaleString('tr-TR')} TL ustu olamaz.`);
   }
 
-  // Özel talimat (serbest)
   if (p.talimat && String(p.talimat).trim()) {
     lines.push('');
-    lines.push('=== ÖZEL TALİMATLAR ===');
+    lines.push('=== OZEL TALIMATLAR ===');
     lines.push(String(p.talimat).trim());
   }
+
   return lines.join('\n');
 }

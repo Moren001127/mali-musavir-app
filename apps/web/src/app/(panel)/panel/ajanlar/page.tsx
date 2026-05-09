@@ -6,7 +6,7 @@ import { agentsApi } from '@/lib/agents';
 import { api } from '@/lib/api';
 import {
   Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
-  Activity, CheckCircle2, Clock, ArrowRight, Sparkles, TrendingUp, AlertCircle, Zap,
+  Activity, CheckCircle2, Clock, ArrowRight, TrendingUp, AlertCircle, Zap,
   Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
 import AgentControlCard from './_components/AgentControlCard';
@@ -55,17 +55,11 @@ export default function AjanlarDashboard() {
       {/* HEADER */}
       <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
-              <Sparkles size={10} className="inline mr-1" /> Claude Powered
-            </span>
-          </div>
           <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
             Otomasyon Ajanları
           </h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-            Mali müşavirlik işleyişinin tekrarlayan kısımlarını Claude ajanlarına bırakın
+            Mali müşavirlik işleyişinin tekrarlayan kısımlarını otomasyon ajanlarına bırakın
           </p>
         </div>
         <Link href="/panel/ajanlar/loglar" className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
@@ -239,9 +233,6 @@ function AiUsageWidget({ data }: { data: any }) {
         <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>
           AI Kullanım & Maliyet
         </h2>
-        <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
-          · Claude Haiku 4.5
-        </span>
         <span className="text-xs ml-auto tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
           TCMB USD: ₺{USD_TO_TL.toFixed(4)}
         </span>

@@ -63,12 +63,6 @@ export function ComingSoon({ title, desc, icon: Icon, gradient, features }: Prop
             <Icon size={30} style={{ color: '#fff' }} strokeWidth={1.5} />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={13} style={{ color: 'rgba(255,255,255,.9)' }} />
-              <span className="text-[10px] font-bold tracking-[.18em] uppercase" style={{ color: 'rgba(255,255,255,.85)' }}>
-                Yakında · Claude Haiku 4.5
-              </span>
-            </div>
             <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 600, color: '#fff', letterSpacing: '-0.02em' }}>
               {title}
             </h2>

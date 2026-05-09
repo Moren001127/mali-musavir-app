@@ -6,7 +6,7 @@ import { pendingDecisionsApi } from '@/lib/pending-decisions';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import {
-  Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock, Sparkles,
+  Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock,
   Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
   PlayCircle,
 } from 'lucide-react';
@@ -185,10 +185,12 @@ export default function MihsapAgentPage() {
     atlanan: number;
     toplam: number;
     maliyetUsd?: number;
+    birimMaliyetUsd?: number;
+    aiCagriSayisi?: number;
   };
   type MukellefSummary = {
     period: { year: number; month: number };
-    toplam: { alis: number; satis: number; toplam: number; mukellefSayisi: number; maliyetUsd?: number };
+    toplam: { alis: number; satis: number; toplam: number; mukellefSayisi: number; maliyetUsd?: number; birimMaliyetUsd?: number };
     items: MukellefSummaryItem[];
   };
   const { data: mukellefSummary } = useQuery<MukellefSummary>({
@@ -270,12 +272,6 @@ export default function MihsapAgentPage() {
       {/* HEADER + KPI tek satırda */}
       <div className="flex items-end justify-between gap-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2.5 mb-1.5">
-            <span className="w-[26px] h-px" style={{ background: '#d4b876' }} />
-            <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>
-              <Sparkles size={10} className="inline mr-1" /> Claude Haiku 4.5 · Ajan
-            </span>
-          </div>
           <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.1 }}>
             Mihsap Fatura İşleyici
           </h1>
@@ -936,13 +932,13 @@ function MukellefIslemOzeti({
 
   // API'den gelen özet + mihsapId tanımlı olup henüz işlem GÖRMEMİŞ mükellefleri birleştir.
   // Böylece 0 işlem gören mükellefler de listede olur.
-  type Row = { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number; maliyetUsd?: number };
+  type Row = { mukellef: string; alis: number; satis: number; atlanan: number; toplam: number; maliyetUsd?: number; birimMaliyetUsd?: number; aiCagriSayisi?: number };
   const items: Row[] = summary?.items || [];
   const islenenSet = new Set(items.map((i) => i.mukellef));
   const islenmeyen: Row[] = mihsapTaxpayers
     .map(taxpayerName)
     .filter((ad) => ad && !islenenSet.has(ad))
-    .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0, maliyetUsd: 0 }));
+    .map((mukellef) => ({ mukellef, alis: 0, satis: 0, atlanan: 0, toplam: 0, maliyetUsd: 0, birimMaliyetUsd: 0, aiCagriSayisi: 0 }));
 
   // Alfabetik sıralama (Türkçe locale): işlem gören + görmeyen tek listede.
   const tumu = [...items, ...islenmeyen].sort((a, b) =>
@@ -956,6 +952,7 @@ function MukellefIslemOzeti({
   const toplamAlis = summary?.toplam?.alis ?? 0;
   const toplamSatis = summary?.toplam?.satis ?? 0;
   const toplamMaliyetUsd = summary?.toplam?.maliyetUsd ?? 0;
+  const toplamBirimMaliyetUsd = summary?.toplam?.birimMaliyetUsd ?? 0;
   const islemGorenAdedi = items.length;
   const islemGormeyenAdedi = islenmeyen.length;
   const fmtUsd = (v: number) =>
@@ -1003,7 +1000,7 @@ function MukellefIslemOzeti({
         <OzetHucre label="İşlem Görmeyen" value={islemGormeyenAdedi} alt={islemGormeyenAdedi > 0 ? 'manuel ya da eksik' : ''} color="#f59e0b" />
         <OzetHucre label="Toplam Alış" value={toplamAlis} alt="fatura" color="#059669" />
         <OzetHucre label="Toplam Satış" value={toplamSatis} alt="fatura" color="#2563eb" />
-        <OzetHucre label="Toplam Maliyet" valueText={fmtUsd(toplamMaliyetUsd)} alt="AI kullanımı" color="#a78bfa" />
+        <OzetHucre label="Toplam Maliyet" valueText={fmtUsd(toplamMaliyetUsd)} alt={`birim ${fmtUsd(toplamBirimMaliyetUsd)}`} color="#a78bfa" />
       </div>
 
       {/* TABLO */}
@@ -1022,6 +1019,7 @@ function MukellefIslemOzeti({
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Atlanan</th>
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Toplam</th>
                 <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Maliyet</th>
+                <th className="text-right px-4 py-2.5 text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'rgba(250,250,249,0.4)' }}>Birim</th>
               </tr>
             </thead>
             <tbody>
@@ -1066,6 +1064,9 @@ function MukellefIslemOzeti({
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.maliyetUsd ?? 0) > 0 ? '#a78bfa' : 'rgba(250,250,249,0.3)' }}>
                     {fmtUsd(row.maliyetUsd ?? 0)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums" style={{ color: (row.birimMaliyetUsd ?? 0) > 0 ? '#c4b5fd' : 'rgba(250,250,249,0.3)' }}>
+                    {fmtUsd(row.birimMaliyetUsd ?? 0)}
                   </td>
                 </tr>
                 );
