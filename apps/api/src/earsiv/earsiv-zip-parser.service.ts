@@ -34,7 +34,7 @@ export class EarsivZipParserService {
     const results: ParsedEarsivFatura[] = [];
 
     const xmlFiles: { name: string; content: string }[] = [];
-    const pdfFiles = new Map<string, Buffer>();
+    const pdfFiles = new Map<string, { name: string; fullPath: string; buffer: Buffer }>();
     const allEntries: string[] = [];
 
     // Recursive: ZIP içindeki ZIP'leri de aç
@@ -60,7 +60,7 @@ export class EarsivZipParserService {
           xmlFiles.push({ name: baseName, content });
         } else if (lower.endsWith('.pdf')) {
           const pdfBuf = await (file as any).async('nodebuffer');
-          pdfFiles.set(stem, pdfBuf);
+          pdfFiles.set(stem, { name: baseName, fullPath, buffer: pdfBuf });
         } else if (lower.endsWith('.zip')) {
           // Nested ZIP — recursively process
           const nestedBuf = await (file as any).async('nodebuffer');
@@ -89,15 +89,17 @@ export class EarsivZipParserService {
 
     const parseDiagnostics: string[] = [];
 
+    let pdfMatched = 0;
+
     for (const xml of xmlFiles) {
       try {
         const parsed = this.parseUblInvoice(xml.content);
         if (parsed) {
-          const stem = xml.name.replace(/\.[^.]+$/, '');
           parsed.zipFileName = xml.name;
-          parsed.pdfBuffer = pdfFiles.get(stem);
+          parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles);
+          if (parsed.pdfBuffer) pdfMatched++;
           results.push(parsed);
-          parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo})`);
+          parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'})`);
         } else {
           // FALLBACK 1: Top-level keys çıkar
           const topKeys = this.peekTopKeys(xml.content);
@@ -105,10 +107,10 @@ export class EarsivZipParserService {
           const fb = this.regexFallback(xml.content);
           if (fb) {
             fb.zipFileName = xml.name;
-            const stem = xml.name.replace(/\.[^.]+$/, '');
-            fb.pdfBuffer = pdfFiles.get(stem);
+            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
+            if (fb.pdfBuffer) pdfMatched++;
             results.push(fb);
-            parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},keys=${topKeys})`);
+            parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},keys=${topKeys})`);
           } else {
             parseDiagnostics.push(`${xml.name}:FAIL(keys=${topKeys},len=${xml.content.length})`);
           }
@@ -120,10 +122,10 @@ export class EarsivZipParserService {
           const fb = this.regexFallback(xml.content);
           if (fb) {
             fb.zipFileName = xml.name;
-            const stem = xml.name.replace(/\.[^.]+$/, '');
-            fb.pdfBuffer = pdfFiles.get(stem);
+            fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
+            if (fb.pdfBuffer) pdfMatched++;
             results.push(fb);
-            parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},err=${e.message?.slice(0, 30)})`);
+            parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
             continue;
           }
         } catch (e2: any) {}
@@ -137,10 +139,59 @@ export class EarsivZipParserService {
     // Meta bilgileri results array'ine ek property olarak attach et
     (results as any).__entries = allEntries;
     (results as any).__xmlCount = xmlFiles.length;
+    (results as any).__pdfCount = pdfFiles.size;
+    (results as any).__pdfMatched = pdfMatched;
     (results as any).__totalEntries = allEntries.length;
     (results as any).__diagnostics = parseDiagnostics;
 
     return results;
+  }
+
+  private normalizeFileKey(value?: string | null): string {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  private matchPdfBuffer(
+    parsed: Pick<ParsedEarsivFatura, 'faturaNo' | 'ettn'>,
+    xmlName: string,
+    xmlCount: number,
+    pdfFiles: Map<string, { name: string; fullPath: string; buffer: Buffer }>,
+  ): Buffer | undefined {
+    if (!pdfFiles.size) return undefined;
+
+    const pdfEntries = [...pdfFiles.entries()];
+    if (xmlCount === 1 && pdfEntries.length === 1) return pdfEntries[0][1].buffer;
+
+    const candidates = [
+      parsed.faturaNo,
+      parsed.ettn,
+      xmlName,
+      xmlName.replace(/\.[^.]+$/, ''),
+    ]
+      .map((v) => this.normalizeFileKey(v))
+      .filter(Boolean);
+
+    for (const candidate of candidates) {
+      const exact = pdfEntries.find(([stem, pdf]) =>
+        this.normalizeFileKey(stem) === candidate ||
+        this.normalizeFileKey(pdf.name) === candidate ||
+        this.normalizeFileKey(pdf.fullPath) === candidate,
+      );
+      if (exact) return exact[1].buffer;
+    }
+
+    for (const candidate of candidates) {
+      const fuzzy = pdfEntries.find(([stem, pdf]) => {
+        const keys = [stem, pdf.name, pdf.fullPath].map((v) => this.normalizeFileKey(v));
+        return keys.some((key) => key.includes(candidate) || candidate.includes(key));
+      });
+      if (fuzzy) return fuzzy[1].buffer;
+    }
+
+    return undefined;
   }
 
   /**

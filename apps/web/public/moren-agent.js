@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.93';
+  const AGENT_VERSION = '1.36.94';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -32,6 +32,25 @@
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
+
+  function lucaManualDownloadMode() {
+    try {
+      return !!window.__morenManualDownloadMode || !!window.top?.__morenManualDownloadMode;
+    } catch {
+      return !!window.__morenManualDownloadMode;
+    }
+  }
+
+  function allowLucaManualDownloads() {
+    try { window.__morenManualDownloadMode = true; } catch {}
+    try { if (window.top) window.top.__morenManualDownloadMode = true; } catch {}
+    const payload = { source: 'moren-agent', type: 'set-expecting', expecting: false };
+    try { window.postMessage(payload, '*'); } catch {}
+    try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch {}
+    return true;
+  }
+
+  window.__morenAllowLucaDownloads = allowLucaManualDownloads;
 
   // v1.36.62: Device-aware komutlar — extension geneli (chrome.storage) deviceId.
   // device-id-injector.js (ISOLATED world) chrome.storage'dan okuyup DOM dataset'e yazıyor.
@@ -1236,6 +1255,7 @@
     // ─── MOREN BRIDGE (Chrome extension) ───
     // Background script'e "download bekliyorum" sinyali (Excel akışıyla aynı)
     const postExpectingZip = (val) => {
+      if (val && lucaManualDownloadMode()) return;
       const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
       try { window.postMessage(payload, '*'); } catch (e) {}
       try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
@@ -1318,6 +1338,7 @@
         // Form submit hijack
         if (orig.origFormSubmit && orig.origFetch) {
           w.HTMLFormElement.prototype.submit = function() {
+            if (lucaManualDownloadMode()) return orig.origFormSubmit.call(this);
             try {
               var action = String(this.action || '').toLowerCase();
               if (action && (action.indexOf('zip') >= 0 || action.indexOf('indir') >= 0 || action.indexOf('download') >= 0)) {
@@ -1353,6 +1374,7 @@
         try {
           w.document.addEventListener('submit', function(ev) {
             try {
+              if (lucaManualDownloadMode()) return;
               var f = ev.target;
               if (!f || !f.action) return;
               var action = String(f.action || '').toLowerCase();
@@ -1397,6 +1419,7 @@
                 enumerable: desc.enumerable,
                 get: desc.get,
                 set: function(value) {
+                  if (lucaManualDownloadMode()) return origSet.call(this, value);
                   try {
                     var u = String(value || '').toLowerCase();
                     if (u && (u.indexOf('zip') >= 0 || u.indexOf('indir') >= 0 || u.indexOf('download') >= 0)) {
@@ -1424,6 +1447,7 @@
         // fetch
         if (orig.origFetch) {
           w.fetch = async function(...args) {
+            if (lucaManualDownloadMode()) return orig.origFetch.apply(this, args);
             const url = String(args[0] && args[0].url || args[0] || '');
             try {
               const lurl = url.toLowerCase();
@@ -1459,6 +1483,7 @@
             return orig.origXHROpen.call(this, method, url, ...rest);
           };
           w.XMLHttpRequest.prototype.send = function(...args) {
+            if (lucaManualDownloadMode()) return orig.origXHRSend.apply(this, args);
             const sendBody = args[0];
             const sendMethod = this.__method || 'POST';
             const fullUrl = this.__url;
@@ -1509,6 +1534,7 @@
         // window.open
         if (orig.origWindowOpen) {
           w.open = function(url, ...rest) {
+            if (lucaManualDownloadMode()) return orig.origWindowOpen.call(this, url, ...rest);
             try {
               const u = String(url || '').toLowerCase();
               if (u && (u.includes('zip') || u.includes('indir') || u.includes('download'))) {
@@ -1540,6 +1566,7 @@
             if (String(tagName).toLowerCase() === 'a') {
               const origClick = el.click.bind(el);
               el.click = function() {
+                if (lucaManualDownloadMode()) return origClick();
                 try {
                   const href = String(this.href || '').toLowerCase();
                   const dl = this.getAttribute('download');
@@ -4612,6 +4639,7 @@
     // ateşlemiyor → 90sn timeout. window.top kullan ki child frame'den
     // çağrılırsa bile bridge yakalasın.
     const postExpecting = (val) => {
+      if (val && lucaManualDownloadMode()) return;
       const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
       try { window.postMessage(payload, '*'); } catch (e) {}
       try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch (e) {}
@@ -4718,6 +4746,7 @@
       const origClick = proto.click;
       restoreFns.push(() => { try { proto.click = origClick; } catch (e) {} });
       proto.click = function () {
+        if (lucaManualDownloadMode()) return origClick.apply(this, arguments);
         const href = this.href || '';
         seenUrls.push(`${label}aclick:${href.split('?')[0].split('/').pop()}`);
         if (isExcelUrl(href)) {
@@ -4736,6 +4765,7 @@
       if (typeof origOpen !== 'function') return;
       restoreFns.push(() => { try { win.open = origOpen; } catch (e) {} });
       win.open = function (url, name, features) {
+        if (lucaManualDownloadMode()) return origOpen.apply(this, arguments);
         try {
           const urlStr = url ? String(url) : '';
           seenUrls.push(`${label}open:${urlStr.split('?')[0].split('/').pop()}`);
@@ -4761,6 +4791,7 @@
       const origSubmit = proto.submit;
       restoreFns.push(() => { try { proto.submit = origSubmit; } catch (e) {} });
       proto.submit = function () {
+        if (lucaManualDownloadMode()) return origSubmit.apply(this, arguments);
         try {
           const action = this.action || '';
           const method = (this.method || 'GET').toUpperCase();
@@ -8419,12 +8450,21 @@
       }
 
       const meta = await getFaturaMeta(fid);
+      const logMeta = (extra = {}) => ({
+        firma: meta.firma,
+        firmaKimlikNo: meta.firmaKimlikNo,
+        belgeNo: meta.belgeNo,
+        belgeTuru: meta.belgeTuru,
+        faturaTuru: meta.faturaTuru,
+        tutar: meta.tutar,
+        ...extra,
+      });
       const tarih = meta.tarih;
       const hedefAy = ay; // "2026-03"
       const ayUygun = tarih && String(tarih).startsWith(hedefAy);
       if (!ayUygun) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `tarih ${tarih} ≠ ${hedefAy}`, logMeta());
         await clickIleri(fid); continue;
       }
 
@@ -8786,7 +8826,7 @@
       const hasBosSelect = bosSelectVarMi() || isletmeAccountCodeFlow;
       if (!tumKodlarDolu(codes) && !hasBosSelect) {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', 'kod boş (hiç kod yok)', logMeta());
         await clickIleri(fid); continue;
       }
       // Ekrandaki select'lerden herhangi biri boşsa (matrah/KDV/cari)
@@ -8970,7 +9010,7 @@
         counters.atla++; counters.toplam++; setCount();
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `🔍 ${mismatchSebep} — F2 atlandı, manuel kontrol gerekli`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
+          logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta }));
         await clickIleri(fid); continue;
       }
       // onay_bekliyor: AI karari gecmisle celisiyor, insan onayi bekler.
@@ -8980,12 +9020,12 @@
         const sapma = (decision?.sapmaSebep || sebep || '').slice(0, 150);
         await logEvent(mukellef.id, mukellef.ad, 'skip',
           `⏸ Onay kuyruguna dustu: ${sapma}`,
-          { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
+          logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta }));
         await clickIleri(fid); continue;
       }
       if (karar === 'atla' || karar === 'emin_degil') {
         counters.atla++; counters.toplam++; setCount();
-        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, ...compareMeta });
+        await logEvent(mukellef.id, mukellef.ad, 'skip', `${karar}: ${sebep}`, logMeta({ hesapKodu: codes[0], hesapKodlari: codes, kdv: readKdvOrani(), kdvOranlari: readAllKdvOranlari(), satirSayisi: codes.length, decisionTrace, cacheHit: !!decision?.cacheHit, aiCallReason: decision?.aiCallReason || null, ...compareMeta }));
         await clickIleri(fid); continue;
       }
       // === v1.36.54: KDV ORAN GÜVENLİK NETİ — ÇOK SATIRLI FATURA DESTEĞİ ===
@@ -9013,7 +9053,7 @@
           const sapma = `KDV oran tutarsiz · ${tutarsizSatirlar.join(' · ')}`;
           await logEvent(mukellef.id, mukellef.ad, 'skip',
             `⏸ Onay kuyruguna dustu (guvenlik): ${sapma}`,
-            { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, hesapKodlari: codes, kdvOranlari, satirSayisi: codes.length, ...compareMeta });
+            logMeta({ hesapKodlari: codes, kdvOranlari, satirSayisi: codes.length, ...compareMeta }));
           await clickIleri(fid); continue;
         }
       } catch (kdvCheckErr) { /* sessizce gec — guvenlik neti hata yapsa bile akis bozulmasin */ }

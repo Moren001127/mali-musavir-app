@@ -965,6 +965,7 @@ Belge no olarak SADECE faturanın başındaki "Fatura No: XXX" veya "Belge No: X
         • Görüntüde ÖKC göstergelerinden (Z NO / EKÜ NO / T.SİCİL / EMV SATIŞ) en az 2 tanesi KESİN görünüyor
           VE ekrandaki belgeTuru "E_FATURA" veya "E_ARSIV" ise → ATLA ("ÖKC fişi ama Fatura seçilmiş")
         • Görüntüde e-Fatura/e-Arşiv göstergeleri KESİN var ama ekrandaki belgeTuru "FIS" ise → ATLA ("Fatura ama ÖKC seçilmiş")
+        • Görüntü ÖKC/yazarkasa fişi ve ekrandaki belgeTuru "FIS" / "Yazarkasa Fişi" ise UYUMLUDUR → ATLA DEME, ONAY.
         • Emin değilsen atlama, GEÇ.
 
     NOT: Okuyamadığın madde için atlama, GEÇ. Sadece KESİN gördüğün uyumsuzlukta atla.
@@ -1306,6 +1307,35 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                 parsed.karar = 'onay';
                 parsed.sebep = `F2 · otomatik onay (AI\'nın "${orijSebep.slice(0, 60)}" sebebi geçersiz — karşı firma yön bilgisi)`;
                 parsed._overrideReason = 'ai-gecersiz-sebep';
+              }
+              const fold = (v: any) => String(v || '')
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/ı/g, 'i');
+              const sebepFold = fold(parsed.sebep);
+              const ekranBelgeFold = fold(input.belgeTuru);
+              const aiBelgeFold = fold(parsed.belgeTuru);
+              const ekranFis = /(fis|okc|yazarkasa|perakende)/.test(ekranBelgeFold);
+              const ekranFatura = /e[_\s-]?(fatura|arsiv)|fatura/.test(ekranBelgeFold);
+              const kisaSayisalFisNo = /^\d{1,6}$/.test(String(input.belgeNo || '').trim());
+              const aiOkcDiyor = /(okc|yazarkasa|z\s*no|eku\s*no|terminal|fisidir|fisidir|fis\s*uyumsuzlugu)/.test(sebepFold)
+                || /(fis|okc|yazarkasa)/.test(aiBelgeFold);
+              const aiFaturaDiyor = /(e[_\s-]?fatura|e[_\s-]?arsiv)/.test(aiBelgeFold)
+                || /fatura ama/.test(sebepFold);
+              if (parsed.karar === 'atla' && ekranFis && aiOkcDiyor && !aiFaturaDiyor) {
+                const orijSebep = parsed.sebep;
+                parsed.karar = 'onay';
+                parsed.sebep = `ÖKC/Yazarkasa fişi ekrandaki belge türüyle uyumlu — otomatik onay`;
+                parsed._overrideReason = 'okc-fis-uyumlu';
+                parsed._originalSebep = orijSebep;
+              }
+              if (parsed.karar === 'atla' && ekranFatura && aiOkcDiyor && kisaSayisalFisNo && !aiFaturaDiyor) {
+                const orijSebep = parsed.sebep;
+                parsed.karar = 'onay';
+                parsed.sebep = `ÖKC/Yazarkasa fişi tespit edildi; kısa fiş no nedeniyle eski belge türü bilgisi yok sayıldı`;
+                parsed._overrideReason = 'okc-fis-api-belge-turu-stale';
+                parsed._originalSebep = orijSebep;
               }
             }
 
