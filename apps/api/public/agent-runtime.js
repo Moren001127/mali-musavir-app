@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.71';
+  const AGENT_VERSION = '1.36.72';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6010,19 +6010,17 @@
         const iptal = findIn('İptal') || findIn('Vazgeç');
         if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
       }
-      // "Tutar/toplam farklıdır, onaylıyor musunuz?" uyarısı (özellikle Z Raporu'nda
-      // kredi toplam tutarı ile onaylanan tutar farklı olduğunda çıkar) →
-      // Onayla ama sonra TEKRAR F2 gerekli. MIHSAP bu onaydan sonra otomatik
-      // kaydetmez, seni editöre geri döndürür. Kullanıcı talimatı: "Onayla dedikten
-      // sonra hiç beklemeden tekrar F2 Kaydet diyorsun."
+      // Bu uyarıdaki fark gerçek tutar/kredi-nakit dağılım farkı. Onayla dersek
+      // Mihsap onay akışını karıştırıyor; doğru davranış Vazgeç/Hayır deyip editöre
+      // dönmek, sonra aynı faturada bir kez daha F2 denemek.
       if (/toplam.*farklı/i.test(text) ||
           /tutar.*farklı/i.test(text) ||
           /farklı.*onayl/i.test(text) ||
           /kredi.*farklı/i.test(text)) {
-        const onayla =
-          findIn('Onayla') || findIn('Evet') || findIn('Tamam') ||
-          findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
-        if (onayla) { await click(onayla); await sleep(300); return 'resubmit'; }
+        const vazgec =
+          findIn('Vazgeç') || findIn('Vazgec') || findIn('Hayır') || findIn('Hayir') || findIn('İptal') ||
+          findInStarts('Vazgeç') || findInStarts('Vazgec') || findInStarts('Hayır') || findInStarts('Hayir');
+        if (vazgec) { await click(vazgec); await sleep(700); return 'retry-f2'; }
       }
       // Hesap kodu boş uyarısı → Evet/Tamam ile devam et (atlamak için)
       if (/Hesap kodu girilmemiş/i.test(text) ||
@@ -6172,7 +6170,7 @@
     let tries = 0;
     while (tries < 4 && getVisibleModals().length > 0) {
       const result = await handleDialogs();
-      if (result === 'resubmit') {
+      if (result === 'resubmit' || result === 'retry-f2') {
         // Onayla'dan önceki fid'i referans al (fidAtStart — bu fonksiyonun girişindeki fid).
         // 5 sn bekle + URL kontrolü; hâlâ aynı faturadaysak F2 bas, değilse bırak.
         const r = await onaylaSonrasiF2(fidAtStart);
