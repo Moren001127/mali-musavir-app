@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.90';
+  const AGENT_VERSION = '1.36.91';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6004,9 +6004,13 @@
 
   // === MIHSAP FATURA İŞLEME ===
   function getVisibleModals() {
-    return [...document.querySelectorAll('.ant-modal')].filter(
-      (m) => m.offsetParent !== null && !m.classList.contains('ant-modal-hidden'),
-    );
+    return [...document.querySelectorAll('.ant-modal, .ant-popover')].filter((m) => {
+      if (m.offsetParent === null) return false;
+      if (m.classList.contains('ant-modal-hidden') || m.classList.contains('ant-popover-hidden')) return false;
+      const st = getComputedStyle(m);
+      if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') return false;
+      return true;
+    });
   }
 
   async function handleDialogs() {
