@@ -360,7 +360,7 @@ export class AgentEventsService {
         where: {
           tenantId,
           createdAt: { gte: periodStart, lt: periodEnd },
-          source: { in: ['mihsap-fatura', 'mihsap-fatura-cache'] },
+          source: { in: ['mihsap-fatura', 'mihsap-fatura-cache', 'mihsap-isletme'] },
         },
         select: { costUsd: true, mukellef: true, inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true },
       });
@@ -1722,6 +1722,9 @@ Fatura görüntüsünden şu alanları çıkarıp JSON'a da ekle (okunamazsa nul
 • cari: fatura üzerindeki karşı firma tam ünvanı
 • belgeTuru: "E_FATURA" | "E_ARSIV" | "FIS" | "IRSALIYE"
 • kdvOrani: "0" | "1" | "10" | "20"
+• ocrToplam: faturadaki TOPLAM / genel toplam tutarı, sayı olarak. Okunamazsa null, tahmin etme.
+• ocrMatrah: faturadaki KDV hariç matrah toplamı, sayı olarak. Okunamazsa null, tahmin etme.
+• ocrKdvTutari: faturadaki toplam KDV tutarı, sayı olarak. Okunamazsa null, tahmin etme.
 
 ### SEBEP YAZIM KURALI ###
 Sebep yazarken MÜKELLEF AÇISINDAN yaz (işlem yönü "${islemTuru}"):
@@ -1729,8 +1732,8 @@ Sebep yazarken MÜKELLEF AÇISINDAN yaz (işlem yönü "${islemTuru}"):
 • SATIŞ ise "gelir/satış" terimleri kullan.
 
 ### ÇIKTI ###
-Sadece JSON: {"emin":true,"kayitTuru":"<liste değeri>","altTuru":"<liste değeri>","sebep":"60 karakter","tarih":"DD.MM.YYYY"|null,"belgeNo":"..."|null,"cari":"..."|null,"belgeTuru":"..."|null,"kdvOrani":"..."|null}
-veya: {"emin":false,"sebep":"60 karakter","tarih":null,"belgeNo":null,"cari":null,"belgeTuru":null,"kdvOrani":null}`;
+Sadece JSON: {"emin":true,"kayitTuru":"<liste değeri>","altTuru":"<liste değeri>","sebep":"60 karakter","tarih":"DD.MM.YYYY"|null,"belgeNo":"..."|null,"cari":"..."|null,"belgeTuru":"..."|null,"kdvOrani":"..."|null,"ocrToplam":123.45|null,"ocrMatrah":100.00|null,"ocrKdvTutari":23.45|null}
+veya: {"emin":false,"sebep":"60 karakter","tarih":null,"belgeNo":null,"cari":null,"belgeTuru":null,"kdvOrani":null,"ocrToplam":null,"ocrMatrah":null,"ocrKdvTutari":null}`;
 
     const userText = `Mükellef: ${input.mukellef || '?'} | Karşı firma: ${input.firma || '?'}
 Belge no: ${input.belgeNo || '?'} | Tarih: ${input.faturaTarihi || '?'} | Tutar: ${input.tutar || '?'}
@@ -1769,7 +1772,7 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 500,
+          max_tokens: 650,
           system: [
             { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
           ],

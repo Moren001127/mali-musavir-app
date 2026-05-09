@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.92';
+  const AGENT_VERSION = '1.36.93';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8143,8 +8143,15 @@
     return false;
   }
 
-  async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
-    const img = await getFaturaImageBase64();
+  async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, mukellefId, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
+    const fid = getCurrentFid();
+    let img = null;
+    if (window.__morenFaturaImageCache?.fid === fid && window.__morenFaturaImageCache?.img) {
+      img = window.__morenFaturaImageCache.img;
+    } else {
+      img = await getFaturaImageBase64();
+      if (img) window.__morenFaturaImageCache = { fid, img, ts: Date.now() };
+    }
     if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
     return await api('/agent/ai/decide-isletme', {
       method: 'POST',
@@ -8154,7 +8161,7 @@
         altTuruOptions: altOptions,
         faturaTarihi: tarih,
         belgeNo, belgeTuru, faturaTuru,
-        mukellef, firma,
+        mukellef, mukellefId, firma,
         firmaKimlikNo, // Firma Hafizasi icin VKN/TCKN
         tutar, matrah, kdv,
         action, blokIndex, blokToplam,
@@ -8164,6 +8171,123 @@
 
   // v1.36.21: Pause/Resume kontrolü — portaldan set edilen state'i her mükellef
   // arasında kontrol et. PAUSED ise resume olana kadar bekle (5sn polling).
+  function parseAmountLoose(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    let s = String(v).trim().replace(/[^\d,.-]/g, '');
+    if (!s) return null;
+    const lastComma = s.lastIndexOf(',');
+    const lastDot = s.lastIndexOf('.');
+    if (lastComma > lastDot) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function parseDateToIso(v) {
+    const s = String(v || '').trim();
+    let m = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/);
+    if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    return null;
+  }
+
+  function normDocNo(v) {
+    return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  function docNoMatches(aiNo, mihsapNo) {
+    const a = normDocNo(aiNo);
+    const b = normDocNo(mihsapNo);
+    if (!a || !b) return true;
+    if (a === b) return true;
+    if (Math.min(a.length, b.length) < 8) return false;
+    return a.endsWith(b) || b.endsWith(a);
+  }
+
+  function belgeTuruMatches(aiBelgeTuru, mihsapBelgeTuru) {
+    const ai = String(aiBelgeTuru || '').toUpperCase();
+    const m = String(mihsapBelgeTuru || '').toLowerCase();
+    if (!ai || !m) return true;
+    if (ai.includes('E_FATURA')) return /e-?fatura/.test(m);
+    if (ai.includes('E_ARSIV') || ai.includes('E_ARŞIV')) return /e-?ar[sş]iv/.test(m);
+    if (ai.includes('FIS') || ai.includes('FIŞ')) return /fi[sş]|fis/.test(m);
+    return true;
+  }
+
+  function compareIsletmeOcrFields(karar, meta, ust) {
+    const sorunlar = [];
+    const aiTarih = parseDateToIso(karar?.tarih);
+    const mihsapTarih = parseDateToIso(meta?.tarih);
+    if (aiTarih && mihsapTarih && aiTarih !== mihsapTarih) {
+      sorunlar.push(`tarih belge:${aiTarih} mihsap:${mihsapTarih}`);
+    }
+    if (karar?.belgeNo && meta?.belgeNo && !docNoMatches(karar.belgeNo, meta.belgeNo)) {
+      sorunlar.push(`belgeNo belge:${karar.belgeNo} mihsap:${meta.belgeNo}`);
+    }
+    if (karar?.belgeTuru && ust?.belgeTuru && !belgeTuruMatches(karar.belgeTuru, ust.belgeTuru)) {
+      sorunlar.push(`belgeTuru belge:${karar.belgeTuru} mihsap:${ust.belgeTuru}`);
+    }
+    const belgeToplam = parseAmountLoose(karar?.ocrToplam);
+    const mihsapToplam = parseAmountLoose(meta?.tutar);
+    if (belgeToplam != null && mihsapToplam != null && Math.abs(belgeToplam - mihsapToplam) > 1) {
+      sorunlar.push(`toplam belge:${belgeToplam.toFixed(2)} mihsap:${mihsapToplam.toFixed(2)}`);
+    }
+    return {
+      ok: sorunlar.length === 0,
+      sorunlar,
+      belgeToplam,
+      belgeMatrah: parseAmountLoose(karar?.ocrMatrah),
+      belgeKdvTutari: parseAmountLoose(karar?.ocrKdvTutari),
+    };
+  }
+
+  async function validateIsletmeBeforeF2({ blok, meta, ust, mukellef, action }) {
+    const tumAltOptions = [];
+    for (const vals of Object.values(ISLETME_KAYIT_ALT_MAP)) {
+      for (const v of vals) if (!tumAltOptions.includes(v)) tumAltOptions.push(v);
+    }
+    const d = blok.detay[0];
+    if (!d) return { ok: false, sebep: 'blok yok' };
+    const karar = await aiDecideIsletme({
+      kayitOptions: ISLETME_KAYIT_TURU_LIST_ALIS,
+      altOptions: tumAltOptions,
+      tarih: meta.tarih,
+      belgeNo: meta.belgeNo,
+      belgeTuru: ust.belgeTuru,
+      faturaTuru: ust.faturaTuru,
+      mukellef: mukellef.ad,
+      mukellefId: mukellef.id,
+      firma: meta.firma,
+      firmaKimlikNo: meta.firmaKimlikNo,
+      tutar: meta.tutar,
+      matrah: d.matrah,
+      kdv: d.kdv,
+      action,
+      blokIndex: 1,
+      blokToplam: blok.detay.length,
+    });
+    if (karar?.karar === 'onay_bekliyor') {
+      return { ok: false, sebep: `Onay kuyrugu: ${(karar.sapmaSebep || karar.sebep || '').slice(0, 120)}` };
+    }
+    if (!karar?.emin || !karar.kayitTuru || !karar.altTuru) {
+      return { ok: false, sebep: `OCR/AI emin degil: ${(karar?.sebep || '').slice(0, 120)}` };
+    }
+    if (d.kayitDeger && karar.kayitTuru && d.kayitDeger !== karar.kayitTuru) {
+      return { ok: false, sebep: `Kayit turu uyusmaz: belge:${karar.kayitTuru} mihsap:${d.kayitDeger}` };
+    }
+    if (d.altDeger && karar.altTuru && d.altDeger !== karar.altTuru) {
+      return { ok: false, sebep: `K.alt turu uyusmaz: belge:${karar.altTuru} mihsap:${d.altDeger}` };
+    }
+    const cmp = compareIsletmeOcrFields(karar, meta, ust);
+    if (!cmp.ok) return { ok: false, sebep: `Belge-Mihsap uyusmaz: ${cmp.sorunlar.join(' | ')}`, cmp };
+    return {
+      ok: true,
+      sebep: `OCR toplam:${cmp.belgeToplam ?? '-'} matrah:${cmp.belgeMatrah ?? '-'} kdv:${cmp.belgeKdvTutari ?? '-'} · OCR:${karar.kayitTuru}/${karar.altTuru}`,
+    };
+  }
+
   async function checkPauseAndWait() {
     while (true) {
       try {
@@ -8575,6 +8699,30 @@
         ust.belgeTuru = ustFinal.belgeTuru;
         ust.alisSatisTuru = ustFinal.alisSatisTuru;
         const blokLog = blok.detay.map((d, i) => `B${i + 1}:${(d.kayitDeger || '?').slice(0, 20)}/${(d.altDeger || '?').slice(0, 20)}`).join(' ');
+
+        setStatus(`${mukellef.ad} · #${fid} İşletme OCR kontrol...`);
+        const ocrKontrol = await validateIsletmeBeforeF2({ blok, meta, ust, mukellef, action });
+        if (!ocrKontrol.ok) {
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip', `${mTag} · OCR kontrol: ${ocrKontrol.sebep}`, {
+            firma: meta.firma,
+            belgeNo: meta.belgeNo,
+            tutar: meta.tutar,
+            tarih: meta.tarih,
+            belgeTuru: ust.belgeTuru,
+            faturaTuru: ust.faturaTuru,
+            alisSatisTuru: ust.alisSatisTuru,
+            isletmeBloklari: blok.detay.map((d, i) => ({
+              blok: i + 1,
+              kayitTuru: d.kayitDeger || null,
+              altTuru: d.altDeger || null,
+              matrah: d.matrah || null,
+              kdv: d.kdv || null,
+            })),
+          });
+          await clickIleri(fid); continue;
+        }
+        aiOzet.push(ocrKontrol.sebep);
 
         // --- 5) F2 ile kaydet ---
         try {
