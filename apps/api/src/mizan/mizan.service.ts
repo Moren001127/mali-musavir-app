@@ -832,6 +832,96 @@ export class MizanService {
     return { ...m, toplamBorc, toplamAlacak };
   }
 
+  async exportToExcel(id: string, tenantId: string): Promise<Buffer> {
+    const ExcelJS = await import('exceljs');
+    const m = await this.getMizan(id, tenantId);
+    const wb = new (ExcelJS as any).Workbook();
+    const ws = wb.addWorksheet('Mizan');
+    const taxpayerName =
+      m.taxpayer?.companyName ||
+      [m.taxpayer?.firstName, m.taxpayer?.lastName].filter(Boolean).join(' ') ||
+      'Mükellef';
+
+    wb.creator = 'Moren Mali Müşavirlik';
+    wb.created = new Date();
+    ws.views = [{ state: 'frozen', ySplit: 5 }];
+    ws.columns = [
+      { header: 'Hesap Kodu', key: 'kod', width: 16 },
+      { header: 'Hesap Adı', key: 'ad', width: 48 },
+      { header: 'Borç', key: 'borc', width: 18 },
+      { header: 'Alacak', key: 'alacak', width: 18 },
+      { header: 'Borç Bakiyesi', key: 'borcBakiye', width: 18 },
+      { header: 'Alacak Bakiyesi', key: 'alacakBakiye', width: 18 },
+    ];
+
+    ws.spliceRows(1, 0, [], [], [], []);
+    ws.mergeCells('A1:F1');
+    ws.getCell('A1').value = 'MİZAN';
+    ws.mergeCells('A2:F2');
+    ws.getCell('A2').value = taxpayerName;
+    ws.mergeCells('A3:F3');
+    ws.getCell('A3').value = `${m.donem} · ${m.donemTipi || 'Dönem'} · ${m.hesaplar?.length || 0} hesap satırı`;
+
+    for (const addr of ['A1', 'A2', 'A3']) {
+      ws.getCell(addr).alignment = { horizontal: 'center' };
+      ws.getCell(addr).font = { bold: true, size: addr === 'A1' ? 16 : 12, color: { argb: addr === 'A1' ? 'FFD4B876' : 'FFFFFFFF' } };
+      ws.getCell(addr).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF11100D' } };
+    }
+
+    const header = ws.getRow(5);
+    header.values = ['Hesap Kodu', 'Hesap Adı', 'Borç', 'Alacak', 'Borç Bakiyesi', 'Alacak Bakiyesi'];
+    header.height = 24;
+    header.eachCell((cell: any) => {
+      cell.font = { bold: true, color: { argb: 'FFF5EFE3' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3A3324' } };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF8A7445' } },
+        bottom: { style: 'thin', color: { argb: 'FF8A7445' } },
+        left: { style: 'thin', color: { argb: 'FF4A412E' } },
+        right: { style: 'thin', color: { argb: 'FF4A412E' } },
+      };
+    });
+
+    let rowNo = 6;
+    for (const h of m.hesaplar || []) {
+      const row = ws.getRow(rowNo++);
+      row.values = [
+        h.hesapKodu,
+        h.hesapAdi,
+        Number(h.borcToplami) || null,
+        Number(h.alacakToplami) || null,
+        Number(h.borcBakiye) || null,
+        Number(h.alacakBakiye) || null,
+      ];
+      const level = Number(h.seviye || 0);
+      const isUpper = level <= 1;
+      row.height = 22;
+      row.eachCell((cell: any, col: number) => {
+        cell.font = { bold: isUpper, color: { argb: col === 1 ? 'FFD8C17F' : 'FF1F2937' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isUpper ? 'FFFFF7E6' : 'FFFFFFFF' } };
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+        cell.alignment = { horizontal: col >= 3 ? 'right' : 'left', vertical: 'middle', indent: col === 2 && !isUpper ? 1 : 0 };
+        if (col >= 3) cell.numFmt = '#,##0.00';
+      });
+    }
+
+    const totalRow = ws.getRow(rowNo + 1);
+    totalRow.values = ['', 'TOPLAM', Number(m.toplamBorc) || 0, Number(m.toplamAlacak) || 0, '', ''];
+    totalRow.eachCell((cell: any, col: number) => {
+      cell.font = { bold: true, color: { argb: 'FF111827' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1C2' } };
+      cell.border = { top: { style: 'medium', color: { argb: 'FFD4B876' } } };
+      cell.alignment = { horizontal: col >= 3 ? 'right' : 'left' };
+      if (col >= 3) cell.numFmt = '#,##0.00';
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return buffer as Buffer;
+  }
+
   async deleteMizan(id: string, tenantId: string) {
     const m = await (this.prisma as any).mizan.findFirst({ where: { id, tenantId } });
     if (!m) throw new NotFoundException('Mizan bulunamadı');

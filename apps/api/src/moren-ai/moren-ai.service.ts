@@ -485,11 +485,37 @@ export class MorenAiService {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
     // --- WORKFLOW DURUMU
-    const monthlyStatuses = await this.prisma.taxpayerMonthlyStatus.findMany({
-      where: { tenantId, year, month },
-      include: { taxpayer: { select: { isActive: true, companyName: true, firstName: true, lastName: true, id: true } } },
+    const firstDay = new Date(year, month - 1, 1);
+    const lastDay = new Date(year, month, 0, 23, 59, 59);
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        OR: [{ startDate: null }, { startDate: { lte: lastDay } }],
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: firstDay } }] }],
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, isActive: true, startDate: true },
     });
-    const aktif = monthlyStatuses.filter((s: any) => s.taxpayer?.isActive);
+    const monthlyStatuses = taxpayers.length
+      ? await this.prisma.taxpayerMonthlyStatus.findMany({
+          where: { tenantId, year, month, taxpayerId: { in: taxpayers.map((t) => t.id) } },
+        })
+      : [];
+    const statusMap = new Map(monthlyStatuses.map((s: any) => [s.taxpayerId, s]));
+    const aktif = taxpayers.map((taxpayer: any) => ({
+      ...(statusMap.get(taxpayer.id) || {
+        id: `virtual-${taxpayer.id}-${year}-${month}`,
+        updatedAt: taxpayer.startDate || firstDay,
+        evraklarGeldi: false,
+        evraklarIslendi: false,
+        kontrolEdildi: false,
+        beyannameVerildi: false,
+        indirilecekKdvKontrol: false,
+        hesaplananKdvKontrol: false,
+        eArsivKontrol: false,
+      }),
+      taxpayer,
+    }));
     let bekliyorEvrak = 0, isleniyor = 0, kontrol = 0, beyan = 0, tamam = 0;
     let enUzunBekleyen: { ad: string; gun: number; stage: string; id: string } | null = null;
     let toplamBekleyenGun = 0, sayilanBekleyen = 0;
@@ -530,7 +556,12 @@ export class MorenAiService {
     let bugunGorev = 0, haftaGorev = 0, geciken = 0;
     try {
       const tasks = await (this.prisma as any).task.findMany({
-        where: { tenantId, isCompleted: false, dueDate: { lte: sevenDaysOut } },
+        where: {
+          tenantId,
+          isTemplate: false,
+          status: { in: ['OPEN', 'IN_PROGRESS', 'MISSED'] },
+          dueDate: { lte: sevenDaysOut },
+        },
         select: { dueDate: true, title: true },
       });
       for (const t of tasks as any[]) {
@@ -605,12 +636,12 @@ export class MorenAiService {
     const saat = c.saat;
     const moodHint = saat < 6 ? 'gece' : saat < 12 ? 'sabah' : saat < 18 ? 'gündüz' : 'akşam';
 
-    return `Sen Muzaffer Bey'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın.
+    return `Sen Muzaffer Bey'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın. Gerektiğinde ofisi nazikçe eleştirirsin; aksayan iş varsa üstünü örtmezsin. Tonun canlıdır: küçük bir espri veya tatlı iğneleme kullanabilirsin ama kritik uyarılarda ciddiyeti bozmazsın.
 
 # OFİS DURUMU (${c.tarihUzun}, ${moodHint} saat ${saat})
 
 ## İş Akışı
-- ${c.workflow.total} aktif mükelleften:
+- Bu ay iş akışına alınmış ${c.workflow.total} aktif mükellef:
   - ${c.workflow.bekliyorEvrak} mükellef evrak bekliyor
   - ${c.workflow.isleniyor} mükellef evrakları işlenmeyi bekliyor
   - ${c.workflow.kontrol} mükellef KDV kontrol bekliyor
@@ -641,7 +672,7 @@ ${c.deadlines.length === 0 ? '- Bu hafta yaklaşan beyanname yok' : c.deadlines.
 SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markdown code fence dahi):
 
 {
-  "summary": "2-3 cümle profesyonel analiz. Sayıları kullan ama akıcı olsun. Aksiyon belirten cümle bitir. 'Günaydın' deme; doğrudan duruma gir.",
+  "summary": "2-3 cümle profesyonel analiz. Sayıları kullan, aksayan yeri açık söyle, aksiyonla bitir. Uygunsa tek kısa espri ekleyebilirsin. 'Günaydın' deme; doğrudan duruma gir.",
   "alerts": [
     { "severity": "high|medium|low", "text": "Acil dikkat çeken konu (örn: '5 gündür bekleyen Kaya İnşaat var')", "href": "/panel/is-yuku" }
   ],
@@ -653,10 +684,11 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 }
 
 KURALLAR:
-- summary: 200 karakter, 2-3 cümle. Aktör Muzaffer Bey'e doğrudan hitap.
+- summary: 260 karakteri geçmesin, 2-3 cümle. Aktör Muzaffer Bey'e doğrudan hitap.
 - alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Boş varsa boş array.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
+- Eleştiri varsa net ve çözüm odaklı olsun; mizah varsa tek cümleyi geçmesin.
 - Sadece JSON yaz. Başına/sonuna hiçbir metin/markdown ekleme.
 - Türkçe, profesyonel ton, samimi ama mesafeli.`;
   }
@@ -705,15 +737,19 @@ KURALLAR:
 
     // Summary
     if (aktifIsYuku === 0) {
-      summary = `Bu sabah aktif iş yükü yok. ${c.workflow.tamam} mükellef tamamlandı, sistem hazır.`;
+      if (c.workflow.total === 0) {
+        summary = `Bu ay iş akışına alınmış mükellef görünmüyor. Liste boşsa sorun yok; değilse veri akışını kontrol edelim, çünkü panel kahve molasına çıkmış gibi duruyor.`;
+      } else {
+        summary = `Bu ay iş akışındaki ${c.workflow.total} mükellefte aktif iş yükü yok. ${c.workflow.tamam} mükellef tamamlandı; bekleyen evrak varsa pazartesiye bırakmadan yoklayalım.`;
+      }
     } else {
       const parcalar: string[] = [];
       if (c.workflow.kontrol > 0) parcalar.push(`${c.workflow.kontrol} KDV kontrol`);
       if (c.workflow.beyan > 0) parcalar.push(`${c.workflow.beyan} beyanname`);
       if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} fatura işleme`);
-      summary = `Şu an ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
-      if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor — sıradakini hemen bitirmen önemli.`;
-      else summary += ' İş Akışı sayfasından FIFO sırayla devam edebilirsin.';
+      summary = `Bu ay iş akışında ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
+      if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor; burada topu taca atmayalım, sıradakini bugün kapatalım.`;
+      else summary += ' Akış temiz; sırayı bozmadan devam edersek iş büyümeden kapanır.';
       if (focus === 'calm') focus = 'busy';
     }
 

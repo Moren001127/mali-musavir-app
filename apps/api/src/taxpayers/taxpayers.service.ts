@@ -269,21 +269,41 @@ export class TaxpayersService {
     const y = year ?? now.getFullYear();
     const m = month ?? now.getMonth() + 1;
 
-    const statuses = await this.prisma.taxpayerMonthlyStatus.findMany({
-      where: { tenantId, year: y, month: m },
-      include: {
-        taxpayer: {
-          select: { id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true, isActive: true },
-        },
+    const firstDay = new Date(y, m - 1, 1);
+    const lastDay = new Date(y, m, 0, 23, 59, 59);
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        OR: [{ startDate: null }, { startDate: { lte: lastDay } }],
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: firstDay } }] }],
       },
+      select: { id: true, type: true, firstName: true, lastName: true, companyName: true, taxNumber: true, isActive: true, startDate: true },
     });
+    const taxpayerIds = taxpayers.map((t) => t.id);
+    const statuses = taxpayerIds.length
+      ? await this.prisma.taxpayerMonthlyStatus.findMany({
+          where: { tenantId, year: y, month: m, taxpayerId: { in: taxpayerIds } },
+        })
+      : [];
+    const statusMap = new Map(statuses.map((s) => [s.taxpayerId, s]));
 
     // Aktif olmayan mükellefleri filtrele
-    const aktifStatuses = statuses.filter((s) => s.taxpayer.isActive);
-
     // Aşamayı belirle
-    const items = aktifStatuses.map((s) => {
-      const ad = s.taxpayer.companyName || `${s.taxpayer.firstName ?? ''} ${s.taxpayer.lastName ?? ''}`.trim();
+    const items = taxpayers.map((taxpayer) => {
+      const existingStatus: any = statusMap.get(taxpayer.id);
+      const s: any = existingStatus || {
+        id: `virtual-${taxpayer.id}-${y}-${m}`,
+        updatedAt: taxpayer.startDate || firstDay,
+        evraklarGeldi: false,
+        evraklarIslendi: false,
+        kontrolEdildi: false,
+        beyannameVerildi: false,
+        indirilecekKdvKontrol: false,
+        hesaplananKdvKontrol: false,
+        eArsivKontrol: false,
+      };
+      const ad = taxpayer.companyName || `${taxpayer.firstName ?? ''} ${taxpayer.lastName ?? ''}`.trim();
 
       // Hangi aşamada?
       let stage: 'EVRAK_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
@@ -298,7 +318,7 @@ export class TaxpayersService {
       if (s.beyannameVerildi) {
         stage = 'TAMAM';
         actionLabel = 'Tamamlandı';
-        actionPath = `/panel/mukellefler/${s.taxpayer.id}`;
+        actionPath = `/panel/mukellefler/${taxpayer.id}`;
       } else if (s.kontrolEdildi || kdvKontrolHepsiTamam) {
         stage = 'BEYANNAME_BEKLIYOR';
         actionLabel = 'Beyanname Hazırla';
@@ -314,7 +334,7 @@ export class TaxpayersService {
       } else {
         stage = 'EVRAK_BEKLIYOR';
         actionLabel = 'Evrak Bekleniyor';
-        actionPath = `/panel/mukellefler/${s.taxpayer.id}`;
+        actionPath = `/panel/mukellefler/${taxpayer.id}`;
       }
 
       // Bekleme süresi: updatedAt'ten şimdiye kaç gün
@@ -324,10 +344,10 @@ export class TaxpayersService {
 
       return {
         statusId: s.id,
-        taxpayerId: s.taxpayer.id,
+        taxpayerId: taxpayer.id,
         taxpayerName: ad,
-        taxNumber: s.taxpayer.taxNumber,
-        type: s.taxpayer.type,
+        taxNumber: taxpayer.taxNumber,
+        type: taxpayer.type,
         stage,
         actionLabel,
         actionPath,
@@ -337,6 +357,7 @@ export class TaxpayersService {
         evraklarIslendi: s.evraklarIslendi,
         kontrolEdildi: s.kontrolEdildi || kdvKontrolHepsiTamam,
         beyannameVerildi: s.beyannameVerildi,
+        monthlyStatusExists: !!existingStatus,
       };
     });
 

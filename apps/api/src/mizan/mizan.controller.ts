@@ -50,6 +50,22 @@ export class MizanController {
     return this.mizanService.getMizan(id, req.user.tenantId);
   }
 
+  @Get('mizan/:id/export-excel')
+  @Roles('ADMIN', 'STAFF')
+  async exportMizan(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const buffer = await this.mizanService.exportToExcel(id, req.user.tenantId);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="mizan-${id}.xlsx"`);
+    res.send(buffer);
+  }
+
   @Post('mizan/import')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
@@ -247,6 +263,22 @@ export class MizanController {
   @Get('bilanco')
   listBilancolar(@Req() req: any, @Query('taxpayerId') taxpayerId?: string) {
     return this.bilancoService.listBilancolar(req.user.tenantId, taxpayerId);
+  }
+
+  @Get('bilanco/:id/export-excel')
+  @Roles('ADMIN', 'STAFF')
+  async exportBilanco(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Res() res: any,
+  ) {
+    const buffer = await this.bilancoService.exportToExcel(id, req.user.tenantId);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="bilanco-${id}.xlsx"`);
+    res.send(buffer);
   }
 
   @Get('bilanco/:id')

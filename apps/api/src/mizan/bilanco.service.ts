@@ -782,6 +782,135 @@ export class BilancoService {
     return notlar.join(' · ') + '.';
   }
 
+  async exportToExcel(id: string, tenantId: string): Promise<Buffer> {
+    const ExcelJS = await import('exceljs');
+    const b = await this.getBilanco(id, tenantId);
+    const wb = new (ExcelJS as any).Workbook();
+    const ws = wb.addWorksheet('Bilanço');
+    const taxpayerName =
+      b.taxpayer?.companyName ||
+      [b.taxpayer?.firstName, b.taxpayer?.lastName].filter(Boolean).join(' ') ||
+      'Mükellef';
+
+    wb.creator = 'Moren Mali Müşavirlik';
+    wb.created = new Date();
+    ws.views = [{ state: 'frozen', ySplit: 5 }];
+    ws.columns = [
+      { header: 'Taraf', key: 'taraf', width: 13 },
+      { header: 'Kod/Grup', key: 'kod', width: 16 },
+      { header: 'Kalem', key: 'kalem', width: 54 },
+      { header: 'Tutar', key: 'tutar', width: 18 },
+    ];
+
+    ws.spliceRows(1, 0, [], [], [], []);
+    ws.mergeCells('A1:D1');
+    ws.getCell('A1').value = 'BİLANÇO';
+    ws.mergeCells('A2:D2');
+    ws.getCell('A2').value = taxpayerName;
+    ws.mergeCells('A3:D3');
+    ws.getCell('A3').value = `${b.donem} · ${b.donemTipi || 'Dönem'} · ${b.tarih ? new Date(b.tarih).toLocaleDateString('tr-TR') : ''}`;
+
+    for (const addr of ['A1', 'A2', 'A3']) {
+      const cell = ws.getCell(addr);
+      cell.alignment = { horizontal: 'center' };
+      cell.font = { bold: true, size: addr === 'A1' ? 16 : 12, color: { argb: addr === 'A1' ? 'FFD4B876' : 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF11100D' } };
+    }
+
+    const header = ws.getRow(5);
+    header.values = ['Taraf', 'Kod/Grup', 'Kalem', 'Tutar'];
+    header.height = 24;
+    header.eachCell((cell: any) => {
+      cell.font = { bold: true, color: { argb: 'FFF5EFE3' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3A3324' } };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF8A7445' } },
+        bottom: { style: 'thin', color: { argb: 'FF8A7445' } },
+        left: { style: 'thin', color: { argb: 'FF4A412E' } },
+        right: { style: 'thin', color: { argb: 'FF4A412E' } },
+      };
+    });
+
+    const aktif = (b.aktif as any) || {};
+    const pasif = (b.pasif as any) || {};
+    const activeDonen = [
+      'hazirDegerler', 'menkulKiymetler', 'ticariAlacaklar', 'digerAlacaklar',
+      'stoklar', 'yillaraYayInsaat', 'gelecekAylaraGiderler', 'digerDonenVarliklar',
+    ];
+    const activeDuran = [
+      'uzunVadeliAlacaklar', 'maliDuran', 'maddiDuran', 'maddiOlmayanDuran',
+      'ozelTukenmeye', 'gelecekYillaraGiderler', 'digerDuranVarliklar',
+    ];
+    const passiveKv = [
+      'kvMaliBorclar', 'kvTicariBorclar', 'kvDigerBorclar', 'alinanAvanslar',
+      'yillaraYayInsaatKV', 'odenecekVergi', 'kvBorcGiderKars', 'kvGelAylaraGelir', 'digerKVYK',
+    ];
+    const passiveUv = [
+      'uvMaliBorclar', 'uvTicariBorclar', 'uvDigerBorclar', 'uvAlinanAvanslar',
+      'uvBorcGiderKars', 'uvGelYillaraGelir', 'digerUVYK',
+    ];
+    const passiveOzk = ['odenmisSermaye', 'sermayeYedekleri', 'karYedekleri', 'gecmisKarZarar', 'donemKarZarar'];
+
+    const rows: Array<{ taraf: string; kod: string; kalem: string; tutar: number | null; type?: 'section' | 'total' | 'group' | 'account' }> = [];
+    const addSection = (label: string) => rows.push({ taraf: label, kod: '', kalem: label, tutar: null, type: 'section' });
+    const addTotal = (taraf: string, label: string, tutar: number) => rows.push({ taraf, kod: '', kalem: label, tutar, type: 'total' });
+    const addGroup = (taraf: string, key: string, side: any) => {
+      const g = side?.[key];
+      if (!g) return;
+      rows.push({ taraf, kod: g.kodRange || '', kalem: g.grup || key, tutar: Number(g.toplam || 0), type: 'group' });
+      for (const h of Array.isArray(g.hesaplar) ? g.hesaplar : []) {
+        rows.push({ taraf, kod: h.kod || '', kalem: h.ad || '', tutar: Number(h.tutar || 0), type: 'account' });
+      }
+    };
+
+    addSection('AKTİF');
+    addTotal('AKTİF', 'DÖNEN VARLIKLAR', Number(b.donenVarliklar || 0));
+    activeDonen.forEach((key) => addGroup('AKTİF', key, aktif));
+    addTotal('AKTİF', 'DURAN VARLIKLAR', Number(b.duranVarliklar || 0));
+    activeDuran.forEach((key) => addGroup('AKTİF', key, aktif));
+    addTotal('AKTİF', 'AKTİF TOPLAMI', Number(b.aktifToplami || 0));
+
+    addSection('PASİF');
+    addTotal('PASİF', 'KISA VADELİ YABANCI KAYNAKLAR', Number(b.kvYabanciKaynak || 0));
+    passiveKv.forEach((key) => addGroup('PASİF', key, pasif));
+    addTotal('PASİF', 'UZUN VADELİ YABANCI KAYNAKLAR', Number(b.uvYabanciKaynak || 0));
+    passiveUv.forEach((key) => addGroup('PASİF', key, pasif));
+    addTotal('PASİF', 'ÖZKAYNAKLAR', Number(b.ozkaynaklar || 0));
+    passiveOzk.forEach((key) => addGroup('PASİF', key, pasif));
+    addTotal('PASİF', 'PASİF TOPLAMI', Number(b.pasifToplami || 0));
+    addTotal('KONTROL', 'AKTİF - PASİF FARKI', Number(b.aktifToplami || 0) - Number(b.pasifToplami || 0));
+
+    let rowNo = 6;
+    for (const item of rows) {
+      const row = ws.getRow(rowNo++);
+      row.values = [item.taraf, item.kod, item.kalem, item.tutar];
+      const isSection = item.type === 'section';
+      const isTotal = item.type === 'total';
+      const isGroup = item.type === 'group';
+      row.height = isSection ? 25 : 22;
+      row.eachCell((cell: any, col: number) => {
+        cell.font = {
+          bold: isSection || isTotal || isGroup,
+          color: { argb: isSection ? 'FFFFFFFF' : isTotal ? 'FF111827' : isGroup ? 'FF1F2937' : 'FF374151' },
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: isSection ? 'FF11100D' : isTotal ? 'FFFFF1C2' : isGroup ? 'FFFFF7E6' : 'FFFFFFFF' },
+        };
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+        cell.alignment = { horizontal: col === 4 ? 'right' : 'left', vertical: 'middle', indent: item.type === 'account' && col === 3 ? 1 : 0 };
+        if (col === 4) cell.numFmt = '#,##0.00;[Red]-#,##0.00';
+      });
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return buffer as Buffer;
+  }
+
   async deleteBilanco(id: string, tenantId: string) {
     const b = await (this.prisma as any).bilanco.findFirst({ where: { id, tenantId } });
     if (!b) throw new NotFoundException('Bilanço bulunamadı');

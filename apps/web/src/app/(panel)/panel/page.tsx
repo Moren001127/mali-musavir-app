@@ -13,6 +13,12 @@ import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
 const GOLD = '#d4b876';
 
+function displayUserName(user: any): string | undefined {
+  const full = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+  const candidate = full || user?.fullName || user?.name || user?.displayName || user?.username || user?.email?.split('@')?.[0];
+  return candidate ? String(candidate) : undefined;
+}
+
 type Task = {
   id: string;
   title: string;
@@ -100,6 +106,105 @@ function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accen
     </div>
   );
   return href ? <Link href={href} className="block">{c}</Link> : c;
+}
+
+type WorkflowCounts = { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
+
+const EMPTY_WORKFLOW_COUNTS: WorkflowCounts = { evrak: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 };
+
+const WORKFLOW_STEPS: Array<{
+  key: keyof WorkflowCounts;
+  label: string;
+  sub: string;
+  href: string;
+  icon: any;
+  color: string;
+  bg: string;
+  border: string;
+}> = [
+  { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#a7a29a', bg: 'rgba(167,162,154,0.08)', border: 'rgba(167,162,154,0.20)' },
+  { key: 'islenme', label: 'Fatura İşleme', sub: 'Mihsap sırası', href: '/panel/ajanlar/mihsap', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
+  { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#c0a079', bg: 'rgba(192,160,121,0.10)', border: 'rgba(192,160,121,0.28)' },
+  { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#d99560', bg: 'rgba(217,149,96,0.10)', border: 'rgba(217,149,96,0.28)' },
+  { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86a97b', bg: 'rgba(134,169,123,0.10)', border: 'rgba(134,169,123,0.28)' },
+];
+
+function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCounts; total: number; activeCount: number }) {
+  const c = counts || EMPTY_WORKFLOW_COUNTS;
+  const scopedTotal = total || Object.values(c).reduce((sum, v) => sum + (Number(v) || 0), 0);
+  const activeWork = c.islenme + c.kontrol + c.beyanname;
+  const waiting = c.evrak;
+  const completed = c.tamam;
+  const outside = Math.max(activeCount - scopedTotal, 0);
+
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex items-center gap-2.5">
+          <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+          <div>
+            <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay İş Akışı</h3>
+            <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+              {scopedTotal} mükellef iş akışında · {activeCount} aktif mükellef listede
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(212,184,118,0.10)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+            {activeWork} aktif iş
+          </span>
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(134,169,123,0.10)', border: '1px solid rgba(134,169,123,0.24)', color: '#a8c59f' }}>
+            {completed} tamam
+          </span>
+          {outside > 0 && (
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.55)' }}>
+              {outside} akış dışında
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-0">
+        {WORKFLOW_STEPS.map((step, index) => {
+          const value = c[step.key] || 0;
+          const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
+          const Icon = step.icon;
+          return (
+            <Link
+              key={step.key}
+              href={step.href}
+              className="group p-4 transition-all min-h-[128px]"
+              style={{
+                borderRight: index < WORKFLOW_STEPS.length - 1 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = step.bg; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
+                  <Icon size={16} />
+                </div>
+                <span className="text-[10.5px] font-bold tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+                  %{pct}
+                </span>
+              </div>
+              <div className="mt-4">
+                <div className="text-[28px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: step.color }}>
+                  {value}
+                </div>
+                <div className="text-[12px] font-semibold mt-2" style={{ color: '#fafaf9' }}>{step.label}</div>
+                <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{step.sub}</div>
+              </div>
+              <div className="mt-4 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: step.color }} />
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function Section({ title, children, action, accent = 'gold' }: { title: string; children: ReactNode; action?: ReactNode; accent?: StatAccent }) {
@@ -891,9 +996,11 @@ export default function DashboardPage() {
 
   // Stat card hesaplamaları
   const tx = (taxpayers as any[]) || [];
-  const activeCount = tx.filter((t: any) => (t?.aktif ?? t?.active ?? true) !== false && !t?.deletedAt && !t?.pasif).length;
+  const activeCount = tx.filter((t: any) => (t?.isActive ?? t?.aktif ?? t?.active ?? true) !== false && !t?.deletedAt && !t?.pasif).length;
   const passiveCount = tx.length - activeCount;
   const totalTx = tx.length;
+  const workflowCounts = workflowData?.counts || EMPTY_WORKFLOW_COUNTS;
+  const workflowTotal = workflowData?.total ?? 0;
 
   // Bugünün ajan olay kırılımı
   const todayStart = new Date(); todayStart.setHours(0,0,0,0);
@@ -941,7 +1048,7 @@ export default function DashboardPage() {
   }, [tx, activeCount, passiveCount]);
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="space-y-4 max-w-7xl">
       {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
@@ -988,10 +1095,10 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex items-end justify-between pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
           <div className="flex items-center gap-2.5 mb-2"><span className="w-[26px] h-px" style={{ background: GOLD }} /><span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Gösterge</span></div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Ofis Paneli</h1>
+          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Ofis Paneli</h1>
           <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>{new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} · Mükellefler · Beyannameler · Ajanlar</p>
         </div>
         <div className="flex items-center gap-2">
@@ -1006,15 +1113,13 @@ export default function DashboardPage() {
       </div>
 
       {/* v1.36.81: AI sabah brifingi — günün özetini 2-3 cümlede anlatır */}
-      <BrifingKart userName={(meUser as any)?.firstName} />
-
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
         <StatCard
-          title="Toplam Mükellef"
-          value={totalTx}
+          title="Aktif Mükellef"
+          value={activeCount || totalTx}
           icon={Users}
           href="/panel/mukellefler"
-          sub={passiveCount > 0 ? `${activeCount} aktif · ${passiveCount} pasif` : `${activeCount} aktif`}
+          sub={workflowTotal > 0 ? `${workflowTotal} bu ay iş akışında` : (passiveCount > 0 ? `${passiveCount} pasif` : 'Liste güncel')}
           accent="gold"
         />
         <StatCard
@@ -1043,6 +1148,10 @@ export default function DashboardPage() {
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />
       </div>
+
+      <BrifingKart userName={displayUserName(meUser)} />
+
+      <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
       <BuHaftaTakvim />

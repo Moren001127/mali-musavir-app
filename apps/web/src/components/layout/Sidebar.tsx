@@ -144,14 +144,14 @@ export default function Sidebar() {
       />
 
       {/* === LOGO === */}
-      <div className="relative px-3 pt-5 pb-5 flex justify-center" style={{ borderBottom: '1px solid #1f1a15' }}>
+      <div className="relative px-4 pt-4 pb-4 flex justify-center" style={{ borderBottom: '1px solid #1f1a15' }}>
         <Link href="/panel" className="block group">
           <img
             src="/brand/moren-logo-gold.png"
             alt="Moren Mali Müşavirlik"
             className="transition-transform duration-300 group-hover:scale-105"
             style={{
-              height: 140,
+              height: 122,
               width: 'auto',
               maxWidth: '100%',
               objectFit: 'contain',

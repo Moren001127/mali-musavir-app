@@ -20,7 +20,6 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
-const GOLD_SOFT = '#b8a06f';
 
 interface BrifingAlert {
   severity: 'high' | 'medium' | 'low';
@@ -60,11 +59,54 @@ const KISA_TARIH = new Date().toLocaleDateString('tr-TR', {
   month: 'long',
 });
 
-const FOCUS_TONES: Record<string, { label: string; color: string; bg: string }> = {
-  calm:     { label: 'Sakin',     color: '#22c55e', bg: 'rgba(34,197,94,0.14)' },
-  busy:     { label: 'Yoğun',     color: '#d4b876', bg: 'rgba(212,184,118,0.14)' },
-  critical: { label: 'Kritik',    color: '#ef4444', bg: 'rgba(239,68,68,0.14)' },
-  review:   { label: 'Gözden Geçir', color: '#a855f7', bg: 'rgba(168,85,247,0.14)' },
+const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; glow: string; border: string; actionBg: string; actionBorder: string; text: string }> = {
+  calm: {
+    label: 'Sakin',
+    color: '#7dd3a8',
+    bg: 'rgba(42,118,89,0.16)',
+    glow: 'rgba(42,118,89,0.18)',
+    border: 'rgba(125,211,168,0.28)',
+    actionBg: 'linear-gradient(135deg, rgba(125,211,168,0.14), rgba(125,211,168,0.06))',
+    actionBorder: 'rgba(125,211,168,0.28)',
+    text: '#b8e6c9',
+  },
+  busy: {
+    label: 'Yoğun',
+    color: '#d4b876',
+    bg: 'rgba(212,184,118,0.13)',
+    glow: 'rgba(212,184,118,0.13)',
+    border: 'rgba(212,184,118,0.26)',
+    actionBg: 'linear-gradient(135deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))',
+    actionBorder: 'rgba(212,184,118,0.28)',
+    text: GOLD,
+  },
+  critical: {
+    label: 'Kritik',
+    color: '#fb7185',
+    bg: 'rgba(190,18,60,0.14)',
+    glow: 'rgba(190,18,60,0.20)',
+    border: 'rgba(251,113,133,0.34)',
+    actionBg: 'linear-gradient(135deg, rgba(251,113,133,0.16), rgba(251,113,133,0.06))',
+    actionBorder: 'rgba(251,113,133,0.34)',
+    text: '#fda4af',
+  },
+  review: {
+    label: 'Kontrol',
+    color: '#93c5fd',
+    bg: 'rgba(37,99,235,0.13)',
+    glow: 'rgba(37,99,235,0.17)',
+    border: 'rgba(147,197,253,0.30)',
+    actionBg: 'linear-gradient(135deg, rgba(147,197,253,0.14), rgba(147,197,253,0.06))',
+    actionBorder: 'rgba(147,197,253,0.30)',
+    text: '#bfdbfe',
+  },
+};
+
+const MOTIVATION_BY_FOCUS: Record<string, string> = {
+  calm: 'Tempo iyi; bugün küçük işleri kapatmak için güzel bir gün.',
+  busy: 'Dağılmadan sıradan gidelim, iş kendini toparlar.',
+  critical: 'Önce en riskli dosyayı kapatalım; panik yok, disiplin var.',
+  review: 'Bugün gözden geçirme günü; küçük kontrol büyük hatayı yakalar.',
 };
 
 function formatRelativeTime(iso: string): string {
@@ -93,21 +135,22 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   const focus = data?.focus ?? 'busy';
   const focusTone = FOCUS_TONES[focus] ?? FOCUS_TONES.busy;
+  const motivation = MOTIVATION_BY_FOCUS[focus] ?? MOTIVATION_BY_FOCUS.busy;
 
   return (
     <div
       className="rounded-3xl overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${focusTone.bg.replace(',0.14)', ',0.10)')}, transparent 65%), linear-gradient(135deg, rgba(212,184,118,0.06), rgba(184,160,111,0.02))`,
-        border: '1px solid rgba(212,184,118,0.22)',
+        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 62%), radial-gradient(circle at 92% 14%, rgba(255,255,255,0.035), transparent 34%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))`,
+        border: `1px solid ${focusTone.border}`,
         boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
       }}
     >
       {/* Üst etiket bandı */}
-      <div className="px-7 pt-6 pb-2 flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-5 pt-4 pb-1 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5">
-          <Sparkles size={14} style={{ color: GOLD }} />
-          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: GOLD_SOFT }}>
+          <Sparkles size={14} style={{ color: focusTone.color }} />
+          <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: focusTone.text }}>
             Bugünkü Brifing
           </span>
           {data && (
@@ -143,12 +186,24 @@ export function BrifingKart({ userName }: { userName?: string }) {
         </div>
       </div>
 
+      {data?.summary && (
+        <div className="px-5 pb-3">
+          <div
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] font-medium"
+            style={{ background: focusTone.bg, color: focusTone.text, border: `1px solid ${focusTone.actionBorder}` }}
+          >
+            <Sparkles size={12} />
+            {motivation}
+          </div>
+        </div>
+      )}
+
       {/* Selamlama başlığı */}
-      <div className="px-7 pt-1 pb-3">
+      <div className="px-5 pt-1 pb-2">
         <h2
           style={{
             fontFamily: 'Fraunces, serif',
-            fontSize: 30,
+            fontSize: 26,
             fontWeight: 600,
             color: '#fafaf9',
             letterSpacing: '-.025em',
@@ -164,7 +219,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Ana özet metni */}
-      <div className="px-7 pb-3">
+      <div className="px-5 pb-2">
         {isLoading ? (
           <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
             <Loader2 size={14} className="animate-spin" />
@@ -172,10 +227,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
           </div>
         ) : data?.summary ? (
           <p
-            className="text-[15px]"
+            className="text-[14px]"
             style={{
               color: 'rgba(250,250,249,0.85)',
-              lineHeight: 1.65,
+              lineHeight: 1.55,
               fontFamily: 'Inter, sans-serif',
             }}
           >
@@ -190,8 +245,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Uyarılar (alerts) */}
       {data?.alerts && data.alerts.length > 0 && (
-        <div className="px-7 pb-3 space-y-1.5">
-          {data.alerts.map((a, i) => {
+        <div className="px-5 pb-3 space-y-1.5">
+          {data.alerts.slice(0, 2).map((a, i) => {
             const cfg = a.severity === 'high'
               ? { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.32)' }
               : a.severity === 'medium'
@@ -227,8 +282,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Aksiyon önerileri (suggestions) */}
       {data?.suggestions && data.suggestions.length > 0 && (
-        <div className="px-7 pb-7 pt-2 flex flex-wrap gap-2">
-          {data.suggestions.map((s, i) => {
+        <div className="px-5 pb-5 pt-1 flex flex-wrap gap-2">
+          {data.suggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
             return (
               <Link
@@ -236,9 +291,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 href={s.href}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.03]"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))',
-                  color: GOLD,
-                  border: '1px solid rgba(212,184,118,0.28)',
+                  background: focusTone.actionBg,
+                  color: focusTone.text,
+                  border: `1px solid ${focusTone.actionBorder}`,
                 }}
               >
                 <Icon size={12} />

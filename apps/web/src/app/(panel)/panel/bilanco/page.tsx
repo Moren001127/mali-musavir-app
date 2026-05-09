@@ -84,6 +84,23 @@ export default function BilancoPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Açılamadı'),
   });
 
+  const exportMut = useMutation({
+    mutationFn: async (id: string) => {
+      const ab = await bilancoApi.exportExcel(id);
+      const blob = new Blob([ab], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bilanco-${id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: () => toast.success('Bilanço Excel hazır'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Excel dışarı aktarılamadı'),
+  });
+
   // Manuel düzeltme — 590 Dönem Net Kârı / 591 Dönem Net Zararı
   const [manuelKar, setManuelKar] = useState('');
   const [manuelZarar, setManuelZarar] = useState('');
@@ -233,19 +250,33 @@ export default function BilancoPage() {
                 Bilanço değişikliklere açık. Kesin kayıt için bilanço denk olmalı (fark = 0).
               </div>
             )}
-            <button
-              onClick={() => bilanco.locked ? handleUnlock(bilanco.id) : handleLock(bilanco.id)}
-              disabled={lockMut.isPending || unlockMut.isPending || (!bilanco.locked && !denk)}
-              title={!bilanco.locked && !denk ? 'Bilanço denk değil, önce eşitle' : ''}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-40"
-              style={{
-                background: bilanco.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
-                color: bilanco.locked ? '#f43f5e' : GOLD,
-                border: `1px solid ${bilanco.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
-              }}
-            >
-              {bilanco.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => exportMut.mutate(bilanco.id)}
+                disabled={exportMut.isPending}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-40"
+                style={{
+                  background: 'rgba(96,165,250,0.10)',
+                  color: '#93c5fd',
+                  border: '1px solid rgba(96,165,250,0.28)',
+                }}
+              >
+                <Download size={12} /> Excel
+              </button>
+              <button
+                onClick={() => bilanco.locked ? handleUnlock(bilanco.id) : handleLock(bilanco.id)}
+                disabled={lockMut.isPending || unlockMut.isPending || (!bilanco.locked && !denk)}
+                title={!bilanco.locked && !denk ? 'Bilanço denk değil, önce eşitle' : ''}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-40"
+                style={{
+                  background: bilanco.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
+                  color: bilanco.locked ? '#f43f5e' : GOLD,
+                  border: `1px solid ${bilanco.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
+                }}
+              >
+                {bilanco.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -587,6 +618,15 @@ export default function BilancoPage() {
                         <div className="inline-flex gap-1.5">
                           <button onClick={() => setViewBilanco(b)} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}>
                             <Eye size={14} />
+                          </button>
+                          <button
+                            onClick={() => exportMut.mutate(b.id)}
+                            disabled={exportMut.isPending}
+                            className="p-1.5 rounded-md disabled:opacity-40"
+                            style={{ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' }}
+                            title="Excel dışarı aktar"
+                          >
+                            <Download size={14} />
                           </button>
                           <button
                             onClick={() => { if (b.locked) return toast.error('Kesin kayıtlı silinemez'); if (confirm('Silinsin mi?')) deleteMut.mutate(b.id); }}

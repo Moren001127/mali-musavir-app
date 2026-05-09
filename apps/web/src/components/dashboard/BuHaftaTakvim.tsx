@@ -31,6 +31,7 @@ interface TaskItem {
   id: string;
   title: string;
   dueDate: string;
+  status?: string;
   isCompleted?: boolean;
   done?: boolean;
 }
@@ -108,7 +109,8 @@ function buildDeadlineList(daysAhead: number): DeadlineRow[] {
 function tasksByDate(tasks: TaskItem[]): Map<string, string[]> {
   const m = new Map<string, string[]>();
   for (const t of tasks) {
-    if ((t as any).done || (t as any).isCompleted) continue;
+    const status = String((t as any).status || '').toUpperCase();
+    if ((t as any).done || (t as any).isCompleted || status === 'DONE' || status === 'CANCELLED') continue;
     const d = new Date(t.dueDate);
     if (isNaN(d.getTime())) continue;
     const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -116,6 +118,27 @@ function tasksByDate(tasks: TaskItem[]): Map<string, string[]> {
     m.get(key)!.push(t.title);
   }
   return m;
+}
+
+function dateKey(d: Date) {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function buildCalendarDays(rows: DeadlineRow[], taskMap: Map<string, string[]>) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, i) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const key = dateKey(date);
+    return {
+      date,
+      key,
+      gunFark: i,
+      deadlines: rows.filter((r) => dateKey(r.date) === key),
+      tasks: taskMap.get(key) || [],
+    };
+  });
 }
 
 export function BuHaftaTakvim() {
@@ -131,6 +154,7 @@ export function BuHaftaTakvim() {
   });
   const tasks: TaskItem[] = Array.isArray(tasksData) ? tasksData : ((tasksData as any)?.items || []);
   const taskMap = tasksByDate(tasks);
+  const calendarDays = buildCalendarDays(rows, taskMap);
 
   return (
     <div>
@@ -153,6 +177,14 @@ export function BuHaftaTakvim() {
         </span>
       </div>
 
+      <div className="overflow-x-auto pb-1 mb-3">
+        <div className="grid grid-cols-7 gap-2 min-w-[720px]">
+          {calendarDays.map((d) => (
+            <CalendarDayTile key={d.key} day={d} />
+          ))}
+        </div>
+      </div>
+
       {rows.length === 0 ? (
         <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
           <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
@@ -168,6 +200,57 @@ export function BuHaftaTakvim() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[number] }) {
+  const firstDeadline = day.deadlines[0];
+  const tone = urgencyTone(firstDeadline?.gunFark ?? day.gunFark);
+  const hasDeadline = day.deadlines.length > 0;
+  const hasTask = day.tasks.length > 0;
+  const month = day.date.toLocaleDateString('tr-TR', { month: 'short' });
+  const titleParts = [
+    ...day.deadlines.map((d) => d.title),
+    ...day.tasks.map((t) => `Not: ${t}`),
+  ];
+
+  return (
+    <div
+      className="min-h-[74px] rounded-xl p-2.5 transition-all"
+      title={titleParts.join('\n')}
+      style={{
+        background: hasDeadline ? tone.bg : hasTask ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.018)',
+        border: hasDeadline ? `1px solid ${tone.border}` : hasTask ? '1px solid rgba(212,184,118,0.28)' : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: hasTask ? 'inset 0 0 0 1px rgba(212,184,118,0.08)' : 'none',
+      }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-[18px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? GOLD : 'rgba(250,250,249,0.72)' }}>
+            {day.date.getDate()}
+          </div>
+          <div className="text-[9px] uppercase font-bold mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{month}</div>
+        </div>
+        {(hasDeadline || hasTask) && (
+          <div className="flex items-center gap-1">
+            {hasDeadline && <span className="w-1.5 h-1.5 rounded-full" style={{ background: tone.accent }} />}
+            {hasTask && <span className="w-1.5 h-1.5 rounded-full" style={{ background: GOLD, boxShadow: `0 0 6px ${GOLD}66` }} />}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {hasDeadline && (
+          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded" style={{ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText }}>
+            {day.deadlines.length} son
+          </span>
+        )}
+        {hasTask && (
+          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD }}>
+            {day.tasks.length} not
+          </span>
+        )}
+      </div>
     </div>
   );
 }

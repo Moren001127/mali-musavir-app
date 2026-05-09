@@ -12,11 +12,13 @@ import {
 
 const GOLD = '#d4b876';
 const TABLE_BG = '#0a0907';
-const GRID_LINE = 'rgba(212,184,118,0.24)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.48)';
+const GRID_LINE = 'rgba(245,240,230,0.17)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.38)';
 const AMOUNT_COLOR = '#f4efe6';
-const TOTAL_COLOR = '#e3c878';
-const LOSS_COLOR = '#f87171';
+const TOTAL_COLOR = '#ead18a';
+const PROFIT_COLOR = '#86efac';
+const LOSS_COLOR = '#fca5a5';
+const RATIO_COLOR = '#8ec5ff';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -686,13 +688,13 @@ export default function GelirTablosuPage() {
 
                 // Normal satır (group / total / final)
                 const rowBg =
-                  row.final ? 'linear-gradient(135deg, rgba(212,184,118,0.18), rgba(212,184,118,0.06))' :
-                  row.total ? 'rgba(184,160,111,0.08)' :
+                  row.final ? 'linear-gradient(90deg, rgba(245,240,230,0.075), rgba(245,240,230,0.025))' :
+                  row.total ? 'rgba(184,160,111,0.06)' :
                   row.group ? 'rgba(255,255,255,0.028)' :
                   idx % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)';
                 const bold = row.final || row.total || row.group;
                 const labelColor = row.final ? TOTAL_COLOR : row.total ? TOTAL_COLOR : row.group ? '#fafaf9' : 'rgba(250,250,249,0.7)';
-                const labelFont = row.final ? 'Fraunces, serif' : 'Plus Jakarta Sans';
+                const labelFont = 'Plus Jakarta Sans';
                 return (
                   <tr
                     key={idx}
@@ -707,9 +709,9 @@ export default function GelirTablosuPage() {
                       className="px-3 py-2.5"
                       style={{
                         color: labelColor,
-                        fontWeight: bold ? 700 : 400,
+                        fontWeight: row.final ? 650 : bold ? 700 : 400,
                         fontFamily: labelFont,
-                        fontSize: row.final ? 16 : row.total ? 14.5 : row.group ? 14.5 : 14,
+                        fontSize: row.final ? 14.5 : row.total ? 14.5 : row.group ? 14.5 : 14,
                         fontStyle: row.total && !row.final ? 'italic' : 'normal',
                         textTransform: row.total && !row.final ? 'uppercase' : 'none',
                         letterSpacing: row.total && !row.final ? '.04em' : '0',
@@ -736,20 +738,20 @@ export default function GelirTablosuPage() {
                               !hasData ? 'rgba(250,250,249,0.2)' :
                               v === 0 ? 'rgba(250,250,249,0.35)' :
                               ['brutSatisKari','faaliyetKari','olaganKar','donemKari','donemNetKari'].includes(row.k as string)
-                                ? (v < 0 ? LOSS_COLOR : TOTAL_COLOR)
+                                ? (v < 0 ? LOSS_COLOR : PROFIT_COLOR)
                                 : row.total ? TOTAL_COLOR
                                 : (v < 0 ? LOSS_COLOR : AMOUNT_COLOR),
-                            fontSize: row.final ? 17 : row.total ? 14 : 13,
-                            fontWeight: row.final || row.total ? 700 : 500,
+                            fontSize: row.final ? 14.5 : row.total ? 14 : 13,
+                            fontWeight: row.final ? 650 : row.total ? 700 : 500,
                             borderLeft: `1px solid ${GRID_LINE}`,
-                            fontFamily: row.final ? 'Fraunces, serif' : 'JetBrains Mono, monospace',
+                            fontFamily: 'JetBrains Mono, monospace',
                           }}
                         >
                           <div>{hasData ? fmtTRY(v!) : '—'}</div>
                           {showOranBadge && (
                             <div
                               className="text-[10px] font-semibold mt-0.5"
-                              style={{ color: '#60a5fa', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}
+                              style={{ color: RATIO_COLOR, fontFamily: 'JetBrains Mono, monospace', fontWeight: 650 }}
                             >
                               {pct(v!, netSatis)}
                             </div>

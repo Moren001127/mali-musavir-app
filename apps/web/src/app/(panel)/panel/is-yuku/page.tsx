@@ -30,6 +30,7 @@ interface QueueItem {
   evraklarIslendi: boolean;
   kontrolEdildi: boolean;
   beyannameVerildi: boolean;
+  monthlyStatusExists?: boolean;
 }
 
 interface WorkflowData {
@@ -51,6 +52,8 @@ const STAGE_CONFIG: Record<Stage, { label: string; short: string; color: string;
   BEYANNAME_BEKLIYOR: { label: 'Beyanname Hazırlanacak', short: 'BEYAN',     color: '#c084fc', icon: FileText,     gradient: 'rgba(192,132,252,0.20)', bg: 'rgba(192,132,252,0.07)' },
   TAMAM:              { label: 'Tamamlandı',             short: 'TAMAM',     color: '#4ade80', icon: CheckCircle2, gradient: 'rgba(74,222,128,0.18)',  bg: 'rgba(74,222,128,0.05)' },
 };
+
+const STAGE_ORDER: Stage[] = ['EVRAK_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'];
 
 /**
  * v1.36.79: İş Akışı sayfası — HERO + KANBAN + GEÇ KALANLAR hibrit tasarımı.
@@ -77,6 +80,7 @@ export default function IsYukuPage() {
   // Hero'daki aktif item — atlama ile değişebilir
   const heroItem = data?.siradaki?.[skipIndex] || null;
   const nextItems = (data?.siradaki || []).slice(skipIndex + 1, skipIndex + 5);
+  const evrakPct = data?.total ? Math.round((data.counts.evrak / data.total) * 100) : 0;
 
   // Geç kalanlar — 5+ gün bekleyenler
   const gecKalanlar = useMemo(() => {
@@ -125,6 +129,8 @@ export default function IsYukuPage() {
         <div className="text-center py-16" style={{ color: 'rgba(250,250,249,0.4)' }}>Veri yok</div>
       ) : (
         <>
+          <WorkflowSummary data={data} evrakPct={evrakPct} />
+
           {/* HERO — ŞİMDİ YAP */}
           {heroItem ? (
             <HeroCard
@@ -166,8 +172,8 @@ export default function IsYukuPage() {
               </span>
               <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              {(['EVRAK_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'] as Stage[]).map((stage) => (
+            <div id="pipeline" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              {STAGE_ORDER.map((stage) => (
                 <PipelineSutun key={stage} stage={stage} items={data.grouped[stage] || []} />
               ))}
             </div>
@@ -205,6 +211,85 @@ export default function IsYukuPage() {
 // ════════════════════════════════════════════════════════════════════
 // HERO CARD — ŞİMDİ YAPILACAK (büyük öne çıkan kart)
 // ════════════════════════════════════════════════════════════════════
+function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: number }) {
+  const aktifIs = data.counts.islenme + data.counts.kontrol + data.counts.beyanname;
+  const kaydiOlmayan = Object.values(data.grouped || {})
+    .flat()
+    .filter((i) => !i.monthlyStatusExists).length;
+
+  return (
+    <div
+      className="rounded-3xl overflow-hidden"
+      style={{
+        background: 'radial-gradient(circle at 0% 0%, rgba(212,184,118,0.14), transparent 46%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))',
+        border: '1px solid rgba(212,184,118,0.24)',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.22)',
+      }}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_2fr]">
+        <div className="p-5" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
+          <div className="text-[10px] uppercase font-bold tracking-[.18em] mb-2" style={{ color: GOLD_SOFT }}>
+            Aylık Akış Özeti
+          </div>
+          <div className="flex items-end gap-4">
+            <div>
+              <div className="tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 44, fontWeight: 700, color: '#fafaf9', lineHeight: 1 }}>
+                {data.total}
+              </div>
+              <div className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                {data.donem} döneminde aktif mükellef
+              </div>
+            </div>
+            <div className="pb-1">
+              <div className="text-[13px] font-semibold" style={{ color: aktifIs > 0 ? GOLD : '#86efac' }}>
+                {aktifIs} aktif iş
+              </div>
+              <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                {data.counts.tamam} tamamlandı
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl px-3 py-2 text-[12.5px]" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.72)' }}>
+            Evrak bekliyor: aktif olup bu ay evrak geldi işaretlenmemiş mükellefler. Aylık kayıt açılmamış olanlar da burada sayılır{kaydiOlmayan > 0 ? ` (${kaydiOlmayan} kayıt otomatik tamamlandı).` : '.'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-5">
+          {STAGE_ORDER.map((stage) => {
+            const cfg = STAGE_CONFIG[stage];
+            const Icon = cfg.icon;
+            const count = data.grouped?.[stage]?.length || 0;
+            const pct = data.total ? Math.round((count / data.total) * 100) : 0;
+            return (
+              <Link
+                key={stage}
+                href="#pipeline"
+                className="p-4 transition hover:bg-white/[0.03]"
+                style={{ borderLeft: '1px solid rgba(255,255,255,0.055)' }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: cfg.gradient, border: `1px solid ${cfg.color}30` }}>
+                    <Icon size={15} style={{ color: cfg.color }} />
+                  </span>
+                  <span className="text-[11px] tabular-nums" style={{ color: stage === 'EVRAK_BEKLIYOR' ? GOLD : 'rgba(250,250,249,0.44)' }}>
+                    {stage === 'EVRAK_BEKLIYOR' ? `%${evrakPct}` : `%${pct}`}
+                  </span>
+                </div>
+                <div className="mt-3 tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 700, color: cfg.color, lineHeight: 1 }}>
+                  {count}
+                </div>
+                <div className="text-[11px] uppercase font-bold tracking-[.08em] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                  {cfg.short}
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HeroCard({
   item, sira, total, onSkip, canGoBack, onBack,
 }: {

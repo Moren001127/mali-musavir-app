@@ -219,6 +219,23 @@ export default function MizanPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kilit açılamadı'),
   });
 
+  const exportMut = useMutation({
+    mutationFn: async (id: string) => {
+      const ab = await mizanApi.exportExcel(id);
+      const blob = new Blob([ab], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mizan-${id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: () => toast.success('Mizan Excel hazır'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Excel dışarı aktarılamadı'),
+  });
+
   const handleLock = (id: string) => {
     const note = prompt('Kesin kayıt notu (opsiyonel — örn: 2026 Mart beyanname no):') || '';
     if (!confirm('Mizan kesin kayıt olarak işaretlenecek. Sonra düzeltme yapılamaz. Devam?')) return;
@@ -464,18 +481,32 @@ export default function MizanPage() {
                 Bu mizan değişikliklere açık. Kesin kayıt olarak işaretledikten sonra düzeltme yapılamaz.
               </div>
             )}
-            <button
-              onClick={() => mizan.locked ? handleUnlock(mizan.id) : handleLock(mizan.id)}
-              disabled={lockMut.isPending || unlockMut.isPending}
-              className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
-              style={{
-                background: mizan.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
-                color: mizan.locked ? '#f43f5e' : GOLD,
-                border: `1px solid ${mizan.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
-              }}
-            >
-              {mizan.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => exportMut.mutate(mizan.id)}
+                disabled={exportMut.isPending}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
+                style={{
+                  background: 'rgba(96,165,250,0.10)',
+                  color: '#93c5fd',
+                  border: '1px solid rgba(96,165,250,0.28)',
+                }}
+              >
+                <Download size={12} /> Excel
+              </button>
+              <button
+                onClick={() => mizan.locked ? handleUnlock(mizan.id) : handleLock(mizan.id)}
+                disabled={lockMut.isPending || unlockMut.isPending}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
+                style={{
+                  background: mizan.locked ? 'rgba(244,63,94,0.12)' : 'rgba(184,160,111,0.15)',
+                  color: mizan.locked ? '#f43f5e' : GOLD,
+                  border: `1px solid ${mizan.locked ? 'rgba(244,63,94,0.3)' : 'rgba(184,160,111,0.35)'}`,
+                }}
+              >
+                {mizan.locked ? <><Unlock size={12} /> Kilidi Aç</> : <><Lock size={12} /> Kesin Kayıt</>}
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -605,6 +636,15 @@ export default function MizanPage() {
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1.5">
                         <a href={`/panel/mizan?id=${m.id}`} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}><Eye size={14} /></a>
+                        <button
+                          onClick={() => exportMut.mutate(m.id)}
+                          disabled={exportMut.isPending}
+                          className="p-1.5 rounded-md disabled:opacity-40"
+                          style={{ color: '#93c5fd', background: 'rgba(96,165,250,0.08)' }}
+                          title="Excel dışarı aktar"
+                        >
+                          <Download size={14} />
+                        </button>
                         <button
                           onClick={() => {
                             if (m.locked) return toast.error('Kesin kayıtlı mizan silinemez');
@@ -892,7 +932,7 @@ function MizanTable({
                           background: focused ? 'rgba(184,160,111,0.10)' : undefined,
                           whiteSpace: 'nowrap',
                           height: 42,
-                          paddingLeft: colIdx === 1 ? 12 + Math.min(lvl, 4) * 14 : undefined,
+                          paddingLeft: colIdx === 1 ? (isUpper ? 14 : 22) : undefined,
                           letterSpacing: 0,
                           userSelect: 'text',
                         }}

@@ -19,16 +19,21 @@ import {
 const GOLD = '#d4b876';
 const TABLE_SURFACE = '#0b0906';
 const TABLE_SURFACE_ALT = '#100d09';
-const TABLE_HEADER_BG = 'linear-gradient(180deg, rgba(212,184,118,0.15), rgba(212,184,118,0.07))';
-const GRID_LINE = 'rgba(212,184,118,0.24)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.44)';
+const TABLE_HEADER_BG = 'linear-gradient(180deg, rgba(68,61,46,0.72), rgba(24,21,16,0.94))';
+const GRID_LINE = 'rgba(245,240,230,0.17)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.35)';
 const REPORT_TEXT = 'rgba(250,250,249,0.92)';
 const REPORT_MUTED = 'rgba(231,229,228,0.58)';
 const REPORT_DIM = 'rgba(214,211,209,0.34)';
 const AMOUNT_TEXT = '#f3eee6';
-const AMOUNT_ACCENT = '#e3c878';
-const PROFIT_TEXT = '#cdd7bd';
-const LOSS_TEXT = '#f0a2aa';
+const AMOUNT_ACCENT = '#ead18a';
+const PROFIT_TEXT = '#86efac';
+const LOSS_TEXT = '#fca5a5';
+const RATIO_TEXT = '#8ec5ff';
+const MANUAL_TEXT = '#93c5fd';
+const MANUAL_BORDER = '#60a5fa';
+const MANUAL_ROW_BG = 'linear-gradient(90deg, rgba(59,130,246,0.16), rgba(59,130,246,0.045))';
+const TOTAL_ROW_BG = 'linear-gradient(90deg, rgba(245,240,230,0.055), rgba(245,240,230,0.016))';
 const REPORT_TABLE_STYLE: React.CSSProperties = {
   tableLayout: 'fixed',
   borderCollapse: 'separate',
@@ -112,11 +117,11 @@ function NumInput({
   }, [value, focused]);
 
   const inputColor = disabled && value
-    ? AMOUNT_ACCENT
+    ? AMOUNT_TEXT
     : disabled || !value
     ? REPORT_DIM
     : AMOUNT_TEXT;
-  const inputWeight = disabled && value ? 700 : !value ? 500 : 650;
+  const inputWeight = disabled && value ? 650 : !value ? 500 : 650;
 
   return (
     <input
@@ -141,7 +146,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2.5 py-1 text-right text-[13px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2.5 py-1 text-center text-[13px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
@@ -868,7 +873,16 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
                 return (
-                  <span key={d} style={{ color: lc.donemKar < 0 ? LOSS_TEXT : PROFIT_TEXT, fontWeight: 700 }}>
+                  <span
+                    key={d}
+                    style={{
+                      color: lc.donemKar < 0 ? LOSS_TEXT : lc.donemKar > 0 ? PROFIT_TEXT : AMOUNT_TEXT,
+                      display: 'inline-block',
+                      fontSize: 14,
+                      fontWeight: 650,
+                      minWidth: 92,
+                    }}
+                  >
                     {formatTR(lc.donemKar)}
                   </span>
                 );
@@ -974,7 +988,16 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const v = liveCalc(d).donemKar;
                 return (
-                  <span key={d} style={{ color: v < 0 ? LOSS_TEXT : v > 0 ? PROFIT_TEXT : AMOUNT_TEXT, fontWeight: 700 }}>
+                  <span
+                    key={d}
+                    style={{
+                      color: v < 0 ? LOSS_TEXT : v > 0 ? PROFIT_TEXT : AMOUNT_TEXT,
+                      display: 'inline-block',
+                      fontSize: 14,
+                      fontWeight: 650,
+                      minWidth: 92,
+                    }}
+                  >
                     {formatTR(v)}
                   </span>
                 );
@@ -1203,18 +1226,13 @@ function Row({
     if (!r || r === '—') return 'rgba(168,162,158,0.55)';
     const isNeg = r.includes('-');
     const num = parseFloat(r.replace(/[%,\s]/g, '').replace(',', '.')) || 0;
-    if (isNeg) return 'rgba(251,113,133,0.85)'; // pembe-kırmızı
-    if (num === 0) return 'rgba(168,162,158,0.5)';
-    if (num >= 50) return '#d8cba8';
-    return 'rgba(212,184,118,0.85)'; // altın
+    if (isNeg) return LOSS_TEXT;
+    if (num === 0) return 'rgba(168,162,158,0.55)';
+    return RATIO_TEXT;
   };
 
   // v1.36.24: Gelir Tablosu stilinde kompakt — px-3 py-2 + küçük fontlar + tek satır rakam
-  const rowBg = hl
-    ? 'linear-gradient(90deg, rgba(212,184,118,0.11), rgba(212,184,118,0.04))'
-    : manuel
-    ? 'rgba(212,184,118,0.075)'
-    : 'transparent';
+  const rowBg = manuel ? MANUAL_ROW_BG : hl || calc ? TOTAL_ROW_BG : 'transparent';
 
   return (
     <tr style={{ background: rowBg }}>
@@ -1224,16 +1242,28 @@ function Row({
         }`}
         style={{
           letterSpacing: bold ? '0.025em' : '0.01em',
-          color: manuel ? AMOUNT_ACCENT : bold ? REPORT_TEXT : REPORT_MUTED,
+          color: manuel ? MANUAL_TEXT : bold ? REPORT_TEXT : REPORT_MUTED,
           borderTop: `1px solid ${GRID_LINE}`,
-          borderRight: `1px solid ${GRID_LINE}`,
-          borderLeft: manuel ? `3px solid ${AMOUNT_ACCENT}` : `1px solid transparent`,
+          borderRight: `1px solid ${manuel ? 'rgba(96,165,250,0.28)' : GRID_LINE}`,
+          borderLeft: manuel ? `4px solid ${MANUAL_BORDER}` : `1px solid transparent`,
           background: rowBg,
           lineHeight: 1.22,
         }}
       >
         {label}
         {hint && <span className="ml-2 text-[10px] font-normal" style={{ color: REPORT_DIM }}>{hint}</span>}
+        {manuel && (
+          <span
+            className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+            style={{
+              background: 'rgba(96,165,250,0.14)',
+              border: '1px solid rgba(96,165,250,0.30)',
+              color: MANUAL_TEXT,
+            }}
+          >
+            manuel
+          </span>
+        )}
       </td>
       {cols.map((c, i) => {
         const rColor = ratios && ratios[i] ? ratioColor(ratios[i]) : null;
@@ -1243,27 +1273,27 @@ function Row({
         return (
           <td
             key={i}
-            className={`px-4 py-2 text-right font-mono tabular-nums ${
+            className={`px-4 py-2 text-center font-mono tabular-nums ${
               bold ? 'text-[15px] font-bold' : 'text-[14px] font-semibold'
             }`}
             style={{
-              borderTop: `1px solid ${GRID_LINE}`,
-              borderLeft: `1px solid ${GRID_LINE}`,
+              borderTop: `1px solid ${manuel ? 'rgba(96,165,250,0.30)' : GRID_LINE}`,
+              borderLeft: `1px solid ${manuel ? 'rgba(96,165,250,0.26)' : GRID_LINE}`,
               fontVariantNumeric: 'tabular-nums',
-              color: isEmpty ? REPORT_DIM : bold || hl ? AMOUNT_ACCENT : AMOUNT_TEXT,
+              color: isEmpty ? REPORT_DIM : AMOUNT_TEXT,
               lineHeight: 1.18,
               background: rowBg,
             }}
           >
             {showRatio ? (
               // v1.36.27: rakam ortalı, oran hücrenin sağ kenarına absolute
-              <div className="flex flex-col items-end justify-center gap-0.5">
+              <div className="flex flex-col items-center justify-center gap-0.5">
                 <span className="tabular-nums">{c}</span>
                 <span
                   className="text-[10px] not-italic font-sans"
                   style={{
                     color: rColor!,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     letterSpacing: '0.02em',
                   }}
                 >

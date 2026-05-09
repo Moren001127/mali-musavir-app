@@ -15,6 +15,10 @@ export const mizanApi = {
       .get('/mizan', { params: taxpayerId ? { taxpayerId } : {} })
       .then((r) => r.data),
   get: (id: string) => api.get(`/mizan/${id}`).then((r) => r.data),
+  exportExcel: (id: string) =>
+    api
+      .get(`/mizan/${id}/export-excel`, { responseType: 'arraybuffer' })
+      .then((r) => r.data),
   importFromLuca: (data: { taxpayerId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
     api.post('/mizan/import', data).then((r) => r.data),
   // Extension-first Luca çekimi — moren-agent.js tarayıcıdaki açık Luca sekmesinden çekecek
@@ -68,6 +72,10 @@ export const bilancoApi = {
   get: (id: string) => api.get(`/bilanco/${id}`).then((r) => r.data),
   generate: (data: { mizanId: string; tarih?: string; donemTipi?: string }) =>
     api.post('/bilanco/generate', data).then((r) => r.data),
+  exportExcel: (id: string) =>
+    api
+      .get(`/bilanco/${id}/export-excel`, { responseType: 'arraybuffer' })
+      .then((r) => r.data),
   updateDuzeltmeler: (id: string, duzeltmeler: Record<string, number>) =>
     api.patch(`/bilanco/${id}/duzeltmeler`, { duzeltmeler }).then((r) => r.data),
   lock: (id: string, note?: string) => api.patch(`/bilanco/${id}/lock`, { note }).then((r) => r.data),

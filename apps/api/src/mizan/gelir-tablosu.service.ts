@@ -542,36 +542,116 @@ export class GelirTablosuService {
 
   /** Excel export — standart gelir tablosu formatı (3 dönem yan yana hazır değil, tek dönem) */
   async exportToExcel(id: string, tenantId: string): Promise<Buffer> {
+    const ExcelJS = await import('exceljs');
     const gt = await this.getGelirTablosu(id, tenantId);
-    const xlsx = await import('xlsx');
+    const wb = new (ExcelJS as any).Workbook();
+    const ws = wb.addWorksheet('Gelir Tablosu');
 
-    const netSatis = Number(gt.netSatislar) || 1;
-    const pct = (x: number) => (x / netSatis) * 100;
+    const taxpayerName =
+      gt.taxpayer?.companyName ||
+      [gt.taxpayer?.firstName, gt.taxpayer?.lastName].filter(Boolean).join(' ') ||
+      'Mükellef';
 
-    const rows: any[] = [
-      ['Kod', 'Kalem', 'Cari Dönem', 'Oran %'],
-      ['', 'A. BRÜT SATIŞLAR', Number(gt.brutSatislar), ''],
-      ['', 'B. SATIŞ İNDİRİMLERİ (-)', Number(gt.satisIndirimleri), ''],
-      ['', 'C. NET SATIŞLAR', Number(gt.netSatislar), 100],
-      ['', 'D. SATIŞLARIN MALİYETİ (-)', Number(gt.satisMaliyeti), ''],
-      ['', 'BRÜT SATIŞ KARI VEYA ZARARI', Number(gt.brutSatisKari), pct(Number(gt.brutSatisKari))],
-      ['', 'E. FAALİYET GİDERLERİ (-)', Number(gt.faaliyetGiderleri), pct(Number(gt.faaliyetGiderleri))],
-      ['', 'FAALİYET KARI VEYA ZARARI', Number(gt.faaliyetKari), pct(Number(gt.faaliyetKari))],
-      ['', 'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR', Number(gt.digerGelirler), ''],
-      ['', 'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)', Number(gt.digerGiderler), ''],
-      ['', 'H. FİNANSMAN GİDERLERİ (-)', Number(gt.finansmanGiderleri), pct(Number(gt.finansmanGiderleri))],
-      ['', 'OLAĞAN KAR VEYA ZARAR', Number(gt.olaganKar), pct(Number(gt.olaganKar))],
-      ['', 'I. OLAĞANDIŞI GELİR VE KARLAR', Number(gt.olaganDisiGelir), ''],
-      ['', 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', Number(gt.olaganDisiGider), ''],
-      ['', 'DÖNEM KARI VEYA ZARARI', Number(gt.donemKari), pct(Number(gt.donemKari))],
-      ['', 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', Number(gt.vergiKarsiligi), ''],
-      ['', 'DÖNEM NET KARI VEYA ZARARI', Number(gt.donemNetKari), pct(Number(gt.donemNetKari))],
+    wb.creator = 'Moren Mali Müşavirlik';
+    wb.created = new Date();
+    ws.views = [{ state: 'frozen', ySplit: 5 }];
+    ws.columns = [
+      { header: 'Kod', key: 'kod', width: 10 },
+      { header: 'Kalem', key: 'kalem', width: 58 },
+      { header: 'Cari Dönem', key: 'tutar', width: 18 },
+      { header: 'Oran %', key: 'oran', width: 12 },
     ];
 
-    const ws = xlsx.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 8 }, { wch: 52 }, { wch: 18 }, { wch: 10 }];
-    const wb = xlsx.utils.book_new();
-    xlsx.utils.book_append_sheet(wb, ws, 'Gelir Tablosu');
-    return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    ws.spliceRows(1, 0, [], [], [], []);
+    ws.mergeCells('A1:D1');
+    ws.getCell('A1').value = 'GELİR TABLOSU';
+    ws.mergeCells('A2:D2');
+    ws.getCell('A2').value = taxpayerName;
+    ws.mergeCells('A3:D3');
+    ws.getCell('A3').value = `${gt.donem} · ${gt.donemTipi || 'Dönem'}`;
+
+    for (const addr of ['A1', 'A2', 'A3']) {
+      const cell = ws.getCell(addr);
+      cell.alignment = { horizontal: 'center' };
+      cell.font = { bold: true, size: addr === 'A1' ? 16 : 12, color: { argb: addr === 'A1' ? 'FFD4B876' : 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF11100D' } };
+    }
+
+    const netSatis = Number(gt.netSatislar) || 0;
+    const pct = (x: number) => (netSatis ? x / netSatis : null);
+
+    const rows: Array<{ kod: string; kalem: string; tutar: number; oran: number | null; type?: 'group' | 'total' | 'final' }> = [
+      { kod: '', kalem: 'A. BRÜT SATIŞLAR', tutar: Number(gt.brutSatislar), oran: null, type: 'group' },
+      { kod: '', kalem: 'B. SATIŞ İNDİRİMLERİ (-)', tutar: Number(gt.satisIndirimleri), oran: null, type: 'group' },
+      { kod: '', kalem: 'C. NET SATIŞLAR', tutar: Number(gt.netSatislar), oran: netSatis ? 1 : null, type: 'total' },
+      { kod: '', kalem: 'D. SATIŞLARIN MALİYETİ (-)', tutar: Number(gt.satisMaliyeti), oran: null, type: 'group' },
+      { kod: '', kalem: 'BRÜT SATIŞ KARI VEYA ZARARI', tutar: Number(gt.brutSatisKari), oran: pct(Number(gt.brutSatisKari)), type: 'total' },
+      { kod: '', kalem: 'E. FAALİYET GİDERLERİ (-)', tutar: Number(gt.faaliyetGiderleri), oran: pct(Number(gt.faaliyetGiderleri)), type: 'group' },
+      { kod: '', kalem: 'FAALİYET KARI VEYA ZARARI', tutar: Number(gt.faaliyetKari), oran: pct(Number(gt.faaliyetKari)), type: 'total' },
+      { kod: '', kalem: 'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR', tutar: Number(gt.digerGelirler), oran: null, type: 'group' },
+      { kod: '', kalem: 'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)', tutar: Number(gt.digerGiderler), oran: null, type: 'group' },
+      { kod: '', kalem: 'H. FİNANSMAN GİDERLERİ (-)', tutar: Number(gt.finansmanGiderleri), oran: pct(Number(gt.finansmanGiderleri)), type: 'group' },
+      { kod: '', kalem: 'OLAĞAN KAR VEYA ZARAR', tutar: Number(gt.olaganKar), oran: pct(Number(gt.olaganKar)), type: 'total' },
+      { kod: '', kalem: 'I. OLAĞANDIŞI GELİR VE KARLAR', tutar: Number(gt.olaganDisiGelir), oran: null, type: 'group' },
+      { kod: '', kalem: 'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)', tutar: Number(gt.olaganDisiGider), oran: null, type: 'group' },
+      { kod: '', kalem: 'DÖNEM KARI VEYA ZARARI', tutar: Number(gt.donemKari), oran: pct(Number(gt.donemKari)), type: 'total' },
+      { kod: '', kalem: 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', tutar: Number(gt.vergiKarsiligi), oran: null, type: 'group' },
+      { kod: '', kalem: 'DÖNEM NET KARI VEYA ZARARI', tutar: Number(gt.donemNetKari), oran: pct(Number(gt.donemNetKari)), type: 'final' },
+    ];
+
+    const header = ws.getRow(5);
+    header.values = ['Kod', 'Kalem', 'Cari Dönem', 'Oran %'];
+    header.height = 24;
+    header.eachCell((cell: any) => {
+      cell.font = { bold: true, color: { argb: 'FFF5EFE3' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3A3324' } };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF8A7445' } },
+        bottom: { style: 'thin', color: { argb: 'FF8A7445' } },
+        left: { style: 'thin', color: { argb: 'FF4A412E' } },
+        right: { style: 'thin', color: { argb: 'FF4A412E' } },
+      };
+    });
+
+    let rowNo = 6;
+    for (const item of rows) {
+      const row = ws.getRow(rowNo++);
+      row.values = [item.kod, item.kalem, Number.isFinite(item.tutar) ? item.tutar : null, item.oran];
+      const isFinal = item.type === 'final';
+      const isTotal = item.type === 'total' || isFinal;
+      const isLoss = item.tutar < 0;
+      row.height = isFinal ? 25 : 22;
+      row.eachCell((cell: any, col: number) => {
+        cell.font = {
+          bold: isTotal,
+          size: isFinal ? 12 : 11,
+          color: {
+            argb:
+              col === 3 && isLoss
+                ? 'FFB91C1C'
+                : col === 3 && isTotal
+                  ? 'FF047857'
+                  : col === 2 && isTotal
+                    ? 'FF111827'
+                    : 'FF1F2937',
+          },
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: isFinal ? 'FFFFF1C2' : isTotal ? 'FFFFF7E6' : 'FFFFFFFF' },
+        };
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+        cell.alignment = { horizontal: col >= 3 ? 'right' : 'left', vertical: 'middle' };
+        if (col === 3) cell.numFmt = '#,##0.00;[Red]-#,##0.00';
+        if (col === 4) cell.numFmt = '0.00%;[Red]-0.00%';
+      });
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return buffer as Buffer;
   }
 }
