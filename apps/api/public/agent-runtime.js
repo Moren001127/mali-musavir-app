@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.84';
+  const AGENT_VERSION = '1.36.85';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6413,7 +6413,7 @@
         faturaTarihi: tarih,
         hedefAy,
         belgeNo,
-        belgeTuru,
+        belgeTuru: belgeTuru || (bosAlanSecenekleri ? 'BILINMIYOR' : belgeTuru),
         faturaTuru,
         mukellef,
         firma,
@@ -6878,6 +6878,85 @@
       cariDolu: durumlar.cariDolu === null ? false : durumlar.cariDolu,
       odemeDolu: durumlar.odemeDolu === null ? false : durumlar.odemeDolu,
     };
+  }
+
+  function parseKdvOraniDegeri(text) {
+    const m = String(text || '').match(/%?\s*(\d{1,2})/);
+    return m ? Number(m[1]) : null;
+  }
+
+  function kodSonParcaDegeri(kod) {
+    const last = String(kod || '').split('.').pop() || '';
+    const n = Number(last.replace(/^0+/, '') || '0');
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function pickKodByPrefixAndRate(list, prefixes, rate) {
+    const arr = Array.isArray(list) ? list.filter(Boolean) : [];
+    for (const prefix of prefixes) {
+      const prefixed = arr.filter((kod) => String(kod).startsWith(`${prefix}.`));
+      if (rate != null) {
+        const byRate = prefixed.find((kod) => kodSonParcaDegeri(kod) === rate);
+        if (byRate) return byRate;
+      }
+      if (prefixed.length > 0) return prefixed[0];
+    }
+    return arr[0] || null;
+  }
+
+  function applyIsletmeAccountCodeFallback({ action, secenekler, oneri }) {
+    const next = { ...(oneri || {}), confidence: { ...((oneri && oneri.confidence) || {}) } };
+    const isSatis = action === 'isle_satis' || action === 'isle_satis_isletme';
+    const kdvOrani = parseKdvOraniDegeri(readKdvOrani());
+    const fallbackNotlari = [];
+
+    if (!next.matrahHesapKodu) {
+      const kod = pickKodByPrefixAndRate(
+        secenekler.matrahKodlari,
+        isSatis ? ['600', '601', '602'] : ['153', '740', '770', '760'],
+        kdvOrani,
+      );
+      if (kod) {
+        next.matrahHesapKodu = kod;
+        next.confidence.matrah = Math.max(Number(next.confidence.matrah) || 0, 0.95);
+        fallbackNotlari.push(`matrah:${kod}`);
+      }
+    }
+
+    if (!next.kdvHesapKodu) {
+      const kod = pickKodByPrefixAndRate(
+        secenekler.kdvKodlari,
+        isSatis ? ['391'] : ['191'],
+        kdvOrani,
+      );
+      if (kod) {
+        next.kdvHesapKodu = kod;
+        next.confidence.kdv = Math.max(Number(next.confidence.kdv) || 0, 0.95);
+        fallbackNotlari.push(`kdv:${kod}`);
+      }
+    }
+
+    if (!next.cariHesapKodu) {
+      const cariList = Array.isArray(secenekler.cariKodlari) ? secenekler.cariKodlari : [];
+      const kod = cariList.find((c) => /^100\./.test(c))
+        || cariList.find((c) => /^102\./.test(c))
+        || cariList[0]
+        || null;
+      if (kod) {
+        next.cariHesapKodu = kod;
+        next.confidence.cari = Math.max(Number(next.confidence.cari) || 0, 0.95);
+        fallbackNotlari.push(`cari:${kod}`);
+      }
+    }
+
+    if (fallbackNotlari.length > 0) {
+      next._deterministicFallback = fallbackNotlari.join(', ');
+      console.log('[Moren.fill] isletme deterministic fallback:', {
+        kdvOrani,
+        fallback: next._deterministicFallback,
+      });
+    }
+    return next;
   }
 
   async function tryFillBosAlanlar({ secenekler, oneri, durumlar }) {
@@ -8445,7 +8524,10 @@
                     action, bosAlanSecenekleri: secenekler,
                   })
                 : { onerilenler: { confidence: { odeme: 0.95 } } };
-              const o = oneriKarari?.onerilenler || {};
+              let o = oneriKarari?.onerilenler || {};
+              if (isletmeAccountCodeFlow) {
+                o = applyIsletmeAccountCodeFallback({ action, secenekler, oneri: o });
+              }
               const cf = o.confidence || {};
               const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '?';
               console.log('[Moren] AI önerisi:', { secenekler, oneri: o });
@@ -8469,6 +8551,10 @@
               if (cariBos)   satirlar.push(`  Cari   : ${o.cariHesapKodu   || '(öneri yok)'}  güven ${fmtC(cf.cari)}  (sondaj: ${adetC} sonuç)`);
               if (odemeBos)  satirlar.push(`  Odeme  : ${o.odemeHesapKodu || o.tahsilatOdemeHesapKodu || (secenekler.odemeKodlari || [])[0] || '(oneri yok)'}  guven ${fmtC(cf.odeme || cf.cari || 0.95)}  (liste: ${adetO} sonuc)`);
               satirlar.push('');
+              if (o._deterministicFallback) {
+                satirlar.push(`Deterministik tamamlandı: ${o._deterministicFallback}`);
+                satirlar.push('');
+              }
 
               if (fillResult.dolduruldu) {
                 setStatus(`${mukellef.ad} · #${fid} F2 ile kaydediyor…`);

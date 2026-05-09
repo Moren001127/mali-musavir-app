@@ -639,6 +639,13 @@ export class AgentEventsService {
       };
     }
 
+    const hasBosAlanSecenekleri = !!(
+      input.bosAlanSecenekleri &&
+      ((input.bosAlanSecenekleri.matrahKodlari?.length || 0) +
+        (input.bosAlanSecenekleri.kdvKodlari?.length || 0) +
+        (input.bosAlanSecenekleri.cariKodlari?.length || 0)) > 0
+    );
+
     // === ZORUNLU META KONTROLÜ ===
     // Agent tarih/belge türü okuyamadıysa fatura işleme — tutarsız karar vermesin.
     // Kullanıcı bu alanları canlı akışta ✗ görüyorsa sebep burada.
@@ -651,7 +658,7 @@ export class AgentEventsService {
         metaEksik: 'tarih',
       };
     }
-    if (!belgeTuru || belgeTuru === '?' || belgeTuru === '??') {
+    if (!hasBosAlanSecenekleri && (!belgeTuru || belgeTuru === '?' || belgeTuru === '??')) {
       return {
         karar: 'atla',
         sebep: '⚠️ Belge türü okunamadı — agent meta eksik, fatura atlandı',
@@ -723,12 +730,6 @@ export class AgentEventsService {
     const startMs = Date.now();
     const MODEL = 'claude-haiku-4-5-20251001';
     const aiCallReasons = new Set<string>();
-    const hasBosAlanSecenekleri = !!(
-      input.bosAlanSecenekleri &&
-      ((input.bosAlanSecenekleri.matrahKodlari?.length || 0) +
-        (input.bosAlanSecenekleri.kdvKodlari?.length || 0) +
-        (input.bosAlanSecenekleri.cariKodlari?.length || 0)) > 0
-    );
     if (hasBosAlanSecenekleri) aiCallReasons.add('bos_kod');
 
     const logZeroUsage = (source: string, karar: string, sebep: string, cacheHit = true) =>
