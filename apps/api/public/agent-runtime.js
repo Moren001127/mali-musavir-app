@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.87';
+  const AGENT_VERSION = '1.36.88';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6130,7 +6130,6 @@
     while (Date.now() - t0 < timeoutMs) {
       if (faturaAdvancedFrom(fidBefore)) return true;
       if (getVisibleModals().length > 0) return true;
-      if (document.querySelector('.ant-spin-spinning, .ant-skeleton, .ant-select-loading')) return true;
       if (document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info')) return true;
       if (typeof validationDialogVarMi === 'function' && validationDialogVarMi()) return true;
       await sleep(75);
