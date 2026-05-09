@@ -774,14 +774,14 @@ function MizanTable({
 
   return (
     <div ref={tableRef} className="rounded-xl overflow-hidden" style={{
-      background: '#0b0a08',
-      border: '1px solid rgba(212,184,118,0.30)',
-      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.28)',
+      background: '#0a0907',
+      border: '1px solid rgba(212,184,118,0.42)',
+      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 40px rgba(0,0,0,0.30)',
     }}>
       {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
       <div style={{
-        background: 'linear-gradient(180deg, rgba(184,160,111,0.09), rgba(184,160,111,0.035))',
-        borderBottom: '1px solid rgba(212,184,118,0.34)',
+        background: 'linear-gradient(180deg, rgba(184,160,111,0.12), rgba(184,160,111,0.04))',
+        borderBottom: '1px solid rgba(212,184,118,0.46)',
         padding: '14px 24px',
       }}>
         <div className="text-center" style={{
@@ -822,9 +822,9 @@ function MizanTable({
                   className={`px-3 py-3 text-[12px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
                   style={{
                     color: '#f5efe3',
-                    borderRight: i < 5 ? '1px solid rgba(212,184,118,0.30)' : 'none',
-                    borderBottom: '1px solid rgba(212,184,118,0.42)',
-                    background: 'rgba(184,160,111,0.14)',
+                    borderRight: i < 5 ? '1px solid rgba(212,184,118,0.46)' : 'none',
+                    borderBottom: '1px solid rgba(212,184,118,0.58)',
+                    background: 'rgba(184,160,111,0.18)',
                     position: 'sticky',
                     top: 0,
                     zIndex: 1,
@@ -843,21 +843,21 @@ function MizanTable({
               const lvl = Number(h.seviye ?? 0);
               const isUpper = lvl <= 1; // Grup veya Ana Hesap
 
-              const codeColor = GOLD;
+              const codeColor = '#d8c17f';
               const adiColor = '#fafaf9';
-              const numTextColor = '#fafaf9';
-              const numBakiyeColor = '#22c55e'; // Bakiye yeşil (tek vurgu)
-              const dimColor = 'rgba(250,250,249,0.25)';
+              const numTextColor = '#f4efe6';
+              const numBakiyeColor = '#e3c878';
+              const dimColor = 'rgba(250,250,249,0.22)';
 
               const weight = isUpper ? 700 : 500;
-              const fontSize = 14;
+              const fontSize = isUpper ? 13.5 : 13;
 
               // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
               const rowBg = isUpper
-                ? 'rgba(212,184,118,0.045)'
+                ? 'rgba(212,184,118,0.06)'
                 : rowIdx % 2 === 0
-                  ? 'rgba(255,255,255,0.012)'
-                  : 'rgba(0,0,0,0.10)';
+                  ? 'rgba(255,255,255,0.018)'
+                  : 'rgba(0,0,0,0.16)';
 
               const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; color: string }> = [
                 { val: h.hesapKodu, align: 'left', color: codeColor },
@@ -881,8 +881,8 @@ function MizanTable({
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         className={`px-3 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
                         style={{
-                          borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.16)' : 'none',
-                          borderBottom: '1px solid rgba(255,255,255,0.10)',
+                          borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
+                          borderBottom: '1px solid rgba(255,255,255,0.14)',
                           fontSize: fontSize,
                           color: c.color,
                           fontWeight: weight,
@@ -891,7 +891,9 @@ function MizanTable({
                           outlineOffset: focused ? '-2px' : '0',
                           background: focused ? 'rgba(184,160,111,0.10)' : undefined,
                           whiteSpace: 'nowrap',
-                          height: 46,
+                          height: 42,
+                          paddingLeft: colIdx === 1 ? 12 + Math.min(lvl, 4) * 14 : undefined,
+                          letterSpacing: 0,
                           userSelect: 'text',
                         }}
                       >
