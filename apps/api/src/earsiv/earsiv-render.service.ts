@@ -205,8 +205,9 @@ export class EarsivRenderService {
         script.text = oldScript.text || oldScript.textContent || '';
         oldScript.parentNode && oldScript.parentNode.replaceChild(script, oldScript);
       });
-      try { window.dispatchEvent(new Event('load')); } catch(e) {}
-      try { document.dispatchEvent(new Event('DOMContentLoaded')); } catch(e) {}
+      // Fatura XSLT'leri bazen load/DOMContentLoaded olayında sayfaları yeniden
+      // üretir. Bu olayları burada tekrar tetiklemek yazdırmada aynı faturayı
+      // onlarca sayfaya çoğaltabiliyor; inline scriptleri bir kez çalıştırmak yeterli.
     } catch(e) {
       console.warn('[Moren] XSLT script çalıştırma hatası:', e && e.message);
     }
