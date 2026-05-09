@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.76';
+  const AGENT_VERSION = '1.36.77';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6278,11 +6278,12 @@
           await sleep(250);
         }
       }
-      const inferredBelgeTuru = v.belgeTuru || (
+      const belgeNo = v.faturaNo || v.belgeNo || null;
+      const inferredBelgeTuru = inferBelgeTuruFromBelgeNo(belgeNo) || v.belgeTuru || (
         inferIsOkcFis({
           belgeTuru: v.belgeTuru,
           faturaTuru: v.faturaTuru,
-          belgeNo: v.faturaNo || v.belgeNo,
+          belgeNo,
           firma: v.faturaFirmaAdi || v.firmaUnvan,
         })
           ? 'FIS'
@@ -6290,7 +6291,7 @@
       );
       return {
         tarih,
-        belgeNo: v.faturaNo || v.belgeNo || null,
+        belgeNo,
         belgeTuru: inferredBelgeTuru,
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
@@ -7105,11 +7106,22 @@
     return /^\d{1,6}$/.test(no);
   }
 
+  function inferBelgeTuruFromBelgeNo(belgeNo) {
+    const no = String(belgeNo || '').toUpperCase().trim();
+    if (!no) return null;
+    // EYK serisi Mihsap/Luca akışında e-Arşiv olarak geliyor; generic e-Fatura kuralından önce yakala.
+    if (/^(BEA|EAR|EYK|GIB|EARSIV)/.test(no)) return 'e-Arşiv Fatura';
+    if (/(FIS|OKC|ZRP)/.test(no)) return 'ÖKC Fişi';
+    return null;
+  }
+
   async function pickBelgeTuruIsletme(meta, fallbackTarget) {
     const candidates = [];
     if (inferIsOkcFis(meta)) {
       candidates.push('ÖKC Fişi', 'OKC Fişi', 'Perakende Satış Fişi', 'Fatura');
     }
+    const belgeNoTarget = inferBelgeTuruFromBelgeNo(meta?.belgeNo);
+    if (belgeNoTarget) candidates.push(belgeNoTarget);
     if (fallbackTarget) candidates.push(fallbackTarget);
     candidates.push('e-Fatura', 'e-Arşiv Fatura', 'Fatura');
 

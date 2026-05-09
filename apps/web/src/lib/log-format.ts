@@ -591,6 +591,11 @@ function formatBelgeTuru(raw: string): string {
 }
 
 function inferBelgeTuru(action?: string, meta?: any, message?: string): string | undefined {
+  const fisNo = (meta as any)?.fisNo || (meta as any)?.belgeNo;
+  const belgeTuruFromNo = inferBelgeTuruFromNo(fisNo);
+  // Bazı Mihsap ekranlarında belge türü varsayılan e-Fatura kalıyor; güçlü seri prefix'i daha güvenilir.
+  if (belgeTuruFromNo === 'e-Arşiv Fatura') return belgeTuruFromNo;
+
   // 1) meta.belgeTuru — extension explicit göndermişse en doğru (insanca formatla)
   if (meta?.belgeTuru) return formatBelgeTuru(String(meta.belgeTuru));
   // 2) meta.faturaTuru — bazı durumlarda belgeTuru yok ama faturaTuru var
@@ -623,18 +628,19 @@ function inferBelgeTuru(action?: string, meta?: any, message?: string): string |
   }
   // 4) BelgeNo prefix'inden tahmin — agent.js (v1.36.3) ile aynı tablo
   // Türkiye e-Belge formatı: 3 harf + 4 yıl + 9 sıra (toplam 16 char)
-  const fisNo = (meta as any)?.fisNo || (meta as any)?.belgeNo;
-  if (fisNo) {
-    const bn = String(fisNo).toUpperCase().trim();
-    // 1) e-Arşiv prefiksleri
-    if (/^(BEA|EAR|GIB|EARSIV)/.test(bn)) return 'e-Arşiv Fatura';
-    // 2) Yazarkasa fişi
-    if (/(FIS|OKC|ZRP)/.test(bn)) return 'Yazarkasa Fişi';
-    // 3) e-Fatura — generic 3-4 harf + 4 yıl + sayı
-    //    KAA2026..., KE32026..., J812026..., MK12026... gibi tüm yaygın seriler.
-    if (/^[A-Z][A-Z0-9]{1,3}20\d{2}\d{6,12}$/.test(bn)) return 'e-Fatura';
-    // 4) Eski explicit prefiksler
-    if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9]|KAA|KE\d|K3|J\d{2}|MK\d|MUH)/.test(bn)) return 'e-Fatura';
+  if (belgeTuruFromNo) return belgeTuruFromNo;
+  return undefined;
+}
+
+function inferBelgeTuruFromNo(fisNo?: unknown): string | undefined {
+  if (!fisNo) return undefined;
+  const bn = String(fisNo).toUpperCase().trim();
+  // e-Arşiv prefiksleri. EYK serisi pratikte e-Arşiv olarak geliyor.
+  if (/^(BEA|EAR|EYK|GIB|EARSIV)/.test(bn)) return 'e-Arşiv Fatura';
+  if (/(FIS|OKC|ZRP)/.test(bn)) return 'Yazarkasa Fişi';
+  if (/^(ABC|AN[A-Z0-9]?|EFA|EFATURA|FAT|F[A-Z0-9]|KAA|KE\d|K3|J\d{2}|MK\d|MUH)/.test(bn)) {
+    return 'e-Fatura';
   }
+  if (/^[A-Z][A-Z0-9]{1,3}20\d{2}\d{6,12}$/.test(bn)) return 'e-Fatura';
   return undefined;
 }
