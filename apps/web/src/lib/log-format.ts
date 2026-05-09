@@ -454,27 +454,43 @@ export function buildFieldRows(event: {
   } else {
     // v1.36.63: ÖKC Fişi vb. tek-kalem belgelerde mesaj içinden "B1:..." parse'la
     // (Matrah için hesap kodu kaynağı). Eğer event.hesapKodu boşsa B1'i fallback olarak göster.
-    const b1Match = msg.match(/B\d:([^·\n]+?)(?:\s+B\d:|·|$)/);
-    const b1Hesap = b1Match ? b1Match[1].trim() : '';
-    const giderHesabi = event.hesapKodu || b1Hesap;
-    if (giderHesabi) {
-      // Genelde KDV ayrımı yok ÖKC Fişlerinde — sadece hesap kodu göster
-      rows.push({
-        label: belgeTuru === 'ÖKC Fişi' || belgeTuru === 'FİS' ? 'Gider Hesabı' : 'Matrah',
-        status: 'full',
-        value: giderHesabi,
-      });
-      // KDV oranı varsa onu da göster
-      if (event.kdv) {
+    const blokMatches = Array.from(msg.matchAll(/B(\d+):([^·\n]+?)(?=\s+B\d+:|·|$)/g));
+    const isIsletmeKategoriLog = /Isletme|FatT:|AST:/i.test(msg) && blokMatches.length > 0 && !event.hesapKodu;
+
+    if (isIsletmeKategoriLog) {
+      for (const match of blokMatches) {
+        const blokNo = match[1];
+        const raw = match[2].trim();
+        const [kayitTuru, altTuru] = raw.split('/').map((p) => p.trim()).filter(Boolean);
         rows.push({
-          label: 'KDV',
+          label: blokMatches.length > 1 ? `Kayıt Türü ${blokNo}` : 'Kayıt Türü',
           status: 'full',
-          value: String(event.kdv),
+          value: kayitTuru || raw,
+          meta: altTuru ? `K. Alt Türü: ${altTuru}` : undefined,
         });
       }
     } else {
-      checkField('Matrah', event.hesapKodu);
-      checkField('KDV', event.kdv);
+      const b1Hesap = blokMatches[0]?.[2]?.trim() || '';
+      const giderHesabi = event.hesapKodu || b1Hesap;
+      if (giderHesabi) {
+        // Genelde KDV ayrımı yok ÖKC Fişlerinde — sadece hesap kodu göster
+        rows.push({
+          label: belgeTuru === 'ÖKC Fişi' || belgeTuru === 'FİS' ? 'Gider Hesabı' : 'Matrah',
+          status: 'full',
+          value: giderHesabi,
+        });
+        // KDV oranı varsa onu da göster
+        if (event.kdv) {
+          rows.push({
+            label: 'KDV',
+            status: 'full',
+            value: String(event.kdv),
+          });
+        }
+      } else {
+        checkField('Matrah', event.hesapKodu);
+        checkField('KDV', event.kdv);
+      }
     }
   }
 

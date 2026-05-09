@@ -16,7 +16,7 @@ const DOCUMENT_LABELS = new Set([
 ]);
 
 function isAccountRow(row: FieldRow) {
-  return /^(Matrah|KDV|Cari Hesab|Gider Hesab)/i.test(row.label);
+  return /^(Matrah|KDV|Cari Hesab|Gider Hesab|Kayıt Türü)/i.test(row.label);
 }
 
 export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
@@ -24,6 +24,7 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
 
   const documentRows = rows.filter((row) => DOCUMENT_LABELS.has(row.label));
   const accountRows = rows.filter(isAccountRow);
+  const hasIsletmeRows = accountRows.some((row) => /^Kayıt Türü/i.test(row.label));
   const decisionRows = rows.filter((row) => row.label === 'Onay' || row.label === 'İçerik' || row.label === 'Ä°Ã§erik');
   const otherRows = rows.filter(
     (row) => !DOCUMENT_LABELS.has(row.label) && !isAccountRow(row) && row.label !== 'Onay' && row.label !== 'İçerik' && row.label !== 'Ä°Ã§erik',
@@ -55,7 +56,7 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
           }}
         >
           <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide" style={{ color: '#8d7442' }}>
-            Muhasebe kaydı
+            {hasIsletmeRows ? 'İşletme kaydı' : 'Muhasebe kaydı'}
           </div>
           <div className="space-y-1">
             {accountRows.map((row, i) => (
@@ -112,13 +113,13 @@ function InfoTile({ row, quiet = false }: { row: FieldRow; quiet?: boolean }) {
 function AccountLine({ row }: { row: FieldRow }) {
   const style = statusStyle(row.status);
   const isKdv = /^KDV/i.test(row.label);
-  const isMatrah = /^Matrah|^Gider/i.test(row.label);
+  const isMatrah = /^Matrah|^Gider|^Kayıt Türü/i.test(row.label);
 
   return (
     <div
       className="grid items-center gap-2 rounded px-2 py-1.5 text-[12px]"
       style={{
-        gridTemplateColumns: '96px 1fr',
+        gridTemplateColumns: '128px 1fr',
         background: isMatrah
           ? 'rgba(34,197,94,0.045)'
           : isKdv

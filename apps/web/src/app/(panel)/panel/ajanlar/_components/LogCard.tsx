@@ -117,14 +117,20 @@ export function LogCard({ event }: { event: LogEvent }) {
   const statusLower = String(event.status || '').toLowerCase();
   const needsAttention = warnings.length > 0 || ['atlandi', 'skip', 'hata', 'error'].includes(statusLower);
   const attentionText = parsed.sonuc?.text || parsed.hata || parsed.mihsapUyarisi || event.message || 'detay yok';
+  const showSummary = hasSummary && !(needsAttention && !parsed.sonuc && !parsed.mihsapUyarisi && !parsed.hata);
   const visual = warnings.length > 0 && isSuccess
     ? { color: '#d4a94f', icon: '!', bg: 'rgba(180,120,40,.06)', label: 'UYARILI', border: '#a17835' }
     : baseStyle;
 
   return (
     <div
-      className="px-3 py-2 rounded-md transition-colors hover:brightness-110"
-      style={{ background: visual.bg, borderLeft: `3px solid ${visual.border}` }}
+      className="px-4 py-3 rounded-lg transition-colors hover:brightness-110"
+      style={{
+        background: visual.bg,
+        border: `1px solid ${visual.border}55`,
+        borderLeft: `4px solid ${visual.border}`,
+        boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+      }}
     >
       <span
         className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold px-1.5 py-0.5"
@@ -135,7 +141,7 @@ export function LogCard({ event }: { event: LogEvent }) {
       <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#6b6b6b' }}>
         {t}
       </span>
-      <div className="mt-2 w-full max-w-[1280px] mx-auto min-w-0">
+      <div className="mt-2.5 w-full min-w-0">
         <div className="flex items-center gap-2 flex-wrap text-[13px]">
           {event.firma && (
             <span className="font-semibold truncate" style={{ color: '#b8a06f' }}>
@@ -205,7 +211,7 @@ export function LogCard({ event }: { event: LogEvent }) {
           />
         )}
 
-        {hasSummary && (
+        {showSummary && (
           <LogSummary
             sonuc={parsed.sonuc}
             mihsapUyarisi={parsed.mihsapUyarisi}
