@@ -388,23 +388,40 @@ export function buildFieldRows(event: {
       if (!usedRates.has(oran)) kdvRows.push({ oran, kod: '' });
     }
 
+    const toRateRatio = (oran?: string | null): number | null => {
+      const m = String(oran || '').match(/(\d{1,2})/);
+      if (!m) return null;
+      const n = Number(m[1]);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return n / 100;
+    };
+
+    const splitAmountForRate = (oran?: string | null): { matrah: number; kdv: number } | null => {
+      const ratio = toRateRatio(oran);
+      if (!Number.isFinite(toplamNum) || toplamNum <= 0 || ratio === null) return null;
+      const matrah = toplamNum / (1 + ratio);
+      return { matrah, kdv: toplamNum - matrah };
+    };
+
     const lineCount = Math.max(matrahKodlari.length, kdvRows.length);
     for (let i = 0; i < lineCount; i++) {
       const matrahKodu = matrahKodlari[i];
       const kdvRow = kdvRows[i];
       const oran = kdvRow?.oran || null;
       const kdvKodu = kdvRow?.kod || '';
+      const lineRate = extractRate(matrahKodu) || extractRate(kdvKodu) || oran;
+      const lineAmounts = lineCount === 1 ? splitAmountForRate(lineRate) : null;
 
       if (matrahKodu) {
         rows.push({
           label: `Matrah ${i + 1}`,
           status: 'full',
-          value: matrahKodu,
+          value: lineAmounts ? `${fmtTL(lineAmounts.matrah)} Â· ${matrahKodu}` : matrahKodu,
         });
       }
       // KDV satırı: oran + ayraç + KDV hesap kodu birlikte
       if (oran || kdvKodu) {
-        const parts = [oran, kdvKodu].filter(Boolean);
+        const parts = [lineAmounts ? fmtTL(lineAmounts.kdv) : null, extractRate(kdvKodu) || oran, kdvKodu].filter(Boolean);
         rows.push({
           label: `KDV ${i + 1}`,
           status: oran && !kdvKodu ? 'warning' : 'full',

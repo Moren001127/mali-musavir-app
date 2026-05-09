@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.75';
+  const AGENT_VERSION = '1.36.76';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6043,11 +6043,16 @@
       }
       // Onay dialog'u (genel) — "emin misiniz?" gibi. Atlama işlemi yapıyoruz, Evet/Tamam.
       if (/emin misiniz/i.test(text) || /onaylıyor musunuz/i.test(text)) {
-        const ok = findIn('Evet') || findIn('Tamam') || findInStarts('Evet');
+        const ok =
+          findIn('Onayla') || findIn('Evet') || findIn('Tamam') ||
+          findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
         if (ok) { await click(ok); await sleep(300); return 'evet'; }
       }
-      // Genel fallback — Tamam/Evet/Devam önceliği, sonra Vazgeç
-      const ok2 = findIn('Evet') || findIn('Tamam') || findIn('Devam') || findInStarts('Evet') || findInStarts('Tamam');
+      // Genel fallback: Mihsap uyarilarinda pozitif aksiyon oncelikli.
+      // "Vazgec" bazi uyarilarda ayni faturayi tekrar F2 dongusune sokuyor.
+      const ok2 =
+        findIn('Onayla') || findIn('Tamam') || findIn('Evet') || findIn('Devam') || findIn('Devam et') ||
+        findInStarts('Onayla') || findInStarts('Tamam') || findInStarts('Evet') || findInStarts('Devam');
       if (ok2) { await click(ok2); await sleep(300); return 'tamam'; }
       const vazgec = findIn('Vazgeç') || findIn('İptal');
       if (vazgec) { await click(vazgec); await sleep(300); return 'vazgec'; }
