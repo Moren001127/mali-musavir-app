@@ -1298,6 +1298,7 @@ function EarsivPreviewModal({
   onClose: () => void;
 }) {
   const [html, setHtml] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -1327,12 +1328,29 @@ function EarsivPreviewModal({
     };
   }, [onClose]);
 
-  // HTML'i auth'lu fetch et (api interceptor Authorization header'ı koyar)
+  // Önce orijinal PDF'i dene; yoksa HTML/XSLT render'a düş.
   useEffect(() => {
     let cancel = false;
+    let objectUrl: string | null = null;
     (async () => {
       try {
         setLoading(true);
+        setError(null);
+        setHtml(null);
+        setPdfUrl(null);
+
+        try {
+          const pdfRes = await api.get(`/earsiv/${fatura.id}/original-pdf`, { responseType: 'blob' });
+          if (cancel) return;
+          objectUrl = URL.createObjectURL(new Blob([pdfRes.data], { type: 'application/pdf' }));
+          setPdfUrl(objectUrl);
+          return;
+        } catch (pdfErr: any) {
+          if (pdfErr?.response?.status && pdfErr.response.status !== 404) {
+            console.warn('Orijinal PDF alınamadı, HTML render deneniyor:', pdfErr?.message || pdfErr);
+          }
+        }
+
         const res = await api.get(`/earsiv/${fatura.id}/html`, { responseType: 'text' });
         if (cancel) return;
         setHtml(typeof res.data === 'string' ? res.data : String(res.data));
@@ -1343,17 +1361,20 @@ function EarsivPreviewModal({
         if (!cancel) setLoading(false);
       }
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [fatura.id]);
 
   // İçerik yüklendiğinde autoPrint ise yazdırma tetikle
   useEffect(() => {
-    if (!html || !autoPrint || !iframeRef.current) return;
+    if ((!html && !pdfUrl) || !autoPrint || !iframeRef.current) return;
     const tid = setTimeout(() => {
       try { iframeRef.current?.contentWindow?.print(); } catch {}
     }, 500);
     return () => clearTimeout(tid);
-  }, [html, autoPrint]);
+  }, [html, pdfUrl, autoPrint]);
 
   const triggerPrint = () => {
     try { iframeRef.current?.contentWindow?.print(); }
@@ -1410,7 +1431,7 @@ function EarsivPreviewModal({
           <div className="flex items-center gap-2">
             <button
               onClick={triggerPrint}
-              disabled={!html || loading}
+              disabled={(!html && !pdfUrl) || loading}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
               style={{ background: 'rgba(255,255,255,.15)', color: '#fff' }}
             >
@@ -1444,7 +1465,15 @@ function EarsivPreviewModal({
               </div>
             </div>
           )}
-          {html && !loading && !error && (
+          {pdfUrl && !loading && !error && (
+            <iframe
+              ref={iframeRef}
+              src={pdfUrl}
+              className="w-full h-full bg-white"
+              title={fatura.faturaNo}
+            />
+          )}
+          {!pdfUrl && html && !loading && !error && (
             <iframe
               ref={iframeRef}
               srcDoc={html}

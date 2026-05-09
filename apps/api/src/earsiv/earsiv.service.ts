@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EarsivZipParserService, ParsedEarsivFatura } from './earsiv-zip-parser.service';
 import { EarsivRenderService } from './earsiv-render.service';
 import { MihsapService } from '../mihsap/mihsap.service';
+import { StorageService } from '../storage/storage.service';
 import { chromium as pwChromium } from 'playwright-core';
 import * as JSZip from 'jszip';
 
@@ -18,7 +19,47 @@ export class EarsivService {
     private readonly parser: EarsivZipParserService,
     private readonly render: EarsivRenderService,
     private readonly mihsap: MihsapService,
+    private readonly storage: StorageService,
   ) {}
+
+  private safeFilePart(value: string | null | undefined, fallback = 'fatura'): string {
+    const cleaned = String(value || fallback).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80);
+    return cleaned || fallback;
+  }
+
+  private buildPdfStorageKey(opts: {
+    tenantId: string;
+    taxpayerId: string;
+    donem: string;
+    tip: EarsivTip;
+    belgeKaynak: BelgeKaynak;
+    faturaNo: string;
+  }): string {
+    const yon = opts.tip === 'SATIS' ? 'giden' : 'gelen';
+    const kaynak = opts.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
+    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}.pdf`;
+  }
+
+  private async storeOriginalPdf(opts: {
+    tenantId: string;
+    taxpayerId: string;
+    donem: string;
+    tip: EarsivTip;
+    belgeKaynak: BelgeKaynak;
+    faturaNo: string;
+    pdfBuffer?: Buffer;
+  }): Promise<string | null> {
+    if (!opts.pdfBuffer?.length) return null;
+    const key = this.buildPdfStorageKey(opts);
+    await this.storage.putBuffer(key, opts.pdfBuffer, 'application/pdf', {
+      originalName: encodeURIComponent(`${this.safeFilePart(opts.faturaNo)}.pdf`),
+      faturaNo: opts.faturaNo,
+      donem: opts.donem,
+      tip: opts.tip,
+      belgeKaynak: opts.belgeKaynak,
+    });
+    return key;
+  }
 
   /**
    * Seçili Gelen E-Arşiv faturalarını Mihsap'a "Gider Faturası" olarak yükler.
@@ -71,16 +112,20 @@ export class EarsivService {
         }
         let pdfBuffer: Buffer;
         try {
-          const html = this.render.renderHtml(f as any, { autoPrint: false });
-          const page = await ctx.newPage();
-          await page.setContent(html, { waitUntil: 'networkidle', timeout: 20000 });
-          await page.waitForTimeout(500);
-          pdfBuffer = await page.pdf({
-            format: 'A4',
-            printBackground: true,
-            margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
-          });
-          await page.close();
+          if (f.pdfStorageKey) {
+            pdfBuffer = await this.storage.getBuffer(f.pdfStorageKey);
+          } else {
+            const html = this.render.renderHtml(f as any, { autoPrint: false });
+            const page = await ctx.newPage();
+            await page.setContent(html, { waitUntil: 'networkidle', timeout: 20000 });
+            await page.waitForTimeout(500);
+            pdfBuffer = await page.pdf({
+              format: 'A4',
+              printBackground: true,
+              margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' },
+            });
+            await page.close();
+          }
         } catch (e: any) {
           failed++;
           const msg = `PDF render hatası: ${e?.message || e}`;
@@ -152,6 +197,17 @@ export class EarsivService {
       const ctx = await browser.newContext();
       for (const f of faturas) {
         try {
+          const pdfYon = f.tip === 'SATIS' ? 'giden' : 'gelen';
+          const pdfKaynak = f.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
+          const pdfKlasor = `${pdfYon}-${pdfKaynak}`;
+          const pdfSafeName = String(f.faturaNo || f.id).replace(/[^A-Za-z0-9._-]/g, '_');
+          if (f.pdfStorageKey) {
+            const originalPdf = await this.storage.getBuffer(f.pdfStorageKey);
+            if (originalPdf.length) {
+              zip.file(`${pdfKlasor}/${pdfYon}-${pdfKaynak}-${pdfSafeName}.pdf`, originalPdf);
+              continue;
+            }
+          }
           const html = this.render.renderHtml(f as any, { autoPrint: false });
           const page = await ctx.newPage();
           // setContent + waitUntil networkidle: gömülü XSLT JS'inin tamamlanmasını bekle
@@ -221,19 +277,50 @@ export class EarsivService {
     let inserted = 0;   // gerçekten YENİ eklenen
     let duplicate = 0;  // önceden vardı, atlandı (mükerrer önleme)
     let skipped = 0;    // hata nedeniyle atlandı
+    let pdfStored = 0;
+    let pdfBackfilled = 0;
     const errors: string[] = []; // ilk birkaç hata sebebi (debugging için)
 
     for (const f of parsed) {
       try {
+        const fDonem = donemFromTarih(f.faturaTarihi);
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
         const existing = await (this.prisma as any).earsivFatura.findFirst({
           where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
-          select: { id: true },
+          select: { id: true, pdfStorageKey: true },
         });
         if (existing) {
+          if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
+            const pdfStorageKey = await this.storeOriginalPdf({
+              tenantId,
+              taxpayerId,
+              donem: fDonem,
+              tip,
+              belgeKaynak,
+              faturaNo: f.faturaNo,
+              pdfBuffer: f.pdfBuffer,
+            });
+            if (pdfStorageKey) {
+              await (this.prisma as any).earsivFatura.update({
+                where: { id: existing.id },
+                data: { pdfStorageKey },
+              });
+              pdfBackfilled++;
+            }
+          }
           duplicate++;
           continue;
         }
+        const pdfStorageKey = await this.storeOriginalPdf({
+          tenantId,
+          taxpayerId,
+          donem: fDonem,
+          tip,
+          belgeKaynak,
+          faturaNo: f.faturaNo,
+          pdfBuffer: f.pdfBuffer,
+        });
+        if (pdfStorageKey) pdfStored++;
         await (this.prisma as any).earsivFatura.create({
           data: {
             tenantId,
@@ -242,7 +329,7 @@ export class EarsivService {
             belgeKaynak,
             // Fatura tarihinden türetilen donem (Sorgu 2'deki Mayıs faturaları
             // Nisan job'ında bile gelse '2026-05' olarak kaydedilir).
-            donem: donemFromTarih(f.faturaTarihi),
+            donem: fDonem,
             faturaNo: f.faturaNo,
             faturaTarihi: f.faturaTarihi,
             ettn: f.ettn,
@@ -256,6 +343,7 @@ export class EarsivService {
             toplamTutar: f.toplamTutar,
             paraBirimi: f.paraBirimi,
             xmlContent: f.xmlContent,
+            pdfStorageKey,
             zipSourceName: f.zipFileName,
             fetchJobId,
           },
@@ -281,6 +369,8 @@ export class EarsivService {
       xmlCount: (parsed as any).__xmlCount || 0,
       entries: (parsed as any).__entries || [],
       diagnostics: (parsed as any).__diagnostics || [],
+      pdfStored,
+      pdfBackfilled,
       errors,
     };
     return { inserted, duplicate, skipped, total: parsed.length, meta };
@@ -363,6 +453,18 @@ export class EarsivService {
     return f;
   }
 
+  async getOriginalPdf(tenantId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
+    const f = await (this.prisma as any).earsivFatura.findFirst({
+      where: { tenantId, id },
+      select: { faturaNo: true, pdfStorageKey: true },
+    });
+    if (!f) throw new NotFoundException('Fatura bulunamadı');
+    if (!f.pdfStorageKey) throw new NotFoundException('Orijinal PDF bulunamadı');
+    const buffer = await this.storage.getBuffer(f.pdfStorageKey);
+    if (!buffer.length) throw new NotFoundException('Orijinal PDF boş');
+    return { buffer, filename: `${this.safeFilePart(f.faturaNo)}.pdf` };
+  }
+
   /**
    * Seçili faturaları ZIP olarak topla (orijinal XML + PDF)
    */
@@ -382,7 +484,14 @@ export class EarsivService {
       if (f.xmlContent) {
         zip.file(`${baseName}.xml`, f.xmlContent);
       }
-      // PDF storage key varsa S3'ten al — şimdilik atlıyoruz
+      if (f.pdfStorageKey) {
+        try {
+          const pdf = await this.storage.getBuffer(f.pdfStorageKey);
+          if (pdf.length) zip.file(`${baseName}.pdf`, pdf);
+        } catch (e: any) {
+          this.logger.warn(`Orijinal PDF ZIP'e eklenemedi (${f.faturaNo}): ${e?.message}`);
+        }
+      }
     }
     return zip.generateAsync({ type: 'nodebuffer' });
   }

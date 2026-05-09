@@ -62,8 +62,7 @@ export class EarsivRenderService {
 
   /** XML'in içinde EmbeddedDocumentBinaryObject olarak XSLT var mı? */
   private hasEmbeddedXslt(xml: string): boolean {
-    return /EmbeddedDocumentBinaryObject[^>]*filename="[^"]*\.xslt"/i.test(xml)
-      || /EmbeddedDocumentBinaryObject[^>]*filename="[^"]*\.XSLT"/i.test(xml);
+    return /EmbeddedDocumentBinaryObject[^>]*(?:filename|mimeCode)=["'][^"']*(?:\.xsl|\.xslt|xslt|xsl)["']/i.test(xml);
   }
 
   /** XML'i tarayıcıya gönder, gömülü XSLT'yi browser tarafında apply et.
@@ -173,7 +172,8 @@ export class EarsivRenderService {
     for (var i = 0; i < (nodes && nodes.length); i++) {
       var n = nodes[i];
       var fn = n.getAttribute('filename') || '';
-      if (/\\.xslt$/i.test(fn)) {
+      var mime = n.getAttribute('mimeCode') || n.getAttribute('mimecode') || '';
+      if (/\\.(xsl|xslt)$/i.test(fn) || /xsl/i.test(mime)) {
         var b64 = (n.textContent || '').trim();
         var xsltStr = b64DecodeUnicode(b64);
         if (xsltStr) {

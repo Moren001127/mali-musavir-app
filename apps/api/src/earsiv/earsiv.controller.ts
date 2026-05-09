@@ -101,6 +101,21 @@ export class EarsivController {
     return this.earsiv.getById(req.user.tenantId, id);
   }
 
+  @Get('earsiv/:id/original-pdf')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  async getOriginalPdf(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const pdf = await this.earsiv.getOriginalPdf(req.user.tenantId, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(pdf.filename)}"`);
+    res.setHeader('Content-Length', String(pdf.buffer.length));
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.send(pdf.buffer);
+  }
+
   /**
    * Tek fatura için yazdırılabilir HTML görüntü.
    * ?print=1 parametresi varsa sayfa yüklendikten sonra otomatik window.print() tetikler.

@@ -88,6 +88,21 @@ export class StorageService {
   }
 
   /**
+   * S3/MinIO nesnesini buffer olarak indirir.
+   */
+  async getBuffer(s3Key: string): Promise<Buffer> {
+    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: s3Key }));
+    const body = res.Body as any;
+    if (!body) return Buffer.alloc(0);
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
+  }
+
+  /**
    * S3'ten nesne siler
    */
   async deleteObject(s3Key: string): Promise<void> {

@@ -6,9 +6,10 @@ import { EarsivRenderService } from './earsiv-render.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LucaModule } from '../luca/luca.module';
 import { MihsapModule } from '../mihsap/mihsap.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => LucaModule), MihsapModule],
+  imports: [PrismaModule, forwardRef(() => LucaModule), MihsapModule, StorageModule],
   controllers: [EarsivController],
   providers: [EarsivService, EarsivZipParserService, EarsivRenderService],
   exports: [EarsivService],
