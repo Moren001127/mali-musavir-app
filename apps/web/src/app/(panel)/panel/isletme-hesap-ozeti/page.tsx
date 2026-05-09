@@ -17,6 +17,24 @@ import {
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
+const TABLE_SURFACE = '#0b0906';
+const TABLE_SURFACE_ALT = '#100d09';
+const TABLE_HEADER_BG = 'linear-gradient(180deg, rgba(212,184,118,0.15), rgba(212,184,118,0.07))';
+const GRID_LINE = 'rgba(212,184,118,0.24)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.44)';
+const REPORT_TEXT = 'rgba(250,250,249,0.92)';
+const REPORT_MUTED = 'rgba(231,229,228,0.58)';
+const REPORT_DIM = 'rgba(214,211,209,0.34)';
+const AMOUNT_TEXT = '#f3eee6';
+const AMOUNT_ACCENT = '#e3c878';
+const PROFIT_TEXT = '#cdd7bd';
+const LOSS_TEXT = '#f0a2aa';
+const REPORT_TABLE_STYLE: React.CSSProperties = {
+  tableLayout: 'fixed',
+  borderCollapse: 'separate',
+  borderSpacing: 0,
+  fontVariantNumeric: 'tabular-nums',
+};
 
 type Taxpayer = {
   id: string;
@@ -93,6 +111,13 @@ function NumInput({
     if (!focused) setText(value ? formatTR(value) : '');
   }, [value, focused]);
 
+  const inputColor = disabled && value
+    ? AMOUNT_ACCENT
+    : disabled || !value
+    ? REPORT_DIM
+    : AMOUNT_TEXT;
+  const inputWeight = disabled && value ? 700 : !value ? 500 : 650;
+
   return (
     <input
       type="text"
@@ -116,26 +141,20 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2 py-0.5 text-center text-[13px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2.5 py-1 text-right text-[13px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
-        borderBottom: focused ? '1px solid rgba(184,160,111,0.6)' : '1px solid transparent',
+        borderBottom: focused ? `1px solid ${GRID_LINE_STRONG}` : '1px solid transparent',
         // Boş değer (0) çok soluk; dolu değer net görünür
         // v1.36.33: locked (kesin kayıt) rakam altın renkte net görünür, silikleşmesin
-        color: disabled && value
-          ? '#d4b876'  // locked + dolu → altın net görünür (kesin kayıt vurgu)
-          : disabled
-          ? 'rgba(168, 162, 158, 0.45)'  // locked + boş → soluk gri
-          : !value
-          ? 'rgba(250, 250, 249, 0.22)'  // editable + boş → çok soluk
-          : 'rgba(250, 250, 249, 0.96)', // editable + dolu → net beyaz
+        color: inputColor,
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
-        fontWeight: disabled && value ? 600 : !value ? 400 : 500,
+        fontWeight: inputWeight,
       }}
       onMouseEnter={(e) => {
-        if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid rgba(184,160,111,0.25)';
+        if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = `1px solid ${GRID_LINE}`;
       }}
       onMouseLeave={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = '1px solid transparent';
@@ -586,7 +605,7 @@ function KarsilastirmaTablosu({
   const COL_WIDTH = `${76 / tersDonemler.length}%`;
 
   // Gelir tablosuyla aynı altın renk
-  const GOLD = '#b8a06f';
+  const GOLD = '#d4b876';
 
   // Dönem aralık metinleri
   const DONEM_RANGE: Record<number, string> = {
@@ -603,7 +622,13 @@ function KarsilastirmaTablosu({
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div
         className="rounded-t-xl overflow-hidden"
-        style={{ background: 'rgba(255,255,255,0.02)', borderTop: '1px solid rgba(255,255,255,0.05)', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)' }}
+        style={{
+          background: TABLE_HEADER_BG,
+          borderTop: `1px solid ${GRID_LINE_STRONG}`,
+          borderLeft: `1px solid ${GRID_LINE_STRONG}`,
+          borderRight: `1px solid ${GRID_LINE_STRONG}`,
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
+        }}
       >
         <div
           className="grid"
@@ -615,7 +640,7 @@ function KarsilastirmaTablosu({
           {/* Sol AÇIKLAMA placeholder — tablonun ilk kolonuyla aynı genişlik */}
           <div
             className="px-3 py-3 flex items-center"
-            style={{ borderRight: '1px solid rgba(184,160,111,0.28)' }}
+            style={{ borderRight: `1px solid ${GRID_LINE_STRONG}` }}
           >
             <span
               className="text-[10px] uppercase font-bold tracking-[.18em]"
@@ -635,8 +660,8 @@ function KarsilastirmaTablosu({
                 key={d}
                 className="px-3 py-3 text-center"
                 style={{
-                  background: locked ? 'rgba(34,197,94,0.06)' : 'transparent',
-                  borderRight: !isLast ? '1px solid rgba(184,160,111,0.28)' : 'none',
+                  background: locked ? 'rgba(212,184,118,0.10)' : 'transparent',
+                  borderRight: !isLast ? `1px solid ${GRID_LINE_STRONG}` : 'none',
                 }}
               >
                 {/* Dönem başlığı */}
@@ -666,7 +691,7 @@ function KarsilastirmaTablosu({
                 {locked && (
                   <span
                     className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                    style={{ background: 'rgba(212,184,118,0.16)', color: AMOUNT_ACCENT, border: `1px solid ${GRID_LINE}` }}
                   >
                     <Lock size={9} /> KESİN
                   </span>
@@ -768,7 +793,7 @@ function KarsilastirmaTablosu({
         accent="emerald"
         attached
       >
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
           <colgroup>
             <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
@@ -843,7 +868,7 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
                 return (
-                  <span key={d} className={lc.donemKar < 0 ? 'text-rose-300' : 'text-emerald-300'}>
+                  <span key={d} style={{ color: lc.donemKar < 0 ? LOSS_TEXT : PROFIT_TEXT, fontWeight: 700 }}>
                     {formatTR(lc.donemKar)}
                   </span>
                 );
@@ -869,7 +894,7 @@ function KarsilastirmaTablosu({
         icon={<Package className="h-4 w-4" />}
         accent="amber"
       >
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
           <colgroup>
             <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
@@ -936,7 +961,7 @@ function KarsilastirmaTablosu({
         icon={<Calculator className="h-4 w-4" />}
         accent="indigo"
       >
-        <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
+        <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
           <colgroup>
             <col style={{ width: '24%' }} />
             {tersDonemler.map((d) => (
@@ -949,7 +974,7 @@ function KarsilastirmaTablosu({
               cols={tersDonemler.map((d) => {
                 const v = liveCalc(d).donemKar;
                 return (
-                  <span key={d} style={{ color: v < 0 ? '#fb7185' : v > 0 ? '#4ade80' : undefined, fontWeight: 700 }}>
+                  <span key={d} style={{ color: v < 0 ? LOSS_TEXT : v > 0 ? PROFIT_TEXT : AMOUNT_TEXT, fontWeight: 700 }}>
                     {formatTR(v)}
                   </span>
                 );
@@ -996,7 +1021,7 @@ function KarsilastirmaTablosu({
             <Row
               label="ÖDENECEK GEÇİCİ VERGİ"
               cols={tersDonemler.map((d) => (
-                <span key={d} className="text-base font-bold text-indigo-200">
+                <span key={d} className="text-base font-bold" style={{ color: AMOUNT_ACCENT }}>
                   {formatTR(liveCalc(d).odenecek)}
                 </span>
               ))}
@@ -1095,25 +1120,25 @@ function BlockCard({
 }) {
   const accentColors: Record<string, { headerBg: string; border: string; text: string; iconBg: string; iconText: string }> = {
     emerald: {
-      headerBg: 'rgba(16,185,129,0.08)',
-      border: 'rgba(16,185,129,0.25)',
-      text: '#6ee7b7',
-      iconBg: 'rgba(16,185,129,0.18)',
-      iconText: '#6ee7b7',
+      headerBg: TABLE_HEADER_BG,
+      border: GRID_LINE_STRONG,
+      text: AMOUNT_ACCENT,
+      iconBg: 'rgba(212,184,118,0.16)',
+      iconText: AMOUNT_ACCENT,
     },
     amber: {
-      headerBg: 'rgba(245,158,11,0.08)',
-      border: 'rgba(245,158,11,0.25)',
-      text: '#fcd34d',
-      iconBg: 'rgba(245,158,11,0.15)',
-      iconText: '#fcd34d',
+      headerBg: TABLE_HEADER_BG,
+      border: GRID_LINE_STRONG,
+      text: AMOUNT_ACCENT,
+      iconBg: 'rgba(212,184,118,0.16)',
+      iconText: AMOUNT_ACCENT,
     },
     indigo: {
-      headerBg: 'rgba(99,102,241,0.08)',
-      border: 'rgba(99,102,241,0.25)',
-      text: '#a5b4fc',
-      iconBg: 'rgba(99,102,241,0.18)',
-      iconText: '#a5b4fc',
+      headerBg: TABLE_HEADER_BG,
+      border: GRID_LINE_STRONG,
+      text: AMOUNT_ACCENT,
+      iconBg: 'rgba(212,184,118,0.16)',
+      iconText: AMOUNT_ACCENT,
     },
   };
   const c = accentColors[accent];
@@ -1121,24 +1146,25 @@ function BlockCard({
     <div
       className={`overflow-hidden ${attached ? 'rounded-b-xl' : 'rounded-xl'}`}
       style={{
-        background: 'rgba(255,255,255,0.02)',
+        background: `linear-gradient(180deg, ${TABLE_SURFACE_ALT}, ${TABLE_SURFACE})`,
         borderLeft: `1px solid ${c.border}`,
         borderRight: `1px solid ${c.border}`,
         borderBottom: `1px solid ${c.border}`,
         borderTop: attached ? 'none' : `1px solid ${c.border}`,
+        boxShadow: '0 14px 34px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.035)',
       }}
     >
       <div
-        className="flex items-center gap-2 px-3 py-1.5"
+        className="flex items-center gap-2 px-4 py-2"
         style={{
           // v1.36.26: attached durumda yeşil tint kaldırıldı, sadece çizgi kalır
-          background: attached ? 'transparent' : c.headerBg,
+          background: attached ? 'rgba(212,184,118,0.04)' : c.headerBg,
           borderBottom: `1px solid ${c.border}`,
         }}
       >
         <span
           className="inline-flex h-6 w-6 items-center justify-center rounded"
-          style={{ background: c.iconBg, color: c.iconText }}
+          style={{ background: c.iconBg, color: c.iconText, border: `1px solid ${GRID_LINE}` }}
         >
           {icon}
         </span>
@@ -1179,32 +1205,35 @@ function Row({
     const num = parseFloat(r.replace(/[%,\s]/g, '').replace(',', '.')) || 0;
     if (isNeg) return 'rgba(251,113,133,0.85)'; // pembe-kırmızı
     if (num === 0) return 'rgba(168,162,158,0.5)';
-    if (num >= 50) return 'rgba(74,222,128,0.85)'; // yeşil
+    if (num >= 50) return '#d8cba8';
     return 'rgba(212,184,118,0.85)'; // altın
   };
 
   // v1.36.24: Gelir Tablosu stilinde kompakt — px-3 py-2 + küçük fontlar + tek satır rakam
+  const rowBg = hl
+    ? 'linear-gradient(90deg, rgba(212,184,118,0.11), rgba(212,184,118,0.04))'
+    : manuel
+    ? 'rgba(212,184,118,0.075)'
+    : 'transparent';
+
   return (
-    <tr
-      className={hl || ''}
-      style={{
-        borderTop: '1px solid rgba(255,255,255,0.10)',
-        background: manuel ? 'rgba(212,184,118,0.07)' : undefined,
-      }}
-    >
+    <tr style={{ background: rowBg }}>
       <td
-        className={`px-3 py-1.5 ${
-          bold ? 'text-[12px] font-semibold text-stone-50 tracking-wide' : 'text-[11.5px] font-medium text-stone-300'
+        className={`px-4 py-2 ${
+          bold ? 'text-[12.5px] font-bold tracking-wide' : 'text-[12px] font-semibold'
         }`}
         style={{
-          letterSpacing: bold ? '0.02em' : 'normal',
-          color: manuel ? '#d4b876' : undefined,
-          fontWeight: manuel ? 600 : undefined,
-          borderLeft: manuel ? '3px solid #d4b876' : undefined,
+          letterSpacing: bold ? '0.025em' : '0.01em',
+          color: manuel ? AMOUNT_ACCENT : bold ? REPORT_TEXT : REPORT_MUTED,
+          borderTop: `1px solid ${GRID_LINE}`,
+          borderRight: `1px solid ${GRID_LINE}`,
+          borderLeft: manuel ? `3px solid ${AMOUNT_ACCENT}` : `1px solid transparent`,
+          background: rowBg,
+          lineHeight: 1.22,
         }}
       >
         {label}
-        {hint && <span className="ml-2 text-[10px] font-normal text-stone-500">{hint}</span>}
+        {hint && <span className="ml-2 text-[10px] font-normal" style={{ color: REPORT_DIM }}>{hint}</span>}
       </td>
       {cols.map((c, i) => {
         const rColor = ratios && ratios[i] ? ratioColor(ratios[i]) : null;
@@ -1214,31 +1243,28 @@ function Row({
         return (
           <td
             key={i}
-            className={`px-3 py-1.5 text-center font-mono tabular-nums ${
-              bold ? 'text-[15px] font-semibold' : 'text-[14px]'
+            className={`px-4 py-2 text-right font-mono tabular-nums ${
+              bold ? 'text-[15px] font-bold' : 'text-[14px] font-semibold'
             }`}
             style={{
-              borderLeft: '1px solid rgba(184,160,111,0.28)',
+              borderTop: `1px solid ${GRID_LINE}`,
+              borderLeft: `1px solid ${GRID_LINE}`,
               fontVariantNumeric: 'tabular-nums',
-              color: isEmpty
-                ? 'rgba(250, 250, 249, 0.22)'
-                : 'rgba(250, 250, 249, 0.96)',
-              lineHeight: 1.15,
+              color: isEmpty ? REPORT_DIM : bold || hl ? AMOUNT_ACCENT : AMOUNT_TEXT,
+              lineHeight: 1.18,
+              background: rowBg,
             }}
           >
             {showRatio ? (
               // v1.36.27: rakam ortalı, oran hücrenin sağ kenarına absolute
-              <div className="relative flex items-center justify-center">
+              <div className="flex flex-col items-end justify-center gap-0.5">
                 <span className="tabular-nums">{c}</span>
                 <span
-                  className="absolute text-[10px] not-italic font-sans"
+                  className="text-[10px] not-italic font-sans"
                   style={{
                     color: rColor!,
                     fontWeight: 600,
                     letterSpacing: '0.02em',
-                    right: 4,
-                    top: '50%',
-                    transform: 'translateY(-50%)',
                   }}
                 >
                   {ratios![i]}
