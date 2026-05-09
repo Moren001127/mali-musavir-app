@@ -1688,6 +1688,7 @@ model EarsivFatura {
   durum          String?    // KABUL | RED | IPTAL | BEKLEMEDE
   xmlContent     String?    @db.Text  // orijinal UBL XML
   pdfStorageKey  String?    // S3 key veya disk path; ham PDF
+  htmlStorageKey String?    // S3 key; Luca'nin verdigi orijinal HTML gorunum
   zipSourceName  String?    // Hangi ZIP'ten geldi
   fetchJobId     String?    // Hangi LucaFetchJob ile çekildi
   // Mihsap upload tracking — gelen e-arşiv faturasını gider faturası olarak Mihsap'a yükleme

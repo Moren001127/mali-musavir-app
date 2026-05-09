@@ -129,6 +129,18 @@ export class EarsivController {
     @Res() res: Response,
   ) {
     const f = await this.earsiv.getById(req.user.tenantId, id);
+    if ((f as any).htmlStorageKey) {
+      try {
+        const original = await this.earsiv.getOriginalHtml(req.user.tenantId, id);
+        const html = this.render.renderOriginalHtml(original.html, { autoPrint: printFlag === '1' || printFlag === 'true' });
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'private, max-age=300');
+        res.send(html);
+        return;
+      } catch (e) {
+        // Orijinal HTML bozuk/erişilemezse XML/XSLT fallback'i kullan.
+      }
+    }
     const html = this.render.renderHtml(f as any, { autoPrint: printFlag === '1' || printFlag === 'true' });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');

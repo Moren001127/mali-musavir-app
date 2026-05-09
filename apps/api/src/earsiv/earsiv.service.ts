@@ -40,6 +40,19 @@ export class EarsivService {
     return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}.pdf`;
   }
 
+  private buildHtmlStorageKey(opts: {
+    tenantId: string;
+    taxpayerId: string;
+    donem: string;
+    tip: EarsivTip;
+    belgeKaynak: BelgeKaynak;
+    faturaNo: string;
+  }): string {
+    const yon = opts.tip === 'SATIS' ? 'giden' : 'gelen';
+    const kaynak = opts.belgeKaynak === 'EFATURA' ? 'e-fatura' : 'e-arsiv';
+    return `${opts.tenantId}/earsiv/${opts.taxpayerId}/${opts.donem}/${yon}-${kaynak}/${this.safeFilePart(opts.faturaNo)}.html`;
+  }
+
   private async storeOriginalPdf(opts: {
     tenantId: string;
     taxpayerId: string;
@@ -59,6 +72,36 @@ export class EarsivService {
       belgeKaynak: opts.belgeKaynak,
     });
     return key;
+  }
+
+  private async storeOriginalHtml(opts: {
+    tenantId: string;
+    taxpayerId: string;
+    donem: string;
+    tip: EarsivTip;
+    belgeKaynak: BelgeKaynak;
+    faturaNo: string;
+    htmlContent?: string;
+  }): Promise<string | null> {
+    const html = opts.htmlContent?.trim();
+    if (!html) return null;
+    const key = this.buildHtmlStorageKey(opts);
+    await this.storage.putBuffer(key, Buffer.from(html, 'utf8'), 'text/html; charset=utf-8', {
+      originalName: encodeURIComponent(`${this.safeFilePart(opts.faturaNo)}.html`),
+      faturaNo: opts.faturaNo,
+      donem: opts.donem,
+      tip: opts.tip,
+      belgeKaynak: opts.belgeKaynak,
+    });
+    return key;
+  }
+
+  private async getHtmlForPdf(fatura: any): Promise<string> {
+    if (fatura.htmlStorageKey) {
+      const html = (await this.storage.getBuffer(fatura.htmlStorageKey)).toString('utf8');
+      if (html.trim()) return html;
+    }
+    return this.render.renderHtml(fatura as any, { autoPrint: false });
   }
 
   /**
@@ -115,7 +158,7 @@ export class EarsivService {
           if (f.pdfStorageKey) {
             pdfBuffer = await this.storage.getBuffer(f.pdfStorageKey);
           } else {
-            const html = this.render.renderHtml(f as any, { autoPrint: false });
+            const html = await this.getHtmlForPdf(f);
             const page = await ctx.newPage();
             await page.setContent(html, { waitUntil: 'networkidle', timeout: 20000 });
             await page.waitForTimeout(500);
@@ -208,7 +251,7 @@ export class EarsivService {
               continue;
             }
           }
-          const html = this.render.renderHtml(f as any, { autoPrint: false });
+          const html = await this.getHtmlForPdf(f);
           const page = await ctx.newPage();
           // setContent + waitUntil networkidle: gömülü XSLT JS'inin tamamlanmasını bekle
           await page.setContent(html, { waitUntil: 'networkidle', timeout: 15000 });
@@ -279,6 +322,8 @@ export class EarsivService {
     let skipped = 0;    // hata nedeniyle atlandı
     let pdfStored = 0;
     let pdfBackfilled = 0;
+    let htmlStored = 0;
+    let htmlBackfilled = 0;
     const errors: string[] = []; // ilk birkaç hata sebebi (debugging için)
 
     for (const f of parsed) {
@@ -287,9 +332,10 @@ export class EarsivService {
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
         const existing = await (this.prisma as any).earsivFatura.findFirst({
           where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
-          select: { id: true, pdfStorageKey: true },
+          select: { id: true, pdfStorageKey: true, htmlStorageKey: true },
         });
         if (existing) {
+          const updateData: any = {};
           if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
             const pdfStorageKey = await this.storeOriginalPdf({
               tenantId,
@@ -301,12 +347,30 @@ export class EarsivService {
               pdfBuffer: f.pdfBuffer,
             });
             if (pdfStorageKey) {
-              await (this.prisma as any).earsivFatura.update({
-                where: { id: existing.id },
-                data: { pdfStorageKey },
-              });
+              updateData.pdfStorageKey = pdfStorageKey;
               pdfBackfilled++;
             }
+          }
+          if (!existing.htmlStorageKey && f.htmlContent?.trim()) {
+            const htmlStorageKey = await this.storeOriginalHtml({
+              tenantId,
+              taxpayerId,
+              donem: fDonem,
+              tip,
+              belgeKaynak,
+              faturaNo: f.faturaNo,
+              htmlContent: f.htmlContent,
+            });
+            if (htmlStorageKey) {
+              updateData.htmlStorageKey = htmlStorageKey;
+              htmlBackfilled++;
+            }
+          }
+          if (Object.keys(updateData).length) {
+            await (this.prisma as any).earsivFatura.update({
+              where: { id: existing.id },
+              data: updateData,
+            });
           }
           duplicate++;
           continue;
@@ -321,6 +385,16 @@ export class EarsivService {
           pdfBuffer: f.pdfBuffer,
         });
         if (pdfStorageKey) pdfStored++;
+        const htmlStorageKey = await this.storeOriginalHtml({
+          tenantId,
+          taxpayerId,
+          donem: fDonem,
+          tip,
+          belgeKaynak,
+          faturaNo: f.faturaNo,
+          htmlContent: f.htmlContent,
+        });
+        if (htmlStorageKey) htmlStored++;
         await (this.prisma as any).earsivFatura.create({
           data: {
             tenantId,
@@ -344,6 +418,7 @@ export class EarsivService {
             paraBirimi: f.paraBirimi,
             xmlContent: f.xmlContent,
             pdfStorageKey,
+            htmlStorageKey,
             zipSourceName: f.zipFileName,
             fetchJobId,
           },
@@ -369,8 +444,12 @@ export class EarsivService {
       xmlCount: (parsed as any).__xmlCount || 0,
       entries: (parsed as any).__entries || [],
       diagnostics: (parsed as any).__diagnostics || [],
+      htmlCount: (parsed as any).__htmlCount || 0,
+      htmlMatched: (parsed as any).__htmlMatched || 0,
       pdfStored,
       pdfBackfilled,
+      htmlStored,
+      htmlBackfilled,
       errors,
     };
     return { inserted, duplicate, skipped, total: parsed.length, meta };
@@ -445,12 +524,24 @@ export class EarsivService {
         satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
         matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true,
         paraBirimi: true, aciklama: true, durum: true,
-        xmlContent: true, pdfStorageKey: true, zipSourceName: true,
+        xmlContent: true, pdfStorageKey: true, htmlStorageKey: true, zipSourceName: true,
         fetchJobId: true, createdAt: true, updatedAt: true,
       },
     });
-    if (!f) throw new NotFoundException('Fatura bulunamadı');
+    if (!f) throw new NotFoundException('Fatura bulunamadi');
     return f;
+  }
+
+  async getOriginalHtml(tenantId: string, id: string): Promise<{ html: string; filename: string }> {
+    const f = await (this.prisma as any).earsivFatura.findFirst({
+      where: { tenantId, id },
+      select: { faturaNo: true, htmlStorageKey: true },
+    });
+    if (!f) throw new NotFoundException('Fatura bulunamadi');
+    if (!f.htmlStorageKey) throw new NotFoundException('Orijinal HTML bulunamadi');
+    const html = (await this.storage.getBuffer(f.htmlStorageKey)).toString('utf8');
+    if (!html.trim()) throw new NotFoundException('Orijinal HTML bos');
+    return { html, filename: `${this.safeFilePart(f.faturaNo)}.html` };
   }
 
   async getOriginalPdf(tenantId: string, id: string): Promise<{ buffer: Buffer; filename: string }> {
@@ -458,7 +549,7 @@ export class EarsivService {
       where: { tenantId, id },
       select: { faturaNo: true, pdfStorageKey: true },
     });
-    if (!f) throw new NotFoundException('Fatura bulunamadı');
+    if (!f) throw new NotFoundException('Fatura bulunamadi');
     if (!f.pdfStorageKey) throw new NotFoundException('Orijinal PDF bulunamadı');
     const buffer = await this.storage.getBuffer(f.pdfStorageKey);
     if (!buffer.length) throw new NotFoundException('Orijinal PDF boş');
@@ -474,7 +565,7 @@ export class EarsivService {
       where: { tenantId, id: { in: ids } },
       select: {
         id: true, faturaNo: true, tip: true, donem: true,
-        xmlContent: true, pdfStorageKey: true, satici: true, alici: true,
+        xmlContent: true, pdfStorageKey: true, htmlStorageKey: true, satici: true, alici: true,
       },
     });
 
@@ -490,6 +581,14 @@ export class EarsivService {
           if (pdf.length) zip.file(`${baseName}.pdf`, pdf);
         } catch (e: any) {
           this.logger.warn(`Orijinal PDF ZIP'e eklenemedi (${f.faturaNo}): ${e?.message}`);
+        }
+      }
+      if (f.htmlStorageKey) {
+        try {
+          const html = await this.storage.getBuffer(f.htmlStorageKey);
+          if (html.length) zip.file(`${baseName}.html`, html);
+        } catch (e: any) {
+          this.logger.warn(`Orijinal HTML ZIP'e eklenemedi (${f.faturaNo}): ${e?.message}`);
         }
       }
     }

@@ -60,6 +60,16 @@ export class EarsivRenderService {
     return this.htmlShell(this.renderInvoiceBody(fatura, false), !!opts.autoPrint);
   }
 
+  renderOriginalHtml(html: string, opts: { autoPrint?: boolean } = {}): string {
+    const source = String(html || '').trim();
+    if (!opts.autoPrint) return source;
+    const printScript = `<script>setTimeout(function(){try{window.print();}catch(e){}},500);</script>`;
+    if (/<\/body\s*>/i.test(source)) {
+      return source.replace(/<\/body\s*>/i, `${printScript}</body>`);
+    }
+    return `${source}${printScript}`;
+  }
+
   /** XML'in içinde EmbeddedDocumentBinaryObject olarak XSLT var mı? */
   private hasEmbeddedXslt(xml: string): boolean {
     return /EmbeddedDocumentBinaryObject[^>]*(?:filename|mimeCode)=["'][^"']*(?:\.xsl|\.xslt|xslt|xsl)["']/i.test(xml);

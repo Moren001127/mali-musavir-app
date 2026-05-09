@@ -18,6 +18,7 @@ export interface ParsedEarsivFatura {
   aciklama?: string;
   xmlContent: string;
   pdfBuffer?: Buffer;
+  htmlContent?: string;
   zipFileName: string;
 }
 
@@ -35,6 +36,7 @@ export class EarsivZipParserService {
 
     const xmlFiles: { name: string; content: string }[] = [];
     const pdfFiles = new Map<string, { name: string; fullPath: string; buffer: Buffer }>();
+    const htmlFiles = new Map<string, { name: string; fullPath: string; content: string }>();
     const allEntries: string[] = [];
 
     // Recursive: ZIP içindeki ZIP'leri de aç
@@ -58,6 +60,9 @@ export class EarsivZipParserService {
         if (lower.endsWith('.xml') || lower.endsWith('.ubl')) {
           const content = await (file as any).async('text');
           xmlFiles.push({ name: baseName, content });
+        } else if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+          const content = await (file as any).async('text');
+          htmlFiles.set(stem, { name: baseName, fullPath, content });
         } else if (lower.endsWith('.pdf')) {
           const pdfBuf = await (file as any).async('nodebuffer');
           pdfFiles.set(stem, { name: baseName, fullPath, buffer: pdfBuf });
@@ -80,7 +85,7 @@ export class EarsivZipParserService {
 
     await processZipBuffer(buf);
 
-    this.logger.log(`ZIP toplam entry: ${allEntries.length}, XML: ${xmlFiles.length}, PDF: ${pdfFiles.size}`);
+    this.logger.log(`ZIP toplam entry: ${allEntries.length}, XML: ${xmlFiles.length}, HTML: ${htmlFiles.size}, PDF: ${pdfFiles.size}`);
     if (allEntries.length <= 20) {
       this.logger.log(`ZIP içerik listesi: ${allEntries.join(' | ')}`);
     } else {
@@ -90,6 +95,7 @@ export class EarsivZipParserService {
     const parseDiagnostics: string[] = [];
 
     let pdfMatched = 0;
+    let htmlMatched = 0;
 
     for (const xml of xmlFiles) {
       try {
@@ -98,8 +104,10 @@ export class EarsivZipParserService {
           parsed.zipFileName = xml.name;
           parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles);
           if (parsed.pdfBuffer) pdfMatched++;
+          parsed.htmlContent = this.matchHtmlContent(parsed, xml.name, xmlFiles.length, htmlFiles);
+          if (parsed.htmlContent) htmlMatched++;
           results.push(parsed);
-          parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'})`);
+          parseDiagnostics.push(`${xml.name}:OK(${parsed.faturaNo},pdf=${parsed.pdfBuffer ? 'Y' : 'N'},html=${parsed.htmlContent ? 'Y' : 'N'})`);
         } else {
           // FALLBACK 1: Top-level keys çıkar
           const topKeys = this.peekTopKeys(xml.content);
@@ -109,8 +117,10 @@ export class EarsivZipParserService {
             fb.zipFileName = xml.name;
             fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
             if (fb.pdfBuffer) pdfMatched++;
+            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
+            if (fb.htmlContent) htmlMatched++;
             results.push(fb);
-            parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},keys=${topKeys})`);
+            parseDiagnostics.push(`${xml.name}:FALLBACK(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},keys=${topKeys})`);
           } else {
             parseDiagnostics.push(`${xml.name}:FAIL(keys=${topKeys},len=${xml.content.length})`);
           }
@@ -124,8 +134,10 @@ export class EarsivZipParserService {
             fb.zipFileName = xml.name;
             fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
             if (fb.pdfBuffer) pdfMatched++;
+            fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
+            if (fb.htmlContent) htmlMatched++;
             results.push(fb);
-            parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
+            parseDiagnostics.push(`${xml.name}:FALLBACK_AFTER_ERR(${fb.faturaNo},pdf=${fb.pdfBuffer ? 'Y' : 'N'},html=${fb.htmlContent ? 'Y' : 'N'},err=${e.message?.slice(0, 30)})`);
             continue;
           }
         } catch (e2: any) {}
@@ -141,6 +153,8 @@ export class EarsivZipParserService {
     (results as any).__xmlCount = xmlFiles.length;
     (results as any).__pdfCount = pdfFiles.size;
     (results as any).__pdfMatched = pdfMatched;
+    (results as any).__htmlCount = htmlFiles.size;
+    (results as any).__htmlMatched = htmlMatched;
     (results as any).__totalEntries = allEntries.length;
     (results as any).__diagnostics = parseDiagnostics;
 
@@ -189,6 +203,47 @@ export class EarsivZipParserService {
         return keys.some((key) => key.includes(candidate) || candidate.includes(key));
       });
       if (fuzzy) return fuzzy[1].buffer;
+    }
+
+    return undefined;
+  }
+
+  private matchHtmlContent(
+    parsed: Pick<ParsedEarsivFatura, 'faturaNo' | 'ettn'>,
+    xmlName: string,
+    xmlCount: number,
+    htmlFiles: Map<string, { name: string; fullPath: string; content: string }>,
+  ): string | undefined {
+    if (!htmlFiles.size) return undefined;
+
+    const htmlEntries = [...htmlFiles.entries()].filter(([, html]) => html.content.trim().length > 0);
+    if (!htmlEntries.length) return undefined;
+    if (xmlCount === 1 && htmlEntries.length === 1) return htmlEntries[0][1].content;
+
+    const candidates = [
+      parsed.faturaNo,
+      parsed.ettn,
+      xmlName,
+      xmlName.replace(/\.[^.]+$/, ''),
+    ]
+      .map((v) => this.normalizeFileKey(v))
+      .filter(Boolean);
+
+    for (const candidate of candidates) {
+      const exact = htmlEntries.find(([stem, html]) =>
+        this.normalizeFileKey(stem) === candidate ||
+        this.normalizeFileKey(html.name) === candidate ||
+        this.normalizeFileKey(html.fullPath) === candidate,
+      );
+      if (exact) return exact[1].content;
+    }
+
+    for (const candidate of candidates) {
+      const fuzzy = htmlEntries.find(([stem, html]) => {
+        const keys = [stem, html.name, html.fullPath].map((v) => this.normalizeFileKey(v));
+        return keys.some((key) => key.includes(candidate) || candidate.includes(key));
+      });
+      if (fuzzy) return fuzzy[1].content;
     }
 
     return undefined;
