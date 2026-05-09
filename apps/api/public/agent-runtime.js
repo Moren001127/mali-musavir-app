@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.64';
+  const AGENT_VERSION = '1.36.65';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6678,10 +6678,20 @@
   const STANDART_KDV_SATIS = [
     '391.01.001', '391.01.002', '391.01.006', '391.01.018', '391.01.020',
   ];
+  const STANDART_MATRAH_ALIS = [
+    '153.01.001', '153.01.008', '153.01.010', '153.01.018', '153.01.020',
+    '740.01.001', '770.01.001', '760.01.001',
+  ];
+  const STANDART_KDV_ALIS = [
+    '191.108.01', '191.108.08', '191.108.10', '191.108.18', '191.108.20',
+    '191.01.001', '191.01.008', '191.01.010', '191.01.018', '191.01.020',
+  ];
+  const STANDART_CARI_ALIS = ['100.01.001', '102.01.001', '320.01.001'];
+  const STANDART_CARI_SATIS = ['100.01.001', '102.01.001', '120.01.001'];
 
   // v1.12.8 — Cari için TEK SEFER dropdown sondajı (firma adı prefix ile).
   // Mihsap state'i bozulmaz (manuel testteki gibi 1 dropdown açma+kapama).
-  async function cariSecenekleriBul(firmaAdi) {
+  async function cariSecenekleriBul(firmaAdi, action) {
     if (!firmaAdi || firmaAdi.length < 3) return [];
     const sel = findHesapKoduSelect(/^Cari Hesap\s*\(/i) || findHesapKoduSelect(/^Cari Hesap$/i) || findHesapKoduSelect(/^Cari$/i);
     if (!sel) return [];
@@ -6693,11 +6703,13 @@
     try {
       const opts = await searchAndReadOptions(sel, anahtar, 1800);
       console.log(`[Moren.fill] cari "${anahtar}" → ${opts.length} sonuç`, opts.slice(0, 3));
-      // Kod kısmını çıkar (ör "120.01.N002-NECAT GÖKTAŞ" → "120.01.N002")
+      // Kod kismini cikar; alista 320/100/102, satista 120/100/102 kabul edilir.
+      const isSatis = action === 'isle_satis' || action === 'isle_satis_isletme';
+      const cariRegex = isSatis ? /^(120|100|102)\./ : /^(320|100|102)\./;
       const kodlar = opts.map((t) => {
         const m = t.match(/^(\d{3}\.[A-Z0-9Öİ]+(?:\.[A-Z0-9Öİ]+)*)/i);
         return m ? m[1].trim() : t.split(/[\s\-]/)[0].trim();
-      }).filter((c) => /^12[01]\./.test(c));
+      }).filter((c) => cariRegex.test(c));
       return kodlar;
     } catch (e) {
       console.warn('[Moren.fill] cariSecenekleriBul hata:', e?.message);
@@ -6716,22 +6728,23 @@
     if (matrahDolu === false) {
       const re = isSatis ? /^60[012]\./ : /^(153|740|770|760)\./;
       let list = arr.filter((c) => re.test(c));
-      if (list.length === 0 && isSatis) list = [...STANDART_MATRAH_SATIS];
+      if (list.length === 0) list = isSatis ? [...STANDART_MATRAH_SATIS] : [...STANDART_MATRAH_ALIS];
       if (list.length > 0) sonuc.matrahKodlari = list;
     }
     if (vergiDolu === false) {
       const re = isSatis ? /^391\./ : /^191\./;
       let list = arr.filter((c) => re.test(c));
-      if (list.length === 0 && isSatis) list = [...STANDART_KDV_SATIS];
+      if (list.length === 0) list = isSatis ? [...STANDART_KDV_SATIS] : [...STANDART_KDV_ALIS];
       if (list.length > 0) sonuc.kdvKodlari = list;
     }
     if (cariDolu === false) {
       // Önce codes'tan dene, yoksa firma adıyla TEK SEFER sondaj yap
-      const re = /^12[01]\./;
+      const re = isSatis ? /^(120|100|102)\./ : /^(320|100|102)\./;
       let list = arr.filter((c) => re.test(c));
       if (list.length === 0 && firmaAdi) {
-        list = await cariSecenekleriBul(firmaAdi);
+        list = await cariSecenekleriBul(firmaAdi, action);
       }
+      if (list.length === 0) list = isSatis ? [...STANDART_CARI_SATIS] : [...STANDART_CARI_ALIS];
       if (list.length > 0) sonuc.cariKodlari = list;
     }
     console.log('[Moren.fill] readBosAlanSecenekleriHizli:', { matrahDolu, vergiDolu, cariDolu, codesAdet: arr.length, sonuc });

@@ -227,7 +227,7 @@ export class AgentEventsService {
     // AI maliyeti — bu ay her mukellef için harcanan USD (Claude/Anthropic + OCR)
     // ai-usage-logger'dan dönemdeki tüm kayıtları al; mukellef dolu olanları
     // mukellefe yaz, boş olanları (eski extension kayıtları) "diger" toplamına ekle.
-    const { perMukellef: maliyetMap, digerUsd, toplamAiUsd, toplamCagri } =
+    const { perMukellef: maliyetMap, digerUsd, toplamAiUsd, toplamCagri, anomalousUsd } =
       await this.aiMaliyetByMukellef(tenantId, periodStart, periodEnd);
 
     const items = Array.from(map.entries())
@@ -279,6 +279,7 @@ export class AgentEventsService {
         toplamAiUsd: Number((toplamAiUsd || 0).toFixed(4)),
         mukellefBagliUsd: Number((toplam.maliyetUsd - digerUsd).toFixed(4)),
         digerUsd: Number((digerUsd || 0).toFixed(4)),
+        anomalousUsd: Number((anomalousUsd || 0).toFixed(4)),
         toplamCagri,
         toplamIslem,
         birimMaliyetUsd: toplam.birimMaliyetUsd,
@@ -345,22 +346,30 @@ export class AgentEventsService {
     tenantId: string,
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<{ perMukellef: Map<string, { usd: number; count: number }>; digerUsd: number; toplamAiUsd: number; toplamCagri: number }> {
+  ): Promise<{ perMukellef: Map<string, { usd: number; count: number }>; digerUsd: number; toplamAiUsd: number; toplamCagri: number; anomalousUsd: number }> {
     const perMukellef = new Map<string, { usd: number; count: number }>();
     let digerUsd = 0;
     let toplamAiUsd = 0;
     let toplamCagri = 0;
+    let anomalousUsd = 0;
     try {
       const rows = await this.prisma.aiUsageLog.findMany({
         where: {
           tenantId,
           createdAt: { gte: periodStart, lt: periodEnd },
+          source: { in: ['mihsap-fatura', 'mihsap-fatura-cache'] },
         },
-        select: { costUsd: true, mukellef: true },
+        select: { costUsd: true, mukellef: true, inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true },
       });
       for (const r of rows) {
         const cost = Number(r.costUsd || 0);
         if (!Number.isFinite(cost) || cost <= 0) continue;
+        // Bir fatura karar çağrısının 25 cent üstüne çıkması pratikte anomali.
+        // Bu koruma yanlış/mükerrer usage kayıtlarının mükellef tablosunu şişirmesini engeller.
+        if (cost > 0.25) {
+          anomalousUsd += cost;
+          continue;
+        }
         toplamAiUsd += cost;
         toplamCagri++;
         const muk = (r.mukellef || '').trim();
@@ -374,7 +383,7 @@ export class AgentEventsService {
     } catch (e) {
       console.warn('[summary-by-mukellef] aiMaliyetByMukellef hatası:', e);
     }
-    return { perMukellef, digerUsd, toplamAiUsd, toplamCagri };
+    return { perMukellef, digerUsd, toplamAiUsd, toplamCagri, anomalousUsd };
   }
 
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
@@ -978,7 +987,8 @@ C) CARİ HESAP:
    Seçenekler: ${input.bosAlanSecenekleri.cariKodlari?.join(', ') || '(runner listelemedi — önerme)'}
    ${islemTuru === 'SATIŞ' ? `Kural: Alıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 120.xx grubundadır.`
     : `Kural: Satıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 320.xx grubundadır.`}
-   Cari kod listesinde firma YOKSA → cari için null dön (yeni cari açılması gerekir; agent atlar, kullanıcı elle açsın).
+   Cari kod listesinde firma YOKSA ama mukellef profilinde cari yoksa kullanilacak hesap/odeme hesabi tanimliysa (orn. 100.01.001), onu cariHesapKodu olarak oner.
+   Profilde acik tanimli hesap kodu varsa ve fatura icerigiyle uyumluysa, dropdown sondaj listesinde gorunmese bile onu onerebilirsin; runner kodu yazarak secmeyi deneyecek.
 
 ÇIKTI: JSON response'una "onerilenler" objesi ekle (AŞAĞIDAKİ JSON ŞEMASINA BAK).
        Emin olmadığın alanı null bırak. Yanlış tahmin etme — null daha güvenli.
@@ -1018,7 +1028,7 @@ Sadece JSON döndür: {
   "ocrToplam": 3316.00 | null,
   "ocrMatrah": 2763.33 | null,
   "ocrKdvTutari": 552.67 | null${
-    input.action === 'isle_satis' && input.bosAlanSecenekleri
+    ['isle_satis', 'isle_alis', 'isle_satis_isletme', 'isle_alis_isletme'].includes(input.action || '') && input.bosAlanSecenekleri
       ? `,
   "onerilenler": {
     "matrahHesapKodu": "600.01.005" | null,

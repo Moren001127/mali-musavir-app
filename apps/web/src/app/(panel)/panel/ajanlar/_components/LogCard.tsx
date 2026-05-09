@@ -98,7 +98,7 @@ function isModernAgentVersion(version: unknown) {
   if (major < 1) return false;
   if (minor > 36) return true;
   if (minor < 36) return false;
-  return patch >= 63;
+  return patch >= 65;
 }
 
 export function LogCard({ event }: { event: LogEvent }) {
@@ -114,6 +114,9 @@ export function LogCard({ event }: { event: LogEvent }) {
   const warnings = collectWarnings(event, rows);
   const isSuccess = ['onaylandi', 'basarili', 'ok'].includes(String(event.status || '').toLowerCase());
   const agentVersionOk = isModernAgentVersion(event.meta?.agentVersion);
+  const statusLower = String(event.status || '').toLowerCase();
+  const needsAttention = warnings.length > 0 || ['atlandi', 'skip', 'hata', 'error'].includes(statusLower);
+  const attentionText = parsed.sonuc?.text || parsed.hata || parsed.mihsapUyarisi || event.message || 'detay yok';
   const visual = warnings.length > 0 && isSuccess
     ? { color: '#d4a94f', icon: '!', bg: 'rgba(180,120,40,.06)', label: 'UYARILI', border: '#a17835' }
     : baseStyle;
@@ -157,6 +160,24 @@ export function LogCard({ event }: { event: LogEvent }) {
           )}
         </div>
 
+        {needsAttention && (
+          <div
+            className="mt-1.5 rounded-md px-2 py-1.5 text-[11.5px]"
+            style={{
+              background: statusLower === 'skip' || statusLower === 'atlandi'
+                ? 'rgba(184,152,112,0.10)'
+                : 'rgba(212,169,79,0.10)',
+              border: '1px solid rgba(212,169,79,0.18)',
+              color: '#d8c18d',
+            }}
+          >
+            <span className="font-semibold" style={{ color: visual.color }}>
+              {visual.label === 'ATLA' ? 'Atlama sebebi' : visual.label === 'HATA' ? 'Hata sebebi' : 'Kontrol notu'}:
+            </span>{' '}
+            {attentionText}
+          </div>
+        )}
+
         {warnings.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5" style={{ color: '#d4a94f' }}>
             {warnings.slice(0, 4).map((w, i) => (
@@ -174,6 +195,15 @@ export function LogCard({ event }: { event: LogEvent }) {
         {hasFields && <LogFieldTable rows={rows} />}
 
         {event.meta?.decisionTrace && <DecisionTraceBox trace={event.meta.decisionTrace} />}
+        {event.meta?.faturaDecisionCandidate?.onerilenler && (
+          <DecisionTraceBox
+            trace={{
+              karar: {
+                sebep: `Öneri: ${JSON.stringify(event.meta.faturaDecisionCandidate.onerilenler).slice(0, 180)}`,
+              },
+            }}
+          />
+        )}
 
         {hasSummary && (
           <LogSummary
