@@ -193,6 +193,24 @@ export class EarsivRenderService {
     }
     return null;
   }
+  function runInsertedScripts(root) {
+    try {
+      var scripts = Array.prototype.slice.call(root.querySelectorAll('script'));
+      scripts.forEach(function(oldScript) {
+        var script = document.createElement('script');
+        for (var i = 0; i < oldScript.attributes.length; i++) {
+          var attr = oldScript.attributes[i];
+          script.setAttribute(attr.name, attr.value);
+        }
+        script.text = oldScript.text || oldScript.textContent || '';
+        oldScript.parentNode && oldScript.parentNode.replaceChild(script, oldScript);
+      });
+      try { window.dispatchEvent(new Event('load')); } catch(e) {}
+      try { document.dispatchEvent(new Event('DOMContentLoaded')); } catch(e) {}
+    } catch(e) {
+      console.warn('[Moren] XSLT script çalıştırma hatası:', e && e.message);
+    }
+  }
   try {
     var xmlText = document.getElementById('moren-xml').textContent;
     var xmlDoc = new DOMParser().parseFromString(xmlText, 'text/xml');
@@ -220,6 +238,7 @@ export class EarsivRenderService {
     var fb = document.getElementById('moren-fallback');
     if (fb) fb.remove();
     document.body.appendChild(fragment);
+    runInsertedScripts(document.body);
     ${printScript}
   } catch (e) {
     // Beklenmedik hata — fallback özet zaten görünür
