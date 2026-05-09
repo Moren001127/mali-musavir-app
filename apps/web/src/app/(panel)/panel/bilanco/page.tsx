@@ -10,6 +10,11 @@ import {
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
+const TABLE_BG = '#0a0907';
+const GRID_LINE = 'rgba(212,184,118,0.24)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.48)';
+const AMOUNT_COLOR = '#f4efe6';
+const TOTAL_COLOR = '#e3c878';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -206,8 +211,8 @@ export default function BilancoPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Kpi label="Aktif Toplamı" val={fmtTRY(bilanco.aktifToplami)} color={GOLD} />
             <Kpi label="Pasif Toplamı" val={fmtTRY(bilanco.pasifToplami)} color={GOLD} />
-            <Kpi label="Özkaynaklar" val={fmtTRY(bilanco.ozkaynaklar)} color="#22c55e" />
-            <Kpi label={denk ? '✓ Bilanço Denk' : `Fark: ${fmtTRY(fark)}`} val={fmtTRY(Math.abs(fark))} color={denk ? '#22c55e' : '#f43f5e'} />
+            <Kpi label="Özkaynaklar" val={fmtTRY(bilanco.ozkaynaklar)} color={TOTAL_COLOR} />
+            <Kpi label={denk ? '✓ Bilanço Denk' : `Fark: ${fmtTRY(fark)}`} val={fmtTRY(Math.abs(fark))} color={denk ? TOTAL_COLOR : '#f43f5e'} />
           </div>
           {/* Kesin Kayıt ribbon */}
           <div className="flex items-center justify-between rounded-xl p-3" style={{
@@ -577,7 +582,7 @@ export default function BilancoPage() {
                         {b.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>KESİN</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-mono" style={{ color: dk ? GOLD : '#f43f5e', fontWeight: 600 }}>{fmtTRY(b.aktifToplami)}</td>
-                      <td className="px-4 py-3 text-right font-mono" style={{ color: '#22c55e', fontWeight: 600 }}>{fmtTRY(b.ozkaynaklar)}</td>
+                      <td className="px-4 py-3 text-right font-mono" style={{ color: TOTAL_COLOR, fontWeight: 600 }}>{fmtTRY(b.ozkaynaklar)}</td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex gap-1.5">
                           <button onClick={() => setViewBilanco(b)} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}>
@@ -649,27 +654,47 @@ function BilancoColumn({
   gruplar: Array<{ label: string; kalemler: Array<{ grup: string; toplam: number; hesaplar: Array<{ kod: string; ad: string; tutar: number }> }> }>;
 }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-        <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 600, color: GOLD, margin: 0, letterSpacing: '-0.01em' }}>{baslik}</h4>
-        <div className="font-mono font-bold tabular-nums">{fmtTRY(toplam)}</div>
+    <div className="rounded-xl overflow-hidden" style={{
+      background: TABLE_BG,
+      border: `1px solid ${GRID_LINE_STRONG}`,
+      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
+    }}>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{
+        borderColor: GRID_LINE_STRONG,
+        background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
+      }}>
+        <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: '0.01em' }}>{baslik}</h4>
+        <div className="font-mono font-bold tabular-nums" style={{ color: TOTAL_COLOR, fontSize: 14 }}>{fmtTRY(toplam)}</div>
       </div>
       <div>
         {gruplar.map((g, gi) => (
           <div key={gi}>
-            <div className="px-5 py-3 text-[11px] font-bold uppercase tracking-[.1em]" style={{ color: GOLD, background: 'rgba(184,160,111,0.04)' }}>
+            <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-[.1em]" style={{
+              color: '#f5efe3',
+              background: 'rgba(184,160,111,0.13)',
+              borderTop: gi === 0 ? 'none' : `1px solid ${GRID_LINE_STRONG}`,
+              borderBottom: `1px solid ${GRID_LINE}`,
+            }}>
               {g.label}
             </div>
             {g.kalemler.filter((k: any) => k && k.toplam !== 0).map((k: any, ki: number) => (
               <React.Fragment key={ki}>
-                <div className="px-5 py-2 grid grid-cols-[1fr_auto] gap-3 text-[13px] items-center" style={{ borderTop: '1px solid rgba(255,255,255,0.02)' }}>
-                  <div>{k.grup}</div>
-                  <div className="font-mono tabular-nums text-[12.5px]">{fmtTRY(k.toplam)}</div>
+                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[13px] items-center" style={{
+                  minHeight: 40,
+                  borderTop: ki === 0 ? 'none' : `1px solid ${GRID_LINE}`,
+                  background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
+                }}>
+                  <div style={{ color: '#fafaf9', fontWeight: 650 }}>{k.grup}</div>
+                  <div className="font-mono tabular-nums text-[12.5px]" style={{ color: TOTAL_COLOR, fontWeight: 700 }}>{fmtTRY(k.toplam)}</div>
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
-                  <div key={hi} className="px-5 py-1.5 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[12px] items-center" style={{ color: 'rgba(250,250,249,0.65)' }}>
-                    <div><span style={{ color: GOLD, fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
-                    <div className="font-mono tabular-nums text-[11.5px]">{fmtTRY(h.tutar)}</div>
+                  <div key={hi} className="px-5 py-1.5 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[12px] items-center" style={{
+                    color: 'rgba(250,250,249,0.70)',
+                    borderTop: '1px solid rgba(255,255,255,0.10)',
+                    background: 'rgba(255,255,255,0.006)',
+                  }}>
+                    <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
+                    <div className="font-mono tabular-nums text-[11.5px]" style={{ color: AMOUNT_COLOR }}>{fmtTRY(h.tutar)}</div>
                   </div>
                 ))}
               </React.Fragment>
