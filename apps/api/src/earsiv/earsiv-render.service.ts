@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { XMLParser } from 'fast-xml-parser';
+import * as QRCode from 'qrcode';
 
 /**
  * UBL-TR e-Arşiv/e-Fatura faturalarını Türkçe görsel HTML'e çevirir.
@@ -86,6 +87,7 @@ export class EarsivRenderService {
       .replace(/<!--/g, '<\\!--');
     // Fallback: XSLT başarısız olursa gösterilecek basit fatura özeti
     const fallbackBody = this.renderInvoiceBody(f, false);
+    const safeQrSvg = this.buildInvoiceQrSvg(f);
     const printScript = autoPrint
       ? `setTimeout(() => { try { window.print(); } catch(e){} }, 800);`
       : '';
@@ -159,6 +161,27 @@ export class EarsivRenderService {
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     #moren-fallback .page { padding: 10mm 14mm; }
+    #moren-safe-qr { top: 8mm !important; }
+  }
+  #moren-safe-qr {
+    position: absolute;
+    z-index: 50;
+    top: 9mm;
+    left: calc(50% + 54mm);
+    width: 34mm;
+    height: 34mm;
+    background: #fff;
+  }
+  #moren-safe-qr svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  @media screen and (max-width: 900px) {
+    #moren-safe-qr {
+      right: 12mm;
+      left: auto;
+    }
   }
 </style>
 </head>
@@ -167,6 +190,7 @@ export class EarsivRenderService {
 <script id="moren-xml" type="application/xml">${safeXml}</script>
 <script>
 (function () {
+  var morenSafeQrSvg = ${JSON.stringify(safeQrSvg)};
   function b64DecodeUnicode(str) {
     try {
       return decodeURIComponent(atob(str).split('').map(function(c){
@@ -220,6 +244,19 @@ export class EarsivRenderService {
     var fb = document.getElementById('moren-fallback');
     if (fb) fb.remove();
     document.body.appendChild(fragment);
+    if (morenSafeQrSvg && !document.getElementById('moren-safe-qr')) {
+      var alreadyHasQr = Array.prototype.some.call(document.querySelectorAll('img, canvas, svg'), function(el) {
+        var label = String((el.getAttribute && (el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('id') || el.getAttribute('class') || el.getAttribute('src'))) || '').toLowerCase();
+        var r = el.getBoundingClientRect ? el.getBoundingClientRect() : { width: 0, height: 0, top: 99999, left: 0 };
+        return r.width >= 72 && r.height >= 72 && (/qr|qrcode|karekod/.test(label) || (r.top < 260 && r.left > (window.innerWidth * 0.55)));
+      });
+      if (!alreadyHasQr) {
+        var qr = document.createElement('div');
+        qr.id = 'moren-safe-qr';
+        qr.innerHTML = morenSafeQrSvg;
+        document.body.appendChild(qr);
+      }
+    }
     ${printScript}
   } catch (e) {
     // Beklenmedik hata — fallback özet zaten görünür
@@ -525,6 +562,40 @@ ${body}
           <td class="value">${fmt(f.toplamTutar)}</td>
         </tr>
       </table>`;
+  }
+
+  private buildInvoiceQrSvg(f: RenderableFatura): string {
+    try {
+      const payload = [
+        `NO:${f.faturaNo || ''}`,
+        `ETTN:${f.ettn || ''}`,
+        `TARIH:${this.fmtDate(f.faturaTarihi)}`,
+        `SATICI:${f.saticiVergiNo || ''}`,
+        `ALICI:${f.aliciVergiNo || ''}`,
+        `TUTAR:${String(f.toplamTutar ?? '')}`,
+        `PB:${f.paraBirimi || 'TRY'}`,
+      ].join('|');
+      const code: any = QRCode.create(payload, { errorCorrectionLevel: 'M' });
+      const size = Number(code?.modules?.size || 0);
+      if (!size) return '';
+
+      const quiet = 4;
+      const viewSize = size + quiet * 2;
+      const rects: string[] = [
+        `<rect width="${viewSize}" height="${viewSize}" fill="#fff"/>`,
+      ];
+      for (let row = 0; row < size; row += 1) {
+        for (let col = 0; col < size; col += 1) {
+          if (code.modules.get(row, col)) {
+            rects.push(`<rect x="${col + quiet}" y="${row + quiet}" width="1" height="1" fill="#000"/>`);
+          }
+        }
+      }
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewSize} ${viewSize}" role="img" aria-label="Fatura QR"><title>${this.esc(f.faturaNo || 'Fatura QR')}</title>${rects.join('')}</svg>`;
+    } catch {
+      return '';
+    }
   }
 
   private extractLines(xml: string): ParsedLine[] {

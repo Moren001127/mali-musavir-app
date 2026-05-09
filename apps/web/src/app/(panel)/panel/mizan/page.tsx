@@ -774,13 +774,14 @@ function MizanTable({
 
   return (
     <div ref={tableRef} className="rounded-xl overflow-hidden" style={{
-      background: '#0f0d0b',
-      border: '1px solid rgba(255,255,255,0.12)',
+      background: '#0b0a08',
+      border: '1px solid rgba(212,184,118,0.30)',
+      boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04), 0 18px 40px rgba(0,0,0,0.28)',
     }}>
       {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
       <div style={{
-        background: 'rgba(184,160,111,0.04)',
-        borderBottom: '1px solid rgba(255,255,255,0.10)',
+        background: 'linear-gradient(180deg, rgba(184,160,111,0.09), rgba(184,160,111,0.035))',
+        borderBottom: '1px solid rgba(212,184,118,0.34)',
         padding: '14px 24px',
       }}>
         <div className="text-center" style={{
@@ -804,7 +805,7 @@ function MizanTable({
 
       {/* === TABLO === */}
       <div style={{ overflowX: 'auto' }}>
-        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 900 }}>
+        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 1080 }}>
           <colgroup>
             <col style={{ width: 110 }} /> {/* HESAP KODU */}
             <col /> {/* HESAP ADI — esnek */}
@@ -814,15 +815,19 @@ function MizanTable({
             <col style={{ width: 150 }} /> {/* ALACAK BAKİYESİ */}
           </colgroup>
           <thead>
-            <tr style={{ background: 'rgba(184,160,111,0.07)' }}>
+            <tr style={{ background: 'rgba(184,160,111,0.14)' }}>
               {['HESAP KODU', 'HESAP ADI', 'BORÇ', 'ALACAK', 'BORÇ BAKİYESİ', 'ALACAK BAKİYESİ'].map((label, i) => (
                 <th
                   key={label}
                   className={`px-3 py-3 text-[12px] font-bold tracking-[.05em] ${i >= 2 ? 'text-right' : 'text-left'}`}
                   style={{
-                    color: 'rgba(250,250,249,0.9)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'rgba(184,160,111,0.10)',
+                    color: '#f5efe3',
+                    borderRight: i < 5 ? '1px solid rgba(212,184,118,0.30)' : 'none',
+                    borderBottom: '1px solid rgba(212,184,118,0.42)',
+                    background: 'rgba(184,160,111,0.14)',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1,
                   }}
                 >
                   {label}
@@ -848,9 +853,12 @@ function MizanTable({
               const fontSize = 14;
 
               // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
-              const rowBg = isUpper ? 'rgba(255,255,255,0.025)' : 'transparent';
+              const rowBg = isUpper
+                ? 'rgba(212,184,118,0.045)'
+                : rowIdx % 2 === 0
+                  ? 'rgba(255,255,255,0.012)'
+                  : 'rgba(0,0,0,0.10)';
 
-              const cellBorder = '1px solid rgba(255,255,255,0.08)';
               const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; color: string }> = [
                 { val: h.hesapKodu, align: 'left', color: codeColor },
                 { val: h.hesapAdi, align: 'left', color: adiColor },
@@ -873,7 +881,8 @@ function MizanTable({
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         className={`px-3 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
                         style={{
-                          border: cellBorder,
+                          borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.16)' : 'none',
+                          borderBottom: '1px solid rgba(255,255,255,0.10)',
                           fontSize: fontSize,
                           color: c.color,
                           fontWeight: weight,
@@ -882,6 +891,7 @@ function MizanTable({
                           outlineOffset: focused ? '-2px' : '0',
                           background: focused ? 'rgba(184,160,111,0.10)' : undefined,
                           whiteSpace: 'nowrap',
+                          height: 46,
                           userSelect: 'text',
                         }}
                       >
