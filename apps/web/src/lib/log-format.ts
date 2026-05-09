@@ -339,8 +339,23 @@ export function buildFieldRows(event: {
     // Cari kodlar (120/320)
     const cariKodlari = hesapKodlari.filter((k) => /^(120|320)\./.test(k));
 
+    const extractRate = (raw?: string | null): string | null => {
+      const text = String(raw || '');
+      const explicit = text.match(/%+\s*(1|8|10|18|20)(?=\D|$)/);
+      if (explicit) return `%${explicit[1]}`;
+      const codeSuffix = text.match(/\.(001|008|010|018|020)(?:\D|$)/);
+      if (codeSuffix) {
+        const n = codeSuffix[1].replace(/^0+/, '');
+        return `%${n || '0'}`;
+      }
+      return null;
+    };
+
+    const matrahRates = new Set(matrahKodlari.map(extractRate).filter(Boolean) as string[]);
+    const kdvCodeRates = new Set(kdvHesapKodlari.map(extractRate).filter(Boolean) as string[]);
+
     // KDV oranlarını dedupe + temizle (bazıları "%20", bazıları "%20 Kdv" gelir, sırayla unique)
-    const orderedOranlar: string[] = [];
+    let orderedOranlar: string[] = [];
     const seen = new Set<string>();
     for (const o of kdvOranlari) {
       // Sadece oran sayısını al: "%20 Kdv" → "%20"
@@ -352,11 +367,33 @@ export function buildFieldRows(event: {
       }
     }
 
-    const lineCount = Math.max(matrahKodlari.length, orderedOranlar.length, kdvHesapKodlari.length);
+    // DOM bazen Z raporunda eski/yan satır oranlarını da döndürüyor. Eğer hesap kodlarının
+    // kendi içinde oran varsa, logta sadece bu oranlara ait KDV satırlarını göster.
+    const trustedRates = new Set([...matrahRates, ...kdvCodeRates]);
+    if (trustedRates.size > 0) {
+      orderedOranlar = orderedOranlar.filter((oran) => trustedRates.has(oran));
+    }
+
+    const kdvRows = kdvHesapKodlari.map((kod, i) => {
+      const codeRate = extractRate(kod);
+      const oran =
+        codeRate ||
+        orderedOranlar.find((o) => !kdvCodeRates.has(o)) ||
+        orderedOranlar[i] ||
+        null;
+      return { oran, kod };
+    });
+    const usedRates = new Set(kdvRows.map((r) => r.oran).filter(Boolean) as string[]);
+    for (const oran of orderedOranlar) {
+      if (!usedRates.has(oran)) kdvRows.push({ oran, kod: '' });
+    }
+
+    const lineCount = Math.max(matrahKodlari.length, kdvRows.length);
     for (let i = 0; i < lineCount; i++) {
       const matrahKodu = matrahKodlari[i];
-      const oran = orderedOranlar[i];
-      const kdvKodu = kdvHesapKodlari[i];
+      const kdvRow = kdvRows[i];
+      const oran = kdvRow?.oran || null;
+      const kdvKodu = kdvRow?.kod || '';
 
       if (matrahKodu) {
         rows.push({
