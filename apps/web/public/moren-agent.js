@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.78';
+  const AGENT_VERSION = '1.36.79';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8270,11 +8270,11 @@
               await clickIleri(fid);
             }
           } else {
-            counters.hata++; counters.toplam++; setCount();
+            counters.atla++; counters.toplam++; setCount();
             const atlamaSebebi = validationFailed
               ? `${mTag} - eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} - Isletme F2 sonuclanmadi; zincirleme atlama durduruldu`;
-            await logEvent(mukellef.id, mukellef.ad, validationFailed ? 'skip' : 'error', atlamaSebebi, {
+              : `${mTag} - Isletme F2 sonuclanmadi`;
+            await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
               firma: meta.firma,
               belgeNo: meta.belgeNo,
               tutar: meta.tutar,
@@ -8290,13 +8290,7 @@
                 kdv: d.kdv || null,
               })),
             });
-            if (validationFailed) {
-              await clickIleri(fid);
-            } else {
-              setStatus(`${mukellef.ad} - #${fid} F2 sonucu netlesmedi; komut durduruldu`);
-              window.__morenAgent.stopRequested = true;
-              return;
-            }
+            await clickIleri(fid);
           }
         } catch (e) {
           counters.hata++; counters.toplam++; setCount();
