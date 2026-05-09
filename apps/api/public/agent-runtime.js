@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.68';
+  const AGENT_VERSION = '1.36.69';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6605,7 +6605,7 @@
     if (matrahDolu === false) {
       const sel = findHesapKoduSelect(/^Matrah\s*\(/i) || findHesapKoduSelect(/^Matrah$/i);
       if (sel) {
-        const isSatis = action === 'isle_satis';
+        const isSatis = (action === 'isle_satis' || action === 'isle_satis_isletme');
         const prefixler = isSatis ? ['600', '601', '602'] : ['153', '740', '770', '760'];
         const all = new Set();
         for (const pre of prefixler) {
@@ -6622,7 +6622,7 @@
     if (vergiDolu === false) {
       const sel = findHesapKoduSelect(/^Vergi\s*\(/i) || findHesapKoduSelect(/^KDV/i) || findHesapKoduSelect(/^Vergi$/i);
       if (sel) {
-        const isSatis = action === 'isle_satis';
+        const isSatis = (action === 'isle_satis' || action === 'isle_satis_isletme');
         const prefixler = isSatis ? ['391'] : ['191'];
         const all = new Set();
         for (const pre of prefixler) {
@@ -6646,7 +6646,7 @@
         if (anahtar.length >= 3) {
           const opts = await searchAndReadOptions(sel, anahtar, 1800);
           console.log(`[Moren.debug] cari "${anahtar}" → ${opts.length} sonuç`, opts.slice(0, 3));
-          const isSatis = action === 'isle_satis';
+          const isSatis = (action === 'isle_satis' || action === 'isle_satis_isletme');
           // SATIŞ → sadece 120.x (alıcılar). ALIŞ → sadece 320.x (satıcılar).
           const cariRegex = isSatis ? /^120\./ : /^320\./;
           const kodlar = opts.map(extractKod).filter((c) => cariRegex.test(c));
@@ -8187,7 +8187,7 @@
         // v1.13.6 — Okunabilir log formatı
         let logMesaji = '';
         let kaydedildiBaslangic = false;
-        if (action === 'isle_satis' || action === 'isle_alis') {
+        if (['isle_satis', 'isle_alis', 'isle_satis_isletme', 'isle_alis_isletme'].includes(action)) {
           try {
             setStatus(`${mukellef.ad} · #${fid} AI öneri istiyor…`);
             const secenekler = await readBosAlanSecenekleriHizli({ action, codes, firmaAdi: meta.firma });
