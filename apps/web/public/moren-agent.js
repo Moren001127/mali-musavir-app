@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.77';
+  const AGENT_VERSION = '1.36.78';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6910,6 +6910,11 @@
   // F2 sonrası validation uyarısı kontrolü
   // "Tahsilat/Ödeme hesabı seçilmemiş", "Hesap kodu girilmemiş" gibi
   function validationDialogVarMi() {
+    const pageErrors = [...document.querySelectorAll('.ant-message-error, .ant-notification-notice-error')]
+      .map((el) => (el.textContent || '').trim())
+      .filter(Boolean);
+    if (pageErrors.length > 0) return pageErrors.join(' | ').slice(0, 100);
+
     const modals = getVisibleModals();
     for (const m of modals) {
       const text = (m.textContent || '').trim();
@@ -8265,14 +8270,33 @@
               await clickIleri(fid);
             }
           } else {
-            counters.atla++; counters.toplam++; setCount();
+            counters.hata++; counters.toplam++; setCount();
             const atlamaSebebi = validationFailed
-              ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} · İşletme F2 sonuçlanmadı`;
-            await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              ? `${mTag} - eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+              : `${mTag} - Isletme F2 sonuclanmadi; zincirleme atlama durduruldu`;
+            await logEvent(mukellef.id, mukellef.ad, validationFailed ? 'skip' : 'error', atlamaSebebi, {
+              firma: meta.firma,
+              belgeNo: meta.belgeNo,
+              tutar: meta.tutar,
+              tarih: meta.tarih,
+              belgeTuru: ust.belgeTuru,
+              faturaTuru: ust.faturaTuru,
+              alisSatisTuru: ust.alisSatisTuru,
+              isletmeBloklari: blok.detay.map((d, i) => ({
+                blok: i + 1,
+                kayitTuru: d.kayitDeger || null,
+                altTuru: d.altDeger || null,
+                matrah: d.matrah || null,
+                kdv: d.kdv || null,
+              })),
             });
-            await clickIleri(fid);
+            if (validationFailed) {
+              await clickIleri(fid);
+            } else {
+              setStatus(`${mukellef.ad} - #${fid} F2 sonucu netlesmedi; komut durduruldu`);
+              window.__morenAgent.stopRequested = true;
+              return;
+            }
           }
         } catch (e) {
           counters.hata++; counters.toplam++; setCount();
