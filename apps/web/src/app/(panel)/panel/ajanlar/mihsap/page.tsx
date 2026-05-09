@@ -215,6 +215,7 @@ export default function MihsapAgentPage() {
 
   const runMut = useMutation({
     mutationFn: async () => {
+      await api.post('/agent/control/state', { agent: 'mihsap', state: 'RUNNING' }).catch(() => null);
       // Çoklu action — her biri için ayrı komut sırayla oluştur
       const mukellefler = selectedIds
         .map((id) => taxpayers.find((t) => t.id === id))
@@ -238,22 +239,29 @@ export default function MihsapAgentPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agent-commands'] });
+      qc.invalidateQueries({ queryKey: ['agent-commands', 'mihsap'] });
+      qc.invalidateQueries({ queryKey: ['agent-control-state', 'mihsap'] });
       toast.success('Komut kuyruğa atıldı');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Komut gönderilemedi'),
   });
 
-  // Çalışan komutu iptal et
+  // Aktif komutu iptal et ve runner'a bu turu kapatma sinyali gönder.
   const cancelMut = useMutation({
-    mutationFn: (id: string) => agentsApi.cancelCommand(id),
+    mutationFn: async (id: string) => {
+      const result = await agentsApi.cancelCommand(id);
+      await api.post('/agent/control/state', { agent: 'mihsap', state: 'STOP' }).catch(() => null);
+      return result;
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['agent-commands'] });
+      qc.invalidateQueries({ queryKey: ['agent-commands', 'mihsap'] });
+      qc.invalidateQueries({ queryKey: ['agent-control-state', 'mihsap'] });
       toast.success('Komut iptal edildi');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal başarısız'),
   });
-  // Aktif (running) komut — Durdur butonu için
-  const aktifKomut = (commands as any[]).find((c) => c.status === 'running');
+  const aktifKomut = (commands as any[]).find((c) => c.status === 'running' || c.status === 'pending');
 
   const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const recentEvents = events.filter((e) => e.ts >= dayAgo);
@@ -411,6 +419,23 @@ export default function MihsapAgentPage() {
             </button>
             {/* Durdur/Devam Et — agent paused state'ine göre toggle */}
             <AgentPauseResumeButton />
+            {aktifKomut && (
+              <button
+                onClick={() => cancelMut.mutate(aktifKomut.id)}
+                disabled={cancelMut.isPending}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-50"
+                style={{
+                  background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.28)',
+                  color: '#f87171',
+                  height: 42,
+                }}
+                title="Aktif komutu tamamen iptal et ve bu turu kapat"
+              >
+                {cancelMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                İptal Et
+              </button>
+            )}
           </div>
         </div>
 
@@ -450,12 +475,16 @@ export default function MihsapAgentPage() {
                       ? 'rgba(34,197,94,.15)'
                       : commands[0].status === 'failed'
                       ? 'rgba(239,68,68,.15)'
+                      : commands[0].status === 'cancelled'
+                      ? 'rgba(148,163,184,.12)'
                       : 'rgba(245,158,11,.15)',
                   color:
                     commands[0].status === 'done'
                       ? '#22c55e'
                       : commands[0].status === 'failed'
                       ? '#ef4444'
+                      : commands[0].status === 'cancelled'
+                      ? '#94a3b8'
                       : '#f59e0b',
                 }}
               >
@@ -470,6 +499,8 @@ export default function MihsapAgentPage() {
                     ? 'Tamamlandı'
                     : commands[0].status === 'failed'
                     ? 'Başarısız'
+                    : commands[0].status === 'cancelled'
+                    ? 'İptal Edildi'
                     : commands[0].status === 'running'
                     ? 'Çalışıyor'
                     : 'Beklemede'}
