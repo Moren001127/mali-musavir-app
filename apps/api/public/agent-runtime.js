@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.67';
+  const AGENT_VERSION = '1.36.68';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6727,7 +6727,7 @@
     const vergiDolu  = bolumHesapKoduDolu(/^Vergi\s*\(/i) ?? bolumHesapKoduDolu(/^KDV/i) ?? bolumHesapKoduDolu(/^Vergi$/i);
     const cariDolu   = bolumHesapKoduDolu(/^Cari Hesap\s*\(/i) ?? bolumHesapKoduDolu(/^Cari Hesap$/i) ?? bolumHesapKoduDolu(/^Cari$/i);
     const odemeDolu  = bolumHesapKoduDolu(ODEME_HESABI_RE);
-    const isSatis = action === 'isle_satis';
+    const isSatis = action === 'isle_satis' || action === 'isle_satis_isletme';
     const arr = Array.isArray(codes) ? codes : [];
 
     if (matrahDolu === false) {
@@ -6749,6 +6749,11 @@
       if (list.length === 0 && firmaAdi) {
         list = await cariSecenekleriBul(firmaAdi, action);
       }
+      // Cari alaninda tek seferlik alislar icin odeme/kasa secenegi daima listede kalsin.
+      // Backend profil politikasi surekli tedarikci degilse 320/120 yerine bunu secer.
+      const odemeAdaylari = (isSatis ? STANDART_CARI_SATIS : STANDART_CARI_ALIS)
+        .filter((c) => /^(100|102)\./.test(c));
+      list = Array.from(new Set([...odemeAdaylari, ...list]));
       if (list.length === 0) list = isSatis ? [...STANDART_CARI_SATIS] : [...STANDART_CARI_ALIS];
       if (list.length > 0) sonuc.cariKodlari = list;
     }

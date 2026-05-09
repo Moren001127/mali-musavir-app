@@ -985,8 +985,13 @@ B) KDV HESABI:
 
 C) CARİ HESAP:
    Seçenekler: ${input.bosAlanSecenekleri.cariKodlari?.join(', ') || '(runner listelemedi — önerme)'}
-   ${islemTuru === 'SATIŞ' ? `Kural: Alıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 120.xx grubundadır.`
-    : `Kural: Satıcı firmanın adı/VKN'si ile listedeki kod açıklamasını eşleştir. Genellikle 320.xx grubundadır.`}
+   ${islemTuru === 'SATIŞ' ? `Kural: Alici firmayi 120.xx cariye sadece profil buna izin veriyorsa eslestir.`
+    : `Kural: Satici firmayi 320.xx cariye sadece profil buna izin veriyorsa eslestir.`}
+   PROFIL KAPISI ZORUNLU:
+   - Cari takip politikasi "hepsi_cari" ise cari eslestirme serbesttir.
+   - "sadece_tanimli" veya "cari_yoksa_odeme" ise 120/320 sadece firma adi "Cari takip edilecek surekli tedarikciler" listesinde acikca geciyorsa secilir.
+   - Firma bu listede degilse 120/320 secme; cari yoksa kullanilacak hesap / odeme hesabi / tahsilat hesabi neyse onu sec (orn. 100.01.001).
+   - Emin degilsen 120/320 yerine odeme hesabi sec veya null birak; yanlis cariye otomatik F2 en riskli hatadir.
    Cari kod listesinde firma YOKSA ama mukellef profilinde cari yoksa kullanilacak hesap/odeme hesabi tanimliysa (orn. 100.01.001), onu cariHesapKodu olarak oner.
    Profilde acik tanimli hesap kodu varsa ve fatura icerigiyle uyumluysa, dropdown sondaj listesinde gorunmese bile onu onerebilirsin; runner kodu yazarak secmeyi deneyecek.
 
@@ -1165,6 +1170,11 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
             // Öneri mod: AI'nın önerdiği kodları gerçekten dropdown'da var mı ve
             // güven skoru >= 0.8 mi diye doğrula. Halüsinasyon korumasıdır.
             if (input.bosAlanSecenekleri && parsed.onerilenler) {
+              parsed.onerilenler = this.applyCariPolicyToOneriler(
+                parsed.onerilenler,
+                input,
+                rule?.profile,
+              );
               parsed.onerilenler = this.sanitizeHesapKoduOnerileri(
                 parsed.onerilenler,
                 input.bosAlanSecenekleri,
@@ -1324,6 +1334,79 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       cariHesapKodu: validateKod(oneriler?.cariHesapKodu, secenekler.cariKodlari, conf.cari),
       confidence: conf,
     };
+  }
+
+  private applyCariPolicyToOneriler(
+    oneriler: any,
+    input: { firma?: string; action?: string; bosAlanSecenekleri?: { cariKodlari?: string[] } },
+    profile: any,
+  ): any {
+    if (!oneriler || !profile) return oneriler;
+    const policy = String(profile.cariTakipPolitikasi || '').trim();
+    if (!policy || policy === 'hepsi_cari') return oneriler;
+
+    const selected = typeof oneriler.cariHesapKodu === 'string' ? oneriler.cariHesapKodu.trim() : '';
+    const selectedCari = /^(120|320)\./.test(selected);
+    if (!selectedCari) return oneriler;
+
+    const firma = this.normalizeCariName(input.firma || '');
+    const listed = this.isFirmaInSurekliTedarikciler(firma, profile.surekliTedarikciler);
+    if (listed) return oneriler;
+
+    if (policy === 'cari_yoksa_onay') {
+      const next = { ...oneriler, confidence: { ...(oneriler.confidence || {}) } };
+      next.cariHesapKodu = null;
+      next.confidence.cari = 0;
+      next._cariPolicyOverride = `non-listed vendor requires approval: ${selected}`;
+      return next;
+    }
+
+    const allowed = input.bosAlanSecenekleri?.cariKodlari || [];
+    const candidates = [
+      profile.cariYoksaHesap,
+      input.action === 'isle_satis' || input.action === 'isle_satis_isletme'
+        ? profile.tahsilatHesabi
+        : profile.odemeHesabi,
+      profile.odemeHesabi,
+      profile.tahsilatHesabi,
+      '100.01.001',
+      '102.01.001',
+    ]
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .map((v) => v.trim());
+
+    const preferred = candidates.find((code) => allowed.includes(code));
+    const next = { ...oneriler, confidence: { ...(oneriler.confidence || {}) } };
+    if (preferred) {
+      next.cariHesapKodu = preferred;
+      next.confidence.cari = Math.max(Number(next.confidence.cari) || 0, 0.95);
+      next._cariPolicyOverride = `non-listed vendor: ${selected} -> ${preferred}`;
+    } else {
+      next.cariHesapKodu = null;
+      next.confidence.cari = 0;
+      next._cariPolicyOverride = `non-listed vendor blocked: ${selected}`;
+    }
+    return next;
+  }
+
+  private isFirmaInSurekliTedarikciler(firma: string, surekliTedarikciler: any): boolean {
+    if (!firma || typeof surekliTedarikciler !== 'string') return false;
+    return surekliTedarikciler
+      .split(/[\n,;]+/)
+      .map((v) => this.normalizeCariName(v))
+      .filter((v) => v.length >= 4)
+      .some((name) => firma.includes(name) || name.includes(firma));
+  }
+
+  private normalizeCariName(value: string): string {
+    return value
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\b(ANONIM|LIMITED|SIRKETI|SIRKET|TICARET|SANAYI|VE|A S|LTD|STI)\b/g, ' ')
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private resolveFaturaMemoryCategory(parsed: any, ekranKategoriAdayi: string): string {
