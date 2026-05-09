@@ -2,7 +2,7 @@
 // Tüm "Canlı Akış" widget'ları (Mihsap, Loglar, KDV Kontrol, Panel)
 // bu modülü kullanır — tek bir görsel format her yerde aynı.
 
-export type FieldStatus = 'full' | 'empty-with-suggestion' | 'missing';
+export type FieldStatus = 'full' | 'empty-with-suggestion' | 'warning' | 'missing';
 
 export interface FieldRow {
   label: string;        // "Tarih", "Belge Türü", "Toplam Tutar", "Matrah", "KDV", "Cari" vb.
@@ -370,7 +370,8 @@ export function buildFieldRows(event: {
         const parts = [oran, kdvKodu].filter(Boolean);
         rows.push({
           label: `KDV ${i + 1}`,
-          status: 'full',
+          status: oran && !kdvKodu ? 'warning' : 'full',
+          meta: oran && !kdvKodu ? 'KDV orani var, hesap kodu gorunmuyor' : undefined,
           value: parts.join(' · '),
         });
       }

@@ -4,9 +4,9 @@
 
 window.addEventListener('message', async (ev) => {
   if (!ev.data || !ev.data.__morenAutoAgentRequest) return;
-  const { id, action } = ev.data;
+  const { id, action, target } = ev.data;
   try {
-    const response = await chrome.runtime.sendMessage({ __internal: true, action });
+    const response = await chrome.runtime.sendMessage({ __internal: true, action, target });
     window.postMessage(
       { __morenAutoAgentResponse: true, id, payload: response },
       '*',

@@ -23,6 +23,7 @@
     version: '1.0.1',
     deviceId,
     restartAll: () => sendCommand('restart_all'),
+    openAgent: (target) => sendCommand('open_agent', target),
     status: () => sendCommand('status'),
     ping: () => sendCommand('ping'),
   };
@@ -35,11 +36,11 @@
     } catch (_) {}
   });
 
-  function sendCommand(action) {
+  function sendCommand(action, target) {
     return new Promise((resolve, reject) => {
       const id = 'mab_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       pendingResponses.set(id, { resolve, reject });
-      window.postMessage({ __morenAutoAgentRequest: true, id, action }, '*');
+      window.postMessage({ __morenAutoAgentRequest: true, id, action, target }, '*');
       setTimeout(() => {
         if (pendingResponses.has(id)) {
           pendingResponses.delete(id);

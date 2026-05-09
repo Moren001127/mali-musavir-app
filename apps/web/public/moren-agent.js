@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.63';
+  const AGENT_VERSION = '1.36.64';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6276,7 +6276,9 @@
         try {
           // İlk sayfa yeterli (detaylar görünsün diye çözünürlük artır)
           const pages = canvases.slice(0, 1);
-          const targetW = Math.min(pages[0].width, 1100);
+          // v1.36.64: Claude Vision maliyetini dusurmek icin gereksiz buyuk gorsel gonderme.
+          // 900px fatura satirlari icin yeterli, 1100px'e gore daha az image token uretir.
+          const targetW = Math.min(pages[0].width, 900);
           const totalH = pages.reduce(
             (s, c) => s + Math.round(targetW * (c.height / c.width)),
             0,
@@ -6291,7 +6293,7 @@
             ctx.drawImage(p, 0, y, targetW, h);
             y += h;
           }
-          return out.toDataURL('image/jpeg', 0.7).split(',')[1];
+          return out.toDataURL('image/jpeg', 0.58).split(',')[1];
         } catch (e) {
           console.warn('[Moren] canvas merge fail', e);
         }

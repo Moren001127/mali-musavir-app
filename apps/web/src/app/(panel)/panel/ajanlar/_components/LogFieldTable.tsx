@@ -37,14 +37,21 @@ export function LogFieldTable({ rows }: { rows: FieldRow[] }) {
 
 function RowItem({ row }: { row: FieldRow }) {
   const { icon, color } = statusStyle(row.status);
+  const isWarning = row.status === 'warning';
+  const isMissing = row.status === 'missing';
   return (
     <>
       <div style={{ color: '#6b6b6b' }}>{row.label}</div>
       <div style={{ textAlign: 'center', fontWeight: 700, color }}>{icon}</div>
-      <div style={{ color: '#b0b0b0' }}>
+      <div
+        style={{
+          color: isMissing ? '#d7a0a0' : isWarning ? '#e0bd78' : '#b0b0b0',
+          fontWeight: isWarning || isMissing ? 600 : 400,
+        }}
+      >
         {row.value}
         {row.meta && (
-          <span style={{ color: '#6b6b6b', fontSize: 10.5, marginLeft: 4 }}>{row.meta}</span>
+          <span style={{ color: isWarning ? '#caa45d' : '#6b6b6b', fontSize: 10.5, marginLeft: 4 }}>{row.meta}</span>
         )}
       </div>
     </>
@@ -57,6 +64,8 @@ function statusStyle(status: FieldRow['status']) {
       return { icon: '✓', color: '#6a9a6c' };
     case 'empty-with-suggestion':
       return { icon: '○', color: '#8b6f3a' };
+    case 'warning':
+      return { icon: '!', color: '#d4a94f' };
     case 'missing':
       return { icon: '✗', color: '#c85555' };
   }

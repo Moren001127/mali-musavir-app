@@ -12,6 +12,10 @@ const LUCA_PATTERNS = [
 const MIHSAP_PATTERNS = [
   /^https?:\/\/app\.mihsap\.com\//,
 ];
+const AGENT_HOME_URL = {
+  luca: 'https://auygs.luca.com.tr/',
+  mihsap: 'https://app.mihsap.com/',
+};
 
 function classifyTab(url) {
   if (!url) return null;
@@ -49,11 +53,30 @@ async function restartAgentIn(tabId, kind) {
 }
 
 async function restartAll() {
+  await ensureAgentTab('luca');
+  await ensureAgentTab('mihsap');
   const tabs = await findAgentTabs();
   const results = await Promise.all(
     tabs.map((x) => restartAgentIn(x.tab.id, x.kind)),
   );
   return { tabs: tabs.length, results };
+}
+
+async function ensureAgentTab(kind) {
+  const wanted = String(kind || '').toLowerCase();
+  if (!AGENT_HOME_URL[wanted]) return { ok: false, error: 'unknown agent' };
+  const tabs = await findAgentTabs();
+  const existing = tabs.find((x) => x.kind === wanted);
+  if (existing?.tab?.id) {
+    await chrome.tabs.update(existing.tab.id, { active: true }).catch(() => {});
+    if (existing.tab.windowId) {
+      await chrome.windows.update(existing.tab.windowId, { focused: true }).catch(() => {});
+    }
+    await restartAgentIn(existing.tab.id, wanted);
+    return { ok: true, opened: false, tabId: existing.tab.id, kind: wanted };
+  }
+  const tab = await chrome.tabs.create({ url: AGENT_HOME_URL[wanted], active: true });
+  return { ok: true, opened: true, tabId: tab.id, kind: wanted };
 }
 
 async function getStatus() {
@@ -103,6 +126,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       if (msg.action === 'restart_all') {
         sendResponse(await restartAll());
+      } else if (msg.action === 'open_agent') {
+        sendResponse(await ensureAgentTab(msg.target));
       } else if (msg.action === 'status') {
         sendResponse(await getStatus());
       } else if (msg.action === 'ping') {

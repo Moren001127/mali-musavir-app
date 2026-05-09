@@ -69,7 +69,16 @@ export const agentsApi = {
   // v1.36.61: Otomatik olarak current PC'nin deviceId'sini payload.targetDeviceId'ye ekler.
   // Böylece komut hangi tarayıcıdan gönderildiyse o PC'deki agent alır.
   // Eğer extension yüklü değilse (deviceId yoksa) targetDeviceId boş kalır → eski davranış (any agent).
-  createCommand: (body: { agent: string; action: string; payload: any }) => {
+  createCommand: async (body: { agent: string; action: string; payload: any }) => {
+    const bridge =
+      typeof window !== 'undefined' ? (window as any).__morenAutoAgent : null;
+    if (bridge?.openAgent && (body.agent === 'mihsap' || body.agent === 'luca')) {
+      try {
+        await bridge.openAgent(body.agent);
+      } catch {
+        // Extension yoksa veya tarayici izin vermezse komut yine kuyruga yazilir.
+      }
+    }
     const deviceId =
       typeof window !== 'undefined' && (window as any).__morenAutoAgent?.deviceId;
     const enrichedPayload =

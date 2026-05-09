@@ -1,6 +1,6 @@
 'use client';
 
-import { parseAgentMessage, buildFieldRows } from '@/lib/log-format';
+import { parseAgentMessage, buildFieldRows, FieldRow } from '@/lib/log-format';
 import { LogFieldTable, LogSummary } from './LogFieldTable';
 
 export interface LogEvent {
@@ -38,27 +38,96 @@ export function statusStyle(status: string) {
   }
 }
 
+function collectWarnings(event: LogEvent, rows: FieldRow[]) {
+  const warnings: string[] = [];
+  for (const row of rows) {
+    if (row.status === 'warning') {
+      warnings.push(`${row.label}: ${row.meta || 'kontrol gerekli'}`);
+    }
+  }
+
+  const onaylandi = ['onaylandi', 'basarili', 'ok'].includes(String(event.status || '').toLowerCase());
+  const missingCritical = rows.filter((row) =>
+    row.status === 'missing' && /^(Matrah|KDV|Cari|Belge|Toplam Tutar|Onay)/i.test(row.label),
+  );
+  if (onaylandi && missingCritical.length > 0) {
+    warnings.push(`Onayli kayitta eksik alan: ${missingCritical.map((r) => r.label).join(', ')}`);
+  }
+
+  const trace = event.meta?.decisionTrace;
+  const traceReason = trace?.karar?.sebep || event.meta?.sebep;
+  if (traceReason && /uyusma|fark|eksik|bos|emin|sapma|risk/i.test(String(traceReason))) {
+    warnings.push(String(traceReason).slice(0, 120));
+  }
+
+  return [...new Set(warnings)];
+}
+
+function DecisionTraceBox({ trace }: { trace: any }) {
+  const belge = trace?.belge || {};
+  const ekran = trace?.ekran || {};
+  const karar = trace?.karar || {};
+  const hesapSayisi = Array.isArray(ekran?.hesapKodlari) ? ekran.hesapKodlari.length : null;
+  const parts = [
+    belge?.belgeNo ? `Belge ${belge.belgeNo}` : null,
+    belge?.kdvOrani ? `KDV ${belge.kdvOrani}` : null,
+    belge?.ocrToplam ? `OCR ${belge.ocrToplam}` : null,
+    ekran?.tutar ? `Mihsap ${ekran.tutar}` : null,
+    hesapSayisi !== null ? `${hesapSayisi} kod` : null,
+  ].filter(Boolean);
+
+  return (
+    <div
+      className="mt-1.5 rounded px-2 py-1.5 text-[11px]"
+      style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.04)', color: '#8f8f8f' }}
+    >
+      <span className="font-semibold" style={{ color: '#b8a06f' }}>Karar izi:</span>{' '}
+      {parts.length > 0 ? parts.join(' | ') : 'detay yok'}
+      {karar?.sebep && (
+        <span style={{ color: '#b0b0b0' }}> | {String(karar.sebep).slice(0, 160)}</span>
+      )}
+    </div>
+  );
+}
+
+function isModernAgentVersion(version: unknown) {
+  const parts = String(version || '').split('.').map((p) => Number(p));
+  if (parts.some((p) => !Number.isFinite(p))) return false;
+  const [major = 0, minor = 0, patch = 0] = parts;
+  if (major > 1) return true;
+  if (major < 1) return false;
+  if (minor > 36) return true;
+  if (minor < 36) return false;
+  return patch >= 63;
+}
+
 export function LogCard({ event }: { event: LogEvent }) {
   const d = new Date(event.ts);
   const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-  const { color, icon, bg, label, border } = statusStyle(event.status);
+  const baseStyle = statusStyle(event.status);
 
   // Mesajı yapısal hale çevir
   const parsed = parseAgentMessage(event.message);
   const rows = buildFieldRows(event, parsed);
   const hasFields = rows.length > 0;
   const hasSummary = !!(parsed.sonuc || parsed.mihsapUyarisi || parsed.hata || parsed.rawLines.length);
+  const warnings = collectWarnings(event, rows);
+  const isSuccess = ['onaylandi', 'basarili', 'ok'].includes(String(event.status || '').toLowerCase());
+  const agentVersionOk = isModernAgentVersion(event.meta?.agentVersion);
+  const visual = warnings.length > 0 && isSuccess
+    ? { color: '#d4a94f', icon: '!', bg: 'rgba(180,120,40,.06)', label: 'UYARILI', border: '#a17835' }
+    : baseStyle;
 
   return (
     <div
       className="flex items-start gap-3 px-3 py-2 rounded-md transition-colors hover:brightness-110"
-      style={{ background: bg, borderLeft: `3px solid ${border}` }}
+      style={{ background: visual.bg, borderLeft: `3px solid ${visual.border}` }}
     >
       <span
         className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold px-1.5 py-0.5"
-        style={{ background: color + '33', color, minWidth: 52 }}
+        style={{ background: visual.color + '33', color: visual.color, minWidth: 58 }}
       >
-        {icon} {label}
+        {visual.icon} {visual.label}
       </span>
       <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#6b6b6b' }}>
         {t}
@@ -88,7 +157,23 @@ export function LogCard({ event }: { event: LogEvent }) {
           )}
         </div>
 
+        {warnings.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5" style={{ color: '#d4a94f' }}>
+            {warnings.slice(0, 4).map((w, i) => (
+              <span
+                key={`${w}-${i}`}
+                className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(212,169,79,0.12)', border: '1px solid rgba(212,169,79,0.25)' }}
+              >
+                ! {w}
+              </span>
+            ))}
+          </div>
+        )}
+
         {hasFields && <LogFieldTable rows={rows} />}
+
+        {event.meta?.decisionTrace && <DecisionTraceBox trace={event.meta.decisionTrace} />}
 
         {hasSummary && (
           <LogSummary
@@ -115,17 +200,17 @@ export function LogCard({ event }: { event: LogEvent }) {
               <span
                 className="text-[9px] px-1 rounded font-mono"
                 title={
-                  event.meta.agentVersion === '1.36.4'
+                  agentVersionOk
                     ? 'Agent güncel'
                     : `Agent eski sürüm (${event.meta.agentVersion}) — bookmarklet'i yenile, hard reload yap`
                 }
                 style={{
                   background:
-                    event.meta.agentVersion === '1.36.4'
+                    agentVersionOk
                       ? 'rgba(34,197,94,0.10)'
                       : 'rgba(239,68,68,0.15)',
                   color:
-                    event.meta.agentVersion === '1.36.4' ? '#22c55e' : '#ef4444',
+                    agentVersionOk ? '#22c55e' : '#ef4444',
                 }}
               >
                 v{event.meta.agentVersion}
