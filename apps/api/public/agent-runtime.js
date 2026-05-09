@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.85';
+  const AGENT_VERSION = '1.36.86';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -7916,19 +7916,9 @@
   }
 
   function shouldUseAccountCodeFlowForIsletme() {
-    const hasDirectAccountSection = !!(
-      findHesapKoduSelect(/^Matrah\s*\(/i) ||
-      findHesapKoduSelect(/^Matrah$/i) ||
-      findHesapKoduSelect(/^Vergi\s*\(/i) ||
-      findHesapKoduSelect(/^KDV/i) ||
-      findHesapKoduSelect(/^Cari Hesap\s*\(/i) ||
-      findHesapKoduSelect(/^Cari Hesap$/i) ||
-      findHesapKoduSelect(ODEME_HESABI_RE)
-    );
-    if (hasDirectAccountSection) return true;
-    const txt = (document.body?.innerText || '').slice(0, 12000);
-    return /Hesap Kodu|Cari Hesap|Tahsilat|Odeme|Ödeme/i.test(txt)
-      && /Matrah|Vergi|KDV/i.test(txt);
+    // İşletme defteri fatura akışı Kayıt Türü / K. Alt Türü mantığıyla çalışır.
+    // 153/191 gibi hesap kodu doldurma bilanço defteri içindir; işletmede yanlış dala düşürür.
+    return false;
   }
 
   async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
