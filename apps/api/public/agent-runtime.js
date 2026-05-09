@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.89';
+  const AGENT_VERSION = '1.36.90';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5947,7 +5947,12 @@
   async function click(el) {
     if (!el) return;
     try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch {}
+    try { el.focus?.({ preventScroll: true }); } catch {}
     try {
+      if (typeof PointerEvent !== 'undefined') {
+        el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+        el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+      }
       el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
       el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
     } catch {}
@@ -6155,14 +6160,30 @@
 
   function findKaydetOnaylaButton() {
     const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
-    return btns.find((b) => {
+    const candidates = btns.filter((b) => {
       const t = (b.textContent || '').trim();
       return /^Kaydet\s+ve\s+Onayla/i.test(t) || /\(F2\)/i.test(t);
-    }) || btns.find((b) => {
+    });
+    const fallbackCandidates = btns.filter((b) => {
       const t = (b.textContent || '').trim();
       return /^Kaydet$/i.test(t)
         || /^Kaydet\b/i.test(t);
     });
+    return [...candidates, ...fallbackCandidates].find((b) => !isButtonDisabled(b)) || candidates[0] || fallbackCandidates[0] || null;
+  }
+
+  function isButtonDisabled(btn) {
+    if (!btn) return true;
+    const text = `${btn.className || ''} ${btn.getAttribute('aria-disabled') || ''}`.toLowerCase();
+    return !!btn.disabled || btn.getAttribute('disabled') != null || text.includes('disabled') || text.includes('loading');
+  }
+
+  function describeButton(btn) {
+    if (!btn) return 'btn:yok';
+    const r = btn.getBoundingClientRect?.();
+    const text = (btn.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    const rect = r ? `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}x${Math.round(r.height)}` : '?';
+    return `btn:${text || '-'} disabled:${isButtonDisabled(btn) ? 'evet' : 'hayir'} rect:${rect}`;
   }
 
   async function pressF9Once(currentFid) {
@@ -6203,17 +6224,25 @@
   }
 
   async function pressF2Once() {
-    const fidBefore = getCurrentFid();
-    dispatchShortcutKey('F2', 'F2', 113);
-    if (await waitShortcutEffect(fidBefore, 650)) return;
-
-    // Programatik F2 yakalanmazsa buton fallback'i.
-    const f2btn = findKaydetOnaylaButton();
+    let f2btn = findKaydetOnaylaButton();
     if (f2btn) {
-      await click(f2btn);
-    } else {
-      dispatchShortcutKey('F2', 'F2', 113);
+      if (isButtonDisabled(f2btn)) {
+        const t0 = Date.now();
+        while (Date.now() - t0 < 1800 && isButtonDisabled(f2btn)) {
+          await sleep(150);
+          f2btn = findKaydetOnaylaButton();
+          if (!f2btn) break;
+        }
+      }
+      window.__morenLastF2Debug = describeButton(f2btn);
+      if (f2btn && !isButtonDisabled(f2btn)) {
+        await click(f2btn);
+        return;
+      }
     }
+
+    window.__morenLastF2Debug = describeButton(f2btn);
+    dispatchShortcutKey('F2', 'F2', 113);
   }
 
   // URL'den mevcut fatura ID'sini oku (örn. "/documents/BILANCO/1/123/456789?count=12" → "456789")
@@ -8466,7 +8495,7 @@
             }
           } else {
             counters.atla++; counters.toplam++; setCount();
-            const f2Debug = `FatT:${ust.faturaTuru || '-'} BT:${ust.belgeTuru || '-'} AST:${ust.alisSatisTuru || '-'} · ${blokLog || 'blok yok'} · urlFid:${getCurrentFid() || '-'} count:${location.href.match(/count=(-?\d+)/)?.[1] || '-'}`;
+            const f2Debug = `FatT:${ust.faturaTuru || '-'} BT:${ust.belgeTuru || '-'} AST:${ust.alisSatisTuru || '-'} · ${blokLog || 'blok yok'} · ${window.__morenLastF2Debug || 'btn:bilinmiyor'} · urlFid:${getCurrentFid() || '-'} count:${location.href.match(/count=(-?\d+)/)?.[1] || '-'}`;
             const atlamaSebebi = kayitSonucu.validationFailed
               ? `${mTag} - eksik alan (MIHSAP): ${kayitSonucu.validationFailed.slice(0, 80)} · ${f2Debug}`
               : `${mTag} - Isletme F2 sonuclanmadi · ${f2Debug}`;
