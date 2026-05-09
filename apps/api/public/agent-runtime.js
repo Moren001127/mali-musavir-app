@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.74';
+  const AGENT_VERSION = '1.36.75';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6010,6 +6010,13 @@
         const iptal = findIn('İptal') || findIn('Vazgeç');
         if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
       }
+      // Onayla sonrası tekrar F2 erken/yersiz gelirse Mihsap bu hatayı verir.
+      // Bu durumda aynı faturayı tekrar zorlamayı bırak; Tamam deyip üst akışa
+      // "bu fatura artık onay bekleyen değil" sinyali ver.
+      if (/sadece\s+onay\s+bekleyen/i.test(text)) {
+        const ok = findIn('Tamam') || findIn('Evet') || findInStarts('Tamam') || findInStarts('Evet');
+        if (ok) { await click(ok); await sleep(800); return 'not-pending'; }
+      }
       // Bu uyarıda kullanıcı talimatı: Onayla, ardından aynı faturada tekrar F2 dene.
       // Vazgeç/Hayır dersen uyarı kapanıyor ama fatura onay beklemeye devam ediyor;
       // F2 sonrası aynı uyarı tekrar çıkıp döngüye giriyor.
@@ -6145,9 +6152,10 @@
   // işlem log'suz atlanmış gibi görünür).
   // Dönüş: 'f2' (F2 basıldı) | 'already-advanced' (URL değişti, F2 gereksiz)
   async function onaylaSonrasiF2(fidBefore) {
-    // v1.36.20 hızlandırma: 5sn sabit bekleme yerine 3sn akıllı polling
+    // Onayla sonrası Mihsap bazen state'i birkaç saniye sonra güncelliyor.
+    // Erken F2 "Sadece onay bekleyen..." hatasına düşürdüğü için 6 sn akıllı bekle.
     const __t0 = Date.now();
-    while (Date.now() - __t0 < 3000) {
+    while (Date.now() - __t0 < 6000) {
       const fidNow = getCurrentFid();
       if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
         return 'already-advanced';
@@ -8179,6 +8187,7 @@
               }
               if (getVisibleModals().length > 0) {
                 const r = await handleDialogs();
+                if (r === 'not-pending') return true;
                 if (r === 'resubmit') {
                   const res = await onaylaSonrasiF2(fid);
                   if (res === 'already-advanced') break;
@@ -8200,6 +8209,7 @@
               }
               if (getVisibleModals().length > 0) {
                 const r = await handleDialogs();
+                if (r === 'not-pending') return true;
                 if (r === 'resubmit') {
                   const res = await onaylaSonrasiF2(fid);
                   if (res === 'already-advanced') continue;
@@ -8234,6 +8244,9 @@
               kdvOranlari: blok.detay.map((d) => d.kdv).filter(Boolean),
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
+            if (getCurrentFid() === fid && !/count=0/.test(location.href)) {
+              await clickIleri(fid);
+            }
           } else {
             counters.atla++; counters.toplam++; setCount();
             const atlamaSebebi = validationFailed
