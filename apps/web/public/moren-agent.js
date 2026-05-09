@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.70';
+  const AGENT_VERSION = '1.36.71';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -8230,6 +8230,11 @@
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
             await logEvent(mukellef.id, mukellef.ad, 'ok', logMsg, {
               firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              belgeTuru: ust.belgeTuru,
+              faturaTuru: ust.faturaTuru,
+              alisSatisTuru: ust.alisSatisTuru,
+              hesapKodlari: blok.detay.map((d) => d.kayitDeger).filter(Boolean),
+              kdvOranlari: blok.detay.map((d) => d.kdv).filter(Boolean),
               aiOzet: aiOzet.length ? aiOzet.join(' · ') : undefined,
             });
           } else {

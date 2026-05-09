@@ -510,6 +510,8 @@ function formatBelgeTuru(raw: string): string {
     'FATURA': 'Fatura',
     'FIS': 'Yazarkasa Fişi',
     'OKC': 'Yazarkasa Fişi',
+    'Z_RAPORU': 'Z Raporu',
+    'ZRAPORU': 'Z Raporu',
     'IRSALIYE': 'İrsaliye',
     'IRSALIYELI_FATURA': 'İrsaliyeli Fatura',
     'GIDER_PUSULASI': 'Gider Pusulası',
@@ -540,6 +542,18 @@ function inferBelgeTuru(action?: string, meta?: any, message?: string): string |
       const v = m[1].trim();
       if (v) return formatBelgeTuru(v);
     }
+  }
+  // 3.5) Z raporu / ÖKC fişi gibi işletme satış belgelerinde meta bazen boş geliyor,
+  // ancak firma/mesaj açıkça Z Raporu diyorsa kullanıcıya boş alan göstermeyelim.
+  const haystack = [
+    meta?.firma,
+    meta?.cari,
+    meta?.belgeNo,
+    message,
+  ].filter(Boolean).join(' ').toUpperCase();
+  if (/Z\s*RAPORU|ZRAPORU/.test(haystack)) return 'Z Raporu';
+  if (/ÖKC|OKC|YAZARKASA|PERAKENDE\s+SATIŞ\s+FİŞİ|PERAKENDE\s+SATIS\s+FISI/.test(haystack)) {
+    return 'Yazarkasa Fişi';
   }
   // 4) BelgeNo prefix'inden tahmin — agent.js (v1.36.3) ile aynı tablo
   // Türkiye e-Belge formatı: 3 harf + 4 yıl + 9 sıra (toplam 16 char)
