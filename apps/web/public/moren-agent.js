@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.86';
+  const AGENT_VERSION = '1.36.87';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5944,7 +5944,7 @@
       (b) => b.textContent.trim() === label && b.offsetParent !== null,
     );
   }
-  async function click(el) { el?.click(); await sleep(400); }
+  async function click(el) { el?.click(); await sleep(250); }
   async function waitFor(sel, t = 10000) {
     const t0 = Date.now();
     while (Date.now() - t0 < t) {
@@ -5996,7 +5996,7 @@
   }
 
   async function handleDialogs() {
-    await sleep(400);
+    await sleep(150);
     const modals = getVisibleModals();
     for (const modal of modals) {
       const text = modal.textContent || '';
@@ -6069,13 +6069,13 @@
       if (/count=0/.test(location.href)) return true;
       const fidNow = getCurrentFid();
       if (expectedFid && fidNow && fidNow !== expectedFid) {
-        await sleep(250);
+        await sleep(150);
         continue;
       }
       if (getVisibleModals().length > 0) {
         await handleDialogs();
         stableSince = 0;
-        await sleep(300);
+        await sleep(150);
         continue;
       }
       const spinning = document.querySelector('.ant-spin-spinning, .ant-skeleton, .ant-select-loading');
@@ -6086,38 +6086,101 @@
       const signature = `${location.href}|${bodyText.length}|${buttons.length}`;
       const ready = !spinning && hasSave && hasEditorInput;
       if (ready && signature === lastSignature) {
-        stableSince += 250;
-        if (stableSince >= 1000) return true;
+        stableSince += 200;
+        if (stableSince >= 500) return true;
       } else {
         stableSince = 0;
         lastSignature = signature;
       }
-      await sleep(250);
+      await sleep(200);
     }
     return false;
+  }
+
+  function dispatchShortcutKey(key, code, keyCode) {
+    const targets = [
+      document.activeElement && document.activeElement !== document.body ? document.activeElement : null,
+      document,
+      window,
+    ].filter(Boolean);
+    const events = ['keydown', 'keypress', 'keyup'];
+    for (const target of targets) {
+      for (const type of events) {
+        try {
+          target.dispatchEvent(new KeyboardEvent(type, {
+            key,
+            code,
+            keyCode,
+            which: keyCode,
+            bubbles: true,
+            cancelable: true,
+          }));
+        } catch {}
+      }
+    }
+  }
+
+  function faturaAdvancedFrom(fidBefore) {
+    const fidNow = getCurrentFid();
+    return isZeroCount() || !!(fidBefore && fidNow && fidNow !== fidBefore);
+  }
+
+  async function waitShortcutEffect(fidBefore, timeoutMs = 500) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeoutMs) {
+      if (faturaAdvancedFrom(fidBefore)) return true;
+      if (getVisibleModals().length > 0) return true;
+      if (document.querySelector('.ant-spin-spinning, .ant-skeleton, .ant-select-loading')) return true;
+      if (document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info')) return true;
+      if (typeof validationDialogVarMi === 'function' && validationDialogVarMi()) return true;
+      await sleep(75);
+    }
+    return false;
+  }
+
+  function findIleriButton() {
+    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+    return btns.find((b) => {
+      const t = b.textContent.trim();
+      return t === 'İleri' || t === 'İleri (F9)' || t.startsWith('İleri ');
+    });
+  }
+
+  function findKaydetOnaylaButton() {
+    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+    return btns.find((b) => {
+      const t = (b.textContent || '').trim();
+      return /^Kaydet\s+ve\s+Onayla/i.test(t) || /\(F2\)/i.test(t);
+    }) || btns.find((b) => {
+      const t = (b.textContent || '').trim();
+      return /^Kaydet$/i.test(t)
+        || /^Kaydet\b/i.test(t);
+    });
+  }
+
+  async function pressF9Once(currentFid) {
+    dispatchShortcutKey('F9', 'F9', 120);
+    if (await waitShortcutEffect(currentFid, 650)) return;
+    const ileri = findIleriButton();
+    if (!ileri) return;
+    await click(ileri);
   }
 
   async function clickIleri(currentFid) {
     // Dialog varsa önce kapat
     if (getVisibleModals().length > 0) await handleDialogs();
-    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
-    const ileri = btns.find((b) => {
-      const t = b.textContent.trim();
-      return t === 'İleri' || t === 'İleri (F9)' || t.startsWith('İleri ');
-    });
-    if (!ileri) return;
-    await click(ileri);
+    await pressF9Once(currentFid);
 
     // 1) URL değişimini bekle (yeni faturaya geçildi mi?)
     const t0 = Date.now();
     let urlChanged = false;
-    while (Date.now() - t0 < 6000) {
+    while (Date.now() - t0 < 4500) {
       const m = location.href.match(/\/(\d+)\?count=/);
       if (m && m[1] !== currentFid) { urlChanged = true; break; }
       if (/count=0/.test(location.href)) { urlChanged = true; break; }
       // Yeni dialog geldiyse yine kapat
       if (getVisibleModals().length > 0) { await handleDialogs(); }
-      await sleep(200);
+      await sleep(150);
     }
     if (!urlChanged) return;
 
@@ -6126,20 +6189,23 @@
     //    iterasyonda "kod boş" görülüp hızlıca F9'a basılıyor ve boş faturalar atlanıyordu.
     //    Bu yüzden editör DOM'unun hazır olmasını bekliyoruz: asgari 5 sn, max 8 sn.
     //    count=0 durumunda editör yok, direk return.
-    if (/count=0/.test(location.href)) { await sleep(500); return; }
+    if (/count=0/.test(location.href)) { await sleep(200); return; }
 
     const nextFid = getCurrentFid();
-    await waitForFaturaEditorReady(nextFid, 15000);
+    await waitForFaturaEditorReady(nextFid, 7000);
   }
 
   async function pressF2Once() {
-    // Direkt butona tıkla (F2 key dispatch ant-design bazen yakalamıyor)
-    const btns = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
-    const f2btn = btns.find((b) => b.textContent.trim().startsWith('Kaydet ve Onayla'));
+    const fidBefore = getCurrentFid();
+    dispatchShortcutKey('F2', 'F2', 113);
+    if (await waitShortcutEffect(fidBefore, 650)) return;
+
+    // Programatik F2 yakalanmazsa buton fallback'i.
+    const f2btn = findKaydetOnaylaButton();
     if (f2btn) {
       await click(f2btn);
     } else {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', code: 'F2', keyCode: 113, which: 113, bubbles: true }));
+      dispatchShortcutKey('F2', 'F2', 113);
     }
   }
 
@@ -6152,15 +6218,15 @@
     return /count=0/.test(location.href);
   }
 
-  // Onayla sonrası 5 sn bekle; fid değişmediyse F2 bas. Değiştiyse MIHSAP zaten
+  // Onayla sonrası kısa bekle; fid değişmediyse F2 bas. Değiştiyse MIHSAP zaten
   // kaydedip sonraki faturaya geçmiş — F2 basma (sonraki faturayı istenmeden tetikler,
   // işlem log'suz atlanmış gibi görünür).
   // Dönüş: 'f2' (F2 basıldı) | 'already-advanced' (URL değişti, F2 gereksiz)
   async function onaylaSonrasiF2(fidBefore) {
     // Onayla sonrası Mihsap bazen state'i birkaç saniye sonra güncelliyor.
-    // Erken F2 "Sadece onay bekleyen..." hatasına düşürdüğü için 6 sn akıllı bekle.
+    // Erken F2 "Sadece onay bekleyen..." hatasına düşürdüğü için kısa akıllı bekle.
     const __t0 = Date.now();
-    while (Date.now() - __t0 < 6000) {
+    while (Date.now() - __t0 < 4000) {
       const fidNow = getCurrentFid();
       if (isZeroCount() || (fidBefore && fidNow && fidNow !== fidBefore)) {
         return 'already-advanced';
@@ -6168,15 +6234,14 @@
       await sleep(150);
     }
     await pressF2Once();
-    await sleep(1500);
+    await sleep(800);
     return 'f2';
   }
 
   async function clickKaydetOnayla() {
     const fidAtStart = getCurrentFid();
     await pressF2Once();
-    // v1.36.20 hızlandırma: 1200ms → 600ms (F2 sonrası modal kısa sürede gelir)
-    await sleep(600);
+    await sleep(350);
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
     // Tutar farkı onayında Onayla sonrası aynı faturada bir kez daha F2 dene.
     let tries = 0;
@@ -6196,7 +6261,7 @@
 
   async function waitFaturaKayitSonucu(fid, timeoutMs = 12000) {
     const t0 = Date.now();
-    const minWaitMs = 1500;
+    const minWaitMs = 900;
     let validationFailed = null;
 
     while (Date.now() - t0 < minWaitMs) {
@@ -6239,7 +6304,7 @@
           if (res === 'already-advanced') continue;
           continue;
         }
-        await sleep(400);
+        await sleep(200);
         const fidAfterDialog = getCurrentFid();
         if (fidAfterDialog && fid && fidAfterDialog !== fid) return { saved: true, validationFailed: null };
       }
@@ -6247,6 +6312,22 @@
     }
 
     return { saved: false, validationFailed };
+  }
+
+  async function kaydetOnaylaVeBekle(fid, opts = {}) {
+    const timeoutMs = opts.timeoutMs ?? 6500;
+    const retryTimeoutMs = opts.retryTimeoutMs ?? 3000;
+    const retryDelayMs = opts.retryDelayMs ?? 250;
+    const retry = opts.retry !== false;
+
+    await clickKaydetOnayla();
+    let sonuc = await waitFaturaKayitSonucu(fid, timeoutMs);
+    if (!sonuc.saved && !sonuc.validationFailed && retry) {
+      await sleep(retryDelayMs);
+      await clickKaydetOnayla();
+      sonuc = await waitFaturaKayitSonucu(fid, retryTimeoutMs);
+    }
+    return sonuc;
   }
 
   async function getFaturaMeta(fid) {
@@ -8066,7 +8147,7 @@
         return;
       }
       seenFids.add(fid);
-      await waitForFaturaEditorReady(fid, 15000);
+      await waitForFaturaEditorReady(fid, 7000);
       if (initialCount && seenFids.size > initialCount + 5) {
         setStatus(`Başlangıç (${initialCount}) aşıldı, durduruldu`);
         return;
@@ -8356,64 +8437,11 @@
 
         // --- 5) F2 ile kaydet ---
         try {
-          let validationFailed = null;
-          const waitSavedIsletme = async (timeoutMs) => {
-            const t0 = Date.now();
-            const minWaitMs = 1500; // v1.36.20 hızlandırma
-            while (Date.now() - t0 < minWaitMs) {
-              const validationMsg = validationDialogVarMi();
-              if (validationMsg) {
-                validationFailed = validationMsg;
-                await handleDialogs();
-                return false;
-              }
-              if (getVisibleModals().length > 0) {
-                const r = await handleDialogs();
-                if (r === 'not-pending') return true;
-                if (r === 'resubmit') {
-                  const res = await onaylaSonrasiF2(fid);
-                  if (res === 'already-advanced') break;
-                }
-              }
-              await sleep(250);
-            }
-            while (Date.now() - t0 < timeoutMs) {
-              const m2 = location.href.match(/\/(\d+)\?count=/);
-              if (m2 && m2[1] !== fid) return true;
-              if (/count=0/.test(location.href)) return true;
-              const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info');
-              if (okToast) return true;
-              const validationMsg = validationDialogVarMi();
-              if (validationMsg) {
-                validationFailed = validationMsg;
-                await handleDialogs();
-                return false;
-              }
-              if (getVisibleModals().length > 0) {
-                const r = await handleDialogs();
-                if (r === 'not-pending') return true;
-                if (r === 'resubmit') {
-                  const res = await onaylaSonrasiF2(fid);
-                  if (res === 'already-advanced') continue;
-                  continue;
-                }
-                await sleep(400);
-                const m3 = location.href.match(/\/(\d+)\?count=/);
-                if (m3 && m3[1] !== fid) return true;
-              }
-              await sleep(250);
-            }
-            return false;
-          };
-
-          await clickKaydetOnayla();
-          let saved = await waitSavedIsletme(12000);
-          if (!saved && !validationFailed) {
-            await sleep(800);
-            await clickKaydetOnayla();
-            saved = await waitSavedIsletme(12000);
-          }
-          if (saved) {
+          const kayitSonucu = await kaydetOnaylaVeBekle(fid, {
+            timeoutMs: 6500,
+            retryTimeoutMs: 2500,
+          });
+          if (kayitSonucu.saved) {
             counters.onay++; counters.toplam++; setCount();
             const aiNot = aiKullanildi ? ` · AI` : '';
             const logMsg = `${mTag} · F2 · FatT:${ust.faturaTuru} BT:${ust.belgeTuru} AST:${ust.alisSatisTuru} · ${blokLog}${aiNot}`;
@@ -8431,9 +8459,10 @@
             }
           } else {
             counters.atla++; counters.toplam++; setCount();
-            const atlamaSebebi = validationFailed
-              ? `${mTag} - eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} - Isletme F2 sonuclanmadi`;
+            const f2Debug = `FatT:${ust.faturaTuru || '-'} BT:${ust.belgeTuru || '-'} AST:${ust.alisSatisTuru || '-'} · ${blokLog || 'blok yok'} · urlFid:${getCurrentFid() || '-'} count:${location.href.match(/count=(-?\d+)/)?.[1] || '-'}`;
+            const atlamaSebebi = kayitSonucu.validationFailed
+              ? `${mTag} - eksik alan (MIHSAP): ${kayitSonucu.validationFailed.slice(0, 80)} · ${f2Debug}`
+              : `${mTag} - Isletme F2 sonuclanmadi · ${f2Debug}`;
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
               firma: meta.firma,
               belgeNo: meta.belgeNo,
@@ -8548,14 +8577,10 @@
 
               if (fillResult.dolduruldu) {
                 setStatus(`${mukellef.ad} · #${fid} F2 ile kaydediyor…`);
-                await sleep(800);
-                await clickKaydetOnayla();
-                let kayitSonucu = await waitFaturaKayitSonucu(fid, 12000);
-                if (!kayitSonucu.saved && !kayitSonucu.validationFailed) {
-                  await sleep(800);
-                  await clickKaydetOnayla();
-                  kayitSonucu = await waitFaturaKayitSonucu(fid, 12000);
-                }
+                const kayitSonucu = await kaydetOnaylaVeBekle(fid, {
+                  timeoutMs: 6500,
+                  retryTimeoutMs: 2500,
+                });
                 if (kayitSonucu.saved) {
                   satirlar.push('Sonuç: ✓ Doldurma başarılı, F2 ile otomatik kaydedildi');
                   counters.onay++; counters.toplam++; setCount();
@@ -8713,7 +8738,7 @@
         // Ayrıca "tutar farkı onay" dialog'u (resubmit) gelirse Onayla + tekrar F2 yapıyoruz.
         const waitSaved = async (timeoutMs) => {
           const t0 = Date.now();
-          const minWaitMs = 1500; // v1.36.20 hızlandırma
+          const minWaitMs = 900;
           // 1) Asgari bekleme penceresi — bu sürede sadece validation / dialog işle,
           //    URL değişimine "saved" denip hemen dönme. Ekran gerçekten oturduktan sonra karar ver.
           while (Date.now() - t0 < minWaitMs) {
@@ -8764,7 +8789,7 @@
                 }
                 continue;
               }
-              await sleep(400);
+              await sleep(200);
               const m3 = location.href.match(/\/(\d+)\?count=/);
               if (m3 && m3[1] !== fid) return true;
             }
@@ -8774,13 +8799,13 @@
         };
 
         await clickKaydetOnayla();
-        let saved = await waitSaved(12000);
+        let saved = await waitSaved(6500);
 
         // Validation hatası varsa retry YAPMA (zaten alan eksik)
         if (!saved && !validationFailed) {
-          await sleep(800);
+          await sleep(250);
           await clickKaydetOnayla();
-          saved = await waitSaved(12000);
+          saved = await waitSaved(3000);
         }
 
         if (saved) {
