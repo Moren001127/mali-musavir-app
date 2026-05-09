@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.76';
+  const AGENT_VERSION = '1.36.81';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6065,7 +6065,7 @@
     let stableSince = 0;
     let lastSignature = '';
     while (Date.now() - tStart < maxWaitMs) {
-      if (window.__morenAgent.stopRequested) return false;
+      if (window.__morenAgent?.stopRequested) return false;
       if (/count=0/.test(location.href)) return true;
       const fidNow = getCurrentFid();
       if (expectedFid && fidNow && fidNow !== expectedFid) {
@@ -6278,11 +6278,12 @@
           await sleep(250);
         }
       }
-      const inferredBelgeTuru = v.belgeTuru || (
+      const belgeNo = v.faturaNo || v.belgeNo || null;
+      const inferredBelgeTuru = inferBelgeTuruFromBelgeNo(belgeNo) || v.belgeTuru || (
         inferIsOkcFis({
           belgeTuru: v.belgeTuru,
           faturaTuru: v.faturaTuru,
-          belgeNo: v.faturaNo || v.belgeNo,
+          belgeNo,
           firma: v.faturaFirmaAdi || v.firmaUnvan,
         })
           ? 'FIS'
@@ -6290,7 +6291,7 @@
       );
       return {
         tarih,
-        belgeNo: v.faturaNo || v.belgeNo || null,
+        belgeNo,
         belgeTuru: inferredBelgeTuru,
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
@@ -6909,6 +6910,11 @@
   // F2 sonrası validation uyarısı kontrolü
   // "Tahsilat/Ödeme hesabı seçilmemiş", "Hesap kodu girilmemiş" gibi
   function validationDialogVarMi() {
+    const pageErrors = [...document.querySelectorAll('.ant-message-error, .ant-notification-notice-error')]
+      .map((el) => (el.textContent || '').trim())
+      .filter(Boolean);
+    if (pageErrors.length > 0) return pageErrors.join(' | ').slice(0, 100);
+
     const modals = getVisibleModals();
     for (const m of modals) {
       const text = (m.textContent || '').trim();
@@ -7105,11 +7111,22 @@
     return /^\d{1,6}$/.test(no);
   }
 
+  function inferBelgeTuruFromBelgeNo(belgeNo) {
+    const no = String(belgeNo || '').toUpperCase().trim();
+    if (!no) return null;
+    // EYK serisi Mihsap/Luca akışında e-Arşiv olarak geliyor; generic e-Fatura kuralından önce yakala.
+    if (/^(BEA|EAR|EYK|GIB|EARSIV)/.test(no)) return 'e-Arşiv Fatura';
+    if (/(FIS|OKC|ZRP)/.test(no)) return 'ÖKC Fişi';
+    return null;
+  }
+
   async function pickBelgeTuruIsletme(meta, fallbackTarget) {
     const candidates = [];
     if (inferIsOkcFis(meta)) {
       candidates.push('ÖKC Fişi', 'OKC Fişi', 'Perakende Satış Fişi', 'Fatura');
     }
+    const belgeNoTarget = inferBelgeTuruFromBelgeNo(meta?.belgeNo);
+    if (belgeNoTarget) candidates.push(belgeNoTarget);
     if (fallbackTarget) candidates.push(fallbackTarget);
     candidates.push('e-Fatura', 'e-Arşiv Fatura', 'Fatura');
 
@@ -7746,6 +7763,22 @@
     return null;
   }
 
+  function shouldUseAccountCodeFlowForIsletme() {
+    const hasDirectAccountSection = !!(
+      findHesapKoduSelect(/^Matrah\s*\(/i) ||
+      findHesapKoduSelect(/^Matrah$/i) ||
+      findHesapKoduSelect(/^Vergi\s*\(/i) ||
+      findHesapKoduSelect(/^KDV/i) ||
+      findHesapKoduSelect(/^Cari Hesap\s*\(/i) ||
+      findHesapKoduSelect(/^Cari Hesap$/i) ||
+      findHesapKoduSelect(ODEME_HESABI_RE)
+    );
+    if (hasDirectAccountSection) return true;
+    const txt = (document.body?.innerText || '').slice(0, 12000);
+    return /Hesap Kodu|Cari Hesap|Tahsilat|Odeme|Ödeme/i.test(txt)
+      && /Matrah|Vergi|KDV/i.test(txt);
+  }
+
   async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
     const img = await getFaturaImageBase64();
     if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
@@ -7891,6 +7924,7 @@
         return;
       }
       seenFids.add(fid);
+      await waitForFaturaEditorReady(fid, 15000);
       if (initialCount && seenFids.size > initialCount + 5) {
         setStatus(`Başlangıç (${initialCount}) aşıldı, durduruldu`);
         return;
@@ -7914,7 +7948,8 @@
       // 4) Boş bloklar AI ile doldurulur
       // ==========================================================
       const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
-      if (isIsletme) {
+      const isletmeAccountCodeFlow = isIsletme && shouldUseAccountCodeFlowForIsletme();
+      if (isIsletme && !isletmeAccountCodeFlow) {
         // Tüm loglara tarih/firma/belge no ekleyen kısayol
         const mTag = `${meta.tarih || '?'} · ${(meta.firma || '?').slice(0, 30)} · #${meta.belgeNo || '?'} · ${meta.tutar || '?'}`;
 
@@ -8255,10 +8290,23 @@
           } else {
             counters.atla++; counters.toplam++; setCount();
             const atlamaSebebi = validationFailed
-              ? `${mTag} · eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
-              : `${mTag} · İşletme F2 sonuçlanmadı`;
+              ? `${mTag} - eksik alan (MIHSAP): ${validationFailed.slice(0, 60)}`
+              : `${mTag} - Isletme F2 sonuclanmadi`;
             await logEvent(mukellef.id, mukellef.ad, 'skip', atlamaSebebi, {
-              firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar,
+              firma: meta.firma,
+              belgeNo: meta.belgeNo,
+              tutar: meta.tutar,
+              tarih: meta.tarih,
+              belgeTuru: ust.belgeTuru,
+              faturaTuru: ust.faturaTuru,
+              alisSatisTuru: ust.alisSatisTuru,
+              isletmeBloklari: blok.detay.map((d, i) => ({
+                blok: i + 1,
+                kayitTuru: d.kayitDeger || null,
+                altTuru: d.altDeger || null,
+                matrah: d.matrah || null,
+                kdv: d.kdv || null,
+              })),
             });
             await clickIleri(fid);
           }

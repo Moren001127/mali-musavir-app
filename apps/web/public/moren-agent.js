@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.79';
+  const AGENT_VERSION = '1.36.81';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6065,7 +6065,7 @@
     let stableSince = 0;
     let lastSignature = '';
     while (Date.now() - tStart < maxWaitMs) {
-      if (window.__morenAgent.stopRequested) return false;
+      if (window.__morenAgent?.stopRequested) return false;
       if (/count=0/.test(location.href)) return true;
       const fidNow = getCurrentFid();
       if (expectedFid && fidNow && fidNow !== expectedFid) {
@@ -7763,6 +7763,22 @@
     return null;
   }
 
+  function shouldUseAccountCodeFlowForIsletme() {
+    const hasDirectAccountSection = !!(
+      findHesapKoduSelect(/^Matrah\s*\(/i) ||
+      findHesapKoduSelect(/^Matrah$/i) ||
+      findHesapKoduSelect(/^Vergi\s*\(/i) ||
+      findHesapKoduSelect(/^KDV/i) ||
+      findHesapKoduSelect(/^Cari Hesap\s*\(/i) ||
+      findHesapKoduSelect(/^Cari Hesap$/i) ||
+      findHesapKoduSelect(ODEME_HESABI_RE)
+    );
+    if (hasDirectAccountSection) return true;
+    const txt = (document.body?.innerText || '').slice(0, 12000);
+    return /Hesap Kodu|Cari Hesap|Tahsilat|Odeme|Ödeme/i.test(txt)
+      && /Matrah|Vergi|KDV/i.test(txt);
+  }
+
   async function aiDecideIsletme({ kayitOptions, altOptions, tarih, belgeNo, belgeTuru, faturaTuru, mukellef, firma, firmaKimlikNo, tutar, matrah, kdv, action, blokIndex, blokToplam }) {
     const img = await getFaturaImageBase64();
     if (!img) return { emin: false, sebep: 'fatura görüntüsü alınamadı' };
@@ -7908,6 +7924,7 @@
         return;
       }
       seenFids.add(fid);
+      await waitForFaturaEditorReady(fid, 15000);
       if (initialCount && seenFids.size > initialCount + 5) {
         setStatus(`Başlangıç (${initialCount}) aşıldı, durduruldu`);
         return;
@@ -7931,7 +7948,8 @@
       // 4) Boş bloklar AI ile doldurulur
       // ==========================================================
       const isIsletme = (action === 'isle_alis_isletme' || action === 'isle_satis_isletme');
-      if (isIsletme) {
+      const isletmeAccountCodeFlow = isIsletme && shouldUseAccountCodeFlowForIsletme();
+      if (isIsletme && !isletmeAccountCodeFlow) {
         // Tüm loglara tarih/firma/belge no ekleyen kısayol
         const mTag = `${meta.tarih || '?'} · ${(meta.firma || '?').slice(0, 30)} · #${meta.belgeNo || '?'} · ${meta.tutar || '?'}`;
 
