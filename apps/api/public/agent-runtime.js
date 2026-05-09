@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.72';
+  const AGENT_VERSION = '1.36.74';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6010,17 +6010,17 @@
         const iptal = findIn('İptal') || findIn('Vazgeç');
         if (iptal) { await click(iptal); await sleep(300); return 'mukerrer'; }
       }
-      // Bu uyarıdaki fark gerçek tutar/kredi-nakit dağılım farkı. Onayla dersek
-      // Mihsap onay akışını karıştırıyor; doğru davranış Vazgeç/Hayır deyip editöre
-      // dönmek, sonra aynı faturada bir kez daha F2 denemek.
+      // Bu uyarıda kullanıcı talimatı: Onayla, ardından aynı faturada tekrar F2 dene.
+      // Vazgeç/Hayır dersen uyarı kapanıyor ama fatura onay beklemeye devam ediyor;
+      // F2 sonrası aynı uyarı tekrar çıkıp döngüye giriyor.
       if (/toplam.*farklı/i.test(text) ||
           /tutar.*farklı/i.test(text) ||
           /farklı.*onayl/i.test(text) ||
           /kredi.*farklı/i.test(text)) {
-        const vazgec =
-          findIn('Vazgeç') || findIn('Vazgec') || findIn('Hayır') || findIn('Hayir') || findIn('İptal') ||
-          findInStarts('Vazgeç') || findInStarts('Vazgec') || findInStarts('Hayır') || findInStarts('Hayir');
-        if (vazgec) { await click(vazgec); await sleep(700); return 'retry-f2'; }
+        const onayla =
+          findIn('Onayla') || findIn('Evet') || findIn('Tamam') ||
+          findInStarts('Onayla') || findInStarts('Evet') || findInStarts('Tamam');
+        if (onayla) { await click(onayla); await sleep(700); return 'resubmit'; }
       }
       // Hesap kodu boş uyarısı → Evet/Tamam ile devam et (atlamak için)
       if (/Hesap kodu girilmemiş/i.test(text) ||
@@ -6165,8 +6165,7 @@
     // v1.36.20 hızlandırma: 1200ms → 600ms (F2 sonrası modal kısa sürede gelir)
     await sleep(600);
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
-    // "resubmit" dönerse (tutar farkı onayı) — onayladıktan sonra F2'yi tekrar basıp
-    // sonra yeniden dialog kontrolü yap. Aksi halde kaydetme tamamlanmaz.
+    // Tutar farkı onayında Onayla sonrası aynı faturada bir kez daha F2 dene.
     let tries = 0;
     while (tries < 4 && getVisibleModals().length > 0) {
       const result = await handleDialogs();
