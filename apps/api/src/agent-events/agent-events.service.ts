@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
@@ -22,6 +23,8 @@ export interface AgentEventInput {
 
 @Injectable()
 export class AgentEventsService {
+  private readonly faturaDecisionCache = new Map<string, { expiresAt: number; value: any }>();
+
   constructor(
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
@@ -717,6 +720,143 @@ export class AgentEventsService {
       return { karar: 'atla', sebep: `Tarih ayı ${faturaAyi} ≠ hedef ayı ${hedefAyNum}` };
     }
 
+    const startMs = Date.now();
+    const MODEL = 'claude-haiku-4-5-20251001';
+    const aiCallReasons = new Set<string>();
+    const hasBosAlanSecenekleri = !!(
+      input.bosAlanSecenekleri &&
+      ((input.bosAlanSecenekleri.matrahKodlari?.length || 0) +
+        (input.bosAlanSecenekleri.kdvKodlari?.length || 0) +
+        (input.bosAlanSecenekleri.cariKodlari?.length || 0)) > 0
+    );
+    if (hasBosAlanSecenekleri) aiCallReasons.add('bos_kod');
+
+    const logZeroUsage = (source: string, karar: string, sebep: string, cacheHit = true) =>
+      logAiUsage(this.prisma, {
+        tenantId: input.tenantId || 'unknown',
+        taxpayerId: input.mukellefId || null,
+        source,
+        model: MODEL,
+        mukellef: input.mukellef,
+        belgeNo: input.belgeNo,
+        karar,
+        sebep,
+        durationMs: Date.now() - startMs,
+        cacheHit,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      });
+
+    const imageHash = input.faturaImageBase64
+      ? createHash('sha256').update(input.faturaImageBase64).digest('hex')
+      : '';
+    const decisionCacheKey = [
+      input.tenantId || 'unknown',
+      input.mukellefId || input.mukellef || '',
+      input.belgeNo || '',
+      input.tutar || '',
+      imageHash.slice(0, 24),
+      input.action || '',
+    ].join('|');
+
+    const memCached = this.faturaDecisionCache.get(decisionCacheKey);
+    if (memCached && memCached.expiresAt > Date.now()) {
+      await logZeroUsage('mihsap-fatura-cache', memCached.value?.karar || 'cache_hit', 'cache_hit: memory decision reused');
+      return { ...memCached.value, cacheHit: true, aiCallReason: 'cache_hit' };
+    }
+
+    if (input.tenantId && input.belgeNo && input.mukellef) {
+      try {
+        const previous = await this.prisma.agentEvent.findFirst({
+          where: {
+            tenantId: input.tenantId,
+            agent: 'mihsap',
+            mukellef: input.mukellef,
+            fisNo: input.belgeNo,
+            ...(input.tutar != null && input.tutar !== '' ? { tutar: Number(input.tutar) } : {}),
+            status: { in: ['onaylandi', 'basarili', 'atlandi'] },
+          },
+          orderBy: { ts: 'desc' },
+        });
+        if (previous?.meta) {
+          const meta: any = previous.meta;
+          const karar =
+            previous.status === 'atlandi'
+              ? 'atla'
+              : meta?.decisionTrace?.karar?.sonuc || meta?.karar || 'onay';
+          const cachedDecision = {
+            karar,
+            sebep: `cache_hit: ayni belge daha once islendi (${previous.status})`,
+            decisionTrace: meta?.decisionTrace || null,
+            faturaDecisionCandidate: meta?.faturaDecisionCandidate || null,
+          };
+          this.faturaDecisionCache.set(decisionCacheKey, {
+            expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+            value: cachedDecision,
+          });
+          await logZeroUsage('mihsap-fatura-cache', karar, cachedDecision.sebep);
+          return { ...cachedDecision, cacheHit: true, aiCallReason: 'cache_hit' };
+        }
+      } catch {}
+    }
+
+    const isZRaporu = /z[\s_-]*rapor/i.test(`${input.belgeTuru || ''} ${input.firma || ''}`);
+    const canUseDeterministicZRaporu =
+      isZRaporu &&
+      !hasBosAlanSecenekleri &&
+      codesArr.length > 0 &&
+      Number.isFinite(Number(input.tutar)) &&
+      !vendorHint;
+    if (canUseDeterministicZRaporu) {
+      const memoryCategory = codesArr.find((c) => /^(600|601|602|150|153|157|740|770)\./.test(c)) || codesArr[0];
+      const deterministicDecision = {
+        karar: 'onay',
+        sebep: 'rule_fast_path: Z raporu, kod/tarih/tutar ekran verisi yeterli; Claude cagrilmadi',
+        icerikSinifi: 'Mal',
+        ocrOzet: 'Z raporu perakende satis',
+        faturaDecisionCandidate: input.firmaKimlikNo
+          ? {
+              kararTipi: 'fatura',
+              hesapKodu: memoryCategory,
+              firmaKimlikNo: input.firmaKimlikNo || null,
+              firmaUnvan: input.firma || null,
+              taxpayerId: input.mukellefId || null,
+            }
+          : undefined,
+        decisionTrace: {
+          belge: {
+            tarih: input.faturaTarihi || null,
+            belgeNo: input.belgeNo || null,
+            cari: input.firma || null,
+            belgeTuru: input.belgeTuru || null,
+            kdvOrani: null,
+            ocrToplam: input.tutar ?? null,
+          },
+          ekran: {
+            tarih: input.faturaTarihi || null,
+            belgeNo: input.belgeNo || null,
+            belgeTuru: input.belgeTuru || null,
+            faturaTuru: input.faturaTuru || null,
+            tutar: input.tutar ?? null,
+            hesapKodlari: input.hesapKodlari || [],
+          },
+          karar: {
+            sonuc: 'onay',
+            sebep: 'Z raporu deterministik kural ile onaylandi; AI maliyeti olusmadi',
+            icerikSinifi: 'Mal',
+            memoryCategory,
+            vendorHintUsed: false,
+          },
+        },
+      };
+      this.faturaDecisionCache.set(decisionCacheKey, {
+        expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+        value: deterministicDecision,
+      });
+      await logZeroUsage('mihsap-fatura-rule', 'onay', deterministicDecision.sebep);
+      return { ...deterministicDecision, aiCallReason: 'rule_fast_path' };
+    }
+
+    if (!hasBosAlanSecenekleri) aiCallReasons.add('manuel_kontrol');
     const system = `Sen bir fatura doğrulayıcısın. VARSAYILAN KARAR: ONAY.
 
 ### 🚨 MUTLAK İLK KAPI — HER ŞEYDEN ÖNCE OKU 🚨
@@ -1051,25 +1191,26 @@ Belge türü: ${input.belgeTuru || '?'} | Tutar: ${input.tutar || '?'} | Hedef a
 
 Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON döndür.`;
 
-    const startMs = Date.now();
-    const MODEL = 'claude-haiku-4-5-20251001';
-
     const logUsage = (
       karar: string | undefined,
       sebep: string | undefined,
       usage?: any,
-    ) =>
-      logAiUsage(this.prisma, {
+    ) => {
+      const reasonText = [...aiCallReasons].join(',') || 'manuel_kontrol';
+      return logAiUsage(this.prisma, {
         tenantId: input.tenantId || 'unknown',
+        taxpayerId: input.mukellefId || null,
         source: 'mihsap-fatura',
         model: MODEL,
         mukellef: input.mukellef,
         belgeNo: input.belgeNo,
         karar,
-        sebep,
+        sebep: `[reason=${reasonText}] ${sebep || ''}`.trim(),
         durationMs: Date.now() - startMs,
+        cacheHit: false,
         usage,
       });
+    };
 
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1279,9 +1420,14 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                 taxpayerId: input.mukellefId || null,
               };
             }
-            parsed.decisionTrace = decisionTrace;
-            await logUsage(parsed.karar, parsed.sebep, usage);
-            return parsed;
+      parsed.decisionTrace = decisionTrace;
+      parsed.aiCallReason = [...aiCallReasons].join(',') || 'manuel_kontrol';
+      this.faturaDecisionCache.set(decisionCacheKey, {
+        expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+        value: parsed,
+      });
+      await logUsage(parsed.karar, parsed.sebep, usage);
+      return parsed;
           }
         } catch {}
       }
@@ -1593,7 +1739,6 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
 
     const startMs = Date.now();
     const MODEL = 'claude-haiku-4-5-20251001';
-
     const logUsage = (
       karar: string | undefined,
       sebep: string | undefined,
@@ -1831,10 +1976,13 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
           cacheWriteTokens: true,
           costUsd: true,
           karar: true,
+          cacheHit: true,
         },
       });
       const acc = {
         sorguSayisi: rows.length,
+        cacheHitSayisi: 0,
+        gercekCagriSayisi: 0,
         onaySayisi: 0,
         atlaSayisi: 0,
         eminDegilSayisi: 0,
@@ -1846,6 +1994,8 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         maliyetUsd: 0,
       };
       for (const r of rows) {
+        if (r.cacheHit) acc.cacheHitSayisi++;
+        else acc.gercekCagriSayisi++;
         if (r.karar === 'onay') acc.onaySayisi++;
         else if (r.karar === 'atla') acc.atlaSayisi++;
         else acc.eminDegilSayisi++;

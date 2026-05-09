@@ -123,7 +123,7 @@ export function LogCard({ event }: { event: LogEvent }) {
 
   return (
     <div
-      className="flex items-start gap-3 px-3 py-2 rounded-md transition-colors hover:brightness-110"
+      className="px-3 py-2 rounded-md transition-colors hover:brightness-110"
       style={{ background: visual.bg, borderLeft: `3px solid ${visual.border}` }}
     >
       <span
@@ -135,7 +135,7 @@ export function LogCard({ event }: { event: LogEvent }) {
       <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#6b6b6b' }}>
         {t}
       </span>
-      <div className="flex-1 min-w-0">
+      <div className="mt-2 w-full max-w-[1280px] mx-auto min-w-0">
         <div className="flex items-center gap-2 flex-wrap text-[13px]">
           {event.firma && (
             <span className="font-semibold truncate" style={{ color: '#b8a06f' }}>

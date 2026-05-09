@@ -46,7 +46,9 @@ export interface AiUsageLogParams {
   belgeNo?: string | null;
   karar?: string | null;
   sebep?: string | null;
+  taxpayerId?: string | null;
   durationMs?: number;
+  cacheHit?: boolean;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -72,6 +74,7 @@ export async function logAiUsage(prisma: any, params: AiUsageLogParams): Promise
     await prisma.aiUsageLog.create({
       data: {
         tenantId: params.tenantId || 'unknown',
+        taxpayerId: params.taxpayerId || null,
         source: params.source || 'other',
         mukellef: params.mukellef || null,
         model: params.model,
@@ -84,6 +87,7 @@ export async function logAiUsage(prisma: any, params: AiUsageLogParams): Promise
         sebep: (params.sebep || '').slice(0, 200) || null,
         belgeNo: params.belgeNo || null,
         durationMs: params.durationMs ?? null,
+        cacheHit: !!params.cacheHit,
       },
     });
   } catch {

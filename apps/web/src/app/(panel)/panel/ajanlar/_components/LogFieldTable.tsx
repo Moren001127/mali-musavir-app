@@ -4,7 +4,9 @@ import { FieldRow } from '@/lib/log-format';
 
 const DOCUMENT_LABELS = new Set([
   'Tarih',
+  'Belge No',
   'Cari',
+  'Kaynak',
   'Belge Türü',
   'Belge TÃ¼rÃ¼',
   'Fatura Tipi',

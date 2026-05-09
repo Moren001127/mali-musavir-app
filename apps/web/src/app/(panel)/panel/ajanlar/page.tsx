@@ -211,6 +211,12 @@ function AiUsageWidget({ data }: { data: any }) {
             {formatToken(d?.toplamToken ?? 0)}
           </span>
         </div>
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span style={{ color: 'rgba(250,250,249,0.45)' }}>Gercek / cache</span>
+          <span className="tabular-nums font-semibold" style={{ color: '#fafaf9' }}>
+            {formatToken(d?.gercekCagriSayisi ?? 0)} / {formatToken(d?.cacheHitSayisi ?? 0)}
+          </span>
+        </div>
         <div className="flex items-center justify-between text-xs">
           <span style={{ color: 'rgba(250,250,249,0.45)' }}>Maliyet</span>
           <span className="tabular-nums font-semibold" style={{ color: accent }}>

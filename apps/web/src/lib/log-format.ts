@@ -8,7 +8,7 @@ export interface FieldRow {
   label: string;        // "Tarih", "Belge Türü", "Toplam Tutar", "Matrah", "KDV", "Cari" vb.
   status: FieldStatus;  // ✓ full / ○ empty-with-suggestion / ✗ missing
   value?: string;       // Asıl değer (kod / tarih / tutar / öneri kodu)
-  meta?: string;        // "öneri · güven %95 · 1 sonuç" gibi ek bilgi
+  meta?: string;        // "öneri - güven %95 - 1 sonuç" gibi ek bilgi
 }
 
 export interface ParsedAgentMessage {
@@ -134,12 +134,13 @@ export function splitLogMessage(msg: string): string[] {
  * Bir AgentEvent'i 8-alan tablosuna çevirir:
  *   Tarih, Cari, Belge Türü, Toplam Tutar, Matrah, KDV, İçerik, Onay
  *
- * Her satır alt alta gösterilir — artık "F2 · ..." tarzı metin alt satırı
+ * Her satır alt alta gösterilir — artık "F2 - ..." tarzı metin alt satırı
  * YOK, her bilgi ayrı row olarak yer alır.
  */
 export function buildFieldRows(event: {
   ts?: string | Date;
   action?: string;
+  fisNo?: string;
   tutar?: number | string;
   hesapKodu?: string;
   kdv?: string;
@@ -157,22 +158,33 @@ export function buildFieldRows(event: {
     value: faturaTarihi || '—',
   });
 
-  // 2) Cari (karşı firma) — meta.firma veya meta.cari
-  const cari = (event.meta?.cari || event.meta?.firma || '').toString().trim();
+  const belgeNo = String(
+    event.fisNo ||
+      event.meta?.belgeNo ||
+      event.meta?.decisionTrace?.belge?.belgeNo ||
+      event.meta?.decisionTrace?.ekran?.belgeNo ||
+      '',
+  ).trim();
   rows.push({
-    label: 'Cari',
-    status: cari ? 'full' : 'missing',
-    value: cari || '—',
+    label: 'Belge No',
+    status: belgeNo ? 'full' : 'missing',
+    value: belgeNo || '-',
   });
 
-  // 3) Belge Türü — meta.belgeTuru > mesajda BT:...
+  const cari = (event.meta?.cari || event.meta?.firma || '').toString().trim();
   const belgeTuru = inferBelgeTuru(event.action, event.meta, event.message);
+  const isZRaporu = /z[\s_-]*rapor/i.test([cari, belgeTuru, belgeNo].join(' '));
+  rows.push({
+    label: isZRaporu ? 'Kaynak' : 'Cari',
+    status: cari ? 'full' : 'missing',
+    value: cari || '-',
+  });
+
   rows.push({
     label: 'Belge Türü',
     status: belgeTuru ? 'full' : 'missing',
-    value: belgeTuru || '—',
+    value: belgeTuru || '-',
   });
-
   // v1.36.63: Gider Türü / Fatura Tipi — message içinden FatT:... ve AST:... parse
   // "FatT:Gider BT:ÖKC Fişi AST:Normal Alım" gibi alt satırlardan çıkar
   const msg = String(event.message || '');
@@ -218,8 +230,8 @@ export function buildFieldRows(event: {
 
   // 5-6) Matrah / KDV — boş alan + öneri durumuna göre
   // YENİ (v1.36.21): Matrah/KDV satırlarında hesaplanan TUTAR + oran + kod birlikte gösterilir.
-  //   Matrah: "2.763,33 TL · 153.01.020-%20 TİCARİ MAL ALIŞLARI"
-  //   KDV   : "552,67 TL · %20 · [kod varsa]"
+  //   Matrah: "2.763,33 TL - 153.01.020-%20 TİCARİ MAL ALIŞLARI"
+  //   KDV   : "552,67 TL - %20 - [kod varsa]"
   const fmtTL = (n: number) =>
     `${n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
 
@@ -278,11 +290,11 @@ export function buildFieldRows(event: {
         const oranStr = `%${(kdvOran * 100).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`;
         // raw oran ile aynıysa duplicate'i sil
         if (raw.includes(oranStr) || raw === oranStr) {
-          return `${tutarStr} · ${raw}`;
+          return `${tutarStr} - ${raw}`;
         }
-        return `${tutarStr} · ${oranStr}${raw && raw !== '—' ? ' · ' + raw : ''}`;
+        return `${tutarStr} - ${oranStr}${raw && raw !== '—' ? ' - ' + raw : ''}`;
       }
-      return `${tutarStr} · ${raw}`;
+      return `${tutarStr} - ${raw}`;
     };
 
     // Belge karşılaştırma — uyumsuzluk varsa status kırmızıya çek
@@ -304,7 +316,7 @@ export function buildFieldRows(event: {
         yok ? 'sondaj boş' : 'öneri',
         oneri.guven ? `güven ${oneri.guven}` : null,
         oneri.sondaj ? oneri.sondaj : null,
-      ].filter(Boolean).join(' · ');
+      ].filter(Boolean).join(' - ');
       rows.push({
         label,
         status: yok ? 'missing' : 'empty-with-suggestion',
@@ -314,8 +326,8 @@ export function buildFieldRows(event: {
       return;
     }
     if (isBos) {
-      // Tutar varsa onu bile göster ("552,67 TL · boş"), yoksa "boş"
-      rows.push({ label, status: 'missing', value: tutarStr ? `${tutarStr} · boş` : 'boş' });
+      // Tutar varsa onu bile göster ("552,67 TL - boş"), yoksa "boş"
+      rows.push({ label, status: 'missing', value: tutarStr ? `${tutarStr} - boş` : 'boş' });
       return;
     }
     if (existingValue) {
@@ -328,7 +340,7 @@ export function buildFieldRows(event: {
   };
   // v1.36.62: Çok satırlı faturada KDV satırı = oran + ayraç + KDV hesap kodu birlikte.
   // DOM'dan tüm select item'lar karışık geliyor (Matrah/KDV-Hesap/Cari). Türlerine göre ayır.
-  // Sıra: her satır için "Matrah N: 153.x" + "KDV N: %X · 191.x" formatında.
+  // Sıra: her satır için "Matrah N: 153.x" + "KDV N: %X - 191.x" formatında.
   // Cari kodu en altta ayrı satır.
   if (cokSatir) {
     // MATRAH kodları: stok grupları (150-157), satış (600-602), maliyet (740, 770)
@@ -416,7 +428,7 @@ export function buildFieldRows(event: {
         rows.push({
           label: `Matrah ${i + 1}`,
           status: 'full',
-          value: lineAmounts ? `${fmtTL(lineAmounts.matrah)} Â· ${matrahKodu}` : matrahKodu,
+          value: lineAmounts ? `${fmtTL(lineAmounts.matrah)} - ${matrahKodu}` : matrahKodu,
         });
       }
       // KDV satırı: oran + ayraç + KDV hesap kodu birlikte
@@ -426,7 +438,7 @@ export function buildFieldRows(event: {
           label: `KDV ${i + 1}`,
           status: oran && !kdvKodu ? 'warning' : 'full',
           meta: oran && !kdvKodu ? 'KDV orani var, hesap kodu gorunmuyor' : undefined,
-          value: parts.join(' · '),
+          value: parts.join(' - '),
         });
       }
     }
@@ -436,7 +448,7 @@ export function buildFieldRows(event: {
       rows.push({
         label: 'Cari Hesabı',
         status: 'full',
-        value: cariKodlari.join(' · '),
+        value: cariKodlari.join(' - '),
       });
     }
   } else {
@@ -496,7 +508,7 @@ export function buildFieldRows(event: {
 /**
  * Fatura tarihi çıkarır. Öncelik:
  *  1) meta.tarih (extension yeni sürüm doğrudan koyuyor)
- *  2) Mesaj prefix'i "DD.MM.YYYY · ..." veya "YYYY-MM-DD · ..."
+ *  2) Mesaj prefix'i "DD.MM.YYYY - ..." veya "YYYY-MM-DD - ..."
  *  3) Bulunamazsa undefined — UI tarihi göstermez (yanıltıcı olmasın)
  *
  * event.ts ASLA kullanılmaz: o kayıt zamanı (bugün), fatura tarihi değil.
@@ -515,7 +527,7 @@ function extractFaturaTarihi(meta?: any, message?: string, eventTs?: string | Da
       if (t && !/^\?+$/.test(t)) return normalizeTarih(t);
     }
   }
-  // 3) Mesaj prefix'inden parse — "31.03.2026 · ..." veya "2026-03-31 · ..."
+  // 3) Mesaj prefix'inden parse — "31.03.2026 - ..." veya "2026-03-31 - ..."
   if (message) {
     const m = message.match(/^\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\s*[·\-—]/);
     if (m) return normalizeTarih(m[1]);
