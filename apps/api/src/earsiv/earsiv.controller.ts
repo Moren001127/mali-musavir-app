@@ -134,6 +134,7 @@ export class EarsivController {
         const original = await this.earsiv.getOriginalHtml(req.user.tenantId, id);
         const html = this.render.renderOriginalHtml(original.html, { autoPrint: printFlag === '1' || printFlag === 'true' });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('X-Moren-Render-Source', 'original-html');
         res.setHeader('Cache-Control', 'private, max-age=300');
         res.send(html);
         return;
@@ -143,6 +144,7 @@ export class EarsivController {
     }
     const html = this.render.renderHtml(f as any, { autoPrint: printFlag === '1' || printFlag === 'true' });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Moren-Render-Source', 'xml-render');
     res.setHeader('Cache-Control', 'no-cache');
     res.send(html);
   }

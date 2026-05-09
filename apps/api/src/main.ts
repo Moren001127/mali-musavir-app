@@ -49,7 +49,7 @@ async function bootstrap() {
       'Origin',
       'X-Agent-Token', // Moren Agent extension için
     ],
-    exposedHeaders: ['Content-Disposition'],
+    exposedHeaders: ['Content-Disposition', 'X-Moren-Render-Source'],
     maxAge: 600,
   });
 

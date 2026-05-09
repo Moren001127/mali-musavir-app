@@ -1301,6 +1301,7 @@ function EarsivPreviewModal({
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renderSource, setRenderSource] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // ESC + body scroll kilit
@@ -1338,12 +1339,14 @@ function EarsivPreviewModal({
         setError(null);
         setHtml(null);
         setPdfUrl(null);
+        setRenderSource(null);
 
         try {
           const pdfRes = await api.get(`/earsiv/${fatura.id}/original-pdf`, { responseType: 'blob' });
           if (cancel) return;
           objectUrl = URL.createObjectURL(new Blob([pdfRes.data], { type: 'application/pdf' }));
           setPdfUrl(objectUrl);
+          setRenderSource('Orijinal PDF');
           return;
         } catch (pdfErr: any) {
           if (pdfErr?.response?.status && pdfErr.response.status !== 404) {
@@ -1354,6 +1357,8 @@ function EarsivPreviewModal({
         const res = await api.get(`/earsiv/${fatura.id}/html`, { responseType: 'text' });
         if (cancel) return;
         setHtml(typeof res.data === 'string' ? res.data : String(res.data));
+        const source = String(res.headers?.['x-moren-render-source'] || '');
+        setRenderSource(source === 'original-html' ? 'Luca HTML' : 'XML render');
       } catch (e: any) {
         if (cancel) return;
         setError(e?.response?.data?.message || e?.message || 'Fatura HTML alınamadı');
@@ -1429,6 +1434,14 @@ function EarsivPreviewModal({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {renderSource && (
+              <span
+                className="px-2 py-1 rounded-md text-[11px] font-semibold"
+                style={{ background: 'rgba(212,184,118,.18)', color: '#d4b876', border: '1px solid rgba(212,184,118,.35)' }}
+              >
+                {renderSource}
+              </span>
+            )}
             <button
               onClick={triggerPrint}
               disabled={(!html && !pdfUrl) || loading}
