@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.69';
+  const AGENT_VERSION = '1.36.70';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -3625,8 +3625,7 @@
     // 4) v1.36.74: PREFIX BENZERLİĞİ — Luca kısa ad kullandığında uzun ad slug'ı ile
     //    substring uyumu kurulamıyor. Örn. portal "TALHA BOZOĞLU" → slug "talha_bozoglu",
     //    Luca dropdown'da "TALHA BOZG" → slug "talha_bozg". Ne tam eşit ne substring.
-    //    Bu adım: ilk 6+ karakter aynıysa "kısaltılmış uzun ad" kabul et + token-bazlı tek
-    //    eşleşme yeterli (örn. sadece soyad eşleşse bile prefix match varsa kabul).
+    //    Bu adım: ilk 6+ karakter aynıysa "kısaltılmış uzun ad" kabul et.
     if (!targetOpt) {
       const wanted = job.lucaSlug ? slugify(job.lucaSlug) : (job.mukellefAdi ? slugify(job.mukellefAdi) : '');
       if (wanted.length >= 6) {
@@ -3634,7 +3633,6 @@
           if (!isRealOption(opt)) continue;
           const optSlug = slugify(opt.text);
           if (optSlug.length < 6) continue;
-          // İlk N karakter (en az 6) eşit mi? — uzun ad kısaltılmış varyasyonu yakalar
           const minLen = Math.min(wanted.length, optSlug.length);
           const prefixLen = Math.min(8, Math.max(6, minLen - 2));
           if (wanted.slice(0, prefixLen) === optSlug.slice(0, prefixLen)) {
@@ -3645,14 +3643,12 @@
     }
 
     // 5) v1.36.74: Tek token tam eşleşmesi — kısa ad sadece 1 anlamlı token taşıyabilir.
-    //    Örn. wanted="talha_bozoglu" (2 token), option="TALHA" (1 token "talha").
-    //    Token uzunluğu ≥4 ve EŞSİZ ise (yani başka mükellef adında geçmiyorsa) eşleştir.
+    //    Token uzunluğu ≥4 ve EŞSİZ ise (başka mükellef adında geçmiyorsa) eşleştir.
     if (!targetOpt && job.mukellefAdi) {
       const wantedSlug = slugify(job.mukellefAdi);
       const tokens = wantedSlug.split('_').filter((w) => w.length >= 4);
       if (tokens.length >= 1) {
         for (const tok of tokens) {
-          // Bu token KAÇ option'da geçiyor? Tek bir option'da geçiyorsa → eşsiz, kabul.
           const matchingOpts = combo.options.filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
           if (matchingOpts.length === 1) {
             targetOpt = matchingOpts[0]; matchedBy = `eşsiz token "${tok}"`; break;
@@ -6054,6 +6050,43 @@
     return 'ok';
   }
 
+  async function waitForFaturaEditorReady(expectedFid, maxWaitMs = 15000) {
+    const tStart = Date.now();
+    let stableSince = 0;
+    let lastSignature = '';
+    while (Date.now() - tStart < maxWaitMs) {
+      if (window.__morenAgent.stopRequested) return false;
+      if (/count=0/.test(location.href)) return true;
+      const fidNow = getCurrentFid();
+      if (expectedFid && fidNow && fidNow !== expectedFid) {
+        await sleep(250);
+        continue;
+      }
+      if (getVisibleModals().length > 0) {
+        await handleDialogs();
+        stableSince = 0;
+        await sleep(300);
+        continue;
+      }
+      const spinning = document.querySelector('.ant-spin-spinning, .ant-skeleton, .ant-select-loading');
+      const buttons = [...document.querySelectorAll('button')].filter((b) => b.offsetParent !== null);
+      const hasSave = buttons.some((b) => /Kaydet|Onayla|İleri|Ileri/i.test((b.textContent || '').trim()));
+      const hasEditorInput = document.querySelector('.ant-select-selector, input, textarea');
+      const bodyText = (document.body?.innerText || '').slice(0, 3000);
+      const signature = `${location.href}|${bodyText.length}|${buttons.length}`;
+      const ready = !spinning && hasSave && hasEditorInput;
+      if (ready && signature === lastSignature) {
+        stableSince += 250;
+        if (stableSince >= 1000) return true;
+      } else {
+        stableSince = 0;
+        lastSignature = signature;
+      }
+      await sleep(250);
+    }
+    return false;
+  }
+
   async function clickIleri(currentFid) {
     // Dialog varsa önce kapat
     if (getVisibleModals().length > 0) await handleDialogs();
@@ -6085,22 +6118,8 @@
     //    count=0 durumunda editör yok, direk return.
     if (/count=0/.test(location.href)) { await sleep(500); return; }
 
-    const minWaitMs = 1500; // v1.36.20 hızlandırma // kullanıcı talebi: ekran güncellensin diye asgari 5 sn
-    const maxWaitMs = 8000;
-    const tStart = Date.now();
-    // Asgari bekleme süresince DOM stabilize olmasını bekle
-    while (Date.now() - tStart < minWaitMs) {
-      if (getVisibleModals().length > 0) { await handleDialogs(); }
-      await sleep(200);
-    }
-    // Asgari süre doldu — şimdi editör DOM'u gerçekten hazır mı diye bak; değilse max'e kadar bekle
-    while (Date.now() - tStart < maxWaitMs) {
-      if (getVisibleModals().length > 0) { await handleDialogs(); }
-      // Hesap kodu / matrah select'leri sayfaya yüklendiyse hazırız
-      const hasEditor = document.querySelector('.ant-select-selector, input[placeholder*="Hesap"], input[placeholder*="Matrah"]');
-      if (hasEditor) break;
-      await sleep(200);
-    }
+    const nextFid = getCurrentFid();
+    await waitForFaturaEditorReady(nextFid, 15000);
   }
 
   async function pressF2Once() {
@@ -6249,10 +6268,20 @@
           await sleep(250);
         }
       }
+      const inferredBelgeTuru = v.belgeTuru || (
+        inferIsOkcFis({
+          belgeTuru: v.belgeTuru,
+          faturaTuru: v.faturaTuru,
+          belgeNo: v.faturaNo || v.belgeNo,
+          firma: v.faturaFirmaAdi || v.firmaUnvan,
+        })
+          ? 'FIS'
+          : null
+      );
       return {
         tarih,
         belgeNo: v.faturaNo || v.belgeNo || null,
-        belgeTuru: v.belgeTuru || null,
+        belgeTuru: inferredBelgeTuru,
         faturaTuru: v.faturaTuru || null,
         tutar: v.toplamTutar || v.genelToplam || null,
         firma: v.faturaFirmaAdi || v.firmaUnvan || null,
@@ -7039,6 +7068,49 @@
     'Yolcu Taşıma Bileti',
     'ÖKC Fişi',
   ];
+
+  function normalizeTrAscii(value) {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/İ/g, 'I')
+      .replace(/İ/g, 'I')
+      .replace(/Ş/g, 'S')
+      .replace(/Ğ/g, 'G')
+      .replace(/Ü/g, 'U')
+      .replace(/Ö/g, 'O')
+      .replace(/Ç/g, 'C');
+  }
+
+  function inferIsOkcFis(meta = {}) {
+    const text = normalizeTrAscii([
+      meta.belgeTuru,
+      meta.faturaTuru,
+      meta.belgeNo,
+      meta.firma,
+    ].filter(Boolean).join(' '));
+    if (/(^|\s)(OKC|O KC|FIS|FISI|PERAKENDE)(\s|$)/.test(text)) return true;
+    const no = String(meta.belgeNo || '').trim();
+    return /^\d{1,6}$/.test(no);
+  }
+
+  async function pickBelgeTuruIsletme(meta, fallbackTarget) {
+    const candidates = [];
+    if (inferIsOkcFis(meta)) {
+      candidates.push('ÖKC Fişi', 'OKC Fişi', 'Perakende Satış Fişi', 'Fatura');
+    }
+    if (fallbackTarget) candidates.push(fallbackTarget);
+    candidates.push('e-Fatura', 'e-Arşiv Fatura', 'Fatura');
+
+    for (const target of [...new Set(candidates.filter(Boolean))]) {
+      const ok = await pickAntSelectById('defterData_belgeTuru', target);
+      await sleep(250);
+      const current = getAntSelectValueById('defterData_belgeTuru');
+      if (ok && current) return current;
+    }
+    return '';
+  }
 
   function isAntSelectFilled(antSelectEl) {
     if (!antSelectEl) return false;
@@ -7861,23 +7933,26 @@
 
         // Belge Türü: boşsa AI ile karar ver
         if (!ust.belgeTuru) {
-          ustAiKullanildi = true;
-          setStatus(`${mukellef.ad} · #${fid} Belge Türü AI…`);
-          const kararBelge = await aiDecideIsletme({
-            kayitOptions: ISLETME_BELGE_TURU_LIST,
-            altOptions: [],
-            tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: '', faturaTuru: ust.faturaTuru,
-            mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma,
-            firmaKimlikNo: meta.firmaKimlikNo, // Firma Hafizasi icin — mukellef-bazli ogrenme
-            tutar: meta.tutar,
-            action, blokIndex: 0, blokToplam: 0,
-          });
-          if (kararBelge?.emin && kararBelge.kayitTuru) {
-            const ok = await pickAntSelectById('defterData_belgeTuru', kararBelge.kayitTuru);
-            if (ok) {
-              ust.belgeTuru = kararBelge.kayitTuru;
-              ustOzet.push(`BT:${kararBelge.kayitTuru}`);
+          let secilenBelge = await pickBelgeTuruIsletme(meta, null);
+          if (!secilenBelge) {
+            ustAiKullanildi = true;
+            setStatus(`${mukellef.ad} · #${fid} Belge Türü AI…`);
+            const kararBelge = await aiDecideIsletme({
+              kayitOptions: ISLETME_BELGE_TURU_LIST,
+              altOptions: [],
+              tarih: meta.tarih, belgeNo: meta.belgeNo, belgeTuru: '', faturaTuru: ust.faturaTuru,
+              mukellef: mukellef.ad, mukellefId: mukellef.id, firma: meta.firma,
+              firmaKimlikNo: meta.firmaKimlikNo,
+              tutar: meta.tutar,
+              action, blokIndex: 0, blokToplam: 0,
+            });
+            if (kararBelge?.emin && kararBelge.kayitTuru) {
+              secilenBelge = await pickBelgeTuruIsletme(meta, kararBelge.kayitTuru);
             }
+          }
+          if (secilenBelge) {
+            ust.belgeTuru = secilenBelge;
+            ustOzet.push(`BT:${secilenBelge}`);
           }
           if (!ust.belgeTuru) {
             counters.atla++; counters.toplam++; setCount();
@@ -8079,6 +8154,17 @@
         }
 
         // --- Detaylı log formatı ---
+        const ustFinal = isletmeUstAlanDurumu();
+        if (!ustFinal.faturaTuru || !ustFinal.belgeTuru || !ustFinal.alisSatisTuru) {
+          counters.atla++; counters.toplam++; setCount();
+          await logEvent(mukellef.id, mukellef.ad, 'skip',
+            `${mTag} · F2 iptal: üst alan eksik FatT:${ustFinal.faturaTuru || '-'} BT:${ustFinal.belgeTuru || '-'} AST:${ustFinal.alisSatisTuru || '-'}`,
+            { firma: meta.firma, belgeNo: meta.belgeNo, tutar: meta.tutar, tarih: meta.tarih });
+          await clickIleri(fid); continue;
+        }
+        ust.faturaTuru = ustFinal.faturaTuru;
+        ust.belgeTuru = ustFinal.belgeTuru;
+        ust.alisSatisTuru = ustFinal.alisSatisTuru;
         const blokLog = blok.detay.map((d, i) => `B${i + 1}:${(d.kayitDeger || '?').slice(0, 20)}/${(d.altDeger || '?').slice(0, 20)}`).join(' ');
 
         // --- 5) F2 ile kaydet ---
