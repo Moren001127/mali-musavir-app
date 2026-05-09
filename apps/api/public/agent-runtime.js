@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.91';
+  const AGENT_VERSION = '1.36.92';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -5396,6 +5396,71 @@
   // === HELPERS ===
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  function getRequestUrl(input) {
+    try {
+      if (typeof input === 'string') return input;
+      if (input && typeof input.url === 'string') return input.url;
+    } catch {}
+    return '';
+  }
+
+  function isMihsapSaveRequest(method, url, body) {
+    const m = String(method || 'GET').toUpperCase();
+    if (!/^(POST|PUT|PATCH|DELETE)$/.test(m)) return false;
+    const u = String(url || '');
+    const bodyText = typeof body === 'string' ? body : '';
+    const hay = `${u} ${bodyText}`.toLowerCase();
+    if (/morenmusavirlik|mali-musavir-app-production|agent\/events|agent\/control|agent\/ai|luca|jasper|rapor_|rapor-|vercel/i.test(hay)) return false;
+    if (/\/all-faturas(?:\?|$)/i.test(u) && /sortalanlari|valuelist/i.test(bodyText)) return false;
+    if (!/\/api\/|mihsap|mali-musavir|fatura|invoice|document|defter|fis|belge|kaydet|onay|save|update/i.test(hay)) return false;
+    return /fatura|invoice|document|defter|fis|belge|kaydet|onay|save|update/i.test(hay);
+  }
+
+  function shortNetUrl(url) {
+    return String(url || '').replace(/^https?:\/\/[^/]+/i, '').slice(0, 110) || '-';
+  }
+
+  function noteMihsapSaveNetworkStart(method, url) {
+    try {
+      const item = { ts: Date.now(), method: String(method || 'GET').toUpperCase(), url: shortNetUrl(url) };
+      window.__morenMihsapSaveNetPending = item;
+      window.__morenLastSaveNetDebug = `net:pending:${item.method}:${item.url}`;
+    } catch {}
+  }
+
+  function noteMihsapSaveNetworkDone(method, url, status) {
+    try {
+      const st = Number(status) || 0;
+      const item = {
+        ts: Date.now(),
+        method: String(method || 'GET').toUpperCase(),
+        url: shortNetUrl(url),
+        status: st,
+        ok: st >= 200 && st < 400,
+      };
+      window.__morenLastSaveNetDebug = `net:${item.status}:${item.method}:${item.url}`;
+      if (item.ok) window.__morenMihsapSaveNet = item;
+      if (window.__morenMihsapSaveNetPending) window.__morenMihsapSaveNetPending = null;
+    } catch {}
+  }
+
+  function getRecentMihsapSaveNetwork(sinceTs = 0, maxAgeMs = 15000) {
+    try {
+      const n = window.__morenMihsapSaveNet;
+      if (n && n.ok && n.ts >= sinceTs && Date.now() - n.ts <= maxAgeMs) return n;
+    } catch {}
+    return null;
+  }
+
+  function hasRecentMihsapSaveNetworkActivity(sinceTs = 0, maxAgeMs = 15000) {
+    try {
+      if (getRecentMihsapSaveNetwork(sinceTs, maxAgeMs)) return true;
+      const p = window.__morenMihsapSaveNetPending;
+      return !!(p && p.ts >= sinceTs && Date.now() - p.ts <= maxAgeMs);
+    } catch {}
+    return false;
+  }
+
   // ─────────────────────────────────────────────────────────────────────
   // XHR HOOK — jasper.jq POST'larına window.__lucaJobOverrides body inject
   // ÖNEMLI: Luca jasper.jq'yu frm3.contentWindow'dan atıyor; her frame'in
@@ -5416,6 +5481,16 @@
         return origOpen.apply(this, arguments);
       };
       proto.send = function (body) {
+        try {
+          const url = this.__morenUrl || '';
+          const method = this.__morenMethod || '';
+          if (isMihsapSaveRequest(method, url, body)) {
+            noteMihsapSaveNetworkStart(method, url);
+            this.addEventListener('loadend', function () {
+              try { noteMihsapSaveNetworkDone(method, url, this.status); } catch {}
+            });
+          }
+        } catch {}
         // DEBUG: __lucaJobOverrides aktifken TÜM XHR URL'lerini log'la
         try {
           if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
@@ -5529,6 +5604,11 @@
       w.__morenFetchHookInstalled = true;
       const origFetch = w.fetch;
       w.fetch = async function (input, init) {
+        const __morenFetchUrl = getRequestUrl(input);
+        const __morenFetchMethod = (init && init.method) || (input && input.method) || 'GET';
+        const __morenFetchBody = init && init.body;
+        const __morenTrackSave = isMihsapSaveRequest(__morenFetchMethod, __morenFetchUrl, __morenFetchBody);
+        if (__morenTrackSave) noteMihsapSaveNetworkStart(__morenFetchMethod, __morenFetchUrl);
         // DEBUG: __lucaJobOverrides aktifken TÜM fetch URL'lerini log'la
         try {
           const dbgUrl = typeof input === 'string' ? input : (input && input.url) || '';
@@ -5611,7 +5691,14 @@
             }
           }
         } catch (e) {}
-        return origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
+        try {
+          const __morenRes = await origFetch.apply(this, arguments.length > 1 ? [input, init] : [input]);
+          if (__morenTrackSave) noteMihsapSaveNetworkDone(__morenFetchMethod, __morenFetchUrl, __morenRes.status);
+          return __morenRes;
+        } catch (e) {
+          if (__morenTrackSave) noteMihsapSaveNetworkDone(__morenFetchMethod, __morenFetchUrl, 0);
+          throw e;
+        }
       };
       return true;
     } catch (e) { return false; }
@@ -5949,12 +6036,15 @@
     try { el.scrollIntoView({ block: 'center', behavior: 'instant' }); } catch {}
     try { el.focus?.({ preventScroll: true }); } catch {}
     try {
+      const r = el.getBoundingClientRect?.();
+      const clientX = r ? Math.round(r.left + r.width / 2) : 0;
+      const clientY = r ? Math.round(r.top + r.height / 2) : 0;
       if (typeof PointerEvent !== 'undefined') {
-        el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
-        el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse' }));
+        el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX, clientY }));
+        el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', clientX, clientY }));
       }
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX, clientY }));
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX, clientY }));
     } catch {}
     el.click();
     await sleep(250);
@@ -6278,10 +6368,15 @@
     return 'f2';
   }
 
-  async function clickKaydetOnayla() {
+  async function clickKaydetOnayla(actionSince = Date.now()) {
     const fidAtStart = getCurrentFid();
     await pressF2Once();
-    await sleep(350);
+    await sleep(850);
+    if (!faturaAdvancedFrom(fidAtStart) && getVisibleModals().length === 0 && !hasRecentMihsapSaveNetworkActivity(actionSince, 3000)) {
+      dispatchShortcutKey('F2', 'F2', 113);
+      window.__morenLastF2Debug = `${window.__morenLastF2Debug || 'btn:bilinmiyor'} + key:F2`;
+      await sleep(450);
+    }
     // Her türlü dialog'u kapat (mükerrer, hesap kodu uyarı, tutar farkı vs)
     // Tutar farkı onayında Onayla sonrası aynı faturada bir kez daha F2 dene.
     let tries = 0;
@@ -6299,7 +6394,7 @@
     }
   }
 
-  async function waitFaturaKayitSonucu(fid, timeoutMs = 12000) {
+  async function waitFaturaKayitSonucu(fid, timeoutMs = 12000, netSince = 0) {
     const t0 = Date.now();
     const minWaitMs = 900;
     let validationFailed = null;
@@ -6319,6 +6414,8 @@
           if (res === 'already-advanced') break;
         }
       }
+      const netOk = getRecentMihsapSaveNetwork(netSince, 15000);
+      if (netOk) return { saved: true, validationFailed: null, via: `network:${netOk.status}` };
       await sleep(100);
     }
 
@@ -6328,6 +6425,8 @@
       if (isZeroCount()) return { saved: true, validationFailed: null };
       const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info');
       if (okToast) return { saved: true, validationFailed: null };
+      const netOk = getRecentMihsapSaveNetwork(netSince, 15000);
+      if (netOk) return { saved: true, validationFailed: null, via: `network:${netOk.status}` };
 
       const validationMsg = validationDialogVarMi();
       if (validationMsg) {
@@ -6360,12 +6459,14 @@
     const retryDelayMs = opts.retryDelayMs ?? 250;
     const retry = opts.retry !== false;
 
-    await clickKaydetOnayla();
-    let sonuc = await waitFaturaKayitSonucu(fid, timeoutMs);
+    const firstSince = Date.now();
+    await clickKaydetOnayla(firstSince);
+    let sonuc = await waitFaturaKayitSonucu(fid, timeoutMs, firstSince);
     if (!sonuc.saved && !sonuc.validationFailed && retry) {
       await sleep(retryDelayMs);
-      await clickKaydetOnayla();
-      sonuc = await waitFaturaKayitSonucu(fid, retryTimeoutMs);
+      const retrySince = Date.now();
+      await clickKaydetOnayla(retrySince);
+      sonuc = await waitFaturaKayitSonucu(fid, retryTimeoutMs, retrySince);
     }
     return sonuc;
   }
