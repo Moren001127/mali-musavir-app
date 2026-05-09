@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.83';
+  const AGENT_VERSION = '1.36.84';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -6194,6 +6194,61 @@
     }
   }
 
+  async function waitFaturaKayitSonucu(fid, timeoutMs = 12000) {
+    const t0 = Date.now();
+    const minWaitMs = 1500;
+    let validationFailed = null;
+
+    while (Date.now() - t0 < minWaitMs) {
+      const validationMsg = validationDialogVarMi();
+      if (validationMsg) {
+        validationFailed = validationMsg;
+        await handleDialogs();
+        return { saved: false, validationFailed };
+      }
+      if (getVisibleModals().length > 0) {
+        const r = await handleDialogs();
+        if (r === 'not-pending') return { saved: true, validationFailed: null };
+        if (r === 'resubmit' || r === 'retry-f2') {
+          const res = await onaylaSonrasiF2(fid);
+          if (res === 'already-advanced') break;
+        }
+      }
+      await sleep(100);
+    }
+
+    while (Date.now() - t0 < timeoutMs) {
+      const fidNow = getCurrentFid();
+      if (fidNow && fid && fidNow !== fid) return { saved: true, validationFailed: null };
+      if (isZeroCount()) return { saved: true, validationFailed: null };
+      const okToast = document.querySelector('.ant-message-success, .ant-notification-notice-success, .ant-message-info');
+      if (okToast) return { saved: true, validationFailed: null };
+
+      const validationMsg = validationDialogVarMi();
+      if (validationMsg) {
+        validationFailed = validationMsg;
+        await handleDialogs();
+        return { saved: false, validationFailed };
+      }
+
+      if (getVisibleModals().length > 0) {
+        const r = await handleDialogs();
+        if (r === 'not-pending') return { saved: true, validationFailed: null };
+        if (r === 'resubmit' || r === 'retry-f2') {
+          const res = await onaylaSonrasiF2(fid);
+          if (res === 'already-advanced') continue;
+          continue;
+        }
+        await sleep(400);
+        const fidAfterDialog = getCurrentFid();
+        if (fidAfterDialog && fid && fidAfterDialog !== fid) return { saved: true, validationFailed: null };
+      }
+      await sleep(250);
+    }
+
+    return { saved: false, validationFailed };
+  }
+
   async function getFaturaMeta(fid) {
     try {
       const jwt = localStorage.getItem('token');
@@ -8418,21 +8473,14 @@
               if (fillResult.dolduruldu) {
                 setStatus(`${mukellef.ad} · #${fid} F2 ile kaydediyor…`);
                 await sleep(800);
-                await pressF2Once();
-                const t0 = Date.now();
-                let kaydedildi = false;
-                let validasyonHatasi = null;
-                while (Date.now() - t0 < 12000) {
-                  if (window.__morenAgent.stopRequested) return;
-                  const m = location.href.match(/\/(\d+)\?count=/);
-                  if (m && m[1] !== fid) { kaydedildi = true; break; }
-                  if (/count=0/.test(location.href)) { kaydedildi = true; break; }
-                  const vMsg = validationDialogVarMi();
-                  if (vMsg) { validasyonHatasi = vMsg; await handleDialogs(); break; }
-                  if (getVisibleModals().length > 0) await handleDialogs();
-                  await sleep(300);
+                await clickKaydetOnayla();
+                let kayitSonucu = await waitFaturaKayitSonucu(fid, 12000);
+                if (!kayitSonucu.saved && !kayitSonucu.validationFailed) {
+                  await sleep(800);
+                  await clickKaydetOnayla();
+                  kayitSonucu = await waitFaturaKayitSonucu(fid, 12000);
                 }
-                if (kaydedildi) {
+                if (kayitSonucu.saved) {
                   satirlar.push('Sonuç: ✓ Doldurma başarılı, F2 ile otomatik kaydedildi');
                   counters.onay++; counters.toplam++; setCount();
                   await logEvent(mukellef.id, mukellef.ad, 'ok', satirlar.join('\n'),
@@ -8446,12 +8494,15 @@
                       decisionTrace: oneriKarari?.decisionTrace || null,
                       faturaDecisionCandidate: oneriKarari?.faturaDecisionCandidate || null,
                     });
+                  if (getCurrentFid() === fid && !isZeroCount()) {
+                    await clickIleri(fid);
+                  }
                   continue;
                 }
                 // F2 başarısız
-                if (validasyonHatasi) {
+                if (kayitSonucu.validationFailed) {
                   satirlar.push(`Sonuç: ✗ Dolduruldu ama Mihsap kayıt etmedi`);
-                  satirlar.push(`Mihsap uyarısı: "${validasyonHatasi.slice(0, 80)}"`);
+                  satirlar.push(`Mihsap uyarısı: "${kayitSonucu.validationFailed.slice(0, 80)}"`);
                 } else {
                   satirlar.push(`Sonuç: ✗ Dolduruldu ama F2 sonrası kayıt onaylanmadı`);
                   const eksikler = [];
