@@ -10,10 +10,12 @@ async function bootstrap() {
     bodyParser: false,
   });
 
-  // Limit yüksek — multipart upload'larda body-parser çalışmaz ama Luca runner
-  // bazı endpoint'lerde JSON gönderiyor. Büyük e-fatura ZIP'leri için 200mb.
-  app.useBodyParser('json', { limit: '200mb' });
-  app.useBodyParser('urlencoded', { limit: '200mb', extended: true });
+  // Multipart upload'larda body-parser calismaz; buyuk ZIP/PDF'ler zaten multer ile alinir.
+  // JSON'u sinirsiza yakin tutmak Railway'de ajanlar reconnect oldugunda buyuk meta/base64
+  // payload'larin Node'u V8 seviyesinde dusurmesine yol acabiliyor.
+  const jsonLimit = process.env.API_JSON_LIMIT || '25mb';
+  app.useBodyParser('json', { limit: jsonLimit });
+  app.useBodyParser('urlencoded', { limit: jsonLimit, extended: true });
 
   // CORS — Helmet'ten ÖNCE kuruluyor ki Access-Control-Allow-Origin her response'a çıksın
   app.enableCors({

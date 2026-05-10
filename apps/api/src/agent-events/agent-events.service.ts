@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
@@ -24,12 +25,71 @@ export interface AgentEventInput {
 @Injectable()
 export class AgentEventsService {
   private readonly faturaDecisionCache = new Map<string, { expiresAt: number; value: any }>();
+  private readonly largeMetaKeyRe =
+    /base64|image|gorsel|screenshot|html|pdf|buffer|raw|content|icerik|ocr|runtime/i;
 
   constructor(
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
   ) {}
+
+  private sanitizeMetaForStorage(value: any, depth = 0, key = ''): any {
+    if (value == null) return value;
+    if (depth > 4) return '[truncated-depth]';
+
+    if (typeof value === 'string') {
+      const limit = this.largeMetaKeyRe.test(key) ? 500 : 1200;
+      if (value.length <= limit) return value;
+      return `${value.slice(0, limit)}...[truncated ${value.length - limit} chars]`;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+
+    if (Array.isArray(value)) {
+      const max = 30;
+      const arr = value
+        .slice(0, max)
+        .map((item, index) => this.sanitizeMetaForStorage(item, depth + 1, `${key}.${index}`));
+      if (value.length > max) arr.push(`[truncated ${value.length - max} items]`);
+      return arr;
+    }
+
+    if (typeof value === 'object') {
+      const out: Record<string, any> = {};
+      const entries = Object.entries(value).slice(0, 50);
+      for (const [childKey, childValue] of entries) {
+        if (this.largeMetaKeyRe.test(childKey) && typeof childValue === 'string') {
+          out[childKey] = this.sanitizeMetaForStorage(childValue, depth + 1, childKey);
+        } else {
+          out[childKey] = this.sanitizeMetaForStorage(childValue, depth + 1, childKey);
+        }
+      }
+      const extra = Object.keys(value).length - entries.length;
+      if (extra > 0) out.__truncatedKeys = extra;
+      return out;
+    }
+
+    return String(value).slice(0, 500);
+  }
+
+  private lightEventSelect() {
+    return {
+      id: true,
+      tenantId: true,
+      agent: true,
+      action: true,
+      status: true,
+      message: true,
+      mukellef: true,
+      firma: true,
+      fisNo: true,
+      tutar: true,
+      hesapKodu: true,
+      kdv: true,
+      ts: true,
+    } as const;
+  }
 
   async createEvent(tenantId: string, input: AgentEventInput) {
     // Status normalizasyonu — ajan tarafı eski sürümlerde 'ok'/'skip'/'error' gönderiyordu.
@@ -59,6 +119,8 @@ export class AgentEventsService {
       if (Number.isFinite(n)) normalizedTutar = n;
     }
 
+    const safeMeta = this.sanitizeMetaForStorage(input.meta);
+
     const event = await this.prisma.agentEvent.create({
       data: {
         tenantId,
@@ -72,12 +134,12 @@ export class AgentEventsService {
         tutar: normalizedTutar,
         hesapKodu: input.hesapKodu,
         kdv: input.kdv,
-        meta: input.meta ?? undefined,
+        meta: safeMeta ?? undefined,
         ts: input.ts ? new Date(input.ts) : new Date(),
       },
     });
     if (input.agent === 'mihsap' && normalizedStatus === 'onaylandi') {
-      await this.recordFaturaMemoryAfterSuccessfulSave(tenantId, input).catch(() => {});
+      await this.recordFaturaMemoryAfterSuccessfulSave(tenantId, { ...input, meta: safeMeta }).catch(() => {});
     }
     return event;
   }
@@ -131,11 +193,13 @@ export class AgentEventsService {
       else where.status = status;
     }
     if (since) where.ts = { gte: new Date(since) };
-    return this.prisma.agentEvent.findMany({
+    const events = await this.prisma.agentEvent.findMany({
       where,
       orderBy: { ts: 'desc' },
       take: Math.min(limit, 1000),
+      select: this.lightEventSelect(),
     });
+    return events.map((event) => ({ ...event, meta: null }));
   }
 
   async stats(tenantId: string) {
@@ -193,21 +257,23 @@ export class AgentEventsService {
     const wideStart = new Date(year, month - 3, 1);
     const wideEnd = new Date(year, month + 2, 1);
 
-    const allRows = await this.prisma.agentEvent.findMany({
-      where: {
-        tenantId,
-        agent,
-        status: { in: SUCCESS_STATUSES },
-        ts: { gte: wideStart, lt: wideEnd },
-        mukellef: { not: null },
-      },
-      select: { mukellef: true, action: true, status: true, ts: true, meta: true },
-    });
+    const allRows = await this.prisma.$queryRaw<
+      Array<{ mukellef: string | null; action: string | null; status: string; ts: Date; donem: string | null }>
+    >`
+      SELECT "mukellef", "action", "status", "ts", "meta"->>'donem' AS "donem"
+      FROM "agent_events"
+      WHERE "tenantId" = ${tenantId}
+        AND "agent" = ${agent}
+        AND "status" IN (${Prisma.join(SUCCESS_STATUSES)})
+        AND "ts" >= ${wideStart}
+        AND "ts" < ${wideEnd}
+        AND "mukellef" IS NOT NULL
+      ORDER BY "ts" DESC
+    `;
 
     const rows = allRows.filter((r) => {
-      const m = (r.meta as any) || {};
-      if (typeof m.donem === 'string' && m.donem.length > 0) {
-        return m.donem === donemStr;
+      if (typeof r.donem === 'string' && r.donem.length > 0) {
+        return r.donem === donemStr;
       }
       // Fallback: meta.donem yoksa (eski kayıt) → ts ile orijinal pencereye düş.
       return r.ts >= periodStart && r.ts < periodEnd;
@@ -390,10 +456,12 @@ export class AgentEventsService {
   }
 
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
+    const safeMeta = this.sanitizeMetaForStorage(data.meta);
+    const payload = { ...data, meta: safeMeta ?? undefined };
     return this.prisma.agentStatus.upsert({
       where: { tenantId_agent: { tenantId, agent } },
-      update: { ...data, lastPing: new Date() },
-      create: { tenantId, agent, ...data },
+      update: { ...payload, lastPing: new Date() },
+      create: { tenantId, agent, ...payload },
     });
   }
 
@@ -431,7 +499,21 @@ export class AgentEventsService {
   }
 
   async listStatus(tenantId: string) {
-    return this.prisma.agentStatus.findMany({ where: { tenantId } });
+    const statuses = await this.prisma.agentStatus.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        agent: true,
+        running: true,
+        hedefAy: true,
+        lastPing: true,
+        controlState: true,
+        controlSetBy: true,
+        controlSetAt: true,
+      },
+    });
+    return statuses.map((status) => ({ ...status, meta: null }));
   }
 
   // Rules

@@ -1829,8 +1829,53 @@ export class OcrService {
     return null;
   }
 
+  private extractElectricityKdvFromAzure(text: string): number | null {
+    if (!text) return null;
+    const normalized = this.foldTurkishAscii(text);
+    const looksElectricityInvoice =
+      /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b|\bELEKTRIK\b/.test(normalized);
+    if (!looksElectricityInvoice) return null;
+
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const hardStopRe =
+      /FATURA\s+TUTARI|ODENECEK\s+TUTAR|VERGI\s+VE\s+FONLAR|TOPLAM\s+ENERJI|GUNCEL\s+YUVARLAMA|ONCEKI\s+YUVARLAMA|ELEKT\s+VER|TUKETIM|BEDEL|SON\s+ODEME/i;
+
+    const parseLastKdvAmount = (source: string): number | null => {
+      const withoutMatrah = this.stripMatrahFragments(source);
+      amountGlobalRe.lastIndex = 0;
+      const matches = [...withoutMatrah.matchAll(amountGlobalRe)];
+      if (matches.length === 0) return null;
+      const value = this.parseAmount(matches[matches.length - 1][1]);
+      return value > 0 && value < 10_000_000 ? value : null;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(line)) continue;
+      if (/TEVKIFAT/.test(line)) continue;
+
+      const sameLine = parseLastKdvAmount(line.replace(/\bK\.?\s*D\.?\s*V\.?\b/, ' '));
+      if (sameLine != null) return sameLine;
+
+      for (let j = 1; j <= 2 && i + j < lines.length; j++) {
+        const next = lines[i + j];
+        if (hardStopRe.test(next) || /\bK\.?\s*D\.?\s*V\.?\b/.test(next)) break;
+        const nearby = parseLastKdvAmount(next);
+        if (nearby != null) return nearby;
+      }
+    }
+
+    return null;
+  }
+
   private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: null; oran: number | null } | null {
     if (!text) return null;
+    const electricityKdv = this.extractElectricityKdvFromAzure(text);
+    if (electricityKdv != null && electricityKdv > 0) {
+      return { kdv: electricityKdv, matrah: null, oran: null };
+    }
+
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
