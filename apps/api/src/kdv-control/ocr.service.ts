@@ -2353,6 +2353,9 @@ export class OcrService {
         fnClean.length >= 10 && ocrClean.length >= 10
           ? this.eBelgeNoDistance(fnClean, ocrClean)
           : Infinity;
+      const filenameMatchesOcr =
+        fnClean.length >= 10 &&
+        (fnClean === ocrClean || editDist <= 2);
       const fnLooksLikeEInvoice = /^[A-Z]{2,4}\d{12,14}$/.test(fnClean);
       const lowBelgeNoConfidence = (result.fieldConfidence?.belgeNo ?? 0) < 0.85;
       const shouldOverride =
@@ -2368,6 +2371,13 @@ export class OcrService {
         );
         result.belgeNo = belgeNoFromFilename;
         if (result.fieldConfidence) result.fieldConfidence.belgeNo = fnLooksLikeEInvoice ? 0.96 : 0.9;
+      }
+
+      if (filenameMatchesOcr && result.fieldConfidence) {
+        result.fieldConfidence.belgeNo = Math.max(
+          result.fieldConfidence.belgeNo ?? 0,
+          fnLooksLikeEInvoice ? 0.96 : 0.9,
+        );
       }
     }
 
@@ -2663,7 +2673,8 @@ export class OcrService {
         // E-fatura/e-arşiv: çoğunlukla 3 harf + 13 hane; sahada IGDAS gibi
         // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane güvenli kabul.
         const eFaturaRegex = /^[A-Z]{2,4}\d{12,14}$/;
-        if (!eFaturaRegex.test(bn)) {
+        const numericProviderInvoiceRegex = /^\d{13,20}$/;
+        if (!eFaturaRegex.test(bn) && !numericProviderInvoiceRegex.test(bn)) {
           issues.push(
             `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yıl + sıra no, örn. EFA2026000000093)`,
           );
@@ -2674,7 +2685,7 @@ export class OcrService {
           }
         } else {
           // Yıl validasyonu (4 hane yıl 2020-2050 arası)
-          const yilMatch = bn.match(/^[A-Z]{2,4}(\d{4})/);
+          const yilMatch = bn.match(/^[A-Z]{2,4}(\d{4})/) ?? bn.match(/(20\d{2})/);
           const yil = yilMatch ? parseInt(yilMatch[1], 10) : NaN;
           if (yil < 2020 || yil > 2050) {
             issues.push(`E-fatura belge no'sundaki yıl mantıksız: ${yil} (beklenen: 2020-2050)`);
