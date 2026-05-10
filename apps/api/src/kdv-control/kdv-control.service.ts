@@ -1436,7 +1436,22 @@ export class KdvControlService {
     const getFaturaKdvValue = (r: any): number => {
       if (!r.image || !r.imageId) return 0;
       const ocrTotal = parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
-      return ocrTotal > 0 ? ocrTotal : 0;
+      if (ocrTotal <= 0) return 0;
+      const luca = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
+      if (luca <= 0) return ocrTotal;
+
+      const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
+      const tevkifat = parseKdv(r.image.confirmedKdvTevkifat || r.image.ocrKdvTevkifat);
+      const rate = r.kdvRecord?.kdvOrani ? Number(r.kdvRecord.kdvOrani) : 0;
+      const candidates = [
+        ocrTotal,
+        ...(isSatis && tevkifat > 0 && ocrTotal > tevkifat ? [ocrTotal - tevkifat] : []),
+        ...(rate > 0 ? [(ocrTotal * rate) / 100] : []),
+      ].filter((n) => Number.isFinite(n) && n > 0);
+
+      const best = candidates.sort((a, b) => Math.abs(a - luca) - Math.abs(b - luca))[0] ?? ocrTotal;
+      const bestDiff = Math.abs(best - luca) / (luca || 1);
+      return bestDiff < 0.01 ? best : ocrTotal;
     };
     /** Özetlerde aynı imageId birden fazla Luca satırına fan-out olduysa tek say. */
     const sumUniqueImageKdv = (rows: any[]): number => {
@@ -1790,7 +1805,7 @@ export class KdvControlService {
         if (/Görselden KDV tutarı okunamadı/i.test(r)) return 'Faturadan KDV okunamadı';
         if (/Belge no/i.test(r) && /uyumsuz/i.test(r)) return 'Belge no farklı';
         if (/Tarih/i.test(r) && /uyumsuz/i.test(r)) return 'Tarih farklı';
-        if (/Alış tevkifat eşleşmesi/i.test(r)) return 'Tevkifatlı alış eşleşti';
+        if (/Alış tevkifat (eşleşmesi|bileşen eşleşmesi)/i.test(r)) return 'Tevkifatlı alış eşleşti';
         return r;
       });
 

@@ -915,14 +915,13 @@ function KdvBreakdownEditor({
         </p>
       ) : (
         <>
-          <div className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pb-1 mb-1 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <span>Oran</span>
-            <span>Matrah</span>
             <span>KDV Tutarı</span>
             <span></span>
           </div>
           {list.map((b, idx) => (
-            <div key={idx} className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center mb-1.5">
+            <div key={idx} className="grid grid-cols-[70px_1fr_28px] gap-2 items-center mb-1.5">
               <div className="relative">
                 <input
                   type="text"
@@ -937,15 +936,6 @@ function KdvBreakdownEditor({
                 />
                 <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }}>%</span>
               </div>
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="0,00"
-                value={fmtNum(b.matrah)}
-                onChange={(e) => setItem(idx, { matrah: parseNum(e.target.value) })}
-                className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.7)' }}
-              />
               <input
                 type="text"
                 inputMode="decimal"
@@ -966,13 +956,14 @@ function KdvBreakdownEditor({
               </button>
             </div>
           ))}
-          <div className="grid grid-cols-[60px_1fr_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={{ borderTop: '1px solid rgba(184,160,111,0.2)' }}>
+          <div className="grid grid-cols-[70px_1fr_28px] gap-2 items-center pt-1.5 mt-1" style={{ borderTop: '1px solid rgba(184,160,111,0.2)' }}>
             <span></span>
-            <span className="text-[11px] font-bold text-right" style={{ color: GOLD }}>Toplam KDV</span>
-            <span className="px-2 py-1 text-[12.5px] font-mono font-bold text-right" style={{ color: GOLD }}>
-              {toplam.toFixed(2).replace('.', ',')}
-            </span>
-            <span></span>
+            <div className="col-span-2 flex items-center justify-between gap-3 px-2 py-1">
+              <span className="text-[11px] font-bold" style={{ color: GOLD }}>Toplam KDV</span>
+              <span className="text-[12.5px] font-mono font-bold text-right" style={{ color: GOLD }}>
+                {toplam.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
           </div>
         </>
       )}

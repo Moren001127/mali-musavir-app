@@ -439,6 +439,12 @@ export class ReconciliationEngine {
           rateExact = true;
           const candidates = [
             { amount: matchingItem.tutar, label: 'NET' },
+            ...(recordRate != null && recordRate > 0
+              ? [{ amount: (matchingItem.tutar * recordRate) / 100, label: 'Matrah×Oran' }]
+              : []),
+            ...(!isAlis && imgTevkifat > 0 && matchingItem.tutar > imgTevkifat
+              ? [{ amount: matchingItem.tutar - imgTevkifat, label: 'TAM-Tevkifat' }]
+              : []),
             ...(isAlis && imgTevkifat > 0 && imageBreakdown.length === 1
               ? [{ amount: matchingItem.tutar + imgTevkifat, label: 'NET+Tevkifat' }]
               : []),
@@ -456,6 +462,14 @@ export class ReconciliationEngine {
             if (best?.label === 'NET+Tevkifat') {
               reasons.push(
                 `%${recordRate} alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(matchingItem.tutar)} NET + ${this.fmtAmt(imgTevkifat)} tevkifat`,
+              );
+            } else if (best?.label === 'TAM-Tevkifat') {
+              reasons.push(
+                `%${recordRate} satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(matchingItem.tutar)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
+              );
+            } else if (best?.label === 'Matrah×Oran') {
+              reasons.push(
+                `%${recordRate} OCR matrah düzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(matchingItem.tutar)} × %${recordRate}`,
               );
             }
           } else if (diff < 0.05) {
@@ -482,13 +496,37 @@ export class ReconciliationEngine {
           imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
         );
         if (!isNaN(imgKdvNum)) {
-          const diff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
+          const kdvCandidates = [
+            { amount: imgKdvNum, label: 'OCR' },
+            ...(recordRate != null && recordRate > 0
+              ? [{ amount: (imgKdvNum * recordRate) / 100, label: 'Matrah×Oran' }]
+              : []),
+            ...(!isAlis && imgTevkifat > 0 && imgKdvNum > imgTevkifat
+              ? [{ amount: imgKdvNum - imgTevkifat, label: 'TAM-Tevkifat' }]
+              : []),
+          ];
+          const bestKdv = kdvCandidates
+            .map((c) => ({
+              ...c,
+              diff: Math.abs(recordKdv - c.amount) / (recordKdv || 1),
+            }))
+            .sort((a, b) => a.diff - b.diff)[0];
+          const diff = bestKdv?.diff ?? 1;
           if (diff < 0.01) {
             score += 0.3;
             kdvExact = true;
+            if (bestKdv?.label === 'TAM-Tevkifat') {
+              reasons.push(
+                `Satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
+              );
+            } else if (bestKdv?.label === 'Matrah×Oran') {
+              reasons.push(
+                `OCR matrah düzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(imgKdvNum)} × %${recordRate}`,
+              );
+            }
           } else if (diff < 0.05) {
             score += 0.15;
-            reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)} (%${Math.round(diff * 100)})`);
+            reasons.push(`KDV tutar farkı: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(bestKdv?.amount ?? imgKdvNum)} (%${Math.round(diff * 100)})`);
           } else {
             // ─── TEVKİFAT FARKI KONTROLÜ (ALIŞ için kritik) ───
             // Türk muhasebe pratiğinde tevkifatlı faturalar farklı şekillerde
@@ -534,13 +572,13 @@ export class ReconciliationEngine {
                 `Alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} (NET+Tevkifat) = Fatura ${this.fmtAmt(imgKdvNum)} (NET) + ${this.fmtAmt(imgTevkifat)} (tevkifat)`,
               );
             } else if (lucaOriginalMatch) {
-              // Orijinal Luca satırlarından biri OCR NET'e eşitse bu aynı belge
-              // adayıdır; ama OCR tevkifat/tam KDV'yi doğrulayamıyorsa "tam
-              // eşleşme" değildir. Aksi halde tek net satırı yakalayıp tüm
-              // tevkifat satırlarını yeşil gösteririz.
-              score += 0.16;
+              // YOL 2: Orijinal Luca satırlarından biri OCR NET'e eşit.
+              // Alış tevkifatında Luca aynı belgeyi NET + sorumlu sıfatıyla KDV
+              // olarak iki satır getirebildiği için bu aynı belge fan-out'udur.
+              score += 0.3;
+              kdvExact = true;
               reasons.push(
-                `Alış tevkifat incele: OCR ${this.fmtAmt(imgKdvNum)} sadece Luca satırlarından biriyle eşleşiyor; Luca toplam ${this.fmtAmt(recordKdv)} için tevkifat/tam KDV doğrulanamadı`,
+                `Alış tevkifat bileşen eşleşmesi: OCR ${this.fmtAmt(imgKdvNum)} Luca satırlarından biriyle eşleşti; aynı belge tevkifat satırlarına fan-out edildi`,
               );
             } else {
               reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
