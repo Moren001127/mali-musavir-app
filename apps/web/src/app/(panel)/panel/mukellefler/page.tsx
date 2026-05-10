@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Search, Download, Upload, Plus, ChevronRight } from 'lucide-react';
+import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -202,13 +202,6 @@ export default function MukelleflerPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 px-[18px] py-2.5 text-[13px] font-medium rounded-[10px] transition-all"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
-          >
-            <Download size={14} /> İçe Aktar
-          </button>
-          <button
-            type="button"
             onClick={() => {
               const rows = [
                 ['İsim','Tür','VKN/TC','VD','Evrak','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname'],
@@ -304,6 +297,28 @@ export default function MukelleflerPage() {
               }}
             >
               {b.label} ({b.count})
+            </button>
+          );
+        })}
+        {[
+          { key: 'profil-eksik', label: 'Profil Eksik', icon: AlertCircle },
+          { key: 'telefon-yok', label: 'Telefon Yok', icon: PhoneOff },
+        ].map((b) => {
+          const Icon = b.icon;
+          const active = profileFilter === b.key;
+          return (
+            <button
+              key={b.key}
+              type="button"
+              onClick={() => { setProfileFilter(active ? 'all' : (b.key as ProfileFilterKey)); setPage(1); }}
+              className="px-3.5 py-2 text-[12px] font-medium rounded-[9px] transition-all inline-flex items-center gap-1.5"
+              style={{
+                background: active ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${active ? 'rgba(239,68,68,0.32)' : 'rgba(255,255,255,0.08)'}`,
+                color: active ? '#fca5a5' : 'rgba(250,250,249,0.55)',
+              }}
+            >
+              <Icon size={12} /> {b.label}
             </button>
           );
         })}

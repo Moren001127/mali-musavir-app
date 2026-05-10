@@ -7,6 +7,7 @@ import {
   Filter, Search, Trash2, X, Edit3, MessageSquare, Bell, BellOff,
   Loader2, Tag, User as UserIcon, Building2, Repeat, Mail,
   MoreVertical, Play, Ban, Pause, RotateCcw, FileText,
+  LayoutGrid, List,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -35,6 +36,7 @@ export default function GorevlerPage() {
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterPriority, setFilterPriority] = useState<string>('');
   const [searchInput, setSearchInput] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
 
   const { data: counts } = useQuery<TaskCounts>({
     queryKey: ['task-counts'],
@@ -43,9 +45,9 @@ export default function GorevlerPage() {
   });
 
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['tasks', { status: filterStatus, category: filterCategory, priority: filterPriority, search: searchInput }],
+    queryKey: ['tasks', { status: viewMode === 'kanban' ? '' : filterStatus, category: filterCategory, priority: filterPriority, search: searchInput, viewMode }],
     queryFn: () => tasksApi.list({
-      status: filterStatus || undefined,
+      status: viewMode === 'kanban' ? undefined : filterStatus || undefined,
       category: filterCategory || undefined,
       priority: filterPriority || undefined,
       search: searchInput || undefined,
@@ -162,6 +164,16 @@ export default function GorevlerPage() {
     return g;
   }, [tasks]);
 
+  const kanban = useMemo(() => {
+    const g: Record<string, Task[]> = { OPEN: [], IN_PROGRESS: [], SNOOZED: [], DONE: [] };
+    for (const t of tasks) {
+      if (t.status === 'CANCELLED' || t.status === 'MISSED') continue;
+      const key = g[t.status] ? t.status : 'OPEN';
+      g[key].push(t);
+    }
+    return g;
+  }, [tasks]);
+
   return (
     <div className="space-y-5 max-w-none">
       {/* Header */}
@@ -202,6 +214,31 @@ export default function GorevlerPage() {
       {/* Filtreler */}
       <div className="rounded-xl p-4 space-y-3" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
         <div className="flex flex-wrap gap-3 items-end">
+          <div>
+            <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+              Görünüm
+            </label>
+            <div className="flex p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              {[
+                { key: 'list', label: 'Liste', icon: List },
+                { key: 'kanban', label: 'Kanban', icon: LayoutGrid },
+              ].map((opt) => {
+                const Icon = opt.icon;
+                const active = viewMode === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setViewMode(opt.key as 'list' | 'kanban')}
+                    className="px-3 py-1.5 rounded-md text-[12px] font-semibold inline-flex items-center gap-1.5"
+                    style={{ background: active ? 'rgba(212,184,118,0.16)' : 'transparent', color: active ? GOLD : 'rgba(250,250,249,0.55)' }}
+                  >
+                    <Icon size={12} /> {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex-1 min-w-[200px]">
             <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
               <Search size={10} className="inline mr-1" /> Ara
@@ -262,6 +299,18 @@ export default function GorevlerPage() {
           <p className="text-[14px]">Görev yok</p>
           <p className="text-[12px] mt-1">Yeni Görev butonu ile ekleyebilirsin</p>
         </div>
+      ) : viewMode === 'kanban' ? (
+        <KanbanBoard
+          groups={kanban}
+          onComplete={(id: string) => completeMut.mutate(id)}
+          onReopen={(id: string) => reopenMut.mutate(id)}
+          onStart={(id: string) => startMut.mutate(id)}
+          onCancel={(id: string) => cancelMut.mutate(id)}
+          onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }}
+          onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }}
+          onDelete={(id: string) => deleteMut.mutate(id)}
+          onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }}
+        />
       ) : (
         <div className="space-y-5">
           <TaskGroup title="GECİKMİŞ" tasks={grouped.overdue} accent="#ef4444" pulse onComplete={(id: string) => completeMut.mutate(id)} onReopen={(id: string) => reopenMut.mutate(id)} onStart={(id: string) => startMut.mutate(id)} onCancel={(id: string) => cancelMut.mutate(id)} onSnooze={(t: Task) => { setSnoozeTarget(t); const d = new Date(); d.setDate(d.getDate() + 1); setSnoozeUntil(d.toISOString().slice(0,10)); }} onAddNote={(t: Task) => { setNoteTarget(t); setNoteContent(''); }} onDelete={(id: string) => deleteMut.mutate(id)} onEdit={(t: Task) => { setEditingTask(t); setShowNewModal(true); }} />
@@ -468,6 +517,64 @@ interface TaskGroupProps {
   onDelete: (id: string) => void;
   onEdit: (t: Task) => void;
 }
+
+function KanbanBoard({
+  groups, onComplete, onReopen, onStart, onCancel, onSnooze, onAddNote, onDelete, onEdit,
+}: {
+  groups: Record<string, Task[]>;
+  onComplete: (id: string) => void;
+  onReopen: (id: string) => void;
+  onStart: (id: string) => void;
+  onCancel: (id: string) => void;
+  onSnooze: (t: Task) => void;
+  onAddNote: (t: Task) => void;
+  onDelete: (id: string) => void;
+  onEdit: (t: Task) => void;
+}) {
+  const columns = [
+    { key: 'OPEN', title: 'Açık', color: GOLD },
+    { key: 'IN_PROGRESS', title: 'Devam', color: '#3b82f6' },
+    { key: 'SNOOZED', title: 'Ertelendi', color: '#a855f7' },
+    { key: 'DONE', title: 'Tamamlandı', color: '#22c55e' },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+      {columns.map((col) => {
+        const items = groups[col.key] || [];
+        return (
+          <div key={col.key} className="rounded-2xl overflow-hidden min-h-[260px]" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${BORDER}` }}>
+            <div className="px-4 py-3 flex items-center gap-2" style={{ background: `${col.color}12`, borderBottom: '1px solid rgba(255,255,255,0.055)' }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: col.color }} />
+              <h3 className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: col.color }}>{col.title}</h3>
+              <span className="ml-auto text-[11px] tabular-nums px-2 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)' }}>{items.length}</span>
+            </div>
+            <div className="p-2 space-y-2">
+              {items.length === 0 ? (
+                <div className="text-[12px] text-center py-8" style={{ color: 'rgba(250,250,249,0.35)' }}>Bu kolonda görev yok</div>
+              ) : items.map((t) => (
+                <div key={t.id} className="rounded-xl overflow-hidden" style={{ background: 'rgba(15,13,11,0.65)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <TaskRow
+                    task={t}
+                    onComplete={onComplete}
+                    onReopen={onReopen}
+                    onStart={onStart}
+                    onCancel={onCancel}
+                    onSnooze={onSnooze}
+                    onAddNote={onAddNote}
+                    onDelete={onDelete}
+                    onEdit={onEdit}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TaskGroup({ title, tasks, accent, pulse, onComplete, onReopen, onStart, onCancel, onSnooze, onAddNote, onDelete, onEdit }: TaskGroupProps) {
   if (tasks.length === 0) return null;
   return (

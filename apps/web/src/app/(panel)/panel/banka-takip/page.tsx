@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   Landmark, Calendar, Search, Plus, Check, X, Edit2, Trash2,
   Loader2, AlertCircle, CheckCircle2, FileText, Building2,
+  ClipboardList, ArrowRight, Layers3,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -68,6 +69,23 @@ export default function BankaTakipPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Görev oluşturulamadı'),
   });
 
+  const bulkEkstreMut = useMutation({
+    mutationFn: async ({ item, action }: { item: BankaTakipItem; action: 'geldi' | 'islendi' }) => {
+      await Promise.all(item.hesaplar.map((h) => bankaTakipApi.upsertEkstre({
+        taxpayerId: item.taxpayer.id,
+        bankaHesapId: h.bankaHesap.id,
+        donem,
+        ekstreGeldi: true,
+        ekstreIslendi: action === 'islendi' ? true : undefined,
+      })));
+    },
+    onSuccess: () => {
+      toast.success('Banka takip durumu güncellendi');
+      qc.invalidateQueries({ queryKey: ['banka-takip', donem] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Toplu işlem yapılamadı'),
+  });
+
   const filtered = useMemo(() => {
     let items = data?.items || [];
     // 1) Durum filtresi
@@ -112,6 +130,14 @@ export default function BankaTakipPage() {
     const hesapsiz = items.filter((x) => x.ozet.hesapSayisi === 0).length;
     return { total, tumGelmis, tumIslenmis, islenmedi, hicbiriGelmemis, hesapsiz };
   }, [data?.items]);
+
+  const completion = ozet.total ? Math.round((ozet.tumIslenmis / ozet.total) * 100) : 0;
+  const queueCards: Array<{ key: FiltreDurum; label: string; count: number; hint: string; color: string }> = [
+    { key: 'eksigeldi', label: 'Eksik Ekstre', count: Math.max(ozet.total - ozet.tumGelmis - ozet.hesapsiz, 0), hint: 'Mükelleften istenecek banka ekstreleri', color: '#fbbf24' },
+    { key: 'islenmedi', label: 'İşlenecek', count: ozet.islenmedi, hint: 'Ekstre geldi, muhasebe işlemi bekliyor', color: '#60a5fa' },
+    { key: 'hepsiislendi', label: 'Tamamlanan', count: ozet.tumIslenmis, hint: 'Dönem için kapatılmış mükellefler', color: '#22c55e' },
+    { key: 'hesapsiz', label: 'Hesapsız', count: ozet.hesapsiz, hint: 'Önce banka hesabı tanımlanmalı', color: '#94a3b8' },
+  ];
 
   return (
     <div className="space-y-4 max-w-none">
@@ -168,6 +194,60 @@ export default function BankaTakipPage() {
       </div>
 
       {/* ÖZET KPI'LAR — tıklanabilir filtre kısayolları */}
+      <div className="rounded-2xl p-4 border" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.10), rgba(255,255,255,0.02))', borderColor: 'rgba(212,184,118,0.20)' }}>
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(212,184,118,0.8)' }}>
+              <Layers3 size={13} /> Dönem Kapatma Panosu
+            </div>
+            <div className="mt-2 flex items-end gap-3">
+              <div className="text-4xl font-bold tabular-nums" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>%{completion}</div>
+              <div className="pb-1 text-[12px]" style={{ color: 'rgba(250,250,249,0.56)' }}>
+                {ozet.tumIslenmis} / {ozet.total} mükellefin banka dönemi kapandı
+              </div>
+            </div>
+            <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <div className="h-full rounded-full" style={{ width: `${completion}%`, background: 'linear-gradient(90deg, #d4b876, #22c55e)' }} />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => eksikGorevMut.mutate()}
+            disabled={eksikGorevMut.isPending}
+            className="px-4 py-2.5 rounded-lg text-[12.5px] font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
+            style={{ background: 'rgba(251,191,36,0.14)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.34)' }}
+          >
+            {eksikGorevMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <ClipboardList size={14} />}
+            Eksikler İçin Görev Aç
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {queueCards.map((q) => {
+          const active = filterDurum === q.key;
+          return (
+            <button
+              key={q.key}
+              type="button"
+              onClick={() => setFilterDurum(active ? 'tumu' : q.key)}
+              className="rounded-xl p-3 text-left transition hover:brightness-110"
+              style={{
+                background: active ? `${q.color}18` : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${active ? `${q.color}66` : 'rgba(255,255,255,0.06)'}`,
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: q.color }}>{q.label}</span>
+                <ArrowRight size={13} style={{ color: active ? q.color : 'rgba(250,250,249,0.25)' }} />
+              </div>
+              <div className="text-2xl font-bold mt-1 tabular-nums" style={{ color: '#fafaf9' }}>{q.count}</div>
+              <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>{q.hint}</div>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         <KpiCard label="Toplam Mükellef" value={ozet.total} color="#fafaf9" active={filterDurum === 'tumu'} onClick={() => setFilterDurum('tumu')} />
         <KpiCard label="Tüm Ekstreler Geldi" value={ozet.tumGelmis} color="#22c55e" active={filterDurum === 'hepsigeldi'} onClick={() => setFilterDurum('hepsigeldi')} />
@@ -178,7 +258,7 @@ export default function BankaTakipPage() {
       </div>
 
       {/* ARAMA + FİLTRE */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="sticky top-0 z-10 flex items-center gap-2 flex-wrap rounded-2xl p-3 border backdrop-blur" style={{ background: 'rgba(15,13,11,0.86)', borderColor: 'rgba(255,255,255,0.07)' }}>
         <div className="relative flex-1 min-w-[260px] max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
           <input
@@ -267,6 +347,7 @@ export default function BankaTakipPage() {
                 });
               }}
               onManageHesaplar={() => setHesapModalFor(item)}
+              onBulk={(action) => bulkEkstreMut.mutate({ item, action })}
               isPending={ekstreMut.isPending}
             />
           ))}
@@ -323,12 +404,14 @@ function MukellefRow({
   donem,
   onToggleEkstre,
   onManageHesaplar,
+  onBulk,
   isPending,
 }: {
   item: BankaTakipItem;
   donem: string;
   onToggleEkstre: (bankaHesapId: string, ekstreGeldi: boolean | undefined, ekstreIslendi: boolean | undefined) => void;
   onManageHesaplar: () => void;
+  onBulk: (action: 'geldi' | 'islendi') => void;
   isPending: boolean;
 }) {
   const ad = taxpayerName(item.taxpayer);
@@ -388,6 +471,30 @@ function MukellefRow({
       </div>
 
       {/* Hesap satırları */}
+      {!hicHesap && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.012)' }}>
+          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.48)' }}>Hızlı aksiyon:</span>
+          <button
+            type="button"
+            onClick={() => onBulk('geldi')}
+            disabled={isPending}
+            className="px-2.5 py-1.5 rounded-md text-[11px] font-bold disabled:opacity-50"
+            style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.28)' }}
+          >
+            Tüm Ekstreler Geldi
+          </button>
+          <button
+            type="button"
+            onClick={() => onBulk('islendi')}
+            disabled={isPending}
+            className="px-2.5 py-1.5 rounded-md text-[11px] font-bold disabled:opacity-50"
+            style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.28)' }}
+          >
+            Tümünü İşlendi Yap
+          </button>
+        </div>
+      )}
+
       {hicHesap ? (
         <div className="px-4 py-3 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
           Bu mükellefe henüz banka hesabı tanımlanmamış. Sağdaki "Hesaplar" butonu ile ekleyin.

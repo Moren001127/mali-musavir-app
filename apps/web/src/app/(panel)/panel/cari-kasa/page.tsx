@@ -862,6 +862,34 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         })}
       </div>
 
+      <div className="sticky top-0 z-10 rounded-2xl p-4 border flex items-center gap-3 flex-wrap backdrop-blur" style={{ background: 'rgba(15,13,11,0.88)', borderColor: 'rgba(255,255,255,0.07)' }}>
+        <div className="relative flex-1 min-w-[250px]">
+          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Mükellef, VKN veya telefon ara..."
+            className="w-full pl-9 pr-3 py-2 rounded-md text-[13px] outline-none"
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+          />
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer text-[12.5px]" style={{ color: 'rgba(250,250,249,0.75)' }}>
+          <input
+            type="checkbox"
+            checked={sadecaBakiyeli}
+            onChange={(e) => setSadecaBakiyeli(e.target.checked)}
+          />
+          <span>Sadece bakiyeli</span>
+        </label>
+        <button
+          onClick={indirExcelToplu}
+          className="px-3 py-2 rounded-md text-[12.5px] font-semibold inline-flex items-center gap-1.5"
+          style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}
+        >
+          <Download size={13} /> Toplu Excel
+        </button>
+      </div>
+
       {view === 'ajanda' && (
         <TahsilatAjandasiView
           rows={ajandaRows}
@@ -1084,6 +1112,9 @@ function TahsilatAjandasiView({
   onOpen: (id: string) => void;
 }) {
   const selectedCount = selectedIds.length;
+  const borcluCount = rows.filter((r) => r.bakiye > 0).length;
+  const whatsappCount = rows.filter((r) => r.whatsappUygun).length;
+  const toplamBakiye = rows.reduce((sum, r) => sum + r.bakiye, 0);
   const bucketCards = [
     ['Guncel', data?.totals.current || 0, '#94a3b8'],
     ['1-30', data?.totals.d1_30 || 0, '#60a5fa'],
@@ -1094,6 +1125,24 @@ function TahsilatAjandasiView({
 
   return (
     <div className="space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(156,70,86,0.08)', borderColor: 'rgba(156,70,86,0.24)' }}>
+          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Açık Bakiye</div>
+          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(toplamBakiye)} TL</div>
+        </div>
+        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(212,184,118,0.08)', borderColor: 'rgba(212,184,118,0.22)' }}>
+          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Borçlu Mükellef</div>
+          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>{borcluCount}</div>
+        </div>
+        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.22)' }}>
+          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>WhatsApp Uygun</div>
+          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: 'JetBrains Mono, monospace' }}>{whatsappCount}</div>
+        </div>
+        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.22)' }}>
+          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>90+ Gün Risk</div>
+          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: 'JetBrains Mono, monospace' }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
+        </div>
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {bucketCards.map(([label, value, color]) => (
           <div key={label} className="rounded-2xl p-4 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
