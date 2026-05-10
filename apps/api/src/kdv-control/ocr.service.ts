@@ -1383,7 +1383,7 @@ export class OcrService {
 
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
     const folded = this.foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
-    if (/\bZ\s*RAPORU\b|\bTOPKDV\b|\bKUM\s+TOPKDV\b/.test(folded)) return 'Z_RAPORU';
+    if (/\bZ\s*RAPORU\b|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKUM\s+T[O0]P\s*K\s*D\s*V\b/.test(folded)) return 'Z_RAPORU';
     if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';
     if (/\bE[-\s]?FATURA\b|\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
     if (/\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded)) return 'OKC_FIS';
@@ -1418,6 +1418,24 @@ export class OcrService {
       if (folded.replace(/[^A-Z]/g, '').length >= 12) return raw.slice(0, 200);
     }
     return null;
+  }
+
+  private parseTevkifatRate(text: string): number {
+    if (!text) return 0;
+    const folded = this.foldTurkishAscii(text);
+    const fraction = folded.match(/(?:TEVKIFAT|K\.?\s*D\.?\s*V\.?\s+TEVK)[\s\S]{0,80}?\(\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\)/i);
+    if (fraction) {
+      const numerator = Number(fraction[1]);
+      const denominator = Number(fraction[2]);
+      const rate = denominator > 0 ? (numerator / denominator) * 100 : 0;
+      return rate > 0 && rate <= 100 ? rate : 0;
+    }
+    const percent = folded.match(/(?:TEVKIFAT|K\.?\s*D\.?\s*V\.?\s+TEVK)[\s\S]{0,80}?\(\s*[%/]?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/i);
+    if (percent) {
+      const rate = Number(percent[1]);
+      return rate > 0 && rate <= 100 ? rate : 0;
+    }
+    return 0;
   }
 
   /**
@@ -1555,6 +1573,16 @@ export class OcrService {
       }
     }
 
+    if (tevkifat === 0 && tamKdv > 0) {
+      const oran = this.parseTevkifatRate(folded) || this.parseTevkifatRate(flat);
+      if (oran > 0 && oran <= 100) {
+        tevkifat = parseFloat(((tamKdv * oran) / 100).toFixed(2));
+        this.logger.log(
+          `Tevkifat extract: tevkifat tutarı orandan hesaplandı → ${tevkifat} (tamKdv=${tamKdv}, oran=%${oran})`,
+        );
+      }
+    }
+
     // ─── 3) Alternatif tevkifat gösterimleri ───
     //   "KDV Tevkifatı (%50,00) = 665,00 TL"
     //   "Tevkifat Tutarı: 665,00"
@@ -1588,15 +1616,12 @@ export class OcrService {
 
     // Tam KDV bulunamadıysa tevkifat oranından geri hesapla
     if (tamKdv === 0) {
-      const tevkifatRateMatch = flat.match(/TEVK[İI]FAT[\s\S]{0,50}?\(\s*[%/]?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/i);
-      if (tevkifatRateMatch) {
-        const oran = parseInt(tevkifatRateMatch[1], 10);
-        if (oran >= 10 && oran <= 90) {
-          tamKdv = tevkifat / (oran / 100);
-          this.logger.log(
-            `Tevkifat extract: tamKdv tevkifat oranından geri hesaplandı → ${tamKdv} (tevkifat=${tevkifat}, oran=%${oran})`,
-          );
-        }
+      const oran = this.parseTevkifatRate(flat) || this.parseTevkifatRate(folded);
+      if (oran > 0 && oran <= 100) {
+        tamKdv = tevkifat / (oran / 100);
+        this.logger.log(
+          `Tevkifat extract: tamKdv tevkifat oranından geri hesaplandı → ${tamKdv} (tevkifat=${tevkifat}, oran=%${oran})`,
+        );
       }
     }
 
@@ -2124,6 +2149,25 @@ export class OcrService {
     if (!text) return result;
 
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const foldedLines = lines.map((line) => this.foldTurkishAscii(line));
+    const topKdvLabel = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKDV\s*T[O0]PLAM\b|\bT[O0]PLAM\s*KDV\b/;
+    const moneyTokenRe = /[-+]?[\*₺¥]?\s*\d[\d.,\s]*\d|\d+[,.]\d{2}/g;
+    const extractLastMoney = (raw: string): number => {
+      const line = this.foldTurkishAscii(raw)
+        .replace(/[%/]\s*\d{1,2}(?:[.,]\d+)?/g, ' ')
+        .replace(/\b\d{1,2}\s*[%/]/g, ' ');
+      const values = (line.match(moneyTokenRe) || [])
+        .map((token) => this.parseAmount(token))
+        .filter((value) => value > 0);
+      return values.length > 0 ? values[values.length - 1] : 0;
+    };
+    const nextLineMoney = (idx: number): number => {
+      const next = foldedLines[idx + 1] || '';
+      if (!next || /\bKUM\b/.test(next)) return 0;
+      if (/\bT[O0]PLAM\b|\bGENEL\b|\bNAKIT\b|\bKREDI\b|\bKART\b/.test(next)) return 0;
+      const value = extractLastMoney(next);
+      return value > 0 && value < 100_000_000 ? value : 0;
+    };
 
     // 1) TOPLAM %X satırlarından MATRAH'ları topla
     //    "TOPLAM %20  *140,00" gibi satırları yakala
@@ -2143,13 +2187,14 @@ export class OcrService {
 
     // 2) TOPKDV %X satırlarından her oran için KDV tutarını al
     //    "TOPKDV %20  *23,33" / "TOPKDV /20 *23.33" gibi
-    const breakdownRegex = /^TOPKDV\s*[%/]\s*(\d{1,2})\b\s*[\*:]?\s*([\d.,]+)/i;
-    for (const line of lines) {
-      if (/\bKUM\b/i.test(line)) continue; // kümülatifi atla
-      const m = line.match(breakdownRegex);
-      if (m) {
-        const oran = parseInt(m[1], 10);
-        const tutar = this.parseAmount(m[2]);
+    for (let i = 0; i < foldedLines.length; i++) {
+      const line = foldedLines[i];
+      if (/\bKUM\b/.test(line)) continue; // kümülatifi atla
+      if (!topKdvLabel.test(line)) continue;
+      const rateMatch = line.match(/[%/]\s*(\d{1,2})\b/);
+      if (rateMatch) {
+        const oran = parseInt(rateMatch[1], 10);
+        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
         if (oran > 0 && oran <= 30 && tutar > 0) {
           // matrahByOran'dan ilgili matrahı al
           const matrah = result.matrahByOran[oran] ?? null;
@@ -2165,17 +2210,15 @@ export class OcrService {
     } else {
       // Tek oranlı / sadece TOPKDV var — "TOPKDV  *344,56" gibi
       // KUM içermeyen, %X içermeyen sade TOPKDV satırı
-      const simpleTopkdvRegex = /^TOPKDV\s*[\*:]?\s*([\d.,]+)\s*$/i;
-      for (const line of lines) {
-        if (/\bKUM\b/i.test(line)) continue;
+      for (let i = 0; i < foldedLines.length; i++) {
+        const line = foldedLines[i];
+        if (/\bKUM\b/.test(line)) continue;
         if (/[%/]\s*\d/.test(line)) continue; // %X olan satır
-        const m = line.match(simpleTopkdvRegex);
-        if (m) {
-          const tutar = this.parseAmount(m[1]);
-          if (tutar > 0) {
-            result.kdvTutari = this.formatAmount(tutar);
-            break;
-          }
+        if (!topKdvLabel.test(line)) continue;
+        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
+        if (tutar > 0) {
+          result.kdvTutari = this.formatAmount(tutar);
+          break;
         }
       }
     }
@@ -2688,7 +2731,11 @@ export class OcrService {
   }
 
   private parseAmount(str: string): number {
-    const c = str.replace(/\s/g, '');
+    const c = String(str)
+      .replace(/\s/g, '')
+      .replace(/(?:TL|TRY|₺)/gi, '')
+      .replace(/[\*¥]/g, '')
+      .replace(/[^\d,.\-]/g, '');
     if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(c))
       return parseFloat(c.replace(/\./g, '').replace(',', '.'));
     return parseFloat(c.replace(',', '.')) || 0;

@@ -11,7 +11,7 @@ export interface MatchCandidate {
   strictMatch: boolean;
 }
 
-/** OCR breakdown JSON yapısı — {oran, tutar, matrah?} */
+/** OCR breakdown JSON yapısı — KDV kontrolünde sadece oran + KDV tutarı eşleşir. */
 interface BreakdownItem {
   oran: number;
   tutar: number;
@@ -31,19 +31,13 @@ function getImageBreakdown(image: ReceiptImage): BreakdownItem[] {
       const tutar = typeof it?.tutar === 'number'
         ? it.tutar
         : parseFloat(String(it?.tutar || '0').replace(/\./g, '').replace(',', '.'));
-      const matrah =
-        it?.matrah == null
-          ? null
-          : typeof it.matrah === 'number'
-            ? it.matrah
-            : parseFloat(String(it.matrah).replace(/\./g, '').replace(',', '.'));
       return {
         oran: Number.isFinite(oran) ? oran : 0,
         tutar: Number.isFinite(tutar) ? tutar : 0,
-        matrah: Number.isFinite(matrah as number) ? (matrah as number) : null,
+        matrah: null,
       };
     })
-    .filter((b: BreakdownItem) => b.tutar > 0 || (b.oran === 0 && (b.matrah ?? 0) > 0));
+    .filter((b: BreakdownItem) => b.tutar > 0);
 }
 
 function parseMoneyLike(value: unknown): number {
@@ -461,14 +455,11 @@ export class ReconciliationEngine {
           (b) => Math.abs(b.oran - recordRate) < 0.5,
         );
         if (matchingItem) {
-          // Oran var — şimdi tutarı kıyasla. Tevkifatlı alışta Luca satırı
-          // bazen NET, aggregate/virtual kayıt bazen TAM KDV bekler. Bu yüzden
-          // aynı oran için hem NET hem (tek oranlıysa) NET+Tevkifat adayını dene;
-          // en düşük farkı üreten muhasebe yorumunu seç.
+          // Oran var — şimdi KDV tutarını kıyasla. Burada matrah üzerinden
+          // KDV türetmiyoruz; OCR matrahı KDV diye okuduysa sonuç incelemeye kalmalı.
           rateExact = true;
           const candidates = [
             { amount: matchingItem.tutar, label: 'NET' },
-            { amount: (matchingItem.tutar * recordRate) / 100, label: `Matrah x %${recordRate}` },
             ...(!isAlis && imgTevkifat > 0 && matchingItem.tutar > imgTevkifat
               ? [{ amount: matchingItem.tutar - imgTevkifat, label: 'TAM-Tevkifat' }]
               : []),
@@ -493,10 +484,6 @@ export class ReconciliationEngine {
             } else if (best?.label === 'TAM-Tevkifat') {
               reasons.push(
                 `%${recordRate} satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(matchingItem.tutar)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
-              );
-            } else if (best?.label?.startsWith('Matrah x %')) {
-              reasons.push(
-                `%${recordRate} OCR matrah duzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(matchingItem.tutar)} x %${recordRate}`,
               );
             }
           } else if (diff < 0.05) {
@@ -523,10 +510,8 @@ export class ReconciliationEngine {
           imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
         );
         if (!isNaN(imgKdvNum)) {
-          const matrahRates = recordRate != null && recordRate > 0 ? [recordRate] : [20, 18, 10, 8, 1];
           const kdvCandidates = [
             { amount: imgKdvNum, label: 'OCR' },
-            ...matrahRates.map((rate) => ({ amount: (imgKdvNum * rate) / 100, label: `Matrah x %${rate}` })),
             ...(!isAlis && imgTevkifat > 0 && imgKdvNum > imgTevkifat
               ? [{ amount: imgKdvNum - imgTevkifat, label: 'TAM-Tevkifat' }]
               : []),
@@ -544,10 +529,6 @@ export class ReconciliationEngine {
             if (bestKdv?.label === 'TAM-Tevkifat') {
               reasons.push(
                 `Satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
-              );
-            } else if (bestKdv?.label?.startsWith('Matrah x %')) {
-              reasons.push(
-                `OCR matrah duzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(imgKdvNum)} x ${bestKdv.label.replace('Matrah x ', '')}`,
               );
             }
           } else if (diff < 0.05) {
