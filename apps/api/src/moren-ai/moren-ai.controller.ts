@@ -8,6 +8,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MorenAiService } from './moren-ai.service';
 import { VoiceService } from './voice.service';
+import { ToolExecutorService } from './tool-executor.service';
 
 @Controller('moren-ai')
 @UseGuards(AuthGuard('jwt'))
@@ -15,6 +16,7 @@ export class MorenAiController {
   constructor(
     private readonly service: MorenAiService,
     private readonly voice: VoiceService,
+    private readonly tools: ToolExecutorService,
   ) {}
 
   // -------- KONUŞMA YÖNETİMİ --------
@@ -55,6 +57,65 @@ export class MorenAiController {
   @Get('brifing')
   async brifing(@Req() req: any, @Query('force') force?: string) {
     return this.service.getBrifing(req.user.tenantId, force === 'true' || force === '1');
+  }
+
+  @Get('office-brain')
+  async officeBrain(@Req() req: any, @Query('period') period?: string) {
+    const briefing = await this.tools.execute('get_operation_briefing', { period }, {
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+    });
+    return {
+      briefing,
+      agentCatalog: [
+        { id: 'ofis-koordinasyon', ad: 'Ofis Koordinasyon Agent', durum: 'mvp', isler: ['bugünkü işler', 'geciken işler', 'agent önerileri'] },
+        { id: 'luca', ad: 'LUCA Veri Agent', durum: 'aktif', isler: ['e-Arşiv/e-Fatura çekme', 'mizan çekme', 'beyan taslak hazırlık'] },
+        { id: 'mihsap', ad: 'Mihsap Fatura Agent', durum: 'aktif', isler: ['alış/satış faturası işleme', 'kararsızları ayırma', 'log üretme'] },
+        { id: 'beyan-hazirlik', ad: 'Beyanname Hazırlık Agent', durum: 'mvp', isler: ['evrak', 'KDV', 'mizan', 'banka', 'cari risk kontrolü'] },
+        { id: 'luca-beyanname', ad: 'LUCA Beyanname Agent', durum: 'taslak', isler: ['KDV1/KDV2/MUHSGK/Damga taslak', 'son onay', 'PDF/tahakkuk kaydı'] },
+        { id: 'kdv-beyan', ad: 'KDV Beyan Agent', durum: 'mvp', isler: ['fatura-LUCA karşılaştırma', 'KDV risk listesi'] },
+        { id: 'tahsilat', ad: 'Tahsilat Agent', durum: 'aktiflestiriliyor', isler: ['yaşlandırma', 'WhatsApp hatırlatma', 'ödeme sözü takibi'] },
+        { id: 'banka-ekstre', ad: 'Banka Ekstre Agent', durum: 'mvp', isler: ['ekstre eksik takibi', 'görev açma'] },
+        { id: 'whatsapp-bot', ad: 'WhatsApp Bot', durum: 'mvp', isler: ['mükellef sorusu', 'AI cevap', 'portal log'] },
+      ],
+      modelPolicy: {
+        default: 'ucuz model / kısa cevap',
+        analysis: 'güçlü model / KDV, mizan, beyan yorumu',
+        safety: 'kritik işlemde iki adım onay',
+      },
+    };
+  }
+
+  @Get('memories')
+  async memories(@Req() req: any, @Query('query') query?: string, @Query('taxpayerId') taxpayerId?: string, @Query('scope') scope?: string) {
+    return this.tools.execute('search_ai_memory', { query, taxpayerId, scope }, {
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+    });
+  }
+
+  @Post('memories')
+  async saveMemory(@Req() req: any, @Body() body: any) {
+    return this.tools.execute('save_ai_memory', body || {}, {
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+    });
+  }
+
+  @Post('agent-command/preview')
+  async previewAgentCommand(@Req() req: any, @Body() body: any) {
+    return this.tools.execute('preview_agent_command', body || {}, {
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+    });
+  }
+
+  @Post('agent-command/confirm')
+  async confirmAgentCommand(@Req() req: any, @Body() body: any) {
+    return this.tools.execute('create_confirmed_agent_command', body || {}, {
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+    });
   }
 
   // -------- SESLİ GİRİŞ (Whisper STT) --------

@@ -7,10 +7,11 @@ import remarkGfm from 'remark-gfm';
 import {
   Send, Mic, MicOff, Volume2, VolumeX, Plus, Trash2,
   Loader2, Sparkles, MessageSquare, DollarSign, Clock, Edit3,
+  Bot, Brain, ShieldCheck, RefreshCw, CheckCircle2,
 } from 'lucide-react';
 import {
   listConversations, getConversation, chat, deleteConversation, renameConversation,
-  transcribe, synthesize,
+  transcribe, synthesize, getOfficeBrain, saveMemory,
   type ConversationSummary, type Message,
 } from '@/lib/moren-ai';
 import { api } from '@/lib/api';
@@ -75,6 +76,7 @@ export default function MorenAIPage() {
   const [selectedTaxpayerId, setSelectedTaxpayerId] = useState('');
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [memoryText, setMemoryText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const recorder = useRecorder();
@@ -86,6 +88,12 @@ export default function MorenAIPage() {
       const { data } = await api.get('/taxpayers', { params: { search: '' } });
       return Array.isArray(data) ? data : (data?.taxpayers || data?.data || []);
     },
+  });
+
+  const { data: officeBrain, isLoading: brainLoading, refetch: refetchBrain } = useQuery({
+    queryKey: ['moren-ai-office-brain'],
+    queryFn: () => getOfficeBrain(),
+    refetchInterval: 60000,
   });
 
   // Konuşma listesi
@@ -154,6 +162,22 @@ export default function MorenAIPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ai-conversations'] }),
   });
 
+  const saveMemoryMut = useMutation({
+    mutationFn: () => saveMemory({
+      title: memoryText.slice(0, 80) || 'Ofis hafızası',
+      content: memoryText,
+      taxpayerId: selectedTaxpayerId || undefined,
+      scope: selectedTaxpayerId ? 'taxpayer' : 'office',
+      importance: 4,
+      tags: selectedTaxpayerId ? ['mukellef'] : ['ofis'],
+    }),
+    onSuccess: () => {
+      toast.success('MOREN hafızasına alındı');
+      setMemoryText('');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Hafıza kaydedilemedi'),
+  });
+
   // Scroll to bottom on new message
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -164,6 +188,11 @@ export default function MorenAIPage() {
     if (!text) return;
     setInput('');
     sendMutation.mutate({ message: text });
+  };
+
+  const askQuick = (text: string) => {
+    setInput(text);
+    sendMutation.mutate({ message: text, voiceMode });
   };
 
   const handleNewChat = () => {
@@ -342,6 +371,17 @@ export default function MorenAIPage() {
           </button>
         </div>
 
+        <OfficeBrainPanel
+          data={officeBrain}
+          loading={brainLoading}
+          memoryText={memoryText}
+          setMemoryText={setMemoryText}
+          saveMemory={() => saveMemoryMut.mutate()}
+          savingMemory={saveMemoryMut.isPending}
+          refetch={() => refetchBrain()}
+          askQuick={askQuick}
+        />
+
         {/* Mesajlar */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && !sendMutation.isPending && (
@@ -472,6 +512,85 @@ export default function MorenAIPage() {
 // --------------------------------------------
 // Mesaj Baloncuğu
 // --------------------------------------------
+function OfficeBrainPanel({
+  data,
+  loading,
+  memoryText,
+  setMemoryText,
+  saveMemory,
+  savingMemory,
+  refetch,
+  askQuick,
+}: {
+  data: any;
+  loading: boolean;
+  memoryText: string;
+  setMemoryText: (v: string) => void;
+  saveMemory: () => void;
+  savingMemory: boolean;
+  refetch: () => void;
+  askQuick: (text: string) => void;
+}) {
+  const ozet = data?.briefing?.ozet || {};
+  const agents = data?.agentCatalog || [];
+  const metrics = [
+    { label: 'Evrak bekleyen', value: ozet.evrakEksik ?? 0 },
+    { label: 'KDV/beyan eksik', value: ozet.kdvKontrolEksik ?? 0 },
+    { label: 'Banka aksiyonu', value: (ozet.bankaEksik ?? 0) + (ozet.bankaHesapsiz ?? 0) },
+    { label: 'Cari borclu', value: ozet.borcluMukellef ?? 0 },
+    { label: 'Agent hata', value: ozet.bugunAgentHata ?? 0 },
+  ];
+  const quicks = [
+    'Bugun ne yapmaliyim? En onemli 5 isi kisa listele.',
+    'Bu ay beyana hazir olmayan mukellefleri risk sirasi ile goster.',
+    'LUCA ve Mihsap agent loglarinda bugun hata var mi, acikla.',
+    'WhatsApp ile uyarmam gereken tahsilat ve evrak aksiyonlarini hazirla.',
+  ];
+
+  return (
+    <div className="px-4 py-3 space-y-3" style={{ borderBottom: '1px solid rgba(184,160,111,0.12)', background: 'rgba(255,255,255,0.015)' }}>
+      <div className="flex items-center gap-2">
+        <Brain size={15} style={{ color: GOLD }} />
+        <span className="text-xs font-semibold" style={{ color: GOLD }}>Ofis Beyni</span>
+        <span className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>WhatsApp, portal verisi ve agent komutlari tek hatta</span>
+        <button onClick={refetch} className="ml-auto p-1.5 rounded-lg hover:bg-white/5" title="Yenile">
+          {loading ? <Loader2 size={13} className="animate-spin" style={{ color: GOLD }} /> : <RefreshCw size={13} style={{ color: GOLD }} />}
+        </button>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+        {metrics.map((m) => (
+          <div key={m.label} className="rounded-lg px-3 py-2" style={{ border: '1px solid rgba(184,160,111,0.14)', background: 'rgba(15,13,11,0.35)' }}>
+            <div className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>{m.label}</div>
+            <div className="text-lg font-semibold leading-tight" style={{ color: '#fafaf9' }}>{m.value}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {quicks.map((q) => (
+          <button key={q} onClick={() => askQuick(q)} className="text-[11px] px-2.5 py-1.5 rounded-lg transition" style={{ border: '1px solid rgba(184,160,111,0.18)', color: '#fafaf9', background: 'rgba(255,255,255,0.035)' }}>
+            {q}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {agents.slice(0, 9).map((a: any) => (
+            <span key={a.id} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px]" style={{ border: '1px solid rgba(184,160,111,0.12)', color: 'rgba(250,250,249,0.72)' }}>
+              <Bot size={10} style={{ color: GOLD }} /> {a.ad}
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input value={memoryText} onChange={(e) => setMemoryText(e.target.value)} placeholder="Ofis/mukellef hafizasina not al..." className="flex-1 px-2 py-1.5 rounded-lg text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.18)', color: '#fafaf9' }} />
+          <button disabled={!memoryText.trim() || savingMemory} onClick={saveMemory} className="px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40" style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}55`, color: GOLD }}>
+            {savingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user';
 

@@ -46,6 +46,16 @@ export class ToolExecutorService {
         case 'get_beyanname_config':  return this.getBeyannameConfig(input, ctx);
         case 'get_beyan_ozet':        return this.getBeyanOzet(input, ctx);
         case 'get_agent_status':      return this.getAgentStatus(input, ctx);
+        case 'get_operation_briefing': return this.getOperationBriefing(input, ctx);
+        case 'get_taxpayer_work_status': return this.getTaxpayerWorkStatus(input, ctx);
+        case 'get_luca_agent_jobs':   return this.getLucaAgentJobs(input, ctx);
+        case 'get_mihsap_agent_jobs': return this.getMihsapAgentJobs(input, ctx);
+        case 'preview_agent_command': return this.previewAgentCommand(input, ctx);
+        case 'create_confirmed_agent_command': return this.createAgentCommand(input, ctx);
+        case 'get_collection_risk_summary': return this.getCollectionRiskSummary(input, ctx);
+        case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
+        case 'search_ai_memory':      return this.searchAiMemory(input, ctx);
+        case 'save_ai_memory':        return this.saveAiMemory(input, ctx);
         case 'create_agent_command':  return this.createAgentCommand(input, ctx);
         case 'get_ai_cost_summary':   return this.getAiCostSummary(input, ctx);
         default:
@@ -73,6 +83,26 @@ export class ToolExecutorService {
   private displayName(t: { companyName?: string | null; firstName?: string | null; lastName?: string | null }) {
     if (t.companyName) return t.companyName;
     return `${t.firstName || ''} ${t.lastName || ''}`.trim() || '(isimsiz)';
+  }
+
+  private currentPeriod(input?: any): { period: string; year: number; month: number } {
+    const raw = String(input?.period || '').trim();
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (m) return { period: raw, year: Number(m[1]), month: Number(m[2]) };
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    return { period: `${year}-${String(month).padStart(2, '0')}`, year, month };
+  }
+
+  private startOfDay(d = new Date()) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  private riskLevel(score: number) {
+    if (score >= 80) return 'HAZIR';
+    if (score >= 55) return 'EKSIK';
+    return 'RISKLI';
   }
 
   // ------------------------------------------------------------
@@ -1184,7 +1214,7 @@ export class ToolExecutorService {
     const agent = String(input?.agent || '').trim();
     const action = String(input?.action || '').trim();
     const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
-    const allowedAgents = ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'];
+    const allowedAgents = ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'];
     const allowedMihsapActions = ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'];
     if (!allowedAgents.includes(agent)) return { error: `Desteklenmeyen agent: ${agent}` };
     if (agent === 'mihsap' && !allowedMihsapActions.includes(action)) {
@@ -1212,6 +1242,317 @@ export class ToolExecutorService {
       status: cmd.status,
       createdAt: cmd.createdAt,
     };
+  }
+
+  private async getOperationBriefing(input: any, ctx: { tenantId: string }) {
+    const { period, year, month } = this.currentPeriod(input);
+    const todayStart = this.startOfDay();
+    const [taxpayers, statuses, bankAccounts, bankRecords, cariRows, agentEvents, pendingDecisions, commands, tasks] = await Promise.all([
+      this.prisma.taxpayer.findMany({
+        where: { tenantId: ctx.tenantId, isActive: true },
+        select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, type: true },
+        orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+      }),
+      (this.prisma as any).taxpayerMonthlyStatus.findMany({ where: { tenantId: ctx.tenantId, year, month } }),
+      (this.prisma as any).bankaHesap.findMany({ where: { tenantId: ctx.tenantId, aktif: true }, select: { taxpayerId: true } }),
+      (this.prisma as any).bankaEkstreKaydi.findMany({ where: { tenantId: ctx.tenantId, donem: period } }),
+      (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }),
+      (this.prisma as any).agentEvent.findMany({
+        where: { tenantId: ctx.tenantId, ts: { gte: todayStart } },
+        orderBy: { ts: 'desc' },
+        take: 80,
+      }),
+      (this.prisma as any).pendingDecision?.findMany
+        ? (this.prisma as any).pendingDecision.findMany({ where: { tenantId: ctx.tenantId, durum: 'bekliyor' }, take: 50 })
+        : Promise.resolve([]),
+      (this.prisma as any).agentCommand.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      (this.prisma as any).task.findMany({
+        where: { tenantId: ctx.tenantId, isTemplate: false, status: { in: ['OPEN', 'IN_PROGRESS', 'MISSED'] } },
+        select: { id: true, title: true, dueDate: true, status: true },
+        take: 200,
+      }).catch(() => []),
+    ]);
+
+    const statusMap = new Map((statuses || []).map((s: any) => [s.taxpayerId, s]));
+    const bankAccountSet = new Set((bankAccounts || []).map((b: any) => b.taxpayerId));
+    const bankRecordMap = new Map<string, any[]>();
+    for (const r of bankRecords || []) {
+      const list = bankRecordMap.get(r.taxpayerId) || [];
+      list.push(r);
+      bankRecordMap.set(r.taxpayerId, list);
+    }
+
+    let evrakEksik = 0, islenmemis = 0, kdvKontrolEksik = 0, beyanEksik = 0, bankaEksik = 0, bankaHesapsiz = 0;
+    const readinessRows: any[] = [];
+    for (const t of taxpayers as any[]) {
+      const s: any = statusMap.get(t.id) || {};
+      const bankaVar = bankAccountSet.has(t.id);
+      const ekstreRows = bankRecordMap.get(t.id) || [];
+      const ekstreTamam = !bankaVar || (ekstreRows.length > 0 && ekstreRows.every((r: any) => r.ekstreGeldi && r.ekstreIslendi));
+      const kdvTamam = !!(s.kdvKontrolEdildi || (s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol));
+      const eksikler: string[] = [];
+      if (!s.evraklarGeldi) { evrakEksik++; eksikler.push('evrak gelmedi'); }
+      if (s.evraklarGeldi && !s.evraklarIslendi) { islenmemis++; eksikler.push('evrak işlenmedi'); }
+      if (!kdvTamam) { kdvKontrolEksik++; eksikler.push('KDV kontrol eksik'); }
+      if (!s.beyannameVerildi) { beyanEksik++; eksikler.push('beyanname işaretlenmedi'); }
+      if (!bankaVar) { bankaHesapsiz++; eksikler.push('banka hesabı yok'); }
+      else if (!ekstreTamam) { bankaEksik++; eksikler.push('banka ekstresi eksik/işlenmedi'); }
+      const score = Math.max(0, 100 - (eksikler.length * 18));
+      if (eksikler.length) readinessRows.push({ id: t.id, ad: this.displayName(t), score, durum: this.riskLevel(score), eksikler: eksikler.slice(0, 4) });
+    }
+
+    const cariByTaxpayer = new Map<string, number>();
+    for (const h of cariRows || []) {
+      const tutar = this.toNum(h.tutar);
+      const sign = h.tip === 'TAHAKKUK' ? 1 : h.tip === 'TAHSILAT' ? -1 : h.tip === 'IADE' ? 1 : 0;
+      cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
+    }
+    const borclular = [...cariByTaxpayer.entries()].filter(([, v]) => v > 0);
+    const toplamBakiye = borclular.reduce((s, [, v]) => s + v, 0);
+    const bugunHata = (agentEvents || []).filter((e: any) => /hata|error|fail/i.test(String(e.status || ''))).length;
+    const gecikenGorev = (tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) < todayStart).length;
+
+    return {
+      period,
+      ozet: {
+        aktifMukellef: taxpayers.length,
+        evrakEksik,
+        islenmemis,
+        kdvKontrolEksik,
+        beyanEksik,
+        bankaEksik,
+        bankaHesapsiz,
+        borcluMukellef: borclular.length,
+        toplamBakiye,
+        bugunAgentOlay: (agentEvents || []).length,
+        bugunAgentHata: bugunHata,
+        bekleyenOnay: (pendingDecisions || []).length,
+        gecikenGorev,
+      },
+      oneriler: [
+        evrakEksik ? `${evrakEksik} mükellefte evrak bekleniyor` : null,
+        bankaEksik || bankaHesapsiz ? `${bankaEksik + bankaHesapsiz} mükellefte banka takip aksiyonu var` : null,
+        kdvKontrolEksik ? `${kdvKontrolEksik} mükellefte KDV/beyan hazırlığı eksik` : null,
+        borclular.length ? `${borclular.length} mükellefte açık cari bakiye var` : null,
+        bugunHata ? `Bugün ${bugunHata} agent hatası var` : null,
+      ].filter(Boolean),
+      riskliMukellefler: readinessRows.sort((a, b) => a.score - b.score).slice(0, 15),
+      sonAgentKomutlari: commands,
+      sonAgentOlaylari: (agentEvents || []).slice(0, 15),
+    };
+  }
+
+  private async getTaxpayerWorkStatus(input: any, ctx: { tenantId: string }) {
+    const { period, year, month } = this.currentPeriod(input);
+    const taxpayerId = input?.taxpayerId;
+    const [taxpayer, status, bankAccounts, bankRecords, invoices, earsiv, kdvSessions, beyanlar, mizan, cariRows, agentEvents, memories] = await Promise.all([
+      this.prisma.taxpayer.findFirst({ where: { tenantId: ctx.tenantId, id: taxpayerId } }),
+      (this.prisma as any).taxpayerMonthlyStatus.findFirst({ where: { tenantId: ctx.tenantId, taxpayerId, year, month } }),
+      (this.prisma as any).bankaHesap.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, aktif: true } }),
+      (this.prisma as any).bankaEkstreKaydi.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period } }),
+      (this.prisma as any).mihsapInvoice.count({ where: { tenantId: ctx.tenantId, mukellefId: taxpayerId, donem: period } }).catch(() => 0),
+      (this.prisma as any).earsivFatura.count({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period } }).catch(() => 0),
+      (this.prisma as any).kdvControlSession.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, period }, orderBy: { createdAt: 'desc' }, take: 3 }).catch(() => []),
+      (this.prisma as any).beyanKaydi.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, take: 10 }).catch(() => []),
+      (this.prisma as any).mizan.findFirst({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, orderBy: { createdAt: 'desc' } }).catch(() => null),
+      (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId, taxpayerId }, select: { tip: true, tutar: true } }).catch(() => []),
+      (this.prisma as any).agentEvent.findMany({ where: { tenantId: ctx.tenantId, mukellef: { contains: '', mode: 'insensitive' } }, orderBy: { ts: 'desc' }, take: 20 }).catch(() => []),
+      (this.prisma as any).aiMemory?.findMany
+        ? (this.prisma as any).aiMemory.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, isActive: true }, orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }], take: 5 })
+        : Promise.resolve([]),
+    ]);
+    if (!taxpayer) return { error: 'Mükellef bulunamadı' };
+    const s: any = status || {};
+    const cariBakiye = (cariRows || []).reduce((sum: number, h: any) => sum + (h.tip === 'TAHAKKUK' ? this.toNum(h.tutar) : h.tip === 'TAHSILAT' ? -this.toNum(h.tutar) : 0), 0);
+    const eksikler: string[] = [];
+    if (!s.evraklarGeldi) eksikler.push('evrak gelmedi');
+    if (s.evraklarGeldi && !s.evraklarIslendi) eksikler.push('evrak işlenmedi');
+    if (!s.kdvKontrolEdildi && !(s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol)) eksikler.push('KDV kontrol eksik');
+    if (!mizan) eksikler.push('LUCA mizan yok');
+    if (!bankAccounts.length) eksikler.push('banka hesabı yok');
+    else if (!bankRecords.length || bankRecords.some((r: any) => !r.ekstreGeldi || !r.ekstreIslendi)) eksikler.push('banka ekstresi eksik/işlenmedi');
+    if (!beyanlar.length && !s.beyannameVerildi) eksikler.push('beyan kaydı yok');
+    if (cariBakiye > 0) eksikler.push('açık cari bakiye var');
+    const score = Math.max(0, 100 - eksikler.length * 14);
+    return {
+      taxpayerId,
+      ad: this.displayName(taxpayer),
+      period,
+      score,
+      durum: this.riskLevel(score),
+      eksikler,
+      veri: {
+        mihsapFatura: invoices,
+        lucaEarsivFatura: earsiv,
+        kdvKontrolOturumu: kdvSessions.length,
+        beyanKaydi: beyanlar.length,
+        mizanVar: !!mizan,
+        bankaHesapSayisi: bankAccounts.length,
+        cariBakiye,
+        hafizaNotlari: memories.map((m: any) => ({ title: m.title, content: m.content, tags: m.tags })),
+        sonAgentOlaylari: agentEvents,
+      },
+    };
+  }
+
+  private async getLucaAgentJobs(input: any, ctx: { tenantId: string }) {
+    const limit = Math.min(input?.limit || 20, 100);
+    return this.getAgentJobs('luca', limit, ctx);
+  }
+
+  private async getMihsapAgentJobs(input: any, ctx: { tenantId: string }) {
+    const limit = Math.min(input?.limit || 20, 100);
+    const { period } = this.currentPeriod(input);
+    const base = await this.getAgentJobs('mihsap', limit, ctx);
+    const jobs = await (this.prisma as any).mihsapFetchJob.findMany({
+      where: { tenantId: ctx.tenantId, donem: period },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    }).catch(() => []);
+    return { ...base, period, mihsapFetchJobs: jobs };
+  }
+
+  private async getAgentJobs(agent: string, limit: number, ctx: { tenantId: string }) {
+    const [status, commands, events] = await Promise.all([
+      (this.prisma as any).agentStatus.findFirst({ where: { tenantId: ctx.tenantId, agent } }),
+      (this.prisma as any).agentCommand.findMany({ where: { tenantId: ctx.tenantId, agent }, orderBy: { createdAt: 'desc' }, take: limit }),
+      (this.prisma as any).agentEvent.findMany({ where: { tenantId: ctx.tenantId, agent }, orderBy: { ts: 'desc' }, take: limit }),
+    ]);
+    return { agent, status, commands, events };
+  }
+
+  private previewAgentCommand(input: any, ctx: { tenantId: string }) {
+    const agent = String(input?.agent || '').trim();
+    const action = String(input?.action || '').trim();
+    const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
+    const requiresConfirmation = true;
+    const supported: Record<string, string[]> = {
+      mihsap: ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'],
+      luca: ['fetch_earsiv', 'fetch_efatura', 'fetch_mizan', 'prepare_beyanname'],
+      kdv: ['prepare_kdv1', 'prepare_kdv2', 'kontrol'],
+      sgk: ['prepare_muhsgk'],
+      tebligat: ['scan'],
+      'beyan-hazirlik': ['kontrol', 'create_tasks'],
+      'luca-beyanname': ['prepare_kdv1', 'prepare_kdv2', 'prepare_muhsgk', 'prepare_damga'],
+      'kdv-beyan': ['kontrol', 'prepare_kdv1', 'prepare_kdv2'],
+      tahsilat: ['risk_scan', 'whatsapp_preview', 'payment_promise_followup'],
+      'banka-ekstre': ['scan_missing', 'create_tasks'],
+      edefter: ['scan_berat'],
+      whatsapp: ['owner_alert', 'portal_message_preview', 'portal_message_send'],
+    };
+    const errors: string[] = [];
+    if (!supported[agent]) errors.push(`Desteklenmeyen agent: ${agent}`);
+    else if (!supported[agent].includes(action)) errors.push(`${agent} için desteklenmeyen action: ${action}`);
+    if (agent === 'mihsap' && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
+      errors.push('Mihsap komutu için payload.ay ve payload.mukellefler gerekir');
+    }
+    return {
+      ok: errors.length === 0,
+      errors,
+      requiresConfirmation,
+      confirmationText: 'ONAYLIYORUM',
+      agent,
+      action,
+      payload,
+      etki: this.describeAgentImpact(agent, action, payload),
+      not: 'Bu önizleme komut oluşturmaz. Kullanıcı net onay verirse create_confirmed_agent_command çalıştırılır.',
+    };
+  }
+
+  private describeAgentImpact(agent: string, action: string, payload: any) {
+    if (agent === 'luca' && action === 'prepare_beyanname') return 'LUCA beyanname ekranında taslak hazırlık başlatılır; gönderim ayrıca onay gerektirir.';
+    if (agent === 'luca' && action === 'fetch_mizan') return 'LUCA’dan mizan çekimi başlatılır ve portala işlenir.';
+    if (agent === 'mihsap') return `${payload?.mukellefler?.length || 0} mükellef için Mihsap fatura işleme komutu hazırlanır.`;
+    if (agent === 'kdv') return 'KDV kontrol / beyan ön hazırlık komutu hazırlanır.';
+    return `${agent} agent için ${action} komutu hazırlanır.`;
+  }
+
+  private async getCollectionRiskSummary(input: any, ctx: { tenantId: string }) {
+    const limit = Math.min(input?.limit || 20, 100);
+    const [taxpayers, rows] = await Promise.all([
+      this.prisma.taxpayer.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true } }),
+      (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId }, select: { taxpayerId: true, tip: true, tutar: true, tarih: true } }),
+    ]);
+    const tMap = new Map((taxpayers as any[]).map((t) => [t.id, t]));
+    const balances = new Map<string, { bakiye: number; sonTahsilat?: Date }>();
+    for (const h of rows || []) {
+      const cur = balances.get(h.taxpayerId) || { bakiye: 0 };
+      if (h.tip === 'TAHAKKUK') cur.bakiye += this.toNum(h.tutar);
+      if (h.tip === 'TAHSILAT') {
+        cur.bakiye -= this.toNum(h.tutar);
+        if (!cur.sonTahsilat || new Date(h.tarih) > cur.sonTahsilat) cur.sonTahsilat = new Date(h.tarih);
+      }
+      balances.set(h.taxpayerId, cur);
+    }
+    const riskli = [...balances.entries()]
+      .map(([taxpayerId, b]) => {
+        const t: any = tMap.get(taxpayerId);
+        const phone = t?.phone || (Array.isArray(t?.phones) ? t.phones.find(Boolean) : null);
+        return { taxpayerId, ad: t ? this.displayName(t) : taxpayerId, bakiye: b.bakiye, sonTahsilat: b.sonTahsilat, whatsappUygun: !!phone };
+      })
+      .filter((r) => r.bakiye > 0)
+      .sort((a, b) => b.bakiye - a.bakiye);
+    return {
+      toplamBorclu: riskli.length,
+      toplamBakiye: riskli.reduce((s, r) => s + r.bakiye, 0),
+      whatsappUygun: riskli.filter((r) => r.whatsappUygun).length,
+      enRiskli: riskli.slice(0, limit),
+    };
+  }
+
+  private async getBeyannameReadinessSummary(input: any, ctx: { tenantId: string }) {
+    const { period } = this.currentPeriod(input);
+    const limit = Math.min(input?.limit || 30, 100);
+    const base = await this.getOperationBriefing({ period }, ctx);
+    return {
+      period,
+      toplam: base.ozet.aktifMukellef,
+      hazir: base.riskliMukellefler.filter((r: any) => r.durum === 'HAZIR').length,
+      eksik: base.riskliMukellefler.filter((r: any) => r.durum === 'EKSIK').length,
+      riskli: base.riskliMukellefler.filter((r: any) => r.durum === 'RISKLI').length,
+      enSorunlu: base.riskliMukellefler.slice(0, limit),
+      ozet: base.ozet,
+    };
+  }
+
+  private async searchAiMemory(input: any, ctx: { tenantId: string }) {
+    const limit = Math.min(input?.limit || 10, 50);
+    const query = String(input?.query || '').trim();
+    const where: any = { tenantId: ctx.tenantId, isActive: true };
+    if (input?.taxpayerId) where.taxpayerId = input.taxpayerId;
+    if (input?.scope) where.scope = input.scope;
+    if (query) {
+      where.OR = [
+        { title: { contains: query, mode: 'insensitive' } },
+        { content: { contains: query, mode: 'insensitive' } },
+      ];
+    }
+    const rows = await (this.prisma as any).aiMemory.findMany({
+      where,
+      orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+      take: limit,
+    });
+    return { count: rows.length, memories: rows };
+  }
+
+  private async saveAiMemory(input: any, ctx: { tenantId: string; userId?: string | null }) {
+    const title = String(input?.title || '').trim();
+    const content = String(input?.content || '').trim();
+    if (!title || !content) return { error: 'title ve content zorunlu' };
+    const row = await (this.prisma as any).aiMemory.create({
+      data: {
+        tenantId: ctx.tenantId,
+        taxpayerId: input?.taxpayerId || null,
+        scope: input?.scope || (input?.taxpayerId ? 'taxpayer' : 'office'),
+        title: title.slice(0, 160),
+        content,
+        source: 'moren-ai',
+        importance: Math.max(1, Math.min(Number(input?.importance || 3), 5)),
+        tags: Array.isArray(input?.tags) ? input.tags.slice(0, 12).map(String) : [],
+        createdBy: ctx.userId || null,
+      },
+    });
+    return { ok: true, memory: row };
   }
 
   private async getAiCostSummary(input: any, ctx: { tenantId: string }) {

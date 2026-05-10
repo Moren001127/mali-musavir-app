@@ -409,6 +409,138 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_operation_briefing',
+    description:
+      'Ofisin bugünkü operasyon brifingini döner: evrak/beyan hazırlığı, banka ekstre eksikleri, cari tahsilat riski, agent hataları, onay kuyruğu ve önerilen işler. ' +
+      '"Bugün ne yapmalıyım?", "Neyi unutuyorum?", "Ofisin durumu ne?" sorularında ilk kullanılacak tool budur.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', description: 'Dönem YYYY-MM. Boşsa cari ay.' },
+      },
+    },
+  },
+  {
+    name: 'get_taxpayer_work_status',
+    description:
+      'Tek mükellef için beyanname/fatura/KDV/LUCA/Mihsap/cari/banka hazırlık durumunu ve eksikleri özetler. ' +
+      '"ABC hazır mı?", "Bu mükellefte ne eksik?", "KDV öncesi durumu ne?" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        period: { type: 'string', description: 'Dönem YYYY-MM. Boşsa cari ay.' },
+      },
+      required: ['taxpayerId'],
+    },
+  },
+  {
+    name: 'get_luca_agent_jobs',
+    description:
+      'LUCA agent komutları, son olayları ve durumunu döner. LUCA’dan fatura/mizan çekme işleri nerede kaldı sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Varsayılan 20, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'get_mihsap_agent_jobs',
+    description:
+      'Mihsap agent işleri, fatura çekme/işleme jobları, son loglar ve hataları döner. "Mihsap nerede hata verdi?" sorularında kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', description: 'Dönem YYYY-MM. Boşsa cari ay.' },
+        limit: { type: 'number', description: 'Varsayılan 20, max 100.' },
+      },
+    },
+  },
+  {
+    name: 'preview_agent_command',
+    description:
+      'Riskli bir LUCA/Mihsap/KDV agent komutunu çalıştırmadan önce önizler. Komutu DB’ye yazmaz. Kullanıcıya onay metni ve etki özeti göstermek için kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        action: { type: 'string' },
+        payload: { type: 'object' },
+      },
+      required: ['agent', 'action', 'payload'],
+    },
+  },
+  {
+    name: 'create_confirmed_agent_command',
+    description:
+      'Sadece kullanıcı net onay verdikten sonra agent komutu oluşturur. confirmationText kesin olarak ONAYLIYORUM olmalıdır.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        action: { type: 'string' },
+        payload: { type: 'object' },
+        confirmationText: { type: 'string' },
+      },
+      required: ['agent', 'action', 'payload', 'confirmationText'],
+    },
+  },
+  {
+    name: 'get_collection_risk_summary',
+    description:
+      'Cari kasa tahsilat riskini özetler: borçlu sayısı, toplam açık bakiye, 90+ gün riski ve WhatsApp uygun kayıtlar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'En riskli mükellef sayısı. Varsayılan 20.' },
+      },
+    },
+  },
+  {
+    name: 'get_beyanname_readiness_summary',
+    description:
+      'Tüm mükellefler için beyanname hazırlık skorunu üretir: evrak, işleme, KDV kontrol, banka ekstresi, mizan, beyan kaydı ve cari risk eksikleri.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', description: 'Dönem YYYY-MM. Boşsa cari ay.' },
+        limit: { type: 'number', description: 'En sorunlu mükellef sayısı. Varsayılan 30.' },
+      },
+    },
+  },
+  {
+    name: 'search_ai_memory',
+    description:
+      'MOREN AI hafızasında arama yapar. Ofis alışkanlıkları, mükellef özel notları, portal/mobil/agent hafızası için kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        taxpayerId: { type: 'string' },
+        scope: { type: 'string', enum: ['office', 'taxpayer', 'portal', 'mobile', 'agent'] },
+        limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'save_ai_memory',
+    description:
+      'Kullanıcı açıkça "bunu hatırla", "hafızaya al" dediğinde MOREN AI hafızasına not kaydeder. Hassas işlemler veya tahminler kaydedilmez.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        content: { type: 'string' },
+        taxpayerId: { type: 'string' },
+        scope: { type: 'string', enum: ['office', 'taxpayer', 'portal', 'mobile', 'agent'] },
+        importance: { type: 'number' },
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  {
     name: 'create_agent_command',
     description:
       'Kullanıcı AÇIKÇA ONAYLADIKTAN sonra yerel ajana işlem komutu gönderir. İlk istekte bu tool kullanılmaz; önce yapılacak işi özetle ve onay iste. ' +

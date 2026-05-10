@@ -68,6 +68,38 @@ export async function chat(body: {
   return data;
 }
 
+export async function getOfficeBrain(period?: string) {
+  const { data } = await api.get('/moren-ai/office-brain', { params: { period } });
+  return data;
+}
+
+export async function searchMemories(params?: { query?: string; taxpayerId?: string; scope?: string }) {
+  const { data } = await api.get('/moren-ai/memories', { params });
+  return data;
+}
+
+export async function saveMemory(body: {
+  title: string;
+  content: string;
+  taxpayerId?: string;
+  scope?: string;
+  importance?: number;
+  tags?: string[];
+}) {
+  const { data } = await api.post('/moren-ai/memories', body);
+  return data;
+}
+
+export async function previewAgentCommand(body: { agent: string; action: string; payload: any }) {
+  const { data } = await api.post('/moren-ai/agent-command/preview', body);
+  return data;
+}
+
+export async function confirmAgentCommand(body: { agent: string; action: string; payload: any; confirmationText: string }) {
+  const { data } = await api.post('/moren-ai/agent-command/confirm', body);
+  return data;
+}
+
 export async function transcribe(audioBlob: Blob, mimetype: string): Promise<{ text: string; durationMs: number }> {
   const fd = new FormData();
   fd.append('audio', audioBlob, 'voice.' + (mimetype.includes('webm') ? 'webm' : 'mp3'));

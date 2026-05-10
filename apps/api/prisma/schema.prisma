@@ -1047,6 +1047,29 @@ model AiCreditTopup {
   @@map("ai_credit_topups")
 }
 
+// MOREN AI hafizasi: ofis, portal, mukellef ve ileride mobil uygulama baglamini
+// kalici olarak saklar. PII/ozel notlar tenant izolasyonuyla tutulur.
+model AiMemory {
+  id          String   @id @default(cuid())
+  tenantId    String
+  taxpayerId  String?
+  scope       String   @default("office") // office | taxpayer | portal | mobile | agent
+  title       String
+  content     String   @db.Text
+  source      String?  // moren-ai | user | agent | mobile | system
+  importance  Int      @default(3) // 1 dusuk, 5 kritik
+  tags        String[] @default([])
+  isActive    Boolean  @default(true)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, scope, isActive])
+  @@index([tenantId, taxpayerId, isActive])
+  @@index([tenantId, updatedAt])
+  @@map("ai_memories")
+}
+
 // ============================================================
 // MIHSAP ENTEGRASYONU
 // ============================================================
