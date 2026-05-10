@@ -1416,6 +1416,7 @@ model SmsTemplate {
   tenantId         String   @unique
   evrakTalepMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınızı tarafımıza teslim etmenizi rica ederiz. Moren Mali Müşavirlik")
   evrakGeldiMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınız tarafımıza ulaşmıştır. İşlemlerinize başlanmıştır. Moren Mali Müşavirlik")
+  tahsilatHatirlatmaMesaji String @default("Sayin {ad}, cari hesabinizda {bakiye} acik bakiye gorunmektedir. Odeme yaptiysaniz dekontu iletmenizi rica ederiz. Moren Mali Musavirlik")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

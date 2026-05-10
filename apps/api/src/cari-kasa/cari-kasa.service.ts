@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 
 /**
  * Cari Kasa Servisi — muhasebe ofisi müşteri hesapları.
@@ -13,7 +14,10 @@ import { PrismaService } from '../prisma/prisma.service';
 @Injectable()
 export class CariKasaService {
   private readonly logger = new Logger(CariKasaService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly whatsApp: WhatsAppService,
+  ) {}
 
   // ==================== HİZMET CRUD ====================
 
@@ -501,6 +505,220 @@ export class CariKasaService {
         };
       })
       .sort((a: any, b: any) => collator.compare(a.ad, b.ad));
+  }
+
+  private roundMoney(n: number) {
+    return Math.round(n * 100) / 100;
+  }
+
+  private fmtMoney(n: number) {
+    return this.roundMoney(n).toLocaleString('tr-TR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  private primaryPhone(t: any): string | null {
+    if (t.phone?.trim()) return t.phone.trim();
+    const list = Array.isArray(t.phones) ? t.phones : [];
+    return list.find((p: string) => p?.trim())?.trim() || null;
+  }
+
+  private renderTahsilatMesaji(template: string, row: any, donem: string) {
+    return template
+      .split('{ad}').join(row.ad || 'Mükellefimiz')
+      .split('{bakiye}').join(`${this.fmtMoney(row.bakiye)} TL`)
+      .split('{dönem}').join(donem)
+      .split('{donem}').join(donem);
+  }
+
+  private calculateAgingFromMovements(hareketler: any[], today = new Date()) {
+    const tahakkuklar = hareketler
+      .filter((h) => h.tip === 'TAHAKKUK' || h.tip === 'IADE')
+      .sort((a, b) => new Date(a.tarih).getTime() - new Date(b.tarih).getTime())
+      .map((h) => ({
+        tarih: new Date(h.tarih),
+        kalan: Number(h.tutar) * (h.tip === 'IADE' ? -1 : 1),
+      }))
+      .filter((h) => h.kalan > 0);
+
+    let tahsilat = hareketler.reduce((sum, h) => {
+      if (h.tip === 'TAHSILAT') return sum + Number(h.tutar);
+      if (h.tip === 'DUZELTME') return sum - Number(h.tutar);
+      return sum;
+    }, 0);
+
+    for (const item of tahakkuklar) {
+      if (tahsilat <= 0) break;
+      const used = Math.min(item.kalan, tahsilat);
+      item.kalan = this.roundMoney(item.kalan - used);
+      tahsilat = this.roundMoney(tahsilat - used);
+    }
+
+    const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
+    for (const item of tahakkuklar) {
+      if (item.kalan <= 0) continue;
+      const ageDays = Math.max(0, Math.floor((today.getTime() - item.tarih.getTime()) / 86400000));
+      if (ageDays <= 0) buckets.current += item.kalan;
+      else if (ageDays <= 30) buckets.d1_30 += item.kalan;
+      else if (ageDays <= 60) buckets.d31_60 += item.kalan;
+      else if (ageDays <= 90) buckets.d61_90 += item.kalan;
+      else buckets.d90plus += item.kalan;
+    }
+
+    return Object.fromEntries(Object.entries(buckets).map(([k, v]) => [k, this.roundMoney(v)]));
+  }
+
+  async yaslandirma(tenantId: string) {
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: {
+        id: true, firstName: true, lastName: true, companyName: true, taxNumber: true,
+        phone: true, phones: true,
+      },
+    });
+    const ids = taxpayers.map((t: any) => t.id);
+    const hareketler = ids.length
+      ? await (this.prisma as any).cariHareket.findMany({
+          where: { tenantId, taxpayerId: { in: ids } },
+          select: { taxpayerId: true, tip: true, tutar: true, tarih: true },
+          orderBy: [{ tarih: 'asc' }, { createdAt: 'asc' }],
+        })
+      : [];
+
+    const byTaxpayer = new Map<string, any[]>();
+    for (const h of hareketler) {
+      const list = byTaxpayer.get(h.taxpayerId) || [];
+      list.push(h);
+      byTaxpayer.set(h.taxpayerId, list);
+    }
+
+    const adOf = (t: any) =>
+      (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber || '').trim();
+
+    const rows = taxpayers.map((t: any) => {
+      const movements = byTaxpayer.get(t.id) || [];
+      const aging = this.calculateAgingFromMovements(movements);
+      const bakiye = this.roundMoney(Object.values(aging).reduce((s: number, v: any) => s + Number(v), 0));
+      const maxBucket = aging.d90plus > 0 ? '90+' : aging.d61_90 > 0 ? '61-90' : aging.d31_60 > 0 ? '31-60' : aging.d1_30 > 0 ? '1-30' : bakiye > 0 ? 'Güncel' : 'Yok';
+      return {
+        id: t.id,
+        ad: adOf(t),
+        taxNumber: t.taxNumber,
+        phone: this.primaryPhone(t),
+        bakiye,
+        maxBucket,
+        aging,
+      };
+    }).filter((r: any) => r.bakiye > 0);
+
+    const totals = rows.reduce((acc: any, r: any) => {
+      for (const key of Object.keys(acc)) acc[key] = this.roundMoney(acc[key] + Number(r.aging[key] || 0));
+      return acc;
+    }, { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 });
+
+    return {
+      totals,
+      toplamBakiye: this.roundMoney(Object.values(totals).reduce<number>((s, v) => s + Number(v), 0)),
+      rows: rows.sort((a: any, b: any) => b.bakiye - a.bakiye),
+    };
+  }
+
+  async tahsilatAjandasi(tenantId: string) {
+    const [yas, sonTahsilatlar, logs] = await Promise.all([
+      this.yaslandirma(tenantId),
+      (this.prisma as any).cariHareket.findMany({
+        where: { tenantId, tip: 'TAHSILAT' },
+        select: { taxpayerId: true, tarih: true },
+        orderBy: { tarih: 'desc' },
+      }),
+      (this.prisma as any).communicationLog.findMany({
+        where: { taxpayer: { tenantId }, channel: 'WHATSAPP', subject: { contains: 'Tahsilat' } },
+        select: { taxpayerId: true, occurredAt: true },
+        orderBy: { occurredAt: 'desc' },
+      }),
+    ]);
+
+    const lastPay = new Map<string, Date>();
+    for (const h of sonTahsilatlar) if (!lastPay.has(h.taxpayerId)) lastPay.set(h.taxpayerId, h.tarih);
+    const lastReminder = new Map<string, Date>();
+    for (const l of logs) if (!lastReminder.has(l.taxpayerId)) lastReminder.set(l.taxpayerId, l.occurredAt);
+
+    return {
+      totals: yas.totals,
+      toplamBakiye: yas.toplamBakiye,
+      rows: yas.rows.map((r: any) => ({
+        ...r,
+        sonTahsilatTarihi: lastPay.get(r.id) || null,
+        sonHatirlatmaTarihi: lastReminder.get(r.id) || null,
+        telefonVar: Boolean(r.phone),
+        whatsappUygun: Boolean(r.phone && r.bakiye > 0),
+      })),
+    };
+  }
+
+  async tahsilatHatirlatmaPreview(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
+    const ajanda = await this.tahsilatAjandasi(tenantId);
+    const selected = new Set(body.taxpayerIds || []);
+    const minBakiye = Number(body.minBakiye || 0);
+    const donem = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const template = await (this.prisma as any).smsTemplate.findUnique({ where: { tenantId } });
+    const mesajSablonu = template?.tahsilatHatirlatmaMesaji
+      || 'Sayın {ad}, cari hesabınızda {bakiye} açık bakiye görünmektedir. Ödeme yaptıysanız dekontu iletmenizi rica ederiz. Moren Mali Müşavirlik';
+
+    const rows = ajanda.rows
+      .filter((r: any) => selected.size === 0 || selected.has(r.id))
+      .map((r: any) => {
+        const reasons: string[] = [];
+        if (r.bakiye <= 0) reasons.push('Pozitif bakiye yok');
+        if (r.bakiye < minBakiye) reasons.push('Minimum bakiye altında');
+        if (!r.phone) reasons.push('Telefon yok');
+        return {
+          taxpayerId: r.id,
+          ad: r.ad,
+          phone: r.phone,
+          bakiye: r.bakiye,
+          gonderilebilir: reasons.length === 0,
+          atlamaSebebi: reasons.join(', ') || null,
+          mesaj: this.renderTahsilatMesaji(mesajSablonu, r, donem),
+          templateParameters: [r.ad, `${this.fmtMoney(r.bakiye)} TL`, donem],
+        };
+      });
+
+    return {
+      donem,
+      gonderilecek: rows.filter((r: any) => r.gonderilebilir).length,
+      atlanacak: rows.filter((r: any) => !r.gonderilebilir).length,
+      rows,
+      whatsapp: this.whatsApp.getStatus(),
+    };
+  }
+
+  async tahsilatHatirlatmaSend(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
+    const preview = await this.tahsilatHatirlatmaPreview(tenantId, body);
+    const templateName = process.env.WHATSAPP_COLLECTION_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || undefined;
+    const results: any[] = [];
+
+    for (const row of preview.rows.filter((r: any) => r.gonderilebilir)) {
+      const ok = await this.whatsApp.sendTemplate(row.phone, row.templateParameters, templateName);
+      await (this.prisma as any).communicationLog.create({
+        data: {
+          taxpayerId: row.taxpayerId,
+          channel: 'WHATSAPP',
+          subject: `Tahsilat hatırlatma - ${preview.donem} - ${ok ? 'Gönderildi' : 'Başarısız'}`,
+          content: row.mesaj,
+          occurredAt: new Date(),
+        },
+      });
+      results.push({ taxpayerId: row.taxpayerId, ad: row.ad, phone: row.phone, ok });
+    }
+
+    return {
+      ...preview,
+      results,
+      basarili: results.filter((r) => r.ok).length,
+      basarisiz: results.filter((r) => !r.ok).length,
+    };
   }
 
   // ==================== İSTATİSTİKLER ====================

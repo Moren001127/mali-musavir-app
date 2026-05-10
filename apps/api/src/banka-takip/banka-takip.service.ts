@@ -276,4 +276,51 @@ export class BankaTakipService {
 
     return { donem, items };
   }
+
+  async createEksikEkstreTasks(
+    tenantId: string,
+    userId: string,
+    data: { donem: string; taxpayerIds?: string[] },
+  ) {
+    if (!/^\d{4}-\d{2}$/.test(data.donem)) {
+      throw new BadRequestException('donem formatÄ± YYYY-MM olmalÄ±');
+    }
+    const list = await this.listForDonem(tenantId, data.donem);
+    const selected = new Set(data.taxpayerIds || []);
+    const targets = list.items.filter((item: any) => {
+      if (selected.size && !selected.has(item.taxpayer.id)) return false;
+      return item.ozet.hesapSayisi === 0 || item.ozet.eksikGeldi > 0 || item.ozet.eksikIslendi > 0;
+    });
+
+    const due = new Date();
+    due.setDate(due.getDate() + 2);
+    due.setHours(9, 0, 0, 0);
+
+    const created = [];
+    for (const item of targets) {
+      const ad = item.taxpayer.companyName || `${item.taxpayer.firstName || ''} ${item.taxpayer.lastName || ''}`.trim();
+      const eksikler = item.ozet.hesapSayisi === 0
+        ? 'Banka hesabÄ± tanÄ±mlÄ± deÄŸil'
+        : `${item.ozet.eksikGeldi} ekstre bekleniyor, ${item.ozet.eksikIslendi} ekstre iÅŸlenmeyi bekliyor`;
+      const task = await (this.prisma as any).task.create({
+        data: {
+          tenantId,
+          title: `${ad} - ${data.donem} banka ekstresi`,
+          description: eksikler,
+          category: 'BANKA',
+          priority: item.ozet.hesapSayisi === 0 ? 'HIGH' : 'MEDIUM',
+          taxpayerId: item.taxpayer.id,
+          createdById: userId,
+          dueDate: due,
+          dueTime: '09:00',
+          allDay: false,
+          notifyInApp: true,
+          notifyBrowser: true,
+        },
+      });
+      created.push(task);
+    }
+
+    return { count: created.length, items: created };
+  }
 }

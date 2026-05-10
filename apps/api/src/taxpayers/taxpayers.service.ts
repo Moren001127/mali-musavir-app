@@ -37,6 +37,8 @@ export class TaxpayersService {
           { firstName: { contains: search, mode: 'insensitive' } },
           { lastName: { contains: search, mode: 'insensitive' } },
           { companyName: { contains: search, mode: 'insensitive' } },
+          { taxNumber: { contains: search, mode: 'insensitive' } },
+          { taxOffice: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
         ],
       });

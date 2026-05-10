@@ -73,4 +73,12 @@ export class BankaTakipController {
   ) {
     return this.service.upsertEkstreKaydi(req.user.tenantId, body);
   }
+
+  @Post('eksik-ekstre-gorevleri')
+  createEksikEkstreTasks(
+    @Req() req: any,
+    @Body() body: { donem: string; taxpayerIds?: string[] },
+  ) {
+    return this.service.createEksikEkstreTasks(req.user.tenantId, req.user.sub, body);
+  }
 }

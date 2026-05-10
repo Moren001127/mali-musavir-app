@@ -175,6 +175,12 @@ export class TasksService {
         include: {
           taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } },
+          notes: {
+            take: 1,
+            orderBy: { createdAt: 'desc' },
+            include: { user: { select: { id: true, firstName: true, lastName: true } } },
+          },
+          _count: { select: { notes: true, attachments: true } },
         },
       }),
       (this.prisma as any).task.count({ where }),

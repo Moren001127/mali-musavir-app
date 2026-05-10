@@ -59,6 +59,15 @@ export default function BankaTakipPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Hata'),
   });
 
+  const eksikGorevMut = useMutation({
+    mutationFn: () => bankaTakipApi.createEksikEkstreTasks(donem),
+    onSuccess: (r) => {
+      toast.success(`${r.count || 0} banka takip görevi oluşturuldu`);
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Görev oluşturulamadı'),
+  });
+
   const filtered = useMemo(() => {
     let items = data?.items || [];
     // 1) Durum filtresi

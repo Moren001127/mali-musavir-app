@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
   TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
+  MessageCircle, Send, AlertTriangle, CheckSquare,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -50,6 +51,26 @@ type Hareket = {
 type Bakiye = {
   tahakkuk: number; tahsilat: number; iade: number; duzeltme: number;
   borc: number; alacak: number; bakiye: number;
+};
+
+type TahsilatAjandaRow = {
+  id: string;
+  ad: string;
+  taxNumber?: string | null;
+  phone?: string | null;
+  bakiye: number;
+  maxBucket: string;
+  aging: { current: number; d1_30: number; d31_60: number; d61_90: number; d90plus: number };
+  sonTahsilatTarihi?: string | null;
+  sonHatirlatmaTarihi?: string | null;
+  telefonVar: boolean;
+  whatsappUygun: boolean;
+};
+
+type TahsilatAjandasi = {
+  toplamBakiye: number;
+  totals: { current: number; d1_30: number; d31_60: number; d61_90: number; d90plus: number };
+  rows: TahsilatAjandaRow[];
 };
 
 const fmt = (n: number | null | undefined) => {
@@ -696,9 +717,14 @@ type OzetSatir = {
 };
 
 function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'tablo' | 'istatistik'>('tablo');
+  const [view, setView] = useState<'tablo' | 'ajanda' | 'istatistik'>('ajanda');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<any | null>(null);
+  const [sending, setSending] = useState(false);
   const yil = new Date().getFullYear();
   const [baslangic, setBaslangic] = useState(`${yil}-01-01`);
   const [bitis, setBitis] = useState(() => new Date().toISOString().slice(0, 10));
@@ -711,6 +737,12 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
       if (tarihAktif) { params.baslangic = baslangic; params.bitis = bitis; }
       return api.get('/cari-kasa/ozet', { params }).then((r) => r.data);
     },
+    refetchInterval: 30000,
+  });
+
+  const { data: ajanda, isLoading: ajandaLoading } = useQuery<TahsilatAjandasi>({
+    queryKey: ['cari-tahsilat-ajandasi'],
+    queryFn: () => api.get('/cari-kasa/tahsilat-ajandasi').then((r) => r.data),
     refetchInterval: 30000,
   });
 
@@ -727,6 +759,17 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
     });
   }, [ozet, search, sadecaBakiyeli]);
 
+  const ajandaRows = useMemo(() => {
+    const s = search.toLocaleLowerCase('tr');
+    return (ajanda?.rows || []).filter((r) => {
+      if (sadecaBakiyeli && r.bakiye <= 0) return false;
+      if (!s) return true;
+      return (r.ad || '').toLocaleLowerCase('tr').includes(s)
+        || (r.taxNumber || '').toLocaleLowerCase('tr').includes(s)
+        || (r.phone || '').toLocaleLowerCase('tr').includes(s);
+    });
+  }, [ajanda, search, sadecaBakiyeli]);
+
   const toplamlar = useMemo(() => {
     let ucret = 0, tahakkuk = 0, tahsilat = 0, bakiye = 0;
     for (const o of filtered) {
@@ -737,6 +780,43 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
     }
     return { ucret, tahakkuk, tahsilat, bakiye };
   }, [filtered]);
+
+  const indirExcelToplu = async () => {
+    try {
+      const params: any = {};
+      if (tarihAktif) { params.baslangic = baslangic; params.bitis = bitis; }
+      const resp = await api.get('/cari-kasa/ozet/xlsx', { params, responseType: 'blob' });
+      const url = URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Cari_Kasa_Ozet_${today()}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Excel indirilemedi');
+    }
+  };
+
+  const selectedForReminder = selectedIds.length ? selectedIds : ajandaRows.filter((r) => r.whatsappUygun).map((r) => r.id);
+  const previewReminder = async () => {
+    const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/preview', { taxpayerIds: selectedForReminder });
+    setPreview(resp.data);
+  };
+  const sendReminder = async () => {
+    setSending(true);
+    try {
+      const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/send', { taxpayerIds: selectedForReminder });
+      setPreview(resp.data);
+      toast.success(`${resp.data.basarili || 0} WhatsApp gonderildi`);
+      qc.invalidateQueries({ queryKey: ['cari-tahsilat-ajandasi'] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'WhatsApp gonderilemedi');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const indirExcel = () => {
     // Basit tarayıcı Excel oluşturma: HTML table → Excel indirme yerine
@@ -763,7 +843,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
 
       {/* Tablo / İstatistik tab */}
       <div className="flex gap-1.5">
-        {(['tablo', 'istatistik'] as const).map((t) => {
+        {(['ajanda', 'tablo', 'istatistik'] as const).map((t) => {
           const active = view === t;
           return (
             <button
@@ -783,6 +863,24 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
       </div>
 
       {view === 'istatistik' && <IstatistiklerView />}
+
+      {view === 'ajanda' && (
+        <TahsilatAjandasiView
+          rows={ajandaRows}
+          data={ajanda}
+          isLoading={ajandaLoading}
+          selectedIds={selectedIds}
+          onToggle={(id) => setSelectedIds((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id])}
+          onSelectAll={() => setSelectedIds(ajandaRows.filter((r) => r.whatsappUygun).map((r) => r.id))}
+          onClear={() => setSelectedIds([])}
+          onPreview={previewReminder}
+          onSend={sendReminder}
+          sending={sending}
+          preview={preview}
+          onQuickTahsilat={setQuickTahsilatId}
+          onOpen={onSelect}
+        />
+      )}
 
       {view === 'tablo' && (
       <>
@@ -833,7 +931,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
           <span>Sadece bakiyesi olanlar</span>
         </label>
         <button
-          onClick={indirExcel}
+          onClick={indirExcelToplu}
           className="px-3 py-2 rounded-md text-[12.5px] font-semibold inline-flex items-center gap-1.5"
           style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}
         >
@@ -939,6 +1037,18 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         )}
       </div>
       )}
+
+      {quickTahsilatId && (
+        <TahsilatModal
+          taxpayerId={quickTahsilatId}
+          onClose={() => setQuickTahsilatId(null)}
+          onSaved={() => {
+            setQuickTahsilatId(null);
+            qc.invalidateQueries({ queryKey: ['cari-tahsilat-ajandasi'] });
+            qc.invalidateQueries({ queryKey: ['cari-ozet'] });
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -957,6 +1067,112 @@ function IconBtn({ children, color, title, onClick }: { children: React.ReactNod
 }
 
 // ==================== İSTATİSTİKLER TAB ====================
+
+function TahsilatAjandasiView({
+  rows, data, isLoading, selectedIds, onToggle, onSelectAll, onClear, onPreview, onSend, sending, preview, onQuickTahsilat, onOpen,
+}: {
+  rows: TahsilatAjandaRow[];
+  data?: TahsilatAjandasi;
+  isLoading: boolean;
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+  onPreview: () => void;
+  onSend: () => void;
+  sending: boolean;
+  preview: any | null;
+  onQuickTahsilat: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  const selectedCount = selectedIds.length;
+  const bucketCards = [
+    ['Guncel', data?.totals.current || 0, '#94a3b8'],
+    ['1-30', data?.totals.d1_30 || 0, '#60a5fa'],
+    ['31-60', data?.totals.d31_60 || 0, '#fbbf24'],
+    ['61-90', data?.totals.d61_90 || 0, '#fb7185'],
+    ['90+', data?.totals.d90plus || 0, '#ef4444'],
+  ] as const;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {bucketCards.map(([label, value, color]) => (
+          <div key={label} className="rounded-2xl p-4 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+            <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
+            <div className="text-[18px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(value)} TL</div>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-2xl p-4 border flex flex-wrap items-center gap-2" style={{ background: 'rgba(156,70,86,0.06)', borderColor: 'rgba(156,70,86,0.22)' }}>
+        <MessageCircle size={16} style={{ color: BORDO }} />
+        <div className="text-[12.5px] font-semibold mr-auto" style={{ color: '#fafaf9' }}>
+          {selectedCount ? `${selectedCount} mukellef secildi` : 'Secim yoksa WhatsApp uygun tum borclular hedeflenir'}
+        </div>
+        <button onClick={onSelectAll} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <CheckSquare size={13} className="inline mr-1" /> Uygunlari Sec
+        </button>
+        <button onClick={onClear} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.65)' }}>Temizle</button>
+        <button onClick={onPreview} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}>Onizle</button>
+        <button onClick={onSend} disabled={sending} className="px-3 py-1.5 rounded-md text-[12px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+          {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gonder
+        </button>
+      </div>
+      {preview && (
+        <div className="rounded-2xl p-4 border text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.72)' }}>
+          WhatsApp onizleme: <b style={{ color: '#4ade80' }}>{preview.gonderilecek}</b> gonderilecek, <b style={{ color: '#fca5a5' }}>{preview.atlanacak}</b> atlanacak.
+          {!preview.whatsapp?.ready && <span style={{ color: '#fbbf24' }}> WhatsApp ayari eksik: {preview.whatsapp?.error}</span>}
+        </div>
+      )}
+      <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        {isLoading ? (
+          <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 className="animate-spin inline mr-2" size={16} />Yukleniyor...</div>
+        ) : rows.length === 0 ? (
+          <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Acik tahsilat bakiyesi yok.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.015)' }}>
+                  <th className="px-3 py-2 text-left">Sec</th>
+                  <th className="px-3 py-2 text-left">Mukellef</th>
+                  <th className="px-3 py-2 text-right">Bakiye</th>
+                  <th className="px-3 py-2 text-center">Yas</th>
+                  <th className="px-3 py-2 text-left">Son Durum</th>
+                  <th className="px-3 py-2 text-center">Islem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: '#fafaf9' }}>
+                    <td className="px-3 py-2"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => onToggle(r.id)} disabled={!r.whatsappUygun} /></td>
+                    <td className="px-3 py-2">
+                      <button onClick={() => onOpen(r.id)} className="font-semibold text-left hover:underline">{r.ad}</button>
+                      <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
+                    </td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(r.bakiye)} TL</td>
+                    <td className="px-3 py-2 text-center"><span className="px-2 py-1 rounded-md text-[10.5px] font-bold" style={{ background: r.maxBucket === '90+' ? 'rgba(239,68,68,0.16)' : 'rgba(212,184,118,0.12)', color: r.maxBucket === '90+' ? '#fca5a5' : GOLD }}>{r.maxBucket}</span></td>
+                    <td className="px-3 py-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                      {r.sonTahsilatTarihi ? `Son tahsilat: ${new Date(r.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat yok'}<br />
+                      {r.sonHatirlatmaTarihi ? `Son hatirlatma: ${new Date(r.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}` : 'Hatirlatma yok'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-center gap-1">
+                        {!r.whatsappUygun && <AlertTriangle size={14} style={{ color: '#fbbf24' }} />}
+                        <IconBtn color="#4ade80" title="Hizli tahsilat" onClick={() => onQuickTahsilat(r.id)}><Plus size={13} /></IconBtn>
+                        <IconBtn color="#a78bfa" title="Detay" onClick={() => onOpen(r.id)}><Receipt size={13} /></IconBtn>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 type IstatData = {
   kpi: {

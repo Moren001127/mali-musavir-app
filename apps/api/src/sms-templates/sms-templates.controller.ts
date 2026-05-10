@@ -13,7 +13,7 @@ export class SmsTemplatesController {
   }
 
   @Patch()
-  updateTemplate(@Req() req: any, @Body() body: { evrakTalepMesaji?: string; evrakGeldiMesaji?: string }) {
+  updateTemplate(@Req() req: any, @Body() body: { evrakTalepMesaji?: string; evrakGeldiMesaji?: string; tahsilatHatirlatmaMesaji?: string }) {
     return this.smsTemplatesService.updateTemplate(req.user.tenantId, body);
   }
 }

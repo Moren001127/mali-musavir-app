@@ -126,6 +126,22 @@ export default function GorevlerPage() {
     },
   });
 
+  const quickTaskMut = useMutation({
+    mutationFn: (input: CreateTaskInput) => tasksApi.create(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+      qc.invalidateQueries({ queryKey: ['task-counts'] });
+      toast.success('Hızlı görev oluşturuldu');
+    },
+  });
+
+  const quickTemplates: CreateTaskInput[] = [
+    { title: 'KDV kontrolü', category: 'BEYANNAME', priority: 'HIGH', dueDate: new Date().toISOString(), notifyInApp: true, notifyBrowser: true },
+    { title: 'Banka ekstresi iste', category: 'BANKA', priority: 'MEDIUM', dueDate: new Date().toISOString(), notifyInApp: true, notifyBrowser: true },
+    { title: 'Tahsilat araması yap', category: 'MUKELLEF', priority: 'HIGH', dueDate: new Date().toISOString(), notifyInApp: true, notifyBrowser: true },
+    { title: 'Evrak teslim takibi', category: 'MIHSAP', priority: 'MEDIUM', dueDate: new Date().toISOString(), notifyInApp: true, notifyBrowser: true },
+  ];
+
   // Snooze dialog state
   const [snoozeTarget, setSnoozeTarget] = useState<Task | null>(null);
   const [snoozeUntil, setSnoozeUntil] = useState('');
@@ -222,6 +238,20 @@ export default function GorevlerPage() {
       </div>
 
       {/* Görev grupları */}
+      <div className="flex flex-wrap gap-2">
+        {quickTemplates.map((tpl) => (
+          <button
+            key={tpl.title}
+            onClick={() => quickTaskMut.mutate(tpl)}
+            disabled={quickTaskMut.isPending}
+            className="px-3 py-1.5 rounded-md text-[11.5px] font-semibold disabled:opacity-50"
+            style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: '1px solid rgba(212,184,118,0.24)' }}
+          >
+            <Plus size={12} className="inline mr-1" /> {tpl.title}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="text-center py-10" style={{ color: 'rgba(250,250,249,0.4)' }}>
           <Loader2 className="inline animate-spin mr-2" size={16} /> Yükleniyor...
@@ -567,6 +597,13 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
           <p className="text-[12px] mt-0.5 line-clamp-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
             {task.description}
           </p>
+        )}
+        {((task as any)._count?.notes > 0 || (task as any).notes?.[0]) && (
+          <div className="mt-2 inline-flex items-center gap-2 rounded-md px-2 py-1 text-[11px]" style={{ background: 'rgba(212,184,118,0.08)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(212,184,118,0.16)' }}>
+            <MessageSquare size={11} style={{ color: GOLD }} />
+            <span>{(task as any)._count?.notes || 1} not</span>
+            {(task as any).notes?.[0]?.content && <span className="max-w-[360px] truncate">- {(task as any).notes[0].content}</span>}
+          </div>
         )}
         <div className="flex items-center gap-3 mt-1.5 text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
           {task.dueDate && (

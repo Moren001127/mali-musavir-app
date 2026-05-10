@@ -94,4 +94,6 @@ export const bankaTakipApi = {
     islenmeNotu?: string;
     notlar?: string;
   }) => api.post('/banka-takip/ekstre', body).then((r) => r.data),
+  createEksikEkstreTasks: (donem: string, taxpayerIds?: string[]) =>
+    api.post('/banka-takip/eksik-ekstre-gorevleri', { donem, taxpayerIds }).then((r) => r.data),
 };

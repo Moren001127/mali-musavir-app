@@ -51,6 +51,7 @@ type StatusKey =
   | 'beyannameVerildi';
 
 type FilterKey = 'all' | 'evrak-gelmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
+type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -86,6 +87,7 @@ export default function MukelleflerPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const [profileFilter, setProfileFilter] = useState<ProfileFilterKey>('all');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
 
@@ -164,8 +166,10 @@ export default function MukelleflerPage() {
     else if (filter === 'beyanname-bekliyor') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'bekliyor');
     else if (filter === 'beyanname-verilmedi') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'verilmedi');
     else if (filter === 'verildi') list = list.filter(t => t.monthlyStatus?.beyannameVerildi);
+    if (profileFilter === 'profil-eksik') list = list.filter(t => (completenessMap.get(t.id)?.score ?? 100) < 80);
+    if (profileFilter === 'telefon-yok') list = list.filter(t => !t.phone && !(t.phones || []).some(Boolean));
     return list.sort((a, b) => getName(a).localeCompare(getName(b), 'tr', { sensitivity: 'base' }));
-  }, [raw, filter]);
+  }, [raw, filter, profileFilter, completenessMap]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageSafe = Math.min(page, totalPages);

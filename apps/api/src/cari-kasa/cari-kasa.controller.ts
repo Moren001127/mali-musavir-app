@@ -85,6 +85,68 @@ export class CariKasaController {
     return this.service.istatistikler(req.user.tenantId);
   }
 
+  @Get('yaslandirma')
+  yaslandirma(@Req() req: any) {
+    return this.service.yaslandirma(req.user.tenantId);
+  }
+
+  @Get('tahsilat-ajandasi')
+  tahsilatAjandasi(@Req() req: any) {
+    return this.service.tahsilatAjandasi(req.user.tenantId);
+  }
+
+  @Post('tahsilat-hatirlatma/preview')
+  tahsilatHatirlatmaPreview(@Req() req: any, @Body() body: any) {
+    return this.service.tahsilatHatirlatmaPreview(req.user.tenantId, body || {});
+  }
+
+  @Post('tahsilat-hatirlatma/send')
+  tahsilatHatirlatmaSend(@Req() req: any, @Body() body: any) {
+    return this.service.tahsilatHatirlatmaSend(req.user.tenantId, body || {});
+  }
+
+  @Get('ozet/xlsx')
+  async ozetXlsx(
+    @Req() req: any,
+    @Res() res: any,
+    @Query('baslangic') baslangic?: string,
+    @Query('bitis') bitis?: string,
+  ) {
+    const rows = await this.service.genelOzet(req.user.tenantId, baslangic, bitis);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Moren Mali Müşavirlik';
+    wb.created = new Date();
+    const sh = wb.addWorksheet('Cari Kasa Özet', { properties: { tabColor: { argb: 'FF9C4656' } } });
+    sh.addRow(['CARİ KASA ÖZET']).font = { bold: true, size: 14, color: { argb: 'FF9C4656' } };
+    sh.addRow(['Dönem:', baslangic && bitis ? `${baslangic} - ${bitis}` : 'Tüm zamanlar']);
+    sh.addRow(['Rapor Tarihi:', new Date().toLocaleString('tr-TR')]);
+    sh.addRow([]);
+    const header = sh.addRow(['Mükellef', 'VKN/TCKN', 'Telefon', 'E-posta', 'Aylık Ücret', 'Borç', 'Alacak', 'Bakiye']);
+    header.font = { bold: true };
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4E4D4' } };
+    for (const r of rows) {
+      sh.addRow([r.ad, r.taxNumber || '', r.phone || '', r.email || '', r.aylikMuhasebeUcreti, r.tahakkuk, r.tahsilat, r.bakiye]);
+    }
+    sh.columns = [
+      { width: 34 }, { width: 16 }, { width: 16 }, { width: 28 },
+      { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 },
+    ];
+    [5, 6, 7, 8].forEach((c: number) => (sh.getColumn(c).numFmt = '#,##0.00'));
+    const total = rows.reduce((acc: any, r: any) => {
+      acc.ucret += Number(r.aylikMuhasebeUcreti || 0);
+      acc.tahakkuk += Number(r.tahakkuk || 0);
+      acc.tahsilat += Number(r.tahsilat || 0);
+      acc.bakiye += Number(r.bakiye || 0);
+      return acc;
+    }, { ucret: 0, tahakkuk: 0, tahsilat: 0, bakiye: 0 });
+    const totalRow = sh.addRow(['TOPLAM', '', '', '', total.ucret, total.tahakkuk, total.tahsilat, total.bakiye]);
+    totalRow.font = { bold: true, color: { argb: 'FF9C4656' } };
+    const buf = await wb.xlsx.writeBuffer();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Cari_Kasa_Ozet_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(Buffer.from(buf));
+  }
+
   // ==================== EKSTRE ====================
   @Get('ekstre/:taxpayerId')
   ekstre(

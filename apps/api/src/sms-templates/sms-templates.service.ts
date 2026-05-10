@@ -13,7 +13,7 @@ export class SmsTemplatesService {
     return template;
   }
 
-  async updateTemplate(tenantId: string, data: { evrakTalepMesaji?: string; evrakGeldiMesaji?: string }) {
+  async updateTemplate(tenantId: string, data: { evrakTalepMesaji?: string; evrakGeldiMesaji?: string; tahsilatHatirlatmaMesaji?: string }) {
     const existing = await this.prisma.smsTemplate.findUnique({ where: { tenantId } });
     if (!existing) {
       return this.prisma.smsTemplate.create({ data: { tenantId, ...data } });
