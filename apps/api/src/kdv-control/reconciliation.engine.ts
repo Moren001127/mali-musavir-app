@@ -112,6 +112,7 @@ export class ReconciliationEngine {
     //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
     // ═══════════════════════════════════════════════════════
     const { records, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts } = this.aggregateMultiRateRecords(rawRecords);
+    const ambiguousDocDateKeys = this.buildAmbiguousDocDateKeys(records);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
     // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
@@ -176,7 +177,16 @@ export class ReconciliationEngine {
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
         const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis, originalKdvList);
+        const sameDocDateAmbiguous = ambiguousDocDateKeys.has(this.recordDocDateKey(record) || '');
+        const { score, reasons, strictMatch } = this.calculateScore(
+          record,
+          image,
+          mihsapBelgeTarihi,
+          expectedBreakdown,
+          isAlis,
+          originalKdvList,
+          sameDocDateAmbiguous,
+        );
         if (strictMatch) {
           usedImageIds.add(image.id);
           fanOutMatch(record, image.id, 'MATCHED', score, reasons);
@@ -210,7 +220,16 @@ export class ReconciliationEngine {
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
         const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
-        const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis, originalKdvList);
+        const sameDocDateAmbiguous = ambiguousDocDateKeys.has(this.recordDocDateKey(record) || '');
+        const { score, reasons, strictMatch } = this.calculateScore(
+          record,
+          image,
+          mihsapBelgeTarihi,
+          expectedBreakdown,
+          isAlis,
+          originalKdvList,
+          sameDocDateAmbiguous,
+        );
         // Belge no exact uyumsuzluğu varsa pair'i ele
         const strongTwoOfThree = this.hasStrongTwoOfThree(record, image, mihsapBelgeTarihi);
         const belgeNoTamUyumsuz = !strongTwoOfThree && reasons.some((r) =>
@@ -219,8 +238,9 @@ export class ReconciliationEngine {
         const saticiTamUyumsuz = reasons.some((r) =>
           /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
         );
+        const ambiguousSellerMissing = sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
-        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz && !saticiTamUyumsuz) {
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz && !saticiTamUyumsuz && !ambiguousSellerMissing) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -335,6 +355,7 @@ export class ReconciliationEngine {
      *  tutarları. ALIŞ'ta Luca'da NET satırı + Tevkifat satırı ayrı kayıtlar;
      *  bunlardan biri OCR NET ile eşleşiyorsa AYNI BELGE'dir. */
     originalRecordKdvList: number[] | null = null,
+    sameDocDateAmbiguous: boolean = false,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
@@ -439,9 +460,7 @@ export class ReconciliationEngine {
           rateExact = true;
           const candidates = [
             { amount: matchingItem.tutar, label: 'NET' },
-            ...(recordRate != null && recordRate > 0
-              ? [{ amount: (matchingItem.tutar * recordRate) / 100, label: 'Matrah×Oran' }]
-              : []),
+            { amount: (matchingItem.tutar * recordRate) / 100, label: `Matrah x %${recordRate}` },
             ...(!isAlis && imgTevkifat > 0 && matchingItem.tutar > imgTevkifat
               ? [{ amount: matchingItem.tutar - imgTevkifat, label: 'TAM-Tevkifat' }]
               : []),
@@ -467,9 +486,9 @@ export class ReconciliationEngine {
               reasons.push(
                 `%${recordRate} satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(matchingItem.tutar)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
               );
-            } else if (best?.label === 'Matrah×Oran') {
+            } else if (best?.label?.startsWith('Matrah x %')) {
               reasons.push(
-                `%${recordRate} OCR matrah düzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(matchingItem.tutar)} × %${recordRate}`,
+                `%${recordRate} OCR matrah duzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(matchingItem.tutar)} x %${recordRate}`,
               );
             }
           } else if (diff < 0.05) {
@@ -496,11 +515,10 @@ export class ReconciliationEngine {
           imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
         );
         if (!isNaN(imgKdvNum)) {
+          const matrahRates = recordRate != null && recordRate > 0 ? [recordRate] : [20, 18, 10, 8, 1];
           const kdvCandidates = [
             { amount: imgKdvNum, label: 'OCR' },
-            ...(recordRate != null && recordRate > 0
-              ? [{ amount: (imgKdvNum * recordRate) / 100, label: 'Matrah×Oran' }]
-              : []),
+            ...matrahRates.map((rate) => ({ amount: (imgKdvNum * rate) / 100, label: `Matrah x %${rate}` })),
             ...(!isAlis && imgTevkifat > 0 && imgKdvNum > imgTevkifat
               ? [{ amount: imgKdvNum - imgTevkifat, label: 'TAM-Tevkifat' }]
               : []),
@@ -519,9 +537,9 @@ export class ReconciliationEngine {
               reasons.push(
                 `Satış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)} TAM - ${this.fmtAmt(imgTevkifat)} tevkifat`,
               );
-            } else if (bestKdv?.label === 'Matrah×Oran') {
+            } else if (bestKdv?.label?.startsWith('Matrah x %')) {
               reasons.push(
-                `OCR matrah düzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(imgKdvNum)} × %${recordRate}`,
+                `OCR matrah duzeltmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura matrah ${this.fmtAmt(imgKdvNum)} x ${bestKdv.label.replace('Matrah x ', '')}`,
               );
             }
           } else if (diff < 0.05) {
@@ -563,15 +581,21 @@ export class ReconciliationEngine {
               && originalRecordKdvList.some(
                 (k) => Math.abs(k - imgKdvNum) / (imgKdvNum || 1) < 0.01,
               );
+            const sellerVerifiedForAmbiguous = !sameDocDateAmbiguous || this.hasSellerMatch(record, image);
 
-            if (isAlis && imgTevkifat > 0 && tamDiff < 0.01) {
+            if (isAlis && imgTevkifat > 0 && tamDiff < 0.01 && sellerVerifiedForAmbiguous) {
               // YOL 1: OCR tevkifat var, TAM kontrolü tutuyor
               score += 0.3;
               kdvExact = true;
               reasons.push(
                 `Alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} (NET+Tevkifat) = Fatura ${this.fmtAmt(imgKdvNum)} (NET) + ${this.fmtAmt(imgTevkifat)} (tevkifat)`,
               );
-            } else if (lucaOriginalMatch) {
+            } else if (isAlis && sameDocDateAmbiguous && imgTevkifat > 0 && tamDiff < 0.01) {
+              score += 0.08;
+              reasons.push(
+                'Alis tevkifat belirsiz: ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan tevkifat MATCHED yapilmadi',
+              );
+            } else if (lucaOriginalMatch && sellerVerifiedForAmbiguous) {
               // YOL 2: Orijinal Luca satırlarından biri OCR NET'e eşit.
               // Alış tevkifatında Luca aynı belgeyi NET + sorumlu sıfatıyla KDV
               // olarak iki satır getirebildiği için bu aynı belge fan-out'udur.
@@ -579,6 +603,11 @@ export class ReconciliationEngine {
               kdvExact = true;
               reasons.push(
                 `Alış tevkifat bileşen eşleşmesi: OCR ${this.fmtAmt(imgKdvNum)} Luca satırlarından biriyle eşleşti; aynı belge tevkifat satırlarına fan-out edildi`,
+              );
+            } else if (lucaOriginalMatch && sameDocDateAmbiguous) {
+              score += 0.08;
+              reasons.push(
+                'Alis tevkifat belirsiz: ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan bilesen fan-out MATCHED yapilmadi',
               );
             } else {
               reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
@@ -597,8 +626,16 @@ export class ReconciliationEngine {
     //
     // Aynı belge no'lu farklı firmaların faturaları eşleşmesin.
     let saticiMismatch = false;
+    const recordRawData = (record.rawData || {}) as Record<string, any>;
     const recordSatici = (record.karsiTaraf || '').trim();
-    const recordVkn = String((record as any).karsiVergiNo || '').replace(/\D/g, '');
+    const recordVkn = String(
+      (record as any).karsiVergiNo ||
+      recordRawData.karsiVergiNo ||
+      recordRawData.vergiNo ||
+      recordRawData.vkn ||
+      recordRawData.tckn ||
+      '',
+    ).replace(/\D/g, '');
     const imgSatici = ((image as any).ocrSatici || '').trim();
     const imgVkn = String((image as any).ocrSaticiVkn || '').replace(/\D/g, '');
 
@@ -715,8 +752,14 @@ export class ReconciliationEngine {
     const sellerMismatchHard =
       saticiMismatch &&
       reasons.some((r) => r.includes('VKN/TCKN uyumsuz') || r.includes('Satıcı uyumsuz'));
+    const ambiguousSellerHard = sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+    if (ambiguousSellerHard && belgeNoExact && dateExact) {
+      reasons.push(
+        'Ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan tam eslesme verilmedi',
+      );
+    }
     const strictMatch =
-      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchHard;
+      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchHard && !ambiguousSellerHard;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
@@ -917,6 +960,47 @@ export class ReconciliationEngine {
       .trim();
     if (!v) return true;
     return /\b(KDV|TEVKIFAT|TEVKIFATLI|HESAPLANAN|INDIRILECEK|SORUMLU|SATIN|ALMA|IADE|391|191)\b/.test(v);
+  }
+
+  private recordDocDateKey(record: KdvRecord): string | null {
+    const belgeNo = this.normalizeBelgeNo(record.belgeNo || '');
+    if (!belgeNo || !record.belgeDate) return null;
+    return `${belgeNo}|${new Date(record.belgeDate).toISOString().slice(0, 10)}`;
+  }
+
+  private buildAmbiguousDocDateKeys(records: KdvRecord[]): Set<string> {
+    const counts = new Map<string, number>();
+    for (const record of records) {
+      const key = this.recordDocDateKey(record);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([key]) => key),
+    );
+  }
+
+  private hasSellerMatch(record: KdvRecord, image: ReceiptImage): boolean {
+    const rawData = (record.rawData || {}) as Record<string, any>;
+    const recordVkn = String(
+      (record as any).karsiVergiNo ||
+      rawData.karsiVergiNo ||
+      rawData.vergiNo ||
+      rawData.vkn ||
+      rawData.tckn ||
+      '',
+    ).replace(/\D/g, '');
+    const imgVkn = String((image as any).ocrSaticiVkn || '').replace(/\D/g, '');
+    if (recordVkn && imgVkn && (imgVkn.length === 10 || imgVkn.length === 11)) {
+      return recordVkn === imgVkn;
+    }
+
+    const recordSatici = (record.karsiTaraf || '').trim();
+    const imgSatici = ((image as any).ocrSatici || '').trim();
+    if (!recordSatici || !imgSatici || this.isAccountingDescription(recordSatici)) return false;
+    return this.companyNameSimilarity(recordSatici, imgSatici) >= 0.5;
   }
 
   private sameBelgeNo(a: string, b: string): boolean {

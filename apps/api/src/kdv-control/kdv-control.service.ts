@@ -1049,6 +1049,7 @@ export class KdvControlService {
           ocrKdvTutari: ocrResult.kdvTutari,
           ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
           ocrSatici: ocrResult.satici ?? null,
+          ocrSaticiVkn: ocrResult.saticiVkn ?? null,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
           ocrConfidence: ocrResult.confidence,
           ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
@@ -1058,6 +1059,7 @@ export class KdvControlService {
           ocrBelgeTipi: ocrResult.belgeTipi ?? null,
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
           ocrValidationScore: ocrResult.validationScore ?? null,
+          ocrKategori: ocrResult.kategori ?? null,
           imageHash,
         },
       });
@@ -1443,10 +1445,11 @@ export class KdvControlService {
       const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
       const tevkifat = parseKdv(r.image.confirmedKdvTevkifat || r.image.ocrKdvTevkifat);
       const rate = r.kdvRecord?.kdvOrani ? Number(r.kdvRecord.kdvOrani) : 0;
+      const matrahRates = rate > 0 ? [rate] : [20, 18, 10, 8, 1];
       const candidates = [
         ocrTotal,
         ...(isSatis && tevkifat > 0 && ocrTotal > tevkifat ? [ocrTotal - tevkifat] : []),
-        ...(rate > 0 ? [(ocrTotal * rate) / 100] : []),
+        ...matrahRates.map((r) => (ocrTotal * r) / 100),
       ].filter((n) => Number.isFinite(n) && n > 0);
 
       const best = candidates.sort((a, b) => Math.abs(a - luca) - Math.abs(b - luca))[0] ?? ocrTotal;
@@ -2619,7 +2622,7 @@ export class KdvControlService {
         orderBy: { uploadedAt: 'desc' },
         select: {
           ocrBelgeNo: true, ocrDate: true, ocrKdvTutari: true, ocrKdvTevkifat: true,
-          ocrSatici: true, ocrRawText: true, ocrConfidence: true,
+          ocrSatici: true, ocrSaticiVkn: true, ocrRawText: true, ocrConfidence: true,
           ocrBelgeNoConfidence: true, ocrDateConfidence: true, ocrKdvConfidence: true,
           ocrEngine: true, ocrBelgeTipi: true, ocrKdvBreakdown: true,
           ocrValidationScore: true, ocrKategori: true,
@@ -2637,6 +2640,7 @@ export class KdvControlService {
             ocrKdvTutari: cached.ocrKdvTutari,
             ocrKdvTevkifat: cached.ocrKdvTevkifat,
             ocrSatici: cached.ocrSatici,
+            ocrSaticiVkn: cached.ocrSaticiVkn,
             ocrRawText: cached.ocrRawText,
             ocrConfidence: cached.ocrConfidence,
             ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,

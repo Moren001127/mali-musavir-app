@@ -1068,16 +1068,24 @@ export class OcrService {
     const fullText = await this.getAzureRawText(buffer);
 
     // Alanları çıkar
+    const belgeTipi = this.detectBelgeTipiFromAzure(fullText, originalName);
     const date = this.extractDate(fullText);
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
+    const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
     const tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
-    const invoiceTotalsKdv = tevkifatli ? null : this.extractKdvFromInvoiceTotalsAzure(fullText);
-    const kdv = tevkifatli
-      ? this.formatAmount(tevkifatli.netKdv)
-      : invoiceTotalsKdv
-        ? this.formatAmount(invoiceTotalsKdv.kdv)
-        : this.extractKdvTotal(fullText);
+    const invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari
+      ? null
+      : this.extractKdvFromInvoiceTotalsAzure(fullText);
+    const kdv = zRaporu?.kdvTutari
+      ? zRaporu.kdvTutari
+      : tevkifatli
+        ? this.formatAmount(tevkifatli.netKdv)
+        : invoiceTotalsKdv
+          ? this.formatAmount(invoiceTotalsKdv.kdv)
+          : this.extractKdvTotal(fullText);
     const toplam = this.extractToplam(fullText);
+    const satici = this.extractSaticiFromAzure(fullText);
+    const saticiVkn = this.extractSaticiVknFromAzure(fullText);
 
     const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
     const confidence = belgeNoFromFilename 
@@ -1094,7 +1102,7 @@ export class OcrService {
     const fieldConfidence = {
       belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.95 : azureBaseline) : null,
       date: date ? azureBaseline : null,
-      kdvTutari: kdv ? (tevkifatli || invoiceTotalsKdv ? 0.92 : azureBaseline) : null,
+      kdvTutari: kdv ? (zRaporu?.kdvTutari || tevkifatli || invoiceTotalsKdv ? 0.92 : azureBaseline) : null,
     };
 
     const result: OcrResult = {
@@ -1104,12 +1112,17 @@ export class OcrService {
       kdvTutari: kdv,
       kdvTevkifat: tevkifatli ? this.formatAmount(tevkifatli.tevkifat) : null,
       totalTutari: toplam,
+      satici,
+      saticiVkn,
+      belgeTipi,
       confidence,
       fieldConfidence,
       engine: 'azure-read',
     };
 
-    if (tevkifatli) {
+    if (zRaporu?.breakdown?.length) {
+      result.kdvBreakdown = zRaporu.breakdown;
+    } else if (tevkifatli) {
       const oranMatch = this.normalizeAzureText(fullText).match(
         /HESAPLANAN\s+KDV\s*\(\s*[%/]?\s*(\d{1,2})/i,
       );
@@ -1298,6 +1311,76 @@ export class OcrService {
       .trim();
   }
 
+  private foldTurkishAscii(text: string): string {
+    return this.normalizeAzureText(text)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/Ğ/g, 'G')
+      .replace(/Ü/g, 'U')
+      .replace(/Ş/g, 'S')
+      .replace(/İ/g, 'I')
+      .replace(/Ö/g, 'O')
+      .replace(/Ç/g, 'C');
+  }
+
+  private isLikelyStandaloneTaxRate(value: string): boolean {
+    const folded = this.foldTurkishAscii(value || '')
+      .replace(/\b(?:TL|TRY)\b|₺/g, ' ')
+      .replace(/[()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const cleaned = folded
+      .replace(/^%/, '')
+      .replace(/%$/, '')
+      .trim();
+    return /^(0|1|8|10|18|20)(?:[,.]00)?$/.test(cleaned);
+  }
+
+  private isMatrahOrRateLine(value: string): boolean {
+    const folded = this.foldTurkishAscii(value || '');
+    const withoutMatrahParen = folded.replace(/\([^)]*MATRAH[^)]*\)/g, ' ');
+    return /\bKDV\s+(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*MATRAH\b/.test(withoutMatrahParen);
+  }
+
+  private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
+    const folded = this.foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
+    if (/\bZ\s*RAPORU\b|\bTOPKDV\b|\bKUM\s+TOPKDV\b/.test(folded)) return 'Z_RAPORU';
+    if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';
+    if (/\bE[-\s]?FATURA\b|\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
+    if (/\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded)) return 'OKC_FIS';
+    return null;
+  }
+
+  private extractSaticiVknFromAzure(text: string): string | null {
+    if (!text) return null;
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
+    const top = (stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 14)).join('\n');
+    const folded = this.foldTurkishAscii(top);
+    const labeled = folded.match(/\b(?:VKN|TCKN|VERGI\s*NO|MUKELLEF(?:LER)?\s*NO)\b[^0-9]{0,30}(\d{10,11})/);
+    if (labeled?.[1]) return labeled[1];
+    const any = folded.match(/\b(\d{10,11})\b/);
+    return any?.[1] ?? null;
+  }
+
+  private extractSaticiFromAzure(text: string): string | null {
+    if (!text) return null;
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
+    const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 10);
+    for (const raw of topLines) {
+      const folded = this.foldTurkishAscii(raw);
+      if (folded.length < 5) continue;
+      if (/\b(?:VKN|TCKN|VERGI|TEL|FAKS|WEB|E-?POSTA|MERSIS|TICARET\s+SICIL|FATURA|ETTN)\b/.test(folded)) continue;
+      if (!/[A-Z]/.test(folded)) continue;
+      if (/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TICARET|SANAYI|TURIZM|HIZMET|INSAAT|LOJISTIK|TASIMACILIK)\b/.test(folded)) {
+        return raw.slice(0, 200);
+      }
+      if (folded.replace(/[^A-Z]/g, '').length >= 12) return raw.slice(0, 200);
+    }
+    return null;
+  }
+
   /**
    * Tevkifatlı faturalardan TAM KDV ve TEVKİFAT tutarlarını Azure metninden
    * doğrudan yakalar. Claude bazen "Mal Hizmet Toplam" değerini "KDV dahil
@@ -1318,7 +1401,7 @@ export class OcrService {
     netKdv: number;
   } | null {
     if (!text) return null;
-    const normalized = this.normalizeAzureText(text);
+    const normalized = this.foldTurkishAscii(text);
     // SATIR-BAĞIMSIZ pattern match — Azure bazen tüm faturayı tek satırda
     // veriyor (PDF render farkı). Whitespace'i tek boşluğa indirip pattern'i
     // doğrudan etiket+tutar sırasında ararız.
@@ -1494,7 +1577,7 @@ export class OcrService {
 
   private extractKdvOnlyFromTelekomAzure(text: string): number | null {
     if (!text) return null;
-    const normalized = this.normalizeAzureText(text);
+    const normalized = this.foldTurkishAscii(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
     // KDV label varyasyonları:
@@ -1504,13 +1587,14 @@ export class OcrService {
     // Başında "Özel İletişim" gibi başka vergi label'ı varsa YAKALAMA
     // (çünkü onların içinde de "%NN" geçer ama "KDV" substring'i yok).
     const kdvLabelRe =
-      /KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\s*\(?\s*%?\s*\d/i;
+      /KATMA\s*DE.?ER\s*VERGISI|\bK\.?\s*D\.?\s*V\.?\s*\(?\s*%?\s*\d/i;
     // Satır başka bir vergi etiketi mi?
-    const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN|ÖTV\b|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
+    const otherTaxRe = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!kdvLabelRe.test(line)) continue;
+      if (this.isMatrahOrRateLine(line)) continue;
 
       // 1) Aynı satırda "Katma Değer Vergisi ... 252,00" olabilir
       const afterLabel = line.replace(kdvLabelRe, '');
@@ -1527,12 +1611,13 @@ export class OcrService {
         const nextLine = lines[i + j];
         if (kdvLabelRe.test(nextLine)) break; // başka KDV satırı
         if (otherTaxRe.test(nextLine)) break; // başka vergi türü → dur
+        if (/MAL\s*HIZMET|GENEL\s*TOPLAM|FATURA\s*TUTARI|ODENECEK\s*TUTAR|TOPLAM\s+TUTAR/i.test(nextLine)) break;
         // Matrah parantezini skip et
-        if (/\bMATRAH\b/i.test(nextLine)) continue;
+        if (this.isMatrahOrRateLine(nextLine)) continue;
         const cleaned = this.stripMatrahFragments(nextLine);
         if (!cleaned) continue;
         // "%20", "(Matrah...)" gibi pure marker satırı atla
-        if (/^[%]\s*\d/.test(cleaned)) continue;
+        if (/^[%]\s*\d/.test(cleaned) || this.isLikelyStandaloneTaxRate(cleaned)) continue;
         const m = cleaned.match(amountRe);
         if (m) {
           const val = this.parseAmount(m[1]);
@@ -1553,13 +1638,15 @@ export class OcrService {
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
     const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-    const parseLineAmount = (line: string): number | null => {
+    const parseLineAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
+      if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
       const m = line.match(amountRe);
       if (!m) return null;
       const n = this.parseAmount(m[1]);
       return n > 0 && n < 100_000_000 ? n : null;
     };
-    const parseLastAmount = (line: string): number | null => {
+    const parseLastAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
+      if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
       const matches = [...line.matchAll(amountGlobalRe)];
       if (matches.length === 0) return null;
       const n = this.parseAmount(matches[matches.length - 1][1]);
@@ -1568,6 +1655,7 @@ export class OcrService {
     const findExplicitKdvAmount = (): number | null => {
       for (const line of lines) {
         if (/TEVK[İI]FAT/i.test(line)) continue;
+        if (this.isMatrahOrRateLine(line)) continue;
         const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
         if (!label) continue;
         const valuePart = this.stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
@@ -1579,15 +1667,20 @@ export class OcrService {
     const findAmountNear = (labelRe: RegExp, options: { skipMatrah?: boolean; preferFirst?: boolean } = {}): number | null => {
       for (let i = 0; i < lines.length; i++) {
         if (!labelRe.test(lines[i])) continue;
+        if (options.skipMatrah && this.isMatrahOrRateLine(lines[i])) continue;
+        const allowMatrah = !options.skipMatrah;
         const sameSource = lines[i].replace(labelRe, '');
         const cleanedSame = options.skipMatrah ? this.stripMatrahFragments(sameSource) : sameSource;
-        const same = options.preferFirst ? parseLineAmount(cleanedSame) : parseLastAmount(cleanedSame);
+        const same = options.preferFirst
+          ? parseLineAmount(cleanedSame, { allowMatrah })
+          : parseLastAmount(cleanedSame, { allowMatrah });
         if (same != null) return same;
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
           const next = lines[i + j];
           if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
-          if (options.skipMatrah && /\bMATRAH\b/i.test(next)) continue;
-          const val = parseLineAmount(options.skipMatrah ? this.stripMatrahFragments(next) : next);
+          if (options.skipMatrah && this.isMatrahOrRateLine(next)) continue;
+          if (options.skipMatrah && this.isLikelyStandaloneTaxRate(next) && /%|ORAN/.test(this.foldTurkishAscii(`${lines[i]}\n${lines[i + j - 1] || ''}`))) continue;
+          const val = parseLineAmount(options.skipMatrah ? this.stripMatrahFragments(next) : next, { allowMatrah });
           if (val != null) return val;
         }
       }
@@ -1595,7 +1688,7 @@ export class OcrService {
     };
 
     const explicitKdv = findExplicitKdvAmount() ?? findAmountNear(
-      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)|UYGULANAN\s+TUTAR/i,
+      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
     );
     const matrah =
@@ -2328,8 +2421,8 @@ export class OcrService {
     // NBSP / full-width karakterler regex'i kırmasın diye azureText'i normalize
     // edilmiş haliyle test et. (extractKdvOnlyFromTelekomAzure kendi içinde
     // normalize ediyor — ama bu üst seviye trigger için de gerekli.)
-    const normalizedAzureText = this.normalizeAzureText(azureText);
-    const isTelekomFatura = /ÖZEL\s*İLETİŞİM|ÖIV\b|OIV\b|TELSİZ\s*KULLAN|TELSIZ\s*KULLAN/i.test(normalizedAzureText);
+    const normalizedAzureText = this.foldTurkishAscii(azureText);
+    const isTelekomFatura = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN/i.test(normalizedAzureText);
     if (isTelekomFatura) {
       const kdvOnlyAmount = this.extractKdvOnlyFromTelekomAzure(azureText);
       if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
@@ -3183,12 +3276,18 @@ export class OcrService {
 
     // Satıcı unvanı — UBL'de cac:AccountingSupplierParty > cac:Party > cac:PartyName > cbc:Name
     let satici: string | null = null;
+    let saticiVkn: string | null = null;
     const supplierBlock = xml.match(/<cac:AccountingSupplierParty>([\s\S]*?)<\/cac:AccountingSupplierParty>/i);
     if (supplierBlock) {
       const nameMatch = supplierBlock[1].match(/<cbc:Name>([^<]+)<\/cbc:Name>/i);
       if (nameMatch) {
         satici = nameMatch[1].trim().slice(0, 200);
       }
+      const supplierText = supplierBlock[1];
+      const vknMatch =
+        supplierText.match(/<cbc:ID[^>]*schemeID=["'](?:VKN|TCKN)["'][^>]*>(\d{10,11})<\/cbc:ID>/i) ||
+        supplierText.match(/<cbc:ID[^>]*>(\d{10,11})<\/cbc:ID>/i);
+      if (vknMatch?.[1]) saticiVkn = vknMatch[1];
     }
 
     // Hiç veri yoksa null dön
@@ -3202,6 +3301,7 @@ export class OcrService {
       kdvTevkifat: kdvTevkifat > 0 ? this.formatAmount(kdvTevkifat) : null,
       totalTutari,
       satici,
+      saticiVkn,
       belgeTipi,
       kdvBreakdown: kdvBreakdown.length > 0 ? kdvBreakdown : null,
       confidence: belgeNo && date && kdvTutari ? 0.99 : 0.85,
