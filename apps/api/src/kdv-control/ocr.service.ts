@@ -1027,9 +1027,14 @@ export class OcrService {
       if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
       return { needs: true, reason: 'low_field' };
     }
+    if (!result.belgeNo || !result.date) {
+      return { needs: true, reason: 'low_field' };
+    }
 
     const { belgeNo, date, kdvTutari } = result.fieldConfidence;
-    const scores = [belgeNo, date, kdvTutari].filter((v): v is number => typeof v === 'number');
+    const scores = [belgeNo, date, kdvTutari].map((v) =>
+      typeof v === 'number' ? v : 0,
+    );
 
     // Validation-aware eşik
     const validation = result.validationScore ?? 0;

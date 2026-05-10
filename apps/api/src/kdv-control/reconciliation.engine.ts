@@ -1100,16 +1100,23 @@ export class ReconciliationEngine {
       }
       const dateKey = new Date(rec.belgeDate).toISOString().slice(0, 10);
       const partyKey = this.recordPartyKey(rec);
+      const kdvAmount = parseFloat(rec.kdvTutari?.toString() || '0');
       // GIB/EARSIV gibi seri numaraları farklı satıcılarda tekrar edebilir.
       // Bu yüzden karşı taraf/VKN varsa uzun e-faturada bile aggregate anahtarına
       // eklenir; yoksa eski belge no + tarih davranışına düşeriz.
       // Kısa fiş/Z raporu no'larında ise karşı taraf/VKN yoksa aggregate etmiyoruz.
-      // Guncel kural: satici/VKN yoksa aggregate yapma; satirlar tek tek kalsin.
+      // Guncel kural: uzun e-belgede satici/VKN yoksa ayni belge+tarih+tutar
+      // tekrarlari tevkifatli alis fan-out kabul edilir. Farkli tutarlar ayni
+      // belge no altinda ayri gorsellere eslesebilsin diye tutar key'e dahil.
       if (partyKey === 'noparty') {
-        unaggregated.push(rec);
-        continue;
+        if (bn.length < 10 || !(kdvAmount > 0)) {
+          unaggregated.push(rec);
+          continue;
+        }
       }
-      const key = `${bn}|${dateKey}|${partyKey}`;
+      const key = partyKey === 'noparty'
+        ? `${bn}|${dateKey}|amount:${kdvAmount.toFixed(2)}`
+        : `${bn}|${dateKey}|${partyKey}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(rec);
     }
