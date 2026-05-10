@@ -79,6 +79,9 @@ export function OcrReviewPanel({
   /** Hangi durumdaki faturalar listelensin? Chip'lere tıklayınca değişir.
    *  Default 'reviewFlow' — bekleyen + onaylanan birlikte (kullanıcının yaptığı + yapacağı tek listede). */
   const [filter, setFilter] = useState<FilterMode>('reviewFlow');
+  const tevkifatAmount = parseLooseMoney(form.kdvTevkifat);
+  const netKdvAmount = parseLooseMoney(form.kdvTutari);
+  const hasTevkifat = tevkifatAmount > 0;
 
   /** Filtreye göre gösterilecek görseller. */
   const filtered = useMemo(() => {
@@ -540,7 +543,13 @@ export function OcrReviewPanel({
                 onEnter={handleConfirm}
               />
               <FieldInput
-                label={form.breakdown && form.breakdown.length > 0 ? 'KDV Tutarı (toplam — otomatik)' : 'KDV Tutarı (NET — tevkifat düşülmüş)'}
+                label={
+                  hasTevkifat
+                    ? 'KDV Tutarı (NET — tevkifat düşülmüş)'
+                    : form.breakdown && form.breakdown.length > 0
+                      ? 'KDV Tutarı (toplam — otomatik)'
+                      : 'KDV Tutarı'
+                }
                 placeholder="123,45"
                 value={
                   form.breakdown && form.breakdown.length > 0
@@ -565,7 +574,7 @@ export function OcrReviewPanel({
                 numeric
               />
 
-              {parseLooseMoney(form.kdvTevkifat) > 0 && (
+              {hasTevkifat && (
                 <div
                   className="rounded-lg px-3 py-2 text-[11px]"
                   style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' }}
@@ -573,11 +582,11 @@ export function OcrReviewPanel({
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold uppercase tracking-wider" style={{ color: '#fb923c' }}>Tevkifat kontrolü</span>
                     <span className="font-mono" style={{ color: '#fafaf9' }}>
-                      Tam KDV {fmtLooseMoney(parseLooseMoney(form.kdvTutari) + parseLooseMoney(form.kdvTevkifat))}
+                      Tam KDV {fmtLooseMoney(netKdvAmount + tevkifatAmount)}
                     </span>
                   </div>
                   <p className="mt-1 leading-relaxed">
-                    Bu alanda KDV net tutarı ve tevkifat ayrı saklanır. Alış eşleştirmesinde sistem gerektiğinde net + tevkifat toplamını da dener.
+                    Net KDV {fmtLooseMoney(netKdvAmount)} + tevkifat {fmtLooseMoney(tevkifatAmount)} ayrı saklanır. Alış eşleştirmesinde Luca'nın normal KDV ve sorumlu sıfatıyla indirilecek KDV satırları birlikte değerlendirilir.
                   </p>
                 </div>
               )}

@@ -2412,6 +2412,7 @@ export class KdvControlService {
     mihsapInvoiceId: string,
     tenantId: string,
   ) {
+    const t0 = Date.now();
     try {
       await this.prisma.receiptImage.update({
         where: { id: imageId },
@@ -2524,6 +2525,7 @@ export class KdvControlService {
           ocrBelgeNo: ocrResult.belgeNo,
           ocrDate: ocrResult.date,
           ocrKdvTutari: ocrResult.kdvTutari,
+          ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
           ocrSatici: (ocrResult as any).satici || null,
           ocrSaticiVkn: (ocrResult as any).saticiVkn || null,
           ocrRawText: ocrResult.rawText?.substring(0, 2000),
@@ -2540,6 +2542,8 @@ export class KdvControlService {
           // confirmed* alanlarını DOLDURMUYORUZ — Mihsap verisine güvenilmez.
         } as any,
       });
+
+      await this.logOcrUsage(imageId, ocrResult, Date.now() - t0);
 
       // ─── VENDOR MEMORY UPSERT ───
       // OCR'dan VKN okuduysak VendorMemory'de "bu firmayı gördük" kaydı tut.
