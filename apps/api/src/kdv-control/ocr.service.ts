@@ -1098,7 +1098,7 @@ export class OcrService {
     const invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari
       ? null
       : this.extractKdvFromInvoiceTotalsAzure(fullText);
-    const kdv = zRaporu?.kdvTutari
+    let kdv = zRaporu?.kdvTutari
       ? zRaporu.kdvTutari
       : tevkifatli
         ? this.formatAmount(tevkifatli.netKdv)
@@ -1106,6 +1106,16 @@ export class OcrService {
           ? this.formatAmount(invoiceTotalsKdv.kdv)
           : this.extractKdvTotal(fullText);
     const toplam = this.extractToplam(fullText);
+    if (!zRaporu?.kdvTutari && !tevkifatli && kdv && toplam) {
+      const kdvNum = this.parseAmount(String(kdv));
+      const toplamNum = this.parseAmount(String(toplam));
+      if (kdvNum > 0 && toplamNum > 0 && kdvNum >= toplamNum * 0.45) {
+        this.logger.warn(
+          `Azure OCR KDV tutari supheli: kdv=${kdv} toplam=${toplam} - KDV alani bos birakildi (${originalName || '-'})`,
+        );
+        kdv = null;
+      }
+    }
     const satici = this.extractSaticiFromAzure(fullText);
     const saticiVkn = this.extractSaticiVknFromAzure(fullText);
 
@@ -1237,9 +1247,16 @@ export class OcrService {
     const cleanText = this.stripMatrahFragments(text);
 
     // Hesaplanan KDV (çoklu oran)
-    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
+    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (hesaplananMatches.length > 0) {
-      const total = hesaplananMatches.reduce((sum, m) => sum + this.parseAmount(m[1]), 0);
+      const total = hesaplananMatches.reduce((sum, m) => {
+        const rate = m[1] ? Number(m[1]) : null;
+        const amount = this.parseAmount(m[2]);
+        if (rate != null && this.isLikelyStandaloneTaxRate(m[2]) && Math.abs(amount - rate) < 0.01) {
+          return sum;
+        }
+        return sum + amount;
+      }, 0);
       if (total > 0) return this.formatAmount(total);
     }
 
