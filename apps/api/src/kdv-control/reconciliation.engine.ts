@@ -569,7 +569,7 @@ export class ReconciliationEngine {
       }
     }
     // 2) AD BENZERLİĞİ — VKN yoksa veya farklılaşmadıysa
-    else if (recordSatici && imgSatici) {
+    else if (recordSatici && imgSatici && !this.isAccountingDescription(recordSatici)) {
       const sim = this.companyNameSimilarity(recordSatici, imgSatici);
       if (sim >= 0.5) {
         score = Math.min(1, score + 0.05);
@@ -862,6 +862,19 @@ export class ReconciliationEngine {
   /** Belge no'yu karşılaştırma için normalize et: UPPER + sadece alfa-sayısal */
   private normalizeBelgeNo(s: string): string {
     return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  private isAccountingDescription(value: string): boolean {
+    const v = value
+      .toLocaleUpperCase('tr-TR')
+      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+      .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
+      .replace(/[.,;:'"\-/\\()&%]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!v) return true;
+    return /\b(KDV|TEVKIFAT|TEVKIFATLI|HESAPLANAN|INDIRILECEK|SORUMLU|SATIN|ALMA|IADE|391|191)\b/.test(v);
   }
 
   private sameBelgeNo(a: string, b: string): boolean {

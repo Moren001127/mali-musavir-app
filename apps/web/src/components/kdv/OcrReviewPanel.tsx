@@ -525,7 +525,7 @@ export function OcrReviewPanel({
         {activeImg ? (
           <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Fatura görseli — büyüteçli */}
-            <ZoomableImage src={previewUrl} alt={activeImg.originalName} />
+            <ZoomableImage key={activeImg.id} src={previewUrl} alt={activeImg.originalName} />
 
             {/* Alan inputları */}
             <div className="space-y-4">

@@ -967,6 +967,15 @@ export class OcrService {
    */
   needsReview(result: OcrResult): { needs: boolean; reason: 'none' | 'empty' | 'low_field' } {
     if (this.isLowConfidence(result)) return { needs: true, reason: 'empty' };
+
+    // Belge no + tarih okunsa bile KDV boşsa "başarılı" sayma.
+    // Özellikle görsel/XML uzantılı e-faturalarda oran okunup tutar boş kalabiliyor;
+    // kullanıcı teyidine düşmeli ki placeholder değer rapora taşınmasın.
+    const kdvAmount = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+    if (!result.kdvTutari || kdvAmount <= 0) {
+      return { needs: true, reason: 'low_field' };
+    }
+
     const { belgeNo, date, kdvTutari } = result.fieldConfidence;
     const scores = [belgeNo, date, kdvTutari].filter((v): v is number => typeof v === 'number');
 
@@ -1422,7 +1431,9 @@ export class OcrService {
       return null;
     };
 
-    const explicitKdv = findAmountNear(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI/i);
+    const explicitKdv = findAmountNear(
+      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)|UYGULANAN\s+TUTAR/i,
+    );
     const matrah =
       findAmountNear(/MAL\s*H[İI]ZMET\s*TOPLAM|MAL\s*H[İI]ZMET\s*TUTARI|KDV\s*MATRAH|MATRAH/i);
     const kdvDahil =

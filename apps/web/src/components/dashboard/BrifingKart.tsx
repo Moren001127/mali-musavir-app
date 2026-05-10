@@ -45,6 +45,18 @@ const ICON_MAP: Record<string, any> = {
   Receipt, FileText, FileCheck, Bell, Sparkles, Zap, Calendar, Clock, ArrowRight,
 };
 
+/** v1.36.83: Görünen adın sonundaki Bey/Hanım/Bay/Bayan'ı temizle, ilk kelimeyi al.
+ * Yeni kullanıcı kayıt formuna "DİLEK Bey" yazabiliyor — bu bug değil, ad alanına unvan girmiş.
+ * Selamlamada "Günaydın, DİLEK" yeterli — kibar AND cinsiyet-tarafsız. */
+function sanitizeFirstName(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = String(raw)
+    .replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '')
+    .trim()
+    .split(/\s+/)[0];
+  return cleaned || undefined;
+}
+
 const SELAMLAMA = (() => {
   const h = new Date().getHours();
   if (h < 6) return 'İyi geceler';
@@ -296,7 +308,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           }}
         >
           {SELAMLAMA}
-          {userName ? `, ${userName}` : ''}
+          {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
         </h2>
         <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
           {KISA_TARIH}

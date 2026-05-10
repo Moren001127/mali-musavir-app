@@ -11,6 +11,14 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
 
+function cleanFirstName(raw?: string | null): string | undefined {
+  const cleaned = String(raw || '')
+    .replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '')
+    .trim()
+    .split(/\s+/)[0];
+  return cleaned || undefined;
+}
+
 export interface ChatRequest {
   conversationId?: string;
   message: string;
@@ -50,6 +58,7 @@ interface BrifingContext {
   now: Date;
   year: number; month: number; day: number; saat: number;
   tarihUzun: string;
+  userFirstName: string;
   workflow: { bekliyorEvrak: number; isleniyor: number; kontrol: number; beyan: number; tamam: number; total: number };
   enUzunBekleyen: { ad: string; gun: number; stage: string; id: string } | null;
   ortalamaBekleme: number;
@@ -174,7 +183,7 @@ export class MorenAiService {
 
     const systemPrompt = buildSystemPrompt({
       officeName: user?.tenant?.name,
-      userName: user ? `${user.firstName} ${user.lastName}` : undefined,
+      userName: cleanFirstName(user?.firstName) || cleanFirstName(user?.lastName),
       tenantId,
       currentDate: today.toISOString().slice(0, 10),
       currentPeriod,
@@ -390,14 +399,15 @@ export class MorenAiService {
   private brifingCache = new Map<string, { payload: BrifingPayload; generatedAt: Date }>();
   private readonly BRIFING_TTL_MS = 30 * 60 * 1000; // 30 dk
 
-  async getBrifing(tenantId: string, force = false): Promise<BrifingResponse> {
-    const cached = this.brifingCache.get(tenantId);
+  async getBrifing(tenantId: string, userId?: string | null, force = false): Promise<BrifingResponse> {
+    const cacheKey = `${tenantId}:${userId || 'anonymous'}`;
+    const cached = this.brifingCache.get(cacheKey);
     if (!force && cached && (Date.now() - cached.generatedAt.getTime()) < this.BRIFING_TTL_MS) {
       return { ...cached.payload, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    const ctx = await this.buildBrifingContext(tenantId);
+    const ctx = await this.buildBrifingContext(tenantId, userId);
 
     if (!apiKey) {
       const fallback = this.buildFallbackPayload(ctx);
@@ -471,7 +481,7 @@ export class MorenAiService {
       } catch {}
 
       const generatedAt = new Date();
-      this.brifingCache.set(tenantId, { payload: parsed, generatedAt });
+      this.brifingCache.set(cacheKey, { payload: parsed, generatedAt });
       return { ...parsed, generatedAt: generatedAt.toISOString(), fromCache: false };
     } catch (e: any) {
       this.logger.warn(`Brifing exception: ${e?.message}`);
@@ -481,13 +491,22 @@ export class MorenAiService {
   }
 
   /** Genişletilmiş bağlam — workflow + deadlines + agents + 7-day trend + last hour activity */
-  private async buildBrifingContext(tenantId: string): Promise<BrifingContext> {
+  private async buildBrifingContext(tenantId: string, userId?: string | null): Promise<BrifingContext> {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
     const day = now.getDate();
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+
+    // v1.36.83: Kullanıcının adını dinamik çek — hardcoded "Muzaffer Bey" gitmiş olur
+    let userFirstName = 'kullanıcı';
+    if (userId) {
+      try {
+        const u = await this.prisma.user.findFirst({ where: { id: userId }, select: { firstName: true } });
+        userFirstName = cleanFirstName(u?.firstName) || 'kullanıcı';
+      } catch {}
+    }
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
     const sevenDaysOut = new Date(now.getTime() + 7 * 86400000);
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
@@ -621,6 +640,7 @@ export class MorenAiService {
       year, month, day,
       saat: now.getHours(),
       tarihUzun: now.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      userFirstName,
       workflow: { bekliyorEvrak, isleniyor, kontrol, beyan, tamam, total: aktif.length },
       enUzunBekleyen,
       ortalamaBekleme,
@@ -650,7 +670,7 @@ export class MorenAiService {
         : 'kritik dönem: son tarih yaklaştı/geçtiyse net uyar; geciken işlerde açık ve doğrudan konuş.';
     const allowedRoutes = ['/panel/is-yuku', '/panel/gorevler', '/panel/beyannameler', '/panel/kdv-kontrol', '/panel/ajanlar/mihsap', '/panel/mukellefler'].join(', ');
 
-    return `Sen Muzaffer Bey'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın. Gerektiğinde ofisi nazikçe eleştirirsin; aksayan iş varsa üstünü örtmezsin. Tonun canlıdır: küçük bir espri veya tatlı iğneleme kullanabilirsin ama kritik uyarılarda ciddiyeti bozmazsın.
+    return `Sen ${c.userFirstName}'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın. Gerektiğinde ofisi nazikçe eleştirirsin; aksayan iş varsa üstünü örtmezsin. Tonun canlıdır: küçük bir espri veya tatlı iğneleme kullanabilirsin ama kritik uyarılarda ciddiyeti bozmazsın.
 
 # OFİS DURUMU (${c.tarihUzun}, ${moodHint} saat ${saat})
 
@@ -707,7 +727,7 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 }
 
 KURALLAR:
-- summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; Muzaffer Bey'e doğal ve kısa hitap et.
+- summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
 - alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Firma/mükellef adı yazma. Boş varsa boş array.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
@@ -767,18 +787,18 @@ KURALLAR:
     // Summary
     if (aktifIsYuku === 0) {
       if (c.workflow.total === 0) {
-        summary = `Muzaffer Bey, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`;
+        summary = `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`;
       } else {
         summary = erkenDonem
-          ? `Muzaffer Bey, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
-          : `Muzaffer Bey, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
+          ? `${c.userFirstName}, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
+          : `${c.userFirstName}, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
       }
     } else {
       const parcalar: string[] = [];
       if (c.workflow.kontrol > 0) parcalar.push(`${c.workflow.kontrol} KDV kontrol`);
       if (c.workflow.beyan > 0) parcalar.push(`${c.workflow.beyan} beyanname`);
       if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} fatura işleme`);
-      summary = `Muzaffer Bey, ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
+      summary = `${c.userFirstName}, ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
       if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} kayıt 5+ gündür bekliyor.`;
       else summary += ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
       if (focus === 'calm') focus = 'busy';

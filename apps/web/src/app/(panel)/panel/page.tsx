@@ -15,12 +15,12 @@ const GOLD = '#d4b876';
 
 function displayUserName(user: any): string | undefined {
   const first = String(user?.firstName || '').trim();
-  if (first && !/^admin$/i.test(first)) return `${first} Bey`;
+  if (first && !/^admin$/i.test(first)) return first.replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '').trim().split(/\s+/)[0] || undefined;
 
   const full = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
   const candidate = full || user?.fullName || user?.name || user?.displayName;
   if (!candidate || /^admin$/i.test(String(candidate).trim())) return undefined;
-  return `${String(candidate).trim().split(/\s+/)[0]} Bey`;
+  return String(candidate).replace(/\b(Bey|Hanım|Hanim|Bay|Bayan)\b/gi, '').trim().split(/\s+/)[0] || undefined;
 }
 
 type Task = {

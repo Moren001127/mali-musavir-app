@@ -56,7 +56,7 @@ export class MorenAiController {
   // ?force=true ile cache'i bypass edip yenisini üretir.
   @Get('brifing')
   async brifing(@Req() req: any, @Query('force') force?: string) {
-    return this.service.getBrifing(req.user.tenantId, force === 'true' || force === '1');
+    return this.service.getBrifing(req.user.tenantId, req.user.sub, force === 'true' || force === '1');
   }
 
   @Get('office-brain')

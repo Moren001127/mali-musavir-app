@@ -1387,15 +1387,15 @@ export class KdvControlService {
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
     // 9 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Durum · Açıklama
     ws.columns = [
-      { width: 5 },
-      { width: 13 },
-      { width: 22 },
+      { width: 6 },
+      { width: 16 },
+      { width: 26 },
       { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
-      { width: 13 },
-      { width: 22 },
+      { width: 16 },
+      { width: 26 },
       { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
-      { width: 15 },
-      { width: 55 },
+      { width: 16 },
+      { width: 72 },
     ];
 
     // ─── MOREN LOGOLU BAŞLIK ─────────────────────────────
@@ -1488,7 +1488,7 @@ export class KdvControlService {
         ws.mergeCells(`F${r}:I${r}`);
         const c4 = ws.getCell(`F${r}`);
         c4.value = v2; c4.font = { size: 11 };
-        c4.alignment = { horizontal: 'right', vertical: 'middle' };
+        c4.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
       }
     };
     setSummary(9,  'Toplam Satır',                       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
@@ -1546,11 +1546,14 @@ export class KdvControlService {
       // Açıklama: orphan durumda referans no ekle ki muhasebeci hangi tarafı
       // arayacağını bilsin. ONAYLANDI durumda notes da raporda görünsün.
       const noteSuffix = r.notes ? ` · Not: ${r.notes}` : '';
+      const formattedReasons = this.formatKdvExportReasons(r.mismatchReasons || []);
       const aciklama = !r.image && r.kdvRecord
-        ? `Fatura görseli yok (Luca ${lucaEvrak} · ${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`
+        ? (lucaEvrak === '—'
+            ? `Luca satırında belge no/tarih yok; görselle eşleşemedi (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`
+            : `Fatura görseli yok: ${lucaEvrak} (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`)
         : !r.kdvRecord && r.image
-          ? `Luca kaydı yok (Fatura ${faturaBelgeNo})`
-          : ((r.mismatchReasons || []).join(' · ') || (isMatchedStatus(r.status) ? 'Tam eşleşme' : '')) + noteSuffix;
+          ? `Luca kaydı yok: ${faturaBelgeNo}`
+          : (formattedReasons || (isMatchedStatus(r.status) ? 'Tam eşleşme' : 'İncele')) + noteSuffix;
 
       row.values = [
         idx + 1, lucaTarih, lucaEvrak, lucaKdv,
@@ -1582,6 +1585,7 @@ export class KdvControlService {
         cell.alignment = {
           horizontal: rightAlign ? 'right' : centerAlign ? 'center' : 'left',
           vertical: 'middle',
+          wrapText: colNum === 9,
         };
         cell.border = {
           top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -1637,6 +1641,23 @@ export class KdvControlService {
     }
 
     return buffer;
+  }
+
+  private formatKdvExportReasons(reasons: string[]): string {
+    const cleaned = (reasons || [])
+      .filter(Boolean)
+      .filter((r) => !/^VKN\/TCKN tam eşleşti/i.test(r))
+      .filter((r) => !/^Satıcı uyumsuz/i.test(r))
+      .map((r) => {
+        if (/KDV tutar uyumsuz/i.test(r)) return r.replace(/^KDV tutar uyumsuz:\s*/i, 'KDV farklı: ');
+        if (/Görselden KDV tutarı okunamadı/i.test(r)) return 'Faturadan KDV okunamadı';
+        if (/Belge no/i.test(r) && /uyumsuz/i.test(r)) return 'Belge no farklı';
+        if (/Tarih/i.test(r) && /uyumsuz/i.test(r)) return 'Tarih farklı';
+        if (/Alış tevkifat eşleşmesi/i.test(r)) return 'Tevkifatlı alış eşleşti';
+        return r;
+      });
+
+    return Array.from(new Set(cleaned)).slice(0, 2).join(' · ');
   }
 
   // ============================================================
