@@ -720,7 +720,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'tablo' | 'ajanda' | 'istatistik'>('ajanda');
+  const [view, setView] = useState<'tablo' | 'ajanda'>('ajanda');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
   const [preview, setPreview] = useState<any | null>(null);
@@ -843,7 +843,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
 
       {/* Tablo / İstatistik tab */}
       <div className="flex gap-1.5">
-        {(['ajanda', 'tablo', 'istatistik'] as const).map((t) => {
+        {(['ajanda', 'tablo'] as const).map((t) => {
           const active = view === t;
           return (
             <button
@@ -856,13 +856,11 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
                 border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
               }}
             >
-              {t === 'tablo' ? 'Mükellef Listesi' : 'İstatistikler'}
+              {t === 'ajanda' ? 'Tahsilat Ajandası' : 'Cari Liste'}
             </button>
           );
         })}
       </div>
-
-      {view === 'istatistik' && <IstatistiklerView />}
 
       {view === 'ajanda' && (
         <TahsilatAjandasiView
