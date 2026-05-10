@@ -1067,6 +1067,7 @@ export class OcrService {
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
+    if (/^[A-Z]{2,4}\d{12,14}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
     return null;
@@ -1918,7 +1919,7 @@ export class OcrService {
       const fn = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const ocr = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const exactMatch = fn === ocr && fn.length >= 4;
-      const nearMatch = fn.length >= 10 && this.editDistance(fn, ocr) <= 2;
+      const nearMatch = fn.length >= 10 && this.eBelgeNoDistance(fn, ocr) <= 3;
       if (exactMatch || nearMatch) {
         skipBelgeNoCheck = true;
         // Near match durumda filename'i otorite kabul et — OCR digit eklemiş/atlatmış
@@ -2350,20 +2351,23 @@ export class OcrService {
       //   e) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
       const editDist =
         fnClean.length >= 10 && ocrClean.length >= 10
-          ? this.editDistance(fnClean, ocrClean)
+          ? this.eBelgeNoDistance(fnClean, ocrClean)
           : Infinity;
+      const fnLooksLikeEInvoice = /^[A-Z]{2,4}\d{12,14}$/.test(fnClean);
+      const lowBelgeNoConfidence = (result.fieldConfidence?.belgeNo ?? 0) < 0.85;
       const shouldOverride =
         !ocrClean ||
         (ocrClean.length < 10 && fnClean.length >= 10) ||
         (fnClean.length > ocrClean.length && fnClean.startsWith(ocrClean.slice(0, 3))) ||
-        (fnClean.length >= 10 && editDist <= 2);
+        (fnClean.length >= 10 && editDist <= 2) ||
+        (fnLooksLikeEInvoice && lowBelgeNoConfidence && editDist <= 4);
 
       if (shouldOverride && fnClean !== ocrClean) {
         this.logger.warn(
           `Belge no filename override: "${ocrClean}" → "${fnClean}" (editDist=${editDist === Infinity ? 'n/a' : editDist}, ${originalName})`,
         );
         result.belgeNo = belgeNoFromFilename;
-        if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.9;
+        if (result.fieldConfidence) result.fieldConfidence.belgeNo = fnLooksLikeEInvoice ? 0.96 : 0.9;
       }
     }
 
@@ -2656,11 +2660,12 @@ export class OcrService {
       const tipi = String(result.belgeTipi).toUpperCase();
 
       if (tipi === 'EFATURA' || tipi === 'EARSIV') {
-        // E-fatura/e-arşiv: tam 16 char, 3 harf + 13 hane
-        const eFaturaRegex = /^[A-Z]{3}\d{13}$/;
+        // E-fatura/e-arşiv: çoğunlukla 3 harf + 13 hane; sahada IGDAS gibi
+        // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane güvenli kabul.
+        const eFaturaRegex = /^[A-Z]{2,4}\d{12,14}$/;
         if (!eFaturaRegex.test(bn)) {
           issues.push(
-            `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: 3 harf + 13 hane = 16 char, örn. EFA2026000000093)`,
+            `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yıl + sıra no, örn. EFA2026000000093)`,
           );
           score -= 0.3;
           // Confidence'ı da düşür → NEEDS_REVIEW
@@ -2669,7 +2674,8 @@ export class OcrService {
           }
         } else {
           // Yıl validasyonu (4 hane yıl 2020-2050 arası)
-          const yil = parseInt(bn.slice(3, 7), 10);
+          const yilMatch = bn.match(/^[A-Z]{2,4}(\d{4})/);
+          const yil = yilMatch ? parseInt(yilMatch[1], 10) : NaN;
           if (yil < 2020 || yil > 2050) {
             issues.push(`E-fatura belge no'sundaki yıl mantıksız: ${yil} (beklenen: 2020-2050)`);
             score -= 0.15;
@@ -2961,5 +2967,18 @@ export class OcrService {
       }
     }
     return dp[m][n];
+  }
+
+  private eBelgeNoDistance(a: string, b: string): number {
+    const normalizeConfusions = (s: string) =>
+      s
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
+        .replace(/5/g, 'S')
+        .replace(/0/g, 'O')
+        .replace(/1/g, 'I');
+    const direct = this.editDistance(a, b);
+    const confused = this.editDistance(normalizeConfusions(a), normalizeConfusions(b));
+    return Math.min(direct, confused);
   }
 }

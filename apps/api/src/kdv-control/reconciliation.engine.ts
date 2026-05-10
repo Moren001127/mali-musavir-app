@@ -339,7 +339,8 @@ export class ReconciliationEngine {
     let rateMismatched = false;  // Oran kesin uyumsuz (ör. Luca %20, OCR breakdown'unda %20 yok)
 
     // ── BELGE NO ─────────────────────────────────────────────
-    // E-fatura format'ı (3 harf + 13 rakam = 16 char): TAM EŞLEŞME ZORUNLU.
+    // E-fatura format'ı (genelde 3 harf + 13 rakam; bazı kurumlarda 2 harf + 14 rakam):
+    // TAM EŞLEŞME ZORUNLU.
     //   Bu numaralar GİB tarafından merkezi atanır, yıllık seri unique. 1 karakter
     //   farkı bile FARKLI BELGE'dir (örn. GIB...0008 ≠ GIB...0007). Fuzzy match yok.
     // ÖKC fişi (≤6 char): Leading zero stripped tam eşleşme.
@@ -347,7 +348,7 @@ export class ReconciliationEngine {
     //   tolerans uzun belge no'larda).
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
     const isEFaturaFormat = (s: string): boolean =>
-      /^[A-Z]{3}\d{13}$/.test(s); // EFA/ESR/BEF/GHN/GIB/EFT/IRU/KMI + 4 yıl + 9 sıra
+      /^[A-Z]{2,4}\d{12,14}$/.test(s); // EFA/ESR/BEF/GIB yanında ES/TS gibi kurum serileri
     if (record.belgeNo && imgBelgeNo) {
       const normA = this.normalizeBelgeNo(record.belgeNo);
       const normB = this.normalizeBelgeNo(imgBelgeNo);
