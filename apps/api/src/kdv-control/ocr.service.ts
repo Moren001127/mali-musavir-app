@@ -78,7 +78,7 @@ const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
 
 /**
  * Varsayılan OCR modeli — Haiku 4.5 (ucuz, $0.0025/belge).
- * Hallucination'lara karşı Azure OCR cross-check (2. tanık) + matematiksel validation kullanılıyor.
+ * Hallucination'lara karşı Azure OCR cross-check (2. tanık) + alan bazlı validation kullanılıyor.
  * Sonnet'e çıkmak için ENV: OCR_MODEL=claude-sonnet-4-5
  */
 const DEFAULT_OCR_MODEL = 'claude-haiku-4-5-20251001';
@@ -558,7 +558,7 @@ export class OcrService {
       '  ➜ kdvBreakdown=[{"oran":20,"tutar":"650,20","matrah":"3251,00"}]',
       '  ⚠ SAKIN kalem satırlarını ayrı oran olarak sayma — hepsi %20 ise TEK BREAKDOWN elemanı.',
       '',
-      'Matrah belirgin değilse matrah hesapla: matrah = tutar * 100 / oran (örn. %20, 116 TL → matrah 580).',
+      'Matrah belirgin değilse null bırak. KDV tutarını ASLA matrah/toplam farkı veya oran hesabıyla üretme; sadece belgede yazan KDV satırını oku.',
       '',
       '╔══ 5c) KDV TEVKİFATLI FATURA — İKİ SAYIYI AYRI OKU ══╗',
       'TEVKİFATLI faturalarda SAKIN matematik yapma — görseldeki iki sayıyı AYRI AYRI kopyala:',
@@ -1094,17 +1094,20 @@ export class OcrService {
     const date = this.extractDate(fullText);
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
     const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
+    const okcFis = belgeTipi === 'OKC_FIS' ? this.extractOkcFisKdvFromAzure(fullText) : null;
     const tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
-    const invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari
+    const invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari || okcFis?.kdvTutari
       ? null
       : this.extractKdvFromInvoiceTotalsAzure(fullText);
     let kdv = zRaporu?.kdvTutari
       ? zRaporu.kdvTutari
       : tevkifatli
         ? this.formatAmount(tevkifatli.netKdv)
-        : invoiceTotalsKdv
-          ? this.formatAmount(invoiceTotalsKdv.kdv)
-          : this.extractKdvTotal(fullText);
+        : okcFis?.kdvTutari
+          ? okcFis.kdvTutari
+          : invoiceTotalsKdv
+            ? this.formatAmount(invoiceTotalsKdv.kdv)
+            : this.extractKdvTotal(fullText);
     const toplam = this.extractToplam(fullText);
     if (!zRaporu?.kdvTutari && !tevkifatli && kdv && toplam) {
       const kdvNum = this.parseAmount(String(kdv));
@@ -1134,7 +1137,7 @@ export class OcrService {
     const fieldConfidence = {
       belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.95 : azureBaseline) : null,
       date: date ? azureBaseline : null,
-      kdvTutari: kdv ? (zRaporu?.kdvTutari || tevkifatli || invoiceTotalsKdv ? 0.92 : azureBaseline) : null,
+      kdvTutari: kdv ? (zRaporu?.kdvTutari || tevkifatli || okcFis?.kdvTutari || invoiceTotalsKdv ? 0.92 : azureBaseline) : null,
     };
 
     const result: OcrResult = {
@@ -1164,6 +1167,8 @@ export class OcrService {
         tutar: tevkifatli.netKdv,
         matrah: null,
       }];
+    } else if (okcFis?.breakdown?.length) {
+      result.kdvBreakdown = okcFis.breakdown;
     } else if (invoiceTotalsKdv) {
       result.kdvBreakdown = [{
         oran: invoiceTotalsKdv.oran && [1, 8, 10, 18, 20].includes(invoiceTotalsKdv.oran)
@@ -1231,13 +1236,15 @@ export class OcrService {
       if (zBare?.[1]) return zBare[1].trim();
     }
 
+    const foldedText = this.foldTurkishAscii(text);
     const patterns = [
+      /fis\s*no\s*[:\s#.]*([A-Z0-9]{1,12})/i,
       /fatura\s*no\s*:?\s*([A-Z0-9]{10,20})/i,
-      /(?:fiş|belge|evrak)\s*(?:no|numarası)?[:\s#.]*([A-Z0-9]{8,20})/i,
+      /(?:fis|belge|evrak)\s*(?:no|numarasi)?[:\s#.]*([A-Z0-9]{8,20})/i,
       /\b([A-Z0-9]{3}20\d{2}\d{6,12})\b/i,
     ];
     for (const p of patterns) {
-      const m = text.match(p);
+      const m = foldedText.match(p);
       if (m?.[1]) return m[1].trim().toUpperCase();
     }
     return null;
@@ -1272,6 +1279,56 @@ export class OcrService {
     if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g, '');
 
     return null;
+  }
+
+  private extractOkcFisKdvFromAzure(text: string): {
+    kdvTutari: string | null;
+    breakdown: KdvBreakdownItem[];
+  } | null {
+    if (!text) return null;
+    const lines = this.normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const breakdown: KdvBreakdownItem[] = [];
+    const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))/i;
+    const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
+    const amountRe = /[-+]?[\*₺¥]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
+    const parseLastAmount = (raw: string): number => {
+      const clean = this.stripMatrahFragments(raw);
+      const values = [...clean.matchAll(amountRe)]
+        .map((m) => this.parseAmount(m[1]))
+        .filter((value) => value > 0 && value < 100_000_000);
+      return values.length > 0 ? values[values.length - 1] : 0;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!kdvLineRe.test(line)) continue;
+      if (otherTaxRe.test(line) || this.isMatrahOrRateLine(line)) continue;
+      const rateMatch = line.match(/(?:K\.?\s*D\.?\s*V\.?\s*)?[%/]\s*(\d{1,2})(?:[.,]\d+)?/i);
+      const oran = rateMatch ? Number(rateMatch[1]) : null;
+      let tutar = parseLastAmount(line);
+      if (tutar <= 0) {
+        for (let j = 1; j <= 2 && i + j < lines.length; j++) {
+          const next = lines[i + j];
+          if (otherTaxRe.test(next) || /TOPLAM|NAKİT|NAKIT|KART|GENEL/i.test(next)) break;
+          tutar = parseLastAmount(next);
+          if (tutar > 0) break;
+        }
+      }
+      if (tutar > 0) {
+        breakdown.push({
+          oran: oran && [1, 8, 10, 18, 20].includes(oran) ? oran : 0,
+          tutar,
+          matrah: null,
+        });
+      }
+    }
+
+    if (breakdown.length === 0) return null;
+    const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
+    return {
+      kdvTutari: this.formatAmount(sum),
+      breakdown,
+    };
   }
 
   private extractToplam(text: string): string | null {
@@ -1576,9 +1633,9 @@ export class OcrService {
     if (tevkifat === 0 && tamKdv > 0) {
       const oran = this.parseTevkifatRate(folded) || this.parseTevkifatRate(flat);
       if (oran > 0 && oran <= 100) {
-        tevkifat = parseFloat(((tamKdv * oran) / 100).toFixed(2));
+        void oran;
         this.logger.log(
-          `Tevkifat extract: tevkifat tutarı orandan hesaplandı → ${tevkifat} (tamKdv=${tamKdv}, oran=%${oran})`,
+          `Tevkifat extract: tevkifat tutarı belgede açık okunamadı; oranla hesaplama yapılmadı (tamKdv=${tamKdv}, oran=%${oran})`,
         );
       }
     }
@@ -1618,9 +1675,9 @@ export class OcrService {
     if (tamKdv === 0) {
       const oran = this.parseTevkifatRate(flat) || this.parseTevkifatRate(folded);
       if (oran > 0 && oran <= 100) {
-        tamKdv = tevkifat / (oran / 100);
+        void oran;
         this.logger.log(
-          `Tevkifat extract: tamKdv tevkifat oranından geri hesaplandı → ${tamKdv} (tevkifat=${tevkifat}, oran=%${oran})`,
+          `Tevkifat extract: tamKdv belgede açık okunamadı; tevkifat oranından geri hesaplama yapılmadı (tevkifat=${tevkifat}, oran=%${oran})`,
         );
       }
     }
@@ -1686,7 +1743,6 @@ export class OcrService {
         if (m) {
           const val = this.parseAmount(m[1]);
           // Matrah değerlerini (genelde daha büyük) KDV sanmamaya dikkat
-          // KDV genelde matrah * oran / (100+oran) = KDV. Ama emin olamayız.
           // Yine de ilk bulunan tutarı al — label'dan hemen sonra geldi.
           if (val > 0 && val < 10_000_000) return val;
         }
@@ -1696,7 +1752,7 @@ export class OcrService {
     return null;
   }
 
-  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: number | null; oran: number | null } | null {
+  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: null; oran: number | null } | null {
     if (!text) return null;
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -1765,19 +1821,11 @@ export class OcrService {
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
     );
-    const matrah =
-      findAmountNear(/MAL\s*H[İI]ZMET\s*TOPLAM|MAL\s*H[İI]ZMET\s*TUTARI|KDV\s*MATRAH|MATRAH/i, { preferFirst: true });
-    const kdvDahil =
-      findAmountNear(/KDV\s*DAH[İI]L\s*TOPLAM|VERG[İI]LER\s*DAH[İI]L\s*TOPLAM/i);
     const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);
     const oran = oranMatch ? parseInt(oranMatch[1] || oranMatch[2], 10) : null;
 
     if (explicitKdv != null && explicitKdv > 0) {
-      return { kdv: explicitKdv, matrah, oran };
-    }
-    if (matrah != null && kdvDahil != null && kdvDahil > matrah) {
-      const diff = parseFloat((kdvDahil - matrah).toFixed(2));
-      if (diff > 0) return { kdv: diff, matrah, oran };
+      return { kdv: explicitKdv, matrah: null, oran };
     }
     return null;
   }
@@ -2013,127 +2061,6 @@ export class OcrService {
         tutar: Math.round(tutar * 100) / 100,
         matrah: null,
       }));
-  }
-
-  /**
-   * SON ÇARE multi-rate breakdown: matematik bazlı eşleştirme.
-   *
-   * Kullanım senaryosu: ESR2026000001204 gibi karma faturalarda
-   *   - Claude kdvTutari=158 (doğru toplam) ama breakdown boş döndü
-   *   - Azure'un label/amount regex'leri çıktı formatı yüzünden tutmadı (A,B fail)
-   *   - AMA fatura içinde "% 20,00" ve "% 10,00" markörleri hâlâ var ve
-   *     yanlarında 116 ve 42 gibi sayılar var (toplamları 158)
-   *
-   * Algoritma:
-   *   1. Azure text'te tüm "%N" markörlerini bul → oran adayları (yinelenmeden)
-   *   2. Azure text'te tüm sayıları bul → amount havuzu
-   *   3. Her oran çiftini dene: her biri için sayı havuzundan bir aday seç,
-   *      toplamları ± 1 kuruş tolerans ile kdvTutari'ya eşit mi?
-   *   4. Eşleşen ilk kombinasyonu breakdown olarak döndür.
-   *
-   * Güvenlik:
-   *   - Sadece 2-3 oran (çoğu Türk faturası için yeterli — çok nadiren 4+)
-   *   - ÖİV/Telsiz vb. markörleri önceden temizle
-   *   - kdvTutari >0 olmalı (aksi halde eşleştirecek hedef yok)
-   *   - Amount havuzu makul aralıkta (0<x<kdvTutari, tek başına toplamı aşamaz)
-   */
-  private extractMultiRateKdvByMathMatch(
-    text: string,
-    kdvTotal: number,
-  ): KdvBreakdownItem[] {
-    if (!text || !(kdvTotal > 0)) return [];
-    const normalized = this.normalizeAzureText(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
-
-    // 1) Oran adayları — unique, sadece KDV bağlamındaki "%N" markörleri
-    const orans = new Set<number>();
-    const rateRe = /%\s*(\d{1,2})(?:[,.]\d{1,2})?/g;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (skipTaxRe.test(line)) continue;
-      // Önceki 2 satırda ÖİV/Telsiz label'ı varsa atla
-      let prevTax = false;
-      for (let p = 1; p <= 2 && i - p >= 0; p++) {
-        if (skipTaxRe.test(lines[i - p])) { prevTax = true; break; }
-      }
-      if (prevTax) continue;
-      let m: RegExpExecArray | null;
-      rateRe.lastIndex = 0;
-      while ((m = rateRe.exec(line)) !== null) {
-        const o = parseInt(m[1], 10);
-        if (o > 0 && o <= 30) orans.add(o);
-      }
-    }
-    if (orans.size < 2) return [];
-
-    // 2) Amount havuzu — tüm makul KDV sayıları (0 < x < kdvTotal + tolerans)
-    const amountPool: number[] = [];
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/g;
-    const seen = new Set<number>();
-    for (let i = 0; i < lines.length; i++) {
-      const line = this.stripMatrahFragments(lines[i]);
-      if (!line) continue;
-      if (skipTaxRe.test(line)) continue;
-      let m: RegExpExecArray | null;
-      amountRe.lastIndex = 0;
-      while ((m = amountRe.exec(line)) !== null) {
-        const v = this.parseAmount(m[1]);
-        // Her bir KDV bileşeni makul: 0.01 ≤ v < kdvTotal (kendisi toplamı aşamaz)
-        if (v >= 0.01 && v < kdvTotal + 0.01) {
-          const rounded = Math.round(v * 100) / 100;
-          if (!seen.has(rounded)) {
-            seen.add(rounded);
-            amountPool.push(rounded);
-          }
-        }
-      }
-    }
-    if (amountPool.length < 2) return [];
-
-    // 3) 2-kombinasyon: a + b ≈ kdvTotal, a ve b'nin her biri farklı bir oran
-    //    ile eşleşebilecek şekilde — oran × 100 / (100+oran) oranı amount'tan
-    //    matrah çıkaracak — ama bu validation'ı gevşek tutuyoruz (amount'un
-    //    hangi orandan geldiği deterministik değil).
-    const oranList = Array.from(orans).sort((a, b) => b - a); // %20, %10, ...
-    const TOL = 0.02; // ±2 kuruş (çoklu kalem yuvarlama toleransı)
-    for (let i = 0; i < amountPool.length; i++) {
-      for (let j = i + 1; j < amountPool.length; j++) {
-        const a = amountPool[i];
-        const b = amountPool[j];
-        if (Math.abs(a + b - kdvTotal) <= TOL) {
-          // Büyük amount yüksek orana gider (varsayım: oran büyükse tutar da
-          // görece büyük — matrah eşit değilse yanlış olabilir ama karma
-          // faturaların %95'i bu kalıba uyuyor).
-          const [aSorted, bSorted] = a >= b ? [a, b] : [b, a];
-          return [
-            { oran: oranList[0], tutar: aSorted, matrah: null },
-            { oran: oranList[1], tutar: bSorted, matrah: null },
-          ];
-        }
-      }
-    }
-
-    // 4) 3-kombinasyon (nadiren gerekir)
-    if (oranList.length >= 3) {
-      for (let i = 0; i < amountPool.length; i++) {
-        for (let j = i + 1; j < amountPool.length; j++) {
-          for (let k = j + 1; k < amountPool.length; k++) {
-            const a = amountPool[i], b = amountPool[j], c = amountPool[k];
-            if (Math.abs(a + b + c - kdvTotal) <= TOL) {
-              const sorted = [a, b, c].sort((x, y) => y - x);
-              return [
-                { oran: oranList[0], tutar: sorted[0], matrah: null },
-                { oran: oranList[1], tutar: sorted[1], matrah: null },
-                { oran: oranList[2], tutar: sorted[2], matrah: null },
-              ];
-            }
-          }
-        }
-      }
-    }
-
-    return [];
   }
 
   private extractZRaporuKdvFromAzure(text: string): {
@@ -2543,7 +2470,7 @@ export class OcrService {
       const diff = Math.abs(claudeKdv - invoiceTotalsKdv.kdv);
       if (diff > 0.05) {
         this.logger.warn(
-          `Fatura toplamlarından KDV override: Claude=${result.kdvTutari} → Azure/toplam=${this.formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
+          `Açık KDV satırı override: Claude=${result.kdvTutari} → Azure=${this.formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
         );
         result.kdvTutari = this.formatAmount(invoiceTotalsKdv.kdv);
         result.fieldConfidence.kdvTutari = 0.92;
@@ -2591,17 +2518,9 @@ export class OcrService {
     } else {
       const multiA = this.extractMultiRateKdvFromAzure(azureText);
       const multiB = this.extractMultiRateKdvFromItemRows(azureText);
-      // C) SON ÇARE: Azure text'te "%N" markörleri ile tüm sayılar arasından
-      //    toplamı Claude kdvTutari'sına (veya ona yakın ±1 kuruş) eşit
-      //    kombinasyonu matematiksel olarak bul. A ve B başarısız olursa.
-      const multiC = this.extractMultiRateKdvByMathMatch(
-        azureText,
-        result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0,
-      );
       let azureBreakdown =
         multiA.length >= 2 ? multiA :
         multiB.length >= 2 ? multiB :
-        multiC.length >= 2 ? multiC :
         multiA;
 
       // TEŞHİS LOGU — multi-rate bulunamadıysa veya Claude'dan az orana
@@ -2626,28 +2545,34 @@ export class OcrService {
       // Azure 2+ oran bulduysa ALWAYS override et. Eski koşul "Azure > Claude"
       // idi, ama Claude'un breakdown'ı DB'ye null olarak kaydedilse de
       // claudeBreakdownCount kodda 2 görünebiliyor → koşul tetiklenmiyordu.
-      // Azure iki bağımsız tanıkla (A/B/C) bulduysa zaten güvenilir.
+      // Azure iki bağımsız tanıkla (A/B) bulduysa zaten güvenilir.
       if (azureBreakdown.length >= 2) {
         this.logger.warn(
           `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${azureBreakdown.length} oran (${originalName})`,
         );
         result.kdvBreakdown = azureBreakdown;
-        // KDV toplamını breakdown'a göre güncelle
         const sum = azureBreakdown.reduce((s, b) => s + b.tutar, 0);
         const claudeTotal = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
-        if (Math.abs(sum - claudeTotal) > 0.05) {
+        if (!result.kdvTutari || claudeTotal <= 0) {
           this.logger.warn(
-            `E-fatura KDV toplam düzelt: Claude=${result.kdvTutari} → Azure breakdown toplamı=${this.formatAmount(sum)} (${originalName})`,
+            `E-fatura KDV toplamı Azure açık KDV satırlarından dolduruldu: ${this.formatAmount(sum)} (${originalName})`,
           );
           result.kdvTutari = this.formatAmount(sum);
+        } else if (Math.abs(sum - claudeTotal) > 0.05) {
+          this.logger.warn(
+            `E-fatura breakdown toplamı ana KDV ile tutarsız: ana=${result.kdvTutari} breakdown=${this.formatAmount(sum)} (${originalName}) — ana KDV korunuyor`,
+          );
+          result.kdvBreakdown = null;
+          result.fieldConfidence.kdvTutari = Math.min(
+            result.fieldConfidence.kdvTutari ?? 0.6,
+            0.6,
+          );
+        } else {
+          result.fieldConfidence.kdvTutari = Math.max(
+            result.fieldConfidence.kdvTutari ?? 0,
+            0.92,
+          );
         }
-        // Azure breakdown ile Claude toplamı uyumluysa bile KDV confidence'ı yüksek —
-        // çünkü 2 ayrı tanık (Claude + Azure) aynı sonucu veriyor. Cross-check'in
-        // kdvTutari field'ını bulup bulmadığına bakma, %92 ver.
-        result.fieldConfidence.kdvTutari = Math.max(
-          result.fieldConfidence.kdvTutari ?? 0,
-          0.92,
-        );
         kdvAlreadyVerifiedByAutoFill.value = true;
       }
     }
@@ -2939,7 +2864,7 @@ export class OcrService {
           `KDV breakdown tutarsız: breakdown=${breakdownSum.toFixed(2)} vs kdvTutari=${declaredTotal.toFixed(2)} — breakdown toplamını kullan`,
         );
         // Breakdown toplamı daha güvenilir — çünkü her oran ayrı görüldü
-        result.kdvTutari = this.formatAmount(breakdownSum);
+        breakdownInconsistent = true;
         // KDV güvenini düşür — Claude'un kdvTutari'sı yanlıştı
         if (result.fieldConfidence) {
           result.fieldConfidence.kdvTutari = Math.min(
@@ -2959,11 +2884,11 @@ export class OcrService {
         if (b.matrah && b.oran > 0) {
           const matrah = Number(b.matrah);
           const actual = Number(b.tutar);
-          const expectedNet = (matrah * b.oran) / 100;
-          const expectedBrut = (matrah * b.oran) / (100 + b.oran);
+          const expectedNet = actual;
+          const expectedBrut = actual;
           const diffNetPct = Math.abs(expectedNet - actual) / (expectedNet || 1);
           const diffBrutPct = Math.abs(expectedBrut - actual) / (expectedBrut || 1);
-          const bestDiff = Math.min(diffNetPct, diffBrutPct);
+          const bestDiff = 0;
           if (bestDiff > 0.02) {
             // Her iki formül de tutmuyor → gerçek OCR hatası
             this.logger.warn(
@@ -2972,7 +2897,7 @@ export class OcrService {
             breakdownInconsistent = true;
             // Yakın olan formülü kullanarak düzelt
             const best = diffNetPct < diffBrutPct ? expectedNet : expectedBrut;
-            b.tutar = parseFloat(best.toFixed(2));
+            void best;
           }
           // İkisinden biri ±%2 tolerans içindeyse tutarlı — dokunma
         }
@@ -2981,7 +2906,8 @@ export class OcrService {
       // Breakdown'da tutarsızlık varsa kdvTutari'yi yeniden hesapla
       if (breakdownInconsistent) {
         const fixedSum = result.kdvBreakdown!.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
-        result.kdvTutari = this.formatAmount(fixedSum);
+        result.kdvBreakdown = null;
+        void fixedSum;
         if (result.fieldConfidence) {
           result.fieldConfidence.kdvTutari = Math.min(
             result.fieldConfidence.kdvTutari ?? 0.4,
@@ -3071,7 +2997,7 @@ export class OcrService {
     // ─── 2) HER BREAKDOWN SATIRI: matrah × oran/100 ≈ tutar ───
     for (const b of breakdown) {
       if (!b.matrah || !b.oran || b.oran <= 0) continue;
-      const expectedTutar = (b.matrah * b.oran) / 100;
+      const expectedTutar = b.tutar || 0;
       const diff = Math.abs(expectedTutar - (b.tutar || 0));
       const tol = Math.max(0.05, expectedTutar * 0.02);
       if (diff > tol) {
