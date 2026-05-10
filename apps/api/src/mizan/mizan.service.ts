@@ -847,12 +847,13 @@ export class MizanService {
     ws.views = [{ state: 'frozen', ySplit: 5 }];
     ws.columns = [
       { header: 'Hesap Kodu', key: 'kod', width: 16 },
-      { header: 'Hesap Adı', key: 'ad', width: 48 },
+      { header: 'Hesap Adı', key: 'ad', width: 58 },
       { header: 'Borç', key: 'borc', width: 18 },
       { header: 'Alacak', key: 'alacak', width: 18 },
       { header: 'Borç Bakiyesi', key: 'borcBakiye', width: 18 },
       { header: 'Alacak Bakiyesi', key: 'alacakBakiye', width: 18 },
     ];
+    ws.autoFilter = 'A5:F5';
 
     ws.spliceRows(1, 0, [], [], [], []);
     ws.mergeCells('A1:F1');
@@ -900,7 +901,9 @@ export class MizanService {
         cell.font = { bold: isUpper, color: { argb: col === 1 ? 'FFD8C17F' : 'FF1F2937' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isUpper ? 'FFFFF7E6' : 'FFFFFFFF' } };
         cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
         };
         cell.alignment = { horizontal: col >= 3 ? 'right' : 'left', vertical: 'middle', indent: col === 2 && !isUpper ? 1 : 0 };

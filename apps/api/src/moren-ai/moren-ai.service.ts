@@ -672,9 +672,9 @@ ${c.deadlines.length === 0 ? '- Bu hafta yaklaşan beyanname yok' : c.deadlines.
 SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markdown code fence dahi):
 
 {
-  "summary": "2-3 cümle profesyonel analiz. Sayıları kullan, aksayan yeri açık söyle, aksiyonla bitir. Uygunsa tek kısa espri ekleyebilirsin. 'Günaydın' deme; doğrudan duruma gir.",
+  "summary": "Tek kısa cümle; en fazla 150 karakter. Firma/mükellef adı yazma. Sayı + aksiyon ver, uzun açıklama yapma.",
   "alerts": [
-    { "severity": "high|medium|low", "text": "Acil dikkat çeken konu (örn: '5 gündür bekleyen Kaya İnşaat var')", "href": "/panel/is-yuku" }
+    { "severity": "high|medium|low", "text": "Acil dikkat çeken konu; firma/mükellef adı yazma", "href": "/panel/is-yuku" }
   ],
   "suggestions": [
     { "text": "Aksiyon önerisi (örn: 'Mihsap'tan faturaları işle')", "href": "/panel/ajanlar/mihsap", "icon": "Receipt|FileText|FileCheck|Bell|Sparkles" }
@@ -684,8 +684,8 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 }
 
 KURALLAR:
-- summary: 260 karakteri geçmesin, 2-3 cümle. Aktör Muzaffer Bey'e doğrudan hitap.
-- alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Boş varsa boş array.
+- summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; Muzaffer Bey'e doğal ve kısa hitap et.
+- alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Firma/mükellef adı yazma. Boş varsa boş array.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
 - Eleştiri varsa net ve çözüm odaklı olsun; mizah varsa tek cümleyi geçmesin.
@@ -705,7 +705,7 @@ KURALLAR:
     if (c.eskiBeklemeler.length > 0) {
       alerts.push({
         severity: 'high',
-        text: `${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor (${c.eskiBeklemeler[0].ad} ${c.eskiBeklemeler[0].gun}g)`,
+        text: `${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor; en eski kayıt ${c.eskiBeklemeler[0].gun} gün`,
         href: '/panel/is-yuku',
       });
       focus = 'critical';
@@ -738,18 +738,18 @@ KURALLAR:
     // Summary
     if (aktifIsYuku === 0) {
       if (c.workflow.total === 0) {
-        summary = `Bu ay iş akışına alınmış mükellef görünmüyor. Liste boşsa sorun yok; değilse veri akışını kontrol edelim, çünkü panel kahve molasına çıkmış gibi duruyor.`;
+        summary = `Muzaffer Bey, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`;
       } else {
-        summary = `Bu ay iş akışındaki ${c.workflow.total} mükellefte aktif iş yükü yok. ${c.workflow.tamam} mükellef tamamlandı; bekleyen evrak varsa pazartesiye bırakmadan yoklayalım.`;
+        summary = `Muzaffer Bey, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
       }
     } else {
       const parcalar: string[] = [];
       if (c.workflow.kontrol > 0) parcalar.push(`${c.workflow.kontrol} KDV kontrol`);
       if (c.workflow.beyan > 0) parcalar.push(`${c.workflow.beyan} beyanname`);
       if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} fatura işleme`);
-      summary = `Bu ay iş akışında ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
-      if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor; burada topu taca atmayalım, sıradakini bugün kapatalım.`;
-      else summary += ' Akış temiz; sırayı bozmadan devam edersek iş büyümeden kapanır.';
+      summary = `Muzaffer Bey, ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
+      if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} kayıt 5+ gündür bekliyor.`;
+      else summary += ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
       if (focus === 'calm') focus = 'busy';
     }
 
@@ -764,7 +764,7 @@ KURALLAR:
 
   /** AI'dan gelen JSON'u doğrula, eksik alanları tamamla */
   private validatePayload(obj: any): BrifingPayload {
-    const summary = String(obj?.summary || '').slice(0, 600);
+    const summary = String(obj?.summary || '').slice(0, 180);
     const alerts = Array.isArray(obj?.alerts)
       ? obj.alerts.slice(0, 3).map((a: any) => ({
           severity: ['high', 'medium', 'low'].includes(a?.severity) ? a.severity : 'low',

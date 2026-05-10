@@ -28,6 +28,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       sub: user.id,
       email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
       tenantId: user.tenantId,
       roles: user.userRoles.map((ur) => ur.role.name),
     };

@@ -796,11 +796,12 @@ export class BilancoService {
     wb.created = new Date();
     ws.views = [{ state: 'frozen', ySplit: 5 }];
     ws.columns = [
-      { header: 'Taraf', key: 'taraf', width: 13 },
-      { header: 'Kod/Grup', key: 'kod', width: 16 },
-      { header: 'Kalem', key: 'kalem', width: 54 },
-      { header: 'Tutar', key: 'tutar', width: 18 },
+      { header: 'Taraf', key: 'taraf', width: 11 },
+      { header: 'Kod/Grup', key: 'kod', width: 24 },
+      { header: 'Kalem', key: 'kalem', width: 66 },
+      { header: 'Tutar', key: 'tutar', width: 19 },
     ];
+    ws.autoFilter = 'A5:D5';
 
     ws.spliceRows(1, 0, [], [], [], []);
     ws.mergeCells('A1:D1');
@@ -838,7 +839,7 @@ export class BilancoService {
       'stoklar', 'yillaraYayInsaat', 'gelecekAylaraGiderler', 'digerDonenVarliklar',
     ];
     const activeDuran = [
-      'uzunVadeliAlacaklar', 'maliDuran', 'maddiDuran', 'maddiOlmayanDuran',
+      'uzunAlacaklar', 'digerUzunAlacaklar', 'maliDuran', 'maddiDuran', 'maddiOlmayanDuran',
       'ozelTukenmeye', 'gelecekYillaraGiderler', 'digerDuranVarliklar',
     ];
     const passiveKv = [
@@ -887,11 +888,24 @@ export class BilancoService {
       const isSection = item.type === 'section';
       const isTotal = item.type === 'total';
       const isGroup = item.type === 'group';
-      row.height = isSection ? 25 : 22;
+      const isAccount = item.type === 'account';
+      row.height = isSection ? 26 : isAccount ? 21 : 23;
       row.eachCell((cell: any, col: number) => {
         cell.font = {
           bold: isSection || isTotal || isGroup,
-          color: { argb: isSection ? 'FFFFFFFF' : isTotal ? 'FF111827' : isGroup ? 'FF1F2937' : 'FF374151' },
+          size: isSection ? 12 : isAccount ? 10 : 11,
+          color: {
+            argb:
+              col === 4 && Number(item.tutar || 0) < 0
+                ? 'FFB91C1C'
+                : isSection
+                  ? 'FFFFFFFF'
+                  : isTotal
+                    ? 'FF111827'
+                    : isGroup
+                      ? 'FF1F2937'
+                      : 'FF374151',
+          },
         };
         cell.fill = {
           type: 'pattern',
@@ -899,7 +913,9 @@ export class BilancoService {
           fgColor: { argb: isSection ? 'FF11100D' : isTotal ? 'FFFFF1C2' : isGroup ? 'FFFFF7E6' : 'FFFFFFFF' },
         };
         cell.border = {
+          top: { style: 'thin', color: { argb: isSection ? 'FF8A7445' : 'FFE5E7EB' } },
           bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
         };
         cell.alignment = { horizontal: col === 4 ? 'right' : 'left', vertical: 'middle', indent: item.type === 'account' && col === 3 ? 1 : 0 };

@@ -103,11 +103,38 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
 };
 
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
-  calm: 'Tempo iyi; bugün küçük işleri kapatmak için güzel bir gün.',
-  busy: 'Dağılmadan sıradan gidelim, iş kendini toparlar.',
-  critical: 'Önce en riskli dosyayı kapatalım; panik yok, disiplin var.',
-  review: 'Bugün gözden geçirme günü; küçük kontrol büyük hatayı yakalar.',
+  calm: 'Masa sakin; küçük işleri tek tek kapatıp günü temiz tutalım.',
+  busy: 'Ritmi bozmayalım; sıradaki işi kapat, sonra nefes.',
+  critical: 'Önce kırmızı ışıkları söndürelim; kahve sonra daha güzel olur.',
+  review: 'İnce ayar günü; küçük kontrol büyük hatayı yakalar.',
 };
+
+const COMPANY_WORD_RE = /\b(LİMİTED|ANONİM|ŞİRKETİ|TİCARET|SANAYİ|PAZARLAMA|GIDA|İNŞAAT|TURİZM|A\.Ş|LTD|LTD\.ŞTİ)\b/i;
+
+function fallbackSummary(focus: string): string {
+  if (focus === 'critical') return 'Dikkat isteyen konu var; önce kırmızı işleri kapatıp akışı rahatlatmak gerekiyor.';
+  if (focus === 'review') return 'Bugün kontrol günü; kısa bir tarama yarınki yükü hafifletir.';
+  if (focus === 'calm') return 'Akış sakin görünüyor; küçük işleri kapatmak için iyi bir pencere var.';
+  return 'İş akışı dolu ama yönetilebilir; sırayı bozmazsak tablo toparlanır.';
+}
+
+function cleanBriefSummary(summary: string | undefined, focus: string): string {
+  const source = String(summary || '').replace(/\s+/g, ' ').trim();
+  if (!source) return '';
+  const sentences = source.split(/(?<=[.!?])\s+/).filter(Boolean);
+  let picked = sentences.find((s) => s.length <= 170 && !COMPANY_WORD_RE.test(s)) || '';
+  if (!picked) picked = fallbackSummary(focus);
+  picked = picked.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
+  if (COMPANY_WORD_RE.test(picked)) picked = fallbackSummary(focus);
+  return picked.length > 170 ? `${picked.slice(0, 167).trimEnd()}...` : picked;
+}
+
+function cleanBriefAlert(text: string): string {
+  let value = String(text || '').replace(/\s+/g, ' ').trim();
+  value = value.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
+  if (COMPANY_WORD_RE.test(value)) value = value.replace(/:.+?(?=\s|$)/, ': ilgili kayıt');
+  return value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+}
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -136,13 +163,14 @@ export function BrifingKart({ userName }: { userName?: string }) {
   const focus = data?.focus ?? 'busy';
   const focusTone = FOCUS_TONES[focus] ?? FOCUS_TONES.busy;
   const motivation = MOTIVATION_BY_FOCUS[focus] ?? MOTIVATION_BY_FOCUS.busy;
+  const visibleSummary = cleanBriefSummary(data?.summary, focus);
 
   return (
     <div
       className="rounded-3xl overflow-hidden relative"
       style={{
-        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 62%), radial-gradient(circle at 92% 14%, rgba(255,255,255,0.035), transparent 34%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))`,
-        border: `1px solid ${focusTone.border}`,
+        background: 'radial-gradient(circle at 12% 0%, rgba(212,184,118,0.10), transparent 58%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))',
+        border: '1px solid rgba(212,184,118,0.22)',
         boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
       }}
     >
@@ -211,7 +239,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
           }}
         >
           {SELAMLAMA}
-          {userName ? `, ${userName.split(' ')[0]}` : ''}
+          {userName ? `, ${userName}` : ''}
         </h2>
         <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
           {KISA_TARIH}
@@ -225,7 +253,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
             <Loader2 size={14} className="animate-spin" />
             Brifing hazırlanıyor...
           </div>
-        ) : data?.summary ? (
+        ) : visibleSummary ? (
           <p
             className="text-[14px]"
             style={{
@@ -234,7 +262,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               fontFamily: 'Inter, sans-serif',
             }}
           >
-            {data.summary}
+            {visibleSummary}
           </p>
         ) : (
           <p className="text-[13.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
@@ -262,7 +290,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               >
                 <AlertTriangle size={13} style={{ color: cfg.color }} />
                 <span className="text-[13px] flex-1" style={{ color: '#fafaf9' }}>
-                  {a.text}
+                  {cleanBriefAlert(a.text)}
                 </span>
                 {a.href && (
                   <ArrowRight size={13} className="opacity-50 group-hover:opacity-100 transition" style={{ color: cfg.color }} />

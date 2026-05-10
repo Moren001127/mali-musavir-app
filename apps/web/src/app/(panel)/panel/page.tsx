@@ -14,9 +14,13 @@ import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 const GOLD = '#d4b876';
 
 function displayUserName(user: any): string | undefined {
+  const first = String(user?.firstName || '').trim();
+  if (first && !/^admin$/i.test(first)) return `${first} Bey`;
+
   const full = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-  const candidate = full || user?.fullName || user?.name || user?.displayName || user?.username || user?.email?.split('@')?.[0];
-  return candidate ? String(candidate) : undefined;
+  const candidate = full || user?.fullName || user?.name || user?.displayName;
+  if (!candidate || /^admin$/i.test(String(candidate).trim())) return undefined;
+  return `${String(candidate).trim().split(/\s+/)[0]} Bey`;
 }
 
 type Task = {
@@ -79,29 +83,32 @@ function agentEventToFeed(ev: any) {
 }
 
 // Elit Boutique altın ailesi — dashboard'a renk dokunuşları için
-type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy';
+type StatAccent = 'gold' | 'champagne' | 'bronze' | 'copper' | 'burgundy' | 'sage' | 'sky' | 'amber';
 const ACCENT_TONES: Record<StatAccent, { color: string; bg: string; border: string; hoverBg: string; hoverBorder: string }> = {
   gold:      { color: '#d4b876', bg: 'rgba(212,184,118,0.12)', border: 'rgba(212,184,118,0.28)', hoverBg: 'rgba(212,184,118,0.06)', hoverBorder: 'rgba(212,184,118,0.32)' },
   champagne: { color: '#e8d6a0', bg: 'rgba(232,214,160,0.14)', border: 'rgba(232,214,160,0.32)', hoverBg: 'rgba(232,214,160,0.06)', hoverBorder: 'rgba(232,214,160,0.36)' },
   bronze:    { color: '#c0a079', bg: 'rgba(192,160,121,0.14)', border: 'rgba(192,160,121,0.32)', hoverBg: 'rgba(192,160,121,0.06)', hoverBorder: 'rgba(192,160,121,0.36)' },
   copper:    { color: '#d99560', bg: 'rgba(217,149,96,0.14)',  border: 'rgba(217,149,96,0.32)',  hoverBg: 'rgba(217,149,96,0.06)',  hoverBorder: 'rgba(217,149,96,0.36)' },
   burgundy:  { color: '#c98896', bg: 'rgba(201,136,150,0.14)', border: 'rgba(201,136,150,0.34)', hoverBg: 'rgba(201,136,150,0.08)', hoverBorder: 'rgba(201,136,150,0.38)' },
+  sage:      { color: '#9cc8a6', bg: 'rgba(92,150,112,0.12)', border: 'rgba(156,200,166,0.25)', hoverBg: 'rgba(92,150,112,0.06)', hoverBorder: 'rgba(156,200,166,0.32)' },
+  sky:       { color: '#9ec5e8', bg: 'rgba(96,165,250,0.11)', border: 'rgba(158,197,232,0.24)', hoverBg: 'rgba(96,165,250,0.06)', hoverBorder: 'rgba(158,197,232,0.30)' },
+  amber:     { color: '#d8b982', bg: 'rgba(217,149,96,0.12)', border: 'rgba(216,185,130,0.26)', hoverBg: 'rgba(217,149,96,0.06)', hoverBorder: 'rgba(216,185,130,0.32)' },
 };
 
 function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accent = 'gold' }: { title: string; value: number | string; icon: any; href?: string; sub?: string; trend?: string; trendKind?: 'up'|'down'|'flat'; accent?: StatAccent }) {
   const t = ACCENT_TONES[accent];
   const c = (
-    <div className="group rounded-2xl p-5 transition-all duration-300 relative overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', cursor: href ? 'pointer' : 'default' }}
+    <div className="group rounded-2xl p-4 transition-all duration-300 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`, border: `1px solid ${t.border}`, cursor: href ? 'pointer' : 'default' }}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = t.hoverBg; el.style.borderColor = t.hoverBorder; el.style.transform = 'translateY(-3px)'; el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.3)'; }}
-      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.02)'; el.style.borderColor = 'rgba(255,255,255,0.05)'; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
+      onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${t.bg}, rgba(255,255,255,0.012))`; el.style.borderColor = t.border; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none'; }}>
       {/* Üstten ince altın hairline (kendi tonunda, hover'da belirginleşir) */}
       <span className="absolute top-0 left-4 right-4 h-px transition-opacity duration-300 group-hover:opacity-100" style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)`, opacity: 0.35 }} />
-      <div className="flex items-center justify-between mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.color }}><Icon size={17} /></div>
+      <div className="flex items-center justify-between mb-3.5">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(15,13,11,0.28)', border: `1px solid ${t.border}`, color: t.color }}><Icon size={16} /></div>
         {trend && <span className="text-[10px] font-bold px-2.5 py-[3px] rounded-md" style={{ background: trendKind === 'up' ? 'rgba(34,197,94,0.1)' : trendKind === 'down' ? 'rgba(244,63,94,0.1)' : 'rgba(255,255,255,0.04)', color: trendKind === 'up' ? '#22c55e' : trendKind === 'down' ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>{trend}</span>}
       </div>
       <p className="text-[11px] uppercase font-semibold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{title}</p>
-      <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 700, letterSpacing: '-0.03em', color: t.color }}>{value ?? 0}</p>
+      <p className="mt-1.5 leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, fontWeight: 700, letterSpacing: '-0.03em', color: t.color }}>{value ?? 0}</p>
       {sub && <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.32)' }}>{sub}</p>}
     </div>
   );
@@ -139,7 +146,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
           <div>
@@ -173,7 +180,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
             <Link
               key={step.key}
               href={step.href}
-              className="group p-4 transition-all min-h-[128px]"
+              className="group p-3.5 transition-all min-h-[112px] overflow-hidden"
               style={{
                 borderRight: index < WORKFLOW_STEPS.length - 1 ? '1px solid rgba(255,255,255,0.05)' : undefined,
                 borderBottom: '1px solid rgba(255,255,255,0.03)',
@@ -182,21 +189,21 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
-                  <Icon size={16} />
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: step.bg, border: `1px solid ${step.border}`, color: step.color }}>
+                  <Icon size={15} />
                 </div>
                 <span className="text-[10.5px] font-bold tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
                   %{pct}
                 </span>
               </div>
-              <div className="mt-4">
-                <div className="text-[28px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: step.color }}>
+              <div className="mt-3.5">
+                <div className="text-[24px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: step.color }}>
                   {value}
                 </div>
                 <div className="text-[12px] font-semibold mt-2" style={{ color: '#fafaf9' }}>{step.label}</div>
                 <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{step.sub}</div>
               </div>
-              <div className="mt-4 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <div className="mt-3 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: step.color }} />
               </div>
             </Link>
@@ -1048,7 +1055,7 @@ export default function DashboardPage() {
   }, [tx, activeCount, passiveCount]);
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-5 max-w-none pr-3 xl:pr-5">
       {/* Hatırlatma bannerı — bugün veya geçmiş tarihli tamamlanmamış görevler için sürekli uyarı.
           v1.36.74: scale-siz pulse — banner ekrandan taşmıyor, sadece glow nefes alıyor. */}
       {dueTasks.length > 0 && (
@@ -1120,16 +1127,17 @@ export default function DashboardPage() {
           icon={Users}
           href="/panel/mukellefler"
           sub={workflowTotal > 0 ? `${workflowTotal} bu ay iş akışında` : (passiveCount > 0 ? `${passiveCount} pasif` : 'Liste güncel')}
-          accent="gold"
+          accent="sage"
         />
         <StatCard
           title="Bekleyen Görev"
           value={pendingTasks.length}
           icon={FileText}
+          href="/panel/gorevler"
           sub={todayTaskCount > 0 ? `Bugün: ${todayTaskCount}` : nextDueStr ? `Son tarih: ${nextDueStr}` : 'Bugün yok'}
           trend={pendingTasks.length > 0 ? `${pendingTasks.length} kaldı` : undefined}
           trendKind={pendingTasks.length > 0 ? 'down' : 'flat'}
-          accent="champagne"
+          accent="sky"
         />
         {/* v1.36.80: "Aktif İş Yükü" — gerçek workflow queue count'u
             (İŞLENECEK + KONTROL + BEYAN aşamalarındaki mükellef sayısı toplamı) */}
@@ -1143,7 +1151,7 @@ export default function DashboardPage() {
               ? `${workflowData.counts.kontrol} kontrol · ${workflowData.counts.beyanname} beyan`
               : 'Sıradaki yapılacak işleri gör'
           }
-          accent="bronze"
+          accent="amber"
         />
         {/* Kritik Uyarı — tıklanabilir kart, detayı altta açılır panel */}
         <KritikUyariStatCard />

@@ -12,8 +12,8 @@ import {
 
 const GOLD = '#d4b876';
 const TABLE_BG = '#0a0907';
-const GRID_LINE = 'rgba(245,240,230,0.17)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.38)';
+const GRID_LINE = 'rgba(245,240,230,0.24)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.50)';
 const AMOUNT_COLOR = '#f4efe6';
 const TOTAL_COLOR = '#ead18a';
 const PROFIT_COLOR = '#86efac';
@@ -1033,7 +1033,7 @@ export default function GelirTablosuPage() {
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
                   <tr key={ri} style={{ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || (ri % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)') }}>
-                    <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13 }}>
+                    <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13, borderBottom: `1px solid ${GRID_LINE}` }}>
                       <span className="inline-flex items-center gap-2">
                         {row.label}
                         {row.manual && (
@@ -1079,7 +1079,7 @@ export default function GelirTablosuPage() {
                       }
 
                       return (
-                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: `1px solid ${GRID_LINE}`, fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
+                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
                           {!hasData ? '—' : isManual && !isLocked ? (
                             isFirstQuarter ? (
                               <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
@@ -1107,13 +1107,13 @@ export default function GelirTablosuPage() {
                 ))}
                 {/* Kaydet butonları satırı */}
                 <tr style={{ borderTop: `1px dashed ${GRID_LINE_STRONG}` }}>
-                  <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)' }}>Manuel değerleri kaydet</td>
+                  <td className="px-3 py-2 text-[11px] italic" style={{ color: 'rgba(250,250,249,0.4)', borderBottom: `1px solid ${GRID_LINE}` }}>Manuel değerleri kaydet</td>
                   {DISPLAY_ORDER.map((qi) => {
                     const detail = quarterDetails[qi]?.data as any;
                     const hasData = !!detail?.geciciVergiHesabi;
                     const isLocked = !!detail?.locked;
                     return (
-                      <td key={qi} className="px-2 py-2 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}` }}>
+                      <td key={qi} className="px-2 py-2 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
                         {hasData && !isLocked && (
                           <button
                             onClick={() => {
@@ -1205,14 +1205,14 @@ export default function GelirTablosuPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allKodlar.map((baseH: any) => (
-                    <tr key={baseH.kod} style={{ borderTop: `1px solid ${GRID_LINE}` }}>
-                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}` }}>{baseH.kod}</td>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', borderRight: `1px solid ${GRID_LINE}` }}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
+                  {allKodlar.map((baseH: any, hi: number) => (
+                    <tr key={baseH.kod} style={{ borderTop: `1px solid ${GRID_LINE}`, background: hi % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)' }}>
+                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.kod}</td>
+                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
                       {DISPLAY_ORDER.map((qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}` }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
                             {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                           </td>
                         );
@@ -1222,12 +1222,12 @@ export default function GelirTablosuPage() {
                   {/* Toplam Stok */}
                   <tr style={{ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' }}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: GOLD }}>Toplam Stok</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: GOLD, borderBottom: `1px solid ${GRID_LINE}` }}>Toplam Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.toplamStok;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: TOTAL_COLOR, borderLeft: `1px solid ${GRID_LINE}` }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: TOTAL_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
                           {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
                         </td>
                       );
@@ -1238,7 +1238,7 @@ export default function GelirTablosuPage() {
                       buraya birebir gelir; D. SATIŞLARIN MALİYETİ toplamına 740 vs eklenmiş halde gelmez. */}
                   <tr style={{ borderTop: '1px solid rgba(244,63,94,0.26)', background: 'rgba(244,63,94,0.055)' }}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-semibold" style={{ color: LOSS_COLOR }}>Satılan Malın Maliyeti</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: LOSS_COLOR, borderBottom: `1px solid ${GRID_LINE}` }}>Satılan Malın Maliyeti</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       const slot = quarterSlots[qi];
@@ -1255,6 +1255,7 @@ export default function GelirTablosuPage() {
                           style={{
                             color: LOSS_COLOR,
                             borderLeft: `1px solid ${GRID_LINE}`,
+                            borderBottom: `1px solid ${GRID_LINE}`,
                             background: ihlal ? 'rgba(239,68,68,0.18)' : undefined,
                             position: 'relative',
                           }}
@@ -1271,7 +1272,7 @@ export default function GelirTablosuPage() {
                   {/* Kalan Stok — manuel düzeltmeyle re-compute + negatif olunca kırmızı */}
                   <tr style={{ borderTop: `2px solid ${GRID_LINE_STRONG}`, background: 'rgba(184,160,111,0.08)' }}>
                     <td></td>
-                    <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: TOTAL_COLOR }}>Kalan Stok</td>
+                    <td className="px-3 py-2.5 font-bold text-[13.5px]" style={{ color: TOTAL_COLOR, borderBottom: `1px solid ${GRID_LINE}` }}>Kalan Stok</td>
                     {DISPLAY_ORDER.map((qi) => {
                       const d = quarterDetails[qi]?.data as any;
                       // v1.36.55: Kalan Stok = Toplam Stok − Manuel SMM (toplam SMM değil)
@@ -1289,6 +1290,7 @@ export default function GelirTablosuPage() {
                           style={{
                             color: negatif ? LOSS_COLOR : TOTAL_COLOR,
                             borderLeft: `1px solid ${GRID_LINE}`,
+                            borderBottom: `1px solid ${GRID_LINE}`,
                             background: negatif ? 'rgba(239,68,68,0.18)' : undefined,
                             position: 'relative',
                           }}

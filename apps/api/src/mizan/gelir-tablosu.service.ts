@@ -556,11 +556,12 @@ export class GelirTablosuService {
     wb.created = new Date();
     ws.views = [{ state: 'frozen', ySplit: 5 }];
     ws.columns = [
-      { header: 'Kod', key: 'kod', width: 10 },
-      { header: 'Kalem', key: 'kalem', width: 58 },
+      { header: 'Kod', key: 'kod', width: 14 },
+      { header: 'Kalem', key: 'kalem', width: 66 },
       { header: 'Cari Dönem', key: 'tutar', width: 18 },
       { header: 'Oran %', key: 'oran', width: 12 },
     ];
+    ws.autoFilter = 'A5:D5';
 
     ws.spliceRows(1, 0, [], [], [], []);
     ws.mergeCells('A1:D1');
@@ -580,7 +581,36 @@ export class GelirTablosuService {
     const netSatis = Number(gt.netSatislar) || 0;
     const pct = (x: number) => (netSatis ? x / netSatis : null);
 
-    const rows: Array<{ kod: string; kalem: string; tutar: number; oran: number | null; type?: 'group' | 'total' | 'final' }> = [
+    type ExportRow = { kod: string; kalem: string; tutar: number; oran: number | null; type?: 'group' | 'total' | 'final' | 'account' };
+    const detay = (gt.detay as any) || {};
+    const detailKeysByTitle: Record<string, string> = {
+      'A. BRÜT SATIŞLAR': 'brutSatis',
+      'B. SATIŞ İNDİRİMLERİ (-)': 'satisInd',
+      'D. SATIŞLARIN MALİYETİ (-)': 'satisMal',
+      'E. FAALİYET GİDERLERİ (-)': 'faalGid',
+      'F. DİĞER FAAL. OLAĞAN GELİR VE KARLAR': 'digerGelir',
+      'G. DİĞER FAAL. OLAĞAN GİDER VE ZARARLAR (-)': 'digerGider',
+      'H. FİNANSMAN GİDERLERİ (-)': 'finansman',
+      'I. OLAĞANDIŞI GELİR VE KARLAR': 'olDisiGelir',
+      'J. OLAĞANDIŞI GİDER VE ZARARLAR (-)': 'olDisiGider',
+      'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)': 'vergi',
+    };
+    const detailRowsFor = (item: ExportRow): ExportRow[] => {
+      const detailKey = detailKeysByTitle[item.kalem];
+      const list = detailKey && Array.isArray(detay?.[detailKey]?.detay) ? detay[detailKey].detay : [];
+      return list
+        .filter((h: any) => Number(h?.tutar || 0) !== 0)
+        .sort((a: any, b: any) => String(a.kod || '').localeCompare(String(b.kod || ''), 'tr'))
+        .map((h: any) => ({
+          kod: String(h.kod || ''),
+          kalem: String(h.hesapAdi || h.ad || h.kod || ''),
+          tutar: Number(h.tutar || 0),
+          oran: pct(Number(h.tutar || 0)),
+          type: 'account' as const,
+        }));
+    };
+
+    const rows: ExportRow[] = [
       { kod: '', kalem: 'A. BRÜT SATIŞLAR', tutar: Number(gt.brutSatislar), oran: null, type: 'group' },
       { kod: '', kalem: 'B. SATIŞ İNDİRİMLERİ (-)', tutar: Number(gt.satisIndirimleri), oran: null, type: 'group' },
       { kod: '', kalem: 'C. NET SATIŞLAR', tutar: Number(gt.netSatislar), oran: netSatis ? 1 : null, type: 'total' },
@@ -598,6 +628,11 @@ export class GelirTablosuService {
       { kod: '', kalem: 'K. DÖNEM KARI VERGİ VE DİĞER YASAL YÜKÜMLÜLÜK KARŞILIKLARI (-)', tutar: Number(gt.vergiKarsiligi), oran: null, type: 'group' },
       { kod: '', kalem: 'DÖNEM NET KARI VEYA ZARARI', tutar: Number(gt.donemNetKari), oran: pct(Number(gt.donemNetKari)), type: 'final' },
     ];
+    const detailedRows: ExportRow[] = [];
+    for (const item of rows) {
+      detailedRows.push(item);
+      detailedRows.push(...detailRowsFor(item));
+    }
 
     const header = ws.getRow(5);
     header.values = ['Kod', 'Kalem', 'Cari Dönem', 'Oran %'];
@@ -614,38 +649,45 @@ export class GelirTablosuService {
     });
 
     let rowNo = 6;
-    for (const item of rows) {
+    for (const item of detailedRows) {
       const row = ws.getRow(rowNo++);
       row.values = [item.kod, item.kalem, Number.isFinite(item.tutar) ? item.tutar : null, item.oran];
       const isFinal = item.type === 'final';
       const isTotal = item.type === 'total' || isFinal;
+      const isAccount = item.type === 'account';
       const isLoss = item.tutar < 0;
-      row.height = isFinal ? 25 : 22;
+      row.height = isFinal ? 25 : isAccount ? 21 : 22;
       row.eachCell((cell: any, col: number) => {
         cell.font = {
-          bold: isTotal,
-          size: isFinal ? 12 : 11,
+          bold: isTotal || item.type === 'group',
+          size: isFinal ? 12 : isAccount ? 10 : 11,
           color: {
             argb:
               col === 3 && isLoss
                 ? 'FFB91C1C'
                 : col === 3 && isTotal
                   ? 'FF047857'
+                  : col === 3 && isAccount
+                    ? 'FF374151'
                   : col === 2 && isTotal
                     ? 'FF111827'
-                    : 'FF1F2937',
+                    : isAccount
+                      ? 'FF374151'
+                      : 'FF1F2937',
           },
         };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: isFinal ? 'FFFFF1C2' : isTotal ? 'FFFFF7E6' : 'FFFFFFFF' },
+          fgColor: { argb: isFinal ? 'FFFFF1C2' : isTotal ? 'FFFFF7E6' : item.type === 'group' ? 'FFF8FAFC' : 'FFFFFFFF' },
         };
         cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
           right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
         };
-        cell.alignment = { horizontal: col >= 3 ? 'right' : 'left', vertical: 'middle' };
+        cell.alignment = { horizontal: col >= 3 ? 'right' : 'left', vertical: 'middle', indent: isAccount && col === 2 ? 1 : 0 };
         if (col === 3) cell.numFmt = '#,##0.00;[Red]-#,##0.00';
         if (col === 4) cell.numFmt = '0.00%;[Red]-0.00%';
       });

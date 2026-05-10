@@ -133,6 +133,9 @@ export default function MukelleflerPage() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['taxpayers', 'list', search, year, month] });
+      qc.invalidateQueries({ queryKey: ['workflow-queue'] });
+      qc.invalidateQueries({ queryKey: ['dashboard-workflow-queue'] });
+      qc.invalidateQueries({ queryKey: ['moren-ai-brifing'] });
     },
   });
 
