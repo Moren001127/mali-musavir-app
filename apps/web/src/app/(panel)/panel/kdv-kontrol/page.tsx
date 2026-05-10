@@ -1049,30 +1049,34 @@ export default function KdvKontrolPage() {
                 </div>
               );
             })()}
-            {/* OCR maliyet tahmini — Claude Haiku 4.5 ≈ $0.0025/fatura */}
+            {/* OCR maliyet özeti — backend ai_usage_logs + cache/XML tasarrufu */}
             {(() => {
-              const successCount = images.filter((i: any) =>
-                (i.ocrEngine || '').startsWith('claude') && !(i.ocrEngine || '').includes('cached')
-              ).length;
-              const cachedCount = images.filter((i: any) =>
-                (i.ocrEngine || '').includes('cached')
-              ).length;
-              const costUsd = successCount * 0.0025;  // avg per-fatura tahmini
+              const ocrCost = (stats as any)?.ocrCost || {};
+              const paidCalls = Number(ocrCost.paidCalls || 0);
+              const cacheHits = Number(ocrCost.cacheHits || 0);
+              const xmlParsed = Number(ocrCost.xmlParsed || 0);
+              const freeSkips = Number(ocrCost.freeSkips || cacheHits + xmlParsed);
+              const costUsd = Number(ocrCost.actualCostUsd || 0) > 0
+                ? Number(ocrCost.actualCostUsd)
+                : Number(ocrCost.estimatedCostUsd || 0);
+              const savedUsd = Number(ocrCost.estimatedSavedUsd || 0);
               const usdToTry = 40;  // yaklaşık kur (değişken)
               const costTl = costUsd * usdToTry;
-              const savedUsd = cachedCount * 0.0025;
               const savedTl = savedUsd * usdToTry;
               return (
                 <div className="flex items-center justify-between gap-3 mt-4 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
                   <div className="flex items-center gap-4 text-[11.5px] tabular-nums flex-wrap">
-                    <span style={{ color: 'rgba(250,250,249,0.5)' }}>OCR Maliyet Tahmini:</span>
+                    <span style={{ color: 'rgba(250,250,249,0.5)' }}>OCR Maliyet:</span>
                     <span style={{ color: '#60a5fa', fontWeight: 600 }}>
-                      {successCount} fatura × ~${'0,0025'} ≈ <span style={{ color: '#fafaf9' }}>${costUsd.toFixed(4)}</span>
+                      {paidCalls} ücretli okuma ≈ <span style={{ color: '#fafaf9' }}>${costUsd.toFixed(4)}</span>
                       <span style={{ color: 'rgba(250,250,249,0.4)' }}> (~{costTl.toFixed(2)} ₺)</span>
                     </span>
-                    {cachedCount > 0 && (
+                    {freeSkips > 0 && (
                       <span style={{ color: '#22c55e', fontWeight: 600 }}>
-                        💾 Cache'den: {cachedCount} fatura (~{savedTl.toFixed(2)} ₺ tasarruf)
+                        Ücretsiz atlanan: {freeSkips} belge
+                        {cacheHits > 0 ? ` · ${cacheHits} cache` : ''}
+                        {xmlParsed > 0 ? ` · ${xmlParsed} XML` : ''}
+                        {savedUsd > 0 ? ` (~${savedUsd.toFixed(4)} / ${savedTl.toFixed(2)} ₺ tasarruf)` : ''}
                       </span>
                     )}
                   </div>
@@ -1720,4 +1724,3 @@ function ResultBadge({ status }: { status: string }) {
     </span>
   );
 }
-

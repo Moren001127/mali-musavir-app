@@ -759,9 +759,11 @@ export class KdvControlService {
       const img = await this.prisma.receiptImage.findUnique({
         where: { id: imageId },
         select: {
+          sessionId: true,
           session: {
             select: {
               tenantId: true,
+              taxpayerId: true,
               taxpayer: {
                 select: { firstName: true, lastName: true, companyName: true },
               },
@@ -781,10 +783,11 @@ export class KdvControlService {
         tenantId: img.session.tenantId,
         source: 'kdv-ocr',
         model: ocrResult.engine || 'claude-haiku-4-5-20251001',
+        taxpayerId: img.session.taxpayerId || null,
         mukellef,
         belgeNo: ocrResult.belgeNo || null,
         karar: ocrResult.belgeNo && ocrResult.kdvTutari ? 'ok' : 'emin_degil',
-        sebep: null,
+        sebep: `session:${img.sessionId}`,
         durationMs,
         usage: {
           input_tokens: ocrResult.usage.inputTokens || 0,
@@ -857,7 +860,17 @@ export class KdvControlService {
       // Original name'i DB'den çek ki filename fallback çalışsın
       const imgRec = await this.prisma.receiptImage.findUnique({
         where: { id: imageId },
-        select: { originalName: true },
+        select: {
+          originalName: true,
+          sessionId: true,
+          session: {
+            select: {
+              tenantId: true,
+              taxpayerId: true,
+              taxpayer: { select: { firstName: true, lastName: true, companyName: true } },
+            },
+          },
+        },
       });
 
       // S3'ten görseli indir
@@ -868,6 +881,73 @@ export class KdvControlService {
       const chunks: Buffer[] = [];
       for await (const chunk of res.Body as any) chunks.push(chunk);
       const buffer = Buffer.concat(chunks);
+
+      // Hash cache: manuel/S3 yüklenen aynı görsel daha önce işlendiyse
+      // Claude'a tekrar gitme. Mihsap dışı upload'larda asıl maliyet düşüren
+      // katman burasıdır.
+      const imageHash = this.ocrService.computeImageHash(buffer);
+      const cached = await this.prisma.receiptImage.findFirst({
+        where: {
+          imageHash,
+          id: { not: imageId },
+          session: { tenantId: imgRec?.session?.tenantId },
+          ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW'] as any },
+          OR: [
+            { ocrBelgeNo: { not: null } },
+            { ocrDate: { not: null } },
+            { ocrKdvTutari: { not: null } },
+          ],
+        },
+        orderBy: { uploadedAt: 'desc' },
+      });
+
+      if (cached) {
+        await this.prisma.receiptImage.update({
+          where: { id: imageId },
+          data: {
+            ocrStatus: cached.ocrStatus,
+            ocrBelgeNo: cached.ocrBelgeNo,
+            ocrDate: cached.ocrDate,
+            ocrKdvTutari: cached.ocrKdvTutari,
+            ocrKdvTevkifat: cached.ocrKdvTevkifat,
+            ocrSatici: cached.ocrSatici,
+            ocrSaticiVkn: cached.ocrSaticiVkn,
+            ocrRawText: cached.ocrRawText,
+            ocrConfidence: cached.ocrConfidence,
+            ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,
+            ocrDateConfidence: cached.ocrDateConfidence,
+            ocrKdvConfidence: cached.ocrKdvConfidence,
+            ocrEngine: `${cached.ocrEngine || 'unknown'} (cache)`,
+            ocrBelgeTipi: cached.ocrBelgeTipi,
+            ocrKdvBreakdown: cached.ocrKdvBreakdown as any,
+            ocrValidationScore: cached.ocrValidationScore,
+            ocrKategori: cached.ocrKategori,
+            imageHash,
+          } as any,
+        });
+
+        const tp = imgRec?.session?.taxpayer;
+        const mukellef = tp
+          ? tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() || null
+          : null;
+        try {
+          await logAiUsage(this.prisma, {
+            tenantId: imgRec?.session?.tenantId || 'unknown',
+            source: 'kdv-ocr',
+            model: cached.ocrEngine || 'cache',
+            taxpayerId: imgRec?.session?.taxpayerId || null,
+            mukellef,
+            belgeNo: cached.ocrBelgeNo || null,
+            karar: 'cache_hit',
+            sebep: `session:${imgRec?.sessionId || ''}`,
+            durationMs: Date.now() - t0,
+            cacheHit: true,
+            usage: { input_tokens: 0, output_tokens: 0 },
+          });
+        } catch {}
+        this.logger.log(`OCR hash cache HIT: ${imgRec?.originalName || imageId} · Claude çağrısı atlandı`);
+        return;
+      }
 
       const ocrResult = await this.ocrService.extractFromImage(buffer, imgRec?.originalName);
       const review = this.ocrService.needsReview(ocrResult);
@@ -895,6 +975,7 @@ export class KdvControlService {
           ocrBelgeTipi: ocrResult.belgeTipi ?? null,
           ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
           ocrValidationScore: ocrResult.validationScore ?? null,
+          imageHash,
         },
       });
 
@@ -1637,13 +1718,17 @@ export class KdvControlService {
   async getSessionStats(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
 
-    const [totalRecords, totalImages, results] = await Promise.all([
+    const [totalRecords, totalImages, results, images] = await Promise.all([
       this.prisma.kdvRecord.count({ where: { sessionId } }),
       this.prisma.receiptImage.count({ where: { sessionId } }),
       this.prisma.reconciliationResult.groupBy({
         by: ['status'],
         where: { sessionId },
         _count: { status: true },
+      }),
+      this.prisma.receiptImage.findMany({
+        where: { sessionId },
+        select: { ocrEngine: true, ocrStatus: true, imageHash: true, originalName: true },
       }),
     ]);
 
@@ -1663,6 +1748,40 @@ export class KdvControlService {
     // + bir önceki dönemin son belge no'su ile cross-month süreklilik kontrolü
     const seriUyarilari = await this.checkBelgeSeriContinuity(session, sessionId, tenantId);
 
+    const usageRows = await (this.prisma as any).aiUsageLog.findMany({
+      where: {
+        tenantId,
+        source: 'kdv-ocr',
+        sebep: `session:${sessionId}`,
+      },
+      select: {
+        costUsd: true,
+        cacheHit: true,
+        inputTokens: true,
+        outputTokens: true,
+        model: true,
+      },
+    });
+    const actualCostUsd = usageRows.reduce((s: number, r: any) => s + Number(r.costUsd || 0), 0);
+    const actualCacheHits = usageRows.filter((r: any) => r.cacheHit).length;
+    const actualPaidCalls = usageRows.filter((r: any) => !r.cacheHit && Number(r.costUsd || 0) > 0).length;
+    const actualInputTokens = usageRows.reduce((s: number, r: any) => s + Number(r.inputTokens || 0), 0);
+    const actualOutputTokens = usageRows.reduce((s: number, r: any) => s + Number(r.outputTokens || 0), 0);
+
+    const engineStats = images.reduce(
+      (acc, img) => {
+        const engine = img.ocrEngine || '';
+        if (/cache/i.test(engine)) acc.cacheHits++;
+        else if (/ubl-xml|xml-direct/i.test(engine) || /\.xml$/i.test(img.originalName || '')) acc.xmlParsed++;
+        else if (/claude/i.test(engine)) acc.claudeReads++;
+        else if (img.ocrStatus === 'SUCCESS' || img.ocrStatus === 'NEEDS_REVIEW') acc.otherReads++;
+        return acc;
+      },
+      { claudeReads: 0, cacheHits: 0, xmlParsed: 0, otherReads: 0 },
+    );
+    const estimatedCostUsd = engineStats.claudeReads * 0.0025;
+    const estimatedSavedUsd = (engineStats.cacheHits + engineStats.xmlParsed) * 0.0025;
+
     return {
       totalRecords,
       totalImages,
@@ -1674,6 +1793,18 @@ export class KdvControlService {
       rejected: statusMap['REJECTED'] ?? 0,
       needsOcrConfirm: needsConfirm,
       seriUyarilari, // ← yeni alan: array of {tip: 'eksik'|'cross_break', mesaj: string}
+      ocrCost: {
+        actualCostUsd,
+        estimatedCostUsd,
+        estimatedSavedUsd,
+        paidCalls: actualPaidCalls || engineStats.claudeReads,
+        cacheHits: Math.max(actualCacheHits, engineStats.cacheHits),
+        xmlParsed: engineStats.xmlParsed,
+        freeSkips: Math.max(actualCacheHits, engineStats.cacheHits) + engineStats.xmlParsed,
+        inputTokens: actualInputTokens,
+        outputTokens: actualOutputTokens,
+        logCount: usageRows.length,
+      },
     };
   }
 
@@ -2142,13 +2273,38 @@ export class KdvControlService {
             ocrBelgeNo: cached.ocrBelgeNo,
             ocrDate: cached.ocrDate,
             ocrKdvTutari: cached.ocrKdvTutari,
+            ocrKdvTevkifat: cached.ocrKdvTevkifat,
+            ocrSatici: cached.ocrSatici,
+            ocrSaticiVkn: cached.ocrSaticiVkn,
             ocrRawText: cached.ocrRawText,
             ocrConfidence: cached.ocrConfidence,
             ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,
             ocrDateConfidence: cached.ocrDateConfidence,
             ocrKdvConfidence: cached.ocrKdvConfidence,
             ocrEngine: (cached.ocrEngine || 'claude-haiku-4-5') + ' (cached)',
+            ocrBelgeTipi: cached.ocrBelgeTipi,
+            ocrKdvBreakdown: cached.ocrKdvBreakdown as any,
+            ocrValidationScore: cached.ocrValidationScore,
+            ocrKategori: cached.ocrKategori,
+            imageHash: cached.imageHash,
           },
+        });
+        const session = await this.findSession(sessionId, tenantId);
+        const tp = session.taxpayer;
+        const mukellef = tp
+          ? tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() || null
+          : null;
+        await logAiUsage(this.prisma, {
+          tenantId,
+          source: 'kdv-ocr',
+          model: cached.ocrEngine || 'cache',
+          taxpayerId: session.taxpayerId || null,
+          mukellef,
+          belgeNo: cached.ocrBelgeNo || null,
+          karar: 'cache_hit',
+          sebep: `session:${sessionId}`,
+          cacheHit: true,
+          usage: { input_tokens: 0, output_tokens: 0 },
         });
         cacheHits++;
         this.logger.log(`OCR cache HIT: ${img.originalName} ← önceki başarılı OCR kopyalandı`);
@@ -2162,7 +2318,12 @@ export class KdvControlService {
     }
 
     if (toQueue.length === 0) {
-      return { queued: 0, cacheHits, message: 'Tüm faturalar önceden OCR edilmişti' };
+      return {
+        queued: 0,
+        cacheHits,
+        estimatedSavedUsd: cacheHits * 0.0025,
+        message: 'Tüm faturalar önceden OCR edilmişti',
+      };
     }
 
     // Concurrency limit — Claude rate limit'ine takılmamak için aynı anda
@@ -2233,6 +2394,7 @@ export class KdvControlService {
       queued: toQueue.length,
       total: pending.length,
       cacheHits,
+      estimatedSavedUsd: cacheHits * 0.0025,
       message: cacheHits > 0
         ? `${toQueue.length} yeni OCR · ${cacheHits} fatura önceden OCR edilmişti, atlandı`
         : undefined,
