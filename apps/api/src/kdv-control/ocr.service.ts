@@ -973,6 +973,7 @@ export class OcrService {
     // kullanıcı teyidine düşmeli ki placeholder değer rapora taşınmasın.
     const kdvAmount = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
     if (!result.kdvTutari || kdvAmount <= 0) {
+      if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
       return { needs: true, reason: 'low_field' };
     }
 
@@ -1410,16 +1411,34 @@ export class OcrService {
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
+    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
     const parseLineAmount = (line: string): number | null => {
       const m = line.match(amountRe);
       if (!m) return null;
       const n = this.parseAmount(m[1]);
       return n > 0 && n < 100_000_000 ? n : null;
     };
+    const parseLastAmount = (line: string): number | null => {
+      const matches = [...line.matchAll(amountGlobalRe)];
+      if (matches.length === 0) return null;
+      const n = this.parseAmount(matches[matches.length - 1][1]);
+      return n > 0 && n < 100_000_000 ? n : null;
+    };
+    const findExplicitKdvAmount = (): number | null => {
+      for (const line of lines) {
+        if (/TEVK[İI]FAT/i.test(line)) continue;
+        const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
+        if (!label) continue;
+        const valuePart = line.slice((label.index ?? 0) + label[0].length);
+        const sameLine = parseLastAmount(valuePart);
+        if (sameLine != null) return sameLine;
+      }
+      return null;
+    };
     const findAmountNear = (labelRe: RegExp): number | null => {
       for (let i = 0; i < lines.length; i++) {
         if (!labelRe.test(lines[i])) continue;
-        const same = parseLineAmount(lines[i].replace(labelRe, ''));
+        const same = parseLastAmount(lines[i].replace(labelRe, ''));
         if (same != null) return same;
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
           const next = lines[i + j];
@@ -1431,7 +1450,7 @@ export class OcrService {
       return null;
     };
 
-    const explicitKdv = findAmountNear(
+    const explicitKdv = findExplicitKdvAmount() ?? findAmountNear(
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)|UYGULANAN\s+TUTAR/i,
     );
     const matrah =
@@ -2552,6 +2571,10 @@ export class OcrService {
     };
     result.kdvTutari = normalizeAmount(result.kdvTutari);
     result.totalTutari = normalizeAmount(result.totalTutari);
+    if (!result.kdvTutari || this.parseAmount(result.kdvTutari) <= 0) {
+      result.kdvTutari = null;
+      if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
+    }
 
     // ─── 6. KDV BREAKDOWN — Toplam kontrolü ───
     let breakdownInconsistent = false;

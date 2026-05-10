@@ -438,6 +438,19 @@ export class KdvControlService {
       // Opsiyonel alanlar
       const aciklamaRaw = aciklamaCol && row[aciklamaCol] ? String(row[aciklamaCol]).trim() : null;
       const hesapKoduRaw = hesapKoduCol && row[hesapKoduCol] ? String(row[hesapKoduCol]).trim() : null;
+      const rowText = Object.values(row)
+        .map((v) => String(v ?? ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .toLocaleUpperCase('tr-TR')
+        .trim();
+      const isLucaSummaryRow =
+        /NAKL[İI]\s*YEK[ÜU]N|NAKLI\s*YEKUN|^TOPLAM[:\s]| TOPLAM[:\s]|GENEL\s+TOPLAM/.test(rowText) ||
+        (!belgeDate && (!belgeNo || !/[A-Z0-9]{4,}/i.test(belgeNo)));
+      if (isLucaSummaryRow) {
+        skipped++;
+        continue;
+      }
 
       parsed.push({
         rowIndex: i + 2, // +2: header + 1-based

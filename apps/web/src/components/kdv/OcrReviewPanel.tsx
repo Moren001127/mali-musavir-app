@@ -749,11 +749,13 @@ function FieldInput({
   numeric?: boolean;
   readOnly?: boolean;
 }) {
+  const hasValue = String(value ?? '').trim().length > 0 && (!numeric || parseLooseMoney(value) > 0);
+  const effectiveConfidence = hasValue ? confidence : null;
   const showBadge = confidence !== undefined;
-  const low = typeof confidence === 'number' && confidence < THRESHOLD;
-  const missing = confidence === null;
+  const low = typeof effectiveConfidence === 'number' && effectiveConfidence < THRESHOLD;
+  const missing = effectiveConfidence === null;
   const color = missing ? '#f43f5e' : low ? '#f59e0b' : '#22c55e';
-  const pct = typeof confidence === 'number' ? Math.round(confidence * 100) : null;
+  const pct = typeof effectiveConfidence === 'number' ? Math.round(effectiveConfidence * 100) : null;
 
   return (
     <div>
@@ -1414,9 +1416,10 @@ function StatusTag({ status }: { status: string }) {
 }
 
 function avgConf(i: ReviewImage): number | null {
-  const scores = [i.ocrBelgeNoConfidence, i.ocrDateConfidence, i.ocrKdvConfidence].filter(
-    (v): v is number => typeof v === 'number',
-  );
-  if (scores.length === 0) return null;
+  const scores = [
+    i.ocrBelgeNo ? i.ocrBelgeNoConfidence : 0,
+    i.ocrDate ? i.ocrDateConfidence : 0,
+    parseLooseMoney(i.ocrKdvTutari) > 0 ? i.ocrKdvConfidence : 0,
+  ].map((v) => (typeof v === 'number' ? v : 0));
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }

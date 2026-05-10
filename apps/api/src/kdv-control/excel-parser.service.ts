@@ -94,6 +94,12 @@ export class ExcelParserService {
       const aciklamaText = String(
         find(['açıklama', 'aciklama', 'hesap adı', 'hesap adi']) ?? '',
       ).toLocaleUpperCase('tr-TR').trim();
+      const rowText = Object.values(row)
+        .map((v) => String(v ?? ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .toLocaleUpperCase('tr-TR')
+        .trim();
       const tarihMissing = !belgeDate;
       const madeNo = find(['madde no', 'maddeno']);
       const fisNo = find(['fiş no', 'fis no']);
@@ -110,7 +116,11 @@ export class ExcelParserService {
       const looksLikeTransaction =
         !!belgeDate && (madeNo || fisNo || belgeNo);
 
-      if (isHeaderOrSummaryRow || tarihMissing || !looksLikeTransaction) {
+      const rowWideSummaryRow =
+        /NAKL[İI]\s*YEK[ÜU]N|NAKLI\s*YEKUN|(^|\s)TOPLAM[:\s]|GENEL\s+TOPLAM/.test(rowText) ||
+        /^\d{3}\s+[A-ZÇĞİÖŞÜ]/.test(rowText);
+
+      if (isHeaderOrSummaryRow || rowWideSummaryRow || tarihMissing || !looksLikeTransaction) {
         const reason = isHeaderOrSummaryRow ? 'başlık/özet/devir' : tarihMissing ? 'tarih yok' : 'belge no/madde/fiş eksik';
         skipDetail.push({ row: i + 2, reason, aciklama: aciklamaText.slice(0, 60) });
         skipCounts[reason] = (skipCounts[reason] || 0) + 1;
