@@ -1192,7 +1192,7 @@ export class ReconciliationEngine {
     if (taxNo.length === 10 || taxNo.length === 11) return `tax:${taxNo}`;
 
     const name = (rec.karsiTaraf || rec.aciklama || '').trim();
-    if (!name) return 'noparty';
+    if (!name || this.isAccountingDescription(name)) return 'noparty';
     return `name:${name
       .toLocaleUpperCase('tr-TR')
       .replace(/Ş/g, 'S').replace(/İ/g, 'I')
