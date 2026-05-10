@@ -18,6 +18,8 @@ interface BreakdownItem {
   matrah?: number | null;
 }
 
+const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
+
 /**
  * Image'ın breakdown'unu al — onaylanmış varsa onu, yoksa OCR'dakini.
  * Format normalizasyonu yapar (string → number).
@@ -387,8 +389,7 @@ export class ReconciliationEngine {
     // Diğer (gider pusulası/SMM/dekont): %95+ similarity ile kısmi (1 karakter
     //   tolerans uzun belge no'larda).
     const belgeNoWeight = isOkcFisi ? 0.45 : 0.7;
-    const isEFaturaFormat = (s: string): boolean =>
-      /^[A-Z]{2,4}\d{12,14}$/.test(s); // EFA/ESR/BEF/GIB yanında ES/TS gibi kurum serileri
+    const isEFaturaFormat = (s: string): boolean => E_BELGE_NO_REGEX.test(s);
     if (record.belgeNo && imgBelgeNo) {
       const normA = this.normalizeBelgeNo(record.belgeNo);
       const normB = this.normalizeBelgeNo(imgBelgeNo);
@@ -1012,7 +1013,8 @@ export class ReconciliationEngine {
   }
 
   private eInvoiceComparableKey(normalizedBelgeNo: string): string {
-    const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/);
+    const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/)
+      ?? normalizedBelgeNo.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
     if (!m) return normalizedBelgeNo;
     return `${m[1]}${m[2]}${m[3].replace(/^0+/, '') || '0'}`;
   }
@@ -1119,13 +1121,17 @@ export class ReconciliationEngine {
       // tekrarlari tevkifatli alis fan-out kabul edilir. Farkli tutarlar ayni
       // belge no altinda ayri gorsellere eslesebilsin diye tutar key'e dahil.
       if (partyKey === 'noparty') {
-        if (bn.length < 10 || !(kdvAmount > 0)) {
+        const isShortReceiptNo = bn.length < 10;
+        const canGroupShortOkcNo = isShortReceiptNo && /^\d{1,8}$/.test(bn);
+        if (!(kdvAmount > 0) || (isShortReceiptNo && !canGroupShortOkcNo)) {
           unaggregated.push(rec);
           continue;
         }
       }
       const key = partyKey === 'noparty'
-        ? `${bn}|${dateKey}|amount:${kdvAmount.toFixed(2)}`
+        ? (bn.length < 10
+          ? `${bn}|${dateKey}|okc-short`
+          : `${bn}|${dateKey}|amount:${kdvAmount.toFixed(2)}`)
         : `${bn}|${dateKey}|${partyKey}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(rec);

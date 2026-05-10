@@ -86,6 +86,8 @@ const DEFAULT_OCR_MODEL = 'claude-haiku-4-5-20251001';
 /** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
 export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
 
+const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
+
 /** Log için confidence'ı kısa yazı — %84 veya "—" */
 const fmtConf = (v: number | null | undefined): string =>
   typeof v === 'number' ? `%${Math.round(v * 100)}` : '—';
@@ -1195,7 +1197,7 @@ export class OcrService {
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
-    if (/^[A-Z]{2,4}\d{12,14}$/i.test(base)) return base.toUpperCase();
+    if (E_BELGE_NO_REGEX.test(base.toUpperCase())) return base.toUpperCase();
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
     return null;
@@ -1293,7 +1295,7 @@ export class OcrService {
     if (!text) return null;
     const lines = this.normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const breakdown: KdvBreakdownItem[] = [];
-    const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))/i;
+    const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/i;
     const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
     const amountRe = /[-+]?[\*₺¥]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
     const parseLastAmount = (raw: string): number => {
@@ -1328,12 +1330,78 @@ export class OcrService {
       }
     }
 
+    const summarySum = breakdown.reduce((total, item) => total + item.tutar, 0);
+    const itemRateBreakdown = this.extractOkcFisItemRateBreakdownFromAzure(text, summarySum);
+    if (itemRateBreakdown.length >= 2) {
+      const itemSum = itemRateBreakdown.reduce((total, item) => total + item.tutar, 0);
+      return {
+        kdvTutari: this.formatAmount(summarySum > 0 ? summarySum : itemSum),
+        breakdown: itemRateBreakdown,
+      };
+    }
+
     if (breakdown.length === 0) return null;
-    const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
     return {
-      kdvTutari: this.formatAmount(sum),
+      kdvTutari: this.formatAmount(summarySum),
       breakdown,
     };
+  }
+
+  /**
+   * OKC fislerde bazen sadece TOPKDV toplam yazilir; oran bazli KDV ise urun
+   * satirlarindaki %01/%10/%20 brut tutarlardan turetilmelidir.
+   */
+  private extractOkcFisItemRateBreakdownFromAzure(
+    text: string,
+    expectedTotal?: number | null,
+  ): KdvBreakdownItem[] {
+    if (!text) return [];
+    const lines = this.normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const grossByRate = new Map<number, number>();
+    const rateRe = /%\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
+    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY)?/g;
+    const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
+
+    const parseLastAmount = (raw: string): number => {
+      const values = [...raw.matchAll(amountRe)]
+        .map((m) => this.parseAmount(m[1]))
+        .filter((value) => value > 0 && value < 100_000_000);
+      return values.length > 0 ? values[values.length - 1] : 0;
+    };
+
+    for (const line of lines) {
+      if (skipRe.test(line)) continue;
+      const rateMatch = line.match(rateRe);
+      if (!rateMatch || rateMatch.index == null) continue;
+      const oran = Number(rateMatch[1]);
+      const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
+      const gross = parseLastAmount(afterRate) || parseLastAmount(line);
+      if (!(gross > 0)) continue;
+      grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
+    }
+
+    if (grossByRate.size < 2) return [];
+    const breakdown = Array.from(grossByRate.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([oran, gross]) => ({
+        oran,
+        tutar: Math.round((gross * oran / (100 + oran)) * 100) / 100,
+        matrah: null,
+      }))
+      .filter((item) => item.tutar > 0);
+
+    if (breakdown.length < 2) return [];
+    const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
+    if (expectedTotal && expectedTotal > 0) {
+      const tolerance = Math.max(0.08, expectedTotal * 0.03);
+      if (Math.abs(sum - expectedTotal) > tolerance) {
+        this.logger.warn(
+          `OKC item-rate breakdown toplamla uyumsuz: item=${this.formatAmount(sum)} topkdv=${this.formatAmount(expectedTotal)} - breakdown kullanilmadi`,
+        );
+        return [];
+      }
+    }
+    return breakdown;
   }
 
   private extractToplam(text: string): string | null {
@@ -1445,10 +1513,14 @@ export class OcrService {
 
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
     const folded = this.foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
-    if (/\bZ\s*RAPORU\b|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKUM\s+T[O0]P\s*K\s*D\s*V\b/.test(folded)) return 'Z_RAPORU';
+    const looksOkcFis = /\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded);
+    const explicitZRapor =
+      /\bZ\s*RAPORU\b|\bKUM\s+T[O0]P\s*K\s*D\s*V\b|\bKUM\s+T[O0]PLAM\b/.test(folded);
+    if (looksOkcFis && !explicitZRapor) return 'OKC_FIS';
+    if (explicitZRapor || /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/.test(folded)) return 'Z_RAPORU';
     if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';
     if (/\bE[-\s]?FATURA\b|\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
-    if (/\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded)) return 'OKC_FIS';
+    if (looksOkcFis) return 'OKC_FIS';
     return null;
   }
 
@@ -2307,7 +2379,7 @@ export class OcrService {
       const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const isValidEFaturaFormat = /^[A-Z]{3}\d{13}$/.test(bn); // EFA/ESR/BEF/GB1/IRU/KMI + yıl + sıra
       const claudeBelgeNoConf = result.fieldConfidence.belgeNo ?? 0;
-      if (isValidEFaturaFormat && claudeBelgeNoConf >= 0.85) {
+      if ((isValidEFaturaFormat || E_BELGE_NO_REGEX.test(bn)) && claudeBelgeNoConf >= 0.85) {
         this.logger.log(
           `E-fatura trust guard: belge no "${bn}" geçerli format + Claude conf ${Math.round(claudeBelgeNoConf * 100)}% → cross-check skip (${originalName})`,
         );
@@ -2558,6 +2630,20 @@ export class OcrService {
       // claudeBreakdownCount kodda 2 görünebiliyor → koşul tetiklenmiyordu.
       // Azure iki bağımsız tanıkla (A/B) bulduysa zaten güvenilir.
       if (azureBreakdown.length >= 2) {
+        const rateEchoCount = azureBreakdown.filter((b) =>
+          [1, 8, 10, 18, 20].some((r) => Math.abs((Number(b.tutar) || 0) - r) < 0.01),
+        ).length;
+        const looksLikeRatesAsAmounts =
+          rateEchoCount >= Math.ceil(azureBreakdown.length * 0.6);
+        if (looksLikeRatesAsAmounts) {
+          this.logger.warn(
+            `Multi-rate breakdown reddedildi: KDV tutarlari oran gibi gorunuyor (${azureBreakdown.map((b) => `%${b.oran}:${this.formatAmount(b.tutar)}`).join(', ')}, ${originalName})`,
+          );
+          result.kdvTutari = null;
+          result.kdvBreakdown = null;
+          result.fieldConfidence.kdvTutari = null;
+          kdvAlreadyVerifiedByAutoFill.value = false;
+        } else {
         this.logger.warn(
           `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${azureBreakdown.length} oran (${originalName})`,
         );
@@ -2571,12 +2657,12 @@ export class OcrService {
           result.kdvTutari = this.formatAmount(sum);
         } else if (Math.abs(sum - claudeTotal) > 0.05) {
           this.logger.warn(
-            `E-fatura breakdown toplamı ana KDV ile tutarsız: ana=${result.kdvTutari} breakdown=${this.formatAmount(sum)} (${originalName}) — ana KDV korunuyor`,
+            `E-fatura ana KDV tek oran kalmis: ana=${result.kdvTutari} breakdown toplam=${this.formatAmount(sum)} (${originalName}) - ana KDV breakdown toplamiyla duzeltildi`,
           );
-          result.kdvBreakdown = null;
-          result.fieldConfidence.kdvTutari = Math.min(
-            result.fieldConfidence.kdvTutari ?? 0.6,
-            0.6,
+          result.kdvTutari = this.formatAmount(sum);
+          result.fieldConfidence.kdvTutari = Math.max(
+            result.fieldConfidence.kdvTutari ?? 0,
+            0.92,
           );
         } else {
           result.fieldConfidence.kdvTutari = Math.max(
@@ -2586,6 +2672,7 @@ export class OcrService {
         }
         kdvAlreadyVerifiedByAutoFill.value = true;
       }
+    }
     }
 
     const checks: { field: 'belgeNo' | 'date' | 'amount'; value: string | null; key: 'belgeNo' | 'date' | 'kdvTutari' }[] = [
@@ -2733,7 +2820,7 @@ export class OcrService {
       const filenameMatchesOcr =
         fnClean.length >= 10 &&
         (fnClean === ocrClean || editDist <= 2);
-      const fnLooksLikeEInvoice = /^[A-Z]{2,4}\d{12,14}$/.test(fnClean);
+      const fnLooksLikeEInvoice = E_BELGE_NO_REGEX.test(fnClean);
       const lowBelgeNoConfidence = (result.fieldConfidence?.belgeNo ?? 0) < 0.85;
       const shouldOverride =
         !ocrClean ||
@@ -3062,9 +3149,7 @@ export class OcrService {
       if (tipi === 'EFATURA' || tipi === 'EARSIV') {
         // E-fatura/e-arşiv: çoğunlukla 3 harf + 13 hane; sahada IGDAS gibi
         // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane güvenli kabul.
-        const eFaturaRegex = /^[A-Z]{2,4}\d{12,14}$/;
-        const numericProviderInvoiceRegex = /^\d{13,20}$/;
-        if (!eFaturaRegex.test(bn) && !numericProviderInvoiceRegex.test(bn)) {
+        if (!E_BELGE_NO_REGEX.test(bn)) {
           issues.push(
             `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yıl + sıra no, örn. EFA2026000000093)`,
           );
