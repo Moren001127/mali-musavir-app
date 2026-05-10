@@ -496,9 +496,8 @@ export default function KdvKontrolPage() {
 
   /**
    * Manuel "Yenile" — OCR Teyit Bekler kartının yanındaki buton.
-   * forceFresh=true yollar: NEEDS_REVIEW + LOW_CONFIDENCE + FAILED hepsi
-   * yeniden kuyruğa alınır ve OCR cache atlanır. Aksi halde eski buggy sonuç
-   * tekrar kopyalanır ve yeni düzeltmeler hiçbir zaman uygulanmaz.
+   * Varsayılan ucuz mod: cache/Azure önce çalışır, Claude sadece gerekirse
+   * devreye girer. Zorla Claude tekil fatura panelindeki AI butonundadır.
    */
   const runOcrAgain = useMutation({
     mutationFn: async () => {
@@ -508,9 +507,9 @@ export default function KdvKontrolPage() {
         group: 'ocr',
         kind: 'info',
         title: 'OCR yeniden başlatılıyor…',
-        detail: `${needs} teyit bekleyen fatura yeniden okunacak (cache atlanır)`,
+        detail: `${needs} teyit bekleyen fatura yeniden okunacak (cache/Azure öncelikli)`,
       });
-      return kdvApi.startOcr(s.id, { forceFresh: true });
+      return kdvApi.startOcr(s.id, { forceFresh: true, forceClaude: false });
     },
     onSuccess: (d: any) => {
       clearFeedErrorsInGroup('ocr');
@@ -527,7 +526,7 @@ export default function KdvKontrolPage() {
           group: 'ocr',
           kind: 'ok',
           title: `${d.queued} OCR işi başladı`,
-          detail: 'Teyit bekleyenler yeniden okunuyor (cache atlandı)',
+          detail: 'Teyit bekleyenler yeniden okunuyor (cache/Azure öncelikli)',
         });
         toast.success(`${d.queued} OCR yeniden başlatıldı`);
       }
@@ -1106,6 +1105,8 @@ export default function KdvKontrolPage() {
               const paidCalls = Number(ocrCost.paidCalls || 0);
               const cacheHits = Number(ocrCost.cacheHits || 0);
               const xmlParsed = Number(ocrCost.xmlParsed || 0);
+              const azureReads = Number(ocrCost.azureReads || 0);
+              const claudeEscalations = Number(ocrCost.claudeEscalations || 0);
               const freeSkips = Number(ocrCost.freeSkips || cacheHits + xmlParsed);
               const costUsd = Number(ocrCost.actualCostUsd || 0) > 0
                 ? Number(ocrCost.actualCostUsd)
@@ -1122,6 +1123,12 @@ export default function KdvKontrolPage() {
                       {paidCalls} ücretli okuma ≈ <span style={{ color: '#fafaf9' }}>${costUsd.toFixed(4)}</span>
                       <span style={{ color: 'rgba(250,250,249,0.4)' }}> (~{costTl.toFixed(2)} ₺)</span>
                     </span>
+                    {(azureReads > 0 || claudeEscalations > 0) && (
+                      <span style={{ color: '#c084fc', fontWeight: 600 }}>
+                        Akış: {azureReads} Azure
+                        {claudeEscalations > 0 ? ` · ${claudeEscalations} Claude eskalasyon` : ''}
+                      </span>
+                    )}
                     {freeSkips > 0 && (
                       <span style={{ color: '#22c55e', fontWeight: 600 }}>
                         Ücretsiz atlanan: {freeSkips} belge

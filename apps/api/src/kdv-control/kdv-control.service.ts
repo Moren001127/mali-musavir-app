@@ -739,7 +739,6 @@ export class KdvControlService {
    */
   private async logOcrUsage(imageId: string, ocrResult: any, durationMs?: number) {
     try {
-      if (!ocrResult?.usage) return;
       const img = await this.prisma.receiptImage.findUnique({
         where: { id: imageId },
         select: {
@@ -773,16 +772,131 @@ export class KdvControlService {
         karar: ocrResult.belgeNo && ocrResult.kdvTutari ? 'ok' : 'emin_degil',
         sebep: `session:${img.sessionId}`,
         durationMs,
+        cacheHit: /\bcache\b/i.test(ocrResult.engine || ''),
         usage: {
-          input_tokens: ocrResult.usage.inputTokens || 0,
-          output_tokens: ocrResult.usage.outputTokens || 0,
-          cache_read_input_tokens: ocrResult.usage.cacheReadTokens || 0,
-          cache_creation_input_tokens: ocrResult.usage.cacheCreationTokens || 0,
+          input_tokens: ocrResult.usage?.inputTokens || 0,
+          output_tokens: ocrResult.usage?.outputTokens || 0,
+          cache_read_input_tokens: ocrResult.usage?.cacheReadTokens || 0,
+          cache_creation_input_tokens: ocrResult.usage?.cacheCreationTokens || 0,
         },
       });
     } catch {
       // log hatası ana akışı bozmasın
     }
+  }
+
+  private async saveOcrResult(imageId: string, ocrResult: any, imageHash?: string) {
+    const review = this.ocrService.needsReview(ocrResult);
+    const status = review.needs
+      ? review.reason === 'empty'
+        ? 'LOW_CONFIDENCE'
+        : 'NEEDS_REVIEW'
+      : 'SUCCESS';
+
+    await this.prisma.receiptImage.update({
+      where: { id: imageId },
+      data: {
+        ocrStatus: status,
+        ocrBelgeNo: ocrResult.belgeNo,
+        ocrDate: ocrResult.date,
+        ocrKdvTutari: ocrResult.kdvTutari,
+        ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
+        ocrSatici: ocrResult.satici ?? null,
+        ocrSaticiVkn: ocrResult.saticiVkn ?? null,
+        ocrRawText: ocrResult.rawText?.substring(0, 2000),
+        ocrConfidence: ocrResult.confidence,
+        ocrBelgeNoConfidence: ocrResult.fieldConfidence?.belgeNo ?? null,
+        ocrDateConfidence: ocrResult.fieldConfidence?.date ?? null,
+        ocrKdvConfidence: ocrResult.fieldConfidence?.kdvTutari ?? null,
+        ocrEngine: ocrResult.engine,
+        ocrBelgeTipi: ocrResult.belgeTipi ?? null,
+        ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
+        ocrValidationScore: ocrResult.validationScore ?? null,
+        ocrKategori: ocrResult.kategori ?? null,
+        ...(imageHash ? { imageHash } : {}),
+      },
+    });
+
+    return status;
+  }
+
+  private async tryApplyHashCache(imageId: string, imageHash: string, durationMs?: number) {
+    const current = await this.prisma.receiptImage.findUnique({
+      where: { id: imageId },
+      select: {
+        sessionId: true,
+        originalName: true,
+        session: {
+          select: {
+            tenantId: true,
+            taxpayerId: true,
+            taxpayer: { select: { firstName: true, lastName: true, companyName: true } },
+          },
+        },
+      },
+    });
+    const tenantId = current?.session?.tenantId;
+    if (!tenantId) return false;
+
+    const cached = await this.prisma.receiptImage.findFirst({
+      where: {
+        imageHash,
+        id: { not: imageId },
+        session: { tenantId },
+        ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW'] as any },
+        OR: [
+          { ocrBelgeNo: { not: null } },
+          { ocrDate: { not: null } },
+          { ocrKdvTutari: { not: null } },
+        ],
+      },
+      orderBy: { uploadedAt: 'desc' },
+    });
+    if (!cached) return false;
+
+    await this.prisma.receiptImage.update({
+      where: { id: imageId },
+      data: {
+        ocrStatus: cached.ocrStatus,
+        ocrBelgeNo: cached.ocrBelgeNo,
+        ocrDate: cached.ocrDate,
+        ocrKdvTutari: cached.ocrKdvTutari,
+        ocrKdvTevkifat: cached.ocrKdvTevkifat,
+        ocrSatici: cached.ocrSatici,
+        ocrSaticiVkn: cached.ocrSaticiVkn,
+        ocrRawText: cached.ocrRawText,
+        ocrConfidence: cached.ocrConfidence,
+        ocrBelgeNoConfidence: cached.ocrBelgeNoConfidence,
+        ocrDateConfidence: cached.ocrDateConfidence,
+        ocrKdvConfidence: cached.ocrKdvConfidence,
+        ocrEngine: `${cached.ocrEngine || 'unknown'} (cache)`,
+        ocrBelgeTipi: cached.ocrBelgeTipi,
+        ocrKdvBreakdown: cached.ocrKdvBreakdown as any,
+        ocrValidationScore: cached.ocrValidationScore,
+        ocrKategori: cached.ocrKategori,
+        imageHash,
+      } as any,
+    });
+
+    const tp = current.session?.taxpayer;
+    const mukellef = tp
+      ? tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() || null
+      : null;
+    await logAiUsage(this.prisma, {
+      tenantId,
+      source: 'kdv-ocr',
+      model: cached.ocrEngine || 'cache',
+      taxpayerId: current.session?.taxpayerId || null,
+      mukellef,
+      belgeNo: cached.ocrBelgeNo || null,
+      karar: 'cache_hit',
+      sebep: `session:${current.sessionId || ''}`,
+      durationMs,
+      cacheHit: true,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    }).catch(() => {});
+    this.logger.log(`OCR hash cache HIT: ${current.originalName || imageId} · sağlayıcı çağrısı atlandı`);
+    return true;
   }
 
   /** OCR işlemi — buffer doğrudan (S3'e gerek yok) */
@@ -794,34 +908,11 @@ export class KdvControlService {
         data: { ocrStatus: 'PROCESSING' },
       });
 
-      const ocrResult = await this.ocrService.extractFromImage(buffer, originalName);
-      const review = this.ocrService.needsReview(ocrResult);
-      const status = review.needs
-        ? review.reason === 'empty'
-          ? 'LOW_CONFIDENCE'
-          : 'NEEDS_REVIEW'
-        : 'SUCCESS';
+      const imageHash = this.ocrService.computeImageHash(buffer);
+      if (await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
 
-      await this.prisma.receiptImage.update({
-        where: { id: imageId },
-        data: {
-          ocrStatus: status,
-          ocrBelgeNo: ocrResult.belgeNo,
-          ocrDate: ocrResult.date,
-          ocrKdvTutari: ocrResult.kdvTutari,
-          ocrKdvTevkifat: ocrResult.kdvTevkifat ?? null,
-          ocrSatici: ocrResult.satici ?? null,
-          ocrRawText: ocrResult.rawText?.substring(0, 2000),
-          ocrConfidence: ocrResult.confidence,
-          ocrBelgeNoConfidence: ocrResult.fieldConfidence.belgeNo,
-          ocrDateConfidence: ocrResult.fieldConfidence.date,
-          ocrKdvConfidence: ocrResult.fieldConfidence.kdvTutari,
-          ocrEngine: ocrResult.engine,
-          ocrBelgeTipi: ocrResult.belgeTipi ?? null,
-          ocrKdvBreakdown: (ocrResult.kdvBreakdown as any) ?? null,
-          ocrValidationScore: ocrResult.validationScore ?? null,
-        },
-      });
+      const ocrResult = await this.ocrService.extractFromImage(buffer, originalName);
+      await this.saveOcrResult(imageId, ocrResult, imageHash);
 
       // AI maliyet log'u — Tüm Ajanlar sayacına düşsün
       await this.logOcrUsage(imageId, ocrResult, Date.now() - t0);
@@ -835,7 +926,7 @@ export class KdvControlService {
   }
 
   /** OCR işlemi — S3'ten indirerek (presigned upload sonrası kullanılır) */
-  private async runOcrForImage(imageId: string, s3Key: string) {
+  private async runOcrForImage(imageId: string, s3Key: string, opts: { forceClaude?: boolean } = {}) {
     const t0 = Date.now();
     try {
       await this.prisma.receiptImage.update({
@@ -872,6 +963,7 @@ export class KdvControlService {
       // Claude'a tekrar gitme. Mihsap dışı upload'larda asıl maliyet düşüren
       // katman burasıdır.
       const imageHash = this.ocrService.computeImageHash(buffer);
+      if (await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
       const cached = await this.prisma.receiptImage.findFirst({
         where: {
           imageHash,
@@ -935,7 +1027,9 @@ export class KdvControlService {
         return;
       }
 
-      const ocrResult = await this.ocrService.extractFromImage(buffer, imgRec?.originalName);
+      const ocrResult = await this.ocrService.extractFromImage(buffer, imgRec?.originalName, {
+        forceClaude: opts.forceClaude === true,
+      });
       const review = this.ocrService.needsReview(ocrResult);
       const status = review.needs
         ? review.reason === 'empty'
@@ -1072,7 +1166,7 @@ export class KdvControlService {
    * niyetiyle basıyor, eski sonucu kopyalamak işe yaramaz. Manuel teyit
    * (isManuallyConfirmed) sıfırlanır ki yeni OCR sonucu yazılabilsin.
    */
-  async reocrSingleImage(imageId: string, tenantId: string) {
+  async reocrSingleImage(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
     });
@@ -1102,9 +1196,9 @@ export class KdvControlService {
       try {
         if (image.s3Key.startsWith('mihsap://')) {
           const invoiceId = image.s3Key.slice('mihsap://'.length);
-          await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId);
+          await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId, opts);
         } else {
-          await this.runOcrForImage(image.id, image.s3Key);
+          await this.runOcrForImage(image.id, image.s3Key, opts);
         }
       } catch (err: any) {
         this.logger.error(`reocrSingleImage [${imageId}]: ${err?.message}`);
@@ -1784,11 +1878,15 @@ export class KdvControlService {
         const engine = img.ocrEngine || '';
         if (/cache/i.test(engine)) acc.cacheHits++;
         else if (/ubl-xml|xml-direct/i.test(engine) || /\.xml$/i.test(img.originalName || '')) acc.xmlParsed++;
-        else if (/claude/i.test(engine)) acc.claudeReads++;
+        else if (/claude/i.test(engine)) {
+          acc.claudeReads++;
+          if (/escalation/i.test(engine)) acc.claudeEscalations++;
+        }
+        else if (/azure/i.test(engine)) acc.azureReads++;
         else if (img.ocrStatus === 'SUCCESS' || img.ocrStatus === 'NEEDS_REVIEW') acc.otherReads++;
         return acc;
       },
-      { claudeReads: 0, cacheHits: 0, xmlParsed: 0, otherReads: 0 },
+      { claudeReads: 0, claudeEscalations: 0, azureReads: 0, cacheHits: 0, xmlParsed: 0, otherReads: 0 },
     );
     const estimatedCostUsd = engineStats.claudeReads * 0.0025;
     const estimatedSavedUsd = (engineStats.cacheHits + engineStats.xmlParsed) * 0.0025;
@@ -1811,6 +1909,8 @@ export class KdvControlService {
         paidCalls: actualPaidCalls || engineStats.claudeReads,
         cacheHits: Math.max(actualCacheHits, engineStats.cacheHits),
         xmlParsed: engineStats.xmlParsed,
+        azureReads: engineStats.azureReads,
+        claudeEscalations: engineStats.claudeEscalations,
         freeSkips: Math.max(actualCacheHits, engineStats.cacheHits) + engineStats.xmlParsed,
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
@@ -2207,10 +2307,11 @@ export class KdvControlService {
   async startOcrForSession(
     sessionId: string,
     tenantId: string,
-    opts: { forceFresh?: boolean } = {},
+    opts: { forceFresh?: boolean; forceClaude?: boolean } = {},
   ) {
     await this.findSession(sessionId, tenantId);
     const forceFresh = opts.forceFresh === true;
+    const forceClaude = opts.forceClaude === true;
 
     // PENDING + önceki denemelerde başarısız olanlar (LOW_CONFIDENCE, FAILED).
     // Normal akışta NEEDS_REVIEW'a dokunmayız — kullanıcı teyit sırasında;
@@ -2363,9 +2464,9 @@ export class KdvControlService {
         try {
           if (img.s3Key?.startsWith('mihsap://')) {
             const invoiceId = img.s3Key.slice('mihsap://'.length);
-            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId);
+            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceClaude });
           } else {
-            await this.runOcrForImage(img.id, img.s3Key);
+            await this.runOcrForImage(img.id, img.s3Key, { forceClaude });
           }
         } catch (e: any) {
           this.logger.error(`OCR worker ${workerIdx} hata [${img.id}]: ${e?.message}`);
@@ -2424,6 +2525,7 @@ export class KdvControlService {
     imageId: string,
     mihsapInvoiceId: string,
     tenantId: string,
+    opts: { forceClaude?: boolean } = {},
   ) {
     const t0 = Date.now();
     try {
@@ -2465,6 +2567,7 @@ export class KdvControlService {
       // ─── HASH CACHE KONTROLÜ ───
       // Aynı görüntü daha önce başarılı işlendiyse Claude'a hiç gitme — DB'den dön.
       const imageHash = this.ocrService.computeImageHash(buffer);
+      if (await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
       const cached = await (this.prisma as any).receiptImage.findFirst({
         where: { imageHash, ocrStatus: 'SUCCESS' },
         orderBy: { uploadedAt: 'desc' },
@@ -2523,7 +2626,9 @@ export class KdvControlService {
       }
 
       // ─── CACHE MISS → Claude'a git ───
-      const ocrResult = await this.ocrService.extractFromImage(buffer, filenameHint);
+      const ocrResult = await this.ocrService.extractFromImage(buffer, filenameHint, {
+        forceClaude: opts.forceClaude === true,
+      });
       const review = this.ocrService.needsReview(ocrResult);
       const status = review.needs
         ? review.reason === 'empty'

@@ -182,10 +182,11 @@ export const kdvApi = {
    * kuyruğa alınır ve OCR cache atlanır — "Yenile" butonunun beklediği davranış
    * (aksi halde eski buggy sonuç geri kopyalanır).
    */
-  startOcr: (sessionId: string, opts?: { forceFresh?: boolean }) =>
+  startOcr: (sessionId: string, opts?: { forceFresh?: boolean; forceClaude?: boolean }) =>
     api
       .post(`/kdv-control/sessions/${sessionId}/start-ocr`, {
         forceFresh: opts?.forceFresh === true,
+        forceClaude: opts?.forceClaude === true,
       })
       .then((r) => r.data),
 
@@ -195,9 +196,11 @@ export const kdvApi = {
    * Cache atlanır, manuel teyit sıfırlanır, arkaplanda OCR çalışır;
    * frontend periyodik olarak getImages ile durumu yeniler.
    */
-  reocrImage: (imageId: string) =>
+  reocrImage: (imageId: string, opts?: { forceClaude?: boolean }) =>
     api
-      .post(`/kdv-control/images/${imageId}/reocr`)
+      .post(`/kdv-control/images/${imageId}/reocr`, {
+        forceClaude: opts?.forceClaude === true,
+      })
       .then((r) => r.data as { queued: boolean; imageId: string; message: string }),
 
   /* ── EŞLEŞTİRME ── */

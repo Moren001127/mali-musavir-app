@@ -270,8 +270,14 @@ export class KdvControlController {
   @Post('images/:imageId/reocr')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  reocrImage(@Req() req: any, @Param('imageId') imageId: string) {
-    return this.kdvService.reocrSingleImage(imageId, req.user.tenantId);
+  reocrImage(
+    @Req() req: any,
+    @Param('imageId') imageId: string,
+    @Body() body?: { forceClaude?: boolean },
+  ) {
+    return this.kdvService.reocrSingleImage(imageId, req.user.tenantId, {
+      forceClaude: body?.forceClaude === true,
+    });
   }
 
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
@@ -328,10 +334,11 @@ export class KdvControlController {
   startOcr(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body?: { forceFresh?: boolean },
+    @Body() body?: { forceFresh?: boolean; forceClaude?: boolean },
   ) {
     return this.kdvService.startOcrForSession(id, req.user.tenantId, {
       forceFresh: body?.forceFresh === true,
+      forceClaude: body?.forceClaude === true,
     });
   }
 

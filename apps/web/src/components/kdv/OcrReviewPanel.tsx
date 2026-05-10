@@ -10,6 +10,15 @@ import { toast } from 'sonner';
 const GOLD = '#b8a06f';
 const THRESHOLD = 0.7;
 
+function ocrEngineBadge(engine?: string | null) {
+  const e = (engine || '').toLowerCase();
+  if (e.includes('cache')) return { label: 'Cache', color: '#38bdf8', bg: 'rgba(56,189,248,0.13)' };
+  if (e.includes('xml')) return { label: 'XML', color: '#86efac', bg: 'rgba(34,197,94,0.13)' };
+  if (e.includes('azure')) return { label: 'Azure', color: '#60a5fa', bg: 'rgba(96,165,250,0.13)' };
+  if (e.includes('claude')) return { label: 'Claude', color: '#c084fc', bg: 'rgba(192,132,252,0.13)' };
+  return { label: 'OCR', color: 'rgba(250,250,249,0.6)', bg: 'rgba(250,250,249,0.08)' };
+}
+
 type FilterMode = 'reviewFlow' | 'needsReview' | 'success' | 'confirmed' | 'lowConf' | 'failed' | 'all';
 
 export interface KdvBreakdownItem {
@@ -210,15 +219,16 @@ export function OcrReviewPanel({
    */
   const [reocringIds, setReocringIds] = useState<Set<string>>(new Set());
   const reocrMut = useMutation({
-    mutationFn: (imageId: string) => kdvApi.reocrImage(imageId),
-    onMutate: (imageId) => {
+    mutationFn: (payload: { imageId: string; forceClaude?: boolean }) =>
+      kdvApi.reocrImage(payload.imageId, { forceClaude: payload.forceClaude }),
+    onMutate: (payload) => {
       setReocringIds((prev) => {
         const next = new Set(prev);
-        next.add(imageId);
+        next.add(payload.imageId);
         return next;
       });
     },
-    onSuccess: (_data, imageId) => {
+    onSuccess: (_data, payload) => {
       toast.success('OCR yeniden başlatıldı — birkaç saniye içinde sonuç gelir');
       // getImages polling zaten her 3sn'de bir güncelleniyor; tek sefer
       // anlık invalidate ile durumu PROCESSING'e çek.
@@ -227,24 +237,24 @@ export function OcrReviewPanel({
       // Set'ten kaldır — polling artık durumu gösterir
       setReocringIds((prev) => {
         const next = new Set(prev);
-        next.delete(imageId);
+        next.delete(payload.imageId);
         return next;
       });
     },
-    onError: (e: any, imageId) => {
+    onError: (e: any, payload) => {
       toast.error(e?.response?.data?.message ?? 'OCR yeniden başlatılamadı');
       setReocringIds((prev) => {
         const next = new Set(prev);
-        next.delete(imageId);
+        next.delete(payload.imageId);
         return next;
       });
     },
   });
-  const handleReocr = (imageId: string, e?: React.MouseEvent) => {
+  const handleReocr = (imageId: string, e?: React.MouseEvent, forceClaude = false) => {
     e?.stopPropagation();
     e?.preventDefault();
     if (reocringIds.has(imageId)) return;
-    reocrMut.mutate(imageId);
+    reocrMut.mutate({ imageId, forceClaude });
   };
 
   function handleConfirm() {
@@ -424,6 +434,7 @@ export function OcrReviewPanel({
             const isPending = !confirmed && !isSuccess;
             const isReocring = reocringIds.has(img.id) ||
               ['PENDING', 'PROCESSING'].includes(img.ocrStatus);
+            const engineBadge = ocrEngineBadge(img.ocrEngine);
             // Accent rengi: teyit=yeşil, success=mavi, bekleyen=turuncu
             const accentColor = confirmed ? '#22c55e' : isSuccess ? '#60a5fa' : '#f59e0b';
             // Confidence rakamı rengi
@@ -485,6 +496,14 @@ export function OcrReviewPanel({
                     ) : (
                       <StatusTag status={img.ocrStatus} />
                     )}
+                    {img.ocrEngine && (
+                      <span
+                        className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                        style={{ background: engineBadge.bg, color: engineBadge.color }}
+                      >
+                        {engineBadge.label}
+                      </span>
+                    )}
                     <span className="truncate">{img.confirmedBelgeNo ?? img.ocrBelgeNo ?? '—'}</span>
                   </div>
                 </button>
@@ -498,7 +517,7 @@ export function OcrReviewPanel({
                   title={
                     isReocring
                       ? 'OCR işleniyor…'
-                      : 'Bu faturayı yeniden OCR et (cache atlanır)'
+                      : 'Ucuz yeniden oku (cache/Azure öncelikli)'
                   }
                   className="absolute top-2.5 right-2.5 inline-flex items-center justify-center w-6 h-6 rounded-md transition disabled:opacity-70"
                   style={{
@@ -688,7 +707,7 @@ export function OcrReviewPanel({
                     color: GOLD,
                     border: '1px solid rgba(184,160,111,0.28)',
                   }}
-                  title="Bu faturayı yeniden OCR et (cache atlanır)"
+                  title="Ucuz yeniden oku (cache/Azure öncelikli)"
                 >
                   {reocringIds.has(activeImg.id) ||
                   ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus) ? (
@@ -696,6 +715,23 @@ export function OcrReviewPanel({
                   ) : (
                     <RefreshCw size={12} />
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReocr(activeImg.id, undefined, true)}
+                  disabled={
+                    reocringIds.has(activeImg.id) ||
+                    ['PENDING', 'PROCESSING'].includes(activeImg.ocrStatus)
+                  }
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2.5 text-[12px] rounded-[9px] disabled:opacity-70"
+                  style={{
+                    background: 'rgba(192,132,252,0.1)',
+                    color: '#c084fc',
+                    border: '1px solid rgba(192,132,252,0.28)',
+                  }}
+                  title="AI ile zorla oku (Claude maliyeti oluşabilir)"
+                >
+                  AI
                 </button>
                 {previewUrl && (
                   <a

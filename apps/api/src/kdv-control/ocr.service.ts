@@ -63,6 +63,11 @@ export interface OcrResult {
   };
 }
 
+export interface ExtractOcrOptions {
+  /** Kullanıcı açıkça "AI ile zorla oku" dediğinde Azure-first kısa devresini atlar. */
+  forceClaude?: boolean;
+}
+
 /** Claude model fiyatları ($/M token) */
 const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5-20251001': { input: 1, output: 5 },
@@ -125,12 +130,16 @@ export class OcrService {
     return crypto.createHash('sha256').update(buffer).digest('hex');
   }
 
-  async extractFromImage(imageBuffer: Buffer, originalName?: string): Promise<OcrResult> {
+  async extractFromImage(
+    imageBuffer: Buffer,
+    originalName?: string,
+    options: ExtractOcrOptions = {},
+  ): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
     const hasClaudeKey = !!process.env.ANTHROPIC_API_KEY;
     const imageHash = this.computeImageHash(imageBuffer);
     this.logger.log(
-      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · hash=${imageHash.slice(0, 8)}... · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'}`,
+      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · hash=${imageHash.slice(0, 8)}... · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'} forceClaude:${options.forceClaude ? '✓' : '✗'}`,
     );
 
     // ═══════════════════════════════════════════════════════
@@ -224,26 +233,45 @@ export class OcrService {
     // .xml uzantılı ama içerik binary (gerçekte image) → image OCR'a düş
 
     // ═══════════════════════════════════════════════════════
-    // 1. ÇİFT KAYNAK OCR — Claude + Azure paralel
-    //    Claude: yapısal JSON (LLM)
-    //    Azure:  ham metin (Read API) — Claude'un çapraz tanığı
-    //    Eğer her iki kaynak da varsa: Claude'un değerleri Azure metninde
-    //    bulunmuyorsa → confidence sıfırla, kullanıcı teyidine git.
+    // 1. AZURE-FIRST OCR — ucuz ham OCR + deterministik parser'lar.
+    //    Claude sadece Azure sonucu eksik/çelişkili/düşük güvenliyse devreye girer.
     // ═══════════════════════════════════════════════════════
-    const useAzureCheck = !!this.azureClient && hasClaudeKey;
+    let azureRawText = '';
+
+    if (this.azureClient && !options.forceClaude) {
+      try {
+        const azureResult = await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
+        azureRawText = azureResult.rawText || '';
+        const review = this.needsReview(azureResult);
+        if (!review.needs) {
+          this.logger.log(
+            `Azure-first başarılı: ${originalName || '—'} · belgeNo=${azureResult.belgeNo || '—'} date=${azureResult.date || '—'} kdv=${azureResult.kdvTutari || '—'} validation=%${Math.round((azureResult.validationScore ?? 0) * 100)}`,
+          );
+          return azureResult;
+        }
+        if (!hasClaudeKey) {
+          this.logger.warn(
+            `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || '—'} · reason=${review.reason}`,
+          );
+          return azureResult;
+        }
+        this.logger.warn(
+          `Azure-first Claude eskalasyon: ${originalName || '—'} · reason=${review.reason} · belgeNo=${fmtConf(azureResult.fieldConfidence.belgeNo)} date=${fmtConf(azureResult.fieldConfidence.date)} kdv=${fmtConf(azureResult.fieldConfidence.kdvTutari)}`,
+        );
+      } catch (e: any) {
+        this.logger.warn(`Azure-first hatası (${originalName || '—'}): ${e?.message}`);
+      }
+    }
 
     if (hasClaudeKey) {
       try {
-        // Claude + Azure'u eş zamanlı çağır (Azure çok ucuz, ilk 5K/ay bedava)
-        const [claudeResult, azureRawText] = await Promise.all([
-          this.runClaudeVisionOcr(imageBuffer),
-          useAzureCheck
-            ? this.getAzureRawText(imageBuffer).catch((e) => {
-                this.logger.warn(`Azure cross-check hatası: ${e?.message}`);
-                return '';
-              })
-            : Promise.resolve(''),
-        ]);
+        const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
+        if (!azureRawText && this.azureClient) {
+          azureRawText = await this.getAzureRawText(imageBuffer).catch((e) => {
+            this.logger.warn(`Azure cross-check hatası: ${e?.message}`);
+            return '';
+          });
+        }
 
         if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
           // ═══ POST-PROCESS DOĞRULAMA (kurala dayalı) ═══
@@ -263,6 +291,7 @@ export class OcrService {
           // Doğrulama başarısızsa confidence düşürülür → NEEDS_REVIEW gider.
           this.validateOcrResult(claudeResult, originalName);
 
+          claudeResult.engine = `${claudeResult.engine || DEFAULT_OCR_MODEL} (claude-escalation)`;
           return claudeResult;
         }
         this.logger.warn(
@@ -277,7 +306,7 @@ export class OcrService {
     // 2. Fallback: Azure Vision Read API yapısal extraction
     if (this.azureClient) {
       try {
-        return await this.runAzureOcr(imageBuffer, belgeNoFromFilename);
+        return await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
       } catch (e: any) {
         this.logger.error('Azure Vision hatası:', e?.message);
       }
@@ -1033,14 +1062,21 @@ export class OcrService {
 
   private async runAzureOcr(
     buffer: Buffer,
-    belgeNoFromFilename: string | null
+    belgeNoFromFilename: string | null,
+    originalName?: string,
   ): Promise<OcrResult> {
     const fullText = await this.getAzureRawText(buffer);
 
     // Alanları çıkar
     const date = this.extractDate(fullText);
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
-    const kdv = this.extractKdvTotal(fullText);
+    const tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
+    const invoiceTotalsKdv = tevkifatli ? null : this.extractKdvFromInvoiceTotalsAzure(fullText);
+    const kdv = tevkifatli
+      ? this.formatAmount(tevkifatli.netKdv)
+      : invoiceTotalsKdv
+        ? this.formatAmount(invoiceTotalsKdv.kdv)
+        : this.extractKdvTotal(fullText);
     const toplam = this.extractToplam(fullText);
 
     const foundFields = [belgeNo, date, kdv].filter(Boolean).length;
@@ -1054,23 +1090,50 @@ export class OcrService {
 
     // Azure baseline: regex eşleşmeleri için orta güven (0.6)
     // Filename fallback belgeNo için daha düşük (0.4)
-    const azureBaseline = 0.6;
+    const azureBaseline = 0.72;
     const fieldConfidence = {
-      belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.4 : azureBaseline) : null,
+      belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.95 : azureBaseline) : null,
       date: date ? azureBaseline : null,
-      kdvTutari: kdv ? azureBaseline : null,
+      kdvTutari: kdv ? (tevkifatli || invoiceTotalsKdv ? 0.92 : azureBaseline) : null,
     };
 
-    return {
+    const result: OcrResult = {
       rawText: fullText.slice(0, 3000),
       belgeNo,
       date,
       kdvTutari: kdv,
+      kdvTevkifat: tevkifatli ? this.formatAmount(tevkifatli.tevkifat) : null,
       totalTutari: toplam,
       confidence,
       fieldConfidence,
-      engine: 'azure-vision',
+      engine: 'azure-read',
     };
+
+    if (tevkifatli) {
+      const oranMatch = this.normalizeAzureText(fullText).match(
+        /HESAPLANAN\s+KDV\s*\(\s*[%/]?\s*(\d{1,2})/i,
+      );
+      const oran = oranMatch ? parseInt(oranMatch[1], 10) : null;
+      result.kdvBreakdown = [{
+        oran: oran && [1, 8, 10, 18, 20].includes(oran) ? oran : 20,
+        tutar: tevkifatli.netKdv,
+        matrah: null,
+      }];
+    } else if (invoiceTotalsKdv) {
+      result.kdvBreakdown = [{
+        oran: invoiceTotalsKdv.oran && [1, 8, 10, 18, 20].includes(invoiceTotalsKdv.oran)
+          ? invoiceTotalsKdv.oran
+          : 20,
+        tutar: invoiceTotalsKdv.kdv,
+        matrah: invoiceTotalsKdv.matrah,
+      }];
+    }
+
+    this.postProcessOcrResult(result, belgeNoFromFilename, originalName);
+    this.crossCheckWithAzure(result, fullText, originalName, belgeNoFromFilename);
+    this.validateOcrResult(result, originalName);
+
+    return result;
   }
 
   // === YARDIMCI FONKSİYONLAR ===
