@@ -132,6 +132,8 @@ function normalizeDashboardHref(href?: string): string {
 
 function softenCalendarTone(text: string): string {
   let value = String(text || '')
+    .replace(/\bGeçik\s+Vergi\b/gi, 'Geçici Vergi')
+    .replace(/\bGecik\s+Vergi\b/gi, 'Geçici Vergi')
     .replace(/\byapı\s*taşla\b/gi, 'planla')
     .replace(/\byapi\s*tasla\b/gi, 'planla')
     .replace(/\btakılı\b/gi, 'beklemede')
@@ -265,7 +267,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {data?.summary && (
-        <div className="px-5 pb-1 flex justify-start xl:justify-end">
+        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[72px] xl:p-0">
           <div
             className="inline-flex w-full xl:w-auto xl:max-w-[520px] items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold"
             style={{

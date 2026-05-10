@@ -1252,7 +1252,7 @@ export class OcrService {
     //   yoksa tam KDV. Bu sayede pattern sıralaması fark etmez.
     // ───
     const labelRegex = new RegExp(
-      'HESAPLANAN\\s+KDV(\\s+TEVK\\S*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
+      'HESAPLANAN\\s+KDV(\\s+TEVK[^\\s(]*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
         amountPattern,
       'gi',
     );
@@ -1289,7 +1289,7 @@ export class OcrService {
     if (tevkifat === 0) {
       const altTevkifatPatterns = [
         new RegExp(
-          'KDV\\s+TEVK\\S*\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-=:\\s]*' + amountPattern,
+          'KDV\\s+TEVK[^\\s(]*\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-=:\\s]*' + amountPattern,
           'i',
         ),
         new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[-−=:\\s]*' + amountPattern, 'i'),
@@ -2547,6 +2547,14 @@ export class OcrService {
     if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
       const breakdownSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
       const declaredTotal = this.parseAmount(result.kdvTutari);
+      const normalizedTevkifat = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
+      if (normalizedTevkifat > 0 && Math.abs(breakdownSum - declaredTotal) > 0.05) {
+        const oran = Number(result.kdvBreakdown.find((b) => Number(b.oran) > 0)?.oran || 0);
+        result.kdvBreakdown = [{ oran, tutar: declaredTotal, matrah: null }];
+        this.logger.warn(
+          `Tevkifatli fatura breakdown net KDV'ye indirildi: breakdown=${breakdownSum.toFixed(2)} net=${declaredTotal.toFixed(2)}`,
+        );
+      } else
       // ±1 kuruş tolerans (yuvarlama)
       if (Math.abs(breakdownSum - declaredTotal) > 0.05) {
         this.logger.warn(
@@ -2569,7 +2577,7 @@ export class OcrService {
       // Claude/Azure bazen NET bazen BRÜT matrah veriyor — HER İKİSİNİ de dene,
       // hangisi ±%2 tolerans içindeyse kabul. Sadece ikisi de başarısız olursa
       // gerçek inconsistency var demektir.
-      for (const b of result.kdvBreakdown) {
+      for (const b of result.kdvBreakdown!) {
         if (b.matrah && b.oran > 0) {
           const matrah = Number(b.matrah);
           const actual = Number(b.tutar);
@@ -2594,7 +2602,7 @@ export class OcrService {
 
       // Breakdown'da tutarsızlık varsa kdvTutari'yi yeniden hesapla
       if (breakdownInconsistent) {
-        const fixedSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
+        const fixedSum = result.kdvBreakdown!.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
         result.kdvTutari = this.formatAmount(fixedSum);
         if (result.fieldConfidence) {
           result.fieldConfidence.kdvTutari = Math.min(

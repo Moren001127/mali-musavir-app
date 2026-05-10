@@ -251,7 +251,7 @@ export function OcrReviewPanel({
     if (!activeImg) return;
     // Breakdown varsa toplamı hesapla, yoksa form.kdvTutari'yi kullan
     let kdvToSave = form.kdvTutari.trim() || undefined;
-    if (form.breakdown && form.breakdown.length > 0) {
+    if (!isSalesSession && form.breakdown && form.breakdown.length > 0) {
       const toplam = form.breakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
       if (toplam > 0) {
         kdvToSave = toplam.toFixed(2).replace('.', ',');
@@ -265,7 +265,7 @@ export function OcrReviewPanel({
         kdvTutari: kdvToSave,
         // Tevkifat: form değerini gönder (boşsa null = temizle)
         kdvTevkifat: form.kdvTevkifat.trim() || null,
-        kdvBreakdown: form.breakdown && form.breakdown.length > 0 ? form.breakdown : null,
+        kdvBreakdown: !isSalesSession && form.breakdown && form.breakdown.length > 0 ? form.breakdown : null,
       },
     });
   }
@@ -549,13 +549,13 @@ export function OcrReviewPanel({
                 label={
                   hasTevkifat && !isSalesSession
                     ? 'KDV Tutarı (NET — tevkifat düşülmüş)'
-                    : form.breakdown && form.breakdown.length > 0
+                    : !isSalesSession && form.breakdown && form.breakdown.length > 0
                       ? 'KDV Tutarı (toplam — otomatik)'
                       : 'KDV Tutarı'
                 }
                 placeholder="123,45"
                 value={
-                  form.breakdown && form.breakdown.length > 0
+                  !isSalesSession && form.breakdown && form.breakdown.length > 0
                     ? form.breakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0).toFixed(2).replace('.', ',')
                     : form.kdvTutari
                 }
@@ -563,7 +563,7 @@ export function OcrReviewPanel({
                 onChange={(v) => setForm((f) => ({ ...f, kdvTutari: v }))}
                 onEnter={handleConfirm}
                 numeric
-                readOnly={!!(form.breakdown && form.breakdown.length > 0)}
+                readOnly={!isSalesSession && !!(form.breakdown && form.breakdown.length > 0)}
               />
 
               {/* KDV Tevkifat — varsa görünür (tevkifatsız faturalarda gizleyebiliriz). */}
@@ -596,10 +596,12 @@ export function OcrReviewPanel({
               )}
 
               {/* KDV Breakdown paneli — çok oranlı belgelerde (Z Raporu, karma fatura) */}
-              <KdvBreakdownEditor
-                breakdown={form.breakdown}
-                onChange={(next) => setForm((f) => ({ ...f, breakdown: next }))}
-              />
+              {!isSalesSession && (
+                <KdvBreakdownEditor
+                  breakdown={form.breakdown}
+                  onChange={(next) => setForm((f) => ({ ...f, breakdown: next }))}
+                />
+              )}
 
               {activeImg.ocrBelgeTipi && (
                 <p className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>
