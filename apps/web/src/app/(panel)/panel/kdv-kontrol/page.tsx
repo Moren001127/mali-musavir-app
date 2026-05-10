@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
 import { api } from '@/lib/api';
 import Link from 'next/link';
@@ -31,6 +31,7 @@ type FeedItem = {
 
 /** Kullanıcının istediği terminoloji */
 type KdvAction = 'BILANCO_ALIS' | 'BILANCO_SATIS' | 'ISLETME_ALIS' | 'ISLETME_SATIS';
+type LucaQueuedJob = { id: string; action: KdvAction; sessionId: string };
 const ACTION_TO_TYPE: Record<KdvAction, 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER'> = {
   BILANCO_ALIS: 'KDV_191',
   BILANCO_SATIS: 'KDV_391',
@@ -86,7 +87,7 @@ export default function KdvKontrolPage() {
   // ── STATE ───────────────────────────────────────────
   const now = new Date();
   const [ay, setAy] = useState(() => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-  const [action, setAction] = useState<KdvAction>('BILANCO_ALIS');
+  const [selectedActions, setSelectedActions] = useState<KdvAction[]>(['BILANCO_ALIS']);
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -155,7 +156,7 @@ export default function KdvKontrolPage() {
       ISLETME_GIDER: 'ISLETME_ALIS',
     };
     if (target.taxpayerId) setTaxpayerId(target.taxpayerId);
-    if (target.type && typeToAction[target.type]) setAction(typeToAction[target.type]);
+    if (target.type && typeToAction[target.type]) setSelectedActions([typeToAction[target.type]]);
     if (target.periodLabel) {
       // "2026/03" → "2026-03"
       const parts = String(target.periodLabel).split('/');
@@ -174,6 +175,7 @@ export default function KdvKontrolPage() {
   });
 
   // Seçime göre aktif seansı bul (taxpayer + donem + tip)
+  const action = selectedActions[0] ?? 'BILANCO_ALIS';
   const type = ACTION_TO_TYPE[action as KdvAction];
   const [year, month] = ay.split('-');
   const periodLabel = `${year}/${month}`;
@@ -261,27 +263,64 @@ export default function KdvKontrolPage() {
     run();
   };
 
+  const toggleAction = (next: KdvAction) => {
+    setSelectedActions((prev) => {
+      if (prev.includes(next)) {
+        return prev.length === 1 ? prev : prev.filter((a) => a !== next);
+      }
+      const sameGroup = next.startsWith('BILANCO')
+        ? prev.filter((a) => a.startsWith('BILANCO'))
+        : prev.filter((a) => a.startsWith('ISLETME'));
+      return [...sameGroup, next];
+    });
+  };
+
+  const ensureSessionForAction = async (targetAction: KdvAction) => {
+    const targetType = ACTION_TO_TYPE[targetAction];
+    const { session } = await kdvApi.findOrCreateSession({
+      type: targetType,
+      periodLabel,
+      taxpayerId,
+    });
+    qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
+    return session as { id: string; type: string };
+  };
+
   // ── LUCA'DAN ÇEK (Extension-first agent) ─────────────────────
   // Mizan'daki akışın aynısı: backend job oluşturur, agent (Luca tab'ında çalışan
   // bookmarklet) job'u alıp Defteri Kebir / İşletme Defteri Excel'ini indirip
   // backend'e POST eder. Frontend bu süreçte log/durum gösterir.
-  const [lucaJobId, setLucaJobId] = useState<string | null>(null);
+  const [lucaJobs, setLucaJobs] = useState<LucaQueuedJob[]>([]);
   const [lucaStatus, setLucaStatus] = useState<string>('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
+  const lucaJobId = lucaJobs[0]?.id ?? null;
 
   const lucaAgentMut = useMutation({
     mutationFn: async () => {
       if (!taxpayerId) throw new Error('Önce mükellef seçin');
-      // Önce session var mı veya yarat — sonra import-from-luca tetikle
-      const s = await ensureSession.mutateAsync();
-      return await kdvApi.importFromLuca(s.id);
+      const queued: LucaQueuedJob[] = [];
+      for (const selectedAction of selectedActions) {
+        const s = await ensureSessionForAction(selectedAction);
+        const d = await kdvApi.importFromLuca(s.id);
+        queued.push({ id: d.jobId, action: selectedAction, sessionId: s.id });
+      }
+      return queued;
     },
-    onSuccess: (d: any) => {
-      setLucaJobId(d.jobId);
-      setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
+    onSuccess: (jobs) => {
+      setLucaJobs(jobs);
+      setLucaStatus(
+        jobs.length > 1
+          ? `${jobs.length} Luca komutu kuyruğa alındı — agent sırayla çekecek`
+          : 'Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…',
+      );
       setLucaLogLines([]);
-      toast.info('Luca job oluşturuldu · Luca sekmesini açık tut', { duration: 5000 });
-      pushFeed({ group: 'luca', kind: 'info', title: 'Luca\'dan çekme başlatıldı', detail: `Tip: ${type}` });
+      toast.info(`${jobs.length} Luca job oluşturuldu · Luca sekmesini açık tut`, { duration: 5000 });
+      pushFeed({
+        group: 'luca',
+        kind: 'info',
+        title: 'Luca\'dan çekme başlatıldı',
+        detail: jobs.map((j) => ACTION_LABEL[j.action]).join(' · '),
+      });
     },
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'Luca job oluşturulamadı';
@@ -291,42 +330,54 @@ export default function KdvKontrolPage() {
   });
 
   // Job polling
-  const lucaJobQuery = useQuery({
-    queryKey: ['kdv-luca-job', lucaJobId],
-    queryFn: () => kdvApi.getLucaJob(lucaJobId!),
-    enabled: !!lucaJobId,
-    refetchInterval: 3000,
+  const lucaJobQueries = useQueries({
+    queries: lucaJobs.map((job) => ({
+      queryKey: ['kdv-luca-job', job.id],
+      queryFn: () => kdvApi.getLucaJob(job.id),
+      enabled: !!job.id,
+      refetchInterval: 3000,
+    })),
   });
 
   useEffect(() => {
-    const d = lucaJobQuery.data as any;
-    if (!d?.job) return;
-    const job = d.job;
-    const s = job.status;
-    const log = job.errorMsg || '';
-    const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+    if (lucaJobs.length === 0) return;
+    const payloads = lucaJobQueries.map((q) => q.data as any).filter((d) => d?.job);
+    if (payloads.length === 0) return;
+    const jobs = payloads.map((d) => d.job);
+    const lines = jobs.flatMap((job) => {
+      const label = TYPE_LABEL[job.tip] || job.tip;
+      const logLines = String(job.errorMsg || '').split('\n').filter((l: string) => l.trim());
+      return logLines.slice(-4).map((line: string) => `${label}: ${line}`);
+    });
     setLucaLogLines(lines);
-    const lastLine = lines[lines.length - 1] || '';
-    if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
-    else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
-    else if (s === 'done') {
+
+    const done = jobs.filter((j) => j.status === 'done').length;
+    const failed = jobs.filter((j) => j.status === 'failed').length;
+    const running = jobs.filter((j) => j.status === 'running').length;
+    const pending = Math.max(0, lucaJobs.length - done - failed - running);
+
+    if (failed > 0) {
+      setLucaStatus(`${failed} hata · ${done} tamam · ${running} çalışıyor · ${pending} bekliyor`);
+    } else if (done === lucaJobs.length) {
       setLucaStatus('Tamamlandı ✓');
-      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2500);
-      toast.success('KDV verisi Luca\'dan çekildi');
-      pushFeed({ group: 'luca', kind: 'ok', title: `Luca'dan ${job.recordCount || 0} satır çekildi`, detail: `Tip: ${job.tip}` });
-      // Records / stats yenilensin
-      if (sessionId) {
-        qc.invalidateQueries({ queryKey: ['kdv-stats', sessionId] });
-        qc.invalidateQueries({ queryKey: ['kdv-results', sessionId] });
-      }
-    } else if (s === 'failed') {
-      setLucaStatus('Hata: ' + (lastLine || 'bilinmeyen hata'));
-      toast.error('Luca\'dan çekme başarısız');
-      pushFeed({ group: 'luca', kind: 'err', title: 'Luca\'dan çekme başarısız', detail: lastLine });
-      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 5000);
+      toast.success(`${done} Luca komutu tamamlandı`);
+      pushFeed({
+        group: 'luca',
+        kind: 'ok',
+        title: 'Luca çekimleri tamamlandı',
+        detail: jobs.map((job) => `${TYPE_LABEL[job.tip] || job.tip}: ${job.recordCount || 0} satır`).join(' · '),
+      });
+      lucaJobs.forEach((j) => {
+        qc.invalidateQueries({ queryKey: ['kdv-stats', j.sessionId] });
+        qc.invalidateQueries({ queryKey: ['kdv-results', j.sessionId] });
+      });
+      qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
+      setTimeout(() => { setLucaJobs([]); setLucaStatus(''); setLucaLogLines([]); }, 2500);
+    } else {
+      setLucaStatus(`${done}/${lucaJobs.length} tamam · ${running} çalışıyor · ${pending} bekliyor`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lucaJobQuery.data]);
+  }, [JSON.stringify(lucaJobQueries.map((q) => q.data))]);
 
   // === EXCEL UPLOAD + KOLON MAPPING ===
   const excelFileInputRef = useRef<HTMLInputElement>(null);
@@ -775,12 +826,12 @@ export default function KdvKontrolPage() {
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               {(Object.keys(ACTION_LABEL) as KdvAction[]).map((k) => {
-                const active = action === k;
+                const active = selectedActions.includes(k);
                 const c = ACTION_COLOR[k];
                 return (
                   <button
                     key={k}
-                    onClick={() => setAction(k)}
+                    onClick={() => toggleAction(k)}
                     className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
                     style={{
                       background: active ? c + '26' : 'rgba(255,255,255,0.03)',
@@ -848,7 +899,7 @@ export default function KdvKontrolPage() {
               lucaJobId ? (lucaStatus || 'Agent çalışıyor…')
               : hasRecords ? `${stats?.totalRecords} satır (yenile)`
               : !taxpayerId ? 'Önce mükellef seçin'
-              : 'Otomatik · agent Luca tab\'ından çeker'
+              : selectedActions.length > 1 ? `${selectedActions.length} komut · agent sırayla çeker` : 'Otomatik · agent Luca tab\'ından çeker'
             }
             color="#10b981"
             done={false}
@@ -906,7 +957,7 @@ export default function KdvKontrolPage() {
                 </div>
               </div>
               <button
-                onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
+                onClick={() => { setLucaJobs([]); setLucaStatus(''); setLucaLogLines([]); }}
                 className="px-3 py-1.5 rounded-md text-xs"
                 style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
               >
