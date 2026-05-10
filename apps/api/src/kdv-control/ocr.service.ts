@@ -1312,9 +1312,19 @@ export class OcrService {
     // veriyor (PDF render farkı). Whitespace'i tek boşluğa indirip pattern'i
     // doğrudan etiket+tutar sırasında ararız.
     const flat = normalized.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ');
+    const folded = flat
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/Ğ/g, 'G')
+      .replace(/Ü/g, 'U')
+      .replace(/Ş/g, 'S')
+      .replace(/İ/g, 'I')
+      .replace(/Ö/g, 'O')
+      .replace(/Ç/g, 'C');
 
     let tamKdv = 0;
     let tevkifat = 0;
+    let odenecekKdv = 0;
 
     // Türk tutar formatı: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
     // (Binlik nokta opsiyonel, ondalık virgül 1-2 hane)
@@ -1341,6 +1351,44 @@ export class OcrService {
       }
     }
 
+    const findAmountAfter = (source: string, labelPattern: string, maxGap = 80): number => {
+      const re = new RegExp(labelPattern + `[^0-9]{0,${maxGap}}` + amountPattern, 'i');
+      const found = source.match(re);
+      if (!found) return 0;
+      const value = Math.abs(this.parseAmount(found[1]));
+      return value > 0 && value < 100_000_000 ? value : 0;
+    };
+
+    // Canlı satış tevkifat faturalarında Azure çoğu zaman şu satırları daha net okuyor:
+    //   "KDV Tevkifat(%50) 8.507,30"
+    //   "Ödenecek KDV 8.507,30"
+    // "Ödenecek KDV" net KDV'dir ve Luca ile eşleşen değerdir; "Hesaplanan KDV"
+    // tam KDV olduğu için tevkifatlı belgede sonuç olarak kullanılmamalıdır.
+    const foldedTam = findAmountAfter(
+      folded,
+      'HESAPLANAN\\s+K\\.?\\s*D\\.?\\s*V\\.?\\s*\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
+      40,
+    );
+    if (foldedTam > tamKdv) tamKdv = foldedTam;
+
+    const foldedTevkifat =
+      findAmountAfter(
+        folded,
+        'K\\.?\\s*D\\.?\\s*V\\.?\\s+TEVK[^\\s(]*\\s*\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
+        40,
+      ) ||
+      findAmountAfter(
+        folded,
+        'HESAPLANAN\\s+K\\.?\\s*D\\.?\\s*V\\.?\\s+TEVK[^\\s(]*\\s*\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
+        40,
+      ) ||
+      findAmountAfter(folded, 'TEVKIFAT\\s+TUTAR[II]?', 40);
+    if (foldedTevkifat > tevkifat) tevkifat = foldedTevkifat;
+
+    odenecekKdv =
+      findAmountAfter(folded, 'ODENECEK\\s+K\\.?\\s*D\\.?\\s*V\\.?', 40) ||
+      findAmountAfter(folded, 'O\\s*DENECEK\\s+K\\.?\\s*D\\.?\\s*V\\.?', 40);
+
     // ─── 2) Alternatif tam KDV gösterimleri (sadece tamKdv bulunmadıysa) ───
     //   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  TUTAR"  (Tam KDV'nin tekrarı)
     if (tamKdv === 0) {
@@ -1353,6 +1401,14 @@ export class OcrService {
       if (am) {
         const v = this.parseAmount(am[1]);
         if (v > 0) tamKdv = v;
+      }
+    }
+
+    if (odenecekKdv > 0) {
+      if (tamKdv > odenecekKdv && tevkifat === 0) {
+        tevkifat = parseFloat((tamKdv - odenecekKdv).toFixed(2));
+      } else if (tamKdv === 0 && tevkifat > 0) {
+        tamKdv = parseFloat((odenecekKdv + tevkifat).toFixed(2));
       }
     }
 
@@ -1408,7 +1464,7 @@ export class OcrService {
       return null;
     }
 
-    const netKdv = Math.max(0, tamKdv - tevkifat);
+    const netKdv = odenecekKdv > 0 ? odenecekKdv : Math.max(0, tamKdv - tevkifat);
     this.logger.log(
       `Tevkifat extract OK: tamKdv=${tamKdv} tevkifat=${tevkifat} netKdv=${netKdv}`,
     );
