@@ -1199,22 +1199,24 @@ export class OcrService {
   }
 
   private extractKdvTotal(text: string): string | null {
+    const cleanText = this.stripMatrahFragments(text);
+
     // Hesaplanan KDV (çoklu oran)
-    const hesaplananMatches = [...text.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
+    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv\s*(?:\([^)]*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (hesaplananMatches.length > 0) {
       const total = hesaplananMatches.reduce((sum, m) => sum + this.parseAmount(m[1]), 0);
       if (total > 0) return this.formatAmount(total);
     }
 
     // KDV tutarı
-    const kdvMatches = [...text.matchAll(/k\.?d\.?v\.?\s*(?:tutarı?)?\s*[:=]\s*([\d.,]+)/gi)];
+    const kdvMatches = [...cleanText.matchAll(/k\.?d\.?v\.?\s*(?:tutarı?)?\s*[:=]\s*([\d.,]+)/gi)];
     if (kdvMatches.length > 0) {
       const values = kdvMatches.map(m => this.parseAmount(m[1])).filter(v => v > 0);
       if (values.length > 0) return this.formatAmount(Math.max(...values));
     }
 
     // Toplam KDV
-    const toplamKdv = text.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
+    const toplamKdv = cleanText.match(/toplam\s+k\.?d\.?v\.?\s*[:\s]+([\d.,]+)/i);
     if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g, '');
 
     return null;
@@ -1344,14 +1346,19 @@ export class OcrService {
     //   yoksa tam KDV. Bu sayede pattern sıralaması fark etmez.
     // ───
     const labelRegex = new RegExp(
-      'HESAPLANAN\\s+KDV(\\s+TEVK[^\\s(]*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
-        amountPattern,
+      'HESAPLANAN\\s+KDV(\\s+TEVK[^\\s(]*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
       'gi',
     );
+    const amountAfterLabelRe = new RegExp(amountPattern, 'i');
     let m: RegExpExecArray | null;
     while ((m = labelRegex.exec(flat)) !== null) {
       const isTevkifat = /TEVK/i.test(m[0]);
-      const tutar = Math.abs(this.parseAmount(m[2]));
+      const lookahead = this.stripMatrahFragments(
+        flat.slice(labelRegex.lastIndex, labelRegex.lastIndex + 120),
+      );
+      const tutarMatch = lookahead.match(amountAfterLabelRe);
+      if (!tutarMatch) continue;
+      const tutar = Math.abs(this.parseAmount(tutarMatch[1]));
       if (tutar <= 0) continue;
       if (isTevkifat) {
         if (tutar > tevkifat) tevkifat = tutar;
@@ -1361,8 +1368,13 @@ export class OcrService {
     }
 
     const findAmountAfter = (source: string, labelPattern: string, maxGap = 80): number => {
-      const re = new RegExp(labelPattern + `[^0-9]{0,${maxGap}}` + amountPattern, 'i');
-      const found = source.match(re);
+      const labelRe = new RegExp(labelPattern, 'i');
+      const label = source.match(labelRe);
+      if (!label) return 0;
+      const start = (label.index ?? 0) + label[0].length;
+      const window = this.stripMatrahFragments(source.slice(start, start + maxGap + 120));
+      const re = new RegExp(`[^0-9]{0,${maxGap}}` + amountPattern, 'i');
+      const found = window.match(re);
       if (!found) return 0;
       const value = Math.abs(this.parseAmount(found[1]));
       return value > 0 && value < 100_000_000 ? value : 0;
@@ -1634,7 +1646,7 @@ export class OcrService {
 
       // 1) Aynı satırda label'den SONRA amount ara
       let tutar: number | null = null;
-      const afterLabel = line.slice(labelMatch.index! + labelMatch[0].length);
+      const afterLabel = this.stripMatrahFragments(line.slice(labelMatch.index! + labelMatch[0].length));
       const inlineAmountMatch = afterLabel.match(amountRe);
       if (inlineAmountMatch) {
         const parsed = this.parseAmount(inlineAmountMatch[1]);
@@ -1654,7 +1666,9 @@ export class OcrService {
           // Saf yapı satırlarını atla ("(", ")", "%", "% 20,00" tek başına)
           if (/^[\(\)%\s]*$/.test(nextLine)) continue;
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?$/.test(nextLine)) continue;
-          const m = nextLine.match(amountRe);
+          const cleanedNext = this.stripMatrahFragments(nextLine);
+          if (!cleanedNext) continue;
+          const m = cleanedNext.match(amountRe);
           if (m) {
             const parsed = this.parseAmount(m[1]);
             if (parsed > 0 && parsed < 10_000_000) {
@@ -1671,7 +1685,9 @@ export class OcrService {
           const prevLine = lines[i - j];
           if (labelRe.test(prevLine)) break;
           if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
-          const m = prevLine.match(amountRe);
+          const cleanedPrev = this.stripMatrahFragments(prevLine);
+          if (!cleanedPrev) continue;
+          const m = cleanedPrev.match(amountRe);
           if (m) {
             const parsed = this.parseAmount(m[1]);
             if (parsed > 0 && parsed < 10_000_000) {
@@ -1762,7 +1778,7 @@ export class OcrService {
       while ((m = rateMarkerRe.exec(line)) !== null) {
         const oran = parseInt(m[1], 10);
         if (!(oran > 0 && oran <= 30)) continue;
-        const afterLabel = line.slice(m.index + m[0].length);
+        const afterLabel = this.stripMatrahFragments(line.slice(m.index + m[0].length));
         markers.push({ oran, lineIdx: i, afterLabel, isSummary });
       }
     }
@@ -1793,7 +1809,9 @@ export class OcrService {
           const nextLine = lines[marker.lineIdx + j];
           if (skipTaxRe.test(nextLine)) break;
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
-          const am = nextLine.match(amountRe);
+          const cleanedNext = this.stripMatrahFragments(nextLine);
+          if (!cleanedNext) continue;
+          const am = cleanedNext.match(amountRe);
           if (am) {
             const parsed = this.parseAmount(am[1]);
             if (parsed > 0 && parsed < 10_000_000) {
@@ -1884,7 +1902,8 @@ export class OcrService {
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/g;
     const seen = new Set<number>();
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const line = this.stripMatrahFragments(lines[i]);
+      if (!line) continue;
       if (skipTaxRe.test(line)) continue;
       let m: RegExpExecArray | null;
       amountRe.lastIndex = 0;

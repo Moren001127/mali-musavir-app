@@ -216,8 +216,11 @@ export class ReconciliationEngine {
         const belgeNoTamUyumsuz = !strongTwoOfThree && reasons.some((r) =>
           /Belge no uyumsuz|E-fatura belge no farklı|Çok oranlı uyumsuzluk/i.test(r),
         );
+        const saticiTamUyumsuz = reasons.some((r) =>
+          /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
+        );
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
-        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz) {
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz && !saticiTamUyumsuz) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -531,12 +534,13 @@ export class ReconciliationEngine {
                 `Alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} (NET+Tevkifat) = Fatura ${this.fmtAmt(imgKdvNum)} (NET) + ${this.fmtAmt(imgTevkifat)} (tevkifat)`,
               );
             } else if (lucaOriginalMatch) {
-              // YOL 2: Orijinal Luca satırlarından biri OCR NET'e eşit
-              // OCR tevkifat alanı dolmasa bile aynı belgedir
-              score += 0.3;
-              kdvExact = true;
+              // Orijinal Luca satırlarından biri OCR NET'e eşitse bu aynı belge
+              // adayıdır; ama OCR tevkifat/tam KDV'yi doğrulayamıyorsa "tam
+              // eşleşme" değildir. Aksi halde tek net satırı yakalayıp tüm
+              // tevkifat satırlarını yeşil gösteririz.
+              score += 0.16;
               reasons.push(
-                `Alış tevkifat eşleşmesi: Luca'daki NET satırı ${this.fmtAmt(imgKdvNum)} = Fatura NET KDV (Luca'da TAM ${this.fmtAmt(recordKdv)} = NET + Tevkifat)`,
+                `Alış tevkifat incele: OCR ${this.fmtAmt(imgKdvNum)} sadece Luca satırlarından biriyle eşleşiyor; Luca toplam ${this.fmtAmt(recordKdv)} için tevkifat/tam KDV doğrulanamadı`,
               );
             } else {
               reasons.push(`KDV tutar uyumsuz: ${this.fmtAmt(recordKdv)} ≠ ${this.fmtAmt(imgKdvNum)}`);
@@ -668,28 +672,22 @@ export class ReconciliationEngine {
     // EK KURAL: Multi-rate faturalarda Luca'nın KDV oranı OCR breakdown'unda
     // bulunamıyorsa MATCHED ASLA verilmez (oran uyumsuzluğu = farklı belge).
     //
-    // v1.36.72: Satıcı isim uyumsuzluğu kuralı GEVŞETİLDİ.
-    // Belge no + tarih + KDV üçü TAM eşleşiyorsa, satıcı isminde
-    // yazım farkı (kısaltma, ünvan farkı) MATCHED'ı ENGELLEMEZ.
-    // Sebep: 3 kritik alan birden eşleşince farklı firmaya ait olma
-    // ihtimali ~0. Sadece VKN açıkça farklıysa (10/11 hane sayı match
-    // değilse) hâlâ block — VKN lexically kesin işarettir.
-    const vknMismatchHard =
+    // GIB/EARSIV gibi seri numaraları farklı satıcılarda tekrar edebildiği için
+    // satıcı/VKN açıkça uyumsuzsa 3 kritik alan tutsa bile MATCHED verme.
+    const sellerMismatchHard =
       saticiMismatch &&
-      reasons.some((r) => r.includes('VKN/TCKN uyumsuz'));
+      reasons.some((r) => r.includes('VKN/TCKN uyumsuz') || r.includes('Satıcı uyumsuz'));
     const strictMatch =
-      belgeNoExact && kdvExact && dateExact && !rateMismatched && !vknMismatchHard;
+      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchHard;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
       score = Math.max(0, score - 0.4);
     }
-    // Satıcı uyumsuzsa: aday listesine bile girmesin
-    // v1.36.72: Ama 3 kritik alan zaten eşleşiyorsa cezayı azalt (sadece -0.1
-    // — strictMatch zaten devreye girip MATCHED veriyor, score görsel için)
+    // Satıcı uyumsuzsa skoru sert düşür. Aynı GIB/EARSIV seri numarası farklı
+    // satıcılarda tekrar edebildiği için bu artık strict match'i de engeller.
     if (saticiMismatch) {
-      const allCritExact = belgeNoExact && kdvExact && dateExact;
-      score = Math.max(0, score - (allCritExact ? 0.1 : 0.5));
+      score = Math.max(0, score - 0.5);
     }
 
     return { score: Math.min(score, 1), reasons, strictMatch };
@@ -983,14 +981,15 @@ export class ReconciliationEngine {
       }
       const dateKey = new Date(rec.belgeDate).toISOString().slice(0, 10);
       const partyKey = this.recordPartyKey(rec);
-      // Uzun e-fatura/e-arşiv no'larında belge no + tarih yeterince güçlüdür.
-      // Kısa fiş/Z raporu no'larında ise aynı gün aynı numara farklı firmalarda
-      // tekrar edebilir; bu yüzden karşı taraf/VKN yoksa aggregate etmiyoruz.
+      // GIB/EARSIV gibi seri numaraları farklı satıcılarda tekrar edebilir.
+      // Bu yüzden karşı taraf/VKN varsa uzun e-faturada bile aggregate anahtarına
+      // eklenir; yoksa eski belge no + tarih davranışına düşeriz.
+      // Kısa fiş/Z raporu no'larında ise karşı taraf/VKN yoksa aggregate etmiyoruz.
       if (bn.length < 4 && partyKey === 'noparty') {
         unaggregated.push(rec);
         continue;
       }
-      const key = bn.length < 4 ? `${bn}|${dateKey}|${partyKey}` : `${bn}|${dateKey}`;
+      const key = partyKey === 'noparty' ? `${bn}|${dateKey}` : `${bn}|${dateKey}|${partyKey}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(rec);
     }

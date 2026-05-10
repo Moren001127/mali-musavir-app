@@ -1393,6 +1393,7 @@ export class KdvControlService {
     const periodLabel = session.periodLabel || '—';
     const now = new Date();
     const tarihStr = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const seriUyarilari = await this.checkBelgeSeriContinuity(session, sessionId, tenantId);
 
     // ─── Sayaç semantiği ─────────────────────────────────
     // MATCHED       → otomatik tam eşleşme
@@ -1429,50 +1430,36 @@ export class KdvControlService {
       return Number.isFinite(n) ? n : 0;
     };
 
-    // ─── FAN-OUT ÇÖZÜM: aynı imageId'ye bağlı birden fazla result varsa ───
-    // Çok oranlı (Z raporu / karma fatura) durumlarda 1 OCR fatura ↔ N Luca
-    // satırı eşleşmesi yapılır. Önceden her satıra fatura KDV TOPLAMI yazıldığı
-    // için raporun "Fatura toplam" sütunu N kat şişiyordu. Çözüm: fatura
-    // KDV'sini orantılı paylaştır → her satırda faturaKdvShare = (lucaKdv /
-    // sum(grup lucaKdv)) × faturaKdvTotal. Tek satırlı eşleşmelerde share =
-    // faturaKdvTotal (değişiklik yok).
-    const imageGroupTotals = new Map<string, number>();
-    for (const r of results as any[]) {
-      if (!r.imageId) continue;
-      const luca = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
-      imageGroupTotals.set(r.imageId, (imageGroupTotals.get(r.imageId) || 0) + luca);
-    }
-    /** Bir result satırının raporda göstermesi gereken (paylaştırılmış) fatura KDV'si */
-    const getFaturaKdvShare = (r: any): number => {
+    // Fan-out durumunda detay satırı gerçek OCR KDV'sini gösterir; özet toplamlar
+    // aynı imageId'yi tek kez sayarak çift sayımı önler.
+    /** Bir result satırında kullanıcıya gösterilecek gerçek OCR/onaylı fatura KDV'si */
+    const getFaturaKdvValue = (r: any): number => {
       if (!r.image || !r.imageId) return 0;
       const ocrTotal = parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
-      if (ocrTotal <= 0) return 0;
-      const groupTotal = imageGroupTotals.get(r.imageId) || 0;
-      const lucaThis = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
-      // Tek satırsa veya groupTotal sıfırsa olduğu gibi
-      if (groupTotal <= 0 || lucaThis <= 0) return ocrTotal;
-      // Birden fazla satır → orantılı pay
-      return (lucaThis / groupTotal) * ocrTotal;
+      return ocrTotal > 0 ? ocrTotal : 0;
+    };
+    /** Özetlerde aynı imageId birden fazla Luca satırına fan-out olduysa tek say. */
+    const sumUniqueImageKdv = (rows: any[]): number => {
+      const seen = new Set<string>();
+      return rows.reduce((s, r: any) => {
+        if (!r.image || !r.imageId) return s;
+        if (seen.has(r.imageId)) return s;
+        seen.add(r.imageId);
+        return s + getFaturaKdvValue(r);
+      }, 0);
     };
 
     // Özet için 3 ayrı grup — kullanıcının "fark" kafa karışıklığını çözer
     const sumLucaAll = results.reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
     // sumOcrAll: orijinal OCR toplamı (her image bir kez sayılır — fan-out çift saymaz)
-    const seenImageIdsForAll = new Set<string>();
-    const sumOcrAll = results.reduce((s, r: any) => {
-      if (!r.image || !r.imageId) return s;
-      if (seenImageIdsForAll.has(r.imageId)) return s; // aynı image bir kez
-      seenImageIdsForAll.add(r.imageId);
-      return s + parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
-    }, 0);
+    const sumOcrAll = sumUniqueImageKdv(results as any[]);
     // Sadece eşleşen tutarlar: MATCHED + CONFIRMED (kullanıcının onayladıkları)
     const sumLucaMatched = results
       .filter((r: any) => isMatchedStatus(r.status))
       .reduce((s, r: any) => s + (r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0), 0);
-    // sumOcrMatched: paylaştırılmış fatura KDV'si üzerinden — fan-out çift saymaz
-    const sumOcrMatched = results
-      .filter((r: any) => isMatchedStatus(r.status))
-      .reduce((s, r: any) => s + getFaturaKdvShare(r), 0);
+    // sumOcrMatched: orijinal OCR toplamı üzerinden — fan-out çift saymaz
+    const matchedRows = results.filter((r: any) => isMatchedStatus(r.status)) as any[];
+    const sumOcrMatched = sumUniqueImageKdv(matchedRows);
     const fmtTl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 
     // ═══════════════ ExcelJS ile oluştur ═══════════════
@@ -1641,9 +1628,9 @@ export class KdvControlService {
 
       const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
       const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
-      // Fan-out fix: aynı imageId N Luca satırına bağlıysa her satırda fatura
-      // KDV'si toplam yerine ORANTILI PAY olarak yazılır → toplam doğru çıkar
-      const faturaKdvNum = getFaturaKdvShare(r);
+      // Kullanıcıya gerçek OCR/onaylı KDV değerini göster. Özet toplamları
+      // aynı görseli tek saydığı için burada sentetik paylaştırma yapmıyoruz.
+      const faturaKdvNum = getFaturaKdvValue(r);
       const faturaKdv = faturaKdvNum > 0 ? faturaKdvNum : null;
 
       let durum = '';
@@ -1707,6 +1694,44 @@ export class KdvControlService {
         };
       });
     });
+
+    if (seriUyarilari.length > 0) {
+      const startRow = 17 + results.length;
+      ws.mergeCells(`A${startRow}:I${startRow}`);
+      const title = ws.getCell(`A${startRow}`);
+      title.value = 'SATIŞ FATURA SERİ KONTROLÜ';
+      title.font = { bold: true, size: 12, color: { argb: YELLOW_TEXT } };
+      title.alignment = { horizontal: 'center', vertical: 'middle' };
+      title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: YELLOW_BG } };
+      title.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      };
+
+      seriUyarilari.forEach((u, idx) => {
+        const rowNum = startRow + idx + 1;
+        ws.mergeCells(`A${rowNum}:B${rowNum}`);
+        ws.mergeCells(`C${rowNum}:I${rowNum}`);
+        const tip = ws.getCell(`A${rowNum}`);
+        const mesaj = ws.getCell(`C${rowNum}`);
+        tip.value = u.tip === 'cross_break' ? 'Önceki dönem kopukluğu' : 'Oturum içi eksik seri';
+        mesaj.value = u.mesaj;
+        ws.getRow(rowNum).height = 30;
+        [tip, mesaj].forEach((cell, cellIdx) => {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 === 0 ? 'FFFFF8E1' : 'FFFFFBEB' } };
+          cell.font = { size: 10, color: { argb: cellIdx === 0 ? YELLOW_TEXT : 'FF1A1916' }, bold: cellIdx === 0 };
+          cell.alignment = { horizontal: cellIdx === 0 ? 'center' : 'left', vertical: 'middle', wrapText: true };
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          };
+        });
+      });
+    }
 
     const buffer = Buffer.from(await wb.xlsx.writeBuffer());
 
