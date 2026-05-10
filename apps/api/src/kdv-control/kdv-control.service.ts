@@ -2362,6 +2362,16 @@ export class KdvControlService {
     const forceFresh = opts.forceFresh === true;
     const forceClaude = opts.forceClaude === true;
 
+    if (forceFresh) {
+      await (this.prisma as any).aiUsageLog.deleteMany({
+        where: {
+          tenantId,
+          source: 'kdv-ocr',
+          sebep: `session:${sessionId}`,
+        },
+      }).catch(() => {});
+    }
+
     // PENDING + önceki denemelerde başarısız olanlar (LOW_CONFIDENCE, FAILED).
     // Normal akışta NEEDS_REVIEW'a dokunmayız — kullanıcı teyit sırasında;
     // değerler zaten doldurulmuş durumda. Ama "Yenile" (forceFresh) butonu

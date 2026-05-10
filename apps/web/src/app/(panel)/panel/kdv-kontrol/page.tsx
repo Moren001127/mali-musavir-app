@@ -496,8 +496,8 @@ export default function KdvKontrolPage() {
 
   /**
    * Manuel "Yenile" — OCR Teyit Bekler kartının yanındaki buton.
-   * Varsayılan ucuz mod: cache/Azure önce çalışır, Claude sadece gerekirse
-   * devreye girer. Zorla Claude tekil fatura panelindeki AI butonundadır.
+    * Varsayılan ucuz mod: cache/Azure çalışır; Claude otomatik devreye girmez.
+    * Zorla Claude tekil fatura panelindeki AI butonundadır.
    */
   const runOcrAgain = useMutation({
     mutationFn: async () => {
@@ -1126,7 +1126,7 @@ export default function KdvKontrolPage() {
                     {(azureReads > 0 || claudeEscalations > 0) && (
                       <span style={{ color: '#c084fc', fontWeight: 600 }}>
                         Akış: {azureReads} Azure
-                        {claudeEscalations > 0 ? ` · ${claudeEscalations} Claude eskalasyon` : ''}
+                        {claudeEscalations > 0 ? ` · ${claudeEscalations} Claude'a giden` : ''}
                       </span>
                     )}
                     {freeSkips > 0 && (

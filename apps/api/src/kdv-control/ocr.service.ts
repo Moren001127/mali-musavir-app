@@ -137,6 +137,10 @@ export class OcrService {
   ): Promise<OcrResult> {
     const belgeNoFromFilename = this.extractBelgeNoFromFilename(originalName);
     const hasClaudeKey = !!process.env.ANTHROPIC_API_KEY;
+    const forceClaude = options.forceClaude === true;
+    const allowAutoClaude =
+      process.env.KDV_OCR_AUTO_CLAUDE === 'true' ||
+      process.env.OCR_AUTO_CLAUDE === 'true';
     const imageHash = this.computeImageHash(imageBuffer);
     this.logger.log(
       `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · hash=${imageHash.slice(0, 8)}... · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'} forceClaude:${options.forceClaude ? '✓' : '✗'}`,
@@ -238,7 +242,7 @@ export class OcrService {
     // ═══════════════════════════════════════════════════════
     let azureRawText = '';
 
-    if (this.azureClient && !options.forceClaude) {
+    if (this.azureClient && !forceClaude) {
       try {
         const azureResult = await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
         azureRawText = azureResult.rawText || '';
@@ -261,7 +265,7 @@ export class OcrService {
           );
           return azureResult;
         }
-        if (!hasClaudeKey) {
+        if (!hasClaudeKey || !allowAutoClaude) {
           this.logger.warn(
             `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || '—'} · reason=${review.reason}`,
           );
@@ -275,7 +279,13 @@ export class OcrService {
       }
     }
 
-    if (hasClaudeKey) {
+    if (!forceClaude && !allowAutoClaude) {
+      this.logger.warn(
+        `Otomatik Claude kapali; Azure sonucu yoksa/eksikse Claude'a gidilmeyecek: ${originalName || '-'}`,
+      );
+    }
+
+    if (hasClaudeKey && (forceClaude || allowAutoClaude)) {
       try {
         const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
         if (!azureRawText && this.azureClient) {
