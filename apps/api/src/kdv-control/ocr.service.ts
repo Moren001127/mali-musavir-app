@@ -1245,7 +1245,7 @@ export class OcrService {
 
     // Türk tutar formatı: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
     // (Binlik nokta opsiyonel, ondalık virgül 1-2 hane)
-    const amountPattern = '(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';
+    const amountPattern = '[-−]?\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';
 
     // ─── 1) "HESAPLANAN KDV(%X) TUTAR" — TAM KDV ya da TEVKİFAT
     //   Tek regex iki durumu ayırır: "TEVKIFAT" kelimesi varsa tevkifat,
@@ -1259,7 +1259,7 @@ export class OcrService {
     let m: RegExpExecArray | null;
     while ((m = labelRegex.exec(flat)) !== null) {
       const isTevkifat = !!m[1];
-      const tutar = this.parseAmount(m[2]);
+      const tutar = Math.abs(this.parseAmount(m[2]));
       if (tutar <= 0) continue;
       if (isTevkifat) {
         if (tutar > tevkifat) tevkifat = tutar;
@@ -1289,15 +1289,15 @@ export class OcrService {
     if (tevkifat === 0) {
       const altTevkifatPatterns = [
         new RegExp(
-          'KDV\\s+TEVK[İI]FATI?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[=:]?\\s*' + amountPattern,
+          'KDV\\s+TEVK[İI]FATI?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-−=:\\s]*' + amountPattern,
           'i',
         ),
-        new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[:=]?\\s*' + amountPattern, 'i'),
+        new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[-−=:\\s]*' + amountPattern, 'i'),
       ];
       for (const re of altTevkifatPatterns) {
         const am = flat.match(re);
         if (am) {
-          const v = this.parseAmount(am[1]);
+          const v = Math.abs(this.parseAmount(am[1]));
           if (v > tevkifat) tevkifat = v;
         }
       }
@@ -1393,6 +1393,50 @@ export class OcrService {
       }
     }
 
+    return null;
+  }
+
+  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: number | null; oran: number | null } | null {
+    if (!text) return null;
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
+    const parseLineAmount = (line: string): number | null => {
+      const m = line.match(amountRe);
+      if (!m) return null;
+      const n = this.parseAmount(m[1]);
+      return n > 0 && n < 100_000_000 ? n : null;
+    };
+    const findAmountNear = (labelRe: RegExp): number | null => {
+      for (let i = 0; i < lines.length; i++) {
+        if (!labelRe.test(lines[i])) continue;
+        const same = parseLineAmount(lines[i].replace(labelRe, ''));
+        if (same != null) return same;
+        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+          const next = lines[i + j];
+          if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
+          const val = parseLineAmount(next);
+          if (val != null) return val;
+        }
+      }
+      return null;
+    };
+
+    const explicitKdv = findAmountNear(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI/i);
+    const matrah =
+      findAmountNear(/MAL\s*H[İI]ZMET\s*TOPLAM|MAL\s*H[İI]ZMET\s*TUTARI|KDV\s*MATRAH|MATRAH/i);
+    const kdvDahil =
+      findAmountNear(/KDV\s*DAH[İI]L\s*TOPLAM|VERG[İI]LER\s*DAH[İI]L\s*TOPLAM/i);
+    const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);
+    const oran = oranMatch ? parseInt(oranMatch[1] || oranMatch[2], 10) : null;
+
+    if (explicitKdv != null && explicitKdv > 0) {
+      return { kdv: explicitKdv, matrah, oran };
+    }
+    if (matrah != null && kdvDahil != null && kdvDahil > matrah) {
+      const diff = parseFloat((kdvDahil - matrah).toFixed(2));
+      if (diff > 0) return { kdv: diff, matrah, oran };
+    }
     return null;
   }
 
@@ -2118,6 +2162,29 @@ export class OcrService {
           result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
           kdvAlreadyVerifiedByAutoFill.value = true;
         }
+      }
+    }
+
+    const invoiceTotalsKdv = azureMentionsTevkifat
+      ? null
+      : this.extractKdvFromInvoiceTotalsAzure(azureText);
+    if (invoiceTotalsKdv && invoiceTotalsKdv.kdv > 0) {
+      const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
+      const diff = Math.abs(claudeKdv - invoiceTotalsKdv.kdv);
+      if (diff > 0.05) {
+        this.logger.warn(
+          `Fatura toplamlarından KDV override: Claude=${result.kdvTutari} → Azure/toplam=${this.formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
+        );
+        result.kdvTutari = this.formatAmount(invoiceTotalsKdv.kdv);
+        result.fieldConfidence.kdvTutari = 0.92;
+        result.kdvBreakdown = [{
+          oran: invoiceTotalsKdv.oran && invoiceTotalsKdv.oran > 0 ? invoiceTotalsKdv.oran : 20,
+          tutar: invoiceTotalsKdv.kdv,
+          matrah: invoiceTotalsKdv.matrah,
+        }];
+        kdvAlreadyVerifiedByAutoFill.value = true;
+      } else if (diff <= 0.05 && result.fieldConfidence.kdvTutari != null) {
+        result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
       }
     }
 
