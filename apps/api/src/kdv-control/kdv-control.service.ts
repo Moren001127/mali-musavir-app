@@ -99,54 +99,25 @@ export class KdvControlService {
 
     if (sessions.length === 0) return [];
 
-    // OCR maliyetlerini taxpayer bazında topla (kdv-ocr source)
-    // Mukellef adı match üzerinden; performansı için tek sorgu ile getir
-    const taxpayerNames = sessions
-      .map((s) => {
-        const tp = s.taxpayer;
-        if (!tp) return null;
-        return (
-          tp.companyName ||
-          [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() ||
-          null
-        );
-      })
-      .filter(Boolean) as string[];
+    // OCR maliyetlerini session bazında topla; tekrar OCR/seri tarama aynı oturuma eklenir.
+    const sessionKeys = sessions.map((s) => `session:${s.id}`);
 
-    // Son 90 gün içinde kdv-ocr kayıtları — her mukellef için toplam
-    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
     const costRows = await (this.prisma as any).aiUsageLog.findMany({
       where: {
         tenantId,
         source: 'kdv-ocr',
-        createdAt: { gte: ninetyDaysAgo },
-        mukellef: { in: taxpayerNames.length > 0 ? taxpayerNames : ['__none__'] },
+        sebep: { in: sessionKeys.length > 0 ? sessionKeys : ['__none__'] },
       },
-      select: { mukellef: true, costUsd: true, createdAt: true },
+      select: { sebep: true, costUsd: true },
     });
+    const costBySession = new Map<string, number>();
+    for (const row of costRows) {
+      if (!row.sebep) continue;
+      costBySession.set(row.sebep, (costBySession.get(row.sebep) || 0) + Number(row.costUsd || 0));
+    }
 
-    // Session bazında maliyet: session.createdAt'ten session bitimine kadar olan OCR'lar
-    // Basitlik için: her session için mukellef + session.createdAt + 24 saat aralığındaki maliyet toplamı
     return sessions.map((s) => {
-      const tp = s.taxpayer;
-      const mukellefAdi = tp
-        ? tp.companyName ||
-          [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim() ||
-          null
-        : null;
-
-      let maliyetUsd = 0;
-      if (mukellefAdi) {
-        const sessionStart = new Date(s.createdAt).getTime();
-        const sessionEndWindow = sessionStart + 24 * 60 * 60 * 1000; // 24 saat pencere
-        for (const r of costRows) {
-          if (r.mukellef !== mukellefAdi) continue;
-          const t = new Date(r.createdAt).getTime();
-          if (t >= sessionStart && t <= sessionEndWindow) {
-            maliyetUsd += Number(r.costUsd || 0);
-          }
-        }
-      }
+      const maliyetUsd = costBySession.get(`session:${s.id}`) || 0;
 
       return { ...s, maliyetUsd };
     });
@@ -792,6 +763,8 @@ export class KdvControlService {
         usage: {
           input_tokens: ocrResult.usage.inputTokens || 0,
           output_tokens: ocrResult.usage.outputTokens || 0,
+          cache_read_input_tokens: ocrResult.usage.cacheReadTokens || 0,
+          cache_creation_input_tokens: ocrResult.usage.cacheCreationTokens || 0,
         },
       });
     } catch {
@@ -1396,7 +1369,7 @@ export class KdvControlService {
     wb.created = now;
     const ws = wb.addWorksheet('KDV Kontrol', {
       pageSetup: { paperSize: 9, orientation: 'landscape' },
-      views: [{ state: 'frozen', ySplit: 15 }],
+      views: [{ state: 'frozen', ySplit: 1 }],
     });
 
     // Moren altın marka rengi
@@ -1759,6 +1732,8 @@ export class KdvControlService {
         cacheHit: true,
         inputTokens: true,
         outputTokens: true,
+        cacheReadTokens: true,
+        cacheWriteTokens: true,
         model: true,
       },
     });
@@ -1767,6 +1742,8 @@ export class KdvControlService {
     const actualPaidCalls = usageRows.filter((r: any) => !r.cacheHit && Number(r.costUsd || 0) > 0).length;
     const actualInputTokens = usageRows.reduce((s: number, r: any) => s + Number(r.inputTokens || 0), 0);
     const actualOutputTokens = usageRows.reduce((s: number, r: any) => s + Number(r.outputTokens || 0), 0);
+    const actualCacheReadTokens = usageRows.reduce((s: number, r: any) => s + Number(r.cacheReadTokens || 0), 0);
+    const actualCacheWriteTokens = usageRows.reduce((s: number, r: any) => s + Number(r.cacheWriteTokens || 0), 0);
 
     const engineStats = images.reduce(
       (acc, img) => {
@@ -1803,6 +1780,8 @@ export class KdvControlService {
         freeSkips: Math.max(actualCacheHits, engineStats.cacheHits) + engineStats.xmlParsed,
         inputTokens: actualInputTokens,
         outputTokens: actualOutputTokens,
+        cacheReadTokens: actualCacheReadTokens,
+        cacheWriteTokens: actualCacheWriteTokens,
         logCount: usageRows.length,
       },
     };
@@ -1827,7 +1806,7 @@ export class KdvControlService {
       where: { sessionId, belgeNo: { not: null } },
       select: { belgeNo: true, belgeDate: true },
     });
-    if (records.length < 2) return [];
+    if (records.length === 0) return [];
 
     // Belge no'yu prefix + numeric kısma ayır
     const parse = (no: string): { prefix: string; num: number } | null => {

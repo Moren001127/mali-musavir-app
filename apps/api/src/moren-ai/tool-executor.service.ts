@@ -1582,13 +1582,20 @@ export class ToolExecutorService {
     const bySource: Record<string, any> = {};
     for (const r of usageRows) {
       const key = r.source || 'other';
-      bySource[key] ||= { source: key, sorguSayisi: 0, maliyetUsd: 0, inputTokens: 0, outputTokens: 0, kararlar: {} };
+      bySource[key] ||= { source: key, sorguSayisi: 0, maliyetUsd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, kararlar: {} };
       bySource[key].sorguSayisi++;
       bySource[key].maliyetUsd += Number(r.costUsd || 0);
       bySource[key].inputTokens += r.inputTokens || 0;
       bySource[key].outputTokens += r.outputTokens || 0;
+      bySource[key].cacheReadTokens += r.cacheReadTokens || 0;
+      bySource[key].cacheWriteTokens += r.cacheWriteTokens || 0;
+      bySource[key].totalTokens += (r.inputTokens || 0) + (r.outputTokens || 0) + (r.cacheReadTokens || 0) + (r.cacheWriteTokens || 0);
       bySource[key].kararlar[r.karar || 'unknown'] = (bySource[key].kararlar[r.karar || 'unknown'] || 0) + 1;
     }
+    const totalTokens = usageRows.reduce(
+      (s: number, r: any) => s + (r.inputTokens || 0) + (r.outputTokens || 0) + (r.cacheReadTokens || 0) + (r.cacheWriteTokens || 0),
+      0,
+    );
     const totalUsd = usageRows.reduce((s: number, r: any) => s + Number(r.costUsd || 0), 0);
     const faturaCostUsd = usageRows
       .filter((r: any) => r.source === 'mihsap-fatura')
@@ -1599,6 +1606,7 @@ export class ToolExecutorService {
       toplam: {
         sorguSayisi: usageRows.length,
         maliyetUsd: totalUsd,
+        totalTokens,
       },
       moduller: Object.values(bySource),
       fatura: {

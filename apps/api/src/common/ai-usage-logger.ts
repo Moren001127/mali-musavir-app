@@ -54,6 +54,11 @@ export interface AiUsageLogParams {
     output_tokens?: number;
     cache_read_input_tokens?: number;
     cache_creation_input_tokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    cacheCreationTokens?: number;
   } | null;
 }
 
@@ -64,11 +69,18 @@ export interface AiUsageLogParams {
 export async function logAiUsage(prisma: any, params: AiUsageLogParams): Promise<void> {
   try {
     const u = params.usage || {};
+    const num = (...values: Array<number | null | undefined>) => {
+      for (const value of values) {
+        const n = Number(value || 0);
+        if (Number.isFinite(n) && n > 0) return Math.round(n);
+      }
+      return 0;
+    };
     const tokens = {
-      input: u.input_tokens || 0,
-      output: u.output_tokens || 0,
-      cacheRead: u.cache_read_input_tokens || 0,
-      cacheWrite: u.cache_creation_input_tokens || 0,
+      input: num(u.input_tokens, u.inputTokens),
+      output: num(u.output_tokens, u.outputTokens),
+      cacheRead: num(u.cache_read_input_tokens, u.cacheReadTokens),
+      cacheWrite: num(u.cache_creation_input_tokens, u.cacheWriteTokens, u.cacheCreationTokens),
     };
     const costUsd = computeCostUsd(params.model, tokens);
     await prisma.aiUsageLog.create({

@@ -1193,7 +1193,7 @@ export default function KdvKontrolPage() {
 
       {/* OCR TEYİT PANELİ — düşük güvenli alanlar için kullanıcı incelemesi */}
       {activeSession?.id && (
-        <OcrReviewPanel sessionId={activeSession.id} images={images as any} />
+        <OcrReviewPanel sessionId={activeSession.id} images={images as any} sessionType={activeSession.type} />
       )}
 
       {/* EŞLEŞME İNCELE PANELİ — PARTIAL / NEEDS_REVIEW durumundaki eşleşmeler için kullanıcı kararı */}

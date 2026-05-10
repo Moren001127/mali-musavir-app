@@ -360,7 +360,7 @@ export class AgentEventsService {
         where: {
           tenantId,
           createdAt: { gte: periodStart, lt: periodEnd },
-          source: { in: ['mihsap-fatura', 'mihsap-fatura-cache', 'mihsap-isletme'] },
+          source: { in: ['mihsap-fatura', 'mihsap-fatura-cache', 'mihsap-isletme', 'kdv-ocr'] },
         },
         select: { costUsd: true, mukellef: true, inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true },
       });

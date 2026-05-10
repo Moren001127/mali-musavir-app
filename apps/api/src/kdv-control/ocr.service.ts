@@ -1252,13 +1252,13 @@ export class OcrService {
     //   yoksa tam KDV. Bu sayede pattern sıralaması fark etmez.
     // ───
     const labelRegex = new RegExp(
-      'HESAPLANAN\\s+KDV(\\s+TEVK[İI]FAT)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
+      'HESAPLANAN\\s+KDV(\\s+TEVK\\S*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*(?:[:=]\\s*)?' +
         amountPattern,
       'gi',
     );
     let m: RegExpExecArray | null;
     while ((m = labelRegex.exec(flat)) !== null) {
-      const isTevkifat = !!m[1];
+      const isTevkifat = /TEVK/i.test(m[0]);
       const tutar = Math.abs(this.parseAmount(m[2]));
       if (tutar <= 0) continue;
       if (isTevkifat) {
@@ -1289,7 +1289,7 @@ export class OcrService {
     if (tevkifat === 0) {
       const altTevkifatPatterns = [
         new RegExp(
-          'KDV\\s+TEVK[İI]FATI?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-−=:\\s]*' + amountPattern,
+          'KDV\\s+TEVK\\S*\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-=:\\s]*' + amountPattern,
           'i',
         ),
         new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[-−=:\\s]*' + amountPattern, 'i'),

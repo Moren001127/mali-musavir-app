@@ -206,10 +206,12 @@ export class ReconciliationEngine {
         const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
         const { score, reasons, strictMatch } = this.calculateScore(record, image, mihsapBelgeTarihi, expectedBreakdown, isAlis, originalKdvList);
         // Belge no exact uyumsuzluğu varsa pair'i ele
-        const belgeNoTamUyumsuz = reasons.some((r) =>
+        const strongTwoOfThree = this.hasStrongTwoOfThree(record, image, mihsapBelgeTarihi);
+        const belgeNoTamUyumsuz = !strongTwoOfThree && reasons.some((r) =>
           /Belge no uyumsuz|E-fatura belge no farklı|Çok oranlı uyumsuzluk/i.test(r),
         );
-        if (score >= MIN_PAIR_SCORE && !belgeNoTamUyumsuz) {
+        const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -223,7 +225,13 @@ export class ReconciliationEngine {
       if (usedRecordIds.has(pair.kdvRecord.id)) continue;
       if (usedImageIds.has(pair.image.id)) continue;
       usedImageIds.add(pair.image.id);
-      const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch);
+      const mihsapBelgeTarihi = mihsapBelgeTarihleri[pair.image.s3Key || ''] ?? null;
+      const belgeNoExactPair = this.sameBelgeNo(
+        pair.kdvRecord.belgeNo || '',
+        pair.image.confirmedBelgeNo || pair.image.ocrBelgeNo || '',
+      );
+      const strongTwoOfThree = this.hasStrongTwoOfThree(pair.kdvRecord, pair.image, mihsapBelgeTarihi);
+      const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch, belgeNoExactPair || strongTwoOfThree);
       fanOutMatch(pair.kdvRecord, pair.image.id, status, pair.score, pair.reasons);
     }
 
@@ -839,12 +847,13 @@ export class ReconciliationEngine {
     return yearDiff > 0 && yearDiff <= 5;
   }
 
-  private scoreToStatus(score: number, image: ReceiptImage, strictMatch: boolean): string {
+  private scoreToStatus(score: number, image: ReceiptImage, strictMatch: boolean, forcePartial: boolean = false): string {
     // Sadece FAILED durum NEEDS_REVIEW'a zorla; LOW_CONFIDENCE artık normal akışta
     if (image.ocrStatus === 'FAILED' && !image.isManuallyConfirmed) return 'NEEDS_REVIEW';
     // MATCHED sadece 3 alan (tarih + belge no + KDV) EXACT eşleşirse verilir.
     // Herhangi biri tutmuyorsa PARTIAL_MATCH veya NEEDS_REVIEW.
     if (strictMatch) return 'MATCHED';
+    if (forcePartial) return 'PARTIAL_MATCH';
     if (score >= 0.65) return 'PARTIAL_MATCH';
     if (score >= 0.45) return 'PARTIAL_MATCH';
     return 'NEEDS_REVIEW';
@@ -853,6 +862,28 @@ export class ReconciliationEngine {
   /** Belge no'yu karşılaştırma için normalize et: UPPER + sadece alfa-sayısal */
   private normalizeBelgeNo(s: string): string {
     return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  private sameBelgeNo(a: string, b: string): boolean {
+    const normA = this.normalizeBelgeNo(a);
+    const normB = this.normalizeBelgeNo(b);
+    if (!normA || !normB) return false;
+    return normA === normB || this.stripLeadingZeros(normA) === this.stripLeadingZeros(normB);
+  }
+
+  private hasStrongTwoOfThree(record: KdvRecord, image: ReceiptImage, mihsapBelgeTarihi: Date | null): boolean {
+    const belgeOk = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
+    const recordKdv = record.kdvTutari ? parseMoneyLike(record.kdvTutari as any) : 0;
+    const imageKdv = parseMoneyLike(image.confirmedKdvTutari || image.ocrKdvTutari);
+    const kdvOk = recordKdv > 0 && imageKdv > 0 && Math.abs(recordKdv - imageKdv) / recordKdv < 0.01;
+    let tarihOk = false;
+    if (record.belgeDate) {
+      const recordDate = new Date(record.belgeDate);
+      const imageDate = this.parseTrDate(image.confirmedDate || image.ocrDate || '');
+      tarihOk = !!imageDate && this.sameDay(recordDate, imageDate);
+      if (!tarihOk && mihsapBelgeTarihi) tarihOk = this.sameDay(recordDate, mihsapBelgeTarihi);
+    }
+    return [belgeOk, kdvOk, tarihOk].filter(Boolean).length >= 2;
   }
 
   /**

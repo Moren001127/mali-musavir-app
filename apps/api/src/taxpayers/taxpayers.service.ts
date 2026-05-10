@@ -654,24 +654,35 @@ export class TaxpayersService {
     const cariBakiye = tahakkukToplam - tahsilatToplam;
 
     // AI usage — taxpayer.companyName veya firstName lastName'e göre eşleştir
-    const tpName =
-      tp.companyName ||
-      [tp.firstName, tp.lastName].filter(Boolean).join(' ') ||
-      '';
-    const aiUsage = tpName
-      ? await safeAgg(
-          () => p.aiUsageLog.aggregate({
-            where: {
-              tenantId,
-              mukellef: { contains: tpName, mode: 'insensitive' },
-              createdAt: { gte: since },
-            },
-            _count: { _all: true },
-            _sum: { costUsd: true, inputTokens: true, outputTokens: true },
-          }),
-          { _count: { _all: 0 }, _sum: {} } as any,
-        )
-      : { _count: { _all: 0 }, _sum: {} };
+    const tpNames = [
+      tp.companyName,
+      [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim(),
+    ].filter((name): name is string => !!name);
+    const aiUsage = await safeAgg(
+      () => p.aiUsageLog.aggregate({
+        where: {
+          tenantId,
+          createdAt: { gte: since },
+          OR: [
+            { taxpayerId },
+            ...tpNames.map((name) => ({ mukellef: { contains: name, mode: 'insensitive' as const } })),
+          ],
+        },
+        _count: { _all: true },
+        _sum: {
+          costUsd: true,
+          inputTokens: true,
+          outputTokens: true,
+          cacheReadTokens: true,
+          cacheWriteTokens: true,
+        },
+      }),
+      { _count: { _all: 0 }, _sum: {} } as any,
+    );
+    const inputTokens = Number((aiUsage as any)?._sum?.inputTokens ?? 0);
+    const outputTokens = Number((aiUsage as any)?._sum?.outputTokens ?? 0);
+    const cacheReadTokens = Number((aiUsage as any)?._sum?.cacheReadTokens ?? 0);
+    const cacheWriteTokens = Number((aiUsage as any)?._sum?.cacheWriteTokens ?? 0);
 
     return {
       taxpayerId,
@@ -689,8 +700,11 @@ export class TaxpayersService {
       },
       aiUsage: {
         calls: (aiUsage as any)?._count?._all ?? 0,
-        inputTokens: Number((aiUsage as any)?._sum?.inputTokens ?? 0),
-        outputTokens: Number((aiUsage as any)?._sum?.outputTokens ?? 0),
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
+        totalTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
         costUsd: Number((aiUsage as any)?._sum?.costUsd ?? 0),
       },
       cari: {

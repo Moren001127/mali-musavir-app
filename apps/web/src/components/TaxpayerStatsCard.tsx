@@ -37,6 +37,9 @@ type Stats = {
     calls: number;
     inputTokens: number;
     outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    totalTokens?: number;
     costUsd: number;
   };
   cari: {
@@ -225,9 +228,15 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
                 <span style={{ color: 'rgba(250,250,249,0.85)' }}>{stats.aiUsage.calls}</span>
               </div>
               <div className="flex justify-between text-[11px] mb-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                <span>Token (in / out)</span>
+                <span>Token (toplam)</span>
                 <span style={{ color: 'rgba(250,250,249,0.85)' }}>
-                  {fmtTokens(stats.aiUsage.inputTokens)} / {fmtTokens(stats.aiUsage.outputTokens)}
+                  {fmtTokens(stats.aiUsage.totalTokens ?? (stats.aiUsage.inputTokens + stats.aiUsage.outputTokens + (stats.aiUsage.cacheReadTokens ?? 0) + (stats.aiUsage.cacheWriteTokens ?? 0)))}
+                </span>
+              </div>
+              <div className="flex justify-between text-[10px] mb-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <span>in / out / cache</span>
+                <span>
+                  {fmtTokens(stats.aiUsage.inputTokens)} / {fmtTokens(stats.aiUsage.outputTokens)} / {fmtTokens((stats.aiUsage.cacheReadTokens ?? 0) + (stats.aiUsage.cacheWriteTokens ?? 0))}
                 </span>
               </div>
               <div className="flex justify-between text-[12px] pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>

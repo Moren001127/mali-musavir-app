@@ -56,9 +56,11 @@ export interface ReviewImage {
 export function OcrReviewPanel({
   sessionId,
   images,
+  sessionType,
 }: {
   sessionId: string;
   images: ReviewImage[];
+  sessionType?: string | null;
 }) {
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -82,6 +84,7 @@ export function OcrReviewPanel({
   const tevkifatAmount = parseLooseMoney(form.kdvTevkifat);
   const netKdvAmount = parseLooseMoney(form.kdvTutari);
   const hasTevkifat = tevkifatAmount > 0;
+  const isSalesSession = sessionType === 'KDV_391' || sessionType === 'ISLETME_GELIR';
 
   /** Filtreye göre gösterilecek görseller. */
   const filtered = useMemo(() => {
@@ -544,7 +547,7 @@ export function OcrReviewPanel({
               />
               <FieldInput
                 label={
-                  hasTevkifat
+                  hasTevkifat && !isSalesSession
                     ? 'KDV Tutarı (NET — tevkifat düşülmüş)'
                     : form.breakdown && form.breakdown.length > 0
                       ? 'KDV Tutarı (toplam — otomatik)'
@@ -565,6 +568,7 @@ export function OcrReviewPanel({
 
               {/* KDV Tevkifat — varsa görünür (tevkifatsız faturalarda gizleyebiliriz). */}
               {/* confidence verilmediği için badge görünmüyor — opsiyonel alan. */}
+              {!isSalesSession && (
               <FieldInput
                 label="KDV Tevkifatı (varsa)"
                 placeholder="0,00"
@@ -572,9 +576,9 @@ export function OcrReviewPanel({
                 onChange={(v) => setForm((f) => ({ ...f, kdvTevkifat: v }))}
                 onEnter={handleConfirm}
                 numeric
-              />
-
-              {hasTevkifat && (
+                />
+              )}
+              {hasTevkifat && !isSalesSession && (
                 <div
                   className="rounded-lg px-3 py-2 text-[11px]"
                   style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' }}
