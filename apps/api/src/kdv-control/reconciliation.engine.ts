@@ -112,7 +112,7 @@ export class ReconciliationEngine {
     //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
     // ═══════════════════════════════════════════════════════
     const { records, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts } = this.aggregateMultiRateRecords(rawRecords);
-    const ambiguousDocDateKeys = this.buildAmbiguousDocDateKeys(records);
+    const ambiguousDocDateAmountKeys = this.buildAmbiguousDocDateAmountKeys(records);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
     // Bu, Luca evrak tarihi ile OCR fiş tarihi arasında fark varsa
@@ -177,7 +177,7 @@ export class ReconciliationEngine {
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
         const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
-        const sameDocDateAmbiguous = ambiguousDocDateKeys.has(this.recordDocDateKey(record) || '');
+        const sameDocDateAmbiguous = ambiguousDocDateAmountKeys.has(this.recordDocDateAmountKey(record) || '');
         const { score, reasons, strictMatch } = this.calculateScore(
           record,
           image,
@@ -220,7 +220,7 @@ export class ReconciliationEngine {
         const mihsapBelgeTarihi = mihsapBelgeTarihleri[image.s3Key || ''] ?? null;
         const expectedBreakdown = virtualExpectedBreakdown.get(record.id) || null;
         const originalKdvList = virtualOriginalKdvAmounts.get(record.id) || null;
-        const sameDocDateAmbiguous = ambiguousDocDateKeys.has(this.recordDocDateKey(record) || '');
+        const sameDocDateAmbiguous = ambiguousDocDateAmountKeys.has(this.recordDocDateAmountKey(record) || '');
         const { score, reasons, strictMatch } = this.calculateScore(
           record,
           image,
@@ -232,15 +232,20 @@ export class ReconciliationEngine {
         );
         // Belge no exact uyumsuzluğu varsa pair'i ele
         const strongTwoOfThree = this.hasStrongTwoOfThree(record, image, mihsapBelgeTarihi);
-        const belgeNoTamUyumsuz = !strongTwoOfThree && reasons.some((r) =>
-          /Belge no uyumsuz|E-fatura belge no farklı|Çok oranlı uyumsuzluk/i.test(r),
+        const hardBelgeNoMismatch = reasons.some((r) =>
+          /Belge no uyumsuz|E-fatura belge no/i.test(r),
         );
+        const hardRateMismatch = reasons.some((r) =>
+          /KDV\s+oran/i.test(r) || (/oran/i.test(r) && /bulunamad/i.test(r)),
+        );
+        const strongTwoOfThreeAllowed = strongTwoOfThree && !hardBelgeNoMismatch;
+        const belgeNoTamUyumsuz = hardBelgeNoMismatch || hardRateMismatch;
         const saticiTamUyumsuz = reasons.some((r) =>
           /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
         );
         const ambiguousSellerMissing = sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
-        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !belgeNoTamUyumsuz && !saticiTamUyumsuz && !ambiguousSellerMissing) {
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThreeAllowed) && !belgeNoTamUyumsuz && !saticiTamUyumsuz && !ambiguousSellerMissing) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -260,7 +265,10 @@ export class ReconciliationEngine {
         pair.image.confirmedBelgeNo || pair.image.ocrBelgeNo || '',
       );
       const strongTwoOfThree = this.hasStrongTwoOfThree(pair.kdvRecord, pair.image, mihsapBelgeTarihi);
-      const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch, belgeNoExactPair || strongTwoOfThree);
+      const hardBelgeNoMismatch = pair.reasons.some((r) =>
+        /Belge no uyumsuz|E-fatura belge no/i.test(r),
+      );
+      const status = this.scoreToStatus(pair.score, pair.image, pair.strictMatch, belgeNoExactPair || (strongTwoOfThree && !hardBelgeNoMismatch));
       fanOutMatch(pair.kdvRecord, pair.image.id, status, pair.score, pair.reasons);
     }
 
@@ -968,10 +976,18 @@ export class ReconciliationEngine {
     return `${belgeNo}|${new Date(record.belgeDate).toISOString().slice(0, 10)}`;
   }
 
-  private buildAmbiguousDocDateKeys(records: KdvRecord[]): Set<string> {
+  private recordDocDateAmountKey(record: KdvRecord): string | null {
+    const base = this.recordDocDateKey(record);
+    if (!base) return null;
+    const amount = parseFloat(record.kdvTutari?.toString() || '0');
+    if (!Number.isFinite(amount) || amount <= 0) return base;
+    return `${base}|${amount.toFixed(2)}`;
+  }
+
+  private buildAmbiguousDocDateAmountKeys(records: KdvRecord[]): Set<string> {
     const counts = new Map<string, number>();
     for (const record of records) {
-      const key = this.recordDocDateKey(record);
+      const key = this.recordDocDateAmountKey(record);
       if (!key) continue;
       counts.set(key, (counts.get(key) || 0) + 1);
     }
@@ -1107,11 +1123,12 @@ export class ReconciliationEngine {
       // Bu yüzden karşı taraf/VKN varsa uzun e-faturada bile aggregate anahtarına
       // eklenir; yoksa eski belge no + tarih davranışına düşeriz.
       // Kısa fiş/Z raporu no'larında ise karşı taraf/VKN yoksa aggregate etmiyoruz.
-      if (bn.length < 4 && partyKey === 'noparty') {
+      // Guncel kural: satici/VKN yoksa aggregate yapma; satirlar tek tek kalsin.
+      if (partyKey === 'noparty') {
         unaggregated.push(rec);
         continue;
       }
-      const key = partyKey === 'noparty' ? `${bn}|${dateKey}` : `${bn}|${dateKey}|${partyKey}`;
+      const key = `${bn}|${dateKey}|${partyKey}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(rec);
     }

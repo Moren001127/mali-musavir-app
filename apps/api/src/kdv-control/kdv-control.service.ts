@@ -929,7 +929,7 @@ export class KdvControlService {
   }
 
   /** OCR işlemi — S3'ten indirerek (presigned upload sonrası kullanılır) */
-  private async runOcrForImage(imageId: string, s3Key: string, opts: { forceClaude?: boolean } = {}) {
+  private async runOcrForImage(imageId: string, s3Key: string, opts: { forceClaude?: boolean; forceFresh?: boolean } = {}) {
     const t0 = Date.now();
     try {
       await this.prisma.receiptImage.update({
@@ -963,11 +963,11 @@ export class KdvControlService {
       const buffer = Buffer.concat(chunks);
 
       // Hash cache: manuel/S3 yüklenen aynı görsel daha önce işlendiyse
-      // Claude'a tekrar gitme. Mihsap dışı upload'larda asıl maliyet düşüren
+      // OCR sağlayıcısına tekrar gitme. Mihsap dışı upload'larda asıl maliyet düşüren
       // katman burasıdır.
       const imageHash = this.ocrService.computeImageHash(buffer);
-      if (await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
-      const cached = await this.prisma.receiptImage.findFirst({
+      if (!opts.forceFresh && !opts.forceClaude && await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
+      const cached = opts.forceFresh || opts.forceClaude ? null : await this.prisma.receiptImage.findFirst({
         where: {
           imageHash,
           id: { not: imageId },
@@ -1026,7 +1026,7 @@ export class KdvControlService {
             usage: { input_tokens: 0, output_tokens: 0 },
           });
         } catch {}
-        this.logger.log(`OCR hash cache HIT: ${imgRec?.originalName || imageId} · Claude çağrısı atlandı`);
+        this.logger.log(`OCR hash cache HIT: ${imgRec?.originalName || imageId} · sağlayıcı çağrısı atlandı`);
         return;
       }
 
@@ -1201,9 +1201,9 @@ export class KdvControlService {
       try {
         if (image.s3Key.startsWith('mihsap://')) {
           const invoiceId = image.s3Key.slice('mihsap://'.length);
-          await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId, opts);
+          await this.runOcrForMihsapInvoice(image.id, invoiceId, tenantId, { ...opts, forceFresh: true });
         } else {
-          await this.runOcrForImage(image.id, image.s3Key, opts);
+          await this.runOcrForImage(image.id, image.s3Key, { ...opts, forceFresh: true });
         }
       } catch (err: any) {
         this.logger.error(`reocrSingleImage [${imageId}]: ${err?.message}`);
@@ -2513,9 +2513,9 @@ export class KdvControlService {
         try {
           if (img.s3Key?.startsWith('mihsap://')) {
             const invoiceId = img.s3Key.slice('mihsap://'.length);
-            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceClaude });
+            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceClaude, forceFresh });
           } else {
-            await this.runOcrForImage(img.id, img.s3Key, { forceClaude });
+            await this.runOcrForImage(img.id, img.s3Key, { forceClaude, forceFresh });
           }
         } catch (e: any) {
           this.logger.error(`OCR worker ${workerIdx} hata [${img.id}]: ${e?.message}`);
@@ -2574,7 +2574,7 @@ export class KdvControlService {
     imageId: string,
     mihsapInvoiceId: string,
     tenantId: string,
-    opts: { forceClaude?: boolean } = {},
+    opts: { forceClaude?: boolean; forceFresh?: boolean } = {},
   ) {
     const t0 = Date.now();
     try {
@@ -2614,10 +2614,10 @@ export class KdvControlService {
       const filenameHint = `${inv.faturaNo || inv.id}.${(inv.orjDosyaTuru || 'jpg').toLowerCase()}`;
 
       // ─── HASH CACHE KONTROLÜ ───
-      // Aynı görüntü daha önce başarılı işlendiyse Claude'a hiç gitme — DB'den dön.
+      // Aynı görüntü daha önce başarılı işlendiyse OCR sağlayıcısına hiç gitme — DB'den dön.
       const imageHash = this.ocrService.computeImageHash(buffer);
-      if (await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
-      const cached = await (this.prisma as any).receiptImage.findFirst({
+      if (!opts.forceFresh && !opts.forceClaude && await this.tryApplyHashCache(imageId, imageHash, Date.now() - t0)) return;
+      const cached = opts.forceFresh || opts.forceClaude ? null : await (this.prisma as any).receiptImage.findFirst({
         where: { imageHash, ocrStatus: 'SUCCESS' },
         orderBy: { uploadedAt: 'desc' },
         select: {
@@ -2630,7 +2630,7 @@ export class KdvControlService {
       });
 
       if (cached) {
-        this.logger.log(`Hash cache HIT [${imageId}]: ${imageHash.slice(0, 8)}... · Claude'a gidilmedi (~$0.007 saved)`);
+        this.logger.log(`Hash cache HIT [${imageId}]: ${imageHash.slice(0, 8)}... · sağlayıcıya gidilmedi`);
         await this.prisma.receiptImage.update({
           where: { id: imageId },
           data: {
@@ -2675,7 +2675,7 @@ export class KdvControlService {
         return;
       }
 
-      // ─── CACHE MISS → Claude'a git ───
+      // ─── CACHE MISS → Azure-first OCR (forceClaude varsa Claude) ───
       const ocrResult = await this.ocrService.extractFromImage(buffer, filenameHint, {
         forceClaude: opts.forceClaude === true,
       });

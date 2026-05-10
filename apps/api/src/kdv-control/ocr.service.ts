@@ -249,6 +249,18 @@ export class OcrService {
           );
           return azureResult;
         }
+        const azureKdvAmount = azureResult.kdvTutari ? this.parseAmount(azureResult.kdvTutari) : 0;
+        const belgeNoLen = (azureResult.belgeNo || belgeNoFromFilename || '').replace(/[^A-Z0-9]/gi, '').length;
+        const isReceiptLike =
+          azureResult.belgeTipi === 'OKC_FIS' ||
+          azureResult.belgeTipi === 'Z_RAPORU' ||
+          (belgeNoLen > 0 && belgeNoLen <= 6);
+        if (isReceiptLike && azureKdvAmount > 0) {
+          this.logger.log(
+            `Azure-first fis/Z sonucu kullanildi, Claude eskalasyonu yok: ${originalName || '-'} - reason=${review.reason} - kdv=${azureResult.kdvTutari}`,
+          );
+          return azureResult;
+        }
         if (!hasClaudeKey) {
           this.logger.warn(
             `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || '—'} · reason=${review.reason}`,
@@ -1679,7 +1691,17 @@ export class OcrService {
           const next = lines[i + j];
           if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
           if (options.skipMatrah && this.isMatrahOrRateLine(next)) continue;
-          if (options.skipMatrah && this.isLikelyStandaloneTaxRate(next) && /%|ORAN/.test(this.foldTurkishAscii(`${lines[i]}\n${lines[i + j - 1] || ''}`))) continue;
+          const nearby = this.foldTurkishAscii(
+            [
+              lines[i - 2] || '',
+              lines[i - 1] || '',
+              lines[i],
+              lines[i + j - 1] || '',
+              next,
+              lines[i + j + 1] || '',
+            ].join('\n'),
+          );
+          if (options.skipMatrah && this.isLikelyStandaloneTaxRate(next) && /%|ORAN/.test(nearby)) continue;
           const val = parseLineAmount(options.skipMatrah ? this.stripMatrahFragments(next) : next, { allowMatrah });
           if (val != null) return val;
         }
@@ -1743,7 +1765,8 @@ export class OcrService {
       const inlineAmountMatch = afterLabel.match(amountRe);
       if (inlineAmountMatch) {
         const parsed = this.parseAmount(inlineAmountMatch[1]);
-        if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+        const isRateEcho = this.isLikelyStandaloneTaxRate(inlineAmountMatch[1]) && Math.abs(parsed - oran) < 0.01;
+        if (!isRateEcho && parsed > 0 && parsed < 10_000_000) tutar = parsed;
       }
 
       // 2) Aynı satırda bulunamadıysa SONRAKİ 1-8 satıra bak (tablo layout için).
@@ -1764,7 +1787,8 @@ export class OcrService {
           const m = cleanedNext.match(amountRe);
           if (m) {
             const parsed = this.parseAmount(m[1]);
-            if (parsed > 0 && parsed < 10_000_000) {
+            const isRateEcho = this.isLikelyStandaloneTaxRate(cleanedNext) && Math.abs(parsed - oran) < 0.01;
+            if (!isRateEcho && parsed > 0 && parsed < 10_000_000) {
               tutar = parsed;
               break;
             }
@@ -1783,7 +1807,8 @@ export class OcrService {
           const m = cleanedPrev.match(amountRe);
           if (m) {
             const parsed = this.parseAmount(m[1]);
-            if (parsed > 0 && parsed < 10_000_000) {
+            const isRateEcho = this.isLikelyStandaloneTaxRate(cleanedPrev) && Math.abs(parsed - oran) < 0.01;
+            if (!isRateEcho && parsed > 0 && parsed < 10_000_000) {
               tutar = parsed;
               break;
             }
