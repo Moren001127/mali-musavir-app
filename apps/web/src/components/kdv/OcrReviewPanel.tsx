@@ -565,6 +565,23 @@ export function OcrReviewPanel({
                 numeric
               />
 
+              {parseLooseMoney(form.kdvTevkifat) > 0 && (
+                <div
+                  className="rounded-lg px-3 py-2 text-[11px]"
+                  style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' }}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold uppercase tracking-wider" style={{ color: '#fb923c' }}>Tevkifat kontrolü</span>
+                    <span className="font-mono" style={{ color: '#fafaf9' }}>
+                      Tam KDV {fmtLooseMoney(parseLooseMoney(form.kdvTutari) + parseLooseMoney(form.kdvTevkifat))}
+                    </span>
+                  </div>
+                  <p className="mt-1 leading-relaxed">
+                    Bu alanda KDV net tutarı ve tevkifat ayrı saklanır. Alış eşleştirmesinde sistem gerektiğinde net + tevkifat toplamını da dener.
+                  </p>
+                </div>
+              )}
+
               {/* KDV Breakdown paneli — çok oranlı belgelerde (Z Raporu, karma fatura) */}
               <KdvBreakdownEditor
                 breakdown={form.breakdown}
@@ -764,6 +781,21 @@ function FieldInput({
       />
     </div>
   );
+}
+
+function parseLooseMoney(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const normalized = String(value).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fmtLooseMoney(value: unknown): string {
+  return parseLooseMoney(value).toLocaleString('tr-TR', {
+    style: 'currency',
+    currency: 'TRY',
+  });
 }
 
 /**

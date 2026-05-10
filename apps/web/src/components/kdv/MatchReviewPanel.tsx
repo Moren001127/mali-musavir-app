@@ -120,12 +120,18 @@ function MatchRow({
   const lucaKdv = r.kdvRecord?.kdvTutari
     ? parseFloat(r.kdvRecord.kdvTutari).toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
     : '—';
+  const lucaKdvOrani = r.kdvRecord?.kdvOrani
+    ? `%${Number(r.kdvRecord.kdvOrani).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`
+    : '—';
 
   const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
   const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
   const faturaKdv = r.image?.confirmedKdvTutari || r.image?.ocrKdvTutari || '—';
+  const faturaTevkifat = r.image?.confirmedKdvTevkifat || r.image?.ocrKdvTevkifat || null;
+  const faturaBreakdown = normalizeBreakdown(r.image?.confirmedKdvBreakdown || r.image?.ocrKdvBreakdown);
   const faturaDosya = r.image?.originalName ?? '—';
   const isXmlFile = /\.xml$/i.test(faturaDosya);
+  const hasTevkifat = parseMoney(faturaTevkifat) > 0;
 
   // Satır açıldığında fatura görselinin presigned URL'sini çek
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -185,6 +191,7 @@ function MatchRow({
             <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: GOLD }}>Luca Kaydı</div>
             <Row label="Belge No" value={lucaBelgeNo} />
             <Row label="Tarih" value={lucaTarih} />
+            <Row label="KDV Oranı" value={lucaKdvOrani} />
             <Row label="KDV" value={lucaKdv} />
           </div>
 
@@ -236,6 +243,22 @@ function MatchRow({
             <Row label="Belge No" value={faturaBelgeNo} />
             <Row label="Tarih" value={faturaTarih} highlight={isLikelyOcrDateMisread(lucaTarih, faturaTarih)} />
             <Row label="KDV" value={faturaKdv} />
+            {hasTevkifat && (
+              <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.22)' }}>
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="font-bold uppercase tracking-wider" style={{ color: '#fb923c' }}>Tevkifatlı</span>
+                  <span className="font-mono font-semibold" style={{ color: '#fafaf9' }}>
+                    Tevkifat {fmtMoney(faturaTevkifat)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                  Alış kayıtlarında sistem NET + tevkifat toplamını da kontrol eder; satışta net KDV baz alınır.
+                </p>
+              </div>
+            )}
+            {faturaBreakdown.length > 0 && (
+              <KdvBreakdownSummary rows={faturaBreakdown} lucaRate={r.kdvRecord?.kdvOrani} />
+            )}
             {isLikelyOcrDateMisread(lucaTarih, faturaTarih) && (
               <p className="text-[10.5px] mt-2 px-2 py-1.5 rounded" style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.25)' }}>
                 ⚠ OCR muhtemelen yıl hanesini yanlış okudu ({lucaTarih} vs {faturaTarih}) — "6"↔"4" / "0"↔"8" gibi benzer rakamlar. Luca tarihi doğruysa Onayla.
@@ -319,6 +342,82 @@ function Row({ label, value, highlight }: { label: string; value: string; highli
       </span>
     </div>
   );
+}
+
+function KdvBreakdownSummary({
+  rows,
+  lucaRate,
+}: {
+  rows: Array<{ oran: number; tutar: number; matrah?: number | null }>;
+  lucaRate?: string | number | null;
+}) {
+  const expectedRate = lucaRate != null ? Number(lucaRate) : null;
+  const total = rows.reduce((sum, r) => sum + (Number(r.tutar) || 0), 0);
+  return (
+    <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.18)' }}>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>KDV Kırılımı</span>
+        <span className="text-[10.5px] font-mono font-semibold" style={{ color: GOLD }}>{fmtNumber(total)}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {rows.map((row, idx) => {
+          const rateMatches = expectedRate != null && Math.abs(Number(row.oran) - expectedRate) < 0.5;
+          return (
+            <span
+              key={`${row.oran}-${idx}`}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10.5px] font-semibold"
+              style={{
+                background: rateMatches ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
+                color: rateMatches ? '#22c55e' : 'rgba(250,250,249,0.78)',
+                border: `1px solid ${rateMatches ? 'rgba(34,197,94,0.28)' : 'rgba(255,255,255,0.08)'}`,
+              }}
+            >
+              %{Number(row.oran).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
+              <span className="font-mono">{fmtNumber(row.tutar)}</span>
+            </span>
+          );
+        })}
+      </div>
+      {expectedRate != null && !rows.some((row) => Math.abs(Number(row.oran) - expectedRate) < 0.5) && (
+        <p className="mt-1.5 text-[10.5px]" style={{ color: '#fb923c' }}>
+          LUCA bu satırda %{expectedRate.toLocaleString('tr-TR')} bekliyor; faturadaki kırılımda bu oran görünmüyor.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function normalizeBreakdown(raw: any): Array<{ oran: number; tutar: number; matrah?: number | null }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => ({
+      oran: Number(item?.oran) || 0,
+      tutar: parseMoney(item?.tutar),
+      matrah: item?.matrah == null ? null : parseMoney(item.matrah),
+    }))
+    .filter((item) => item.tutar > 0 || item.oran > 0);
+}
+
+function parseMoney(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const normalized = String(value).replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fmtNumber(value: unknown): string {
+  return parseMoney(value).toLocaleString('tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtMoney(value: unknown): string {
+  const n = parseMoney(value);
+  return n > 0
+    ? n.toLocaleString('tr-TR', { style: 'currency', currency: 'TRY' })
+    : '—';
 }
 
 /**

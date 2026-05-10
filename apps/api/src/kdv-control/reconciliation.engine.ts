@@ -45,6 +45,17 @@ function getImageBreakdown(image: ReceiptImage): BreakdownItem[] {
     .filter((b: BreakdownItem) => b.tutar > 0 || (b.oran === 0 && (b.matrah ?? 0) > 0));
 }
 
+function parseMoneyLike(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const normalized = String(value)
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[^\d.-]/g, '');
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 @Injectable()
 export class ReconciliationEngine {
   private readonly logger = new Logger(ReconciliationEngine.name);
@@ -311,6 +322,9 @@ export class ReconciliationEngine {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
     const imgKdv = image.confirmedKdvTutari || image.ocrKdvTutari;
+    const imgTevkifat = parseMoneyLike(
+      (image as any).confirmedKdvTevkifat ?? (image as any).ocrKdvTevkifat,
+    );
 
     // Belge kategorisi: uzun belge no → e-fatura/e-arşiv; kısa → ÖKC fiş
     const belgeNoLen = (record.belgeNo || imgBelgeNo || '').replace(/[^A-Z0-9]/gi, '').length;
@@ -400,20 +414,40 @@ export class ReconciliationEngine {
           (b) => Math.abs(b.oran - recordRate) < 0.5,
         );
         if (matchingItem) {
-          // Oran var — şimdi tutarı kıyasla
+          // Oran var — şimdi tutarı kıyasla. Tevkifatlı alışta Luca satırı
+          // bazen NET, aggregate/virtual kayıt bazen TAM KDV bekler. Bu yüzden
+          // aynı oran için hem NET hem (tek oranlıysa) NET+Tevkifat adayını dene;
+          // en düşük farkı üreten muhasebe yorumunu seç.
           rateExact = true;
-          const diff = Math.abs(matchingItem.tutar - recordKdv) / (recordKdv || 1);
+          const candidates = [
+            { amount: matchingItem.tutar, label: 'NET' },
+            ...(isAlis && imgTevkifat > 0 && imageBreakdown.length === 1
+              ? [{ amount: matchingItem.tutar + imgTevkifat, label: 'NET+Tevkifat' }]
+              : []),
+          ];
+          const best = candidates
+            .map((c) => ({
+              ...c,
+              diff: Math.abs(c.amount - recordKdv) / (recordKdv || 1),
+            }))
+            .sort((a, b) => a.diff - b.diff)[0];
+          const diff = best?.diff ?? 1;
           if (diff < 0.01) {
             score += 0.3;
             kdvExact = true;
+            if (best?.label === 'NET+Tevkifat') {
+              reasons.push(
+                `%${recordRate} alış tevkifat eşleşmesi: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(matchingItem.tutar)} NET + ${this.fmtAmt(imgTevkifat)} tevkifat`,
+              );
+            }
           } else if (diff < 0.05) {
             score += 0.12;
             reasons.push(
-              `%${recordRate} KDV farkı: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(matchingItem.tutar)} (%${Math.round(diff * 100)})`,
+              `%${recordRate} KDV farkı: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(best?.amount ?? matchingItem.tutar)} (${best?.label ?? 'OCR'}, %${Math.round(diff * 100)})`,
             );
           } else {
             reasons.push(
-              `%${recordRate} KDV uyumsuz: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(matchingItem.tutar)}`,
+              `%${recordRate} KDV uyumsuz: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(best?.amount ?? matchingItem.tutar)} (${best?.label ?? 'OCR'})`,
             );
           }
         } else {
@@ -459,16 +493,6 @@ export class ReconciliationEngine {
             // Karşılaştırma:
             //   • Satışta:  Luca NET == OCR NET                → ilk diff < 0.01 → MATCHED
             //   • Alışta:   Luca TAM == OCR NET + OCR Tevkifat → bu blok yakalar → MATCHED
-            const imgTevkifatRaw = (image as any).confirmedKdvTevkifat
-              ?? (image as any).ocrKdvTevkifat;
-            const imgTevkifat = imgTevkifatRaw
-              ? parseFloat(
-                  String(imgTevkifatRaw)
-                    .replace(/\./g, '')
-                    .replace(',', '.')
-                    .replace(/[^\d.]/g, ''),
-                )
-              : 0;
             const tamKdvFromOcr = imgKdvNum + (Number.isFinite(imgTevkifat) ? imgTevkifat : 0);
             const tamDiff = Math.abs(recordKdv - tamKdvFromOcr) / (recordKdv || 1);
 
@@ -902,12 +926,20 @@ export class ReconciliationEngine {
 
     for (const rec of rawRecords) {
       const bn = this.normalizeBelgeNo(rec.belgeNo || '');
-      if (bn.length < 4 || !rec.belgeDate) {
+      if (!bn || !rec.belgeDate) {
         unaggregated.push(rec);
         continue;
       }
       const dateKey = new Date(rec.belgeDate).toISOString().slice(0, 10);
-      const key = `${bn}|${dateKey}`;
+      const partyKey = this.recordPartyKey(rec);
+      // Uzun e-fatura/e-arşiv no'larında belge no + tarih yeterince güçlüdür.
+      // Kısa fiş/Z raporu no'larında ise aynı gün aynı numara farklı firmalarda
+      // tekrar edebilir; bu yüzden karşı taraf/VKN yoksa aggregate etmiyoruz.
+      if (bn.length < 4 && partyKey === 'noparty') {
+        unaggregated.push(rec);
+        continue;
+      }
+      const key = bn.length < 4 ? `${bn}|${dateKey}|${partyKey}` : `${bn}|${dateKey}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(rec);
     }
@@ -973,6 +1005,24 @@ export class ReconciliationEngine {
     }
 
     return { records: result, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts };
+  }
+
+  private recordPartyKey(rec: KdvRecord): string {
+    const rawData = (rec.rawData || {}) as Record<string, any>;
+    const taxNo = String(
+      (rawData.karsiVergiNo ?? rawData.vergiNo ?? rawData.vkn ?? rawData.tckn ?? '')
+    ).replace(/\D/g, '');
+    if (taxNo.length === 10 || taxNo.length === 11) return `tax:${taxNo}`;
+
+    const name = (rec.karsiTaraf || rec.aciklama || '').trim();
+    if (!name) return 'noparty';
+    return `name:${name
+      .toLocaleUpperCase('tr-TR')
+      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+      .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 32) || 'noparty'}`;
   }
 
   private parseTrDate(s: string): Date | null {
