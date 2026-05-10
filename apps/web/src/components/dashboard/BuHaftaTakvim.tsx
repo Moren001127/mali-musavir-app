@@ -18,6 +18,8 @@ import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
+const ROSE = '#f5a6b8';
+const ROSE_SOFT = '#f0b4c0';
 
 interface DeadlineRow {
   date: Date;
@@ -82,11 +84,11 @@ function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
 }
 
 function urgencyTone(gunFark: number) {
-  if (gunFark <= 0) return { accent: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.45)', pillBg: 'rgba(239,68,68,0.15)', pillBorder: 'rgba(239,68,68,0.55)', pillText: '#fca5a5', label: 'Bugün' };
-  if (gunFark === 1) return { accent: '#ef4444', bg: 'rgba(239,68,68,0.04)', border: 'rgba(239,68,68,0.40)', pillBg: 'rgba(239,68,68,0.12)', pillBorder: 'rgba(239,68,68,0.45)', pillText: '#fca5a5', label: 'Yarın' };
-  if (gunFark <= 3) return { accent: '#f43f5e', bg: 'rgba(244,63,94,0.04)', border: 'rgba(244,63,94,0.32)', pillBg: 'rgba(244,63,94,0.10)', pillBorder: 'rgba(244,63,94,0.40)', pillText: '#fb7185', label: `${gunFark} gün` };
-  if (gunFark <= 5) return { accent: '#f59e0b', bg: 'rgba(245,158,11,0.04)', border: 'rgba(245,158,11,0.30)', pillBg: 'rgba(245,158,11,0.10)', pillBorder: 'rgba(245,158,11,0.40)', pillText: '#fbbf24', label: `${gunFark} gün` };
-  if (gunFark <= 7) return { accent: '#d4b876', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.26)', pillBg: 'rgba(212,184,118,0.10)', pillBorder: 'rgba(212,184,118,0.34)', pillText: '#d4b876', label: `${gunFark} gün` };
+  if (gunFark <= 0) return { accent: '#fb7185', bg: 'rgba(245,166,184,0.085)', border: 'rgba(245,166,184,0.50)', pillBg: 'rgba(245,166,184,0.15)', pillBorder: 'rgba(245,166,184,0.56)', pillText: '#ffc4cf', label: 'Bugün' };
+  if (gunFark === 1) return { accent: '#f5a6b8', bg: 'rgba(245,166,184,0.065)', border: 'rgba(245,166,184,0.42)', pillBg: 'rgba(245,166,184,0.13)', pillBorder: 'rgba(245,166,184,0.46)', pillText: '#f8c6d0', label: 'Yarın' };
+  if (gunFark <= 3) return { accent: '#f0b4c0', bg: 'rgba(245,166,184,0.052)', border: 'rgba(245,166,184,0.34)', pillBg: 'rgba(245,166,184,0.11)', pillBorder: 'rgba(245,166,184,0.40)', pillText: ROSE, label: `${gunFark} gün` };
+  if (gunFark <= 5) return { accent: '#d4b876', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.28)', pillBg: 'rgba(212,184,118,0.10)', pillBorder: 'rgba(212,184,118,0.36)', pillText: '#e4c986', label: `${gunFark} gün` };
+  if (gunFark <= 7) return { accent: '#c0a079', bg: 'rgba(192,160,121,0.035)', border: 'rgba(192,160,121,0.24)', pillBg: 'rgba(192,160,121,0.09)', pillBorder: 'rgba(192,160,121,0.30)', pillText: '#d8c19a', label: `${gunFark} gün` };
   return { accent: '#94a3b8', bg: 'rgba(148,163,184,0.04)', border: 'rgba(148,163,184,0.22)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.28)', pillText: '#cbd5e1', label: `${gunFark} gün` };
 }
 
@@ -155,29 +157,29 @@ export function BuHaftaTakvim() {
   const tasks: TaskItem[] = Array.isArray(tasksData) ? tasksData : ((tasksData as any)?.items || []);
   const taskMap = tasksByDate(tasks);
   const calendarDays = buildCalendarDays(rows, taskMap);
-  const visibleRows = rows.slice(0, 4);
+  const visibleRows = rows.slice(0, 5);
   const extraCount = Math.max(rows.length - visibleRows.length, 0);
   const urgentCount = rows.filter((r) => r.gunFark <= 3).length;
   const noteCount = calendarDays.reduce((total, d) => total + d.tasks.length, 0);
 
   return (
     <div
-      className="rounded-2xl p-3 sm:p-4"
+      className="rounded-2xl p-4 sm:p-5"
       style={{
-        background: 'linear-gradient(180deg, rgba(255,255,255,0.024), rgba(255,255,255,0.012))',
-        border: '1px solid rgba(255,255,255,0.055)',
+        background: 'linear-gradient(180deg, rgba(245,166,184,0.052), rgba(255,255,255,0.014))',
+        border: '1px solid rgba(245,166,184,0.16)',
       }}
     >
       <div className="flex flex-wrap items-center gap-2.5 mb-3">
-        <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+        <span className="w-[3px] h-4 rounded-sm" style={{ background: ROSE }} />
         <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
-          <Calendar size={14} style={{ color: GOLD_SOFT }} />
+          <Calendar size={14} style={{ color: ROSE_SOFT }} />
           Yaklaşan Beyanname Son Tarihleri
         </h3>
         {rows.length > 0 && (
           <span
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ml-1"
-            style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}
+            style={{ background: 'rgba(245,166,184,0.12)', color: ROSE, border: '1px solid rgba(245,166,184,0.30)' }}
           >
             {rows.length} son tarih
           </span>
@@ -185,7 +187,7 @@ export function BuHaftaTakvim() {
         {urgentCount > 0 && (
           <span
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-            style={{ background: 'rgba(244,63,94,0.10)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.28)' }}
+            style={{ background: 'rgba(245,166,184,0.12)', color: '#ffc4cf', border: '1px solid rgba(245,166,184,0.30)' }}
           >
             {urgentCount} yakın
           </span>
@@ -204,7 +206,7 @@ export function BuHaftaTakvim() {
       </div>
 
       <div className="overflow-x-auto pb-1 mb-3">
-        <div className="grid grid-cols-7 gap-1.5 min-w-[680px]">
+        <div className="grid grid-cols-7 gap-2 min-w-[720px]">
           {calendarDays.map((d) => (
             <CalendarDayTile key={d.key} day={d} />
           ))}
@@ -255,7 +257,7 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
 
   return (
     <div
-      className="min-h-[64px] rounded-xl p-2 transition-all"
+      className="min-h-[76px] rounded-xl p-2.5 transition-all"
       title={titleParts.join('\n')}
       style={{
         background: hasDeadline ? tone.bg : hasTask ? 'rgba(96,165,250,0.07)' : 'rgba(255,255,255,0.016)',

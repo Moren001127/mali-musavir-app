@@ -447,6 +447,14 @@ export class MorenAiService {
           metrics: ctx.metrics,
         };
       }
+      parsed.metrics = {
+        ...ctx.metrics,
+        day: ctx.day,
+        periodTone: ctx.day <= 12 ? 'early' : ctx.day <= 16 ? 'prepare' : 'firm',
+        bekliyorEvrak: ctx.workflow.bekliyorEvrak,
+        nextDeadline: ctx.deadlines[0] || null,
+        ...(parsed.metrics || {}),
+      };
 
       // Maliyet logu
       try {
@@ -635,10 +643,25 @@ export class MorenAiService {
   private buildBrifingPrompt(c: BrifingContext): string {
     const saat = c.saat;
     const moodHint = saat < 6 ? 'gece' : saat < 12 ? 'sabah' : saat < 18 ? 'gündüz' : 'akşam';
+    const donemTonu = c.day <= 12
+      ? 'erken dönem: evrakların yeni gelmesi normal; evrak bekleyenleri "takılı/gecikti" diye yargılama, nazik takip ve hazırlık öner.'
+      : c.day <= 16
+        ? 'hazırlık dönemi: takip dili netleşsin ama panik dili kullanma; son tarih yaklaşırken öncelik listesi öner.'
+        : 'kritik dönem: son tarih yaklaştı/geçtiyse net uyar; geciken işlerde açık ve doğrudan konuş.';
+    const allowedRoutes = ['/panel/is-yuku', '/panel/gorevler', '/panel/beyannameler', '/panel/kdv-kontrol', '/panel/ajanlar/mihsap', '/panel/mukellefler'].join(', ');
 
     return `Sen Muzaffer Bey'in mali müşavirlik ofisini analiz eden profesyonel bir AI asistanısın. Sayıları okur, anlam çıkarır, AKSİYON ÖNERİSİ sunarsın. Kısa, net, profesyonel Türkçe yazarsın. Gerektiğinde ofisi nazikçe eleştirirsin; aksayan iş varsa üstünü örtmezsin. Tonun canlıdır: küçük bir espri veya tatlı iğneleme kullanabilirsin ama kritik uyarılarda ciddiyeti bozmazsın.
 
 # OFİS DURUMU (${c.tarihUzun}, ${moodHint} saat ${saat})
+
+## Dil ve Takvim Mantığı
+- Bugün ayın ${c.day}'i; dönem tonu: ${donemTonu}
+- Brifing takvim bilgisini aşağıdaki "Bu Hafta Son Tarihler" bölümünden alır. Son tarih yoksa son tarih uyarısı üretme.
+- Ayın 1-12'sinde evrak bekleyen mükellefler için "takılı", "gecikti", "hemen talep et", "hızlandırılmalı" gibi sert ifadeler kullanma. "takip listesi hazırla", "nazik hatırlatma planı çıkar", "gelişi izleyelim" gibi öneri dili kullan.
+- Ayın 13-16'sında dil hazırlık/önceliklendirme dili olsun.
+- Ayın 17'si ve sonrası ya da son tarihe 3 gün kaldıysa net uyarı dili kullanabilirsin.
+- suggestions.href sadece şu rotalardan biri olabilir: ${allowedRoutes}
+- "yapı taşla" gibi anlamsız ifade kullanma; "planla", "önceliklendir", "listeyi aç" gibi açık fiil kullan.
 
 ## İş Akışı
 - Bu ay iş akışına alınmış ${c.workflow.total} aktif mükellef:
@@ -696,19 +719,22 @@ KURALLAR:
   /** API anahtarı yoksa veya AI hata verirse — sayılardan deterministic payload */
   private buildFallbackPayload(c: BrifingContext): BrifingPayload {
     const aktifIsYuku = c.workflow.isleniyor + c.workflow.kontrol + c.workflow.beyan;
+    const erkenDonem = c.day <= 12;
+    const hazirlikDonemi = c.day > 12 && c.day <= 16;
+    const netUyariDonemi = c.day >= 17;
     const alerts: Array<{ severity: 'high' | 'medium' | 'low'; text: string; href?: string }> = [];
     const suggestions: Array<{ text: string; href: string; icon?: string }> = [];
     let focus: 'calm' | 'busy' | 'critical' | 'review' = 'calm';
     let summary = '';
 
     // 5+ gün gecikmeler
-    if (c.eskiBeklemeler.length > 0) {
+    if (c.eskiBeklemeler.length > 0 && !erkenDonem) {
       alerts.push({
-        severity: 'high',
+        severity: netUyariDonemi ? 'high' : 'medium',
         text: `${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor; en eski kayıt ${c.eskiBeklemeler[0].gun} gün`,
         href: '/panel/is-yuku',
       });
-      focus = 'critical';
+      focus = netUyariDonemi ? 'critical' : 'review';
     }
     // Bugün/yarın deadline
     const yakin = c.deadlines.find((d) => d.gunFark <= 1);
@@ -730,6 +756,9 @@ KURALLAR:
     }
 
     // Aksiyon önerileri
+    if (c.workflow.bekliyorEvrak > 0 && erkenDonem) suggestions.push({ text: 'Evrak takip listesini hazırla', href: '/panel/is-yuku', icon: 'FileText' });
+    if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) suggestions.push({ text: `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, href: '/panel/is-yuku', icon: 'FileText' });
+    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ text: `${c.workflow.bekliyorEvrak} evrak bekleyen mükellefi netleştir`, href: '/panel/is-yuku', icon: 'FileText' });
     if (c.workflow.isleniyor > 0) suggestions.push({ text: `${c.workflow.isleniyor} fatura işle`, href: '/panel/ajanlar/mihsap', icon: 'Receipt' });
     if (c.workflow.kontrol > 0) suggestions.push({ text: `${c.workflow.kontrol} KDV kontrolü`, href: '/panel/kdv-kontrol', icon: 'FileCheck' });
     if (c.workflow.beyan > 0) suggestions.push({ text: `${c.workflow.beyan} beyanname hazırla`, href: '/panel/beyannameler', icon: 'FileText' });
@@ -740,7 +769,9 @@ KURALLAR:
       if (c.workflow.total === 0) {
         summary = `Muzaffer Bey, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`;
       } else {
-        summary = `Muzaffer Bey, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
+        summary = erkenDonem
+          ? `Muzaffer Bey, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
+          : `Muzaffer Bey, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
       }
     } else {
       const parcalar: string[] = [];
@@ -756,32 +787,68 @@ KURALLAR:
     return {
       summary,
       alerts,
-      suggestions: suggestions.slice(0, 3),
+      suggestions: suggestions.slice(0, 3).map((s) => ({ ...s, href: this.normalizeBrifingHref(s.href), text: this.cleanBrifingActionText(s.text) })),
       focus,
-      metrics: c.metrics,
+      metrics: {
+        ...c.metrics,
+        day: c.day,
+        periodTone: erkenDonem ? 'early' : hazirlikDonemi ? 'prepare' : 'firm',
+        bekliyorEvrak: c.workflow.bekliyorEvrak,
+        nextDeadline: c.deadlines[0] || null,
+      },
     };
   }
 
   /** AI'dan gelen JSON'u doğrula, eksik alanları tamamla */
   private validatePayload(obj: any): BrifingPayload {
-    const summary = String(obj?.summary || '').slice(0, 180);
+    const summary = this.cleanBrifingActionText(String(obj?.summary || '')).slice(0, 180);
     const alerts = Array.isArray(obj?.alerts)
       ? obj.alerts.slice(0, 3).map((a: any) => ({
           severity: ['high', 'medium', 'low'].includes(a?.severity) ? a.severity : 'low',
-          text: String(a?.text || '').slice(0, 200),
-          href: a?.href ? String(a.href).slice(0, 200) : undefined,
+          text: this.cleanBrifingActionText(String(a?.text || '')).slice(0, 200),
+          href: a?.href ? this.normalizeBrifingHref(String(a.href)) : undefined,
         })).filter((a: any) => a.text)
       : [];
     const suggestions = Array.isArray(obj?.suggestions)
       ? obj.suggestions.slice(0, 3).map((s: any) => ({
-          text: String(s?.text || '').slice(0, 100),
-          href: String(s?.href || '/panel').slice(0, 200),
+          text: this.cleanBrifingActionText(String(s?.text || '')).slice(0, 100),
+          href: this.normalizeBrifingHref(String(s?.href || '/panel')),
           icon: s?.icon ? String(s.icon).slice(0, 30) : undefined,
         })).filter((s: any) => s.text)
       : [];
     const focus = ['calm', 'busy', 'critical', 'review'].includes(obj?.focus) ? obj.focus : 'busy';
     const metrics = (obj?.metrics && typeof obj.metrics === 'object') ? obj.metrics : {};
     return { summary, alerts, suggestions, focus, metrics };
+  }
+
+  private normalizeBrifingHref(href: string): string {
+    const value = String(href || '').trim();
+    const routes = [
+      '/panel/ajanlar/mihsap',
+      '/panel/is-yuku',
+      '/panel/gorevler',
+      '/panel/beyannameler',
+      '/panel/kdv-kontrol',
+      '/panel/mukellefler',
+      '/panel/ajanlar',
+    ];
+    for (const route of routes) {
+      if (value === route || value.startsWith(`${route}/`)) return route;
+    }
+    return '/panel';
+  }
+
+  private cleanBrifingActionText(text: string): string {
+    return String(text || '')
+      .replace(/\byapı\s*taşla\b/gi, 'planla')
+      .replace(/\byapi\s*tasla\b/gi, 'planla')
+      .replace(/\btakılı\b/gi, 'beklemede')
+      .replace(/\btakildi\b/gi, 'beklemede')
+      .replace(/\bhızlandırılmalı\b/gi, 'takip edilmeli')
+      .replace(/\bhizlandirilmali\b/gi, 'takip edilmeli')
+      .replace(/\bhemen talep et\b/gi, 'talep planı çıkar')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
 }

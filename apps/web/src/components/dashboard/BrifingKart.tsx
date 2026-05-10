@@ -103,19 +103,62 @@ const FOCUS_TONES: Record<string, { label: string; color: string; bg: string; gl
 };
 
 const MOTIVATION_BY_FOCUS: Record<string, string> = {
-  calm: 'Masa sakin; küçük işleri tek tek kapatıp günü temiz tutalım.',
-  busy: 'Ritmi bozmayalım; sıradaki işi kapat, sonra nefes.',
-  critical: 'Önce kırmızı ışıkları söndürelim; kahve sonra daha güzel olur.',
-  review: 'İnce ayar günü; küçük kontrol büyük hatayı yakalar.',
+  calm: 'Bugün küçük işleri sakince kapatmak için güzel bir aralık var.',
+  busy: 'Sırayı sakin tutalım; birkaç net hamle günü toparlar.',
+  critical: 'Önce kritik işi söndürelim; sonra kahve daha güzel olur.',
+  review: 'Kısa kontrol, yarının yükünü bugünden hafifletir.',
 };
 
 const COMPANY_WORD_RE = /\b(LİMİTED|ANONİM|ŞİRKETİ|TİCARET|SANAYİ|PAZARLAMA|GIDA|İNŞAAT|TURİZM|A\.Ş|LTD|LTD\.ŞTİ)\b/i;
+const TODAY_DAY = new Date().getDate();
+const EARLY_MONTH = TODAY_DAY <= 12;
+const SAFE_PANEL_ROUTES = [
+  '/panel/ajanlar/mihsap',
+  '/panel/is-yuku',
+  '/panel/gorevler',
+  '/panel/beyannameler',
+  '/panel/kdv-kontrol',
+  '/panel/mukellefler',
+  '/panel/ajanlar',
+];
+
+function normalizeDashboardHref(href?: string): string {
+  const value = String(href || '').trim();
+  for (const route of SAFE_PANEL_ROUTES) {
+    if (value === route || value.startsWith(`${route}/`)) return route;
+  }
+  return '/panel';
+}
+
+function softenCalendarTone(text: string): string {
+  let value = String(text || '')
+    .replace(/\byapı\s*taşla\b/gi, 'planla')
+    .replace(/\byapi\s*tasla\b/gi, 'planla')
+    .replace(/\btakılı\b/gi, 'beklemede')
+    .replace(/\btakildi\b/gi, 'beklemede')
+    .replace(/\bhızlandırılmalı\b/gi, 'takip edilmeli')
+    .replace(/\bhizlandirilmali\b/gi, 'takip edilmeli')
+    .replace(/\bzaman daralıyor\b/gi, 'takvim yaklaşıyor')
+    .replace(/\bzaman daraliyor\b/gi, 'takvim yaklaşıyor')
+    .replace(/\bhemen talep et\b/gi, 'talep planı çıkar');
+
+  if (EARLY_MONTH && /evrak/i.test(value)) {
+    value = value
+      .replace(/evrak toplama süreci takip edilmeli/gi, 'evrak gelişini izleyip takip listesi hazırlanmalı')
+      .replace(/evrak toplama sureci takip edilmeli/gi, 'evrak gelişini izleyip takip listesi hazırlanmalı')
+      .replace(/evrak aşamasında beklemede/gi, 'evrak bekleme aşamasında')
+      .replace(/evrak asamasinda beklemede/gi, 'evrak bekleme aşamasında');
+  }
+  return value.replace(/\s+/g, ' ').trim();
+}
 
 function fallbackSummary(focus: string): string {
   if (focus === 'critical') return 'Dikkat isteyen konu var; önce kırmızı işleri kapatıp akışı rahatlatmak gerekiyor.';
   if (focus === 'review') return 'Bugün kontrol günü; kısa bir tarama yarınki yükü hafifletir.';
   if (focus === 'calm') return 'Akış sakin görünüyor; küçük işleri kapatmak için iyi bir pencere var.';
-  return 'İş akışı dolu ama yönetilebilir; sırayı bozmazsak tablo toparlanır.';
+  return EARLY_MONTH
+    ? 'Ayın ilk akışındayız; evrak gelişini izleyip takip listesini sakin biçimde hazırlayalım.'
+    : 'İş akışı dolu ama yönetilebilir; sırayı bozmazsak tablo toparlanır.';
 }
 
 function cleanBriefSummary(summary: string | undefined, focus: string): string {
@@ -126,6 +169,7 @@ function cleanBriefSummary(summary: string | undefined, focus: string): string {
   if (!picked) picked = fallbackSummary(focus);
   picked = picked.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
   if (COMPANY_WORD_RE.test(picked)) picked = fallbackSummary(focus);
+  picked = softenCalendarTone(picked);
   return picked.length > 170 ? `${picked.slice(0, 167).trimEnd()}...` : picked;
 }
 
@@ -133,7 +177,13 @@ function cleanBriefAlert(text: string): string {
   let value = String(text || '').replace(/\s+/g, ' ').trim();
   value = value.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
   if (COMPANY_WORD_RE.test(value)) value = value.replace(/:.+?(?=\s|$)/, ': ilgili kayıt');
+  value = softenCalendarTone(value);
   return value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+}
+
+function cleanSuggestionText(text: string): string {
+  const value = softenCalendarTone(text);
+  return value.length > 92 ? `${value.slice(0, 89).trimEnd()}...` : value;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -215,7 +265,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {data?.summary && (
-        <div className="px-5 pb-1 flex justify-start xl:justify-end">
+        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[58px] xl:p-0">
           <div
             className="inline-flex w-full xl:w-auto xl:max-w-[520px] items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold"
             style={{
@@ -232,7 +282,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {/* Selamlama başlığı */}
-      <div className="px-5 pt-1 pb-2 max-w-[920px]">
+      <div className="px-5 pt-2 pb-2 max-w-[920px]">
         <h2
           style={{
             fontFamily: 'Fraunces, serif',
@@ -280,11 +330,13 @@ export function BrifingKart({ userName }: { userName?: string }) {
       {data?.alerts && data.alerts.length > 0 && (
         <div className="px-5 pb-3 space-y-1.5 max-w-[1240px]">
           {data.alerts.slice(0, 2).map((a, i) => {
-            const cfg = a.severity === 'high'
+            const effectiveSeverity = EARLY_MONTH && /evrak/i.test(a.text) ? 'low' : a.severity;
+            const cfg = effectiveSeverity === 'high'
               ? { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.32)' }
-              : a.severity === 'medium'
+              : effectiveSeverity === 'medium'
                 ? { color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.32)' }
-                : { color: '#94a3b8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.28)' };
+                : { color: '#f5a6b8', bg: 'rgba(245,166,184,0.10)', border: 'rgba(245,166,184,0.28)' };
+            const href = a.href ? normalizeDashboardHref(a.href) : undefined;
             const Inner = (
               <div
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition group"
@@ -297,13 +349,13 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 <span className="text-[13px] flex-1" style={{ color: '#fafaf9' }}>
                   {cleanBriefAlert(a.text)}
                 </span>
-                {a.href && (
+                {href && (
                   <ArrowRight size={13} className="opacity-50 group-hover:opacity-100 transition" style={{ color: cfg.color }} />
                 )}
               </div>
             );
-            return a.href ? (
-              <Link key={i} href={a.href} className="block">
+            return href ? (
+              <Link key={i} href={href} className="block">
                 {Inner}
               </Link>
             ) : (
@@ -318,11 +370,12 @@ export function BrifingKart({ userName }: { userName?: string }) {
         <div className="px-5 pb-5 pt-1 grid grid-cols-1 xl:grid-cols-3 gap-2">
           {data.suggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
+            const href = normalizeDashboardHref(s.href);
             return (
               <Link
                 key={i}
-                href={s.href}
-                 className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.015]"
+                href={href}
+                className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.015]"
                 style={{
                   background: focusTone.actionBg,
                   color: focusTone.text,
@@ -330,7 +383,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
                 }}
               >
                 <Icon size={12} />
-                {s.text}
+                {cleanSuggestionText(s.text)}
                 <ArrowRight size={11} className="opacity-60" />
               </Link>
             );

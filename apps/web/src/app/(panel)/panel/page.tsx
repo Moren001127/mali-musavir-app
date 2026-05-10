@@ -1162,25 +1162,7 @@ export default function DashboardPage() {
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
-      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.12fr)_minmax(360px,0.88fr)] gap-3.5 items-start">
-        <BuHaftaTakvim />
-
-        <div
-          className="rounded-2xl p-3.5"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.024), rgba(255,255,255,0.012))',
-            border: '1px solid rgba(255,255,255,0.055)',
-          }}
-        >
-        <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />Ajan Durumu</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-1 gap-2">
-          <AgentMini href="/panel/ajanlar/mihsap" icon={Receipt} name="Mihsap Fatura" stat={mEv.length ? `${mEv.length} olay${mRate != null ? ` · %${mRate}` : ''}` : 'Henüz olay yok'} running={running('MIHSAP')} />
-          <AgentMini href="/panel/ajanlar/luca" icon={FileInput} name="Luca E-Arşiv" stat={(stFor('LUCA') as any)?.meta?.summary || (running('LUCA') ? 'Çalışıyor' : 'Beklemede')} running={running('LUCA')} />
-          <AgentMini href="/panel/ajanlar/tebligat" icon={Mailbox} name="Tebligat Özet" stat={running('TEBLIGAT') ? 'Çalışıyor' : 'Beklemede'} running={running('TEBLIGAT')} />
-          <AgentMini href="/panel/ajanlar/kdv-hazirlik" icon={Calculator} name="KDV Ön-Hazırlık" stat={(stFor('KDV') as any)?.meta?.summary || (running('KDV') ? 'Çalışıyor' : 'Beklemede')} running={running('KDV')} />
-        </div>
-        </div>
-      </div>
+      <BuHaftaTakvim />
 
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
