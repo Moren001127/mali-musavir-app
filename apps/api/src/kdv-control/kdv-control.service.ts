@@ -1440,10 +1440,10 @@ export class KdvControlService {
       return Number.isFinite(n) ? n : 0;
     };
 
-    // Fan-out durumunda detay satırı gerçek OCR KDV'sini gösterir; özet toplamlar
-    // aynı imageId'yi tek kez sayarak çift sayımı önler.
-    /** Bir result satırında kullanıcıya gösterilecek gerçek OCR/onaylı fatura KDV'si */
-    const getFaturaKdvValue = (r: any): number => {
+    // Özet toplamlar aynı imageId'yi tek kez sayarak çift sayımı önler.
+    // Detay satırında fan-out varsa her Luca satırının karşısında kendi payı gösterilir.
+    /** Bir result satırında kullanıcıya gösterilecek fatura KDV'si */
+    const getFaturaKdvValue = (r: any, forDetailRow = false): number => {
       if (!r.image || !r.imageId) return 0;
       const ocrTotal = parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
       if (ocrTotal <= 0) return 0;
@@ -1451,6 +1451,10 @@ export class KdvControlService {
       if (luca <= 0) return ocrTotal;
 
       const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
+      const fanOutCount = results.filter((x: any) => x.imageId === r.imageId && x.kdvRecordId).length;
+      if (forDetailRow && !isSatis && fanOutCount > 1) {
+        return luca;
+      }
       const reasonText = Array.isArray(r.mismatchReasons) ? r.mismatchReasons.join(' ') : '';
       if (!isSatis && /Alış tevkifat bileşen eşleşmesi|Alis tevkifat bilesen/i.test(reasonText)) {
         return luca;
@@ -1655,9 +1659,8 @@ export class KdvControlService {
 
       const faturaTarih = r.image?.confirmedDate || r.image?.ocrDate || '—';
       const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
-      // Kullanıcıya gerçek OCR/onaylı KDV değerini göster. Özet toplamları
-      // aynı görseli tek saydığı için burada sentetik paylaştırma yapmıyoruz.
-      const faturaKdvNum = getFaturaKdvValue(r);
+      // Fan-out detayında aynı görsel toplamını her satıra yazma; satır payını göster.
+      const faturaKdvNum = getFaturaKdvValue(r, true);
       const faturaKdv = faturaKdvNum > 0 ? faturaKdvNum : null;
 
       let durum = '';
