@@ -399,7 +399,7 @@ export class ReconciliationEngine {
 
       const isEFaturaPair = isEFaturaFormat(normA) || isEFaturaFormat(normB);
 
-      if (normA === normB || strippedA === strippedB) {
+      if (this.sameBelgeNo(record.belgeNo, imgBelgeNo)) {
         // Tam aynı veya leading-zero eşiti → exact
         score += belgeNoWeight;
         belgeNoExact = true;
@@ -1004,7 +1004,17 @@ export class ReconciliationEngine {
     const normA = this.normalizeBelgeNo(a);
     const normB = this.normalizeBelgeNo(b);
     if (!normA || !normB) return false;
-    return normA === normB || this.stripLeadingZeros(normA) === this.stripLeadingZeros(normB);
+    return (
+      normA === normB ||
+      this.stripLeadingZeros(normA) === this.stripLeadingZeros(normB) ||
+      this.eInvoiceComparableKey(normA) === this.eInvoiceComparableKey(normB)
+    );
+  }
+
+  private eInvoiceComparableKey(normalizedBelgeNo: string): string {
+    const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/);
+    if (!m) return normalizedBelgeNo;
+    return `${m[1]}${m[2]}${m[3].replace(/^0+/, '') || '0'}`;
   }
 
   private hasStrongTwoOfThree(record: KdvRecord, image: ReceiptImage, mihsapBelgeTarihi: Date | null): boolean {

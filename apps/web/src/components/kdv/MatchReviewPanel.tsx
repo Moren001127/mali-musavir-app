@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Maximize2, FileText } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
@@ -155,6 +156,36 @@ function MatchRow({
   const reasons: string[] = r.mismatchReasons ?? [];
   const statusLabel = r.status === 'PARTIAL_MATCH' ? 'Kısmi Eşleşme' : 'İnceleme Gerekli';
   const scorePct = typeof r.matchScore === 'number' ? `%${Math.round(r.matchScore * 100)}` : '';
+  const openLightbox = (e?: React.MouseEvent | React.PointerEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setLightboxOpen(true);
+  };
+  const lightbox = lightboxOpen && imageUrl && typeof document !== 'undefined'
+    ? createPortal(
+        <div
+          className="fixed inset-0 flex items-center justify-center p-6"
+          style={{ background: 'rgba(0,0,0,0.9)', zIndex: 99999 }}
+          onClick={() => setLightboxOpen(false)}
+        >
+          <img
+            src={imageUrl}
+            alt={faturaDosya}
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full"
+            style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
+          >
+            <XCircle size={20} />
+          </button>
+        </div>,
+        document.body,
+      )
+    : null;
 
   return (
     <div>
@@ -202,7 +233,8 @@ function MatchRow({
               {imageUrl && !isXmlFile && (
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={openLightbox}
                   className="text-[10px] font-semibold flex items-center gap-1 px-2 py-0.5 rounded"
                   style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.25)' }}
                 >
@@ -223,7 +255,7 @@ function MatchRow({
               <div
                 className="mb-3 rounded overflow-hidden cursor-zoom-in"
                 style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', maxHeight: 200 }}
-                onClick={(e) => { e.stopPropagation(); setLightboxOpen(true); }}
+                onClick={openLightbox}
               >
                 <img
                   src={imageUrl}
@@ -267,28 +299,7 @@ function MatchRow({
           </div>
 
           {/* Lightbox — tam ekran görsel */}
-          {lightboxOpen && imageUrl && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center p-6"
-              style={{ background: 'rgba(0,0,0,0.9)' }}
-              onClick={() => setLightboxOpen(false)}
-            >
-              <img
-                src={imageUrl}
-                alt={faturaDosya}
-                className="max-w-full max-h-full object-contain"
-                onClick={(e) => e.stopPropagation()}
-              />
-              <button
-                type="button"
-                onClick={() => setLightboxOpen(false)}
-                className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full"
-                style={{ background: 'rgba(0,0,0,0.7)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
-              >
-                <XCircle size={20} />
-              </button>
-            </div>
-          )}
+          {lightbox}
 
           {/* Aksiyonlar */}
           <div className="md:col-span-2 flex items-center gap-2 mt-1">

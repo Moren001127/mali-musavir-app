@@ -1440,7 +1440,7 @@ export class OcrService {
   private isMatrahOrRateLine(value: string): boolean {
     const folded = this.foldTurkishAscii(value || '');
     const withoutMatrahParen = folded.replace(/\([^)]*MATRAH[^)]*\)/g, ' ');
-    return /\bKDV\s+(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*MATRAH\b/.test(withoutMatrahParen);
+    return /\bKDV\s*(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*(?:MATRAH|ORAN)\b/.test(withoutMatrahParen);
   }
 
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
@@ -1767,6 +1767,9 @@ export class OcrService {
       if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
       const m = line.match(amountRe);
       if (!m) return null;
+      if (!opts.allowMatrah && this.isLikelyStandaloneTaxRate(m[1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
+        return null;
+      }
       const n = this.parseAmount(m[1]);
       return n > 0 && n < 100_000_000 ? n : null;
     };
@@ -1774,6 +1777,9 @@ export class OcrService {
       if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
       const matches = [...line.matchAll(amountGlobalRe)];
       if (matches.length === 0) return null;
+      if (!opts.allowMatrah && matches.length === 1 && this.isLikelyStandaloneTaxRate(matches[0][1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
+        return null;
+      }
       const n = this.parseAmount(matches[matches.length - 1][1]);
       return n > 0 && n < 100_000_000 ? n : null;
     };

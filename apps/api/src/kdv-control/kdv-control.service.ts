@@ -1424,6 +1424,14 @@ export class KdvControlService {
           : s.replace(/,/g, '');
       } else if (hasComma) {
         cleaned = s.replace(',', '.');
+      } else if (hasDot) {
+        const parts = s.split('.');
+        const last = parts[parts.length - 1] || '';
+        const looksLikeThousands =
+          parts.length > 1 &&
+          last.length === 3 &&
+          parts.every((part, idx) => idx === 0 ? /^\d{1,3}$/.test(part) : /^\d{3}$/.test(part));
+        cleaned = looksLikeThousands ? s.replace(/\./g, '') : s;
       } else {
         cleaned = s;
       }
@@ -1443,6 +1451,10 @@ export class KdvControlService {
       if (luca <= 0) return ocrTotal;
 
       const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
+      const reasonText = Array.isArray(r.mismatchReasons) ? r.mismatchReasons.join(' ') : '';
+      if (!isSatis && /Alış tevkifat bileşen eşleşmesi|Alis tevkifat bilesen/i.test(reasonText)) {
+        return luca;
+      }
       const tevkifat = parseKdv(r.image.confirmedKdvTevkifat || r.image.ocrKdvTevkifat);
       const candidates = [
         ocrTotal,
