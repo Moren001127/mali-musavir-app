@@ -12,6 +12,7 @@ import { StorageService } from '../storage/storage.service';
 import { ExcelParserService } from './excel-parser.service';
 import { OcrService } from './ocr.service';
 import { ReconciliationEngine } from './reconciliation.engine';
+import { isAggregateLucaRecord } from './luca-row-filter';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
@@ -629,10 +630,12 @@ export class KdvControlService {
       orderBy: { rowIndex: 'asc' },
     });
     // Backward-compat: UI "result" tekil bekliyordu, results[0] map et
-    return records.map((r) => ({
-      ...r,
-      result: r.results[0] ?? null,
-    }));
+    return records
+      .filter((r) => !isAggregateLucaRecord(r))
+      .map((r) => ({
+        ...r,
+        result: r.results[0] ?? null,
+      }));
   }
 
   /**
@@ -1342,7 +1345,7 @@ export class KdvControlService {
   /** Eşleştirme sonuçları */
   async getResults(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
-    return this.prisma.reconciliationResult.findMany({
+    const results = await this.prisma.reconciliationResult.findMany({
       where: { sessionId },
       include: {
         kdvRecord: true,
@@ -1350,6 +1353,7 @@ export class KdvControlService {
       },
       orderBy: [{ status: 'asc' }, { matchScore: 'desc' }],
     });
+    return results.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
   }
 
   /**
@@ -1364,7 +1368,7 @@ export class KdvControlService {
   ): Promise<Buffer> {
     const session = await this.findSession(sessionId, tenantId);
     
-    const results = await this.prisma.reconciliationResult.findMany({
+    const rawResults = await this.prisma.reconciliationResult.findMany({
       where: { sessionId },
       include: { kdvRecord: true, image: true },
       orderBy: [
@@ -1374,6 +1378,7 @@ export class KdvControlService {
         { matchScore: 'desc' },
       ],
     });
+    const results = rawResults.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
 
     // ExcelJS + path + fs üstte static import ediliyor — webpack bundling
     // sorunlarını önlemek için dynamic import yerine static kullan.
@@ -1734,7 +1739,7 @@ export class KdvControlService {
             matchedCount,
             partialCount,
             unmatchedCount,
-            totalRecords: await this.prisma.kdvRecord.count({ where: { sessionId } }),
+            totalRecords: results.filter((r: any) => r.kdvRecord && !isAggregateLucaRecord(r.kdvRecord)).length,
             totalImages: await this.prisma.receiptImage.count({ where: { sessionId } }),
             filename,
             fileBytes: buffer,
@@ -1819,22 +1824,23 @@ export class KdvControlService {
   async getSessionStats(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
 
-    const [totalRecords, totalImages, results, images] = await Promise.all([
-      this.prisma.kdvRecord.count({ where: { sessionId } }),
+    const [records, totalImages, results, images] = await Promise.all([
+      this.prisma.kdvRecord.findMany({ where: { sessionId } }),
       this.prisma.receiptImage.count({ where: { sessionId } }),
-      this.prisma.reconciliationResult.groupBy({
-        by: ['status'],
+      this.prisma.reconciliationResult.findMany({
         where: { sessionId },
-        _count: { status: true },
+        include: { kdvRecord: true },
       }),
       this.prisma.receiptImage.findMany({
         where: { sessionId },
         select: { ocrEngine: true, ocrStatus: true, imageHash: true, originalName: true },
       }),
     ]);
+    const totalRecords = records.filter((r) => !isAggregateLucaRecord(r)).length;
+    const visibleResults = results.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
 
     const statusMap: Record<string, number> = {};
-    results.forEach((r) => (statusMap[r.status] = r._count.status));
+    visibleResults.forEach((r) => (statusMap[r.status] = (statusMap[r.status] ?? 0) + 1));
 
     const needsConfirm = await this.prisma.receiptImage.count({
       where: {

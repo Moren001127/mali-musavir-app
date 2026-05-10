@@ -1287,6 +1287,15 @@ export class OcrService {
       .toLocaleUpperCase('tr-TR'); // Türkçe-farkındalıklı büyük harf
   }
 
+  private stripMatrahFragments(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/\([^)]*MATRAH[^)]*\)/gi, ' ')
+      .replace(/\bMATRAH\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|₺)?/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   /**
    * Tevkifatlı faturalardan TAM KDV ve TEVKİFAT tutarlarını Azure metninden
    * doğrudan yakalar. Claude bazen "Mal Hizmet Toplam" değerini "KDV dahil
@@ -1494,7 +1503,7 @@ export class OcrService {
       // 1) Aynı satırda "Katma Değer Vergisi ... 252,00" olabilir
       const afterLabel = line.replace(kdvLabelRe, '');
       // Matrah parantezini atla (Matrah içindeki tutar KDV değil)
-      const noMatrah = afterLabel.replace(/\(\s*Matrah[^)]*\)/i, '');
+      const noMatrah = this.stripMatrahFragments(afterLabel);
       const inlineAmount = noMatrah.match(amountRe);
       if (inlineAmount) {
         const val = this.parseAmount(inlineAmount[1]);
@@ -1507,7 +1516,8 @@ export class OcrService {
         if (kdvLabelRe.test(nextLine)) break; // başka KDV satırı
         if (otherTaxRe.test(nextLine)) break; // başka vergi türü → dur
         // Matrah parantezini skip et
-        const cleaned = nextLine.replace(/\(\s*Matrah[^)]*\)/i, '').trim();
+        if (/\bMATRAH\b/i.test(nextLine)) continue;
+        const cleaned = this.stripMatrahFragments(nextLine);
         if (!cleaned) continue;
         // "%20", "(Matrah...)" gibi pure marker satırı atla
         if (/^[%]\s*\d/.test(cleaned)) continue;
@@ -1548,21 +1558,24 @@ export class OcrService {
         if (/TEVK[İI]FAT/i.test(line)) continue;
         const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
         if (!label) continue;
-        const valuePart = line.slice((label.index ?? 0) + label[0].length);
+        const valuePart = this.stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
         const sameLine = parseLastAmount(valuePart);
         if (sameLine != null) return sameLine;
       }
       return null;
     };
-    const findAmountNear = (labelRe: RegExp): number | null => {
+    const findAmountNear = (labelRe: RegExp, options: { skipMatrah?: boolean; preferFirst?: boolean } = {}): number | null => {
       for (let i = 0; i < lines.length; i++) {
         if (!labelRe.test(lines[i])) continue;
-        const same = parseLastAmount(lines[i].replace(labelRe, ''));
+        const sameSource = lines[i].replace(labelRe, '');
+        const cleanedSame = options.skipMatrah ? this.stripMatrahFragments(sameSource) : sameSource;
+        const same = options.preferFirst ? parseLineAmount(cleanedSame) : parseLastAmount(cleanedSame);
         if (same != null) return same;
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
           const next = lines[i + j];
           if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
-          const val = parseLineAmount(next);
+          if (options.skipMatrah && /\bMATRAH\b/i.test(next)) continue;
+          const val = parseLineAmount(options.skipMatrah ? this.stripMatrahFragments(next) : next);
           if (val != null) return val;
         }
       }
@@ -1571,9 +1584,10 @@ export class OcrService {
 
     const explicitKdv = findExplicitKdvAmount() ?? findAmountNear(
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)|UYGULANAN\s+TUTAR/i,
+      { skipMatrah: true },
     );
     const matrah =
-      findAmountNear(/MAL\s*H[İI]ZMET\s*TOPLAM|MAL\s*H[İI]ZMET\s*TUTARI|KDV\s*MATRAH|MATRAH/i);
+      findAmountNear(/MAL\s*H[İI]ZMET\s*TOPLAM|MAL\s*H[İI]ZMET\s*TUTARI|KDV\s*MATRAH|MATRAH/i, { preferFirst: true });
     const kdvDahil =
       findAmountNear(/KDV\s*DAH[İI]L\s*TOPLAM|VERG[İI]LER\s*DAH[İI]L\s*TOPLAM/i);
     const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);

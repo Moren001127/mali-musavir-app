@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as XLSX from 'xlsx';
+import { isAggregateLucaRecord } from './luca-row-filter';
 
 export interface ParsedKdvRow {
   rowIndex: number;
@@ -148,7 +149,7 @@ export class ExcelParserService {
       const hesapKodu = String(find(['hesap kodu']) ?? '');
       const extractedOran = kdvOrani ?? this.extractKdvOraniFromHesapKodu(hesapKodu);
 
-      results.push({
+      const parsedRow: ParsedKdvRow = {
         rowIndex: i + 2,
         belgeNo: belgeNo ? String(belgeNo).trim() : null,
         belgeDate,
@@ -158,7 +159,15 @@ export class ExcelParserService {
         kdvOrani: extractedOran,
         aciklama: karsiTaraf ? String(karsiTaraf).trim() : null,
         rawData: this.sanitizeRawData(row),
-      });
+      };
+      if (isAggregateLucaRecord(parsedRow)) {
+        const reason = 'luca toplam/nakli yekun';
+        skipDetail.push({ row: i + 2, reason, aciklama: aciklamaText.slice(0, 60) || rowText.slice(0, 60) });
+        skipCounts[reason] = (skipCounts[reason] || 0) + 1;
+        continue;
+      }
+
+      results.push(parsedRow);
     }
 
     // v1.36.67: Yüklenen + atlanan + sebepleri özet log

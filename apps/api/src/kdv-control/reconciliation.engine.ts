@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvRecord, ReceiptImage } from '@prisma/client';
+import { isAggregateLucaRecord } from './luca-row-filter';
 
 export interface MatchCandidate {
   kdvRecord: KdvRecord;
@@ -85,10 +86,15 @@ export class ReconciliationEngine {
     // KDV_391 = Bilanço Satış, ISLETME_GELIR = İşletme Satış → SATIŞ
     const isAlis = session?.type === 'KDV_191' || session?.type === 'ISLETME_GIDER';
 
-    const [rawRecords, images] = await Promise.all([
+    const [allRawRecords, images] = await Promise.all([
       this.prisma.kdvRecord.findMany({ where: { sessionId } }),
       this.prisma.receiptImage.findMany({ where: { sessionId } }),
     ]);
+    const rawRecords = allRawRecords.filter((record) => !isAggregateLucaRecord(record));
+    const skippedAggregateRecords = allRawRecords.length - rawRecords.length;
+    if (skippedAggregateRecords > 0) {
+      this.logger.log(`Luca toplam/nakli yekun satirlari reconciliation disinda birakildi: ${skippedAggregateRecords}`);
+    }
 
     // ═══════════════════════════════════════════════════════
     // ÇOK ORANLI KDV AGGREGATE — Luca'dan gelen kontrol verisinde
