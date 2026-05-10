@@ -109,8 +109,10 @@ export default function CariKasaPage() {
     ? (selectedTaxpayer.companyName || `${selectedTaxpayer.firstName || ''} ${selectedTaxpayer.lastName || ''}`.trim())
     : 'Mükellef';
 
+  const bekleyenTahsilat = Math.max(Number(bakiye?.bakiye || 0), 0);
+
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4 max-w-none">
       <div className="flex items-center justify-between">
         <div className="flex items-start gap-3">
           <button
@@ -152,6 +154,33 @@ export default function CariKasaPage() {
             <SummaryCard label="Toplam Tahsilat" value={bakiye?.tahsilat ?? 0} color="#4ade80" icon={TrendingDown} />
             <SummaryCard label="Bakiye" value={bakiye?.bakiye ?? 0} color={BORDO} highlight big icon={Wallet} />
             <SummaryCard label="Son Güncelleme" text={new Date().toLocaleString('tr-TR')} icon={Calendar} />
+          </div>
+
+          <div
+            className="rounded-2xl px-4 py-3 flex flex-wrap items-center gap-3"
+            style={{
+              background: bekleyenTahsilat > 0 ? 'rgba(156,70,86,0.075)' : 'rgba(34,197,94,0.06)',
+              border: `1px solid ${bekleyenTahsilat > 0 ? 'rgba(156,70,86,0.26)' : 'rgba(34,197,94,0.20)'}`,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Receipt size={15} style={{ color: bekleyenTahsilat > 0 ? BORDO : '#4ade80' }} />
+              <span className="text-[12px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                Tahsilat Ajandası
+              </span>
+            </div>
+            <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
+              {bekleyenTahsilat > 0 ? `Bekleyen tahsilat: ₺${fmt(bekleyenTahsilat)}` : 'Bu mükellefte açık tahsilat bakiyesi yok.'}
+            </div>
+            {bekleyenTahsilat > 0 && (
+              <button
+                onClick={() => setTahsilatModal(true)}
+                className="ml-auto px-3 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5"
+                style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.32)' }}
+              >
+                <Plus size={12} /> Tahsilat Gir
+              </button>
+            )}
           </div>
 
           {/* Tab'lar */}

@@ -167,11 +167,11 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   return (
     <div
-      className="rounded-3xl overflow-hidden relative"
+      className="rounded-[28px] overflow-hidden relative"
       style={{
-        background: 'radial-gradient(circle at 12% 0%, rgba(212,184,118,0.10), transparent 58%), linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))',
+        background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(35,30,24,0.84), rgba(14,13,10,0.96))`,
         border: '1px solid rgba(212,184,118,0.22)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
       {/* Üst etiket bandı */}
@@ -215,10 +215,15 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {data?.summary && (
-        <div className="px-5 pb-3">
+        <div className="px-5 pb-1 flex justify-start xl:justify-end">
           <div
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-[12.5px] font-medium"
-            style={{ background: focusTone.bg, color: focusTone.text, border: `1px solid ${focusTone.actionBorder}` }}
+            className="inline-flex w-full xl:w-auto xl:max-w-[520px] items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold"
+            style={{
+              background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.025))`,
+              color: focusTone.text,
+              border: `1px solid ${focusTone.actionBorder}`,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+            }}
           >
             <Sparkles size={12} />
             {motivation}
@@ -227,7 +232,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {/* Selamlama başlığı */}
-      <div className="px-5 pt-1 pb-2">
+      <div className="px-5 pt-1 pb-2 max-w-[920px]">
         <h2
           style={{
             fontFamily: 'Fraunces, serif',
@@ -247,7 +252,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Ana özet metni */}
-      <div className="px-5 pb-2">
+      <div className="px-5 pb-2 max-w-[1120px]">
         {isLoading ? (
           <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
             <Loader2 size={14} className="animate-spin" />
@@ -273,7 +278,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Uyarılar (alerts) */}
       {data?.alerts && data.alerts.length > 0 && (
-        <div className="px-5 pb-3 space-y-1.5">
+        <div className="px-5 pb-3 space-y-1.5 max-w-[1240px]">
           {data.alerts.slice(0, 2).map((a, i) => {
             const cfg = a.severity === 'high'
               ? { color: '#ef4444', bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.32)' }
@@ -310,14 +315,14 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Aksiyon önerileri (suggestions) */}
       {data?.suggestions && data.suggestions.length > 0 && (
-        <div className="px-5 pb-5 pt-1 flex flex-wrap gap-2">
+        <div className="px-5 pb-5 pt-1 grid grid-cols-1 xl:grid-cols-3 gap-2">
           {data.suggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
             return (
               <Link
                 key={i}
                 href={s.href}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.03]"
+                 className="inline-flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-[12.5px] font-semibold transition hover:scale-[1.015]"
                 style={{
                   background: focusTone.actionBg,
                   color: focusTone.text,

@@ -147,7 +147,7 @@ export default function GorevlerPage() {
   }, [tasks]);
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-5 max-w-none">
       {/* Header */}
       <div className="pb-5 flex items-end justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
@@ -376,7 +376,15 @@ interface CountCardProps {
 }
 function CountCard({ label, value, icon: Icon, color, pulse }: CountCardProps) {
   return (
-    <div className="rounded-xl p-4" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
+    <div
+      className="rounded-2xl p-4 relative overflow-hidden"
+      style={{
+        background: `linear-gradient(135deg, ${color}16, rgba(255,255,255,0.015))`,
+        border: `1px solid ${color}28`,
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035)',
+      }}
+    >
+      <span className="absolute left-0 top-4 bottom-4 w-[2px] rounded" style={{ background: color }} />
       <div className="flex items-center gap-2 mb-2 text-[11px] font-medium uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>
         <Icon size={12} style={{ color }} />
         <span>{label}</span>
@@ -433,8 +441,8 @@ interface TaskGroupProps {
 function TaskGroup({ title, tasks, accent, pulse, onComplete, onReopen, onStart, onCancel, onSnooze, onAddNote, onDelete, onEdit }: TaskGroupProps) {
   if (tasks.length === 0) return null;
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
-      <div className="flex items-center gap-2.5 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${BORDER}` }}>
+      <div className="flex items-center gap-2.5 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.055)', background: `${accent}0f` }}>
         <span className="w-[3px] h-4 rounded-sm" style={{ background: accent, boxShadow: pulse ? `0 0 8px ${accent}` : undefined }} />
         <h3 className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: accent }}>
           {title}
@@ -443,7 +451,7 @@ function TaskGroup({ title, tasks, accent, pulse, onComplete, onReopen, onStart,
           {tasks.length}
         </span>
       </div>
-      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+      <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.045)' }}>
         {tasks.map((t: Task) => (
           <TaskRow
             key={t.id}
@@ -496,8 +504,8 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
 
   return (
     <div
-      className="flex items-start gap-3 px-4 py-3 hover:bg-white/[0.02] transition group"
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+      className="flex items-start gap-3 px-4 py-3.5 hover:bg-white/[0.025] transition group"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.035)' }}
     >
       {/* Tamamla / Geri Al — checkbox toggle */}
       <button

@@ -98,13 +98,14 @@ export default function BankaTakipPage() {
     const total = items.length;
     const tumGelmis = items.filter((x) => x.ozet.tumGeldi).length;
     const tumIslenmis = items.filter((x) => x.ozet.tumIslendi).length;
+    const islenmedi = items.filter((x) => x.ozet.hesapSayisi > 0 && x.ozet.tumGeldi && !x.ozet.tumIslendi).length;
     const hicbiriGelmemis = items.filter((x) => x.ozet.eksikGeldi === x.ozet.hesapSayisi && x.ozet.hesapSayisi > 0).length;
     const hesapsiz = items.filter((x) => x.ozet.hesapSayisi === 0).length;
-    return { total, tumGelmis, tumIslenmis, hicbiriGelmemis, hesapsiz };
+    return { total, tumGelmis, tumIslenmis, islenmedi, hicbiriGelmemis, hesapsiz };
   }, [data?.items]);
 
   return (
-    <div className="space-y-4 max-w-7xl">
+    <div className="space-y-4 max-w-none">
       {/* HEADER */}
       <div className="flex items-end justify-between gap-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex-1 min-w-0">
@@ -158,10 +159,11 @@ export default function BankaTakipPage() {
       </div>
 
       {/* ÖZET KPI'LAR — tıklanabilir filtre kısayolları */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
         <KpiCard label="Toplam Mükellef" value={ozet.total} color="#fafaf9" active={filterDurum === 'tumu'} onClick={() => setFilterDurum('tumu')} />
         <KpiCard label="Tüm Ekstreler Geldi" value={ozet.tumGelmis} color="#22c55e" active={filterDurum === 'hepsigeldi'} onClick={() => setFilterDurum('hepsigeldi')} />
         <KpiCard label="Hepsi İşlendi" value={ozet.tumIslenmis} color="#4ade80" active={filterDurum === 'hepsiislendi'} onClick={() => setFilterDurum('hepsiislendi')} />
+        <KpiCard label="İşlenecek" value={ozet.islenmedi} color="#60a5fa" active={filterDurum === 'islenmedi'} onClick={() => setFilterDurum('islenmedi')} />
         <KpiCard label="Eksik / Beklenen" value={ozet.total - ozet.tumGelmis - ozet.hesapsiz} color="#fbbf24" active={filterDurum === 'eksigeldi'} onClick={() => setFilterDurum('eksigeldi')} />
         <KpiCard label="Banka Hesabı Yok" value={ozet.hesapsiz} color="#94a3b8" active={filterDurum === 'hesapsiz'} onClick={() => setFilterDurum('hesapsiz')} />
       </div>

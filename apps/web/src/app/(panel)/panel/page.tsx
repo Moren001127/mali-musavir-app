@@ -284,10 +284,10 @@ function TaskRow({ t, onToggle, onDelete }: { t: Task; onToggle: () => void; onD
 
 function AgentMini({ href, icon: Icon, name, stat, running }: { href: string; icon: any; name: string; stat: string; running: boolean }) {
   return (
-    <Link href={href} className="flex items-center gap-3 p-[14px] rounded-2xl transition-all duration-300" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+    <Link href={href} className="flex items-center gap-3 p-3 rounded-xl transition-all duration-300" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
       onMouseEnter={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(184,160,111,0.05)'; el.style.borderColor = 'rgba(184,160,111,0.22)'; el.style.transform = 'translateY(-3px)'; }}
       onMouseLeave={(e) => { const el = e.currentTarget as HTMLElement; el.style.background = 'rgba(255,255,255,0.02)'; el.style.borderColor = 'rgba(255,255,255,0.05)'; el.style.transform = 'translateY(0)'; }}>
-      <div className="w-[38px] h-[38px] rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={17} /></div>
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(184,160,111,0.08)', border: '1px solid rgba(184,160,111,0.15)', color: GOLD }}><Icon size={16} /></div>
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{name}</div>
         <div className="text-[10.5px] mt-0.5" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>{stat}</div>
@@ -1162,15 +1162,23 @@ export default function DashboardPage() {
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
-      <BuHaftaTakvim />
+      <div className="grid grid-cols-1 2xl:grid-cols-[minmax(0,1.12fr)_minmax(360px,0.88fr)] gap-3.5 items-start">
+        <BuHaftaTakvim />
 
-      <div>
+        <div
+          className="rounded-2xl p-3.5"
+          style={{
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.024), rgba(255,255,255,0.012))',
+            border: '1px solid rgba(255,255,255,0.055)',
+          }}
+        >
         <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5" style={{ color: '#fafaf9' }}><span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />Ajan Durumu</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-1 gap-2">
           <AgentMini href="/panel/ajanlar/mihsap" icon={Receipt} name="Mihsap Fatura" stat={mEv.length ? `${mEv.length} olay${mRate != null ? ` · %${mRate}` : ''}` : 'Henüz olay yok'} running={running('MIHSAP')} />
           <AgentMini href="/panel/ajanlar/luca" icon={FileInput} name="Luca E-Arşiv" stat={(stFor('LUCA') as any)?.meta?.summary || (running('LUCA') ? 'Çalışıyor' : 'Beklemede')} running={running('LUCA')} />
           <AgentMini href="/panel/ajanlar/tebligat" icon={Mailbox} name="Tebligat Özet" stat={running('TEBLIGAT') ? 'Çalışıyor' : 'Beklemede'} running={running('TEBLIGAT')} />
           <AgentMini href="/panel/ajanlar/kdv-hazirlik" icon={Calculator} name="KDV Ön-Hazırlık" stat={(stFor('KDV') as any)?.meta?.summary || (running('KDV') ? 'Çalışıyor' : 'Beklemede')} running={running('KDV')} />
+        </div>
         </div>
       </div>
 

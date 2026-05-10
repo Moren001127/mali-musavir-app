@@ -133,6 +133,7 @@ export default function MukelleflerPage() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['taxpayers', 'list', search, year, month] });
+      qc.invalidateQueries({ queryKey: ['taxpayers'] });
       qc.invalidateQueries({ queryKey: ['workflow-queue'] });
       qc.invalidateQueries({ queryKey: ['dashboard-workflow-queue'] });
       qc.invalidateQueries({ queryKey: ['moren-ai-brifing'] });
@@ -181,7 +182,7 @@ export default function MukelleflerPage() {
   const donemStr = `${AYLAR_TR[month - 1]} ${year}`;
 
   return (
-    <div className="space-y-5 max-w-[1400px]">
+    <div className="space-y-5 max-w-none">
       {/* HEADER */}
       <div className="flex items-end justify-between pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div>
@@ -305,7 +306,7 @@ export default function MukelleflerPage() {
       </div>
 
       {/* STAT CARDS */}
-      <div className="grid grid-cols-6 gap-2.5">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
         <StatCard variant="gold" label="Dönemde Aktif" value={String(counts.total)} />
         <StatCard variant="ok" label="Evrak Geldi" value={String(counts.evrakGeldi)} sub={counts.total ? `%${((counts.evrakGeldi / counts.total) * 100).toFixed(0)}` : ''} />
         <StatCard variant="danger" label="Evrak Gelmedi" value={String(counts.evrakGelmedi)} sub={counts.evrakGelmedi > 0 ? 'hatırlat' : ''} />
@@ -315,14 +316,14 @@ export default function MukelleflerPage() {
       </div>
 
       {/* TABLE */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div
           className="grid items-center px-5 py-3 text-[10px] font-semibold uppercase"
           style={{
             gridTemplateColumns: '44px 1.6fr 95px 75px 90px 90px 90px 110px 55px',
             gap: 12,
-            background: 'rgba(255,255,255,0.015)',
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
+            background: 'rgba(212,184,118,0.055)',
+            borderBottom: '1px solid rgba(212,184,118,0.13)',
             color: 'rgba(250,250,249,0.4)',
             letterSpacing: '0.12em',
           }}

@@ -155,10 +155,20 @@ export function BuHaftaTakvim() {
   const tasks: TaskItem[] = Array.isArray(tasksData) ? tasksData : ((tasksData as any)?.items || []);
   const taskMap = tasksByDate(tasks);
   const calendarDays = buildCalendarDays(rows, taskMap);
+  const visibleRows = rows.slice(0, 4);
+  const extraCount = Math.max(rows.length - visibleRows.length, 0);
+  const urgentCount = rows.filter((r) => r.gunFark <= 3).length;
+  const noteCount = calendarDays.reduce((total, d) => total + d.tasks.length, 0);
 
   return (
-    <div>
-      <div className="flex items-center gap-2.5 mb-3">
+    <div
+      className="rounded-2xl p-3 sm:p-4"
+      style={{
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.024), rgba(255,255,255,0.012))',
+        border: '1px solid rgba(255,255,255,0.055)',
+      }}
+    >
+      <div className="flex flex-wrap items-center gap-2.5 mb-3">
         <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
         <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
           <Calendar size={14} style={{ color: GOLD_SOFT }} />
@@ -172,13 +182,29 @@ export function BuHaftaTakvim() {
             {rows.length} son tarih
           </span>
         )}
-        <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        {urgentCount > 0 && (
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+            style={{ background: 'rgba(244,63,94,0.10)', color: '#fb7185', border: '1px solid rgba(244,63,94,0.28)' }}
+          >
+            {urgentCount} yakın
+          </span>
+        )}
+        {noteCount > 0 && (
+          <span
+            className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+            style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.25)' }}
+          >
+            {noteCount} not
+          </span>
+        )}
+        <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
           {today.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {ikiHaftaSonra.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
 
       <div className="overflow-x-auto pb-1 mb-3">
-        <div className="grid grid-cols-7 gap-2 min-w-[720px]">
+        <div className="grid grid-cols-7 gap-1.5 min-w-[680px]">
           {calendarDays.map((d) => (
             <CalendarDayTile key={d.key} day={d} />
           ))}
@@ -192,12 +218,24 @@ export function BuHaftaTakvim() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {rows.map((r, i) => {
+        <div className="space-y-1.5">
+          {visibleRows.map((r, i) => {
             const key = `${r.date.getFullYear()}-${r.date.getMonth() + 1}-${r.date.getDate()}`;
             const dayTasks = taskMap.get(key) || [];
             return <DeadlineRowItem key={i} row={r} dayTasks={dayTasks} />;
           })}
+          {extraCount > 0 && (
+            <div
+              className="rounded-xl px-3 py-2 text-[12px] font-semibold"
+              style={{
+                color: 'rgba(250,250,249,0.55)',
+                background: 'rgba(255,255,255,0.018)',
+                border: '1px solid rgba(255,255,255,0.055)',
+              }}
+            >
+              +{extraCount} son tarih daha var; en yakın olanlar yukarıda.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -217,17 +255,17 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
 
   return (
     <div
-      className="min-h-[74px] rounded-xl p-2.5 transition-all"
+      className="min-h-[64px] rounded-xl p-2 transition-all"
       title={titleParts.join('\n')}
       style={{
-        background: hasDeadline ? tone.bg : hasTask ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.018)',
+        background: hasDeadline ? tone.bg : hasTask ? 'rgba(96,165,250,0.07)' : 'rgba(255,255,255,0.016)',
         border: hasDeadline ? `1px solid ${tone.border}` : hasTask ? '1px solid rgba(212,184,118,0.28)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: hasTask ? 'inset 0 0 0 1px rgba(212,184,118,0.08)' : 'none',
+        boxShadow: hasDeadline || hasTask ? 'inset 0 1px 0 rgba(255,255,255,0.035)' : 'none',
       }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="text-[18px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? GOLD : 'rgba(250,250,249,0.72)' }}>
+          <div className="text-[17px] leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontWeight: 700, color: hasDeadline ? tone.pillText : hasTask ? '#93c5fd' : 'rgba(250,250,249,0.72)' }}>
             {day.date.getDate()}
           </div>
           <div className="text-[9px] uppercase font-bold mt-1" style={{ color: 'rgba(250,250,249,0.38)' }}>{month}</div>
@@ -241,12 +279,12 @@ function CalendarDayTile({ day }: { day: ReturnType<typeof buildCalendarDays>[nu
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {hasDeadline && (
-          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded" style={{ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText }}>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: tone.pillBg, border: `1px solid ${tone.pillBorder}`, color: tone.pillText }}>
             {day.deadlines.length} son
           </span>
         )}
         {hasTask && (
-          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.32)', color: GOLD }}>
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(96,165,250,0.11)', border: '1px solid rgba(96,165,250,0.28)', color: '#93c5fd' }}>
             {day.tasks.length} not
           </span>
         )}
@@ -263,20 +301,20 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
 
   return (
     <div
-      className="rounded-2xl flex items-center gap-4 pl-1 pr-4 py-3 transition-all hover:translate-x-[2px] relative"
+      className="rounded-xl flex items-center gap-3 pl-1 pr-3 py-2 transition-all hover:translate-x-[2px] relative"
       style={{
         background: tone.bg,
         border: `1px solid ${tone.border}`,
-        boxShadow: row.gunFark <= 1 ? `inset 4px 0 0 ${tone.accent}` : `inset 3px 0 0 ${tone.accent}`,
+        boxShadow: row.gunFark <= 1 ? `inset 3px 0 0 ${tone.accent}` : `inset 2px 0 0 ${tone.accent}`,
       }}
     >
       {/* Sol: tarih bloğu */}
-      <div className="pl-4 pr-2 min-w-[68px] flex flex-col items-start">
+      <div className="pl-3 pr-1 min-w-[58px] flex flex-col items-start">
         <span
           className="tabular-nums leading-none"
           style={{
             fontFamily: 'Fraunces, serif',
-            fontSize: 26,
+            fontSize: 22,
             fontWeight: 700,
             color: '#fafaf9',
             letterSpacing: '-.03em',
@@ -292,7 +330,7 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
       {/* Orta: ikon + başlık + altyazı */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{
             background: tone.pillBg,
             border: `1px solid ${tone.pillBorder}`,
@@ -302,10 +340,10 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
           <Icon size={15} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>
+          <div className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>
             {row.title}
           </div>
-          <div className="text-[11.5px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.5)' }}>
             {row.subtitle}
           </div>
         </div>
@@ -316,24 +354,24 @@ function DeadlineRowItem({ row, dayTasks }: { row: DeadlineRow; dayTasks: string
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md flex-shrink-0"
           style={{
-            background: 'rgba(212,184,118,0.10)',
-            border: '1px solid rgba(212,184,118,0.28)',
+            background: 'rgba(96,165,250,0.10)',
+            border: '1px solid rgba(96,165,250,0.24)',
           }}
           title={dayTasks.slice(0, 5).join('\n')}
         >
           <span
             className="moren-task-pulse w-1.5 h-1.5 rounded-full"
-            style={{ background: GOLD, boxShadow: `0 0 6px ${GOLD}66` }}
+            style={{ background: '#93c5fd', boxShadow: '0 0 6px rgba(147,197,253,0.45)' }}
           />
-          <Bookmark size={11} style={{ color: GOLD_SOFT }} />
-          <span className="text-[11px] font-semibold tabular-nums" style={{ color: GOLD }}>
+          <Bookmark size={11} style={{ color: '#93c5fd' }} />
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: '#93c5fd' }}>
             {dayTasks.length}
           </span>
         </div>
       )}
 
       <span
-        className="text-[11.5px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full flex-shrink-0"
+        className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full flex-shrink-0"
         style={{
           background: tone.pillBg,
           color: tone.pillText,
