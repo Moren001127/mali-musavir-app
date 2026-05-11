@@ -266,14 +266,22 @@ export default function GelirTablosuPage() {
   // Manuel düzeltme state — her çeyrek için ayrı düzenleme
   // { [gelirTablosuId]: { satisMaliyeti: 150000, faaliyetGiderleri: 20000, ... } }
   const [duzeltmelerDraft, setDuzeltmelerDraft] = useState<Record<string, Record<string, number>>>({});
+  const [editingManual, setEditingManual] = useState<Record<string, boolean>>({});
 
   const setDuzeltme = (gtId: string, key: string, val: number) => {
     setDuzeltmelerDraft((prev) => {
       const curr = { ...(prev[gtId] || {}) };
-      if (val === 0 || !isFinite(val)) delete curr[key];
-      else curr[key] = val;
+      const editingExisting = !!editingManual[manualEditKey(gtId, key)];
+      if ((val === 0 || !isFinite(val)) && !editingExisting) delete curr[key];
+      else curr[key] = isFinite(val) ? val : 0;
       return { ...prev, [gtId]: curr };
     });
+  };
+  const manualEditKey = (gtId: string, field: string) => `${gtId}:${field}`;
+  const startManualEdit = (gt: any, field: string) => {
+    const saved = Number(gt?.duzeltmeler?.[field]) || 0;
+    setEditingManual((prev) => ({ ...prev, [manualEditKey(gt.id, field)]: true }));
+    setDuzeltme(gt.id, field, saved);
   };
 
   /** Bir kalem için manuel düzeltme dahil efektif tutar */
@@ -289,7 +297,9 @@ export default function GelirTablosuPage() {
       const manuelVal = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
       if (manuelVal > 0) {
         const auto621 = Number(gt?.detay?.satisMaliyeti621) || 0;
-        return base - auto621 + manuelVal;
+        const savedManualVal = typeof savedManuel === 'number' ? savedManuel : 0;
+        const autoBase = savedManualVal > 0 ? base + auto621 - savedManualVal : base;
+        return autoBase - auto621 + manuelVal;
       }
     }
     const draft = duzeltmelerDraft[gt.id]?.[key];
@@ -335,6 +345,13 @@ export default function GelirTablosuPage() {
       toast.success('Düzeltmeler kaydedildi');
       setDuzeltmelerDraft((prev) => {
         const cp = { ...prev }; delete cp[gtId]; return cp;
+      });
+      setEditingManual((prev) => {
+        const cp = { ...prev };
+        for (const key of Object.keys(cp)) {
+          if (key.startsWith(`${gtId}:`)) delete cp[key];
+        }
+        return cp;
       });
       qc.invalidateQueries({ queryKey: ['gt-list'] });
     },
@@ -669,14 +686,20 @@ export default function GelirTablosuPage() {
                             <td key={qi} style={{ borderLeft: `1px solid ${GRID_LINE}` }}></td>
                           );
                         }
+                        const field = row.manual!;
+                        const hasDraft = duzeltmelerDraft[gt.id]?.[field] !== undefined;
+                        const savedVal = gt.duzeltmeler?.[field] as number | undefined;
+                        const hasSaved = typeof savedVal === 'number' && savedVal > 0;
+                        const isEditing = !hasSaved || hasDraft || !!editingManual[manualEditKey(gt.id, field)];
                         return (
                           <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}` }}>
                             <ManuelInput
                               gtId={gt.id}
-                              field={row.manual!}
-                              draftVal={duzeltmelerDraft[gt.id]?.[row.manual!]}
-                              savedVal={gt.duzeltmeler?.[row.manual!] as number | undefined}
+                              field={field}
+                              draftVal={duzeltmelerDraft[gt.id]?.[field]}
+                              savedVal={savedVal}
                               isLocked={gt.locked}
+                              isEditing={isEditing}
                               onChange={(n) => setDuzeltme(gt.id, row.manual!, n)}
                             />
                           </td>
@@ -764,24 +787,45 @@ export default function GelirTablosuPage() {
               })}
 
               {/* Kaydet butonu satırı — manuel düzeltme taslağı varsa */}
-              {quarterSlots.some((gt) => gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0) && (
+              {quarterSlots.some((gt) =>
+                gt && (
+                  Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0 ||
+                  (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0
+                )
+              ) && (
                 <tr style={{ background: 'rgba(96,165,250,0.08)', borderTop: '1px solid rgba(96,165,250,0.25)' }}>
                   <td colSpan={2} className="px-3 py-3 text-[11.5px]" style={{ color: '#60a5fa' }}>
-                    ✎ Kaydedilmemiş manuel düzeltme var
+                    Manuel satılan ticari mallar maliyeti
                   </td>
                   {DISPLAY_ORDER.map((qi) => {
                     const gt = quarterSlots[qi];
+                    const hasDraft = !!gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0;
+                    const hasSaved = !!gt && (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0;
                     return (
                       <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.18)', width: 160 }}>
-                        {gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0 ? (
-                          <button
-                            onClick={() => saveDuzeltmelerMut.mutate(gt.id)}
-                            disabled={saveDuzeltmelerMut.isPending}
-                            className="px-3 py-1.5 rounded text-[11px] font-bold"
-                            style={{ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' }}
-                          >
-                            {saveDuzeltmelerMut.isPending ? 'Kaydediliyor…' : 'Kaydet'}
-                          </button>
+                        {gt && (hasDraft || hasSaved) ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            {hasSaved && !gt.locked && (
+                              <button
+                                type="button"
+                                onClick={() => startManualEdit(gt, 'satisMaliyetiManuel')}
+                                className="px-3 py-1.5 rounded text-[11px] font-bold"
+                                style={{ background: 'rgba(255,255,255,0.05)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.35)' }}
+                              >
+                                Düzelt
+                              </button>
+                            )}
+                            {hasDraft && (
+                              <button
+                                onClick={() => saveDuzeltmelerMut.mutate(gt.id)}
+                                disabled={saveDuzeltmelerMut.isPending || gt.locked}
+                                className="px-3 py-1.5 rounded text-[11px] font-bold"
+                                style={{ background: 'rgba(96,165,250,0.2)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.4)' }}
+                              >
+                                {saveDuzeltmelerMut.isPending ? 'Kaydediliyor...' : 'Kaydet'}
+                              </button>
+                            )}
+                          </div>
                         ) : null}
                       </td>
                     );
@@ -1462,13 +1506,14 @@ export default function GelirTablosuPage() {
  * Bu versiyon: kullanıcı yazarken raw text saklar, blur'da formatlar.
  */
 function ManuelInput({
-  gtId, field, draftVal, savedVal, isLocked, onChange,
+  gtId, field, draftVal, savedVal, isLocked, isEditing, onChange,
 }: {
   gtId: string;
   field: string;
   draftVal: number | undefined;
   savedVal: number | undefined;
   isLocked: boolean;
+  isEditing: boolean;
   onChange: (n: number) => void;
 }) {
   const numericVal = draftVal !== undefined ? draftVal : (savedVal ?? 0);
@@ -1488,6 +1533,7 @@ function ManuelInput({
     const n = parseFloat(cleaned);
     return Number.isFinite(n) ? n : 0;
   };
+  const disabled = isLocked || !isEditing;
 
   return (
     <input
@@ -1506,18 +1552,18 @@ function ManuelInput({
         if (n !== numericVal) onChange(n);
       }}
       onChange={(e) => {
-        if (isLocked) return;
+        if (disabled) return;
         setRawText(e.target.value);
         // Hemen parent state'i de güncelle (Kaydet düğmesi taslak kontrolü görsün)
         onChange(parse(e.target.value));
       }}
-      disabled={isLocked}
-      placeholder={isLocked ? 'Kilitli' : '0,00'}
+      disabled={disabled}
+      placeholder={isLocked ? 'Kilitli' : isEditing ? '0,00' : 'Düzelt'}
       className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border disabled:opacity-50"
       style={{
-        background: isLocked ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
-        borderColor: isLocked ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
-        color: isLocked ? 'rgba(34,197,94,0.7)' : '#60a5fa',
+        background: disabled ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
+        borderColor: disabled ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
+        color: disabled ? 'rgba(34,197,94,0.7)' : '#60a5fa',
       }}
     />
   );
