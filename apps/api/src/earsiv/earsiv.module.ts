@@ -7,9 +7,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { LucaModule } from '../luca/luca.module';
 import { MihsapModule } from '../mihsap/mihsap.module';
 import { StorageModule } from '../storage/storage.module';
+import { FaturaMuhasebelestirmeModule } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => LucaModule), MihsapModule, StorageModule],
+  imports: [PrismaModule, forwardRef(() => LucaModule), MihsapModule, StorageModule, forwardRef(() => FaturaMuhasebelestirmeModule)],
   controllers: [EarsivController],
   providers: [EarsivService, EarsivZipParserService, EarsivRenderService],
   exports: [EarsivService],

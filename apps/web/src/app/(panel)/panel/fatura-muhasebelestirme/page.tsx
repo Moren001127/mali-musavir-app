@@ -18,6 +18,8 @@ import {
   RotateCw,
   Loader2,
   Receipt,
+  RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -46,6 +48,7 @@ type AccountingLine = {
 type DraftInvoice = {
   id: string;
   backendId?: string;
+  taxpayerId?: string | null;
   file: Pick<File, 'name' | 'size' | 'type'>;
   originalFile?: File;
   previewUrl: string;
@@ -65,6 +68,16 @@ type DraftInvoice = {
   total: string;
   lines: AccountingLine[];
   status: 'bekliyor' | 'ocr' | 'hazir' | 'kontrol' | 'onaylandi';
+  duplicateOfId?: string | null;
+  duplicateReason?: string | null;
+  duplicateSeverity?: string | null;
+};
+
+type AccountOption = {
+  id: string;
+  code: string;
+  name: string;
+  level?: number;
 };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -130,6 +143,7 @@ const fromApiLine = (line: any): AccountingLine => ({
 const applyApiDocument = (draft: DraftInvoice, doc: any): DraftInvoice => ({
   ...draft,
   backendId: doc.id,
+  taxpayerId: doc.taxpayerId || draft.taxpayerId || null,
   source: doc.source === 'mobile' ? 'manual-okc' : draft.source,
   documentType: doc.documentType || draft.documentType,
   invoiceKind: doc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış',
@@ -145,6 +159,9 @@ const applyApiDocument = (draft: DraftInvoice, doc: any): DraftInvoice => ({
   total: money(doc.totalAmount),
   lines: Array.isArray(doc.lines) && doc.lines.length ? doc.lines.map(fromApiLine) : draft.lines,
   status: doc.status === 'APPROVED' ? 'onaylandi' : doc.status === 'READY' ? 'hazir' : 'kontrol',
+  duplicateOfId: doc.duplicateOfId || null,
+  duplicateReason: doc.duplicateReason || null,
+  duplicateSeverity: doc.duplicateSeverity || null,
 });
 
 const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
@@ -153,6 +170,7 @@ const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
     {
       id: `remote-${doc.id}`,
       backendId: doc.id,
+      taxpayerId: doc.taxpayerId || null,
       file: { name: doc.originalName, size: doc.sizeBytes || 0, type: mimeType },
       previewUrl: fileUrl,
       previewType: mimeType.startsWith('image/') ? 'image' : mimeType === 'application/pdf' ? 'pdf' : 'other',
@@ -180,6 +198,7 @@ function blankDraft(file: File, previewUrl: string): DraftInvoice {
   const isPdf = file.type === 'application/pdf';
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    taxpayerId: null,
     file,
     previewUrl,
     previewType: file.type.startsWith('image/') ? 'image' : isPdf ? 'pdf' : 'other',
@@ -198,6 +217,9 @@ function blankDraft(file: File, previewUrl: string): DraftInvoice {
     total: '0,00',
     lines: defaultLinesFromOcr(),
     status: 'bekliyor',
+    duplicateOfId: null,
+    duplicateReason: null,
+    duplicateSeverity: null,
   };
 }
 
@@ -211,6 +233,10 @@ export default function FaturaMuhasebelestirmePage() {
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [accountOptions, setAccountOptions] = useState<AccountOption[]>([]);
+  const [accountPlanSource, setAccountPlanSource] = useState<any>(null);
+  const [accountPlanLoading, setAccountPlanLoading] = useState(false);
+  const [accountPlanRefreshing, setAccountPlanRefreshing] = useState(false);
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
@@ -221,6 +247,37 @@ export default function FaturaMuhasebelestirmePage() {
     const credit = selected?.lines.reduce((sum, line) => sum + parseAmount(line.credit), 0) || 0;
     return { debit, credit, diff: Math.abs(debit - credit) };
   }, [selected]);
+
+  useEffect(() => {
+    let alive = true;
+    const taxpayerId = selected?.taxpayerId;
+    if (!taxpayerId) {
+      setAccountOptions([]);
+      setAccountPlanSource(null);
+      return;
+    }
+    (async () => {
+      setAccountPlanLoading(true);
+      try {
+        const { data } = await api.get('/fatura-muhasebelestirme/account-plan', {
+          params: { taxpayerId, limit: 700 },
+        });
+        if (!alive) return;
+        setAccountOptions(Array.isArray(data?.accounts) ? data.accounts : []);
+        setAccountPlanSource(data?.source || null);
+      } catch {
+        if (alive) {
+          setAccountOptions([]);
+          setAccountPlanSource(null);
+        }
+      } finally {
+        if (alive) setAccountPlanLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [selected?.taxpayerId]);
 
   useEffect(() => {
     let alive = true;
@@ -327,6 +384,24 @@ export default function FaturaMuhasebelestirmePage() {
     }
   };
 
+  const refreshAccountPlan = async () => {
+    if (!selected?.taxpayerId) {
+      toast.info('Hesap planı için önce Luca’dan gelen mükellefli bir belge seçilmeli');
+      return;
+    }
+    setAccountPlanRefreshing(true);
+    try {
+      const { data } = await api.post('/fatura-muhasebelestirme/account-plan/refresh', {
+        taxpayerId: selected.taxpayerId,
+      });
+      toast.success(`Hesap planı Luca kuyruğuna alındı${data?.job?.id ? ` · ${data.job.id.slice(0, 8)}` : ''}`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Hesap planı güncelleme başlatılamadı');
+    } finally {
+      setAccountPlanRefreshing(false);
+    }
+  };
+
   const saveSelected = async (approve = false) => {
     if (!selected) return;
     if (!selected.backendId) {
@@ -374,7 +449,7 @@ export default function FaturaMuhasebelestirmePage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f7f8fb] text-slate-900">
+    <main className="invoice-accounting-dark min-h-screen bg-[#0f0d0a] text-[#f7eedb]">
       <div className="flex h-[calc(100vh-0px)] min-h-[760px] flex-col">
         <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5">
           <div className="flex items-center gap-3">
@@ -400,6 +475,15 @@ export default function FaturaMuhasebelestirmePage() {
               className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
               {scanning ? <Loader2 className="animate-spin" size={16} /> : <ScanLine size={16} />} OCR Oku
+            </button>
+            <button
+              onClick={refreshAccountPlan}
+              disabled={!selected?.taxpayerId || accountPlanRefreshing}
+              className="inline-flex items-center gap-2 rounded-md border border-amber-300/40 bg-[#2a2114] px-3 py-2 text-sm font-medium text-[#f4d68a] disabled:opacity-45"
+              title="Seçili mükellefin hesap planını Luca'dan yeniden çek"
+            >
+              {accountPlanRefreshing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+              Hesap Planı Güncelle
             </button>
           </div>
         </header>
@@ -457,11 +541,11 @@ export default function FaturaMuhasebelestirmePage() {
                   <img
                     src={selected.previewUrl}
                     alt={selected.file.name}
-                    className="max-h-full rounded-sm bg-white shadow-sm"
+                    className="document-preview max-h-full rounded-sm bg-white shadow-sm"
                     style={{ transform: `scale(${zoom}) rotate(${rotation}deg)`, transformOrigin: 'center center' }}
                   />
                 ) : selected.previewType === 'pdf' ? (
-                  <iframe src={selected.previewUrl} className="h-full w-full rounded-sm bg-white shadow-sm" title={selected.file.name} />
+                  <iframe src={selected.previewUrl} className="document-preview h-full w-full rounded-sm bg-white shadow-sm" title={selected.file.name} />
                 ) : (
                   <div className="rounded-md bg-white p-8 text-center text-slate-500">Bu dosya için önizleme yok.</div>
                 )}
@@ -470,6 +554,13 @@ export default function FaturaMuhasebelestirmePage() {
           </div>
 
           <aside className="flex min-w-0 flex-col bg-white">
+            <datalist id="luca-account-plan-options">
+              {accountOptions.map((account) => (
+                <option key={account.id} value={account.code}>
+                  {account.code} - {account.name}
+                </option>
+              ))}
+            </datalist>
             <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
               <div className="text-sm font-semibold">Muhasebe Kodları</div>
               <div className="flex gap-2">
@@ -487,6 +578,23 @@ export default function FaturaMuhasebelestirmePage() {
 
             {selected ? (
               <div className="flex-1 overflow-auto p-4">
+                {selected.duplicateOfId || selected.duplicateReason ? (
+                  <div className="mb-4 flex gap-3 rounded-lg border border-red-400/45 bg-red-950/35 p-3 text-sm text-red-100">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-300" />
+                    <div>
+                      <div className="font-semibold">Mükerrer belge uyarısı</div>
+                      <div className="mt-1 text-red-100/80">
+                        {selected.duplicateReason || 'Bu belge daha önce işlenmiş bir kayıtla eşleşiyor. Onaylamadan önce kontrol edin.'}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mb-4 flex items-center justify-between rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
+                  <span>
+                    Hesap planı: {accountPlanLoading ? 'yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'henüz çekilmedi'}
+                  </span>
+                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
+                </div>
                 <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
                   <div className="grid grid-cols-4 gap-3">
                     <label className="text-xs font-semibold text-slate-500">
@@ -522,7 +630,7 @@ export default function FaturaMuhasebelestirmePage() {
                   <div className="divide-y divide-slate-100">
                     {selected.lines.map((line) => (
                       <div key={line.id} className="grid grid-cols-[132px_1fr_82px_96px_96px_34px] gap-2 px-3 py-2">
-                        <input className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
+                        <input list="luca-account-plan-options" className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
                         <input className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
                         <input className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
                         <input className="h-9 rounded-md border border-slate-200 px-2 text-right text-sm" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
@@ -604,6 +712,31 @@ export default function FaturaMuhasebelestirmePage() {
           </aside>
         </section>
       </div>
+      <style jsx global>{`
+        .invoice-accounting-dark .bg-white:not(.document-preview) { background-color: #15110d !important; }
+        .invoice-accounting-dark .bg-slate-100 { background-color: #0f0d0a !important; }
+        .invoice-accounting-dark .bg-slate-50 { background-color: #120f0b !important; }
+        .invoice-accounting-dark .bg-blue-50 { background-color: #1a160f !important; }
+        .invoice-accounting-dark .bg-blue-600 { background-color: #d4b876 !important; color: #17130f !important; }
+        .invoice-accounting-dark .bg-slate-900 { background-color: #090806 !important; color: #f7eedb !important; }
+        .invoice-accounting-dark .border-slate-200,
+        .invoice-accounting-dark .border-slate-300,
+        .invoice-accounting-dark .border-blue-100 { border-color: #332a1c !important; }
+        .invoice-accounting-dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #2a2419 !important; }
+        .invoice-accounting-dark .text-slate-900,
+        .invoice-accounting-dark .text-slate-700 { color: #f7eedb !important; }
+        .invoice-accounting-dark .text-slate-600,
+        .invoice-accounting-dark .text-slate-500 { color: #d8cda5 !important; }
+        .invoice-accounting-dark .text-slate-400 { color: #9c8d69 !important; }
+        .invoice-accounting-dark input,
+        .invoice-accounting-dark select {
+          background-color: #0f0d0a !important;
+          border-color: #3b321f !important;
+          color: #f7eedb !important;
+        }
+        .invoice-accounting-dark input::placeholder { color: #8d7b56 !important; }
+        .invoice-accounting-dark .document-preview { background-color: #ffffff !important; }
+      `}</style>
     </main>
   );
 }

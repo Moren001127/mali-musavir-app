@@ -17,6 +17,8 @@ import {
   Header,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -33,6 +35,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.service';
 import { EarsivService, EarsivTip, BelgeKaynak } from '../earsiv/earsiv.service';
+import { MizanParserService } from '../mizan/mizan-parser.service';
+import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -51,7 +55,10 @@ export class LucaController {
     private readonly kdvControl: KdvControlService,
     private readonly kdvBeyanname: KdvBeyannameService,
     private readonly isletmeHesapOzeti: IsletmeHesapOzetiService,
-    private readonly earsiv: EarsivService
+    private readonly earsiv: EarsivService,
+    private readonly mizanParser: MizanParserService,
+    @Inject(forwardRef(() => FaturaMuhasebelestirmeService))
+    private readonly faturaMuhasebelestirme: FaturaMuhasebelestirmeService,
   ) {}
 
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
@@ -423,6 +430,36 @@ export class LucaController {
       throw new BadRequestException(
         `Mizan import hatası: ${e?.message || 'bilinmeyen'}`,
       );
+    }
+  }
+
+  @Post('agent/luca/runner/upload-account-plan')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadAccountPlanFromRunner(
+    @Headers('x-agent-token') agentToken: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Query('mukellefId') mukellefId: string,
+    @Query('jobId') jobId?: string,
+  ) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
+    if (!mukellefId) throw new BadRequestException('mukellefId query parametresi gerekli');
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+
+    try {
+      const rows = this.mizanParser.parse(file.buffer);
+      const result = await this.faturaMuhasebelestirme.importAccountPlanSnapshot({
+        tenantId,
+        taxpayerId: mukellefId,
+        jobId,
+        rows,
+        createdBy: 'extension',
+      });
+      if (jobId) await this.luca.markJobDone(jobId, result.accountCount).catch(() => {});
+      return { ok: true, ...result };
+    } catch (e: any) {
+      if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
+      throw new BadRequestException(`Hesap planı import hatası: ${e?.message || 'bilinmeyen'}`);
     }
   }
 

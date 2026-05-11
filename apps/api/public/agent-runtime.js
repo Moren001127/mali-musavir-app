@@ -532,7 +532,7 @@
           // Kapsam: e-arşiv + e-fatura + mizan + kdv kontrol + tüm Luca veri çekmeleri
           const isLucaDataJob = [
             'EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS',
-            'MIZAN','KDV_MIZAN','KDV_KONTROL','KDV1','KDV2','KDV_191','KDV_391',
+            'MIZAN','ACCOUNT_PLAN','KDV_MIZAN','KDV_KONTROL','KDV1','KDV2','KDV_191','KDV_391',
             'MUAVIN','ISLETME','ISLETME_GELIR','ISLETME_GIDER','IHO_FETCH',
             'GELIR_TABLOSU','BILANCO'
           ].includes(job.tip);
@@ -671,6 +671,7 @@
           // ISLETME_GELIR/GIDER → İşletme defteri ekranı
           const tipLabel = {
             MIZAN: 'Mizan ekranı (Genel Raporlar > Mizan)',
+            ACCOUNT_PLAN: 'Hesap planı güncelleme için Mizan ekranı',
             KDV_MIZAN: 'KDV Beyanname için Mizan ekranı',
             KDV_191: 'Defteri Kebir (Tüm Yazıcılar) — 191 hesap kodu',
             KDV_391: 'Defteri Kebir (Tüm Yazıcılar) — 391 hesap kodu',
@@ -711,6 +712,12 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params.toString()}`;
+          } else if (job.tip === 'ACCOUNT_PLAN') {
+            const params = new URLSearchParams({
+              mukellefId: String(job.mukellefId || ''),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-account-plan?${params.toString()}`;
           } else if (job.tip === 'KDV_MIZAN') {
             // KDV beyanname için bağımsız mizan snapshot — mizan flow'u aynı, upload yolu farklı
             const params = new URLSearchParams({
@@ -861,7 +868,7 @@
   async function fetchLucaMuavinExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
     // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
-    if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
+    if (job.tip === 'MIZAN' || job.tip === 'ACCOUNT_PLAN' || job.tip === 'KDV_MIZAN') {
       return await fetchLucaMizanExcel(job, log);
     }
     if (job.tip === 'KDV_191' || job.tip === 'KDV_391') {

@@ -1,9 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EarsivZipParserService, ParsedEarsivFatura } from './earsiv-zip-parser.service';
 import { EarsivRenderService } from './earsiv-render.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { StorageService } from '../storage/storage.service';
+import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
 import { chromium as pwChromium } from 'playwright-core';
 import * as JSZip from 'jszip';
 
@@ -20,6 +21,8 @@ export class EarsivService {
     private readonly render: EarsivRenderService,
     private readonly mihsap: MihsapService,
     private readonly storage: StorageService,
+    @Inject(forwardRef(() => FaturaMuhasebelestirmeService))
+    private readonly accounting: FaturaMuhasebelestirmeService,
   ) {}
 
   private safeFilePart(value: string | null | undefined, fallback = 'fatura'): string {
@@ -102,6 +105,14 @@ export class EarsivService {
       if (html.trim()) return html;
     }
     return this.render.renderHtml(fatura as any, { autoPrint: false });
+  }
+
+  private async queueAccountingSafe(tenantId: string, faturaId: string) {
+    try {
+      await this.accounting.ensureFromEarsivFatura(tenantId, faturaId);
+    } catch (e: any) {
+      this.logger.warn(`Muhasebelestirme kuyrugu hata (${faturaId}): ${e?.message || e}`);
+    }
   }
 
   /**
@@ -396,6 +407,7 @@ export class EarsivService {
               data: updateData,
             });
           }
+          await this.queueAccountingSafe(tenantId, existing.id);
           duplicate++;
           continue;
         }
@@ -431,7 +443,7 @@ export class EarsivService {
           if (errors.length < 5) errors.push(`${f.faturaNo}: HTML saklanamadi ${(e?.message || '').slice(0, 160)}`);
         }
         if (htmlStorageKey) htmlStored++;
-        await (this.prisma as any).earsivFatura.create({
+        const created = await (this.prisma as any).earsivFatura.create({
           data: {
             tenantId,
             taxpayerId,
@@ -462,6 +474,7 @@ export class EarsivService {
           // olmayabilir, default geri dönüşte SELECT ediyor ve patlıyordu (P2022).
           select: { id: true },
         });
+        await this.queueAccountingSafe(tenantId, created.id);
         inserted++;
       } catch (e: any) {
         this.logger.warn(`Fatura kaydetme hata (${f.faturaNo}): ${e.message}`);

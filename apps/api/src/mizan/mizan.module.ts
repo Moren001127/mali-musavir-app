@@ -16,6 +16,6 @@ import { LucaModule } from '../luca/luca.module';
   ],
   controllers: [MizanController],
   providers: [MizanService, MizanParserService, GelirTablosuService, BilancoService],
-  exports: [MizanService, GelirTablosuService, BilancoService],
+  exports: [MizanService, MizanParserService, GelirTablosuService, BilancoService],
 })
 export class MizanModule {}

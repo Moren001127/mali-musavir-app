@@ -72,6 +72,44 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  @Get('account-plan')
+  accountPlan(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId: string,
+    @Query('q') q?: string,
+    @Query('prefixes') prefixes?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.accountPlan(req.user.tenantId, {
+      taxpayerId,
+      q,
+      prefixes: prefixes ? prefixes.split(',').map((p) => p.trim()).filter(Boolean) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+  }
+
+  @Post('account-plan/refresh')
+  refreshAccountPlan(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; targetDeviceId?: string },
+  ) {
+    return this.service.refreshAccountPlan(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId || '',
+      targetDeviceId: body?.targetDeviceId,
+      createdBy: req.user?.userId || req.user?.sub,
+    });
+  }
+
+  @Post('documents/from-earsiv/:faturaId')
+  fromEarsiv(@Req() req: any, @Param('faturaId') faturaId: string) {
+    return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
+  }
+
+  @Post('documents/duplicate-check')
+  duplicateCheck(@Req() req: any, @Body() body: any) {
+    return this.service.duplicateCheck(req.user.tenantId, body || {});
+  }
+
   @Get('documents/:id')
   get(@Req() req: any, @Param('id') id: string) {
     return this.service.get(req.user.tenantId, id);

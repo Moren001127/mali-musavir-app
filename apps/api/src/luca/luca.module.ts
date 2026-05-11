@@ -9,6 +9,7 @@ import { MizanModule } from '../mizan/mizan.module';
 import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { IsletmeHesapOzetiModule } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.module';
 import { EarsivModule } from '../earsiv/earsiv.module';
+import { FaturaMuhasebelestirmeModule } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EarsivModule } from '../earsiv/earsiv.module';
     forwardRef(() => KdvBeyannameModule),
     forwardRef(() => IsletmeHesapOzetiModule),
     forwardRef(() => EarsivModule),
+    forwardRef(() => FaturaMuhasebelestirmeModule),
   ],
   controllers: [LucaController],
   providers: [LucaService, LucaAutoScraperService],

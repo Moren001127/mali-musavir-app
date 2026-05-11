@@ -1626,9 +1626,13 @@ model InvoiceAccountingDocument {
   tenantId     String
   taxpayerId   String?
   source       String   @default("manual-web") // manual-web | mobile | mihsap | luca
+  sourceRefId  String?
   documentType String   @default("OKC_FIS") // OKC_FIS | E_FATURA | E_ARSIV | FIS | DIGER
   invoiceKind  String   @default("ALIS") // ALIS | SATIS
   status       String   @default("NEEDS_REVIEW") // NEEDS_REVIEW | READY | APPROVED | REJECTED
+  duplicateOfId String?
+  duplicateReason String?
+  duplicateSeverity String? // WARNING | BLOCKING
 
   originalName String
   mimeType     String
@@ -1664,6 +1668,8 @@ model InvoiceAccountingDocument {
   @@index([tenantId, status, createdAt])
   @@index([tenantId, taxpayerId, createdAt])
   @@index([tenantId, documentType, createdAt])
+  @@index([tenantId, source, sourceRefId])
+  @@index([tenantId, duplicateOfId])
   @@index([imageHash])
   @@map("invoice_accounting_documents")
 }
@@ -1685,6 +1691,40 @@ model InvoiceAccountingLine {
 
   @@index([documentId, orderNo])
   @@map("invoice_accounting_lines")
+}
+
+model LucaAccountPlanSnapshot {
+  id          String   @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  sourceJobId String?
+  status      String   @default("READY")
+  accountCount Int     @default(0)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lines       LucaAccountPlanLine[]
+
+  @@index([tenantId, taxpayerId, createdAt])
+  @@index([sourceJobId])
+  @@map("luca_account_plan_snapshots")
+}
+
+model LucaAccountPlanLine {
+  id          String   @id @default(cuid())
+  snapshotId  String
+  accountCode String
+  accountName String
+  level       Int      @default(0)
+  debitBalance Decimal @default(0) @db.Decimal(14, 2)
+  creditBalance Decimal @default(0) @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+
+  snapshot    LucaAccountPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId, accountCode])
+  @@map("luca_account_plan_lines")
 }
 
 model Arac {

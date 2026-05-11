@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { KdvControlModule } from '../kdv-control/kdv-control.module';
@@ -6,7 +6,7 @@ import { FaturaMuhasebelestirmeController } from './fatura-muhasebelestirme.cont
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 
 @Module({
-  imports: [PrismaModule, StorageModule, KdvControlModule],
+  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule)],
   controllers: [FaturaMuhasebelestirmeController],
   providers: [FaturaMuhasebelestirmeService],
   exports: [FaturaMuhasebelestirmeService],

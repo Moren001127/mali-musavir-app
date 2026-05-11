@@ -33,6 +33,19 @@ type UpdateDocumentInput = {
   lines?: AccountingLineInput[];
 };
 
+type AccountPlanQuery = {
+  taxpayerId: string;
+  q?: string;
+  prefixes?: string[];
+  limit?: number;
+};
+
+type DuplicateSignal = {
+  duplicateOfId: string;
+  duplicateReason: string;
+  duplicateSeverity: 'WARNING' | 'BLOCKING';
+} | null;
+
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
   const normalized = String(value).replace(/\./g, '').replace(',', '.');
@@ -71,6 +84,140 @@ export class FaturaMuhasebelestirmeService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(opts.limit || 100, 1), 500),
     });
+  }
+
+  async accountPlan(tenantId: string, opts: AccountPlanQuery) {
+    if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: {
+        tenantId,
+        taxpayerId: opts.taxpayerId,
+        status: 'READY',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, sourceJobId: true, accountCount: true, createdAt: true },
+    });
+    if (!latest) return { source: null, accounts: [] };
+
+    const where: any = { snapshotId: latest.id };
+    const filters: any[] = [];
+    const q = opts.q?.trim();
+    if (q) {
+      filters.push(
+        { accountCode: { contains: q, mode: 'insensitive' } },
+        { accountName: { contains: q, mode: 'insensitive' } },
+      );
+    }
+    if (opts.prefixes?.length) {
+      filters.push(...opts.prefixes.map((p) => ({ accountCode: { startsWith: p } })));
+    }
+    if (filters.length) where.OR = filters;
+
+    const rows = await (this.prisma as any).lucaAccountPlanLine.findMany({
+      where,
+      orderBy: [{ accountCode: 'asc' }],
+      take: Math.min(Math.max(opts.limit || 250, 1), 1000),
+      select: {
+        id: true,
+        accountCode: true,
+        accountName: true,
+        level: true,
+        debitBalance: true,
+        creditBalance: true,
+      },
+    });
+    return {
+      source: latest,
+      accounts: rows.map((r: any) => ({
+        id: r.id,
+        code: r.accountCode,
+        name: r.accountName,
+        level: r.level,
+        debitBalance: Number(r.debitBalance || 0),
+        creditBalance: Number(r.creditBalance || 0),
+      })),
+    };
+  }
+
+  async refreshAccountPlan(tenantId: string, opts: { taxpayerId: string; createdBy?: string; targetDeviceId?: string }) {
+    if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: opts.taxpayerId, tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
+    });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+    const mukellefAdi =
+      taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') || taxpayer.id;
+    const job = await (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId,
+        sessionId: null,
+        mukellefId: opts.taxpayerId,
+        donem: new Date().toISOString().slice(0, 7),
+        tip: 'ACCOUNT_PLAN',
+        status: 'pending',
+        createdBy: opts.createdBy || null,
+        targetDeviceId: opts.targetDeviceId || null,
+        errorMsg: `[META] mukellefAdi=${mukellefAdi}`,
+      },
+    });
+    return { ok: true, job };
+  }
+
+  async importAccountPlanSnapshot(params: {
+    tenantId: string;
+    taxpayerId: string;
+    jobId?: string;
+    rows: Array<{
+      hesapKodu: string;
+      hesapAdi: string;
+      seviye?: number;
+      borcBakiye?: number;
+      alacakBakiye?: number;
+    }>;
+    createdBy?: string;
+  }) {
+    if (!params.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const rows = (params.rows || [])
+      .filter((r) => r.hesapKodu && /^\d/.test(String(r.hesapKodu)))
+      .map((r) => ({
+        accountCode: String(r.hesapKodu).trim(),
+        accountName: String(r.hesapAdi || '').trim(),
+        level: r.seviye || 0,
+        debitBalance: new Prisma.Decimal(Number(r.borcBakiye || 0).toFixed(2)),
+        creditBalance: new Prisma.Decimal(Number(r.alacakBakiye || 0).toFixed(2)),
+      }));
+
+    const snapshot = await (this.prisma as any).lucaAccountPlanSnapshot.create({
+      data: {
+        tenantId: params.tenantId,
+        taxpayerId: params.taxpayerId,
+        sourceJobId: params.jobId || null,
+        status: 'READY',
+        accountCount: rows.length,
+        createdBy: params.createdBy || null,
+      },
+      select: { id: true },
+    });
+    if (rows.length) {
+      await (this.prisma as any).lucaAccountPlanLine.createMany({
+        data: rows.map((r) => ({ ...r, snapshotId: snapshot.id })),
+      });
+    }
+    return { snapshotId: snapshot.id, accountCount: rows.length };
+  }
+
+  async duplicateCheck(tenantId: string, body: {
+    taxpayerId?: string | null;
+    belgeNo?: string | null;
+    sellerVkn?: string | null;
+    buyerVkn?: string | null;
+    totalAmount?: string | number | null;
+    imageHash?: string | null;
+    excludeId?: string | null;
+  }) {
+    const match = await this.findDuplicate(tenantId, body, body.excludeId || undefined);
+    return { duplicate: !!match, match };
   }
 
   async get(tenantId: string, id: string) {
@@ -134,19 +281,31 @@ export class FaturaMuhasebelestirmeService {
       }
 
       const lines = this.linesFromOcr(ocrResult);
+      const imageHash = ocrResult?.imageHash || this.ocr.computeImageHash(file.buffer);
+      const duplicate = await this.findDuplicate(tenantId, {
+        taxpayerId: opts.taxpayerId || null,
+        belgeNo: ocrResult?.belgeNo || null,
+        sellerVkn: ocrResult?.saticiVkn || null,
+        totalAmount: ocrResult?.totalTutari || null,
+        imageHash,
+      });
       const doc = await (this.prisma as any).invoiceAccountingDocument.create({
         data: {
           tenantId,
           taxpayerId: opts.taxpayerId || null,
           source: opts.source || 'manual-web',
+          sourceRefId: null,
           documentType: opts.documentType || ocrResult?.belgeTipi || 'OKC_FIS',
           invoiceKind: opts.invoiceKind || 'ALIS',
-          status: ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW',
+          status: duplicate ? 'NEEDS_REVIEW' : ocrStatus === 'SUCCESS' ? 'READY' : 'NEEDS_REVIEW',
+          duplicateOfId: duplicate?.duplicateOfId || null,
+          duplicateReason: duplicate?.duplicateReason || null,
+          duplicateSeverity: duplicate?.duplicateSeverity || null,
           originalName: file.originalname,
           mimeType: file.mimetype,
           sizeBytes: file.size,
           s3Key,
-          imageHash: ocrResult?.imageHash || this.ocr.computeImageHash(file.buffer),
+          imageHash,
           belgeNo: ocrResult?.belgeNo || null,
           faturaTarihi: parseDate(ocrResult?.date || null),
           sellerVkn: ocrResult?.saticiVkn || null,
@@ -168,8 +327,110 @@ export class FaturaMuhasebelestirmeService {
     return { uploaded: created.length, documents: created };
   }
 
+  async ensureFromEarsivFatura(tenantId: string, faturaId: string) {
+    const f = await (this.prisma as any).earsivFatura.findFirst({
+      where: { id: faturaId, tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        taxpayerId: true,
+        tip: true,
+        belgeKaynak: true,
+        faturaNo: true,
+        faturaTarihi: true,
+        satici: true,
+        saticiVergiNo: true,
+        alici: true,
+        aliciVergiNo: true,
+        matrah: true,
+        kdvTutari: true,
+        kdvOrani: true,
+        toplamTutar: true,
+        paraBirimi: true,
+        pdfStorageKey: true,
+        htmlStorageKey: true,
+        xmlContent: true,
+      },
+    });
+    if (!f) throw new NotFoundException('E-fatura/e-arşiv kaydı bulunamadı');
+
+    const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { tenantId, source: 'earsiv', sourceRefId: f.id },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+    if (existing) return { created: false, duplicate: true, document: existing };
+
+    const documentType = f.belgeKaynak === 'EFATURA' ? 'E_FATURA' : 'E_ARSIV';
+    const invoiceKind = f.tip === 'SATIS' ? 'SATIS' : 'ALIS';
+    const originalName = `${f.faturaNo || f.id}.${f.pdfStorageKey ? 'pdf' : f.htmlStorageKey ? 'html' : 'xml'}`;
+    const s3Key =
+      f.pdfStorageKey ||
+      f.htmlStorageKey ||
+      `earsiv-inline://${f.id}`;
+    const sizeBytes = f.pdfStorageKey || f.htmlStorageKey ? 1 : Buffer.byteLength(f.xmlContent || '', 'utf8');
+    const lines = this.linesFromAmounts({
+      invoiceKind,
+      matrah: f.matrah,
+      kdvTutari: f.kdvTutari,
+      kdvOrani: f.kdvOrani,
+      total: f.toplamTutar,
+      vendorName: invoiceKind === 'ALIS' ? f.satici : f.alici,
+    });
+    const duplicate = await this.findDuplicate(tenantId, {
+      taxpayerId: f.taxpayerId,
+      belgeNo: f.faturaNo,
+      sellerVkn: f.saticiVergiNo,
+      buyerVkn: f.aliciVergiNo,
+      totalAmount: f.toplamTutar,
+    });
+
+    const doc = await (this.prisma as any).invoiceAccountingDocument.create({
+      data: {
+        tenantId,
+        taxpayerId: f.taxpayerId,
+        source: 'earsiv',
+        sourceRefId: f.id,
+        documentType,
+        invoiceKind,
+        status: duplicate ? 'NEEDS_REVIEW' : 'READY',
+        duplicateOfId: duplicate?.duplicateOfId || null,
+        duplicateReason: duplicate?.duplicateReason || null,
+        duplicateSeverity: duplicate?.duplicateSeverity || null,
+        originalName,
+        mimeType: f.pdfStorageKey ? 'application/pdf' : f.htmlStorageKey ? 'text/html' : 'application/xml',
+        sizeBytes,
+        s3Key,
+        currency: f.paraBirimi || 'TL',
+        belgeNo: f.faturaNo || null,
+        faturaTarihi: f.faturaTarihi || null,
+        sellerVkn: f.saticiVergiNo || null,
+        buyerVkn: f.aliciVergiNo || null,
+        vendorName: f.satici || null,
+        customerName: f.alici || null,
+        totalAmount: money(f.toplamTutar),
+        ocrStatus: 'SUCCESS',
+        ocrEngine: 'ubl-direct',
+        ocrData: {
+          source: 'earsivFatura',
+          belgeKaynak: f.belgeKaynak,
+          tip: f.tip,
+          matrah: f.matrah,
+          kdvTutari: f.kdvTutari,
+          kdvOrani: f.kdvOrani,
+        },
+        lines: { create: lines },
+      },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+
+    return { created: true, document: doc };
+  }
+
   async fileUrl(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
+    if (String(doc.s3Key || '').startsWith('earsiv-inline://')) {
+      return { url: '' };
+    }
     const url = await this.storage.getPresignedDownloadUrl(doc.s3Key, doc.originalName);
     return { url };
   }
@@ -195,6 +456,17 @@ export class FaturaMuhasebelestirmeService {
     if ('exchangeRate' in body) data.exchangeRate = parseDecimal(body.exchangeRate, '1');
     if ('faturaTarihi' in body) data.faturaTarihi = parseDate(body.faturaTarihi);
     if ('totalAmount' in body) data.totalAmount = money(body.totalAmount);
+    const duplicate = await this.findDuplicate(tenantId, {
+      taxpayerId: body.taxpayerId,
+      belgeNo: body.belgeNo,
+      sellerVkn: body.sellerVkn,
+      buyerVkn: body.buyerVkn,
+      totalAmount: body.totalAmount,
+    }, id);
+    data.duplicateOfId = duplicate?.duplicateOfId || null;
+    data.duplicateReason = duplicate?.duplicateReason || null;
+    data.duplicateSeverity = duplicate?.duplicateSeverity || null;
+    if (duplicate && data.status === 'READY') data.status = 'NEEDS_REVIEW';
 
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
@@ -238,8 +510,66 @@ export class FaturaMuhasebelestirmeService {
   async remove(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
     await (this.prisma as any).invoiceAccountingDocument.delete({ where: { id } });
-    this.storage.deleteObject(doc.s3Key).catch(() => {});
+    if (!String(doc.s3Key || '').startsWith('earsiv-inline://')) {
+      this.storage.deleteObject(doc.s3Key).catch(() => {});
+    }
     return { deleted: true };
+  }
+
+  private async findDuplicate(
+    tenantId: string,
+    input: {
+      taxpayerId?: string | null;
+      belgeNo?: string | null;
+      sellerVkn?: string | null;
+      buyerVkn?: string | null;
+      totalAmount?: string | number | null;
+      imageHash?: string | null;
+    },
+    excludeId?: string,
+  ): Promise<DuplicateSignal> {
+    const notSelf = excludeId ? { id: { not: excludeId } } : {};
+    if (input.imageHash) {
+      const byHash = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { tenantId, imageHash: input.imageHash, ...notSelf },
+        select: { id: true, belgeNo: true, originalName: true },
+      });
+      if (byHash) {
+        return {
+          duplicateOfId: byHash.id,
+          duplicateReason: `Aynı belge görseli daha önce işlendi (${byHash.belgeNo || byHash.originalName})`,
+          duplicateSeverity: 'BLOCKING',
+        };
+      }
+    }
+
+    const belgeNo = input.belgeNo?.trim();
+    const total = money(input.totalAmount);
+    const vkns = [input.sellerVkn, input.buyerVkn].map((v) => v?.trim()).filter(Boolean);
+    if (belgeNo && total && vkns.length) {
+      const byFields = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: {
+          tenantId,
+          belgeNo,
+          ...(input.taxpayerId ? { taxpayerId: input.taxpayerId } : {}),
+          totalAmount: total,
+          OR: [
+            { sellerVkn: { in: vkns } },
+            { buyerVkn: { in: vkns } },
+          ],
+          ...notSelf,
+        },
+        select: { id: true, belgeNo: true, vendorName: true, customerName: true },
+      });
+      if (byFields) {
+        return {
+          duplicateOfId: byFields.id,
+          duplicateReason: `Belge no/VKN/tutar daha önce eşleşti (${byFields.belgeNo || byFields.vendorName || byFields.customerName})`,
+          duplicateSeverity: 'BLOCKING',
+        };
+      }
+    }
+    return null;
   }
 
   private linesFromOcr(ocrResult: OcrResult | null) {
@@ -293,5 +623,51 @@ export class FaturaMuhasebelestirmeService {
       orderNo: lines.length,
     });
     return lines;
+  }
+
+  private linesFromAmounts(opts: {
+    invoiceKind: string;
+    matrah: any;
+    kdvTutari: any;
+    kdvOrani: any;
+    total: any;
+    vendorName?: string | null;
+  }) {
+    const isSale = opts.invoiceKind === 'SATIS';
+    const matrah = money(opts.matrah) || new Prisma.Decimal(0);
+    const kdv = money(opts.kdvTutari) || new Prisma.Decimal(0);
+    const total = money(opts.total) || matrah.plus(kdv);
+    const kdvCode = isSale ? '391.01.020' : '191.01.020';
+    const cariCode = isSale ? '120.01.001' : '320.01.001';
+    const matrahCode = isSale ? '600.01.001' : '770.01.010';
+    const rate = opts.kdvOrani ? `%${Number(opts.kdvOrani).toLocaleString('tr-TR')}` : undefined;
+
+    return [
+      {
+        group: 'matrah',
+        accountCode: matrahCode,
+        description: isSale ? 'Satış matrahı' : 'Gider / matrah',
+        debit: isSale ? new Prisma.Decimal(0) : matrah,
+        credit: isSale ? matrah : new Prisma.Decimal(0),
+        orderNo: 0,
+      },
+      {
+        group: 'vergi',
+        accountCode: kdvCode,
+        description: isSale ? 'Hesaplanan KDV' : 'Indirilecek KDV',
+        rate,
+        debit: isSale ? new Prisma.Decimal(0) : kdv,
+        credit: isSale ? kdv : new Prisma.Decimal(0),
+        orderNo: 1,
+      },
+      {
+        group: 'cari',
+        accountCode: cariCode,
+        description: opts.vendorName || 'Cari hesap',
+        debit: isSale ? total : new Prisma.Decimal(0),
+        credit: isSale ? new Prisma.Decimal(0) : total,
+        orderNo: 2,
+      },
+    ];
   }
 }
