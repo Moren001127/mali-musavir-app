@@ -14,6 +14,8 @@ const GOLD = '#d4b876';
 const TABLE_BG = '#0a0907';
 const GRID_LINE = 'rgba(245,240,230,0.24)';
 const GRID_LINE_STRONG = 'rgba(212,184,118,0.50)';
+const CELL_LINE = 'rgba(245,240,230,0.16)';
+const CELL_LINE_STRONG = 'rgba(212,184,118,0.42)';
 const AMOUNT_COLOR = '#f4efe6';
 const TOTAL_COLOR = '#ead18a';
 const PROFIT_COLOR = '#86efac';
@@ -283,10 +285,14 @@ export default function GelirTablosuPage() {
     setEditingManual((prev) => ({ ...prev, [manualEditKey(gt.id, field)]: true }));
     setDuzeltme(gt.id, field, saved);
   };
+  const baseSatisMaliyeti = (gt: any): number => {
+    const original = Number(gt?.detay?.satisMal?.toplam);
+    return Number.isFinite(original) ? original : Number(gt?.satisMaliyeti || 0);
+  };
 
   /** Bir kalem için manuel düzeltme dahil efektif tutar */
   const effectiveVal = (gt: any, key: string): number => {
-    const base = Number(gt[key]) || 0;
+    const base = key === 'satisMaliyeti' ? baseSatisMaliyeti(gt) : Number(gt[key]) || 0;
     // v1.36.52: satisMaliyeti için ÖZEL OVERRİDE mantığı.
     // Manuel SMM input SADECE 621 (Satılan Ticari Mallar Maliyeti) yerine geçer.
     // Diğer kalemler (620, 622, 623, 740) otomatik kalır.
@@ -297,9 +303,7 @@ export default function GelirTablosuPage() {
       const manuelVal = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
       if (manuelVal > 0) {
         const auto621 = Number(gt?.detay?.satisMaliyeti621) || 0;
-        const savedManualVal = typeof savedManuel === 'number' ? savedManuel : 0;
-        const autoBase = savedManualVal > 0 ? base + auto621 - savedManualVal : base;
-        return autoBase - auto621 + manuelVal;
+        return base - auto621 + manuelVal;
       }
     }
     const draft = duzeltmelerDraft[gt.id]?.[key];
@@ -425,6 +429,8 @@ export default function GelirTablosuPage() {
   // Oran göster: hangi satırlarda?
   const showPct = (k: string): boolean =>
     ['netSatislar', 'brutSatisKari', 'faaliyetGiderleri', 'faaliyetKari', 'finansmanGiderleri', 'olaganKar', 'donemKari', 'donemNetKari'].includes(k as string);
+
+  const latestDerived = latestQuarter ? derived(latestQuarter) : null;
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -639,10 +645,10 @@ export default function GelirTablosuPage() {
                 })}
               </tr>
               <tr style={{ borderBottom: `1px solid ${GRID_LINE_STRONG}` }}>
-                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` }}>Kod</th>
-                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}` }}>Kalem</th>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Kod</th>
+                <th className="px-3 py-2 text-left text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Kalem</th>
                 {DISPLAY_ORDER.map((qi) => (
-                  <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}` }}>Tutar</th>
+                  <th key={qi} className="px-3 py-2 text-center text-[12px] font-bold uppercase tracking-[.06em]" style={{ color: '#f5efe3', background: 'rgba(184,160,111,0.16)', borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE_STRONG}` }}>Tutar</th>
                 ))}
               </tr>
             </thead>
@@ -652,8 +658,8 @@ export default function GelirTablosuPage() {
                 if (row.sub) {
                   return (
                     <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: idx % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)' }}>
-                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}` }}>{row.sub}</td>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}` }}>
+                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
+                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
                         {row.subLabel}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -661,7 +667,7 @@ export default function GelirTablosuPage() {
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}` }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
                             {hasData ? fmtTRY(v!) : '—'}
                           </td>
                         );
@@ -674,8 +680,8 @@ export default function GelirTablosuPage() {
                 if (row.manual) {
                   return (
                     <tr key={idx} style={{ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' }}>
-                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', width: 80, fontWeight: 700 }}>Manuel</td>
-                      <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8 }}>
+                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', width: 80, fontWeight: 700, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
+                      <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
                         {row.label}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -683,7 +689,7 @@ export default function GelirTablosuPage() {
                         const hasData = gt !== null;
                         if (!hasData) {
                           return (
-                            <td key={qi} style={{ borderLeft: `1px solid ${GRID_LINE}` }}></td>
+                            <td key={qi} style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}></td>
                           );
                         }
                         const field = row.manual!;
@@ -692,7 +698,7 @@ export default function GelirTablosuPage() {
                         const hasSaved = typeof savedVal === 'number' && savedVal > 0;
                         const isEditing = !hasSaved || hasDraft || !!editingManual[manualEditKey(gt.id, field)];
                         return (
-                          <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}` }}>
+                          <td key={qi} className="px-2 py-1.5 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
                             <ManuelInput
                               gtId={gt.id}
                               field={field}
@@ -727,7 +733,7 @@ export default function GelirTablosuPage() {
                       borderBottom: row.total ? `1px solid ${GRID_LINE_STRONG}` : undefined,
                     }}
                   >
-                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}` }}>{row.kod || ''}</td>
+                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
                     <td
                       className="px-3 py-2.5"
                       style={{
@@ -739,6 +745,7 @@ export default function GelirTablosuPage() {
                         textTransform: row.total && !row.final ? 'uppercase' : 'none',
                         letterSpacing: row.total && !row.final ? '.04em' : '0',
                         borderRight: `1px solid ${GRID_LINE}`,
+                        borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
                       }}
                     >
                       {row.label}
@@ -767,6 +774,7 @@ export default function GelirTablosuPage() {
                             fontSize: row.final ? 14.5 : row.total ? 14 : 13,
                             fontWeight: row.final ? 650 : row.total ? 700 : 500,
                             borderLeft: `1px solid ${GRID_LINE}`,
+                            borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
                             fontFamily: 'JetBrains Mono, monospace',
                           }}
                         >
@@ -1383,14 +1391,14 @@ export default function GelirTablosuPage() {
             </span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <RatioCard label="Brüt Kar Marjı" value={pct(Number(latestQuarter.brutSatisKari), Number(latestQuarter.netSatislar) || 1)} formula="Brüt Satış Karı / Net Satışlar" tone="good" />
-            <RatioCard label="Faaliyet Kar Marjı" value={pct(Number(latestQuarter.faaliyetKari), Number(latestQuarter.netSatislar) || 1)} formula="Faaliyet Karı / Net Satışlar" tone="good" />
-            <RatioCard label="Faaliyet Gider Oranı" value={pct(Number(latestQuarter.faaliyetGiderleri), Number(latestQuarter.netSatislar) || 1)} formula="Faaliyet Giderleri / Net Satışlar" tone="neutral" />
-            <RatioCard label="Finansman Gider Oranı" value={pct(Number(latestQuarter.finansmanGiderleri), Number(latestQuarter.netSatislar) || 1)} formula="Finansman Giderleri / Net Satışlar" tone="warn" />
-            <RatioCard label="Olağan Kar Marjı" value={pct(Number(latestQuarter.olaganKar), Number(latestQuarter.netSatislar) || 1)} formula="Olağan Kar / Net Satışlar" tone="good" />
-            <RatioCard label="Net Kar Marjı" value={pct(Number(latestQuarter.donemNetKari), Number(latestQuarter.netSatislar) || 1)} formula="Dönem Net Karı / Net Satışlar" tone="good" />
-            <RatioCard label="Maliyet / Ciro" value={pct(Number(latestQuarter.satisMaliyeti), Number(latestQuarter.netSatislar) || 1)} formula="Satışların Maliyeti / Net Satışlar" tone="neutral" />
-            <RatioCard label="Efektif Vergi Oranı" value={pct(Number(latestQuarter.vergiKarsiligi), Number(latestQuarter.donemKari) || 1)} formula="Vergi Karşılığı / Dönem Karı" tone="neutral" />
+            <RatioCard label="Brüt Kar Marjı" value={pct(Number(latestDerived?.brutSatisKari), Number(latestDerived?.netSatislar) || 1)} formula="Brüt Satış Karı / Net Satışlar" tone="good" />
+            <RatioCard label="Faaliyet Kar Marjı" value={pct(Number(latestDerived?.faaliyetKari), Number(latestDerived?.netSatislar) || 1)} formula="Faaliyet Karı / Net Satışlar" tone="good" />
+            <RatioCard label="Faaliyet Gider Oranı" value={pct(Number(latestDerived?.faaliyetGiderleri), Number(latestDerived?.netSatislar) || 1)} formula="Faaliyet Giderleri / Net Satışlar" tone="neutral" />
+            <RatioCard label="Finansman Gider Oranı" value={pct(Number(latestDerived?.finansmanGiderleri), Number(latestDerived?.netSatislar) || 1)} formula="Finansman Giderleri / Net Satışlar" tone="warn" />
+            <RatioCard label="Olağan Kar Marjı" value={pct(Number(latestDerived?.olaganKar), Number(latestDerived?.netSatislar) || 1)} formula="Olağan Kar / Net Satışlar" tone="good" />
+            <RatioCard label="Net Kar Marjı" value={pct(Number(latestDerived?.donemNetKari), Number(latestDerived?.netSatislar) || 1)} formula="Dönem Net Karı / Net Satışlar" tone="good" />
+            <RatioCard label="Maliyet / Ciro" value={pct(Number(latestDerived?.satisMaliyeti), Number(latestDerived?.netSatislar) || 1)} formula="Satışların Maliyeti / Net Satışlar" tone="neutral" />
+            <RatioCard label="Efektif Vergi Oranı" value={pct(Number(latestDerived?.vergiKarsiligi), Number(latestDerived?.donemKari) || 1)} formula="Vergi Karşılığı / Dönem Karı" tone="neutral" />
             {prevQuarter && (
               <RatioCard
                 label="Satış Büyümesi (Önceki Çeyrek)"

@@ -508,11 +508,10 @@ export class GelirTablosuService {
     // v1.36.52: SMM için override mantığı — Manuel SMM input SADECE 621'i (Satılan Ticari Mallar Maliyeti) ezer.
     // 620, 622, 623, 740 otomatik kalır. Hizmet firmasında 740 yansır + kullanıcı 621'i elinde girer.
     // Formül: total = baseSMM (otomatik 620+621+622+623+740) - satisMaliyeti621 (ortomatik 621) + manuelSMM
-    const oldManuelSMM = Number(((gt.duzeltmeler as any) || {}).satisMaliyetiManuel) || 0;
     const manuelSMM = Number((cleaned as any).satisMaliyetiManuel) || 0;
     const auto621 = Number((gt.detay as any)?.satisMaliyeti621) || 0;
-    const currentSMM = Number(gt.satisMaliyeti) || 0;
-    const baseSMM = oldManuelSMM > 0 ? currentSMM + auto621 - oldManuelSMM : currentSMM;
+    const originalSMM = Number((gt.detay as any)?.satisMal?.toplam);
+    const baseSMM = Number.isFinite(originalSMM) ? originalSMM : Number(gt.satisMaliyeti) || 0;
     const satisMaliyeti = manuelSMM > 0 ? (baseSMM - auto621 + manuelSMM) : baseSMM;
     const brutSatisKari = netSatislar - satisMaliyeti;
     const faaliyetGiderleri = effective('faaliyetGiderleri');
