@@ -25,6 +25,11 @@ const LOSS_COLOR = '#fca5a5';
 const RATIO_COLOR = '#ffffff';
 const RATIO_BG = 'rgba(13,148,136,0.58)';
 const RATIO_BORDER = 'rgba(153,246,228,0.80)';
+const CODE_COL_WIDTH = 70;
+const PERIOD_COL_WIDTH = 180;
+const PERIOD_COLS_WIDTH = PERIOD_COL_WIDTH * 4;
+const ACCOUNT_COL_WIDTH = `calc(100% - ${CODE_COL_WIDTH + PERIOD_COLS_WIDTH}px)`;
+const LEADING_COL_WIDTH = `calc(100% - ${PERIOD_COLS_WIDTH}px)`;
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -552,12 +557,12 @@ export default function GelirTablosuPage() {
         }}>
           <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
             <colgroup>
-              <col style={{ width: 70 }} />
-              <col />
-              <col style={{ width: 180 }} />
-              <col style={{ width: 180 }} />
-              <col style={{ width: 180 }} />
-              <col style={{ width: 180 }} />
+              <col style={{ width: CODE_COL_WIDTH }} />
+              <col style={{ width: ACCOUNT_COL_WIDTH }} />
+              <col style={{ width: PERIOD_COL_WIDTH }} />
+              <col style={{ width: PERIOD_COL_WIDTH }} />
+              <col style={{ width: PERIOD_COL_WIDTH }} />
+              <col style={{ width: PERIOD_COL_WIDTH }} />
             </colgroup>
             <thead>
               {/* Firma adı satırı — KOD/KALEM üstüne */}
@@ -1049,11 +1054,11 @@ export default function GelirTablosuPage() {
           <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
             <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
               <colgroup>
-                <col />
-                <col style={{ width: 180 }} />
-                <col style={{ width: 180 }} />
-                <col style={{ width: 180 }} />
-                <col style={{ width: 180 }} />
+                <col style={{ width: LEADING_COL_WIDTH }} />
+                <col style={{ width: PERIOD_COL_WIDTH }} />
+                <col style={{ width: PERIOD_COL_WIDTH }} />
+                <col style={{ width: PERIOD_COL_WIDTH }} />
+                <col style={{ width: PERIOD_COL_WIDTH }} />
               </colgroup>
               <thead>
                 {/* Üst başlık — gelir tablosundaki gibi: 2026 · X. DÖNEM + ay aralığı */}
@@ -1230,12 +1235,12 @@ export default function GelirTablosuPage() {
             <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
               <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
                 <colgroup>
-                  <col style={{ width: 70 }} />
-                  <col />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 180 }} />
+                  <col style={{ width: CODE_COL_WIDTH }} />
+                  <col style={{ width: ACCOUNT_COL_WIDTH }} />
+                  <col style={{ width: PERIOD_COL_WIDTH }} />
+                  <col style={{ width: PERIOD_COL_WIDTH }} />
+                  <col style={{ width: PERIOD_COL_WIDTH }} />
+                  <col style={{ width: PERIOD_COL_WIDTH }} />
                 </colgroup>
                 <thead>
                   {/* Üst başlık — gelir tablosundaki gibi */}
