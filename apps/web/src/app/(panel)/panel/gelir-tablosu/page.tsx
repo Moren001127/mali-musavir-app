@@ -550,7 +550,7 @@ export default function GelirTablosuPage() {
           border: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
         }}>
-          <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
+          <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: 70 }} />
               <col />
@@ -1047,7 +1047,7 @@ export default function GelirTablosuPage() {
             </span>
           </h3>
           <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
-            <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
+            <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
               <colgroup>
                 <col />
                 <col style={{ width: 180 }} />
@@ -1228,7 +1228,7 @@ export default function GelirTablosuPage() {
               </span>
             </h3>
             <div className="rounded-xl overflow-hidden" style={{ background: TABLE_BG, border: `1px solid ${GRID_LINE_STRONG}` }}>
-              <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}>
+              <table className="w-full text-left text-[13px]" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
                 <colgroup>
                   <col style={{ width: 70 }} />
                   <col />
