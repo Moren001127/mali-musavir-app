@@ -1475,6 +1475,7 @@ export class OcrService {
     if (!text) return '';
     return text
       .replace(/\([^)]*MATRAH[^)]*\)/gi, ' ')
+      .replace(/\b(?:KDV\s*)?MATRAH[Iİıi]?\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|[^\s\d.,])?/gi, ' ')
       .replace(/\bMATRAH\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|₺)?/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -1509,6 +1510,38 @@ export class OcrService {
     const folded = this.foldTurkishAscii(value || '');
     const withoutMatrahParen = folded.replace(/\([^)]*MATRAH[^)]*\)/g, ' ');
     return /\bKDV\s*(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*(?:MATRAH|ORAN)\b/.test(withoutMatrahParen);
+  }
+
+  private isKdvTableHeaderLine(value: string): boolean {
+    const folded = this.foldTurkishAscii(value || '');
+    return /\bKDV\s*TUTAR[II]?\b/.test(folded)
+      && /\b(?:KDV\s*ORAN[II]?|DIGER\s+VERGILER|MAL\s+HIZMET)\b/.test(folded);
+  }
+
+  private isForbiddenKdvAmountLine(value: string): boolean {
+    const folded = this.foldTurkishAscii(value || '');
+    if (!folded) return false;
+    if (this.isMatrahOrRateLine(folded) || this.isKdvTableHeaderLine(folded)) return true;
+
+    const explicitKdvLabel =
+      /\bHESAPLANAN\s+K\.?\s*D\.?\s*V\.?\b|\bKATMA\s+DEGER\s+VERGISI\b|\bK\.?\s*D\.?\s*V\.?\s*TUTAR[II]?\b|\bTOP\s*K\.?\s*D\.?\s*V\.?\b|\bTOPKDV\b|\bODENECEK\s+K\.?\s*D\.?\s*V\.?\b/.test(folded);
+    const totalOrBaseLine =
+      /\bMAL\s+HIZMET\b|\bVERGILER\s+(?:DAHIL|HARIC)\b|\bODENECEK\s+TUTAR\b|\bFATURA\s+TUTAR[II]?\b|\bTOPLAM\s+ISKONTO\b|\bGENEL\s+TOPLAM\b|\bARA\s+TOPLAM\b|\bTOPLAM\s+TUTAR\b/.test(folded);
+
+    return totalOrBaseLine && !explicitKdvLabel;
+  }
+
+  private isLikelyKdvAmountColumnHeader(lines: string[], index: number): boolean {
+    const foldedLine = this.foldTurkishAscii(lines[index] || '').replace(/\s+/g, ' ').trim();
+    const isPlainKdvAmountHeader =
+      /^(?:K\.?\s*D\.?\s*V\.?\s*)?TUTAR[II]?$/.test(foldedLine) ||
+      /^K\.?\s*D\.?\s*V\.?\s*TUTAR[II]?$/.test(foldedLine);
+    if (!isPlainKdvAmountHeader) return false;
+
+    const context = this.foldTurkishAscii(
+      lines.slice(Math.max(0, index - 2), Math.min(lines.length, index + 4)).join(' '),
+    );
+    return /\bKDV\s*ORAN[II]?\b|\bDIGER\s+VERGILER\b|\bMAL\s+HIZMET\b|\bSIRA\s*NO\b/.test(context);
   }
 
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
@@ -1882,6 +1915,7 @@ export class OcrService {
     const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
     const parseLineAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
       if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
+      if (!opts.allowMatrah && this.isForbiddenKdvAmountLine(line)) return null;
       const m = line.match(amountRe);
       if (!m) return null;
       if (!opts.allowMatrah && this.isLikelyStandaloneTaxRate(m[1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
@@ -1892,6 +1926,7 @@ export class OcrService {
     };
     const parseLastAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
       if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
+      if (!opts.allowMatrah && this.isForbiddenKdvAmountLine(line)) return null;
       const matches = [...line.matchAll(amountGlobalRe)];
       if (matches.length === 0) return null;
       if (!opts.allowMatrah && matches.length === 1 && this.isLikelyStandaloneTaxRate(matches[0][1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
@@ -1904,6 +1939,7 @@ export class OcrService {
       for (const line of lines) {
         if (/TEVK[İI]FAT/i.test(line)) continue;
         if (this.isMatrahOrRateLine(line)) continue;
+        if (this.isForbiddenKdvAmountLine(line)) continue;
         const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
         if (!label) continue;
         const valuePart = this.stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
@@ -1916,6 +1952,8 @@ export class OcrService {
       for (let i = 0; i < lines.length; i++) {
         if (!labelRe.test(lines[i])) continue;
         if (options.skipMatrah && this.isMatrahOrRateLine(lines[i])) continue;
+        if (options.skipMatrah && this.isForbiddenKdvAmountLine(lines[i])) continue;
+        if (options.skipMatrah && this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
         const allowMatrah = !options.skipMatrah;
         const sameSource = lines[i].replace(labelRe, '');
         const cleanedSame = options.skipMatrah ? this.stripMatrahFragments(sameSource) : sameSource;
@@ -1927,6 +1965,8 @@ export class OcrService {
           const next = lines[i + j];
           if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
           if (options.skipMatrah && this.isMatrahOrRateLine(next)) continue;
+          if (options.skipMatrah && this.isForbiddenKdvAmountLine(next)) continue;
+          if (options.skipMatrah && j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
           const nearby = this.foldTurkishAscii(
             [
               lines[i - 2] || '',
@@ -1949,7 +1989,7 @@ export class OcrService {
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
     );
-    const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);
+    const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*(?:\(\s*)?%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);
     const oran = oranMatch ? parseInt(oranMatch[1] || oranMatch[2], 10) : null;
 
     if (explicitKdv != null && explicitKdv > 0) {
@@ -1980,6 +2020,7 @@ export class OcrService {
       if (skipTaxRe.test(line)) {
         continue;
       }
+      if (this.isForbiddenKdvAmountLine(line) || this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
 
       const labelMatch = line.match(labelRe);
       if (!labelMatch) continue;
@@ -2008,6 +2049,8 @@ export class OcrService {
           // ÖİV/Telsiz vb. satırı varsa kes
           if (skipTaxRe.test(nextLine)) break;
           // Saf yapı satırlarını atla ("(", ")", "%", "% 20,00" tek başına)
+          if (this.isForbiddenKdvAmountLine(nextLine)) continue;
+          if (j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
           if (/^[\(\)%\s]*$/.test(nextLine)) continue;
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?$/.test(nextLine)) continue;
           const cleanedNext = this.stripMatrahFragments(nextLine);
@@ -2030,6 +2073,7 @@ export class OcrService {
           const prevLine = lines[i - j];
           if (labelRe.test(prevLine)) break;
           if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
+          if (this.isForbiddenKdvAmountLine(prevLine)) continue;
           const cleanedPrev = this.stripMatrahFragments(prevLine);
           if (!cleanedPrev) continue;
           const m = cleanedPrev.match(amountRe);
@@ -2106,6 +2150,7 @@ export class OcrService {
       const line = lines[i];
       if (skipTaxRe.test(line)) continue;
       if (discountRowRe.test(line) && !/KDV/i.test(line)) continue;
+      if (this.isForbiddenKdvAmountLine(line) || this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
 
       // Önceki 2 satırda non-KDV vergi label'ı varsa bu "% N,NN" markörü ÖİV'ye
       // / Telsize / ÖTV'ye ait olabilir (label + oran + amount 3 ayrı satırda).
@@ -2154,6 +2199,8 @@ export class OcrService {
         for (let j = 1; j <= 3 && marker.lineIdx + j < lines.length; j++) {
           const nextLine = lines[marker.lineIdx + j];
           if (skipTaxRe.test(nextLine)) break;
+          if (this.isForbiddenKdvAmountLine(nextLine)) continue;
+          if (j > 1 && this.isForbiddenKdvAmountLine(lines[marker.lineIdx + j - 1] || '')) continue;
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
           const cleanedNext = this.stripMatrahFragments(nextLine);
           if (!cleanedNext) continue;
