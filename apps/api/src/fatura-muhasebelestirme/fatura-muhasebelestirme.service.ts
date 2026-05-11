@@ -496,6 +496,48 @@ export class FaturaMuhasebelestirmeService {
     return { created: true, document: doc };
   }
 
+  async backfillFromExistingEarsiv(
+    tenantId: string,
+    opts: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number } = {},
+  ) {
+    const where: any = { tenantId };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.donem) where.donem = opts.donem;
+    if (opts.tip) where.tip = opts.tip;
+    if (opts.belgeKaynak) where.belgeKaynak = opts.belgeKaynak;
+
+    const rows = await (this.prisma as any).earsivFatura.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(opts.limit || 5000, 1), 20000),
+      select: { id: true },
+    });
+
+    let created = 0;
+    let alreadyQueued = 0;
+    let failed = 0;
+    const errors: Array<{ id: string; message: string }> = [];
+
+    for (const row of rows) {
+      try {
+        const result = await this.ensureFromEarsivFatura(tenantId, row.id);
+        if (result.created) created++;
+        else alreadyQueued++;
+      } catch (e: any) {
+        failed++;
+        if (errors.length < 10) errors.push({ id: row.id, message: e?.message || 'aktarim hatasi' });
+      }
+    }
+
+    return {
+      scanned: rows.length,
+      created,
+      alreadyQueued,
+      failed,
+      errors,
+    };
+  }
+
   async fileUrl(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
     if (String(doc.s3Key || '').startsWith('earsiv-inline://')) {

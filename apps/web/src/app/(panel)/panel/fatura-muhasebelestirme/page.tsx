@@ -256,6 +256,8 @@ export default function FaturaMuhasebelestirmePage() {
   const [dashboardRows, setDashboardRows] = useState<DashboardRow[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const [dashboardSearch, setDashboardSearch] = useState('');
+  const [dashboardAccountPlanJob, setDashboardAccountPlanJob] = useState<string | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
@@ -473,6 +475,31 @@ export default function FaturaMuhasebelestirmePage() {
     }
   };
 
+  const refreshAccountPlanForTaxpayer = async (taxpayerId: string, name: string) => {
+    setDashboardAccountPlanJob(taxpayerId);
+    try {
+      const { data } = await api.post('/fatura-muhasebelestirme/account-plan/refresh', { taxpayerId });
+      toast.success(`${name} hesap planı Luca kuyruğuna alındı${data?.job?.id ? ` · ${data.job.id.slice(0, 8)}` : ''}`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Hesap planı güncelleme başlatılamadı');
+    } finally {
+      setDashboardAccountPlanJob(null);
+    }
+  };
+
+  const backfillExistingEarsiv = async () => {
+    setBackfillLoading(true);
+    try {
+      const { data } = await api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', { limit: 20000 });
+      toast.success(`${data.created} mevcut fatura kuyruğa aktarıldı, ${data.alreadyQueued} zaten vardı`);
+      await loadDashboard();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Mevcut faturalar aktarılamadı');
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
   const saveSelected = async (approve = false) => {
     if (!selected) return;
     if (!selected.backendId) {
@@ -589,6 +616,15 @@ export default function FaturaMuhasebelestirmePage() {
                 <button onClick={loadDashboard} className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#1664c8] text-white" title="Yenile">
                   {dashboardLoading ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
                 </button>
+                <button
+                  onClick={backfillExistingEarsiv}
+                  disabled={backfillLoading}
+                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#d4b876] px-3 text-sm font-semibold text-[#0f0d0a] disabled:opacity-60"
+                  title="E-Fatura / E-Arşiv sorgulama alanındaki mevcut faturaları muhasebeleştirme kuyruğuna aktar"
+                >
+                  {backfillLoading ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+                  Mevcut Faturaları Aktar
+                </button>
               </div>
               <input
                 className="h-10 w-80 rounded-md border border-[#3b321f] bg-[#15110d] px-3 text-sm text-[#f7eedb] outline-none"
@@ -631,6 +667,14 @@ export default function FaturaMuhasebelestirmePage() {
                         <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedInvoice}</td>
                         <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedBank}</td>
                         <td className="border-b border-[#2a2419] px-3 py-2 text-center">
+                          <button
+                            onClick={() => refreshAccountPlanForTaxpayer(row.taxpayerId, row.name)}
+                            disabled={dashboardAccountPlanJob === row.taxpayerId}
+                            className="mr-2 inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#4a3d25] bg-[#241b10] text-[#f4d68a] hover:bg-[#302314] disabled:opacity-50"
+                            title="Bu mükellefin hesap planını Luca'dan güncelle"
+                          >
+                            {dashboardAccountPlanJob === row.taxpayerId ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                          </button>
                           <button onClick={() => openTaxpayerQueue(row)} className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#1f7ad9] text-white hover:bg-[#2f8ef0]" title="Fatura işleme ekranını aç">
                             <Pencil size={16} />
                           </button>

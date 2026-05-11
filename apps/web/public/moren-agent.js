@@ -868,7 +868,10 @@
   async function fetchLucaMuavinExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
     // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
-    if (job.tip === 'MIZAN' || job.tip === 'ACCOUNT_PLAN' || job.tip === 'KDV_MIZAN') {
+    if (job.tip === 'ACCOUNT_PLAN') {
+      return await fetchLucaAccountPlanExcel(job, log);
+    }
+    if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
       return await fetchLucaMizanExcel(job, log);
     }
     if (job.tip === 'KDV_191' || job.tip === 'KDV_391') {
@@ -5038,6 +5041,59 @@
    *   4) Tarih + Rapor türü doldur
    *   5) FormData → fetch POST → blob yakala
    */
+  async function fetchLucaAccountPlanExcel(job, log) {
+    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
+      throw new Error(
+        'Bu Luca v2.1 (LUCASSO) surumu. Hesap plani icin klasik Luca acilmali: ' +
+        'auygs.luca.com.tr/Luca/luca.do',
+      );
+    }
+
+    await ensureLucaFirma(job, log);
+    await log('Hesap plani mizan uzerinden degil, Luca hesap plani/kartlari ekranindan cekilecek');
+
+    const labels = [
+      'Hesap Planı',
+      'Hesap Plani',
+      'Hesap Kartları',
+      'Hesap Kartlari',
+      'Hesap Listesi',
+      'Muhasebe Hesap Planı',
+      'Muhasebe Hesap Plani',
+    ];
+
+    let menu = null;
+    for (const label of labels) {
+      menu = await findLucaMenuItem(label, null, 1800);
+      if (menu) break;
+    }
+
+    if (!menu) {
+      const muhasebe = await findLucaMenuItem('Muhasebe', null, 2500);
+      if (muhasebe?.el) {
+        fullActivate(muhasebe.el, muhasebe.frame?.contentWindow || window);
+        await sleep(800);
+        for (const label of labels) {
+          menu = await findLucaMenuItem(label, null, 1800);
+          if (menu) break;
+        }
+      }
+    }
+
+    if (!menu?.el) {
+      throw new Error(
+        'Luca hesap plani menusu bulunamadi. Mizan kullanilmayacak; klasik Luca menude Hesap Plani/Hesap Kartlari ekrani gorunmeli.',
+      );
+    }
+
+    const label = (menu.el.textContent || '').trim();
+    await log(`Hesap plani menusu bulundu: ${label}`);
+    fullActivate(menu.el, menu.frame?.contentWindow || window);
+    await sleep(1800);
+
+    return await fetchLucaGenericExcel(job, log);
+  }
+
   async function fetchLucaMizanExcel(job, log) {
     // 0) Luca sürüm kontrolü
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
@@ -5917,43 +5973,75 @@
    * sayfada "Excel" yazan butonu arar + tıklar, fetch interceptor ile blob yakalar.
    */
   async function fetchLucaGenericExcel(job, log) {
-    await log('⚠ Generic Excel button arama (job tipi henüz tam otomatik değil)');
-    const excelBtn =
-      [...document.querySelectorAll('button,a')].find((el) =>
-        /excel|xlsx/i.test(el.textContent || ''),
-      ) || document.querySelector('a[href*=".xlsx"]');
-    if (!excelBtn) {
-      throw new Error(
-        'Luca ekranında Excel indirme butonu bulunamadı — ekranı manuel açıp tekrar deneyin',
-      );
-    }
-
-    const originalFetch = window.fetch;
-    let captured = null;
-    window.fetch = async function (...args) {
-      const res = await originalFetch.apply(this, args);
+    await log('Generic Excel button arama (job tipi henuz tam otomatik degil)');
+    const docs = [document];
+    const dive = (doc, depth = 0) => {
+      if (depth > 5) return;
       try {
-        const ct = res.headers.get('content-type') || '';
-        if (
-          ct.includes('spreadsheet') ||
-          ct.includes('excel') ||
-          (typeof args[0] === 'string' && args[0].includes('.xlsx'))
-        ) {
-          const clone = res.clone();
-          captured = await clone.blob();
+        for (const f of doc.querySelectorAll('frame, iframe')) {
+          if (f.contentDocument) {
+            docs.push(f.contentDocument);
+            dive(f.contentDocument, depth + 1);
+          }
         }
       } catch {}
-      return res;
     };
+    dive(document);
+
+    let excelBtn = null;
+    let excelWin = window;
+    for (const doc of docs) {
+      const btn =
+        [...doc.querySelectorAll('button,a,input[type="button"],input[type="submit"],img[onclick]')].find((el) => {
+          const txt = `${el.value || ''} ${el.textContent || ''} ${el.title || ''} ${el.alt || ''} ${el.getAttribute?.('onclick') || ''} ${el.getAttribute?.('href') || ''}`;
+          return /excel|xlsx|xls|aktar|indir/i.test(txt);
+        }) || doc.querySelector('a[href*=".xlsx"],a[href*=".xls"]');
+      if (btn) {
+        excelBtn = btn;
+        excelWin = doc.defaultView || window;
+        break;
+      }
+    }
+    if (!excelBtn) {
+      throw new Error('Luca ekraninda Excel indirme butonu bulunamadi. Hesap plani ekraninda Excel/Aktar/Indir butonu gorunmeli.');
+    }
+
+    await log(`Generic Excel butonu bulundu: "${(excelBtn.value || excelBtn.textContent || excelBtn.title || excelBtn.alt || '').trim().slice(0, 40)}"`);
+
+    const targets = [...new Set(docs.map((doc) => doc.defaultView).filter(Boolean).concat(window))];
+    const restores = [];
+    let captured = null;
+    for (const win of targets) {
+      try {
+        if (!win.fetch) continue;
+        const originalFetch = win.fetch;
+        restores.push(() => { try { win.fetch = originalFetch; } catch {} });
+        win.fetch = async function (...args) {
+          const res = await originalFetch.apply(this, args);
+          try {
+            const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+            const ct = res.headers.get('content-type') || '';
+            if (/spreadsheet|excel|officedocument|octet-stream/i.test(ct) || /\.xlsx|\.xls|rapor_indir|download|indir/i.test(url)) {
+              const blob = await res.clone().blob();
+              if (blob.size > 1000 && !captured) captured = blob;
+            }
+          } catch {}
+          return res;
+        };
+      } catch {}
+    }
 
     try {
-      excelBtn.click();
+      fullActivate(excelBtn, excelWin);
       const t0 = Date.now();
       while (!captured && Date.now() - t0 < 20000) {
         await sleep(250);
       }
     } finally {
-      window.fetch = originalFetch;
+      restores.forEach((fn) => fn());
+    }
+    if (!captured) {
+      throw new Error('Excel yakalanamadi. Luca butonu native indirme aciyorsa Moren Agent download yakalama modu gerekir.');
     }
     return captured;
   }

@@ -21,11 +21,16 @@ export interface ParsedMizanRow {
   alacakBakiye: number;
 }
 
+export interface MizanParseOptions {
+  allowAccountPlanHeader?: boolean;
+  includeZeroRows?: boolean;
+}
+
 @Injectable()
 export class MizanParserService {
   private readonly logger = new Logger(MizanParserService.name);
 
-  parse(buffer: Buffer): ParsedMizanRow[] {
+  parse(buffer: Buffer, options: MizanParseOptions = {}): ParsedMizanRow[] {
     // raw: true ile sayısal hücreleri JS number olarak al — Türkçe binlik
     // ayracı (.) ve ondalık virgül (,) formatlama sorunlarını önler.
     const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
@@ -73,7 +78,7 @@ export class MizanParserService {
       const hasBorc = cells.some((c) => /bor[çc]/.test(c));
       const hasAlacak = cells.some((c) => /alacak/.test(c));
       const hasBakiye = cells.some((c) => /bakiye/.test(c));
-      if ((hasKod || hasAd) && (hasBorc || hasAlacak || hasBakiye)) {
+      if ((hasKod || hasAd) && (hasBorc || hasAlacak || hasBakiye || options.allowAccountPlanHeader)) {
         headerRowIdx = i;
         this.logger.log(`Mizan başlık satırı: index=${i} (S${i+1}) · cells=[${cells.filter(c=>c).slice(0,8).join(' | ')}]`);
         break;
@@ -224,12 +229,12 @@ export class MizanParserService {
       }
 
       // Hiçbir tutar yoksa geç
-      if (
+      if (!options.includeZeroRows && (
         borcToplami === 0 &&
         alacakToplami === 0 &&
         borcBakiye === 0 &&
         alacakBakiye === 0
-      ) {
+      )) {
         continue;
       }
 

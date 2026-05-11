@@ -447,7 +447,10 @@ export class LucaController {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
 
     try {
-      const rows = this.mizanParser.parse(file.buffer);
+      const rows = this.mizanParser.parse(file.buffer, {
+        allowAccountPlanHeader: true,
+        includeZeroRows: true,
+      });
       const result = await this.faturaMuhasebelestirme.importAccountPlanSnapshot({
         tenantId,
         taxpayerId: mukellefId,

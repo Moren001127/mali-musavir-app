@@ -110,6 +110,20 @@ export class FaturaMuhasebelestirmeController {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
   }
 
+  @Post('documents/backfill-earsiv')
+  backfillEarsiv(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; donem?: string; tip?: string; belgeKaynak?: string; limit?: number },
+  ) {
+    return this.service.backfillFromExistingEarsiv(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId || undefined,
+      donem: body?.donem || undefined,
+      tip: body?.tip || undefined,
+      belgeKaynak: body?.belgeKaynak || undefined,
+      limit: body?.limit,
+    });
+  }
+
   @Post('documents/duplicate-check')
   duplicateCheck(@Req() req: any, @Body() body: any) {
     return this.service.duplicateCheck(req.user.tenantId, body || {});
