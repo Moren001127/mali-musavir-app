@@ -883,8 +883,11 @@ function MizanTable({
               // Sadeleştirilmiş hiyerarşi — 2 grup:
               //   ÜST seviye (lvl 0-1: Grup ve Ana Hesap) → BOLD, hafif vurgulu zemin
               //   ALT seviye (lvl 2+: kırılımlar)         → NORMAL, sade zemin
-              const lvl = Number(h.seviye ?? 0);
-              const isUpper = lvl <= 1; // Grup veya Ana Hesap
+              const hesapKodu = String(h.hesapKodu || '');
+              const sadeKod = hesapKodu.replace(/\D/g, '');
+              const noktaSayisi = (hesapKodu.match(/\./g) || []).length;
+              const lvl = noktaSayisi > 0 ? 3 + noktaSayisi : sadeKod.length <= 1 ? 0 : sadeKod.length <= 2 ? 1 : sadeKod.length <= 3 ? 2 : 3;
+              const isUpper = lvl <= 2; // 1 / 10 / 100 gibi ana satirlar
 
               const codeColor = '#d8c17f';
               const adiColor = '#fafaf9';
@@ -903,7 +906,7 @@ function MizanTable({
                   : 'rgba(0,0,0,0.16)';
 
               const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; color: string }> = [
-                { val: h.hesapKodu, align: 'left', color: codeColor },
+                { val: hesapKodu, align: 'left', color: codeColor },
                 { val: h.hesapAdi, align: 'left', color: adiColor },
                 { val: Number(h.borcToplami) > 0 ? fmtTRY(h.borcToplami) : '', align: 'right', color: Number(h.borcToplami) > 0 ? numTextColor : dimColor },
                 { val: Number(h.alacakToplami) > 0 ? fmtTRY(h.alacakToplami) : '', align: 'right', color: Number(h.alacakToplami) > 0 ? numTextColor : dimColor },
@@ -928,7 +931,7 @@ function MizanTable({
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
                           fontSize: colIdx >= 2 ? (isUpper ? 14 : 13.5) : fontSize,
                           color: c.color,
-                          fontWeight: colIdx >= 2 ? (isUpper ? 700 : 550) : weight,
+                          fontWeight: colIdx >= 2 ? (isUpper ? 700 : 500) : weight,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',
