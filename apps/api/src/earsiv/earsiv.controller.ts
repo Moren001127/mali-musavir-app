@@ -292,7 +292,7 @@ export class EarsivController {
     });
 
     if (jobId) {
-      await this.luca.markJobDone(jobId, result.inserted).catch(() => {});
+      await this.luca.markJobDone(jobId, result.inserted + result.duplicate).catch(() => {});
     }
     return { ok: true, ...result };
   }

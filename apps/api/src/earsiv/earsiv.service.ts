@@ -316,6 +316,14 @@ export class EarsivService {
 
     const parsed = await this.parser.parseZip(zipBuffer);
     this.logger.log(`ZIP parse: ${parsed.length} fatura bulundu (tip=${tip}, kaynak=${belgeKaynak})`);
+    if (parsed.length === 0) {
+      const entries = ((parsed as any).__entries || []).slice(0, 8).join(' | ');
+      const diagnostics = ((parsed as any).__diagnostics || []).slice(0, 6).join(' | ');
+      throw new BadRequestException(
+        `ZIP içinde aktarılabilir fatura bulunamadı (xml=${(parsed as any).__xmlCount || 0}, entries=${(parsed as any).__totalEntries || 0}). ` +
+        `${entries ? `İçerik: ${entries}. ` : ''}${diagnostics ? `Tanı: ${diagnostics}` : ''}`,
+      );
+    }
 
     let inserted = 0;   // gerçekten YENİ eklenen
     let duplicate = 0;  // önceden vardı, atlandı (mükerrer önleme)
@@ -332,10 +340,14 @@ export class EarsivService {
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
         const existing = await (this.prisma as any).earsivFatura.findFirst({
           where: { tenantId, taxpayerId, tip, belgeKaynak, faturaNo: f.faturaNo },
-          select: { id: true, pdfStorageKey: true, htmlStorageKey: true },
+          select: { id: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true },
         });
         if (existing) {
           const updateData: any = {};
+          if (existing.donem !== fDonem) {
+            updateData.donem = fDonem;
+            updateData.faturaTarihi = f.faturaTarihi;
+          }
           if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
             const pdfStorageKey = await this.storeOriginalPdf({
               tenantId,
@@ -452,6 +464,12 @@ export class EarsivService {
       htmlBackfilled,
       errors,
     };
+    if (inserted + duplicate === 0) {
+      throw new BadRequestException(
+        `ZIP okundu ama portala kaydedilen fatura olmadı (toplam=${parsed.length}, hata=${skipped}). ` +
+        `${errors.length ? `İlk hatalar: ${errors.join(' || ')}` : 'Kayıt sebebi tespit edilemedi.'}`,
+      );
+    }
     return { inserted, duplicate, skipped, total: parsed.length, meta };
   }
 

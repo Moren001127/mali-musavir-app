@@ -46,6 +46,9 @@ export class EarsivZipParserService {
         zip = await JSZip.loadAsync(zipBuf);
       } catch (e: any) {
         this.logger.warn(`ZIP açma hatası (${prefix}): ${e.message}`);
+        if (!prefix) {
+          throw new Error(`ZIP dosyası açılamadı: ${e.message}`);
+        }
         return;
       }
 

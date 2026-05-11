@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.98';
+  const AGENT_VERSION = '1.36.99';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -529,11 +529,14 @@
           // Backend cevabını log'la — kaç fatura parse edildi göreceğiz
           let respDetail = '';
           let metaDetail = '';
+          let uploadRecordCount = 0;
           try {
             const r = await uploadRes.clone().json();
             if (typeof r.inserted === 'number' || typeof r.total === 'number') {
+              uploadRecordCount = Number(r.inserted || 0) + Number(r.duplicate || 0);
               respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, mükerrer=${r.duplicate != null ? r.duplicate : '?'}, hata=${r.skipped != null ? r.skipped : '?'})`;
             } else {
+              uploadRecordCount = Number(r.hesapCount || r.toplamHesapAdet || 0);
               respDetail = ` (resp=${JSON.stringify(r).slice(0, 200)})`;
             }
             if (r.meta) {
@@ -551,7 +554,8 @@
           // yapmıyorsa explicit done çağrısı gerekir)
           await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
             method: 'POST',
-            headers: { 'X-Agent-Token': TOKEN },
+            headers: { 'X-Agent-Token': TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recordCount: uploadRecordCount }),
           }).catch(() => {});
 
           setStatus(`Luca: ${job.tip} başarıyla yüklendi`);
@@ -1090,10 +1094,33 @@
       // İşletme ekranı açık kalıp sonraki bilanço job'ını yanıltabiliyordu.
       var __navSkip = false;
 
+      const normalizeEbelgeText = (s) => String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .toLowerCase();
+
+      const contextMatchesExpected = (ctx) => {
+        try {
+          if (!ctx?.doc?.body) return false;
+          const txt = normalizeEbelgeText(ctx.doc.body.textContent || '');
+          const wantsEarsiv = String(job.tip || '').includes('EARSIV');
+          const wantsEfatura = String(job.tip || '').includes('EFATURA');
+          const wantsAlis = String(job.tip || '').includes('ALIS');
+          const wantsSatis = String(job.tip || '').includes('SATIS');
+          const typeOk = (wantsEarsiv && txt.includes('e-arsiv')) || (wantsEfatura && txt.includes('e-fatura'));
+          const sideOk = (wantsAlis && txt.includes('alis')) || (wantsSatis && txt.includes('satis'));
+          return typeOk && sideOk;
+        } catch {
+          return false;
+        }
+      };
+
       const isFreshEbelgeContext = (ctx, previousCtx) => {
         if (!ctx) return false;
         if (!previousCtx) return true;
         if (previousEbelgeKey === expectedEbelgeKey) return true;
+        if (contextMatchesExpected(ctx)) return true;
         return ctx.doc !== previousCtx.doc || ctx.win !== previousCtx.win || ctx.btn !== previousCtx.btn;
       };
 
@@ -1451,7 +1478,7 @@
         throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli`);
       }
       if (!basariliAcildi && ebelgeContextAtStart && !isFreshEbelgeContext(ebelgeContext, ebelgeContextAtStart)) {
-        throw new Error(`${menuLabel} ekranı yenilenmedi; önceki e-belge ekranı yeni iş için kullanılmadı`);
+        await log(`⚠ ${menuLabel} ekranı yeni frame olarak doğrulanamadı; mevcut e-belge ekranıyla devam ediliyor`);
       }
       try { window.__morenLastEbelgeKey = expectedEbelgeKey; } catch {}
       await log(`✅ ${menuLabel} ekranı hazır (${ebelgeContext.label || 'frame'})`);
@@ -1500,6 +1527,27 @@
     let yakalanmisZip = null;
     let zipNetworkInFlight = false;
 
+    const acceptZipBlob = async (blob, label, ct = '', cd = '') => {
+      try {
+        if (!blob || blob.size <= 100 || yakalanmisZip) return false;
+        const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+        const isZipMagic = head[0] === 0x50 && head[1] === 0x4b; // "PK"
+        const headers = `${ct || ''} ${cd || ''}`.toLowerCase();
+        if (!isZipMagic) {
+          if (blob.size > 1000 || headers.includes('zip') || headers.includes('attachment') || headers.includes('filename')) {
+            await log(`⚠ ZIP olmayan cevap atlandı (${label}, ct=${String(ct || '').slice(0, 40)}, size=${Math.round(blob.size / 1024)} KB)`);
+          }
+          return false;
+        }
+        yakalanmisZip = blob;
+        await log(`📥 ZIP yakalandı (${label}, ${Math.round(blob.size / 1024)} KB)`);
+        return true;
+      } catch (e) {
+        await log(`⚠ ZIP doğrulama hatası (${label}): ${e?.message || e}`);
+        return false;
+      }
+    };
+
     // ─── MOREN BRIDGE (Chrome extension) ───
     // Background script'e "download bekliyorum" sinyali (Excel akışıyla aynı)
     const postExpectingZip = (val) => {
@@ -1523,10 +1571,7 @@
           const r = await fetch(dlUrl, { credentials: 'include' });
           if (r.ok) {
             const blob = await r.blob();
-            if (blob && blob.size > 100 && !yakalanmisZip) {
-              yakalanmisZip = blob;
-              await log(`📥 ZIP yakalandı (bridge URL fetch, ${Math.round(blob.size/1024)} KB)`);
-            }
+            await acceptZipBlob(blob, 'bridge URL fetch', r.headers.get('content-type') || '', r.headers.get('content-disposition') || '');
           }
         } catch (e) {
           await log(`⚠ Bridge URL fetch hatası: ${e?.message || e}`);
@@ -1540,10 +1585,7 @@
       try {
         const detail = e.detail || {};
         const blob = detail.blob;
-        if (!yakalanmisZip && blob && blob.size > 100) {
-          yakalanmisZip = blob;
-          await log(`📥 ZIP yakalandı (bridge disk → blob, ${Math.round(blob.size/1024)} KB, dosya: ${String(detail.filename || '').split(/[\\\/]/).pop()})`);
-        }
+        await acceptZipBlob(blob, `bridge disk → blob, dosya: ${String(detail.filename || '').split(/[\\\/]/).pop()}`);
       } catch (e) {}
     };
     window.addEventListener('moren-luca-file', onLucaFile);
@@ -1605,10 +1647,7 @@
                       res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
                     }
                     var blob = await res.blob();
-                    if (blob && blob.size > 100 && !yakalanmisZip) {
-                      yakalanmisZip = blob;
-                      log('📥 ZIP yakalandi (form.submit hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                    }
+                    await acceptZipBlob(blob, 'form.submit hijack', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                   } catch (e) {}
                 })();
                 return;
@@ -1644,10 +1683,7 @@
                     res = await orig.origFetch.call(w, actionUrl, { method: method, body: fd, credentials: 'include' });
                   }
                   var blob = await res.blob();
-                  if (blob && blob.size > 100 && !yakalanmisZip) {
-                    yakalanmisZip = blob;
-                    log('📥 ZIP yakalandi (submit event, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                  }
+                  await acceptZipBlob(blob, 'submit event', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                 } catch (e) {}
               })();
             } catch (e) {}
@@ -1677,10 +1713,7 @@
                           var absUrl = new URL(value, w.location.href).toString();
                           var res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
                           var blob = await res.blob();
-                          if (blob && blob.size > 100 && !yakalanmisZip) {
-                            yakalanmisZip = blob;
-                            log('📥 ZIP yakalandi (iframe src hijack, ' + Math.round(blob.size/1024) + ' KB)').catch(function() {});
-                          }
+                          await acceptZipBlob(blob, 'iframe src hijack', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                         } catch (e) {}
                       })();
                     }
@@ -1714,10 +1747,7 @@
               if (blob && blob.size > 1000) {
                 log(`🔍 FETCH ${url.slice(-80)} → ct=${ct.slice(0,30)}, size=${Math.round(blob.size/1024)}KB, isBin=${isBin}`).catch(() => {});
               }
-              if (isBin && blob && blob.size > 100 && !yakalanmisZip) {
-                yakalanmisZip = blob;
-                log(`📥 ZIP yakalandı (fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-              }
+              if (isBin) await acceptZipBlob(blob, 'fetch', ct, cd);
             } catch {}
             return res;
           };
@@ -1763,10 +1793,7 @@
                         }
                         const res = await orig.origFetch.call(w, fullUrl, init);
                         const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (XHR re-fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
+                        await acceptZipBlob(blob, 'XHR re-fetch', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                       } catch (e) {
                         log(`⚠ XHR re-fetch hatası: ${e?.message || e}`).catch(() => {});
                       }
@@ -1792,10 +1819,7 @@
                     const absUrl = new URL(url, w.location.href).toString();
                     const res = await orig.origFetch.call(w, absUrl, { credentials: 'include' });
                     const blob = await res.blob();
-                    if (blob && blob.size > 100 && !yakalanmisZip) {
-                      yakalanmisZip = blob;
-                      log(`📥 ZIP yakalandı (window.open hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                    }
+                    await acceptZipBlob(blob, 'window.open hijack', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                   } catch (e) {
                     log(`⚠ window.open hijack fetch hatası: ${e?.message || e}`).catch(() => {});
                   }
@@ -1824,10 +1848,7 @@
                       try {
                         const res = await orig.origFetch.call(w, this.href, { credentials: 'include' });
                         const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (anchor hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
+                        await acceptZipBlob(blob, 'anchor hijack', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                       } catch (e) {
                         log(`⚠ anchor hijack fetch hatası: ${e?.message || e}`).catch(() => {});
                       }
@@ -2231,9 +2252,7 @@
                                 cd.includes('.zip') || cd.includes('attachment') || cd.includes('filename') ||
                                 (blob && blob.size > 1000 && !ct.startsWith('text/') && !ct.startsWith('application/json') && !ct.startsWith('application/javascript'));
 
-                  if (isZip && blob && blob.size > 100 && !yakalanmisZip) {
-                    yakalanmisZip = blob;
-                    log(`📥 ZIP yakalandı (Luca.downloadPost hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
+                  if (isZip && await acceptZipBlob(blob, 'Luca.downloadPost hijack', ct, cd)) {
                   } else if (!isZip) {
                     // Beklenmeyen response — Luca'nın orijinal flow'unu da dene (native download)
                     log(`⚠ downloadPost response binary değil (ct=${ct.slice(0,30)}), orijinal Luca.downloadPost da çağrılacak`).catch(() => {});
@@ -2310,10 +2329,7 @@
                           res = await fetch(f.action, { method: method, body: fd, credentials: 'include' });
                         }
                         const blob = await res.blob();
-                        if (blob && blob.size > 100 && !yakalanmisZip) {
-                          yakalanmisZip = blob;
-                          log(`📥 ZIP yakalandı (gonder form fetch, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                        }
+                        await acceptZipBlob(blob, 'gonder form fetch', res.headers.get('content-type') || '', res.headers.get('content-disposition') || '');
                       } catch (e) {
                         log(`⚠ gonder form fetch hatası: ${e?.message || e}`).catch(() => {});
                       }
@@ -2359,10 +2375,7 @@
                     try {
                       const r = await fetch(url, { credentials: 'include' });
                       const blob = await r.blob();
-                      if (blob && blob.size > 100 && !yakalanmisZip) {
-                        yakalanmisZip = blob;
-                        log(`📥 ZIP yakalandı (location.assign hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                      }
+                      await acceptZipBlob(blob, 'location.assign hijack', r.headers.get('content-type') || '', r.headers.get('content-disposition') || '');
                     } catch (e) {}
                   })();
                   return; // navigate etmeyelim
@@ -2382,10 +2395,7 @@
                     try {
                       const r = await fetch(url, { credentials: 'include' });
                       const blob = await r.blob();
-                      if (blob && blob.size > 100 && !yakalanmisZip) {
-                        yakalanmisZip = blob;
-                        log(`📥 ZIP yakalandı (location.replace hijack, ${Math.round(blob.size/1024)} KB)`).catch(() => {});
-                      }
+                      await acceptZipBlob(blob, 'location.replace hijack', r.headers.get('content-type') || '', r.headers.get('content-disposition') || '');
                     } catch (e) {}
                   })();
                   return;

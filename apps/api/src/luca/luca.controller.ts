@@ -454,10 +454,11 @@ export class LucaController {
         fetchJobId: jobId,
         zipBuffer: file.buffer,
       });
-      if (jobId) await this.luca.markJobDone(jobId, result.inserted).catch(() => {});
+      if (jobId) await this.luca.markJobDone(jobId, result.inserted + result.duplicate).catch(() => {});
       return {
         ok: true,
         inserted: result.inserted,
+        duplicate: result.duplicate,
         skipped: result.skipped,
         total: result.total,
         meta: (result as any).meta,
