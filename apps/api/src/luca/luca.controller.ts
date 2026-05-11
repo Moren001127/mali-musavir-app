@@ -203,6 +203,44 @@ export class LucaController {
     return this.luca.listJobs(req.user.tenantId);
   }
 
+  @Get('luca/session-manager/status')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  getSessionManagerStatus(@Req() req: any) {
+    return this.luca.getSessionManagerStatus(req.user.tenantId);
+  }
+
+  @Get('luca/session-manager/captcha')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  listCaptchaChallenges(@Req() req: any) {
+    return this.luca.listCaptchaChallenges(req.user.tenantId);
+  }
+
+  @Post('luca/session-manager/captcha/:id/answer')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  submitPortalCaptcha(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { answer?: string; captchaText?: string },
+  ) {
+    const answer = body?.answer || body?.captchaText || '';
+    return this.luca.submitCaptchaAnswer(
+      req.user.tenantId,
+      id,
+      answer,
+      req.user.userId || req.user.sub || null,
+    );
+  }
+
+  @Post('luca/session-manager/captcha/:id/cancel')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  cancelPortalCaptcha(@Req() req: any, @Param('id') id: string) {
+    return this.luca.cancelCaptchaChallenge(req.user.tenantId, id);
+  }
+
   @Get('luca/jobs/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   getJob(@Req() req: any, @Param('id') id: string) {
@@ -235,9 +273,48 @@ export class LucaController {
   }
 
   @Get('agent/luca/jobs/pending')
-  async pendingJobs(@Headers('x-agent-token') agentToken: string) {
+  async pendingJobs(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('deviceId') deviceId?: string,
+  ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    return this.luca.pendingJobsForAgent(tenantId);
+    return this.luca.pendingJobsForAgent(tenantId, deviceId);
+  }
+
+  @Post('agent/luca/captcha')
+  @HttpCode(HttpStatus.OK)
+  async createAgentCaptcha(
+    @Body() body: {
+      jobId?: string;
+      deviceId?: string;
+      captchaImage: string;
+      context?: any;
+      expiresInSec?: number;
+    },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.luca.createCaptchaChallengeFromAgent(tenantId, body);
+  }
+
+  @Get('agent/luca/captcha/:id/answer')
+  async getAgentCaptchaAnswer(
+    @Param('id') id: string,
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.luca.getCaptchaAnswerForAgent(tenantId, id);
+  }
+
+  @Post('agent/luca/captcha/:id/consume')
+  @HttpCode(HttpStatus.OK)
+  async consumeAgentCaptchaAnswer(
+    @Param('id') id: string,
+    @Body() body: { ok?: boolean; error?: string },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.luca.consumeCaptchaAnswer(tenantId, id, body?.ok !== false, body?.error);
   }
 
   @Post('agent/luca/jobs/:id/start')

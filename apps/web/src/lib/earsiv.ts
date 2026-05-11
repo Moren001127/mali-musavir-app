@@ -25,6 +25,10 @@ export interface EarsivFatura {
   createdAt: string;
 }
 
+function currentDeviceId() {
+  return typeof window !== 'undefined' ? (window as any).__morenAutoAgent?.deviceId : undefined;
+}
+
 export const earsivApi = {
   fetchFromLuca: (data: {
     mukellefId: string;
@@ -32,7 +36,9 @@ export const earsivApi = {
     tip: EarsivTip;
     belgeKaynak?: BelgeKaynak;
   }) =>
-    api.post('/earsiv/fetch-from-luca', data).then((r) => r.data as { jobId: string; status: string }),
+    api
+      .post('/earsiv/fetch-from-luca', { ...data, targetDeviceId: currentDeviceId() })
+      .then((r) => r.data as { jobId: string; status: string }),
 
   getLucaJob: (jobId: string) =>
     api.get(`/earsiv/luca-job/${jobId}`).then((r) => r.data as { job: any }),

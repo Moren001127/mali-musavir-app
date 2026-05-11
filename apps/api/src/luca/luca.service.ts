@@ -103,6 +103,7 @@ export class LucaService {
     tip: string;
     createdBy?: string;
     mukellefAdi?: string;
+    targetDeviceId?: string;
   }) {
     return (this.prisma as any).lucaFetchJob.create({
       data: {
@@ -113,6 +114,7 @@ export class LucaService {
         tip: params.tip,
         status: 'pending',
         createdBy: params.createdBy || null,
+        targetDeviceId: params.targetDeviceId || null,
         // mukellefAdi'yı errorMsg'in başına meta olarak ekleyelim (yeni column eklemeden)
         // Format: "[META] mukellefAdi=ABC FIRMA"
         errorMsg: params.mukellefAdi ? `[META] mukellefAdi=${params.mukellefAdi}` : null,
@@ -222,9 +224,16 @@ export class LucaService {
    * Mükellef bilgilerini (lucaSlug, taxNumber, ad) job'a embed eder ki
    * agent Luca'da firma değiştirme kontrolünü yapabilsin.
    */
-  async pendingJobsForAgent(tenantId: string) {
+  async pendingJobsForAgent(tenantId: string, deviceId?: string) {
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
-      where: { tenantId, status: 'pending' },
+      where: {
+        tenantId,
+        status: 'pending',
+        OR: [
+          { targetDeviceId: null },
+          ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+        ],
+      },
       orderBy: { createdAt: 'asc' },
       take: 5,
     });
@@ -280,5 +289,206 @@ export class LucaService {
   // Endpoint'ler sabitini dışa aktar (debug / keşif için)
   getEndpoints() {
     return LUCA_ENDPOINTS;
+  }
+
+  // ==================== PORTAL CAPTCHA BRIDGE ====================
+
+  async getSessionManagerStatus(tenantId: string) {
+    await this.expireOldCaptchaChallenges(tenantId);
+    const [session, credential, statuses, activeChallenge] = await Promise.all([
+      this.getSession(tenantId),
+      (this.prisma as any).lucaCredential.findUnique({
+        where: { tenantId },
+        select: {
+          id: true,
+          uyeNo: true,
+          username: true,
+          lastLoginAt: true,
+          lastError: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      }).catch(() => null),
+      (this.prisma as any).agentStatus.findMany({
+        where: { tenantId, agent: 'luca' },
+        orderBy: { lastPing: 'desc' },
+        take: 10,
+      }).catch(() => []),
+      this.getActiveCaptchaChallenge(tenantId),
+    ]);
+
+    return {
+      credential: credential
+        ? {
+            saved: true,
+            uyeNo: credential.uyeNo,
+            username: credential.username,
+            lastLoginAt: credential.lastLoginAt,
+            lastError: credential.lastError,
+            isActive: credential.isActive,
+            updatedAt: credential.updatedAt,
+          }
+        : { saved: false },
+      session: session || { connected: false },
+      devices: (statuses || []).map((s: any) => ({
+        id: s?.meta?.deviceId || null,
+        running: !!s.running,
+        lastPing: s.lastPing,
+        url: s?.meta?.url || null,
+        version: s?.meta?.version || null,
+      })),
+      activeChallenge,
+    };
+  }
+
+  async getActiveCaptchaChallenge(tenantId: string) {
+    await this.expireOldCaptchaChallenges(tenantId);
+    const ch = await (this.prisma as any).lucaCaptchaChallenge.findFirst({
+      where: { tenantId, status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return ch ? this.publicCaptchaChallenge(ch, true) : null;
+  }
+
+  async listCaptchaChallenges(tenantId: string, limit = 20) {
+    await this.expireOldCaptchaChallenges(tenantId);
+    const rows = await (this.prisma as any).lucaCaptchaChallenge.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return rows.map((r: any) => this.publicCaptchaChallenge(r, r.status === 'pending'));
+  }
+
+  async submitCaptchaAnswer(tenantId: string, id: string, answer: string, answeredBy?: string) {
+    const text = String(answer || '').trim();
+    if (text.length < 3) throw new BadRequestException('Guvenlik kodu en az 3 karakter olmali');
+    const ch = await (this.prisma as any).lucaCaptchaChallenge.findFirst({
+      where: { id, tenantId },
+    });
+    if (!ch) throw new NotFoundException('CAPTCHA istegi bulunamadi');
+    if (ch.status !== 'pending') {
+      throw new BadRequestException('Bu CAPTCHA istegi artik cevap beklemiyor');
+    }
+    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+      where: { id },
+      data: {
+        status: 'answered',
+        answer: text,
+        answeredBy: answeredBy || null,
+        answeredAt: new Date(),
+      },
+    });
+    if (updated.jobId) {
+      await this.appendJobLog(updated.jobId, 'Luca guvenlik kodu portaldan girildi').catch(() => {});
+    }
+    return this.publicCaptchaChallenge(updated, false);
+  }
+
+  async cancelCaptchaChallenge(tenantId: string, id: string) {
+    const ch = await (this.prisma as any).lucaCaptchaChallenge.findFirst({ where: { id, tenantId } });
+    if (!ch) throw new NotFoundException('CAPTCHA istegi bulunamadi');
+    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+      where: { id },
+      data: { status: 'cancelled' },
+    });
+    if (updated.jobId) {
+      await this.appendJobLog(updated.jobId, 'Luca guvenlik kodu istegi iptal edildi').catch(() => {});
+    }
+    return this.publicCaptchaChallenge(updated, false);
+  }
+
+  async createCaptchaChallengeFromAgent(
+    tenantId: string,
+    body: {
+      jobId?: string;
+      deviceId?: string;
+      captchaImage: string;
+      context?: any;
+      expiresInSec?: number;
+    },
+  ) {
+    if (!body?.captchaImage || !String(body.captchaImage).startsWith('data:image/')) {
+      throw new BadRequestException('captchaImage data:image formatinda olmali');
+    }
+    const expiresInSec = Math.max(30, Math.min(Number(body.expiresInSec || 180), 600));
+    const expiresAt = new Date(Date.now() + expiresInSec * 1000);
+    const created = await (this.prisma as any).lucaCaptchaChallenge.create({
+      data: {
+        tenantId,
+        jobId: body.jobId || null,
+        deviceId: body.deviceId || null,
+        captchaImage: body.captchaImage,
+        context: body.context || {},
+        requestedBy: 'agent',
+        expiresAt,
+      },
+    });
+    if (body.jobId) {
+      await this.appendJobLog(body.jobId, 'Luca guvenlik kodu bekleniyor; kod portalda gosterildi').catch(() => {});
+    }
+    return { ok: true, challenge: this.publicCaptchaChallenge(created, true) };
+  }
+
+  async getCaptchaAnswerForAgent(tenantId: string, id: string) {
+    await this.expireOldCaptchaChallenges(tenantId);
+    const ch = await (this.prisma as any).lucaCaptchaChallenge.findFirst({
+      where: { id, tenantId },
+    });
+    if (!ch) throw new NotFoundException('CAPTCHA istegi bulunamadi');
+    if (ch.status === 'answered') {
+      return { status: 'answered', answer: ch.answer };
+    }
+    return { status: ch.status, answer: null };
+  }
+
+  async consumeCaptchaAnswer(tenantId: string, id: string, ok = true, error?: string) {
+    const ch = await (this.prisma as any).lucaCaptchaChallenge.findFirst({ where: { id, tenantId } });
+    if (!ch) throw new NotFoundException('CAPTCHA istegi bulunamadi');
+    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+      where: { id },
+      data: {
+        status: ok ? 'consumed' : 'pending',
+        answer: ok ? ch.answer : null,
+        consumedAt: ok ? new Date() : null,
+        context: {
+          ...(ch.context || {}),
+          lastAgentError: error || null,
+        },
+      },
+    });
+    if (updated.jobId) {
+      await this.appendJobLog(
+        updated.jobId,
+        ok ? 'Luca guvenlik kodu agent tarafindan uygulandi' : `Guvenlik kodu kabul edilmedi${error ? `: ${error}` : ''}`,
+      ).catch(() => {});
+    }
+    return { ok: true, challenge: this.publicCaptchaChallenge(updated, false) };
+  }
+
+  private async expireOldCaptchaChallenges(tenantId: string) {
+    await (this.prisma as any).lucaCaptchaChallenge.updateMany({
+      where: {
+        tenantId,
+        status: 'pending',
+        expiresAt: { lt: new Date() },
+      },
+      data: { status: 'expired' },
+    }).catch(() => {});
+  }
+
+  private publicCaptchaChallenge(ch: any, includeImage: boolean) {
+    return {
+      id: ch.id,
+      jobId: ch.jobId,
+      deviceId: ch.deviceId,
+      status: ch.status,
+      captchaImage: includeImage ? ch.captchaImage : undefined,
+      context: ch.context || {},
+      createdAt: ch.createdAt,
+      expiresAt: ch.expiresAt,
+      answeredAt: ch.answeredAt,
+      consumedAt: ch.consumedAt,
+    };
   }
 }

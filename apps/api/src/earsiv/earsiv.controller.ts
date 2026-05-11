@@ -31,7 +31,7 @@ export class EarsivController {
   @HttpCode(HttpStatus.OK)
   async fetchFromLuca(
     @Req() req: any,
-    @Body() body: { mukellefId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak },
+    @Body() body: { mukellefId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak; targetDeviceId?: string },
   ) {
     if (!body?.mukellefId || !body?.donem || !body?.tip) {
       throw new BadRequestException('mukellefId, donem ve tip gerekli');
@@ -63,6 +63,7 @@ export class EarsivController {
       tip: jobTip,
       createdBy: req.user.id,
       mukellefAdi,
+      targetDeviceId: body.targetDeviceId || undefined,
     });
     return { jobId: job.id, status: job.status };
   }

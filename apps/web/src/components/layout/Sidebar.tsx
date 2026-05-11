@@ -79,6 +79,7 @@ const navGroups = [
     icon: Zap,
     items: [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
+      { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
       { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },
       { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },

@@ -8,6 +8,10 @@ export type MizanDonemTipi =
   | 'GECICI_Q4'
   | 'YILLIK';
 
+function currentDeviceId() {
+  return typeof window !== 'undefined' ? (window as any).__morenAutoAgent?.deviceId : undefined;
+}
+
 export const mizanApi = {
   /* ── Mizan ── */
   list: (taxpayerId?: string) =>
@@ -23,7 +27,9 @@ export const mizanApi = {
     api.post('/mizan/import', data).then((r) => r.data),
   // Extension-first Luca çekimi — moren-agent.js tarayıcıdaki açık Luca sekmesinden çekecek
   fetchFromLucaAgent: (data: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
-    api.post('/mizan/fetch-from-luca', data).then((r) => r.data as { jobId: string; status: string }),
+    api
+      .post('/mizan/fetch-from-luca', { ...data, targetDeviceId: currentDeviceId() })
+      .then((r) => r.data as { jobId: string; status: string }),
   getLucaJob: (jobId: string) =>
     api.get(`/mizan/luca-job/${jobId}`).then((r) => r.data as { job: any; mizan: any }),
   uploadExcel: (

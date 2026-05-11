@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.00';
+  const AGENT_VERSION = '1.37.01';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -245,7 +245,8 @@
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
 
-      const r = await fetch(API + '/agent/luca/jobs/pending', {
+      const pendingUrl = API + '/agent/luca/jobs/pending' + (DEVICE_ID ? ('?deviceId=' + encodeURIComponent(DEVICE_ID)) : '');
+      const r = await fetch(pendingUrl, {
         headers: { 'X-Agent-Token': TOKEN },
       });
       if (!r.ok) return;

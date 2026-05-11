@@ -125,7 +125,7 @@ export class MizanController {
   @HttpCode(HttpStatus.OK)
   async fetchFromLuca(
     @Req() req: any,
-    @Body() body: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi },
+    @Body() body: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi; targetDeviceId?: string },
   ) {
     if (!body?.mukellefId || !body?.donem) {
       throw new BadRequestException('mukellefId ve donem gerekli');
@@ -137,6 +137,7 @@ export class MizanController {
       donem: body.donem,
       tip: 'MIZAN',
       createdBy: req.user.sub,
+      targetDeviceId: body.targetDeviceId || undefined,
     });
     return { jobId: job.id, status: job.status };
   }

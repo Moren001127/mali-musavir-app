@@ -1182,6 +1182,32 @@ model LucaSession {
   @@map("luca_sessions")
 }
 
+// Portal icinde Luca guvenlik kodu/CAPTCHA akisi.
+// Agent Luca ekraninda CAPTCHA gorurse gorseli buraya yazar; portal kullanicisi
+// kodu buradan girer; agent cevabi poll ederek Luca ekranina uygular.
+model LucaCaptchaChallenge {
+  id           String    @id @default(cuid())
+  tenantId     String
+  jobId        String?
+  deviceId     String?
+  status       String    @default("pending") // pending | answered | consumed | expired | cancelled
+  captchaImage String    @db.Text
+  answer       String?
+  context      Json?
+  requestedBy  String?
+  answeredBy   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  expiresAt    DateTime?
+  answeredAt   DateTime?
+  consumedAt   DateTime?
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, deviceId, status])
+  @@index([jobId])
+  @@map("luca_captcha_challenges")
+}
+
 // ============================================================
 // MİZAN / GELİR TABLOSU / BİLANÇO
 // ============================================================
@@ -1382,6 +1408,7 @@ model LucaFetchJob {
   status        String    @default("pending") // pending | running | done | failed
   recordCount   Int       @default(0)
   errorMsg      String?
+  targetDeviceId String?
   createdBy     String?
   createdAt     DateTime  @default(now())
   startedAt     DateTime?
@@ -1389,6 +1416,7 @@ model LucaFetchJob {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
+  @@index([tenantId, targetDeviceId, status])
   @@index([sessionId])
   @@map("luca_fetch_jobs")
 }
