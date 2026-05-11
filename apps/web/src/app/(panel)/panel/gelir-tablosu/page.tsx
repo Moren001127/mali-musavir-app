@@ -22,9 +22,9 @@ const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.58)';
 const MISSING_AMOUNT_COLOR = 'rgba(250,250,249,0.28)';
 const PROFIT_COLOR = '#86efac';
 const LOSS_COLOR = '#fca5a5';
-const RATIO_COLOR = '#ecfff8';
-const RATIO_BG = 'rgba(20,184,166,0.26)';
-const RATIO_BORDER = 'rgba(153,246,228,0.55)';
+const RATIO_COLOR = '#ffffff';
+const RATIO_BG = 'rgba(13,148,136,0.58)';
+const RATIO_BORDER = 'rgba(153,246,228,0.80)';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -671,8 +671,8 @@ export default function GelirTablosuPage() {
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[14.5px]" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 600 : 750, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}`, whiteSpace: 'nowrap' }}>
-                            {hasData ? fmtTRY(v!) : '—'}
+                          <td key={qi} className="px-3 py-2 text-center" style={{ borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
+                            <AmountText value={hasData ? v! : null} />
                           </td>
                         );
                       })}
@@ -762,6 +762,12 @@ export default function GelirTablosuPage() {
                       const hasData = gt !== null;
                       const showOranBadge = hasData && showPct(row.k as string) && v !== 0;
                       const mainAmount = row.group || row.total || row.final;
+                      const amountColor = hasData && v !== 0
+                        ? ['brutSatisKari','faaliyetKari','olaganKar','donemKari','donemNetKari'].includes(row.k as string)
+                          ? (v < 0 ? LOSS_COLOR : PROFIT_COLOR)
+                          : row.total ? TOTAL_COLOR
+                            : (v < 0 ? LOSS_COLOR : AMOUNT_COLOR)
+                        : undefined;
                       return (
                         <td
                           key={qi}
@@ -769,35 +775,26 @@ export default function GelirTablosuPage() {
                           style={{
                             // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)
                             // → pozitif yeşil, negatif kırmızı (önceden total altın renkti, kar/zarar belli olmuyordu)
-                            color:
-                              !hasData ? MISSING_AMOUNT_COLOR :
-                              v === 0 ? MUTED_AMOUNT_COLOR :
-                              ['brutSatisKari','faaliyetKari','olaganKar','donemKari','donemNetKari'].includes(row.k as string)
-                                ? (v < 0 ? LOSS_COLOR : PROFIT_COLOR)
-                                : row.total ? TOTAL_COLOR
-                                : (v < 0 ? LOSS_COLOR : AMOUNT_COLOR),
-                            fontSize: row.final ? 16 : mainAmount ? 15.5 : 14.5,
-                            fontWeight: row.final ? 850 : mainAmount ? 850 : 750,
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
-                            fontFamily: 'JetBrains Mono, monospace',
                           }}
                         >
-                          <div style={{ whiteSpace: 'nowrap', lineHeight: 1.2 }}>{hasData ? fmtTRY(v!) : '—'}</div>
+                          <AmountText value={hasData ? v! : null} color={amountColor} emphasis={!!mainAmount} final={!!row.final} />
                           {showOranBadge && (
                             <div
-                              className="inline-flex items-center justify-center mt-1 rounded-md px-1.5 py-[2px]"
+                              className="inline-flex items-center justify-center mt-1 rounded-md px-2 py-[3px]"
                               style={{
                                 color: RATIO_COLOR,
                                 background: RATIO_BG,
                                 border: `1px solid ${RATIO_BORDER}`,
                                 fontFamily: 'JetBrains Mono, monospace',
-                                fontSize: 11.5,
-                                lineHeight: 1.1,
-                                fontWeight: 750,
+                                fontSize: 12.5,
+                                lineHeight: 1.05,
+                                fontWeight: 850,
                                 whiteSpace: 'nowrap',
-                                minWidth: 74,
+                                minWidth: 86,
                                 maxWidth: '100%',
+                                textShadow: '0 1px 1px rgba(0,0,0,0.35)',
                               }}
                             >
                               {pct(v!, netSatis)}
@@ -1560,6 +1557,10 @@ function ManuelInput({
   const disabled = isLocked || !isEditing;
   const readOnlySaved = disabled && numericVal > 0 && !isEditing;
 
+  if (readOnlySaved) {
+    return <AmountText value={numericVal} className="px-2 py-1" />;
+  }
+
   return (
     <input
       type="text"
@@ -1595,6 +1596,42 @@ function ManuelInput({
         cursor: readOnlySaved ? 'default' : disabled ? 'not-allowed' : 'text',
       }}
     />
+  );
+}
+
+function AmountText({
+  value,
+  className = '',
+  color,
+  emphasis = false,
+  final = false,
+}: {
+  value: number | null;
+  className?: string;
+  color?: string;
+  emphasis?: boolean;
+  final?: boolean;
+}) {
+  const missing = value === null;
+  const zero = !missing && value === 0;
+  const isStrong = final || emphasis;
+  return (
+    <span
+      className={className}
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'center',
+        color: missing ? MISSING_AMOUNT_COLOR : zero ? MUTED_AMOUNT_COLOR : (color || AMOUNT_COLOR),
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: final ? 16 : isStrong ? 15.5 : 14.5,
+        fontWeight: zero ? 600 : isStrong ? 850 : 750,
+        lineHeight: 1.2,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {missing ? '—' : fmtTRY(value ?? 0)}
+    </span>
   );
 }
 
