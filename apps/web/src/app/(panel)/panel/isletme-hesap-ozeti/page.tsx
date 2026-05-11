@@ -17,23 +17,24 @@ import {
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
-const TABLE_SURFACE = '#0b0906';
-const TABLE_SURFACE_ALT = '#100d09';
-const TABLE_HEADER_BG = 'linear-gradient(180deg, rgba(68,61,46,0.72), rgba(24,21,16,0.94))';
-const GRID_LINE = 'rgba(245,240,230,0.17)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.35)';
-const REPORT_TEXT = 'rgba(250,250,249,0.92)';
-const REPORT_MUTED = 'rgba(231,229,228,0.58)';
-const REPORT_DIM = 'rgba(214,211,209,0.34)';
+const TABLE_SURFACE = '#0f0e0c';
+const TABLE_SURFACE_ALT = '#12110f';
+const TABLE_HEADER_BG = '#1c1913';
+const TABLE_SECTION_BG = '#17140f';
+const GRID_LINE = 'rgba(245,240,230,0.20)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.34)';
+const REPORT_TEXT = 'rgba(250,250,249,0.95)';
+const REPORT_MUTED = 'rgba(231,229,228,0.74)';
+const REPORT_DIM = 'rgba(214,211,209,0.54)';
 const AMOUNT_TEXT = '#f3eee6';
 const AMOUNT_ACCENT = '#ead18a';
-const PROFIT_TEXT = '#86efac';
+const PROFIT_TEXT = AMOUNT_TEXT;
 const LOSS_TEXT = '#fca5a5';
-const RATIO_TEXT = '#8ec5ff';
-const MANUAL_TEXT = '#93c5fd';
-const MANUAL_BORDER = '#60a5fa';
-const MANUAL_ROW_BG = 'linear-gradient(90deg, rgba(59,130,246,0.16), rgba(59,130,246,0.045))';
-const TOTAL_ROW_BG = 'linear-gradient(90deg, rgba(245,240,230,0.055), rgba(245,240,230,0.016))';
+const RATIO_TEXT = '#f1d98b';
+const MANUAL_TEXT = '#ead18a';
+const MANUAL_BORDER = 'rgba(212,184,118,0.62)';
+const MANUAL_ROW_BG = TABLE_SURFACE;
+const TOTAL_ROW_BG = TABLE_SECTION_BG;
 const REPORT_TABLE_STYLE: React.CSSProperties = {
   tableLayout: 'fixed',
   borderCollapse: 'separate',
@@ -116,12 +117,8 @@ function NumInput({
     if (!focused) setText(value ? formatTR(value) : '');
   }, [value, focused]);
 
-  const inputColor = disabled && value
-    ? AMOUNT_TEXT
-    : disabled || !value
-    ? REPORT_DIM
-    : AMOUNT_TEXT;
-  const inputWeight = disabled && value ? 650 : !value ? 500 : 650;
+  const inputColor = value ? AMOUNT_TEXT : REPORT_DIM;
+  const inputWeight = value ? 650 : 600;
 
   return (
     <input
@@ -146,7 +143,7 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2.5 py-1 text-center text-[13px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2.5 py-1 text-center text-[15px] font-mono tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
@@ -604,7 +601,7 @@ function KarsilastirmaTablosu({
     if (!base || base === 0) return '—';
     const pct = (v / base) * 100;
     if (Math.abs(pct) > 9999) return '—';
-    return `%${pct.toFixed(1)}`;
+    return `%${pct.toFixed(1).replace('.', ',')}`;
   };
 
   const COL_WIDTH = `${76 / tersDonemler.length}%`;
@@ -1169,7 +1166,7 @@ function BlockCard({
     <div
       className={`overflow-hidden ${attached ? 'rounded-b-xl' : 'rounded-xl'}`}
       style={{
-        background: `linear-gradient(180deg, ${TABLE_SURFACE_ALT}, ${TABLE_SURFACE})`,
+        background: TABLE_SURFACE,
         borderLeft: `1px solid ${c.border}`,
         borderRight: `1px solid ${c.border}`,
         borderBottom: `1px solid ${c.border}`,
@@ -1181,7 +1178,7 @@ function BlockCard({
         className="flex items-center gap-2 px-4 py-2"
         style={{
           // v1.36.26: attached durumda yeşil tint kaldırıldı, sadece çizgi kalır
-          background: attached ? 'rgba(212,184,118,0.04)' : c.headerBg,
+          background: attached ? TABLE_SECTION_BG : c.headerBg,
           borderBottom: `1px solid ${c.border}`,
         }}
       >
@@ -1244,7 +1241,7 @@ function Row({
           letterSpacing: bold ? '0.025em' : '0.01em',
           color: manuel ? MANUAL_TEXT : bold ? REPORT_TEXT : REPORT_MUTED,
           borderTop: `1px solid ${GRID_LINE}`,
-          borderRight: `1px solid ${manuel ? 'rgba(96,165,250,0.28)' : GRID_LINE}`,
+          borderRight: `1px solid ${GRID_LINE}`,
           borderLeft: manuel ? `4px solid ${MANUAL_BORDER}` : `1px solid transparent`,
           background: rowBg,
           lineHeight: 1.22,
@@ -1256,8 +1253,8 @@ function Row({
           <span
             className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
             style={{
-              background: 'rgba(96,165,250,0.14)',
-              border: '1px solid rgba(96,165,250,0.30)',
+              background: 'rgba(212,184,118,0.12)',
+              border: '1px solid rgba(212,184,118,0.28)',
               color: MANUAL_TEXT,
             }}
           >
@@ -1274,14 +1271,14 @@ function Row({
           <td
             key={i}
             className={`px-4 py-2 text-center font-mono tabular-nums ${
-              bold ? 'text-[15px] font-bold' : 'text-[14px] font-semibold'
+              bold ? 'text-[15px] font-semibold' : 'text-[15px] font-semibold'
             }`}
             style={{
-              borderTop: `1px solid ${manuel ? 'rgba(96,165,250,0.30)' : GRID_LINE}`,
-              borderLeft: `1px solid ${manuel ? 'rgba(96,165,250,0.26)' : GRID_LINE}`,
+              borderTop: `1px solid ${GRID_LINE}`,
+              borderLeft: `1px solid ${GRID_LINE}`,
               fontVariantNumeric: 'tabular-nums',
               color: isEmpty ? REPORT_DIM : AMOUNT_TEXT,
-              lineHeight: 1.18,
+              lineHeight: 1.2,
               background: rowBg,
             }}
           >
@@ -1290,11 +1287,11 @@ function Row({
               <div className="flex flex-col items-center justify-center gap-0.5">
                 <span className="tabular-nums">{c}</span>
                 <span
-                  className="text-[10px] not-italic font-sans"
+                  className="text-[12px] not-italic font-mono tabular-nums"
                   style={{
                     color: rColor!,
-                    fontWeight: 700,
-                    letterSpacing: '0.02em',
+                    fontWeight: 650,
+                    letterSpacing: 0,
                   }}
                 >
                   {ratios![i]}
