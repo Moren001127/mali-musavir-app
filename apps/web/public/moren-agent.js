@@ -255,6 +255,27 @@
       window.__lucaJobRunning = true;
       for (const job of jobs) {
         try {
+          const isJobCancelled = async () => {
+            if (window.__morenAgent.stopRequested) return true;
+            try {
+              const r = await fetch(API + `/agent/luca/jobs/${job.id}/status`, {
+                headers: { 'X-Agent-Token': TOKEN },
+              });
+              if (!r.ok) return false;
+              const j = await r.json();
+              if (j && j.status === 'cancelled') {
+                window.__morenAgent.stopRequested = true;
+                return true;
+              }
+            } catch {}
+            return false;
+          };
+          const throwIfCancelled = async () => {
+            if (await isJobCancelled()) {
+              throw new Error('CANCELLED_BY_USER');
+            }
+          };
+          await throwIfCancelled();
           setStatus(`Luca: ${job.tip} çekiliyor (${job.donem})…`);
 
           // ─── EARLY-LOG HELPER ─── /start öncesinde de portal'a log gönder.
@@ -262,6 +283,7 @@
           // Bu sayede firma değişimi gibi /start öncesi aşamalar da kullanıcıya görünür.
           const earlyLog = async (line) => {
             try {
+              if (await isJobCancelled()) return;
               await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
@@ -282,6 +304,7 @@
             'GELIR_TABLOSU','BILANCO'
           ].includes(job.tip);
           if (isLucaDataJob) {
+            await throwIfCancelled();
             await earlyLog(`🔍 Sıra geldi — Luca firma kontrolü yapılıyor`);
             let mukellefAdiEarly = '';
             try {
@@ -385,7 +408,11 @@
           window.__morenLogs = window.__morenLogs || [];
           const log = async (line) => {
             try {
-              const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+              if (await isJobCancelled()) return;
+              const ts = new Date().toLocaleTimeString('tr-TR', {
+                hour12: false,
+                timeZone: 'Europe/Istanbul',
+              });
               const formatted = `[${ts}] ${line}`;
               // 1) DevTools Console (kalıcı, kopyalanabilir, F12 → Console → sağ-tık → Save as)
               try { console.log('[Moren]', formatted); } catch {}
@@ -402,6 +429,7 @@
           };
 
           // İlk satır: agent versiyonu — cache debug için kritik
+          await throwIfCancelled();
           await log(`🤖 Moren Agent v${AGENT_VER} | URL=${location.href.slice(0, 80)}`);
 
           // ─── Job tipine göre rapor sayfası kontrolü ───
@@ -430,7 +458,9 @@
           }
 
           const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
-          const blob = await fetchLucaMuavinExcel(job, log);
+          await throwIfCancelled();
+          const blob = await fetchLucaMuavinExcel(job, log, throwIfCancelled);
+          await throwIfCancelled();
           if (!blob) throw new Error(isZipJob ? 'ZIP yakalanamadı' : 'Excel yakalanamadı');
           await log(`📥 ${isZipJob ? 'ZIP' : 'Excel'} indirildi (${Math.round(blob.size / 1024)} KB)`);
 
@@ -528,6 +558,11 @@
         } catch (e) {
           // "Fatura yok" durumu hata değil — temiz mesajla bitir
           const msg = (e)?.message || 'bilinmeyen hata';
+          if (msg === 'CANCELLED_BY_USER') {
+            setStatus(`Luca: ${job.tip} iptal edildi`);
+            window.__morenAgent.stopRequested = false;
+            continue;
+          }
           const isNoFatura = (e)?.isNoFatura === true || /^NO_FATURA:/i.test(msg);
           // SAFE LOG: 'log' const try-block scope'da tanımlı, catch'ten erişilemez (v1.36.17 fix).
           // Doğrudan backend POST + console.warn yap, log() çağırma.
@@ -586,7 +621,7 @@
    *   KDV_191/391    → Defteri Kebir formu (sonradan eklenecek — frame keşif lazım)
    *   ISLETME_*      → İşletme defteri formu (sonradan)
    */
-  async function fetchLucaMuavinExcel(job, log = (() => {})) {
+  async function fetchLucaMuavinExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
     // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
     if (job.tip === 'MIZAN' || job.tip === 'KDV_MIZAN') {
@@ -607,7 +642,7 @@
     }
     if (job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
         job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS') {
-      return await fetchLucaEarsivZip(job, log);
+      return await fetchLucaEarsivZip(job, log, throwIfCancelled);
     }
     // Bilinmeyen tip için fallback
     return await fetchLucaGenericExcel(job, log);
@@ -913,7 +948,7 @@
     }
   }
 
-  async function fetchLucaEarsivZip(job, log) {
+  async function fetchLucaEarsivZip(job, log, throwIfCancelled = async () => {}) {
     const donemStr = String(job.donem || ''); // "YYYY-MM"
     const [yilS, ayS] = donemStr.split('-');
     const yil = Number(yilS);
@@ -1654,12 +1689,14 @@
     // Bu sayede "fatura kaydetme işlemi sona erdi" mesajı çıktı ama hâlâ son fatura_kaydet'ler
     // yoldaysa onları da bekleriz; sonra Sorgu 2'ye veya download'a geçeriz.
     async function waitForActivitySilence(label, silenceMs = 5000, maxWaitMs = 60000) {
+      await throwIfCancelled();
       const startTs = Date.now();
       const startCount = getAgentActivityCount();
       // İlk başta lastTs'i şimdiye çek (eski işlemden kalan değer beklemeyi yanlış kısaltmasın)
       let lastSeenCount = startCount;
       let lastChangeTs = Date.now();
       while (Date.now() - startTs < maxWaitMs) {
+        await throwIfCancelled();
         const c = getAgentActivityCount();
         if (c !== lastSeenCount) {
           lastSeenCount = c;
@@ -1677,6 +1714,7 @@
 
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
+      await throwIfCancelled();
       await log(`🔍 ${etiket}: ${bas} → ${bit}`);
       // Modal aç
       if (typeof fwin.gonder === 'function') {
@@ -1713,6 +1751,7 @@
       let lastProgress = '';
       let lastProgressLogTs = 0;
       while (Date.now() - pollStart < POLL_MAX_MS) {
+        await throwIfCancelled();
         const allDocs = [document];
         try {
           for (const fr of document.querySelectorAll('frame, iframe')) {
@@ -1860,10 +1899,13 @@
       }
     }
 
+    await throwIfCancelled();
     await birSorgu(sorgu1Bas, sorgu1Bit, 'Sorgu 1 (ay)');
     if (sorgu2Gerekli) {
+      await throwIfCancelled();
       await birSorgu(sorgu2Bas, sorgu2Bit, 'Sorgu 2 (sonraki ay başı→bugün)');
     }
+    await throwIfCancelled();
 
     // Tümünü Seç
     const tumBtn = fdoc.getElementById('tum_belgeyi_sec_btn');

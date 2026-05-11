@@ -699,15 +699,17 @@ function BilancoAmount({
   const zero = Number(value) === 0;
   const isTotal = emphasis || variant === 'total';
   const isGroup = variant === 'group';
+  const isStrong = isTotal || isGroup;
   return (
     <span
       className="font-mono tabular-nums"
       style={{
         display: 'block',
         textAlign: 'right',
-        color: zero ? MUTED_AMOUNT_COLOR : (color || (isTotal || isGroup ? TOTAL_COLOR : AMOUNT_COLOR)),
-        fontSize: isTotal ? 15 : 14.5,
-        fontWeight: zero ? 500 : isTotal ? 750 : isGroup ? 650 : 550,
+        color: zero ? MUTED_AMOUNT_COLOR : (color || (isStrong ? TOTAL_COLOR : AMOUNT_COLOR)),
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: isTotal ? 16 : isStrong ? 15.5 : 14.5,
+        fontWeight: zero ? 500 : isStrong ? 800 : 550,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
         letterSpacing: 0,
@@ -758,16 +760,16 @@ function BilancoColumn({
                   borderTop: ki === 0 ? 'none' : `1px solid ${GRID_LINE}`,
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
                 }}>
-                  <div style={{ color: '#fafaf9', fontWeight: 650 }}>{k.grup}</div>
-                  <BilancoAmount value={k.toplam} variant="group" color={TOTAL_COLOR} />
+                  <div style={{ color: '#fafaf9', fontWeight: 600 }}>{k.grup}</div>
+                  <BilancoAmount value={k.toplam} variant="group" />
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
                   <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
-                    color: 'rgba(250,250,249,0.82)',
+                    color: 'rgba(250,250,249,0.72)',
                     borderTop: '1px solid rgba(255,255,255,0.10)',
                     background: 'rgba(255,255,255,0.006)',
                   }}>
-                    <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
+                    <div style={{ fontWeight: 400 }}><span style={{ color: 'rgba(216,193,127,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, marginRight: 8, fontWeight: 500 }}>{h.kod}</span>{h.ad}</div>
                     <BilancoAmount value={h.tutar} variant="account" />
                   </div>
                 ))}

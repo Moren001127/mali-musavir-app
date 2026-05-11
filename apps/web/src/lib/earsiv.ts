@@ -37,6 +37,9 @@ export const earsivApi = {
   getLucaJob: (jobId: string) =>
     api.get(`/earsiv/luca-job/${jobId}`).then((r) => r.data as { job: any }),
 
+  cancelLucaJob: (jobId: string) =>
+    api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data as any),
+
   list: (params: {
     taxpayerId?: string;
     donem?: string;

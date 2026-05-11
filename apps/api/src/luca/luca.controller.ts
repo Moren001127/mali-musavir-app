@@ -209,6 +209,14 @@ export class LucaController {
     return this.luca.getJob(id, req.user.tenantId);
   }
 
+  @Post('luca/jobs/:id/cancel')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  async cancelJob(@Req() req: any, @Param('id') id: string) {
+    return this.luca.cancelJob(id, req.user.tenantId);
+  }
+
   // ==================== RUNNER → /agent/luca/* ====================
   // NOT: X-Agent-Token doğrulaması için mevcut agent-events guard'ı kullanılır.
   // Yalnızca token'a sahip tarayıcı eklentisi bu endpoint'leri çağırabilir.
@@ -265,6 +273,16 @@ export class LucaController {
     await this.resolveTenantFromAgentToken(agentToken);
     await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata');
     return { ok: true };
+  }
+
+  @Get('agent/luca/jobs/:id/status')
+  async jobStatus(
+    @Param('id') id: string,
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await this.luca.getJob(id, tenantId);
+    return { id: job.id, status: job.status };
   }
 
   /** Agent her aşamada ilerleme mesajı yollar — Mizan sayfası canlı gösterir. */

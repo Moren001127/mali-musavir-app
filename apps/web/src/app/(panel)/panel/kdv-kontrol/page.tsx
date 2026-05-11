@@ -1735,7 +1735,7 @@ function FeedRow({ item }: { item: FeedItem }) {
     info: { c: '#6b94c2', bg: 'rgba(96,140,200,0.05)', icon: '●' },
   };
   const s = colors[item.kind];
-  const time = new Date(item.ts).toLocaleTimeString('tr-TR', { hour12: false });
+  const time = new Date(item.ts).toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
   // Detail çok satırlı olabilir — \n ile böl, anahtar kelimeli prefix yoksa tek satır kalır
   const detailLines = item.detail ? item.detail.split(/\r?\n/).filter((l) => l.length > 0) : [];
   return (

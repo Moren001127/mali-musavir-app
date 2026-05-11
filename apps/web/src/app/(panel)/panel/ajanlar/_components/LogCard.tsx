@@ -103,7 +103,7 @@ function isModernAgentVersion(version: unknown) {
 
 export function LogCard({ event }: { event: LogEvent }) {
   const d = new Date(event.ts);
-  const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  const t = d.toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
   const baseStyle = statusStyle(event.status);
 
   // Mesajı yapısal hale çevir

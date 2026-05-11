@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CheckSquare, Plus, Calendar, AlertTriangle, Clock, CheckCircle2,
@@ -625,18 +626,43 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
   const isSnoozed = task.status === 'SNOOZED';
   const isCancelled = task.status === 'CANCELLED';
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
-  // Menu dışına tıklayınca kapansın
-  React.useEffect(() => {
+  useEffect(() => {
     if (!menuOpen) return;
+    const placeMenu = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = 208;
+      const height = 286;
+      const gap = 8;
+      const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width));
+      const opensUp = rect.bottom + height + gap > window.innerHeight && rect.top > height + gap;
+      const top = opensUp ? Math.max(12, rect.top - height - gap) : Math.min(window.innerHeight - height - 12, rect.bottom + gap);
+      setMenuPos({ top, left });
+    };
+    placeMenu();
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target) && triggerRef.current && !triggerRef.current.contains(target)) {
         setMenuOpen(false);
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    window.addEventListener('resize', placeMenu);
+    window.addEventListener('scroll', placeMenu, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('resize', placeMenu);
+      window.removeEventListener('scroll', placeMenu, true);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [menuOpen]);
 
   return (
@@ -740,8 +766,9 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
         )}
 
         {/* Üç nokta menüsü — diğer aksiyonlar */}
-        <div ref={menuRef} className="relative">
+        <div className="relative">
           <button
+            ref={triggerRef}
             onClick={() => setMenuOpen((o) => !o)}
             className="p-1.5 rounded hover:bg-white/5 opacity-60 group-hover:opacity-100 transition"
             title="Aksiyonlar"
@@ -749,40 +776,107 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
             <MoreVertical size={14} style={{ color: 'rgba(250,250,249,0.7)' }} />
           </button>
           {menuOpen && (
-            <div
-              className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg shadow-2xl overflow-hidden"
-              style={{ background: '#0f0d0b', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 12px 32px rgba(0,0,0,0.4)' }}
-            >
-              {!isDone && !isCancelled && (
-                <MenuItem icon={CheckCircle2} label="Tamamlandı işaretle" color="#22c55e" onClick={() => { onComplete(task.id); setMenuOpen(false); }} />
-              )}
-              {isDone && (
-                <MenuItem icon={RotateCcw} label="Tekrar aç (geri al)" color="#3b82f6" onClick={() => { onReopen(task.id); setMenuOpen(false); }} />
-              )}
-              {!isDone && !isCancelled && !isInProgress && (
-                <MenuItem icon={Play} label="Devam Ediyor" color="#3b82f6" onClick={() => { onStart(task.id); setMenuOpen(false); }} />
-              )}
-              {!isDone && !isCancelled && (
-                <MenuItem icon={Pause} label="Ertele (Snooze)" color="#a855f7" onClick={() => { onSnooze(task); setMenuOpen(false); }} />
-              )}
-              {!isDone && !isCancelled && (
-                <MenuItem icon={Ban} label="İptal et" color="#94a3b8" onClick={() => {
-                  if (confirm('Bu görevi iptal etmek istediğinden emin misin?')) onCancel(task.id);
-                  setMenuOpen(false);
-                }} />
-              )}
-              <MenuItem icon={MessageSquare} label="Not ekle" color={GOLD} onClick={() => { onAddNote(task); setMenuOpen(false); }} />
-              <MenuItem icon={Edit3} label="Düzenle" color="rgba(250,250,249,0.7)" onClick={() => { onEdit(task); setMenuOpen(false); }} />
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
-              <MenuItem icon={Trash2} label="Sil" color="#ef4444" onClick={() => {
-                if (confirm('Bu görevi silmek istediğinden emin misin?')) onDelete(task.id);
-                setMenuOpen(false);
-              }} />
-            </div>
+            <TaskActionMenu
+              menuRef={menuRef}
+              top={menuPos.top}
+              left={menuPos.left}
+              task={task}
+              isDone={isDone}
+              isCancelled={isCancelled}
+              isInProgress={isInProgress}
+              onComplete={onComplete}
+              onReopen={onReopen}
+              onStart={onStart}
+              onCancel={onCancel}
+              onSnooze={onSnooze}
+              onAddNote={onAddNote}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onClose={() => setMenuOpen(false)}
+            />
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+interface TaskActionMenuProps {
+  menuRef: React.RefObject<HTMLDivElement>;
+  top: number;
+  left: number;
+  task: Task;
+  isDone: boolean;
+  isCancelled: boolean;
+  isInProgress: boolean;
+  onComplete: (id: string) => void;
+  onReopen: (id: string) => void;
+  onStart: (id: string) => void;
+  onCancel: (id: string) => void;
+  onSnooze: (task: Task) => void;
+  onAddNote: (task: Task) => void;
+  onDelete: (id: string) => void;
+  onEdit: (task: Task) => void;
+  onClose: () => void;
+}
+
+function TaskActionMenu({
+  menuRef,
+  top,
+  left,
+  task,
+  isDone,
+  isCancelled,
+  isInProgress,
+  onComplete,
+  onReopen,
+  onStart,
+  onCancel,
+  onSnooze,
+  onAddNote,
+  onDelete,
+  onEdit,
+  onClose,
+}: TaskActionMenuProps) {
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="fixed z-[1000] w-52 rounded-lg shadow-2xl overflow-hidden"
+      style={{
+        top,
+        left,
+        background: '#0f0d0b',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 18px 42px rgba(0,0,0,0.55)',
+      }}
+    >
+      {!isDone && !isCancelled && (
+        <MenuItem icon={CheckCircle2} label="Tamamlandi isaretle" color="#22c55e" onClick={() => { onComplete(task.id); onClose(); }} />
+      )}
+      {isDone && (
+        <MenuItem icon={RotateCcw} label="Tekrar ac" color="#3b82f6" onClick={() => { onReopen(task.id); onClose(); }} />
+      )}
+      {!isDone && !isCancelled && !isInProgress && (
+        <MenuItem icon={Play} label="Devam ediyor" color="#3b82f6" onClick={() => { onStart(task.id); onClose(); }} />
+      )}
+      {!isDone && !isCancelled && (
+        <MenuItem icon={Pause} label="Ertele" color="#a855f7" onClick={() => { onSnooze(task); onClose(); }} />
+      )}
+      {!isDone && !isCancelled && (
+        <MenuItem icon={Ban} label="Iptal et" color="#94a3b8" onClick={() => {
+          if (confirm('Bu gorevi iptal etmek istediginden emin misin?')) onCancel(task.id);
+          onClose();
+        }} />
+      )}
+      <MenuItem icon={MessageSquare} label="Not ekle" color={GOLD} onClick={() => { onAddNote(task); onClose(); }} />
+      <MenuItem icon={Edit3} label="Duzenle" color="rgba(250,250,249,0.7)" onClick={() => { onEdit(task); onClose(); }} />
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }} />
+      <MenuItem icon={Trash2} label="Sil" color="#ef4444" onClick={() => {
+        if (confirm('Bu gorevi silmek istediginden emin misin?')) onDelete(task.id);
+        onClose();
+      }} />
+    </div>,
+    document.body
   );
 }
 

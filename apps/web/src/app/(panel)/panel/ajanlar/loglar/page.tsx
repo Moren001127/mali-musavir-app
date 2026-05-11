@@ -206,7 +206,7 @@ function styleFor(status: string) {
 
 function formatLogLine(event: AgentEvent, plain: boolean = true): string {
   const d = new Date(event.ts);
-  const t = d.toLocaleString('tr-TR');
+  const t = d.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' });
   const sym = event.status === 'hata' ? '[!]' : event.status === 'atlandi' ? '[~]' : '[+]';
   const parts = [event.agent?.toUpperCase(), event.mukellef, event.firma, event.fisNo, event.hesapKodu, event.message]
     .filter(Boolean)

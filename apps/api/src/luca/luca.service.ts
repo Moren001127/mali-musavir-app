@@ -121,33 +121,51 @@ export class LucaService {
   }
 
   async markJobRunning(jobId: string) {
-    return (this.prisma as any).lucaFetchJob.update({
-      where: { id: jobId },
+    await (this.prisma as any).lucaFetchJob.updateMany({
+      where: { id: jobId, status: 'pending' },
       data: { status: 'running', startedAt: new Date() },
     });
+    return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
   async markJobDone(jobId: string, recordCount: number) {
-    return (this.prisma as any).lucaFetchJob.update({
-      where: { id: jobId },
+    await (this.prisma as any).lucaFetchJob.updateMany({
+      where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: {
         status: 'done',
         recordCount,
         finishedAt: new Date(),
       },
     });
+    return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
   async markJobFailed(jobId: string, errorMsg: string) {
-    // Önce mevcut log'a hata satırını append et — agent'tan gelen progress
-    // satırlarını silmesin. Sonra status'u failed yap.
-    await this.appendJobLog(jobId, `✗ ${errorMsg}`);
-    return (this.prisma as any).lucaFetchJob.update({
-      where: { id: jobId },
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (job?.status === 'cancelled') return job;
+    await this.appendJobLog(jobId, `X ${errorMsg}`);
+    await (this.prisma as any).lucaFetchJob.updateMany({
+      where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: { status: 'failed', finishedAt: new Date() },
     });
+    return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
+  async cancelJob(jobId: string, tenantId: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job || job.tenantId !== tenantId) {
+      throw new NotFoundException('Luca fetch job bulunamadi');
+    }
+    if (['done', 'failed', 'cancelled'].includes(job.status)) return job;
+    await this.appendJobLog(jobId, 'Iptal edildi: kullanici durdurdu');
+    await (this.prisma as any).lucaFetchJob.update({
+      where: { id: jobId },
+      data: { status: 'cancelled', finishedAt: new Date() },
+    });
+    return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+  }
   /**
    * Job'a ilerleme mesajı ekle — frontend polling ile canlı gösterir.
    * errorMsg field'ını kümülatif log olarak kullan (migration gereksin diye).
@@ -155,7 +173,7 @@ export class LucaService {
   async appendJobLog(jobId: string, message: string) {
     const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
     if (!job) return null;
-    const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false });
+    const ts = new Date().toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
     const newLine = `[${ts}] ${message}`;
     const prev = job.errorMsg || '';
     const lines = (prev ? prev.split('\n') : []).concat(newLine).slice(-20);

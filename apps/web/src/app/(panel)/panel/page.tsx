@@ -70,8 +70,8 @@ function agentEventToFeed(ev: any) {
   const now = new Date();
   const sameDay = ts.toDateString() === now.toDateString();
   const time = sameDay
-    ? ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    : ts.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' }) + ' ' + ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    ? ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' })
+    : ts.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', timeZone: 'Europe/Istanbul' }) + ' ' + ts.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
   const title = (<><strong style={{ color: '#fafaf9', fontWeight: 600 }}>{ev.agent || 'Sistem'}</strong>{ev.message ? <> · {ev.message}</> : ev.status ? <> · {ev.status}</> : null}</>);
   const p: string[] = [];
   if (ev.mukellef) p.push(ev.mukellef);

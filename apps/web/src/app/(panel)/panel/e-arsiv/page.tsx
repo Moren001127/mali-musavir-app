@@ -47,6 +47,53 @@ function isModeAllowedForTaxpayer(mode: Mode, t: Taxpayer): boolean {
   if (mode === 'GIDEN_EARSIV') return !isEF;       // sadece e-fatura mükellefi olmayanlar
   return isEF;                                     // gelen/giden e-fatura → sadece e-fatura mükellefleri
 }
+
+function getVisibleJobLines(errorLog: string | null | undefined): string[] {
+  return errorLog
+    ? errorLog.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
+    : [];
+}
+
+function cleanJobReason(line: string): string {
+  let text = String(line || '')
+    .replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '')
+    .replace(/^[-–—•\s]+/, '')
+    .replace(/^[✗×x❌⚠️⚠ℹ️ℹ✅✓⏳🔍📥📊📋]\s*/u, '')
+    .replace(/^(EARSIV|EFATURA)_(SATIS|ALIS)\s*hata\s*:?\s*/i, '')
+    .replace(/^NO_FATURA\s*:?\s*/i, '')
+    .replace(/^hata\s*:?\s*/i, '')
+    .trim();
+
+  if (/fatura\s+bulunamad[ıi]|fatura\s+yok|kay[ıi]tl[ıi]\s+fatura\s+yok|NO_FATURA/i.test(text)) {
+    return 'Fatura yok: bu dönem için kayıtlı fatura bulunamadı';
+  }
+  if (/firma.*(bulunamad[ıi]|se[cç]ilemedi)|m[üu]kellef.*(bulunamad[ıi]|se[cç]ilemedi)/i.test(text)) {
+    return 'Luca firma seçilemedi';
+  }
+  if (/oturum|session|login|giri[şs]|yetki|[şs]ifre/i.test(text)) {
+    return text || 'Luca oturum/yetki hatası';
+  }
+  if (/zaman\s+a[şs][ıi]m[ıi]|timeout|dk\s+i[cç]inde\s+tamamlanmad[ıi]|yakalanamad[ıi]/i.test(text)) {
+    return text || 'Zaman aşımı';
+  }
+  if (/ZIP|zip|download|indir|dosya/i.test(text)) {
+    return text || 'Dosya indirme/yükleme hatası';
+  }
+  if (/beklenen yap[ıi]da de[ğg]il|bulunamad[ıi]|tan[ıi]ml[ıi] de[ğg]il/i.test(text)) {
+    return text;
+  }
+  return text || 'Sebep alınamadı';
+}
+
+function getJobFailureReason(lines: string[], status: string, isNoFatura: boolean): string {
+  if (isNoFatura) return 'Fatura yok: bu dönem için kayıtlı fatura bulunamadı';
+  const reasonLine = [...lines].reverse().find((line) =>
+    /hata|error|bulunamad|bulunamadı|bulunamadi|zaman|timeout|NO_FATURA|fatura\s+yok|fatura\s+bulunamad|ZIP|zip|download|indir|oturum|yetki|şifre|sifre|seçilemedi|secilemedi/i.test(line)
+  );
+  if (reasonLine) return cleanJobReason(reasonLine);
+  if (status === 'failed') return 'Sebep alınamadı';
+  return '';
+}
 // Job kuyruğa atılma sırası — sabit (tıklama sırası önemli değil, kullanıcıya tutarlı görünüm)
 const MODE_ORDER: Mode[] = ['GELEN_EARSIV', 'GIDEN_EARSIV', 'GELEN_EFATURA', 'GIDEN_EFATURA'];
 
@@ -71,7 +118,7 @@ export default function EarsivPage() {
   // Multi-job: her bir mükellef × mod için job ID + meta
   const [lucaJobIds, setLucaJobIds] = useState<string[]>([]);
   const [lucaJobMeta, setLucaJobMeta] = useState<Record<string, { mode: Mode; mukellef: string }>>({});
-  const [lucaSummary, setLucaSummary] = useState<{ done: number; failed: number; nofatura: number; total: number }>({ done: 0, failed: 0, nofatura: 0, total: 0 });
+  const [lucaSummary, setLucaSummary] = useState<{ done: number; failed: number; nofatura: number; cancelled: number; total: number }>({ done: 0, failed: 0, nofatura: 0, cancelled: 0, total: 0 });
   // En son log/progress alan job — canlı görüş için banner & highlight kullanılır
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   // Live log container ref'i — yeni satır geldiğinde otomatik en alta kaydır
@@ -179,7 +226,7 @@ export default function EarsivPage() {
       // Tüm jobIds'i + meta'yı state'e koy — multi-job polling devreye girecek
       setLucaJobIds(d.jobIds);
       setLucaJobMeta(d.jobMeta);
-      setLucaSummary({ done: 0, failed: 0, nofatura: 0, total: d.jobIds.length });
+      setLucaSummary({ done: 0, failed: 0, nofatura: 0, cancelled: 0, total: d.jobIds.length });
       setLucaJobId(d.jobIds[0]); // tekil progress için ilk job (eski UI uyumluluğu)
       setLucaStatus(`Toplam ${d.jobIds.length} iş kuyruğa alındı (sıraya göre işlenecek)`);
       toast.success(`${d.jobIds.length} iş kuyruğa alındı`);
@@ -189,6 +236,22 @@ export default function EarsivPage() {
   });
 
   // Multi-job polling — TÜM job'ları paralel olarak takip eder
+  const cancelLucaJobsMut = useMutation({
+    mutationFn: async () => {
+      const ids = lucaJobIds.length > 0 ? lucaJobIds : (lucaJobId ? [lucaJobId] : []);
+      await Promise.allSettled(ids.map((id) => earsivApi.cancelLucaJob(id)));
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      setLucaStatus(`Iptal komutu gonderildi (${count} is) - Luca agent durdurma sinyalini aliyor`);
+      toast.success('Iptal komutu Luca agentina gonderildi');
+      lucaJobIds.forEach((id) => qc.invalidateQueries({ queryKey: ['earsiv-luca-job', id] }));
+    },
+    onError: (e: any) => {
+      toast.error(e?.response?.data?.message || e?.message || 'Iptal komutu gonderilemedi');
+    },
+  });
+
   const allJobQueries = useQueries({
     queries: lucaJobIds.map((id) => ({
       queryKey: ['earsiv-luca-job', id],
@@ -197,7 +260,7 @@ export default function EarsivPage() {
       refetchInterval: (query: any) => {
         const data: any = query.state.data;
         const job = data?.job ?? data;
-        if (job?.status === 'done' || job?.status === 'failed') return false; // bitti, durdur
+        if (job?.status === 'done' || job?.status === 'failed' || job?.status === 'cancelled') return false; // bitti, durdur
         // Çalışan job'lar için hızlı polling (1.5s) — anlık ilerleme görünsün.
         // Pending'ler için biraz daha rahat (2.5s) — gereksiz network'ten kaçın.
         if (job?.status === 'running') return 1500;
@@ -212,7 +275,7 @@ export default function EarsivPage() {
   // Tüm job'ların durumunu birleştir
   useEffect(() => {
     if (lucaJobIds.length === 0) return;
-    let done = 0, failed = 0, nofatura = 0, running = 0, pending = 0;
+    let done = 0, failed = 0, nofatura = 0, cancelled = 0, running = 0, pending = 0;
     const liveLogLines: string[] = [];
     let activeJobIdLocal: string | null = null;
     let activeJobLastTs = 0;
@@ -224,14 +287,16 @@ export default function EarsivPage() {
       const meta = lucaJobMeta[id];
       const errorLog = job?.errorMsg || '';
       // [META] satırlarını filtrele — kullanıcıya gösterme
-      const lines = errorLog
-        ? errorLog.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
-        : [];
+      const lines = getVisibleJobLines(errorLog);
       const lastLine = lines[lines.length - 1] || '';
       const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
 
-      if (job?.status === 'done') {
-        if (isNoFatura) nofatura++; else done++;
+      if ((job?.status === 'done' || job?.status === 'failed') && isNoFatura) {
+        nofatura++;
+      } else if (job?.status === 'done') {
+        done++;
+      } else if (job?.status === 'cancelled') {
+        cancelled++;
       } else if (job?.status === 'failed') {
         failed++;
       } else if (job?.status === 'running') {
@@ -270,14 +335,14 @@ export default function EarsivPage() {
         }
       }
     }
-    setLucaSummary({ done, failed, nofatura, total: lucaJobIds.length });
+    setLucaSummary({ done, failed, nofatura, cancelled, total: lucaJobIds.length });
     setLucaLogLines(liveLogLines.slice(-30));
     setActiveJobId(activeJobIdLocal);
 
-    const tamamlanan = done + failed + nofatura;
+    const tamamlanan = done + failed + nofatura + cancelled;
     if (tamamlanan === lucaJobIds.length) {
       // Hepsi bitti — özet göster
-      setLucaStatus(`Tamamlandı — ${done} başarılı / ${nofatura} fatura yok / ${failed} hata`);
+      setLucaStatus(`Tamamlandi - ${done} basarili / ${nofatura} fatura yok / ${failed} hata / ${cancelled} iptal`);
       // Listeyi ZORLA yenile (invalidate queue'lar, refetch hemen tetikler)
       qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
       // 5sn sonra status'ü temizle
@@ -644,12 +709,12 @@ export default function EarsivPage() {
       {(lucaJobIds.length > 0 || lucaJobId) && (
         <div className="rounded-lg p-3 text-sm" style={{ background: 'rgba(184,160,111,0.06)', border: '1px solid rgba(184,160,111,0.25)', color: '#fafaf9' }}>
           <div className="flex items-center gap-3 mb-3">
-            {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura < lucaSummary.total
+            {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled < lucaSummary.total
               ? <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
               : <span style={{ color: '#22c55e', fontSize: 18 }}>✓</span>}
             <div className="flex-1">
               <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>
-                {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura < lucaSummary.total
+                {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled < lucaSummary.total
                   ? 'Luca sekmesini açık tut — agent çalışıyor'
                   : 'Tüm işler tamamlandı'}
               </div>
@@ -674,9 +739,19 @@ export default function EarsivPage() {
                   ✗ {lucaSummary.failed} hata
                 </span>
               )}
+              {lucaSummary.cancelled > 0 && (
+                <span className="px-2 py-1 rounded text-[11px] font-bold" style={{ background: 'rgba(148,163,184,0.15)', color: '#cbd5e1', border: '1px solid rgba(148,163,184,0.3)' }}>
+                  {lucaSummary.cancelled} iptal
+                </span>
+              )}
             </div>
             <button
               onClick={() => {
+                const finished = lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled === lucaSummary.total;
+                if (!finished) {
+                  cancelLucaJobsMut.mutate();
+                  return;
+                }
                 setLucaJobId(null);
                 setLucaJobIds([]);
                 setLucaJobMeta({});
@@ -684,10 +759,13 @@ export default function EarsivPage() {
                 setLucaLogLines([]);
                 setActiveJobId(null);
               }}
+              disabled={cancelLucaJobsMut.isPending}
               className="px-3 py-1.5 rounded-md text-xs"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
             >
-              {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura === lucaSummary.total ? 'Kapat' : 'İptal'}
+              {cancelLucaJobsMut.isPending
+                ? 'Iptal ediliyor...'
+                : lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled === lucaSummary.total ? 'Kapat' : 'Iptal'}
             </button>
           </div>
 
@@ -699,9 +777,7 @@ export default function EarsivPage() {
             const activeQ: any = allJobQueries[activeIdx];
             const activeJob = (activeQ?.data?.job ?? activeQ?.data) || null;
             const activeErr = activeJob?.errorMsg || '';
-            const activeLines = activeErr
-              ? activeErr.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
-              : [];
+            const activeLines = getVisibleJobLines(activeErr);
             const activeLast = activeLines[activeLines.length - 1] || 'Hazırlanıyor…';
             const activeMode = MODE_INFO[activeMeta?.mode || 'GELEN_EARSIV'];
             return (
@@ -743,12 +819,11 @@ export default function EarsivPage() {
                 const meta = lucaJobMeta[id];
                 const errorLog = job?.errorMsg || '';
                 // [META] satırlarını UI'da gösterme
-                const lines = errorLog
-                  ? errorLog.split('\n').filter((l: string) => l.trim() && !l.startsWith('[META]'))
-                  : [];
+                const lines = getVisibleJobLines(errorLog);
                 const lastLine = lines[lines.length - 1] || '';
                 const isNoFatura = /fatura bulunamadı|NO_FATURA|fatura yok/i.test(lastLine) || job?.noFatura === true;
                 const status = job?.status || 'pending';
+                const failureReason = getJobFailureReason(lines, status, isNoFatura);
                 const isActiveRow = id === activeJobId;
                 let icon = <span style={{ color: 'rgba(250,250,249,0.4)' }}>⏸</span>;
                 let badge = 'Sırada';
@@ -759,7 +834,7 @@ export default function EarsivPage() {
                   badge = 'Çalışıyor';
                   badgeColor = '#d4b876';
                   badgeBg = 'rgba(212,184,118,0.15)';
-                } else if (status === 'done' && isNoFatura) {
+                } else if (isNoFatura && (status === 'done' || status === 'failed')) {
                   icon = <span>⊝</span>;
                   badge = 'Fatura yok';
                   badgeColor = '#fbbf24';
@@ -769,6 +844,11 @@ export default function EarsivPage() {
                   badge = 'Tamamlandı';
                   badgeColor = '#4ade80';
                   badgeBg = 'rgba(34,197,94,0.15)';
+                } else if (status === 'cancelled') {
+                  icon = <span style={{ color: '#94a3b8' }}>×</span>;
+                  badge = 'Iptal';
+                  badgeColor = '#cbd5e1';
+                  badgeBg = 'rgba(148,163,184,0.15)';
                 } else if (status === 'failed') {
                   icon = <span style={{ color: '#ef4444' }}>✗</span>;
                   badge = 'Hata';
@@ -808,6 +888,19 @@ export default function EarsivPage() {
                     {(status === 'running' || status === 'pending') && lastLine && (
                       <div className="text-[11px] truncate font-mono" style={{ color: 'rgba(250,250,249,0.55)', maxWidth: 360 }}>
                         {lastLine}
+                      </div>
+                    )}
+                    {((status === 'failed') || isNoFatura) && failureReason && (
+                      <div
+                        className="text-[11px] truncate"
+                        title={failureReason}
+                        style={{
+                          color: isNoFatura ? '#fbbf24' : '#fca5a5',
+                          maxWidth: 420,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {failureReason}
                       </div>
                     )}
                     <span
@@ -1050,7 +1143,7 @@ export default function EarsivPage() {
                                   fontWeight: 700,
                                   lineHeight: 1,
                                 }}
-                                title={at ? `Mihsap'a yüklendi · ${new Date(at).toLocaleString('tr-TR')}` : 'Mihsap\'a yüklendi'}
+                                title={at ? `Mihsap'a yüklendi · ${new Date(at).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })}` : 'Mihsap\'a yüklendi'}
                               >
                                 ✓
                               </span>

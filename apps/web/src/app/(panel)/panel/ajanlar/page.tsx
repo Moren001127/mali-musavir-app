@@ -502,7 +502,7 @@ function AgentRegistryTile({ agent, statusInfo }: { agent: AgentDefinition; stat
   const Icon = visual.icon;
   const calisiyor = statusInfo?.running === true;
   const stage = STAGE_META[agent.stage] || STAGE_META.planned;
-  const lastPing = statusInfo?.lastPing ? new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR') : null;
+  const lastPing = statusInfo?.lastPing ? new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' }) : null;
   const modules = agent.modules?.slice(0, 3).join(' · ');
 
   return (
@@ -620,7 +620,7 @@ function AgentTile({ agent, statusInfo }: any) {
       </div>
       <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
         <span style={{ color: 'rgba(250,250,249,0.45)' }}>
-          {agent.aktif ? (statusInfo?.lastPing ? `Son: ${new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR')}` : 'Hazır') : '—'}
+          {agent.aktif ? (statusInfo?.lastPing ? `Son: ${new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' })}` : 'Hazır') : '—'}
         </span>
         <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>
           <Zap size={11} /> Aç <ArrowRight size={11} />

@@ -1394,7 +1394,7 @@ export class KdvControlService {
     const typeLabel = this.kdvTypeLabel(session.type);
     const periodLabel = session.periodLabel || '—';
     const now = new Date();
-    const tarihStr = now.toLocaleDateString('tr-TR') + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    const tarihStr = now.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }) + ' ' + now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Istanbul' });
     const seriUyarilari = await this.checkBelgeSeriContinuity(session, sessionId, tenantId);
 
     // ─── Sayaç semantiği ─────────────────────────────────

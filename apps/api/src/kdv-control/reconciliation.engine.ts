@@ -81,6 +81,7 @@ export class ReconciliationEngine {
     // KDV_191 = Bilanço Alış, ISLETME_GIDER = İşletme Alış → ALIŞ
     // KDV_391 = Bilanço Satış, ISLETME_GELIR = İşletme Satış → SATIŞ
     const isAlis = session?.type === 'KDV_191' || session?.type === 'ISLETME_GIDER';
+    const isIsletme = session?.type === 'ISLETME_GIDER' || session?.type === 'ISLETME_GELIR';
 
     const [allRawRecords, images] = await Promise.all([
       this.prisma.kdvRecord.findMany({ where: { sessionId } }),
@@ -182,6 +183,7 @@ export class ReconciliationEngine {
           isAlis,
           originalKdvList,
           sameDocDateAmbiguous,
+          isIsletme,
         );
         if (strictMatch) {
           usedImageIds.add(image.id);
@@ -225,6 +227,7 @@ export class ReconciliationEngine {
           isAlis,
           originalKdvList,
           sameDocDateAmbiguous,
+          isIsletme,
         );
         // Belge no exact uyumsuzluğu varsa pair'i ele
         const strongTwoOfThree = this.hasStrongTwoOfThree(record, image, mihsapBelgeTarihi);
@@ -239,7 +242,7 @@ export class ReconciliationEngine {
         const saticiTamUyumsuz = reasons.some((r) =>
           /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
         );
-        const ambiguousSellerMissing = sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+        const ambiguousSellerMissing = !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
         if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThreeAllowed) && !belgeNoTamUyumsuz && !saticiTamUyumsuz && !ambiguousSellerMissing) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
@@ -360,6 +363,7 @@ export class ReconciliationEngine {
      *  bunlardan biri OCR NET ile eşleşiyorsa AYNI BELGE'dir. */
     originalRecordKdvList: number[] | null = null,
     sameDocDateAmbiguous: boolean = false,
+    isIsletme: boolean = false,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
     const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
     const imgDate = image.confirmedDate || image.ocrDate;
@@ -571,7 +575,7 @@ export class ReconciliationEngine {
               && originalRecordKdvList.some(
                 (k) => Math.abs(k - imgKdvNum) / (imgKdvNum || 1) < 0.01,
               );
-            const sellerVerifiedForAmbiguous = !sameDocDateAmbiguous || this.hasSellerMatch(record, image);
+            const sellerVerifiedForAmbiguous = isIsletme || !sameDocDateAmbiguous || this.hasSellerMatch(record, image);
 
             if (isAlis && imgTevkifat > 0 && tamDiff < 0.01 && sellerVerifiedForAmbiguous) {
               // YOL 1: OCR tevkifat var, TAM kontrolü tutuyor
@@ -644,7 +648,7 @@ export class ReconciliationEngine {
       }
     }
     // 2) AD BENZERLİĞİ — VKN yoksa veya farklılaşmadıysa
-    else if (recordSatici && imgSatici && !this.isAccountingDescription(recordSatici)) {
+    else if (!isIsletme && recordSatici && imgSatici && !this.isAccountingDescription(recordSatici)) {
       const sim = this.companyNameSimilarity(recordSatici, imgSatici);
       if (sim >= 0.5) {
         score = Math.min(1, score + 0.05);
@@ -742,7 +746,7 @@ export class ReconciliationEngine {
     const sellerMismatchHard =
       saticiMismatch &&
       reasons.some((r) => r.includes('VKN/TCKN uyumsuz') || r.includes('Satıcı uyumsuz'));
-    const ambiguousSellerHard = sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+    const ambiguousSellerHard = !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
     if (ambiguousSellerHard && belgeNoExact && dateExact) {
       reasons.push(
         'Ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan tam eslesme verilmedi',
