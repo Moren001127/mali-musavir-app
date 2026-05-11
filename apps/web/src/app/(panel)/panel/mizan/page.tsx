@@ -12,6 +12,9 @@ import {
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
+const AMOUNT_COLOR = '#fffaf0';
+const TOTAL_AMOUNT_COLOR = '#fff0b8';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
 
 type Taxpayer = {
   id: string;
@@ -885,9 +888,9 @@ function MizanTable({
 
               const codeColor = '#d8c17f';
               const adiColor = '#fafaf9';
-              const numTextColor = '#f4efe6';
-              const numBakiyeColor = '#e3c878';
-              const dimColor = 'rgba(250,250,249,0.22)';
+              const numTextColor = AMOUNT_COLOR;
+              const numBakiyeColor = TOTAL_AMOUNT_COLOR;
+              const dimColor = MUTED_AMOUNT_COLOR;
 
               const weight = isUpper ? 700 : 500;
               const fontSize = isUpper ? 13.5 : 13;
@@ -923,9 +926,9 @@ function MizanTable({
                         style={{
                           borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
-                          fontSize: fontSize,
+                          fontSize: colIdx >= 2 ? (isUpper ? 14 : 13.5) : fontSize,
                           color: c.color,
-                          fontWeight: weight,
+                          fontWeight: colIdx >= 2 ? (isUpper ? 700 : 550) : weight,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',

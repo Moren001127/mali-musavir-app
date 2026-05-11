@@ -9,12 +9,13 @@ import {
   Trash2, Eye, Zap, Scale, CheckCircle2, XCircle, Download, Lock, Unlock,
 } from 'lucide-react';
 
-const GOLD = '#d4b876';
+const GOLD = '#e6c979';
 const TABLE_BG = '#0a0907';
 const GRID_LINE = 'rgba(212,184,118,0.24)';
 const GRID_LINE_STRONG = 'rgba(212,184,118,0.48)';
-const AMOUNT_COLOR = '#f4efe6';
-const TOTAL_COLOR = '#e3c878';
+const AMOUNT_COLOR = '#fffaf0';
+const TOTAL_COLOR = '#fff0b8';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -684,6 +685,26 @@ function Kpi({ label, val, color }: { label: string; val: string; color: string 
   );
 }
 
+function BilancoAmount({ value, emphasis = false, color }: { value: number; emphasis?: boolean; color?: string }) {
+  const zero = Number(value) === 0;
+  return (
+    <span
+      className="font-mono tabular-nums"
+      style={{
+        display: 'block',
+        textAlign: 'right',
+        color: zero ? MUTED_AMOUNT_COLOR : (color || AMOUNT_COLOR),
+        fontSize: emphasis ? 14.5 : 13.5,
+        fontWeight: zero ? 500 : emphasis ? 750 : 550,
+        lineHeight: 1.2,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {fmtTRY(value)}
+    </span>
+  );
+}
+
 function BilancoColumn({
   baslik,
   toplam,
@@ -704,7 +725,7 @@ function BilancoColumn({
         background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
       }}>
         <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: '0.01em' }}>{baslik}</h4>
-        <div className="font-mono font-bold tabular-nums" style={{ color: TOTAL_COLOR, fontSize: 14 }}>{fmtTRY(toplam)}</div>
+        <BilancoAmount value={toplam} emphasis color={TOTAL_COLOR} />
       </div>
       <div>
         {gruplar.map((g, gi) => (
@@ -725,7 +746,7 @@ function BilancoColumn({
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
                 }}>
                   <div style={{ color: '#fafaf9', fontWeight: 650 }}>{k.grup}</div>
-                  <div className="font-mono tabular-nums text-[12.5px]" style={{ color: TOTAL_COLOR, fontWeight: 700 }}>{fmtTRY(k.toplam)}</div>
+                  <BilancoAmount value={k.toplam} emphasis color={TOTAL_COLOR} />
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
                   <div key={hi} className="px-5 py-1.5 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[12px] items-center" style={{
@@ -734,7 +755,7 @@ function BilancoColumn({
                     background: 'rgba(255,255,255,0.006)',
                   }}>
                     <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
-                    <div className="font-mono tabular-nums text-[11.5px]" style={{ color: AMOUNT_COLOR }}>{fmtTRY(h.tutar)}</div>
+                    <BilancoAmount value={h.tutar} />
                   </div>
                 ))}
               </React.Fragment>
