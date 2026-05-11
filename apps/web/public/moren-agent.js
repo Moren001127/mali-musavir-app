@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.99';
+  const AGENT_VERSION = '1.37.00';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -1007,21 +1007,126 @@
       return fallback;
     };
 
-    const findEbelgePageContext = () => {
+    const foldEbelgeText = (s) => String(s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0131/g, 'i')
+      .replace(/\u0130/g, 'i')
+      .toLowerCase();
+
+    const getElementText = (el) => {
+      try {
+        return foldEbelgeText([
+          el?.textContent,
+          el?.value,
+          el?.title,
+          el?.id,
+          el?.name,
+          el?.getAttribute?.('aria-label'),
+          el?.getAttribute?.('onclick'),
+        ].filter(Boolean).join(' '));
+      } catch {
+        return '';
+      }
+    };
+
+    const ebelgeTextMatchesJob = (doc) => {
+      const txt = foldEbelgeText(doc?.body?.textContent || '');
+      const wantsEarsiv = String(job.tip || '').includes('EARSIV');
+      const wantsEfatura = String(job.tip || '').includes('EFATURA');
+      const wantsAlis = String(job.tip || '').includes('ALIS');
+      const wantsSatis = String(job.tip || '').includes('SATIS');
+      const typeOk = (wantsEarsiv && (txt.includes('e-arsiv') || txt.includes('earsiv'))) ||
+        (wantsEfatura && (txt.includes('e-fatura') || txt.includes('efatura')));
+      const sideOk = (wantsAlis && txt.includes('alis')) || (wantsSatis && txt.includes('satis'));
+      return typeOk && sideOk;
+    };
+
+    const hasEbelgeStructure = (doc, win) => {
+      try {
+        const html = foldEbelgeText(doc?.documentElement?.innerHTML || '');
+        return Boolean(
+          doc?.getElementById('faturalari-getir-btn') ||
+          doc?.getElementById('tarih1') ||
+          doc?.getElementById('tarih2') ||
+          typeof win?.gonder === 'function' ||
+          html.includes('faturalari-getir') ||
+          html.includes('indir-window') ||
+          html.includes('gib530') ||
+          html.includes('gib_ebelge') ||
+          html.includes('fatura_list')
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    const findLikelyEbelgeGetirButton = (doc) => {
+      try {
+        const exact = doc?.getElementById('faturalari-getir-btn');
+        if (exact) return exact;
+        const candidates = Array.from(doc?.querySelectorAll('button, input[type=button], input[type=submit], a, [onclick]') || []);
+        return candidates.find((el) => {
+          const txt = getElementText(el);
+          return txt.includes('faturalari getir') ||
+            txt.includes('belgeleri getir') ||
+            txt.includes('belge getir') ||
+            txt.includes('fatura getir') ||
+            txt.includes('listele') ||
+            txt.includes('sorgula');
+        }) || null;
+      } catch {
+        return null;
+      }
+    };
+
+    const describeEbelgeFrames = () => {
+      const hints = [];
       for (const item of collectEbelgeWindows()) {
         try {
           const doc = item.win.document;
-          const btn = doc?.getElementById('faturalari-getir-btn');
-          if (!btn) continue;
-          return {
-            doc,
-            win: item.win,
-            btn,
-            label: describeEbelgeWindow(item.win, item.label),
-          };
+          const title = foldEbelgeText(doc?.title || '');
+          const text = foldEbelgeText(doc?.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+          if (title || text) hints.push(`${describeEbelgeWindow(item.win, item.label)}:${title || text}`);
         } catch {}
       }
-      return null;
+      return hints.slice(0, 5).join(' | ');
+    };
+
+    const findEbelgePageContext = () => {
+      let fallback = null;
+      for (const item of collectEbelgeWindows()) {
+        try {
+          const doc = item.win.document;
+          if (!doc?.body) continue;
+          const exactBtn = doc.getElementById('faturalari-getir-btn');
+          const btn = exactBtn || findLikelyEbelgeGetirButton(doc);
+          const btnText = getElementText(btn);
+          const strongBtn = exactBtn || btnText.includes('faturalari getir') ||
+            btnText.includes('belgeleri getir') ||
+            btnText.includes('belge getir') ||
+            btnText.includes('fatura getir');
+          const textOk = ebelgeTextMatchesJob(doc);
+          const structureOk = hasEbelgeStructure(doc, item.win);
+          if (exactBtn || (textOk && (structureOk || btn)) || (structureOk && strongBtn)) {
+            return {
+              doc,
+              win: item.win,
+              btn,
+              label: describeEbelgeWindow(item.win, item.label),
+            };
+          }
+          if (!fallback && textOk && structureOk) {
+            fallback = {
+              doc,
+              win: item.win,
+              btn,
+              label: describeEbelgeWindow(item.win, item.label),
+            };
+          }
+        } catch {}
+      }
+      return fallback;
     };
 
     // Her zaman doğru sayfayı II1a ile aç — "faturalari-getir-btn" hem alış hem satışta
@@ -1094,11 +1199,7 @@
       // İşletme ekranı açık kalıp sonraki bilanço job'ını yanıltabiliyordu.
       var __navSkip = false;
 
-      const normalizeEbelgeText = (s) => String(s || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/ı/g, 'i')
-        .toLowerCase();
+      const normalizeEbelgeText = foldEbelgeText;
 
       const contextMatchesExpected = (ctx) => {
         try {
@@ -1475,7 +1576,8 @@
         ebelgeContext = findEbelgePageContext();
       }
       if (!ebelgeContext) {
-        throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli`);
+        const frameHint = describeEbelgeFrames();
+        throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli${frameHint ? `; frame ipucu: ${frameHint}` : ''}`);
       }
       if (!basariliAcildi && ebelgeContextAtStart && !isFreshEbelgeContext(ebelgeContext, ebelgeContextAtStart)) {
         await log(`⚠ ${menuLabel} ekranı yeni frame olarak doğrulanamadı; mevcut e-belge ekranıyla devam ediliyor`);
@@ -1969,7 +2071,7 @@
       await sleep(200);
 
       // Belgeleri Getir butonu
-      const getirBtn = fdoc.getElementById('faturalari-getir-btn');
+      const getirBtn = findLikelyEbelgeGetirButton(fdoc);
       if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
       getirBtn.click();
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
