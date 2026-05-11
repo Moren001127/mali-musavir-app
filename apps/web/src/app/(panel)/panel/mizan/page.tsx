@@ -15,6 +15,10 @@ const GOLD = '#d4b876';
 const AMOUNT_COLOR = '#fffaf0';
 const TOTAL_AMOUNT_COLOR = '#fff0b8';
 const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
+const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const FINANCIAL_AMOUNT_SIZE = 14.5;
+const FINANCIAL_AMOUNT_WEIGHT = 560;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
 
 type Taxpayer = {
   id: string;
@@ -901,9 +905,7 @@ function MizanTable({
               // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
               const rowBg = isUpper
                 ? 'rgba(212,184,118,0.06)'
-                : rowIdx % 2 === 0
-                  ? 'rgba(255,255,255,0.018)'
-                  : 'rgba(0,0,0,0.16)';
+                : 'rgba(245,240,230,0.030)';
 
               const cells: Array<{ val: React.ReactNode; align: 'left' | 'right'; color: string }> = [
                 { val: hesapKodu, align: 'left', color: codeColor },
@@ -932,7 +934,7 @@ function MizanTable({
                         style={{
                           borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
-                          fontSize: isAmountCell ? (amountStrong ? 15.5 : 14.5) : fontSize,
+                          fontSize: isAmountCell ? FINANCIAL_AMOUNT_SIZE : fontSize,
                           color: isAmountCell
                             ? !hasAmountValue
                               ? dimColor
@@ -940,7 +942,9 @@ function MizanTable({
                                 ? TOTAL_AMOUNT_COLOR
                                 : AMOUNT_COLOR
                             : c.color,
-                          fontWeight: isAmountCell ? (!hasAmountValue ? 500 : amountStrong ? 800 : 550) : weight,
+                          fontWeight: isAmountCell ? (!hasAmountValue ? 500 : amountStrong ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT) : weight,
+                          fontFamily: isAmountCell ? FINANCIAL_FONT : undefined,
+                          fontVariantNumeric: isAmountCell ? 'tabular-nums' : undefined,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',

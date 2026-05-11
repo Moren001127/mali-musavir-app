@@ -25,6 +25,13 @@ const LOSS_COLOR = '#fca5a5';
 const RATIO_COLOR = '#ffffff';
 const RATIO_BG = 'rgba(13,148,136,0.58)';
 const RATIO_BORDER = 'rgba(153,246,228,0.80)';
+const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const FINANCIAL_AMOUNT_SIZE = 14.5;
+const FINANCIAL_AMOUNT_WEIGHT = 560;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
+const ACCOUNT_ROW_BG = 'rgba(255,255,255,0.045)';
+const MAIN_ROW_BG = 'rgba(0,0,0,0.24)';
+const FINAL_ROW_BG = 'linear-gradient(90deg, rgba(0,0,0,0.34), rgba(184,160,111,0.08))';
 const CODE_COL_WIDTH = 70;
 const PERIOD_COL_WIDTH = 180;
 const PERIOD_COLS_WIDTH = PERIOD_COL_WIDTH * 4;
@@ -666,7 +673,7 @@ export default function GelirTablosuPage() {
                 // Alt hesap satırı (sub kodu)
                 if (row.sub) {
                   return (
-                    <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: idx % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)' }}>
+                    <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG }}>
                       <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
                       <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
                         {row.subLabel}
@@ -726,10 +733,10 @@ export default function GelirTablosuPage() {
 
                 // Normal satır (group / total / final)
                 const rowBg =
-                  row.final ? 'linear-gradient(90deg, rgba(245,240,230,0.075), rgba(245,240,230,0.025))' :
-                  row.total ? 'rgba(184,160,111,0.06)' :
-                  row.group ? 'rgba(255,255,255,0.028)' :
-                  idx % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)';
+                  row.final ? FINAL_ROW_BG :
+                  row.total ? MAIN_ROW_BG :
+                  row.group ? MAIN_ROW_BG :
+                  ACCOUNT_ROW_BG;
                 const bold = row.final || row.total || row.group;
                 const labelColor = row.final ? TOTAL_COLOR : row.total ? TOTAL_COLOR : row.group ? '#fafaf9' : 'rgba(250,250,249,0.7)';
                 const labelFont = 'Plus Jakarta Sans';
@@ -792,10 +799,10 @@ export default function GelirTablosuPage() {
                                 color: RATIO_COLOR,
                                 background: RATIO_BG,
                                 border: `1px solid ${RATIO_BORDER}`,
-                                fontFamily: 'JetBrains Mono, monospace',
+                                fontFamily: FINANCIAL_FONT,
                                 fontSize: 12.5,
                                 lineHeight: 1.05,
-                                fontWeight: 850,
+                                fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
                                 whiteSpace: 'nowrap',
                                 minWidth: 86,
                                 maxWidth: '100%',
@@ -942,7 +949,7 @@ export default function GelirTablosuPage() {
                                   )}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? 800 : 750, fontSize: row.big ? 16 : 14.5, width: 220, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
+                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, width: 220, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
                                 {isManual && !isLocked ? (
                                   isFirstQuarter ? (
                                     <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk dönem)</span>
@@ -1009,7 +1016,7 @@ export default function GelirTablosuPage() {
                           <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.18)' }}>
                             <td className="px-3 py-2 font-mono text-[13px]" style={{ color: GOLD, fontWeight: 600 }}>{h.kod}</td>
                             <td className="px-3 py-2 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)' }}>{h.hesapAdi || HESAP_ADLARI[h.kod] || '—'}</td>
-                            <td className="px-3 py-2 text-right font-mono text-[14.5px]" style={{ color: Number(h.bakiye) === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: 750, whiteSpace: 'nowrap' }}>
+                            <td className="px-3 py-2 text-right font-mono" style={{ color: Number(h.bakiye) === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
                               {Number(h.bakiye) !== 0 ? fmtTRY(Number(h.bakiye)) : '0,00'}
                             </td>
                           </tr>
@@ -1102,7 +1109,7 @@ export default function GelirTablosuPage() {
                   { key: 'oncekiDonemOdenen', label: 'Önceki Dönem Ödenen Geçici Vergi', manual: 'oncekiOdenen' as const, negSign: true },
                   { key: 'odenecekGeciciVergi', label: 'ÖDENECEK GEÇİCİ VERGİ', bold: true, color: GOLD, bg: 'linear-gradient(135deg, rgba(184,160,111,0.10), rgba(184,160,111,0.03))', big: true },
                 ].map((row: any, ri) => (
-                  <tr key={ri} style={{ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || (ri % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)') }}>
+                  <tr key={ri} style={{ borderTop: `1px solid ${GRID_LINE}`, background: row.bg || ACCOUNT_ROW_BG }}>
                     <td className="px-3 py-2.5" style={{ color: row.color || 'rgba(250,250,249,0.7)', fontWeight: row.bold ? 700 : 400, fontSize: row.big ? 14 : 13, borderBottom: `1px solid ${GRID_LINE}` }}>
                       <span className="inline-flex items-center gap-2">
                         {row.label}
@@ -1149,7 +1156,7 @@ export default function GelirTablosuPage() {
                       }
 
                       return (
-                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? 800 : 750, fontSize: row.big ? 15.5 : 14.5, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
+                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
                           {!hasData ? '—' : isManual && !isLocked ? (
                             isFirstQuarter ? (
                               <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
@@ -1276,13 +1283,13 @@ export default function GelirTablosuPage() {
                 </thead>
                 <tbody>
                   {allKodlar.map((baseH: any, hi: number) => (
-                    <tr key={baseH.kod} style={{ borderTop: `1px solid ${GRID_LINE}`, background: hi % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)' }}>
+                    <tr key={baseH.kod} style={{ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG }}>
                       <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.kod}</td>
                       <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>{baseH.hesapAdi || HESAP_ADLARI[baseH.kod] || '—'}</td>
                       {DISPLAY_ORDER.map((qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[14.5px]" style={{ color: v === null ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 600 : 750, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, whiteSpace: 'nowrap' }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: v === null ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 500 : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
                             {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                           </td>
                         );
@@ -1297,7 +1304,7 @@ export default function GelirTablosuPage() {
                       const d = quarterDetails[qi]?.data as any;
                       const v = d?.stokMaliyetOzet?.toplamStok;
                       return (
-                        <td key={qi} className="px-3 py-2.5 text-center font-mono font-bold" style={{ color: TOTAL_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
+                        <td key={qi} className="px-3 py-2.5 text-center font-mono" style={{ color: TOTAL_COLOR, fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, fontFamily: FINANCIAL_FONT, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
                           {d?.stokMaliyetOzet ? fmtTRY(Number(v)) : '—'}
                         </td>
                       );
@@ -1321,13 +1328,18 @@ export default function GelirTablosuPage() {
                       return (
                         <td
                           key={qi}
-                          className="px-3 py-2.5 text-center font-mono font-bold"
+                          className="px-3 py-2.5 text-center font-mono"
                           style={{
                             color: LOSS_COLOR,
+                            fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
+                            fontSize: FINANCIAL_AMOUNT_SIZE,
+                            fontFamily: FINANCIAL_FONT,
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${GRID_LINE}`,
                             background: ihlal ? 'rgba(239,68,68,0.18)' : undefined,
                             position: 'relative',
+                            fontVariantNumeric: 'tabular-nums',
+                            letterSpacing: 0,
                           }}
                           title={ihlal ? `⚠ Satılan maliyet (${fmtTRY(v)}) toplam stoktan (${fmtTRY(toplamStok)}) büyük olamaz` : undefined}
                         >
@@ -1356,13 +1368,18 @@ export default function GelirTablosuPage() {
                       return (
                         <td
                           key={qi}
-                          className="px-3 py-2.5 text-center font-mono font-bold text-[14px]"
+                          className="px-3 py-2.5 text-center font-mono"
                           style={{
                             color: negatif ? LOSS_COLOR : TOTAL_COLOR,
+                            fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
+                            fontSize: FINANCIAL_AMOUNT_SIZE,
+                            fontFamily: FINANCIAL_FONT,
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${GRID_LINE}`,
                             background: negatif ? 'rgba(239,68,68,0.18)' : undefined,
                             position: 'relative',
+                            fontVariantNumeric: 'tabular-nums',
+                            letterSpacing: 0,
                           }}
                           title={negatif ? `⚠ Kalan stok negatif (${fmtTRY(v)}) — satılan maliyet toplam stoktan büyük` : undefined}
                         >
@@ -1595,8 +1612,11 @@ function ManuelInput({
         background: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.012)' : 'rgba(96,165,250,0.08)',
         borderColor: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.06)' : 'rgba(96,165,250,0.25)',
         color: readOnlySaved ? AMOUNT_COLOR : disabled ? MUTED_AMOUNT_COLOR : '#60a5fa',
-        fontSize: readOnlySaved ? 14.5 : 13.5,
-        fontWeight: readOnlySaved ? 750 : 650,
+        fontSize: readOnlySaved ? FINANCIAL_AMOUNT_SIZE : 13.5,
+        fontWeight: readOnlySaved ? FINANCIAL_AMOUNT_WEIGHT : FINANCIAL_AMOUNT_STRONG_WEIGHT,
+        fontFamily: FINANCIAL_FONT,
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: 0,
         opacity: 1,
         cursor: readOnlySaved ? 'default' : disabled ? 'not-allowed' : 'text',
       }}
@@ -1628,11 +1648,13 @@ function AmountText({
         width: '100%',
         textAlign: 'center',
         color: missing ? MISSING_AMOUNT_COLOR : zero ? MUTED_AMOUNT_COLOR : (color || AMOUNT_COLOR),
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: final ? 16 : isStrong ? 15.5 : 14.5,
-        fontWeight: zero ? 500 : isStrong ? 800 : 550,
+        fontFamily: FINANCIAL_FONT,
+        fontSize: final ? 15 : FINANCIAL_AMOUNT_SIZE,
+        fontWeight: zero ? 500 : isStrong ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
+        letterSpacing: 0,
       }}
     >
       {missing ? '—' : fmtTRY(value ?? 0)}

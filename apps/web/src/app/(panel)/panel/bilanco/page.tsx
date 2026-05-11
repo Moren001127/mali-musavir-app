@@ -16,6 +16,10 @@ const GRID_LINE_STRONG = 'rgba(212,184,118,0.48)';
 const AMOUNT_COLOR = '#fffaf0';
 const TOTAL_COLOR = '#fff0b8';
 const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
+const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const FINANCIAL_AMOUNT_SIZE = 14.5;
+const FINANCIAL_AMOUNT_WEIGHT = 560;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -707,11 +711,12 @@ function BilancoAmount({
         display: 'block',
         textAlign: 'right',
         color: zero ? MUTED_AMOUNT_COLOR : (color || (isStrong ? TOTAL_COLOR : AMOUNT_COLOR)),
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: isTotal ? 16 : isStrong ? 15.5 : 14.5,
-        fontWeight: zero ? 500 : isStrong ? 800 : 550,
+        fontFamily: FINANCIAL_FONT,
+        fontSize: isTotal ? 15 : FINANCIAL_AMOUNT_SIZE,
+        fontWeight: zero ? 500 : isStrong ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
+        fontVariantNumeric: 'tabular-nums',
         letterSpacing: 0,
       }}
     >
