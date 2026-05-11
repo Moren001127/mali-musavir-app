@@ -86,6 +86,76 @@ export class FaturaMuhasebelestirmeService {
     });
   }
 
+  async dashboard(tenantId: string) {
+    const [taxpayers, grouped] = await Promise.all([
+      (this.prisma as any).taxpayer.findMany({
+        where: { tenantId, isActive: true },
+        orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+        select: {
+          id: true,
+          companyName: true,
+          firstName: true,
+          lastName: true,
+          defterTuru: true,
+          mihsapDefterTuru: true,
+        },
+      }),
+      (this.prisma as any).invoiceAccountingDocument.groupBy({
+        by: ['taxpayerId', 'invoiceKind', 'status'],
+        where: { tenantId, taxpayerId: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const counters = new Map<string, any>();
+    for (const row of grouped) {
+      const taxpayerId = row.taxpayerId || 'general';
+      const current = counters.get(taxpayerId) || {
+        pendingPurchase: 0,
+        pendingSale: 0,
+        pendingBank: 0,
+        approvedInvoice: 0,
+        approvedBank: 0,
+      };
+      const count = row._count?._all || 0;
+      if (row.status === 'APPROVED') current.approvedInvoice += count;
+      else if (row.invoiceKind === 'SATIS') current.pendingSale += count;
+      else current.pendingPurchase += count;
+      counters.set(taxpayerId, current);
+    }
+
+    const rows = taxpayers.map((tp: any) => {
+      const counts = counters.get(tp.id) || {
+        pendingPurchase: 0,
+        pendingSale: 0,
+        pendingBank: 0,
+        approvedInvoice: 0,
+        approvedBank: 0,
+      };
+      return {
+        taxpayerId: tp.id,
+        name: tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || 'Adsız mükellef',
+        ledgerType: tp.mihsapDefterTuru || tp.defterTuru || '-',
+        ...counts,
+        totalPending: counts.pendingPurchase + counts.pendingSale + counts.pendingBank,
+      };
+    });
+
+    return {
+      rows,
+      totals: rows.reduce(
+        (acc: any, row: any) => ({
+          pendingPurchase: acc.pendingPurchase + row.pendingPurchase,
+          pendingSale: acc.pendingSale + row.pendingSale,
+          pendingBank: acc.pendingBank + row.pendingBank,
+          approvedInvoice: acc.approvedInvoice + row.approvedInvoice,
+          approvedBank: acc.approvedBank + row.approvedBank,
+        }),
+        { pendingPurchase: 0, pendingSale: 0, pendingBank: 0, approvedInvoice: 0, approvedBank: 0 },
+      ),
+    };
+  }
+
   async accountPlan(tenantId: string, opts: AccountPlanQuery) {
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({

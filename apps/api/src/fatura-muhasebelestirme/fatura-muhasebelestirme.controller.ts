@@ -52,6 +52,11 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  @Get('dashboard')
+  dashboard(@Req() req: any) {
+    return this.service.dashboard(req.user.tenantId);
+  }
+
   @Post('documents/upload')
   @UseInterceptors(documentUploadInterceptor())
   upload(

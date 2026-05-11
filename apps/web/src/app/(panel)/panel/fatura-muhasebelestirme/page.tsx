@@ -20,6 +20,9 @@ import {
   Receipt,
   RefreshCw,
   AlertTriangle,
+  ArrowLeft,
+  SlidersHorizontal,
+  Pencil,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -78,6 +81,18 @@ type AccountOption = {
   code: string;
   name: string;
   level?: number;
+};
+
+type DashboardRow = {
+  taxpayerId: string;
+  name: string;
+  ledgerType: string;
+  pendingPurchase: number;
+  pendingSale: number;
+  pendingBank: number;
+  approvedInvoice: number;
+  approvedBank: number;
+  totalPending: number;
 };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -237,10 +252,19 @@ export default function FaturaMuhasebelestirmePage() {
   const [accountPlanSource, setAccountPlanSource] = useState<any>(null);
   const [accountPlanLoading, setAccountPlanLoading] = useState(false);
   const [accountPlanRefreshing, setAccountPlanRefreshing] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
+  const [dashboardRows, setDashboardRows] = useState<DashboardRow[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardSearch, setDashboardSearch] = useState('');
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
   const readyCount = drafts.filter((d) => d.status === 'hazir').length;
+  const dashboardFiltered = useMemo(() => {
+    const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return dashboardRows;
+    return dashboardRows.filter((row) => row.name.toLocaleLowerCase('tr-TR').includes(q));
+  }, [dashboardRows, dashboardSearch]);
 
   const totals = useMemo(() => {
     const debit = selected?.lines.reduce((sum, line) => sum + parseAmount(line.debit), 0) || 0;
@@ -279,6 +303,22 @@ export default function FaturaMuhasebelestirmePage() {
     };
   }, [selected?.taxpayerId]);
 
+  const loadDashboard = async () => {
+    setDashboardLoading(true);
+    try {
+      const { data } = await api.get('/fatura-muhasebelestirme/dashboard');
+      setDashboardRows(Array.isArray(data?.rows) ? data.rows : []);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Gelen evrak özeti alınamadı');
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -315,6 +355,37 @@ export default function FaturaMuhasebelestirmePage() {
       alive = false;
     };
   }, []);
+
+  const openTaxpayerQueue = async (row: DashboardRow, kind?: 'ALIS' | 'SATIS') => {
+    setLoadingExisting(true);
+    try {
+      const { data } = await api.get('/fatura-muhasebelestirme/documents', {
+        params: { taxpayerId: row.taxpayerId, limit: 200 },
+      });
+      const list = (Array.isArray(data) ? data : []).filter((doc: any) => {
+        if (!kind) return true;
+        return doc.invoiceKind === kind && doc.status !== 'APPROVED';
+      });
+      const hydrated = await Promise.all(
+        list.map(async (doc: any) => {
+          try {
+            const res = await api.get(`/fatura-muhasebelestirme/documents/${doc.id}/file-url`);
+            return draftFromApiDocument(doc, res.data?.url || '');
+          } catch {
+            return draftFromApiDocument(doc, '');
+          }
+        }),
+      );
+      setDrafts(hydrated);
+      setSelectedId(hydrated[0]?.id || null);
+      setShowDashboard(false);
+      if (!hydrated.length) toast.info(`${row.name} için seçili türde bekleyen fatura yok`);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Mükellef kuyruğu açılamadı');
+    } finally {
+      setLoadingExisting(false);
+    }
+  };
 
   const addFiles = (files: FileList | File[]) => {
     const next = Array.from(files).filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf');
@@ -462,6 +533,17 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </div>
           <div className="flex items-center gap-2 text-sm">
+            {!showDashboard ? (
+              <button
+                onClick={() => {
+                  setShowDashboard(true);
+                  loadDashboard();
+                }}
+                className="inline-flex items-center gap-2 rounded-md border border-amber-300/30 px-3 py-2 text-sm font-medium text-[#f4d68a]"
+              >
+                <ArrowLeft size={16} /> Listeye Dön
+              </button>
+            ) : null}
             <span className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600">Onaylanacak: <b className="text-red-500">{drafts.length - readyCount}</b></span>
             <button
               onClick={() => inputRef.current?.click()}
@@ -497,6 +579,77 @@ export default function FaturaMuhasebelestirmePage() {
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
 
+        {showDashboard ? (
+          <section className="flex-1 overflow-hidden bg-[#0f0d0a] p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#6d145d] text-white" title="Ayarlar">
+                  <SlidersHorizontal size={18} />
+                </button>
+                <button onClick={loadDashboard} className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#1664c8] text-white" title="Yenile">
+                  {dashboardLoading ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+                </button>
+              </div>
+              <input
+                className="h-10 w-80 rounded-md border border-[#3b321f] bg-[#15110d] px-3 text-sm text-[#f7eedb] outline-none"
+                value={dashboardSearch}
+                onChange={(e) => setDashboardSearch(e.target.value)}
+                placeholder="Mükellef ara"
+              />
+            </div>
+            <div className="overflow-hidden rounded-lg border border-[#332a1c] bg-[#15110d]">
+              <div className="max-h-[calc(100vh-190px)] overflow-auto">
+                <table className="min-w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-[#211a11] text-left text-[#f4d68a]">
+                    <tr>
+                      <th className="w-[30%] border-b border-[#3b321f] px-4 py-3 font-semibold">Firma Bilgisi</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Defter Türü</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Alış Faturaları</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Satış Faturaları</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Banka</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Onaylanan Faturalar</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Onaylanan Banka</th>
+                      <th className="border-b border-[#3b321f] px-3 py-3 text-center font-semibold">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dashboardFiltered.map((row, idx) => (
+                      <tr key={row.taxpayerId} className={idx % 2 ? 'bg-[#18130f]' : 'bg-[#100d0a]'}>
+                        <td className="border-b border-[#2a2419] px-4 py-3 font-semibold text-[#f7eedb]">{row.name}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-3 text-[#d8cda5]">{row.ledgerType}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-3">
+                          <button onClick={() => openTaxpayerQueue(row, 'ALIS')} className="min-w-14 rounded-md bg-[#1f7ad9] px-3 py-1.5 text-left font-bold text-white hover:bg-[#2f8ef0]">
+                            {row.pendingPurchase}
+                          </button>
+                        </td>
+                        <td className="border-b border-[#2a2419] px-3 py-3">
+                          <button onClick={() => openTaxpayerQueue(row, 'SATIS')} className="min-w-14 rounded-md bg-[#1f7ad9] px-3 py-1.5 text-left font-bold text-white hover:bg-[#2f8ef0]">
+                            {row.pendingSale}
+                          </button>
+                        </td>
+                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.pendingBank}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedInvoice}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedBank}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2 text-center">
+                          <button onClick={() => openTaxpayerQueue(row)} className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#1f7ad9] text-white hover:bg-[#2f8ef0]" title="Fatura işleme ekranını aç">
+                            <Pencil size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!dashboardFiltered.length ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-10 text-center text-[#d8cda5]">
+                          {dashboardLoading ? 'Gelen evrak özeti yükleniyor' : 'Mükellef kaydı bulunamadı'}
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        ) : (
         <section className="grid flex-1 grid-cols-[minmax(520px,1fr)_520px] overflow-hidden">
           <div className="flex min-w-0 flex-col border-r border-slate-200 bg-slate-100">
             <div className="flex h-12 items-center justify-between border-b border-slate-200 bg-white px-4">
@@ -711,6 +864,7 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </aside>
         </section>
+        )}
       </div>
       <style jsx global>{`
         .invoice-accounting-dark .bg-white:not(.document-preview) { background-color: #15110d !important; }
