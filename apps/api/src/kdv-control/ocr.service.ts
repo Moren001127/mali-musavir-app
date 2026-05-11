@@ -1098,7 +1098,7 @@ export class OcrService {
 
     // Alanları çıkar
     const belgeTipi = this.detectBelgeTipiFromAzure(fullText, originalName);
-    const date = this.extractDate(fullText);
+    const date = this.extractPreferredInvoiceDate(fullText) ?? this.extractDate(fullText);
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
     const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
     const okcFis = belgeTipi === 'OKC_FIS' ? this.extractOkcFisKdvFromAzure(fullText) : null;
@@ -1201,6 +1201,65 @@ export class OcrService {
     if (/^[A-Z0-9]{3}\d{4}\d{6,12}$/i.test(base)) return base.toUpperCase();
     if (/^[A-Z0-9\-_]{8,30}$/i.test(base)) return base.toUpperCase();
     return null;
+  }
+
+  private extractPreferredInvoiceDate(text: string): string | null {
+    if (!text) return null;
+
+    const normalizeTrDate = (d: string, mo: string, y: string): string | null => {
+      let dd = Number(d);
+      let month = Number(mo);
+      const yy = this.normalizeOcrYear(y);
+      if (yy == null || dd < 1 || month < 1) return null;
+      if (month > 12 && dd <= 12) [dd, month] = [month, dd];
+      if (month < 1 || month > 12 || dd < 1 || dd > 31) return null;
+      return `${String(dd).padStart(2, '0')}.${String(month).padStart(2, '0')}.${yy}`;
+    };
+
+    const findDates = (source: string): string[] => {
+      const dates: string[] = [];
+      const seen = new Set<string>();
+      const push = (value: string | null) => {
+        if (!value || seen.has(value)) return;
+        seen.add(value);
+        dates.push(value);
+      };
+
+      for (const m of source.matchAll(/\b(\d{1,2})\s*[-.\/]\s*(\d{1,2})\s*[-.\/]\s*(\d{2}|\d{4})\b/g)) {
+        push(normalizeTrDate(m[1], m[2], m[3]));
+      }
+      for (const m of source.matchAll(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g)) {
+        push(normalizeTrDate(m[3], m[2], m[1]));
+      }
+
+      return dates;
+    };
+
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const positiveLabel =
+      /\b(?:FATURA|BELGE|EVRAK|DUZENLENME|DUZENLEME|TANZIM|FIS|MAKBUZ)\s+TARIH[II]?\b|\bTARIH[II]?\s*[:\-]/;
+    const strongLabel =
+      /\bDUZENLENME\s+TARIH[II]?\b|\bDUZENLEME\s+TARIH[II]?\b|\bFATURA\s+TARIH[II]?\b|\bBELGE\s+TARIH[II]?\b/;
+    const negativeLabel =
+      /\b(?:SON\s+ODEME|VADE|TICARET\s+SICIL|MERSIS|KURULUS|ISE\s+BASLAMA|IBAN|HESAP|ODEME\s+NOTU)\b/;
+
+    let best: { value: string; score: number } | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const window = [lines[i - 1] || '', lines[i], lines[i + 1] || ''].join('\n');
+      const folded = this.foldTurkishAscii(window).replace(/\s+/g, ' ').trim();
+
+      for (const date of findDates(window)) {
+        let score = 10 - Math.min(i, 10) * 0.05;
+        if (positiveLabel.test(folded)) score += 100;
+        if (strongLabel.test(folded)) score += 50;
+        if (negativeLabel.test(folded)) score -= 120;
+        if (/\b\d{1,2}[:.]\d{2}(?::\d{2})?\b/.test(window)) score += 2;
+        if (!best || score > best.score) best = { value: date, score };
+      }
+    }
+
+    return best && best.score >= 50 ? best.value : null;
   }
 
   private extractDate(text: string): string | null {
