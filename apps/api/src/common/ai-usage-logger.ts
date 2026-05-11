@@ -17,6 +17,9 @@ const PRICES: Record<string, { in: number; out: number; cacheR: number; cacheW: 
   'claude-haiku-4-5-20251001': { in: 1.0, out: 5.0, cacheR: 0.1, cacheW: 1.25 },
   'claude-opus-4-6':           { in: 15.0, out: 75.0, cacheR: 1.5, cacheW: 18.75 },
   'claude-sonnet-4-6':         { in: 3.0, out: 15.0, cacheR: 0.3, cacheW: 3.75 },
+  'gemini-2.5-flash-lite':     { in: 0.1, out: 0.4, cacheR: 0, cacheW: 0 },
+  'gpt-5.4-nano':              { in: 0.2, out: 1.25, cacheR: 0, cacheW: 0 },
+  'gpt-5.4-mini':              { in: 0.75, out: 4.5, cacheR: 0, cacheW: 0 },
   // Fallback
   default:                     { in: 3.0, out: 15.0, cacheR: 0.3, cacheW: 3.75 },
 };
@@ -49,6 +52,7 @@ export interface AiUsageLogParams {
   taxpayerId?: string | null;
   durationMs?: number;
   cacheHit?: boolean;
+  fixedCostUsd?: number;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -82,7 +86,10 @@ export async function logAiUsage(prisma: any, params: AiUsageLogParams): Promise
       cacheRead: num(u.cache_read_input_tokens, u.cacheReadTokens),
       cacheWrite: num(u.cache_creation_input_tokens, u.cacheWriteTokens, u.cacheCreationTokens),
     };
-    const costUsd = computeCostUsd(params.model, tokens);
+    const costUsd =
+      typeof params.fixedCostUsd === 'number' && Number.isFinite(params.fixedCostUsd)
+        ? Math.max(0, params.fixedCostUsd)
+        : computeCostUsd(params.model, tokens);
     await prisma.aiUsageLog.create({
       data: {
         tenantId: params.tenantId || 'unknown',

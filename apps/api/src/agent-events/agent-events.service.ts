@@ -7,6 +7,26 @@ import { profileToPromptText } from '../common/profile-prompt';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
 
+type MihsapDecisionMode = 'shadow' | 'balanced' | 'claude_only';
+type MihsapOcrProvider = 'auto' | 'azure' | 'mistral' | 'none';
+type MihsapCheapModelProvider = 'auto' | 'gemini' | 'openai';
+
+interface MihsapOcrTextResult {
+  provider: string;
+  text: string;
+  fallbackReason?: string;
+}
+
+interface MihsapCheapDecisionResult {
+  provider: string;
+  model: string;
+  ocrProvider: string;
+  confidence: number | null;
+  parsed: any | null;
+  rawText?: string;
+  fallbackReason?: string;
+}
+
 export interface AgentEventInput {
   agent: string;
   action?: string;
@@ -33,6 +53,610 @@ export class AgentEventsService {
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
   ) {}
+
+  private getMihsapDecisionMode(): MihsapDecisionMode {
+    const value = String(process.env.MIHSAP_DECISION_MODE || 'shadow').toLowerCase();
+    if (value === 'balanced' || value === 'claude_only' || value === 'shadow') return value;
+    return 'shadow';
+  }
+
+  private getMihsapOcrProvider(): MihsapOcrProvider {
+    const value = String(process.env.MIHSAP_OCR_PROVIDER || 'auto').toLowerCase();
+    if (value === 'azure' || value === 'mistral' || value === 'none' || value === 'auto') return value;
+    return 'auto';
+  }
+
+  private getMihsapCheapModelProvider(): MihsapCheapModelProvider {
+    const value = String(process.env.MIHSAP_CHEAP_MODEL_PROVIDER || 'auto').toLowerCase();
+    if (value === 'gemini' || value === 'openai' || value === 'auto') return value;
+    return 'auto';
+  }
+
+  private hasMihsapCheapModelKey(): boolean {
+    const provider = this.getMihsapCheapModelProvider();
+    return (
+      (provider !== 'openai' && !!process.env.GEMINI_API_KEY) ||
+      (provider !== 'gemini' && !!process.env.OPENAI_API_KEY)
+    );
+  }
+
+  private getMihsapMinConfidence(): number {
+    const parsed = Number(process.env.MIHSAP_MIN_CONFIDENCE || 0.82);
+    if (!Number.isFinite(parsed)) return 0.82;
+    return Math.min(0.98, Math.max(0.5, parsed));
+  }
+
+  private sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private stripDataUrlBase64(value: string): string {
+    return String(value || '').replace(/^data:[^;]+;base64,/i, '').trim();
+  }
+
+  private extractJsonCandidates(text: string): string[] {
+    const candidates: string[] = [];
+    const codeBlock = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (codeBlock) candidates.push(codeBlock[1]);
+    const greedy = text.match(/\{[\s\S]*\}/);
+    if (greedy) candidates.push(greedy[0]);
+    const lines = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('{') && line.endsWith('}'));
+    candidates.push(...lines);
+    return [...new Set(candidates)];
+  }
+
+  private parseFirstJsonObject(text: string): any | null {
+    for (const candidate of this.extractJsonCandidates(text || '')) {
+      try {
+        return JSON.parse(candidate);
+      } catch {}
+    }
+    return null;
+  }
+
+  private normalizeDecisionDate(value: any): string {
+    const raw = String(value || '').trim();
+    const m = raw.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})/);
+    if (!m) return '';
+    const dd = m[1].padStart(2, '0');
+    const mm = m[2].padStart(2, '0');
+    const yyyy = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${dd}.${mm}.${yyyy}`;
+  }
+
+  private normalizeDecisionNo(value: any): string {
+    return String(value || '')
+      .toLocaleUpperCase('tr-TR')
+      .replace(/[^A-Z0-9]/g, '')
+      .trim();
+  }
+
+  private decisionValuesDiffer(a: any, b: any): boolean {
+    const av = a == null ? '' : JSON.stringify(a);
+    const bv = b == null ? '' : JSON.stringify(b);
+    return av !== bv;
+  }
+
+  private buildMihsapShadowDiff(kind: 'fatura' | 'isletme', cheap: any, claude: any): any | null {
+    if (!cheap || !claude) return null;
+    const fields =
+      kind === 'fatura'
+        ? ['karar', 'onerilenler', 'belgeNo', 'tarih', 'kdvOrani', 'ocrToplam', 'ocrMatrah', 'ocrKdvTutari']
+        : ['emin', 'kayitTuru', 'altTuru', 'belgeNo', 'tarih', 'kdvOrani', 'ocrToplam', 'ocrMatrah', 'ocrKdvTutari'];
+    const changed = fields.filter((field) => this.decisionValuesDiffer(cheap[field], claude[field]));
+    if (changed.length === 0) return null;
+    return {
+      changed,
+      cheap: Object.fromEntries(fields.map((field) => [field, cheap[field] ?? null])),
+      claude: Object.fromEntries(fields.map((field) => [field, claude[field] ?? null])),
+    };
+  }
+
+  private async logMihsapShadowDiff(
+    source: string,
+    input: { tenantId?: string; mukellefId?: string; mukellef?: string; belgeNo?: string },
+    diff: any,
+    cheap?: MihsapCheapDecisionResult | null,
+  ) {
+    if (!diff) return;
+    await logAiUsage(this.prisma, {
+      tenantId: input.tenantId || 'unknown',
+      taxpayerId: input.mukellefId || null,
+      source,
+      model: cheap?.model || 'shadow',
+      mukellef: input.mukellef,
+      belgeNo: input.belgeNo,
+      karar: 'shadow_diff',
+      sebep: `changed=${(diff.changed || []).join(',').slice(0, 120)}`,
+      cacheHit: true,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
+  }
+
+  private async runMihsapImageOcr(
+    input: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      tenantId?: string;
+      mukellefId?: string;
+      mukellef?: string;
+      belgeNo?: string;
+    },
+    source: string,
+  ): Promise<MihsapOcrTextResult | null> {
+    const provider = this.getMihsapOcrProvider();
+    if (provider === 'none') return null;
+
+    const failures: string[] = [];
+    const tryMistral = provider === 'auto' || provider === 'mistral';
+    const tryAzure = provider === 'auto' || provider === 'azure';
+
+    if (tryMistral && process.env.MISTRAL_API_KEY) {
+      try {
+        const started = Date.now();
+        const text = await this.runMistralOcr(input.faturaImageBase64, input.faturaImageMediaType);
+        if (text.trim().length >= 30) {
+          await logAiUsage(this.prisma, {
+            tenantId: input.tenantId || 'unknown',
+            taxpayerId: input.mukellefId || null,
+            source,
+            model: 'mistral-ocr-latest',
+            mukellef: input.mukellef,
+            belgeNo: input.belgeNo,
+            karar: 'ocr_ok',
+            sebep: 'mihsap OCR text extracted',
+            durationMs: Date.now() - started,
+            fixedCostUsd: 0.002,
+            usage: { input_tokens: 0, output_tokens: 0 },
+          });
+          return { provider: 'mistral-ocr', text };
+        }
+        failures.push('mistral_empty');
+      } catch (e: any) {
+        failures.push(`mistral:${e?.message || 'error'}`);
+      }
+    }
+
+    if (tryAzure && process.env.AZURE_VISION_KEY && process.env.AZURE_VISION_ENDPOINT) {
+      try {
+        const started = Date.now();
+        const text = await this.runAzureReadOcr(input.faturaImageBase64, input.faturaImageMediaType);
+        if (text.trim().length >= 30) {
+          await logAiUsage(this.prisma, {
+            tenantId: input.tenantId || 'unknown',
+            taxpayerId: input.mukellefId || null,
+            source,
+            model: 'azure-read',
+            mukellef: input.mukellef,
+            belgeNo: input.belgeNo,
+            karar: 'ocr_ok',
+            sebep: 'mihsap OCR text extracted',
+            durationMs: Date.now() - started,
+            fixedCostUsd: 0.0015,
+            usage: { input_tokens: 0, output_tokens: 0 },
+          });
+          return { provider: 'azure-read', text, fallbackReason: failures.join('; ') || undefined };
+        }
+        failures.push('azure_empty');
+      } catch (e: any) {
+        failures.push(`azure:${e?.message || 'error'}`);
+      }
+    }
+
+    return failures.length ? { provider: 'none', text: '', fallbackReason: failures.join('; ') } : null;
+  }
+
+  private async runMistralOcr(base64: string, mediaType = 'image/jpeg'): Promise<string> {
+    const apiKey = process.env.MISTRAL_API_KEY;
+    if (!apiKey) throw new Error('MISTRAL_API_KEY yok');
+    const clean = this.stripDataUrlBase64(base64);
+    const dataUrl = `data:${mediaType || 'image/jpeg'};base64,${clean}`;
+    const res = await fetch('https://api.mistral.ai/v1/ocr', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mistral-ocr-latest',
+        document: { type: 'image_url', image_url: dataUrl },
+        include_image_base64: false,
+      }),
+    });
+    if (!res.ok) throw new Error(`Mistral OCR ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    const json = await res.json();
+    const pages = Array.isArray(json?.pages) ? json.pages : [];
+    const text = pages
+      .map((page: any) => page?.markdown || page?.text || '')
+      .filter(Boolean)
+      .join('\n\n');
+    return text || json?.text || '';
+  }
+
+  private async runAzureReadOcr(base64: string, mediaType = 'image/jpeg'): Promise<string> {
+    const key = process.env.AZURE_VISION_KEY;
+    const endpoint = String(process.env.AZURE_VISION_ENDPOINT || '').replace(/\/+$/, '');
+    if (!key || !endpoint) throw new Error('Azure Vision env yok');
+    const buffer = Buffer.from(this.stripDataUrlBase64(base64), 'base64');
+    const analyze = await fetch(`${endpoint}/vision/v3.2/read/analyze`, {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+        'Content-Type': mediaType || 'application/octet-stream',
+      },
+      body: buffer as any,
+    });
+    if (!analyze.ok) throw new Error(`Azure Read ${analyze.status}: ${(await analyze.text()).slice(0, 120)}`);
+    const operationLocation = analyze.headers.get('operation-location');
+    if (!operationLocation) throw new Error('Azure operation-location yok');
+
+    for (let i = 0; i < 18; i += 1) {
+      await this.sleep(650);
+      const poll = await fetch(operationLocation, {
+        headers: { 'Ocp-Apim-Subscription-Key': key },
+      });
+      if (!poll.ok) throw new Error(`Azure poll ${poll.status}`);
+      const json = await poll.json();
+      const status = String(json?.status || '').toLowerCase();
+      if (status === 'succeeded') {
+        const pages = json?.analyzeResult?.readResults || [];
+        return pages
+          .flatMap((page: any) => (page?.lines || []).map((line: any) => line?.text || ''))
+          .filter(Boolean)
+          .join('\n');
+      }
+      if (status === 'failed') throw new Error('Azure Read failed');
+    }
+    throw new Error('Azure Read timeout');
+  }
+
+  private async callMihsapCheapModel(
+    kind: 'fatura' | 'isletme',
+    input: { tenantId?: string; mukellefId?: string; mukellef?: string; belgeNo?: string },
+    system: string,
+    userText: string,
+    ocr: MihsapOcrTextResult,
+    maxTokens: number,
+  ): Promise<MihsapCheapDecisionResult | null> {
+    if (!ocr.text || ocr.text.trim().length < 80) {
+      return {
+        provider: 'none',
+        model: 'none',
+        ocrProvider: ocr.provider,
+        confidence: null,
+        parsed: null,
+        fallbackReason: ocr.fallbackReason || 'ocr_text_short',
+      };
+    }
+
+    const provider = this.getMihsapCheapModelProvider();
+    const failures: string[] = [];
+    const prompt = `${userText}
+
+Ucuz karar modu: goruntu yerine asagidaki OCR metnini kullan. Emin degilsen guveni dusuk ver ve tahmin etme.
+JSON'a mutlaka "confidence": 0-1 ekle.
+
+OCR METNI:
+${ocr.text.slice(0, 14000)}`;
+
+    const tryGemini = provider === 'auto' || provider === 'gemini';
+    const tryOpenAi = provider === 'auto' || provider === 'openai';
+
+    if (tryGemini && process.env.GEMINI_API_KEY) {
+      try {
+        const started = Date.now();
+        const model = process.env.MIHSAP_GEMINI_MODEL || 'gemini-2.5-flash-lite';
+        const result = await this.callGeminiJson(model, system, prompt, maxTokens);
+        await logAiUsage(this.prisma, {
+          tenantId: input.tenantId || 'unknown',
+          taxpayerId: input.mukellefId || null,
+          source: kind === 'fatura' ? 'mihsap-fatura-cheap' : 'mihsap-isletme-cheap',
+          model,
+          mukellef: input.mukellef,
+          belgeNo: input.belgeNo,
+          karar: result.parsed?.karar || (result.parsed?.emin === true ? 'onay' : 'emin_degil'),
+          sebep: `[ocr=${ocr.provider}] ${result.parsed?.sebep || 'cheap decision'}`.slice(0, 200),
+          durationMs: Date.now() - started,
+          usage: result.usage,
+        });
+        return {
+          provider: 'gemini',
+          model,
+          ocrProvider: ocr.provider,
+          confidence: this.extractCheapConfidence(result.parsed),
+          parsed: result.parsed,
+          rawText: result.rawText,
+          fallbackReason: ocr.fallbackReason,
+        };
+      } catch (e: any) {
+        failures.push(`gemini:${e?.message || 'error'}`);
+      }
+    }
+
+    if (tryOpenAi && process.env.OPENAI_API_KEY) {
+      try {
+        const started = Date.now();
+        const model = process.env.MIHSAP_OPENAI_MODEL || 'gpt-5.4-nano';
+        const result = await this.callOpenAiJson(model, system, prompt, maxTokens);
+        await logAiUsage(this.prisma, {
+          tenantId: input.tenantId || 'unknown',
+          taxpayerId: input.mukellefId || null,
+          source: kind === 'fatura' ? 'mihsap-fatura-cheap' : 'mihsap-isletme-cheap',
+          model,
+          mukellef: input.mukellef,
+          belgeNo: input.belgeNo,
+          karar: result.parsed?.karar || (result.parsed?.emin === true ? 'onay' : 'emin_degil'),
+          sebep: `[ocr=${ocr.provider}] ${result.parsed?.sebep || 'cheap decision'}`.slice(0, 200),
+          durationMs: Date.now() - started,
+          usage: result.usage,
+        });
+        return {
+          provider: 'openai',
+          model,
+          ocrProvider: ocr.provider,
+          confidence: this.extractCheapConfidence(result.parsed),
+          parsed: result.parsed,
+          rawText: result.rawText,
+          fallbackReason: ocr.fallbackReason,
+        };
+      } catch (e: any) {
+        failures.push(`openai:${e?.message || 'error'}`);
+      }
+    }
+
+    return {
+      provider: 'none',
+      model: 'none',
+      ocrProvider: ocr.provider,
+      confidence: null,
+      parsed: null,
+      fallbackReason: [...failures, ocr.fallbackReason].filter(Boolean).join('; ') || 'cheap_model_unavailable',
+    };
+  }
+
+  private async callGeminiJson(
+    model: string,
+    system: string,
+    prompt: string,
+    maxTokens: number,
+  ): Promise<{ parsed: any | null; rawText: string; usage: any }> {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) throw new Error('GEMINI_API_KEY yok');
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0,
+            maxOutputTokens: maxTokens,
+          },
+        }),
+      },
+    );
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    const json = await res.json();
+    const rawText = json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('') || '';
+    const parsed = this.parseFirstJsonObject(rawText);
+    return {
+      parsed,
+      rawText,
+      usage: {
+        input_tokens: json?.usageMetadata?.promptTokenCount || 0,
+        output_tokens: json?.usageMetadata?.candidatesTokenCount || 0,
+      },
+    };
+  }
+
+  private async callOpenAiJson(
+    model: string,
+    system: string,
+    prompt: string,
+    maxTokens: number,
+  ): Promise<{ parsed: any | null; rawText: string; usage: any }> {
+    const key = process.env.OPENAI_API_KEY;
+    if (!key) throw new Error('OPENAI_API_KEY yok');
+    const res = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: 'system', content: system },
+          { role: 'user', content: prompt },
+        ],
+        max_output_tokens: maxTokens,
+        text: { format: { type: 'json_object' } },
+      }),
+    });
+    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    const json = await res.json();
+    const rawText =
+      json?.output_text ||
+      (Array.isArray(json?.output)
+        ? json.output
+            .flatMap((item: any) => item?.content || [])
+            .map((item: any) => item?.text || '')
+            .join('')
+        : '');
+    return {
+      parsed: this.parseFirstJsonObject(rawText),
+      rawText,
+      usage: {
+        input_tokens: json?.usage?.input_tokens || 0,
+        output_tokens: json?.usage?.output_tokens || 0,
+      },
+    };
+  }
+
+  private extractCheapConfidence(parsed: any): number | null {
+    const direct = Number(parsed?.confidence);
+    if (Number.isFinite(direct)) return Math.max(0, Math.min(1, direct));
+    const nested = Number(parsed?.confidence?.overall || parsed?.confidence?.genel);
+    if (Number.isFinite(nested)) return Math.max(0, Math.min(1, nested));
+    return null;
+  }
+
+  private async tryMihsapCheapFaturaDecision(
+    input: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      tenantId?: string;
+      mukellefId?: string;
+      mukellef?: string;
+      belgeNo?: string;
+      faturaTarihi?: string;
+      bosAlanSecenekleri?: { matrahKodlari?: string[]; kdvKodlari?: string[]; cariKodlari?: string[] };
+      firma?: string;
+      action?: string;
+    },
+    system: string,
+    userText: string,
+    rule: any,
+  ): Promise<MihsapCheapDecisionResult | null> {
+    if (this.getMihsapDecisionMode() === 'claude_only') return null;
+    if (!this.hasMihsapCheapModelKey()) return null;
+    const ocr = await this.runMihsapImageOcr(input, 'mihsap-fatura-ocr');
+    if (!ocr) return null;
+    const cheap = await this.callMihsapCheapModel('fatura', input, system, userText, ocr, input.bosAlanSecenekleri ? 900 : 650);
+    if (cheap?.parsed?.onerilenler && input.bosAlanSecenekleri) {
+      cheap.parsed.onerilenler = this.applyCariPolicyToOneriler(cheap.parsed.onerilenler, input, rule?.profile);
+      cheap.parsed.onerilenler = this.sanitizeHesapKoduOnerileri(cheap.parsed.onerilenler, input.bosAlanSecenekleri);
+    }
+    return cheap;
+  }
+
+  private isCheapFaturaAcceptable(
+    cheap: MihsapCheapDecisionResult | null | undefined,
+    input: { belgeNo?: string; faturaTarihi?: string; bosAlanSecenekleri?: any },
+    vendorHint: any,
+  ): boolean {
+    if (!cheap?.parsed) return false;
+    if ((cheap.confidence ?? 0) < this.getMihsapMinConfidence()) return false;
+    if (input.bosAlanSecenekleri) return false;
+    if (vendorHint) return false;
+    if (cheap.parsed.karar !== 'onay') return false;
+    const expectedNo = this.normalizeDecisionNo(input.belgeNo);
+    const actualNo = this.normalizeDecisionNo(cheap.parsed.belgeNo);
+    if (expectedNo && actualNo && expectedNo !== actualNo) return false;
+    const expectedDate = this.normalizeDecisionDate(input.faturaTarihi);
+    const actualDate = this.normalizeDecisionDate(cheap.parsed.tarih);
+    if (expectedDate && actualDate && expectedDate !== actualDate) return false;
+    return true;
+  }
+
+  private finalizeCheapFaturaDecision(
+    cheap: MihsapCheapDecisionResult,
+    input: {
+      faturaTarihi?: string;
+      belgeNo?: string;
+      belgeTuru?: string;
+      faturaTuru?: string;
+      tutar?: number | string;
+      hesapKodlari: string[];
+      firmaKimlikNo?: string;
+      firma?: string;
+      mukellefId?: string;
+    },
+    decisionCacheKey: string,
+    ekranKategoriAdayi: string,
+  ) {
+    const parsed = { ...(cheap.parsed || {}) };
+    const memoryCategory = this.resolveFaturaMemoryCategory(parsed, ekranKategoriAdayi);
+    parsed.decisionProvider = cheap.provider;
+    parsed.ocrProvider = cheap.ocrProvider;
+    parsed.fallbackReason = cheap.fallbackReason || null;
+    parsed.cheapConfidence = cheap.confidence;
+    parsed.aiCallReason = 'cheap_model';
+    parsed.decisionTrace = {
+      belge: {
+        tarih: parsed.tarih || null,
+        belgeNo: parsed.belgeNo || null,
+        cari: parsed.cari || null,
+        belgeTuru: parsed.belgeTuru || null,
+        kdvOrani: parsed.kdvOrani ?? null,
+        ocrToplam: parsed.ocrToplam ?? null,
+        ocrMatrah: parsed.ocrMatrah ?? null,
+        ocrKdvTutari: parsed.ocrKdvTutari ?? null,
+      },
+      ekran: {
+        tarih: input.faturaTarihi || null,
+        belgeNo: input.belgeNo || null,
+        belgeTuru: input.belgeTuru || null,
+        faturaTuru: input.faturaTuru || null,
+        tutar: input.tutar ?? null,
+        hesapKodlari: input.hesapKodlari || [],
+      },
+      karar: {
+        sonuc: parsed.karar,
+        sebep: parsed.sebep || null,
+        icerikSinifi: parsed.icerikSinifi || null,
+        memoryCategory: memoryCategory || null,
+        vendorHintUsed: false,
+      },
+    };
+    if (parsed.karar === 'onay' && memoryCategory) {
+      parsed.faturaDecisionCandidate = {
+        kararTipi: 'fatura',
+        hesapKodu: memoryCategory,
+        firmaKimlikNo: input.firmaKimlikNo || null,
+        firmaUnvan: input.firma || null,
+        taxpayerId: input.mukellefId || null,
+      };
+    }
+    this.faturaDecisionCache.set(decisionCacheKey, {
+      expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+      value: parsed,
+    });
+    return parsed;
+  }
+
+  private async tryMihsapCheapIsletmeDecision(
+    input: {
+      faturaImageBase64: string;
+      faturaImageMediaType?: string;
+      tenantId?: string;
+      mukellefId?: string;
+      mukellef?: string;
+      belgeNo?: string;
+    },
+    system: string,
+    userText: string,
+  ): Promise<MihsapCheapDecisionResult | null> {
+    if (this.getMihsapDecisionMode() === 'claude_only') return null;
+    if (!this.hasMihsapCheapModelKey()) return null;
+    const ocr = await this.runMihsapImageOcr(input, 'mihsap-isletme-ocr');
+    if (!ocr) return null;
+    return this.callMihsapCheapModel('isletme', input, system, userText, ocr, 700);
+  }
+
+  private isCheapIsletmeAcceptable(
+    cheap: MihsapCheapDecisionResult | null | undefined,
+    input: { kayitTuruOptions: string[]; altTuruOptions: string[] },
+    vendorHint: any,
+  ): boolean {
+    const parsed = cheap?.parsed;
+    if (!parsed) return false;
+    if ((cheap.confidence ?? 0) < this.getMihsapMinConfidence()) return false;
+    if (vendorHint) return false;
+    if (parsed.emin !== true) return false;
+    if (/diger|diğer/i.test(String(parsed.kayitTuru || ''))) return false;
+    if (/diger|diğer/i.test(String(parsed.altTuru || ''))) return false;
+    const inKayit = input.kayitTuruOptions.length === 0 || input.kayitTuruOptions.includes(parsed.kayitTuru);
+    const altListeVar = input.altTuruOptions && input.altTuruOptions.length > 0;
+    const inAlt = !altListeVar || input.altTuruOptions.includes(parsed.altTuru);
+    return inKayit && inAlt;
+  }
 
   private sanitizeMetaForStorage(value: any, depth = 0, key = ''): any {
     if (value == null) return value;
@@ -652,7 +1276,8 @@ export class AgentEventsService {
     };
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    const decisionMode = this.getMihsapDecisionMode();
+    if (!apiKey && decisionMode === 'claude_only') {
       return { karar: 'emin_degil', sebep: 'ANTHROPIC_API_KEY yok' };
     }
 
@@ -1296,6 +1921,31 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       });
     };
 
+    const cheapDecision =
+      decisionMode === 'claude_only'
+        ? null
+        : await this.tryMihsapCheapFaturaDecision(input, system, userText, rule);
+
+    if (decisionMode === 'balanced' && this.isCheapFaturaAcceptable(cheapDecision, input, vendorHint)) {
+      return this.finalizeCheapFaturaDecision(
+        cheapDecision!,
+        input,
+        decisionCacheKey,
+        (input.hesapKodlari?.[0] || '').trim(),
+      );
+    }
+
+    if (!apiKey) {
+      return {
+        karar: 'emin_degil',
+        sebep: `ANTHROPIC_API_KEY yok; ucuz karar yeterli degil (${cheapDecision?.fallbackReason || 'fallback gerekli'})`,
+        decisionProvider: cheapDecision?.provider || 'none',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'anthropic_key_missing',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
+    }
+
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1339,7 +1989,14 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       if (!res.ok) {
         const errText = await res.text();
         await logUsage('emin_degil', `API ${res.status}`);
-        return { karar: 'emin_degil', sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}` };
+        return {
+          karar: 'emin_degil',
+          sebep: `Claude API ${res.status}: ${errText.slice(0, 100)}`,
+          decisionProvider: 'claude',
+          ocrProvider: cheapDecision?.ocrProvider || null,
+          fallbackReason: cheapDecision?.fallbackReason || `claude_api_${res.status}`,
+          cheapConfidence: cheapDecision?.confidence ?? null,
+        };
       }
       const json = await res.json();
       const text = json?.content?.[0]?.text || '';
@@ -1515,6 +2172,10 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
                       karar: 'onay_bekliyor',
                       sebep: `Onay kuyruğu oluşturulamadı: ${e?.message || 'bilinmeyen hata'}`,
                       decisionTrace,
+                      decisionProvider: 'claude',
+                      ocrProvider: cheapDecision?.ocrProvider || null,
+                      fallbackReason: cheapDecision?.fallbackReason || 'pending_create_failed',
+                      cheapConfidence: cheapDecision?.confidence ?? null,
                     };
                   }
                 }
@@ -1535,6 +2196,14 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
             }
       parsed.decisionTrace = decisionTrace;
       parsed.aiCallReason = [...aiCallReasons].join(',') || 'manuel_kontrol';
+      parsed.decisionProvider = 'claude';
+      parsed.ocrProvider = cheapDecision?.ocrProvider || null;
+      parsed.fallbackReason = cheapDecision?.fallbackReason || (cheapDecision ? 'claude_shadow_or_fallback' : null);
+      parsed.cheapConfidence = cheapDecision?.confidence ?? null;
+      parsed.shadowDiff = decisionMode === 'shadow'
+        ? this.buildMihsapShadowDiff('fatura', cheapDecision?.parsed, parsed)
+        : null;
+      await this.logMihsapShadowDiff('mihsap-fatura-shadow', input, parsed.shadowDiff, cheapDecision);
       this.faturaDecisionCache.set(decisionCacheKey, {
         expiresAt: Date.now() + 6 * 60 * 60 * 1000,
         value: parsed,
@@ -1549,14 +2218,37 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
       const sebepM = text.match(/"sebep"\s*:\s*"([^"]{0,200})"/);
       if (kararM) {
         await logUsage(kararM[1], sebepM?.[1] || 'partial parse', usage);
-        return { karar: kararM[1], sebep: sebepM?.[1] || 'partial parse', raw: text.slice(0, 200) };
+        return {
+          karar: kararM[1],
+          sebep: sebepM?.[1] || 'partial parse',
+          raw: text.slice(0, 200),
+          decisionProvider: 'claude',
+          ocrProvider: cheapDecision?.ocrProvider || null,
+          fallbackReason: cheapDecision?.fallbackReason || null,
+          cheapConfidence: cheapDecision?.confidence ?? null,
+        };
       }
 
       await logUsage('emin_degil', 'JSON parse fail', usage);
-      return { karar: 'emin_degil', sebep: 'JSON parse fail', raw: text.slice(0, 200) };
+      return {
+        karar: 'emin_degil',
+        sebep: 'JSON parse fail',
+        raw: text.slice(0, 200),
+        decisionProvider: 'claude',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'claude_json_parse_fail',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
     } catch (e: any) {
       await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
-      return { karar: 'emin_degil', sebep: `Network: ${e?.message || 'unknown'}` };
+      return {
+        karar: 'emin_degil',
+        sebep: `Network: ${e?.message || 'unknown'}`,
+        decisionProvider: 'claude',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'claude_network_error',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
     }
   }
 
@@ -1570,7 +2262,7 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     oneriler: any,
     secenekler: { matrahKodlari?: string[]; kdvKodlari?: string[]; cariKodlari?: string[] },
   ): any {
-    const MIN_CONFIDENCE = 0.7;
+    const MIN_CONFIDENCE = this.getMihsapMinConfidence();
     const conf = (oneriler?.confidence as Record<string, number>) || {};
     const validateKod = (
       kod: any,
@@ -1706,7 +2398,8 @@ Fatura görüntüsünü incele ve yukarıdaki sistem talimatlarına göre JSON d
     tenantId?: string;
   }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    const decisionMode = this.getMihsapDecisionMode();
+    if (!apiKey && decisionMode === 'claude_only') {
       return { emin: false, sebep: 'ANTHROPIC_API_KEY yok' };
     }
 
@@ -1872,6 +2565,46 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
         usage,
       });
 
+    const cheapDecision =
+      decisionMode === 'claude_only'
+        ? null
+        : await this.tryMihsapCheapIsletmeDecision(input, system, userText);
+
+    if (decisionMode === 'balanced' && this.isCheapIsletmeAcceptable(cheapDecision, input, vendorHintIsletme)) {
+      const parsed = {
+        ...(cheapDecision!.parsed || {}),
+        decisionProvider: cheapDecision!.provider,
+        ocrProvider: cheapDecision!.ocrProvider,
+        fallbackReason: cheapDecision!.fallbackReason || null,
+        cheapConfidence: cheapDecision!.confidence,
+      };
+      if (input.tenantId && input.firmaKimlikNo && parsed.kayitTuru) {
+        try {
+          await this.vendorMemory.recordDecision({
+            tenantId: input.tenantId,
+            firmaKimlikNo: input.firmaKimlikNo,
+            firmaUnvan: input.firma,
+            kararTipi: 'isletme',
+            kategori: String(parsed.kayitTuru),
+            altKategori: parsed.altTuru || null,
+            taxpayerId: input.mukellefId || null,
+          });
+        } catch {}
+      }
+      return parsed;
+    }
+
+    if (!apiKey) {
+      return {
+        emin: false,
+        sebep: `ANTHROPIC_API_KEY yok; ucuz karar yeterli degil (${cheapDecision?.fallbackReason || 'fallback gerekli'})`,
+        decisionProvider: cheapDecision?.provider || 'none',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'anthropic_key_missing',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
+    }
+
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -1909,7 +2642,14 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       if (!res.ok) {
         const errText = await res.text();
         await logUsage('emin_degil', `API ${res.status}`);
-        return { emin: false, sebep: `Claude API ${res.status}: ${errText.slice(0, 80)}` };
+        return {
+          emin: false,
+          sebep: `Claude API ${res.status}: ${errText.slice(0, 80)}`,
+          decisionProvider: 'claude',
+          ocrProvider: cheapDecision?.ocrProvider || null,
+          fallbackReason: cheapDecision?.fallbackReason || `claude_api_${res.status}`,
+          cheapConfidence: cheapDecision?.confidence ?? null,
+        };
       }
       const json = await res.json();
       const text = json?.content?.[0]?.text || '';
@@ -2001,6 +2741,10 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
                     } catch (e: any) {
                       // Fallback: pending olusmazsa normal AI kararini don
                       await logUsage('onay', `pending create failed: ${e?.message}`, usage);
+                      parsed.decisionProvider = 'claude';
+                      parsed.ocrProvider = cheapDecision?.ocrProvider || null;
+                      parsed.fallbackReason = cheapDecision?.fallbackReason || 'pending_create_failed';
+                      parsed.cheapConfidence = cheapDecision?.confidence ?? null;
                       return parsed;
                     }
                   }
@@ -2020,6 +2764,14 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
               }
               // === /FIRMA HAFIZASI ===
             }
+            parsed.decisionProvider = 'claude';
+            parsed.ocrProvider = cheapDecision?.ocrProvider || null;
+            parsed.fallbackReason = cheapDecision?.fallbackReason || (cheapDecision ? 'claude_shadow_or_fallback' : null);
+            parsed.cheapConfidence = cheapDecision?.confidence ?? null;
+            parsed.shadowDiff = decisionMode === 'shadow'
+              ? this.buildMihsapShadowDiff('isletme', cheapDecision?.parsed, parsed)
+              : null;
+            await this.logMihsapShadowDiff('mihsap-isletme-shadow', input, parsed.shadowDiff, cheapDecision);
             await logUsage(parsed.emin ? 'onay' : 'emin_degil', parsed.sebep, usage);
             return parsed;
           }
@@ -2027,10 +2779,25 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       }
 
       await logUsage('emin_degil', 'JSON parse fail', usage);
-      return { emin: false, sebep: 'JSON parse fail', raw: text.slice(0, 200) };
+      return {
+        emin: false,
+        sebep: 'JSON parse fail',
+        raw: text.slice(0, 200),
+        decisionProvider: 'claude',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'claude_json_parse_fail',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
     } catch (e: any) {
       await logUsage('emin_degil', `Network: ${e?.message || 'unknown'}`);
-      return { emin: false, sebep: `Network: ${e?.message || 'unknown'}` };
+      return {
+        emin: false,
+        sebep: `Network: ${e?.message || 'unknown'}`,
+        decisionProvider: 'claude',
+        ocrProvider: cheapDecision?.ocrProvider || null,
+        fallbackReason: cheapDecision?.fallbackReason || 'claude_network_error',
+        cheapConfidence: cheapDecision?.confidence ?? null,
+      };
     }
   }
 
