@@ -1,4 +1,4 @@
-﻿-- Luca portal CAPTCHA challenge bridge and device-aware Luca jobs
+-- Luca portal CAPTCHA challenge bridge and device-aware Luca jobs
 CREATE TABLE IF NOT EXISTS "luca_captcha_challenges" (
   "id" TEXT NOT NULL,
   "tenantId" TEXT NOT NULL,
