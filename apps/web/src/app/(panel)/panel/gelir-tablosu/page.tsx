@@ -1625,7 +1625,7 @@ function AmountText({
         color: missing ? MISSING_AMOUNT_COLOR : zero ? MUTED_AMOUNT_COLOR : (color || AMOUNT_COLOR),
         fontFamily: 'JetBrains Mono, monospace',
         fontSize: final ? 16 : isStrong ? 15.5 : 14.5,
-        fontWeight: zero ? 600 : isStrong ? 850 : 750,
+        fontWeight: zero ? 500 : isStrong ? 800 : 550,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
       }}
