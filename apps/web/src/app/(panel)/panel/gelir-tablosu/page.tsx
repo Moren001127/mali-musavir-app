@@ -10,17 +10,21 @@ import {
   Trash2, Eye, TrendingUp, TrendingDown, Zap, FileSpreadsheet, Lock, Unlock,
 } from 'lucide-react';
 
-const GOLD = '#d4b876';
+const GOLD = '#e6c979';
 const TABLE_BG = '#0a0907';
 const GRID_LINE = 'rgba(245,240,230,0.24)';
 const GRID_LINE_STRONG = 'rgba(212,184,118,0.50)';
 const CELL_LINE = 'rgba(245,240,230,0.16)';
 const CELL_LINE_STRONG = 'rgba(212,184,118,0.42)';
-const AMOUNT_COLOR = '#f4efe6';
-const TOTAL_COLOR = '#ead18a';
+const AMOUNT_COLOR = '#fffaf0';
+const TOTAL_COLOR = '#fff0b8';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.58)';
+const MISSING_AMOUNT_COLOR = 'rgba(250,250,249,0.28)';
 const PROFIT_COLOR = '#86efac';
 const LOSS_COLOR = '#fca5a5';
 const RATIO_COLOR = '#8ec5ff';
+const RATIO_BG = 'rgba(37,99,235,0.18)';
+const RATIO_BORDER = 'rgba(142,197,255,0.34)';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -596,7 +600,7 @@ export default function GelirTablosuPage() {
                       key={qi}
                       className="text-center"
                       style={{
-                        color: gt ? GOLD : 'rgba(250,250,249,0.35)',
+                        color: gt ? GOLD : MISSING_AMOUNT_COLOR,
                         fontSize: 14,
                         padding: '12px 14px 6px',
                         background: locked ? 'rgba(184,160,111,0.14)' : 'rgba(184,160,111,0.08)',
@@ -667,7 +671,7 @@ export default function GelirTablosuPage() {
                         const v = gt ? getSubAccountAmount(gt, row.sub!) : null;
                         const hasData = gt !== null;
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono text-[14.5px]" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 600 : 750, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}`, whiteSpace: 'nowrap' }}>
                             {hasData ? fmtTRY(v!) : '—'}
                           </td>
                         );
@@ -765,24 +769,35 @@ export default function GelirTablosuPage() {
                             // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)
                             // → pozitif yeşil, negatif kırmızı (önceden total altın renkti, kar/zarar belli olmuyordu)
                             color:
-                              !hasData ? 'rgba(250,250,249,0.2)' :
-                              v === 0 ? 'rgba(250,250,249,0.35)' :
+                              !hasData ? MISSING_AMOUNT_COLOR :
+                              v === 0 ? MUTED_AMOUNT_COLOR :
                               ['brutSatisKari','faaliyetKari','olaganKar','donemKari','donemNetKari'].includes(row.k as string)
                                 ? (v < 0 ? LOSS_COLOR : PROFIT_COLOR)
                                 : row.total ? TOTAL_COLOR
                                 : (v < 0 ? LOSS_COLOR : AMOUNT_COLOR),
-                            fontSize: row.final ? 14.5 : row.total ? 14 : 13,
-                            fontWeight: row.final ? 650 : row.total ? 700 : 500,
+                            fontSize: row.final ? 15.5 : row.total ? 15 : 14.5,
+                            fontWeight: row.final ? 800 : row.total ? 800 : 750,
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
                             fontFamily: 'JetBrains Mono, monospace',
                           }}
                         >
-                          <div>{hasData ? fmtTRY(v!) : '—'}</div>
+                          <div style={{ whiteSpace: 'nowrap', lineHeight: 1.2 }}>{hasData ? fmtTRY(v!) : '—'}</div>
                           {showOranBadge && (
                             <div
-                              className="text-[10px] font-semibold mt-0.5"
-                              style={{ color: RATIO_COLOR, fontFamily: 'JetBrains Mono, monospace', fontWeight: 650 }}
+                              className="inline-flex items-center justify-center mt-1 rounded-md px-1.5 py-[2px]"
+                              style={{
+                                color: RATIO_COLOR,
+                                background: RATIO_BG,
+                                border: `1px solid ${RATIO_BORDER}`,
+                                fontFamily: 'JetBrains Mono, monospace',
+                                fontSize: 11.5,
+                                lineHeight: 1.1,
+                                fontWeight: 750,
+                                whiteSpace: 'nowrap',
+                                minWidth: 74,
+                                maxWidth: '100%',
+                              }}
                             >
                               {pct(v!, netSatis)}
                             </div>
@@ -924,7 +939,7 @@ export default function GelirTablosuPage() {
                                   )}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9'), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 16 : 13, width: 220, fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
+                              <td className="px-3 py-2 text-right font-mono" style={{ color: row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? 800 : 750, fontSize: row.big ? 16 : 14.5, width: 220, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
                                 {isManual && !isLocked ? (
                                   isFirstQuarter ? (
                                     <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk dönem)</span>
@@ -991,7 +1006,7 @@ export default function GelirTablosuPage() {
                           <tr key={h.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.18)' }}>
                             <td className="px-3 py-2 font-mono text-[13px]" style={{ color: GOLD, fontWeight: 600 }}>{h.kod}</td>
                             <td className="px-3 py-2 text-[14px]" style={{ color: 'rgba(250,250,249,0.78)' }}>{h.hesapAdi || HESAP_ADLARI[h.kod] || '—'}</td>
-                            <td className="px-3 py-2 text-right font-mono text-[14px]" style={{ color: Number(h.bakiye) === 0 ? 'rgba(250,250,249,0.35)' : '#fafaf9' }}>
+                            <td className="px-3 py-2 text-right font-mono text-[14.5px]" style={{ color: Number(h.bakiye) === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: 750, whiteSpace: 'nowrap' }}>
                               {Number(h.bakiye) !== 0 ? fmtTRY(Number(h.bakiye)) : '0,00'}
                             </td>
                           </tr>
@@ -1131,7 +1146,7 @@ export default function GelirTablosuPage() {
                       }
 
                       return (
-                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? 'rgba(250,250,249,0.2)' : row.color || (val === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR), fontWeight: row.bold ? 700 : 500, fontSize: row.big ? 15 : 13, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: row.big ? 'Fraunces, serif' : 'JetBrains Mono, monospace' }}>
+                        <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? 800 : 750, fontSize: row.big ? 15.5 : 14.5, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap' }}>
                           {!hasData ? '—' : isManual && !isLocked ? (
                             isFirstQuarter ? (
                               <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
@@ -1264,7 +1279,7 @@ export default function GelirTablosuPage() {
                       {DISPLAY_ORDER.map((qi) => {
                         const v = getBakiye(qi, baseH.kod);
                         return (
-                          <td key={qi} className="px-3 py-2 text-center font-mono text-[13px]" style={{ color: v === null ? 'rgba(250,250,249,0.2)' : v === 0 ? 'rgba(250,250,249,0.35)' : AMOUNT_COLOR, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}` }}>
+                          <td key={qi} className="px-3 py-2 text-center font-mono text-[14.5px]" style={{ color: v === null ? MISSING_AMOUNT_COLOR : v === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR, fontWeight: v === 0 ? 600 : 750, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, whiteSpace: 'nowrap' }}>
                             {v === null ? '—' : v !== 0 ? fmtTRY(v) : '0,00'}
                           </td>
                         );
@@ -1568,11 +1583,13 @@ function ManuelInput({
       }}
       disabled={disabled}
       placeholder={isLocked ? 'Kilitli' : isEditing ? '0,00' : 'Düzelt'}
-      className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border"
+      className="w-full px-2 py-1 rounded font-mono text-center outline-none border"
       style={{
         background: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.012)' : 'rgba(96,165,250,0.08)',
         borderColor: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.06)' : 'rgba(96,165,250,0.25)',
-        color: readOnlySaved ? AMOUNT_COLOR : disabled ? 'rgba(250,250,249,0.35)' : '#60a5fa',
+        color: readOnlySaved ? AMOUNT_COLOR : disabled ? MUTED_AMOUNT_COLOR : '#60a5fa',
+        fontSize: readOnlySaved ? 14.5 : 13.5,
+        fontWeight: readOnlySaved ? 750 : 650,
         opacity: 1,
         cursor: readOnlySaved ? 'default' : disabled ? 'not-allowed' : 'text',
       }}
@@ -1597,10 +1614,15 @@ function getSubAccountAmount(gt: any, kod: string): number {
 function RatioCard({ label, value, formula, tone }: { label: string; value: string; formula: string; tone: 'good' | 'neutral' | 'warn' | 'bad' }) {
   const color = tone === 'good' ? '#22c55e' : tone === 'warn' ? '#f59e0b' : tone === 'bad' ? '#f43f5e' : GOLD;
   return (
-    <div className="rounded-xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+    <div className="rounded-xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)', minWidth: 0 }}>
       <div className="text-[11px] font-semibold mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>{label}</div>
-      <div className="font-[Fraunces,serif] text-[26px] font-bold" style={{ color, letterSpacing: '-0.02em' }}>{value}</div>
-      <div className="text-[10.5px] font-mono mt-1.5" style={{ color: 'rgba(250,250,249,0.4)' }}>{formula}</div>
+      <div
+        className="font-mono text-[24px] font-bold"
+        style={{ color, letterSpacing: 0, lineHeight: 1.15, whiteSpace: 'nowrap', overflowWrap: 'normal' }}
+      >
+        {value}
+      </div>
+      <div className="text-[10.5px] font-mono mt-1.5 leading-snug" style={{ color: 'rgba(250,250,249,0.48)' }}>{formula}</div>
     </div>
   );
 }
