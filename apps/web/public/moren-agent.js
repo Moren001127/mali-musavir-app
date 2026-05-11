@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.95';
+  const AGENT_VERSION = '1.36.96';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -1073,14 +1073,84 @@
             if (typeof win.II1a === 'function') found.push({ fn: win.II1a.bind(win), src });
           } catch {}
         };
-        for (const name of ['frm2','frm5','frm3','frm4','frm1','frm6','frm7']) {
-          const fr = getLucaFrame(name);
-          try { push(fr?.contentWindow, name); } catch {}
-        }
         try { push(window, 'top'); } catch {}
         try { push(parent, 'parent'); } catch {}
         try { push(top, 'window.top'); } catch {}
+        const visit = (win, path) => {
+          try {
+            push(win, path);
+            const doc = win?.document;
+            if (!doc) return;
+            const frames = doc.querySelectorAll('frame, iframe');
+            frames.forEach((fr, idx) => {
+              try {
+                visit(fr.contentWindow, `${path}/${fr.name || fr.id || idx}`);
+              } catch {}
+            });
+          } catch {}
+        };
+        try { visit(window, 'tree'); } catch {}
         return found;
+      };
+
+      const collectFrameDocs = () => {
+        const docs = [];
+        const seenWins = new Set();
+        const visit = (win) => {
+          try {
+            if (!win || seenWins.has(win)) return;
+            seenWins.add(win);
+            const doc = win.document;
+            if (doc) docs.push(doc);
+            doc?.querySelectorAll('frame, iframe').forEach((fr) => {
+              try { visit(fr.contentWindow); } catch {}
+            });
+          } catch {}
+        };
+        try { visit(window); } catch {}
+        try { if (parent && parent !== window) visit(parent); } catch {}
+        try { if (top && top !== window) visit(top); } catch {}
+        return docs;
+      };
+
+      const tryOpenByMenuCode = async (code, reason) => {
+        const fakeEvent = {
+          type: 'click', target: null, currentTarget: null, srcElement: null,
+          preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
+          returnValue: true, cancelBubble: false,
+        };
+        for (const doc of collectFrameDocs()) {
+          let elements = [];
+          try { elements = Array.from(doc.querySelectorAll('[onclick], a[href], area[href]')); } catch {}
+          for (const el of elements) {
+            let handler = '';
+            try {
+              handler = `${el.getAttribute('onclick') || ''} ${el.getAttribute('href') || ''}`;
+            } catch {}
+            if (!handler || !handler.includes(code)) continue;
+            const win = doc.defaultView || window;
+            await log(`🧭 Menü kodu bulundu → ${code} (${reason})`);
+            try {
+              const onclick = el.getAttribute('onclick');
+              if (onclick) {
+                new win.Function('event', onclick).call(el, fakeEvent);
+                if (await waitForEbelgePage(8000)) return true;
+              }
+            } catch (e) {
+              await log(`⚠ Menü onclick hata: ${String(e?.message || e).slice(0, 90)}`);
+            }
+            try {
+              el.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, view: win }));
+              el.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, view: win }));
+              el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win }));
+              if (typeof el.click === 'function') el.click();
+              if (await waitForEbelgePage(8000)) return true;
+            } catch (e) {
+              await log(`⚠ Menü click hata: ${String(e?.message || e).slice(0, 90)}`);
+            }
+          }
+        }
+        return false;
       };
 
       const tryOpenByII1a = async (code, reason) => {
@@ -1111,7 +1181,7 @@
             }
           }
         }
-        return false;
+        return tryOpenByMenuCode(code, reason);
       };
 
       await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
@@ -1313,7 +1383,9 @@
             basariliAcildi = await tryOpenByII1a(altId, 'metin menü sonrası');
             if (basariliAcildi) break;
           }
-          if (!basariliAcildi) throw e;
+          if (!basariliAcildi) {
+            await log(`⚠ ${menuLabel} ekranı metin/II1a/menü kodu ile açılamadı; son doğrulama yapılacak`);
+          }
         } finally {
           if (hoverTimer) clearInterval(hoverTimer);
         }
