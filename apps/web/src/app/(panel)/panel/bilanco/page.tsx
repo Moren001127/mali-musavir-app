@@ -685,19 +685,32 @@ function Kpi({ label, val, color }: { label: string; val: string; color: string 
   );
 }
 
-function BilancoAmount({ value, emphasis = false, color }: { value: number; emphasis?: boolean; color?: string }) {
+function BilancoAmount({
+  value,
+  emphasis = false,
+  color,
+  variant = 'account',
+}: {
+  value: number;
+  emphasis?: boolean;
+  color?: string;
+  variant?: 'total' | 'group' | 'account';
+}) {
   const zero = Number(value) === 0;
+  const isTotal = emphasis || variant === 'total';
+  const isGroup = variant === 'group';
   return (
     <span
       className="font-mono tabular-nums"
       style={{
         display: 'block',
         textAlign: 'right',
-        color: zero ? MUTED_AMOUNT_COLOR : (color || AMOUNT_COLOR),
-        fontSize: emphasis ? 14.5 : 13.5,
-        fontWeight: zero ? 500 : emphasis ? 750 : 550,
+        color: zero ? MUTED_AMOUNT_COLOR : (color || (isTotal || isGroup ? TOTAL_COLOR : AMOUNT_COLOR)),
+        fontSize: isTotal ? 14.5 : isGroup ? 13.5 : 13.25,
+        fontWeight: zero ? 500 : isTotal ? 750 : isGroup ? 650 : 500,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
+        letterSpacing: 0,
       }}
     >
       {fmtTRY(value)}
@@ -725,7 +738,7 @@ function BilancoColumn({
         background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
       }}>
         <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: '0.01em' }}>{baslik}</h4>
-        <BilancoAmount value={toplam} emphasis color={TOTAL_COLOR} />
+        <BilancoAmount value={toplam} variant="total" color={TOTAL_COLOR} />
       </div>
       <div>
         {gruplar.map((g, gi) => (
@@ -746,7 +759,7 @@ function BilancoColumn({
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
                 }}>
                   <div style={{ color: '#fafaf9', fontWeight: 650 }}>{k.grup}</div>
-                  <BilancoAmount value={k.toplam} emphasis color={TOTAL_COLOR} />
+                  <BilancoAmount value={k.toplam} variant="group" color={TOTAL_COLOR} />
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
                   <div key={hi} className="px-5 py-1.5 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[12px] items-center" style={{
@@ -755,7 +768,7 @@ function BilancoColumn({
                     background: 'rgba(255,255,255,0.006)',
                   }}>
                     <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
-                    <BilancoAmount value={h.tutar} />
+                    <BilancoAmount value={h.tutar} variant="account" />
                   </div>
                 ))}
               </React.Fragment>
