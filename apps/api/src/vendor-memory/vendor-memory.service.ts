@@ -20,6 +20,18 @@ export type MihsapMemoryImportResult = {
   }>;
 };
 
+export type VendorMemoryCleanupResult = {
+  removedUnscopedDecisions: number;
+  removedEmptyMemories: number;
+};
+
+type MihsapMemoryCandidate = {
+  firmaKimlikNo?: string;
+  firmaUnvan?: string;
+  kategori?: string;
+  taxpayerId?: string;
+};
+
 /**
  * Vendor Memory — her firma (VKN/TCKN) için AI kararları hafızada tutulur.
  *
@@ -451,23 +463,14 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     let missingTaxpayer = 0;
     const samples: MihsapMemoryImportResult['samples'] = [];
     const taxpayerNameCache = new Map<string, string | null>();
+    const vendorNameCache = new Map<string, MihsapMemoryCandidate | null>();
 
     for (const event of events as any[]) {
-      const meta = event.meta || {};
-      const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || {};
-      const firmaKimlikNo = this.firstString(
-        meta.firmaKimlikNo,
-        candidate.firmaKimlikNo,
-        this.deepFind(meta, ['firmaKimlikNo', 'firmaVkn', 'vkn', 'tckn']),
-      );
-      const kategori = this.firstString(
-        candidate.hesapKodu,
-        candidate.kategori,
-        meta.finalHesapKodu,
-        event.hesapKodu,
-        Array.isArray(meta.hesapKodlari) ? meta.hesapKodlari[0] : null,
-      );
-      const firmaUnvan = this.firstString(event.firma, meta.firma, candidate.firmaUnvan);
+      const resolved = await this.resolveMihsapMemoryCandidate(tenantId, event, taxpayerNameCache, vendorNameCache);
+      const firmaKimlikNo = resolved.firmaKimlikNo;
+      const kategori = resolved.kategori;
+      const firmaUnvan = resolved.firmaUnvan;
+      const taxpayerId = resolved.taxpayerId;
 
       if (!firmaKimlikNo) {
         missingVendor++;
@@ -475,7 +478,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         this.pushMihsapImportSample(samples, event, {
           firmaKimlikNo: null,
           hesapKodu: kategori || null,
-          taxpayerMatched: false,
+          taxpayerMatched: Boolean(taxpayerId),
           reason: 'missing-vendor',
         });
         continue;
@@ -486,31 +489,10 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         this.pushMihsapImportSample(samples, event, {
           firmaKimlikNo,
           hesapKodu: null,
-          taxpayerMatched: false,
+          taxpayerMatched: Boolean(taxpayerId),
           reason: 'missing-account',
         });
         continue;
-      }
-
-      let taxpayerId = this.firstString(meta.mukellefId, candidate.taxpayerId);
-      if (!taxpayerId && event.mukellef) {
-        const key = String(event.mukellef).trim().toLocaleLowerCase('tr-TR');
-        if (!taxpayerNameCache.has(key)) {
-          const tp = await this.prisma.taxpayer.findFirst({
-            where: {
-              tenantId,
-              OR: [
-                { companyName: { equals: event.mukellef, mode: 'insensitive' } },
-                { companyName: { contains: event.mukellef, mode: 'insensitive' } },
-                { firstName: { contains: event.mukellef, mode: 'insensitive' } },
-                { lastName: { contains: event.mukellef, mode: 'insensitive' } },
-              ],
-            },
-            select: { id: true },
-          });
-          taxpayerNameCache.set(key, tp?.id || null);
-        }
-        taxpayerId = taxpayerNameCache.get(key) || undefined;
       }
       if (!taxpayerId) {
         missingTaxpayer++;
@@ -528,7 +510,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       this.pushMihsapImportSample(samples, event, {
         firmaKimlikNo,
         hesapKodu: kategori,
-        taxpayerMatched: Boolean(taxpayerId),
+        taxpayerMatched: true,
         reason: 'ready',
       });
 
@@ -540,7 +522,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
           kararTipi: 'fatura',
           kategori,
           altKategori: null,
-          taxpayerId: taxpayerId || null,
+          taxpayerId,
         });
         await this.prisma.agentEvent.update({
           where: { id: event.id },
@@ -562,7 +544,107 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     };
   }
 
+  private async resolveMihsapMemoryCandidate(
+    tenantId: string,
+    event: any,
+    taxpayerNameCache: Map<string, string | null>,
+    vendorNameCache: Map<string, MihsapMemoryCandidate | null>,
+  ): Promise<MihsapMemoryCandidate> {
+    const meta = event.meta || {};
+    const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || {};
+    let firmaKimlikNo = this.firstString(
+        meta.firmaKimlikNo,
+        candidate.firmaKimlikNo,
+        this.deepFind(meta, ['firmaKimlikNo', 'firmaVkn', 'vkn', 'tckn']),
+      );
+    const kategori = this.firstString(
+        candidate.hesapKodu,
+        candidate.kategori,
+        meta.finalHesapKodu,
+        event.hesapKodu,
+        Array.isArray(meta.hesapKodlari) ? meta.hesapKodlari[0] : null,
+      );
+    let firmaUnvan = this.firstString(event.firma, meta.firma, candidate.firmaUnvan);
+    let taxpayerId = this.firstString(meta.mukellefId, candidate.taxpayerId);
+
+    if (!firmaKimlikNo && firmaUnvan) {
+      const key = firmaUnvan.trim().toLocaleLowerCase('tr-TR');
+      if (!vendorNameCache.has(key)) {
+        const vm = await (this.prisma as any).vendorMemory.findFirst({
+          where: {
+            tenantId,
+            OR: [
+              { firmaUnvan: { equals: firmaUnvan, mode: 'insensitive' } },
+              { firmaUnvan: { contains: firmaUnvan, mode: 'insensitive' } },
+            ],
+          },
+          select: { firmaKimlikNo: true, firmaUnvan: true },
+          orderBy: { sonKullanim: 'desc' },
+        });
+        vendorNameCache.set(key, vm ? { firmaKimlikNo: vm.firmaKimlikNo, firmaUnvan: vm.firmaUnvan || firmaUnvan } : null);
+      }
+      const foundVendor = vendorNameCache.get(key);
+      if (foundVendor?.firmaKimlikNo) {
+        firmaKimlikNo = foundVendor.firmaKimlikNo;
+        firmaUnvan = foundVendor.firmaUnvan || firmaUnvan;
+      }
+    }
+
+    if (!taxpayerId && event.mukellef) {
+      const key = String(event.mukellef).trim().toLocaleLowerCase('tr-TR');
+      if (!taxpayerNameCache.has(key)) {
+        const tp = await this.prisma.taxpayer.findFirst({
+          where: {
+            tenantId,
+            OR: [
+              { companyName: { equals: event.mukellef, mode: 'insensitive' } },
+              { companyName: { contains: event.mukellef, mode: 'insensitive' } },
+              { firstName: { contains: event.mukellef, mode: 'insensitive' } },
+              { lastName: { contains: event.mukellef, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
+        taxpayerNameCache.set(key, tp?.id || null);
+      }
+      taxpayerId = taxpayerNameCache.get(key) || undefined;
+    }
+
+    return { firmaKimlikNo, firmaUnvan, kategori, taxpayerId };
+  }
+
   /** Yanlış öğrenme durumunu temizleme — tek firmanın tüm hafızasını sil */
+  async cleanupUnscopedMemory(tenantId: string): Promise<VendorMemoryCleanupResult> {
+    const unscoped = await (this.prisma as any).vendorMemoryDecision.deleteMany({
+      where: {
+        taxpayerId: null,
+        vendorMemory: { tenantId },
+      },
+    });
+
+    const emptyMemories = await (this.prisma as any).vendorMemory.findMany({
+      where: {
+        tenantId,
+        decisions: { none: {} },
+      },
+      select: { id: true },
+      take: 5000,
+    });
+
+    let removedEmptyMemories = 0;
+    if (emptyMemories.length > 0) {
+      const deleted = await (this.prisma as any).vendorMemory.deleteMany({
+        where: { id: { in: emptyMemories.map((m: any) => m.id) } },
+      });
+      removedEmptyMemories = deleted.count || 0;
+    }
+
+    return {
+      removedUnscopedDecisions: unscoped.count || 0,
+      removedEmptyMemories,
+    };
+  }
+
   async deleteVendorMemory(tenantId: string, firmaKimlikNo: string): Promise<void> {
     const m = await (this.prisma as any).vendorMemory.findUnique({
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },

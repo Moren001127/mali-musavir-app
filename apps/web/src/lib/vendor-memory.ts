@@ -102,4 +102,12 @@ export const vendorMemoryApi = {
 
   importMihsapEvents: () =>
     api.post<MihsapMemoryImportReport>('/vendor-memory/import-mihsap-events').then((r) => r.data),
+
+  cleanupUnscoped: () =>
+    api.post<{
+      ok: boolean;
+      mesaj: string;
+      removedUnscopedDecisions: number;
+      removedEmptyMemories: number;
+    }>('/vendor-memory/cleanup-unscoped').then((r) => r.data),
 };

@@ -81,6 +81,18 @@ export default function FirmaHafizasiPage() {
     },
   });
 
+  const cleanupMut = useMutation({
+    mutationFn: () => vendorMemoryApi.cleanupUnscoped(),
+    onSuccess: (data: any) => {
+      toast.success(data?.mesaj || 'Bos firma hafizasi temizlendi');
+      qc.invalidateQueries({ queryKey: ['vendor-memory'] });
+      qc.invalidateQueries({ queryKey: ['vendor-memory-mihsap-preview'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Temizlik hatasi');
+    },
+  });
+
   const renderMukellefOzet = (row: VendorMemoryRow): JSX.Element => {
     const list = row.mukellefler || [];
     if (list.length === 0) return <span className="italic" style={{ color: 'rgba(250,250,249,0.4)' }}>-</span>;
@@ -148,6 +160,15 @@ export default function FirmaHafizasiPage() {
         >
           <RefreshCw size={14} className={backfillMut.isPending ? 'animate-spin' : ''} />
           {backfillMut.isPending ? 'Bağlanıyor...' : 'Eski kayıtları mükelleflere bağla'}
+        </button>
+        <button
+          onClick={() => cleanupMut.mutate()}
+          disabled={cleanupMut.isPending}
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed"
+          style={{ background: 'rgba(255,255,255,0.06)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+        >
+          <Trash2 size={14} />
+          {cleanupMut.isPending ? 'Temizleniyor...' : 'Boşları Temizle'}
         </button>
       </div>
 
@@ -224,12 +245,13 @@ export default function FirmaHafizasiPage() {
             if (!report) return null;
             return (
               <>
-                <div className="grid grid-cols-5 gap-2 mt-3 text-xs">
+                <div className="grid grid-cols-6 gap-2 mt-3 text-xs">
                   {[
                     ['Taranan', report.scanned],
                     ['Aktarılabilir', report.importable],
                     ['Aktarılan', report.imported],
                     ['Atlanan', report.skipped],
+                    ['VKN/TCKN Yok', report.missingVendor],
                     ['Mükellef Eşleşmedi', report.missingTaxpayer],
                   ].map(([label, value]) => (
                     <div key={label} className="rounded-md px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>

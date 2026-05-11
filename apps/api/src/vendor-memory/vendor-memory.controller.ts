@@ -53,6 +53,18 @@ export class VendorMemoryController {
     };
   }
 
+  @Post('cleanup-unscoped')
+  async cleanupUnscoped(@Req() req: any) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    const result = await this.service.cleanupUnscopedMemory(tenantId);
+    return {
+      ok: true,
+      mesaj: `${result.removedUnscopedDecisions} mukellefsiz karar ve ${result.removedEmptyMemories} bos firma hafizasi temizlendi.`,
+      ...result,
+    };
+  }
+
   /** Tek firma detayi — tum kategorilerin dokumu */
   @Get('import-mihsap-events/preview')
   async previewMihsapEvents(@Req() req: any, @Query('limit') limit?: string) {
@@ -71,10 +83,13 @@ export class VendorMemoryController {
     const result = await this.service.importFromMihsapEvents(tenantId, {
       limit: limit ? parseInt(limit, 10) : undefined,
     });
+    const cleanup = await this.service.cleanupUnscopedMemory(tenantId);
     return {
       ok: true,
       mesaj: `${result.imported} Mihsap gecmis islemi firma hafizasina aktarildi. ` +
-        `${result.skipped} kayit atlandi, ${result.missingTaxpayer} kayitta mukellef eslesmedi.`,
+        `${result.skipped} kayit atlandi, ${result.missingTaxpayer} kayitta mukellef eslesmedi. ` +
+        `${cleanup.removedEmptyMemories} bos hafiza satiri temizlendi.`,
+      cleanup,
       ...result,
     };
   }
