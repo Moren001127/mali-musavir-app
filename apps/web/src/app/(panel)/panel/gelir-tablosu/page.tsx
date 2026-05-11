@@ -589,8 +589,8 @@ export default function GelirTablosuPage() {
                 </tr>
               )}
               <tr>
-                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', width: 80, borderBottom: `1px solid ${GRID_LINE}` }}></th>
-                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', width: 280, borderBottom: `1px solid ${GRID_LINE}` }}></th>
+                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` }}></th>
+                <th style={{ padding: '12px 14px', background: 'rgba(184,160,111,0.08)', borderBottom: `1px solid ${GRID_LINE}` }}></th>
                 {DISPLAY_ORDER.map((qi) => {
                   const t = [
                     { no: '1. DÖNEM', range: 'Ocak – Mart' },
@@ -667,7 +667,7 @@ export default function GelirTablosuPage() {
                 if (row.sub) {
                   return (
                     <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: idx % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)' }}>
-                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
+                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
                       <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
                         {row.subLabel}
                       </td>
@@ -689,7 +689,7 @@ export default function GelirTablosuPage() {
                 if (row.manual) {
                   return (
                     <tr key={idx} style={{ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' }}>
-                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', width: 80, fontWeight: 700, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
+                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', fontWeight: 700, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
                       <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
                         {row.label}
                       </td>
@@ -742,7 +742,7 @@ export default function GelirTablosuPage() {
                       borderBottom: row.total ? `1px solid ${GRID_LINE_STRONG}` : undefined,
                     }}
                   >
-                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', width: 80, fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
+                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
                     <td
                       className="px-3 py-2.5"
                       style={{
@@ -828,7 +828,7 @@ export default function GelirTablosuPage() {
                     const hasDraft = !!gt && Object.keys(duzeltmelerDraft[gt.id] || {}).length > 0;
                     const hasSaved = !!gt && (Number(gt.duzeltmeler?.satisMaliyetiManuel) || 0) > 0;
                     return (
-                      <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.18)', width: 160 }}>
+                      <td key={qi} className="px-2 py-2 text-right" style={{ borderLeft: '1px solid rgba(255,255,255,0.18)' }}>
                         {gt && (hasDraft || hasSaved) ? (
                           <div className="inline-flex items-center gap-1.5">
                             {hasSaved && !gt.locked && (

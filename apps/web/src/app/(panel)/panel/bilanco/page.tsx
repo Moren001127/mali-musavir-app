@@ -706,8 +706,8 @@ function BilancoAmount({
         display: 'block',
         textAlign: 'right',
         color: zero ? MUTED_AMOUNT_COLOR : (color || (isTotal || isGroup ? TOTAL_COLOR : AMOUNT_COLOR)),
-        fontSize: isTotal ? 14.5 : isGroup ? 13.5 : 13.25,
-        fontWeight: zero ? 500 : isTotal ? 750 : isGroup ? 650 : 500,
+        fontSize: isTotal ? 15 : 14.5,
+        fontWeight: zero ? 500 : isTotal ? 750 : isGroup ? 650 : 550,
         lineHeight: 1.2,
         whiteSpace: 'nowrap',
         letterSpacing: 0,
@@ -753,7 +753,7 @@ function BilancoColumn({
             </div>
             {g.kalemler.filter((k: any) => k && k.toplam !== 0).map((k: any, ki: number) => (
               <React.Fragment key={ki}>
-                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[13px] items-center" style={{
+                <div className="px-5 py-2.5 grid grid-cols-[1fr_auto] gap-3 text-[14px] items-center" style={{
                   minHeight: 40,
                   borderTop: ki === 0 ? 'none' : `1px solid ${GRID_LINE}`,
                   background: ki % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.16)',
@@ -762,12 +762,12 @@ function BilancoColumn({
                   <BilancoAmount value={k.toplam} variant="group" color={TOTAL_COLOR} />
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
-                  <div key={hi} className="px-5 py-1.5 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[12px] items-center" style={{
-                    color: 'rgba(250,250,249,0.70)',
+                  <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
+                    color: 'rgba(250,250,249,0.82)',
                     borderTop: '1px solid rgba(255,255,255,0.10)',
                     background: 'rgba(255,255,255,0.006)',
                   }}>
-                    <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
+                    <div><span style={{ color: '#d8c17f', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, marginRight: 8 }}>{h.kod}</span>{h.ad}</div>
                     <BilancoAmount value={h.tutar} variant="account" />
                   </div>
                 ))}

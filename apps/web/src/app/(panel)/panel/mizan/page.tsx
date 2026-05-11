@@ -887,16 +887,16 @@ function MizanTable({
               const sadeKod = hesapKodu.replace(/\D/g, '');
               const noktaSayisi = (hesapKodu.match(/\./g) || []).length;
               const lvl = noktaSayisi > 0 ? 3 + noktaSayisi : sadeKod.length <= 1 ? 0 : sadeKod.length <= 2 ? 1 : sadeKod.length <= 3 ? 2 : 3;
-              const isUpper = lvl <= 2; // 1 / 10 / 100 gibi ana satirlar
+              const isUpper = lvl <= 1; // 1 / 10 gibi ust basliklar
 
-              const codeColor = '#d8c17f';
-              const adiColor = '#fafaf9';
+              const codeColor = isUpper ? '#d8c17f' : 'rgba(216,193,127,0.84)';
+              const adiColor = isUpper ? '#fafaf9' : 'rgba(250,250,249,0.86)';
               const numTextColor = AMOUNT_COLOR;
-              const numBakiyeColor = TOTAL_AMOUNT_COLOR;
+              const numBakiyeColor = isUpper ? TOTAL_AMOUNT_COLOR : AMOUNT_COLOR;
               const dimColor = MUTED_AMOUNT_COLOR;
 
               const weight = isUpper ? 700 : 500;
-              const fontSize = isUpper ? 13.5 : 13;
+              const fontSize = isUpper ? 13.5 : 13.25;
 
               // Satır arka planı: SADECE üst seviyede çok hafif zemin, gerisi sade
               const rowBg = isUpper
@@ -929,16 +929,16 @@ function MizanTable({
                         style={{
                           borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
-                          fontSize: colIdx >= 2 ? (isUpper ? 14 : 13.5) : fontSize,
+                          fontSize: colIdx >= 2 ? 14.5 : fontSize,
                           color: c.color,
-                          fontWeight: colIdx >= 2 ? (isUpper ? 700 : 500) : weight,
+                          fontWeight: colIdx >= 2 ? (isUpper ? 700 : 550) : weight,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',
                           background: focused ? 'rgba(184,160,111,0.10)' : undefined,
                           whiteSpace: 'nowrap',
                           height: 42,
-                          paddingLeft: colIdx === 1 ? (isUpper ? 14 : 22) : undefined,
+                          paddingLeft: colIdx === 1 ? (isUpper ? 14 : lvl === 2 ? 18 : 26) : undefined,
                           letterSpacing: 0,
                           userSelect: 'text',
                         }}
