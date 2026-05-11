@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Upload,
@@ -46,7 +46,8 @@ type AccountingLine = {
 type DraftInvoice = {
   id: string;
   backendId?: string;
-  file: File;
+  file: Pick<File, 'name' | 'size' | 'type'>;
+  originalFile?: File;
   previewUrl: string;
   previewType: 'image' | 'pdf' | 'other';
   source: 'manual-okc' | 'manual-invoice';
@@ -146,6 +147,35 @@ const applyApiDocument = (draft: DraftInvoice, doc: any): DraftInvoice => ({
   status: doc.status === 'APPROVED' ? 'onaylandi' : doc.status === 'READY' ? 'hazir' : 'kontrol',
 });
 
+const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
+  const mimeType = doc.mimeType || 'application/octet-stream';
+  return applyApiDocument(
+    {
+      id: `remote-${doc.id}`,
+      backendId: doc.id,
+      file: { name: doc.originalName, size: doc.sizeBytes || 0, type: mimeType },
+      previewUrl: fileUrl,
+      previewType: mimeType.startsWith('image/') ? 'image' : mimeType === 'application/pdf' ? 'pdf' : 'other',
+      source: doc.source === 'mobile' ? 'manual-okc' : 'manual-invoice',
+      documentType: doc.documentType || 'OKC_FIS',
+      invoiceKind: doc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış',
+      currency: doc.currency || 'TL',
+      exchangeRate: doc.exchangeRate ? String(doc.exchangeRate) : '1',
+      date: doc.faturaTarihi ? String(doc.faturaTarihi).slice(0, 10) : todayIso(),
+      serial: doc.seriNo || '',
+      number: doc.belgeNo || '',
+      buyerVkn: doc.buyerVkn || '',
+      sellerVkn: doc.sellerVkn || '',
+      vendorName: doc.vendorName || '',
+      customerName: doc.customerName || '',
+      total: money(doc.totalAmount),
+      lines: Array.isArray(doc.lines) && doc.lines.length ? doc.lines.map(fromApiLine) : defaultLinesFromOcr(),
+      status: 'kontrol',
+    },
+    doc,
+  );
+};
+
 function blankDraft(file: File, previewUrl: string): DraftInvoice {
   const isPdf = file.type === 'application/pdf';
   return {
@@ -178,6 +208,7 @@ export default function FaturaMuhasebelestirmePage() {
   const [dragging, setDragging] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
 
@@ -191,6 +222,43 @@ export default function FaturaMuhasebelestirmePage() {
     return { debit, credit, diff: Math.abs(debit - credit) };
   }, [selected]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoadingExisting(true);
+      try {
+        const { data } = await api.get('/fatura-muhasebelestirme/documents', {
+          params: { limit: 50 },
+        });
+        const list = Array.isArray(data) ? data : [];
+        const hydrated = await Promise.all(
+          list.map(async (doc: any) => {
+            try {
+              const res = await api.get(`/fatura-muhasebelestirme/documents/${doc.id}/file-url`);
+              return draftFromApiDocument(doc, res.data?.url || '');
+            } catch {
+              return draftFromApiDocument(doc, '');
+            }
+          }),
+        );
+        if (!alive) return;
+        setDrafts((prev) => {
+          const localKeys = new Set(prev.map((d) => d.backendId || d.id));
+          const additions = hydrated.filter((d) => !localKeys.has(d.backendId || d.id));
+          if (!selectedId && additions[0]) setSelectedId(additions[0].id);
+          return [...prev, ...additions];
+        });
+      } catch {
+        /* Auth redirect veya backend hazir degilse sessiz kal. */
+      } finally {
+        if (alive) setLoadingExisting(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const addFiles = (files: FileList | File[]) => {
     const next = Array.from(files).filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf');
     if (!next.length) return;
@@ -198,7 +266,7 @@ export default function FaturaMuhasebelestirmePage() {
       const existing = new Set(prev.map((d) => `${d.file.name}-${d.file.size}`));
       const additions = next
         .filter((file) => !existing.has(`${file.name}-${file.size}`))
-        .map((file) => blankDraft(file, URL.createObjectURL(file)));
+        .map((file) => ({ ...blankDraft(file, URL.createObjectURL(file)), originalFile: file }));
       if (!selectedId && additions[0]) setSelectedId(additions[0].id);
       return [...prev, ...additions];
     });
@@ -225,7 +293,7 @@ export default function FaturaMuhasebelestirmePage() {
   };
 
   const runOcr = async () => {
-    const uploadableDrafts = drafts.filter((d) => !d.backendId);
+    const uploadableDrafts = drafts.filter((d) => !d.backendId && d.originalFile);
     if (!uploadableDrafts.length) {
       toast.info('Tüm belgeler zaten kalıcı kuyruğa alındı');
       return;
@@ -234,7 +302,7 @@ export default function FaturaMuhasebelestirmePage() {
     setDrafts((prev) => prev.map((d) => (!d.backendId ? { ...d, status: 'ocr' } : d)));
     try {
       const fd = new FormData();
-      uploadableDrafts.forEach((d) => fd.append('files', d.file));
+      uploadableDrafts.forEach((d) => d.originalFile && fd.append('files', d.originalFile));
       fd.append('source', 'manual-web');
       fd.append('documentType', 'OKC_FIS');
       fd.append('invoiceKind', 'ALIS');
@@ -508,7 +576,7 @@ export default function FaturaMuhasebelestirmePage() {
               <div className="flex flex-1 items-center justify-center p-8 text-center text-slate-500">
                 <div>
                   <FileText size={34} className="mx-auto mb-3 text-slate-400" />
-                  <div className="font-medium text-slate-700">Henüz belge seçilmedi</div>
+                  <div className="font-medium text-slate-700">{loadingExisting ? 'Kayıtlar yükleniyor' : 'Henüz belge seçilmedi'}</div>
                   <p className="mt-1 text-sm">Sol alana ÖKC fişi veya fatura görseli yükleyin.</p>
                 </div>
               </div>
