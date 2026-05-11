@@ -349,30 +349,42 @@ export class EarsivService {
             updateData.faturaTarihi = f.faturaTarihi;
           }
           if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
-            const pdfStorageKey = await this.storeOriginalPdf({
-              tenantId,
-              taxpayerId,
-              donem: fDonem,
-              tip,
-              belgeKaynak,
-              faturaNo: f.faturaNo,
-              pdfBuffer: f.pdfBuffer,
-            });
+            let pdfStorageKey: string | null = null;
+            try {
+              pdfStorageKey = await this.storeOriginalPdf({
+                tenantId,
+                taxpayerId,
+                donem: fDonem,
+                tip,
+                belgeKaynak,
+                faturaNo: f.faturaNo,
+                pdfBuffer: f.pdfBuffer,
+              });
+            } catch (e: any) {
+              this.logger.warn(`Fatura PDF saklama hata (${f.faturaNo}): ${e?.message || e}`);
+              if (errors.length < 5) errors.push(`${f.faturaNo}: PDF saklanamadi ${(e?.message || '').slice(0, 160)}`);
+            }
             if (pdfStorageKey) {
               updateData.pdfStorageKey = pdfStorageKey;
               pdfBackfilled++;
             }
           }
           if (f.htmlContent?.trim()) {
-            const htmlStorageKey = await this.storeOriginalHtml({
-              tenantId,
-              taxpayerId,
-              donem: fDonem,
-              tip,
-              belgeKaynak,
-              faturaNo: f.faturaNo,
-              htmlContent: f.htmlContent,
-            });
+            let htmlStorageKey: string | null = null;
+            try {
+              htmlStorageKey = await this.storeOriginalHtml({
+                tenantId,
+                taxpayerId,
+                donem: fDonem,
+                tip,
+                belgeKaynak,
+                faturaNo: f.faturaNo,
+                htmlContent: f.htmlContent,
+              });
+            } catch (e: any) {
+              this.logger.warn(`Fatura HTML saklama hata (${f.faturaNo}): ${e?.message || e}`);
+              if (errors.length < 5) errors.push(`${f.faturaNo}: HTML saklanamadi ${(e?.message || '').slice(0, 160)}`);
+            }
             if (htmlStorageKey) {
               updateData.htmlStorageKey = htmlStorageKey;
               htmlBackfilled++;
@@ -387,25 +399,37 @@ export class EarsivService {
           duplicate++;
           continue;
         }
-        const pdfStorageKey = await this.storeOriginalPdf({
-          tenantId,
-          taxpayerId,
-          donem: fDonem,
-          tip,
-          belgeKaynak,
-          faturaNo: f.faturaNo,
-          pdfBuffer: f.pdfBuffer,
-        });
+        let pdfStorageKey: string | null = null;
+        try {
+          pdfStorageKey = await this.storeOriginalPdf({
+            tenantId,
+            taxpayerId,
+            donem: fDonem,
+            tip,
+            belgeKaynak,
+            faturaNo: f.faturaNo,
+            pdfBuffer: f.pdfBuffer,
+          });
+        } catch (e: any) {
+          this.logger.warn(`Fatura PDF saklama hata (${f.faturaNo}): ${e?.message || e}`);
+          if (errors.length < 5) errors.push(`${f.faturaNo}: PDF saklanamadi ${(e?.message || '').slice(0, 160)}`);
+        }
         if (pdfStorageKey) pdfStored++;
-        const htmlStorageKey = await this.storeOriginalHtml({
-          tenantId,
-          taxpayerId,
-          donem: fDonem,
-          tip,
-          belgeKaynak,
-          faturaNo: f.faturaNo,
-          htmlContent: f.htmlContent,
-        });
+        let htmlStorageKey: string | null = null;
+        try {
+          htmlStorageKey = await this.storeOriginalHtml({
+            tenantId,
+            taxpayerId,
+            donem: fDonem,
+            tip,
+            belgeKaynak,
+            faturaNo: f.faturaNo,
+            htmlContent: f.htmlContent,
+          });
+        } catch (e: any) {
+          this.logger.warn(`Fatura HTML saklama hata (${f.faturaNo}): ${e?.message || e}`);
+          if (errors.length < 5) errors.push(`${f.faturaNo}: HTML saklanamadi ${(e?.message || '').slice(0, 160)}`);
+        }
         if (htmlStorageKey) htmlStored++;
         await (this.prisma as any).earsivFatura.create({
           data: {

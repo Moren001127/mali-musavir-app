@@ -524,7 +524,7 @@
           });
           if (!uploadRes.ok) {
             const errText = await uploadRes.text().catch(() => '');
-            throw new Error(`Upload HTTP ${uploadRes.status}: ${errText.slice(0, 120)}`);
+            throw new Error(`Upload HTTP ${uploadRes.status}: ${errText.slice(0, 700)}`);
           }
           // Backend cevabını log'la — kaç fatura parse edildi göreceğiz
           let respDetail = '';
