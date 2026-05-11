@@ -695,8 +695,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       reason: 'ready' | 'missing-vendor' | 'missing-account' | 'missing-taxpayer';
     },
   ) {
-    if (samples.length >= 12) return;
-    samples.push({
+    const sample = {
       id: event.id,
       mukellef: event.mukellef || null,
       firma: event.firma || null,
@@ -704,7 +703,18 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       hesapKodu: extracted.hesapKodu,
       taxpayerMatched: extracted.taxpayerMatched,
       reason: extracted.reason,
-    });
+    };
+
+    if (samples.length < 12) {
+      samples.push(sample);
+      return;
+    }
+
+    // Rapor ilk bakista "hep hata var" gibi gorunmesin; aktarilabilir ornekleri once tut.
+    if (extracted.reason === 'ready') {
+      const replaceIndex = samples.findIndex((s) => s.reason !== 'ready');
+      if (replaceIndex >= 0) samples[replaceIndex] = sample;
+    }
   }
 }
 

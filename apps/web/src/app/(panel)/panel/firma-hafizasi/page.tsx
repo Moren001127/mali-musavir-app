@@ -262,6 +262,9 @@ export default function FirmaHafizasiPage() {
                 </div>
                 {report.samples?.length > 0 && (
                   <div className="mt-3 overflow-auto">
+                    <div className="text-xs mb-2" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                      Örneklerde önce aktarılabilir kayıtlar gösterilir; VKN/TCKN yok olanlar sadece problemli geçmiş loglardır.
+                    </div>
                     <table className="w-full text-xs">
                       <thead style={{ color: 'rgba(250,250,249,0.45)' }}>
                         <tr className="text-left">
