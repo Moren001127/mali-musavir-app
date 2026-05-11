@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.97';
+  const AGENT_VERSION = '1.36.98';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -1079,26 +1079,30 @@
 
       // ÖNCELİK 0: Eğer frm3'te zaten e-arşiv sayfası açıksa menü navigasyonunu ATLA.
       // Kullanıcı Luca'yı bir kez manuel olarak e-Arşiv Alış sayfasında bıraksın yeter.
-      const sayfaAcikMi = () => {
-        return !!findEbelgePageContext();
-      };
-      if (sayfaAcikMi()) {
-        const ctx = findEbelgePageContext();
-        await log(`✅ Sayfa zaten açık (${ctx?.label || 'frame'} içinde faturalari-getir-btn var) — menü navigasyonu atlanıyor`);
-        // navigationDone bayrağı setlemiyoruz; aşağıdaki kod akışı devam etsin
-        // ama II1a/menü adımlarını skip et
-        await sleep(500);
-        // basariliAcildi'yi true yap ki menü blokları çalışmasın
-        var __navSkip = true;
-      } else {
-        var __navSkip = false;
+      const ebelgeContextAtStart = findEbelgePageContext();
+      const expectedEbelgeKey = `${mukellefTipi}:${job.tip}:${job.mukellefId || ''}:${job.donem || ''}`;
+      const previousEbelgeKey = String(window.__morenLastEbelgeKey || '');
+      const sayfaAcikMi = () => !!findEbelgePageContext();
+      if (ebelgeContextAtStart) {
+        await log(`ℹ E-belge ekranı zaten açık (${ebelgeContextAtStart?.label || 'frame'}); doğru defter/tip/firma için yeniden açma denenecek`);
       }
+      // Eski açık e-belge sayfasını yeni job için otomatik doğru kabul etme.
+      // İşletme ekranı açık kalıp sonraki bilanço job'ını yanıltabiliyordu.
+      var __navSkip = false;
 
-      const waitForEbelgePage = async (maxMs = 12000) => {
+      const isFreshEbelgeContext = (ctx, previousCtx) => {
+        if (!ctx) return false;
+        if (!previousCtx) return true;
+        if (previousEbelgeKey === expectedEbelgeKey) return true;
+        return ctx.doc !== previousCtx.doc || ctx.win !== previousCtx.win || ctx.btn !== previousCtx.btn;
+      };
+
+      const waitForEbelgePage = async (maxMs = 12000, previousCtx = ebelgeContextAtStart) => {
         const started = Date.now();
         while (Date.now() - started < maxMs) {
           await throwIfCancelled();
-          if (sayfaAcikMi()) return true;
+          const ctx = findEbelgePageContext();
+          if (isFreshEbelgeContext(ctx, previousCtx)) return true;
           await sleep(400);
         }
         return false;
@@ -1418,6 +1422,7 @@
         try {
           // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
           await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
+          basariliAcildi = await waitForEbelgePage(8000);
         } catch (e) {
           await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; direkt II1a kodları tekrar deneniyor`);
           for (const altId of ii1aIds) {
@@ -1445,6 +1450,10 @@
       if (!ebelgeContext) {
         throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli`);
       }
+      if (!basariliAcildi && ebelgeContextAtStart && !isFreshEbelgeContext(ebelgeContext, ebelgeContextAtStart)) {
+        throw new Error(`${menuLabel} ekranı yenilenmedi; önceki e-belge ekranı yeni iş için kullanılmadı`);
+      }
+      try { window.__morenLastEbelgeKey = expectedEbelgeKey; } catch {}
       await log(`✅ ${menuLabel} ekranı hazır (${ebelgeContext.label || 'frame'})`);
       frm3 = { contentDocument: ebelgeContext.doc, contentWindow: ebelgeContext.win };
     }
