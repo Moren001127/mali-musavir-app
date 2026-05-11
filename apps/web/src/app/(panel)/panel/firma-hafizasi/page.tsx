@@ -7,9 +7,10 @@ import {
   VendorMemoryRow,
   VendorMukellefOzet,
   VendorMukellefDetay,
+  MihsapMemoryImportReport,
 } from '@/lib/vendor-memory';
 import { api } from '@/lib/api';
-import { Brain, Search, Trash2, X, Users, RefreshCw, Filter } from 'lucide-react';
+import { Brain, Search, Trash2, X, Users, RefreshCw, Filter, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function FirmaHafizasiPage() {
@@ -17,6 +18,7 @@ export default function FirmaHafizasiPage() {
   const [search, setSearch] = useState('');
   const [selectedVkn, setSelectedVkn] = useState<string | null>(null);
   const [filterMukellef, setFilterMukellef] = useState<string>('');
+  const [lastImportReport, setLastImportReport] = useState<MihsapMemoryImportReport | null>(null);
 
   // Mükellef listesi (filtre dropdown için)
   const { data: taxpayers = [] } = useQuery({
@@ -42,6 +44,11 @@ export default function FirmaHafizasiPage() {
     enabled: !!selectedVkn,
   });
 
+  const { data: mihsapPreview, isFetching: isPreviewFetching } = useQuery({
+    queryKey: ['vendor-memory-mihsap-preview'],
+    queryFn: () => vendorMemoryApi.previewMihsapEvents(),
+  });
+
   const deleteMut = useMutation({
     mutationFn: (vkn: string) => vendorMemoryApi.remove(vkn),
     onSuccess: () => {
@@ -64,8 +71,10 @@ export default function FirmaHafizasiPage() {
   const importMihsapMut = useMutation({
     mutationFn: () => vendorMemoryApi.importMihsapEvents(),
     onSuccess: (data: any) => {
+      setLastImportReport(data);
       toast.success(data?.mesaj || 'Mihsap geçmişi hafızaya aktarıldı');
       qc.invalidateQueries({ queryKey: ['vendor-memory'] });
+      qc.invalidateQueries({ queryKey: ['vendor-memory-mihsap-preview'] });
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.message || 'Mihsap hafıza aktarım hatası');
@@ -190,6 +199,82 @@ export default function FirmaHafizasiPage() {
           <Users size={12} />
           <strong>{taxpayerName(taxpayers.find((t: any) => t.id === filterMukellef) || {})}</strong>
           <span style={{ color: 'rgba(250,250,249,0.7)' }}>için kararlar gösteriliyor — diğer mükelleflerin kararları gizlendi.</span>
+        </div>
+      )}
+
+      {(mihsapPreview || lastImportReport) && (
+        <div
+          className="rounded-lg p-3"
+          style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+                <AlertTriangle className="w-4 h-4" style={{ color: '#d4b876' }} />
+                Mihsap aktarım durumu
+              </div>
+              <div className="text-xs mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                Mükellef eşleşmeyen kayıtlar hafızaya yazılmaz. Her hesap kodu sadece ilgili mükellef için öğrenilir.
+              </div>
+            </div>
+            {isPreviewFetching && <span className="text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>Kontrol ediliyor...</span>}
+          </div>
+          {(() => {
+            const report = lastImportReport || mihsapPreview;
+            if (!report) return null;
+            return (
+              <>
+                <div className="grid grid-cols-5 gap-2 mt-3 text-xs">
+                  {[
+                    ['Taranan', report.scanned],
+                    ['Aktarılabilir', report.importable],
+                    ['Aktarılan', report.imported],
+                    ['Atlanan', report.skipped],
+                    ['Mükellef Eşleşmedi', report.missingTaxpayer],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-md px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <div style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
+                      <div className="text-lg font-semibold" style={{ color: '#fafaf9' }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+                {report.samples?.length > 0 && (
+                  <div className="mt-3 overflow-auto">
+                    <table className="w-full text-xs">
+                      <thead style={{ color: 'rgba(250,250,249,0.45)' }}>
+                        <tr className="text-left">
+                          <th className="py-1.5 pr-3">Mükellef</th>
+                          <th className="py-1.5 pr-3">Firma</th>
+                          <th className="py-1.5 pr-3">VKN/TCKN</th>
+                          <th className="py-1.5 pr-3">Hesap</th>
+                          <th className="py-1.5 pr-3">Durum</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.samples.map((sample) => (
+                          <tr key={sample.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td className="py-1.5 pr-3" style={{ color: '#fafaf9' }}>{sample.mukellef || '-'}</td>
+                            <td className="py-1.5 pr-3" style={{ color: 'rgba(250,250,249,0.82)' }}>{sample.firma || '-'}</td>
+                            <td className="py-1.5 pr-3 font-mono" style={{ color: 'rgba(250,250,249,0.6)' }}>{sample.firmaKimlikNo || '-'}</td>
+                            <td className="py-1.5 pr-3 font-mono" style={{ color: 'rgba(250,250,249,0.75)' }}>{sample.hesapKodu || '-'}</td>
+                            <td className="py-1.5 pr-3" style={{ color: sample.reason === 'ready' ? '#86efac' : '#fca5a5' }}>
+                              {sample.reason === 'ready'
+                                ? 'Hazır'
+                                : sample.reason === 'missing-taxpayer'
+                                  ? 'Mükellef eşleşmedi'
+                                  : sample.reason === 'missing-account'
+                                    ? 'Hesap kodu yok'
+                                    : 'VKN/TCKN yok'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 

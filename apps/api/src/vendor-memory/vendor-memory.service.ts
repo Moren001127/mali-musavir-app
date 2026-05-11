@@ -1,6 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+export type MihsapMemoryImportResult = {
+  scanned: number;
+  importable: number;
+  imported: number;
+  skipped: number;
+  missingVendor: number;
+  missingAccount: number;
+  missingTaxpayer: number;
+  samples: Array<{
+    id: string;
+    mukellef: string | null;
+    firma: string | null;
+    firmaKimlikNo: string | null;
+    hesapKodu: string | null;
+    taxpayerMatched: boolean;
+    reason: 'ready' | 'missing-vendor' | 'missing-account' | 'missing-taxpayer';
+  }>;
+};
+
 /**
  * Vendor Memory — her firma (VKN/TCKN) için AI kararları hafızada tutulur.
  *
@@ -33,6 +52,7 @@ export class VendorMemoryService {
     taxpayerId?: string | null,
   ): Promise<{ hintText: string; memoryId: string; topKategoriler: Array<{ kategori: string; altKategori: string | null; onayAdedi: number }> } | null> {
     if (!firmaKimlikNo) return null;
+    if (!taxpayerId) return null;
     const normalized = firmaKimlikNo.trim();
     if (!normalized) return null;
 
@@ -42,39 +62,23 @@ export class VendorMemoryService {
         decisions: {
           where: {
             kararTipi,
-            // Mükellef-bazlı: önce bu mükellefin kararlarına bak. Yoksa NULL (ortak) kararlara fallback.
-            ...(taxpayerId
-              ? { OR: [{ taxpayerId }, { taxpayerId: null }] }
-              : {}),
+            taxpayerId,
           },
           orderBy: { onayAdedi: 'desc' },
-          take: this.TOP_N_KATEGORI * 2, // taxpayer + null karışık olabilir, fazla al
+          take: this.TOP_N_KATEGORI,
         },
       },
     });
 
     if (!memory || !memory.decisions || memory.decisions.length === 0) return null;
 
-    // Eğer mükellef-bazlı kararlar varsa ÖNCELİK onlarda; yoksa ortak (NULL) fallback
-    let decisions = memory.decisions;
-    if (taxpayerId) {
-      const mukellefKararlar = decisions.filter((d: any) => d.taxpayerId === taxpayerId);
-      if (mukellefKararlar.length > 0) {
-        decisions = mukellefKararlar;
-      } else {
-        // Mükellef için veri yok; ortak NULL kararları fallback kullan (daha zayıf sinyal)
-        decisions = decisions.filter((d: any) => d.taxpayerId === null);
-      }
-    }
-    decisions = decisions.slice(0, this.TOP_N_KATEGORI);
+    const decisions = memory.decisions;
 
     const toplam = decisions.reduce((s: number, d: any) => s + (d.onayAdedi || 0), 0);
     if (toplam < this.MIN_ONAY_FOR_HINT) return null;
 
     const firmaAdi = memory.firmaUnvan || normalized;
-    const mukellefInfo = taxpayerId && decisions.some((d: any) => d.taxpayerId === taxpayerId)
-      ? ' (bu mükellef için)'
-      : ' (bu ofisin geçmişinden)';
+    const mukellefInfo = ' (bu mükellef için)';
 
     const kategoriSatirlari = decisions
       .map((d: any) => {
@@ -120,6 +124,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
   }): Promise<void> {
     const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori, taxpayerId } = params;
     if (!firmaKimlikNo) return;
+    if (!taxpayerId) return;
     const vkn = firmaKimlikNo.trim();
     if (!vkn || !kategori) return;
 
@@ -224,6 +229,8 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     // taxpayerId filter: sadece bu mükellefin kararlarını içeren firmaları getir
     if (taxpayerId) {
       where.decisions = { some: { taxpayerId } };
+    } else {
+      where.decisions = { some: { taxpayerId: { not: null } } };
     }
     const rows = await (this.prisma as any).vendorMemory.findMany({
       where,
@@ -232,7 +239,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       include: {
         decisions: {
           // Mukellef filtresi varsa sadece o mukellefin kararlari + ortak (taxpayerId null) atla
-          where: taxpayerId ? { taxpayerId } : undefined,
+          where: taxpayerId ? { taxpayerId } : { taxpayerId: { not: null } },
           orderBy: { onayAdedi: 'desc' },
           take: 50,
           include: {
@@ -268,6 +275,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
       include: {
         decisions: {
+          where: { taxpayerId: { not: null } },
           orderBy: [{ onayAdedi: 'desc' }],
           include: {
             taxpayer: {
@@ -420,14 +428,10 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     };
   }
 
-  async importFromMihsapEvents(tenantId: string, opts: { limit?: number } = {}): Promise<{
-    scanned: number;
-    imported: number;
-    skipped: number;
-    missingVendor: number;
-    missingAccount: number;
-    missingTaxpayer: number;
-  }> {
+  async importFromMihsapEvents(
+    tenantId: string,
+    opts: { limit?: number; dryRun?: boolean } = {},
+  ): Promise<MihsapMemoryImportResult> {
     const events = await this.prisma.agentEvent.findMany({
       where: {
         tenantId,
@@ -440,10 +444,12 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     });
 
     let imported = 0;
+    let importable = 0;
     let skipped = 0;
     let missingVendor = 0;
     let missingAccount = 0;
     let missingTaxpayer = 0;
+    const samples: MihsapMemoryImportResult['samples'] = [];
     const taxpayerNameCache = new Map<string, string | null>();
 
     for (const event of events as any[]) {
@@ -466,11 +472,23 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       if (!firmaKimlikNo) {
         missingVendor++;
         skipped++;
+        this.pushMihsapImportSample(samples, event, {
+          firmaKimlikNo: null,
+          hesapKodu: kategori || null,
+          taxpayerMatched: false,
+          reason: 'missing-vendor',
+        });
         continue;
       }
       if (!kategori) {
         missingAccount++;
         skipped++;
+        this.pushMihsapImportSample(samples, event, {
+          firmaKimlikNo,
+          hesapKodu: null,
+          taxpayerMatched: false,
+          reason: 'missing-account',
+        });
         continue;
       }
 
@@ -494,31 +512,53 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         }
         taxpayerId = taxpayerNameCache.get(key) || undefined;
       }
-      if (!taxpayerId) missingTaxpayer++;
+      if (!taxpayerId) {
+        missingTaxpayer++;
+        skipped++;
+        this.pushMihsapImportSample(samples, event, {
+          firmaKimlikNo,
+          hesapKodu: kategori,
+          taxpayerMatched: false,
+          reason: 'missing-taxpayer',
+        });
+        continue;
+      }
 
-      await this.recordDecision({
-        tenantId,
+      importable++;
+      this.pushMihsapImportSample(samples, event, {
         firmaKimlikNo,
-        firmaUnvan,
-        kararTipi: 'fatura',
-        kategori,
-        altKategori: null,
-        taxpayerId: taxpayerId || null,
+        hesapKodu: kategori,
+        taxpayerMatched: Boolean(taxpayerId),
+        reason: 'ready',
       });
-      await this.prisma.agentEvent.update({
-        where: { id: event.id },
-        data: { memoryImportedAt: new Date() },
-      });
-      imported++;
+
+      if (!opts.dryRun) {
+        await this.recordDecision({
+          tenantId,
+          firmaKimlikNo,
+          firmaUnvan,
+          kararTipi: 'fatura',
+          kategori,
+          altKategori: null,
+          taxpayerId: taxpayerId || null,
+        });
+        await this.prisma.agentEvent.update({
+          where: { id: event.id },
+          data: { memoryImportedAt: new Date() },
+        });
+        imported++;
+      }
     }
 
     return {
       scanned: events.length,
+      importable,
       imported,
       skipped,
       missingVendor,
       missingAccount,
       missingTaxpayer,
+      samples,
     };
   }
 
@@ -561,6 +601,28 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       if (hit) return hit;
     }
     return undefined;
+  }
+
+  private pushMihsapImportSample(
+    samples: MihsapMemoryImportResult['samples'],
+    event: any,
+    extracted: {
+      firmaKimlikNo: string | null;
+      hesapKodu: string | null;
+      taxpayerMatched: boolean;
+      reason: 'ready' | 'missing-vendor' | 'missing-account' | 'missing-taxpayer';
+    },
+  ) {
+    if (samples.length >= 12) return;
+    samples.push({
+      id: event.id,
+      mukellef: event.mukellef || null,
+      firma: event.firma || null,
+      firmaKimlikNo: extracted.firmaKimlikNo,
+      hesapKodu: extracted.hesapKodu,
+      taxpayerMatched: extracted.taxpayerMatched,
+      reason: extracted.reason,
+    });
   }
 }
 

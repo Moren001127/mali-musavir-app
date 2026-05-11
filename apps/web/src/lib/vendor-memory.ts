@@ -57,6 +57,27 @@ export interface VendorMemoryDetail extends Omit<VendorMemoryRow, 'mukellefler'>
   mukellefler: VendorMukellefDetay[];
 }
 
+export interface MihsapMemoryImportReport {
+  ok?: boolean;
+  mesaj?: string;
+  scanned: number;
+  importable: number;
+  imported: number;
+  skipped: number;
+  missingVendor: number;
+  missingAccount: number;
+  missingTaxpayer: number;
+  samples: Array<{
+    id: string;
+    mukellef: string | null;
+    firma: string | null;
+    firmaKimlikNo: string | null;
+    hesapKodu: string | null;
+    taxpayerMatched: boolean;
+    reason: 'ready' | 'missing-vendor' | 'missing-account' | 'missing-taxpayer';
+  }>;
+}
+
 export const vendorMemoryApi = {
   list: (params?: { search?: string; limit?: number; taxpayerId?: string }) =>
     api.get<VendorMemoryRow[]>('/vendor-memory', { params }).then((r) => r.data),
@@ -76,15 +97,9 @@ export const vendorMemoryApi = {
       mukellefBulunamayan: number;
     }>('/vendor-memory/backfill-mukellef').then((r) => r.data),
 
+  previewMihsapEvents: () =>
+    api.get<MihsapMemoryImportReport>('/vendor-memory/import-mihsap-events/preview').then((r) => r.data),
+
   importMihsapEvents: () =>
-    api.post<{
-      ok: boolean;
-      mesaj: string;
-      scanned: number;
-      imported: number;
-      skipped: number;
-      missingVendor: number;
-      missingAccount: number;
-      missingTaxpayer: number;
-    }>('/vendor-memory/import-mihsap-events').then((r) => r.data),
+    api.post<MihsapMemoryImportReport>('/vendor-memory/import-mihsap-events').then((r) => r.data),
 };
