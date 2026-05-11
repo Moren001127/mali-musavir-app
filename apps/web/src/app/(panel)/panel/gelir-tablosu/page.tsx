@@ -22,9 +22,9 @@ const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.58)';
 const MISSING_AMOUNT_COLOR = 'rgba(250,250,249,0.28)';
 const PROFIT_COLOR = '#86efac';
 const LOSS_COLOR = '#fca5a5';
-const RATIO_COLOR = '#8ec5ff';
-const RATIO_BG = 'rgba(37,99,235,0.18)';
-const RATIO_BORDER = 'rgba(142,197,255,0.34)';
+const RATIO_COLOR = '#ecfff8';
+const RATIO_BG = 'rgba(20,184,166,0.26)';
+const RATIO_BORDER = 'rgba(153,246,228,0.55)';
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -761,6 +761,7 @@ export default function GelirTablosuPage() {
                       const netSatis = d ? (d.netSatislar || 1) : 1;
                       const hasData = gt !== null;
                       const showOranBadge = hasData && showPct(row.k as string) && v !== 0;
+                      const mainAmount = row.group || row.total || row.final;
                       return (
                         <td
                           key={qi}
@@ -775,8 +776,8 @@ export default function GelirTablosuPage() {
                                 ? (v < 0 ? LOSS_COLOR : PROFIT_COLOR)
                                 : row.total ? TOTAL_COLOR
                                 : (v < 0 ? LOSS_COLOR : AMOUNT_COLOR),
-                            fontSize: row.final ? 15.5 : row.total ? 15 : 14.5,
-                            fontWeight: row.final ? 800 : row.total ? 800 : 750,
+                            fontSize: row.final ? 16 : mainAmount ? 15.5 : 14.5,
+                            fontWeight: row.final ? 850 : mainAmount ? 850 : 750,
                             borderLeft: `1px solid ${GRID_LINE}`,
                             borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
                             fontFamily: 'JetBrains Mono, monospace',
