@@ -1616,6 +1616,77 @@ model PendingDecision {
 // Araç plakalarını kayıtlı tutar, KGM HGS İhlal takip sitesinden
 // periyodik (ör. her Pazartesi) otomatik sorgu yapar ve sonuçları saklar.
 // ============================================================
+// ============================================================
+// FATURA MUHASEBELESTIRME CALISMA ALANI
+// Sol tarafta belge onizleme, sag tarafta hesap kodlari/onay akisi.
+// Manuel OKC fisi yukleme ve ileride mobil uygulama ayni endpointleri kullanir.
+// ============================================================
+model InvoiceAccountingDocument {
+  id           String   @id @default(cuid())
+  tenantId     String
+  taxpayerId   String?
+  source       String   @default("manual-web") // manual-web | mobile | mihsap | luca
+  documentType String   @default("OKC_FIS") // OKC_FIS | E_FATURA | E_ARSIV | FIS | DIGER
+  invoiceKind  String   @default("ALIS") // ALIS | SATIS
+  status       String   @default("NEEDS_REVIEW") // NEEDS_REVIEW | READY | APPROVED | REJECTED
+
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+  s3Key        String
+  imageHash    String?  @db.VarChar(64)
+
+  currency     String   @default("TL")
+  exchangeRate Decimal  @default(1) @db.Decimal(14, 6)
+  belgeNo      String?
+  seriNo       String?
+  faturaTarihi DateTime?
+  sellerVkn    String?
+  buyerVkn     String?
+  vendorName   String?
+  customerName String?
+  totalAmount  Decimal? @db.Decimal(14, 2)
+
+  ocrStatus    String   @default("PENDING")
+  ocrEngine    String?
+  ocrRawText   String?  @db.Text
+  ocrConfidence Float?
+  ocrData      Json?
+
+  approvedBy   String?
+  approvedAt   DateTime?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines        InvoiceAccountingLine[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, taxpayerId, createdAt])
+  @@index([tenantId, documentType, createdAt])
+  @@index([imageHash])
+  @@map("invoice_accounting_documents")
+}
+
+model InvoiceAccountingLine {
+  id          String   @id @default(cuid())
+  documentId  String
+  group       String   @default("matrah") // matrah | vergi | cari | iskonto | kesinti
+  accountCode String?
+  description String?
+  rate        String?
+  debit       Decimal  @default(0) @db.Decimal(14, 2)
+  credit      Decimal  @default(0) @db.Decimal(14, 2)
+  orderNo     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  document    InvoiceAccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, orderNo])
+  @@map("invoice_accounting_lines")
+}
+
 model Arac {
   id          String   @id @default(cuid())
   tenantId    String

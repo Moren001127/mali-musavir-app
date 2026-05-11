@@ -45,6 +45,7 @@ type AccountingLine = {
 
 type DraftInvoice = {
   id: string;
+  backendId?: string;
   file: File;
   previewUrl: string;
   previewType: 'image' | 'pdf' | 'other';
@@ -62,7 +63,7 @@ type DraftInvoice = {
   customerName: string;
   total: string;
   lines: AccountingLine[];
-  status: 'bekliyor' | 'ocr' | 'hazir' | 'kontrol';
+  status: 'bekliyor' | 'ocr' | 'hazir' | 'kontrol' | 'onaylandi';
 };
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -115,6 +116,36 @@ const defaultLinesFromOcr = (detected?: OcrDetected): AccountingLine[] => {
   return lines;
 };
 
+const fromApiLine = (line: any): AccountingLine => ({
+  id: line.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  group: line.group || 'matrah',
+  accountCode: line.accountCode || '',
+  description: line.description || '',
+  rate: line.rate || '',
+  debit: money(line.debit),
+  credit: money(line.credit),
+});
+
+const applyApiDocument = (draft: DraftInvoice, doc: any): DraftInvoice => ({
+  ...draft,
+  backendId: doc.id,
+  source: doc.source === 'mobile' ? 'manual-okc' : draft.source,
+  documentType: doc.documentType || draft.documentType,
+  invoiceKind: doc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış',
+  currency: doc.currency || draft.currency,
+  exchangeRate: doc.exchangeRate ? String(doc.exchangeRate).replace('.', ',') : draft.exchangeRate,
+  date: doc.faturaTarihi ? String(doc.faturaTarihi).slice(0, 10) : draft.date,
+  serial: doc.seriNo || draft.serial,
+  number: doc.belgeNo || draft.number,
+  buyerVkn: doc.buyerVkn || draft.buyerVkn,
+  sellerVkn: doc.sellerVkn || draft.sellerVkn,
+  vendorName: doc.vendorName || draft.vendorName,
+  customerName: doc.customerName || draft.customerName,
+  total: money(doc.totalAmount),
+  lines: Array.isArray(doc.lines) && doc.lines.length ? doc.lines.map(fromApiLine) : draft.lines,
+  status: doc.status === 'APPROVED' ? 'onaylandi' : doc.status === 'READY' ? 'hazir' : 'kontrol',
+});
+
 function blankDraft(file: File, previewUrl: string): DraftInvoice {
   const isPdf = file.type === 'application/pdf';
   return {
@@ -146,6 +177,7 @@ export default function FaturaMuhasebelestirmePage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
 
@@ -193,46 +225,83 @@ export default function FaturaMuhasebelestirmePage() {
   };
 
   const runOcr = async () => {
-    const imageDrafts = drafts.filter((d) => d.previewType === 'image');
-    if (!imageDrafts.length) {
-      toast.error('OCR için en az bir görsel yükleyin');
+    const uploadableDrafts = drafts.filter((d) => !d.backendId);
+    if (!uploadableDrafts.length) {
+      toast.info('Tüm belgeler zaten kalıcı kuyruğa alındı');
       return;
     }
     setScanning(true);
-    setDrafts((prev) => prev.map((d) => (d.previewType === 'image' ? { ...d, status: 'ocr' } : d)));
+    setDrafts((prev) => prev.map((d) => (!d.backendId ? { ...d, status: 'ocr' } : d)));
     try {
       const fd = new FormData();
-      imageDrafts.forEach((d) => fd.append('images', d.file));
-      const donem = new Date().toISOString().slice(0, 7);
-      fd.append('donem', donem);
-      const { data } = await api.post('/fis-yazdirma/scan', fd, {
+      uploadableDrafts.forEach((d) => fd.append('files', d.file));
+      fd.append('source', 'manual-web');
+      fd.append('documentType', 'OKC_FIS');
+      fd.append('invoiceKind', 'ALIS');
+      const { data } = await api.post('/fatura-muhasebelestirme/documents/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      const detected: OcrDetected[] = data?.detected || [];
-      const byName = new Map(detected.map((r) => [r.filename, r]));
+      const documents: any[] = data?.documents || [];
+      const byName = new Map(documents.map((doc) => [doc.originalName, doc]));
       setDrafts((prev) =>
         prev.map((d) => {
           const hit = byName.get(d.file.name);
-          if (!hit) return d.previewType === 'image' ? { ...d, status: 'kontrol' } : d;
-          const number = hit.belge_no || d.number;
-          return {
-            ...d,
-            status: 'hazir',
-            date: hit.date || d.date,
-            number,
-            vendorName: hit.cari || d.vendorName,
-            sellerVkn: hit.vergi_no || d.sellerVkn,
-            total: money(hit.toplam),
-            lines: defaultLinesFromOcr(hit),
-          };
+          if (!hit) return !d.backendId ? { ...d, status: 'kontrol' } : d;
+          return applyApiDocument(d, hit);
         }),
       );
-      toast.success(`${detected.length} belge OCR ile okundu`);
+      toast.success(`${documents.length} belge kalıcı kuyruğa alındı`);
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || e?.message || 'OCR tamamlanamadı');
+      toast.error(e?.response?.data?.message || e?.message || 'Belgeler kaydedilemedi');
       setDrafts((prev) => prev.map((d) => (d.status === 'ocr' ? { ...d, status: 'kontrol' } : d)));
     } finally {
       setScanning(false);
+    }
+  };
+
+  const saveSelected = async (approve = false) => {
+    if (!selected) return;
+    if (!selected.backendId) {
+      toast.error('Önce OCR Oku ile belgeyi kuyruğa alın');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        documentType: selected.documentType,
+        invoiceKind: selected.invoiceKind === 'Satış' ? 'SATIS' : 'ALIS',
+        currency: selected.currency,
+        exchangeRate: selected.exchangeRate,
+        belgeNo: selected.number,
+        seriNo: selected.serial,
+        faturaTarihi: selected.date,
+        sellerVkn: selected.sellerVkn,
+        buyerVkn: selected.buyerVkn,
+        vendorName: selected.vendorName,
+        customerName: selected.customerName,
+        totalAmount: selected.total,
+        status: 'READY',
+        lines: selected.lines.map(({ group, accountCode, description, rate, debit, credit }) => ({
+          group,
+          accountCode,
+          description,
+          rate,
+          debit,
+          credit,
+        })),
+      };
+      const { data } = await api.patch(`/fatura-muhasebelestirme/documents/${selected.backendId}`, payload);
+      let doc = data;
+      if (approve) {
+        const res = await api.post(`/fatura-muhasebelestirme/documents/${selected.backendId}/approve`);
+        doc = res.data;
+      }
+      setDrafts((prev) => prev.map((d) => (d.id === selected.id ? applyApiDocument(d, doc) : d)));
+      toast.success(approve ? 'Belge onaylandı' : 'Taslak kaydedildi');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Kaydetme tamamlanamadı');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -339,8 +408,11 @@ export default function FaturaMuhasebelestirmePage() {
                 <button onClick={removeSelected} disabled={!selected} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 disabled:opacity-40">
                   <Trash2 size={15} /> Sil
                 </button>
-                <button onClick={() => toast.success('Taslak kaydedildi')} disabled={!selected} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
-                  <Save size={15} /> Kaydet
+                <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
+                  {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet
+                </button>
+                <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
+                  <CheckCircle2 size={15} /> Onayla
                 </button>
               </div>
             </div>
