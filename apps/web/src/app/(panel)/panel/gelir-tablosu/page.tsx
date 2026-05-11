@@ -1542,6 +1542,7 @@ function ManuelInput({
     return Number.isFinite(n) ? n : 0;
   };
   const disabled = isLocked || !isEditing;
+  const readOnlySaved = disabled && numericVal > 0 && !isEditing;
 
   return (
     <input
@@ -1567,11 +1568,13 @@ function ManuelInput({
       }}
       disabled={disabled}
       placeholder={isLocked ? 'Kilitli' : isEditing ? '0,00' : 'Düzelt'}
-      className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border disabled:opacity-50"
+      className="w-full px-2 py-1 rounded text-[13px] font-mono text-center outline-none border"
       style={{
-        background: disabled ? 'rgba(34,197,94,0.04)' : 'rgba(96,165,250,0.08)',
-        borderColor: disabled ? 'rgba(34,197,94,0.15)' : 'rgba(96,165,250,0.25)',
-        color: disabled ? 'rgba(34,197,94,0.7)' : '#60a5fa',
+        background: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.012)' : 'rgba(96,165,250,0.08)',
+        borderColor: readOnlySaved ? 'transparent' : disabled ? 'rgba(255,255,255,0.06)' : 'rgba(96,165,250,0.25)',
+        color: readOnlySaved ? AMOUNT_COLOR : disabled ? 'rgba(250,250,249,0.35)' : '#60a5fa',
+        opacity: 1,
+        cursor: readOnlySaved ? 'default' : disabled ? 'not-allowed' : 'text',
       }}
     />
   );
