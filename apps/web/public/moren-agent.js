@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.96';
+  const AGENT_VERSION = '1.36.97';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -976,6 +976,50 @@
     }[job.tip];
     if (!menuLabel) throw new Error(`Bilinmeyen e-arşiv tipi: ${job.tip}`);
 
+    const collectEbelgeWindows = () => {
+      const out = [];
+      const seen = new Set();
+      const visit = (w, label) => {
+        try {
+          if (!w || seen.has(w)) return;
+          void w.document;
+          seen.add(w);
+          out.push({ win: w, label });
+          for (let i = 0; i < (w.frames?.length || 0); i++) {
+            try { visit(w.frames[i], `${label}/${w.frames[i]?.name || i}`); } catch {}
+          }
+        } catch {}
+      };
+      try { visit(window.top || window, 'top'); } catch {}
+      try { visit(window, 'current'); } catch {}
+      return out;
+    };
+
+    const describeEbelgeWindow = (w, fallback) => {
+      try {
+        const fe = w.frameElement;
+        if (fe) return fe.name || fe.id || fallback;
+      } catch {}
+      return fallback;
+    };
+
+    const findEbelgePageContext = () => {
+      for (const item of collectEbelgeWindows()) {
+        try {
+          const doc = item.win.document;
+          const btn = doc?.getElementById('faturalari-getir-btn');
+          if (!btn) continue;
+          return {
+            doc,
+            win: item.win,
+            btn,
+            label: describeEbelgeWindow(item.win, item.label),
+          };
+        } catch {}
+      }
+      return null;
+    };
+
     // Her zaman doğru sayfayı II1a ile aç — "faturalari-getir-btn" hem alış hem satışta
     // var olduğu için sayfa kontrolü güvenilir değil. Yanlış sayfada olabiliriz.
     let frm3 = getLucaFrame('frm3');
@@ -1036,14 +1080,11 @@
       // ÖNCELİK 0: Eğer frm3'te zaten e-arşiv sayfası açıksa menü navigasyonunu ATLA.
       // Kullanıcı Luca'yı bir kez manuel olarak e-Arşiv Alış sayfasında bıraksın yeter.
       const sayfaAcikMi = () => {
-        try {
-          const f3 = getLucaFrame('frm3');
-          if (!f3 || !f3.contentDocument) return false;
-          return !!f3.contentDocument.getElementById('faturalari-getir-btn');
-        } catch { return false; }
+        return !!findEbelgePageContext();
       };
       if (sayfaAcikMi()) {
-        await log(`✅ Sayfa zaten açık (frm3'te faturalari-getir-btn var) — menü navigasyonu atlanıyor`);
+        const ctx = findEbelgePageContext();
+        await log(`✅ Sayfa zaten açık (${ctx?.label || 'frame'} içinde faturalari-getir-btn var) — menü navigasyonu atlanıyor`);
         // navigationDone bayrağı setlemiyoruz; aşağıdaki kod akışı devam etsin
         // ama II1a/menü adımlarını skip et
         await sleep(500);
@@ -1392,17 +1433,20 @@
       }
       await log('⏳ Sayfa yüklenmesi bekleniyor (6sn)…');
       await sleep(6000);
-      // frm3'ü tekrar al (yeniden yüklenmiş olabilir)
-      frm3 = getLucaFrame('frm3');
+      // E-belge ekranı Luca sürümüne/firmaya göre farklı frame'de açılabiliyor.
+      // Sadece frm3'e bakmak yanlış "ekran açılamadı" hatası üretiyordu.
+      let ebelgeContext = findEbelgePageContext();
       // Sayfa açıldığını doğrula
-      if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
+      if (!ebelgeContext) {
         await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
         await sleep(4000);
-        frm3 = getLucaFrame('frm3');
+        ebelgeContext = findEbelgePageContext();
       }
-      if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
+      if (!ebelgeContext) {
         throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli`);
       }
+      await log(`✅ ${menuLabel} ekranı hazır (${ebelgeContext.label || 'frame'})`);
+      frm3 = { contentDocument: ebelgeContext.doc, contentWindow: ebelgeContext.win };
     }
 
     // Tarih hesaplayıcı: ayın son günü, sonraki ay başı, bugün
@@ -1433,12 +1477,12 @@
       await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit} (Sorgu 2 atlandı — seçili ay = bu ay)`);
     }
 
-    // frm3 frame'ini doğrula (yukarıdaki menü navigasyonu ile yüklendi)
-    if (!frm3 || !frm3.contentDocument) {
-      throw new Error('frm3 (e-Arşiv ekranı) yüklenemedi — menü açılmamış olabilir');
+    const ebelgeContext = findEbelgePageContext();
+    if (!ebelgeContext?.doc || !ebelgeContext?.win) {
+      throw new Error('e-Belge ekranı bulunamadı — menü açılmış görünmüyor');
     }
-    const fdoc = frm3.contentDocument;
-    const fwin = frm3.contentWindow;
+    const fdoc = ebelgeContext.doc;
+    const fwin = ebelgeContext.win;
 
     // ZIP intercept: TÜM accessible frame'lerde fetch + XHR + window.open + anchor download
     // hook'la — Luca download'u herhangi bir frame'den fire edebilir.
