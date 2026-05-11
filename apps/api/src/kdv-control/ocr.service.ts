@@ -944,17 +944,17 @@ export class OcrService {
     }
 
     // 2) TR — DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY / DD MM YYYY
-    const tr = s.match(/^(\d{1,2})[.\-\/\s](\d{1,2})[.\-\/\s](\d{4})$/);
+    const tr = s.match(/^(\d{1,2})[.\-\/\s](\d{1,2})[.\-\/\s](\d{2}|\d{4})$/);
     if (tr) {
-      let dd = +tr[1], mo = +tr[2], yy = +tr[3];
+      let dd = +tr[1], mo = +tr[2];
+      const yy = this.normalizeOcrYear(tr[3]);
       // Türk belgeleri DAİMA DD-MM-YYYY. Sadece gün > 12 olduğunda swap mantıklı.
-      if (dd < 1 || mo < 1) return null;
+      if (dd < 1 || mo < 1 || yy == null) return null;
       if (mo > 12 && dd <= 12) {
         // Claude yanlışlıkla US formatı döndü, swap
         [dd, mo] = [mo, dd];
       }
       if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
-      if (yy < 2000 || yy > 2050) return null;
       return `${String(dd).padStart(2, '0')}.${String(mo).padStart(2, '0')}.${yy}`;
     }
 
@@ -976,14 +976,14 @@ export class OcrService {
     if (!text) return null;
     // Öncelik: DD-MM-YYYY, DD.MM.YYYY, DD/MM/YYYY
     const regexes = [
-      /\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})\b/g,
-      /\b(\d{1,2})\s(\d{1,2})\s(\d{4})\b/g,
+      /\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2}|\d{4})\b/g,
+      /\b(\d{1,2})\s(\d{1,2})\s(\d{2}|\d{4})\b/g,
     ];
     for (const re of regexes) {
       for (const m of text.matchAll(re)) {
         let dd = +m[1], mo = +m[2];
-        const yy = +m[3];
-        if (yy < 2000 || yy > 2050) continue;
+        const yy = this.normalizeOcrYear(m[3]);
+        if (yy == null) continue;
         if (mo > 12 && dd <= 12) [dd, mo] = [mo, dd];
         if (mo < 1 || mo > 12 || dd < 1 || dd > 31) continue;
         return `${String(dd).padStart(2, '0')}.${String(mo).padStart(2, '0')}.${yy}`;
@@ -1205,16 +1205,18 @@ export class OcrService {
 
   private extractDate(text: string): string | null {
     // DD - MM - YYYY (boşluklu tire)
-    for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{4})\b/g)) {
+    for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{2}|\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d <= 31 && +mo <= 12 && +y >= 2000 && +y <= 2100)
-        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
+      const yy = this.normalizeOcrYear(y);
+      if (+d <= 31 && +mo <= 12 && yy != null)
+        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${yy}`;
     }
     // DD.MM.YYYY / DD/MM/YYYY
-    for (const m of text.matchAll(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g)) {
+    for (const m of text.matchAll(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{2}|\d{4})\b/g)) {
       const [, d, mo, y] = m;
-      if (+d <= 31 && +mo <= 12 && +y >= 2000 && +y <= 2100)
-        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${y}`;
+      const yy = this.normalizeOcrYear(y);
+      if (+d <= 31 && +mo <= 12 && yy != null)
+        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${yy}`;
     }
     // YYYY-MM-DD
     for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
@@ -1286,6 +1288,14 @@ export class OcrService {
     if (toplamKdv?.[1]) return toplamKdv[1].replace(/\s/g, '');
 
     return null;
+  }
+
+  private normalizeOcrYear(raw: string): number | null {
+    if (!/^\d{2}$|^\d{4}$/.test(raw)) return null;
+    const n = parseInt(raw, 10);
+    if (!Number.isFinite(n)) return null;
+    const year = raw.length === 2 ? 2000 + n : n;
+    return year >= 2000 && year <= 2050 ? year : null;
   }
 
   private extractOkcFisKdvFromAzure(text: string): {
@@ -1935,6 +1945,60 @@ export class OcrService {
       const n = this.parseAmount(matches[matches.length - 1][1]);
       return n > 0 && n < 100_000_000 ? n : null;
     };
+    const extractAmounts = (line: string): number[] =>
+      [...line.matchAll(amountGlobalRe)]
+        .map((m) => this.parseAmount(m[1]))
+        .filter((n) => n > 0 && n < 100_000_000);
+    const findKdvFromSummaryMathLine = (): number | null => {
+      for (const line of lines) {
+        const folded = this.foldTurkishAscii(line);
+        if (!/\bHESAPLANAN\s+K\.?\s*D\.?\s*V\.?\b|\bK\.?\s*D\.?\s*V\.?\b/.test(folded)) continue;
+        if (/TEVKIFAT/.test(folded) || this.isForbiddenKdvAmountLine(line)) continue;
+        const rateMatch = folded.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?/);
+        const rate = rateMatch ? parseInt(rateMatch[1], 10) : null;
+        const amounts = extractAmounts(line).filter((n) => !this.isLikelyStandaloneTaxRate(String(n)));
+        if (!rate || ![1, 8, 10, 18, 20].includes(rate) || amounts.length < 2) continue;
+        for (const candidate of amounts) {
+          const hasMatchingBase = amounts.some((base) =>
+            base > candidate && Math.abs((base * rate / 100) - candidate) <= Math.max(0.05, candidate * 0.03),
+          );
+          if (hasMatchingBase) return candidate;
+        }
+        return amounts[amounts.length - 1] ?? null;
+      }
+      return null;
+    };
+    const findKdvFromTableHeader = (): number | null => {
+      for (let i = 0; i < lines.length; i++) {
+        const folded = this.foldTurkishAscii(lines[i]).replace(/\s+/g, ' ');
+        const kdvIdx = folded.search(/\bKDV\s*TUTAR[II]?\b/);
+        let malIdx = folded.search(/\bMAL\s+HIZMET\b/);
+        let kdvFirst = kdvIdx >= 0 && malIdx >= 0 && kdvIdx < malIdx;
+        if (kdvIdx < 0) continue;
+        if (malIdx < 0) {
+          for (let h = 1; h <= 3 && i + h < lines.length; h++) {
+            const nearbyHeader = this.foldTurkishAscii(lines[i + h]).replace(/\s+/g, ' ');
+            if (/\bMAL\s+HIZMET\b/.test(nearbyHeader)) {
+              malIdx = 0;
+              kdvFirst = true;
+              break;
+            }
+          }
+        }
+        if (malIdx < 0) continue;
+
+        for (let j = 0; j <= 4 && i + j < lines.length; j++) {
+          const row = lines[i + j];
+          if (j > 0 && /\b(?:HESAPLANAN|VERGILER|ODENECEK|TOPLAM\s+ISKONTO)\b/i.test(this.foldTurkishAscii(row))) {
+            break;
+          }
+          const amounts = extractAmounts(row);
+          if (amounts.length >= 2) return kdvFirst ? amounts[0] : amounts[amounts.length - 1];
+          if (j > 0 && amounts.length === 1) return amounts[0];
+        }
+      }
+      return null;
+    };
     const findExplicitKdvAmount = (): number | null => {
       for (const line of lines) {
         if (/TEVK[İI]FAT/i.test(line)) continue;
@@ -1960,7 +2024,15 @@ export class OcrService {
         const same = options.preferFirst
           ? parseLineAmount(cleanedSame, { allowMatrah })
           : parseLastAmount(cleanedSame, { allowMatrah });
-        if (same != null) return same;
+        const sameAmounts = extractAmounts(cleanedSame);
+        const firstAmountIndex = cleanedSame.search(/\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2}/);
+        const percentIndex = cleanedSame.indexOf('%');
+        const sameLooksLikeMatrahInRateParen =
+          options.skipMatrah &&
+          sameAmounts.length === 1 &&
+          firstAmountIndex >= 0 &&
+          percentIndex > firstAmountIndex;
+        if (same != null && !sameLooksLikeMatrahInRateParen) return same;
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
           const next = lines[i + j];
           if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
@@ -1985,12 +2057,14 @@ export class OcrService {
       return null;
     };
 
-    const explicitKdv = findExplicitKdvAmount() ?? findAmountNear(
+    const explicitKdv = findKdvFromSummaryMathLine() ?? findKdvFromTableHeader() ?? findExplicitKdvAmount() ?? findAmountNear(
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
     );
-    const oranMatch = normalized.match(/K\.?\s*D\.?\s*V\.?\s*(?:\(\s*)?%?\s*(\d{1,2})|%\s*(\d{1,2})\s*K\.?\s*D\.?\s*V\.?/i);
-    const oran = oranMatch ? parseInt(oranMatch[1] || oranMatch[2], 10) : null;
+    const oranMatch =
+      normalized.match(/K\.?\s*D\.?\s*V\.?[^\n%]{0,120}%\s*(\d{1,2})(?:[.,]\d{1,2})?/i)
+      ?? normalized.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?\s*K\.?\s*D\.?\s*V\.?/i);
+    const oran = oranMatch ? parseInt(oranMatch[1], 10) : null;
 
     if (explicitKdv != null && explicitKdv > 0) {
       return { kdv: explicitKdv, matrah: null, oran };
@@ -2379,11 +2453,15 @@ export class OcrService {
       const sep = `[\\s.\\-\\/]{0,3}`;
       const dateRegex = new RegExp(`\\b${dd}${sep}${mo}${sep}${yy}\\b`);
       if (dateRegex.test(text)) return true;
+      const yyShort = yy.slice(-2);
+      const shortDateRegex = new RegExp(`\\b${dd}${sep}${mo}${sep}${yyShort}\\b`);
+      if (shortDateRegex.test(text)) return true;
       // Fallback: tarihin canonical formunu (ddmmyyyy) tüm non-digit temizlendikten
       // sonra Azure text'inde ara — separator ne olursa olsun yakalar
       const canonical = `${dd}${mo}${yy}`;
+      const canonicalShort = `${dd}${mo}${yyShort}`;
       const normalizedText = text.replace(/[^0-9]/g, '');
-      return normalizedText.includes(canonical);
+      return normalizedText.includes(canonical) || normalizedText.includes(canonicalShort);
     }
 
     if (field === 'amount') {

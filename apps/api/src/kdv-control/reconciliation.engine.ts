@@ -237,14 +237,15 @@ export class ReconciliationEngine {
         const hardRateMismatch = reasons.some((r) =>
           /KDV\s+oran/i.test(r) || (/oran/i.test(r) && /bulunamad/i.test(r)),
         );
-        const strongTwoOfThreeAllowed = strongTwoOfThree && !hardBelgeNoMismatch;
         const belgeNoTamUyumsuz = hardBelgeNoMismatch || hardRateMismatch;
         const saticiTamUyumsuz = reasons.some((r) =>
           /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
         );
         const ambiguousSellerMissing = !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
-        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThreeAllowed) && !belgeNoTamUyumsuz && !saticiTamUyumsuz && !ambiguousSellerMissing) {
+        const belgeNoMismatchAllowedForReview = strongTwoOfThree && hardBelgeNoMismatch && !hardRateMismatch;
+        const blocksPair = (belgeNoTamUyumsuz && !belgeNoMismatchAllowedForReview) || saticiTamUyumsuz || ambiguousSellerMissing;
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !blocksPair) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -1224,9 +1225,11 @@ export class ReconciliationEngine {
 
   private parseTrDate(s: string): Date | null {
     // DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY
-    const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})$/);
+    const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2}|\d{4})$/);
     if (m) {
-      const d = new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+      const year = m[3].length === 2 ? 2000 + parseInt(m[3], 10) : parseInt(m[3], 10);
+      if (year < 2000 || year > 2050) return null;
+      const d = new Date(`${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
       return isNaN(d.getTime()) ? null : d;
     }
     // YYYY-MM-DD
