@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.01';
+  const AGENT_VERSION = '1.37.02';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -83,6 +83,238 @@
     }
     localStorage.setItem('moren_agent_token', TOKEN);
   }
+
+  let lucaCredentialCache = null;
+  let lucaCredentialCacheAt = 0;
+  let activeCaptchaChallengeId = '';
+  let activeCaptchaSignature = '';
+  let lucaLoginBusy = false;
+
+  async function getLucaCredentialForAgent() {
+    if (lucaCredentialCache && Date.now() - lucaCredentialCacheAt < 5 * 60 * 1000) {
+      return lucaCredentialCache;
+    }
+    const r = await fetch(API + '/agent/luca/credential', {
+      headers: { 'X-Agent-Token': TOKEN },
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    lucaCredentialCache = data?.saved ? data : null;
+    lucaCredentialCacheAt = Date.now();
+    return lucaCredentialCache;
+  }
+
+  function visible(el) {
+    try {
+      const r = el.getBoundingClientRect();
+      const s = el.ownerDocument.defaultView.getComputedStyle(el);
+      return r.width > 2 && r.height > 2 && s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function setNativeValue(el, value) {
+    try {
+      const proto = Object.getPrototypeOf(el);
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (desc && desc.set) desc.set.call(el, value);
+      else el.value = value;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+    } catch {
+      try { el.value = value; } catch {}
+    }
+  }
+
+  function lucaDocuments() {
+    const docs = [];
+    const add = (w) => {
+      try {
+        if (w?.document && !docs.includes(w.document)) docs.push(w.document);
+        for (const fr of Array.from(w?.frames || [])) add(fr);
+      } catch {}
+    };
+    add(window.top || window);
+    add(window);
+    return docs;
+  }
+
+  function findInputByHints(doc, hints, opts = {}) {
+    const inputs = Array.from(doc.querySelectorAll('input, textarea')).filter((el) => {
+      const type = String(el.getAttribute('type') || '').toLowerCase();
+      if (opts.password && type !== 'password') return false;
+      if (!opts.password && type === 'password') return false;
+      if (['hidden', 'submit', 'button', 'checkbox', 'radio'].includes(type)) return false;
+      if (!visible(el)) return false;
+      const hay = [
+        el.name,
+        el.id,
+        el.placeholder,
+        el.getAttribute('aria-label'),
+        el.getAttribute('title'),
+        el.getAttribute('autocomplete'),
+      ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+      return hints.some((h) => hay.includes(h));
+    });
+    return inputs[0] || null;
+  }
+
+  function findLoginFormParts() {
+    for (const doc of lucaDocuments()) {
+      const password = findInputByHints(doc, ['sifre', 'şifre', 'password', 'parola'], { password: true })
+        || Array.from(doc.querySelectorAll('input[type=password]')).find(visible);
+      if (!password) continue;
+      const uyeNo = findInputByHints(doc, ['uye', 'üye', 'musteri', 'müşteri', 'firma no', 'abone']);
+      const username = findInputByHints(doc, ['kullanici', 'kullanıcı', 'username', 'user', 'mail', 'email', 'kod']);
+      const buttons = Array.from(doc.querySelectorAll('button, input[type=submit], input[type=button], a')).filter(visible);
+      const submit = buttons.find((b) => /giris|giriş|login|tamam|devam|oturum/i.test(String(b.textContent || b.value || b.title || '')))
+        || buttons.find((b) => String(b.type || '').toLowerCase() === 'submit')
+        || null;
+      return { doc, uyeNo, username, password, submit };
+    }
+    return null;
+  }
+
+  async function fillLucaLoginFromPortal() {
+    if (!isLucaOrigin() || window !== window.top || lucaLoginBusy) return false;
+    const parts = findLoginFormParts();
+    if (!parts?.password) return false;
+    lucaLoginBusy = true;
+    try {
+      const cred = await getLucaCredentialForAgent();
+      if (!cred?.saved) return false;
+      if (parts.uyeNo && cred.uyeNo) setNativeValue(parts.uyeNo, cred.uyeNo);
+      if (parts.username && cred.username) setNativeValue(parts.username, cred.username);
+      setNativeValue(parts.password, cred.password || '');
+      await sleep(250);
+      if (parts.submit) parts.submit.click();
+      else parts.password.form?.requestSubmit?.();
+      setStatus('Luca girisi yapiliyor; guvenlik kodu gerekirse portalda acilacak');
+      return true;
+    } catch (e) {
+      console.warn('[Moren] Luca credential autofill hata:', e?.message);
+      return false;
+    } finally {
+      setTimeout(() => { lucaLoginBusy = false; }, 4000);
+    }
+  }
+
+  async function imageElementToDataUrl(img) {
+    const src = img?.currentSrc || img?.src || '';
+    if (!src) return null;
+    if (src.startsWith('data:image/')) return src;
+    const url = new URL(src, img.ownerDocument.location.href).toString();
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function findLucaCaptchaParts() {
+    for (const doc of lucaDocuments()) {
+      const imgs = Array.from(doc.querySelectorAll('img')).filter(visible);
+      const image = imgs.find((img) => {
+        const hay = [img.src, img.alt, img.title, img.id, img.className].join(' ').toLocaleLowerCase('tr-TR');
+        return /captcha|guvenlik|güvenlik|dogrulama|doğrulama|kod/.test(hay);
+      }) || imgs.find((img) => {
+        const r = img.getBoundingClientRect();
+        return r.width >= 45 && r.width <= 260 && r.height >= 18 && r.height <= 120;
+      });
+      if (!image) continue;
+      const input = findInputByHints(doc, ['captcha', 'guvenlik', 'güvenlik', 'dogrulama', 'doğrulama', 'kod'])
+        || Array.from(doc.querySelectorAll('input[type=text], input:not([type])')).filter(visible).slice(-1)[0];
+      if (!input) continue;
+      const buttons = Array.from(doc.querySelectorAll('button, input[type=submit], input[type=button], a')).filter(visible);
+      const submit = buttons.find((b) => /tamam|devam|giris|giriş|onay|ok|login/i.test(String(b.textContent || b.value || b.title || '')))
+        || buttons.find((b) => String(b.type || '').toLowerCase() === 'submit')
+        || null;
+      return { doc, image, input, submit };
+    }
+    return null;
+  }
+
+  async function bridgeLucaCaptchaToPortal(job, log = null) {
+    if (!isLucaOrigin() || window !== window.top) return false;
+    const parts = findLucaCaptchaParts();
+    if (!parts?.image || !parts?.input) return false;
+    const signature = `${parts.image.src || ''}|${parts.input.name || parts.input.id || ''}|${location.href}`;
+    try {
+      if (!activeCaptchaChallengeId || activeCaptchaSignature !== signature) {
+        const captchaImage = await imageElementToDataUrl(parts.image);
+        if (!captchaImage || !captchaImage.startsWith('data:image/')) return false;
+        const r = await fetch(API + '/agent/luca/captcha', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+          body: JSON.stringify({
+            jobId: job?.id || null,
+            deviceId: DEVICE_ID,
+            captchaImage,
+            expiresInSec: 180,
+            context: {
+              url: location.href,
+              title: document.title,
+              jobTip: job?.tip || null,
+              donem: job?.donem || null,
+            },
+          }),
+        });
+        if (!r.ok) return false;
+        const data = await r.json();
+        activeCaptchaChallengeId = data?.challenge?.id || '';
+        activeCaptchaSignature = signature;
+        setStatus('Luca guvenlik kodu portalda bekleniyor');
+        if (log) await log('Luca guvenlik kodu portalda bekleniyor');
+      }
+      const started = Date.now();
+      while (Date.now() - started < 180000 && activeCaptchaChallengeId) {
+        await sleep(1500);
+        const ansRes = await fetch(API + `/agent/luca/captcha/${activeCaptchaChallengeId}/answer`, {
+          headers: { 'X-Agent-Token': TOKEN },
+        });
+        if (!ansRes.ok) continue;
+        const ans = await ansRes.json();
+        if (ans.status === 'cancelled' || ans.status === 'expired') {
+          activeCaptchaChallengeId = '';
+          activeCaptchaSignature = '';
+          return true;
+        }
+        if (ans.status === 'answered' && ans.answer) {
+          setNativeValue(parts.input, ans.answer);
+          await sleep(200);
+          if (parts.submit) parts.submit.click();
+          else parts.input.form?.requestSubmit?.();
+          await fetch(API + `/agent/luca/captcha/${activeCaptchaChallengeId}/consume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ ok: true }),
+          }).catch(() => {});
+          activeCaptchaChallengeId = '';
+          activeCaptchaSignature = '';
+          setStatus('Luca guvenlik kodu uygulandi');
+          if (log) await log('Luca guvenlik kodu uygulandi');
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('[Moren] captcha bridge hata:', e?.message);
+    }
+    return true;
+  }
+
+  async function keepLucaLoginAndCaptchaReady() {
+    if (!isLucaOrigin() || window !== window.top) return;
+    await bridgeLucaCaptchaToPortal(null).catch(() => {});
+    await fillLucaLoginFromPortal().catch(() => {});
+  }
+  setInterval(keepLucaLoginAndCaptchaReady, 3000);
+  setTimeout(keepLucaLoginAndCaptchaReady, 1200);
 
   // === MIHSAP TOKEN SENKRONİZASYONU ===
   // MIHSAP JWT'sini backend'e gönder (fatura çekme için gerekli)

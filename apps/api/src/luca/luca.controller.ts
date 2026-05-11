@@ -272,6 +272,12 @@ export class LucaController {
     return { ok: true };
   }
 
+  @Get('agent/luca/credential')
+  async getCredentialForAgent(@Headers('x-agent-token') agentToken: string) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.autoScraper.getCredentialForAgent(tenantId);
+  }
+
   @Get('agent/luca/jobs/pending')
   async pendingJobs(
     @Headers('x-agent-token') agentToken: string,

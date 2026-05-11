@@ -8,6 +8,7 @@
 const { PrismaClient } = require('@prisma/client');
 
 const MIGRATION_NAME = '20260428_earsiv_fatura';
+const LUCA_CAPTCHA_MIGRATION_NAME = '20260511210000_luca_captcha_challenges';
 
 const SCHEMA_SQL = `
 DO $$ BEGIN
@@ -100,6 +101,40 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
   ON "earsiv_faturalar"("tenantId", "taxpayerId", "donem", "tip", "belgeKaynak");
 `;
 
+const LUCA_CAPTCHA_SQL = `
+CREATE TABLE IF NOT EXISTS "luca_captcha_challenges" (
+  "id" TEXT NOT NULL,
+  "tenantId" TEXT NOT NULL,
+  "jobId" TEXT,
+  "deviceId" TEXT,
+  "status" TEXT NOT NULL DEFAULT 'pending',
+  "captchaImage" TEXT NOT NULL,
+  "answer" TEXT,
+  "context" JSONB,
+  "requestedBy" TEXT,
+  "answeredBy" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "expiresAt" TIMESTAMP(3),
+  "answeredAt" TIMESTAMP(3),
+  "consumedAt" TIMESTAMP(3),
+  CONSTRAINT "luca_captcha_challenges_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "luca_captcha_challenges_tenantId_status_createdAt_idx"
+  ON "luca_captcha_challenges"("tenantId", "status", "createdAt");
+CREATE INDEX IF NOT EXISTS "luca_captcha_challenges_tenantId_deviceId_status_idx"
+  ON "luca_captcha_challenges"("tenantId", "deviceId", "status");
+CREATE INDEX IF NOT EXISTS "luca_captcha_challenges_jobId_idx"
+  ON "luca_captcha_challenges"("jobId");
+
+ALTER TABLE "luca_fetch_jobs"
+  ADD COLUMN IF NOT EXISTS "targetDeviceId" TEXT;
+
+CREATE INDEX IF NOT EXISTS "luca_fetch_jobs_tenantId_targetDeviceId_status_idx"
+  ON "luca_fetch_jobs"("tenantId", "targetDeviceId", "status");
+`;
+
 (async () => {
   if (!process.env.DATABASE_URL) {
     console.log('[startup] DATABASE_URL yok, atlanıyor');
@@ -123,6 +158,13 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
       `DELETE FROM _prisma_migrations WHERE migration_name = '${MIGRATION_NAME}' AND finished_at IS NULL`,
     );
     if (r1 > 0) console.log(`[startup] ${MIGRATION_NAME} başarısız kaydı silindi (${r1})`);
+
+    const lucaCaptchaFailed = await prisma.$executeRawUnsafe(
+      `DELETE FROM _prisma_migrations WHERE migration_name = '${LUCA_CAPTCHA_MIGRATION_NAME}' AND finished_at IS NULL`,
+    );
+    if (lucaCaptchaFailed > 0) {
+      console.log(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} basarisiz kaydi silindi (${lucaCaptchaFailed})`);
+    }
 
     // 3) Eski yarım kayıtlar
     const r2 = await prisma.$executeRawUnsafe(`
@@ -287,6 +329,21 @@ CREATE INDEX IF NOT EXISTS "earsiv_faturalar_donem_tip_kaynak_idx"
       }
     }
     console.log(`[startup] earsiv patch: ${patchOk} ok, ${patchFail} fail (${patches.length} total)`);
+
+    try {
+      await prisma.$executeRawUnsafe(LUCA_CAPTCHA_SQL);
+      const checksum = require('crypto').createHash('sha256').update(LUCA_CAPTCHA_SQL).digest('hex');
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO _prisma_migrations (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
+        SELECT gen_random_uuid()::text, '${checksum}', NOW(), '${LUCA_CAPTCHA_MIGRATION_NAME}', NULL, NULL, NOW(), 1
+        WHERE NOT EXISTS (
+          SELECT 1 FROM _prisma_migrations WHERE migration_name = '${LUCA_CAPTCHA_MIGRATION_NAME}'
+        )
+      `);
+      console.log(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} schema garanti edildi`);
+    } catch (e) {
+      console.error(`[startup] ${LUCA_CAPTCHA_MIGRATION_NAME} patch failed: ${e.message}`);
+    }
   } catch (e) {
     console.error('[startup] HATA:', e.message);
     // Devam et, deploy'u durdurma

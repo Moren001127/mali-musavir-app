@@ -153,6 +153,25 @@ export class LucaAutoScraperService {
     };
   }
 
+  async getCredentialForAgent(tenantId: string) {
+    const c = await (this.prisma as any).lucaCredential.findUnique({
+      where: { tenantId },
+      select: {
+        uyeNo: true,
+        username: true,
+        encryptedPassword: true,
+        isActive: true,
+      },
+    });
+    if (!c || !c.isActive) return { saved: false };
+    return {
+      saved: true,
+      uyeNo: c.uyeNo,
+      username: c.username,
+      password: decrypt(c.encryptedPassword),
+    };
+  }
+
   async deleteCredential(tenantId: string) {
     await (this.prisma as any).lucaCredential.deleteMany({ where: { tenantId } });
     return { deleted: true };
