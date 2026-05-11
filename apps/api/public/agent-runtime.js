@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.36.94';
+  const AGENT_VERSION = '1.36.95';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -1025,6 +1025,11 @@
 
       const mukellefTipi = detectMukellefTipi();
       const ii1aId = II1A_CODES[mukellefTipi]?.[job.tip];
+      const ii1aIds = [...new Set([
+        ii1aId,
+        II1A_CODES.bilanco?.[job.tip],
+        II1A_CODES.isletme?.[job.tip],
+      ].filter(Boolean))];
       await log(`📊 Mükellef tipi: ${mukellefTipi.toUpperCase()} → II1a kodu: ${ii1aId}`);
       if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip} (${mukellefTipi})`);
 
@@ -1047,6 +1052,67 @@
       } else {
         var __navSkip = false;
       }
+
+      const waitForEbelgePage = async (maxMs = 12000) => {
+        const started = Date.now();
+        while (Date.now() - started < maxMs) {
+          await throwIfCancelled();
+          if (sayfaAcikMi()) return true;
+          await sleep(400);
+        }
+        return false;
+      };
+
+      const findII1aCandidates = () => {
+        const found = [];
+        const seen = new Set();
+        const push = (win, src) => {
+          try {
+            if (!win || seen.has(win)) return;
+            seen.add(win);
+            if (typeof win.II1a === 'function') found.push({ fn: win.II1a.bind(win), src });
+          } catch {}
+        };
+        for (const name of ['frm2','frm5','frm3','frm4','frm1','frm6','frm7']) {
+          const fr = getLucaFrame(name);
+          try { push(fr?.contentWindow, name); } catch {}
+        }
+        try { push(window, 'top'); } catch {}
+        try { push(parent, 'parent'); } catch {}
+        try { push(top, 'window.top'); } catch {}
+        return found;
+      };
+
+      const tryOpenByII1a = async (code, reason) => {
+        const candidates = findII1aCandidates();
+        if (!candidates.length) {
+          await log(`⚠ II1a fonksiyonu bulunamadı (${reason})`);
+          return false;
+        }
+        const fakeEvent = {
+          type: 'click', target: null, currentTarget: null, srcElement: null,
+          preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
+          returnValue: true, cancelBubble: false,
+        };
+        for (const candidate of candidates) {
+          const attempts = [
+            [fakeEvent, code, ''],
+            [fakeEvent, code],
+            [code, ''],
+            [code],
+          ];
+          for (const args of attempts) {
+            try {
+              await log(`🧭 II1a ${candidate.src} → ${code} (${reason})`);
+              candidate.fn(...args);
+              if (await waitForEbelgePage(8000)) return true;
+            } catch (e) {
+              await log(`⚠ II1a ${candidate.src} hata: ${String(e?.message || e).slice(0, 90)}`);
+            }
+          }
+        }
+        return false;
+      };
 
       await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
       // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
@@ -1079,7 +1145,7 @@
       }
       // Önce II1a dene; başarısız olursa text-based menü click fallback
       let basariliAcildi = false;
-      if (II1aFn) {
+      if (!__navSkip && II1aFn) {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
         try {
           // Sahte event obj — bazı Luca buildlerinde gerek
@@ -1089,10 +1155,22 @@
             returnValue: true, cancelBubble: false,
           };
           II1aFn(fakeEvent, ii1aId, '');
-          basariliAcildi = true;
+          basariliAcildi = await waitForEbelgePage(8000);
+          if (!basariliAcildi) {
+            await log(`⚠ II1a('${ii1aId}') çağrıldı ama ${menuLabel} ekranı açılmadı`);
+          }
         } catch (e) {
           await log(`⚠ II1a('${ii1aId}') başarısız: ${e?.message || e} — fallback: text-based menü click`);
           basariliAcildi = false;
+        }
+      }
+      if (__navSkip) {
+        basariliAcildi = true;
+      } else if (!basariliAcildi) {
+        await log(`🔁 Alternatif II1a denemeleri: ${ii1aIds.join(', ')}`);
+        for (const altId of ii1aIds) {
+          basariliAcildi = await tryOpenByII1a(altId, altId === ii1aId ? 'birincil tekrar' : 'alternatif kod');
+          if (basariliAcildi) break;
         }
       }
       if (!basariliAcildi) {
@@ -1229,6 +1307,13 @@
         try {
           // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
           await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
+        } catch (e) {
+          await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; direkt II1a kodları tekrar deneniyor`);
+          for (const altId of ii1aIds) {
+            basariliAcildi = await tryOpenByII1a(altId, 'metin menü sonrası');
+            if (basariliAcildi) break;
+          }
+          if (!basariliAcildi) throw e;
         } finally {
           if (hoverTimer) clearInterval(hoverTimer);
         }
@@ -1242,6 +1327,9 @@
         await log('⚠ Sayfa hala açılmadı — 4sn ek bekleme');
         await sleep(4000);
         frm3 = getLucaFrame('frm3');
+      }
+      if (!frm3 || !frm3.contentDocument || !frm3.contentDocument.getElementById('faturalari-getir-btn')) {
+        throw new Error(`${menuLabel} ekranı açılamadı; Luca oturumu, firma yetkisi veya menü yapısı kontrol edilmeli`);
       }
     }
 
