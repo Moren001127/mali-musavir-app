@@ -61,6 +61,17 @@ export default function FirmaHafizasiPage() {
     },
   });
 
+  const importMihsapMut = useMutation({
+    mutationFn: () => vendorMemoryApi.importMihsapEvents(),
+    onSuccess: (data: any) => {
+      toast.success(data?.mesaj || 'Mihsap geçmişi hafızaya aktarıldı');
+      qc.invalidateQueries({ queryKey: ['vendor-memory'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Mihsap hafıza aktarım hatası');
+    },
+  });
+
   const renderMukellefOzet = (row: VendorMemoryRow): JSX.Element => {
     const list = row.mukellefler || [];
     if (list.length === 0) return <span className="italic" style={{ color: 'rgba(250,250,249,0.4)' }}>-</span>;
@@ -106,6 +117,16 @@ export default function FirmaHafizasiPage() {
             AI her mükellefin firma için geçmiş kararlarını ayrı öğrenir. Sapma olursa onay kuyruğuna düşer.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => importMihsapMut.mutate()}
+            disabled={importMihsapMut.isPending}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ background: '#d4b876', color: '#0c0a09' }}
+          >
+            <RefreshCw size={14} className={importMihsapMut.isPending ? 'animate-spin' : ''} />
+            {importMihsapMut.isPending ? 'Aktarılıyor...' : 'Mihsap Geçmişini Aktar'}
+          </button>
         <button
           onClick={() => {
             if (confirm('Tüm "(ortak — mükellef atanmamış)" kayıtları, geçmiş işlem verilerine bakılarak mükelleflere bağlanacak. Devam edilsin mi?')) {
@@ -122,6 +143,7 @@ export default function FirmaHafizasiPage() {
       </div>
 
       {/* Arama + Mükellef filtresi */}
+      </div>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[300px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(250,250,249,0.4)' }} />

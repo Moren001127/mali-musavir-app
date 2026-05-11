@@ -54,6 +54,21 @@ export class VendorMemoryController {
   }
 
   /** Tek firma detayi — tum kategorilerin dokumu */
+  @Post('import-mihsap-events')
+  async importMihsapEvents(@Req() req: any, @Query('limit') limit?: string) {
+    const tenantId = req?.user?.tenantId;
+    if (!tenantId) throw new BadRequestException('tenantId yok');
+    const result = await this.service.importFromMihsapEvents(tenantId, {
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    return {
+      ok: true,
+      mesaj: `${result.imported} Mihsap geçmiş işlemi firma hafızasına aktarıldı. ` +
+        `${result.skipped} kayıt atlandı.`,
+      ...result,
+    };
+  }
+
   @Get(':firmaKimlikNo')
   detail(@Req() req: any, @Param('firmaKimlikNo') firmaKimlikNo: string) {
     const tenantId = req?.user?.tenantId;

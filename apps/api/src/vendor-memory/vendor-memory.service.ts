@@ -420,6 +420,108 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     };
   }
 
+  async importFromMihsapEvents(tenantId: string, opts: { limit?: number } = {}): Promise<{
+    scanned: number;
+    imported: number;
+    skipped: number;
+    missingVendor: number;
+    missingAccount: number;
+    missingTaxpayer: number;
+  }> {
+    const events = await this.prisma.agentEvent.findMany({
+      where: {
+        tenantId,
+        agent: 'mihsap',
+        memoryImportedAt: null,
+        status: { in: ['onaylandi', 'ok', 'basarili'] },
+      },
+      orderBy: { ts: 'asc' },
+      take: Math.min(Math.max(opts.limit || 5000, 1), 20000),
+    });
+
+    let imported = 0;
+    let skipped = 0;
+    let missingVendor = 0;
+    let missingAccount = 0;
+    let missingTaxpayer = 0;
+    const taxpayerNameCache = new Map<string, string | null>();
+
+    for (const event of events as any[]) {
+      const meta = event.meta || {};
+      const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || {};
+      const firmaKimlikNo = this.firstString(
+        meta.firmaKimlikNo,
+        candidate.firmaKimlikNo,
+        this.deepFind(meta, ['firmaKimlikNo', 'firmaVkn', 'vkn', 'tckn']),
+      );
+      const kategori = this.firstString(
+        candidate.hesapKodu,
+        candidate.kategori,
+        meta.finalHesapKodu,
+        event.hesapKodu,
+        Array.isArray(meta.hesapKodlari) ? meta.hesapKodlari[0] : null,
+      );
+      const firmaUnvan = this.firstString(event.firma, meta.firma, candidate.firmaUnvan);
+
+      if (!firmaKimlikNo) {
+        missingVendor++;
+        skipped++;
+        continue;
+      }
+      if (!kategori) {
+        missingAccount++;
+        skipped++;
+        continue;
+      }
+
+      let taxpayerId = this.firstString(meta.mukellefId, candidate.taxpayerId);
+      if (!taxpayerId && event.mukellef) {
+        const key = String(event.mukellef).trim().toLocaleLowerCase('tr-TR');
+        if (!taxpayerNameCache.has(key)) {
+          const tp = await this.prisma.taxpayer.findFirst({
+            where: {
+              tenantId,
+              OR: [
+                { companyName: { equals: event.mukellef, mode: 'insensitive' } },
+                { companyName: { contains: event.mukellef, mode: 'insensitive' } },
+                { firstName: { contains: event.mukellef, mode: 'insensitive' } },
+                { lastName: { contains: event.mukellef, mode: 'insensitive' } },
+              ],
+            },
+            select: { id: true },
+          });
+          taxpayerNameCache.set(key, tp?.id || null);
+        }
+        taxpayerId = taxpayerNameCache.get(key) || undefined;
+      }
+      if (!taxpayerId) missingTaxpayer++;
+
+      await this.recordDecision({
+        tenantId,
+        firmaKimlikNo,
+        firmaUnvan,
+        kararTipi: 'fatura',
+        kategori,
+        altKategori: null,
+        taxpayerId: taxpayerId || null,
+      });
+      await this.prisma.agentEvent.update({
+        where: { id: event.id },
+        data: { memoryImportedAt: new Date() },
+      });
+      imported++;
+    }
+
+    return {
+      scanned: events.length,
+      imported,
+      skipped,
+      missingVendor,
+      missingAccount,
+      missingTaxpayer,
+    };
+  }
+
   /** Yanlış öğrenme durumunu temizleme — tek firmanın tüm hafızasını sil */
   async deleteVendorMemory(tenantId: string, firmaKimlikNo: string): Promise<void> {
     const m = await (this.prisma as any).vendorMemory.findUnique({
@@ -428,6 +530,37 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     });
     if (!m) return;
     await (this.prisma as any).vendorMemory.delete({ where: { id: m.id } });
+  }
+
+  private firstString(...values: any[]): string | undefined {
+    for (const value of values) {
+      if (value === null || value === undefined) continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return undefined;
+  }
+
+  private deepFind(value: any, keys: string[], depth = 0): string | undefined {
+    if (!value || depth > 4) return undefined;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const hit = this.deepFind(item, keys, depth + 1);
+        if (hit) return hit;
+      }
+      return undefined;
+    }
+    if (typeof value !== 'object') return undefined;
+    for (const key of keys) {
+      if (value[key] !== undefined && value[key] !== null && String(value[key]).trim()) {
+        return String(value[key]).trim();
+      }
+    }
+    for (const child of Object.values(value)) {
+      const hit = this.deepFind(child, keys, depth + 1);
+      if (hit) return hit;
+    }
+    return undefined;
   }
 }
 

@@ -75,4 +75,16 @@ export const vendorMemoryApi = {
       eslesmeyenFirmalar: number;
       mukellefBulunamayan: number;
     }>('/vendor-memory/backfill-mukellef').then((r) => r.data),
+
+  importMihsapEvents: () =>
+    api.post<{
+      ok: boolean;
+      mesaj: string;
+      scanned: number;
+      imported: number;
+      skipped: number;
+      missingVendor: number;
+      missingAccount: number;
+      missingTaxpayer: number;
+    }>('/vendor-memory/import-mihsap-events').then((r) => r.data),
 };

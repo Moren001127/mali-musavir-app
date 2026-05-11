@@ -768,7 +768,13 @@ ${ocr.text.slice(0, 14000)}`;
       },
     });
     if (input.agent === 'mihsap' && normalizedStatus === 'onaylandi') {
-      await this.recordFaturaMemoryAfterSuccessfulSave(tenantId, { ...input, meta: safeMeta }).catch(() => {});
+      const recorded = await this.recordFaturaMemoryAfterSuccessfulSave(tenantId, { ...input, meta: safeMeta }).catch(() => false);
+      if (recorded) {
+        await this.prisma.agentEvent.update({
+          where: { id: event.id },
+          data: { memoryImportedAt: new Date() },
+        }).catch(() => {});
+      }
     }
     return event;
   }
@@ -777,7 +783,7 @@ ${ocr.text.slice(0, 14000)}`;
     const meta = input.meta || {};
     const candidate = meta.faturaDecisionCandidate || meta.memoryCandidate || null;
     const kararTipi = candidate?.kararTipi || meta.kararTipi || 'fatura';
-    if (kararTipi !== 'fatura') return;
+    if (kararTipi !== 'fatura') return false;
 
     const firmaKimlikNo = meta.firmaKimlikNo || candidate?.firmaKimlikNo || null;
     const firmaUnvan = input.firma || meta.firma || candidate?.firmaUnvan || null;
@@ -787,7 +793,7 @@ ${ocr.text.slice(0, 14000)}`;
       meta.finalHesapKodu ||
       input.hesapKodu ||
       null;
-    if (!firmaKimlikNo || !kategori) return;
+    if (!firmaKimlikNo || !kategori) return false;
 
     await this.vendorMemory.recordDecision({
       tenantId,
@@ -798,6 +804,7 @@ ${ocr.text.slice(0, 14000)}`;
       altKategori: null,
       taxpayerId: meta.mukellefId || candidate?.taxpayerId || null,
     });
+    return true;
   }
 
   async listEvents(

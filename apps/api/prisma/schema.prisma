@@ -963,10 +963,12 @@ model AgentEvent {
   hesapKodu  String?
   kdv        String?
   meta       Json?
+  memoryImportedAt DateTime?
   ts         DateTime @default(now())
 
   @@index([tenantId, ts])
   @@index([tenantId, agent, ts])
+  @@index([tenantId, memoryImportedAt])
   @@index([tenantId, mukellef])
   @@map("agent_events")
 }
