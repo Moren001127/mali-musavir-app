@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 
 /**
  * Moren AI tool'larının gerçek Prisma sorgularını çalıştıran servis.
@@ -1214,13 +1215,13 @@ export class ToolExecutorService {
     const agent = String(input?.agent || '').trim();
     const action = String(input?.action || '').trim();
     const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
-    const allowedAgents = ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'];
-    const allowedMihsapActions = ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'];
+    const allowedAgents = ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'];
+    const allowedMihsapActions = [...MIHSAP_FATURA_ACTIONS];
     if (!allowedAgents.includes(agent)) return { error: `Desteklenmeyen agent: ${agent}` };
-    if (agent === 'mihsap' && !allowedMihsapActions.includes(action)) {
+    if (isMihsapFaturaCommandAgent(agent) && !allowedMihsapActions.includes(action as any)) {
       return { error: `Mihsap için desteklenmeyen action: ${action}` };
     }
-    if (agent === 'mihsap') {
+    if (isMihsapFaturaCommandAgent(agent)) {
       if (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0) {
         return { error: 'Mihsap komutu için payload.ay ve payload.mukellefler zorunlu.' };
       }
@@ -1427,7 +1428,9 @@ export class ToolExecutorService {
     const payload = input?.payload && typeof input.payload === 'object' ? input.payload : {};
     const requiresConfirmation = true;
     const supported: Record<string, string[]> = {
-      mihsap: ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'],
+      mihsap: [...MIHSAP_FATURA_ACTIONS],
+      'mihsap-supervised-agent': [...MIHSAP_FATURA_ACTIONS],
+      'mihsap-fatura-isleme-agent': [...MIHSAP_FATURA_ACTIONS],
       luca: ['fetch_earsiv', 'fetch_efatura', 'fetch_mizan', 'prepare_beyanname'],
       kdv: ['prepare_kdv1', 'prepare_kdv2', 'kontrol'],
       sgk: ['prepare_muhsgk'],
@@ -1443,7 +1446,7 @@ export class ToolExecutorService {
     const errors: string[] = [];
     if (!supported[agent]) errors.push(`Desteklenmeyen agent: ${agent}`);
     else if (!supported[agent].includes(action)) errors.push(`${agent} için desteklenmeyen action: ${action}`);
-    if (agent === 'mihsap' && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
+    if (isMihsapFaturaCommandAgent(agent) && (!payload.ay || !Array.isArray(payload.mukellefler) || payload.mukellefler.length === 0)) {
       errors.push('Mihsap komutu için payload.ay ve payload.mukellefler gerekir');
     }
     return {
@@ -1462,7 +1465,7 @@ export class ToolExecutorService {
   private describeAgentImpact(agent: string, action: string, payload: any) {
     if (agent === 'luca' && action === 'prepare_beyanname') return 'LUCA beyanname ekranında taslak hazırlık başlatılır; gönderim ayrıca onay gerektirir.';
     if (agent === 'luca' && action === 'fetch_mizan') return 'LUCA’dan mizan çekimi başlatılır ve portala işlenir.';
-    if (agent === 'mihsap') return `${payload?.mukellefler?.length || 0} mükellef için Mihsap fatura işleme komutu hazırlanır.`;
+    if (isMihsapFaturaCommandAgent(agent)) return `${payload?.mukellefler?.length || 0} mükellef için Mihsap fatura işleme komutu hazırlanır.`;
     if (agent === 'kdv') return 'KDV kontrol / beyan ön hazırlık komutu hazırlanır.';
     return `${agent} agent için ${action} komutu hazırlanır.`;
   }

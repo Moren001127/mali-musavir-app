@@ -214,6 +214,12 @@ export class AgentEventsController {
     return this.service.listStatus(req.user.tenantId);
   }
 
+  @Get('registry')
+  @UseGuards(AuthGuard('jwt'))
+  registry() {
+    return this.service.getAgentRegistry();
+  }
+
   // === PAUSE/RESUME ===
   /** Portaldan agent durdur/devam — JWT'li (admin/staff) */
   @Post('control/state')

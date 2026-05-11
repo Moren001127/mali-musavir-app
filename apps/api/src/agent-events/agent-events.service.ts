@@ -6,6 +6,11 @@ import { logAiUsage } from '../common/ai-usage-logger';
 import { profileToPromptText } from '../common/profile-prompt';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
+import {
+  commandClaimAgentsForRunner,
+  commandListAgentsForFilter,
+  getAgentRegistry,
+} from './agent-registry';
 
 type MihsapDecisionMode = 'shadow' | 'balanced' | 'claude_only';
 type MihsapOcrProvider = 'auto' | 'azure' | 'mistral' | 'none';
@@ -1161,6 +1166,10 @@ ${ocr.text.slice(0, 14000)}`;
     return this.prisma.agentRule.delete({ where: { tenantId_mukellef: { tenantId, mukellef } } });
   }
 
+  getAgentRegistry() {
+    return getAgentRegistry();
+  }
+
   // Komut kuyruğu
   async createCommand(
     tenantId: string,
@@ -1180,7 +1189,9 @@ ${ocr.text.slice(0, 14000)}`;
     });
     const { agent, status, limit = 50 } = opts;
     const where: any = { tenantId };
-    if (agent) where.agent = agent;
+    const agentFilter = commandListAgentsForFilter(agent);
+    if (agentFilter?.length === 1) where.agent = agentFilter[0];
+    else if (agentFilter?.length) where.agent = { in: agentFilter };
     if (status) where.status = status;
     return this.prisma.agentCommand.findMany({
       where,
@@ -1217,7 +1228,9 @@ ${ocr.text.slice(0, 14000)}`;
      */
   async claimPendingCommands(tenantId: string, agent?: string, deviceId?: string) {
     const where: any = { tenantId, status: 'pending' };
-    if (agent) where.agent = agent;
+    const claimAgents = commandClaimAgentsForRunner(agent);
+    if (claimAgents?.length === 1) where.agent = claimAgents[0];
+    else if (claimAgents?.length) where.agent = { in: claimAgents };
     const pending = await this.prisma.agentCommand.findMany({
       where,
       orderBy: { createdAt: 'asc' },

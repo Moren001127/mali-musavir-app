@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { agentsApi } from '@/lib/agents';
+import { AgentDefinition, agentsApi } from '@/lib/agents';
 import { api } from '@/lib/api';
 import {
   Bot, Receipt, FileInput, Mailbox, Calculator, BookOpen, ShieldCheck,
@@ -10,6 +10,59 @@ import {
   Cpu, DollarSign, XCircle, HelpCircle, Plus, Wallet,
 } from 'lucide-react';
 import AgentControlCard from './_components/AgentControlCard';
+
+const AGENT_VISUALS: Record<string, any> = {
+  'agent-core-orchestrator': { href: '/panel/ajanlar/loglar', icon: Cpu, gradient: 'linear-gradient(135deg, #64748b, #334155)' },
+  'mihsap-fatura-isleme-agent': { href: '/panel/ajanlar/mihsap', icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)' },
+  'mihsap-supervised-agent': { href: '/panel/ajanlar/mihsap', icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)' },
+  'mihsap-invoice-sync-agent': { href: '/panel/faturalar', icon: FileInput, gradient: 'linear-gradient(135deg, #0ea5e9, #0369a1)' },
+  'luca-ebelge-agent': { href: '/panel/e-arsiv', icon: FileInput, gradient: 'linear-gradient(135deg, #14b8a6, #0f766e)' },
+  'luca-mizan-agent': { href: '/panel/mizan', icon: Calculator, gradient: 'linear-gradient(135deg, #22c55e, #15803d)' },
+  'luca-kdv-agent': { href: '/panel/kdv-kontrol', icon: ShieldCheck, gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  'luca-isletme-agent': { href: '/panel/isletme-hesap-ozeti', icon: BookOpen, gradient: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' },
+  'hgs-agent': { href: '/panel/galeri/hgs-ihlal', icon: Activity, gradient: 'linear-gradient(135deg, #06b6d4, #0891b2)' },
+  'beyanname-collector-agent': { href: '/panel/beyannameler', icon: FileInput, gradient: 'linear-gradient(135deg, #ec4899, #be185d)' },
+  'etebligat-watch-agent': { href: '/panel/ajanlar/tebligat', icon: Mailbox, gradient: 'linear-gradient(135deg, #6366f1, #4338ca)' },
+  'finansal-rapor-agent': { href: '/panel/bilanco', icon: TrendingUp, gradient: 'linear-gradient(135deg, #10b981, #047857)' },
+};
+
+const FALLBACK_AGENT_REGISTRY: AgentDefinition[] = [
+  {
+    id: 'mihsap-fatura-isleme-agent',
+    title: 'Mihsap Fatura Isleme Agent',
+    mode: 'supervised',
+    queue: 'agent-command',
+    stage: 'alias_ready',
+    modules: ['ajanlar/mihsap'],
+    legacyRunner: 'mihsap',
+    description: 'Mihsap tarayicisinda AI destekli fatura isleme yapar.',
+  },
+];
+
+const STAGE_META: Record<AgentDefinition['stage'], { label: string; color: string; bg: string }> = {
+  active: { label: 'AKTIF', color: '#22c55e', bg: 'rgba(34,197,94,.14)' },
+  alias_ready: { label: 'GECISTE', color: '#d4b876', bg: 'rgba(212,184,118,.14)' },
+  planned: { label: 'PLANLI', color: '#94a3b8', bg: 'rgba(148,163,184,.12)' },
+  service: { label: 'ALTYAPI', color: '#38bdf8', bg: 'rgba(56,189,248,.12)' },
+  report_only: { label: 'RAPOR', color: '#a78bfa', bg: 'rgba(167,139,250,.12)' },
+};
+
+const MODE_LABEL: Record<AgentDefinition['mode'], string> = {
+  background: 'Arka plan',
+  supervised: 'Gorunur',
+  approval_first: 'Onayli',
+  service: 'Servis',
+  report: 'Rapor',
+};
+
+const QUEUE_LABEL: Record<string, string> = {
+  'agent-command': 'Komut kuyrugu',
+  'luca-fetch-job': 'Luca job',
+  'mihsap-service': 'Mihsap servis',
+  'hgs-agent': 'HGS runner',
+  service: 'Core',
+  'report-only': 'Veri cekmez',
+};
 
 // Luca, Tebligat, KDV On-Hazirlik, SGK ajanlari gecici olarak kapatildi
 // (islem yapildikca yeniden acilacak - eski kayitlar git history'de)
@@ -47,8 +100,18 @@ export default function AjanlarDashboard() {
     queryFn: () => agentsApi.aiUsageStats(),
     refetchInterval: 5000,
   });
+  const { data: registry = FALLBACK_AGENT_REGISTRY } = useQuery({
+    queryKey: ['agent-registry'],
+    queryFn: () => agentsApi.registry(),
+    refetchInterval: 30000,
+  });
 
   const statusMap = new Map(status.map((s: any) => [s.agent, s]));
+  const agentRegistry = registry.length ? registry : FALLBACK_AGENT_REGISTRY;
+  const liveAgents = agentRegistry.filter((a) => a.stage !== 'planned');
+  const plannedAgents = agentRegistry.filter((a) => a.stage === 'planned');
+  const statusForAgent = (agent: AgentDefinition) =>
+    statusMap.get(agent.id) || (agent.legacyRunner ? statusMap.get(agent.legacyRunner) : null);
 
   return (
     <div className="space-y-5 max-w-7xl">
@@ -92,7 +155,12 @@ export default function AjanlarDashboard() {
       {/* Agents grid */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>Ajanlar</h2>
+          <div>
+            <h2 className="text-lg font-semibold" style={{ color: '#fafaf9' }}>Agent Envanteri</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+              Mevcut motorlar korunarak yeni dijital calisanlara gecis haritasi
+            </p>
+          </div>
           <Link
             href="/panel/ajanlar/loglar"
             className="inline-flex items-center gap-1 text-sm"
@@ -102,11 +170,23 @@ export default function AjanlarDashboard() {
           </Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {AGENTS.map((a) => {
-            const info = statusMap.get(a.id) as any;
-            return <AgentTile key={a.id} agent={a} statusInfo={info} />;
-          })}
+          {liveAgents.map((agent) => (
+            <AgentRegistryTile key={agent.id} agent={agent} statusInfo={statusForAgent(agent)} />
+          ))}
         </div>
+        {plannedAgents.length > 0 && (
+          <div className="mt-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Clock size={14} style={{ color: '#94a3b8' }} />
+              <h3 className="text-sm font-semibold" style={{ color: '#fafaf9' }}>Sonraki Faz</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {plannedAgents.map((agent) => (
+                <AgentRegistryTile key={agent.id} agent={agent} statusInfo={statusForAgent(agent)} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -410,6 +490,84 @@ function StatBox({ label, value, color, icon: Icon }: any) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AgentRegistryTile({ agent, statusInfo }: { agent: AgentDefinition; statusInfo: any }) {
+  const visual = AGENT_VISUALS[agent.id] || {
+    href: '/panel/ajanlar/loglar',
+    icon: Bot,
+    gradient: 'linear-gradient(135deg, #64748b, #334155)',
+  };
+  const Icon = visual.icon;
+  const calisiyor = statusInfo?.running === true;
+  const stage = STAGE_META[agent.stage] || STAGE_META.planned;
+  const lastPing = statusInfo?.lastPing ? new Date(statusInfo.lastPing).toLocaleTimeString('tr-TR') : null;
+  const modules = agent.modules?.slice(0, 3).join(' · ');
+
+  return (
+    <Link
+      href={visual.href}
+      className="group relative block rounded-xl p-5 border overflow-hidden transition-all hover:scale-[1.01] hover:shadow-lg"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+    >
+      <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: visual.gradient }} />
+      <div className="flex items-start gap-3 mb-3">
+        <div
+          className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110"
+          style={{ background: visual.gradient, boxShadow: '0 4px 12px rgba(0,0,0,.15)' }}
+        >
+          <Icon size={20} style={{ color: '#fff' }} strokeWidth={2} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold" style={{ color: '#fafaf9' }}>{agent.title}</h3>
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold" style={{ background: stage.bg, color: stage.color }}>
+              {stage.label}
+            </span>
+            {calisiyor && (
+              <span
+                className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                style={{ background: 'rgba(16,185,129,.15)', color: '#22c55e' }}
+              >
+                <span className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#22c55e' }} />
+                CALISIYOR
+              </span>
+            )}
+          </div>
+          <p className="text-xs mt-1 leading-relaxed" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            {agent.description}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' }}>
+          {MODE_LABEL[agent.mode]}
+        </span>
+        <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.62)' }}>
+          {QUEUE_LABEL[agent.queue] || agent.queue}
+        </span>
+        {agent.legacyRunner && (
+          <span className="text-[10px] px-2 py-1 rounded" style={{ background: 'rgba(212,184,118,.10)', color: '#d4b876' }}>
+            Eski motor: {agent.legacyRunner}
+          </span>
+        )}
+      </div>
+
+      <div className="text-[11px] mb-3 truncate" style={{ color: 'rgba(250,250,249,0.42)' }}>
+        {modules || 'Modul baglantisi yok'}
+      </div>
+
+      <div className="flex items-center justify-between text-xs pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <span style={{ color: 'rgba(250,250,249,0.45)' }}>
+          {lastPing ? `Son ping: ${lastPing}` : agent.stage === 'planned' ? 'Planlandi' : 'Hazir'}
+        </span>
+        <span className="inline-flex items-center gap-1 font-semibold transition-transform group-hover:translate-x-0.5" style={{ color: '#b8a06f' }}>
+          <Zap size={11} /> Ac <ArrowRight size={11} />
+        </span>
+      </div>
+    </Link>
   );
 }
 

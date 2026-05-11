@@ -46,6 +46,29 @@ export interface AgentCommand {
   finishedAt?: string | null;
 }
 
+export interface AgentDefinition {
+  id: string;
+  title: string;
+  mode: 'background' | 'supervised' | 'approval_first' | 'service' | 'report';
+  queue: string;
+  stage: 'active' | 'alias_ready' | 'planned' | 'service' | 'report_only';
+  modules: string[];
+  actions?: string[];
+  lucaJobTips?: string[];
+  legacyRunner?: 'mihsap' | 'luca' | 'hgs';
+  description: string;
+}
+
+const COMMAND_RUNTIME_AGENT: Record<string, 'mihsap' | 'luca'> = {
+  mihsap: 'mihsap',
+  'mihsap-supervised-agent': 'mihsap',
+  'mihsap-fatura-isleme-agent': 'mihsap',
+};
+
+export function runtimeAgentForCommand(agent: string) {
+  return COMMAND_RUNTIME_AGENT[agent];
+}
+
 export const agentsApi = {
   listEvents: (params?: { agent?: string; mukellef?: string; status?: string; limit?: number }) =>
     api.get<AgentEvent[]>('/agent/events', { params }).then((r) => r.data),
@@ -55,6 +78,7 @@ export const agentsApi = {
     api.post('/agent/ai/credit-topup', body).then((r) => r.data),
   aiCreditTopups: () => api.get('/agent/ai/credit-topups').then((r) => r.data),
   status: () => api.get<AgentStatus[]>('/agent/status').then((r) => r.data),
+  registry: () => api.get<AgentDefinition[]>('/agent/registry').then((r) => r.data),
   rules: () => api.get<AgentRule[]>('/agent/rules').then((r) => r.data),
   getRule: (mukellef: string) =>
     api.get<AgentRule>(`/agent/rules/${encodeURIComponent(mukellef)}`).then((r) => r.data),
@@ -72,9 +96,10 @@ export const agentsApi = {
   createCommand: async (body: { agent: string; action: string; payload: any }) => {
     const bridge =
       typeof window !== 'undefined' ? (window as any).__morenAutoAgent : null;
-    if (bridge?.openAgent && (body.agent === 'mihsap' || body.agent === 'luca')) {
+    const runtimeAgent = runtimeAgentForCommand(body.agent);
+    if (bridge?.openAgent && runtimeAgent) {
       try {
-        await bridge.openAgent(body.agent);
+        await bridge.openAgent(runtimeAgent);
       } catch {
         // Extension yoksa veya tarayici izin vermezse komut yine kuyruga yazilir.
       }

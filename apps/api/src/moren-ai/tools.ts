@@ -403,7 +403,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'], description: 'Opsiyonel ajan filtresi.' },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'], description: 'Opsiyonel ajan filtresi.' },
         limit: { type: 'number', description: 'Son komut sayısı. Varsayılan 10.' },
       },
     },
@@ -464,7 +464,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
         action: { type: 'string' },
         payload: { type: 'object' },
       },
@@ -478,7 +478,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
         action: { type: 'string' },
         payload: { type: 'object' },
         confirmationText: { type: 'string' },
@@ -549,7 +549,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
         action: { type: 'string', description: 'Örn: isle_alis, isle_satis, isle_alis_isletme, isle_satis_isletme.' },
         payload: { type: 'object', description: 'Ajanın beklediği komut yükü.' },
         confirmationText: { type: 'string', description: 'Güvenlik için kullanıcı onay metni. ONAYLIYORUM olmalı.' },
