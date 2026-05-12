@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.02';
+  const AGENT_VERSION = '1.37.03';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -461,14 +461,9 @@
   async function processLucaJobs() {
     try {
       if (!isLucaOrigin()) return;
-      // SADECE klasik Luca tab'ında job CLAIM ET. Diğer Luca sayfalarında
-      // (www.luca.com.tr landing, agiris.luca LUCASSO v2.1) job alma →
-      // klasik Luca sekmesine bırak.
-      const isClassicLuca = location.hostname === 'auygs.luca.com.tr'
-        && location.pathname.startsWith('/Luca/');
-      if (!isClassicLuca) {
-        return;
-      }
+      // Luca'nin herhangi bir top frame'inde pending job'u gor ve agentin
+      // hangi ekranda bekledigini portala yaz. Klasik Luca disinda islem
+      // yapmadan once giris/yonlendirme adimini dener.
       // Sadece TOP frame'de poll yap — Luca FRAMESET olduğu için her frame'de
       // agent çalışıyor (manifest all_frames:true). Job poll/işleme tek elden,
       // yani üst pencerede yürür. İçerik frame'lerinde agent sadece DOM yardımcı
@@ -484,6 +479,52 @@
       if (!r.ok) return;
       const jobs = await r.json();
       if (!Array.isArray(jobs) || jobs.length === 0) return;
+
+      const logPendingJob = async (job, line) => {
+        try {
+          await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ msg: line, line }),
+          });
+        } catch {}
+      };
+
+      const isClassicLuca = location.hostname === 'auygs.luca.com.tr'
+        && location.pathname.startsWith('/Luca/');
+      if (!isClassicLuca) {
+        const firstJob = jobs[0];
+        const url = location.href.slice(0, 120);
+        await bridgeLucaCaptchaToPortal(firstJob, (line) => logPendingJob(firstJob, line)).catch(() => {});
+
+        const loginParts = findLoginFormParts();
+        if (loginParts?.password) {
+          setStatus('Luca giris ekraninda; otomatik giris deneniyor');
+          for (const job of jobs) {
+            await logPendingJob(job, `Luca agent giris ekraninda; otomatik giris deneniyor. URL=${url}`);
+          }
+          await fillLucaLoginFromPortal().catch(() => {});
+          return;
+        }
+
+        if (/agiris\.luca\.com\.tr/i.test(location.hostname) || /LUCASSO/i.test(location.pathname)) {
+          setStatus('Klasik Luca ekranina geciliyor; mizan orada cekilecek');
+          for (const job of jobs) {
+            await logPendingJob(job, `Luca agent LUCASSO ekraninda; klasik Luca ekranina geciliyor. URL=${url}`);
+          }
+          if (!window.__morenClassicRedirectAt || Date.now() - window.__morenClassicRedirectAt > 20000) {
+            window.__morenClassicRedirectAt = Date.now();
+            location.href = 'https://auygs.luca.com.tr/Luca/luca.do';
+          }
+          return;
+        }
+
+        setStatus('Luca acik ama klasik Luca ekrani bekleniyor');
+        for (const job of jobs) {
+          await logPendingJob(job, `Luca agent klasik ekranda degil; job bekliyor. URL=${url}`);
+        }
+        return;
+      }
 
       window.__lucaJobRunning = true;
       for (const job of jobs) {

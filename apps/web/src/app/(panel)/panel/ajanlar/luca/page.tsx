@@ -14,9 +14,38 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { lucaSessionApi, type LucaCaptchaChallenge } from '@/lib/luca-session';
+import { lucaSessionApi, type LucaCaptchaChallenge, type LucaSessionManagerStatus } from '@/lib/luca-session';
 
 const GOLD = '#d4b876';
+type LucaDevice = LucaSessionManagerStatus['devices'][number];
+
+function isClassicLucaUrl(url?: string | null) {
+  return /auygs\.luca\.com\.tr\/Luca\//i.test(String(url || ''));
+}
+
+function isLucaLoginUrl(url?: string | null) {
+  return /agiris\.luca\.com\.tr|LUCASSO/i.test(String(url || ''));
+}
+
+function deviceStatusLabel(device: LucaDevice) {
+  if (!device.running) return 'pasif';
+  if (isClassicLucaUrl(device.url)) return 'hazir';
+  if (isLucaLoginUrl(device.url)) return 'giris ekrani';
+  return 'klasik ekran degil';
+}
+
+function deviceStatusColor(device: LucaDevice) {
+  if (!device.running) return '#fca5a5';
+  if (isClassicLucaUrl(device.url)) return '#4ade80';
+  if (isLucaLoginUrl(device.url)) return '#fbbf24';
+  return '#93c5fd';
+}
+
+function deviceStatusDetail(device: LucaDevice) {
+  if (isClassicLucaUrl(device.url)) return 'Klasik Luca ekrani hazir; mizan/fatura islemleri alinabilir';
+  if (isLucaLoginUrl(device.url)) return 'Luca giris ekraninda; ajan otomatik giris veya klasik ekrana gecis deneyecek';
+  return 'Agent acik, fakat klasik Luca ekrani bekleniyor';
+}
 
 export default function LucaSessionPage() {
   const qc = useQueryClient();
@@ -94,8 +123,8 @@ export default function LucaSessionPage() {
           icon={Bot}
           title="Bu Cihaz"
           value={currentDeviceId || 'Extension yok'}
-          tone={currentDevice ? 'ok' : 'warn'}
-          detail={currentDevice ? 'Luca agent bu cihazdan ping atıyor' : 'Moren Auto-Agent bekleniyor'}
+          tone={currentDevice && isClassicLucaUrl(currentDevice.url) ? 'ok' : 'warn'}
+          detail={currentDevice ? deviceStatusDetail(currentDevice) : 'Moren Auto-Agent bekleniyor'}
         />
         <StatusCard
           icon={Clock}
@@ -151,8 +180,8 @@ export default function LucaSessionPage() {
                 <div key={`${d.id || 'unknown'}-${i}`} className="rounded-md px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-mono text-xs" style={{ color: d.id === currentDeviceId ? GOLD : '#fafaf9' }}>{d.id || 'cihaz kimliği yok'}</span>
-                    <span className="text-[11px]" style={{ color: d.running ? '#4ade80' : '#fca5a5' }}>
-                      {d.running ? 'çalışıyor' : 'pasif'}
+                    <span className="text-[11px]" style={{ color: deviceStatusColor(d) }}>
+                      {deviceStatusLabel(d)}
                     </span>
                   </div>
                   <div className="text-[11px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.45)' }}>
@@ -168,6 +197,10 @@ export default function LucaSessionPage() {
           <h2 className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: '#fafaf9' }}>
             <CheckCircle2 size={15} style={{ color: GOLD }} /> Son Güvenlik Kodları
           </h2>
+          <p className="mb-3 text-[11px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.50)' }}>
+            Bunlar girilecek kod degil; Luca'nin actigi guvenlik kodu istek kayitlaridir.
+            Aktif olan kod ustte "Aktif Kod" olarak, gorseliyle birlikte acilir.
+          </p>
           <div className="space-y-2">
             {challenges.length === 0 ? (
               <EmptyLine text="Henüz güvenlik kodu isteği yok" />

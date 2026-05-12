@@ -154,6 +154,18 @@ export default function MizanPage() {
     () => (lucaSessionQuery.data?.devices || []).some((device) => device.running),
     [lucaSessionQuery.data?.devices],
   );
+  const lucaReadyDevice = useMemo(
+    () => (lucaSessionQuery.data?.devices || []).some((device) =>
+      device.running && /auygs\.luca\.com\.tr\/Luca\//i.test(String(device.url || '')),
+    ),
+    [lucaSessionQuery.data?.devices],
+  );
+  const lucaLoginDevice = useMemo(
+    () => (lucaSessionQuery.data?.devices || []).some((device) =>
+      device.running && /agiris\.luca\.com\.tr|LUCASSO/i.test(String(device.url || '')),
+    ),
+    [lucaSessionQuery.data?.devices],
+  );
 
   const answerCaptchaMut = useMutation({
     mutationFn: () => {
@@ -539,17 +551,21 @@ export default function MizanPage() {
             <div
               className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[12.5px]"
               style={{
-                background: lucaDeviceRunning ? 'rgba(34,197,94,0.08)' : 'rgba(244,63,94,0.08)',
-                border: `1px solid ${lucaDeviceRunning ? 'rgba(34,197,94,0.22)' : 'rgba(244,63,94,0.22)'}`,
+                background: lucaReadyDevice ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)',
+                border: `1px solid ${lucaReadyDevice ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.24)'}`,
                 color: 'rgba(250,250,249,0.72)',
               }}
             >
               <span>
-                {lucaDeviceRunning
-                  ? 'Arka plan ajanı açık. Güvenlik kodu çıkarsa burada sorulacak.'
-                  : 'Arka plan ajanı açık görünmüyor. Ajan çalışmadan Luca verisi çekilemez.'}
+                {lucaReadyDevice
+                  ? 'Luca ajani klasik Luca ekraninda hazir. Guvenlik kodu cikarsa burada sorulacak.'
+                  : lucaLoginDevice
+                    ? 'Luca ajani giris ekraninda. Otomatik giris veya klasik Luca gecisi bekleniyor; kod gerekirse burada acilacak.'
+                    : lucaDeviceRunning
+                      ? 'Luca ajani acik ama klasik Luca ekraninda degil. Islem alinmasi icin ajan klasik Luca ekranina gecmeli.'
+                      : 'Arka plan ajani acik gorunmuyor. Ajan calismadan Luca verisi cekilemez.'}
               </span>
-              {!lucaDeviceRunning && (
+              {!lucaReadyDevice && (
                 <button
                   onClick={() => router.push('/panel/ajanlar/luca')}
                   className="rounded-md px-3 py-1.5 text-xs font-bold"
