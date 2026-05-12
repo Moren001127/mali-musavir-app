@@ -8,6 +8,7 @@ import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff, Check as Che
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
+const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr) 42px';
 
 type MonthlyStatus = {
   id?: string;
@@ -337,11 +338,10 @@ export default function MukelleflerPage() {
       {/* TABLE */}
       <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div
-          className="grid min-w-[940px] items-center px-4 py-2.5 text-[10px] font-semibold uppercase"
+          className="grid min-w-[1180px] w-full items-center px-4 py-2.5 text-[10px] font-semibold uppercase"
           style={{
-            gridTemplateColumns: '40px minmax(260px, 420px) repeat(5, 82px) 108px 36px',
+            gridTemplateColumns: TAXPAYER_TABLE_GRID,
             gap: 10,
-            justifyContent: 'start',
             background: 'rgba(212,184,118,0.045)',
             borderBottom: '1px solid rgba(212,184,118,0.13)',
             color: 'rgba(250,250,249,0.48)',
@@ -474,11 +474,10 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid min-w-[940px] items-center px-4 py-2 transition-all group"
+      className="grid min-w-[1180px] w-full items-center px-4 py-2 transition-all group"
       style={{
-        gridTemplateColumns: '40px minmax(260px, 420px) repeat(5, 82px) 108px 36px',
+        gridTemplateColumns: TAXPAYER_TABLE_GRID,
         gap: 10,
-        justifyContent: 'start',
         minHeight: 58,
         borderBottom: '1px solid rgba(255,255,255,0.035)',
       }}
