@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import ButceTakipView from './ButceTakipView';
+import { ButcePlanView, GelirGiderTablosuView, KasaBankaView } from './ButceTakipView';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
   TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
@@ -46,6 +46,7 @@ type Hareket = {
   donem?: string | null;
   otoOlusturuldu: boolean;
   hizmet?: { hizmetAdi: string } | null;
+  account?: { id: string; name: string; type: string; color: string } | null;
   runningBakiye?: number;
 };
 
@@ -279,6 +280,8 @@ export default function CariKasaPage() {
             setTahsilatModal(false);
             qc.invalidateQueries({ queryKey: ['cari-hareketler'] });
             qc.invalidateQueries({ queryKey: ['cari-bakiye'] });
+            qc.invalidateQueries({ queryKey: ['cari-cashflow-summary'] });
+            qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
           }}
         />
       )}
@@ -383,6 +386,7 @@ function HareketlerView({ hareketler, onDelete }: {
                 <th className="text-right px-4 py-2">Borç</th>
                 <th className="text-right px-4 py-2">Alacak</th>
                 <th className="text-left px-4 py-2">Ödeme</th>
+                <th className="text-left px-4 py-2">Hesap</th>
                 <th className="text-center px-4 py-2">Kaynak</th>
                 <th></th>
               </tr>
@@ -412,6 +416,9 @@ function HareketlerView({ hareketler, onDelete }: {
                       {alacak ? fmt(alacak) : '—'}
                     </td>
                     <td className="px-4 py-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{h.odemeYontemi || '—'}</td>
+                    <td className="px-4 py-2 text-[11px]" style={{ color: h.account ? 'rgba(250,250,249,0.72)' : '#fbbf24' }}>
+                      {h.account ? h.account.name : 'AtanmamÄ±ÅŸ'}
+                    </td>
                     <td className="px-4 py-2 text-center text-[10px]">
                       {h.otoOlusturuldu ? <span style={{ color: 'rgba(212,184,118,0.7)' }}>OTO</span> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>Manuel</span>}
                     </td>
@@ -637,6 +644,7 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
 }
 
 function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; onClose: () => void; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     tarih: today(),
     tutar: 0,
@@ -644,15 +652,28 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
     belgeNo: '',
     donem: thisMonth(),
     aciklama: '',
+    accountId: '',
   });
   const [saving, setSaving] = useState(false);
+  const { data: accounts = [] } = useQuery<Array<{ id: string; name: string; type: string; color: string; isActive: boolean }>>({
+    queryKey: ['cari-accounts'],
+    queryFn: () => api.get('/cari-kasa/accounts').then((r) => r.data),
+  });
+
+  useEffect(() => {
+    if (!accounts.length || form.accountId) return;
+    setForm((old) => ({ ...old, accountId: accounts[0].id }));
+  }, [accounts, form.accountId]);
 
   const save = async () => {
     if (form.tutar <= 0) { toast.error('Tutar pozitif olmalı'); return; }
     setSaving(true);
+    if (!form.accountId) { toast.error('Tahsilat hesabÄ± seÃ§in'); return; }
     try {
       await api.post('/cari-kasa/tahsilat', { ...form, taxpayerId });
       toast.success('Tahsilat eklendi');
+      qc.invalidateQueries({ queryKey: ['cari-cashflow-summary'] });
+      qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
       onSaved();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Kaydedilemedi');
@@ -676,6 +697,14 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
               <option value="POS">POS/Kart</option>
               <option value="CEK">Çek</option>
               <option value="SENET">Senet</option>
+            </select>
+          </Field>
+          <Field label="Hesap">
+            <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} className="w-full px-3 py-2 rounded-md" style={inpStyle}>
+              <option value="">Hesap seÃ§in</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>{account.name}</option>
+              ))}
             </select>
           </Field>
           <Field label="Belge No (opsiyonel)"><input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont/makbuz no" className="w-full px-3 py-2 rounded-md" style={inpStyle} /></Field>
@@ -721,7 +750,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'tablo' | 'ajanda' | 'istatistik' | 'butce'>('ajanda');
+  const [view, setView] = useState<'ajanda' | 'tablo' | 'kasa' | 'gelirGider' | 'butcePlan'>('kasa');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
   const [preview, setPreview] = useState<any | null>(null);
@@ -847,8 +876,9 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         {([
           ['ajanda', 'Tahsilat Ajandası'],
           ['tablo', 'Cari Liste'],
-          ['istatistik', 'Gelir Grafikleri'],
-          ['butce', 'Bütçe Takip'],
+          ['kasa', 'Kasa/Banka'],
+          ['gelirGider', 'Gelir-Gider Tablosu'],
+          ['butcePlan', 'Bütçe Planı'],
         ] as const).map(([t, label]) => {
           const active = view === t;
           return (
@@ -916,9 +946,11 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         />
       )}
 
-      {view === 'istatistik' && <IstatistiklerView />}
+      {view === 'kasa' && <KasaBankaView />}
 
-      {view === 'butce' && <ButceTakipView />}
+      {view === 'gelirGider' && <GelirGiderTablosuView />}
+
+      {view === 'butcePlan' && <ButcePlanView />}
 
       {view === 'tablo' && (
       <>
@@ -1084,6 +1116,8 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
             setQuickTahsilatId(null);
             qc.invalidateQueries({ queryKey: ['cari-tahsilat-ajandasi'] });
             qc.invalidateQueries({ queryKey: ['cari-ozet'] });
+            qc.invalidateQueries({ queryKey: ['cari-cashflow-summary'] });
+            qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
           }}
         />
       )}

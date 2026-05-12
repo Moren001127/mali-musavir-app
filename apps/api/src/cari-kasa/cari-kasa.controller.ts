@@ -85,6 +85,47 @@ export class CariKasaController {
     return this.service.istatistikler(req.user.tenantId);
   }
 
+  @Get('cashflow-summary')
+  cashflowSummary(
+    @Req() req: any,
+    @Query('year') year?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.service.cashflowSummary(req.user.tenantId, { year, period });
+  }
+
+  @Get('accounts')
+  accounts(@Req() req: any, @Query('includeInactive') includeInactive?: string) {
+    return this.service.listFinancialAccounts(req.user.tenantId, includeInactive === 'true');
+  }
+
+  @Post('accounts')
+  createAccount(@Req() req: any, @Body() body: any) {
+    return this.service.createFinancialAccount(req.user.tenantId, body || {});
+  }
+
+  @Put('accounts/:id')
+  updateAccount(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.updateFinancialAccount(req.user.tenantId, id, body || {});
+  }
+
+  @Delete('accounts/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAccount(@Req() req: any, @Param('id') id: string) {
+    await this.service.deleteFinancialAccount(req.user.tenantId, id);
+  }
+
+  @Post('account-transfers')
+  createAccountTransfer(@Req() req: any, @Body() body: any) {
+    return this.service.createAccountTransfer(req.user.tenantId, body || {}, req.user.sub);
+  }
+
+  @Delete('account-transfers/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAccountTransfer(@Req() req: any, @Param('id') id: string) {
+    await this.service.deleteAccountTransfer(req.user.tenantId, id);
+  }
+
   @Get('yaslandirma')
   yaslandirma(@Req() req: any) {
     return this.service.yaslandirma(req.user.tenantId);

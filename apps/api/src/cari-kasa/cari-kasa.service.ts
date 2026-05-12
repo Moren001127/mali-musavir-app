@@ -34,10 +34,24 @@ export class CariKasaService {
     { name: 'Diğer Gider', type: 'GIDER', color: '#ef4444', icon: 'minus', sortOrder: 90 },
   ];
 
+  private readonly defaultFinancialAccounts = [
+    { name: 'Ziraat Bankası', type: 'BANKA', color: '#dc2626', sortOrder: 10 },
+    { name: 'Enpara', type: 'BANKA', color: '#7c3aed', sortOrder: 20 },
+    { name: 'Nakit', type: 'NAKIT', color: '#d4b876', sortOrder: 30 },
+  ];
+
   private normalizeBudgetType(type?: string) {
     const value = String(type || '').toUpperCase();
     if (value !== 'GELIR' && value !== 'GIDER') {
       throw new BadRequestException('type GELIR veya GIDER olmalı');
+    }
+    return value;
+  }
+
+  private normalizeAccountType(type?: string) {
+    const value = String(type || 'BANKA').toUpperCase();
+    if (!['BANKA', 'NAKIT', 'KREDI_KARTI', 'DIGER'].includes(value)) {
+      throw new BadRequestException('type BANKA, NAKIT, KREDI_KARTI veya DIGER olmalı');
     }
     return value;
   }
@@ -214,6 +228,7 @@ export class CariKasaService {
       take: params.limit || 500,
       include: {
         hizmet: { select: { id: true, hizmetAdi: true } },
+        account: { select: { id: true, name: true, type: true, color: true } },
         taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
       },
     });
@@ -229,19 +244,22 @@ export class CariKasaService {
       belgeNo?: string;
       aciklama?: string;
       donem?: string;
+      accountId?: string;
     },
     createdBy?: string,
   ) {
-    if (!data.taxpayerId || data.tutar == null) {
-      throw new BadRequestException('taxpayerId ve tutar zorunlu');
+    if (!data.taxpayerId || data.tutar == null || !data.accountId) {
+      throw new BadRequestException('taxpayerId, accountId ve tutar zorunlu');
     }
     if (Number(data.tutar) <= 0) {
       throw new BadRequestException('Tahsilat tutarı pozitif olmalı');
     }
+    const account = await this.getFinancialAccount(tenantId, data.accountId);
     return (this.prisma as any).cariHareket.create({
       data: {
         tenantId,
         taxpayerId: data.taxpayerId,
+        accountId: account.id,
         tarih: data.tarih ? new Date(data.tarih) : new Date(),
         tip: 'TAHSILAT',
         tutar: data.tutar,
@@ -798,6 +816,133 @@ export class CariKasaService {
     });
   }
 
+  async ensureFinancialAccounts(tenantId: string) {
+    const existing = await (this.prisma as any).officeFinancialAccount.findMany({
+      where: { tenantId },
+      select: { name: true },
+    });
+    const existingNames = new Set(existing.map((a: any) => a.name));
+    const missing = this.defaultFinancialAccounts
+      .filter((a) => !existingNames.has(a.name))
+      .map((a) => ({
+        ...a,
+        tenantId,
+        openingBalance: 0,
+        openingDate: new Date(),
+        isActive: true,
+      }));
+
+    if (missing.length) {
+      await (this.prisma as any).officeFinancialAccount.createMany({
+        data: missing,
+        skipDuplicates: true,
+      });
+    }
+
+    return (this.prisma as any).officeFinancialAccount.findMany({
+      where: { tenantId },
+      orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async listFinancialAccounts(tenantId: string, includeInactive = false) {
+    await this.ensureFinancialAccounts(tenantId);
+    return (this.prisma as any).officeFinancialAccount.findMany({
+      where: includeInactive ? { tenantId } : { tenantId, isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  private async getFinancialAccount(tenantId: string, accountId: string) {
+    const account = await (this.prisma as any).officeFinancialAccount.findFirst({
+      where: { tenantId, id: accountId },
+    });
+    if (!account) throw new NotFoundException('Hesap bulunamadi');
+    return account;
+  }
+
+  async createFinancialAccount(tenantId: string, data: any) {
+    const name = String(data?.name || '').trim();
+    if (!name) throw new BadRequestException('Hesap adi zorunlu');
+    const openingDate = data?.openingDate ? new Date(data.openingDate) : new Date();
+    if (Number.isNaN(openingDate.getTime())) throw new BadRequestException('Acilis tarihi gecersiz');
+    return (this.prisma as any).officeFinancialAccount.create({
+      data: {
+        tenantId,
+        name,
+        type: this.normalizeAccountType(data?.type),
+        color: data?.color || '#d4b876',
+        openingBalance: Number(data?.openingBalance || 0),
+        openingDate,
+        sortOrder: Number(data?.sortOrder || 100),
+        isActive: data?.isActive !== false,
+      },
+    });
+  }
+
+  async updateFinancialAccount(tenantId: string, id: string, data: any) {
+    await this.getFinancialAccount(tenantId, id);
+    const update: any = {};
+    if (data?.name != null) {
+      const name = String(data.name).trim();
+      if (!name) throw new BadRequestException('Hesap adi zorunlu');
+      update.name = name;
+    }
+    if (data?.type != null) update.type = this.normalizeAccountType(data.type);
+    if (data?.color != null) update.color = data.color;
+    if (data?.openingBalance != null) update.openingBalance = Number(data.openingBalance);
+    if (data?.openingDate != null) {
+      const openingDate = new Date(data.openingDate);
+      if (Number.isNaN(openingDate.getTime())) throw new BadRequestException('Acilis tarihi gecersiz');
+      update.openingDate = openingDate;
+    }
+    if (data?.sortOrder != null) update.sortOrder = Number(data.sortOrder);
+    if (data?.isActive != null) update.isActive = Boolean(data.isActive);
+    return (this.prisma as any).officeFinancialAccount.update({ where: { id }, data: update });
+  }
+
+  async deleteFinancialAccount(tenantId: string, id: string) {
+    await this.getFinancialAccount(tenantId, id);
+    return (this.prisma as any).officeFinancialAccount.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  }
+
+  async createAccountTransfer(tenantId: string, data: any, createdBy?: string) {
+    if (!data?.fromAccountId || !data?.toAccountId) throw new BadRequestException('Cikis ve giris hesabi zorunlu');
+    if (data.fromAccountId === data.toAccountId) throw new BadRequestException('Ayni hesaplar arasinda transfer yapilamaz');
+    const amount = Number(data?.amount || 0);
+    if (amount <= 0) throw new BadRequestException('Transfer tutari pozitif olmali');
+    const date = data?.date ? new Date(data.date) : new Date();
+    if (Number.isNaN(date.getTime())) throw new BadRequestException('Tarih gecersiz');
+    await this.getFinancialAccount(tenantId, data.fromAccountId);
+    await this.getFinancialAccount(tenantId, data.toAccountId);
+    return (this.prisma as any).officeAccountTransfer.create({
+      data: {
+        tenantId,
+        fromAccountId: data.fromAccountId,
+        toAccountId: data.toAccountId,
+        date,
+        period: this.periodFromDate(date),
+        amount,
+        description: data?.description?.trim() || null,
+        documentNo: data?.documentNo?.trim() || null,
+        createdBy: createdBy || null,
+      },
+      include: {
+        fromAccount: { select: { id: true, name: true, type: true, color: true } },
+        toAccount: { select: { id: true, name: true, type: true, color: true } },
+      },
+    });
+  }
+
+  async deleteAccountTransfer(tenantId: string, id: string) {
+    const transfer = await (this.prisma as any).officeAccountTransfer.findFirst({ where: { tenantId, id } });
+    if (!transfer) throw new NotFoundException('Transfer bulunamadi');
+    return (this.prisma as any).officeAccountTransfer.delete({ where: { id } });
+  }
+
   async listBudgetCategories(tenantId: string, includeInactive = false) {
     await this.ensureBudgetCategories(tenantId);
     return (this.prisma as any).officeBudgetCategory.findMany({
@@ -852,17 +997,20 @@ export class CariKasaService {
 
   async listBudgetEntries(tenantId: string, params: { period?: string; type?: string }) {
     await this.ensureBudgetCategories(tenantId);
+    await this.ensureFinancialAccounts(tenantId);
     const where: any = { tenantId, period: this.normalizePeriod(params.period) };
     if (params.type) where.type = this.normalizeBudgetType(params.type);
     return (this.prisma as any).officeBudgetEntry.findMany({
       where,
-      include: { category: true },
+      include: { category: true, account: true },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
     });
   }
 
   async createBudgetEntry(tenantId: string, data: any, createdBy?: string) {
     const category = await this.getBudgetCategory(tenantId, data?.categoryId);
+    if (!data?.accountId) throw new BadRequestException('Hesap secimi zorunlu');
+    const account = await this.getFinancialAccount(tenantId, data.accountId);
     const amount = Number(data?.amount || 0);
     if (amount <= 0) throw new BadRequestException('Tutar pozitif olmalı');
     const date = data?.date ? new Date(data.date) : new Date();
@@ -871,6 +1019,7 @@ export class CariKasaService {
       data: {
         tenantId,
         categoryId: category.id,
+        accountId: account.id,
         date,
         period: this.periodFromDate(date),
         type: category.type,
@@ -881,7 +1030,7 @@ export class CariKasaService {
         isRecurring: Boolean(data?.isRecurring),
         createdBy: createdBy || null,
       },
-      include: { category: true },
+      include: { category: true, account: true },
     });
   }
 
@@ -893,6 +1042,11 @@ export class CariKasaService {
       const category = await this.getBudgetCategory(tenantId, data.categoryId);
       update.categoryId = category.id;
       update.type = category.type;
+    }
+    if (data?.accountId !== undefined) {
+      if (!data.accountId) throw new BadRequestException('Hesap secimi zorunlu');
+      const account = await this.getFinancialAccount(tenantId, data.accountId);
+      update.accountId = account.id;
     }
     if (data?.date) {
       const date = new Date(data.date);
@@ -913,7 +1067,7 @@ export class CariKasaService {
     return (this.prisma as any).officeBudgetEntry.update({
       where: { id },
       data: update,
-      include: { category: true },
+      include: { category: true, account: true },
     });
   }
 
@@ -972,6 +1126,7 @@ export class CariKasaService {
     const year = rawYear >= 2000 && rawYear <= 2100 ? rawYear : new Date().getFullYear();
     const period = this.normalizePeriod(params.period || `${year}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
     const categories = await this.ensureBudgetCategories(tenantId);
+    const accounts = await this.ensureFinancialAccounts(tenantId);
     const categoryMap = new Map<string, any>(categories.map((c: any) => [c.id, c]));
     const customerIncomeCategory = categories.find((c: any) => c.type === 'GELIR' && c.name === 'Müşteri Tahsilatı')
       || categories.find((c: any) => c.type === 'GELIR');
@@ -990,9 +1145,11 @@ export class CariKasaService {
     const monthMap = new Map(months.map((m) => [m.period, m]));
     const selectedTotals = new Map<string, { actual: number; planned: number }>();
     const annualTotals = new Map<string, { actual: number; planned: number }>();
+    const categoryMonthlyTotals = new Map<string, Map<string, { actual: number; planned: number }>>();
     for (const c of categories) {
       selectedTotals.set(c.id, { actual: 0, planned: 0 });
       annualTotals.set(c.id, { actual: 0, planned: 0 });
+      categoryMonthlyTotals.set(c.id, new Map(months.map((m) => [m.period, { actual: 0, planned: 0 }])));
     }
 
     const start = new Date(Date.UTC(year, 0, 1));
@@ -1000,7 +1157,7 @@ export class CariKasaService {
     const [entries, plans, cariTahsilatlar] = await Promise.all([
       (this.prisma as any).officeBudgetEntry.findMany({
         where: { tenantId, date: { gte: start, lt: end } },
-        include: { category: true },
+        include: { category: true, account: true },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       }),
       (this.prisma as any).officeBudgetPlan.findMany({
@@ -1016,6 +1173,8 @@ export class CariKasaService {
           odemeYontemi: true,
           belgeNo: true,
           aciklama: true,
+          accountId: true,
+          account: { select: { id: true, name: true, type: true, color: true } },
           taxpayer: { select: { firstName: true, lastName: true, companyName: true, taxNumber: true } },
         },
         orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
@@ -1031,6 +1190,8 @@ export class CariKasaService {
         const annual = annualTotals.get(categoryId) || { actual: 0, planned: 0 };
         annual.actual = this.roundMoney(annual.actual + amount);
         annualTotals.set(categoryId, annual);
+        const monthly = categoryMonthlyTotals.get(categoryId)?.get(entryPeriod);
+        if (monthly) monthly.actual = this.roundMoney(monthly.actual + amount);
         if (entryPeriod === period) {
           const selected = selectedTotals.get(categoryId) || { actual: 0, planned: 0 };
           selected.actual = this.roundMoney(selected.actual + amount);
@@ -1047,6 +1208,8 @@ export class CariKasaService {
       const annual = annualTotals.get(categoryId) || { actual: 0, planned: 0 };
       annual.planned = this.roundMoney(annual.planned + amount);
       annualTotals.set(categoryId, annual);
+      const monthly = categoryMonthlyTotals.get(categoryId)?.get(planPeriod);
+      if (monthly) monthly.planned = this.roundMoney(monthly.planned + amount);
       if (planPeriod === period) {
         const selected = selectedTotals.get(categoryId) || { actual: 0, planned: 0 };
         selected.planned = this.roundMoney(selected.planned + amount);
@@ -1119,6 +1282,12 @@ export class CariKasaService {
         description: e.description,
         paymentMethod: e.paymentMethod,
         documentNo: e.documentNo,
+        account: e.account ? {
+          id: e.account.id,
+          name: e.account.name,
+          type: e.account.type,
+          color: e.account.color,
+        } : null,
         category: e.category ? {
           id: e.category.id,
           name: e.category.name,
@@ -1140,6 +1309,12 @@ export class CariKasaService {
         description: this.taxpayerName(h.taxpayer) || h.aciklama || 'Müşteri tahsilatı',
         paymentMethod: h.odemeYontemi,
         documentNo: h.belgeNo,
+        account: h.account ? {
+          id: h.account.id,
+          name: h.account.name,
+          type: h.account.type,
+          color: h.account.color,
+        } : null,
         category: customerIncomeCategory ? {
           id: customerIncomeCategory.id,
           name: customerIncomeCategory.name,
@@ -1148,14 +1323,45 @@ export class CariKasaService {
         } : null,
       }));
 
+    const categoryMonthlyRows = categoryRows.map((row: any) => {
+      const perMonth = categoryMonthlyTotals.get(row.categoryId);
+      return {
+        ...row,
+        months: months.map((m) => {
+          const totals = perMonth?.get(m.period) || { actual: 0, planned: 0 };
+          const variance = row.type === 'GIDER'
+            ? this.roundMoney(totals.planned - totals.actual)
+            : this.roundMoney(totals.actual - totals.planned);
+          return {
+            period: m.period,
+            label: m.label,
+            actual: this.roundMoney(totals.actual),
+            planned: this.roundMoney(totals.planned),
+            variance,
+          };
+        }),
+      };
+    });
+
+    const unassignedCollectionsCount = cariTahsilatlar.filter((h: any) => !h.accountId).length;
+    const unassignedCollectionsAmount = this.roundMoney(
+      cariTahsilatlar.reduce((sum: number, h: any) => sum + (!h.accountId ? Number(h.tutar) : 0), 0),
+    );
+
     return {
       year,
       period,
       categories,
+      accounts,
       months,
       categoryRows,
+      categoryMonthlyRows,
       entries: [...selectedEntries, ...customerCollections]
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      unassignedCollections: {
+        count: unassignedCollectionsCount,
+        amount: unassignedCollectionsAmount,
+      },
       kpi: {
         periodIncome: this.roundMoney(selectedMonth.income),
         periodExpense: this.roundMoney(selectedMonth.expense),
@@ -1177,6 +1383,231 @@ export class CariKasaService {
   // ==================== İSTATİSTİKLER ====================
   //
   // Son 12 aylık tahakkuk/tahsilat trendi + en borçlu 10 + en çok tahsilat + KPI'lar.
+  async cashflowSummary(tenantId: string, params: { year?: string | number; period?: string }) {
+    const rawYear = Number(params.year || new Date().getFullYear());
+    const year = rawYear >= 2000 && rawYear <= 2100 ? rawYear : new Date().getFullYear();
+    const period = this.normalizePeriod(params.period || `${year}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+    const months = this.yearMonths(year).map((ay) => ({
+      period: ay,
+      label: `${ay.slice(5, 7)}/${ay.slice(2, 4)}`,
+      income: 0,
+      expense: 0,
+      transferIn: 0,
+      transferOut: 0,
+      net: 0,
+    }));
+    const monthMap = new Map(months.map((m) => [m.period, m]));
+
+    const [accounts, entries, collections, transfers] = await Promise.all([
+      this.ensureFinancialAccounts(tenantId),
+      (this.prisma as any).officeBudgetEntry.findMany({
+        where: { tenantId },
+        include: {
+          category: true,
+          account: { select: { id: true, name: true, type: true, color: true } },
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+      (this.prisma as any).cariHareket.findMany({
+        where: { tenantId, tip: 'TAHSILAT' },
+        select: {
+          id: true,
+          accountId: true,
+          tarih: true,
+          tutar: true,
+          odemeYontemi: true,
+          belgeNo: true,
+          aciklama: true,
+          account: { select: { id: true, name: true, type: true, color: true } },
+          taxpayer: { select: { firstName: true, lastName: true, companyName: true, taxNumber: true } },
+        },
+        orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+      }),
+      (this.prisma as any).officeAccountTransfer.findMany({
+        where: { tenantId },
+        include: {
+          fromAccount: { select: { id: true, name: true, type: true, color: true } },
+          toAccount: { select: { id: true, name: true, type: true, color: true } },
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    const accountStats = new Map<string, any>();
+    for (const account of accounts) {
+      accountStats.set(account.id, {
+        id: account.id,
+        name: account.name,
+        type: account.type,
+        color: account.color,
+        openingBalance: Number(account.openingBalance || 0),
+        openingDate: account.openingDate,
+        sortOrder: account.sortOrder,
+        isActive: account.isActive,
+        currentBalance: Number(account.openingBalance || 0),
+        monthInflow: 0,
+        monthOutflow: 0,
+        monthIncome: 0,
+        monthExpense: 0,
+        monthTransferIn: 0,
+        monthTransferOut: 0,
+        monthNet: 0,
+      });
+    }
+
+    const selectedEntries: any[] = [];
+    const addMonthBusiness = (entryPeriod: string, type: string, amount: number) => {
+      const row = monthMap.get(entryPeriod);
+      if (!row) return;
+      if (type === 'GELIR') row.income = this.roundMoney(row.income + amount);
+      else row.expense = this.roundMoney(row.expense + amount);
+    };
+    const addMonthTransfer = (entryPeriod: string, amount: number) => {
+      const row = monthMap.get(entryPeriod);
+      if (!row) return;
+      row.transferIn = this.roundMoney(row.transferIn + amount);
+      row.transferOut = this.roundMoney(row.transferOut + amount);
+    };
+
+    for (const entry of entries) {
+      const amount = Number(entry.amount || 0);
+      const stat = entry.accountId ? accountStats.get(entry.accountId) : null;
+      if (stat) {
+        if (entry.type === 'GELIR') stat.currentBalance = this.roundMoney(stat.currentBalance + amount);
+        else stat.currentBalance = this.roundMoney(stat.currentBalance - amount);
+        if (entry.period === period) {
+          if (entry.type === 'GELIR') {
+            stat.monthInflow = this.roundMoney(stat.monthInflow + amount);
+            stat.monthIncome = this.roundMoney(stat.monthIncome + amount);
+          } else {
+            stat.monthOutflow = this.roundMoney(stat.monthOutflow + amount);
+            stat.monthExpense = this.roundMoney(stat.monthExpense + amount);
+          }
+        }
+      }
+      addMonthBusiness(entry.period, entry.type, amount);
+      if (entry.period === period) {
+        selectedEntries.push({
+          id: entry.id,
+          source: 'MANUAL',
+          date: entry.date,
+          period: entry.period,
+          type: entry.type,
+          amount,
+          description: entry.description,
+          paymentMethod: entry.paymentMethod,
+          documentNo: entry.documentNo,
+          account: entry.account,
+          category: entry.category ? {
+            id: entry.category.id,
+            name: entry.category.name,
+            type: entry.category.type,
+            color: entry.category.color,
+          } : null,
+        });
+      }
+    }
+
+    let unassignedCollectionsCount = 0;
+    let unassignedCollectionsAmount = 0;
+    for (const h of collections) {
+      const amount = Number(h.tutar || 0);
+      const hPeriod = this.periodFromDate(new Date(h.tarih));
+      const stat = h.accountId ? accountStats.get(h.accountId) : null;
+      if (stat) {
+        stat.currentBalance = this.roundMoney(stat.currentBalance + amount);
+        if (hPeriod === period) {
+          stat.monthInflow = this.roundMoney(stat.monthInflow + amount);
+          stat.monthIncome = this.roundMoney(stat.monthIncome + amount);
+        }
+      } else {
+        unassignedCollectionsCount++;
+        unassignedCollectionsAmount = this.roundMoney(unassignedCollectionsAmount + amount);
+      }
+      addMonthBusiness(hPeriod, 'GELIR', amount);
+      if (hPeriod === period) {
+        selectedEntries.push({
+          id: h.id,
+          source: 'CARI_TAHSILAT',
+          date: h.tarih,
+          period: hPeriod,
+          type: 'GELIR',
+          amount,
+          description: this.taxpayerName(h.taxpayer) || h.aciklama || 'Musteri tahsilati',
+          paymentMethod: h.odemeYontemi,
+          documentNo: h.belgeNo,
+          account: h.account || null,
+          category: null,
+        });
+      }
+    }
+
+    const selectedTransfers: any[] = [];
+    for (const transfer of transfers) {
+      const amount = Number(transfer.amount || 0);
+      const fromStat = accountStats.get(transfer.fromAccountId);
+      const toStat = accountStats.get(transfer.toAccountId);
+      if (fromStat) fromStat.currentBalance = this.roundMoney(fromStat.currentBalance - amount);
+      if (toStat) toStat.currentBalance = this.roundMoney(toStat.currentBalance + amount);
+      if (transfer.period === period) {
+        if (fromStat) {
+          fromStat.monthOutflow = this.roundMoney(fromStat.monthOutflow + amount);
+          fromStat.monthTransferOut = this.roundMoney(fromStat.monthTransferOut + amount);
+        }
+        if (toStat) {
+          toStat.monthInflow = this.roundMoney(toStat.monthInflow + amount);
+          toStat.monthTransferIn = this.roundMoney(toStat.monthTransferIn + amount);
+        }
+      }
+      addMonthTransfer(transfer.period, amount);
+      if (transfer.period === period) {
+        selectedTransfers.push({
+          id: transfer.id,
+          source: 'TRANSFER',
+          date: transfer.date,
+          period: transfer.period,
+          amount,
+          description: transfer.description,
+          documentNo: transfer.documentNo,
+          fromAccount: transfer.fromAccount,
+          toAccount: transfer.toAccount,
+        });
+      }
+    }
+
+    for (const month of months) month.net = this.roundMoney(month.income - month.expense);
+    for (const stat of accountStats.values()) {
+      stat.monthNet = this.roundMoney(stat.monthInflow - stat.monthOutflow);
+      stat.currentBalance = this.roundMoney(stat.currentBalance);
+    }
+
+    const accountRows = Array.from(accountStats.values())
+      .filter((a: any) => a.isActive || a.currentBalance || a.monthInflow || a.monthOutflow)
+      .sort((a: any, b: any) => (a.sortOrder - b.sortOrder) || String(a.name).localeCompare(String(b.name), 'tr'));
+    const selectedMonth = monthMap.get(period) || months[0];
+
+    return {
+      year,
+      period,
+      accounts: accountRows,
+      months,
+      recentEntries: selectedEntries
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 75),
+      transfers: selectedTransfers,
+      kpi: {
+        totalBalance: this.roundMoney(accountRows.reduce((sum: number, a: any) => sum + a.currentBalance, 0)),
+        monthIncome: this.roundMoney(selectedMonth.income),
+        monthExpense: this.roundMoney(selectedMonth.expense),
+        monthNet: this.roundMoney(selectedMonth.net),
+        monthInflow: this.roundMoney(accountRows.reduce((sum: number, a: any) => sum + a.monthInflow, 0)),
+        monthOutflow: this.roundMoney(accountRows.reduce((sum: number, a: any) => sum + a.monthOutflow, 0)),
+        unassignedCollectionsCount,
+        unassignedCollectionsAmount: this.roundMoney(unassignedCollectionsAmount),
+      },
+    };
+  }
+
   async istatistikler(tenantId: string) {
     const now = new Date();
     const onIkiAyOnce = new Date(now.getFullYear(), now.getMonth() - 11, 1);

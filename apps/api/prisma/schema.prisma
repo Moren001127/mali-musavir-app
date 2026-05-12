@@ -31,6 +31,8 @@ model Tenant {
   officeBudgetCategories OfficeBudgetCategory[]
   officeBudgetEntries    OfficeBudgetEntry[]
   officeBudgetPlans      OfficeBudgetPlan[]
+  officeFinancialAccounts OfficeFinancialAccount[]
+  officeAccountTransfers  OfficeAccountTransfer[]
 
   @@map("tenants")
 }
@@ -1809,6 +1811,7 @@ model CariHareket {
   id             String    @id @default(cuid())
   tenantId       String
   taxpayerId     String
+  accountId      String?   // Tahsilat hangi banka/kasa hesabına girdi
   hizmetId       String?   // Tahakkuksa hizmete bağlı; manuel ödeme ise null
   tarih          DateTime
   tip            String    // "TAHAKKUK" | "TAHSILAT" | "IADE" | "DUZELTME"
@@ -1823,11 +1826,62 @@ model CariHareket {
 
   taxpayer       Taxpayer     @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
   hizmet         CariHizmet?  @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
+  account        OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taxpayerId, tarih])
   @@index([tenantId, tarih])
   @@index([tenantId, tip])
+  @@index([tenantId, accountId])
   @@map("cari_hareketler")
+}
+
+model OfficeFinancialAccount {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  type           String   // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
+  color          String   @default("#d4b876")
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
+  openingDate    DateTime @default(now())
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  budgetEntries  OfficeBudgetEntry[]
+  cariHareketler CariHareket[]
+  transfersFrom  OfficeAccountTransfer[] @relation("TransferFromAccount")
+  transfersTo    OfficeAccountTransfer[] @relation("TransferToAccount")
+
+  @@unique([tenantId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, isActive])
+  @@map("office_financial_accounts")
+}
+
+model OfficeAccountTransfer {
+  id            String   @id @default(cuid())
+  tenantId      String
+  fromAccountId String
+  toAccountId   String
+  date          DateTime
+  period        String   // "2026-05"
+  amount        Decimal  @db.Decimal(14, 2)
+  description   String?
+  documentNo    String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromAccount   OfficeFinancialAccount @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount     OfficeFinancialAccount @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, period])
+  @@index([fromAccountId, date])
+  @@index([toAccountId, date])
+  @@map("office_account_transfers")
 }
 
 // Ofis ici gelir/gider butce takibi.
@@ -1857,6 +1911,7 @@ model OfficeBudgetEntry {
   id            String   @id @default(cuid())
   tenantId      String
   categoryId    String
+  accountId     String?
   date          DateTime
   period        String   // "2026-05"
   type          String   // "GELIR" | "GIDER"
@@ -1872,9 +1927,11 @@ model OfficeBudgetEntry {
 
   tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category      OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account       OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, period])
   @@index([tenantId, type])
+  @@index([tenantId, accountId])
   @@index([categoryId, date])
   @@map("office_budget_entries")
 }
