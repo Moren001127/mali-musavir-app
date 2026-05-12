@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   Pencil,
+  Maximize2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -284,6 +285,7 @@ export default function FaturaMuhasebelestirmePage() {
   const [saving, setSaving] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [zoomMode, setZoomMode] = useState<'fit' | 'fit-width' | 'manual'>('fit');
   const [rotation, setRotation] = useState(0);
   const [accountOptions, setAccountOptions] = useState<AccountOption[]>([]);
   const [accountPlanSource, setAccountPlanSource] = useState<any>(null);
@@ -300,6 +302,19 @@ export default function FaturaMuhasebelestirmePage() {
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
   const selectedBusinessLedger = isBusinessLedger(selected?.ledgerType);
   const readyCount = drafts.filter((d) => d.status === 'hazir').length;
+  const viewerScale = zoomMode === 'fit' ? 0.82 : zoomMode === 'fit-width' ? 1 : zoom;
+  const setManualZoom = (value: number) => {
+    setZoomMode('manual');
+    setZoom(value);
+  };
+  const fitDocument = () => {
+    setZoomMode('fit');
+    setZoom(0.82);
+  };
+  const fitDocumentWidth = () => {
+    setZoomMode('fit-width');
+    setZoom(1);
+  };
   const dashboardFiltered = useMemo(() => {
     const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
     const rows = [...dashboardRows].sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
@@ -429,7 +444,12 @@ export default function FaturaMuhasebelestirmePage() {
   };
 
   const addFiles = (files: FileList | File[]) => {
-    const next = Array.from(files).filter((file) => file.type.startsWith('image/') || file.type === 'application/pdf');
+    const next = Array.from(files).filter((file) =>
+      file.type.startsWith('image/') ||
+      file.type === 'application/pdf' ||
+      file.type.includes('xml') ||
+      /\.xml$/i.test(file.name),
+    );
     if (!next.length) return;
     setDrafts((prev) => {
       const existing = new Set(prev.map((d) => `${d.file.name}-${d.file.size}`));
@@ -640,7 +660,7 @@ export default function FaturaMuhasebelestirmePage() {
           ref={inputRef}
           type="file"
           multiple
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,.xml,text/xml,application/xml"
           className="hidden"
           onChange={(e) => e.target.files && addFiles(e.target.files)}
         />
@@ -733,27 +753,50 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </section>
         ) : (
-        <section className="grid flex-1 grid-cols-[minmax(620px,1fr)_minmax(560px,640px)] overflow-hidden bg-[#19150f]">
-          <div className="invoice-preview-pane flex min-w-0 flex-col border-r border-[#cfd6df]">
-            <div className="invoice-toolbar flex h-12 items-center justify-between border-b border-[#d6dde5] px-4">
+        <section className="invoice-workbench grid flex-1 grid-cols-[minmax(680px,1fr)_minmax(520px,600px)] overflow-hidden">
+          <div className="invoice-document-area flex min-w-0 flex-col">
+            <div className="invoice-document-toolbar flex h-12 items-center justify-between border-b border-[#c6d0dc] px-4">
               <div className="flex items-center gap-2">
-                <button className="rounded-md border border-slate-200 p-2 text-slate-600" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} title="Uzaklaştır">
+                <button className="tool-icon" onClick={() => setManualZoom(Math.max(0.65, zoom - 0.1))} title="Uzaklaştır">
                   <ZoomOut size={16} />
                 </button>
-                <input className="h-1 w-48 accent-blue-600" type="range" min="0.5" max="1.8" step="0.05" value={zoom} onChange={(e) => setZoom(Number(e.target.value))} />
-                <button className="rounded-md border border-slate-200 p-2 text-slate-600" onClick={() => setZoom((z) => Math.min(1.8, z + 0.1))} title="Yakınlaştır">
+                <button
+                  className={zoomMode === 'fit' ? 'tool-pill active' : 'tool-pill'}
+                  onClick={fitDocument}
+                  title="Ekrana sığdır"
+                >
+                  <Maximize2 size={15} /> Sığdır
+                </button>
+                <button
+                  className={zoomMode === 'fit-width' ? 'tool-pill active' : 'tool-pill'}
+                  onClick={fitDocumentWidth}
+                  title="Genişliğe sığdır"
+                >
+                  Genişlik
+                </button>
+                <input
+                  className="zoom-slider"
+                  type="range"
+                  min="0.65"
+                  max="1.9"
+                  step="0.05"
+                  value={zoom}
+                  onChange={(e) => setManualZoom(Number(e.target.value))}
+                />
+                <span className="w-12 text-right text-xs font-semibold text-[#50657c]">%{Math.round(viewerScale * 100)}</span>
+                <button className="tool-icon" onClick={() => setManualZoom(Math.min(1.9, zoom + 0.1))} title="Yakınlaştır">
                   <ZoomIn size={16} />
                 </button>
-                <button className="rounded-md border border-slate-200 p-2 text-slate-600" onClick={() => setRotation((r) => (r + 90) % 360)} title="Döndür">
+                <button className="tool-icon" onClick={() => setRotation((r) => (r + 90) % 360)} title="Döndür">
                   <RotateCw size={16} />
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <button className="rounded-md border border-slate-200 p-2" onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} title="Önceki">
+              <div className="document-counter">
+                <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} title="Önceki">
                   <ChevronLeft size={16} />
                 </button>
-                <span>{selected ? `${selectedIndex + 1} / ${drafts.length}` : '0 / 0'}</span>
-                <button className="rounded-md border border-slate-200 p-2" onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} title="Sonraki">
+                <span>{selected ? String(selectedIndex + 1) : '0'} / {drafts.length}</span>
+                <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} title="Sonraki">
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -764,32 +807,37 @@ export default function FaturaMuhasebelestirmePage() {
                 onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
-                className={`m-6 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed bg-white ${dragging ? 'border-blue-500' : 'border-slate-300'}`}
+                className={dragging ? 'empty-dropzone dragging' : 'empty-dropzone'}
               >
-                <Upload size={34} className="mb-4 text-blue-600" />
-                <div className="text-base font-semibold">ÖKC fişlerini veya fatura görsellerini buraya bırakın</div>
-                <div className="mt-1 text-sm text-slate-500">JPG, PNG ve PDF kabul edilir. OCR şu an görsellerde çalışır.</div>
-                <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white">Dosya Seç</button>
+                <Upload size={36} className="mb-3 text-[#1d77d3]" />
+                <div className="text-base font-bold text-[#172033]">ÖKC fişi veya fatura belgesi yükleyin</div>
+                <div className="mt-1 text-sm text-[#607083]">JPG, PNG, PDF ve XML kabul edilir. Belgeler kuyrukta kontrol/onaya düşer.</div>
+                <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-md bg-[#1d77d3] px-4 py-2 text-sm font-semibold text-white">Dosya Seç</button>
               </div>
             ) : (
-              <div className="flex flex-1 items-start justify-center overflow-auto bg-[#eef1f4] p-5">
-                {selected.previewType === 'image' ? (
-                  <img
-                    src={selected.previewUrl}
-                    alt={selected.file.name}
-                    className="document-preview max-h-full rounded-sm bg-white shadow-sm"
-                    style={{ transform: `scale(${zoom}) rotate(${rotation}deg)`, transformOrigin: 'center center' }}
-                  />
-                ) : selected.previewUrl ? (
-                  <iframe src={selected.previewUrl} className="document-preview h-full w-full rounded-sm bg-white shadow-sm" title={selected.file.name} />
-                ) : (
-                  <div className="rounded-md bg-white p-8 text-center text-slate-500">Bu dosya için önizleme yok.</div>
-                )}
+              <div className="document-stage">
+                <div
+                  className="document-scale-wrap"
+                  style={{
+                    transform: 'scale(' + viewerScale + ') rotate(' + rotation + 'deg)',
+                    transformOrigin: 'top center',
+                    width: viewerScale < 1 ? String(100 / viewerScale) + '%' : '100%',
+                    minHeight: viewerScale < 1 ? String(100 / viewerScale) + '%' : '100%',
+                  }}
+                >
+                  {selected.previewType === 'image' ? (
+                    <img src={selected.previewUrl} alt={selected.file.name} className="document-preview document-image" />
+                  ) : selected.previewUrl ? (
+                    <iframe src={selected.previewUrl} className="document-preview document-frame" title={selected.file.name} />
+                  ) : (
+                    <div className="document-preview flex min-h-[520px] items-center justify-center rounded-md bg-white p-8 text-center text-slate-500">Bu dosya için önizleme yok.</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
 
-          <aside className="invoice-entry-pane flex min-w-0 flex-col">
+          <aside className="review-panel flex min-w-0 flex-col">
             <datalist id="luca-account-plan-options">
               {accountOptions.map((account) => (
                 <option key={account.id} value={account.code}>
@@ -797,296 +845,216 @@ export default function FaturaMuhasebelestirmePage() {
                 </option>
               ))}
             </datalist>
-            <div className="flex h-12 items-center justify-between border-b border-[#d5dde8] bg-[#f7f9fc] px-4">
-              <div className="text-sm font-semibold">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Kodları'}</div>
+
+            <div className="review-header">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6a7d94]">Kontrol ve Onay Paneli</div>
+                <div className="mt-0.5 text-base font-bold text-[#132033]">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Fişi Önerisi'}</div>
+              </div>
+              <div className={totals.diff < 0.01 ? 'balance-badge ok' : 'balance-badge warn'}>
+                {totals.diff < 0.01 ? 'Dengede' : money(String(totals.diff))}
+              </div>
             </div>
 
             {selected ? (
-              <div className="flex-1 overflow-auto p-4">
-                {selected.duplicateOfId || selected.duplicateReason ? (
-                  <div className="mb-4 flex gap-3 rounded-lg border border-red-400/45 bg-red-950/35 p-3 text-sm text-red-100">
-                    <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-300" />
-                    <div>
-                      <div className="font-semibold">Mükerrer belge uyarısı</div>
-                      <div className="mt-1 text-red-100/80">
-                        {selected.duplicateReason || 'Bu belge daha önce işlenmiş bir kayıtla eşleşiyor. Onaylamadan önce kontrol edin.'}
+              <>
+                <div className="review-scroll">
+                  {selected.duplicateOfId || selected.duplicateReason ? (
+                    <div className="duplicate-band">
+                      <AlertTriangle size={18} className="shrink-0" />
+                      <div>
+                        <div className="font-bold">Mükerrer belge uyarısı</div>
+                        <div className="mt-0.5 text-xs">{selected.duplicateReason || 'Bu belge daha önce işlenmiş bir kayıtla eşleşiyor. Onaylamadan önce kontrol edin.'}</div>
                       </div>
                     </div>
-                  </div>
-                ) : null}
-                {!selectedBusinessLedger ? <div className="mb-3 flex items-center justify-between rounded-md border border-[#d3e3f8] bg-[#eef6ff] px-3 py-2 text-xs text-[#42607a]">
-                  <span>
-                    Hesap planı: {accountPlanLoading ? 'yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'henüz çekilmedi'}
-                  </span>
-                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
-                </div> : (
-                  <div className="mb-3 rounded-md border border-[#d3e3f8] bg-[#eef6ff] px-3 py-2 text-xs text-[#42607a]">
-                    İşletme defteri: hesap kodu kullanılmaz, kayıt türü ve alt tür seçilerek aktarılır.
-                  </div>
-                )}
-                <div className="mb-3 rounded-md border border-[#cfe1fb] bg-[#eaf3ff] p-3">
-                  <div className="grid grid-cols-4 gap-3">
-                    <label className="text-xs font-semibold text-slate-500">
-                      Para Birimi
-                      <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm" value={selected.currency} onChange={(e) => updateSelected({ currency: e.target.value })} />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-500">
-                      Kur
-                      <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-sm" value={selected.exchangeRate} onChange={(e) => updateSelected({ exchangeRate: e.target.value })} />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-500">
-                      Fatura Türü
-                      <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm" value={selected.invoiceKind} onChange={(e) => updateSelected({ invoiceKind: e.target.value as DraftInvoice['invoiceKind'] })}>
-                        <option>Alış</option>
-                        <option>Satış</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-semibold text-slate-500">
-                      Belge Türü
-                      <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-sm" value={selected.documentType} onChange={(e) => updateSelected({ documentType: e.target.value as DraftInvoice['documentType'] })}>
-                        <option value="OKC_FIS">ÖKC Fişi</option>
-                        <option value="E_FATURA">E-Fatura</option>
-                        <option value="E_ARSIV">E-Arşiv</option>
-                        <option value="FIS">Fiş</option>
-                        <option value="DIGER">Diğer</option>
-                      </select>
-                    </label>
-                  </div>
-                </div>
+                  ) : null}
 
-                {!selectedBusinessLedger ? (
-                  <div className="space-y-3">
-                    {(['matrah', 'vergi', 'cari'] as const).map((group) => {
-                      const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
-                      const groupLines = selected.lines.filter((line) => line.group === group);
-                      return (
-                        <section key={group} className="account-block rounded-md border border-[#65a6d8] bg-white">
-                          <div className="flex items-center justify-between border-b border-[#65a6d8] bg-[#f7fbff] px-3 py-2">
-                            <div className="text-sm font-semibold text-[#1d2d3f]">{title} <span className="text-red-500">(B)</span></div>
-                            <button
-                              onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#cbd5e1] bg-white px-2 text-xs text-[#334155]"
-                            >
-                              <Plus size={14} /> Satır
-                            </button>
+                  <div className="plan-strip">
+                    <span>{selectedBusinessLedger ? 'İşletme defteri: hesap kodu yerine kayıt türü kullanılır.' : accountPlanLoading ? 'Hesap planı yükleniyor' : accountOptions.length ? accountOptions.length + ' kod hazır' : 'Hesap planı henüz çekilmedi'}</span>
+                    <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
+                  </div>
+
+                  <div className="meta-grid">
+                    <label>Para Birimi<input value={selected.currency} onChange={(e) => updateSelected({ currency: e.target.value })} /></label>
+                    <label>Kur<input className="text-right" value={selected.exchangeRate} onChange={(e) => updateSelected({ exchangeRate: e.target.value })} /></label>
+                    <label>Fatura Türü<select value={selected.invoiceKind} onChange={(e) => updateSelected({ invoiceKind: e.target.value as DraftInvoice['invoiceKind'] })}><option>Alış</option><option>Satış</option></select></label>
+                    <label>Belge Türü<select value={selected.documentType} onChange={(e) => updateSelected({ documentType: e.target.value as DraftInvoice['documentType'] })}><option value="OKC_FIS">ÖKC Fişi</option><option value="E_FATURA">E-Fatura</option><option value="E_ARSIV">E-Arşiv</option><option value="FIS">Fiş</option><option value="DIGER">Diğer</option></select></label>
+                  </div>
+
+                  {!selectedBusinessLedger ? (
+                    <div className="space-y-3">
+                      {(['matrah', 'vergi', 'cari'] as const).map((group) => {
+                        const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
+                        const groupLines = selected.lines.filter((line) => line.group === group);
+                        const groupDebit = groupLines.reduce((sum, line) => sum + parseAmount(line.debit), 0);
+                        const groupCredit = groupLines.reduce((sum, line) => sum + parseAmount(line.credit), 0);
+                        return (
+                          <section key={group} className="ledger-section">
+                            <div className="ledger-section-head">
+                              <div><span>{title}</span> <b>(B)</b></div>
+                              <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}><Plus size={14} /> Satır</button>
+                            </div>
+                            <div className="ledger-table">
+                              {groupLines.map((line) => (
+                                <div key={line.id} className="ledger-row">
+                                  <input list="luca-account-plan-options" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap" />
+                                  <input value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
+                                  <input value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                                  <input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
+                                  <input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
+                                  <button className="delete-row" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil"><Trash2 size={15} /></button>
+                                </div>
+                              ))}
+                              {!groupLines.length ? <div className="empty-ledger-row">Bu bölümde satır yok.</div> : null}
+                            </div>
+                            <div className="section-total"><span>Toplam</span><b>Borç {money(String(groupDebit))}</b><b>Alacak {money(String(groupCredit))}</b></div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {selected.lines.map((line, index) => (
+                        <section key={line.id} className="business-card">
+                          <div className="business-card-head">
+                            <span>{index + 1}</span>
+                            <button onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={15} /></button>
                           </div>
-                          <div className="divide-y divide-slate-100">
-                            {(groupLines.length ? groupLines : []).map((line) => (
-                              <div key={line.id} className="grid grid-cols-[118px_minmax(0,1fr)_64px_92px_92px_30px] gap-1.5 px-2 py-2">
-                                <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap" />
-                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
-                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
-                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
-                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
-                                <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil">
-                                  <Trash2 size={15} />
-                                </button>
-                              </div>
-                            ))}
-                            {!groupLines.length ? <div className="px-3 py-3 text-xs text-slate-500">Bu bölümde satır yok.</div> : null}
+                          <div className="business-grid top">
+                            <label>Kayıt Türü<select value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>{businessCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
+                            <label>Alt Tür<select value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>{businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
                           </div>
+                          <div className="business-grid amounts">
+                            <label>Matrah<input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} /></label>
+                            <label>KDV Oranı<select value={line.rate || '%20 Kdv'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}><option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option></select></label>
+                            <label>KDV Tutarı<input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} /></label>
+                          </div>
+                          <div className="fold-lines"><button>Hesap Kodu <ChevronRight size={14} /></button><button>Tevkifat İşlemleri <ChevronRight size={14} /></button><button>Stopaj İşlemleri <ChevronRight size={14} /></button></div>
+                          <div className="business-total"><span>Toplam Tutar (KDV Dahil)</span><b>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</b></div>
                         </section>
-                      );
-                    })}
+                      ))}
+                      <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })} className="add-business"><Plus size={16} /> Kayıt Ekle</button>
+                    </div>
+                  )}
+
+                  <div className="info-grid">
+                    <label>Tarih<input type="date" value={selected.date} onChange={(e) => updateSelected({ date: e.target.value })} /></label>
+                    <label>Belge No<input value={selected.number} onChange={(e) => updateSelected({ number: e.target.value })} /></label>
+                    <label>Satıcı VKN<input value={selected.sellerVkn} onChange={(e) => updateSelected({ sellerVkn: e.target.value })} /></label>
+                    <label>Toplam Tutar<input className="text-right font-bold" value={selected.total} onChange={(e) => updateSelected({ total: e.target.value })} /></label>
+                    <label className="col-span-2">Satıcı Bilgisi<input value={selected.vendorName} onChange={(e) => updateSelected({ vendorName: e.target.value })} /></label>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {selected.lines.map((line, index) => (
-                        <section key={line.id} className="business-entry-card rounded-md border border-[#88bfea] bg-[#b9dcf5]">
-                        <div className="flex items-center justify-between border-b border-[#99c8ed] px-3 py-2">
-                          <div className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#9be071] px-2 text-xs font-bold text-[#10200d]">{index + 1}</div>
-                          <button className="flex h-8 items-center justify-center rounded-md px-2 text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={15} /></button>
-                        </div>
-                        <div className="space-y-3 p-3">
-                          <div className="grid grid-cols-2 gap-2">
-                            <label className="text-xs font-semibold text-slate-500">Kayıt Türü
-                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>
-                                {businessCategories.map((cat) => <option key={cat}>{cat}</option>)}
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold text-slate-500">Alt Tür
-                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>
-                                {businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}
-                              </select>
-                            </label>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <label className="text-xs font-semibold text-slate-500">Matrah
-                              <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
-                            </label>
-                            <label className="text-xs font-semibold text-slate-500">KDV Oranı
-                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.rate || '%20 Kdv'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}>
-                                <option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option>
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold text-slate-500">KDV Tutarı
-                              <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
-                            </label>
-                          </div>
-                          <div className="flex justify-between rounded-md bg-[#e8f5ff] px-3 py-2 text-sm font-semibold text-[#15324a]">
-                            <span>Toplam Tutar (KDV Dahil)</span>
-                            <span>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</span>
-                          </div>
-                        </div>
-                      </section>
+                </div>
+
+                <div className="uploaded-strip">
+                  <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.08em] text-[#6a7d94]"><span>Yüklenen Belgeler</span><span>{drafts.length} belge</span></div>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {drafts.map((draft) => (
+                      <button key={draft.id} onClick={() => setSelectedId(draft.id)} className={selected?.id === draft.id ? 'doc-chip active' : 'doc-chip'}>
+                        {draft.previewType === 'image' ? <ImageIcon size={15} /> : <FileText size={15} />}
+                        <span>{draft.file.name}</span>
+                        {draft.status === 'hazir' ? <CheckCircle2 size={15} /> : null}
+                      </button>
                     ))}
-                    <button
-                      onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })}
-                      className="inline-flex items-center gap-2 rounded-md border border-[#cbd5e1] bg-white px-3 py-2 text-sm text-[#334155]"
-                    >
-                      <Plus size={16} /> Kayıt Ekle
-                    </button>
-                  </div>
-                )}
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <label className="text-xs font-semibold text-slate-500">
-                    Tarih
-                    <input type="date" className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={selected.date} onChange={(e) => updateSelected({ date: e.target.value })} />
-                  </label>
-                  <label className="text-xs font-semibold text-slate-500">
-                    Belge No
-                    <input className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={selected.number} onChange={(e) => updateSelected({ number: e.target.value })} />
-                  </label>
-                  <label className="text-xs font-semibold text-slate-500">
-                    Satıcı VKN
-                    <input className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={selected.sellerVkn} onChange={(e) => updateSelected({ sellerVkn: e.target.value })} />
-                  </label>
-                  <label className="text-xs font-semibold text-slate-500">
-                    Toplam Tutar
-                    <input className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-right text-sm font-semibold" value={selected.total} onChange={(e) => updateSelected({ total: e.target.value })} />
-                  </label>
-                  <label className="col-span-2 text-xs font-semibold text-slate-500">
-                    Satıcı Bilgisi
-                    <input className="mt-1 h-10 w-full rounded-md border border-slate-200 px-3 text-sm" value={selected.vendorName} onChange={(e) => updateSelected({ vendorName: e.target.value })} />
-                  </label>
-                </div>
-
-                <div className="mt-4 rounded-md border border-[#d5dde8] bg-[#f7f9fc] p-3 text-sm">
-                  <div className="flex justify-between"><span>Borç Toplamı</span><b>{money(String(totals.debit))}</b></div>
-                  <div className="mt-1 flex justify-between"><span>Alacak Toplamı</span><b>{money(String(totals.credit))}</b></div>
-                  <div className={`mt-2 flex justify-between rounded-md px-2 py-1 ${totals.diff < 0.01 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                    <span>Fiş Dengesi</span><b>{totals.diff < 0.01 ? 'Dengede' : money(String(totals.diff))}</b>
                   </div>
                 </div>
-              </div>
+
+                <div className="action-bar">
+                  <button onClick={() => { setShowDashboard(true); loadDashboard(); }} className="secondary"><ArrowLeft size={15} /> Listeye Dön</button>
+                  <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} className="ghost"><ChevronLeft size={15} /> Geri</button>
+                  <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} className="ghost">İleri <ChevronRight size={15} /></button>
+                  <button onClick={removeSelected} disabled={!selected} className="danger"><Trash2 size={15} /> Sil</button>
+                  <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="save">{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet</button>
+                  <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="approve"><CheckCircle2 size={15} /> Kaydet ve Onayla</button>
+                </div>
+              </>
             ) : (
-              <div className="flex flex-1 items-center justify-center p-8 text-center text-slate-500">
+              <div className="flex flex-1 items-center justify-center p-8 text-center text-[#64748b]">
                 <div>
-                  <FileText size={34} className="mx-auto mb-3 text-slate-400" />
-                  <div className="font-medium text-slate-700">{loadingExisting ? 'Kayıtlar yükleniyor' : 'Henüz belge seçilmedi'}</div>
+                  <FileText size={34} className="mx-auto mb-3 text-[#94a3b8]" />
+                  <div className="font-semibold text-[#334155]">{loadingExisting ? 'Kayıtlar yükleniyor' : 'Henüz belge seçilmedi'}</div>
                   <p className="mt-1 text-sm">Sol alana ÖKC fişi veya fatura görseli yükleyin.</p>
                 </div>
               </div>
             )}
-
-            <div className="border-t border-slate-200 bg-slate-50 p-3">
-              <div className="grid grid-cols-3 gap-2">
-                <button onClick={removeSelected} disabled={!selected} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-200 text-sm text-red-600 disabled:opacity-40">
-                  <Trash2 size={15} /> Sil
-                </button>
-                <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#d4b876] text-sm font-semibold text-[#17130f] disabled:opacity-40">
-                  {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet
-                </button>
-                <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-600 text-sm font-semibold text-white disabled:opacity-40">
-                  <CheckCircle2 size={15} /> Onayla
-                </button>
-              </div>
-            </div>
-
-            <div className="border-t border-slate-200 bg-slate-50 p-3">
-              <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-slate-500">
-                <span>Yüklenen Belgeler</span>
-                <span>{drafts.length} belge</span>
-              </div>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {drafts.map((draft) => (
-                  <button
-                    key={draft.id}
-                    onClick={() => setSelectedId(draft.id)}
-                    className={`flex min-w-52 items-center gap-2 rounded-md border bg-white px-3 py-2 text-left text-sm ${selected?.id === draft.id ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'}`}
-                  >
-                    {draft.previewType === 'image' ? <ImageIcon size={17} className="text-blue-600" /> : <FileText size={17} className="text-slate-500" />}
-                    <span className="min-w-0 flex-1 truncate">{draft.file.name}</span>
-                    {draft.status === 'hazir' ? <CheckCircle2 size={16} className="text-emerald-600" /> : null}
-                  </button>
-                ))}
-              </div>
-            </div>
           </aside>
         </section>
         )}
       </div>
       <style jsx global>{`
         .invoice-accounting-dark {
-          background: #0f0d0a;
+          background: #0d0b08;
+          color: #f7eedb;
         }
-        .invoice-accounting-dark .invoice-preview-pane {
-          background: #eef1f4 !important;
-          color: #101827 !important;
+        .invoice-accounting-dark > div > header {
+          background: linear-gradient(90deg, #12100c 0%, #17130e 56%, #21170d 100%) !important;
+          border-color: #2f2618 !important;
+          color: #f7eedb !important;
         }
-        .invoice-accounting-dark .invoice-toolbar {
-          background: #f8fafc !important;
-          color: #1f2937 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane {
-          background: #f4f6f9 !important;
-          color: #172033 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .bg-white,
-        .invoice-accounting-dark .invoice-entry-pane .bg-slate-50 {
-          background-color: #ffffff !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .bg-blue-50 {
-          background-color: #eaf3ff !important;
-        }
-        .invoice-accounting-dark .bg-blue-600 { background-color: #d4b876 !important; color: #17130f !important; }
-        .invoice-accounting-dark .bg-slate-900 { background-color: #090806 !important; color: #f7eedb !important; }
-        .invoice-accounting-dark .invoice-entry-pane .border-slate-200,
-        .invoice-accounting-dark .invoice-entry-pane .border-slate-300,
-        .invoice-accounting-dark .invoice-entry-pane .border-blue-100 {
-          border-color: #d5dde8 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
-          border-color: #e2e8f0 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .text-slate-900,
-        .invoice-accounting-dark .invoice-entry-pane .text-slate-700 {
-          color: #172033 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .text-slate-600,
-        .invoice-accounting-dark .invoice-entry-pane .text-slate-500 {
-          color: #54657a !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane input,
-        .invoice-accounting-dark .invoice-entry-pane select {
-          background-color: #ffffff !important;
-          border-color: #cbd5e1 !important;
-          color: #111827 !important;
-          box-shadow: inset 0 1px 1px rgba(15, 23, 42, .04);
-        }
-        .invoice-accounting-dark .invoice-entry-pane input::placeholder {
-          color: #94a3b8 !important;
-        }
-        .invoice-accounting-dark .invoice-entry-pane .account-block {
-          box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
-        }
-        .invoice-accounting-dark .invoice-entry-pane .business-entry-card {
-          box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
-        }
-        .invoice-accounting-dark .invoice-preview-pane .document-preview {
-          background-color: #ffffff !important;
-        }
-        .invoice-accounting-dark .invoice-preview-pane .bg-white:not(.document-preview) {
-          background-color: #ffffff !important;
-        }
-        .invoice-accounting-dark .invoice-preview-pane .text-slate-500,
-        .invoice-accounting-dark .invoice-preview-pane .text-slate-600,
-        .invoice-accounting-dark .invoice-preview-pane .text-slate-700 {
-          color: #334155 !important;
-        }
-        .invoice-accounting-dark .invoice-preview-pane input {
-          color: #111827 !important;
+        .invoice-accounting-dark > div > header h1 { color: #fff7df !important; }
+        .invoice-accounting-dark > div > header p { color: #d8cda5 !important; }
+        .invoice-workbench { background: #17130e; border-top: 1px solid #302615; }
+        .invoice-document-area { background: #dfe5eb; border-right: 3px solid #b9c3ce; }
+        .invoice-document-toolbar { background: #f6f8fb; color: #1e293b; box-shadow: 0 1px 0 rgba(15,23,42,.06); }
+        .tool-icon { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #29425f; }
+        .tool-pill { display: inline-flex; height: 34px; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; padding: 0 10px; color: #29425f; font-size: 12px; font-weight: 700; }
+        .tool-pill.active { border-color: #7aa7dc; background: #e8f2ff; color: #155fae; }
+        .zoom-slider { width: 170px; accent-color: #236fd0; }
+        .document-counter { display: inline-flex; align-items: center; gap: 7px; color: #203047; font-weight: 700; }
+        .document-counter button { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; }
+        .document-stage { flex: 1; overflow: auto; padding: 24px; background: linear-gradient(90deg, rgba(148,163,184,.15) 1px, transparent 1px), linear-gradient(0deg, rgba(148,163,184,.12) 1px, transparent 1px), #e8edf2; background-size: 28px 28px; }
+        .document-scale-wrap { margin: 0 auto; min-width: 760px; transition: transform .14s ease; }
+        .document-preview { display: block; margin: 0 auto; border: 1px solid #cbd5e1; background: #fff; box-shadow: 0 16px 36px rgba(15,23,42,.18); }
+        .document-image { max-width: 100%; height: auto; }
+        .document-frame { width: 100%; height: calc(100vh - 210px); min-height: 720px; border-radius: 6px; }
+        .empty-dropzone { margin: 24px; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; border: 2px dashed #b6c3d1; border-radius: 8px; background: #f8fafc; }
+        .empty-dropzone.dragging { border-color: #2474d3; background: #eef6ff; }
+        .review-panel { background: #f3f6fa; color: #172033; border-left: 1px solid #d6dee8; }
+        .review-header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid #d7e0eb; background: linear-gradient(90deg, #fff, #f3f7fb); padding: 12px 18px; }
+        .balance-badge { border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 800; }
+        .balance-badge.ok { background: #dff7ea; color: #057047; }
+        .balance-badge.warn { background: #fff3cf; color: #9a5a00; }
+        .review-scroll { flex: 1; overflow: auto; padding: 14px 18px 12px; }
+        .duplicate-band { display: flex; gap: 10px; border: 1px solid #fecaca; border-radius: 6px; background: #fff1f2; color: #9f1239; padding: 10px 12px; }
+        .plan-strip { display: flex; justify-content: space-between; gap: 12px; border: 1px solid #cfe1f8; border-radius: 6px; background: #eaf4ff; color: #335b80; padding: 9px 12px; font-size: 12px; font-weight: 700; }
+        .meta-grid, .info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; margin-bottom: 12px; border: 1px solid #d6e4f3; border-radius: 6px; background: #edf6ff; padding: 12px; }
+        .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); background: transparent; border: 0; padding: 0; }
+        .meta-grid label, .info-grid label, .business-grid label { min-width: 0; color: #52657d; font-size: 12px; font-weight: 800; }
+        .meta-grid input, .meta-grid select, .info-grid input, .business-grid input, .business-grid select, .ledger-row input { margin-top: 5px; height: 34px; width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; padding: 0 10px; color: #0f172a; outline: none; }
+        .ledger-section { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
+        .ledger-section-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #8bc3ee; background: #f4fbff; padding: 8px 10px; color: #172033; font-weight: 900; }
+        .ledger-section-head b { color: #ef4444; }
+        .ledger-section-head button, .add-business { display: inline-flex; height: 31px; align-items: center; gap: 6px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; padding: 0 10px; color: #334155; font-size: 12px; font-weight: 800; }
+        .ledger-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 72px 96px 96px 30px; gap: 7px; align-items: center; border-bottom: 1px solid #e5edf6; padding: 8px 10px; }
+        .ledger-row input { margin-top: 0; height: 32px; font-size: 12px; }
+        .delete-row, .business-card-head button { display: inline-flex; height: 30px; align-items: center; justify-content: center; border-radius: 6px; color: #ef4444; }
+        .empty-ledger-row { padding: 12px; color: #64748b; font-size: 12px; }
+        .section-total { display: flex; justify-content: flex-end; gap: 18px; background: #f8fafc; padding: 8px 12px; color: #334155; font-size: 12px; }
+        .business-card { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #b9dcf5; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
+        .business-card-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #99c8ed; padding: 8px 10px; }
+        .business-card-head span { display: inline-flex; min-width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 6px; background: #9be071; color: #10200d; font-weight: 900; }
+        .business-grid { display: grid; gap: 10px; padding: 10px; }
+        .business-grid.top { grid-template-columns: 1fr 1fr; }
+        .business-grid.amounts { grid-template-columns: 1fr 1fr 1fr; padding-top: 0; }
+        .fold-lines { display: grid; gap: 4px; padding: 0 10px 8px; }
+        .fold-lines button { display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: #29445d; padding: 3px 0; font-size: 12px; }
+        .business-total { display: flex; justify-content: space-between; background: #e8f5ff; padding: 10px 12px; color: #15324a; font-weight: 900; }
+        .uploaded-strip { border-top: 1px solid #d7e0eb; background: #f8fafc; padding: 10px 14px; }
+        .doc-chip { display: inline-flex; min-width: 180px; align-items: center; gap: 7px; border: 1px solid #d5dde8; border-radius: 6px; background: #fff; padding: 8px 10px; color: #334155; font-size: 12px; }
+        .doc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-chip.active { border-color: #1d77d3; box-shadow: 0 0 0 2px #dbeafe; }
+        .action-bar { display: grid; grid-template-columns: 1.05fr .8fr .8fr .7fr .9fr 1.25fr; gap: 8px; border-top: 1px solid #d7e0eb; background: #eef3f8; padding: 10px 12px; }
+        .action-bar button { display: inline-flex; height: 36px; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; font-size: 12px; font-weight: 900; }
+        .action-bar .secondary { background: #fff4a8; color: #4b3a00; border: 1px solid #ead764; }
+        .action-bar .ghost { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+        .action-bar .danger { background: #fff; color: #dc2626; border: 1px solid #fecaca; }
+        .action-bar .save { background: #f59e0b; color: #fff; }
+        .action-bar .approve { background: #1877f2; color: #fff; }
+        .action-bar button:disabled { opacity: .45; }
+        @media (max-width: 1280px) {
+          .invoice-workbench { grid-template-columns: minmax(560px, 1fr) minmax(480px, 560px); }
+          .ledger-row { grid-template-columns: 105px minmax(0,1fr) 58px 82px 82px 28px; }
+          .action-bar { grid-template-columns: repeat(3, 1fr); }
         }
       `}</style>
     </main>
