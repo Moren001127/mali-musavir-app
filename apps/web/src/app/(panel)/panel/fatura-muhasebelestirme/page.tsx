@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Upload,
@@ -24,6 +24,10 @@ import {
   SlidersHorizontal,
   Pencil,
   Maximize2,
+  Search,
+  X,
+  Keyboard,
+  Filter,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -41,13 +45,17 @@ type OcrDetected = {
 
 type AccountingLine = {
   id: string;
-  group: 'matrah' | 'vergi' | 'cari';
+  group: 'matrah' | 'vergi' | 'cari' | 'iskonto' | 'stopaj' | 'tevkifat';
   accountCode: string;
   description: string;
   rate?: string;
   debit: string;
   credit: string;
 };
+
+const KDV_RATES = ['%20', '%10', '%1', '%0'] as const;
+const TEVKIFAT_RATES = ['2/10', '3/10', '4/10', '5/10', '7/10', '9/10', '10/10'] as const;
+const STOPAJ_RATES = ['%5', '%10', '%15', '%17', '%20'] as const;
 
 type DraftInvoice = {
   id: string;
@@ -76,6 +84,7 @@ type DraftInvoice = {
   duplicateOfId?: string | null;
   duplicateReason?: string | null;
   duplicateSeverity?: string | null;
+  foreignInvoice?: boolean;
 };
 
 type AccountOption = {
@@ -279,12 +288,16 @@ function blankDraft(file: File, previewUrl: string): DraftInvoice {
   };
 }
 
+type LedgerFilter = 'all' | 'bilanco' | 'isletme';
+type PendingFilter = 'all' | 'pending' | 'clear';
+
 export default function FaturaMuhasebelestirmePage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const documentStageRef = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [globalDragging, setGlobalDragging] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(false);
@@ -302,6 +315,16 @@ export default function FaturaMuhasebelestirmePage() {
   const [dashboardAccountPlanJob, setDashboardAccountPlanJob] = useState<string | null>(null);
   const [backfillLoading, setBackfillLoading] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
+  const [pendingFilter, setPendingFilter] = useState<PendingFilter>('pending');
+  const [accountPicker, setAccountPicker] = useState<{ lineId: string; query: string } | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [openSections, setOpenSections] = useState<{ iskonto: boolean; stopaj: boolean; tevkifat: boolean }>({
+    iskonto: false,
+    stopaj: false,
+    tevkifat: false,
+  });
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
@@ -330,18 +353,41 @@ export default function FaturaMuhasebelestirmePage() {
     setZoomMode('fit-width');
     setZoom(fitWidthScale);
   };
+
   const dashboardFiltered = useMemo(() => {
     const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
-    const rows = [...dashboardRows].sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
-    if (!q) return rows;
-    return rows.filter((row) => row.name.toLocaleLowerCase('tr-TR').includes(q));
-  }, [dashboardRows, dashboardSearch]);
+    let rows = [...dashboardRows].sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
+    if (q) rows = rows.filter((row) => row.name.toLocaleLowerCase('tr-TR').includes(q));
+    if (ledgerFilter !== 'all') {
+      rows = rows.filter((row) => {
+        const isBus = isBusinessLedger(row.ledgerType);
+        return ledgerFilter === 'isletme' ? isBus : !isBus;
+      });
+    }
+    if (pendingFilter !== 'all') {
+      rows = rows.filter((row) => {
+        const pending = (row.pendingPurchase || 0) + (row.pendingSale || 0) + (row.pendingBank || 0);
+        return pendingFilter === 'pending' ? pending > 0 : pending === 0;
+      });
+    }
+    return rows;
+  }, [dashboardRows, dashboardSearch, ledgerFilter, pendingFilter]);
+
+  const dashboardTotals = useMemo(() => {
+    const tp = dashboardRows.length;
+    const pendingPurchase = dashboardRows.reduce((s, r) => s + (r.pendingPurchase || 0), 0);
+    const pendingSale = dashboardRows.reduce((s, r) => s + (r.pendingSale || 0), 0);
+    const pendingBank = dashboardRows.reduce((s, r) => s + (r.pendingBank || 0), 0);
+    return { tp, pendingPurchase, pendingSale, pendingBank };
+  }, [dashboardRows]);
 
   const totals = useMemo(() => {
     const debit = selected?.lines.reduce((sum, line) => sum + parseAmount(line.debit), 0) || 0;
     const credit = selected?.lines.reduce((sum, line) => sum + parseAmount(line.credit), 0) || 0;
     return { debit, credit, diff: Math.abs(debit - credit) };
   }, [selected]);
+
+  const balanceOk = totals.diff < 0.01;
 
   useEffect(() => {
     let alive = true;
@@ -472,7 +518,7 @@ export default function FaturaMuhasebelestirmePage() {
     }
   };
 
-  const addFiles = (files: FileList | File[]) => {
+  const addFiles = useCallback((files: FileList | File[]) => {
     const next = Array.from(files).filter((file) =>
       file.type.startsWith('image/') ||
       file.type === 'application/pdf' ||
@@ -485,10 +531,13 @@ export default function FaturaMuhasebelestirmePage() {
       const additions = next
         .filter((file) => !existing.has(`${file.name}-${file.size}`))
         .map((file) => ({ ...blankDraft(file, URL.createObjectURL(file)), originalFile: file }));
-      if (!selectedId && additions[0]) setSelectedId(additions[0].id);
+      if (additions.length) {
+        if (showDashboard) setShowDashboard(false);
+        setSelectedId((curr) => curr || additions[0]?.id || null);
+      }
       return [...prev, ...additions];
     });
-  };
+  }, [showDashboard]);
 
   const updateSelected = (patch: Partial<DraftInvoice>) => {
     if (!selected) return;
@@ -628,6 +677,7 @@ export default function FaturaMuhasebelestirmePage() {
         doc = res.data;
       }
       setDrafts((prev) => prev.map((d) => (d.id === selected.id ? applyApiDocument(d, doc) : d)));
+      setSavedAt(new Date());
       toast.success(approve ? 'Belge onaylandı' : 'Taslak kaydedildi');
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.message || 'Kaydetme tamamlanamadı');
@@ -636,53 +686,228 @@ export default function FaturaMuhasebelestirmePage() {
     }
   };
 
+  // Klavye kısayolları
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const cmdKey = e.ctrlKey || e.metaKey;
+
+      // Cmd/Ctrl + S → Kaydet
+      if (cmdKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (selected && !saving) saveSelected(false);
+        return;
+      }
+      // Cmd/Ctrl + Enter → Kaydet ve Onayla
+      if (cmdKey && e.key === 'Enter') {
+        e.preventDefault();
+        if (selected && !saving) saveSelected(true);
+        return;
+      }
+      if (isTyping) return;
+      // J / sağ ok → sonraki
+      if (e.key === 'j' || e.key === 'ArrowRight') {
+        if (drafts[selectedIndex + 1]) setSelectedId(drafts[selectedIndex + 1].id);
+        return;
+      }
+      // K / sol ok → önceki
+      if (e.key === 'k' || e.key === 'ArrowLeft') {
+        if (drafts[selectedIndex - 1]) setSelectedId(drafts[selectedIndex - 1].id);
+        return;
+      }
+      // Delete / Backspace → sil (showDashboard değilken)
+      if ((e.key === 'Delete' || e.key === 'Backspace') && !showDashboard && selected) {
+        e.preventDefault();
+        removeSelected();
+        return;
+      }
+      // ? → kısayol yardımı
+      if (e.key === '?') {
+        setShowShortcuts((s) => !s);
+      }
+      // Esc → autocomplete kapat
+      if (e.key === 'Escape') {
+        if (accountPicker) setAccountPicker(null);
+        else if (showShortcuts) setShowShortcuts(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [drafts, selectedIndex, selected, saving, showDashboard, accountPicker, showShortcuts]);
+
+  // Global drag & drop — tüm sayfada dosya bırakılabilir
+  useEffect(() => {
+    const onDragEnter = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes('Files')) {
+        setGlobalDragging(true);
+      }
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!e.relatedTarget) setGlobalDragging(false);
+    };
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      setGlobalDragging(false);
+      if (e.dataTransfer?.files?.length) {
+        addFiles(e.dataTransfer.files);
+      }
+    };
+    window.addEventListener('dragenter', onDragEnter);
+    window.addEventListener('dragleave', onDragLeave);
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragenter', onDragEnter);
+      window.removeEventListener('dragleave', onDragLeave);
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [addFiles]);
+
+  // Yüklenen taslakta hangi katlanır bölümlerde satır varsa onları aç
+  useEffect(() => {
+    if (!selected) return;
+    const hasIskonto = selected.lines.some((l) => l.group === 'iskonto');
+    const hasStopaj = selected.lines.some((l) => l.group === 'stopaj');
+    const hasTevkifat = selected.lines.some((l) => l.group === 'tevkifat');
+    setOpenSections({
+      iskonto: hasIskonto,
+      stopaj: hasStopaj,
+      tevkifat: hasTevkifat,
+    });
+  }, [selected?.id]);
+
+  // Kur değiştiğinde — TL haricinde, toplam TL eşdeğeri toast olarak göster (yardımcı)
+  useEffect(() => {
+    if (!selected) return;
+    if (selected.currency === 'TL' || selected.currency === 'TRY') return;
+    const rate = parseAmount(selected.exchangeRate);
+    if (rate <= 0) return;
+    // sessiz; UI'da ayrıca gösteriyoruz
+  }, [selected?.currency, selected?.exchangeRate, selected?.total]);
+
+  const tlEquivalent = useMemo(() => {
+    if (!selected) return null;
+    if (selected.currency === 'TL' || selected.currency === 'TRY') return null;
+    const rate = parseAmount(selected.exchangeRate);
+    const tot = parseAmount(selected.total);
+    if (rate <= 0 || tot <= 0) return null;
+    return tot * rate;
+  }, [selected?.currency, selected?.exchangeRate, selected?.total]);
+
+  const filteredAccountOptions = useMemo(() => {
+    if (!accountPicker) return [] as AccountOption[];
+    const q = accountPicker.query.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return accountOptions.slice(0, 100);
+    return accountOptions
+      .filter((a) => a.code.toLowerCase().includes(q) || a.name.toLocaleLowerCase('tr-TR').includes(q))
+      .slice(0, 100);
+  }, [accountOptions, accountPicker]);
+
+  const openAccountPicker = (lineId: string) => {
+    setAccountPicker({ lineId, query: '' });
+  };
+
+  const pickAccount = (account: AccountOption) => {
+    if (!accountPicker) return;
+    updateLine(accountPicker.lineId, { accountCode: account.code, description: account.name });
+    setAccountPicker(null);
+  };
+
+  // Tevkifat satırı eklemek için yardımcı — KDV rate'i ile orantılı 360 Ödenecek KDV-2 önerir
+  const addTevkifatLine = () => {
+    if (!selected) return;
+    // KDV satırlarının toplamını al; tevkifat oranı varsayılan 5/10 → KDV'nin %50'si
+    const kdvTotal = selected.lines
+      .filter((l) => l.group === 'vergi')
+      .reduce((s, l) => s + parseAmount(l.debit) + parseAmount(l.credit), 0);
+    const suggestion = kdvTotal > 0 ? kdvTotal * 0.5 : 0;
+    updateSelected({
+      lines: [
+        ...selected.lines,
+        makeLine('tevkifat', '360.02.001', 'Ödenecek KDV-2 (Sorumlu Sıfatıyla)', '0,00', money(String(suggestion)), '5/10'),
+      ],
+    });
+    setOpenSections((s) => ({ ...s, tevkifat: true }));
+  };
+
+  const addStopajLine = () => {
+    if (!selected) return;
+    updateSelected({
+      lines: [
+        ...selected.lines,
+        makeLine('stopaj', '360.01.001', 'Ödenecek Gelir Vergisi Stopajı', '0,00', '0,00', '%20'),
+      ],
+    });
+    setOpenSections((s) => ({ ...s, stopaj: true }));
+  };
+
+  const addIskontoLine = () => {
+    if (!selected) return;
+    const isAlis = selected.invoiceKind === 'Alış';
+    updateSelected({
+      lines: [
+        ...selected.lines,
+        makeLine('iskonto', isAlis ? '153.99' : '611.01', isAlis ? 'Alınan İskonto' : 'Satış İskontosu', '0,00', '0,00'),
+      ],
+    });
+    setOpenSections((s) => ({ ...s, iskonto: true }));
+  };
+
   return (
-    <main className="invoice-accounting-dark min-h-0 bg-[#0f0d0a] text-[#f7eedb]">
-      <div className="flex h-[calc(100vh-76px)] min-h-[620px] flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white">
-              <Receipt size={20} />
-            </div>
+    <main className="fm-root">
+      {globalDragging ? (
+        <div className="fm-global-drop">
+          <div className="fm-global-drop-card">
+            <Upload size={36} />
+            <div className="fm-global-drop-title">Belgeyi bırak</div>
+            <div className="fm-global-drop-sub">PDF, JPG, PNG ya da XML kabul edilir</div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="fm-frame">
+        <header className="fm-header">
+          <div className="fm-title-block">
+            <div className="fm-title-icon"><Receipt size={20} /></div>
             <div>
-              <h1 className="text-lg font-semibold tracking-normal">Fatura Muhasebeleştirme</h1>
-              <p className="text-xs text-slate-500">Fatura, ÖKC fişi ve ileride mobil belgeler için tek onay ekranı</p>
+              <h1 className="fm-title">Fatura Muhasebeleştirme</h1>
+              <p className="fm-subtitle">Fatura, ÖKC fişi ve mobil belgeler için tek onay ekranı</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm">
+          <div className="fm-header-actions">
             {!showDashboard ? (
-              <button
-                onClick={() => {
-                  setShowDashboard(true);
-                  loadDashboard();
-                }}
-                className="inline-flex items-center gap-2 rounded-md border border-amber-300/30 px-3 py-2 text-sm font-medium text-[#f4d68a]"
-              >
-                <ArrowLeft size={16} /> Listeye Dön
+              <button onClick={() => { setShowDashboard(true); loadDashboard(); }} className="fm-btn ghost">
+                <ArrowLeft size={15} /> Listeye Dön
               </button>
             ) : null}
-            <span className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-600">Onaylanacak: <b className="text-red-500">{drafts.length - readyCount}</b></span>
-            <button
-              onClick={() => inputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-            >
-              <Upload size={16} /> Yükle
+            <span className="fm-pill-info">
+              Onay bekleyen <b>{drafts.length - readyCount}</b>
+            </span>
+            {savedAt ? (
+              <span className="fm-pill-saved">Kaydedildi · {savedAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+            ) : null}
+            <button onClick={() => setShowShortcuts(true)} className="fm-btn ghost icon-only" title="Klavye kısayolları (?)">
+              <Keyboard size={15} />
             </button>
-            <button
-              onClick={runOcr}
-              disabled={scanning || !drafts.length}
-              className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {scanning ? <Loader2 className="animate-spin" size={16} /> : <ScanLine size={16} />} OCR Oku
+            <button onClick={() => inputRef.current?.click()} className="fm-btn ghost">
+              <Upload size={15} /> Yükle
+            </button>
+            <button onClick={runOcr} disabled={scanning || !drafts.length} className="fm-btn primary">
+              {scanning ? <Loader2 className="animate-spin" size={15} /> : <ScanLine size={15} />} OCR Oku
             </button>
             <button
               onClick={refreshAccountPlan}
               disabled={!selected?.taxpayerId || accountPlanRefreshing}
-              className="inline-flex items-center gap-2 rounded-md border border-amber-300/40 bg-[#2a2114] px-3 py-2 text-sm font-medium text-[#f4d68a] disabled:opacity-45"
+              className="fm-btn ghost"
               title="Seçili mükellefin hesap planını Luca'dan yeniden çek"
             >
-              {accountPlanRefreshing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-              Hesap Planı Güncelle
+              {accountPlanRefreshing ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+              Hesap Planı
             </button>
           </div>
         </header>
@@ -697,397 +922,1558 @@ export default function FaturaMuhasebelestirmePage() {
         />
 
         {showDashboard ? (
-          <section className="flex-1 overflow-hidden bg-[#0f0d0a] p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <button className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#6d145d] text-white" title="Ayarlar">
-                  <SlidersHorizontal size={18} />
-                </button>
-                <button onClick={loadDashboard} className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#1664c8] text-white" title="Yenile">
-                  {dashboardLoading ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />}
+          <section className="fm-dashboard">
+            <div className="fm-dashboard-toolbar">
+              <div className="fm-filter-group">
+                <div className="fm-search">
+                  <Search size={15} />
+                  <input
+                    value={dashboardSearch}
+                    onChange={(e) => setDashboardSearch(e.target.value)}
+                    placeholder="Mükellef ara"
+                  />
+                  {dashboardSearch ? (
+                    <button onClick={() => setDashboardSearch('')} className="fm-search-clear"><X size={13} /></button>
+                  ) : null}
+                </div>
+                <div className="fm-chip-group">
+                  <span className="fm-chip-label"><Filter size={12} /> Defter</span>
+                  {(['all', 'bilanco', 'isletme'] as const).map((v) => (
+                    <button key={v} onClick={() => setLedgerFilter(v)} className={ledgerFilter === v ? 'fm-chip active' : 'fm-chip'}>
+                      {v === 'all' ? 'Tümü' : v === 'bilanco' ? 'Bilanço' : 'İşletme'}
+                    </button>
+                  ))}
+                </div>
+                <div className="fm-chip-group">
+                  <span className="fm-chip-label">Durum</span>
+                  {(['all', 'pending', 'clear'] as const).map((v) => (
+                    <button key={v} onClick={() => setPendingFilter(v)} className={pendingFilter === v ? 'fm-chip active' : 'fm-chip'}>
+                      {v === 'all' ? 'Tümü' : v === 'pending' ? 'Bekleyen var' : 'Temiz'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="fm-toolbar-right">
+                <button onClick={loadDashboard} className="fm-btn ghost icon-only" title="Yenile">
+                  {dashboardLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
                 </button>
                 <button
                   onClick={backfillExistingEarsiv}
                   disabled={backfillLoading}
-                  className="inline-flex h-10 items-center gap-2 rounded-md bg-[#d4b876] px-3 text-sm font-semibold text-[#0f0d0a] disabled:opacity-60"
+                  className="fm-btn primary"
                   title="E-Fatura / E-Arşiv sorgulama alanındaki mevcut faturaları muhasebeleştirme kuyruğuna aktar"
                 >
-                  {backfillLoading ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+                  {backfillLoading ? <Loader2 className="animate-spin" size={15} /> : <FileText size={15} />}
                   Mevcut Faturaları Aktar
                 </button>
               </div>
-              <input
-                className="h-10 w-80 rounded-md border border-[#3b321f] bg-[#15110d] px-3 text-sm text-[#f7eedb] outline-none"
-                value={dashboardSearch}
-                onChange={(e) => setDashboardSearch(e.target.value)}
-                placeholder="Mükellef ara"
-              />
             </div>
-            <div className="overflow-hidden rounded-md border border-[#332a1c] bg-[#15110d]">
-              <div className="max-h-[calc(100vh-190px)] overflow-auto">
-                <table className="min-w-full border-collapse text-[13px]">
-                  <thead className="sticky top-0 z-10 bg-[#211a11] text-left text-[#f4d68a]">
-                    <tr>
-                      <th className="w-[32%] border-b border-[#3b321f] px-4 py-2.5 font-semibold">Firma Bilgisi</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Defter</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Alış</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Satış</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Banka</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Onaylanan</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Onaylanan Banka</th>
-                      <th className="border-b border-[#3b321f] px-3 py-2.5 text-center font-semibold">İşlemler</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dashboardFiltered.map((row, idx) => (
-                      <tr key={row.taxpayerId} className={idx % 2 ? 'bg-[#18130f]' : 'bg-[#100d0a]'}>
-                        <td className="border-b border-[#2a2419] px-4 py-2.5 font-semibold text-[#f7eedb]">{row.name}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5 text-[#d8cda5]">{row.ledgerType}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5">
-                          <button onClick={() => openTaxpayerQueue(row, 'ALIS')} className="min-w-10 rounded-md bg-[#1f7ad9] px-2.5 py-1 text-center font-bold text-white hover:bg-[#2f8ef0]">
-                            {row.pendingPurchase}
-                          </button>
+
+            <div className="fm-stat-strip">
+              <div className="fm-stat"><span>Mükellef</span><b>{dashboardTotals.tp}</b></div>
+              <div className="fm-stat"><span>Bekleyen Alış</span><b>{dashboardTotals.pendingPurchase}</b></div>
+              <div className="fm-stat"><span>Bekleyen Satış</span><b>{dashboardTotals.pendingSale}</b></div>
+              <div className="fm-stat"><span>Bekleyen Banka</span><b>{dashboardTotals.pendingBank}</b></div>
+            </div>
+
+            <div className="fm-table-wrap">
+              <table className="fm-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '32%' }}>Firma</th>
+                    <th>Defter</th>
+                    <th>Bekleyen Alış</th>
+                    <th>Bekleyen Satış</th>
+                    <th>Bekleyen Banka</th>
+                    <th>Onaylanan</th>
+                    <th>Onaylanan Banka</th>
+                    <th style={{ textAlign: 'center' }}>İşlem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardFiltered.map((row) => {
+                    const isBus = isBusinessLedger(row.ledgerType);
+                    const total = (row.pendingPurchase || 0) + (row.pendingSale || 0) + (row.pendingBank || 0);
+                    return (
+                      <tr key={row.taxpayerId}>
+                        <td>
+                          <div className="fm-firm">
+                            <span className="fm-firm-name">{row.name}</span>
+                            {total > 0 ? <span className="fm-firm-dot" title={`${total} bekleyen`}></span> : null}
+                          </div>
                         </td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5">
-                          <button onClick={() => openTaxpayerQueue(row, 'SATIS')} className="min-w-10 rounded-md bg-[#1f7ad9] px-2.5 py-1 text-center font-bold text-white hover:bg-[#2f8ef0]">
-                            {row.pendingSale}
-                          </button>
+                        <td>
+                          <span className={isBus ? 'fm-ledger-tag isletme' : 'fm-ledger-tag bilanco'}>
+                            {row.ledgerType || (isBus ? 'İşletme' : 'Bilanço')}
+                          </span>
                         </td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.pendingBank}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.approvedInvoice}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.approvedBank}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-2 text-center">
+                        <td><CountButton value={row.pendingPurchase} onClick={() => openTaxpayerQueue(row, 'ALIS')} /></td>
+                        <td><CountButton value={row.pendingSale} onClick={() => openTaxpayerQueue(row, 'SATIS')} /></td>
+                        <td className="num">{row.pendingBank}</td>
+                        <td className="num">{row.approvedInvoice}</td>
+                        <td className="num">{row.approvedBank}</td>
+                        <td style={{ textAlign: 'center' }}>
                           <button
                             onClick={() => refreshAccountPlanForTaxpayer(row.taxpayerId, row.name)}
                             disabled={dashboardAccountPlanJob === row.taxpayerId}
-                            className="mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#4a3d25] bg-[#241b10] text-[#f4d68a] hover:bg-[#302314] disabled:opacity-50"
-                            title="Bu mükellefin hesap planını Luca'dan güncelle"
+                            className="fm-row-action"
+                            title="Hesap planını Luca'dan güncelle"
                           >
-                            {dashboardAccountPlanJob === row.taxpayerId ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                            {dashboardAccountPlanJob === row.taxpayerId ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                           </button>
-                          <button onClick={() => openTaxpayerQueue(row)} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#1f7ad9] text-white hover:bg-[#2f8ef0]" title="Fatura işleme ekranını aç">
-                            <Pencil size={16} />
+                          <button onClick={() => openTaxpayerQueue(row)} className="fm-row-action primary" title="Fatura işleme">
+                            <Pencil size={14} />
                           </button>
                         </td>
                       </tr>
-                    ))}
-                    {!dashboardFiltered.length ? (
-                      <tr>
-                        <td colSpan={8} className="px-4 py-10 text-center text-[#d8cda5]">
-                          {dashboardLoading ? 'Gelen evrak özeti yükleniyor' : 'Mükellef kaydı bulunamadı'}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+                  {!dashboardFiltered.length ? (
+                    <tr>
+                      <td colSpan={8} className="fm-empty-row">
+                        {dashboardLoading ? 'Gelen evrak özeti yükleniyor' : 'Filtreye uygun mükellef bulunamadı'}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             </div>
           </section>
         ) : (
-        <section className="invoice-workbench grid flex-1 overflow-hidden">
-          <div className="invoice-document-area flex min-w-0 flex-col">
-            <div className="invoice-document-toolbar flex h-12 items-center justify-between border-b border-[#c6d0dc] px-4">
-              <div className="flex items-center gap-2">
-                <button className="tool-icon" onClick={() => setManualZoom(Math.max(0.45, zoom - 0.1))} title="Uzaklaştır">
-                  <ZoomOut size={16} />
-                </button>
-                <button
-                  className={zoomMode === 'fit' ? 'tool-pill active' : 'tool-pill'}
-                  onClick={fitDocument}
-                  title="Ekrana sığdır"
-                >
-                  <Maximize2 size={15} /> Sığdır
-                </button>
-                <button
-                  className={zoomMode === 'fit-width' ? 'tool-pill active' : 'tool-pill'}
-                  onClick={fitDocumentWidth}
-                  title="Genişliğe sığdır"
-                >
-                  Genişlik
-                </button>
-                <input
-                  className="zoom-slider"
-                  type="range"
-                  min="0.45"
-                  max="1.9"
-                  step="0.05"
-                  value={zoom}
-                  onChange={(e) => setManualZoom(Number(e.target.value))}
-                />
-                <span className="w-12 text-right text-xs font-semibold text-[#50657c]">%{Math.round(viewerScale * 100)}</span>
-                <button className="tool-icon" onClick={() => setManualZoom(Math.min(1.9, zoom + 0.1))} title="Yakınlaştır">
-                  <ZoomIn size={16} />
-                </button>
-                <button className="tool-icon" onClick={() => setRotation((r) => (r + 90) % 360)} title="Döndür">
-                  <RotateCw size={16} />
-                </button>
-              </div>
-              <div className="document-counter">
-                <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} title="Önceki">
-                  <ChevronLeft size={16} />
-                </button>
-                <span>{selected ? String(selectedIndex + 1) : '0'} / {drafts.length}</span>
-                <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} title="Sonraki">
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </div>
-
-            {!selected ? (
-              <div
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
-                className={dragging ? 'empty-dropzone dragging' : 'empty-dropzone'}
-              >
-                <Upload size={36} className="mb-3 text-[#1d77d3]" />
-                <div className="text-base font-bold text-[#172033]">ÖKC fişi veya fatura belgesi yükleyin</div>
-                <div className="mt-1 text-sm text-[#607083]">JPG, PNG, PDF ve XML kabul edilir. Belgeler kuyrukta kontrol/onaya düşer.</div>
-                <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-md bg-[#1d77d3] px-4 py-2 text-sm font-semibold text-white">Dosya Seç</button>
-              </div>
-            ) : (
-              <div className="document-stage" ref={documentStageRef}>
-                <div
-                  className="document-scale-wrap"
-                  style={{
-                    transform: 'scale(' + viewerScale + ') rotate(' + rotation + 'deg)',
-                    transformOrigin: 'top left',
-                    width: Math.ceil(DOCUMENT_BASE_WIDTH * viewerScale),
-                    minHeight: Math.ceil(DOCUMENT_BASE_HEIGHT * viewerScale),
-                  }}
-                >
-                  {selected.previewType === 'image' ? (
-                    <img src={selected.previewUrl} alt={selected.file.name} className="document-preview document-image" />
-                  ) : selected.previewUrl ? (
-                    <iframe src={selected.previewUrl} className="document-preview document-frame" title={selected.file.name} />
-                  ) : (
-                    <div className="document-preview flex min-h-[520px] items-center justify-center rounded-md bg-white p-8 text-center text-slate-500">Bu dosya için önizleme yok.</div>
-                  )}
+          <section className="fm-workbench">
+            <div className="fm-doc-area">
+              <div className="fm-doc-toolbar">
+                <div className="fm-toolbar-cluster">
+                  <button className="fm-tool" onClick={() => setManualZoom(Math.max(0.45, zoom - 0.1))} title="Uzaklaştır">
+                    <ZoomOut size={15} />
+                  </button>
+                  <button
+                    className={zoomMode === 'fit' ? 'fm-tool-pill active' : 'fm-tool-pill'}
+                    onClick={fitDocument}
+                    title="Ekrana sığdır"
+                  >
+                    <Maximize2 size={13} /> Sığdır
+                  </button>
+                  <button
+                    className={zoomMode === 'fit-width' ? 'fm-tool-pill active' : 'fm-tool-pill'}
+                    onClick={fitDocumentWidth}
+                    title="Genişliğe sığdır"
+                  >
+                    Genişlik
+                  </button>
+                  <input
+                    className="fm-zoom-slider"
+                    type="range"
+                    min="0.45"
+                    max="1.9"
+                    step="0.05"
+                    value={zoom}
+                    onChange={(e) => setManualZoom(Number(e.target.value))}
+                  />
+                  <span className="fm-zoom-pct">%{Math.round(viewerScale * 100)}</span>
+                  <button className="fm-tool" onClick={() => setManualZoom(Math.min(1.9, zoom + 0.1))} title="Yakınlaştır">
+                    <ZoomIn size={15} />
+                  </button>
+                  <button className="fm-tool" onClick={() => setRotation((r) => (r + 90) % 360)} title="Döndür">
+                    <RotateCw size={15} />
+                  </button>
+                </div>
+                <div className="fm-doc-counter">
+                  <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} title="Önceki (K / ←)">
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span>{selected ? selectedIndex + 1 : 0} / {drafts.length}</span>
+                  <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} title="Sonraki (J / →)">
+                    <ChevronRight size={15} />
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          <aside className="review-panel flex min-w-0 flex-col">
-            <datalist id="luca-account-plan-options">
-              {accountOptions.map((account) => (
-                <option key={account.id} value={account.code}>
-                  {account.code} - {account.name}
-                </option>
-              ))}
-            </datalist>
-
-            <div className="review-header">
-              <div>
-                <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6a7d94]">Kontrol ve Onay Paneli</div>
-                <div className="mt-0.5 text-base font-bold text-[#132033]">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Fişi Önerisi'}</div>
-              </div>
-              <div className={totals.diff < 0.01 ? 'balance-badge ok' : 'balance-badge warn'}>
-                {totals.diff < 0.01 ? 'Dengede' : money(String(totals.diff))}
-              </div>
+              {!selected ? (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
+                  className={dragging ? 'fm-dropzone dragging' : 'fm-dropzone'}
+                >
+                  <Upload size={36} />
+                  <div className="fm-dropzone-title">ÖKC fişi veya fatura belgesi yükleyin</div>
+                  <div className="fm-dropzone-sub">JPG, PNG, PDF ve XML kabul edilir. Belgeler kuyrukta onaya düşer.</div>
+                  <button onClick={() => inputRef.current?.click()} className="fm-btn primary mt-4">Dosya Seç</button>
+                </div>
+              ) : (
+                <div className="fm-doc-stage" ref={documentStageRef}>
+                  <div
+                    className="fm-doc-scale"
+                    style={{
+                      transform: `scale(${viewerScale}) rotate(${rotation}deg)`,
+                      transformOrigin: 'top left',
+                      width: Math.ceil(DOCUMENT_BASE_WIDTH * viewerScale),
+                      minHeight: Math.ceil(DOCUMENT_BASE_HEIGHT * viewerScale),
+                    }}
+                  >
+                    {selected.previewType === 'image' ? (
+                      <img src={selected.previewUrl} alt={selected.file.name} className="fm-doc-image" />
+                    ) : selected.previewUrl ? (
+                      <iframe src={selected.previewUrl} className="fm-doc-frame" title={selected.file.name} />
+                    ) : (
+                      <div className="fm-doc-empty">Bu dosya için önizleme yok.</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {selected ? (
-              <>
-                <div className="review-scroll">
-                  {selected.duplicateOfId || selected.duplicateReason ? (
-                    <div className="duplicate-band">
-                      <AlertTriangle size={18} className="shrink-0" />
-                      <div>
-                        <div className="font-bold">Mükerrer belge uyarısı</div>
-                        <div className="mt-0.5 text-xs">{selected.duplicateReason || 'Bu belge daha önce işlenmiş bir kayıtla eşleşiyor. Onaylamadan önce kontrol edin.'}</div>
-                      </div>
+            <aside className="fm-review">
+              <div className="fm-review-header">
+                <div>
+                  <div className="fm-review-eyebrow">Kontrol ve onay</div>
+                  <div className="fm-review-title">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Fişi Önerisi'}</div>
+                </div>
+                <div className={balanceOk ? 'fm-balance-pill ok' : 'fm-balance-pill warn'}>
+                  {balanceOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                  {balanceOk ? 'Dengede' : `Fark ${money(String(totals.diff))}`}
+                </div>
+              </div>
+
+              {/* Canlı denge çubuğu */}
+              {selected ? (
+                <div className="fm-balance-bar">
+                  <div className="fm-balance-row">
+                    <span>Borç</span><b>{money(String(totals.debit))}</b>
+                  </div>
+                  <div className="fm-balance-row">
+                    <span>Alacak</span><b>{money(String(totals.credit))}</b>
+                  </div>
+                  {tlEquivalent !== null ? (
+                    <div className="fm-balance-row tl">
+                      <span>TL karşılığı</span><b>{money(String(tlEquivalent))} TL</b>
                     </div>
                   ) : null}
+                </div>
+              ) : null}
 
-                  <div className="plan-strip">
-                    <span>{selectedBusinessLedger ? 'İşletme defteri: hesap kodu yerine kayıt türü kullanılır.' : accountPlanLoading ? 'Hesap planı yükleniyor' : accountOptions.length ? accountOptions.length + ' kod hazır' : 'Hesap planı henüz çekilmedi'}</span>
-                    <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
-                  </div>
+              {selected ? (
+                <>
+                  <div className="fm-review-scroll">
+                    {selected.duplicateOfId || selected.duplicateReason ? (
+                      <div className="fm-duplicate-band">
+                        <AlertTriangle size={17} className="shrink-0" />
+                        <div>
+                          <div className="font-bold">Mükerrer belge uyarısı</div>
+                          <div className="mt-0.5 text-xs">{selected.duplicateReason || 'Bu belge daha önce işlenmiş bir kayıtla eşleşiyor. Onaylamadan önce kontrol edin.'}</div>
+                        </div>
+                      </div>
+                    ) : null}
 
-                  <div className="meta-grid">
-                    <label>Para Birimi<input value={selected.currency} onChange={(e) => updateSelected({ currency: e.target.value })} /></label>
-                    <label>Kur<input className="text-right" value={selected.exchangeRate} onChange={(e) => updateSelected({ exchangeRate: e.target.value })} /></label>
-                    <label>Fatura Türü<select value={selected.invoiceKind} onChange={(e) => updateSelected({ invoiceKind: e.target.value as DraftInvoice['invoiceKind'] })}><option>Alış</option><option>Satış</option></select></label>
-                    <label>Belge Türü<select value={selected.documentType} onChange={(e) => updateSelected({ documentType: e.target.value as DraftInvoice['documentType'] })}><option value="OKC_FIS">ÖKC Fişi</option><option value="E_FATURA">E-Fatura</option><option value="E_ARSIV">E-Arşiv</option><option value="FIS">Fiş</option><option value="DIGER">Diğer</option></select></label>
-                  </div>
+                    <div className="fm-plan-strip">
+                      <span>{selectedBusinessLedger ? 'İşletme defteri: hesap kodu yerine kayıt türü kullanılır.' : accountPlanLoading ? 'Hesap planı yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'Hesap planı henüz çekilmedi'}</span>
+                      <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
+                    </div>
 
-                  {!selectedBusinessLedger ? (
-                    <div className="space-y-3">
-                      {(['matrah', 'vergi', 'cari'] as const).map((group) => {
-                        const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
-                        const groupLines = selected.lines.filter((line) => line.group === group);
-                        const groupDebit = groupLines.reduce((sum, line) => sum + parseAmount(line.debit), 0);
-                        const groupCredit = groupLines.reduce((sum, line) => sum + parseAmount(line.credit), 0);
-                        return (
-                          <section key={group} className="ledger-section">
-                            <div className="ledger-section-head">
-                              <div><span>{title}</span> <b>(B)</b></div>
-                              <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}><Plus size={14} /> Satır</button>
+                    <div className="fm-meta-grid">
+                      <label>Para Birimi<input value={selected.currency} onChange={(e) => updateSelected({ currency: e.target.value })} /></label>
+                      <label>Kur<input className="text-right" value={selected.exchangeRate} onChange={(e) => updateSelected({ exchangeRate: e.target.value })} /></label>
+                      <label>Fatura Türü<select value={selected.invoiceKind} onChange={(e) => updateSelected({ invoiceKind: e.target.value as DraftInvoice['invoiceKind'] })}><option>Alış</option><option>Satış</option></select></label>
+                      <label>Belge Türü<select value={selected.documentType} onChange={(e) => updateSelected({ documentType: e.target.value as DraftInvoice['documentType'] })}><option value="OKC_FIS">ÖKC Fişi</option><option value="E_FATURA">E-Fatura</option><option value="E_ARSIV">E-Arşiv</option><option value="FIS">Fiş</option><option value="DIGER">Diğer</option></select></label>
+                    </div>
+
+                    {!selectedBusinessLedger ? (
+                      <label className="fm-foreign-toggle">
+                        <input
+                          type="checkbox"
+                          checked={!!selected.foreignInvoice}
+                          onChange={(e) => updateSelected({ foreignInvoice: e.target.checked })}
+                        />
+                        <span>Yabancı fatura</span>
+                        <span className="fm-foreign-hint">{selected.foreignInvoice ? 'KDV gümrükte ödenmiş kabul edilir' : 'Yurt dışı satıcı için işaretleyin'}</span>
+                      </label>
+                    ) : null}
+
+                    {!selectedBusinessLedger ? (
+                      <div className="space-y-3">
+                        {(['matrah', 'vergi', 'cari'] as const).map((group) => {
+                          const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
+                          const groupLines = selected.lines.filter((line) => line.group === group);
+                          const groupDebit = groupLines.reduce((sum, line) => sum + parseAmount(line.debit), 0);
+                          const groupCredit = groupLines.reduce((sum, line) => sum + parseAmount(line.credit), 0);
+                          const isVergi = group === 'vergi';
+                          return (
+                            <section key={group} className="fm-ledger-section">
+                              <div className="fm-ledger-head">
+                                <span>{title}</span>
+                                <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}><Plus size={13} /> Satır ekle</button>
+                              </div>
+                              <div className="fm-ledger-table">
+                                {groupLines.map((line) => (
+                                  <div key={line.id} className="fm-ledger-row">
+                                    <button
+                                      type="button"
+                                      className="fm-account-trigger"
+                                      onClick={() => openAccountPicker(line.id)}
+                                      title="Hesap kodu seç"
+                                    >
+                                      {line.accountCode || <span className="fm-placeholder">Hesap seç</span>}
+                                    </button>
+                                    <input value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
+                                    {isVergi ? (
+                                      <select value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })}>
+                                        <option value="">Oran</option>
+                                        <optgroup label="Normal KDV">
+                                          {KDV_RATES.map((r) => <option key={r} value={r}>{r}</option>)}
+                                        </optgroup>
+                                        <optgroup label="Sorumlu Sıfatıyla">
+                                          {KDV_RATES.map((r) => <option key={`s-${r}`} value={`${r} Sorumlu Sıf.`}>{r} Sorumlu Sıf.</option>)}
+                                        </optgroup>
+                                      </select>
+                                    ) : (
+                                      <input value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                                    )}
+                                    <input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
+                                    <input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
+                                    <button className="fm-row-delete" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil"><Trash2 size={14} /></button>
+                                  </div>
+                                ))}
+                                {!groupLines.length ? <div className="fm-empty-ledger">Bu bölümde satır yok.</div> : null}
+                              </div>
+                              <div className="fm-section-total"><span>Toplam</span><b>B {money(String(groupDebit))}</b><b>A {money(String(groupCredit))}</b></div>
+                            </section>
+                          );
+                        })}
+
+                        {/* Katlanır kesinti bölümleri — İskonto / Stopaj / Tevkifat */}
+                        <CollapsibleSection
+                          title="İskonto"
+                          open={openSections.iskonto}
+                          onToggle={() => setOpenSections((s) => ({ ...s, iskonto: !s.iskonto }))}
+                          onAdd={addIskontoLine}
+                          lines={selected.lines.filter((l) => l.group === 'iskonto')}
+                          onUpdateLine={updateLine}
+                          onDeleteLine={(lineId) => updateSelected({ lines: selected.lines.filter((l) => l.id !== lineId) })}
+                          onOpenAccount={openAccountPicker}
+                          rateOptions={[]}
+                        />
+                        <CollapsibleSection
+                          title="Kesintiler (Stopaj)"
+                          open={openSections.stopaj}
+                          onToggle={() => setOpenSections((s) => ({ ...s, stopaj: !s.stopaj }))}
+                          onAdd={addStopajLine}
+                          lines={selected.lines.filter((l) => l.group === 'stopaj')}
+                          onUpdateLine={updateLine}
+                          onDeleteLine={(lineId) => updateSelected({ lines: selected.lines.filter((l) => l.id !== lineId) })}
+                          onOpenAccount={openAccountPicker}
+                          rateOptions={[...STOPAJ_RATES]}
+                        />
+                        <CollapsibleSection
+                          title="Kesintiler (Tevkifat) — 360 Ödenecek KDV-2"
+                          open={openSections.tevkifat}
+                          onToggle={() => setOpenSections((s) => ({ ...s, tevkifat: !s.tevkifat }))}
+                          onAdd={addTevkifatLine}
+                          lines={selected.lines.filter((l) => l.group === 'tevkifat')}
+                          onUpdateLine={updateLine}
+                          onDeleteLine={(lineId) => updateSelected({ lines: selected.lines.filter((l) => l.id !== lineId) })}
+                          onOpenAccount={openAccountPicker}
+                          rateOptions={[...TEVKIFAT_RATES]}
+                          hint="Sorumlu sıfatıyla KDV — alıcı vergi dairesine ödeyecek"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {selected.lines.map((line, index) => (
+                          <section key={line.id} className="fm-business-card">
+                            <div className="fm-business-head">
+                              <span>{index + 1}</span>
+                              <button onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={14} /></button>
                             </div>
-                            <div className="ledger-table">
-                              {groupLines.map((line) => (
-                                <div key={line.id} className="ledger-row">
-                                  <input list="luca-account-plan-options" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap" />
-                                  <input value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
-                                  <input value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
-                                  <input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
-                                  <input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
-                                  <button className="delete-row" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil"><Trash2 size={15} /></button>
-                                </div>
-                              ))}
-                              {!groupLines.length ? <div className="empty-ledger-row">Bu bölümde satır yok.</div> : null}
+                            <div className="fm-business-grid top">
+                              <label>Kayıt Türü<select value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>{businessCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
+                              <label>Alt Tür<select value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>{businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
                             </div>
-                            <div className="section-total"><span>Toplam</span><b>Borç {money(String(groupDebit))}</b><b>Alacak {money(String(groupCredit))}</b></div>
+                            <div className="fm-business-grid amounts">
+                              <label>Matrah<input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} /></label>
+                              <label>KDV Oranı<select value={line.rate || '%20 Kdv'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}><option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option></select></label>
+                              <label>KDV Tutarı<input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} /></label>
+                            </div>
+                            <div className="fm-business-total"><span>Toplam (KDV Dahil)</span><b>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</b></div>
                           </section>
-                        );
-                      })}
+                        ))}
+                        <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })} className="fm-add-business"><Plus size={15} /> Kayıt ekle</button>
+                      </div>
+                    )}
+
+                    <div className="fm-info-grid">
+                      <label>Tarih<input type="date" value={selected.date} onChange={(e) => updateSelected({ date: e.target.value })} /></label>
+                      <label>Belge No<input value={selected.number} onChange={(e) => updateSelected({ number: e.target.value })} /></label>
+                      <label>Satıcı VKN<input value={selected.sellerVkn} onChange={(e) => updateSelected({ sellerVkn: e.target.value })} /></label>
+                      <label>Toplam Tutar<input className="text-right font-bold" value={selected.total} onChange={(e) => updateSelected({ total: e.target.value })} /></label>
+                      <label className="col-span-2">Satıcı Bilgisi<input value={selected.vendorName} onChange={(e) => updateSelected({ vendorName: e.target.value })} /></label>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {selected.lines.map((line, index) => (
-                        <section key={line.id} className="business-card">
-                          <div className="business-card-head">
-                            <span>{index + 1}</span>
-                            <button onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={15} /></button>
-                          </div>
-                          <div className="business-grid top">
-                            <label>Kayıt Türü<select value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>{businessCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
-                            <label>Alt Tür<select value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>{businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}</select></label>
-                          </div>
-                          <div className="business-grid amounts">
-                            <label>Matrah<input className="text-right" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} /></label>
-                            <label>KDV Oranı<select value={line.rate || '%20 Kdv'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}><option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option></select></label>
-                            <label>KDV Tutarı<input className="text-right" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} /></label>
-                          </div>
-                          <div className="fold-lines"><button>Hesap Kodu <ChevronRight size={14} /></button><button>Tevkifat İşlemleri <ChevronRight size={14} /></button><button>Stopaj İşlemleri <ChevronRight size={14} /></button></div>
-                          <div className="business-total"><span>Toplam Tutar (KDV Dahil)</span><b>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</b></div>
-                        </section>
+                  </div>
+
+                  <div className="fm-uploaded-strip">
+                    <div className="fm-strip-head"><span>Yüklenen belgeler</span><span>{drafts.length} belge</span></div>
+                    <div className="fm-strip-row">
+                      {drafts.map((draft) => (
+                        <button key={draft.id} onClick={() => setSelectedId(draft.id)} className={selected?.id === draft.id ? 'fm-doc-chip active' : 'fm-doc-chip'}>
+                          {draft.previewType === 'image' ? <ImageIcon size={14} /> : <FileText size={14} />}
+                          <span>{draft.file.name}</span>
+                          {draft.status === 'hazir' || draft.status === 'onaylandi' ? <CheckCircle2 size={14} className="ok-tick" /> : null}
+                        </button>
                       ))}
-                      <button onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })} className="add-business"><Plus size={16} /> Kayıt Ekle</button>
                     </div>
-                  )}
-
-                  <div className="info-grid">
-                    <label>Tarih<input type="date" value={selected.date} onChange={(e) => updateSelected({ date: e.target.value })} /></label>
-                    <label>Belge No<input value={selected.number} onChange={(e) => updateSelected({ number: e.target.value })} /></label>
-                    <label>Satıcı VKN<input value={selected.sellerVkn} onChange={(e) => updateSelected({ sellerVkn: e.target.value })} /></label>
-                    <label>Toplam Tutar<input className="text-right font-bold" value={selected.total} onChange={(e) => updateSelected({ total: e.target.value })} /></label>
-                    <label className="col-span-2">Satıcı Bilgisi<input value={selected.vendorName} onChange={(e) => updateSelected({ vendorName: e.target.value })} /></label>
                   </div>
-                </div>
 
-                <div className="uploaded-strip">
-                  <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.08em] text-[#6a7d94]"><span>Yüklenen Belgeler</span><span>{drafts.length} belge</span></div>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {drafts.map((draft) => (
-                      <button key={draft.id} onClick={() => setSelectedId(draft.id)} className={selected?.id === draft.id ? 'doc-chip active' : 'doc-chip'}>
-                        {draft.previewType === 'image' ? <ImageIcon size={15} /> : <FileText size={15} />}
-                        <span>{draft.file.name}</span>
-                        {draft.status === 'hazir' ? <CheckCircle2 size={15} /> : null}
-                      </button>
-                    ))}
+                  <div className="fm-action-bar">
+                    <button onClick={() => { setShowDashboard(true); loadDashboard(); }} className="fm-action ghost">
+                      <ArrowLeft size={14} /> Listeye
+                    </button>
+                    <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} className="fm-action ghost" title="Önceki (K)">
+                      <ChevronLeft size={14} /> Geri
+                    </button>
+                    <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} className="fm-action ghost" title="Sonraki (J)">
+                      İleri <ChevronRight size={14} />
+                    </button>
+                    <button onClick={removeSelected} disabled={!selected} className="fm-action danger" title="Sil (Del)">
+                      <Trash2 size={14} /> Sil
+                    </button>
+                    <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="fm-action save" title="Kaydet (⌘S)">
+                      {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Kaydet
+                    </button>
+                    <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="fm-action approve" title="Onayla (⌘↵)">
+                      <CheckCircle2 size={14} /> Onayla
+                    </button>
                   </div>
+                </>
+              ) : (
+                <div className="fm-no-selection">
+                  <FileText size={34} />
+                  <div className="fm-no-selection-title">{loadingExisting ? 'Kayıtlar yükleniyor' : 'Henüz belge seçilmedi'}</div>
+                  <p>Sol alana ÖKC fişi veya fatura görseli sürükleyin.</p>
                 </div>
-
-                <div className="action-bar">
-                  <button onClick={() => { setShowDashboard(true); loadDashboard(); }} className="secondary"><ArrowLeft size={15} /> Listeye Dön</button>
-                  <button onClick={() => drafts[selectedIndex - 1] && setSelectedId(drafts[selectedIndex - 1].id)} className="ghost"><ChevronLeft size={15} /> Geri</button>
-                  <button onClick={() => drafts[selectedIndex + 1] && setSelectedId(drafts[selectedIndex + 1].id)} className="ghost">İleri <ChevronRight size={15} /></button>
-                  <button onClick={removeSelected} disabled={!selected} className="danger"><Trash2 size={15} /> Sil</button>
-                  <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="save">{saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet</button>
-                  <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="approve"><CheckCircle2 size={15} /> Kaydet ve Onayla</button>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-1 items-center justify-center p-8 text-center text-[#64748b]">
-                <div>
-                  <FileText size={34} className="mx-auto mb-3 text-[#94a3b8]" />
-                  <div className="font-semibold text-[#334155]">{loadingExisting ? 'Kayıtlar yükleniyor' : 'Henüz belge seçilmedi'}</div>
-                  <p className="mt-1 text-sm">Sol alana ÖKC fişi veya fatura görseli yükleyin.</p>
-                </div>
-              </div>
-            )}
-          </aside>
-        </section>
+              )}
+            </aside>
+          </section>
         )}
       </div>
+
+      {/* Hesap kodu seçici popup */}
+      {accountPicker ? (
+        <div className="fm-modal-bg" onClick={() => setAccountPicker(null)}>
+          <div className="fm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="fm-modal-head">
+              <Search size={15} />
+              <input
+                autoFocus
+                value={accountPicker.query}
+                onChange={(e) => setAccountPicker({ ...accountPicker, query: e.target.value })}
+                placeholder="Hesap kodu veya adı"
+              />
+              <button onClick={() => setAccountPicker(null)} className="fm-modal-close"><X size={16} /></button>
+            </div>
+            <div className="fm-modal-body">
+              {accountPlanLoading ? (
+                <div className="fm-modal-empty">Hesap planı yükleniyor...</div>
+              ) : !filteredAccountOptions.length ? (
+                <div className="fm-modal-empty">{accountOptions.length ? 'Eşleşme yok' : 'Hesap planı çekilmemiş'}</div>
+              ) : (
+                filteredAccountOptions.map((a) => (
+                  <button key={a.id} onClick={() => pickAccount(a)} className="fm-modal-row">
+                    <b className="fm-modal-code">{a.code}</b>
+                    <span className="fm-modal-name">{a.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Klavye kısayolları */}
+      {showShortcuts ? (
+        <div className="fm-modal-bg" onClick={() => setShowShortcuts(false)}>
+          <div className="fm-modal narrow" onClick={(e) => e.stopPropagation()}>
+            <div className="fm-modal-head">
+              <Keyboard size={15} />
+              <span className="fm-modal-title">Klavye kısayolları</span>
+              <button onClick={() => setShowShortcuts(false)} className="fm-modal-close"><X size={16} /></button>
+            </div>
+            <div className="fm-shortcut-list">
+              <div className="fm-shortcut"><kbd>J</kbd> <span className="sep">/</span> <kbd>→</kbd><span>Sonraki belge</span></div>
+              <div className="fm-shortcut"><kbd>K</kbd> <span className="sep">/</span> <kbd>←</kbd><span>Önceki belge</span></div>
+              <div className="fm-shortcut"><kbd>Del</kbd><span>Seçili belgeyi sil</span></div>
+              <div className="fm-shortcut"><kbd>⌘</kbd>+<kbd>S</kbd><span>Taslak kaydet</span></div>
+              <div className="fm-shortcut"><kbd>⌘</kbd>+<kbd>↵</kbd><span>Kaydet ve Onayla</span></div>
+              <div className="fm-shortcut"><kbd>?</kbd><span>Bu pencereyi aç/kapat</span></div>
+              <div className="fm-shortcut"><kbd>Esc</kbd><span>Açık pencereyi kapat</span></div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <style jsx global>{`
-        .invoice-accounting-dark {
-          background: #0d0b08;
-          color: #f7eedb;
+        :root {
+          --fm-bg: #fbf8f1;
+          --fm-surface: #ffffff;
+          --fm-surface-2: #f6f1e6;
+          --fm-border: #e8e0cd;
+          --fm-border-strong: #d3c8b0;
+          --fm-text: #1c1812;
+          --fm-text-soft: #5a5141;
+          --fm-text-muted: #8c8169;
+          --fm-gold: #b8915a;
+          --fm-gold-deep: #8a6a3a;
+          --fm-gold-soft: #d4b876;
+          --fm-gold-bg: #faf3e0;
+          --fm-green: #0a7d49;
+          --fm-green-bg: #e3f4e9;
+          --fm-red: #b03a2e;
+          --fm-red-bg: #fae6e3;
+          --fm-amber: #b8770d;
+          --fm-amber-bg: #fdf3e0;
+          --fm-blue: #1f6fc4;
+          --fm-blue-bg: #e7f1fb;
+          --fm-shadow-sm: 0 1px 2px rgba(28, 24, 18, 0.06);
+          --fm-shadow-md: 0 4px 10px rgba(28, 24, 18, 0.08);
+          --fm-shadow-lg: 0 10px 30px rgba(28, 24, 18, 0.12);
+          --fm-radius: 8px;
+          --fm-radius-sm: 6px;
         }
-        .invoice-accounting-dark > div > header {
-          background: linear-gradient(90deg, #12100c 0%, #17130e 56%, #21170d 100%) !important;
-          border-color: #2f2618 !important;
-          color: #f7eedb !important;
+        .fm-root {
+          min-height: 0;
+          background: var(--fm-bg);
+          color: var(--fm-text);
+          font-feature-settings: 'tnum' 1;
         }
-        .invoice-accounting-dark > div > header h1 { color: #fff7df !important; }
-        .invoice-accounting-dark > div > header p { color: #d8cda5 !important; }
-        .invoice-workbench { grid-template-columns: minmax(760px, 1fr) minmax(420px, 520px); background: #17130e; border-top: 1px solid #302615; }
-        .invoice-document-area { min-height: 0; background: #dfe5eb; border-right: 2px solid #b9c3ce; }
-        .invoice-document-toolbar { background: #f6f8fb; color: #1e293b; box-shadow: 0 1px 0 rgba(15,23,42,.06); }
-        .tool-icon { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #29425f; }
-        .tool-pill { display: inline-flex; height: 34px; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; padding: 0 10px; color: #29425f; font-size: 12px; font-weight: 700; }
-        .tool-pill.active { border-color: #7aa7dc; background: #e8f2ff; color: #155fae; }
-        .zoom-slider { width: 170px; accent-color: #236fd0; }
-        .document-counter { display: inline-flex; align-items: center; gap: 7px; color: #203047; font-weight: 700; }
-        .document-counter button { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; }
-        .document-stage { flex: 1; min-height: 0; overflow: auto; padding: 14px; background: linear-gradient(90deg, rgba(148,163,184,.12) 1px, transparent 1px), linear-gradient(0deg, rgba(148,163,184,.10) 1px, transparent 1px), #e8edf2; background-size: 28px 28px; }
-        .document-scale-wrap { margin: 0 auto; transition: transform .14s ease; overflow: visible; }
-        .document-preview { display: block; margin: 0 auto; border: 1px solid #cbd5e1; background: #fff; box-shadow: 0 16px 36px rgba(15,23,42,.18); }
-        .document-image { width: 980px; max-width: none; height: auto; }
-        .document-frame { width: 980px; height: 1380px; border-radius: 6px; }
-        .empty-dropzone { margin: 24px; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; border: 2px dashed #b6c3d1; border-radius: 8px; background: #f8fafc; }
-        .empty-dropzone.dragging { border-color: #2474d3; background: #eef6ff; }
-        .review-panel { min-height: 0; background: #f3f6fa; color: #172033; border-left: 1px solid #d6dee8; }
-        .review-header { display: flex; min-height: 50px; align-items: center; justify-content: space-between; border-bottom: 1px solid #d7e0eb; background: linear-gradient(90deg, #fff, #f3f7fb); padding: 8px 14px; }
-        .balance-badge { border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 800; }
-        .balance-badge.ok { background: #dff7ea; color: #057047; }
-        .balance-badge.warn { background: #fff3cf; color: #9a5a00; }
-        .review-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px 8px; }
-        .duplicate-band { display: flex; gap: 10px; border: 1px solid #fecaca; border-radius: 6px; background: #fff1f2; color: #9f1239; padding: 10px 12px; }
-        .plan-strip { display: flex; justify-content: space-between; gap: 10px; border: 1px solid #cfe1f8; border-radius: 5px; background: #eaf4ff; color: #335b80; padding: 6px 9px; font-size: 11px; font-weight: 700; }
-        .meta-grid, .info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 8px; margin-bottom: 8px; border: 1px solid #d6e4f3; border-radius: 5px; background: #edf6ff; padding: 8px; }
-        .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); background: transparent; border: 0; padding: 0; }
-        .meta-grid label, .info-grid label, .business-grid label { min-width: 0; color: #52657d; font-size: 11px; font-weight: 800; }
-        .meta-grid input, .meta-grid select, .info-grid input, .business-grid input, .business-grid select, .ledger-row input { margin-top: 3px; height: 28px; width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; padding: 0 7px; color: #0f172a; outline: none; }
-        .ledger-section { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
-        .ledger-section-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #8bc3ee; background: #f4fbff; padding: 6px 8px; color: #172033; font-weight: 900; }
-        .ledger-section-head b { color: #ef4444; }
-        .ledger-section-head button, .add-business { display: inline-flex; height: 26px; align-items: center; gap: 5px; border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; padding: 0 8px; color: #334155; font-size: 11px; font-weight: 800; }
-        .ledger-row { display: grid; grid-template-columns: 105px minmax(0, 1fr) 54px 84px 84px 24px; gap: 5px; align-items: center; border-bottom: 1px solid #e5edf6; padding: 5px 8px; }
-        .ledger-row input { margin-top: 0; height: 27px; font-size: 11px; }
-        .delete-row, .business-card-head button { display: inline-flex; height: 30px; align-items: center; justify-content: center; border-radius: 6px; color: #ef4444; }
-        .empty-ledger-row { padding: 12px; color: #64748b; font-size: 12px; }
-        .section-total { display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; padding: 5px 9px; color: #334155; font-size: 11px; }
-        .business-card { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #b9dcf5; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
-        .business-card-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #99c8ed; padding: 8px 10px; }
-        .business-card-head span { display: inline-flex; min-width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 6px; background: #9be071; color: #10200d; font-weight: 900; }
-        .business-grid { display: grid; gap: 10px; padding: 10px; }
-        .business-grid.top { grid-template-columns: 1fr 1fr; }
-        .business-grid.amounts { grid-template-columns: 1fr 1fr 1fr; padding-top: 0; }
-        .fold-lines { display: grid; gap: 4px; padding: 0 10px 8px; }
-        .fold-lines button { display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: #29445d; padding: 3px 0; font-size: 12px; }
-        .business-total { display: flex; justify-content: space-between; background: #e8f5ff; padding: 10px 12px; color: #15324a; font-weight: 900; }
-        .uploaded-strip { border-top: 1px solid #d7e0eb; background: #f8fafc; padding: 7px 10px; }
-        .doc-chip { display: inline-flex; min-width: 180px; align-items: center; gap: 7px; border: 1px solid #d5dde8; border-radius: 6px; background: #fff; padding: 8px 10px; color: #334155; font-size: 12px; }
-        .doc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .doc-chip.active { border-color: #1d77d3; box-shadow: 0 0 0 2px #dbeafe; }
-        .action-bar { display: grid; grid-template-columns: 1fr .72fr .72fr .6fr .78fr 1.18fr; gap: 6px; border-top: 1px solid #d7e0eb; background: #eef3f8; padding: 7px 9px; }
-        .action-bar button { display: inline-flex; height: 31px; align-items: center; justify-content: center; gap: 5px; border-radius: 5px; font-size: 11px; font-weight: 900; }
-        .action-bar .secondary { background: #fff4a8; color: #4b3a00; border: 1px solid #ead764; }
-        .action-bar .ghost { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
-        .action-bar .danger { background: #fff; color: #dc2626; border: 1px solid #fecaca; }
-        .action-bar .save { background: #f59e0b; color: #fff; }
-        .action-bar .approve { background: #1877f2; color: #fff; }
-        .action-bar button:disabled { opacity: .45; }
+        .fm-frame {
+          display: flex;
+          flex-direction: column;
+          height: calc(100vh - 76px);
+          min-height: 620px;
+          overflow: hidden;
+        }
+        /* === HEADER === */
+        .fm-header {
+          flex-shrink: 0;
+          height: 60px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 20px;
+          background: var(--fm-surface);
+          border-bottom: 1px solid var(--fm-border);
+        }
+        .fm-title-block { display: flex; align-items: center; gap: 12px; }
+        .fm-title-icon {
+          width: 38px; height: 38px;
+          border-radius: var(--fm-radius);
+          background: linear-gradient(135deg, var(--fm-gold), var(--fm-gold-deep));
+          color: #fff;
+          display: flex; align-items: center; justify-content: center;
+          box-shadow: var(--fm-shadow-sm);
+        }
+        .fm-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; color: var(--fm-text); margin: 0; }
+        .fm-subtitle { font-size: 11.5px; color: var(--fm-text-muted); margin: 1px 0 0; }
+        .fm-header-actions { display: flex; align-items: center; gap: 7px; }
+        .fm-pill-info {
+          height: 32px; display: inline-flex; align-items: center; gap: 6px;
+          padding: 0 12px; border-radius: 999px;
+          border: 1px solid var(--fm-border); background: var(--fm-surface);
+          color: var(--fm-text-soft); font-size: 12px;
+        }
+        .fm-pill-info b { color: var(--fm-red); font-weight: 700; }
+        .fm-pill-saved {
+          height: 32px; display: inline-flex; align-items: center; gap: 4px;
+          padding: 0 11px; border-radius: 999px;
+          background: var(--fm-green-bg); color: var(--fm-green);
+          font-size: 11.5px; font-weight: 600;
+        }
+
+        /* === BUTTONS === */
+        .fm-btn {
+          display: inline-flex; align-items: center; gap: 6px;
+          height: 34px; padding: 0 12px;
+          border-radius: var(--fm-radius-sm);
+          font-size: 12.5px; font-weight: 600;
+          border: 1px solid transparent;
+          cursor: pointer;
+          transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+        .fm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .fm-btn.primary {
+          background: var(--fm-gold);
+          border-color: var(--fm-gold-deep);
+          color: #fff;
+        }
+        .fm-btn.primary:hover:not(:disabled) { background: var(--fm-gold-deep); }
+        .fm-btn.ghost {
+          background: var(--fm-surface);
+          border-color: var(--fm-border);
+          color: var(--fm-text-soft);
+        }
+        .fm-btn.ghost:hover:not(:disabled) {
+          background: var(--fm-gold-bg);
+          border-color: var(--fm-gold-soft);
+          color: var(--fm-gold-deep);
+        }
+        .fm-btn.icon-only { padding: 0; width: 34px; justify-content: center; }
+        .mt-4 { margin-top: 16px; }
+
+        /* === DASHBOARD === */
+        .fm-dashboard {
+          flex: 1; min-height: 0;
+          display: flex; flex-direction: column;
+          padding: 16px 18px;
+          overflow: hidden;
+          background: var(--fm-bg);
+        }
+        .fm-dashboard-toolbar {
+          display: flex; justify-content: space-between; align-items: center;
+          gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+        }
+        .fm-filter-group {
+          display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+        }
+        .fm-search {
+          position: relative;
+          display: inline-flex; align-items: center;
+          height: 36px; padding: 0 10px 0 32px;
+          width: 260px;
+          border: 1px solid var(--fm-border);
+          border-radius: var(--fm-radius-sm);
+          background: var(--fm-surface);
+        }
+        .fm-search:focus-within { border-color: var(--fm-gold-soft); }
+        .fm-search > svg { position: absolute; left: 10px; color: var(--fm-text-muted); }
+        .fm-search input {
+          flex: 1; height: 100%; min-width: 0;
+          border: 0; background: transparent; outline: none;
+          font-size: 13px; color: var(--fm-text);
+        }
+        .fm-search-clear {
+          width: 22px; height: 22px;
+          display: inline-flex; align-items: center; justify-content: center;
+          border-radius: 50%; background: var(--fm-surface-2);
+          color: var(--fm-text-muted); border: 0; cursor: pointer;
+        }
+        .fm-chip-group { display: inline-flex; align-items: center; gap: 4px; }
+        .fm-chip-label {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-size: 11px; font-weight: 600;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-right: 4px;
+        }
+        .fm-chip {
+          height: 28px; padding: 0 11px;
+          border-radius: 999px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          font-size: 11.5px; font-weight: 600;
+          cursor: pointer;
+        }
+        .fm-chip:hover { background: var(--fm-gold-bg); border-color: var(--fm-gold-soft); }
+        .fm-chip.active {
+          background: var(--fm-gold-bg);
+          border-color: var(--fm-gold);
+          color: var(--fm-gold-deep);
+        }
+        .fm-toolbar-right { display: flex; align-items: center; gap: 7px; }
+
+        .fm-stat-strip {
+          display: grid; grid-template-columns: repeat(4, 1fr);
+          gap: 10px; margin-bottom: 14px;
+        }
+        .fm-stat {
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: var(--fm-radius);
+          padding: 10px 14px;
+        }
+        .fm-stat span {
+          display: block;
+          font-size: 11px; font-weight: 600;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 4px;
+        }
+        .fm-stat b {
+          font-size: 22px; font-weight: 700;
+          color: var(--fm-text);
+        }
+
+        .fm-table-wrap {
+          flex: 1; min-height: 0;
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: var(--fm-radius);
+          overflow: auto;
+        }
+        .fm-table {
+          width: 100%; border-collapse: collapse;
+          font-size: 13px;
+        }
+        .fm-table thead { position: sticky; top: 0; z-index: 5; background: var(--fm-surface-2); }
+        .fm-table th {
+          text-align: left;
+          padding: 11px 14px;
+          font-weight: 700;
+          font-size: 11.5px;
+          letter-spacing: 0.03em;
+          color: var(--fm-text-soft);
+          border-bottom: 1px solid var(--fm-border);
+          text-transform: uppercase;
+        }
+        .fm-table tbody tr { transition: background 0.1s; }
+        .fm-table tbody tr:hover { background: var(--fm-gold-bg); }
+        .fm-table td {
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--fm-border);
+          vertical-align: middle;
+        }
+        .fm-table td.num { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fm-text-soft); }
+        .fm-firm { display: flex; align-items: center; gap: 8px; }
+        .fm-firm-name { font-weight: 600; color: var(--fm-text); }
+        .fm-firm-dot {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: var(--fm-amber);
+          box-shadow: 0 0 0 3px var(--fm-amber-bg);
+        }
+        .fm-ledger-tag {
+          display: inline-flex; align-items: center;
+          height: 22px; padding: 0 9px;
+          border-radius: 4px;
+          font-size: 11px; font-weight: 600;
+        }
+        .fm-ledger-tag.bilanco { background: var(--fm-blue-bg); color: var(--fm-blue); }
+        .fm-ledger-tag.isletme { background: var(--fm-gold-bg); color: var(--fm-gold-deep); }
+        .fm-row-action {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 28px; height: 28px;
+          border-radius: 6px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          cursor: pointer;
+          margin-left: 4px;
+        }
+        .fm-row-action:hover:not(:disabled) {
+          background: var(--fm-gold-bg);
+          border-color: var(--fm-gold-soft);
+          color: var(--fm-gold-deep);
+        }
+        .fm-row-action.primary {
+          background: var(--fm-gold);
+          border-color: var(--fm-gold-deep);
+          color: #fff;
+        }
+        .fm-row-action.primary:hover { background: var(--fm-gold-deep); }
+        .fm-row-action:disabled { opacity: 0.45; cursor: not-allowed; }
+        .fm-count-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-width: 30px; height: 26px; padding: 0 8px;
+          border-radius: 6px;
+          background: var(--fm-surface-2);
+          color: var(--fm-text-soft);
+          font-weight: 700; font-variant-numeric: tabular-nums;
+          border: 1px solid var(--fm-border);
+          cursor: pointer;
+        }
+        .fm-count-btn.has-pending {
+          background: var(--fm-gold-bg);
+          border-color: var(--fm-gold-soft);
+          color: var(--fm-gold-deep);
+        }
+        .fm-count-btn:hover { border-color: var(--fm-gold); }
+        .fm-empty-row {
+          padding: 60px 20px !important;
+          text-align: center;
+          color: var(--fm-text-muted);
+          font-size: 13px;
+        }
+
+        /* === WORKBENCH === */
+        .fm-workbench {
+          flex: 1; min-height: 0;
+          display: grid;
+          grid-template-columns: minmax(720px, 1fr) minmax(420px, 520px);
+          overflow: hidden;
+          background: var(--fm-bg);
+        }
+        .fm-doc-area {
+          min-width: 0; min-height: 0;
+          display: flex; flex-direction: column;
+          background: var(--fm-surface-2);
+          border-right: 1px solid var(--fm-border);
+        }
+        .fm-doc-toolbar {
+          flex-shrink: 0;
+          height: 48px;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 0 14px;
+          background: var(--fm-surface);
+          border-bottom: 1px solid var(--fm-border);
+        }
+        .fm-toolbar-cluster { display: flex; align-items: center; gap: 6px; }
+        .fm-tool {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 30px; height: 30px;
+          border-radius: 6px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          cursor: pointer;
+        }
+        .fm-tool:hover { background: var(--fm-gold-bg); border-color: var(--fm-gold-soft); color: var(--fm-gold-deep); }
+        .fm-tool-pill {
+          display: inline-flex; align-items: center; gap: 5px;
+          height: 30px; padding: 0 11px;
+          border-radius: 6px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          font-size: 11.5px; font-weight: 600;
+          cursor: pointer;
+        }
+        .fm-tool-pill.active {
+          background: var(--fm-gold-bg);
+          border-color: var(--fm-gold);
+          color: var(--fm-gold-deep);
+        }
+        .fm-zoom-slider { width: 160px; accent-color: var(--fm-gold); }
+        .fm-zoom-pct {
+          min-width: 44px; text-align: right;
+          font-size: 11.5px; font-weight: 700;
+          color: var(--fm-text-soft);
+          font-variant-numeric: tabular-nums;
+        }
+        .fm-doc-counter { display: inline-flex; align-items: center; gap: 6px; color: var(--fm-text-soft); font-weight: 700; font-size: 12px; }
+        .fm-doc-counter button {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 30px; height: 30px;
+          border-radius: 6px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          cursor: pointer;
+        }
+        .fm-doc-counter button:hover { background: var(--fm-gold-bg); }
+
+        .fm-doc-stage {
+          flex: 1; min-height: 0;
+          overflow: auto;
+          padding: 16px;
+          background: var(--fm-surface-2);
+        }
+        .fm-doc-scale { margin: 0 auto; transition: transform 0.14s ease; }
+        .fm-doc-image, .fm-doc-frame {
+          display: block; margin: 0 auto;
+          width: 980px; max-width: none;
+          background: #fff;
+          border: 1px solid var(--fm-border);
+          box-shadow: var(--fm-shadow-md);
+        }
+        .fm-doc-frame { height: 1380px; }
+        .fm-doc-empty {
+          width: 980px; min-height: 520px;
+          display: flex; align-items: center; justify-content: center;
+          background: #fff; border: 1px solid var(--fm-border);
+          color: var(--fm-text-muted);
+          padding: 40px;
+        }
+        .fm-dropzone {
+          margin: 28px; flex: 1;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          border: 2px dashed var(--fm-border-strong);
+          border-radius: 12px;
+          background: var(--fm-surface);
+          color: var(--fm-gold);
+        }
+        .fm-dropzone.dragging { border-color: var(--fm-gold); background: var(--fm-gold-bg); }
+        .fm-dropzone-title { font-size: 15px; font-weight: 700; color: var(--fm-text); margin-top: 12px; }
+        .fm-dropzone-sub { margin-top: 4px; font-size: 12.5px; color: var(--fm-text-muted); }
+
+        /* === REVIEW PANEL === */
+        .fm-review {
+          min-width: 0; min-height: 0;
+          display: flex; flex-direction: column;
+          background: var(--fm-surface);
+        }
+        .fm-review-header {
+          flex-shrink: 0;
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+        }
+        .fm-review-eyebrow {
+          font-size: 10.5px; font-weight: 700;
+          letter-spacing: 0.08em;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+        }
+        .fm-review-title { font-size: 14px; font-weight: 700; color: var(--fm-text); margin-top: 2px; }
+        .fm-balance-pill {
+          display: inline-flex; align-items: center; gap: 5px;
+          height: 28px; padding: 0 12px;
+          border-radius: 999px;
+          font-size: 11.5px; font-weight: 700;
+        }
+        .fm-balance-pill.ok { background: var(--fm-green-bg); color: var(--fm-green); }
+        .fm-balance-pill.warn { background: var(--fm-amber-bg); color: var(--fm-amber); }
+
+        /* Canlı denge çubuğu */
+        .fm-balance-bar {
+          flex-shrink: 0;
+          display: flex; gap: 18px;
+          padding: 10px 16px;
+          background: var(--fm-surface-2);
+          border-bottom: 1px solid var(--fm-border);
+        }
+        .fm-balance-row {
+          display: flex; flex-direction: column; gap: 1px;
+        }
+        .fm-balance-row span {
+          font-size: 10.5px; font-weight: 600;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .fm-balance-row b {
+          font-size: 14px; font-weight: 700;
+          color: var(--fm-text);
+          font-variant-numeric: tabular-nums;
+        }
+        .fm-balance-row.tl b { color: var(--fm-gold-deep); }
+
+        .fm-review-scroll {
+          flex: 1; min-height: 0;
+          overflow: auto;
+          padding: 12px 14px;
+        }
+        .fm-duplicate-band {
+          display: flex; gap: 10px;
+          padding: 10px 12px;
+          border: 1px solid #f1c2bc;
+          border-radius: 6px;
+          background: var(--fm-red-bg);
+          color: var(--fm-red);
+          margin-bottom: 10px;
+        }
+        .fm-plan-strip {
+          display: flex; justify-content: space-between; gap: 10px;
+          padding: 8px 10px;
+          background: var(--fm-gold-bg);
+          border: 1px solid var(--fm-gold-soft);
+          border-radius: 5px;
+          color: var(--fm-gold-deep);
+          font-size: 11px; font-weight: 600;
+          margin-bottom: 10px;
+        }
+        .fm-meta-grid {
+          display: grid; grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+          padding: 10px;
+          margin-bottom: 10px;
+          background: var(--fm-surface-2);
+          border: 1px solid var(--fm-border);
+          border-radius: 6px;
+        }
+        .fm-meta-grid label,
+        .fm-info-grid label,
+        .fm-business-grid label {
+          display: block;
+          font-size: 10.5px; font-weight: 700;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+        .fm-meta-grid input,
+        .fm-meta-grid select,
+        .fm-info-grid input,
+        .fm-business-grid input,
+        .fm-business-grid select,
+        .fm-ledger-row input {
+          margin-top: 3px;
+          height: 30px;
+          width: 100%;
+          min-width: 0;
+          padding: 0 9px;
+          border: 1px solid var(--fm-border);
+          border-radius: 5px;
+          background: var(--fm-surface);
+          color: var(--fm-text);
+          font-size: 12.5px;
+          outline: none;
+        }
+        .fm-meta-grid input:focus,
+        .fm-meta-grid select:focus,
+        .fm-info-grid input:focus,
+        .fm-business-grid input:focus,
+        .fm-business-grid select:focus,
+        .fm-ledger-row input:focus {
+          border-color: var(--fm-gold);
+          box-shadow: 0 0 0 3px var(--fm-gold-bg);
+        }
+
+        .fm-ledger-section {
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: 6px;
+          overflow: hidden;
+          margin-bottom: 10px;
+        }
+        .fm-ledger-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 12px;
+          background: var(--fm-surface-2);
+          border-bottom: 1px solid var(--fm-border);
+          font-size: 12px; font-weight: 700;
+          color: var(--fm-text);
+        }
+        .fm-ledger-head button {
+          display: inline-flex; align-items: center; gap: 4px;
+          height: 26px; padding: 0 10px;
+          border-radius: 5px;
+          border: 1px solid var(--fm-border);
+          background: var(--fm-surface);
+          color: var(--fm-text-soft);
+          font-size: 11.5px; font-weight: 600;
+          cursor: pointer;
+        }
+        .fm-ledger-head button:hover { background: var(--fm-gold-bg); color: var(--fm-gold-deep); border-color: var(--fm-gold-soft); }
+        .fm-ledger-table { padding: 4px 4px; }
+        .fm-ledger-row {
+          display: grid;
+          grid-template-columns: 110px minmax(0, 1fr) 56px 88px 88px 28px;
+          gap: 6px;
+          align-items: center;
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+        .fm-ledger-row:hover { background: var(--fm-surface-2); }
+        .fm-ledger-row input { height: 28px; font-size: 11.5px; margin-top: 0; }
+        .fm-account-trigger {
+          height: 28px; padding: 0 9px;
+          text-align: left;
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: 5px;
+          color: var(--fm-text);
+          font-size: 11.5px; font-weight: 600;
+          cursor: pointer;
+          font-variant-numeric: tabular-nums;
+        }
+        .fm-account-trigger:hover { border-color: var(--fm-gold); background: var(--fm-gold-bg); }
+        .fm-placeholder { color: var(--fm-text-muted); font-weight: 400; }
+        .fm-row-delete {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 28px; height: 28px;
+          border-radius: 5px;
+          background: transparent;
+          color: var(--fm-red);
+          border: 0;
+          cursor: pointer;
+        }
+        .fm-row-delete:hover { background: var(--fm-red-bg); }
+        .fm-empty-ledger { padding: 14px; text-align: center; color: var(--fm-text-muted); font-size: 12px; }
+        .fm-section-total {
+          display: flex; justify-content: flex-end; gap: 14px;
+          padding: 6px 10px;
+          background: var(--fm-surface-2);
+          color: var(--fm-text-soft);
+          font-size: 11.5px;
+          border-top: 1px solid var(--fm-border);
+        }
+        .fm-section-total b { color: var(--fm-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+        .fm-business-card {
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-gold-soft);
+          border-radius: 6px;
+          overflow: hidden;
+          margin-bottom: 10px;
+        }
+        .fm-business-head {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 12px;
+          background: var(--fm-gold-bg);
+          border-bottom: 1px solid var(--fm-gold-soft);
+        }
+        .fm-business-head span {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 24px; height: 24px;
+          border-radius: 6px;
+          background: var(--fm-gold);
+          color: #fff;
+          font-weight: 700;
+          font-size: 12px;
+        }
+        .fm-business-head button {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px;
+          border-radius: 5px;
+          background: transparent;
+          color: var(--fm-red);
+          border: 0;
+          cursor: pointer;
+        }
+        .fm-business-head button:hover { background: var(--fm-red-bg); }
+        .fm-business-grid { display: grid; gap: 10px; padding: 10px 12px; }
+        .fm-business-grid.top { grid-template-columns: 1fr 1fr; }
+        .fm-business-grid.amounts { grid-template-columns: 1fr 1fr 1fr; padding-top: 0; }
+        .fm-business-total {
+          display: flex; justify-content: space-between; align-items: center;
+          padding: 10px 14px;
+          background: var(--fm-surface-2);
+          border-top: 1px solid var(--fm-border);
+          color: var(--fm-text);
+          font-size: 12.5px; font-weight: 700;
+        }
+        .fm-business-total b { font-variant-numeric: tabular-nums; }
+        .fm-add-business {
+          display: inline-flex; align-items: center; gap: 6px;
+          height: 34px; padding: 0 14px;
+          border-radius: 6px;
+          border: 1px dashed var(--fm-gold-soft);
+          background: transparent;
+          color: var(--fm-gold-deep);
+          font-size: 12px; font-weight: 600;
+          cursor: pointer;
+        }
+        .fm-add-business:hover { background: var(--fm-gold-bg); }
+
+        .fm-info-grid {
+          display: grid; grid-template-columns: repeat(2, 1fr);
+          gap: 8px; margin-top: 10px;
+        }
+        .col-span-2 { grid-column: span 2; }
+
+        .fm-uploaded-strip {
+          flex-shrink: 0;
+          padding: 9px 14px;
+          background: var(--fm-surface-2);
+          border-top: 1px solid var(--fm-border);
+        }
+        .fm-strip-head {
+          display: flex; justify-content: space-between;
+          margin-bottom: 6px;
+          font-size: 10.5px; font-weight: 700;
+          color: var(--fm-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+        }
+        .fm-strip-row {
+          display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px;
+        }
+        .fm-doc-chip {
+          display: inline-flex; align-items: center; gap: 6px;
+          min-width: 180px;
+          height: 32px;
+          padding: 0 10px;
+          border-radius: 6px;
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          color: var(--fm-text-soft);
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .fm-doc-chip span {
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .fm-doc-chip:hover { border-color: var(--fm-gold-soft); }
+        .fm-doc-chip.active {
+          border-color: var(--fm-gold);
+          background: var(--fm-gold-bg);
+          color: var(--fm-gold-deep);
+          font-weight: 600;
+        }
+        .ok-tick { color: var(--fm-green); }
+
+        .fm-action-bar {
+          flex-shrink: 0;
+          display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr 1.4fr;
+          gap: 6px;
+          padding: 10px 12px;
+          background: var(--fm-surface);
+          border-top: 1px solid var(--fm-border);
+        }
+        .fm-action {
+          display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+          height: 36px;
+          border-radius: 6px;
+          font-size: 12px; font-weight: 700;
+          border: 1px solid transparent;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .fm-action.ghost {
+          background: var(--fm-surface);
+          border-color: var(--fm-border);
+          color: var(--fm-text-soft);
+        }
+        .fm-action.ghost:hover:not(:disabled) { background: var(--fm-surface-2); }
+        .fm-action.danger {
+          background: var(--fm-surface);
+          border-color: #f0c4be;
+          color: var(--fm-red);
+        }
+        .fm-action.danger:hover:not(:disabled) { background: var(--fm-red-bg); }
+        .fm-action.save {
+          background: var(--fm-gold);
+          border-color: var(--fm-gold-deep);
+          color: #fff;
+        }
+        .fm-action.save:hover:not(:disabled) { background: var(--fm-gold-deep); }
+        .fm-action.approve {
+          background: var(--fm-green);
+          border-color: #066d3e;
+          color: #fff;
+        }
+        .fm-action.approve:hover:not(:disabled) { background: #066d3e; }
+        .fm-action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .fm-no-selection {
+          flex: 1;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          color: var(--fm-text-muted);
+          padding: 30px;
+          text-align: center;
+        }
+        .fm-no-selection-title {
+          margin-top: 12px;
+          font-size: 14px; font-weight: 600;
+          color: var(--fm-text-soft);
+        }
+        .fm-no-selection p { margin-top: 4px; font-size: 12.5px; }
+
+        .fm-global-drop {
+          position: fixed; inset: 0;
+          z-index: 100;
+          background: rgba(28, 24, 18, 0.55);
+          display: flex; align-items: center; justify-content: center;
+          backdrop-filter: blur(4px);
+          pointer-events: none;
+        }
+        .fm-global-drop-card {
+          background: var(--fm-surface);
+          border: 2px dashed var(--fm-gold);
+          border-radius: 16px;
+          padding: 36px 56px;
+          box-shadow: var(--fm-shadow-lg);
+          color: var(--fm-gold-deep);
+          display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .fm-global-drop-title { font-size: 18px; font-weight: 700; color: var(--fm-text); }
+        .fm-global-drop-sub { font-size: 13px; color: var(--fm-text-muted); }
+
+        .fm-modal-bg {
+          position: fixed; inset: 0; z-index: 200;
+          background: rgba(28, 24, 18, 0.45);
+          backdrop-filter: blur(2px);
+          display: flex; align-items: center; justify-content: center;
+        }
+        .fm-modal {
+          width: 540px; max-width: 92vw;
+          max-height: 78vh;
+          background: var(--fm-surface);
+          border-radius: 12px;
+          box-shadow: var(--fm-shadow-lg);
+          display: flex; flex-direction: column;
+          overflow: hidden;
+        }
+        .fm-modal.narrow { width: 420px; }
+        .fm-modal-head {
+          display: flex; align-items: center; gap: 8px;
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--fm-border);
+          background: var(--fm-surface-2);
+        }
+        .fm-modal-head > svg { color: var(--fm-text-muted); }
+        .fm-modal-head input {
+          flex: 1; height: 32px;
+          padding: 0 8px;
+          border: 0; background: transparent; outline: none;
+          font-size: 13.5px; color: var(--fm-text);
+        }
+        .fm-modal-title { flex: 1; font-weight: 700; font-size: 13.5px; color: var(--fm-text); }
+        .fm-modal-close {
+          width: 28px; height: 28px;
+          display: inline-flex; align-items: center; justify-content: center;
+          border-radius: 6px; border: 0; background: transparent;
+          color: var(--fm-text-muted); cursor: pointer;
+        }
+        .fm-modal-close:hover { background: var(--fm-surface-2); color: var(--fm-text); }
+        .fm-modal-body { flex: 1; overflow: auto; }
+        .fm-modal-row {
+          display: flex; align-items: center; gap: 12px;
+          width: 100%; padding: 9px 14px;
+          background: transparent; border: 0; text-align: left;
+          border-bottom: 1px solid var(--fm-border);
+          cursor: pointer;
+        }
+        .fm-modal-row:hover { background: var(--fm-gold-bg); }
+        .fm-modal-code {
+          font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+          font-size: 12.5px;
+          font-weight: 700;
+          color: var(--fm-gold-deep);
+          min-width: 90px;
+        }
+        .fm-modal-name { font-size: 12.5px; color: var(--fm-text-soft); flex: 1; }
+        .fm-modal-empty { padding: 30px; text-align: center; color: var(--fm-text-muted); font-size: 13px; }
+
+        .fm-shortcut-list { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+        .fm-shortcut {
+          display: flex; align-items: center; gap: 6px;
+          padding: 6px 10px;
+          background: var(--fm-surface-2);
+          border-radius: 6px;
+          font-size: 12.5px;
+        }
+        .fm-shortcut span:last-child { margin-left: auto; color: var(--fm-text-soft); }
+        .fm-shortcut .sep { color: var(--fm-text-muted); }
+        .fm-shortcut kbd {
+          font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 4px;
+          border: 1px solid var(--fm-border-strong);
+          background: var(--fm-surface);
+          color: var(--fm-text);
+          box-shadow: 0 1px 0 var(--fm-border);
+        }
+
+        /* === Yabancı fatura toggle === */
+        .fm-foreign-toggle {
+          display: flex; align-items: center; gap: 10px;
+          padding: 9px 12px;
+          margin-bottom: 10px;
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        .fm-foreign-toggle input[type="checkbox"] {
+          width: 16px; height: 16px;
+          accent-color: var(--fm-gold);
+          cursor: pointer;
+        }
+        .fm-foreign-toggle > span:first-of-type {
+          font-size: 12.5px;
+          font-weight: 700;
+          color: var(--fm-text);
+        }
+        .fm-foreign-hint {
+          margin-left: auto;
+          font-size: 11px;
+          color: var(--fm-text-muted);
+        }
+
+        /* === Katlanır kesinti bölümleri === */
+        .fm-collapse-section {
+          background: var(--fm-surface);
+          border: 1px solid var(--fm-border);
+          border-radius: 6px;
+          overflow: hidden;
+          margin-bottom: 8px;
+        }
+        .fm-collapse-section.open { border-color: var(--fm-gold-soft); }
+        .fm-collapse-head {
+          display: flex; align-items: center; gap: 8px;
+          width: 100%; padding: 9px 12px;
+          background: var(--fm-surface-2);
+          border: 0; border-bottom: 1px solid transparent;
+          cursor: pointer;
+          text-align: left;
+        }
+        .fm-collapse-section.open .fm-collapse-head {
+          background: var(--fm-gold-bg);
+          border-bottom-color: var(--fm-gold-soft);
+        }
+        .fm-collapse-title {
+          flex: 1;
+          font-size: 12px;
+          font-weight: 700;
+          color: var(--fm-text-soft);
+        }
+        .fm-collapse-section.open .fm-collapse-title { color: var(--fm-gold-deep); }
+        .fm-collapse-badge {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-width: 20px; height: 20px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: var(--fm-gold);
+          color: #fff;
+          font-size: 10.5px;
+          font-weight: 700;
+        }
+        .fm-collapse-chev {
+          color: var(--fm-text-muted);
+          font-size: 12px;
+        }
+        .fm-collapse-body { padding: 4px 4px 8px; }
+        .fm-collapse-hint {
+          padding: 6px 10px;
+          margin: 4px 4px 6px;
+          background: var(--fm-amber-bg);
+          color: var(--fm-amber);
+          border-radius: 5px;
+          font-size: 11px;
+          font-weight: 600;
+        }
+        .fm-collapse-empty {
+          padding: 14px;
+          text-align: center;
+          color: var(--fm-text-muted);
+          font-size: 12px;
+        }
+        .fm-collapse-foot {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 6px 10px 4px;
+        }
+        .fm-collapse-add {
+          display: inline-flex; align-items: center; gap: 5px;
+          height: 28px; padding: 0 12px;
+          border-radius: 5px;
+          border: 1px dashed var(--fm-gold-soft);
+          background: transparent;
+          color: var(--fm-gold-deep);
+          font-size: 11.5px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .fm-collapse-add:hover { background: var(--fm-gold-bg); }
+        .fm-collapse-total {
+          display: flex; gap: 12px;
+          font-size: 11.5px;
+          font-weight: 700;
+          color: var(--fm-text-soft);
+          font-variant-numeric: tabular-nums;
+        }
+        .fm-ledger-row select {
+          height: 28px;
+          padding: 0 6px;
+          border: 1px solid var(--fm-border);
+          border-radius: 5px;
+          background: var(--fm-surface);
+          color: var(--fm-text);
+          font-size: 11.5px;
+          outline: none;
+        }
+        .fm-ledger-row select:focus {
+          border-color: var(--fm-gold);
+          box-shadow: 0 0 0 3px var(--fm-gold-bg);
+        }
+
+        .hidden { display: none; }
+        .space-y-3 > * + * { margin-top: 12px; }
+        .shrink-0 { flex-shrink: 0; }
+        .text-right { text-align: right; }
+        .font-bold { font-weight: 700; }
+        .text-xs { font-size: 11.5px; }
+
         @media (max-width: 1280px) {
-          .invoice-workbench { grid-template-columns: minmax(620px, 1fr) minmax(390px, 480px); }
-          .ledger-row { grid-template-columns: 96px minmax(0,1fr) 48px 76px 76px 24px; }
-          .action-bar { grid-template-columns: repeat(3, 1fr); }
+          .fm-workbench { grid-template-columns: minmax(620px, 1fr) minmax(390px, 480px); }
+          .fm-ledger-row { grid-template-columns: 96px minmax(0,1fr) 50px 80px 80px 26px; }
+          .fm-action-bar { grid-template-columns: repeat(3, 1fr); }
+          .fm-stat-strip { grid-template-columns: repeat(2, 1fr); }
         }
       `}</style>
     </main>
+  );
+}
+
+function CountButton({ value, onClick }: { value: number; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className={value > 0 ? 'fm-count-btn has-pending' : 'fm-count-btn'}>
+      {value || 0}
+    </button>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  open,
+  onToggle,
+  onAdd,
+  lines,
+  onUpdateLine,
+  onDeleteLine,
+  onOpenAccount,
+  rateOptions,
+  hint,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  onAdd: () => void;
+  lines: AccountingLine[];
+  onUpdateLine: (lineId: string, patch: Partial<AccountingLine>) => void;
+  onDeleteLine: (lineId: string) => void;
+  onOpenAccount: (lineId: string) => void;
+  rateOptions: string[];
+  hint?: string;
+}) {
+  const debit = lines.reduce((s, l) => s + parseAmount(l.debit), 0);
+  const credit = lines.reduce((s, l) => s + parseAmount(l.credit), 0);
+  return (
+    <section className={open ? 'fm-collapse-section open' : 'fm-collapse-section'}>
+      <button type="button" className="fm-collapse-head" onClick={onToggle}>
+        <span className="fm-collapse-title">{title}</span>
+        {lines.length > 0 ? <span className="fm-collapse-badge">{lines.length}</span> : null}
+        <span className="fm-collapse-chev">{open ? '▾' : '▸'}</span>
+      </button>
+      {open ? (
+        <div className="fm-collapse-body">
+          {hint ? <div className="fm-collapse-hint">{hint}</div> : null}
+          {lines.length ? (
+            <div className="fm-ledger-table">
+              {lines.map((line) => (
+                <div key={line.id} className="fm-ledger-row">
+                  <button
+                    type="button"
+                    className="fm-account-trigger"
+                    onClick={() => onOpenAccount(line.id)}
+                    title="Hesap kodu seç"
+                  >
+                    {line.accountCode || <span className="fm-placeholder">Hesap seç</span>}
+                  </button>
+                  <input value={line.description} onChange={(e) => onUpdateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
+                  {rateOptions.length ? (
+                    <select value={line.rate || ''} onChange={(e) => onUpdateLine(line.id, { rate: e.target.value })}>
+                      <option value="">Oran</option>
+                      {rateOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  ) : (
+                    <input value={line.rate || ''} onChange={(e) => onUpdateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                  )}
+                  <input className="text-right" value={line.debit} onChange={(e) => onUpdateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
+                  <input className="text-right" value={line.credit} onChange={(e) => onUpdateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
+                  <button className="fm-row-delete" onClick={() => onDeleteLine(line.id)} title="Satırı sil"><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="fm-collapse-empty">Henüz satır yok</div>
+          )}
+          <div className="fm-collapse-foot">
+            <button type="button" className="fm-collapse-add" onClick={onAdd}>
+              <Plus size={13} /> Satır ekle
+            </button>
+            {lines.length ? (
+              <div className="fm-collapse-total">
+                <span>B {money(String(debit))}</span>
+                <span>A {money(String(credit))}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
