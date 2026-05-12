@@ -6,6 +6,7 @@
 // 3) Her 5 dk'da bir watchdog: ölü agent varsa yeniden inject
 
 const LUCA_PATTERNS = [
+  /^https?:\/\/(?:www\.)?luca\.com\.tr\//,
   /^https?:\/\/auygs\.luca\.com\.tr\//,
   /^https?:\/\/[^/]*\.luca\.com\.tr\//,
 ];
@@ -13,7 +14,9 @@ const MIHSAP_PATTERNS = [
   /^https?:\/\/app\.mihsap\.com\//,
 ];
 const AGENT_HOME_URL = {
-  luca: 'https://auygs.luca.com.tr/Luca/luca.do',
+  // Luca klasik ekranı (auygs.../Luca/luca.do) doğrudan açılırsa "LUCA HATA"
+  // veriyor; o URL'yi Luca kendi login akışından ikinci sekme olarak açmalı.
+  luca: 'https://www.luca.com.tr/',
   mihsap: 'https://app.mihsap.com/',
 };
 

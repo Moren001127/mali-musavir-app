@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.05';
+  const AGENT_VERSION = '1.37.06';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -355,6 +355,16 @@
   function isLucaOrigin() {
     return /luca\.com\.tr|luca\.net\.tr/i.test(location.hostname);
   }
+  function isDirectClassicLucaError() {
+    try {
+      const text = `${document.title || ''}\n${document.body?.textContent || ''}`;
+      return location.hostname === 'auygs.luca.com.tr'
+        && location.pathname.startsWith('/Luca/')
+        && /LUCA\s+HATA|Lütfen sayfayı yenilemeyin|Lutfen sayfayi yenilemeyin/i.test(text);
+    } catch {
+      return false;
+    }
+  }
   async function syncLucaSession() {
     try {
       if (!isLucaOrigin()) return; // sadece Luca sayfasındaysa çalış
@@ -508,13 +518,9 @@
         }
 
         if (isLucaOrigin()) {
-          setStatus('Klasik Luca ekranina geciliyor; mizan orada cekilecek');
+          setStatus('Luca giris/ana sekmesi acik; klasik Luca sekmesini Luca acinca devam edilecek');
           for (const job of jobs) {
-            await logPendingJob(job, `Luca agent klasik Luca ekraninda degil; klasik Luca ekranina geciliyor. URL=${url}`);
-          }
-          if (!window.__morenClassicRedirectAt || Date.now() - window.__morenClassicRedirectAt > 20000) {
-            window.__morenClassicRedirectAt = Date.now();
-            location.href = 'https://auygs.luca.com.tr/Luca/luca.do';
+            await logPendingJob(job, `Luca agent klasik ekranda degil; normal Luca giris akisi bekleniyor. URL=${url}`);
           }
           return;
         }
@@ -522,6 +528,19 @@
         setStatus('Luca acik ama klasik Luca ekrani bekleniyor');
         for (const job of jobs) {
           await logPendingJob(job, `Luca agent klasik ekranda degil; job bekliyor. URL=${url}`);
+        }
+        return;
+      }
+
+      if (isDirectClassicLucaError()) {
+        const url = location.href.slice(0, 120);
+        setStatus('Luca ikinci sekmesi dogrudan acilmis; normal Luca girisine donuluyor');
+        for (const job of jobs) {
+          await logPendingJob(job, `Luca klasik ikinci sekme dogrudan acildigi icin hata verdi; normal Luca girisinden acilmali. URL=${url}`);
+        }
+        if (!window.__morenLucaEntryRedirectAt || Date.now() - window.__morenLucaEntryRedirectAt > 30000) {
+          window.__morenLucaEntryRedirectAt = Date.now();
+          try { location.href = 'https://www.luca.com.tr/'; } catch {}
         }
         return;
       }
