@@ -11,12 +11,16 @@ import {
   Banknote,
   Building2,
   CalendarDays,
+  Check,
+  Edit3,
   Landmark,
   Loader2,
+  Power,
   Plus,
   Save,
   Trash2,
   Wallet,
+  X,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -294,6 +298,7 @@ export function KasaBankaView() {
     openingDate: today(),
     color: '#d4b876',
   });
+  const [actionTab, setActionTab] = useState<'entry' | 'transfer' | 'account'>('entry');
   const [savingEntry, setSavingEntry] = useState(false);
   const [savingTransfer, setSavingTransfer] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -420,36 +425,26 @@ export function KasaBankaView() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <MetricCard label="Toplam Bakiye" value={data.kpi.totalBalance} color={GOLD} icon={Wallet} />
-        <MetricCard label="Bu Ay Gelir" value={data.kpi.monthIncome} color={GREEN} icon={ArrowDownLeft} />
-        <MetricCard label="Bu Ay Gider" value={data.kpi.monthExpense} color={RED} icon={ArrowUpRight} />
-        <MetricCard label="Net Durum" value={data.kpi.monthNet} color={data.kpi.monthNet >= 0 ? BLUE : RED} icon={Banknote} />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {accounts.map((account) => (
-          <div key={account.id} className="rounded-[10px] p-4" style={{ ...panel, borderColor: `${account.color || GOLD}55` }}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                {account.type === 'NAKIT' ? <Wallet size={17} style={{ color: account.color }} /> : <Landmark size={17} style={{ color: account.color }} />}
-                <div className="text-[17px] font-semibold truncate" style={{ color: TEXT }}>{account.name}</div>
-              </div>
-              <span className="text-[12px] font-semibold px-2.5 py-1 rounded-[6px]" style={{ background: 'rgba(255,255,255,0.08)', color: MUTED }}>{account.type}</span>
-            </div>
-            <div className="mt-4 whitespace-nowrap text-[27px] font-bold leading-[1.15] tabular-nums" style={{ fontFamily: MONEY, color: account.color || GOLD }}>
-              {fmt(account.currentBalance)} TL
-            </div>
-            <div className="grid grid-cols-3 gap-2 mt-4">
-              <MiniStat label="Giriş" value={account.monthInflow} color={GREEN} />
-              <MiniStat label="Çıkış" value={account.monthOutflow} color={RED} />
-              <MiniStat label="Net" value={account.monthNet} color={account.monthNet >= 0 ? BLUE : RED} />
-            </div>
+      <div className="rounded-[10px] p-4" style={panel}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Hesap sayaçları</h3>
+            <p className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>Banka, nakit ve transfer akışı aynı düzende izlenir.</p>
           </div>
-        ))}
+          <div className="grid min-w-[520px] grid-cols-4 gap-2 max-lg:min-w-0 max-lg:w-full max-sm:grid-cols-2">
+            <CompactMetricCard label="Toplam" value={data.kpi.totalBalance} color={GOLD} icon={Wallet} />
+            <CompactMetricCard label="Gelir" value={data.kpi.monthIncome} color={GREEN} icon={ArrowDownLeft} />
+            <CompactMetricCard label="Gider" value={data.kpi.monthExpense} color={RED} icon={ArrowUpRight} />
+            <CompactMetricCard label="Net" value={data.kpi.monthNet} color={data.kpi.monthNet >= 0 ? BLUE : RED} icon={Banknote} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+          {accounts.map((account) => <AccountMeterCard key={account.id} account={account} />)}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
         <div className="space-y-4">
           <div className="rounded-[10px] p-4" style={panel}>
             <div className="flex items-center justify-between mb-3">
@@ -478,28 +473,35 @@ export function KasaBankaView() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          <EntryForm
-            form={entryForm}
-            setForm={setEntryForm}
-            accounts={accounts}
-            categories={entryCategories}
-            saving={savingEntry}
-            onSave={saveEntry}
-          />
-          <TransferForm
-            form={transferForm}
-            setForm={setTransferForm}
-            accounts={accounts}
-            saving={savingTransfer}
-            onSave={saveTransfer}
-          />
-          <AccountForm
-            form={accountForm}
-            setForm={setAccountForm}
-            saving={savingAccount}
-            onSave={saveAccount}
-          />
+        <div className="space-y-3 xl:sticky xl:top-4 xl:self-start">
+          <ActionTabs active={actionTab} onChange={setActionTab} />
+          {actionTab === 'entry' && (
+            <EntryForm
+              form={entryForm}
+              setForm={setEntryForm}
+              accounts={accounts}
+              categories={entryCategories}
+              saving={savingEntry}
+              onSave={saveEntry}
+            />
+          )}
+          {actionTab === 'transfer' && (
+            <TransferForm
+              form={transferForm}
+              setForm={setTransferForm}
+              accounts={accounts}
+              saving={savingTransfer}
+              onSave={saveTransfer}
+            />
+          )}
+          {actionTab === 'account' && (
+            <AccountForm
+              form={accountForm}
+              setForm={setAccountForm}
+              saving={savingAccount}
+              onSave={saveAccount}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -511,6 +513,89 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
     <div className="rounded-[8px] p-2.5" style={{ background: 'rgba(255,255,255,0.065)' }}>
       <div className="text-[12px] font-semibold" style={{ color: MUTED }}>{label}</div>
       <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(value)}</div>
+    </div>
+  );
+}
+
+function CompactMetricCard({ label, value, color, icon: Icon }: {
+  label: string;
+  value: number;
+  color: string;
+  icon: React.ElementType;
+}) {
+  return (
+    <div className="rounded-[8px] px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)' }}>
+      <div className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>
+        <Icon size={13} style={{ color }} /> {label}
+      </div>
+      <div className="mt-1 whitespace-nowrap text-[16px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>
+        {fmt(value)}
+      </div>
+    </div>
+  );
+}
+
+function AccountMeterCard({ account }: { account: FinancialAccount }) {
+  const color = account.color || GOLD;
+  return (
+    <div className="rounded-[10px] p-3.5" style={{ background: 'rgba(0,0,0,0.15)', border: `1px solid ${color}44` }}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]" style={{ background: `${color}1f`, color }}>
+            {account.type === 'NAKIT' ? <Wallet size={16} /> : <Landmark size={16} />}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-semibold" style={{ color: TEXT }}>{account.name}</div>
+            <div className="mt-0.5 text-[11.5px] font-semibold uppercase tracking-[.08em]" style={{ color: SOFT }}>{account.type}</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="whitespace-nowrap text-[20px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(account.currentBalance)} TL</div>
+          <div className="mt-0.5 text-[11.5px] font-medium" style={{ color: account.monthNet >= 0 ? GREEN : RED }}>
+            Net {fmt(account.monthNet)}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <MiniStat label="Giriş" value={account.monthInflow} color={GREEN} />
+        <MiniStat label="Çıkış" value={account.monthOutflow} color={RED} />
+        <MiniStat label="Net" value={account.monthNet} color={account.monthNet >= 0 ? BLUE : RED} />
+      </div>
+    </div>
+  );
+}
+
+function ActionTabs({ active, onChange }: {
+  active: 'entry' | 'transfer' | 'account';
+  onChange: (tab: 'entry' | 'transfer' | 'account') => void;
+}) {
+  const tabs = [
+    { key: 'entry' as const, label: 'Gelir/Gider', icon: Plus },
+    { key: 'transfer' as const, label: 'Transfer', icon: ArrowRightLeft },
+    { key: 'account' as const, label: 'Hesap', icon: Building2 },
+  ];
+  return (
+    <div className="rounded-[10px] p-2" style={panel}>
+      <div className="grid grid-cols-3 gap-1.5">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = active === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => onChange(tab.key)}
+              className="inline-flex items-center justify-center gap-1.5 rounded-[8px] px-2 py-2 text-[12.5px] font-semibold transition"
+              style={{
+                background: isActive ? 'rgba(212,184,118,0.16)' : 'rgba(255,255,255,0.04)',
+                color: isActive ? GOLD : MUTED,
+                border: `1px solid ${isActive ? 'rgba(212,184,118,0.38)' : 'rgba(255,255,255,0.08)'}`,
+              }}
+            >
+              <Icon size={14} /> {tab.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -769,9 +854,13 @@ export function ButcePlanView() {
   const [period, setPeriod] = useState(currentPeriod());
   const [planDraft, setPlanDraft] = useState<Record<string, string>>({});
   const [categoryForm, setCategoryForm] = useState({ type: 'GIDER' as 'GELIR' | 'GIDER', name: '', color: '#ef4444' });
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, { name: string; color: string; sortOrder: string; isActive: boolean }>>({});
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
+  const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
   const { data, isLoading } = useBudgetSummary(year, period);
+  const categoriesById = useMemo(() => new Map((data?.categories || []).map((c) => [c.id, c])), [data?.categories]);
 
   useEffect(() => {
     if (!data) return;
@@ -779,6 +868,20 @@ export function ButcePlanView() {
     for (const row of data.categoryRows) next[row.categoryId] = row.planned ? String(row.planned) : '';
     setPlanDraft(next);
   }, [data?.period, data?.categoryRows]);
+
+  useEffect(() => {
+    if (!data) return;
+    const next: Record<string, { name: string; color: string; sortOrder: string; isActive: boolean }> = {};
+    for (const category of data.categories) {
+      next[category.id] = {
+        name: category.name,
+        color: category.color || (category.type === 'GELIR' ? GREEN : RED),
+        sortOrder: String(category.sortOrder ?? 100),
+        isActive: category.isActive,
+      };
+    }
+    setCategoryDrafts(next);
+  }, [data?.categories]);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
 
@@ -816,6 +919,41 @@ export function ButcePlanView() {
     }
   };
 
+  const saveCategoryEdit = async (row: BudgetCategoryRow) => {
+    const draft = categoryDrafts[row.categoryId];
+    if (!draft?.name.trim()) { toast.error('Kategori adı girin'); return; }
+    setSavingCategoryId(row.categoryId);
+    try {
+      await api.put(`/cari-kasa/budget/categories/${row.categoryId}`, {
+        name: draft.name.trim(),
+        color: draft.color,
+        sortOrder: Number(draft.sortOrder || 100),
+        isActive: draft.isActive,
+      });
+      toast.success('Kategori güncellendi');
+      setEditingCategoryId(null);
+      invalidate();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Kategori güncellenemedi');
+    } finally {
+      setSavingCategoryId(null);
+    }
+  };
+
+  const toggleCategoryActive = async (row: BudgetCategoryRow) => {
+    setSavingCategoryId(row.categoryId);
+    try {
+      if (row.isActive) await api.delete(`/cari-kasa/budget/categories/${row.categoryId}`);
+      else await api.put(`/cari-kasa/budget/categories/${row.categoryId}`, { isActive: true });
+      toast.success(row.isActive ? 'Kategori pasifleştirildi' : 'Kategori aktifleştirildi');
+      invalidate();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Kategori güncellenemedi');
+    } finally {
+      setSavingCategoryId(null);
+    }
+  };
+
   if (isLoading || !data) return <LoadingPanel />;
 
   return (
@@ -835,7 +973,7 @@ export function ButcePlanView() {
         <MetricCard label="Gerçek Gider" value={data.kpi.periodExpense} color={RED} icon={Wallet} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_390px] gap-4">
         <div className="rounded-[10px] overflow-hidden" style={panel}>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>{period} plan tablosu</h3>
@@ -858,8 +996,12 @@ export function ButcePlanView() {
                 {data.categoryRows.map((row) => {
                   const color = row.type === 'GELIR' ? GREEN : RED;
                   return (
-                    <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: TEXT }}>
-                      <td className="px-4 py-2 font-semibold"><span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: row.color || color }} />{row.name}</td>
+                    <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: row.isActive ? TEXT : DIM, opacity: row.isActive ? 1 : 0.62 }}>
+                      <td className="px-4 py-2 font-semibold">
+                        <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: row.color || color }} />
+                        {row.name}
+                        {!row.isActive && <span className="ml-2 rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: 'rgba(255,255,255,0.06)', color: SOFT }}>Pasif</span>}
+                      </td>
                       <td className="px-4 py-2 text-right"><input type="number" step="0.01" value={planDraft[row.categoryId] ?? ''} onChange={(e) => setPlanDraft((old) => ({ ...old, [row.categoryId]: e.target.value }))} className="w-[120px] px-2 py-1.5 rounded-[7px] text-right tabular-nums" style={{ ...inputStyle, fontFamily: MONEY }} /></td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(row.actual)}</td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: row.variance >= 0 ? GREEN : RED }}>{fmt(row.variance)}</td>
@@ -872,18 +1014,83 @@ export function ButcePlanView() {
           </div>
         </div>
 
-        <div className="rounded-[10px] p-4 h-fit" style={panel}>
-          <h3 className="text-[16px] font-semibold mb-3" style={{ color: TEXT }}>Kategori Ekle</h3>
-          <div className="space-y-2.5">
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GELIR', color: '#4ade80' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GELIR' ? 'rgba(74,222,128,0.18)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GELIR' ? GREEN : MUTED, border: `1px solid ${BORDER}` }}>Gelir</button>
-              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GIDER', color: '#ef4444' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GIDER' ? 'rgba(248,113,113,0.22)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GIDER' ? RED : MUTED, border: `1px solid ${BORDER}` }}>Gider</button>
+        <div className="space-y-4">
+          <div className="rounded-[10px] overflow-hidden" style={panel}>
+            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Mevcut Kategoriler</h3>
+              <p className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>Ad, renk, sıra ve aktiflik buradan düzenlenir.</p>
             </div>
-            <Field label="Kategori Adı"><input value={categoryForm.name} onChange={(e) => setCategoryForm((old) => ({ ...old, name: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
-            <Field label="Renk"><input type="color" value={categoryForm.color} onChange={(e) => setCategoryForm((old) => ({ ...old, color: e.target.value }))} className="w-full h-[36px] rounded-[8px]" style={{ ...inputStyle, padding: 4 }} /></Field>
-            <button onClick={saveCategory} disabled={savingCategory} className="w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
-              {savingCategory ? <Loader2 size={14} className="animate-spin inline" /> : 'Kategori Ekle'}
-            </button>
+            <div className="max-h-[420px] overflow-auto p-3 space-y-2">
+              {data.categoryRows.map((row) => {
+                const category = categoriesById.get(row.categoryId);
+                const draft = categoryDrafts[row.categoryId] || {
+                  name: row.name,
+                  color: row.color || (row.type === 'GELIR' ? GREEN : RED),
+                  sortOrder: String(category?.sortOrder ?? 100),
+                  isActive: row.isActive,
+                };
+                const editing = editingCategoryId === row.categoryId;
+                const color = draft.color || (row.type === 'GELIR' ? GREEN : RED);
+                return (
+                  <div key={row.categoryId} className="rounded-[9px] border p-3" style={{ borderColor: editing ? 'rgba(212,184,118,0.38)' : 'rgba(255,255,255,0.08)', background: row.isActive ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.02)' }}>
+                    {editing ? (
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-[1fr_72px] gap-2">
+                          <input value={draft.name} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, name: e.target.value } }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} />
+                          <input type="color" value={color} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, color: e.target.value } }))} className="h-[38px] w-full rounded-[8px]" style={{ ...inputStyle, padding: 4 }} />
+                        </div>
+                        <div className="grid grid-cols-[86px_1fr] gap-2">
+                          <input type="number" value={draft.sortOrder} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, sortOrder: e.target.value } }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} />
+                          <button onClick={() => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, isActive: !draft.isActive } }))} className="rounded-[8px] px-3 py-2 text-[12.5px] font-bold" style={{ background: draft.isActive ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)', color: draft.isActive ? GREEN : SOFT, border: `1px solid ${BORDER}` }}>
+                            {draft.isActive ? 'Aktif' : 'Pasif'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => saveCategoryEdit(row)} disabled={savingCategoryId === row.categoryId} className="rounded-[8px] px-3 py-2 text-[12.5px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.35)' }}>
+                            {savingCategoryId === row.categoryId ? <Loader2 size={13} className="animate-spin inline" /> : <><Check size={13} className="inline mr-1" /> Kaydet</>}
+                          </button>
+                          <button onClick={() => setEditingCategoryId(null)} className="rounded-[8px] px-3 py-2 text-[12.5px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: MUTED, border: `1px solid ${BORDER}` }}>
+                            <X size={13} className="inline mr-1" /> Vazgeç
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: row.color || color }} />
+                            <span className="truncate text-[14px] font-semibold" style={{ color: row.isActive ? TEXT : SOFT }}>{row.name}</span>
+                            <span className="rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: row.type === 'GELIR' ? 'rgba(74,222,128,0.12)' : 'rgba(248,113,113,0.13)', color: row.type === 'GELIR' ? GREEN : RED }}>{row.type}</span>
+                          </div>
+                          <div className="mt-1 text-[11.5px] font-medium" style={{ color: DIM }}>Sıra {category?.sortOrder ?? 100} · {row.isActive ? 'Aktif' : 'Pasif'}</div>
+                        </div>
+                        <div className="flex shrink-0 gap-1.5">
+                          <button onClick={() => setEditingCategoryId(row.categoryId)} className="rounded-[7px] p-2" style={{ color: GOLD, background: 'rgba(212,184,118,0.10)' }} title="Düzenle"><Edit3 size={14} /></button>
+                          <button onClick={() => toggleCategoryActive(row)} disabled={savingCategoryId === row.categoryId} className="rounded-[7px] p-2 disabled:opacity-50" style={{ color: row.isActive ? RED : GREEN, background: row.isActive ? 'rgba(248,113,113,0.10)' : 'rgba(74,222,128,0.10)' }} title={row.isActive ? 'Pasifleştir' : 'Aktifleştir'}>
+                            {savingCategoryId === row.categoryId ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-[10px] p-4 h-fit" style={panel}>
+            <h3 className="text-[16px] font-semibold mb-3" style={{ color: TEXT }}>Yeni Kategori</h3>
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GELIR', color: '#4ade80' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GELIR' ? 'rgba(74,222,128,0.18)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GELIR' ? GREEN : MUTED, border: `1px solid ${BORDER}` }}>Gelir</button>
+                <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GIDER', color: '#ef4444' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GIDER' ? 'rgba(248,113,113,0.22)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GIDER' ? RED : MUTED, border: `1px solid ${BORDER}` }}>Gider</button>
+              </div>
+              <Field label="Kategori Adı"><input value={categoryForm.name} onChange={(e) => setCategoryForm((old) => ({ ...old, name: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
+              <Field label="Renk"><input type="color" value={categoryForm.color} onChange={(e) => setCategoryForm((old) => ({ ...old, color: e.target.value }))} className="w-full h-[36px] rounded-[8px]" style={{ ...inputStyle, padding: 4 }} /></Field>
+              <button onClick={saveCategory} disabled={savingCategory} className="w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
+                {savingCategory ? <Loader2 size={14} className="animate-spin inline" /> : 'Kategori Ekle'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

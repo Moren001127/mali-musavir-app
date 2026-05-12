@@ -214,6 +214,21 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
   );
 }
 
+function DashboardSectionBridge() {
+  return (
+    <div className="relative py-1">
+      <div className="absolute left-0 right-0 top-1/2 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,184,118,0.32), rgba(245,166,184,0.26), transparent)' }} />
+      <div className="relative mx-auto flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[.13em]" style={{ background: 'rgba(15,13,11,0.92)', border: '1px solid rgba(212,184,118,0.18)', color: 'rgba(250,250,249,0.62)', boxShadow: '0 8px 28px rgba(0,0,0,0.28)' }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />
+        İş Akışı
+        <ArrowRight size={13} style={{ color: 'rgba(250,250,249,0.38)' }} />
+        Son Tarihler
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#f5a6b8' }} />
+      </div>
+    </div>
+  );
+}
+
 function Section({ title, children, action, accent = 'gold' }: { title: string; children: ReactNode; action?: ReactNode; accent?: StatAccent }) {
   const t = ACCENT_TONES[accent];
   return (
@@ -1160,6 +1175,8 @@ export default function DashboardPage() {
       <BrifingKart userName={displayUserName(meUser)} />
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
+
+      <DashboardSectionBridge />
 
       {/* v1.36.81: ToplubeyannameTable kaldırıldı — Beyannameler ayrı sayfada (/panel/beyannameler) */}
       <BuHaftaTakvim />

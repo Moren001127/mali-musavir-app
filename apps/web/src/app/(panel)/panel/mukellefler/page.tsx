@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff } from 'lucide-react';
+import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
@@ -194,8 +194,8 @@ export default function MukelleflerPage() {
             <span className="w-[26px] h-px" style={{ background: GOLD }} />
             <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: '#b8a06f' }}>Ana Modül</span>
           </div>
-          <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>Mükellef Listesi</h1>
-          <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          <h1 style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', fontSize: 32, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>Mükellef Listesi</h1>
+          <p className="text-[13px] mt-1.5 font-medium" style={{ color: 'rgba(250,250,249,0.52)' }}>
             {donemStr} döneminde aktif {counts.total} mükellef
           </p>
         </div>
@@ -335,16 +335,17 @@ export default function MukelleflerPage() {
       </div>
 
       {/* TABLE */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div
-          className="grid items-center px-5 py-3 text-[10px] font-semibold uppercase"
+          className="grid min-w-[940px] items-center px-4 py-2.5 text-[10px] font-semibold uppercase"
           style={{
-            gridTemplateColumns: '44px 1.6fr 95px 75px 90px 90px 90px 110px 55px',
-            gap: 12,
-            background: 'rgba(212,184,118,0.055)',
+            gridTemplateColumns: '40px minmax(260px, 420px) repeat(5, 82px) 108px 36px',
+            gap: 10,
+            justifyContent: 'start',
+            background: 'rgba(212,184,118,0.045)',
             borderBottom: '1px solid rgba(212,184,118,0.13)',
-            color: 'rgba(250,250,249,0.4)',
-            letterSpacing: '0.12em',
+            color: 'rgba(250,250,249,0.48)',
+            letterSpacing: '0.09em',
           }}
         >
           <span></span>
@@ -437,12 +438,12 @@ function StatCard({
     danger: { line: '#ef4444',  val: '#ef4444',  lbl: 'rgba(239,68,68,0.7)',   bg: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.015))',    border: 'rgba(239,68,68,0.16)' },
   }[variant];
   return (
-    <div className="relative rounded-xl px-3.5 py-3 overflow-hidden" style={{ background: palette.bg, border: `1px solid ${palette.border}` }}>
+    <div className="relative rounded-[10px] px-3.5 py-2.5 overflow-hidden" style={{ background: palette.bg, border: `1px solid ${palette.border}` }}>
       <span className="absolute left-0 top-3 bottom-3 w-[2px] rounded" style={{ background: palette.line }} />
       <div className="pl-1.5">
-        <div className="text-[10px] uppercase font-medium tracking-[0.14em] mb-1.5" style={{ color: palette.lbl }}>{label}</div>
-        <div className="text-[22px] leading-none font-semibold" style={{ fontFamily: 'Fraunces, serif', letterSpacing: '-0.02em', color: palette.val }}>{value}</div>
-        {sub && <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.35)', fontFamily: 'JetBrains Mono, monospace' }}>{sub}</div>}
+        <div className="text-[10px] uppercase font-semibold tracking-[0.11em] mb-1.5" style={{ color: palette.lbl }}>{label}</div>
+        <div className="text-[20px] leading-none font-bold tabular-nums" style={{ fontFamily: 'Manrope, Inter, system-ui, sans-serif', letterSpacing: 0, color: palette.val }}>{value}</div>
+        {sub && <div className="text-[10.5px] mt-1 font-medium" style={{ color: 'rgba(250,250,249,0.42)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>{sub}</div>}
       </div>
     </div>
   );
@@ -473,11 +474,13 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid items-center px-5 py-3 transition-all group"
+      className="grid min-w-[940px] items-center px-4 py-2 transition-all group"
       style={{
-        gridTemplateColumns: '44px 1.6fr 95px 75px 90px 90px 90px 110px 55px',
-        gap: 12,
-        borderBottom: '1px solid rgba(255,255,255,0.03)',
+        gridTemplateColumns: '40px minmax(260px, 420px) repeat(5, 82px) 108px 36px',
+        gap: 10,
+        justifyContent: 'start',
+        minHeight: 58,
+        borderBottom: '1px solid rgba(255,255,255,0.035)',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(184,160,111,0.04)'; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
@@ -485,7 +488,7 @@ function TaxpayerRow({
       {/* Avatar — sağ üst köşede tamamlık göstergesi noktası */}
       <div className="flex justify-center">
         <div className="relative">
-          <div className="w-9 h-9 rounded-[10px] flex items-center justify-center text-[12px] font-bold" style={{ background: 'rgba(184,160,111,0.08)', color: GOLD, border: '1px solid rgba(184,160,111,0.15)' }}>
+          <div className="w-8 h-8 rounded-[9px] flex items-center justify-center text-[11.5px] font-bold" style={{ background: 'rgba(184,160,111,0.075)', color: GOLD, border: '1px solid rgba(184,160,111,0.16)' }}>
             {getInitials(taxpayer)}
           </div>
           {/* v1.36.76: Profil tamamlık dot — avatar'ın sağ üst köşesinde */}
@@ -515,7 +518,7 @@ function TaxpayerRow({
             </span>
           )}
         </div>
-        <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
+        <p className="text-[11.5px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.46)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>
           {taxpayer.taxNumber} · {taxpayer.taxOffice || '—'} · {isCompany ? 'Şirket' : 'Şahıs'}
         </p>
       </div>
@@ -573,29 +576,28 @@ function Check({ checked, onClick, title }: { checked: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       title={title}
-      className="inline-flex items-center justify-center transition-all"
+      className="inline-flex items-center justify-center transition-all hover:brightness-110"
       style={{
-        width: 24, height: 24, borderRadius: 7,
-        border: checked ? `1px solid ${GOLD}` : '1px solid rgba(255,255,255,0.1)',
-        background: checked ? `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})` : 'rgba(255,255,255,0.02)',
-        color: checked ? '#0f0d0b' : 'transparent',
-        fontWeight: 700, fontSize: 13, lineHeight: 1,
+        width: 26, height: 26, borderRadius: 8,
+        border: checked ? '1px solid rgba(74,222,128,0.55)' : '1px solid rgba(255,255,255,0.12)',
+        background: checked ? 'rgba(74,222,128,0.16)' : 'rgba(255,255,255,0.035)',
+        color: checked ? '#4ade80' : 'rgba(250,250,249,0.28)',
         cursor: 'pointer',
       }}
       onMouseEnter={(e) => {
         if (!checked) {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(212,184,118,0.4)';
-          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,184,118,0.06)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(212,184,118,0.42)';
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(212,184,118,0.07)';
         }
       }}
       onMouseLeave={(e) => {
         if (!checked) {
-          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.1)';
-          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.02)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.12)';
+          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.035)';
         }
       }}
     >
-      {checked ? '✓' : ''}
+      {checked ? <CheckIcon size={15} strokeWidth={2.8} /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.25)' }} />}
     </button>
   );
 }
@@ -611,8 +613,8 @@ function BeyannamePill({ status, onClick }: { status: 'verildi' | 'bekliyor' | '
       type="button"
       onClick={onClick}
       title={status === 'verildi' ? 'Beyanname verildi — geri al için tıkla' : status === 'bekliyor' ? 'Hazır — tıklayarak "Verildi" işaretle' : 'Kontroller eksik — önce tüm kutucukları tamamla'}
-      className="px-2.5 py-[4px] rounded-[8px] text-[10.5px] font-bold uppercase cursor-pointer transition-all hover:brightness-125"
-      style={{ background: s.bg, color: s.color, letterSpacing: '0.06em' }}
+      className="min-w-[88px] px-2.5 py-[5px] rounded-[8px] text-[10.5px] font-bold uppercase cursor-pointer transition-all hover:brightness-125"
+      style={{ background: s.bg, color: s.color, letterSpacing: '0.04em', border: `1px solid ${s.color}33` }}
     >
       {s.label}
     </button>

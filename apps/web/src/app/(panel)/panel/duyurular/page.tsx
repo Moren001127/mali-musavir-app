@@ -48,10 +48,18 @@ const SOFT = '#9ca3af';
 const BORDER = 'rgba(255,255,255,0.14)';
 const ANNOUNCEMENT_LOGO = '/duyuru-sablonlari/assets/logo-white.png';
 const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-const FONT_STYLES: Record<FontStyleKey, { label: string; family: string; weight: number }> = {
-  klasik: { label: 'Klasik', family: 'Fraunces, Instrument Serif, Georgia, serif', weight: 500 },
-  resmi: { label: 'Resmi', family: 'Source Serif 4, Georgia, serif', weight: 500 },
-  modern: { label: 'Modern', family: SANS, weight: 700 },
+type FontOption = { label: string; family: string; weight: number; lineHeight: number; letterSpacing?: string };
+
+const TITLE_STYLES: Record<FontStyleKey, FontOption> = {
+  klasik: { label: 'Prestij Serif', family: 'Instrument Serif, Fraunces, Georgia, serif', weight: 400, lineHeight: 1.04, letterSpacing: '-0.018em' },
+  resmi: { label: 'Resmi Başlık', family: 'Fraunces, Source Serif 4, Georgia, serif', weight: 600, lineHeight: 1.08, letterSpacing: '-0.012em' },
+  modern: { label: 'Net Modern', family: SANS, weight: 800, lineHeight: 1.12, letterSpacing: '-0.006em' },
+};
+
+const BODY_STYLES: Record<FontStyleKey, FontOption> = {
+  klasik: { label: 'Klasik Metin', family: 'Source Serif 4, Georgia, serif', weight: 400, lineHeight: 1.54, letterSpacing: '0' },
+  resmi: { label: 'Resmi Metin', family: 'Georgia, Source Serif 4, serif', weight: 400, lineHeight: 1.58, letterSpacing: '0' },
+  modern: { label: 'Sade Metin', family: 'Inter, Manrope, system-ui, sans-serif', weight: 500, lineHeight: 1.48, letterSpacing: '0' },
 };
 
 const initial: Duyuru = {
@@ -146,9 +154,15 @@ export default function DuyurularPage() {
     try {
       const dataUrl = await toJpeg(previewRef.current, {
         quality: 0.95,
-        pixelRatio: 2,
+        pixelRatio: 1,
+        width: 1080,
+        height: 1080,
         backgroundColor: PAPER,
         cacheBust: true,
+        style: {
+          width: '1080px',
+          height: '1080px',
+        },
       });
       const safeNo = (draft.no || 'taslak').replace(/[^\w-]+/g, '-').replace(/-+/g, '-');
       const link = document.createElement('a');
@@ -293,17 +307,38 @@ export default function DuyurularPage() {
 }
 
 function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: Ref<HTMLDivElement> }) {
-  const titleStyle = FONT_STYLES[draft.baslikStil] || FONT_STYLES.klasik;
-  const bodyStyle = FONT_STYLES[draft.icerikStil] || FONT_STYLES.resmi;
-  const titlePunto = clampPoint(draft.baslikPunto, 64, 34, 78);
-  const bodyPunto = clampPoint(draft.icerikPunto, 28, 18, 34);
+  return (
+    <>
+      <div className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
+        <AnnouncementCanvas draft={draft} scale={0.5} />
+      </div>
+      <div aria-hidden className="pointer-events-none fixed left-[-2400px] top-0 h-[1080px] w-[1080px] overflow-hidden">
+        <AnnouncementCanvas draft={draft} exportRef={exportRef} />
+      </div>
+    </>
+  );
+}
+
+function AnnouncementCanvas({
+  draft,
+  exportRef,
+  scale = 1,
+}: {
+  draft: Duyuru;
+  exportRef?: Ref<HTMLDivElement>;
+  scale?: number;
+}) {
+  const titleStyle = TITLE_STYLES[draft.baslikStil] || TITLE_STYLES.klasik;
+  const bodyStyle = BODY_STYLES[draft.icerikStil] || BODY_STYLES.resmi;
+  const titlePunto = fitTitlePoint(draft.baslik, clampPoint(draft.baslikPunto, 62, 34, 78));
+  const bodyPunto = fitBodyPoint(draft.icerik, clampPoint(draft.icerikPunto, 27, 18, 34));
 
   return (
-    <div ref={exportRef} className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
       <div
+        ref={exportRef}
         className="relative h-[1080px] w-[1080px] origin-top-left overflow-hidden"
         style={{
-          transform: 'scale(0.5)',
+          transform: scale === 1 ? undefined : `scale(${scale})`,
           background: PAPER,
           color: NAVY,
           fontFamily: 'Manrope, Inter, system-ui, sans-serif',
@@ -326,7 +361,7 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
             </div>
           </aside>
 
-          <main className="relative flex h-full min-w-0 flex-col overflow-hidden px-[70px] py-[80px]" style={{ background: PAPER }}>
+          <main className="relative flex h-full min-w-0 flex-col overflow-hidden px-[70px] py-[78px]" style={{ background: PAPER }}>
             <div
               className="pointer-events-none absolute left-0 right-0 top-0 h-[220px]"
               style={{
@@ -342,10 +377,10 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
               }}
             />
 
-            <div className="relative z-10 mb-[50px] flex items-start justify-between">
+            <div className="relative z-10 mb-[38px] flex items-start justify-between">
               <div className="inline-flex items-center gap-4 text-[13px] font-bold uppercase tracking-[.4em]" style={{ color: NAVY }}>
                 <span className="h-px w-8 bg-[#0d1238]" />
-                Duyuru
+                Önemli Duyuru
                 <span className="h-px w-8 bg-[#0d1238]" />
               </div>
               <div
@@ -357,14 +392,16 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
               </div>
             </div>
 
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-center py-[60px]">
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start pt-[118px] pb-[160px]">
               <h2
-                className="m-0 max-w-[650px] leading-[1.1] tracking-[-.02em]"
+                className="m-0 max-w-[690px]"
                 style={{
                   color: NAVY,
                   fontFamily: titleStyle.family,
                   fontSize: titlePunto,
                   fontWeight: titleStyle.weight,
+                  lineHeight: titleStyle.lineHeight,
+                  letterSpacing: titleStyle.letterSpacing || 0,
                   overflowWrap: 'anywhere',
                   wordBreak: 'break-word',
                   hyphens: 'auto',
@@ -372,15 +409,18 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
               >
                 {draft.baslik}
               </h2>
-              <div className="mb-10 mt-6 h-px max-w-[92%] bg-[rgba(13,18,56,0.18)]" />
+              <div className="mb-9 mt-7 h-px max-w-[92%] bg-[rgba(13,18,56,0.18)]" />
               <p
-                className="whitespace-pre-line text-justify font-normal leading-[1.6]"
+                className="max-w-[690px] whitespace-pre-line text-justify"
                 style={{
                   color: '#1f2545',
                   fontFamily: bodyStyle.family,
                   fontSize: bodyPunto,
                   fontWeight: bodyStyle.weight,
-                  textIndent: '2.2em',
+                  lineHeight: bodyStyle.lineHeight,
+                  letterSpacing: bodyStyle.letterSpacing || 0,
+                  maxHeight: 430,
+                  overflow: 'hidden',
                   overflowWrap: 'anywhere',
                   wordBreak: 'break-word',
                   hyphens: 'auto',
@@ -390,7 +430,7 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
               </p>
             </div>
 
-            <div className="relative z-10 mb-[-70px] mr-[-30px] mt-auto flex justify-end">
+            <div className="relative z-10 mb-[-58px] mr-[-30px] mt-auto flex justify-end">
               <div className="relative pt-7 text-right" style={{ color: NAVY }}>
                 <div className="absolute right-0 top-0 h-px w-[280px] bg-gradient-to-l from-[#0d1238] via-[#0d1238] to-transparent opacity-50" />
                 <div
@@ -407,7 +447,6 @@ function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: 
           </main>
         </div>
       </div>
-    </div>
   );
 }
 
@@ -536,6 +575,7 @@ function TypeControls({
         />
         <StyleControl
           label="Başlık Stil"
+          options={TITLE_STYLES}
           value={draft.baslikStil}
           onChange={(value) => onChange('baslikStil', value)}
         />
@@ -548,6 +588,7 @@ function TypeControls({
         />
         <StyleControl
           label="İçerik Stil"
+          options={BODY_STYLES}
           value={draft.icerikStil}
           onChange={(value) => onChange('icerikStil', value)}
         />
@@ -590,10 +631,12 @@ function NumberControl({
 
 function StyleControl({
   label,
+  options,
   value,
   onChange,
 }: {
   label: string;
+  options: Record<FontStyleKey, FontOption>;
   value: FontStyleKey;
   onChange: (value: FontStyleKey) => void;
 }) {
@@ -608,7 +651,7 @@ function StyleControl({
         className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
         style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
       >
-        {Object.entries(FONT_STYLES).map(([key, option]) => (
+        {Object.entries(options).map(([key, option]) => (
           <option key={key} value={key}>
             {option.label}
           </option>
@@ -640,6 +683,18 @@ function clampPoint(value: unknown, fallback: number, min: number, max: number) 
   const numeric = typeof value === 'number' && Number.isFinite(value) ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(max, Math.max(min, numeric));
+}
+
+function fitTitlePoint(text: string, requested: number) {
+  const length = text.trim().length;
+  const fitted = length > 96 ? 44 : length > 72 ? 50 : length > 54 ? 56 : requested;
+  return Math.min(requested, fitted);
+}
+
+function fitBodyPoint(text: string, requested: number) {
+  const compactLength = text.replace(/\s+/g, ' ').trim().length;
+  const fitted = compactLength > 980 ? 18 : compactLength > 780 ? 20 : compactLength > 580 ? 23 : compactLength > 420 ? 25 : requested;
+  return Math.min(requested, fitted);
 }
 
 function buildMessage(draft: Duyuru) {

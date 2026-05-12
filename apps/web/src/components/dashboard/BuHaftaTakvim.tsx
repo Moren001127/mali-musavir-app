@@ -20,6 +20,7 @@ const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 const ROSE = '#f5a6b8';
 const ROSE_SOFT = '#f0b4c0';
+const CURRENT_MONTH_LABEL = 'Ayın tamamı';
 
 interface DeadlineRow {
   date: Date;
@@ -70,6 +71,22 @@ function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
     out.push({ title: 'Form Ba-Bs Bildirimi', subtitle: 'Mal ve hizmet alım/satım bildirimi · ay sonu', icon: FileText });
     out.push({ title: 'Turizm Payı Beyannamesi', subtitle: 'Konaklama, yat, seyahat acentesi · izleyen ayın SON GÜNÜ (23:59)', icon: Bell });
   }
+  if (isLastDay) {
+    out.push({
+      title: 'e-Defter Berat Yükleme (Aylık Tercih)',
+      subtitle: `${previousPeriodLabel(date, 3)} dönemi defter ve berat dosyaları · ay sonu`,
+      icon: Bookmark,
+    });
+
+    const quarterPeriod = quarterlyLedgerPeriod(month);
+    if (quarterPeriod) {
+      out.push({
+        title: 'e-Defter Berat Yükleme (Geçici Vergi Dönemi)',
+        subtitle: `${quarterPeriod} dönemi defter ve berat dosyaları · ay sonu`,
+        icon: Bookmark,
+      });
+    }
+  }
   if (day === 17 && [2, 5, 8, 11].includes(month)) {
     out.push({ title: 'Geçici Vergi Beyannamesi', subtitle: '3 aylık dönem geçici vergi', icon: FileText });
   }
@@ -84,7 +101,8 @@ function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
 }
 
 function urgencyTone(gunFark: number) {
-  if (gunFark <= 0) return { accent: '#fb7185', bg: 'rgba(245,166,184,0.085)', border: 'rgba(245,166,184,0.50)', pillBg: 'rgba(245,166,184,0.15)', pillBorder: 'rgba(245,166,184,0.56)', pillText: '#ffc4cf', label: 'Bugün' };
+  if (gunFark < 0) return { accent: '#64748b', bg: 'rgba(148,163,184,0.035)', border: 'rgba(148,163,184,0.18)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.22)', pillText: '#cbd5e1', label: `${Math.abs(gunFark)} gün geçti` };
+  if (gunFark === 0) return { accent: '#fb7185', bg: 'rgba(245,166,184,0.085)', border: 'rgba(245,166,184,0.50)', pillBg: 'rgba(245,166,184,0.15)', pillBorder: 'rgba(245,166,184,0.56)', pillText: '#ffc4cf', label: 'Bugün' };
   if (gunFark === 1) return { accent: '#f5a6b8', bg: 'rgba(245,166,184,0.065)', border: 'rgba(245,166,184,0.42)', pillBg: 'rgba(245,166,184,0.13)', pillBorder: 'rgba(245,166,184,0.46)', pillText: '#f8c6d0', label: 'Yarın' };
   if (gunFark <= 3) return { accent: '#f0b4c0', bg: 'rgba(245,166,184,0.052)', border: 'rgba(245,166,184,0.34)', pillBg: 'rgba(245,166,184,0.11)', pillBorder: 'rgba(245,166,184,0.40)', pillText: ROSE, label: `${gunFark} gün` };
   if (gunFark <= 5) return { accent: '#d4b876', bg: 'rgba(212,184,118,0.04)', border: 'rgba(212,184,118,0.28)', pillBg: 'rgba(212,184,118,0.10)', pillBorder: 'rgba(212,184,118,0.36)', pillText: '#e4c986', label: `${gunFark} gün` };
@@ -92,16 +110,35 @@ function urgencyTone(gunFark: number) {
   return { accent: '#94a3b8', bg: 'rgba(148,163,184,0.04)', border: 'rgba(148,163,184,0.22)', pillBg: 'rgba(148,163,184,0.08)', pillBorder: 'rgba(148,163,184,0.28)', pillText: '#cbd5e1', label: `${gunFark} gün` };
 }
 
-function buildDeadlineList(daysAhead: number): DeadlineRow[] {
+function monthName(date: Date) {
+  return date.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
+}
+
+function previousPeriodLabel(date: Date, monthOffset: number) {
+  const period = new Date(date.getFullYear(), date.getMonth() - monthOffset, 1);
+  return monthName(period);
+}
+
+function quarterlyLedgerPeriod(month: number) {
+  if (month === 5) return 'Ocak-Şubat-Mart';
+  if (month === 8) return 'Nisan-Mayıs-Haziran';
+  if (month === 11) return 'Temmuz-Ağustos-Eylül';
+  if (month === 3) return 'Ekim-Kasım-Aralık gelir vergisi mükellefleri';
+  if (month === 4) return 'Ekim-Kasım-Aralık kurumlar vergisi mükellefleri';
+  return null;
+}
+
+function buildCurrentMonthDeadlineList(): DeadlineRow[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const out: DeadlineRow[] = [];
-  for (let i = 0; i < daysAhead; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  for (let day = 1; day <= lastDay; day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day);
+    const gunFark = Math.round((d.getTime() - today.getTime()) / 86400000);
     const items = deadlinesForDate(d);
     for (const it of items) {
-      out.push({ ...it, date: d, gunFark: i });
+      out.push({ ...it, date: d, gunFark });
     }
   }
   return out;
@@ -144,9 +181,10 @@ function buildCalendarDays(rows: DeadlineRow[], taskMap: Map<string, string[]>) 
 }
 
 export function BuHaftaTakvim() {
-  const rows = buildDeadlineList(14);
+  const rows = buildCurrentMonthDeadlineList();
   const today = new Date();
-  const ikiHaftaSonra = new Date(today.getTime() + 13 * 86400000);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
   // Görev API — backend bekleyen görev verir
   const { data: tasksData } = useQuery<{ items: TaskItem[] } | TaskItem[]>({
@@ -157,9 +195,8 @@ export function BuHaftaTakvim() {
   const tasks: TaskItem[] = Array.isArray(tasksData) ? tasksData : ((tasksData as any)?.items || []);
   const taskMap = tasksByDate(tasks);
   const calendarDays = buildCalendarDays(rows, taskMap);
-  const visibleRows = rows.slice(0, 5);
-  const extraCount = Math.max(rows.length - visibleRows.length, 0);
-  const urgentCount = rows.filter((r) => r.gunFark <= 3).length;
+  const visibleRows = rows;
+  const urgentCount = rows.filter((r) => r.gunFark >= 0 && r.gunFark <= 3).length;
   const noteCount = calendarDays.reduce((total, d) => total + d.tasks.length, 0);
 
   return (
@@ -174,7 +211,7 @@ export function BuHaftaTakvim() {
         <span className="w-[3px] h-4 rounded-sm" style={{ background: ROSE }} />
         <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: '#fafaf9' }}>
           <Calendar size={14} style={{ color: ROSE_SOFT }} />
-          Yaklaşan Beyanname Son Tarihleri
+          Bu Ay Mali Takvim
         </h3>
         {rows.length > 0 && (
           <span
@@ -184,6 +221,13 @@ export function BuHaftaTakvim() {
             {rows.length} son tarih
           </span>
         )}
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+          title="KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Ba-Bs, Turizm ve e-Defter"
+          style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' }}
+        >
+          {CURRENT_MONTH_LABEL}
+        </span>
         {urgentCount > 0 && (
           <span
             className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
@@ -201,7 +245,7 @@ export function BuHaftaTakvim() {
           </span>
         )}
         <span className="ml-auto text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-          {today.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {ikiHaftaSonra.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+          {monthStart.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} — {monthEnd.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
         </span>
       </div>
 
@@ -216,7 +260,7 @@ export function BuHaftaTakvim() {
       {rows.length === 0 ? (
         <div className="rounded-2xl py-10 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
           <p className="text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Önümüzdeki 14 günde beyanname son tarihi yok.
+            Bu ay içinde beyanname, bildirim veya e-Defter son tarihi yok.
           </p>
         </div>
       ) : (
@@ -226,18 +270,6 @@ export function BuHaftaTakvim() {
             const dayTasks = taskMap.get(key) || [];
             return <DeadlineRowItem key={i} row={r} dayTasks={dayTasks} />;
           })}
-          {extraCount > 0 && (
-            <div
-              className="rounded-xl px-3 py-2 text-[12px] font-semibold"
-              style={{
-                color: 'rgba(250,250,249,0.55)',
-                background: 'rgba(255,255,255,0.018)',
-                border: '1px solid rgba(255,255,255,0.055)',
-              }}
-            >
-              +{extraCount} son tarih daha var; en yakın olanlar yukarıda.
-            </div>
-          )}
         </div>
       )}
     </div>
