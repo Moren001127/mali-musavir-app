@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { OcrService, OcrResult } from '../kdv-control/ocr.service';
+import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 
 type AccountingLineInput = {
   id?: string;
@@ -71,6 +72,7 @@ export class FaturaMuhasebelestirmeService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly ocr: OcrService,
+    private readonly earsivRender: EarsivRenderService,
   ) {}
 
   async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string }) {
@@ -273,6 +275,7 @@ export class FaturaMuhasebelestirmeService {
       await (this.prisma as any).lucaAccountPlanLine.createMany({
         data: rows.map((r) => ({ ...r, snapshotId: snapshot.id })),
       });
+      await this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id);
     }
     return { snapshotId: snapshot.id, accountCount: rows.length };
   }
@@ -546,11 +549,39 @@ export class FaturaMuhasebelestirmeService {
       const fatura = refId
         ? await (this.prisma as any).earsivFatura.findFirst({
             where: { tenantId, id: refId },
-            select: { xmlContent: true },
+            select: {
+              id: true,
+              faturaNo: true,
+              faturaTarihi: true,
+              ettn: true,
+              satici: true,
+              saticiVergiNo: true,
+              alici: true,
+              aliciVergiNo: true,
+              matrah: true,
+              kdvTutari: true,
+              kdvOrani: true,
+              toplamTutar: true,
+              paraBirimi: true,
+              xmlContent: true,
+              pdfStorageKey: true,
+              htmlStorageKey: true,
+            },
           })
         : null;
-      const xml = String(fatura?.xmlContent || '');
-      const html = this.inlinePreviewHtml(xml || 'Bu belge icin orijinal dosya bulunamadi.');
+      if (fatura?.pdfStorageKey) {
+        return {
+          url: await this.storage.getPresignedDownloadUrl(fatura.pdfStorageKey, `${fatura.faturaNo || 'fatura'}.pdf`),
+        };
+      }
+      if (fatura?.htmlStorageKey) {
+        const buffer = await this.storage.getBuffer(fatura.htmlStorageKey);
+        const html = this.earsivRender.renderOriginalHtml(buffer.toString('utf8'), { autoPrint: false });
+        return { url: '', inlineHtml: html, mimeType: 'text/html' };
+      }
+      const html = fatura
+        ? this.earsivRender.renderHtml(fatura, { autoPrint: false })
+        : this.inlinePreviewHtml('Bu belge icin orijinal dosya bulunamadi.');
       return { url: '', inlineHtml: html, mimeType: 'text/html' };
     }
     if (/text\/html|xml/i.test(mimeType)) {
@@ -850,5 +881,84 @@ export class FaturaMuhasebelestirmeService {
         orderNo: 2,
       },
     ];
+  }
+
+  private async rematchPendingDocumentsWithAccountPlan(tenantId: string, taxpayerId: string, snapshotId: string) {
+    const [accounts, docs] = await Promise.all([
+      (this.prisma as any).lucaAccountPlanLine.findMany({
+        where: { snapshotId },
+        orderBy: [{ accountCode: 'asc' }],
+        select: { accountCode: true, accountName: true },
+      }),
+      (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: {
+          tenantId,
+          taxpayerId,
+          status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
+        },
+        include: { lines: { orderBy: { orderNo: 'asc' } } },
+        take: 500,
+      }),
+    ]);
+    if (!accounts.length || !docs.length) return;
+
+    for (const doc of docs) {
+      const isSale = doc.invoiceKind === 'SATIS';
+      const vendorName = isSale ? doc.customerName : doc.vendorName;
+      const replacements = {
+        matrah: this.pickAccount(accounts, isSale ? ['600'] : ['770', '760', '740', '730', ' gider '], vendorName),
+        vergi: this.pickAccount(accounts, isSale ? ['391'] : ['191'], null),
+        cari: this.pickAccount(accounts, isSale ? ['120'] : ['320', '329', '331'], vendorName),
+      };
+
+      for (const line of doc.lines || []) {
+        const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari';
+        const match = replacements[group];
+        if (!match) continue;
+        const current = String(line.accountCode || '');
+        const isPlaceholder =
+          !current ||
+          ['770.01.010', '760.01.001', '740.01.001', '600.01.001', '191.01.020', '391.01.020', '320.01.001', '120.01.001'].includes(current);
+        if (!isPlaceholder) continue;
+        await (this.prisma as any).invoiceAccountingLine.update({
+          where: { id: line.id },
+          data: {
+            accountCode: match.accountCode,
+            description: group === 'cari' ? match.accountName : line.description,
+          },
+        });
+      }
+    }
+  }
+
+  private pickAccount(
+    accounts: Array<{ accountCode: string; accountName: string }>,
+    prefixesOrNeedles: string[],
+    nameHint?: string | null,
+  ) {
+    const hint = this.norm(nameHint || '');
+    const candidates = accounts.filter((a) => {
+      const code = String(a.accountCode || '');
+      const name = ` ${this.norm(a.accountName || '')} `;
+      return prefixesOrNeedles.some((p) => {
+        const key = p.trim();
+        if (/^\d/.test(key)) return code.startsWith(key);
+        return name.includes(this.norm(key));
+      });
+    });
+    if (!candidates.length) return null;
+    if (hint) {
+      const hinted = candidates.find((a) => this.norm(a.accountName || '').includes(hint.slice(0, 18)));
+      if (hinted) return hinted;
+    }
+    return candidates[candidates.length - 1];
+  }
+
+  private norm(value: string) {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }

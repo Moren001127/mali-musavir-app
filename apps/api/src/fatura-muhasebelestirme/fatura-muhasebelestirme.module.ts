@@ -2,13 +2,14 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { KdvControlModule } from '../kdv-control/kdv-control.module';
+import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { FaturaMuhasebelestirmeController } from './fatura-muhasebelestirme.controller';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 
 @Module({
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule)],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService],
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService],
   exports: [FaturaMuhasebelestirmeService],
 })
 export class FaturaMuhasebelestirmeModule {}

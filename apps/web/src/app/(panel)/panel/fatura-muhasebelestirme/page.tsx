@@ -733,9 +733,9 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </section>
         ) : (
-        <section className="grid flex-1 grid-cols-[minmax(620px,1fr)_minmax(560px,640px)] overflow-hidden">
-          <div className="flex min-w-0 flex-col border-r border-slate-200 bg-slate-100">
-            <div className="flex h-12 items-center justify-between border-b border-slate-200 bg-white px-4">
+        <section className="grid flex-1 grid-cols-[minmax(620px,1fr)_minmax(560px,640px)] overflow-hidden bg-[#19150f]">
+          <div className="invoice-preview-pane flex min-w-0 flex-col border-r border-[#cfd6df]">
+            <div className="invoice-toolbar flex h-12 items-center justify-between border-b border-[#d6dde5] px-4">
               <div className="flex items-center gap-2">
                 <button className="rounded-md border border-slate-200 p-2 text-slate-600" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} title="Uzaklaştır">
                   <ZoomOut size={16} />
@@ -772,7 +772,7 @@ export default function FaturaMuhasebelestirmePage() {
                 <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white">Dosya Seç</button>
               </div>
             ) : (
-              <div className="flex flex-1 items-center justify-center overflow-auto p-6">
+              <div className="flex flex-1 items-start justify-center overflow-auto bg-[#eef1f4] p-5">
                 {selected.previewType === 'image' ? (
                   <img
                     src={selected.previewUrl}
@@ -789,7 +789,7 @@ export default function FaturaMuhasebelestirmePage() {
             )}
           </div>
 
-          <aside className="flex min-w-0 flex-col bg-white">
+          <aside className="invoice-entry-pane flex min-w-0 flex-col">
             <datalist id="luca-account-plan-options">
               {accountOptions.map((account) => (
                 <option key={account.id} value={account.code}>
@@ -797,7 +797,7 @@ export default function FaturaMuhasebelestirmePage() {
                 </option>
               ))}
             </datalist>
-            <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
+            <div className="flex h-12 items-center justify-between border-b border-[#d5dde8] bg-[#f7f9fc] px-4">
               <div className="text-sm font-semibold">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Kodları'}</div>
             </div>
 
@@ -814,17 +814,17 @@ export default function FaturaMuhasebelestirmePage() {
                     </div>
                   </div>
                 ) : null}
-                {!selectedBusinessLedger ? <div className="mb-4 flex items-center justify-between rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
+                {!selectedBusinessLedger ? <div className="mb-3 flex items-center justify-between rounded-md border border-[#d3e3f8] bg-[#eef6ff] px-3 py-2 text-xs text-[#42607a]">
                   <span>
                     Hesap planı: {accountPlanLoading ? 'yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'henüz çekilmedi'}
                   </span>
                   <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
                 </div> : (
-                  <div className="mb-4 rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
+                  <div className="mb-3 rounded-md border border-[#d3e3f8] bg-[#eef6ff] px-3 py-2 text-xs text-[#42607a]">
                     İşletme defteri: hesap kodu kullanılmaz, kayıt türü ve alt tür seçilerek aktarılır.
                   </div>
                 )}
-                <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                <div className="mb-3 rounded-md border border-[#cfe1fb] bg-[#eaf3ff] p-3">
                   <div className="grid grid-cols-4 gap-3">
                     <label className="text-xs font-semibold text-slate-500">
                       Para Birimi
@@ -860,12 +860,12 @@ export default function FaturaMuhasebelestirmePage() {
                       const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
                       const groupLines = selected.lines.filter((line) => line.group === group);
                       return (
-                        <section key={group} className="rounded-md border border-slate-200">
-                          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-                            <div className="text-sm font-semibold">{title}</div>
+                        <section key={group} className="account-block rounded-md border border-[#65a6d8] bg-white">
+                          <div className="flex items-center justify-between border-b border-[#65a6d8] bg-[#f7fbff] px-3 py-2">
+                            <div className="text-sm font-semibold text-[#1d2d3f]">{title} <span className="text-red-500">(B)</span></div>
                             <button
                               onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}
-                              className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs text-slate-700"
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#cbd5e1] bg-white px-2 text-xs text-[#334155]"
                             >
                               <Plus size={14} /> Satır
                             </button>
@@ -892,8 +892,8 @@ export default function FaturaMuhasebelestirmePage() {
                 ) : (
                   <div className="space-y-3">
                     {selected.lines.map((line, index) => (
-                      <section key={line.id} className="rounded-md border border-slate-200">
-                        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                        <section key={line.id} className="business-entry-card rounded-md border border-[#88bfea] bg-[#b9dcf5]">
+                        <div className="flex items-center justify-between border-b border-[#99c8ed] px-3 py-2">
                           <div className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#9be071] px-2 text-xs font-bold text-[#10200d]">{index + 1}</div>
                           <button className="flex h-8 items-center justify-center rounded-md px-2 text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={15} /></button>
                         </div>
@@ -923,7 +923,7 @@ export default function FaturaMuhasebelestirmePage() {
                               <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
                             </label>
                           </div>
-                          <div className="flex justify-between rounded-md bg-[#120f0b] px-3 py-2 text-sm font-semibold text-[#d8cda5]">
+                          <div className="flex justify-between rounded-md bg-[#e8f5ff] px-3 py-2 text-sm font-semibold text-[#15324a]">
                             <span>Toplam Tutar (KDV Dahil)</span>
                             <span>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</span>
                           </div>
@@ -932,7 +932,7 @@ export default function FaturaMuhasebelestirmePage() {
                     ))}
                     <button
                       onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })}
-                      className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      className="inline-flex items-center gap-2 rounded-md border border-[#cbd5e1] bg-white px-3 py-2 text-sm text-[#334155]"
                     >
                       <Plus size={16} /> Kayıt Ekle
                     </button>
@@ -962,7 +962,7 @@ export default function FaturaMuhasebelestirmePage() {
                   </label>
                 </div>
 
-                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="mt-4 rounded-md border border-[#d5dde8] bg-[#f7f9fc] p-3 text-sm">
                   <div className="flex justify-between"><span>Borç Toplamı</span><b>{money(String(totals.debit))}</b></div>
                   <div className="mt-1 flex justify-between"><span>Alacak Toplamı</span><b>{money(String(totals.credit))}</b></div>
                   <div className={`mt-2 flex justify-between rounded-md px-2 py-1 ${totals.diff < 0.01 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -1018,29 +1018,76 @@ export default function FaturaMuhasebelestirmePage() {
         )}
       </div>
       <style jsx global>{`
-        .invoice-accounting-dark .bg-white:not(.document-preview) { background-color: #15110d !important; }
-        .invoice-accounting-dark .bg-slate-100 { background-color: #0f0d0a !important; }
-        .invoice-accounting-dark .bg-slate-50 { background-color: #120f0b !important; }
-        .invoice-accounting-dark .bg-blue-50 { background-color: #1a160f !important; }
+        .invoice-accounting-dark {
+          background: #0f0d0a;
+        }
+        .invoice-accounting-dark .invoice-preview-pane {
+          background: #eef1f4 !important;
+          color: #101827 !important;
+        }
+        .invoice-accounting-dark .invoice-toolbar {
+          background: #f8fafc !important;
+          color: #1f2937 !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane {
+          background: #f4f6f9 !important;
+          color: #172033 !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane .bg-white,
+        .invoice-accounting-dark .invoice-entry-pane .bg-slate-50 {
+          background-color: #ffffff !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane .bg-blue-50 {
+          background-color: #eaf3ff !important;
+        }
         .invoice-accounting-dark .bg-blue-600 { background-color: #d4b876 !important; color: #17130f !important; }
         .invoice-accounting-dark .bg-slate-900 { background-color: #090806 !important; color: #f7eedb !important; }
-        .invoice-accounting-dark .border-slate-200,
-        .invoice-accounting-dark .border-slate-300,
-        .invoice-accounting-dark .border-blue-100 { border-color: #332a1c !important; }
-        .invoice-accounting-dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #2a2419 !important; }
-        .invoice-accounting-dark .text-slate-900,
-        .invoice-accounting-dark .text-slate-700 { color: #f7eedb !important; }
-        .invoice-accounting-dark .text-slate-600,
-        .invoice-accounting-dark .text-slate-500 { color: #d8cda5 !important; }
-        .invoice-accounting-dark .text-slate-400 { color: #9c8d69 !important; }
-        .invoice-accounting-dark input,
-        .invoice-accounting-dark select {
-          background-color: #0f0d0a !important;
-          border-color: #3b321f !important;
-          color: #f7eedb !important;
+        .invoice-accounting-dark .invoice-entry-pane .border-slate-200,
+        .invoice-accounting-dark .invoice-entry-pane .border-slate-300,
+        .invoice-accounting-dark .invoice-entry-pane .border-blue-100 {
+          border-color: #d5dde8 !important;
         }
-        .invoice-accounting-dark input::placeholder { color: #8d7b56 !important; }
-        .invoice-accounting-dark .document-preview { background-color: #ffffff !important; }
+        .invoice-accounting-dark .invoice-entry-pane .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+          border-color: #e2e8f0 !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane .text-slate-900,
+        .invoice-accounting-dark .invoice-entry-pane .text-slate-700 {
+          color: #172033 !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane .text-slate-600,
+        .invoice-accounting-dark .invoice-entry-pane .text-slate-500 {
+          color: #54657a !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane input,
+        .invoice-accounting-dark .invoice-entry-pane select {
+          background-color: #ffffff !important;
+          border-color: #cbd5e1 !important;
+          color: #111827 !important;
+          box-shadow: inset 0 1px 1px rgba(15, 23, 42, .04);
+        }
+        .invoice-accounting-dark .invoice-entry-pane input::placeholder {
+          color: #94a3b8 !important;
+        }
+        .invoice-accounting-dark .invoice-entry-pane .account-block {
+          box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+        }
+        .invoice-accounting-dark .invoice-entry-pane .business-entry-card {
+          box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+        }
+        .invoice-accounting-dark .invoice-preview-pane .document-preview {
+          background-color: #ffffff !important;
+        }
+        .invoice-accounting-dark .invoice-preview-pane .bg-white:not(.document-preview) {
+          background-color: #ffffff !important;
+        }
+        .invoice-accounting-dark .invoice-preview-pane .text-slate-500,
+        .invoice-accounting-dark .invoice-preview-pane .text-slate-600,
+        .invoice-accounting-dark .invoice-preview-pane .text-slate-700 {
+          color: #334155 !important;
+        }
+        .invoice-accounting-dark .invoice-preview-pane input {
+          color: #111827 !important;
+        }
       `}</style>
     </main>
   );
