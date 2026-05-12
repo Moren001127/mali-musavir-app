@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.09';
+  const AGENT_VERSION = '1.37.10';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -149,6 +149,35 @@
     }
   }
 
+  function normalizeLucaText(value) {
+    return String(value || '')
+      .replace(/[\u0130I\u0131]/g, 'i')
+      .replace(/[\u011e\u011f]/g, 'g')
+      .replace(/[\u015e\u015f]/g, 's')
+      .replace(/[\u00c7\u00e7]/g, 'c')
+      .replace(/[\u00d6\u00f6]/g, 'o')
+      .replace(/[\u00dc\u00fc]/g, 'u')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  function submitLoginByEnter(el) {
+    try {
+      el.focus?.({ preventScroll: true });
+      for (const type of ['keydown', 'keypress', 'keyup']) {
+        el.dispatchEvent(new KeyboardEvent(type, {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    } catch {}
+  }
+
   function lucaDocuments() {
     const docs = [];
     const add = (w) => {
@@ -190,7 +219,18 @@
       const uyeNo = findInputByHints(doc, ['uye', 'üye', 'musteri', 'müşteri', 'firma no', 'abone']);
       const username = findInputByHints(doc, ['kullanici', 'kullanıcı', 'username', 'user', 'mail', 'email', 'kod']);
       const buttons = Array.from(doc.querySelectorAll('button, input[type=submit], input[type=button], a')).filter(visible);
-      const submit = buttons.find((b) => /giris|giriş|login|tamam|devam|oturum/i.test(String(b.textContent || b.value || b.title || '')))
+      const submit = buttons.find((b) => {
+        const hay = normalizeLucaText([
+          b.textContent,
+          b.value,
+          b.title,
+          b.id,
+          b.className,
+          b.getAttribute?.('aria-label'),
+          b.getAttribute?.('onclick'),
+        ].filter(Boolean).join(' '));
+        return /\b(giris|login|tamam|devam|oturum)\b/.test(hay);
+      })
         || buttons.find((b) => String(b.type || '').toLowerCase() === 'submit')
         || null;
       return { doc, uyeNo, username, password, submit };
@@ -214,8 +254,15 @@
       if (parts.username && cred.username) setNativeValue(parts.username, cred.username);
       setNativeValue(parts.password, cred.password || '');
       await sleep(250);
-      if (parts.submit) parts.submit.click();
-      else parts.password.form?.requestSubmit?.();
+      if (parts.submit) {
+        await click(parts.submit);
+      } else if (parts.password.form?.requestSubmit) {
+        parts.password.form.requestSubmit();
+      } else if (parts.password.form?.submit) {
+        parts.password.form.submit();
+      } else {
+        submitLoginByEnter(parts.password);
+      }
       setStatus('Luca girisi yapiliyor; guvenlik kodu gerekirse portalda acilacak');
       return { ok: true };
     } catch (e) {
