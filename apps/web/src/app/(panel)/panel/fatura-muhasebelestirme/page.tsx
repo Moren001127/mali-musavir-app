@@ -52,6 +52,7 @@ type DraftInvoice = {
   id: string;
   backendId?: string;
   taxpayerId?: string | null;
+  ledgerType?: string | null;
   file: Pick<File, 'name' | 'size' | 'type'>;
   originalFile?: File;
   previewUrl: string;
@@ -117,6 +118,27 @@ const previewTypeFromMime = (mimeType?: string): DraftInvoice['previewType'] => 
   if (type === 'application/pdf' || type.includes('html') || type.includes('xml')) return 'pdf';
   return 'other';
 };
+
+const isBusinessLedger = (ledgerType?: string | null) =>
+  /isletme|işletme|defter beyan|serbest/i.test(String(ledgerType || '').toLocaleLowerCase('tr-TR'));
+
+const businessCategories = [
+  'İndirilecek Giderler',
+  'Gider Yazılmayacak Ödemeler',
+  'Mal Alışı',
+  'Satış',
+  'Diğer Hasılat',
+];
+
+const businessSubCategories = [
+  'Gıda Harcamaları',
+  'Araç Yakıt Giderleri',
+  'Kira Giderleri',
+  'Telefon ve İnternet',
+  'Ofis Giderleri',
+  'Temizlik Giderleri',
+  'Diğer',
+];
 
 const makeLine = (
   group: AccountingLine['group'],
@@ -193,6 +215,7 @@ const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
       id: `remote-${doc.id}`,
       backendId: doc.id,
       taxpayerId: doc.taxpayerId || null,
+      ledgerType: doc.ledgerType || doc.taxpayerLedgerType || null,
       file: { name: doc.originalName, size: doc.sizeBytes || 0, type: mimeType },
       previewUrl: fileUrl,
       previewType: previewTypeFromMime(mimeType),
@@ -268,6 +291,7 @@ export default function FaturaMuhasebelestirmePage() {
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
+  const selectedBusinessLedger = isBusinessLedger(selected?.ledgerType);
   const readyCount = drafts.filter((d) => d.status === 'hazir').length;
   const dashboardFiltered = useMemo(() => {
     const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
@@ -380,9 +404,9 @@ export default function FaturaMuhasebelestirmePage() {
         list.map(async (doc: any) => {
           try {
             const res = await api.get(`/fatura-muhasebelestirme/documents/${doc.id}/file-url`);
-            return draftFromApiDocument(doc, res.data?.url || '');
+            return { ...draftFromApiDocument(doc, res.data?.url || ''), ledgerType: row.ledgerType };
           } catch {
-            return draftFromApiDocument(doc, '');
+            return { ...draftFromApiDocument(doc, ''), ledgerType: row.ledgerType };
           }
         }),
       );
@@ -767,7 +791,7 @@ export default function FaturaMuhasebelestirmePage() {
               ))}
             </datalist>
             <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
-              <div className="text-sm font-semibold">Muhasebe Kodları</div>
+              <div className="text-sm font-semibold">{selectedBusinessLedger ? 'Isletme Defteri Kaydi' : 'Muhasebe Kodlari'}</div>
               <div className="flex gap-2">
                 <button onClick={removeSelected} disabled={!selected} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 disabled:opacity-40">
                   <Trash2 size={15} /> Sil
@@ -794,12 +818,16 @@ export default function FaturaMuhasebelestirmePage() {
                     </div>
                   </div>
                 ) : null}
-                <div className="mb-4 flex items-center justify-between rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
+                {!selectedBusinessLedger ? <div className="mb-4 flex items-center justify-between rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
                   <span>
-                    Hesap planı: {accountPlanLoading ? 'yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'henüz çekilmedi'}
+                    Hesap plani: {accountPlanLoading ? 'yukleniyor' : accountOptions.length ? `${accountOptions.length} kod hazir` : 'henuz cekilmedi'}
                   </span>
-                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
-                </div>
+                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca guncellemesi bekleniyor'}</span>
+                </div> : (
+                  <div className="mb-4 rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
+                    Isletme defteri: hesap kodu kullanilmaz, kayit turu ve alt tur secilerek aktarilir.
+                  </div>
+                )}
                 <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
                   <div className="grid grid-cols-4 gap-3">
                     <label className="text-xs font-semibold text-slate-500">
@@ -830,29 +858,63 @@ export default function FaturaMuhasebelestirmePage() {
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-slate-200">
-                  <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Matrah / Vergi / Cari</div>
-                  <div className="divide-y divide-slate-100">
-                    {selected.lines.map((line) => (
-                      <div key={line.id} className="grid grid-cols-[108px_minmax(0,1fr)_58px_86px_86px_30px] gap-1.5 px-2 py-1.5">
-                        <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
-                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
-                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
-                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
-                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
-                        <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
+                {!selectedBusinessLedger ? (
+                  <div className="rounded-lg border border-slate-200">
+                    <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Matrah / Vergi / Cari</div>
+                    <div className="divide-y divide-slate-100">
+                      {selected.lines.map((line) => (
+                        <div key={line.id} className="grid grid-cols-[108px_minmax(0,1fr)_58px_86px_86px_30px] gap-1.5 px-2 py-1.5">
+                          <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
+                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Aciklama" />
+                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
+                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
+                          <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satiri sil">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', '', '', '0,00', '0,00')] })}
+                      className="m-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                    >
+                      <Plus size={16} /> Satir Ekle
+                    </button>
                   </div>
-                  <button
-                    onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', '', '', '0,00', '0,00')] })}
-                    className="m-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                  >
-                    <Plus size={16} /> Satır Ekle
-                  </button>
-                </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200">
+                    <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Isletme Kayitlari</div>
+                    <div className="divide-y divide-slate-100">
+                      {selected.lines.map((line, index) => (
+                        <div key={line.id} className="bg-[#15110d] p-3">
+                          <div className="mb-2 inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#9be071] px-2 text-xs font-bold text-[#10200d]">{index + 1}</div>
+                          <div className="grid grid-cols-[1.2fr_1.2fr_.8fr_.8fr_.8fr_30px] gap-2">
+                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>
+                              {businessCategories.map((cat) => <option key={cat}>{cat}</option>)}
+                            </select>
+                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>
+                              {businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}
+                            </select>
+                            <input className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Matrah" />
+                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || '%20'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}>
+                              <option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option>
+                            </select>
+                            <input className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="KDV" />
+                            <button className="flex h-9 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satiri sil"><Trash2 size={16} /></button>
+                          </div>
+                          <div className="mt-2 text-xs font-semibold text-[#d8cda5]">Toplam Tutar (KDV Dahil): {money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })}
+                      className="m-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                    >
+                      <Plus size={16} /> Kayit Ekle
+                    </button>
+                  </div>
+                )}
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <label className="text-xs font-semibold text-slate-500">

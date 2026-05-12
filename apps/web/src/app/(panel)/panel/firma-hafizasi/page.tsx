@@ -243,6 +243,7 @@ export default function FirmaHafizasiPage() {
           {(() => {
             const report = lastImportReport || mihsapPreview;
             if (!report) return null;
+            const cleanSamples = (report.samples || []).filter((sample: any) => sample.reason === 'ready');
             return (
               <>
                 <div className="grid grid-cols-6 gap-2 mt-3 text-xs">
@@ -260,10 +261,10 @@ export default function FirmaHafizasiPage() {
                     </div>
                   ))}
                 </div>
-                {report.samples?.length > 0 && (
+                {cleanSamples.length > 0 && (
                   <div className="mt-3 overflow-auto">
                     <div className="text-xs mb-2" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                      Örneklerde önce aktarılabilir kayıtlar gösterilir; VKN/TCKN yok olanlar sadece problemli geçmiş loglardır.
+                      Sadece aktarima uygun, VKN/TCKN ve mukellef eslesmesi tamam olan ornekler gosteriliyor.
                     </div>
                     <table className="w-full text-xs">
                       <thead style={{ color: 'rgba(250,250,249,0.45)' }}>
@@ -276,7 +277,7 @@ export default function FirmaHafizasiPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {report.samples.map((sample) => (
+                        {cleanSamples.map((sample: any) => (
                           <tr key={sample.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                             <td className="py-1.5 pr-3" style={{ color: '#fafaf9' }}>{sample.mukellef || '-'}</td>
                             <td className="py-1.5 pr-3" style={{ color: 'rgba(250,250,249,0.82)' }}>{sample.firma || '-'}</td>
@@ -295,6 +296,11 @@ export default function FirmaHafizasiPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {cleanSamples.length === 0 && (
+                  <div className="mt-3 rounded-md px-3 py-2 text-xs" style={{ background: 'rgba(252,165,165,0.08)', color: '#fca5a5' }}>
+                    Aktarima uygun temiz kayit bulunmadi. VKN/TCKN olmayan eski log satirlari hafizaya yazilmaz ve listede gosterilmez.
                   </div>
                 )}
               </>

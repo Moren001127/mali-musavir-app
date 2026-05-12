@@ -564,11 +564,56 @@ export class FaturaMuhasebelestirmeService {
   }
 
   private inlinePreviewHtml(raw: string) {
-    const escaped = String(raw || '')
+    const source = String(raw || '');
+    if (/<html[\s>]/i.test(source)) return source;
+
+    const text = (tag: string) => {
+      const m = source.match(new RegExp(`<[^:>]*(?::)?${tag}[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?${tag}>`, 'i'));
+      return (m?.[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    };
+    const esc = (v: string) => String(v || '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#fff;color:#111827;font:13px/1.45 Arial,sans-serif;padding:24px}pre{white-space:pre-wrap;word-break:break-word}</style></head><body><pre>${escaped}</pre></body></html>`;
+
+    const items = [...source.matchAll(/<[^:>]*(?::)?InvoiceLine\b[\s\S]*?<\/[^:>]*(?::)?InvoiceLine>/gi)]
+      .slice(0, 20)
+      .map((m) => {
+        const block = m[0];
+        const pick = (tag: string) => {
+          const mm = block.match(new RegExp(`<[^:>]*(?::)?${tag}[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?${tag}>`, 'i'));
+          return (mm?.[1] || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        };
+        return {
+          name: pick('Name') || pick('Description') || '-',
+          qty: pick('InvoicedQuantity') || '-',
+          amount: pick('LineExtensionAmount') || '-',
+        };
+      });
+    const rows = items.length
+      ? items.map((i) => `<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td class="num">${esc(i.amount)}</td></tr>`).join('')
+      : '<tr><td colspan="3">Kalem bilgisi XML icinden okunamadi.</td></tr>';
+
+    return `<!doctype html><html><head><meta charset="utf-8"><style>
+      body{margin:0;background:#f8fafc;color:#111827;font:14px/1.45 Arial,sans-serif;padding:24px}
+      .sheet{max-width:940px;margin:auto;background:white;border:1px solid #e5e7eb;padding:28px;box-shadow:0 8px 28px rgba(15,23,42,.08)}
+      h1{margin:0 0 16px;font-size:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}
+      .box{border:1px solid #e5e7eb;padding:12px}.muted{color:#6b7280;font-size:12px;text-transform:uppercase;font-weight:700}
+      table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}th{background:#f3f4f6}.num{text-align:right}
+      .totals{margin-left:auto;margin-top:18px;width:320px}.totals div{display:flex;justify-content:space-between;border-bottom:1px solid #e5e7eb;padding:7px 0}.big{font-size:20px;font-weight:700}
+    </style></head><body><div class="sheet">
+      <h1>e-Fatura / e-Arsiv Onizleme</h1>
+      <div class="grid">
+        <div class="box"><div class="muted">Satici</div><b>${esc(text('RegistrationName') || text('Name'))}</b><br>${esc(text('CompanyID'))}</div>
+        <div class="box"><div class="muted">Belge</div><b>${esc(text('ID'))}</b><br>${esc(text('IssueDate'))}</div>
+      </div>
+      <table><thead><tr><th>Mal/Hizmet</th><th>Miktar</th><th>Tutar</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="totals">
+        <div><span>Mal Hizmet Toplam</span><b>${esc(text('LineExtensionAmount'))}</b></div>
+        <div><span>KDV</span><b>${esc(text('TaxAmount'))}</b></div>
+        <div class="big"><span>Genel Toplam</span><b>${esc(text('PayableAmount'))}</b></div>
+      </div>
+    </div></body></html>`;
   }
 
   async update(tenantId: string, id: string, body: UpdateDocumentInput) {
