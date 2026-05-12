@@ -1,5 +1,4 @@
 import { api } from './api';
-import { currentAgentDeviceId } from './agent-device';
 
 export type MizanDonemTipi =
   | 'AYLIK'
@@ -25,7 +24,7 @@ export const mizanApi = {
   // Portal-first Luca çekimi — CAPTCHA gerekirse Luca Oturum Yöneticisi içinde görünür.
   fetchFromLucaAgent: (data: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
     api
-      .post('/mizan/fetch-from-luca', { ...data, targetDeviceId: currentAgentDeviceId() })
+      .post('/mizan/fetch-from-luca', data)
       .then((r) => r.data as { jobId: string; status: string }),
   getLucaJob: (jobId: string) =>
     api.get(`/mizan/luca-job/${jobId}`).then((r) => r.data as { job: any; mizan: any }),

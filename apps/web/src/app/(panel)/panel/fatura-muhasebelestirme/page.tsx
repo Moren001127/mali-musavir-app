@@ -26,7 +26,6 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { currentAgentDeviceId } from '@/lib/agent-device';
 
 type OcrDetected = {
   filename: string;
@@ -555,7 +554,6 @@ export default function FaturaMuhasebelestirmePage() {
     try {
       const { data } = await api.post('/fatura-muhasebelestirme/account-plan/refresh', {
         taxpayerId: selected.taxpayerId,
-        targetDeviceId: currentAgentDeviceId(),
       });
       toast.success(`Hesap planı Luca kuyruğuna alındı${data?.job?.id ? ` · ${data.job.id.slice(0, 8)}` : ''}`);
     } catch (e: any) {
@@ -570,7 +568,6 @@ export default function FaturaMuhasebelestirmePage() {
     try {
       const { data } = await api.post('/fatura-muhasebelestirme/account-plan/refresh', {
         taxpayerId,
-        targetDeviceId: currentAgentDeviceId(),
       });
       toast.success(`${name} hesap planı Luca kuyruğuna alındı${data?.job?.id ? ` · ${data.job.id.slice(0, 8)}` : ''}`);
     } catch (e: any) {

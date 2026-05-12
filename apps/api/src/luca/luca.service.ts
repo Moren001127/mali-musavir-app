@@ -225,6 +225,7 @@ export class LucaService {
    * agent Luca'da firma değiştirme kontrolünü yapabilsin.
    */
   async pendingJobsForAgent(tenantId: string, deviceId?: string) {
+    const deviceLockGraceAt = new Date(Date.now() - 15_000);
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId,
@@ -232,6 +233,7 @@ export class LucaService {
         OR: [
           { targetDeviceId: null },
           ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+          { targetDeviceId: { not: null }, createdAt: { lte: deviceLockGraceAt } },
         ],
       },
       orderBy: { createdAt: 'asc' },

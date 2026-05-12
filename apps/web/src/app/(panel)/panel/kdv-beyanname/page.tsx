@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { currentAgentDeviceId } from '@/lib/agent-device';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
@@ -547,7 +546,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
 
   const fetchMut = useMutation({
     mutationFn: () =>
-      api.post('/kdv-beyanname/luca-snapshot/fetch', { mukellefId, donem, targetDeviceId: currentAgentDeviceId() })
+      api.post('/kdv-beyanname/luca-snapshot/fetch', { mukellefId, donem })
         .then((r) => r.data as { jobId: string; status: string }),
     onSuccess: (d) => {
       setJobId(d.jobId);

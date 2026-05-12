@@ -1,5 +1,4 @@
 import { api } from './api';
-import { currentAgentDeviceId } from './agent-device';
 
 export type EarsivTip = 'SATIS' | 'ALIS';
 export type BelgeKaynak = 'EFATURA' | 'EARSIV';
@@ -34,7 +33,7 @@ export const earsivApi = {
     belgeKaynak?: BelgeKaynak;
   }) =>
     api
-      .post('/earsiv/fetch-from-luca', { ...data, targetDeviceId: currentAgentDeviceId() })
+      .post('/earsiv/fetch-from-luca', data)
       .then((r) => r.data as { jobId: string; status: string }),
 
   getLucaJob: (jobId: string) =>
