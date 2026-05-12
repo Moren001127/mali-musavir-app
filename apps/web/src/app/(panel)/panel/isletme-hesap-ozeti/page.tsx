@@ -469,8 +469,8 @@ export default function IsletmeHesapOzetiPage() {
             if (!c) return;
             const onay = window.confirm(
               `Luca'dan ${donem}. dönem İşletme Defteri çekilecek.\n\n` +
-                `Devam etmeden önce Luca'da İşletme Defteri ekranını açın ve dönem aralığını seçin (${yil} yılı, ${donem}. çeyrek).\n\n` +
-                `Sonra Moren Agent bookmarklet'ini çalıştırın. Hazır mısınız?`,
+                `Güvenlik kodu gerekirse portal içindeki Luca Oturum Yöneticisi'nde gösterilecek.\n\n` +
+                `Başlatılsın mı?`,
             );
             if (onay) lucaCekMutation.mutate(c.id);
           }}

@@ -1,4 +1,5 @@
 import { api } from './api';
+import { currentAgentDeviceId } from './agent-device';
 
 export type IsletmeHesapOzeti = {
   id: string;
@@ -103,7 +104,7 @@ export const isletmeHesapOzetiApi = {
 
 
   lucaCek: (id: string) =>
-    api.post(`/isletme-hesap-ozeti/${id}/luca-cek`).then((r) => r.data as {
+    api.post(`/isletme-hesap-ozeti/${id}/luca-cek`, { targetDeviceId: currentAgentDeviceId() }).then((r) => r.data as {
       jobId: string;
       status: string;
       donem: number;

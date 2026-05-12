@@ -215,6 +215,9 @@ export default function MihsapAgentPage() {
 
   const runMut = useMutation({
     mutationFn: async () => {
+      if (!calisiyor && typeof window !== 'undefined') {
+        window.open('https://app.mihsap.com/', '_blank');
+      }
       await api.post('/agent/control/state', { agent: 'mihsap', state: 'RUNNING' }).catch(() => null);
       // Çoklu action — her biri için ayrı komut sırayla oluştur
       const mukellefler = selectedIds
@@ -241,7 +244,7 @@ export default function MihsapAgentPage() {
       qc.invalidateQueries({ queryKey: ['agent-commands'] });
       qc.invalidateQueries({ queryKey: ['agent-commands', 'mihsap'] });
       qc.invalidateQueries({ queryKey: ['agent-control-state', 'mihsap'] });
-      toast.success('Komut kuyruğa atıldı');
+      toast.success(calisiyor ? 'Komut kuyruğa atıldı' : 'Komut kuyruğa atıldı · Mihsap sekmesi açıldı');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Komut gönderilemedi'),
   });

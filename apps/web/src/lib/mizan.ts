@@ -1,4 +1,5 @@
 import { api } from './api';
+import { currentAgentDeviceId } from './agent-device';
 
 export type MizanDonemTipi =
   | 'AYLIK'
@@ -7,10 +8,6 @@ export type MizanDonemTipi =
   | 'GECICI_Q3'
   | 'GECICI_Q4'
   | 'YILLIK';
-
-function currentDeviceId() {
-  return typeof window !== 'undefined' ? (window as any).__morenAutoAgent?.deviceId : undefined;
-}
 
 export const mizanApi = {
   /* ── Mizan ── */
@@ -25,10 +22,10 @@ export const mizanApi = {
       .then((r) => r.data),
   importFromLuca: (data: { taxpayerId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
     api.post('/mizan/import', data).then((r) => r.data),
-  // Extension-first Luca çekimi — moren-agent.js tarayıcıdaki açık Luca sekmesinden çekecek
+  // Portal-first Luca çekimi — CAPTCHA gerekirse Luca Oturum Yöneticisi içinde görünür.
   fetchFromLucaAgent: (data: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
     api
-      .post('/mizan/fetch-from-luca', { ...data, targetDeviceId: currentDeviceId() })
+      .post('/mizan/fetch-from-luca', { ...data, targetDeviceId: currentAgentDeviceId() })
       .then((r) => r.data as { jobId: string; status: string }),
   getLucaJob: (jobId: string) =>
     api.get(`/mizan/luca-job/${jobId}`).then((r) => r.data as { job: any; mizan: any }),

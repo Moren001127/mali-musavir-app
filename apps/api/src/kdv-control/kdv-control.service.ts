@@ -2146,7 +2146,7 @@ export class KdvControlService {
     return job;
   }
 
-  async queueLucaImport(sessionId: string, tenantId: string, userId: string) {
+  async queueLucaImport(sessionId: string, tenantId: string, userId: string, targetDeviceId?: string) {
     const session = await this.findSession(sessionId, tenantId);
     if (!session.taxpayerId) {
       throw new BadRequestException(
@@ -2169,10 +2169,8 @@ export class KdvControlService {
 
     const donem = this.toDashDonem(session.periodLabel);
 
-    // Luca Moren Agent (bookmarklet) akışı — Railway cloud IP'leri Luca tarafından
-    // bloklandığı için backend Playwright yolu kullanılamıyor. Bunun yerine
-    // kullanıcının tarayıcısındaki Luca sekmesinde çalışan bookmarklet iş
-    // yapacak: job queue'lanır, sonraki polling turunda agent alıp indirir.
+    // Luca Moren Agent akışı — güvenlik kodu gerektiğinde portal içindeki
+    // Luca Oturum Yöneticisi gösterir; kullanıcı ayrı Luca ekranına yönlendirilmez.
     const job = await this.luca.createFetchJob({
       tenantId,
       sessionId,
@@ -2180,6 +2178,7 @@ export class KdvControlService {
       donem,
       tip: session.type,
       createdBy: userId,
+      targetDeviceId,
     });
 
     await this.prisma.kdvControlSession.update({
@@ -2190,8 +2189,8 @@ export class KdvControlService {
     return {
       jobId: job.id,
       status: 'queued',
-      method: 'bookmarklet',
-      message: 'Luca sekmesini açıp Moren Agent bookmarklet\'ine tıkla — agent job\'u alıp Excel\'i indirecek',
+      method: 'portal-session-manager',
+      message: 'Luca job kuyruğa alındı; güvenlik kodu gerekirse portal içindeki Luca Oturum Yöneticisi gösterecek',
     };
   }
 

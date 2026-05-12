@@ -82,7 +82,7 @@ export default function AgentControlCard() {
     }
   };
 
-  const handleOpenLuca = () => window.open('https://auygs.luca.com.tr/', '_blank');
+  const handleOpenLuca = () => { window.location.href = '/panel/ajanlar/luca'; };
   const handleOpenMihsap = () => window.open('https://app.mihsap.com/', '_blank');
 
   if (status.loading) {
@@ -105,7 +105,7 @@ export default function AgentControlCard() {
           <div className="flex-1">
             <div className="text-[14px] font-semibold mb-1" style={{ color: '#fafaf9' }}>Moren Auto-Agent yüklü değil</div>
             <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
-              Tek tuşla Luca + Mihsap agent'larını otomatik başlatmak için Chrome extension'ını yükle:
+              Luca güvenlik kodlarını portal içinde yönetmek ve Mihsap'ı görünür sekmede çalıştırmak için Chrome extension'ını yükle:
             </p>
             <a
               href="/moren-auto-agent.zip"
@@ -193,6 +193,7 @@ export default function AgentControlCard() {
           running={!!lucaOk}
           version={status.luca?.version}
           onOpen={handleOpenLuca}
+          openTitle="Luca Oturum Yöneticisi"
         />
         <StatusPill
           label="Mihsap"
@@ -200,6 +201,7 @@ export default function AgentControlCard() {
           running={!!mihsapOk}
           version={status.mihsap?.version}
           onOpen={handleOpenMihsap}
+          openTitle="Mihsap'ı aç"
         />
       </div>
       <div className="mt-3 pt-3 flex items-center justify-between text-[11px]" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.45)' }}>
@@ -218,7 +220,21 @@ export default function AgentControlCard() {
   );
 }
 
-function StatusPill({ label, tabs, running, version, onOpen }: { label: string; tabs: number; running: boolean; version?: string | null; onOpen: () => void }) {
+function StatusPill({
+  label,
+  tabs,
+  running,
+  version,
+  onOpen,
+  openTitle,
+}: {
+  label: string;
+  tabs: number;
+  running: boolean;
+  version?: string | null;
+  onOpen: () => void;
+  openTitle: string;
+}) {
   let badge: { bg: string; color: string; text: string };
   if (tabs === 0) {
     badge = { bg: 'rgba(168,162,158,0.12)', color: '#a8a29e', text: 'Sekme yok' };
@@ -243,7 +259,7 @@ function StatusPill({ label, tabs, running, version, onOpen }: { label: string; 
           {badge.text}
         </span>
         {tabs === 0 && (
-          <button onClick={onOpen} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-[2px] rounded" style={{ background: 'rgba(184,160,111,0.1)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' }} title="Yeni sekmede aç">
+          <button onClick={onOpen} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-[2px] rounded" style={{ background: 'rgba(184,160,111,0.1)', color: '#d4b876', border: '1px solid rgba(184,160,111,0.25)' }} title={openTitle}>
             <ExternalLink size={10} />
           </button>
         )}

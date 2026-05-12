@@ -773,6 +773,7 @@ export class KdvBeyannameService {
     mukellefId: string;
     donem: string;
     createdBy?: string;
+    targetDeviceId?: string;
   }) {
     const job = await (this.prisma as any).lucaFetchJob.create({
       data: {
@@ -783,6 +784,7 @@ export class KdvBeyannameService {
         tip: 'KDV_MIZAN',
         status: 'pending',
         createdBy: params.createdBy || null,
+        targetDeviceId: params.targetDeviceId || null,
       },
     });
     return { jobId: job.id, status: job.status };

@@ -310,11 +310,11 @@ export default function KdvKontrolPage() {
       setLucaJobs(jobs);
       setLucaStatus(
         jobs.length > 1
-          ? `${jobs.length} Luca komutu kuyruğa alındı — agent sırayla çekecek`
-          : 'Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…',
+          ? `${jobs.length} Luca komutu kuyruğa alındı — sistem sırayla çekecek`
+          : 'Luca oturumu hazırlanıyor — güvenlik kodu gerekirse portalda açılacak…',
       );
       setLucaLogLines([]);
-      toast.info(`${jobs.length} Luca job oluşturuldu · Luca sekmesini açık tut`, { duration: 5000 });
+      toast.info(`${jobs.length} Luca job oluşturuldu · güvenlik kodu gerekirse portalda görünecek`, { duration: 5000 });
       pushFeed({
         group: 'luca',
         kind: 'info',
@@ -898,7 +898,7 @@ export default function KdvKontrolPage() {
               lucaJobId ? (lucaStatus || 'Agent çalışıyor…')
               : hasRecords ? `${stats?.totalRecords} satır (yenile)`
               : !taxpayerId ? 'Önce mükellef seçin'
-              : selectedActions.length > 1 ? `${selectedActions.length} komut · agent sırayla çeker` : 'Otomatik · agent Luca tab\'ından çeker'
+              : selectedActions.length > 1 ? `${selectedActions.length} komut · sistem sırayla çeker` : 'Otomatik · güvenlik kodu portalda'
             }
             color="#10b981"
             done={false}
@@ -937,7 +937,7 @@ export default function KdvKontrolPage() {
           />
         </div>
 
-        {/* Luca job durumu — agent Luca sekmesini kullanırken canlı log */}
+        {/* Luca job durumu — portal içi güvenlik kodu + canlı log */}
         {lucaJobId && (
           <div
             className="rounded-lg p-3 text-sm mt-3"
@@ -950,7 +950,7 @@ export default function KdvKontrolPage() {
             <div className="flex items-center gap-3">
               <Loader2 size={16} className="animate-spin" style={{ color: '#10b981', flexShrink: 0 }} />
               <div className="flex-1 min-w-0">
-                <div style={{ color: '#10b981', fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+                <div style={{ color: '#10b981', fontWeight: 600, fontSize: 13 }}>Luca işlemi portal içinde yönetiliyor</div>
                 <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }} className="truncate">
                   {lucaStatus || 'Moren agent Luca\'dan KDV verisini indiriyor…'}
                 </div>

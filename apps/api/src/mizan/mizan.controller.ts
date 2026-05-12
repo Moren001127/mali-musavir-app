@@ -116,10 +116,9 @@ export class MizanController {
   }
 
   // === LUCA'DAN OTOMATİK ÇEKİM (EXTENSION-FIRST) ===
-  // Frontend bu endpoint'i çağırır → LucaFetchJob oluşur → moren-agent.js
-  // (personelin tarayıcısında açık Luca sekmesinde) job'u alıp Excel indirir,
-  // /agent/luca/runner/upload-mizan'a yükler. Multi-user: her personel kendi
-  // tarayıcısından çalıştırabilir, job tenant bazlı paylaşılır.
+  // Frontend bu endpoint'i çağırır → LucaFetchJob oluşur. Güvenlik kodu gerekirse
+  // portal içindeki Luca Oturum Yöneticisi gösterir; Excel agent tarafından
+  // /agent/luca/runner/upload-mizan'a yüklenir.
   @Post('mizan/fetch-from-luca')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
@@ -142,7 +141,7 @@ export class MizanController {
     return { jobId: job.id, status: job.status };
   }
 
-  // Polling endpoint — frontend "Luca sekmesini açık tut" gösterirken bunu çağırır
+  // Polling endpoint — frontend portal içi Luca durumunu gösterirken bunu çağırır.
   @Get('mizan/luca-job/:id')
   async getLucaJob(@Req() req: any, @Param('id') id: string) {
     const job = await this.lucaService.getJob(id, req.user.tenantId);

@@ -1,4 +1,5 @@
 import { api } from './api';
+import { currentAgentDeviceId } from './agent-device';
 
 export type EarsivTip = 'SATIS' | 'ALIS';
 export type BelgeKaynak = 'EFATURA' | 'EARSIV';
@@ -25,10 +26,6 @@ export interface EarsivFatura {
   createdAt: string;
 }
 
-function currentDeviceId() {
-  return typeof window !== 'undefined' ? (window as any).__morenAutoAgent?.deviceId : undefined;
-}
-
 export const earsivApi = {
   fetchFromLuca: (data: {
     mukellefId: string;
@@ -37,7 +34,7 @@ export const earsivApi = {
     belgeKaynak?: BelgeKaynak;
   }) =>
     api
-      .post('/earsiv/fetch-from-luca', { ...data, targetDeviceId: currentDeviceId() })
+      .post('/earsiv/fetch-from-luca', { ...data, targetDeviceId: currentAgentDeviceId() })
       .then((r) => r.data as { jobId: string; status: string }),
 
   getLucaJob: (jobId: string) =>

@@ -715,7 +715,7 @@ export default function EarsivPage() {
             <div className="flex-1">
               <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>
                 {lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled < lucaSummary.total
-                  ? 'Luca sekmesini açık tut — agent çalışıyor'
+                  ? 'Luca işlemi portal içinde yönetiliyor'
                   : 'Tüm işler tamamlandı'}
               </div>
               <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>

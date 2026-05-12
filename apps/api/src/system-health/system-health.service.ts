@@ -101,7 +101,9 @@ export class SystemHealthService {
           status: 'DOWN',
           message: `${label} agent'ı hiç ping atmamış`,
           detail: { ageMin: null },
-          acilTavsiye: `${label} sekmesini aç ve Moren Agent bookmarklet'ine tıkla`,
+          acilTavsiye: agent === 'luca'
+            ? 'Portalda Luca Oturum Yöneticisi ekranını kontrol et; güvenlik kodu bekliyor olabilir'
+            : `${label} sekmesini aç ve Moren Agent bookmarklet'ine tıkla`,
         });
       } else if (ageMin > 10) {
         await this.upsertCheck({
@@ -149,7 +151,7 @@ export class SystemHealthService {
           status: 'DOWN',
           message: `Luca oturumu ${ageMin} dakikadır senkronize değil`,
           detail: { ageMin, lastSync: sess.updatedAt },
-          acilTavsiye: "Luca sekmesini kontrol et — çıkış yapmış veya cookie expired olabilir",
+          acilTavsiye: "Portalda Luca Oturum Yöneticisi'ni kontrol et — güvenlik kodu veya oturum yenileme bekliyor olabilir",
         });
       } else if (ageMin > 30) {
         await this.upsertCheck({
@@ -158,7 +160,7 @@ export class SystemHealthService {
           status: 'DEGRADED',
           message: `Luca oturumu ${ageMin} dakikadır senkronize değil`,
           detail: { ageMin, lastSync: sess.updatedAt },
-          acilTavsiye: 'Luca sekmesini bir defa tıkla, agent re-sync etsin',
+          acilTavsiye: "Portalda Luca Oturum Yöneticisi'ni yenile; gerekirse güvenlik kodunu buradan gir",
         });
       } else {
         await this.resolveCheck('LUCA_TOKEN_AGE');
@@ -216,7 +218,7 @@ export class SystemHealthService {
           status: 'DEGRADED',
           message: `${pending} bekleyen Luca işi var — kuyruk tıkanmış`,
           detail: { pending },
-          acilTavsiye: 'Luca sekmesi açık mı, agent çalışıyor mu kontrol et',
+          acilTavsiye: "Portalda Luca Oturum Yöneticisi'ni ve bekleyen güvenlik kodlarını kontrol et",
         });
       } else if (pending > 20) {
         await this.upsertCheck({

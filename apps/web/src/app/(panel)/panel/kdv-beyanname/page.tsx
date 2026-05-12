@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { currentAgentDeviceId } from '@/lib/agent-device';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
   Loader2, Receipt, TrendingUp, TrendingDown, Sparkles,
@@ -545,11 +546,11 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
 
   const fetchMut = useMutation({
     mutationFn: () =>
-      api.post('/kdv-beyanname/luca-snapshot/fetch', { mukellefId, donem })
+      api.post('/kdv-beyanname/luca-snapshot/fetch', { mukellefId, donem, targetDeviceId: currentAgentDeviceId() })
         .then((r) => r.data as { jobId: string; status: string }),
     onSuccess: (d) => {
       setJobId(d.jobId);
-      toast.info('Luca job oluşturuldu — Luca sekmesini açık tut');
+      toast.info('Luca job oluşturuldu — güvenlik kodu gerekirse portalda görünecek');
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Job oluşturulamadı'),
   });

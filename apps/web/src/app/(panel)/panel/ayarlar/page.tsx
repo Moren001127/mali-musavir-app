@@ -10,10 +10,9 @@ import Link from 'next/link';
 /**
  * Moren Agent = tarayıcıda çalışan bookmarklet.
  *
- * Kullanıcı bu bookmarklet'i tarayıcı sık kullanılanlarına ekler, Luca veya
- * Mihsap sekmesindeyken tıklar, agent sayfada aktif olur ve portalın
- * queue'ladığı işleri (muavin/mizan Excel indirme, fatura sınıflandırma)
- * tarayıcı üzerinden yürütür.
+ * Luca işlemleri portal içindeki Luca Oturum Yöneticisi ile yönetilir; güvenlik
+ * kodu gerekirse portalda görünür. Mihsap işlemleri görünür Mihsap sekmesinde
+ * çalışır, çünkü fatura işleme sırasında ekranı görmek gerekir.
  *
  * Neden bu yol? Railway cloud IP'leri Luca tarafından bloklandığı için
  * backend Playwright yolu çalışmıyor. Kullanıcının tarayıcısı zaten Luca'da
@@ -67,8 +66,8 @@ function MorenAgentSection() {
             Moren Agent Bookmarklet
           </h3>
           <p className="text-xs text-gray-500">
-            Luca / Mihsap sekmesinde açık kalır, portalın queue'ladığı
-            muavin/mizan indirme gibi işleri yürütür.
+            Luca güvenlik kodlarını portal içinde yönetir; Mihsap tarafında
+            görünür sekmede çalışan fatura işlerini yürütür.
           </p>
         </div>
       </div>
@@ -172,23 +171,21 @@ function MorenAgentSection() {
             </div>
             <ol className="space-y-1 list-decimal list-inside">
               <li>
-                Luca veya Mihsap'a giriş yap (CAPTCHA/2FA'yı kendin geç).
+                Luca için güvenlik kodu gerekirse portalda Luca Oturum Yöneticisi açılır.
               </li>
               <li>
-                İlgili ekrana gel — muavin için <em>Muavin Defter</em>, mizan
-                için <em>Mizan</em>.
+                Mihsap fatura işleme için Mihsap sekmesini görünür tut; kapalıysa portal açabilir.
               </li>
               <li>
                 Sık kullanılanlardaki <strong>Moren Agent'ı Başlat</strong>{' '}
-                bookmarklet'ine tıkla.
+                bookmarklet'ine gerekirse tıkla veya Chrome extension'ı kullan.
               </li>
               <li>
                 Sayfanın sağ üstünde bir panel çıkar ("MOREN AGENT · Bekleniyor").
               </li>
               <li>
                 Portaldan "Luca'dan veri çek" / "Mizan çek" butonuna bas.
-                Agent 15 saniye içinde işi alıp Excel'i indirecek ve portala
-                yollayacak.
+                Kod gerekirse portal içinde girilir; işlem aynı ekranda loglanır.
               </li>
             </ol>
           </div>

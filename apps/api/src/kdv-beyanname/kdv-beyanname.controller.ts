@@ -31,7 +31,7 @@ export class KdvBeyannameController {
   @HttpCode(HttpStatus.OK)
   async fetchLucaSnapshot(
     @Req() req: any,
-    @Body() body: { mukellefId: string; donem: string },
+    @Body() body: { mukellefId: string; donem: string; targetDeviceId?: string },
   ) {
     if (!body?.mukellefId || !body?.donem) {
       throw new BadRequestException('mukellefId ve donem gerekli');
@@ -41,6 +41,7 @@ export class KdvBeyannameController {
       mukellefId: body.mukellefId,
       donem: body.donem,
       createdBy: req.user.sub,
+      targetDeviceId: body.targetDeviceId,
     });
   }
 

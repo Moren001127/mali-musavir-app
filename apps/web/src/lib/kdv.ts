@@ -1,4 +1,5 @@
 import { api } from './api';
+import { currentAgentDeviceId } from './agent-device';
 
 /** Luca otomatik scraper (backend Playwright) için credential API */
 export interface LucaLoginResult {
@@ -113,10 +114,10 @@ export const kdvApi = {
 
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ── */
   /** Luca'dan 191/391 veya işletme defteri verisini otomatik çekmek için
-   *  bir fetch job oluşturur. Luca sayfasında açık runner bu job'u işler. */
+   *  bir fetch job oluşturur. CAPTCHA gerekirse portal içindeki Luca Oturum Yöneticisi gösterir. */
   importFromLuca: (sessionId: string) =>
     api
-      .post(`/kdv-control/sessions/${sessionId}/import-from-luca`)
+      .post(`/kdv-control/sessions/${sessionId}/import-from-luca`, { targetDeviceId: currentAgentDeviceId() })
       .then((r) => r.data as { jobId: string; status: string; method?: string; message?: string }),
 
   /** Luca fetch job durumu — Mizan'daki getLucaJob ile aynı pattern.

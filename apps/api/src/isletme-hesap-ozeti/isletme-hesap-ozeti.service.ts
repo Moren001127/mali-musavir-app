@@ -467,6 +467,7 @@ export class IsletmeHesapOzetiService {
     tenantId: string;
     id: string;
     createdBy?: string;
+    targetDeviceId?: string;
   }) {
     const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
       where: { id: params.id, tenantId: params.tenantId },
@@ -497,6 +498,7 @@ export class IsletmeHesapOzetiService {
       donem: donemAralik, // "YYYY-MM-DD_YYYY-MM-DD"
       tip: 'IHO_FETCH',
       createdBy: params.createdBy,
+      targetDeviceId: params.targetDeviceId,
       mukellefAdi, // [META] mukellefAdi=... olarak errorMsg'e konur
     });
 
@@ -505,7 +507,7 @@ export class IsletmeHesapOzetiService {
       status: 'queued',
       donem: ozet.donem,
       yil: ozet.yil,
-      message: `Luca sekmesini açık tut — agent firma seçip Gelir/Gider Listesi'ni otomatik çekecek`,
+      message: `Luca job kuyruğa alındı; güvenlik kodu gerekirse portal içindeki Luca Oturum Yöneticisi gösterecek`,
     };
   }
 
@@ -570,4 +572,3 @@ export class IsletmeHesapOzetiService {
     return job;
   }
 }
-

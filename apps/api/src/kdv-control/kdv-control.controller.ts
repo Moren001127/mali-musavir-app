@@ -284,14 +284,18 @@ export class KdvControlController {
 
   /**
    * Luca'dan muavin/işletme defteri otomatik çekimi başlat.
-   * Arka planda bir Luca fetch job yaratır; runner Luca sayfasında
-   * Excel'i indirip /excel endpoint'ine gönderir.
+   * Arka planda bir Luca fetch job yaratır; güvenlik kodu gerekirse
+   * portal içindeki Luca Oturum Yöneticisi gösterir.
    */
   @Post('sessions/:id/import-from-luca')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  importFromLuca(@Req() req: any, @Param('id') id: string) {
-    return this.kdvService.queueLucaImport(id, req.user.tenantId, req.user.sub);
+  importFromLuca(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { targetDeviceId?: string },
+  ) {
+    return this.kdvService.queueLucaImport(id, req.user.tenantId, req.user.sub, body?.targetDeviceId);
   }
 
   /**

@@ -102,10 +102,9 @@ export default function MizanPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Mizan çekilemedi'),
   });
 
-  // === Extension-first Luca çekimi (multi-user) ===
-  // Kullanıcının tarayıcısında Luca açıkken moren-agent.js job'u alır,
-  // Excel indirir, backend'e yükler. Bu sayede Railway'de headless browser
-  // tutma zorunluluğu yok — her personel kendi oturumuyla çekim yapar.
+  // === Portal-first Luca çekimi (multi-user) ===
+  // Job portalda başlar; Luca güvenlik kodu isterse /panel/ajanlar/luca içinde
+  // gösterilir. Kullanıcı ayrı Luca ekranına yönlendirilmez.
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState<string>('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
@@ -119,9 +118,9 @@ export default function MizanPage() {
       }),
     onSuccess: (d) => {
       setLucaJobId(d.jobId);
-      setLucaStatus('Luca sekmesini açık tut — moren-agent 15 sn içinde alacak…');
+      setLucaStatus('Luca oturumu hazırlanıyor — güvenlik kodu gerekirse portalda açılacak…');
       setLucaLogLines([]);
-      toast.info('Luca job oluşturuldu · Luca sekmesini açık tut', { duration: 5000 });
+      toast.info('Luca job oluşturuldu · güvenlik kodu gerekirse portalda görünecek', { duration: 5000 });
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message || e?.message || 'Luca job oluşturulamadı'),
@@ -147,8 +146,8 @@ export default function MizanPage() {
     const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
     setLucaLogLines(lines);
     const lastLine = lines[lines.length - 1] || '';
-    if (s === 'pending') setLucaStatus(lastLine || 'Luca sekmesindeki agent bekleniyor…');
-    else if (s === 'running') setLucaStatus(lastLine || 'Luca sayfasından Excel çekiliyor…');
+    if (s === 'pending') setLucaStatus(lastLine || 'Luca oturumu hazırlanıyor…');
+    else if (s === 'running') setLucaStatus(lastLine || 'Luca’dan Excel çekiliyor…');
     else if (s === 'done') {
       setLucaStatus('Tamamlandı ✓');
       setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
@@ -373,7 +372,7 @@ export default function MizanPage() {
             Mizan Yükle
           </button>
 
-          {/* İkincil: Luca'dan Çek — Extension-first (kendi tarayıcından) */}
+          {/* İkincil: Luca'dan Çek — portal içi güvenlik kodu akışı */}
           <button
             onClick={() => {
               if (!taxpayerId) { toast.error('Önce mükellef seçin'); setPickerOpen(true); return; }
@@ -386,7 +385,7 @@ export default function MizanPage() {
               border: '1px solid rgba(184,160,111,0.3)',
               color: GOLD,
             }}
-            title="Luca sekmeniz açık olmalı — moren-agent mizanı çeker"
+            title="Güvenlik kodu gerekirse Luca Oturum Yöneticisi içinde gösterilir"
           >
             {(lucaAgentMut.isPending || !!lucaJobId) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {lucaJobId ? 'Luca\'dan Çekiliyor…' : 'Luca\'dan Çek'}
@@ -394,7 +393,7 @@ export default function MizanPage() {
         </div>
       </div>
 
-      {/* Luca job durumu — extension Luca sekmesini kullanıyor + progress timeline */}
+      {/* Luca job durumu — portal içi güvenlik kodu + progress timeline */}
       {lucaJobId && (
         <div
           className="rounded-lg p-3 text-sm"
@@ -407,9 +406,9 @@ export default function MizanPage() {
           <div className="flex items-center gap-3">
             <Loader2 size={16} className="animate-spin" style={{ color: GOLD, flexShrink: 0 }} />
             <div className="flex-1">
-              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca sekmesini açık tut</div>
+              <div style={{ color: GOLD, fontWeight: 600, fontSize: 13 }}>Luca işlemi portal içinde yönetiliyor</div>
               <div style={{ color: 'rgba(250,250,249,0.65)', fontSize: 12, marginTop: 2 }}>
-                {lucaStatus || 'Moren agent Luca sayfasındaki mizan Excel\'ini indiriyor…'}
+                {lucaStatus || 'Moren agent Luca’dan mizan Excel’ini indiriyor…'}
               </div>
             </div>
             <button
@@ -435,7 +434,7 @@ export default function MizanPage() {
           >
             {lucaLogLines.length === 0 ? (
               <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
-                Agent'tan ilk log satırı bekleniyor… (Luca sekmesi açık ve giriş yapılmış olmalı)
+                İlk log satırı bekleniyor… Güvenlik kodu gerekirse Luca Oturum Yöneticisi’nde açılacak.
               </div>
             ) : (
               lucaLogLines.map((line, i) => {

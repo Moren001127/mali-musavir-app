@@ -176,11 +176,12 @@ export class IsletmeHesapOzetiController {
   @Post(':id/luca-cek')
   @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.OK)
-  lucaCek(@Req() req: any, @Param('id') id: string) {
+  lucaCek(@Req() req: any, @Param('id') id: string, @Body() body: { targetDeviceId?: string }) {
     return this.service.lucaCek({
       tenantId: req.user.tenantId,
       id,
       createdBy: req.user.sub,
+      targetDeviceId: body?.targetDeviceId,
     });
   }
 
