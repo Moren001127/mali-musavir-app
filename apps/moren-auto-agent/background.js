@@ -16,7 +16,7 @@ const MIHSAP_PATTERNS = [
 const AGENT_HOME_URL = {
   // Luca klasik ekranı (auygs.../Luca/luca.do) doğrudan açılırsa "LUCA HATA"
   // veriyor; o URL'yi Luca kendi login akışından ikinci sekme olarak açmalı.
-  luca: 'https://www.luca.com.tr/',
+  luca: 'https://agiris.luca.com.tr/LUCASSO/giris.erp',
   mihsap: 'https://app.mihsap.com/',
 };
 

@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.07';
+  const AGENT_VERSION = '1.37.08';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -31,6 +31,7 @@
   );
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
+  const LUCA_LOGIN_ENTRY_URL = 'https://agiris.luca.com.tr/LUCASSO/giris.erp';
   let TOKEN = localStorage.getItem('moren_agent_token') || '';
 
   function lucaManualDownloadMode() {
@@ -357,6 +358,23 @@
   function isLucaOrigin() {
     return /luca\.com\.tr|luca\.net\.tr/i.test(location.hostname);
   }
+  function isLucaLandingPage() {
+    const host = String(location.hostname || '').toLowerCase();
+    return host === 'www.luca.com.tr' || host === 'luca.com.tr';
+  }
+  async function openLucaLoginEntryForJobs(jobs, logPendingJob) {
+    if (!isLucaLandingPage()) return false;
+    const url = location.href.slice(0, 120);
+    setStatus('Luca ana sayfasi acik; sistem girisine geciliyor');
+    for (const job of jobs) {
+      await logPendingJob(job, `Luca ana sayfasi acik; LUCASSO giris ekranina geciliyor. URL=${url}`);
+    }
+    if (!window.__morenLucaEntryRedirectAt || Date.now() - window.__morenLucaEntryRedirectAt > 15000) {
+      window.__morenLucaEntryRedirectAt = Date.now();
+      try { location.href = LUCA_LOGIN_ENTRY_URL; } catch {}
+    }
+    return true;
+  }
   function isDirectClassicLucaError() {
     try {
       const text = `${document.title || ''}\n${document.body?.textContent || ''}`;
@@ -507,6 +525,7 @@
       if (!isClassicLuca) {
         const firstJob = jobs[0];
         const url = location.href.slice(0, 120);
+        if (await openLucaLoginEntryForJobs(jobs, logPendingJob)) return;
         await bridgeLucaCaptchaToPortal(firstJob, (line) => logPendingJob(firstJob, line)).catch(() => {});
 
         const loginParts = findLoginFormParts();
@@ -542,7 +561,7 @@
         }
         if (!window.__morenLucaEntryRedirectAt || Date.now() - window.__morenLucaEntryRedirectAt > 30000) {
           window.__morenLucaEntryRedirectAt = Date.now();
-          try { location.href = 'https://www.luca.com.tr/'; } catch {}
+          try { location.href = LUCA_LOGIN_ENTRY_URL; } catch {}
         }
         return;
       }
