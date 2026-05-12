@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
+import { LucaCaptchaOverlay } from '@/components/luca/LucaCaptchaOverlay';
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading, isError } = useMe();
@@ -37,6 +38,7 @@ export default function PanelLayout({ children }: { children: React.ReactNode })
         <main className="flex-1 overflow-auto p-6 animate-fade-up">
           {children}
         </main>
+        <LucaCaptchaOverlay />
       </div>
     </div>
   );

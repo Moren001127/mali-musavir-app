@@ -12,9 +12,11 @@
 (async function deviceIdInjector() {
   try {
     let deviceId = '';
+    let agentToken = '';
     if (chrome?.storage?.local) {
-      const stored = await chrome.storage.local.get('moren_device_id');
+      const stored = await chrome.storage.local.get(['moren_device_id', 'moren_agent_token']);
       deviceId = stored?.moren_device_id || '';
+      agentToken = stored?.moren_agent_token || '';
       if (!deviceId) {
         deviceId = 'DEV-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
         await chrome.storage.local.set({ moren_device_id: deviceId });
@@ -26,9 +28,10 @@
       try { localStorage.setItem('moren_device_id', deviceId); } catch (_) {}
     }
     document.documentElement.dataset.morenDeviceId = deviceId;
+    if (agentToken) document.documentElement.dataset.morenAgentToken = agentToken;
     // Olur da MAIN world bu zaten yüklendiyse, custom event ile haber ver
     try {
-      window.dispatchEvent(new CustomEvent('moren-device-id-ready', { detail: { deviceId } }));
+      window.dispatchEvent(new CustomEvent('moren-device-id-ready', { detail: { deviceId, agentToken } }));
     } catch (_) {}
   } catch (e) {
     console.warn('[Moren Device-ID] Injector hata:', e?.message);

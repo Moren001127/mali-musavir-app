@@ -20,10 +20,11 @@
 
   window.__morenAutoAgent = {
     installed: true,
-    version: '1.0.1',
+    version: '1.0.10',
     deviceId,
     restartAll: () => sendCommand('restart_all'),
     openAgent: (target, options) => sendCommand('open_agent', { target, ...(options || {}) }),
+    setAgentToken: (token) => sendCommand('set_agent_token', { token }),
     status: () => sendCommand('status'),
     ping: () => sendCommand('ping'),
   };

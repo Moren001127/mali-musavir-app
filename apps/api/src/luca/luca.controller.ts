@@ -294,6 +294,19 @@ export class LucaController {
     return this.luca.pendingJobsForAgent(tenantId, deviceId);
   }
 
+  @Get('agent/luca/jobs/active')
+  async activeJobsForAgent(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('deviceId') deviceId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.luca.listJobsForAgent(tenantId, {
+      deviceId,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
   @Post('agent/luca/captcha')
   @HttpCode(HttpStatus.OK)
   async createAgentCaptcha(
@@ -335,10 +348,15 @@ export class LucaController {
   async startJob(
     @Param('id') id: string,
     @Headers('x-agent-token') agentToken: string,
+    @Body() body: { deviceId?: string },
+    @Query('deviceId') queryDeviceId?: string,
   ) {
-    await this.resolveTenantFromAgentToken(agentToken);
-    await this.luca.markJobRunning(id);
-    return { ok: true };
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await this.luca.markJobRunning(id, {
+      tenantId,
+      deviceId: body?.deviceId || queryDeviceId,
+    });
+    return { ok: !!job, claimed: !!job, job };
   }
 
   @Post('agent/luca/jobs/:id/done')
@@ -363,6 +381,18 @@ export class LucaController {
     await this.resolveTenantFromAgentToken(agentToken);
     await this.luca.markJobFailed(id, body.error || 'bilinmeyen hata');
     return { ok: true };
+  }
+
+  @Post('agent/luca/jobs/:id/requeue')
+  @HttpCode(HttpStatus.OK)
+  async requeueJobForAgent(
+    @Param('id') id: string,
+    @Body() body: { reason?: string },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const job = await this.luca.requeueJobForAgent(id, tenantId, body?.reason);
+    return { ok: true, job };
   }
 
   @Get('agent/luca/jobs/:id/status')

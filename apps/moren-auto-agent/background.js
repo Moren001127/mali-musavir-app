@@ -69,16 +69,45 @@ async function restartAll() {
   return { tabs: tabs.length, results };
 }
 
+async function pushAgentTokenToTabs(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return { ok: false, error: 'empty token' };
+  await chrome.storage.local.set({ moren_agent_token: clean });
+  const tabs = await findAgentTabs();
+  const results = await Promise.all(
+    tabs.map(async (x) => {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: x.tab.id },
+          world: 'MAIN',
+          args: [clean],
+          func: (agentToken) => {
+            try { localStorage.setItem('moren_agent_token', agentToken); } catch (e) {}
+            try { document.documentElement.dataset.morenAgentToken = agentToken; } catch (e) {}
+            try { window.dispatchEvent(new CustomEvent('moren-agent-token-ready', { detail: { agentToken } })); } catch (e) {}
+          },
+        });
+        return { ok: true, tabId: x.tab.id, kind: x.kind };
+      } catch (e) {
+        return { ok: false, tabId: x.tab.id, kind: x.kind, error: String(e) };
+      }
+    }),
+  );
+  return { ok: true, tabs: tabs.length, results };
+}
+
 async function ensureAgentTab(kind, opts = {}) {
   const wanted = String(kind || '').toLowerCase();
   const focus = opts.focus !== false;
+  const createIfMissing = opts.create !== false;
+  const navigateIfNeeded = opts.navigate !== false;
   if (!AGENT_HOME_URL[wanted]) return { ok: false, error: 'unknown agent' };
   const tabs = await findAgentTabs();
   const existing = wanted === 'luca'
     ? (tabs.find((x) => x.kind === wanted && isClassicLucaTab(x.tab.url)) || tabs.find((x) => x.kind === wanted))
     : tabs.find((x) => x.kind === wanted);
   if (existing?.tab?.id) {
-    if (wanted === 'luca' && !isClassicLucaTab(existing.tab.url)) {
+    if (wanted === 'luca' && !isClassicLucaTab(existing.tab.url) && navigateIfNeeded) {
       await chrome.tabs.update(existing.tab.id, { url: AGENT_HOME_URL[wanted], active: focus }).catch(() => {});
       if (focus && existing.tab.windowId) {
         await chrome.windows.update(existing.tab.windowId, { focused: true }).catch(() => {});
@@ -91,6 +120,9 @@ async function ensureAgentTab(kind, opts = {}) {
     }
     await restartAgentIn(existing.tab.id, wanted);
     return { ok: true, opened: false, tabId: existing.tab.id, kind: wanted };
+  }
+  if (!createIfMissing) {
+    return { ok: false, opened: false, kind: wanted, error: `${wanted} tab not found` };
   }
   const tab = await chrome.tabs.create({ url: AGENT_HOME_URL[wanted], active: focus });
   return { ok: true, opened: true, tabId: tab.id, kind: wanted };
@@ -146,7 +178,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       } else if (msg.action === 'open_agent') {
         const target = typeof msg.target === 'object' && msg.target ? msg.target.target : msg.target;
         const focus = !(typeof msg.target === 'object' && msg.target && msg.target.focus === false);
-        sendResponse(await ensureAgentTab(target, { focus }));
+        const create = !(typeof msg.target === 'object' && msg.target && msg.target.create === false);
+        const navigate = !(typeof msg.target === 'object' && msg.target && msg.target.navigate === false);
+        sendResponse(await ensureAgentTab(target, { focus, create, navigate }));
+      } else if (msg.action === 'set_agent_token') {
+        const token = typeof msg.target === 'object' && msg.target ? msg.target.token : msg.target;
+        sendResponse(await pushAgentTokenToTabs(token));
       } else if (msg.action === 'status') {
         sendResponse(await getStatus());
       } else if (msg.action === 'ping') {

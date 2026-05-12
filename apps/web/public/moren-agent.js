@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.10';
+  const AGENT_VERSION = '1.37.18';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -33,7 +33,14 @@
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   const LUCA_LOGIN_ENTRY_URL = 'https://agiris.luca.com.tr/LUCASSO/giris.erp';
-  let TOKEN = localStorage.getItem('moren_agent_token') || '';
+  const LUCA_CLASSIC_URL = 'https://auygs.luca.com.tr/Luca/luca.do';
+  let TOKEN = (document.documentElement?.dataset?.morenAgentToken || '').trim()
+    || localStorage.getItem('moren_agent_token')
+    || '';
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
   function lucaManualDownloadMode() {
     try {
@@ -72,6 +79,20 @@
       const newId = ev?.detail?.deviceId;
       if (newId && newId !== DEVICE_ID) {
         DEVICE_ID = newId;
+      }
+      const newToken = ev?.detail?.agentToken;
+      if (newToken && newToken !== TOKEN) {
+        TOKEN = newToken;
+        try { localStorage.setItem('moren_agent_token', TOKEN); } catch (_) {}
+      }
+    } catch (_) {}
+  });
+  window.addEventListener('moren-agent-token-ready', (ev) => {
+    try {
+      const newToken = ev?.detail?.agentToken;
+      if (newToken && newToken !== TOKEN) {
+        TOKEN = newToken;
+        try { localStorage.setItem('moren_agent_token', TOKEN); } catch (_) {}
       }
     } catch (_) {}
   });
@@ -433,6 +454,85 @@
     const host = String(location.hostname || '').toLowerCase();
     return host === 'www.luca.com.tr' || host === 'luca.com.tr';
   }
+  function isLucaSsoMainPage() {
+    const host = String(location.hostname || '').toLowerCase();
+    const path = String(location.pathname || '').toLowerCase();
+    return host === 'agiris.luca.com.tr' && path.includes('/lucasso/main.erp');
+  }
+  function findClassicLucaEntryElement() {
+    const norm = (value) => normalizeLucaText(value).replace(/\s+/g, ' ').trim();
+    // Tile'lar genelde <div onclick> veya <a><img/> şeklinde, basit selector yetersiz.
+    // Top-level clickable container'ları da topla (div/li/figure + onclick yada child img).
+    const candidates = Array.from(document.querySelectorAll(
+      'a, button, input[type="button"], input[type="submit"], [onclick], [role="button"], div, li, figure'
+    ));
+    const scored = [];
+    for (const el of candidates) {
+      try {
+        if (!visible(el)) continue;
+        // Tıklanabilir mi? onclick attribute, role=button, ya da <a> olmalı.
+        // Aksi halde sıradan <div>'leri dışla (sayfa konteyneri vb).
+        const tag = String(el.tagName || '').toLowerCase();
+        const hasClickHandler = el.getAttribute('onclick')
+          || el.getAttribute('role') === 'button'
+          || tag === 'a' || tag === 'button' || tag === 'input';
+        const hasImgInside = el.querySelector && el.querySelector('img');
+        if (!hasClickHandler && !hasImgInside) continue;
+        // Çok geniş container'ları ele (body içeren tüm sayfa vb).
+        try { if (el.offsetWidth > 1200 || el.offsetHeight > 600) continue; } catch {}
+        // textContent + image alt'larını topla
+        const imgs = Array.from(el.querySelectorAll('img'))
+          .map((img) => `${img.alt || ''} ${img.title || ''} ${img.src || ''}`)
+          .join(' ');
+        const text = norm([
+          el.textContent,
+          el.value,
+          el.title,
+          el.getAttribute('aria-label'),
+          imgs,
+        ].filter(Boolean).join(' '));
+        const href = String(el.href || el.getAttribute('href') || '');
+        const onclick = String(el.getAttribute('onclick') || '');
+        const hay = norm(`${text} ${href} ${onclick}`);
+        let score = 0;
+        // ✓ POZİTİF: klasik Luca URL ya da paket text
+        if (/auygs|luca\.do/.test(hay)) score += 10;
+        if (/mali musavir paketi|mali musavir girisi/.test(hay)) score += 5;
+        if (/mali musavir|muhasebe/.test(hay)) score += 2;
+        // ✗ NEGATİF: yanlış tile'lar (2.0, mobil, arşiv, ofis, beta)
+        // "2.0" / "v2.0" / "20" badge'lerini yakala
+        if (/\b2[\.\s]?0\b|v2[\.\s]?0|surum 2|version 2/.test(hay)) score -= 50;
+        // Mobil / arşiv / ofis tile'ları
+        if (/\bmobil\b|\bmobile\b/.test(hay)) score -= 50;
+        if (/\barsiv\b|\bar[şs]iv\b/.test(hay)) score -= 50;
+        if (/\bofis\b|\boffice\b/.test(hay)) score -= 50;
+        if (/\bbeta\b|\byeni surum\b/.test(hay)) score -= 10;
+        if (score > 0) scored.push({ el, score, text: text.slice(0, 80), href: href.slice(0, 120), onclick: onclick.slice(0, 120) });
+      } catch {}
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0] || null;
+  }
+  async function openClassicLucaFromSsoMainForJobs(jobs, logPendingJob) {
+    if (!isLucaSsoMainPage()) return false;
+    const url = location.href.slice(0, 120);
+    setStatus('Luca girisi tamam; klasik Luca ekranina geciliyor');
+    for (const job of jobs) {
+      await logPendingJob(job, `Luca girisi tamam; klasik Luca ekranina geciliyor. URL=${url}`);
+    }
+    if (!window.__morenLucaClassicRedirectAt || Date.now() - window.__morenLucaClassicRedirectAt > 15000) {
+      window.__morenLucaClassicRedirectAt = Date.now();
+      const entry = findClassicLucaEntryElement();
+      if (entry?.el) {
+        for (const job of jobs) {
+          await logPendingJob(job, `Klasik Luca giris aksiyonu tiklaniyor: ${entry.text || entry.href || entry.onclick || 'entry'}`);
+        }
+        try { entry.el.click(); return true; } catch {}
+      }
+      try { location.href = LUCA_CLASSIC_URL; } catch {}
+    }
+    return true;
+  }
   async function openLucaLoginEntryForJobs(jobs, logPendingJob) {
     if (!isLucaLandingPage()) return false;
     const url = location.href.slice(0, 120);
@@ -599,6 +699,7 @@
         const url = location.href.slice(0, 120);
         if (await openLucaLoginEntryForJobs(jobs, logPendingJob)) return;
         await bridgeLucaCaptchaToPortal(firstJob, (line) => logPendingJob(firstJob, line)).catch(() => {});
+        if (await openClassicLucaFromSsoMainForJobs(jobs, logPendingJob)) return;
 
         const loginParts = findLoginFormParts();
         if (loginParts?.password) {
@@ -803,10 +904,18 @@
             }
           }
 
-          await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
+          const claimRes = await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
             method: 'POST',
-            headers: { 'X-Agent-Token': TOKEN },
+            headers: { 'X-Agent-Token': TOKEN, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceId: DEVICE_ID }),
           });
+          let claim = null;
+          try { claim = await claimRes.clone().json(); } catch {}
+          if (!claimRes.ok || claim?.claimed === false || claim?.ok === false) {
+            console.log('[Moren] Luca job baska ajan tarafindan alindi, atlandi:', job.id);
+            window.__lucaJobRunning = false;
+            continue;
+          }
 
           // İlk log: agent versiyonunu portal'a bildir (cache problemini debug için)
           const AGENT_VER = AGENT_VERSION;
@@ -1025,6 +1134,7 @@
       console.warn('[Moren] processLucaJobs:', e?.message);
     }
   }
+  setTimeout(processLucaJobs, 1200);
   setInterval(processLucaJobs, 15000);
 
   /**
@@ -1485,16 +1595,54 @@
       try {
         const exact = doc?.getElementById('faturalari-getir-btn');
         if (exact) return exact;
-        const candidates = Array.from(doc?.querySelectorAll('button, input[type=button], input[type=submit], a, [onclick]') || []);
-        return candidates.find((el) => {
+        const candidates = Array.from(doc?.querySelectorAll([
+          'button',
+          'input[type=button]',
+          'input[type=submit]',
+          'input[type=image]',
+          'a',
+          '[role=button]',
+          '[onclick]',
+          '[id*="getir" i]',
+          '[name*="getir" i]',
+          '[class*="getir" i]',
+          '[id*="sorgu" i]',
+          '[name*="sorgu" i]',
+          '[class*="sorgu" i]',
+          '[id*="liste" i]',
+          '[name*="liste" i]',
+          '[class*="liste" i]',
+        ].join(',')) || []);
+        const scored = candidates.map((el) => {
           const txt = getElementText(el);
-          return txt.includes('faturalari getir') ||
-            txt.includes('belgeleri getir') ||
-            txt.includes('belge getir') ||
-            txt.includes('fatura getir') ||
-            txt.includes('listele') ||
-            txt.includes('sorgula');
-        }) || null;
+          let score = 0;
+          if (txt.includes('faturalari getir') || txt.includes('faturalar getir')) score += 10;
+          if (txt.includes('belgeleri getir') || txt.includes('belge getir') || txt.includes('fatura getir')) score += 9;
+          if (txt.includes('getir')) score += 6;
+          if (txt.includes('sorgula') || txt.includes('sorgu')) score += 5;
+          if (txt.includes('listele') || txt.includes('liste')) score += 4;
+          if (txt.includes('ara')) score += 2;
+          if (txt.includes('iptal') || txt.includes('vazgec') || txt.includes('kapat') || txt.includes('temizle')) score -= 20;
+          return { el, score, txt };
+        }).filter((x) => x.score > 0);
+        scored.sort((a, b) => b.score - a.score);
+        if (scored[0]) return scored[0].el;
+
+        // Luca bazen modalda butonu metinsiz input/image olarak veriyor. Tarih
+        // alanları olan dokümanda tek makul aksiyon varsa onu kullan.
+        const actionCandidates = candidates.filter((el) => {
+          const txt = getElementText(el);
+          if (txt.includes('iptal') || txt.includes('vazgec') || txt.includes('kapat') || txt.includes('temizle')) return false;
+          try {
+            const tag = String(el.tagName || '').toLowerCase();
+            const type = String(el.type || '').toLowerCase();
+            return tag === 'button' || tag === 'a' || type === 'button' || type === 'submit' || type === 'image' || typeof el.onclick === 'function' || el.getAttribute('onclick');
+          } catch {
+            return false;
+          }
+        });
+        if (actionCandidates.length === 1) return actionCandidates[0];
+        return null;
       } catch {
         return null;
       }
@@ -2468,6 +2616,166 @@
       await log(`⚠ ${label}: ${maxWaitMs/1000}sn boyunca aktivite kesilmedi, yine de devam ediliyor`);
     }
 
+    const collectEbelgeDocsDeep = () => {
+      const docs = [];
+      const seenWins = new Set();
+      const seenDocs = new Set();
+      const addDoc = (doc) => {
+        try {
+          if (!doc || seenDocs.has(doc)) return;
+          seenDocs.add(doc);
+          docs.push(doc);
+        } catch {}
+      };
+      const visit = (w) => {
+        try {
+          if (!w || seenWins.has(w)) return;
+          void w.location.href;
+          seenWins.add(w);
+          addDoc(w.document);
+          for (let i = 0; i < (w.frames?.length || 0); i++) {
+            try { visit(w.frames[i]); } catch {}
+          }
+        } catch {}
+      };
+      try { visit(fwin); } catch {}
+      try { visit(window); } catch {}
+      try { visit(window.top || window); } catch {}
+      try { if (parent && parent !== window) visit(parent); } catch {}
+      return docs;
+    };
+
+    const inputDescriptor = (el) => {
+      try {
+        return foldEbelgeText([
+          el?.id,
+          el?.name,
+          el?.placeholder,
+          el?.title,
+          el?.getAttribute?.('aria-label'),
+          el?.getAttribute?.('data-field'),
+          el?.getAttribute?.('data-name'),
+          el?.className,
+        ].filter(Boolean).join(' '));
+      } catch {
+        return '';
+      }
+    };
+
+    const isUsableInput = (el) => {
+      try {
+        if (!el || String(el.tagName || '').toLowerCase() !== 'input') return false;
+        const type = String(el.type || '').toLowerCase();
+        if (type === 'hidden' || type === 'button' || type === 'submit' || type === 'checkbox' || type === 'radio') return false;
+        if (el.disabled || el.readOnly) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const findDatePairInDoc = (doc) => {
+      try {
+        if (!doc) return null;
+        const exactStart = doc.getElementById('tarih1') ||
+          doc.querySelector('input[name="tarih1"], input[name="TARIH1"], input[id="TARIH1"]');
+        const exactEnd = doc.getElementById('tarih2') ||
+          doc.querySelector('input[name="tarih2"], input[name="TARIH2"], input[id="TARIH2"]');
+        if (isUsableInput(exactStart) && isUsableInput(exactEnd)) {
+          return { doc, t1: exactStart, t2: exactEnd, source: 'tarih1/tarih2' };
+        }
+
+        const inputs = Array.from(doc.querySelectorAll('input')).filter(isUsableInput);
+        const startRx = /(tarih\s*1|date\s*1|tar\s*1|baslangic|baslama|ilk\s*tarih|bas\s*tarih|start|from)/i;
+        const endRx = /(tarih\s*2|date\s*2|tar\s*2|bitis|bitirme|son\s*tarih|bit\s*tarih|end|to)/i;
+        const dateRx = /(tarih|date|baslangic|bitis|bas\s*tarih|bit\s*tarih|ilk|son)/i;
+
+        const start = inputs.find((el) => startRx.test(inputDescriptor(el)));
+        const end = inputs.find((el) => endRx.test(inputDescriptor(el)));
+        if (start && end && start !== end) {
+          return { doc, t1: start, t2: end, source: 'named-date-inputs' };
+        }
+
+        const dateLikes = inputs.filter((el) => {
+          const desc = inputDescriptor(el);
+          const type = String(el.type || '').toLowerCase();
+          const val = String(el.value || el.placeholder || '');
+          return type === 'date' ||
+            dateRx.test(desc) ||
+            /\d{2}[./-]\d{2}[./-]\d{4}/.test(val) ||
+            Number(el.maxLength || 0) >= 8;
+        });
+        if (dateLikes.length >= 2) {
+          return { doc, t1: dateLikes[0], t2: dateLikes[1], source: 'date-like-inputs' };
+        }
+      } catch {}
+      return null;
+    };
+
+    const findDatePairEverywhere = () => {
+      for (const doc of collectEbelgeDocsDeep()) {
+        const pair = findDatePairInDoc(doc);
+        if (pair) return pair;
+      }
+      return null;
+    };
+
+    const waitForDatePair = async (maxMs = 12000) => {
+      const started = Date.now();
+      while (Date.now() - started < maxMs) {
+        await throwIfCancelled();
+        const pair = findDatePairEverywhere();
+        if (pair) return pair;
+        await sleep(300);
+      }
+      return null;
+    };
+
+    const describeDateInputs = () => {
+      const hints = [];
+      for (const doc of collectEbelgeDocsDeep()) {
+        try {
+          const title = doc.title || '';
+          const inputs = Array.from(doc.querySelectorAll('input')).slice(0, 20).map((el) => {
+            const d = inputDescriptor(el);
+            const type = String(el.type || '');
+            return `${el.id || el.name || '?'}:${type}:${d.slice(0, 35)}`;
+          }).filter(Boolean);
+          if (inputs.length) hints.push(`${title || 'doc'}=[${inputs.join(', ')}]`);
+        } catch {}
+      }
+      return hints.slice(0, 3).join(' | ');
+    };
+
+    const setDateInputValue = (el, value) => {
+      const win = el?.ownerDocument?.defaultView || window;
+      el.focus?.();
+      el.value = value;
+      try {
+        const proto = win.HTMLInputElement && win.HTMLInputElement.prototype;
+        const setter = proto && Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (setter) setter.call(el, value);
+      } catch {}
+      el.dispatchEvent(new win.Event('input', { bubbles: true }));
+      el.dispatchEvent(new win.Event('change', { bubbles: true }));
+      el.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 }));
+      el.blur?.();
+    };
+
+    const findGetirButtonEverywhere = (preferredDoc) => {
+      const docs = [];
+      if (preferredDoc) docs.push(preferredDoc);
+      if (fdoc && fdoc !== preferredDoc) docs.push(fdoc);
+      for (const doc of collectEbelgeDocsDeep()) {
+        if (!docs.includes(doc)) docs.push(doc);
+      }
+      for (const doc of docs) {
+        const btn = findLikelyEbelgeGetirButton(doc);
+        if (btn) return btn;
+      }
+      return null;
+    };
+
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
       await throwIfCancelled();
@@ -2480,18 +2788,19 @@
       }
       await sleep(800); // modal animasyonu
 
-      // Tarih input'larını doldur (tarih1, tarih2)
-      const t1 = fdoc.getElementById('tarih1');
-      const t2 = fdoc.getElementById('tarih2');
-      if (!t1 || !t2) throw new Error('tarih1/tarih2 input bulunamadı');
-      t1.value = bas;
-      t1.dispatchEvent(new Event('change', { bubbles: true }));
-      t2.value = bit;
-      t2.dispatchEvent(new Event('change', { bubbles: true }));
+      // Tarih input'ları Luca sürümüne göre farklı frame/modal içinde açılabiliyor.
+      const datePair = await waitForDatePair(12000);
+      if (!datePair) {
+        const inputHints = describeDateInputs();
+        throw new Error(`tarih inputlari bulunamadi; modal acilmadi veya selector degisti${inputHints ? `; input ipucu: ${inputHints}` : ''}`);
+      }
+      await log(`✓ Tarih alanları bulundu (${datePair.source})`);
+      setDateInputValue(datePair.t1, bas);
+      setDateInputValue(datePair.t2, bit);
       await sleep(200);
 
       // Belgeleri Getir butonu
-      const getirBtn = findLikelyEbelgeGetirButton(fdoc);
+      const getirBtn = findGetirButtonEverywhere(datePair.doc);
       if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
       getirBtn.click();
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
@@ -6318,7 +6627,8 @@
   // Frame'lerden cagrilirsa setStatus/setCount sessizce calistir (no-op)
 
   // === HELPERS ===
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // sleep helper is defined near the top because login polling can run before
+  // this lower utility section is reached in injected/headless contexts.
 
   function getRequestUrl(input) {
     try {

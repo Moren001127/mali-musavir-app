@@ -1,0 +1,35 @@
+{
+  "api": {
+    "baseUrl": "https://mali-musavir-app-production.up.railway.app/api/v1",
+    "runtimeUrl": "https://mali-musavir-app-production.up.railway.app/api/v1/agent/runtime.js",
+    "agentToken": "BURAYA-RAILWAY-PORTAL-AYARLAR-AJANI-TOKEN-YAPISTIR"
+  },
+  "luca": {
+    "uyeNo": "MÜŞAVİR-ÜYE-NO",
+    "username": "LUCA-KULLANICI-ADI",
+    "password": "LUCA-PAROLA"
+  },
+  "worker": {
+    "pollIntervalSeconds": 30,
+    "headless": true,
+    "browserTimeoutSeconds": 120,
+    "jobTypes": [
+      "ACCOUNT_PLAN",
+      "MIZAN",
+      "KDV_MIZAN",
+      "KDV_191",
+      "KDV_391",
+      "ISLETME_GELIR",
+      "ISLETME_GIDER",
+      "IHO_FETCH",
+      "EARSIV_SATIS",
+      "EARSIV_ALIS",
+      "EFATURA_SATIS",
+      "EFATURA_ALIS"
+    ]
+  },
+  "log": {
+    "level": "info",
+    "fileLog": false
+  }
+}

@@ -273,6 +273,13 @@ export default function EarsivPage() {
       setLucaStatus(`Iptal komutu gonderildi (${count} is) - Luca agent durdurma sinyalini aliyor`);
       toast.success('Iptal komutu Luca agentina gonderildi');
       lucaJobIds.forEach((id) => qc.invalidateQueries({ queryKey: ['earsiv-luca-job', id] }));
+      setLucaJobId(null);
+      setLucaJobIds([]);
+      setLucaJobMeta({});
+      setLucaSummary({ done: 0, failed: 0, nofatura: 0, cancelled: 0, total: 0 });
+      setLucaStatus('');
+      setLucaLogLines([]);
+      setActiveJobId(null);
     },
     onError: (e: any) => {
       toast.error(e?.response?.data?.message || e?.message || 'Iptal komutu gonderilemedi');
@@ -854,6 +861,7 @@ export default function EarsivPage() {
           {lucaJobIds.length > 0 && (
             <div className="space-y-1.5 mb-3" style={{ maxHeight: 260, overflowY: 'auto' }}>
               {lucaJobIds.map((id, i) => {
+                if (id === activeJobId) return null;
                 const q: any = allJobQueries[i];
                 const job = (q?.data?.job ?? q?.data) || null;
                 const meta = lucaJobMeta[id];

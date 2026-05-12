@@ -38,6 +38,15 @@ export class LucaService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private canClaimUnassignedLucaJob(deviceId?: string) {
+    const id = deviceId?.trim();
+    if (!id) return false;
+    // Browser extension device ids are generated as DEV-*. The local Node worker
+    // uses the persisted machine id (for example moren-5255e7bb). Unassigned
+    // jobs must go to the local worker so visible Chrome tabs do not hijack them.
+    return !/^DEV-/i.test(id);
+  }
+
   // ==================== TOKEN / OTURUM ====================
 
   /** Eklenti Luca session token/cookie'sini gönderir. */
@@ -122,11 +131,34 @@ export class LucaService {
     });
   }
 
-  async markJobRunning(jobId: string) {
-    await (this.prisma as any).lucaFetchJob.updateMany({
-      where: { id: jobId, status: 'pending' },
-      data: { status: 'running', startedAt: new Date() },
-    });
+  async markJobRunning(
+    jobId: string,
+    opts: { tenantId?: string; deviceId?: string } = {},
+  ) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    if (!job) return null;
+    if (opts.tenantId && job.tenantId !== opts.tenantId) return null;
+
+    const deviceId = opts.deviceId?.trim();
+    const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
+    const where: any = {
+      id: jobId,
+      status: 'pending',
+    };
+    if (deviceId) {
+      where.OR = [
+        ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
+        { targetDeviceId: deviceId },
+      ];
+    } else {
+      where.targetDeviceId = null;
+    }
+
+    const data: any = { status: 'running', startedAt: new Date() };
+    if (deviceId && !job.targetDeviceId) data.targetDeviceId = deviceId;
+
+    const result = await (this.prisma as any).lucaFetchJob.updateMany({ where, data });
+    if (!result?.count) return null;
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
@@ -188,12 +220,12 @@ export class LucaService {
 
   async listJobs(tenantId: string, limit = 20) {
     // Stale job'ları temizle: 10 dk'dan eski "running" varsa fail yap
-    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: {
         tenantId,
         status: 'running',
-        startedAt: { lt: tenMinAgo },
+        startedAt: { lt: staleCutoff },
       },
       data: {
         status: 'failed',
@@ -209,6 +241,39 @@ export class LucaService {
     });
   }
 
+  async listJobsForAgent(tenantId: string, opts: { deviceId?: string; limit?: number } = {}) {
+    const deviceId = opts.deviceId?.trim();
+    const limit = Math.min(Math.max(Number(opts.limit || 20), 1), 50);
+    const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    await (this.prisma as any).lucaFetchJob.updateMany({
+      where: {
+        tenantId,
+        status: 'running',
+        startedAt: { lt: staleCutoff },
+      },
+      data: {
+        status: 'failed',
+        errorMsg: 'Zaman asimi (eski calisan is temizlendi)',
+        finishedAt: new Date(),
+      },
+    });
+    const where: any = {
+      tenantId,
+      status: { in: ['pending', 'running'] },
+    };
+    if (deviceId) {
+      where.OR = [
+        { targetDeviceId: null },
+        { targetDeviceId: deviceId },
+      ];
+    }
+    return (this.prisma as any).lucaFetchJob.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+  }
+
   async getJob(jobId: string, tenantId: string) {
     const job = await (this.prisma as any).lucaFetchJob.findUnique({
       where: { id: jobId },
@@ -219,21 +284,42 @@ export class LucaService {
     return job;
   }
 
+  async requeueJobForAgent(jobId: string, tenantId: string, reason?: string) {
+    const job = await (this.prisma as any).lucaFetchJob.findUnique({
+      where: { id: jobId },
+    });
+    if (!job || job.tenantId !== tenantId) {
+      throw new NotFoundException('Luca fetch job bulunamadı');
+    }
+    if (job.status === 'done' || job.status === 'cancelled') return job;
+    const line = reason
+      ? `Teknik kilit temizlendi; iş tekrar sıraya alındı: ${reason}`
+      : 'Teknik kilit temizlendi; iş tekrar sıraya alındı';
+    await this.appendJobLog(jobId, line);
+    return (this.prisma as any).lucaFetchJob.update({
+      where: { id: jobId },
+      data: {
+        status: 'pending',
+        startedAt: null,
+        finishedAt: null,
+      },
+    });
+  }
+
   /**
    * Runner tarafından çağrılır — bekleyen job'ları listeler.
    * Mükellef bilgilerini (lucaSlug, taxNumber, ad) job'a embed eder ki
    * agent Luca'da firma değiştirme kontrolünü yapabilsin.
    */
   async pendingJobsForAgent(tenantId: string, deviceId?: string) {
-    const deviceLockGraceAt = new Date(Date.now() - 15_000);
+    const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId,
         status: 'pending',
         OR: [
-          { targetDeviceId: null },
+          ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
           ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
-          { targetDeviceId: { not: null }, createdAt: { lte: deviceLockGraceAt } },
         ],
       },
       orderBy: { createdAt: 'asc' },
