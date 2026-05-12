@@ -141,6 +141,9 @@ const businessSubCategories = [
   'Diğer',
 ];
 
+const DOCUMENT_BASE_WIDTH = 980;
+const DOCUMENT_BASE_HEIGHT = 1380;
+
 const makeLine = (
   group: AccountingLine['group'],
   accountCode: string,
@@ -278,6 +281,7 @@ function blankDraft(file: File, previewUrl: string): DraftInvoice {
 
 export default function FaturaMuhasebelestirmePage() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const documentStageRef = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<DraftInvoice[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -297,23 +301,34 @@ export default function FaturaMuhasebelestirmePage() {
   const [dashboardSearch, setDashboardSearch] = useState('');
   const [dashboardAccountPlanJob, setDashboardAccountPlanJob] = useState<string | null>(null);
   const [backfillLoading, setBackfillLoading] = useState(false);
+  const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
 
   const selected = drafts.find((d) => d.id === selectedId) || drafts[0] || null;
   const selectedIndex = selected ? drafts.findIndex((d) => d.id === selected.id) : -1;
   const selectedBusinessLedger = isBusinessLedger(selected?.ledgerType);
   const readyCount = drafts.filter((d) => d.status === 'hazir').length;
-  const viewerScale = zoomMode === 'fit' ? 0.82 : zoomMode === 'fit-width' ? 1 : zoom;
+  const fitScale = useMemo(() => {
+    if (!stageSize.width || !stageSize.height) return 0.68;
+    const byWidth = (stageSize.width - 28) / DOCUMENT_BASE_WIDTH;
+    const byHeight = (stageSize.height - 28) / DOCUMENT_BASE_HEIGHT;
+    return Math.max(0.42, Math.min(byWidth, byHeight, 1));
+  }, [stageSize.height, stageSize.width]);
+  const fitWidthScale = useMemo(() => {
+    if (!stageSize.width) return 0.86;
+    return Math.max(0.48, Math.min((stageSize.width - 28) / DOCUMENT_BASE_WIDTH, 1.18));
+  }, [stageSize.width]);
+  const viewerScale = zoomMode === 'fit' ? fitScale : zoomMode === 'fit-width' ? fitWidthScale : zoom;
   const setManualZoom = (value: number) => {
     setZoomMode('manual');
     setZoom(value);
   };
   const fitDocument = () => {
     setZoomMode('fit');
-    setZoom(0.82);
+    setZoom(fitScale);
   };
   const fitDocumentWidth = () => {
     setZoomMode('fit-width');
-    setZoom(1);
+    setZoom(fitWidthScale);
   };
   const dashboardFiltered = useMemo(() => {
     const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
@@ -374,6 +389,20 @@ export default function FaturaMuhasebelestirmePage() {
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  useEffect(() => {
+    const node = documentStageRef.current;
+    if (!node) return;
+    const update = () => setStageSize({ width: node.clientWidth, height: node.clientHeight });
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(node);
+    window.addEventListener('resize', update);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [showDashboard]);
 
   useEffect(() => {
     let alive = true;
@@ -606,9 +635,9 @@ export default function FaturaMuhasebelestirmePage() {
   };
 
   return (
-    <main className="invoice-accounting-dark min-h-screen bg-[#0f0d0a] text-[#f7eedb]">
-      <div className="flex h-[calc(100vh-0px)] min-h-[760px] flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5">
+    <main className="invoice-accounting-dark min-h-0 bg-[#0f0d0a] text-[#f7eedb]">
+      <div className="flex h-[calc(100vh-76px)] min-h-[620px] flex-col overflow-hidden">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white">
               <Receipt size={20} />
@@ -753,11 +782,11 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </section>
         ) : (
-        <section className="invoice-workbench grid flex-1 grid-cols-[minmax(680px,1fr)_minmax(520px,600px)] overflow-hidden">
+        <section className="invoice-workbench grid flex-1 overflow-hidden">
           <div className="invoice-document-area flex min-w-0 flex-col">
             <div className="invoice-document-toolbar flex h-12 items-center justify-between border-b border-[#c6d0dc] px-4">
               <div className="flex items-center gap-2">
-                <button className="tool-icon" onClick={() => setManualZoom(Math.max(0.65, zoom - 0.1))} title="Uzaklaştır">
+                <button className="tool-icon" onClick={() => setManualZoom(Math.max(0.45, zoom - 0.1))} title="Uzaklaştır">
                   <ZoomOut size={16} />
                 </button>
                 <button
@@ -777,7 +806,7 @@ export default function FaturaMuhasebelestirmePage() {
                 <input
                   className="zoom-slider"
                   type="range"
-                  min="0.65"
+                  min="0.45"
                   max="1.9"
                   step="0.05"
                   value={zoom}
@@ -815,14 +844,14 @@ export default function FaturaMuhasebelestirmePage() {
                 <button onClick={() => inputRef.current?.click()} className="mt-5 rounded-md bg-[#1d77d3] px-4 py-2 text-sm font-semibold text-white">Dosya Seç</button>
               </div>
             ) : (
-              <div className="document-stage">
+              <div className="document-stage" ref={documentStageRef}>
                 <div
                   className="document-scale-wrap"
                   style={{
                     transform: 'scale(' + viewerScale + ') rotate(' + rotation + 'deg)',
-                    transformOrigin: 'top center',
-                    width: viewerScale < 1 ? String(100 / viewerScale) + '%' : '100%',
-                    minHeight: viewerScale < 1 ? String(100 / viewerScale) + '%' : '100%',
+                    transformOrigin: 'top left',
+                    width: Math.ceil(DOCUMENT_BASE_WIDTH * viewerScale),
+                    minHeight: Math.ceil(DOCUMENT_BASE_HEIGHT * viewerScale),
                   }}
                 >
                   {selected.previewType === 'image' ? (
@@ -993,8 +1022,8 @@ export default function FaturaMuhasebelestirmePage() {
         }
         .invoice-accounting-dark > div > header h1 { color: #fff7df !important; }
         .invoice-accounting-dark > div > header p { color: #d8cda5 !important; }
-        .invoice-workbench { background: #17130e; border-top: 1px solid #302615; }
-        .invoice-document-area { background: #dfe5eb; border-right: 3px solid #b9c3ce; }
+        .invoice-workbench { grid-template-columns: minmax(760px, 1fr) minmax(420px, 520px); background: #17130e; border-top: 1px solid #302615; }
+        .invoice-document-area { min-height: 0; background: #dfe5eb; border-right: 2px solid #b9c3ce; }
         .invoice-document-toolbar { background: #f6f8fb; color: #1e293b; box-shadow: 0 1px 0 rgba(15,23,42,.06); }
         .tool-icon { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #29425f; }
         .tool-pill { display: inline-flex; height: 34px; align-items: center; gap: 6px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; padding: 0 10px; color: #29425f; font-size: 12px; font-weight: 700; }
@@ -1002,34 +1031,34 @@ export default function FaturaMuhasebelestirmePage() {
         .zoom-slider { width: 170px; accent-color: #236fd0; }
         .document-counter { display: inline-flex; align-items: center; gap: 7px; color: #203047; font-weight: 700; }
         .document-counter button { display: inline-flex; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; }
-        .document-stage { flex: 1; overflow: auto; padding: 24px; background: linear-gradient(90deg, rgba(148,163,184,.15) 1px, transparent 1px), linear-gradient(0deg, rgba(148,163,184,.12) 1px, transparent 1px), #e8edf2; background-size: 28px 28px; }
-        .document-scale-wrap { margin: 0 auto; min-width: 760px; transition: transform .14s ease; }
+        .document-stage { flex: 1; min-height: 0; overflow: auto; padding: 14px; background: linear-gradient(90deg, rgba(148,163,184,.12) 1px, transparent 1px), linear-gradient(0deg, rgba(148,163,184,.10) 1px, transparent 1px), #e8edf2; background-size: 28px 28px; }
+        .document-scale-wrap { margin: 0 auto; transition: transform .14s ease; overflow: visible; }
         .document-preview { display: block; margin: 0 auto; border: 1px solid #cbd5e1; background: #fff; box-shadow: 0 16px 36px rgba(15,23,42,.18); }
-        .document-image { max-width: 100%; height: auto; }
-        .document-frame { width: 100%; height: calc(100vh - 210px); min-height: 720px; border-radius: 6px; }
+        .document-image { width: 980px; max-width: none; height: auto; }
+        .document-frame { width: 980px; height: 1380px; border-radius: 6px; }
         .empty-dropzone { margin: 24px; display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; border: 2px dashed #b6c3d1; border-radius: 8px; background: #f8fafc; }
         .empty-dropzone.dragging { border-color: #2474d3; background: #eef6ff; }
-        .review-panel { background: #f3f6fa; color: #172033; border-left: 1px solid #d6dee8; }
-        .review-header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; border-bottom: 1px solid #d7e0eb; background: linear-gradient(90deg, #fff, #f3f7fb); padding: 12px 18px; }
+        .review-panel { min-height: 0; background: #f3f6fa; color: #172033; border-left: 1px solid #d6dee8; }
+        .review-header { display: flex; min-height: 50px; align-items: center; justify-content: space-between; border-bottom: 1px solid #d7e0eb; background: linear-gradient(90deg, #fff, #f3f7fb); padding: 8px 14px; }
         .balance-badge { border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 800; }
         .balance-badge.ok { background: #dff7ea; color: #057047; }
         .balance-badge.warn { background: #fff3cf; color: #9a5a00; }
-        .review-scroll { flex: 1; overflow: auto; padding: 14px 18px 12px; }
+        .review-scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px 8px; }
         .duplicate-band { display: flex; gap: 10px; border: 1px solid #fecaca; border-radius: 6px; background: #fff1f2; color: #9f1239; padding: 10px 12px; }
-        .plan-strip { display: flex; justify-content: space-between; gap: 12px; border: 1px solid #cfe1f8; border-radius: 6px; background: #eaf4ff; color: #335b80; padding: 9px 12px; font-size: 12px; font-weight: 700; }
-        .meta-grid, .info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; margin-bottom: 12px; border: 1px solid #d6e4f3; border-radius: 6px; background: #edf6ff; padding: 12px; }
+        .plan-strip { display: flex; justify-content: space-between; gap: 10px; border: 1px solid #cfe1f8; border-radius: 5px; background: #eaf4ff; color: #335b80; padding: 6px 9px; font-size: 11px; font-weight: 700; }
+        .meta-grid, .info-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 8px; margin-bottom: 8px; border: 1px solid #d6e4f3; border-radius: 5px; background: #edf6ff; padding: 8px; }
         .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); background: transparent; border: 0; padding: 0; }
-        .meta-grid label, .info-grid label, .business-grid label { min-width: 0; color: #52657d; font-size: 12px; font-weight: 800; }
-        .meta-grid input, .meta-grid select, .info-grid input, .business-grid input, .business-grid select, .ledger-row input { margin-top: 5px; height: 34px; width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; padding: 0 10px; color: #0f172a; outline: none; }
+        .meta-grid label, .info-grid label, .business-grid label { min-width: 0; color: #52657d; font-size: 11px; font-weight: 800; }
+        .meta-grid input, .meta-grid select, .info-grid input, .business-grid input, .business-grid select, .ledger-row input { margin-top: 3px; height: 28px; width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; padding: 0 7px; color: #0f172a; outline: none; }
         .ledger-section { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.05); }
-        .ledger-section-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #8bc3ee; background: #f4fbff; padding: 8px 10px; color: #172033; font-weight: 900; }
+        .ledger-section-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #8bc3ee; background: #f4fbff; padding: 6px 8px; color: #172033; font-weight: 900; }
         .ledger-section-head b { color: #ef4444; }
-        .ledger-section-head button, .add-business { display: inline-flex; height: 31px; align-items: center; gap: 6px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; padding: 0 10px; color: #334155; font-size: 12px; font-weight: 800; }
-        .ledger-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 72px 96px 96px 30px; gap: 7px; align-items: center; border-bottom: 1px solid #e5edf6; padding: 8px 10px; }
-        .ledger-row input { margin-top: 0; height: 32px; font-size: 12px; }
+        .ledger-section-head button, .add-business { display: inline-flex; height: 26px; align-items: center; gap: 5px; border: 1px solid #cbd5e1; border-radius: 5px; background: #fff; padding: 0 8px; color: #334155; font-size: 11px; font-weight: 800; }
+        .ledger-row { display: grid; grid-template-columns: 105px minmax(0, 1fr) 54px 84px 84px 24px; gap: 5px; align-items: center; border-bottom: 1px solid #e5edf6; padding: 5px 8px; }
+        .ledger-row input { margin-top: 0; height: 27px; font-size: 11px; }
         .delete-row, .business-card-head button { display: inline-flex; height: 30px; align-items: center; justify-content: center; border-radius: 6px; color: #ef4444; }
         .empty-ledger-row { padding: 12px; color: #64748b; font-size: 12px; }
-        .section-total { display: flex; justify-content: flex-end; gap: 18px; background: #f8fafc; padding: 8px 12px; color: #334155; font-size: 12px; }
+        .section-total { display: flex; justify-content: flex-end; gap: 12px; background: #f8fafc; padding: 5px 9px; color: #334155; font-size: 11px; }
         .business-card { overflow: hidden; border: 1px solid #8bc3ee; border-radius: 6px; background: #b9dcf5; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
         .business-card-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #99c8ed; padding: 8px 10px; }
         .business-card-head span { display: inline-flex; min-width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 6px; background: #9be071; color: #10200d; font-weight: 900; }
@@ -1039,12 +1068,12 @@ export default function FaturaMuhasebelestirmePage() {
         .fold-lines { display: grid; gap: 4px; padding: 0 10px 8px; }
         .fold-lines button { display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: #29445d; padding: 3px 0; font-size: 12px; }
         .business-total { display: flex; justify-content: space-between; background: #e8f5ff; padding: 10px 12px; color: #15324a; font-weight: 900; }
-        .uploaded-strip { border-top: 1px solid #d7e0eb; background: #f8fafc; padding: 10px 14px; }
+        .uploaded-strip { border-top: 1px solid #d7e0eb; background: #f8fafc; padding: 7px 10px; }
         .doc-chip { display: inline-flex; min-width: 180px; align-items: center; gap: 7px; border: 1px solid #d5dde8; border-radius: 6px; background: #fff; padding: 8px 10px; color: #334155; font-size: 12px; }
         .doc-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .doc-chip.active { border-color: #1d77d3; box-shadow: 0 0 0 2px #dbeafe; }
-        .action-bar { display: grid; grid-template-columns: 1.05fr .8fr .8fr .7fr .9fr 1.25fr; gap: 8px; border-top: 1px solid #d7e0eb; background: #eef3f8; padding: 10px 12px; }
-        .action-bar button { display: inline-flex; height: 36px; align-items: center; justify-content: center; gap: 7px; border-radius: 6px; font-size: 12px; font-weight: 900; }
+        .action-bar { display: grid; grid-template-columns: 1fr .72fr .72fr .6fr .78fr 1.18fr; gap: 6px; border-top: 1px solid #d7e0eb; background: #eef3f8; padding: 7px 9px; }
+        .action-bar button { display: inline-flex; height: 31px; align-items: center; justify-content: center; gap: 5px; border-radius: 5px; font-size: 11px; font-weight: 900; }
         .action-bar .secondary { background: #fff4a8; color: #4b3a00; border: 1px solid #ead764; }
         .action-bar .ghost { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
         .action-bar .danger { background: #fff; color: #dc2626; border: 1px solid #fecaca; }
@@ -1052,8 +1081,8 @@ export default function FaturaMuhasebelestirmePage() {
         .action-bar .approve { background: #1877f2; color: #fff; }
         .action-bar button:disabled { opacity: .45; }
         @media (max-width: 1280px) {
-          .invoice-workbench { grid-template-columns: minmax(560px, 1fr) minmax(480px, 560px); }
-          .ledger-row { grid-template-columns: 105px minmax(0,1fr) 58px 82px 82px 28px; }
+          .invoice-workbench { grid-template-columns: minmax(620px, 1fr) minmax(390px, 480px); }
+          .ledger-row { grid-template-columns: 96px minmax(0,1fr) 48px 76px 76px 24px; }
           .action-bar { grid-template-columns: repeat(3, 1fr); }
         }
       `}</style>
