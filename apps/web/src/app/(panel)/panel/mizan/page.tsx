@@ -178,21 +178,28 @@ export default function MizanPage() {
     return challenge;
   }, [lucaSessionQuery.data?.activeChallenge, lucaJobId]);
 
+  const lucaLogText = useMemo(() => lucaLogLines.join('\n'), [lucaLogLines]);
   const lucaDeviceRunning = useMemo(
-    () => (lucaSessionQuery.data?.devices || []).some((device) => device.running),
-    [lucaSessionQuery.data?.devices],
+    () =>
+      (lucaSessionQuery.data?.devices || []).some((device) => device.running)
+      || /Luca agent|Moren Agent|Luca ana sayfasi|Luca guvenlik|Klasik Luca|URL=https:\/\/agiris\.luca\.com\.tr/i.test(lucaLogText),
+    [lucaSessionQuery.data?.devices, lucaLogText],
   );
   const lucaReadyDevice = useMemo(
-    () => (lucaSessionQuery.data?.devices || []).some((device) =>
-      device.running && /auygs\.luca\.com\.tr\/Luca\//i.test(String(device.url || '')),
-    ),
-    [lucaSessionQuery.data?.devices],
+    () =>
+      (lucaSessionQuery.data?.devices || []).some((device) =>
+        device.running && /auygs\.luca\.com\.tr\/Luca\//i.test(String(device.url || '')),
+      )
+      || /Klasik Luca|frm4|Mizan ekrani|auygs\.luca\.com\.tr\/Luca\//i.test(lucaLogText),
+    [lucaSessionQuery.data?.devices, lucaLogText],
   );
   const lucaLoginDevice = useMemo(
-    () => (lucaSessionQuery.data?.devices || []).some((device) =>
-      device.running && /agiris\.luca\.com\.tr|LUCASSO/i.test(String(device.url || '')),
-    ),
-    [lucaSessionQuery.data?.devices],
+    () =>
+      (lucaSessionQuery.data?.devices || []).some((device) =>
+        device.running && /agiris\.luca\.com\.tr|LUCASSO/i.test(String(device.url || '')),
+      )
+      || /giris ekraninda|LUCASSO|agiris\.luca\.com\.tr/i.test(lucaLogText),
+    [lucaSessionQuery.data?.devices, lucaLogText],
   );
 
   useEffect(() => {

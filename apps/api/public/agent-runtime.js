@@ -4,7 +4,8 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.08';
+  const AGENT_VERSION = '1.37.09';
+  const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -22,7 +23,7 @@
     try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
     delete window.__morenAgent;
   }
-  window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION };
+  window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION, instanceId: AGENT_INSTANCE_ID };
 
   // Loud console banner — F12 açtığında hangi sürümün yüklü olduğunu net görsün
   console.log(
@@ -75,6 +76,25 @@
     } catch (_) {}
   });
   if (window.__morenAgent) window.__morenAgent.deviceId = DEVICE_ID;
+  async function pingAgentStatus(running = true) {
+    try {
+      const agent = isLucaOrigin() ? 'luca' : 'mihsap';
+      await fetch(API + '/agent/status/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+        body: JSON.stringify({
+          agent,
+          running,
+          meta: {
+            url: location.href,
+            deviceId: DEVICE_ID,
+            version: AGENT_VERSION,
+            instanceId: AGENT_INSTANCE_ID,
+          },
+        }),
+      });
+    } catch {}
+  }
   if (!TOKEN) {
     TOKEN = prompt('Moren Agent Token:') || '';
     if (!TOKEN) {
@@ -179,13 +199,17 @@
   }
 
   async function fillLucaLoginFromPortal() {
-    if (!isLucaOrigin() || window !== window.top || lucaLoginBusy) return false;
+    if (!isLucaOrigin() || window !== window.top) return { ok: false, reason: 'Luca top frame degil' };
+    if (lucaLoginBusy) return { ok: true, pending: true };
     const parts = findLoginFormParts();
-    if (!parts?.password) return false;
+    if (!parts?.password) return { ok: false, reason: 'Luca sifre alani bulunamadi' };
     lucaLoginBusy = true;
     try {
       const cred = await getLucaCredentialForAgent();
-      if (!cred?.saved) return false;
+      if (!cred?.saved) {
+        setStatus('Luca sifresi portalda kayitli degil');
+        return { ok: false, reason: 'Luca sifresi portalda kayitli degil' };
+      }
       if (parts.uyeNo && cred.uyeNo) setNativeValue(parts.uyeNo, cred.uyeNo);
       if (parts.username && cred.username) setNativeValue(parts.username, cred.username);
       setNativeValue(parts.password, cred.password || '');
@@ -193,10 +217,10 @@
       if (parts.submit) parts.submit.click();
       else parts.password.form?.requestSubmit?.();
       setStatus('Luca girisi yapiliyor; guvenlik kodu gerekirse portalda acilacak');
-      return true;
+      return { ok: true };
     } catch (e) {
       console.warn('[Moren] Luca credential autofill hata:', e?.message);
-      return false;
+      return { ok: false, reason: e?.message || 'Luca otomatik giris hatasi' };
     } finally {
       setTimeout(() => { lucaLoginBusy = false; }, 4000);
     }
@@ -501,6 +525,7 @@
       if (window !== window.top) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
+      await pingAgentStatus(true);
 
       const pendingUrl = API + '/agent/luca/jobs/pending' + (DEVICE_ID ? ('?deviceId=' + encodeURIComponent(DEVICE_ID)) : '');
       const r = await fetch(pendingUrl, {
@@ -534,7 +559,14 @@
           for (const job of jobs) {
             await logPendingJob(job, `Luca agent giris ekraninda; otomatik giris deneniyor. URL=${url}`);
           }
-          await fillLucaLoginFromPortal().catch(() => {});
+          const loginResult = await fillLucaLoginFromPortal().catch((e) => ({ ok: false, reason: e?.message || String(e) }));
+          if (!loginResult?.ok) {
+            const reason = loginResult?.reason || 'bilinmeyen hata';
+            setStatus(`Luca otomatik giris tamamlanamadi: ${reason}`);
+            for (const job of jobs) {
+              await logPendingJob(job, `Luca otomatik giris tamamlanamadi: ${reason}`);
+            }
+          }
           return;
         }
 
@@ -9887,15 +9919,12 @@
     // v1.36.42: Origin'e göre agent adı (luca vs mihsap) — backend her iki agent için ayrı status tutar.
     const AGENT_NAME = isLucaOrigin() ? 'luca' : 'mihsap';
     let lastPingAt = 0;
-    const sendPing = () =>
-      api('/agent/status/ping', {
-        method: 'POST',
-        body: JSON.stringify({ agent: AGENT_NAME, running: true, meta: { url: location.href, deviceId: DEVICE_ID } }),
-      }).then(() => { lastPingAt = Date.now(); }).catch(() => {});
+    const pingIntervalMs = AGENT_NAME === 'luca' ? 5000 : 30000;
+    const sendPing = () => pingAgentStatus(true).then(() => { lastPingAt = Date.now(); }).catch(() => {});
     await sendPing();
     while (window.__morenAgent.running && !window.__morenAgent.stopRequested) {
       // Heartbeat: 30 sn'de bir ping at — backend "agent canlı" görsün
-      if (Date.now() - lastPingAt > 30000) await sendPing();
+      if (Date.now() - lastPingAt > pingIntervalMs) await sendPing();
       try {
         const cmds = await api('/agent/commands/claim', { method: 'POST', body: JSON.stringify({ agent: AGENT_NAME, deviceId: DEVICE_ID }) });
         if (Array.isArray(cmds) && cmds.length > 0) {
@@ -9939,10 +9968,7 @@
       }
       await sleep(5000);
     }
-    await api('/agent/status/ping', {
-      method: 'POST',
-      body: JSON.stringify({ agent: AGENT_NAME, running: false, meta: { deviceId: DEVICE_ID } }),
-    }).catch(() => {});
+    await pingAgentStatus(false).catch(() => {});
     if (panel) panel.remove();
     delete window.__morenAgent;
   }
