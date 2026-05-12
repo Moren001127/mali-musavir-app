@@ -24,6 +24,10 @@ function classifyTab(url) {
   return null;
 }
 
+function isClassicLucaTab(url) {
+  return /^https?:\/\/auygs\.luca\.com\.tr\/Luca\//i.test(url || '');
+}
+
 async function findAgentTabs() {
   const all = await chrome.tabs.query({});
   return all
@@ -67,8 +71,17 @@ async function ensureAgentTab(kind, opts = {}) {
   const focus = opts.focus !== false;
   if (!AGENT_HOME_URL[wanted]) return { ok: false, error: 'unknown agent' };
   const tabs = await findAgentTabs();
-  const existing = tabs.find((x) => x.kind === wanted);
+  const existing = wanted === 'luca'
+    ? (tabs.find((x) => x.kind === wanted && isClassicLucaTab(x.tab.url)) || tabs.find((x) => x.kind === wanted))
+    : tabs.find((x) => x.kind === wanted);
   if (existing?.tab?.id) {
+    if (wanted === 'luca' && !isClassicLucaTab(existing.tab.url)) {
+      await chrome.tabs.update(existing.tab.id, { url: AGENT_HOME_URL[wanted], active: focus }).catch(() => {});
+      if (focus && existing.tab.windowId) {
+        await chrome.windows.update(existing.tab.windowId, { focused: true }).catch(() => {});
+      }
+      return { ok: true, opened: false, navigated: true, tabId: existing.tab.id, kind: wanted };
+    }
     if (focus) await chrome.tabs.update(existing.tab.id, { active: true }).catch(() => {});
     if (focus && existing.tab.windowId) {
       await chrome.windows.update(existing.tab.windowId, { focused: true }).catch(() => {});

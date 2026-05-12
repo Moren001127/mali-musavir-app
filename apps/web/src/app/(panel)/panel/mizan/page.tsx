@@ -38,7 +38,7 @@ async function wakeLucaAgentForFetch(onStatus?: (status: string) => void) {
     } else {
       return false;
     }
-    await wait(2600);
+    await wait(5200);
     return true;
   } catch (e) {
     console.warn('[Mizan] Luca agent uyandirma basarisiz:', e);
