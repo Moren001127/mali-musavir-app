@@ -1,7 +1,7 @@
 'use client';
 
 import { api } from '@/lib/api';
-import { MessageCircle, Save, Send, Trash2, Users } from 'lucide-react';
+import { Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -39,6 +39,8 @@ const TEXT = '#f8fafc';
 const MUTED = '#cbd5e1';
 const SOFT = '#9ca3af';
 const BORDER = 'rgba(255,255,255,0.14)';
+const ANNOUNCEMENT_LOGO = '/brand/moren-logo-gold.png';
+const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 const initial: Duyuru = {
   id: 'draft',
@@ -134,13 +136,13 @@ export default function DuyurularPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-92px)] bg-[#080704] px-6 py-7 text-white">
+    <div className="min-h-[calc(100vh-92px)] bg-[#080704] px-6 py-7 text-white" style={{ fontFamily: SANS }}>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: GOLD }}>
             Portal
           </div>
-          <h1 className="mt-2 text-[30px] font-semibold leading-tight" style={{ color: TEXT }}>
+          <h1 className="mt-2 text-[30px] font-semibold leading-tight" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
             Duyurular
           </h1>
           <p className="mt-2 text-[14px] font-medium" style={{ color: MUTED }}>
@@ -174,7 +176,7 @@ export default function DuyurularPage() {
               <Field label="Duyuru No" value={draft.no} onChange={(v) => update('no', v)} />
             </div>
             <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
-            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={9} />
+            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={7} />
           </Panel>
 
           <Panel title="Gönderim">
@@ -231,60 +233,96 @@ export default function DuyurularPage() {
 
 function AnnouncementPreview({ draft }: { draft: Duyuru }) {
   return (
-    <div className="mx-auto aspect-square w-full max-w-[740px] overflow-hidden bg-[#f7f4eb] shadow-2xl">
-      <div className="grid h-full grid-cols-[29.5%_70.5%]" style={{ color: NAVY }}>
-        <aside className="flex flex-col items-center bg-[#0d1238] px-7 py-10 text-center text-white">
-          <div className="mb-7 mt-1 flex h-[116px] w-[150px] items-center justify-center">
-            <div>
-              <div className="font-serif text-[86px] leading-none tracking-[-.04em]">M</div>
-              <div className="mx-auto mt-2 h-px w-20 bg-white/45" />
-              <div className="mt-3 text-[11px] font-semibold uppercase tracking-[.28em] text-white/75">Moren</div>
+    <div className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
+      <div
+        className="relative h-[1080px] w-[1080px] origin-top-left overflow-hidden"
+        style={{
+          transform: 'scale(0.5)',
+          background: PAPER,
+          color: NAVY,
+          fontFamily: 'Manrope, Inter, system-ui, sans-serif',
+        }}
+      >
+        <div className="grid h-full grid-cols-[320px_1fr]">
+          <aside className="flex flex-col items-center bg-[#0d1238] px-8 py-14 text-center text-white">
+            <div className="mb-10 flex w-full flex-col items-center">
+              <div className="mb-6 flex h-[170px] w-[200px] items-center justify-center">
+                <img src={ANNOUNCEMENT_LOGO} alt="Moren Mali Müşavirlik" className="h-full w-full object-contain" />
+              </div>
+              <div className="h-[1.5px] w-[60px] bg-white/40" />
             </div>
-          </div>
 
-          <div className="mb-8 h-px w-16 bg-white/35" />
-          <Contact label="Telefon" value="0535 058 74 75" />
-          <Contact label="E-Posta" value="info@morenmusavirlik.com" />
-          <Contact label="Adres" value={'Hastane Mah. Özcan\nTaşkınbaş Cad. No: 16/6\nArnavutköy, İstanbul'} />
-          <Contact label="Web" value="morenmusavirlik.com" />
-        </aside>
-
-        <main className="relative flex min-w-0 flex-col overflow-hidden px-[6.5%] py-[6.8%]" style={{ background: PAPER }}>
-          <div className="absolute left-0 right-0 top-0 h-[18%] bg-[rgba(13,18,56,0.08)]" />
-          <div className="absolute left-0 right-0 top-[5%] h-[11%] rounded-b-[55%] bg-[rgba(13,18,56,0.07)]" />
-          <div className="absolute bottom-0 left-0 right-0 h-[20%] bg-[rgba(13,18,56,0.08)]" />
-          <div className="absolute bottom-[5.5%] left-0 right-0 h-[11%] rounded-t-[55%] bg-[#f7f4eb]" />
-
-          <div className="relative z-10 flex items-start justify-between gap-5">
-            <div className="mt-8 inline-flex items-center gap-3 text-[12px] font-bold uppercase tracking-[.32em]" style={{ color: NAVY }}>
-              <span className="h-px w-7 bg-[#0d1238]" />
-              Duyuru
-              <span className="h-px w-7 bg-[#0d1238]" />
+            <div className="flex flex-1 flex-col justify-between gap-6 py-2">
+              <Contact icon={<Phone />} label="Telefon" value="0535 058 74 75" />
+              <Contact icon={<Mail />} label="E-Posta" value="info@morenmusavirlik.com" />
+              <Contact icon={<MapPin />} label="Adres" value={'Hastane Mah. Özcan\nTaşkınbaş Cad. No: 16/6\nArnavutköy, İstanbul'} />
+              <Contact icon={<Globe />} label="Web" value="morenmusavirlik.com" />
             </div>
-            <div className="whitespace-nowrap text-right font-serif" style={{ color: NAVY }}>
-              <div className="text-[28px] font-semibold leading-none">{draft.tarih}</div>
-              <div className="mt-2 text-[14px] font-medium">No {draft.no}</div>
-            </div>
-          </div>
+          </aside>
 
-          <div className="relative z-10 flex flex-1 flex-col justify-center py-10">
-            <h2 className="max-w-[520px] font-serif text-[50px] font-semibold leading-[1.08] tracking-[-.02em]" style={{ color: NAVY }}>
-              {draft.baslik}
-            </h2>
-            <div className="mt-7 h-px w-full bg-[rgba(13,18,56,0.18)]" />
-            <p className="mt-8 whitespace-pre-line text-justify font-serif text-[24px] leading-[1.58]" style={{ color: '#1f2545' }}>
-              {draft.icerik}
-            </p>
-          </div>
+          <main className="relative flex h-full min-w-0 flex-col overflow-hidden px-[70px] py-[80px]" style={{ background: PAPER }}>
+            <div
+              className="pointer-events-none absolute left-0 right-0 top-0 h-[220px]"
+              style={{
+                background:
+                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 220' preserveAspectRatio='none'><path d='M0,0 L1000,0 L1000,70 Q800,90 600,75 T200,85 T0,80 Z' fill='%230d1238' opacity='0.12'/><path d='M0,0 L1000,0 L1000,40 Q800,60 600,45 T200,55 T0,50 Z' fill='%230d1238' opacity='0.10'/><path d='M0,0 L1000,0 L1000,100 Q750,130 500,110 T0,115 Z' fill='%230d1238' opacity='0.08'/></svg>\") no-repeat top center / 100% 220px",
+              }}
+            />
+            <div
+              className="pointer-events-none absolute bottom-0 left-0 right-0 h-[280px]"
+              style={{
+                background:
+                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 280' preserveAspectRatio='none'><path d='M0,180 Q150,140 300,170 T600,160 T1000,150 L1000,280 L0,280 Z' fill='%230d1238' opacity='0.08'/><path d='M0,210 Q150,180 300,200 T600,190 T1000,180 L1000,280 L0,280 Z' fill='%230d1238' opacity='0.10'/><path d='M0,240 Q200,220 400,235 T800,230 T1000,225 L1000,280 L0,280 Z' fill='%230d1238' opacity='0.12'/></svg>\") no-repeat bottom center / 100% 280px",
+              }}
+            />
 
-          <div className="relative z-10 mt-auto flex justify-end">
-            <div className="text-right" style={{ color: NAVY }}>
-              <div className="mb-3 h-px w-[210px] bg-gradient-to-l from-[#0d1238] to-transparent opacity-60" />
-              <div className="font-serif text-[38px] italic leading-none">Muzaffer Ören</div>
-              <div className="mt-2 font-serif text-[13px] font-semibold italic">Serbest Muhasebeci Mali Müşavir</div>
+            <div className="relative z-10 mb-[50px] flex items-start justify-between">
+              <div className="inline-flex items-center gap-4 text-[13px] font-bold uppercase tracking-[.4em]" style={{ color: NAVY }}>
+                <span className="h-px w-8 bg-[#0d1238]" />
+                Duyuru
+                <span className="h-px w-8 bg-[#0d1238]" />
+              </div>
+              <div
+                className="whitespace-nowrap text-right text-[16px] font-medium leading-normal"
+                style={{ color: NAVY, fontFamily: 'Fraunces, Georgia, serif' }}
+              >
+                <strong className="mb-1 block text-[30px] font-medium leading-none tracking-[-.015em]">{draft.tarih}</strong>
+                No {draft.no}
+              </div>
             </div>
-          </div>
-        </main>
+
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-center py-[60px]">
+              <h2
+                className="m-0 max-w-[650px] text-[64px] font-medium leading-[1.1] tracking-[-.02em]"
+                style={{ color: NAVY, fontFamily: 'Fraunces, Instrument Serif, Georgia, serif' }}
+              >
+                {draft.baslik}
+              </h2>
+              <div className="mb-10 mt-6 h-px max-w-[92%] bg-[rgba(13,18,56,0.18)]" />
+              <p
+                className="whitespace-pre-line text-justify text-[28px] font-normal leading-[1.6]"
+                style={{ color: '#1f2545', fontFamily: 'Source Serif 4, Georgia, serif', textIndent: '2.2em' }}
+              >
+                {draft.icerik}
+              </p>
+            </div>
+
+            <div className="relative z-10 mb-[-70px] mr-[-30px] mt-auto flex justify-end">
+              <div className="relative pt-7 text-right" style={{ color: NAVY }}>
+                <div className="absolute right-0 top-0 h-px w-[280px] bg-gradient-to-l from-[#0d1238] via-[#0d1238] to-transparent opacity-50" />
+                <div
+                  className="inline-block origin-right -rotate-2 text-[48px] font-semibold leading-none tracking-[-.01em]"
+                  style={{ fontFamily: 'Caveat, Brush Script MT, cursive' }}
+                >
+                  Muzaffer Ören
+                </div>
+                <div className="mt-3 text-[16px] font-medium italic tracking-[.01em]" style={{ fontFamily: 'Fraunces, Georgia, serif' }}>
+                  Serbest Muhasebeci Mali Müşavir
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   );
@@ -320,11 +358,24 @@ function ActionButton({
   );
 }
 
-function Contact({ label, value }: { label: string; value: string }) {
+function Contact({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="mb-8 whitespace-pre-line">
-      <div className="mb-2 font-serif text-[12px] font-semibold italic tracking-[.22em] text-white/55">{label}</div>
-      <div className="font-serif text-[14px] font-semibold leading-relaxed">{value}</div>
+    <div className="flex flex-col items-center gap-1.5 whitespace-pre-line">
+      <div className="mb-3 flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/85">
+        {icon}
+      </div>
+      <div
+        className="text-[13px] font-medium uppercase italic tracking-[.28em] text-white/55"
+        style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}
+      >
+        {label}
+      </div>
+      <div
+        className="max-w-[280px] break-words text-[20px] font-normal leading-[1.45] text-white"
+        style={{ fontFamily: 'Source Serif 4, Georgia, serif' }}
+      >
+        {value}
+      </div>
     </div>
   );
 }

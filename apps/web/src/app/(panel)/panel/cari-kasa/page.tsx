@@ -17,6 +17,7 @@ const BORDO = '#9c4656';
 const TEXT = '#f8fafc';
 const MUTED = '#cbd5e1';
 const SOFT = '#a8b0bc';
+const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 type Taxpayer = {
   id: string;
@@ -138,7 +139,7 @@ export default function CariKasaPage() {
   const bekleyenTahsilat = Math.max(Number(bakiye?.bakiye || 0), 0);
 
   return (
-    <div className="p-6 space-y-4 max-w-none">
+    <div className="p-6 space-y-4 max-w-none" style={{ fontFamily: SANS }}>
       <div className="flex items-center justify-between">
         <div className="flex items-start gap-3">
           <button
@@ -153,7 +154,7 @@ export default function CariKasaPage() {
             <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
               Cari Kasa · Detay
             </div>
-            <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT }}>
+            <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
               {selectedAd}
             </h1>
             {selectedTaxpayer?.taxNumber && (
@@ -611,7 +612,7 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(212,184,118,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>{hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}</h3>
+          <h3 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: SANS }}>{hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}</h3>
           <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
         </div>
         <div className="space-y-3">
@@ -687,7 +688,7 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(74,222,128,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#4ade80', fontFamily: 'Fraunces, serif' }}>Tahsilat Ekle</h3>
+          <h3 className="text-[16px] font-bold" style={{ color: '#4ade80', fontFamily: SANS }}>Tahsilat Ekle</h3>
           <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
         </div>
         <div className="space-y-3">
@@ -859,13 +860,13 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4" style={{ fontFamily: SANS }}>
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
             Finansal Takip · Cari
           </div>
-          <h1 className="font-semibold" style={{ fontSize: 34, color: TEXT }}>
+          <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
             Cari Kasa
           </h1>
           <p className="text-[14px] mt-1 font-medium" style={{ color: SOFT }}>

@@ -12,6 +12,7 @@ import {
 
 const GOLD = '#d4b876';
 const BORDO = '#9c4656';
+const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 type Taxpayer = {
   id: string;
@@ -94,13 +95,13 @@ export default function CariKasaPage() {
   });
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-4" style={{ fontFamily: SANS }}>
       <div className="flex items-center justify-between">
         <div>
           <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
             Finansal Takip · Cari
           </div>
-          <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, color: '#fafaf9', letterSpacing: '-.03em' }}>
+          <h1 className="font-semibold" style={{ fontFamily: SANS, fontSize: 30, color: '#fafaf9', letterSpacing: 0 }}>
             Cari Kasa
           </h1>
           <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
@@ -531,7 +532,7 @@ function HizmetModal({ taxpayerId, hizmet, onClose, onSaved }: { taxpayerId: str
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(212,184,118,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>{hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}</h3>
+          <h3 className="text-[16px] font-bold" style={{ color: '#fafaf9', fontFamily: SANS }}>{hizmet ? 'Hizmet Düzenle' : 'Yeni Hizmet'}</h3>
           <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
         </div>
         <div className="space-y-3">
@@ -593,7 +594,7 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div className="rounded-2xl p-6 max-w-md w-full mx-4" style={{ background: '#13110f', border: '1px solid rgba(74,222,128,0.3)' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[16px] font-bold" style={{ color: '#4ade80', fontFamily: 'Fraunces, serif' }}>Tahsilat Ekle</h3>
+          <h3 className="text-[16px] font-bold" style={{ color: '#4ade80', fontFamily: SANS }}>Tahsilat Ekle</h3>
           <button onClick={onClose}><X size={18} style={{ color: 'rgba(250,250,249,0.5)' }} /></button>
         </div>
         <div className="space-y-3">

@@ -29,6 +29,7 @@ const SOFT = '#a8b0bc';
 const DIM = '#7d8794';
 const SURFACE = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.14)';
+const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 export type FinancialAccount = {
   id: string;
@@ -235,11 +236,11 @@ function MetricCard({ label, value, color, icon: Icon, sub }: {
   sub?: string;
 }) {
   return (
-    <div className="rounded-[10px] p-4" style={panel}>
+    <div className="flex min-h-[126px] flex-col justify-between rounded-[10px] p-4" style={panel}>
       <div className="flex items-center gap-2 text-[12.5px] font-semibold" style={{ color: MUTED }}>
         <Icon size={16} style={{ color }} /> {label}
       </div>
-      <div className="mt-2 text-[28px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+      <div className="mt-3 whitespace-nowrap text-[24px] font-bold leading-[1.15] tabular-nums sm:text-[26px]" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
         {fmt(value)} TL
       </div>
       {sub && <div className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>{sub}</div>}
@@ -396,11 +397,11 @@ export function KasaBankaView() {
   const maxMonth = Math.max(...data.months.map((m) => Math.max(m.income, m.expense)), 1);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ fontFamily: SANS }}>
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Kasa/Banka Defteri</div>
-          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Hesap bakiyesi ve nakit akışı</h2>
+          <h2 className="text-[22px] font-semibold mt-1" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>Hesap bakiyesi ve nakit akışı</h2>
         </div>
         <PeriodToolbar
           year={year}
@@ -435,7 +436,7 @@ export function KasaBankaView() {
               </div>
               <span className="text-[12px] font-semibold px-2.5 py-1 rounded-[6px]" style={{ background: 'rgba(255,255,255,0.08)', color: MUTED }}>{account.type}</span>
             </div>
-            <div className="mt-4 text-[30px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: account.color || GOLD }}>
+            <div className="mt-4 whitespace-nowrap text-[27px] font-bold leading-[1.15] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: account.color || GOLD }}>
               {fmt(account.currentBalance)} TL
             </div>
             <div className="grid grid-cols-3 gap-2 mt-4">
@@ -687,11 +688,11 @@ export function GelirGiderTablosuView() {
   const expenseRows = rows.filter((r) => r.type === 'GIDER');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ fontFamily: SANS }}>
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Gelir-Gider Tablosu</div>
-          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Ay ay kategori toplamları</h2>
+          <h2 className="text-[22px] font-semibold mt-1" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>Ay ay kategori toplamları</h2>
         </div>
         <PeriodToolbar year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
       </div>
@@ -817,11 +818,11 @@ export function ButcePlanView() {
   if (isLoading || !data) return <LoadingPanel />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" style={{ fontFamily: SANS }}>
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Bütçe Planı</div>
-          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Planlanan ve gerçekleşen karşılaştırması</h2>
+          <h2 className="text-[22px] font-semibold mt-1" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>Planlanan ve gerçekleşen karşılaştırması</h2>
         </div>
         <PeriodToolbar year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
       </div>
