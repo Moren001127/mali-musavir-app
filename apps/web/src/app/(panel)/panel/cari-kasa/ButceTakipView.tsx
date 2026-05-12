@@ -29,7 +29,8 @@ const SOFT = '#a8b0bc';
 const DIM = '#7d8794';
 const SURFACE = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.14)';
-const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const SANS = 'Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const MONEY = SANS;
 
 export type FinancialAccount = {
   id: string;
@@ -240,7 +241,7 @@ function MetricCard({ label, value, color, icon: Icon, sub }: {
       <div className="flex items-center gap-2 text-[12.5px] font-semibold" style={{ color: MUTED }}>
         <Icon size={16} style={{ color }} /> {label}
       </div>
-      <div className="mt-3 whitespace-nowrap text-[24px] font-bold leading-[1.15] tabular-nums sm:text-[26px]" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+      <div className="mt-3 whitespace-nowrap text-[24px] font-bold leading-[1.15] tabular-nums sm:text-[26px]" style={{ fontFamily: MONEY, color }}>
         {fmt(value)} TL
       </div>
       {sub && <div className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>{sub}</div>}
@@ -436,7 +437,7 @@ export function KasaBankaView() {
               </div>
               <span className="text-[12px] font-semibold px-2.5 py-1 rounded-[6px]" style={{ background: 'rgba(255,255,255,0.08)', color: MUTED }}>{account.type}</span>
             </div>
-            <div className="mt-4 whitespace-nowrap text-[27px] font-bold leading-[1.15] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: account.color || GOLD }}>
+            <div className="mt-4 whitespace-nowrap text-[27px] font-bold leading-[1.15] tabular-nums" style={{ fontFamily: MONEY, color: account.color || GOLD }}>
               {fmt(account.currentBalance)} TL
             </div>
             <div className="grid grid-cols-3 gap-2 mt-4">
@@ -509,7 +510,7 @@ function MiniStat({ label, value, color }: { label: string; value: number; color
   return (
     <div className="rounded-[8px] p-2.5" style={{ background: 'rgba(255,255,255,0.065)' }}>
       <div className="text-[12px] font-semibold" style={{ color: MUTED }}>{label}</div>
-      <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(value)}</div>
+      <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(value)}</div>
     </div>
   );
 }
@@ -658,13 +659,13 @@ function MovementTable({ entries, transfers, onDeleteTransfer }: {
             const color = isTransfer ? BLUE : row.type === 'GELIR' ? GREEN : RED;
             return (
               <tr key={`${row.rowType}-${row.id}`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: TEXT }}>
-                <td className="px-4 py-2 tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{new Date(row.date).toLocaleDateString('tr-TR')}</td>
+                <td className="px-4 py-2 tabular-nums" style={{ fontFamily: MONEY }}>{new Date(row.date).toLocaleDateString('tr-TR')}</td>
                 <td className="px-4 py-2"><span className="px-2.5 py-1 rounded-[6px] text-[11.5px] font-bold" style={{ background: `${color}24`, color }}>{isTransfer ? 'TRANSFER' : row.type}</span></td>
                 <td className="px-4 py-2 font-medium" style={{ color: TEXT }}>
                   {isTransfer ? `${row.fromAccount?.name} → ${row.toAccount?.name}` : `${row.account?.name || 'Hesapsız'} / ${row.category?.name || 'Cari Tahsilat'}`}
                 </td>
                 <td className="px-4 py-2 truncate max-w-[320px]" style={{ color: SOFT }}>{row.description || '-'}</td>
-                <td className="px-4 py-2 text-right font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.amount)} TL</td>
+                <td className="px-4 py-2 text-right font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(row.amount)} TL</td>
                 <td className="px-3 py-2 text-right">
                   {isTransfer && <button onClick={() => onDeleteTransfer(row.id)} className="p-1.5 rounded-[6px]" style={{ color: '#fca5a5', background: 'rgba(248,113,113,0.10)' }}><Trash2 size={12} /></button>}
                 </td>
@@ -745,14 +746,14 @@ function CategoryMatrix({ title, rows, months, color }: { title: string; rows: B
                 {months.map((m) => {
                   const cell = row.months?.find((x) => x.period === m.period);
                   return (
-                    <td key={m.period} className="px-2 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: cell?.actual ? color : DIM }}>
+                    <td key={m.period} className="px-2 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: cell?.actual ? color : DIM }}>
                       {cell?.actual ? fmt(cell.actual) : '-'}
                     </td>
                   );
                 })}
-                <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.annualActual)}</td>
-                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: MUTED }}>{fmt(row.annualPlanned)}</td>
-                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.annualActual - row.annualPlanned >= 0 ? GREEN : RED }}>{fmt(row.annualActual - row.annualPlanned)}</td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(row.annualActual)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: MUTED }}>{fmt(row.annualPlanned)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: row.annualActual - row.annualPlanned >= 0 ? GREEN : RED }}>{fmt(row.annualActual - row.annualPlanned)}</td>
               </tr>
             ))}
           </tbody>
@@ -859,10 +860,10 @@ export function ButcePlanView() {
                   return (
                     <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: TEXT }}>
                       <td className="px-4 py-2 font-semibold"><span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: row.color || color }} />{row.name}</td>
-                      <td className="px-4 py-2 text-right"><input type="number" step="0.01" value={planDraft[row.categoryId] ?? ''} onChange={(e) => setPlanDraft((old) => ({ ...old, [row.categoryId]: e.target.value }))} className="w-[120px] px-2 py-1.5 rounded-[7px] text-right tabular-nums" style={{ ...inputStyle, fontFamily: 'JetBrains Mono, monospace' }} /></td>
-                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.actual)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.variance >= 0 ? GREEN : RED }}>{fmt(row.variance)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: MUTED }}>%{row.realizationPct.toFixed(1)}</td>
+                      <td className="px-4 py-2 text-right"><input type="number" step="0.01" value={planDraft[row.categoryId] ?? ''} onChange={(e) => setPlanDraft((old) => ({ ...old, [row.categoryId]: e.target.value }))} className="w-[120px] px-2 py-1.5 rounded-[7px] text-right tabular-nums" style={{ ...inputStyle, fontFamily: MONEY }} /></td>
+                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(row.actual)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: row.variance >= 0 ? GREEN : RED }}>{fmt(row.variance)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: MUTED }}>%{row.realizationPct.toFixed(1)}</td>
                     </tr>
                   );
                 })}

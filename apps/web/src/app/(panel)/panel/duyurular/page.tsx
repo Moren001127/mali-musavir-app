@@ -1,10 +1,13 @@
 'use client';
 
 import { api } from '@/lib/api';
-import { Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { Download, Edit3, FilePlus2, Globe, Mail, MapPin, MessageCircle, Phone, Save, Send, Trash2, Users } from 'lucide-react';
+import { toJpeg } from 'html-to-image';
+import type { ReactNode, Ref } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+
+type FontStyleKey = 'klasik' | 'resmi' | 'modern';
 
 type Duyuru = {
   id: string;
@@ -12,6 +15,10 @@ type Duyuru = {
   no: string;
   baslik: string;
   icerik: string;
+  baslikPunto: number;
+  icerikPunto: number;
+  baslikStil: FontStyleKey;
+  icerikStil: FontStyleKey;
 };
 
 type Taxpayer = {
@@ -39,8 +46,13 @@ const TEXT = '#f8fafc';
 const MUTED = '#cbd5e1';
 const SOFT = '#9ca3af';
 const BORDER = 'rgba(255,255,255,0.14)';
-const ANNOUNCEMENT_LOGO = '/brand/moren-logo-gold.png';
+const ANNOUNCEMENT_LOGO = '/duyuru-sablonlari/assets/logo-white.png';
 const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const FONT_STYLES: Record<FontStyleKey, { label: string; family: string; weight: number }> = {
+  klasik: { label: 'Klasik', family: 'Fraunces, Instrument Serif, Georgia, serif', weight: 500 },
+  resmi: { label: 'Resmi', family: 'Source Serif 4, Georgia, serif', weight: 500 },
+  modern: { label: 'Modern', family: SANS, weight: 700 },
+};
 
 const initial: Duyuru = {
   id: 'draft',
@@ -49,13 +61,27 @@ const initial: Duyuru = {
   baslik: 'MYK Mesleki Yeterlilik Belgesi Zorunluluğu',
   icerik:
     'Sayın müvekkilimiz, ilgili mevzuat kapsamında işyerinizde çalıştırdığınız personel için mesleki yeterlilik belgesi yükümlülüğü bulunmaktadır. Detaylı bilgi ve süreç takibi için ofisimizle iletişime geçebilirsiniz.',
+  baslikPunto: 64,
+  icerikPunto: 28,
+  baslikStil: 'klasik',
+  icerikStil: 'resmi',
 };
+
+const newDraft = (): Duyuru => ({
+  ...initial,
+  id: 'draft',
+  tarih: new Date().toLocaleDateString('tr-TR'),
+  no: '',
+  baslik: '',
+  icerik: '',
+});
 
 export default function DuyurularPage() {
   const [draft, setDraft] = useState<Duyuru>(initial);
   const [items, setItems] = useState<Duyuru[]>([]);
   const [taxpayers, setTaxpayers] = useState<Taxpayer[]>([]);
   const [sending, setSending] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     try {
@@ -93,7 +119,7 @@ export default function DuyurularPage() {
   const plainMessage = useMemo(() => buildMessage(draft), [draft]);
   const whatsappUrl = useMemo(() => `https://wa.me/?text=${encodeURIComponent(plainMessage)}`, [plainMessage]);
 
-  const update = (key: keyof Duyuru, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  const update = <K extends keyof Duyuru>(key: K, value: Duyuru[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
   const save = () => {
     if (!draft.baslik.trim() || !draft.icerik.trim()) {
@@ -102,11 +128,36 @@ export default function DuyurularPage() {
     }
 
     const saved = { ...draft, id: draft.id === 'draft' ? crypto.randomUUID() : draft.id };
+    const updating = draft.id !== 'draft' && items.some((x) => x.id === draft.id);
     const next = [saved, ...items.filter((x) => x.id !== saved.id)].slice(0, 30);
     setDraft(saved);
     setItems(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    toast.success('Duyuru kaydedildi');
+    toast.success(updating ? 'Duyuru güncellendi' : 'Duyuru kaydedildi');
+  };
+
+  const startNew = () => {
+    setDraft(newDraft());
+    toast.info('Yeni duyuru taslağı açıldı');
+  };
+
+  const downloadJpeg = async () => {
+    if (!previewRef.current) return;
+    try {
+      const dataUrl = await toJpeg(previewRef.current, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: PAPER,
+        cacheBust: true,
+      });
+      const safeNo = (draft.no || 'taslak').replace(/[^\w-]+/g, '-').replace(/-+/g, '-');
+      const link = document.createElement('a');
+      link.download = `moren-duyuru-${safeNo}.jpg`;
+      link.href = dataUrl;
+      link.click();
+    } catch {
+      toast.error('JPEG indirilemedi');
+    }
   };
 
   const sendPortalMessage = async () => {
@@ -151,6 +202,8 @@ export default function DuyurularPage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <ActionButton icon={<FilePlus2 size={17} />} label="Yeni Oluştur" onClick={startNew} tone="dark" />
+          <ActionButton icon={<Download size={17} />} label="JPEG İndir" onClick={downloadJpeg} tone="dark" />
           <ActionButton icon={<Save size={17} />} label="Kaydet" onClick={save} tone="gold" />
           <ActionButton icon={<Send size={17} />} label={sending ? 'Gönderiliyor' : 'Gönder'} onClick={sendPortalMessage} disabled={sending} tone="blue" />
           <a
@@ -166,7 +219,7 @@ export default function DuyurularPage() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(560px,790px)_420px]">
         <section className="rounded-[10px] border p-5" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' }}>
-          <AnnouncementPreview draft={draft} />
+          <AnnouncementPreview draft={draft} exportRef={previewRef} />
         </section>
 
         <aside className="space-y-4">
@@ -177,6 +230,7 @@ export default function DuyurularPage() {
             </div>
             <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
             <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={7} />
+            <TypeControls draft={draft} onChange={update} />
           </Panel>
 
           <Panel title="Gönderim">
@@ -217,6 +271,13 @@ export default function DuyurularPage() {
                         {item.tarih} · Duyuru No {item.no}
                       </div>
                     </button>
+                    <button
+                      onClick={() => setDraft(item)}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-2 text-[12.5px] font-semibold"
+                      style={{ color: GOLD, background: 'rgba(215,194,139,0.10)' }}
+                    >
+                      <Edit3 size={14} /> Düzenle
+                    </button>
                     <button onClick={() => removeItem(item.id, items, setItems, draft, setDraft)} className="rounded-md p-2 text-[#ff7777] hover:bg-[#2a1513]">
                       <Trash2 size={16} />
                     </button>
@@ -231,9 +292,14 @@ export default function DuyurularPage() {
   );
 }
 
-function AnnouncementPreview({ draft }: { draft: Duyuru }) {
+function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: Ref<HTMLDivElement> }) {
+  const titleStyle = FONT_STYLES[draft.baslikStil] || FONT_STYLES.klasik;
+  const bodyStyle = FONT_STYLES[draft.icerikStil] || FONT_STYLES.resmi;
+  const titlePunto = clampPoint(draft.baslikPunto, 64, 34, 78);
+  const bodyPunto = clampPoint(draft.icerikPunto, 28, 18, 34);
+
   return (
-    <div className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
+    <div ref={exportRef} className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
       <div
         className="relative h-[1080px] w-[1080px] origin-top-left overflow-hidden"
         style={{
@@ -293,15 +359,32 @@ function AnnouncementPreview({ draft }: { draft: Duyuru }) {
 
             <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-center py-[60px]">
               <h2
-                className="m-0 max-w-[650px] text-[64px] font-medium leading-[1.1] tracking-[-.02em]"
-                style={{ color: NAVY, fontFamily: 'Fraunces, Instrument Serif, Georgia, serif' }}
+                className="m-0 max-w-[650px] leading-[1.1] tracking-[-.02em]"
+                style={{
+                  color: NAVY,
+                  fontFamily: titleStyle.family,
+                  fontSize: titlePunto,
+                  fontWeight: titleStyle.weight,
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  hyphens: 'auto',
+                }}
               >
                 {draft.baslik}
               </h2>
               <div className="mb-10 mt-6 h-px max-w-[92%] bg-[rgba(13,18,56,0.18)]" />
               <p
-                className="whitespace-pre-line text-justify text-[28px] font-normal leading-[1.6]"
-                style={{ color: '#1f2545', fontFamily: 'Source Serif 4, Georgia, serif', textIndent: '2.2em' }}
+                className="whitespace-pre-line text-justify font-normal leading-[1.6]"
+                style={{
+                  color: '#1f2545',
+                  fontFamily: bodyStyle.family,
+                  fontSize: bodyPunto,
+                  fontWeight: bodyStyle.weight,
+                  textIndent: '2.2em',
+                  overflowWrap: 'anywhere',
+                  wordBreak: 'break-word',
+                  hyphens: 'auto',
+                }}
               >
                 {draft.icerik}
               </p>
@@ -339,12 +422,14 @@ function ActionButton({
   label: string;
   onClick: () => void;
   disabled?: boolean;
-  tone: 'gold' | 'blue';
+  tone: 'gold' | 'blue' | 'dark';
 }) {
   const styles =
     tone === 'gold'
       ? { background: GOLD, color: '#111' }
-      : { background: '#2563eb', color: '#fff' };
+      : tone === 'blue'
+        ? { background: '#2563eb', color: '#fff' }
+        : { background: 'rgba(255,255,255,0.065)', color: TEXT, border: `1px solid ${BORDER}` };
   return (
     <button
       onClick={onClick}
@@ -429,6 +514,110 @@ function Field({
   );
 }
 
+function TypeControls({
+  draft,
+  onChange,
+}: {
+  draft: Duyuru;
+  onChange: <K extends keyof Duyuru>(key: K, value: Duyuru[K]) => void;
+}) {
+  return (
+    <div className="rounded-lg border p-3" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' }}>
+      <div className="mb-3 text-[13px] font-semibold" style={{ color: TEXT }}>
+        Yazı Ayarları
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberControl
+          label="Başlık Punto"
+          min={34}
+          max={78}
+          value={draft.baslikPunto}
+          onChange={(value) => onChange('baslikPunto', value)}
+        />
+        <StyleControl
+          label="Başlık Stil"
+          value={draft.baslikStil}
+          onChange={(value) => onChange('baslikStil', value)}
+        />
+        <NumberControl
+          label="İçerik Punto"
+          min={18}
+          max={34}
+          value={draft.icerikPunto}
+          onChange={(value) => onChange('icerikPunto', value)}
+        />
+        <StyleControl
+          label="İçerik Stil"
+          value={draft.icerikStil}
+          onChange={(value) => onChange('icerikStil', value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[.08em]" style={{ color: MUTED }}>
+        {label}
+      </span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(clampPoint(Number(e.target.value), value, min, max))}
+        className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
+        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
+      />
+    </label>
+  );
+}
+
+function StyleControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: FontStyleKey;
+  onChange: (value: FontStyleKey) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[.08em]" style={{ color: MUTED }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(normalizeStyle(e.target.value))}
+        className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
+        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
+      >
+        {Object.entries(FONT_STYLES).map(([key, option]) => (
+          <option key={key} value={key}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function normalizeDuyuru(item: LegacyDuyuru): Duyuru {
   return {
     id: item.id || crypto.randomUUID(),
@@ -436,7 +625,21 @@ function normalizeDuyuru(item: LegacyDuyuru): Duyuru {
     no: item.no || '',
     baslik: item.baslik || '',
     icerik: item.icerik || item.metin || item.altBaslik || '',
+    baslikPunto: clampPoint(item.baslikPunto, initial.baslikPunto, 34, 78),
+    icerikPunto: clampPoint(item.icerikPunto, initial.icerikPunto, 18, 34),
+    baslikStil: normalizeStyle(item.baslikStil, initial.baslikStil),
+    icerikStil: normalizeStyle(item.icerikStil, initial.icerikStil),
   };
+}
+
+function normalizeStyle(value: unknown, fallback: FontStyleKey = 'klasik'): FontStyleKey {
+  return value === 'klasik' || value === 'resmi' || value === 'modern' ? value : fallback;
+}
+
+function clampPoint(value: unknown, fallback: number, min: number, max: number) {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
 }
 
 function buildMessage(draft: Duyuru) {
@@ -465,6 +668,6 @@ function removeItem(
   const next = items.filter((x) => x.id !== id);
   setItems(next);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  if (draft.id === id) setDraft(initial);
+  if (draft.id === id) setDraft(newDraft());
   toast.success('Duyuru silindi');
 }

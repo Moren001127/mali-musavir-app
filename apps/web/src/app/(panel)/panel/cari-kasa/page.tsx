@@ -17,7 +17,8 @@ const BORDO = '#9c4656';
 const TEXT = '#f8fafc';
 const MUTED = '#cbd5e1';
 const SOFT = '#a8b0bc';
-const SANS = 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const SANS = 'Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const MONEY = SANS;
 
 type Taxpayer = {
   id: string;
@@ -158,7 +159,7 @@ export default function CariKasaPage() {
               {selectedAd}
             </h1>
             {selectedTaxpayer?.taxNumber && (
-              <p className="text-[13px] mt-1" style={{ color: SOFT, fontFamily: 'JetBrains Mono, monospace' }}>
+              <p className="text-[13px] mt-1" style={{ color: SOFT, fontFamily: MONEY }}>
                 {selectedTaxpayer.taxNumber}
               </p>
             )}
@@ -313,7 +314,7 @@ function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: 
       {text ? (
         <div className="text-[14px] font-medium" style={{ color: MUTED }}>{text}</div>
       ) : (
-        <div className={big ? 'text-[28px] font-bold' : 'text-[23px] font-bold'} style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+        <div className={big ? 'text-[28px] font-bold' : 'text-[23px] font-bold'} style={{ fontFamily: MONEY, color }}>
           ₺{fmt(value)}
         </div>
       )}
@@ -351,7 +352,7 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
                   {h.sonTahakkukAy && ` · Son tahakkuk ${h.sonTahakkukAy}`}
                 </div>
               </div>
-              <div className="text-[17px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: GOLD }}>
+              <div className="text-[17px] font-bold tabular-nums" style={{ fontFamily: MONEY, color: GOLD }}>
                 ₺{fmt(h.tutar)}
               </div>
               <button onClick={() => onEdit(h)} className="p-2 rounded-md" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.6)' }} title="Düzenle">
@@ -413,10 +414,10 @@ function HareketlerView({ hareketler, onDelete }: {
                       {h.hizmet?.hizmetAdi && h.aciklama && ' · '}
                       {h.aciklama}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
+                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
                       {borc ? fmt(borc) : '—'}
                     </td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
+                    <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
                       {alacak ? fmt(alacak) : '—'}
                     </td>
                     <td className="px-4 py-2 text-[12.5px] font-medium" style={{ color: SOFT }}>{h.odemeYontemi || '—'}</td>
@@ -530,7 +531,7 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
                 <tbody style={{ color: '#fafaf9' }}>
                   <tr style={{ background: 'rgba(96,165,250,0.05)' }}>
                     <td className="px-4 py-2" colSpan={4}><b>Açılış Bakiyesi</b></td>
-                    <td className="px-4 py-2 text-right tabular-nums font-bold" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(ekstre.acilisBakiye)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums font-bold" style={{ fontFamily: MONEY }}>₺{fmt(ekstre.acilisBakiye)}</td>
                   </tr>
                   {ekstre.satirlar.map((s: any) => {
                     const borc = s.tip === 'TAHAKKUK' ? s.tutar : s.tip === 'IADE' ? -s.tutar : 0;
@@ -543,13 +544,13 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
                           {s.hizmet?.hizmetAdi && s.aciklama && ' · '}
                           {s.aciklama}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
+                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: borc ? '#60a5fa' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
                           {borc ? fmt(borc) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
+                        <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: MONEY }}>
                           {alacak ? fmt(alacak) : '—'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#fafaf9' }}>
+                        <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#fafaf9' }}>
                           ₺{fmt(s.runningBakiye)}
                         </td>
                       </tr>
@@ -557,7 +558,7 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
                   })}
                   <tr style={{ background: 'rgba(156,70,86,0.08)', borderTop: '2px solid rgba(156,70,86,0.3)' }}>
                     <td className="px-4 py-3" colSpan={4}><b style={{ color: BORDO }}>Kapanış Bakiyesi</b></td>
-                    <td className="px-4 py-3 text-right tabular-nums font-bold text-[15px]" style={{ fontFamily: 'JetBrains Mono, monospace', color: BORDO }}>
+                    <td className="px-4 py-3 text-right tabular-nums font-bold text-[15px]" style={{ fontFamily: MONEY, color: BORDO }}>
                       ₺{fmt(ekstre.kapanisBakiye)}
                     </td>
                   </tr>
@@ -1054,24 +1055,24 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
                     <td className="px-4 py-2.5">
                       <div className="font-semibold truncate max-w-[320px]" style={{ color: TEXT }}>{o.ad}</div>
                       {o.taxNumber && (
-                        <div className="text-[12px] font-medium tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: SOFT }}>
+                        <div className="text-[12px] font-medium tabular-nums" style={{ fontFamily: MONEY, color: SOFT }}>
                           {o.taxNumber}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.aylikMuhasebeUcreti ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.aylikMuhasebeUcreti ? '#d4b876' : 'rgba(250,250,249,0.3)' }}>
                       {o.aylikMuhasebeUcreti ? `${fmt(o.aylikMuhasebeUcreti)} ₺` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.tahakkuk ? '#60a5fa' : 'rgba(250,250,249,0.3)' }}>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.tahakkuk ? '#60a5fa' : 'rgba(250,250,249,0.3)' }}>
                       {o.tahakkuk ? `${fmt(o.tahakkuk)} ₺` : '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: o.tahsilat ? '#4ade80' : 'rgba(250,250,249,0.3)' }}>
+                    <td className="px-4 py-2.5 text-right tabular-nums" style={{ fontFamily: MONEY, color: o.tahsilat ? '#4ade80' : 'rgba(250,250,249,0.3)' }}>
                       {o.tahsilat ? `${fmt(o.tahsilat)} ₺` : '—'}
                     </td>
                     <td
                       className="px-4 py-2.5 text-right tabular-nums font-bold"
                       style={{
-                        fontFamily: 'JetBrains Mono, monospace',
+                        fontFamily: MONEY,
                         color: o.bakiye > 0 ? '#fca5a5' : o.bakiye < 0 ? '#86efac' : 'rgba(250,250,249,0.4)',
                       }}
                     >
@@ -1091,16 +1092,16 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
               <tfoot>
                 <tr style={{ background: 'rgba(156,70,86,0.08)', borderTop: '2px solid rgba(156,70,86,0.3)', fontWeight: 700 }}>
                   <td className="px-4 py-3" style={{ color: BORDO }}>TOPLAM ({filtered.length})</td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: GOLD }}>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: GOLD }}>
                     {fmt(toplamlar.ucret)} ₺
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#60a5fa' }}>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#60a5fa' }}>
                     {fmt(toplamlar.tahakkuk)} ₺
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#4ade80' }}>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: '#4ade80' }}>
                     {fmt(toplamlar.tahsilat)} ₺
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: BORDO, fontSize: 14 }}>
+                  <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: BORDO, fontSize: 14 }}>
                     {fmt(toplamlar.bakiye)} ₺
                   </td>
                   <td></td>
@@ -1178,26 +1179,26 @@ function TahsilatAjandasiView({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(156,70,86,0.10)', borderColor: 'rgba(156,70,86,0.32)' }}>
           <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Açık Bakiye</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(toplamBakiye)} TL</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(toplamBakiye)} TL</div>
         </div>
         <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(212,184,118,0.09)', borderColor: 'rgba(212,184,118,0.30)' }}>
           <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Borçlu Mükellef</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>{borcluCount}</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: MONEY }}>{borcluCount}</div>
         </div>
         <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(34,197,94,0.09)', borderColor: 'rgba(34,197,94,0.30)' }}>
           <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>WhatsApp Uygun</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: 'JetBrains Mono, monospace' }}>{whatsappCount}</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: MONEY }}>{whatsappCount}</div>
         </div>
         <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(239,68,68,0.09)', borderColor: 'rgba(239,68,68,0.30)' }}>
           <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>90+ Gün Risk</div>
-          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: 'JetBrains Mono, monospace' }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: MONEY }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {bucketCards.map(([label, value, color]) => (
           <div key={label} className="rounded-[10px] p-4 border" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
             <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
-            <div className="text-[20px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(value)} TL</div>
+            <div className="text-[20px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: MONEY }}>{fmt(value)} TL</div>
           </div>
         ))}
       </div>
@@ -1245,9 +1246,9 @@ function TahsilatAjandasiView({
                     <td className="px-3 py-2"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => onToggle(r.id)} disabled={!r.whatsappUygun} /></td>
                     <td className="px-3 py-2">
                       <button onClick={() => onOpen(r.id)} className="font-semibold text-left hover:underline">{r.ad}</button>
-                      <div className="text-[12px] font-medium" style={{ color: SOFT, fontFamily: 'JetBrains Mono, monospace' }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
+                      <div className="text-[12px] font-medium" style={{ color: SOFT, fontFamily: MONEY }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
                     </td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(r.bakiye)} TL</td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(r.bakiye)} TL</td>
                     <td className="px-3 py-2 text-center"><span className="px-2.5 py-1 rounded-md text-[11.5px] font-bold" style={{ background: r.maxBucket === '90+' ? 'rgba(239,68,68,0.16)' : 'rgba(212,184,118,0.12)', color: r.maxBucket === '90+' ? '#fca5a5' : GOLD }}>{r.maxBucket}</span></td>
                     <td className="px-3 py-2 text-[12.5px] font-medium" style={{ color: MUTED }}>
                       {r.sonTahsilatTarihi ? `Son tahsilat: ${new Date(r.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat yok'}<br />
@@ -1358,7 +1359,7 @@ function IstatistiklerView() {
                   <div key={y.yontem}>
                     <div className="flex justify-between text-[12px] mb-1" style={{ color: '#fafaf9' }}>
                       <span>{y.yontem}</span>
-                      <span className="tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{fmt(y.tutar)} ₺ · %{pct.toFixed(1)}</span>
+                      <span className="tabular-nums" style={{ fontFamily: MONEY }}>{fmt(y.tutar)} ₺ · %{pct.toFixed(1)}</span>
                     </div>
                     <div style={{ background: 'rgba(255,255,255,0.05)', height: 8, borderRadius: 4, overflow: 'hidden' }}>
                       <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #4ade80, #22c55e)' }} />
@@ -1389,9 +1390,9 @@ function IstatistiklerView() {
                   <span className="text-[11px] font-bold w-6" style={{ color: 'rgba(250,250,249,0.4)' }}>#{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{b.ad}</div>
-                    {b.taxNumber && <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>{b.taxNumber}</div>}
+                    {b.taxNumber && <div className="text-[10px]" style={{ color: 'rgba(250,250,249,0.4)', fontFamily: MONEY }}>{b.taxNumber}</div>}
                   </div>
-                  <div className="text-[13px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: BORDO }}>
+                  <div className="text-[13px] font-bold tabular-nums" style={{ fontFamily: MONEY, color: BORDO }}>
                     {fmt(b.bakiye)} ₺
                   </div>
                 </div>
@@ -1411,7 +1412,7 @@ function StatCard({ label, value, text, color, sub, highlight }: { label: string
       borderColor: highlight ? 'rgba(156,70,86,0.34)' : 'rgba(255,255,255,0.14)',
     }}>
       <div className="text-[12.5px] font-semibold mb-2" style={{ color: MUTED }}>{label}</div>
-      <div className="text-[24px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+      <div className="text-[24px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>
         {text ?? `${fmt(value)} ₺`}
       </div>
       {sub && <div className="text-[12.5px] font-medium mt-1" style={{ color: SOFT }}>{sub}</div>}
