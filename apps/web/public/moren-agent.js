@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.06';
+  const AGENT_VERSION = '1.37.07';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -242,6 +242,7 @@
 
   async function bridgeLucaCaptchaToPortal(job, log = null) {
     if (!isLucaOrigin() || window !== window.top) return false;
+    if (!job?.id) return false;
     const parts = findLucaCaptchaParts();
     if (!parts?.image || !parts?.input) return false;
     const signature = `${parts.image.src || ''}|${parts.input.name || parts.input.id || ''}|${location.href}`;
@@ -310,8 +311,9 @@
 
   async function keepLucaLoginAndCaptchaReady() {
     if (!isLucaOrigin() || window !== window.top) return;
-    await bridgeLucaCaptchaToPortal(null).catch(() => {});
-    await fillLucaLoginFromPortal().catch(() => {});
+    // Normal Luca kullanimi kullanicinin kendi ekraninda kalmali.
+    // CAPTCHA/otomatik giris sadece processLucaJobs icinde aktif portal job'u
+    // varken calisir; aksi halde manuel Luca girisindeki kodu sahiplenmeyiz.
   }
   setInterval(keepLucaLoginAndCaptchaReady, 3000);
   setTimeout(keepLucaLoginAndCaptchaReady, 1200);
