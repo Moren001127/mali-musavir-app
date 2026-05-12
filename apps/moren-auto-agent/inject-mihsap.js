@@ -8,9 +8,7 @@
 
   function injectAndRun() {
     if (window.__morenAgent && window.__morenAgent.running) {
-      console.log('[Moren Auto-Agent] Mihsap: agent zaten çalışıyor v' + window.__morenAgent.version);
-      window.dispatchEvent(new CustomEvent('moren-auto-agent-status', { detail: { tab: 'mihsap', status: 'already_running', version: window.__morenAgent.version } }));
-      return;
+      console.log('[Moren Auto-Agent] Mihsap: agent calisiyor v' + window.__morenAgent.version + ' - runtime guncelligi kontrol ediliyor');
     }
     console.log('[Moren Auto-Agent] Mihsap: runtime fetch ediliyor');
     fetch(RUNTIME_URL + '?_t=' + Date.now(), { credentials: 'omit', cache: 'no-store' })
@@ -37,14 +35,10 @@
 
   setTimeout(injectAndRun, 2000); // SPA boot beklesin
 
-  // Self-healing
+  // Self-healing: runtime ayni surumse no-op, eski surumse kendini yeniler.
   setInterval(function () {
-    if (!window.__morenAgent || !window.__morenAgent.running) {
-      console.log('[Moren Auto-Agent] Mihsap: agent dead, re-injecting');
-      window.__morenAutoAgentInjected = false;
-      injectAndRun();
-      window.__morenAutoAgentInjected = true;
-    }
+    if (!window.__morenAgent || !window.__morenAgent.running) console.log('[Moren Auto-Agent] Mihsap: agent dead, re-injecting');
+    injectAndRun();
   }, 120000);
 
   // Manuel restart

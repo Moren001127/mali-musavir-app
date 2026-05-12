@@ -23,7 +23,7 @@
     version: '1.0.1',
     deviceId,
     restartAll: () => sendCommand('restart_all'),
-    openAgent: (target) => sendCommand('open_agent', target),
+    openAgent: (target, options) => sendCommand('open_agent', { target, ...(options || {}) }),
     status: () => sendCommand('status'),
     ping: () => sendCommand('ping'),
   };

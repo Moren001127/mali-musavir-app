@@ -1,6 +1,6 @@
 /* Moren Agent Runner — tarayıcıda Mihsap sekmesi açıkken çalışır.
    Bookmarklet:
-     javascript:(function(){if(window.__morenAgent)return alert('Moren Agent zaten açık');var s=document.createElement('script');s.src='https://portal.morenmusavirlik.com/moren-agent.js?v='+Date.now();document.head.appendChild(s);})();
+     javascript:(function(){var s=document.createElement('script');s.src='https://portal.morenmusavirlik.com/moren-agent.js?v='+Date.now();document.head.appendChild(s);})();
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik

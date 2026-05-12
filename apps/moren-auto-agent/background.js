@@ -62,20 +62,21 @@ async function restartAll() {
   return { tabs: tabs.length, results };
 }
 
-async function ensureAgentTab(kind) {
+async function ensureAgentTab(kind, opts = {}) {
   const wanted = String(kind || '').toLowerCase();
+  const focus = opts.focus !== false;
   if (!AGENT_HOME_URL[wanted]) return { ok: false, error: 'unknown agent' };
   const tabs = await findAgentTabs();
   const existing = tabs.find((x) => x.kind === wanted);
   if (existing?.tab?.id) {
-    await chrome.tabs.update(existing.tab.id, { active: true }).catch(() => {});
-    if (existing.tab.windowId) {
+    if (focus) await chrome.tabs.update(existing.tab.id, { active: true }).catch(() => {});
+    if (focus && existing.tab.windowId) {
       await chrome.windows.update(existing.tab.windowId, { focused: true }).catch(() => {});
     }
     await restartAgentIn(existing.tab.id, wanted);
     return { ok: true, opened: false, tabId: existing.tab.id, kind: wanted };
   }
-  const tab = await chrome.tabs.create({ url: AGENT_HOME_URL[wanted], active: true });
+  const tab = await chrome.tabs.create({ url: AGENT_HOME_URL[wanted], active: focus });
   return { ok: true, opened: true, tabId: tab.id, kind: wanted };
 }
 
@@ -127,7 +128,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg.action === 'restart_all') {
         sendResponse(await restartAll());
       } else if (msg.action === 'open_agent') {
-        sendResponse(await ensureAgentTab(msg.target));
+        const target = typeof msg.target === 'object' && msg.target ? msg.target.target : msg.target;
+        const focus = !(typeof msg.target === 'object' && msg.target && msg.target.focus === false);
+        sendResponse(await ensureAgentTab(target, { focus }));
       } else if (msg.action === 'status') {
         sendResponse(await getStatus());
       } else if (msg.action === 'ping') {

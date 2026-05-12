@@ -36,8 +36,7 @@ function MorenAgentSection() {
   const scriptUrl = `${portalOrigin}/moren-agent.js`;
 
   const bookmarkletCode =
-    `javascript:(function(){if(window.__morenAgent)return alert('Moren Agent zaten açık');` +
-    `var s=document.createElement('script');` +
+    `javascript:(function(){var s=document.createElement('script');` +
     `s.src='${scriptUrl}?v='+Date.now();` +
     `document.head.appendChild(s);})();`;
 

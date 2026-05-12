@@ -21,6 +21,31 @@ const FINANCIAL_AMOUNT_SIZE = 14.5;
 const FINANCIAL_AMOUNT_WEIGHT = 560;
 const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function wakeLucaAgentForFetch(onStatus?: (status: string) => void) {
+  if (typeof window === 'undefined') return false;
+  const bridge = (window as any).__morenAutoAgent;
+  if (!bridge) return false;
+  try {
+    onStatus?.('Luca ajani uyandiriliyor; acik Luca sekmesine guncel runtime yeniden yukleniyor...');
+    if (typeof bridge.openAgent === 'function') {
+      await bridge.openAgent('luca', { focus: false });
+    } else if (typeof bridge.restartAll === 'function') {
+      await bridge.restartAll();
+    } else {
+      return false;
+    }
+    await wait(2600);
+    return true;
+  } catch (e) {
+    console.warn('[Mizan] Luca agent uyandirma basarisiz:', e);
+    return false;
+  }
+}
+
 type Taxpayer = {
   id: string;
   firstName?: string | null;
@@ -110,14 +135,17 @@ export default function MizanPage() {
   const [lucaStatus, setLucaStatus] = useState<string>('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
   const [lucaCaptchaText, setLucaCaptchaText] = useState('');
+  const lucaWakeAttemptRef = useRef<string | null>(null);
 
   const lucaAgentMut = useMutation({
-    mutationFn: () =>
-      mizanApi.fetchFromLucaAgent({
+    mutationFn: async () => {
+      await wakeLucaAgentForFetch(setLucaStatus);
+      return mizanApi.fetchFromLucaAgent({
         mukellefId: taxpayerId,
         donem: toDonem(year, month, donemTipi),
         donemTipi,
-      }),
+      });
+    },
     onSuccess: (d) => {
       setLucaJobId(d.jobId);
       setLucaStatus('Arka planda Luca oturumu hazırlanıyor; güvenlik kodu gerekirse burada açılacak...');
@@ -166,6 +194,24 @@ export default function MizanPage() {
     ),
     [lucaSessionQuery.data?.devices],
   );
+
+  useEffect(() => {
+    if (!lucaJobId || currentChallenge || !lucaDeviceRunning || lucaReadyDevice) return;
+    if (lucaWakeAttemptRef.current === lucaJobId) return;
+    lucaWakeAttemptRef.current = lucaJobId;
+    let cancelled = false;
+    (async () => {
+      const ok = await wakeLucaAgentForFetch(setLucaStatus);
+      if (cancelled) return;
+      if (ok) {
+        await lucaSessionQuery.refetch().catch(() => {});
+        qc.invalidateQueries({ queryKey: ['luca-job', lucaJobId] });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentChallenge, lucaDeviceRunning, lucaJobId, lucaReadyDevice, lucaSessionQuery, qc]);
 
   const answerCaptchaMut = useMutation({
     mutationFn: () => {
@@ -567,11 +613,19 @@ export default function MizanPage() {
               </span>
               {!lucaReadyDevice && (
                 <button
-                  onClick={() => router.push('/panel/ajanlar/luca')}
+                  onClick={async () => {
+                    const ok = await wakeLucaAgentForFetch(setLucaStatus);
+                    if (ok) {
+                      await lucaSessionQuery.refetch().catch(() => {});
+                      if (lucaJobId) qc.invalidateQueries({ queryKey: ['luca-job', lucaJobId] });
+                    } else {
+                      router.push('/panel/ajanlar/luca');
+                    }
+                  }}
                   className="rounded-md px-3 py-1.5 text-xs font-bold"
                   style={{ background: 'rgba(184,160,111,0.16)', color: GOLD, border: '1px solid rgba(184,160,111,0.32)' }}
                 >
-                  Ajan Durumunu Aç
+                  Ajani Yenile
                 </button>
               )}
             </div>

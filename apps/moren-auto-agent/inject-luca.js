@@ -10,9 +10,7 @@
 
   function injectAndRun() {
     if (window.__morenAgent && window.__morenAgent.running) {
-      console.log('[Moren Auto-Agent] Luca: agent zaten çalışıyor v' + window.__morenAgent.version);
-      window.dispatchEvent(new CustomEvent('moren-auto-agent-status', { detail: { tab: 'luca', status: 'already_running', version: window.__morenAgent.version } }));
-      return;
+      console.log('[Moren Auto-Agent] Luca: agent calisiyor v' + window.__morenAgent.version + ' - runtime guncelligi kontrol ediliyor');
     }
     console.log('[Moren Auto-Agent] Luca: runtime fetch ediliyor → ' + RUNTIME_URL);
     fetch(RUNTIME_URL + '?_t=' + Date.now(), { credentials: 'omit', cache: 'no-store' })
@@ -41,14 +39,11 @@
   // İlk yükleme
   setTimeout(injectAndRun, 1500); // frameset hazırlansın
 
-  // Self-healing: her 2 dk'da bir kontrol et, agent ölmüşse yeniden inject
+  // Self-healing: her 2 dk'da bir runtime'i tekrar yukle. Runtime ayni surumse
+  // kendi icinde no-op yapar; eski surumse eski instance'i durdurup yenisini acar.
   setInterval(function () {
-    if (!window.__morenAgent || !window.__morenAgent.running) {
-      console.log('[Moren Auto-Agent] Luca: agent dead, re-injecting');
-      window.__morenAutoAgentInjected = false;
-      injectAndRun();
-      window.__morenAutoAgentInjected = true;
-    }
+    if (!window.__morenAgent || !window.__morenAgent.running) console.log('[Moren Auto-Agent] Luca: agent dead, re-injecting');
+    injectAndRun();
   }, 120000);
 
   // Manuel restart event listener
