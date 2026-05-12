@@ -114,10 +114,18 @@ export const kdvApi = {
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ── */
   /** Luca'dan 191/391 veya işletme defteri verisini otomatik çekmek için
    *  bir fetch job oluşturur. CAPTCHA gerekirse portal içindeki Luca Oturum Yöneticisi gösterir. */
-  importFromLuca: (sessionId: string) =>
-    api
-      .post(`/kdv-control/sessions/${sessionId}/import-from-luca`, {})
-      .then((r) => r.data as { jobId: string; status: string; method?: string; message?: string }),
+  importFromLuca: (sessionId: string, targetDeviceId?: string) => {
+    // earsiv.ts ile aynı sebep: Chrome uzantısının DEV-* deviceId'si
+    // unassigned job'ları alamaz; payload'a ekle ki uzantı kendi job'unu görsün.
+    const autoDeviceId =
+      typeof window !== 'undefined'
+        ? (window as any).__morenAutoAgent?.deviceId
+        : undefined;
+    const effective = targetDeviceId || autoDeviceId;
+    return api
+      .post(`/kdv-control/sessions/${sessionId}/import-from-luca`, effective ? { targetDeviceId: effective } : {})
+      .then((r) => r.data as { jobId: string; status: string; method?: string; message?: string });
+  },
 
   /** Luca fetch job durumu — Mizan'daki getLucaJob ile aynı pattern.
    *  Frontend polling ile job.status ('pending' | 'running' | 'done' | 'failed')
