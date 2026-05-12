@@ -65,6 +65,14 @@ export class EarsivController {
       mukellefAdi,
       targetDeviceId: body.targetDeviceId || undefined,
     });
+    await this.luca
+      .appendJobLog(
+        job.id,
+        body.targetDeviceId
+          ? 'E-Arsiv/E-Fatura cekimi siraya alindi; secili Luca ajani bekleniyor'
+          : 'E-Arsiv/E-Fatura cekimi siraya alindi; Luca ajani bekleniyor',
+      )
+      .catch(() => undefined);
     return { jobId: job.id, status: job.status };
   }
 

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
 import { api } from '@/lib/api';
+import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import { toast } from 'sonner';
 import {
   Download, Search, Users, Calendar, Sparkles, Loader2, FileText,
@@ -768,6 +769,13 @@ export default function EarsivPage() {
                 : lucaSummary.done + lucaSummary.failed + lucaSummary.nofatura + lucaSummary.cancelled === lucaSummary.total ? 'Kapat' : 'Iptal'}
             </button>
           </div>
+
+          <LucaInlineCaptchaPanel
+            jobIds={lucaJobIds.length > 0 ? lucaJobIds : (lucaJobId ? [lucaJobId] : [])}
+            color={GOLD}
+            onAnswered={() => lucaJobIds.forEach((id) => qc.invalidateQueries({ queryKey: ['earsiv-luca-job', id] }))}
+            onCancel={() => cancelLucaJobsMut.mutate()}
+          />
 
           {/* AKTİF JOB BANNER — şu an Luca'da hangi mükellef işleniyor */}
           {(() => {

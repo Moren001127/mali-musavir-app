@@ -755,8 +755,8 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'ajanda' | 'tablo' | 'kasa' | 'gelirGider' | 'butcePlan'>('kasa');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [view, setView] = useState<'tablo' | 'kasa' | 'gelirGider' | 'butcePlan'>('kasa');
+  const [selectedIds] = useState<string[]>([]);
   const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
   const [preview, setPreview] = useState<any | null>(null);
   const [sending, setSending] = useState(false);
@@ -879,7 +879,6 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
       {/* Tablo / İstatistik tab */}
       <div className="flex gap-1.5">
         {([
-          ['ajanda', 'Tahsilat Ajandası'],
           ['tablo', 'Cari Liste'],
           ['kasa', 'Kasa/Banka'],
           ['gelirGider', 'Gelir-Gider Tablosu'],
@@ -903,54 +902,6 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         })}
       </div>
 
-      {(view === 'ajanda' || view === 'tablo') && (
-      <div className="sticky top-0 z-10 rounded-[10px] p-4 border flex items-center gap-3 flex-wrap backdrop-blur" style={{ background: 'rgba(15,13,11,0.92)', borderColor: 'rgba(255,255,255,0.14)' }}>
-        <div className="relative flex-1 min-w-[250px]">
-          <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: SOFT }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Mükellef, VKN veya telefon ara..."
-            className="w-full pl-9 pr-3 py-2.5 rounded-md text-[14px] font-medium outline-none"
-            style={inpStyle}
-          />
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer text-[14px] font-medium" style={{ color: MUTED }}>
-          <input
-            type="checkbox"
-            checked={sadecaBakiyeli}
-            onChange={(e) => setSadecaBakiyeli(e.target.checked)}
-          />
-          <span>Sadece bakiyeli</span>
-        </label>
-        <button
-          onClick={indirExcelToplu}
-          className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5"
-          style={{ background: 'rgba(74,222,128,0.14)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.34)' }}
-        >
-          <Download size={13} /> Toplu Excel
-        </button>
-      </div>
-      )}
-
-      {view === 'ajanda' && (
-        <TahsilatAjandasiView
-          rows={ajandaRows}
-          data={ajanda}
-          isLoading={ajandaLoading}
-          selectedIds={selectedIds}
-          onToggle={(id) => setSelectedIds((old) => old.includes(id) ? old.filter((x) => x !== id) : [...old, id])}
-          onSelectAll={() => setSelectedIds(ajandaRows.filter((r) => r.whatsappUygun).map((r) => r.id))}
-          onClear={() => setSelectedIds([])}
-          onPreview={previewReminder}
-          onSend={sendReminder}
-          sending={sending}
-          preview={preview}
-          onQuickTahsilat={setQuickTahsilatId}
-          onOpen={onSelect}
-        />
-      )}
-
       {view === 'kasa' && <KasaBankaView />}
 
       {view === 'gelirGider' && <GelirGiderTablosuView />}
@@ -959,6 +910,18 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
 
       {view === 'tablo' && (
       <>
+      <TahsilatAjandasiSummary
+        rows={ajandaRows}
+        data={ajanda}
+        isLoading={ajandaLoading}
+        onPreview={previewReminder}
+        onSend={sendReminder}
+        sending={sending}
+        preview={preview}
+        onQuickTahsilat={setQuickTahsilatId}
+        onOpen={onSelect}
+      />
+
       {/* Tarih filtresi */}
       <div className="rounded-[10px] p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
         <div>
@@ -1144,6 +1107,99 @@ function IconBtn({ children, color, title, onClick }: { children: React.ReactNod
 }
 
 // ==================== İSTATİSTİKLER TAB ====================
+
+function TahsilatAjandasiSummary({
+  rows, isLoading, onPreview, onSend, sending, preview, onQuickTahsilat, onOpen,
+}: {
+  rows: TahsilatAjandaRow[];
+  data?: TahsilatAjandasi;
+  isLoading: boolean;
+  onPreview: () => void;
+  onSend: () => void;
+  sending: boolean;
+  preview: any | null;
+  onQuickTahsilat: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  const riskyRows = rows
+    .filter((r) => r.bakiye > 0)
+    .sort((a, b) => b.bakiye - a.bakiye)
+    .slice(0, 5);
+  const toplamBakiye = rows.reduce((sum, r) => sum + Math.max(r.bakiye, 0), 0);
+  const whatsappCount = rows.filter((r) => r.whatsappUygun).length;
+
+  return (
+    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
+      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div>
+          <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Tahsilat Özeti</h3>
+          <p className="mt-0.5 text-[12.5px] font-medium" style={{ color: SOFT }}>
+            Cari liste içinde açık bakiye ve hızlı tahsilat takibi.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={onPreview} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.34)' }}>
+            WhatsApp Önizle
+          </button>
+          <button onClick={onSend} disabled={sending} className="px-3 py-2 rounded-md text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+            {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gönder
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="grid grid-cols-2 gap-2 p-4" style={{ borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+          <SmallSummary label="Açık Bakiye" value={`${fmt(toplamBakiye)} TL`} color={BORDO} />
+          <SmallSummary label="Borçlu" value={rows.filter((r) => r.bakiye > 0).length.toString()} color={GOLD} />
+          <SmallSummary label="WhatsApp" value={whatsappCount.toString()} color="#4ade80" />
+          <SmallSummary label="90+ Risk" value={rows.filter((r) => r.maxBucket === '90+').length.toString()} color="#fca5a5" />
+        </div>
+
+        <div className="min-w-0 p-4">
+          {isLoading ? (
+            <div className="py-5 text-center text-[13px] font-medium" style={{ color: MUTED }}>
+              <Loader2 className="animate-spin inline mr-2" size={15} /> Tahsilat özeti yükleniyor...
+            </div>
+          ) : riskyRows.length === 0 ? (
+            <div className="py-5 text-center text-[13px] font-medium" style={{ color: MUTED }}>
+              Açık tahsilat bakiyesi yok.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {riskyRows.map((row) => (
+                <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_120px_88px] items-center gap-3 rounded-[8px] px-3 py-2" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <button onClick={() => onOpen(row.id)} className="min-w-0 text-left">
+                    <div className="truncate text-[13.5px] font-semibold" style={{ color: TEXT }}>{row.ad}</div>
+                    <div className="truncate text-[12px] font-medium" style={{ color: SOFT }}>{row.phone || 'telefon yok'} · {row.maxBucket}</div>
+                  </button>
+                  <div className="text-right text-[13px] font-bold tabular-nums" style={{ color: BORDO, fontFamily: MONEY }}>{fmt(row.bakiye)} TL</div>
+                  <button onClick={() => onQuickTahsilat(row.id)} className="rounded-[7px] px-2 py-1.5 text-[12px] font-bold" style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.26)' }}>
+                    Tahsilat
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {preview && (
+        <div className="px-4 py-3 text-[13px] font-medium" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: MUTED }}>
+          WhatsApp önizleme: <b style={{ color: '#4ade80' }}>{preview.gonderilecek}</b> gönderilecek, <b style={{ color: '#fca5a5' }}>{preview.atlanacak}</b> atlanacak.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SmallSummary({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="rounded-[8px] px-3 py-2" style={{ background: 'rgba(0,0,0,0.14)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="text-[11.5px] font-semibold" style={{ color: SOFT }}>{label}</div>
+      <div className="mt-1 text-[16px] font-bold tabular-nums" style={{ color, fontFamily: MONEY }}>{value}</div>
+    </div>
+  );
+}
 
 function TahsilatAjandasiView({
   rows, data, isLoading, selectedIds, onToggle, onSelectAll, onClear, onPreview, onSend, sending, preview, onQuickTahsilat, onOpen,

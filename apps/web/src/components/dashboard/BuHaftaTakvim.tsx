@@ -68,21 +68,23 @@ function deadlinesForDate(date: Date): Omit<DeadlineRow, 'date' | 'gunFark'>[] {
     out.push({ title: 'KDV Beyannamesi (KDV1)', subtitle: "Önceki ay KDV beyan ve ödeme · izleyen ayın 28'i", icon: Receipt });
   }
   if (isLastDay) {
-    out.push({ title: 'Form Ba-Bs Bildirimi', subtitle: 'Mal ve hizmet alım/satım bildirimi · ay sonu', icon: FileText });
     out.push({ title: 'Turizm Payı Beyannamesi', subtitle: 'Konaklama, yat, seyahat acentesi · izleyen ayın SON GÜNÜ (23:59)', icon: Bell });
   }
-  if (isLastDay) {
+
+  if (day === 10 || day === 14) {
+    const mukellefGrubu = day === 10 ? 'Gelir vergisi mükellefleri' : 'Kurumlar/diğer mükellefler';
+    const aylikDonem = previousPeriodLabel(date, 4);
     out.push({
       title: 'e-Defter Berat Yükleme (Aylık Tercih)',
-      subtitle: `${previousPeriodLabel(date, 3)} dönemi defter ve berat dosyaları · ay sonu`,
+      subtitle: `${aylikDonem} dönemi · ${mukellefGrubu} · ayın ${day}. günü sonu`,
       icon: Bookmark,
     });
 
-    const quarterPeriod = quarterlyLedgerPeriod(month);
+    const quarterPeriod = quarterlyLedgerPeriodForDueDate(date);
     if (quarterPeriod) {
       out.push({
         title: 'e-Defter Berat Yükleme (Geçici Vergi Dönemi)',
-        subtitle: `${quarterPeriod} dönemi defter ve berat dosyaları · ay sonu`,
+        subtitle: `${quarterPeriod} dönemi · ${mukellefGrubu} · ayın ${day}. günü sonu`,
         icon: Bookmark,
       });
     }
@@ -119,12 +121,16 @@ function previousPeriodLabel(date: Date, monthOffset: number) {
   return monthName(period);
 }
 
-function quarterlyLedgerPeriod(month: number) {
-  if (month === 5) return 'Ocak-Şubat-Mart';
-  if (month === 8) return 'Nisan-Mayıs-Haziran';
-  if (month === 11) return 'Temmuz-Ağustos-Eylül';
-  if (month === 3) return 'Ekim-Kasım-Aralık gelir vergisi mükellefleri';
-  if (month === 4) return 'Ekim-Kasım-Aralık kurumlar vergisi mükellefleri';
+function quarterlyLedgerPeriodForDueDate(date: Date) {
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  if ((month === 6 || month === 9 || month === 12) && (day === 10 || day === 14)) {
+    if (month === 6) return 'Ocak-Şubat-Mart';
+    if (month === 9) return 'Nisan-Mayıs-Haziran';
+    return 'Temmuz-Ağustos-Eylül';
+  }
+  if (month === 4 && day === 10) return 'Ekim-Kasım-Aralık';
+  if (month === 5 && day === 14) return 'Ekim-Kasım-Aralık';
   return null;
 }
 
@@ -223,7 +229,7 @@ export function BuHaftaTakvim() {
         )}
         <span
           className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
-          title="KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Ba-Bs, Turizm ve e-Defter"
+          title="e-Defter: aylık tercih için gelir vergisi mükelleflerinde ayın 10'u, kurumlar/diğer mükelleflerde ayın 14'ü · KDV2: ayın 25'i · MUHSGK/Damga/Konaklama: ayın 26'sı · KDV1: ayın 28'i · Geçici Vergi: Şubat/Mayıs/Ağustos/Kasım 17'si · Ay sonu: Turizm Payı"
           style={{ background: 'rgba(255,255,255,0.045)', color: 'rgba(250,250,249,0.58)', border: '1px solid rgba(255,255,255,0.09)' }}
         >
           {CURRENT_MONTH_LABEL}

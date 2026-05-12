@@ -35,6 +35,10 @@ const SURFACE = 'rgba(255,255,255,0.045)';
 const BORDER = 'rgba(255,255,255,0.14)';
 const SANS = 'Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 const MONEY = SANS;
+const OPTION_STYLE: React.CSSProperties = {
+  background: '#1d1b18',
+  color: TEXT,
+};
 
 export type FinancialAccount = {
   id: string;
@@ -166,6 +170,22 @@ const fmt = (n: number | null | undefined) => {
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const parseMoneyValue = (value: unknown) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const raw = String(value ?? '').replace(/TL|₺/gi, '').replace(/\s/g, '').trim();
+  if (!raw) return 0;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw.replace(/,/g, '');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
+};
+
+const formatMoneyDraft = (value: unknown) => {
+  const n = parseMoneyValue(value);
+  return n ? fmt(n) : '';
+};
+
 const today = () => new Date().toISOString().slice(0, 10);
 const currentPeriod = () => {
   const d = new Date();
@@ -184,6 +204,10 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   fontSize: 14,
   fontWeight: 600,
+};
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  colorScheme: 'dark',
 };
 
 function useBudgetSummary(year: number, period: string) {
@@ -216,17 +240,17 @@ function PeriodToolbar({ year, period, onYear, onPeriod }: {
           value={year}
           onChange={(e) => onYear(Number(e.target.value))}
           className="rounded-[6px] px-3 py-1.5"
-          style={inputStyle}
+          style={selectStyle}
         >
-          {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
+          {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={OPTION_STYLE}>{y}</option>)}
         </select>
         <select
           value={period}
           onChange={(e) => onPeriod(e.target.value)}
           className="rounded-[6px] px-3 py-1.5"
-          style={inputStyle}
+          style={selectStyle}
         >
-          {monthsOf(year).map((p) => <option key={p} value={p}>{p}</option>)}
+          {monthsOf(year).map((p) => <option key={p} value={p} style={OPTION_STYLE}>{p}</option>)}
         </select>
       </div>
     </div>
@@ -425,23 +449,21 @@ export function KasaBankaView() {
         </div>
       )}
 
-      <div className="rounded-[10px] p-4" style={panel}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="rounded-[10px] overflow-hidden" style={panel}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div>
             <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Hesap sayaçları</h3>
             <p className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>Banka, nakit ve transfer akışı aynı düzende izlenir.</p>
           </div>
-          <div className="grid min-w-[520px] grid-cols-4 gap-2 max-lg:min-w-0 max-lg:w-full max-sm:grid-cols-2">
-            <CompactMetricCard label="Toplam" value={data.kpi.totalBalance} color={GOLD} icon={Wallet} />
+          <div className="grid min-w-[500px] grid-cols-4 gap-1.5 max-lg:min-w-0 max-lg:w-full max-sm:grid-cols-2">
+            <CompactMetricCard label="Toplam" value={data.kpi.totalBalance} color={TEXT} icon={Wallet} />
             <CompactMetricCard label="Gelir" value={data.kpi.monthIncome} color={GREEN} icon={ArrowDownLeft} />
             <CompactMetricCard label="Gider" value={data.kpi.monthExpense} color={RED} icon={ArrowUpRight} />
-            <CompactMetricCard label="Net" value={data.kpi.monthNet} color={data.kpi.monthNet >= 0 ? BLUE : RED} icon={Banknote} />
+            <CompactMetricCard label="Net" value={data.kpi.monthNet} color={data.kpi.monthNet >= 0 ? TEXT : RED} icon={Banknote} />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-          {accounts.map((account) => <AccountMeterCard key={account.id} account={account} />)}
-        </div>
+        <AccountLedgerTable accounts={accounts} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
@@ -524,13 +546,56 @@ function CompactMetricCard({ label, value, color, icon: Icon }: {
   icon: React.ElementType;
 }) {
   return (
-    <div className="rounded-[8px] px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.08)' }}>
+    <div className="rounded-[7px] px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
       <div className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: MUTED }}>
-        <Icon size={13} style={{ color }} /> {label}
+        <Icon size={13} style={{ color: color === TEXT ? SOFT : color }} /> {label}
       </div>
-      <div className="mt-1 whitespace-nowrap text-[16px] font-bold tabular-nums" style={{ fontFamily: MONEY, color }}>
-        {fmt(value)}
+      <div className="mt-1 whitespace-nowrap text-[15px] font-semibold tabular-nums" style={{ fontFamily: MONEY, color }}>
+        {fmt(value)} TL
       </div>
+    </div>
+  );
+}
+
+function AccountLedgerTable({ accounts }: { accounts: FinancialAccount[] }) {
+  if (!accounts.length) {
+    return <div className="px-4 py-8 text-center text-[14px] font-medium" style={{ color: SOFT }}>Hesap yok.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-[13.5px]">
+        <thead>
+          <tr style={{ color: MUTED, background: 'rgba(255,255,255,0.025)' }}>
+            <th className="px-4 py-2.5 text-left font-semibold">Hesap</th>
+            <th className="px-4 py-2.5 text-right font-semibold">Güncel Bakiye</th>
+            <th className="px-4 py-2.5 text-right font-semibold">Bu Ay Giriş</th>
+            <th className="px-4 py-2.5 text-right font-semibold">Bu Ay Çıkış</th>
+            <th className="px-4 py-2.5 text-right font-semibold">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {accounts.map((account) => {
+            const typeLabel = account.type === 'NAKIT' ? 'Nakit' : account.type === 'BANKA' ? 'Banka' : account.type;
+            return (
+              <tr key={account.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', color: TEXT }}>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: account.color || GOLD }} />
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{account.name}</div>
+                      <div className="mt-0.5 text-[11.5px] font-medium" style={{ color: DIM }}>{typeLabel}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums font-semibold" style={{ fontFamily: MONEY }}>{fmt(account.currentBalance)} TL</td>
+                <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: account.monthInflow ? GREEN : SOFT }}>{fmt(account.monthInflow)} TL</td>
+                <td className="px-4 py-3 text-right tabular-nums" style={{ fontFamily: MONEY, color: account.monthOutflow ? RED : SOFT }}>{fmt(account.monthOutflow)} TL</td>
+                <td className="px-4 py-3 text-right tabular-nums font-semibold" style={{ fontFamily: MONEY, color: account.monthNet < 0 ? RED : TEXT }}>{fmt(account.monthNet)} TL</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -620,17 +685,20 @@ function EntryForm({ form, setForm, accounts, categories, saving, onSave }: {
           <button onClick={() => setForm((old: any) => ({ ...old, type: 'GIDER' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: form.type === 'GIDER' ? 'rgba(248,113,113,0.22)' : 'rgba(255,255,255,0.06)', color: form.type === 'GIDER' ? RED : MUTED, border: `1px solid ${BORDER}` }}>Gider</button>
         </div>
         <Field label="Hesap">
-          <select value={form.accountId} onChange={(e) => setForm((old: any) => ({ ...old, accountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
-            <option value="">Hesap seçin</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          <select value={form.accountId} onChange={(e) => setForm((old: any) => ({ ...old, accountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={selectStyle}>
+            <option value="" style={OPTION_STYLE}>Hesap seçin</option>
+            {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
           </select>
         </Field>
         <Field label="Kategori">
-          <select value={form.categoryId} onChange={(e) => setForm((old: any) => ({ ...old, categoryId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
-            <option value="">Kategori seçin</option>
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <select value={form.categoryId} onChange={(e) => setForm((old: any) => ({ ...old, categoryId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={selectStyle}>
+            <option value="" style={OPTION_STYLE}>Kategori seçin</option>
+            {categories.map((c) => <option key={c.id} value={c.id} style={OPTION_STYLE}>{c.name}</option>)}
           </select>
         </Field>
+        <div className="rounded-[8px] px-3 py-2 text-[12px] font-medium leading-relaxed" style={{ background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.20)', color: '#bfdbfe' }}>
+          Bu alan ofis gelir/gider hareketidir. Mükellef cari bakiyesine işlemek için Cari Liste içinden Tahsilat Ekle kullanılır.
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Tarih"><input type="date" value={form.date} onChange={(e) => setForm((old: any) => ({ ...old, date: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
           <Field label="Tutar"><input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((old: any) => ({ ...old, amount: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} /></Field>
@@ -659,13 +727,13 @@ function TransferForm({ form, setForm, accounts, saving, onSave }: {
       </div>
       <div className="space-y-2.5">
         <Field label="Çıkış Hesabı">
-          <select value={form.fromAccountId} onChange={(e) => setForm((old: any) => ({ ...old, fromAccountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          <select value={form.fromAccountId} onChange={(e) => setForm((old: any) => ({ ...old, fromAccountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={selectStyle}>
+            {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
           </select>
         </Field>
         <Field label="Giriş Hesabı">
-          <select value={form.toAccountId} onChange={(e) => setForm((old: any) => ({ ...old, toAccountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          <select value={form.toAccountId} onChange={(e) => setForm((old: any) => ({ ...old, toAccountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={selectStyle}>
+            {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
           </select>
         </Field>
         <div className="grid grid-cols-2 gap-2">
@@ -696,11 +764,11 @@ function AccountForm({ form, setForm, saving, onSave }: {
       <div className="grid grid-cols-2 gap-2">
         <Field label="Ad"><input value={form.name} onChange={(e) => setForm((old: any) => ({ ...old, name: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
         <Field label="Tür">
-          <select value={form.type} onChange={(e) => setForm((old: any) => ({ ...old, type: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
-            <option value="BANKA">Banka</option>
-            <option value="NAKIT">Nakit</option>
-            <option value="KREDI_KARTI">Kredi Kartı</option>
-            <option value="DIGER">Diğer</option>
+          <select value={form.type} onChange={(e) => setForm((old: any) => ({ ...old, type: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={selectStyle}>
+            <option value="BANKA" style={OPTION_STYLE}>Banka</option>
+            <option value="NAKIT" style={OPTION_STYLE}>Nakit</option>
+            <option value="KREDI_KARTI" style={OPTION_STYLE}>Kredi Kartı</option>
+            <option value="DIGER" style={OPTION_STYLE}>Diğer</option>
           </select>
         </Field>
         <Field label="Açılış"><input type="number" step="0.01" value={form.openingBalance} onChange={(e) => setForm((old: any) => ({ ...old, openingBalance: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} /></Field>
@@ -709,6 +777,25 @@ function AccountForm({ form, setForm, saving, onSave }: {
       <button onClick={onSave} disabled={saving} className="mt-3 w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
         {saving ? <Loader2 size={14} className="animate-spin inline" /> : 'Hesap Ekle'}
       </button>
+    </div>
+  );
+}
+
+function MoneyPlanInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="relative ml-auto w-[150px]">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => onChange(formatMoneyDraft(value))}
+        className="h-9 w-full rounded-[7px] py-1.5 pl-3 pr-9 text-right tabular-nums"
+        style={{ ...inputStyle, fontFamily: MONEY }}
+      />
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-bold" style={{ color: SOFT }}>
+        TL
+      </span>
     </div>
   );
 }
@@ -865,7 +952,7 @@ export function ButcePlanView() {
   useEffect(() => {
     if (!data) return;
     const next: Record<string, string> = {};
-    for (const row of data.categoryRows) next[row.categoryId] = row.planned ? String(row.planned) : '';
+    for (const row of data.categoryRows) next[row.categoryId] = row.planned ? fmt(row.planned) : '';
     setPlanDraft(next);
   }, [data?.period, data?.categoryRows]);
 
@@ -893,7 +980,7 @@ export function ButcePlanView() {
         period,
         items: data.categoryRows
           .filter((r) => r.isActive)
-          .map((r) => ({ categoryId: r.categoryId, plannedAmount: Number(planDraft[r.categoryId] || 0) })),
+          .map((r) => ({ categoryId: r.categoryId, plannedAmount: parseMoneyValue(planDraft[r.categoryId]) })),
       });
       toast.success('Bütçe planı güncellendi');
       invalidate();
@@ -1002,7 +1089,12 @@ export function ButcePlanView() {
                         {row.name}
                         {!row.isActive && <span className="ml-2 rounded-[6px] px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: 'rgba(255,255,255,0.06)', color: SOFT }}>Pasif</span>}
                       </td>
-                      <td className="px-4 py-2 text-right"><input type="number" step="0.01" value={planDraft[row.categoryId] ?? ''} onChange={(e) => setPlanDraft((old) => ({ ...old, [row.categoryId]: e.target.value }))} className="w-[120px] px-2 py-1.5 rounded-[7px] text-right tabular-nums" style={{ ...inputStyle, fontFamily: MONEY }} /></td>
+                      <td className="px-4 py-2 text-right">
+                        <MoneyPlanInput
+                          value={planDraft[row.categoryId] ?? ''}
+                          onChange={(value) => setPlanDraft((old) => ({ ...old, [row.categoryId]: value }))}
+                        />
+                      </td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color }}>{fmt(row.actual)}</td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: row.variance >= 0 ? GREEN : RED }}>{fmt(row.variance)}</td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: MONEY, color: MUTED }}>%{row.realizationPct.toFixed(1)}</td>

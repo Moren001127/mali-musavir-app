@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
+import { lucaSessionApi } from '@/lib/luca-session';
 import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, AlertTriangle,
@@ -103,11 +104,12 @@ export default function MizanPage() {
   });
 
   // === Portal-first Luca çekimi (multi-user) ===
-  // Job portalda başlar; Luca güvenlik kodu isterse /panel/ajanlar/luca içinde
-  // gösterilir. Kullanıcı ayrı Luca ekranına yönlendirilmez.
+  // Job portalda başlar; Luca güvenlik kodu isterse bu ekranda gösterilir.
+  // Kullanıcı ayrı Luca sekmesine yönlendirilmez.
   const [lucaJobId, setLucaJobId] = useState<string | null>(null);
   const [lucaStatus, setLucaStatus] = useState<string>('');
   const [lucaLogLines, setLucaLogLines] = useState<string[]>([]);
+  const [lucaCaptchaText, setLucaCaptchaText] = useState('');
 
   const lucaAgentMut = useMutation({
     mutationFn: () =>
@@ -118,7 +120,7 @@ export default function MizanPage() {
       }),
     onSuccess: (d) => {
       setLucaJobId(d.jobId);
-      setLucaStatus('Luca oturumu hazırlanıyor — güvenlik kodu gerekirse portalda açılacak…');
+      setLucaStatus('Arka planda Luca oturumu hazırlanıyor; güvenlik kodu gerekirse burada açılacak...');
       setLucaLogLines([]);
       toast.info('Luca job oluşturuldu · güvenlik kodu gerekirse portalda görünecek', { duration: 5000 });
     },
@@ -134,6 +136,59 @@ export default function MizanPage() {
     refetchInterval: 3000,
   });
 
+  const lucaSessionQuery = useQuery({
+    queryKey: ['luca-session-manager-inline', lucaJobId],
+    queryFn: lucaSessionApi.status,
+    enabled: !!lucaJobId,
+    refetchInterval: 2500,
+  });
+
+  const currentChallenge = useMemo(() => {
+    const challenge = lucaSessionQuery.data?.activeChallenge;
+    if (!challenge || challenge.status !== 'pending') return null;
+    if (challenge.jobId && challenge.jobId !== lucaJobId) return null;
+    return challenge;
+  }, [lucaSessionQuery.data?.activeChallenge, lucaJobId]);
+
+  const lucaDeviceRunning = useMemo(
+    () => (lucaSessionQuery.data?.devices || []).some((device) => device.running),
+    [lucaSessionQuery.data?.devices],
+  );
+
+  const answerCaptchaMut = useMutation({
+    mutationFn: () => {
+      if (!currentChallenge) throw new Error('Güvenlik kodu isteği bulunamadı');
+      if (!lucaCaptchaText.trim()) throw new Error('Güvenlik kodunu girin');
+      return lucaSessionApi.answerCaptcha(currentChallenge.id, lucaCaptchaText.trim());
+    },
+    onSuccess: () => {
+      toast.success('Güvenlik kodu Luca ajanına gönderildi');
+      setLucaCaptchaText('');
+      lucaSessionQuery.refetch();
+      if (lucaJobId) qc.invalidateQueries({ queryKey: ['luca-job', lucaJobId] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Güvenlik kodu gönderilemedi'),
+  });
+
+  const cancelLucaMut = useMutation({
+    mutationFn: async () => {
+      if (currentChallenge) {
+        await lucaSessionApi.cancelCaptcha(currentChallenge.id).catch(() => null);
+      }
+      if (lucaJobId) {
+        await mizanApi.cancelLucaJob(lucaJobId);
+      }
+    },
+    onSuccess: () => {
+      toast.info('Luca mizan çekimi iptal edildi');
+      setLucaJobId(null);
+      setLucaStatus('');
+      setLucaLogLines([]);
+      setLucaCaptchaText('');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca işlemi iptal edilemedi'),
+  });
+
   useEffect(() => {
     const d = lucaJobQuery.data as any;
     if (!d) return;
@@ -146,16 +201,16 @@ export default function MizanPage() {
     const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
     setLucaLogLines(lines);
     const lastLine = lines[lines.length - 1] || '';
-    if (s === 'pending') setLucaStatus(lastLine || 'Luca oturumu hazırlanıyor…');
-    else if (s === 'running') setLucaStatus(lastLine || 'Luca’dan Excel çekiliyor…');
+    if (s === 'pending') setLucaStatus(lastLine || 'Luca ajanı işi almak için bekleniyor...');
+    else if (s === 'running') setLucaStatus(lastLine || 'Luca içinde mizan Excel hazırlanıyor...');
     else if (s === 'done') {
-      setLucaStatus('Tamamlandı ✓');
-      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }, 2000);
+      setLucaStatus('Tamamlandı');
+      setTimeout(() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); setLucaCaptchaText(''); }, 2000);
       toast.success('Mizan Luca\'dan çekildi');
       qc.invalidateQueries({ queryKey: ['mizan-list'] });
       if (d?.mizan?.id) router.replace(`/panel/mizan?id=${d.mizan.id}`);
     } else if (s === 'failed') {
-      setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} — kapatmak için İptal'e basın`);
+      setLucaStatus(`Hata: ${lastLine || 'bilinmeyen'} - kapatmak için İptal'e basın`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lucaJobQuery.data]);
@@ -385,7 +440,7 @@ export default function MizanPage() {
               border: '1px solid rgba(184,160,111,0.3)',
               color: GOLD,
             }}
-            title="Güvenlik kodu gerekirse Luca Oturum Yöneticisi içinde gösterilir"
+            title="Güvenlik kodu gerekirse bu ekranda gösterilir"
           >
             {(lucaAgentMut.isPending || !!lucaJobId) ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             {lucaJobId ? 'Luca\'dan Çekiliyor…' : 'Luca\'dan Çek'}
@@ -412,15 +467,101 @@ export default function MizanPage() {
               </div>
             </div>
             <button
-              onClick={() => { setLucaJobId(null); setLucaStatus(''); setLucaLogLines([]); }}
-              className="px-3 py-1.5 rounded-md text-xs"
+              onClick={() => cancelLucaMut.mutate()}
+              disabled={cancelLucaMut.isPending}
+              className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
               style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
             >
-              İptal
+              {cancelLucaMut.isPending ? 'İptal ediliyor...' : 'İptal'}
             </button>
           </div>
-          {/* Log container ARTIK HER ZAMAN GÖRÜNÜR — boş bile olsa kullanıcı
-              bir şey olduğunu görsün, debug için kritik. */}
+          {currentChallenge ? (
+            <div
+              className="mt-3 grid gap-3 rounded-lg p-3 md:grid-cols-[220px_1fr_auto]"
+              style={{
+                background: 'rgba(96,165,250,0.10)',
+                border: '1px solid rgba(96,165,250,0.30)',
+              }}
+            >
+              <div>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: '#bfdbfe' }}>
+                  Luca Güvenlik Kodu
+                </div>
+                {currentChallenge.captchaImage ? (
+                  <img
+                    src={currentChallenge.captchaImage}
+                    alt="Luca güvenlik kodu"
+                    className="h-16 w-full rounded-md object-contain"
+                    style={{ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' }}
+                  />
+                ) : (
+                  <div
+                    className="flex h-16 items-center justify-center rounded-md text-xs"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}
+                  >
+                    Kod görseli bekleniyor
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="mb-2 block text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                  Kodu buraya gir
+                </label>
+                <input
+                  value={lucaCaptchaText}
+                  onChange={(e) => setLucaCaptchaText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && lucaCaptchaText.trim()) answerCaptchaMut.mutate();
+                  }}
+                  autoFocus
+                  className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none"
+                  style={{
+                    background: 'rgba(0,0,0,0.28)',
+                    borderColor: 'rgba(191,219,254,0.35)',
+                    color: '#fafaf9',
+                    letterSpacing: '.08em',
+                  }}
+                />
+                <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                  Ayrı Luca sekmesi açılmadan, bu kod arka plandaki ajana iletilir.
+                </p>
+              </div>
+              <button
+                onClick={() => answerCaptchaMut.mutate()}
+                disabled={answerCaptchaMut.isPending || !lucaCaptchaText.trim()}
+                className="self-end rounded-lg px-4 py-3 text-sm font-bold disabled:opacity-45"
+                style={{ background: '#60a5fa', color: '#06121f' }}
+              >
+                {answerCaptchaMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
+              </button>
+            </div>
+          ) : (
+            <div
+              className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-[12.5px]"
+              style={{
+                background: lucaDeviceRunning ? 'rgba(34,197,94,0.08)' : 'rgba(244,63,94,0.08)',
+                border: `1px solid ${lucaDeviceRunning ? 'rgba(34,197,94,0.22)' : 'rgba(244,63,94,0.22)'}`,
+                color: 'rgba(250,250,249,0.72)',
+              }}
+            >
+              <span>
+                {lucaDeviceRunning
+                  ? 'Arka plan ajanı açık. Güvenlik kodu çıkarsa burada sorulacak.'
+                  : 'Arka plan ajanı açık görünmüyor. Ajan çalışmadan Luca verisi çekilemez.'}
+              </span>
+              {!lucaDeviceRunning && (
+                <button
+                  onClick={() => router.push('/panel/ajanlar/luca')}
+                  className="rounded-md px-3 py-1.5 text-xs font-bold"
+                  style={{ background: 'rgba(184,160,111,0.16)', color: GOLD, border: '1px solid rgba(184,160,111,0.32)' }}
+                >
+                  Ajan Durumunu Aç
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Log container her zaman görünür; boş olsa bile işlem durumunu anlatır. */}
           <div
             className="mt-3 rounded-md p-2.5 text-[11.5px] font-mono space-y-0.5"
             style={{
@@ -434,7 +575,7 @@ export default function MizanPage() {
           >
             {lucaLogLines.length === 0 ? (
               <div style={{ color: 'rgba(250,250,249,0.4)', fontStyle: 'italic' }}>
-                İlk log satırı bekleniyor… Güvenlik kodu gerekirse Luca Oturum Yöneticisi’nde açılacak.
+                Job oluşturuldu. Arka plan ajanı bekleniyor; güvenlik kodu gerekirse bu ekranda açılacak.
               </div>
             ) : (
               lucaLogLines.map((line, i) => {

@@ -573,10 +573,12 @@ export class MorenAiService {
     const sonuncuGun = new Date(year, month, 0).getDate();
     const deadlines: Array<{ gun: number; tip: string; gunFark: number }> = [];
     const inWindow = (g: number) => g >= day && (g - day) <= 7;
+    if (inWindow(10)) deadlines.push({ gun: 10, tip: 'e-Defter berat (gelir vergisi mükellefleri)', gunFark: 10 - day });
+    if (inWindow(14)) deadlines.push({ gun: 14, tip: 'e-Defter berat (kurumlar/diğer mükellefler)', gunFark: 14 - day });
     if (inWindow(17) && [2, 5, 8, 11].includes(month)) deadlines.push({ gun: 17, tip: 'Geçici Vergi', gunFark: 17 - day });
     if (inWindow(26)) deadlines.push({ gun: 26, tip: 'Muhtasar/Damga', gunFark: 26 - day });
     if (inWindow(28)) deadlines.push({ gun: 28, tip: 'KDV', gunFark: 28 - day });
-    if (inWindow(sonuncuGun)) deadlines.push({ gun: sonuncuGun, tip: 'Ay sonu (Ba-Bs vb.)', gunFark: sonuncuGun - day });
+    if (inWindow(sonuncuGun)) deadlines.push({ gun: sonuncuGun, tip: 'Turizm Payı', gunFark: sonuncuGun - day });
     deadlines.sort((a, b) => a.gunFark - b.gunFark);
 
     // --- GÖREVLER

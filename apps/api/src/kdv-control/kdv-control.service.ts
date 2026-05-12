@@ -2180,6 +2180,14 @@ export class KdvControlService {
       createdBy: userId,
       targetDeviceId,
     });
+    await this.luca
+      .appendJobLog(
+        job.id,
+        targetDeviceId
+          ? 'KDV kontrol Luca cekimi siraya alindi; secili ajan bekleniyor'
+          : 'KDV kontrol Luca cekimi siraya alindi; Luca ajani bekleniyor',
+      )
+      .catch(() => undefined);
 
     await this.prisma.kdvControlSession.update({
       where: { id: sessionId },

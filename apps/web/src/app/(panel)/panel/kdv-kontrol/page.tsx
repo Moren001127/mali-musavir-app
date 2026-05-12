@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
 import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
+import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 
 const GOLD = '#d4b876';
 
@@ -327,6 +328,19 @@ export default function KdvKontrolPage() {
       toast.error(msg);
       pushFeed({ group: 'luca', kind: 'err', title: 'Luca\'dan çekme hatası', detail: msg });
     },
+  });
+
+  const cancelLucaJobsMut = useMutation({
+    mutationFn: async () => {
+      await Promise.allSettled(lucaJobs.map((job) => kdvApi.cancelLucaJob(job.id)));
+    },
+    onSuccess: () => {
+      toast.info('Luca çekimi iptal edildi');
+      setLucaJobs([]);
+      setLucaStatus('');
+      setLucaLogLines([]);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca işlemi iptal edilemedi'),
   });
 
   // Job polling
@@ -956,13 +970,20 @@ export default function KdvKontrolPage() {
                 </div>
               </div>
               <button
-                onClick={() => { setLucaJobs([]); setLucaStatus(''); setLucaLogLines([]); }}
-                className="px-3 py-1.5 rounded-md text-xs"
+                onClick={() => cancelLucaJobsMut.mutate()}
+                disabled={cancelLucaJobsMut.isPending}
+                className="px-3 py-1.5 rounded-md text-xs disabled:opacity-50"
                 style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)', border: 0 }}
               >
-                İptal
+                {cancelLucaJobsMut.isPending ? 'İptal ediliyor...' : 'İptal'}
               </button>
             </div>
+            <LucaInlineCaptchaPanel
+              jobIds={lucaJobs.map((job) => job.id)}
+              color="#10b981"
+              onAnswered={() => lucaJobs.forEach((job) => qc.invalidateQueries({ queryKey: ['kdv-luca-job', job.id] }))}
+              onCancel={() => cancelLucaJobsMut.mutate()}
+            />
             {lucaLogLines.length > 0 && (
               <div
                 className="mt-2 p-2 rounded text-xs font-mono overflow-y-auto"

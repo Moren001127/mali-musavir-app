@@ -124,6 +124,9 @@ export const isletmeHesapOzetiApi = {
       finishedAt?: string | null;
     }),
 
+  cancelLucaJob: (jobId: string) =>
+    api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data as any),
+
   exportYil: (taxpayerId: string, yil: number) =>
     api
       .get(`/isletme-hesap-ozeti/export/${taxpayerId}/${yil}`, { responseType: 'arraybuffer' })

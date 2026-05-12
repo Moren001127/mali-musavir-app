@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { currentAgentDeviceId } from '@/lib/agent-device';
+import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import {
   FileCheck, Calendar, Users, Download, AlertCircle, CheckCircle2,
   Loader2, Receipt, TrendingUp, TrendingDown, Sparkles,
@@ -555,6 +556,15 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Job oluşturulamadı'),
   });
 
+  const cancelJobMut = useMutation({
+    mutationFn: () => api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
+    onSuccess: () => {
+      toast.info('Luca çekimi iptal edildi');
+      setJobId(null);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Luca işlemi iptal edilemedi'),
+  });
+
   // Job polling — done olunca snapshot fetch
   const jobQuery = useQuery({
     queryKey: ['kdv-luca-job', jobId],
@@ -623,17 +633,27 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
         </button>
       </div>
 
-      {jobId && lastLogLine && (
-        <div
-          className="rounded-md px-3 py-2 text-[11.5px] font-mono"
-          style={{
-            background: 'rgba(0,0,0,0.35)',
-            border: '1px solid rgba(184,160,111,0.2)',
-            color: 'rgba(250,250,249,0.75)',
-          }}
-        >
-          {lastLogLine}
-        </div>
+      {jobId && (
+        <>
+          <LucaInlineCaptchaPanel
+            jobIds={[jobId]}
+            color="#d4b876"
+            onAnswered={() => qc.invalidateQueries({ queryKey: ['kdv-luca-job', jobId] })}
+            onCancel={() => cancelJobMut.mutate()}
+          />
+          {lastLogLine && (
+            <div
+              className="rounded-md px-3 py-2 text-[11.5px] font-mono"
+              style={{
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(184,160,111,0.2)',
+                color: 'rgba(250,250,249,0.75)',
+              }}
+            >
+              {lastLogLine}
+            </div>
+          )}
+        </>
       )}
 
       {/* KDV-ilgili hesap satırları tablosu */}

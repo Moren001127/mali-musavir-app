@@ -51,15 +51,15 @@ const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Seg
 type FontOption = { label: string; family: string; weight: number; lineHeight: number; letterSpacing?: string };
 
 const TITLE_STYLES: Record<FontStyleKey, FontOption> = {
-  klasik: { label: 'Prestij Serif', family: 'Instrument Serif, Fraunces, Georgia, serif', weight: 400, lineHeight: 1.04, letterSpacing: '-0.018em' },
-  resmi: { label: 'Resmi Başlık', family: 'Fraunces, Source Serif 4, Georgia, serif', weight: 600, lineHeight: 1.08, letterSpacing: '-0.012em' },
-  modern: { label: 'Net Modern', family: SANS, weight: 800, lineHeight: 1.12, letterSpacing: '-0.006em' },
+  klasik: { label: 'Şablon Başlık', family: 'Georgia, "Times New Roman", serif', weight: 600, lineHeight: 1.02, letterSpacing: '-0.028em' },
+  resmi: { label: 'Kurumsal Başlık', family: '"Times New Roman", Georgia, serif', weight: 700, lineHeight: 1.04, letterSpacing: '-0.016em' },
+  modern: { label: 'Sade Başlık', family: SANS, weight: 800, lineHeight: 1.12, letterSpacing: '0' },
 };
 
 const BODY_STYLES: Record<FontStyleKey, FontOption> = {
-  klasik: { label: 'Klasik Metin', family: 'Source Serif 4, Georgia, serif', weight: 400, lineHeight: 1.54, letterSpacing: '0' },
-  resmi: { label: 'Resmi Metin', family: 'Georgia, Source Serif 4, serif', weight: 400, lineHeight: 1.58, letterSpacing: '0' },
-  modern: { label: 'Sade Metin', family: 'Inter, Manrope, system-ui, sans-serif', weight: 500, lineHeight: 1.48, letterSpacing: '0' },
+  klasik: { label: 'Şablon Metin', family: 'Georgia, "Times New Roman", serif', weight: 400, lineHeight: 1.58, letterSpacing: '0.004em' },
+  resmi: { label: 'Resmi Metin', family: '"Times New Roman", Georgia, serif', weight: 400, lineHeight: 1.62, letterSpacing: '0.002em' },
+  modern: { label: 'Sade Metin', family: SANS, weight: 500, lineHeight: 1.48, letterSpacing: '0' },
 };
 
 const initial: Duyuru = {
@@ -153,16 +153,10 @@ export default function DuyurularPage() {
     if (!previewRef.current) return;
     try {
       const dataUrl = await toJpeg(previewRef.current, {
-        quality: 0.95,
-        pixelRatio: 1,
-        width: 1080,
-        height: 1080,
+        quality: 0.98,
+        pixelRatio: 2,
         backgroundColor: PAPER,
         cacheBust: true,
-        style: {
-          width: '1080px',
-          height: '1080px',
-        },
       });
       const safeNo = (draft.no || 'taslak').replace(/[^\w-]+/g, '-').replace(/-+/g, '-');
       const link = document.createElement('a');
@@ -392,7 +386,7 @@ function AnnouncementCanvas({
               </div>
             </div>
 
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start pt-[118px] pb-[160px]">
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start pt-[74px] pb-[150px]">
               <h2
                 className="m-0 max-w-[690px]"
                 style={{
@@ -652,7 +646,7 @@ function StyleControl({
         style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
       >
         {Object.entries(options).map(([key, option]) => (
-          <option key={key} value={key}>
+          <option key={key} value={key} style={{ background: '#11100d', color: TEXT }}>
             {option.label}
           </option>
         ))}

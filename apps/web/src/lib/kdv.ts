@@ -128,6 +128,9 @@ export const kdvApi = {
       .get(`/kdv-control/luca-job/${jobId}`)
       .then((r) => r.data as { job: any; session: any }),
 
+  cancelLucaJob: (jobId: string) =>
+    api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data as any),
+
   /** Excel dosyasını preview et — sütun başlıkları + örnek satırlar döner. */
   previewExcel: (sessionId: string, file: File) => {
     const fd = new FormData();

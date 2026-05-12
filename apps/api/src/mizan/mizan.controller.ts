@@ -138,6 +138,14 @@ export class MizanController {
       createdBy: req.user.sub,
       targetDeviceId: body.targetDeviceId || undefined,
     });
+    await this.lucaService
+      .appendJobLog(
+        job.id,
+        body.targetDeviceId
+          ? 'Mizan cekimi siraya alindi; secili Luca ajani bekleniyor'
+          : 'Mizan cekimi siraya alindi; Luca ajani bekleniyor',
+      )
+      .catch(() => undefined);
     return { jobId: job.id, status: job.status };
   }
 

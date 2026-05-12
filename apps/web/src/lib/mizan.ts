@@ -29,6 +29,8 @@ export const mizanApi = {
       .then((r) => r.data as { jobId: string; status: string }),
   getLucaJob: (jobId: string) =>
     api.get(`/mizan/luca-job/${jobId}`).then((r) => r.data as { job: any; mizan: any }),
+  cancelLucaJob: (jobId: string) =>
+    api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
   uploadExcel: (
     data: { taxpayerId: string; donem: string; donemTipi?: MizanDonemTipi },
     file: File,

@@ -501,6 +501,14 @@ export class IsletmeHesapOzetiService {
       targetDeviceId: params.targetDeviceId,
       mukellefAdi, // [META] mukellefAdi=... olarak errorMsg'e konur
     });
+    await this.luca
+      .appendJobLog(
+        job.id,
+        params.targetDeviceId
+          ? 'Isletme hesap ozeti Luca cekimi siraya alindi; secili ajan bekleniyor'
+          : 'Isletme hesap ozeti Luca cekimi siraya alindi; Luca ajani bekleniyor',
+      )
+      .catch(() => undefined);
 
     return {
       jobId: job.id,

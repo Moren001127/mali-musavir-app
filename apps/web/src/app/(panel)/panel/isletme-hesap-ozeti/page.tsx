@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import {
   isletmeHesapOzetiApi,
   fmtTRY,
@@ -245,6 +246,18 @@ export default function IsletmeHesapOzetiPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Luca çekim başlatılamadı'),
   });
 
+  const cancelLucaJobsMut = useMutation({
+    mutationFn: async () => {
+      const jobs = Object.values(lucaJobs).filter(Boolean) as Array<{ jobId: string }>;
+      await Promise.allSettled(jobs.map((job) => isletmeHesapOzetiApi.cancelLucaJob(job.jobId)));
+    },
+    onSuccess: () => {
+      toast.info('Luca çekimi iptal edildi');
+      setLucaJobs({});
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca işlemi iptal edilemedi'),
+  });
+
   // Job polling — her açık job'u 4 saniyede bir sorgula
   useEffect(() => {
     const activeJobs = Object.entries(lucaJobs).filter(([, j]) => j && (j.status === 'pending' || j.status === 'running'));
@@ -304,6 +317,7 @@ export default function IsletmeHesapOzetiPage() {
 
   const tersDonemler = [4, 3, 2, 1];
   const hicKayitYok = !!yilData && yilData.ceyrekler.every((c) => !c);
+  const activeLucaJobIds = Object.values(lucaJobs).filter(Boolean).map((job: any) => job.jobId);
 
   return (
     <div className="space-y-4">
@@ -324,6 +338,12 @@ export default function IsletmeHesapOzetiPage() {
           </button>
         )}
       </div>
+
+      <LucaInlineCaptchaPanel
+        jobIds={activeLucaJobIds}
+        color={GOLD}
+        onCancel={() => cancelLucaJobsMut.mutate()}
+      />
 
       <div
         className="rounded-xl border border-white/10 p-4"
