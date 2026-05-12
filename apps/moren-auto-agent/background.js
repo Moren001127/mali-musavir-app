@@ -13,7 +13,7 @@ const MIHSAP_PATTERNS = [
   /^https?:\/\/app\.mihsap\.com\//,
 ];
 const AGENT_HOME_URL = {
-  luca: 'https://auygs.luca.com.tr/',
+  luca: 'https://auygs.luca.com.tr/Luca/luca.do',
   mihsap: 'https://app.mihsap.com/',
 };
 

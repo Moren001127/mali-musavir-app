@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.03';
+  const AGENT_VERSION = '1.37.04';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -507,10 +507,10 @@
           return;
         }
 
-        if (/agiris\.luca\.com\.tr/i.test(location.hostname) || /LUCASSO/i.test(location.pathname)) {
+        if (isLucaOrigin()) {
           setStatus('Klasik Luca ekranina geciliyor; mizan orada cekilecek');
           for (const job of jobs) {
-            await logPendingJob(job, `Luca agent LUCASSO ekraninda; klasik Luca ekranina geciliyor. URL=${url}`);
+            await logPendingJob(job, `Luca agent klasik Luca ekraninda degil; klasik Luca ekranina geciliyor. URL=${url}`);
           }
           if (!window.__morenClassicRedirectAt || Date.now() - window.__morenClassicRedirectAt > 20000) {
             window.__morenClassicRedirectAt = Date.now();
