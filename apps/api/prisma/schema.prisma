@@ -28,6 +28,9 @@ model Tenant {
   notifications         Notification[]
   kdvSessions           KdvControlSession[]
   smsTemplate           SmsTemplate?
+  officeBudgetCategories OfficeBudgetCategory[]
+  officeBudgetEntries    OfficeBudgetEntry[]
+  officeBudgetPlans      OfficeBudgetPlan[]
 
   @@map("tenants")
 }
@@ -1825,6 +1828,74 @@ model CariHareket {
   @@index([tenantId, tarih])
   @@index([tenantId, tip])
   @@map("cari_hareketler")
+}
+
+// Ofis ici gelir/gider butce takibi.
+model OfficeBudgetCategory {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  type      String   // "GELIR" | "GIDER"
+  color     String   @default("#d4b876")
+  icon      String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries   OfficeBudgetEntry[]
+  plans     OfficeBudgetPlan[]
+
+  @@unique([tenantId, name, type])
+  @@index([tenantId, type])
+  @@index([tenantId, isActive])
+  @@map("office_budget_categories")
+}
+
+model OfficeBudgetEntry {
+  id            String   @id @default(cuid())
+  tenantId      String
+  categoryId    String
+  date          DateTime
+  period        String   // "2026-05"
+  type          String   // "GELIR" | "GIDER"
+  amount        Decimal  @db.Decimal(14, 2)
+  description   String?
+  paymentMethod String?
+  documentNo    String?
+  source        String   @default("MANUAL")
+  isRecurring   Boolean  @default(false)
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category      OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, period])
+  @@index([tenantId, type])
+  @@index([categoryId, date])
+  @@map("office_budget_entries")
+}
+
+model OfficeBudgetPlan {
+  id            String   @id @default(cuid())
+  tenantId      String
+  categoryId    String
+  period        String   // "2026-05"
+  plannedAmount Decimal  @db.Decimal(14, 2)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category      OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, categoryId, period])
+  @@index([tenantId, period])
+  @@index([categoryId, period])
+  @@map("office_budget_plans")
 }
 
 // === E-ARŞİV / E-FATURA ===

@@ -105,6 +105,72 @@ export class CariKasaController {
     return this.service.tahsilatHatirlatmaSend(req.user.tenantId, body || {});
   }
 
+  // ==================== BÜTÇE TAKİP ====================
+  @Get('budget/categories')
+  budgetCategories(@Req() req: any, @Query('includeInactive') includeInactive?: string) {
+    return this.service.listBudgetCategories(req.user.tenantId, includeInactive === 'true');
+  }
+
+  @Post('budget/categories')
+  createBudgetCategory(@Req() req: any, @Body() body: any) {
+    return this.service.createBudgetCategory(req.user.tenantId, body || {});
+  }
+
+  @Put('budget/categories/:id')
+  updateBudgetCategory(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.updateBudgetCategory(req.user.tenantId, id, body || {});
+  }
+
+  @Delete('budget/categories/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteBudgetCategory(@Req() req: any, @Param('id') id: string) {
+    await this.service.deleteBudgetCategory(req.user.tenantId, id);
+  }
+
+  @Get('budget/entries')
+  budgetEntries(
+    @Req() req: any,
+    @Query('period') period?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.service.listBudgetEntries(req.user.tenantId, { period, type });
+  }
+
+  @Post('budget/entries')
+  createBudgetEntry(@Req() req: any, @Body() body: any) {
+    return this.service.createBudgetEntry(req.user.tenantId, body || {}, req.user.sub);
+  }
+
+  @Put('budget/entries/:id')
+  updateBudgetEntry(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.updateBudgetEntry(req.user.tenantId, id, body || {});
+  }
+
+  @Delete('budget/entries/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteBudgetEntry(@Req() req: any, @Param('id') id: string) {
+    await this.service.deleteBudgetEntry(req.user.tenantId, id);
+  }
+
+  @Get('budget/plans')
+  budgetPlans(@Req() req: any, @Query('period') period?: string) {
+    return this.service.listBudgetPlans(req.user.tenantId, period);
+  }
+
+  @Put('budget/plans')
+  upsertBudgetPlans(@Req() req: any, @Body() body: any) {
+    return this.service.upsertBudgetPlans(req.user.tenantId, body || {});
+  }
+
+  @Get('budget/summary')
+  budgetSummary(
+    @Req() req: any,
+    @Query('year') year?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.service.budgetSummary(req.user.tenantId, { year, period });
+  }
+
   @Get('ozet/xlsx')
   async ozetXlsx(
     @Req() req: any,

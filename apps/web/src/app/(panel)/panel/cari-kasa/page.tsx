@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import ButceTakipView from './ButceTakipView';
 import {
   Wallet, Calendar, Plus, Download, Trash2, Loader2,
   TrendingUp, TrendingDown, X, Edit3, Search, ArrowLeft, FileText, Receipt,
@@ -720,7 +721,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [sadecaBakiyeli, setSadecaBakiyeli] = useState(false);
-  const [view, setView] = useState<'tablo' | 'ajanda'>('ajanda');
+  const [view, setView] = useState<'tablo' | 'ajanda' | 'istatistik' | 'butce'>('ajanda');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [quickTahsilatId, setQuickTahsilatId] = useState<string | null>(null);
   const [preview, setPreview] = useState<any | null>(null);
@@ -843,7 +844,12 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
 
       {/* Tablo / İstatistik tab */}
       <div className="flex gap-1.5">
-        {(['ajanda', 'tablo'] as const).map((t) => {
+        {([
+          ['ajanda', 'Tahsilat Ajandası'],
+          ['tablo', 'Cari Liste'],
+          ['istatistik', 'Gelir Grafikleri'],
+          ['butce', 'Bütçe Takip'],
+        ] as const).map(([t, label]) => {
           const active = view === t;
           return (
             <button
@@ -856,12 +862,13 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
                 border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
               }}
             >
-              {t === 'ajanda' ? 'Tahsilat Ajandası' : 'Cari Liste'}
+              {label}
             </button>
           );
         })}
       </div>
 
+      {(view === 'ajanda' || view === 'tablo') && (
       <div className="sticky top-0 z-10 rounded-2xl p-4 border flex items-center gap-3 flex-wrap backdrop-blur" style={{ background: 'rgba(15,13,11,0.88)', borderColor: 'rgba(255,255,255,0.07)' }}>
         <div className="relative flex-1 min-w-[250px]">
           <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
@@ -889,6 +896,7 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
           <Download size={13} /> Toplu Excel
         </button>
       </div>
+      )}
 
       {view === 'ajanda' && (
         <TahsilatAjandasiView
@@ -907,6 +915,10 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
           onOpen={onSelect}
         />
       )}
+
+      {view === 'istatistik' && <IstatistiklerView />}
+
+      {view === 'butce' && <ButceTakipView />}
 
       {view === 'tablo' && (
       <>

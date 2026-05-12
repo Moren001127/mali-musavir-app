@@ -19,6 +19,58 @@ export class CariKasaService {
     private readonly whatsApp: WhatsAppService,
   ) {}
 
+  private readonly defaultBudgetCategories = [
+    { name: 'Müşteri Tahsilatı', type: 'GELIR', color: '#4ade80', icon: 'wallet', sortOrder: 10 },
+    { name: 'Ek Hizmet Geliri', type: 'GELIR', color: '#60a5fa', icon: 'receipt', sortOrder: 20 },
+    { name: 'Danışmanlık Geliri', type: 'GELIR', color: '#a78bfa', icon: 'briefcase', sortOrder: 30 },
+    { name: 'Diğer Gelir', type: 'GELIR', color: '#d4b876', icon: 'plus', sortOrder: 90 },
+    { name: 'Kira', type: 'GIDER', color: '#f97316', icon: 'building', sortOrder: 10 },
+    { name: 'Personel', type: 'GIDER', color: '#fb7185', icon: 'users', sortOrder: 20 },
+    { name: 'Vergi ve SGK', type: 'GIDER', color: '#facc15', icon: 'file-text', sortOrder: 30 },
+    { name: 'Yazılım ve Abonelik', type: 'GIDER', color: '#38bdf8', icon: 'monitor', sortOrder: 40 },
+    { name: 'Ofis Gideri', type: 'GIDER', color: '#94a3b8', icon: 'package', sortOrder: 50 },
+    { name: 'Ulaşım', type: 'GIDER', color: '#22c55e', icon: 'car', sortOrder: 60 },
+    { name: 'Pazarlama', type: 'GIDER', color: '#c084fc', icon: 'megaphone', sortOrder: 70 },
+    { name: 'Diğer Gider', type: 'GIDER', color: '#ef4444', icon: 'minus', sortOrder: 90 },
+  ];
+
+  private normalizeBudgetType(type?: string) {
+    const value = String(type || '').toUpperCase();
+    if (value !== 'GELIR' && value !== 'GIDER') {
+      throw new BadRequestException('type GELIR veya GIDER olmalı');
+    }
+    return value;
+  }
+
+  private normalizePeriod(period?: string) {
+    const value = period || this.currentPeriod();
+    if (!/^\d{4}-\d{2}$/.test(value)) {
+      throw new BadRequestException('period formatı YYYY-MM olmalı');
+    }
+    const month = Number(value.slice(5, 7));
+    if (month < 1 || month > 12) {
+      throw new BadRequestException('period ayı 01-12 arasında olmalı');
+    }
+    return value;
+  }
+
+  private currentPeriod() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private periodFromDate(date: Date) {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+
+  private yearMonths(year: number) {
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  }
+
+  private taxpayerName(t: any) {
+    return (t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || t?.taxNumber || '').trim();
+  }
+
   // ==================== HİZMET CRUD ====================
 
   async listHizmetler(tenantId: string, taxpayerId?: string) {
@@ -718,6 +770,407 @@ export class CariKasaService {
       results,
       basarili: results.filter((r) => r.ok).length,
       basarisiz: results.filter((r) => !r.ok).length,
+    };
+  }
+
+  // ==================== OFIS BUTCE TAKIBI ====================
+
+  async ensureBudgetCategories(tenantId: string) {
+    const existing = await (this.prisma as any).officeBudgetCategory.findMany({
+      where: { tenantId },
+      select: { name: true, type: true },
+    });
+    const existingKeys = new Set(existing.map((c: any) => `${c.type}:${c.name}`));
+    const missing = this.defaultBudgetCategories
+      .filter((c) => !existingKeys.has(`${c.type}:${c.name}`))
+      .map((c) => ({ ...c, tenantId }));
+
+    if (missing.length) {
+      await (this.prisma as any).officeBudgetCategory.createMany({
+        data: missing,
+        skipDuplicates: true,
+      });
+    }
+
+    return (this.prisma as any).officeBudgetCategory.findMany({
+      where: { tenantId },
+      orderBy: [{ type: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async listBudgetCategories(tenantId: string, includeInactive = false) {
+    await this.ensureBudgetCategories(tenantId);
+    return (this.prisma as any).officeBudgetCategory.findMany({
+      where: includeInactive ? { tenantId } : { tenantId, isActive: true },
+      orderBy: [{ type: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createBudgetCategory(tenantId: string, data: any) {
+    const name = String(data?.name || '').trim();
+    if (!name) throw new BadRequestException('Kategori adı zorunlu');
+    const type = this.normalizeBudgetType(data?.type);
+    return (this.prisma as any).officeBudgetCategory.create({
+      data: {
+        tenantId,
+        name,
+        type,
+        color: data?.color || (type === 'GELIR' ? '#4ade80' : '#ef4444'),
+        icon: data?.icon || null,
+        sortOrder: Number(data?.sortOrder || 100),
+        isActive: data?.isActive !== false,
+      },
+    });
+  }
+
+  private async getBudgetCategory(tenantId: string, categoryId: string) {
+    const category = await (this.prisma as any).officeBudgetCategory.findFirst({
+      where: { tenantId, id: categoryId },
+    });
+    if (!category) throw new NotFoundException('Bütçe kategorisi bulunamadı');
+    return category;
+  }
+
+  async updateBudgetCategory(tenantId: string, id: string, data: any) {
+    await this.getBudgetCategory(tenantId, id);
+    const update: any = {};
+    if (data?.name != null) update.name = String(data.name).trim();
+    if (data?.color != null) update.color = data.color;
+    if (data?.icon !== undefined) update.icon = data.icon || null;
+    if (data?.sortOrder != null) update.sortOrder = Number(data.sortOrder);
+    if (data?.isActive != null) update.isActive = Boolean(data.isActive);
+    return (this.prisma as any).officeBudgetCategory.update({ where: { id }, data: update });
+  }
+
+  async deleteBudgetCategory(tenantId: string, id: string) {
+    await this.getBudgetCategory(tenantId, id);
+    return (this.prisma as any).officeBudgetCategory.update({
+      where: { id },
+      data: { isActive: false },
+    });
+  }
+
+  async listBudgetEntries(tenantId: string, params: { period?: string; type?: string }) {
+    await this.ensureBudgetCategories(tenantId);
+    const where: any = { tenantId, period: this.normalizePeriod(params.period) };
+    if (params.type) where.type = this.normalizeBudgetType(params.type);
+    return (this.prisma as any).officeBudgetEntry.findMany({
+      where,
+      include: { category: true },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async createBudgetEntry(tenantId: string, data: any, createdBy?: string) {
+    const category = await this.getBudgetCategory(tenantId, data?.categoryId);
+    const amount = Number(data?.amount || 0);
+    if (amount <= 0) throw new BadRequestException('Tutar pozitif olmalı');
+    const date = data?.date ? new Date(data.date) : new Date();
+    if (Number.isNaN(date.getTime())) throw new BadRequestException('Tarih geçersiz');
+    return (this.prisma as any).officeBudgetEntry.create({
+      data: {
+        tenantId,
+        categoryId: category.id,
+        date,
+        period: this.periodFromDate(date),
+        type: category.type,
+        amount,
+        description: data?.description?.trim() || null,
+        paymentMethod: data?.paymentMethod || null,
+        documentNo: data?.documentNo?.trim() || null,
+        isRecurring: Boolean(data?.isRecurring),
+        createdBy: createdBy || null,
+      },
+      include: { category: true },
+    });
+  }
+
+  async updateBudgetEntry(tenantId: string, id: string, data: any) {
+    const entry = await (this.prisma as any).officeBudgetEntry.findFirst({ where: { tenantId, id } });
+    if (!entry) throw new NotFoundException('Bütçe hareketi bulunamadı');
+    const update: any = {};
+    if (data?.categoryId) {
+      const category = await this.getBudgetCategory(tenantId, data.categoryId);
+      update.categoryId = category.id;
+      update.type = category.type;
+    }
+    if (data?.date) {
+      const date = new Date(data.date);
+      if (Number.isNaN(date.getTime())) throw new BadRequestException('Tarih geçersiz');
+      update.date = date;
+      update.period = this.periodFromDate(date);
+    }
+    if (data?.amount != null) {
+      const amount = Number(data.amount);
+      if (amount <= 0) throw new BadRequestException('Tutar pozitif olmalı');
+      update.amount = amount;
+    }
+    if (data?.description !== undefined) update.description = data.description?.trim() || null;
+    if (data?.paymentMethod !== undefined) update.paymentMethod = data.paymentMethod || null;
+    if (data?.documentNo !== undefined) update.documentNo = data.documentNo?.trim() || null;
+    if (data?.isRecurring !== undefined) update.isRecurring = Boolean(data.isRecurring);
+
+    return (this.prisma as any).officeBudgetEntry.update({
+      where: { id },
+      data: update,
+      include: { category: true },
+    });
+  }
+
+  async deleteBudgetEntry(tenantId: string, id: string) {
+    const entry = await (this.prisma as any).officeBudgetEntry.findFirst({ where: { tenantId, id } });
+    if (!entry) throw new NotFoundException('Bütçe hareketi bulunamadı');
+    return (this.prisma as any).officeBudgetEntry.delete({ where: { id } });
+  }
+
+  async listBudgetPlans(tenantId: string, period?: string) {
+    await this.ensureBudgetCategories(tenantId);
+    return (this.prisma as any).officeBudgetPlan.findMany({
+      where: { tenantId, period: this.normalizePeriod(period) },
+      include: { category: true },
+      orderBy: [{ category: { type: 'asc' } }, { category: { sortOrder: 'asc' } }],
+    });
+  }
+
+  async upsertBudgetPlans(tenantId: string, data: any) {
+    await this.ensureBudgetCategories(tenantId);
+    const period = this.normalizePeriod(data?.period);
+    const items = Array.isArray(data?.items) ? data.items : [data];
+    const results: any[] = [];
+
+    for (const item of items) {
+      if (!item?.categoryId) continue;
+      const category = await this.getBudgetCategory(tenantId, item.categoryId);
+      const plannedAmount = Math.max(0, Number(item.plannedAmount || 0));
+      results.push(await (this.prisma as any).officeBudgetPlan.upsert({
+        where: {
+          tenantId_categoryId_period: {
+            tenantId,
+            categoryId: category.id,
+            period,
+          },
+        },
+        update: {
+          plannedAmount,
+          notes: item.notes?.trim() || null,
+        },
+        create: {
+          tenantId,
+          categoryId: category.id,
+          period,
+          plannedAmount,
+          notes: item.notes?.trim() || null,
+        },
+      }));
+    }
+
+    return { period, count: results.length, items: results };
+  }
+
+  async budgetSummary(tenantId: string, params: { year?: string | number; period?: string }) {
+    const rawYear = Number(params.year || new Date().getFullYear());
+    const year = rawYear >= 2000 && rawYear <= 2100 ? rawYear : new Date().getFullYear();
+    const period = this.normalizePeriod(params.period || `${year}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+    const categories = await this.ensureBudgetCategories(tenantId);
+    const categoryMap = new Map<string, any>(categories.map((c: any) => [c.id, c]));
+    const customerIncomeCategory = categories.find((c: any) => c.type === 'GELIR' && c.name === 'Müşteri Tahsilatı')
+      || categories.find((c: any) => c.type === 'GELIR');
+
+    const months = this.yearMonths(year).map((ay) => ({
+      period: ay,
+      label: `${ay.slice(5, 7)}/${ay.slice(2, 4)}`,
+      income: 0,
+      expense: 0,
+      net: 0,
+      plannedIncome: 0,
+      plannedExpense: 0,
+      plannedNet: 0,
+      variance: 0,
+    }));
+    const monthMap = new Map(months.map((m) => [m.period, m]));
+    const selectedTotals = new Map<string, { actual: number; planned: number }>();
+    const annualTotals = new Map<string, { actual: number; planned: number }>();
+    for (const c of categories) {
+      selectedTotals.set(c.id, { actual: 0, planned: 0 });
+      annualTotals.set(c.id, { actual: 0, planned: 0 });
+    }
+
+    const start = new Date(Date.UTC(year, 0, 1));
+    const end = new Date(Date.UTC(year + 1, 0, 1));
+    const [entries, plans, cariTahsilatlar] = await Promise.all([
+      (this.prisma as any).officeBudgetEntry.findMany({
+        where: { tenantId, date: { gte: start, lt: end } },
+        include: { category: true },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      }),
+      (this.prisma as any).officeBudgetPlan.findMany({
+        where: { tenantId, period: { gte: `${year}-01`, lte: `${year}-12` } },
+        include: { category: true },
+      }),
+      (this.prisma as any).cariHareket.findMany({
+        where: { tenantId, tip: 'TAHSILAT', tarih: { gte: start, lt: end } },
+        select: {
+          id: true,
+          tarih: true,
+          tutar: true,
+          odemeYontemi: true,
+          belgeNo: true,
+          aciklama: true,
+          taxpayer: { select: { firstName: true, lastName: true, companyName: true, taxNumber: true } },
+        },
+        orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    const addActual = (categoryId: string | null, entryPeriod: string, type: string, amount: number) => {
+      const month = monthMap.get(entryPeriod);
+      if (!month) return;
+      if (type === 'GELIR') month.income = this.roundMoney(month.income + amount);
+      else month.expense = this.roundMoney(month.expense + amount);
+      if (categoryId) {
+        const annual = annualTotals.get(categoryId) || { actual: 0, planned: 0 };
+        annual.actual = this.roundMoney(annual.actual + amount);
+        annualTotals.set(categoryId, annual);
+        if (entryPeriod === period) {
+          const selected = selectedTotals.get(categoryId) || { actual: 0, planned: 0 };
+          selected.actual = this.roundMoney(selected.actual + amount);
+          selectedTotals.set(categoryId, selected);
+        }
+      }
+    };
+
+    const addPlan = (categoryId: string, planPeriod: string, type: string, amount: number) => {
+      const month = monthMap.get(planPeriod);
+      if (!month) return;
+      if (type === 'GELIR') month.plannedIncome = this.roundMoney(month.plannedIncome + amount);
+      else month.plannedExpense = this.roundMoney(month.plannedExpense + amount);
+      const annual = annualTotals.get(categoryId) || { actual: 0, planned: 0 };
+      annual.planned = this.roundMoney(annual.planned + amount);
+      annualTotals.set(categoryId, annual);
+      if (planPeriod === period) {
+        const selected = selectedTotals.get(categoryId) || { actual: 0, planned: 0 };
+        selected.planned = this.roundMoney(selected.planned + amount);
+        selectedTotals.set(categoryId, selected);
+      }
+    };
+
+    for (const entry of entries) {
+      addActual(entry.categoryId, entry.period, entry.type, Number(entry.amount));
+    }
+    if (customerIncomeCategory) {
+      for (const h of cariTahsilatlar) {
+        addActual(customerIncomeCategory.id, this.periodFromDate(new Date(h.tarih)), 'GELIR', Number(h.tutar));
+      }
+    }
+    for (const plan of plans) {
+      const category = categoryMap.get(plan.categoryId);
+      if (!category) continue;
+      addPlan(plan.categoryId, plan.period, category.type, Number(plan.plannedAmount));
+    }
+
+    for (const month of months) {
+      month.net = this.roundMoney(month.income - month.expense);
+      month.plannedNet = this.roundMoney(month.plannedIncome - month.plannedExpense);
+      month.variance = this.roundMoney(month.net - month.plannedNet);
+    }
+
+    const selectedMonth = monthMap.get(period) || months[0];
+    const annualIncome = this.roundMoney(months.reduce((s, m) => s + m.income, 0));
+    const annualExpense = this.roundMoney(months.reduce((s, m) => s + m.expense, 0));
+    const annualPlannedIncome = this.roundMoney(months.reduce((s, m) => s + m.plannedIncome, 0));
+    const annualPlannedExpense = this.roundMoney(months.reduce((s, m) => s + m.plannedExpense, 0));
+
+    const categoryRows = categories
+      .map((category: any) => {
+        const selected = selectedTotals.get(category.id) || { actual: 0, planned: 0 };
+        const annual = annualTotals.get(category.id) || { actual: 0, planned: 0 };
+        const variance = category.type === 'GIDER'
+          ? this.roundMoney(selected.planned - selected.actual)
+          : this.roundMoney(selected.actual - selected.planned);
+        const realizationPct = selected.planned > 0
+          ? Math.round((selected.actual / selected.planned) * 1000) / 10
+          : selected.actual > 0 ? 100 : 0;
+        return {
+          categoryId: category.id,
+          name: category.name,
+          type: category.type,
+          color: category.color,
+          icon: category.icon,
+          isActive: category.isActive,
+          planned: this.roundMoney(selected.planned),
+          actual: this.roundMoney(selected.actual),
+          variance,
+          realizationPct,
+          annualActual: this.roundMoney(annual.actual),
+          annualPlanned: this.roundMoney(annual.planned),
+        };
+      })
+      .filter((r: any) => r.isActive || r.actual || r.planned || r.annualActual || r.annualPlanned);
+
+    const selectedEntries = entries
+      .filter((e: any) => e.period === period)
+      .map((e: any) => ({
+        id: e.id,
+        source: e.source || 'MANUAL',
+        date: e.date,
+        period: e.period,
+        type: e.type,
+        amount: Number(e.amount),
+        description: e.description,
+        paymentMethod: e.paymentMethod,
+        documentNo: e.documentNo,
+        category: e.category ? {
+          id: e.category.id,
+          name: e.category.name,
+          color: e.category.color,
+          type: e.category.type,
+        } : null,
+      }));
+
+    const customerCollections = cariTahsilatlar
+      .filter((h: any) => this.periodFromDate(new Date(h.tarih)) === period)
+      .slice(0, 50)
+      .map((h: any) => ({
+        id: h.id,
+        source: 'CARI_TAHSILAT',
+        date: h.tarih,
+        period,
+        type: 'GELIR',
+        amount: Number(h.tutar),
+        description: this.taxpayerName(h.taxpayer) || h.aciklama || 'Müşteri tahsilatı',
+        paymentMethod: h.odemeYontemi,
+        documentNo: h.belgeNo,
+        category: customerIncomeCategory ? {
+          id: customerIncomeCategory.id,
+          name: customerIncomeCategory.name,
+          color: customerIncomeCategory.color,
+          type: customerIncomeCategory.type,
+        } : null,
+      }));
+
+    return {
+      year,
+      period,
+      categories,
+      months,
+      categoryRows,
+      entries: [...selectedEntries, ...customerCollections]
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+      kpi: {
+        periodIncome: this.roundMoney(selectedMonth.income),
+        periodExpense: this.roundMoney(selectedMonth.expense),
+        periodNet: this.roundMoney(selectedMonth.net),
+        periodPlannedIncome: this.roundMoney(selectedMonth.plannedIncome),
+        periodPlannedExpense: this.roundMoney(selectedMonth.plannedExpense),
+        periodPlannedNet: this.roundMoney(selectedMonth.plannedNet),
+        periodVariance: this.roundMoney(selectedMonth.variance),
+        annualIncome,
+        annualExpense,
+        annualNet: this.roundMoney(annualIncome - annualExpense),
+        annualPlannedIncome,
+        annualPlannedExpense,
+        annualPlannedNet: this.roundMoney(annualPlannedIncome - annualPlannedExpense),
+      },
     };
   }
 
