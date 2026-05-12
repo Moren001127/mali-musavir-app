@@ -551,13 +551,13 @@ export class FaturaMuhasebelestirmeService {
         : null;
       const xml = String(fatura?.xmlContent || '');
       const html = this.inlinePreviewHtml(xml || 'Bu belge icin orijinal dosya bulunamadi.');
-      return { url: `data:text/html;base64,${Buffer.from(html, 'utf8').toString('base64')}` };
+      return { url: '', inlineHtml: html, mimeType: 'text/html' };
     }
     if (/text\/html|xml/i.test(mimeType)) {
       const buffer = await this.storage.getBuffer(doc.s3Key);
       const raw = buffer.toString('utf8');
       const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw);
-      return { url: `data:text/html;base64,${Buffer.from(html, 'utf8').toString('base64')}` };
+      return { url: '', inlineHtml: html, mimeType: 'text/html' };
     }
     const url = await this.storage.getPresignedDownloadUrl(doc.s3Key, doc.originalName);
     return { url };

@@ -239,6 +239,13 @@ const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
   );
 };
 
+const previewUrlFromFileResponse = (resData: any) => {
+  if (resData?.inlineHtml) {
+    return URL.createObjectURL(new Blob([resData.inlineHtml], { type: 'text/html;charset=utf-8' }));
+  }
+  return resData?.url || '';
+};
+
 function blankDraft(file: File, previewUrl: string): DraftInvoice {
   const isPdf = file.type === 'application/pdf';
   return {
@@ -366,7 +373,7 @@ export default function FaturaMuhasebelestirmePage() {
           list.map(async (doc: any) => {
             try {
               const res = await api.get(`/fatura-muhasebelestirme/documents/${doc.id}/file-url`);
-              return draftFromApiDocument(doc, res.data?.url || '');
+              return draftFromApiDocument(doc, previewUrlFromFileResponse(res.data));
             } catch {
               return draftFromApiDocument(doc, '');
             }
@@ -404,7 +411,7 @@ export default function FaturaMuhasebelestirmePage() {
         list.map(async (doc: any) => {
           try {
             const res = await api.get(`/fatura-muhasebelestirme/documents/${doc.id}/file-url`);
-            return { ...draftFromApiDocument(doc, res.data?.url || ''), ledgerType: row.ledgerType };
+            return { ...draftFromApiDocument(doc, previewUrlFromFileResponse(res.data)), ledgerType: row.ledgerType };
           } catch {
             return { ...draftFromApiDocument(doc, ''), ledgerType: row.ledgerType };
           }
@@ -773,7 +780,7 @@ export default function FaturaMuhasebelestirmePage() {
                     className="document-preview max-h-full rounded-sm bg-white shadow-sm"
                     style={{ transform: `scale(${zoom}) rotate(${rotation}deg)`, transformOrigin: 'center center' }}
                   />
-                ) : selected.previewType === 'pdf' ? (
+                ) : selected.previewUrl ? (
                   <iframe src={selected.previewUrl} className="document-preview h-full w-full rounded-sm bg-white shadow-sm" title={selected.file.name} />
                 ) : (
                   <div className="rounded-md bg-white p-8 text-center text-slate-500">Bu dosya için önizleme yok.</div>
@@ -791,18 +798,7 @@ export default function FaturaMuhasebelestirmePage() {
               ))}
             </datalist>
             <div className="flex h-12 items-center justify-between border-b border-slate-200 px-4">
-              <div className="text-sm font-semibold">{selectedBusinessLedger ? 'Isletme Defteri Kaydi' : 'Muhasebe Kodlari'}</div>
-              <div className="flex gap-2">
-                <button onClick={removeSelected} disabled={!selected} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-600 disabled:opacity-40">
-                  <Trash2 size={15} /> Sil
-                </button>
-                <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
-                  {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet
-                </button>
-                <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40">
-                  <CheckCircle2 size={15} /> Onayla
-                </button>
-              </div>
+              <div className="text-sm font-semibold">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Kodları'}</div>
             </div>
 
             {selected ? (
@@ -820,12 +816,12 @@ export default function FaturaMuhasebelestirmePage() {
                 ) : null}
                 {!selectedBusinessLedger ? <div className="mb-4 flex items-center justify-between rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
                   <span>
-                    Hesap plani: {accountPlanLoading ? 'yukleniyor' : accountOptions.length ? `${accountOptions.length} kod hazir` : 'henuz cekilmedi'}
+                    Hesap planı: {accountPlanLoading ? 'yükleniyor' : accountOptions.length ? `${accountOptions.length} kod hazır` : 'henüz çekilmedi'}
                   </span>
-                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca guncellemesi bekleniyor'}</span>
+                  <span>{accountPlanSource?.createdAt ? new Date(accountPlanSource.createdAt).toLocaleString('tr-TR') : 'Luca güncellemesi bekleniyor'}</span>
                 </div> : (
                   <div className="mb-4 rounded-lg border border-[#3b321f] bg-[#17130f] px-3 py-2 text-xs text-[#d8cda5]">
-                    Isletme defteri: hesap kodu kullanilmaz, kayit turu ve alt tur secilerek aktarilir.
+                    İşletme defteri: hesap kodu kullanılmaz, kayıt türü ve alt tür seçilerek aktarılır.
                   </div>
                 )}
                 <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
@@ -859,59 +855,86 @@ export default function FaturaMuhasebelestirmePage() {
                 </div>
 
                 {!selectedBusinessLedger ? (
-                  <div className="rounded-lg border border-slate-200">
-                    <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Matrah / Vergi / Cari</div>
-                    <div className="divide-y divide-slate-100">
-                      {selected.lines.map((line) => (
-                        <div key={line.id} className="grid grid-cols-[108px_minmax(0,1fr)_58px_86px_86px_30px] gap-1.5 px-2 py-1.5">
-                          <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
-                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Aciklama" />
-                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
-                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
-                          <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
-                          <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satiri sil">
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <button
-                      onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', '', '', '0,00', '0,00')] })}
-                      className="m-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
-                    >
-                      <Plus size={16} /> Satir Ekle
-                    </button>
+                  <div className="space-y-3">
+                    {(['matrah', 'vergi', 'cari'] as const).map((group) => {
+                      const title = group === 'matrah' ? 'Matrah' : group === 'vergi' ? 'KDV / Vergi' : 'Cari / Ödeme';
+                      const groupLines = selected.lines.filter((line) => line.group === group);
+                      return (
+                        <section key={group} className="rounded-md border border-slate-200">
+                          <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                            <div className="text-sm font-semibold">{title}</div>
+                            <button
+                              onClick={() => updateSelected({ lines: [...selected.lines, makeLine(group, '', '', '0,00', '0,00')] })}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs text-slate-700"
+                            >
+                              <Plus size={14} /> Satır
+                            </button>
+                          </div>
+                          <div className="divide-y divide-slate-100">
+                            {(groupLines.length ? groupLines : []).map((line) => (
+                              <div key={line.id} className="grid grid-cols-[118px_minmax(0,1fr)_64px_92px_92px_30px] gap-1.5 px-2 py-2">
+                                <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap" />
+                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
+                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Borç" />
+                                <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="Alacak" />
+                                <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil">
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            ))}
+                            {!groupLines.length ? <div className="px-3 py-3 text-xs text-slate-500">Bu bölümde satır yok.</div> : null}
+                          </div>
+                        </section>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-slate-200">
-                    <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Isletme Kayitlari</div>
-                    <div className="divide-y divide-slate-100">
-                      {selected.lines.map((line, index) => (
-                        <div key={line.id} className="bg-[#15110d] p-3">
-                          <div className="mb-2 inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#9be071] px-2 text-xs font-bold text-[#10200d]">{index + 1}</div>
-                          <div className="grid grid-cols-[1.2fr_1.2fr_.8fr_.8fr_.8fr_30px] gap-2">
-                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>
-                              {businessCategories.map((cat) => <option key={cat}>{cat}</option>)}
-                            </select>
-                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>
-                              {businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}
-                            </select>
-                            <input className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} placeholder="Matrah" />
-                            <select className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || '%20'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}>
-                              <option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option>
-                            </select>
-                            <input className="h-9 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} placeholder="KDV" />
-                            <button className="flex h-9 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satiri sil"><Trash2 size={16} /></button>
-                          </div>
-                          <div className="mt-2 text-xs font-semibold text-[#d8cda5]">Toplam Tutar (KDV Dahil): {money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</div>
+                  <div className="space-y-3">
+                    {selected.lines.map((line, index) => (
+                      <section key={line.id} className="rounded-md border border-slate-200">
+                        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                          <div className="inline-flex h-6 min-w-6 items-center justify-center rounded bg-[#9be071] px-2 text-xs font-bold text-[#10200d]">{index + 1}</div>
+                          <button className="flex h-8 items-center justify-center rounded-md px-2 text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Kaydı sil"><Trash2 size={15} /></button>
                         </div>
-                      ))}
-                    </div>
+                        <div className="space-y-3 p-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="text-xs font-semibold text-slate-500">Kayıt Türü
+                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.description || businessCategories[0]} onChange={(e) => updateLine(line.id, { description: e.target.value })}>
+                                {businessCategories.map((cat) => <option key={cat}>{cat}</option>)}
+                              </select>
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">Alt Tür
+                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode || businessSubCategories[0]} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })}>
+                                {businessSubCategories.map((cat) => <option key={cat}>{cat}</option>)}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <label className="text-xs font-semibold text-slate-500">Matrah
+                              <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">KDV Oranı
+                              <select className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-xs" value={line.rate || '%20 Kdv'} onChange={(e) => updateLine(line.id, { rate: e.target.value })}>
+                                <option>%20 Kdv</option><option>%10 Kdv</option><option>%1 Kdv</option><option>%0 Kdv</option>
+                              </select>
+                            </label>
+                            <label className="text-xs font-semibold text-slate-500">KDV Tutarı
+                              <input className="mt-1 h-9 w-full rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
+                            </label>
+                          </div>
+                          <div className="flex justify-between rounded-md bg-[#120f0b] px-3 py-2 text-sm font-semibold text-[#d8cda5]">
+                            <span>Toplam Tutar (KDV Dahil)</span>
+                            <span>{money(String(parseAmount(line.debit) + parseAmount(line.credit)))}</span>
+                          </div>
+                        </div>
+                      </section>
+                    ))}
                     <button
                       onClick={() => updateSelected({ lines: [...selected.lines, makeLine('matrah', businessSubCategories[0], businessCategories[0], '0,00', '0,00', '%20 Kdv')] })}
-                      className="m-3 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                      className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700"
                     >
-                      <Plus size={16} /> Kayit Ekle
+                      <Plus size={16} /> Kayıt Ekle
                     </button>
                   </div>
                 )}
@@ -956,6 +979,20 @@ export default function FaturaMuhasebelestirmePage() {
                 </div>
               </div>
             )}
+
+            <div className="border-t border-slate-200 bg-slate-50 p-3">
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={removeSelected} disabled={!selected} className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-red-200 text-sm text-red-600 disabled:opacity-40">
+                  <Trash2 size={15} /> Sil
+                </button>
+                <button onClick={() => saveSelected(false)} disabled={!selected || saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#d4b876] text-sm font-semibold text-[#17130f] disabled:opacity-40">
+                  {saving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />} Kaydet
+                </button>
+                <button onClick={() => saveSelected(true)} disabled={!selected || saving} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-600 text-sm font-semibold text-white disabled:opacity-40">
+                  <CheckCircle2 size={15} /> Onayla
+                </button>
+              </div>
+            </div>
 
             <div className="border-t border-slate-200 bg-slate-50 p-3">
               <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase text-slate-500">
