@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.04';
+  const AGENT_VERSION = '1.37.05';
 
   // === VERSION-AWARE RELOAD ===
   // Eski sürüm zaten çalışıyorsa: yeni bookmarklet tıklamasında sessizce öldür ve
@@ -522,6 +522,23 @@
         setStatus('Luca acik ama klasik Luca ekrani bekleniyor');
         for (const job of jobs) {
           await logPendingJob(job, `Luca agent klasik ekranda degil; job bekliyor. URL=${url}`);
+        }
+        return;
+      }
+
+      const classicReady = await waitForClassicLucaReady(12000);
+      if (!classicReady) {
+        const url = location.href.slice(0, 120);
+        setStatus('Klasik Luca açıldı; firma ekranı yükleniyor');
+        for (const job of jobs) {
+          await logPendingJob(job, `Klasik Luca URL acik ama frm4/SirketCombo henuz yuklenmedi; sayfa hazirlanıyor. URL=${url}`);
+        }
+        if (!window.__morenClassicReloadAt || Date.now() - window.__morenClassicReloadAt > 30000) {
+          window.__morenClassicReloadAt = Date.now();
+          for (const job of jobs) {
+            await logPendingJob(job, 'Klasik Luca boş kaldı; sekme yenileniyor, job pending kalacak');
+          }
+          try { location.reload(); } catch {}
         }
         return;
       }
@@ -4154,6 +4171,24 @@
     return [...document.querySelectorAll('frame, iframe')].find((f) => f.name === name);
   }
 
+  function getLucaFirmaCombo() {
+    try {
+      return getLucaFrame('frm4')?.contentDocument?.getElementById('SirketCombo') || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function waitForClassicLucaReady(maxMs = 12000) {
+    const started = Date.now();
+    while (Date.now() - started < maxMs) {
+      const combo = getLucaFirmaCombo();
+      if (combo && combo.options && combo.options.length > 0) return combo;
+      await sleep(300);
+    }
+    return null;
+  }
+
   /** Bir koşul sağlanana kadar bekle (max ms) */
   async function waitUntil(predicate, maxMs = 10000, intervalMs = 200) {
     const t0 = Date.now();
@@ -4186,11 +4221,14 @@
       await log('ℹ️ Mükellef için lucaSlug/taxNumber/ad yok — firma kontrolü atlanıyor');
       return { changed: false, alreadyCorrect: false, skipped: true };
     }
-    const frm4 = getLucaFrame('frm4');
+    let frm4 = getLucaFrame('frm4');
     if (!frm4 || !frm4.contentDocument) {
-      throw new Error('frm4 (firma seçici) bulunamadı');
+      await log('Klasik Luca firma ekranı henüz hazır değil; frm4 bekleniyor');
+      const combo = await waitForClassicLucaReady(15000);
+      if (!combo) throw new Error('frm4 (firma seçici) bulunamadı');
+      frm4 = getLucaFrame('frm4');
     }
-    const combo = frm4.contentDocument.getElementById('SirketCombo');
+    const combo = getLucaFirmaCombo();
     if (!combo) {
       await log('⚠ SirketCombo bulunamadı, firma kontrolü atlanıyor');
       return { changed: false, alreadyCorrect: false, skipped: true };
