@@ -28,6 +28,7 @@ import {
   X,
   Keyboard,
   Filter,
+  MoreVertical,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -1125,31 +1126,33 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
 
             <aside className="fm-review">
-              <div className="fm-review-header">
-                <div>
-                  <div className="fm-review-eyebrow">Kontrol ve onay</div>
-                  <div className="fm-review-title">{selectedBusinessLedger ? 'İşletme Defteri Kaydı' : 'Muhasebe Fişi Önerisi'}</div>
+              {/* Mihsap-style header: counter + 3 actions */}
+              <div className="fm-mihsap-header">
+                <div className="fm-mihsap-counter">
+                  Onaylanacak Fatura Sayısı: <span>{drafts.filter((d) => d.status !== 'onaylandi').length}</span>
                 </div>
-                <div className={balanceOk ? 'fm-balance-pill ok' : 'fm-balance-pill warn'}>
-                  {balanceOk ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                  {balanceOk ? 'Dengede' : `Fark ${money(String(totals.diff))}`}
+                <div className="fm-mihsap-row">
+                  <button onClick={removeSelected} disabled={!selected} className="fm-mh-btn delete" type="button">
+                    <Trash2 size={14} /> Faturayı Sil
+                  </button>
+                  <button
+                    onClick={refreshAccountPlan}
+                    disabled={!selected?.taxpayerId || accountPlanRefreshing}
+                    className="fm-mh-btn ghost"
+                    type="button"
+                  >
+                    {accountPlanRefreshing ? <Loader2 className="animate-spin" size={14} /> : null}
+                    Hesap Planları
+                  </button>
+                  <button className="fm-mh-btn more" type="button" onClick={() => setShowShortcuts(true)} title="Daha fazla">
+                    <MoreVertical size={16} />
+                  </button>
                 </div>
               </div>
 
-              {/* Canlı denge çubuğu */}
-              {selected ? (
-                <div className="fm-balance-bar">
-                  <div className="fm-balance-row">
-                    <span>Borç</span><b>{money(String(totals.debit))}</b>
-                  </div>
-                  <div className="fm-balance-row">
-                    <span>Alacak</span><b>{money(String(totals.credit))}</b>
-                  </div>
-                  {tlEquivalent !== null ? (
-                    <div className="fm-balance-row tl">
-                      <span>TL karşılığı</span><b>{money(String(tlEquivalent))} TL</b>
-                    </div>
-                  ) : null}
+              {tlEquivalent !== null ? (
+                <div className="fm-tl-note">
+                  TL karşılığı: <b>{money(String(tlEquivalent))} TL</b>
                 </div>
               ) : null}
 
@@ -1412,29 +1415,35 @@ export default function FaturaMuhasebelestirmePage() {
 
       <style jsx global>{`
         :root {
-          --fm-bg: #fbf8f1;
+          --fm-bg: #f3f6fa;
           --fm-surface: #ffffff;
-          --fm-surface-2: #f6f1e6;
-          --fm-border: #e8e0cd;
-          --fm-border-strong: #d3c8b0;
-          --fm-text: #1c1812;
-          --fm-text-soft: #5a5141;
-          --fm-text-muted: #8c8169;
-          --fm-gold: #b8915a;
-          --fm-gold-deep: #8a6a3a;
-          --fm-gold-soft: #d4b876;
-          --fm-gold-bg: #faf3e0;
-          --fm-green: #0a7d49;
-          --fm-green-bg: #e3f4e9;
-          --fm-red: #b03a2e;
-          --fm-red-bg: #fae6e3;
-          --fm-amber: #b8770d;
+          --fm-surface-2: #eaf2ff;
+          --fm-border: #d5e0ee;
+          --fm-border-strong: #b6c5d8;
+          --fm-text: #1c2430;
+          --fm-text-soft: #44556a;
+          --fm-text-muted: #7a8a9e;
+          --fm-blue: #1664c8;
+          --fm-blue-deep: #0d4d99;
+          --fm-blue-soft: #84b5e8;
+          --fm-blue-bg: #e6f0fc;
+          --fm-blue-pale: #eef6ff;
+          --fm-green: #2ecc71;
+          --fm-green-deep: #21a256;
+          --fm-green-bg: #e3f7eb;
+          --fm-green-soft: #b9e6c9;
+          --fm-red: #e74c3c;
+          --fm-red-deep: #c0392b;
+          --fm-red-soft: #f5b7b1;
+          --fm-red-bg: #fdecea;
+          --fm-yellow: #f4d83a;
+          --fm-yellow-deep: #d4ac0d;
+          --fm-yellow-bg: #fff8d6;
+          --fm-amber: #f39c12;
           --fm-amber-bg: #fdf3e0;
-          --fm-blue: #1f6fc4;
-          --fm-blue-bg: #e7f1fb;
-          --fm-shadow-sm: 0 1px 2px rgba(28, 24, 18, 0.06);
-          --fm-shadow-md: 0 4px 10px rgba(28, 24, 18, 0.08);
-          --fm-shadow-lg: 0 10px 30px rgba(28, 24, 18, 0.12);
+          --fm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+          --fm-shadow-md: 0 4px 10px rgba(15, 23, 42, 0.08);
+          --fm-shadow-lg: 0 10px 30px rgba(15, 23, 42, 0.14);
           --fm-radius: 8px;
           --fm-radius-sm: 6px;
         }
@@ -1466,7 +1475,7 @@ export default function FaturaMuhasebelestirmePage() {
         .fm-title-icon {
           width: 38px; height: 38px;
           border-radius: var(--fm-radius);
-          background: linear-gradient(135deg, var(--fm-gold), var(--fm-gold-deep));
+          background: linear-gradient(135deg, var(--fm-blue), var(--fm-blue-deep));
           color: #fff;
           display: flex; align-items: center; justify-content: center;
           box-shadow: var(--fm-shadow-sm);
@@ -1500,20 +1509,20 @@ export default function FaturaMuhasebelestirmePage() {
         }
         .fm-btn:disabled { opacity: 0.45; cursor: not-allowed; }
         .fm-btn.primary {
-          background: var(--fm-gold);
-          border-color: var(--fm-gold-deep);
+          background: var(--fm-blue);
+          border-color: var(--fm-blue-deep);
           color: #fff;
         }
-        .fm-btn.primary:hover:not(:disabled) { background: var(--fm-gold-deep); }
+        .fm-btn.primary:hover:not(:disabled) { background: var(--fm-blue-deep); }
         .fm-btn.ghost {
           background: var(--fm-surface);
           border-color: var(--fm-border);
           color: var(--fm-text-soft);
         }
         .fm-btn.ghost:hover:not(:disabled) {
-          background: var(--fm-gold-bg);
-          border-color: var(--fm-gold-soft);
-          color: var(--fm-gold-deep);
+          background: var(--fm-blue-bg);
+          border-color: var(--fm-blue-soft);
+          color: var(--fm-blue-deep);
         }
         .fm-btn.icon-only { padding: 0; width: 34px; justify-content: center; }
         .mt-4 { margin-top: 16px; }
@@ -1542,7 +1551,7 @@ export default function FaturaMuhasebelestirmePage() {
           border-radius: var(--fm-radius-sm);
           background: var(--fm-surface);
         }
-        .fm-search:focus-within { border-color: var(--fm-gold-soft); }
+        .fm-search:focus-within { border-color: var(--fm-blue-soft); }
         .fm-search > svg { position: absolute; left: 10px; color: var(--fm-text-muted); }
         .fm-search input {
           flex: 1; height: 100%; min-width: 0;
@@ -1573,11 +1582,11 @@ export default function FaturaMuhasebelestirmePage() {
           font-size: 11.5px; font-weight: 600;
           cursor: pointer;
         }
-        .fm-chip:hover { background: var(--fm-gold-bg); border-color: var(--fm-gold-soft); }
+        .fm-chip:hover { background: var(--fm-blue-bg); border-color: var(--fm-blue-soft); }
         .fm-chip.active {
-          background: var(--fm-gold-bg);
-          border-color: var(--fm-gold);
-          color: var(--fm-gold-deep);
+          background: var(--fm-blue-bg);
+          border-color: var(--fm-blue);
+          color: var(--fm-blue-deep);
         }
         .fm-toolbar-right { display: flex; align-items: center; gap: 7px; }
 
@@ -1627,7 +1636,7 @@ export default function FaturaMuhasebelestirmePage() {
           text-transform: uppercase;
         }
         .fm-table tbody tr { transition: background 0.1s; }
-        .fm-table tbody tr:hover { background: var(--fm-gold-bg); }
+        .fm-table tbody tr:hover { background: var(--fm-blue-bg); }
         .fm-table td {
           padding: 10px 14px;
           border-bottom: 1px solid var(--fm-border);
@@ -1648,7 +1657,7 @@ export default function FaturaMuhasebelestirmePage() {
           font-size: 11px; font-weight: 600;
         }
         .fm-ledger-tag.bilanco { background: var(--fm-blue-bg); color: var(--fm-blue); }
-        .fm-ledger-tag.isletme { background: var(--fm-gold-bg); color: var(--fm-gold-deep); }
+        .fm-ledger-tag.isletme { background: var(--fm-blue-bg); color: var(--fm-blue-deep); }
         .fm-row-action {
           display: inline-flex; align-items: center; justify-content: center;
           width: 28px; height: 28px;
@@ -1660,16 +1669,16 @@ export default function FaturaMuhasebelestirmePage() {
           margin-left: 4px;
         }
         .fm-row-action:hover:not(:disabled) {
-          background: var(--fm-gold-bg);
-          border-color: var(--fm-gold-soft);
-          color: var(--fm-gold-deep);
+          background: var(--fm-blue-bg);
+          border-color: var(--fm-blue-soft);
+          color: var(--fm-blue-deep);
         }
         .fm-row-action.primary {
-          background: var(--fm-gold);
-          border-color: var(--fm-gold-deep);
+          background: var(--fm-blue);
+          border-color: var(--fm-blue-deep);
           color: #fff;
         }
-        .fm-row-action.primary:hover { background: var(--fm-gold-deep); }
+        .fm-row-action.primary:hover { background: var(--fm-blue-deep); }
         .fm-row-action:disabled { opacity: 0.45; cursor: not-allowed; }
         .fm-count-btn {
           display: inline-flex; align-items: center; justify-content: center;
@@ -1682,11 +1691,11 @@ export default function FaturaMuhasebelestirmePage() {
           cursor: pointer;
         }
         .fm-count-btn.has-pending {
-          background: var(--fm-gold-bg);
-          border-color: var(--fm-gold-soft);
-          color: var(--fm-gold-deep);
+          background: var(--fm-blue-bg);
+          border-color: var(--fm-blue-soft);
+          color: var(--fm-blue-deep);
         }
-        .fm-count-btn:hover { border-color: var(--fm-gold); }
+        .fm-count-btn:hover { border-color: var(--fm-blue); }
         .fm-empty-row {
           padding: 60px 20px !important;
           text-align: center;
@@ -1726,7 +1735,7 @@ export default function FaturaMuhasebelestirmePage() {
           color: var(--fm-text-soft);
           cursor: pointer;
         }
-        .fm-tool:hover { background: var(--fm-gold-bg); border-color: var(--fm-gold-soft); color: var(--fm-gold-deep); }
+        .fm-tool:hover { background: var(--fm-blue-bg); border-color: var(--fm-blue-soft); color: var(--fm-blue-deep); }
         .fm-tool-pill {
           display: inline-flex; align-items: center; gap: 5px;
           height: 30px; padding: 0 11px;
@@ -1738,11 +1747,11 @@ export default function FaturaMuhasebelestirmePage() {
           cursor: pointer;
         }
         .fm-tool-pill.active {
-          background: var(--fm-gold-bg);
-          border-color: var(--fm-gold);
-          color: var(--fm-gold-deep);
+          background: var(--fm-blue-bg);
+          border-color: var(--fm-blue);
+          color: var(--fm-blue-deep);
         }
-        .fm-zoom-slider { width: 160px; accent-color: var(--fm-gold); }
+        .fm-zoom-slider { width: 160px; accent-color: var(--fm-blue); }
         .fm-zoom-pct {
           min-width: 44px; text-align: right;
           font-size: 11.5px; font-weight: 700;
@@ -1759,7 +1768,7 @@ export default function FaturaMuhasebelestirmePage() {
           color: var(--fm-text-soft);
           cursor: pointer;
         }
-        .fm-doc-counter button:hover { background: var(--fm-gold-bg); }
+        .fm-doc-counter button:hover { background: var(--fm-blue-bg); }
 
         .fm-doc-stage {
           flex: 1; min-height: 0;
@@ -1790,9 +1799,9 @@ export default function FaturaMuhasebelestirmePage() {
           border: 2px dashed var(--fm-border-strong);
           border-radius: 12px;
           background: var(--fm-surface);
-          color: var(--fm-gold);
+          color: var(--fm-blue);
         }
-        .fm-dropzone.dragging { border-color: var(--fm-gold); background: var(--fm-gold-bg); }
+        .fm-dropzone.dragging { border-color: var(--fm-blue); background: var(--fm-blue-bg); }
         .fm-dropzone-title { font-size: 15px; font-weight: 700; color: var(--fm-text); margin-top: 12px; }
         .fm-dropzone-sub { margin-top: 4px; font-size: 12.5px; color: var(--fm-text-muted); }
 
@@ -1847,7 +1856,7 @@ export default function FaturaMuhasebelestirmePage() {
           color: var(--fm-text);
           font-variant-numeric: tabular-nums;
         }
-        .fm-balance-row.tl b { color: var(--fm-gold-deep); }
+        .fm-balance-row.tl b { color: var(--fm-blue-deep); }
 
         .fm-review-scroll {
           flex: 1; min-height: 0;
@@ -1866,10 +1875,10 @@ export default function FaturaMuhasebelestirmePage() {
         .fm-plan-strip {
           display: flex; justify-content: space-between; gap: 10px;
           padding: 8px 10px;
-          background: var(--fm-gold-bg);
-          border: 1px solid var(--fm-gold-soft);
+          background: var(--fm-blue-bg);
+          border: 1px solid var(--fm-blue-soft);
           border-radius: 5px;
-          color: var(--fm-gold-deep);
+          color: var(--fm-blue-deep);
           font-size: 11px; font-weight: 600;
           margin-bottom: 10px;
         }
@@ -1915,8 +1924,8 @@ export default function FaturaMuhasebelestirmePage() {
         .fm-business-grid input:focus,
         .fm-business-grid select:focus,
         .fm-ledger-row input:focus {
-          border-color: var(--fm-gold);
-          box-shadow: 0 0 0 3px var(--fm-gold-bg);
+          border-color: var(--fm-blue);
+          box-shadow: 0 0 0 3px var(--fm-blue-bg);
         }
 
         .fm-ledger-section {
@@ -1944,7 +1953,7 @@ export default function FaturaMuhasebelestirmePage() {
           font-size: 11.5px; font-weight: 600;
           cursor: pointer;
         }
-        .fm-ledger-head button:hover { background: var(--fm-gold-bg); color: var(--fm-gold-deep); border-color: var(--fm-gold-soft); }
+        .fm-ledger-head button:hover { background: var(--fm-blue-bg); color: var(--fm-blue-deep); border-color: var(--fm-blue-soft); }
         .fm-ledger-table { padding: 4px 4px; }
         .fm-ledger-row {
           display: grid;
@@ -1967,7 +1976,7 @@ export default function FaturaMuhasebelestirmePage() {
           cursor: pointer;
           font-variant-numeric: tabular-nums;
         }
-        .fm-account-trigger:hover { border-color: var(--fm-gold); background: var(--fm-gold-bg); }
+        .fm-account-trigger:hover { border-color: var(--fm-blue); background: var(--fm-blue-bg); }
         .fm-placeholder { color: var(--fm-text-muted); font-weight: 400; }
         .fm-row-delete {
           display: inline-flex; align-items: center; justify-content: center;
@@ -1992,7 +2001,7 @@ export default function FaturaMuhasebelestirmePage() {
 
         .fm-business-card {
           background: var(--fm-surface);
-          border: 1px solid var(--fm-gold-soft);
+          border: 1px solid var(--fm-blue-soft);
           border-radius: 6px;
           overflow: hidden;
           margin-bottom: 10px;
@@ -2000,14 +2009,14 @@ export default function FaturaMuhasebelestirmePage() {
         .fm-business-head {
           display: flex; align-items: center; justify-content: space-between;
           padding: 8px 12px;
-          background: var(--fm-gold-bg);
-          border-bottom: 1px solid var(--fm-gold-soft);
+          background: var(--fm-blue-bg);
+          border-bottom: 1px solid var(--fm-blue-soft);
         }
         .fm-business-head span {
           display: inline-flex; align-items: center; justify-content: center;
           width: 24px; height: 24px;
           border-radius: 6px;
-          background: var(--fm-gold);
+          background: var(--fm-blue);
           color: #fff;
           font-weight: 700;
           font-size: 12px;
@@ -2038,13 +2047,13 @@ export default function FaturaMuhasebelestirmePage() {
           display: inline-flex; align-items: center; gap: 6px;
           height: 34px; padding: 0 14px;
           border-radius: 6px;
-          border: 1px dashed var(--fm-gold-soft);
+          border: 1px dashed var(--fm-blue-soft);
           background: transparent;
-          color: var(--fm-gold-deep);
+          color: var(--fm-blue-deep);
           font-size: 12px; font-weight: 600;
           cursor: pointer;
         }
-        .fm-add-business:hover { background: var(--fm-gold-bg); }
+        .fm-add-business:hover { background: var(--fm-blue-bg); }
 
         .fm-info-grid {
           display: grid; grid-template-columns: repeat(2, 1fr);
@@ -2084,11 +2093,11 @@ export default function FaturaMuhasebelestirmePage() {
         .fm-doc-chip span {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .fm-doc-chip:hover { border-color: var(--fm-gold-soft); }
+        .fm-doc-chip:hover { border-color: var(--fm-blue-soft); }
         .fm-doc-chip.active {
-          border-color: var(--fm-gold);
-          background: var(--fm-gold-bg);
-          color: var(--fm-gold-deep);
+          border-color: var(--fm-blue);
+          background: var(--fm-blue-bg);
+          color: var(--fm-blue-deep);
           font-weight: 600;
         }
         .ok-tick { color: var(--fm-green); }
@@ -2123,11 +2132,11 @@ export default function FaturaMuhasebelestirmePage() {
         }
         .fm-action.danger:hover:not(:disabled) { background: var(--fm-red-bg); }
         .fm-action.save {
-          background: var(--fm-gold);
-          border-color: var(--fm-gold-deep);
+          background: var(--fm-blue);
+          border-color: var(--fm-blue-deep);
           color: #fff;
         }
-        .fm-action.save:hover:not(:disabled) { background: var(--fm-gold-deep); }
+        .fm-action.save:hover:not(:disabled) { background: var(--fm-blue-deep); }
         .fm-action.approve {
           background: var(--fm-green);
           border-color: #066d3e;
@@ -2161,11 +2170,11 @@ export default function FaturaMuhasebelestirmePage() {
         }
         .fm-global-drop-card {
           background: var(--fm-surface);
-          border: 2px dashed var(--fm-gold);
+          border: 2px dashed var(--fm-blue);
           border-radius: 16px;
           padding: 36px 56px;
           box-shadow: var(--fm-shadow-lg);
-          color: var(--fm-gold-deep);
+          color: var(--fm-blue-deep);
           display: flex; flex-direction: column; align-items: center; gap: 6px;
         }
         .fm-global-drop-title { font-size: 18px; font-weight: 700; color: var(--fm-text); }
@@ -2216,12 +2225,12 @@ export default function FaturaMuhasebelestirmePage() {
           border-bottom: 1px solid var(--fm-border);
           cursor: pointer;
         }
-        .fm-modal-row:hover { background: var(--fm-gold-bg); }
+        .fm-modal-row:hover { background: var(--fm-blue-bg); }
         .fm-modal-code {
           font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
           font-size: 12.5px;
           font-weight: 700;
-          color: var(--fm-gold-deep);
+          color: var(--fm-blue-deep);
           min-width: 90px;
         }
         .fm-modal-name { font-size: 12.5px; color: var(--fm-text-soft); flex: 1; }
@@ -2260,7 +2269,7 @@ export default function FaturaMuhasebelestirmePage() {
         }
         .fm-foreign-toggle input[type="checkbox"] {
           width: 16px; height: 16px;
-          accent-color: var(--fm-gold);
+          accent-color: var(--fm-blue);
           cursor: pointer;
         }
         .fm-foreign-toggle > span:first-of-type {
@@ -2282,7 +2291,7 @@ export default function FaturaMuhasebelestirmePage() {
           overflow: hidden;
           margin-bottom: 8px;
         }
-        .fm-collapse-section.open { border-color: var(--fm-gold-soft); }
+        .fm-collapse-section.open { border-color: var(--fm-blue-soft); }
         .fm-collapse-head {
           display: flex; align-items: center; gap: 8px;
           width: 100%; padding: 9px 12px;
@@ -2292,8 +2301,8 @@ export default function FaturaMuhasebelestirmePage() {
           text-align: left;
         }
         .fm-collapse-section.open .fm-collapse-head {
-          background: var(--fm-gold-bg);
-          border-bottom-color: var(--fm-gold-soft);
+          background: var(--fm-blue-bg);
+          border-bottom-color: var(--fm-blue-soft);
         }
         .fm-collapse-title {
           flex: 1;
@@ -2301,13 +2310,13 @@ export default function FaturaMuhasebelestirmePage() {
           font-weight: 700;
           color: var(--fm-text-soft);
         }
-        .fm-collapse-section.open .fm-collapse-title { color: var(--fm-gold-deep); }
+        .fm-collapse-section.open .fm-collapse-title { color: var(--fm-blue-deep); }
         .fm-collapse-badge {
           display: inline-flex; align-items: center; justify-content: center;
           min-width: 20px; height: 20px;
           padding: 0 6px;
           border-radius: 999px;
-          background: var(--fm-gold);
+          background: var(--fm-blue);
           color: #fff;
           font-size: 10.5px;
           font-weight: 700;
@@ -2340,14 +2349,14 @@ export default function FaturaMuhasebelestirmePage() {
           display: inline-flex; align-items: center; gap: 5px;
           height: 28px; padding: 0 12px;
           border-radius: 5px;
-          border: 1px dashed var(--fm-gold-soft);
+          border: 1px dashed var(--fm-blue-soft);
           background: transparent;
-          color: var(--fm-gold-deep);
+          color: var(--fm-blue-deep);
           font-size: 11.5px;
           font-weight: 600;
           cursor: pointer;
         }
-        .fm-collapse-add:hover { background: var(--fm-gold-bg); }
+        .fm-collapse-add:hover { background: var(--fm-blue-bg); }
         .fm-collapse-total {
           display: flex; gap: 12px;
           font-size: 11.5px;
@@ -2366,8 +2375,8 @@ export default function FaturaMuhasebelestirmePage() {
           outline: none;
         }
         .fm-ledger-row select:focus {
-          border-color: var(--fm-gold);
-          box-shadow: 0 0 0 3px var(--fm-gold-bg);
+          border-color: var(--fm-blue);
+          box-shadow: 0 0 0 3px var(--fm-blue-bg);
         }
 
         .hidden { display: none; }
