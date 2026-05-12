@@ -540,11 +540,35 @@ export class FaturaMuhasebelestirmeService {
 
   async fileUrl(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
+    const mimeType = String(doc.mimeType || '');
     if (String(doc.s3Key || '').startsWith('earsiv-inline://')) {
-      return { url: '' };
+      const refId = String((doc as any).sourceRefId || '').trim();
+      const fatura = refId
+        ? await (this.prisma as any).earsivFatura.findFirst({
+            where: { tenantId, id: refId },
+            select: { xmlContent: true },
+          })
+        : null;
+      const xml = String(fatura?.xmlContent || '');
+      const html = this.inlinePreviewHtml(xml || 'Bu belge icin orijinal dosya bulunamadi.');
+      return { url: `data:text/html;base64,${Buffer.from(html, 'utf8').toString('base64')}` };
+    }
+    if (/text\/html|xml/i.test(mimeType)) {
+      const buffer = await this.storage.getBuffer(doc.s3Key);
+      const raw = buffer.toString('utf8');
+      const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw);
+      return { url: `data:text/html;base64,${Buffer.from(html, 'utf8').toString('base64')}` };
     }
     const url = await this.storage.getPresignedDownloadUrl(doc.s3Key, doc.originalName);
     return { url };
+  }
+
+  private inlinePreviewHtml(raw: string) {
+    const escaped = String(raw || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;background:#fff;color:#111827;font:13px/1.45 Arial,sans-serif;padding:24px}pre{white-space:pre-wrap;word-break:break-word}</style></head><body><pre>${escaped}</pre></body></html>`;
   }
 
   async update(tenantId: string, id: string, body: UpdateDocumentInput) {

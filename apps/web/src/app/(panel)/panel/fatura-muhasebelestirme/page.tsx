@@ -111,6 +111,13 @@ const parseAmount = (value?: string) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const previewTypeFromMime = (mimeType?: string): DraftInvoice['previewType'] => {
+  const type = String(mimeType || '').toLowerCase();
+  if (type.startsWith('image/')) return 'image';
+  if (type === 'application/pdf' || type.includes('html') || type.includes('xml')) return 'pdf';
+  return 'other';
+};
+
 const makeLine = (
   group: AccountingLine['group'],
   accountCode: string,
@@ -188,7 +195,7 @@ const draftFromApiDocument = (doc: any, fileUrl: string): DraftInvoice => {
       taxpayerId: doc.taxpayerId || null,
       file: { name: doc.originalName, size: doc.sizeBytes || 0, type: mimeType },
       previewUrl: fileUrl,
-      previewType: mimeType.startsWith('image/') ? 'image' : mimeType === 'application/pdf' ? 'pdf' : 'other',
+      previewType: previewTypeFromMime(mimeType),
       source: doc.source === 'mobile' ? 'manual-okc' : 'manual-invoice',
       documentType: doc.documentType || 'OKC_FIS',
       invoiceKind: doc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış',
@@ -264,8 +271,9 @@ export default function FaturaMuhasebelestirmePage() {
   const readyCount = drafts.filter((d) => d.status === 'hazir').length;
   const dashboardFiltered = useMemo(() => {
     const q = dashboardSearch.trim().toLocaleLowerCase('tr-TR');
-    if (!q) return dashboardRows;
-    return dashboardRows.filter((row) => row.name.toLocaleLowerCase('tr-TR').includes(q));
+    const rows = [...dashboardRows].sort((a, b) => a.name.localeCompare(b.name, 'tr-TR'));
+    if (!q) return rows;
+    return rows.filter((row) => row.name.toLocaleLowerCase('tr-TR').includes(q));
   }, [dashboardRows, dashboardSearch]);
 
   const totals = useMemo(() => {
@@ -607,8 +615,8 @@ export default function FaturaMuhasebelestirmePage() {
         />
 
         {showDashboard ? (
-          <section className="flex-1 overflow-hidden bg-[#0f0d0a] p-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
+          <section className="flex-1 overflow-hidden bg-[#0f0d0a] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#6d145d] text-white" title="Ayarlar">
                   <SlidersHorizontal size={18} />
@@ -633,49 +641,49 @@ export default function FaturaMuhasebelestirmePage() {
                 placeholder="Mükellef ara"
               />
             </div>
-            <div className="overflow-hidden rounded-lg border border-[#332a1c] bg-[#15110d]">
+            <div className="overflow-hidden rounded-md border border-[#332a1c] bg-[#15110d]">
               <div className="max-h-[calc(100vh-190px)] overflow-auto">
-                <table className="min-w-full border-collapse text-sm">
+                <table className="min-w-full border-collapse text-[13px]">
                   <thead className="sticky top-0 z-10 bg-[#211a11] text-left text-[#f4d68a]">
                     <tr>
-                      <th className="w-[30%] border-b border-[#3b321f] px-4 py-3 font-semibold">Firma Bilgisi</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Defter Türü</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Alış Faturaları</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Satış Faturaları</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Bekleyen Banka</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Onaylanan Faturalar</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 font-semibold">Onaylanan Banka</th>
-                      <th className="border-b border-[#3b321f] px-3 py-3 text-center font-semibold">İşlemler</th>
+                      <th className="w-[32%] border-b border-[#3b321f] px-4 py-2.5 font-semibold">Firma Bilgisi</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Defter</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Alış</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Satış</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Bekleyen Banka</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Onaylanan</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 font-semibold">Onaylanan Banka</th>
+                      <th className="border-b border-[#3b321f] px-3 py-2.5 text-center font-semibold">İşlemler</th>
                     </tr>
                   </thead>
                   <tbody>
                     {dashboardFiltered.map((row, idx) => (
                       <tr key={row.taxpayerId} className={idx % 2 ? 'bg-[#18130f]' : 'bg-[#100d0a]'}>
-                        <td className="border-b border-[#2a2419] px-4 py-3 font-semibold text-[#f7eedb]">{row.name}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-3 text-[#d8cda5]">{row.ledgerType}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-3">
-                          <button onClick={() => openTaxpayerQueue(row, 'ALIS')} className="min-w-14 rounded-md bg-[#1f7ad9] px-3 py-1.5 text-left font-bold text-white hover:bg-[#2f8ef0]">
+                        <td className="border-b border-[#2a2419] px-4 py-2.5 font-semibold text-[#f7eedb]">{row.name}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2.5 text-[#d8cda5]">{row.ledgerType}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2.5">
+                          <button onClick={() => openTaxpayerQueue(row, 'ALIS')} className="min-w-10 rounded-md bg-[#1f7ad9] px-2.5 py-1 text-center font-bold text-white hover:bg-[#2f8ef0]">
                             {row.pendingPurchase}
                           </button>
                         </td>
-                        <td className="border-b border-[#2a2419] px-3 py-3">
-                          <button onClick={() => openTaxpayerQueue(row, 'SATIS')} className="min-w-14 rounded-md bg-[#1f7ad9] px-3 py-1.5 text-left font-bold text-white hover:bg-[#2f8ef0]">
+                        <td className="border-b border-[#2a2419] px-3 py-2.5">
+                          <button onClick={() => openTaxpayerQueue(row, 'SATIS')} className="min-w-10 rounded-md bg-[#1f7ad9] px-2.5 py-1 text-center font-bold text-white hover:bg-[#2f8ef0]">
                             {row.pendingSale}
                           </button>
                         </td>
-                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.pendingBank}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedInvoice}</td>
-                        <td className="border-b border-[#2a2419] px-3 py-3 font-bold text-[#d8cda5]">{row.approvedBank}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.pendingBank}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.approvedInvoice}</td>
+                        <td className="border-b border-[#2a2419] px-3 py-2.5 font-bold text-[#d8cda5]">{row.approvedBank}</td>
                         <td className="border-b border-[#2a2419] px-3 py-2 text-center">
                           <button
                             onClick={() => refreshAccountPlanForTaxpayer(row.taxpayerId, row.name)}
                             disabled={dashboardAccountPlanJob === row.taxpayerId}
-                            className="mr-2 inline-flex h-9 w-9 items-center justify-center rounded-md border border-[#4a3d25] bg-[#241b10] text-[#f4d68a] hover:bg-[#302314] disabled:opacity-50"
+                            className="mr-1.5 inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#4a3d25] bg-[#241b10] text-[#f4d68a] hover:bg-[#302314] disabled:opacity-50"
                             title="Bu mükellefin hesap planını Luca'dan güncelle"
                           >
                             {dashboardAccountPlanJob === row.taxpayerId ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
                           </button>
-                          <button onClick={() => openTaxpayerQueue(row)} className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-[#1f7ad9] text-white hover:bg-[#2f8ef0]" title="Fatura işleme ekranını aç">
+                          <button onClick={() => openTaxpayerQueue(row)} className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#1f7ad9] text-white hover:bg-[#2f8ef0]" title="Fatura işleme ekranını aç">
                             <Pencil size={16} />
                           </button>
                         </td>
@@ -694,7 +702,7 @@ export default function FaturaMuhasebelestirmePage() {
             </div>
           </section>
         ) : (
-        <section className="grid flex-1 grid-cols-[minmax(520px,1fr)_520px] overflow-hidden">
+        <section className="grid flex-1 grid-cols-[minmax(620px,1fr)_minmax(560px,640px)] overflow-hidden">
           <div className="flex min-w-0 flex-col border-r border-slate-200 bg-slate-100">
             <div className="flex h-12 items-center justify-between border-b border-slate-200 bg-white px-4">
               <div className="flex items-center gap-2">
@@ -826,13 +834,13 @@ export default function FaturaMuhasebelestirmePage() {
                   <div className="border-b border-slate-200 px-3 py-2 text-sm font-semibold">Matrah / Vergi / Cari</div>
                   <div className="divide-y divide-slate-100">
                     {selected.lines.map((line) => (
-                      <div key={line.id} className="grid grid-cols-[132px_1fr_82px_96px_96px_34px] gap-2 px-3 py-2">
-                        <input list="luca-account-plan-options" className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
-                        <input className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
-                        <input className="h-9 rounded-md border border-slate-200 px-2 text-sm" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
-                        <input className="h-9 rounded-md border border-slate-200 px-2 text-right text-sm" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
-                        <input className="h-9 rounded-md border border-slate-200 px-2 text-right text-sm" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
-                        <button className="flex h-9 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil">
+                      <div key={line.id} className="grid grid-cols-[108px_minmax(0,1fr)_58px_86px_86px_30px] gap-1.5 px-2 py-1.5">
+                        <input list="luca-account-plan-options" className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.accountCode} onChange={(e) => updateLine(line.id, { accountCode: e.target.value })} placeholder="Hesap kodu" />
+                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.description} onChange={(e) => updateLine(line.id, { description: e.target.value })} placeholder="Açıklama" />
+                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-xs" value={line.rate || ''} onChange={(e) => updateLine(line.id, { rate: e.target.value })} placeholder="Oran" />
+                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.debit} onChange={(e) => updateLine(line.id, { debit: e.target.value })} />
+                        <input className="h-8 min-w-0 rounded-md border border-slate-200 px-2 text-right text-xs" value={line.credit} onChange={(e) => updateLine(line.id, { credit: e.target.value })} />
+                        <button className="flex h-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50" onClick={() => updateSelected({ lines: selected.lines.filter((l) => l.id !== line.id) })} title="Satırı sil">
                           <Trash2 size={16} />
                         </button>
                       </div>
