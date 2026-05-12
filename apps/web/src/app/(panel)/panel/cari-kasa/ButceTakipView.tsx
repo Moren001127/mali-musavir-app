@@ -23,6 +23,12 @@ const GOLD = '#d4b876';
 const BLUE = '#60a5fa';
 const GREEN = '#4ade80';
 const RED = '#f87171';
+const TEXT = '#f8fafc';
+const MUTED = '#cbd5e1';
+const SOFT = '#a8b0bc';
+const DIM = '#7d8794';
+const SURFACE = 'rgba(255,255,255,0.045)';
+const BORDER = 'rgba(255,255,255,0.14)';
 
 export type FinancialAccount = {
   id: string;
@@ -162,15 +168,16 @@ const currentPeriod = () => {
 const monthsOf = (year: number) => Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
 
 const panel: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.025)',
-  border: '1px solid rgba(255,255,255,0.08)',
+  background: SURFACE,
+  border: `1px solid ${BORDER}`,
 };
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.10)',
-  color: '#fafaf9',
+  background: 'rgba(255,255,255,0.065)',
+  border: `1px solid ${BORDER}`,
+  color: TEXT,
   outline: 'none',
-  fontSize: 12.5,
+  fontSize: 14,
+  fontWeight: 600,
 };
 
 function useBudgetSummary(year: number, period: string) {
@@ -198,11 +205,11 @@ function PeriodToolbar({ year, period, onYear, onPeriod }: {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="inline-flex items-center gap-2 px-3 py-2 rounded-[8px]" style={panel}>
-        <CalendarDays size={14} style={{ color: GOLD }} />
+        <CalendarDays size={16} style={{ color: GOLD }} />
         <select
           value={year}
           onChange={(e) => onYear(Number(e.target.value))}
-          className="rounded-[6px] px-2 py-1"
+          className="rounded-[6px] px-3 py-1.5"
           style={inputStyle}
         >
           {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
@@ -210,7 +217,7 @@ function PeriodToolbar({ year, period, onYear, onPeriod }: {
         <select
           value={period}
           onChange={(e) => onPeriod(e.target.value)}
-          className="rounded-[6px] px-2 py-1"
+          className="rounded-[6px] px-3 py-1.5"
           style={inputStyle}
         >
           {monthsOf(year).map((p) => <option key={p} value={p}>{p}</option>)}
@@ -229,13 +236,13 @@ function MetricCard({ label, value, color, icon: Icon, sub }: {
 }) {
   return (
     <div className="rounded-[10px] p-4" style={panel}>
-      <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.48)' }}>
-        <Icon size={14} style={{ color }} /> {label}
+      <div className="flex items-center gap-2 text-[12.5px] font-semibold" style={{ color: MUTED }}>
+        <Icon size={16} style={{ color }} /> {label}
       </div>
-      <div className="mt-2 text-[22px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+      <div className="mt-2 text-[28px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
         {fmt(value)} TL
       </div>
-      {sub && <div className="mt-1 text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{sub}</div>}
+      {sub && <div className="mt-1 text-[12.5px] font-medium" style={{ color: SOFT }}>{sub}</div>}
     </div>
   );
 }
@@ -243,7 +250,7 @@ function MetricCard({ label, value, color, icon: Icon, sub }: {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block mb-1 text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.48)' }}>{label}</span>
+      <span className="block mb-1.5 text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
       {children}
     </label>
   );
@@ -251,7 +258,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function LoadingPanel({ label = 'Hesaplanıyor...' }: { label?: string }) {
   return (
-    <div className="py-12 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.5)' }}>
+    <div className="py-12 text-center text-[14px] font-medium" style={{ color: MUTED }}>
       <Loader2 className="animate-spin inline mr-2" size={16} />{label}
     </div>
   );
@@ -392,8 +399,8 @@ export function KasaBankaView() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(212,184,118,0.72)' }}>Kasa/Banka Defteri</div>
-          <h2 className="text-[20px] font-semibold mt-1" style={{ color: '#fafaf9' }}>Hesap bakiyesi ve nakit akışı</h2>
+          <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Kasa/Banka Defteri</div>
+          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Hesap bakiyesi ve nakit akışı</h2>
         </div>
         <PeriodToolbar
           year={year}
@@ -405,7 +412,7 @@ export function KasaBankaView() {
 
       {data.kpi.unassignedCollectionsCount > 0 && (
         <div className="rounded-[10px] px-4 py-3 flex items-center justify-between gap-3" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.22)' }}>
-          <div className="text-[12.5px]" style={{ color: '#fde68a' }}>
+          <div className="text-[14px] font-medium" style={{ color: '#fde68a' }}>
             {data.kpi.unassignedCollectionsCount} eski tahsilatın hesabı atanmamış. Toplam {fmt(data.kpi.unassignedCollectionsAmount)} TL kasa/banka bakiyesine dahil edilmedi.
           </div>
         </div>
@@ -424,11 +431,11 @@ export function KasaBankaView() {
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 {account.type === 'NAKIT' ? <Wallet size={17} style={{ color: account.color }} /> : <Landmark size={17} style={{ color: account.color }} />}
-                <div className="font-semibold truncate" style={{ color: '#fafaf9' }}>{account.name}</div>
+                <div className="text-[17px] font-semibold truncate" style={{ color: TEXT }}>{account.name}</div>
               </div>
-              <span className="text-[10px] px-2 py-1 rounded-[6px]" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.55)' }}>{account.type}</span>
+              <span className="text-[12px] font-semibold px-2.5 py-1 rounded-[6px]" style={{ background: 'rgba(255,255,255,0.08)', color: MUTED }}>{account.type}</span>
             </div>
-            <div className="mt-4 text-[24px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: account.color || GOLD }}>
+            <div className="mt-4 text-[30px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: account.color || GOLD }}>
               {fmt(account.currentBalance)} TL
             </div>
             <div className="grid grid-cols-3 gap-2 mt-4">
@@ -444,8 +451,8 @@ export function KasaBankaView() {
         <div className="space-y-4">
           <div className="rounded-[10px] p-4" style={panel}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Ay Bazında Akış</h3>
-              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Transferler gelir/gider toplamını bozmaz</span>
+              <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Ay Bazında Akış</h3>
+              <span className="text-[13px] font-medium" style={{ color: SOFT }}>Transferler gelir/gider toplamını bozmaz</span>
             </div>
             <div className="flex items-end gap-1.5 h-[180px]">
               {data.months.map((m) => (
@@ -454,7 +461,7 @@ export function KasaBankaView() {
                     <div className="flex-1 rounded-t-[3px]" style={{ height: `${Math.max(3, (m.income / maxMonth) * 148)}px`, background: GREEN }} />
                     <div className="flex-1 rounded-t-[3px]" style={{ height: `${Math.max(3, (m.expense / maxMonth) * 148)}px`, background: RED }} />
                   </div>
-                  <div className="text-[10px] text-center mt-1" style={{ color: m.period === period ? GOLD : 'rgba(250,250,249,0.42)' }}>{m.label}</div>
+                  <div className="text-[11.5px] font-semibold text-center mt-1" style={{ color: m.period === period ? GOLD : SOFT }}>{m.label}</div>
                 </div>
               ))}
             </div>
@@ -462,8 +469,8 @@ export function KasaBankaView() {
 
           <div className="rounded-[10px] overflow-hidden" style={panel}>
             <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-              <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Bu Ay Hareketleri</h3>
-              <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{data.recentEntries.length} kayıt</span>
+              <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Bu Ay Hareketleri</h3>
+              <span className="text-[13px] font-medium" style={{ color: SOFT }}>{data.recentEntries.length} kayıt</span>
             </div>
             <MovementTable entries={data.recentEntries} transfers={data.transfers} onDeleteTransfer={deleteTransfer} />
           </div>
@@ -499,9 +506,9 @@ export function KasaBankaView() {
 
 function MiniStat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="rounded-[8px] p-2" style={{ background: 'rgba(255,255,255,0.035)' }}>
-      <div className="text-[9.5px] font-bold uppercase tracking-[.1em]" style={{ color: 'rgba(250,250,249,0.42)' }}>{label}</div>
-      <div className="mt-1 text-[12px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(value)}</div>
+    <div className="rounded-[8px] p-2.5" style={{ background: 'rgba(255,255,255,0.065)' }}>
+      <div className="text-[12px] font-semibold" style={{ color: MUTED }}>{label}</div>
+      <div className="mt-1 text-[15px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(value)}</div>
     </div>
   );
 }
@@ -517,13 +524,13 @@ function EntryForm({ form, setForm, accounts, categories, saving, onSave }: {
   return (
     <div className="rounded-[10px] p-4" style={panel}>
       <div className="flex items-center gap-2 mb-3">
-        <Plus size={15} style={{ color: GOLD }} />
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Gelir / Gider Girişi</h3>
+        <Plus size={17} style={{ color: GOLD }} />
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Gelir / Gider Girişi</h3>
       </div>
       <div className="space-y-2.5">
         <div className="grid grid-cols-2 gap-2">
-          <button onClick={() => setForm((old: any) => ({ ...old, type: 'GELIR' }))} className="py-2 rounded-[8px] text-[12px] font-bold" style={{ background: form.type === 'GELIR' ? 'rgba(74,222,128,0.16)' : 'rgba(255,255,255,0.04)', color: form.type === 'GELIR' ? GREEN : 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}>Gelir</button>
-          <button onClick={() => setForm((old: any) => ({ ...old, type: 'GIDER' }))} className="py-2 rounded-[8px] text-[12px] font-bold" style={{ background: form.type === 'GIDER' ? 'rgba(248,113,113,0.16)' : 'rgba(255,255,255,0.04)', color: form.type === 'GIDER' ? RED : 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}>Gider</button>
+          <button onClick={() => setForm((old: any) => ({ ...old, type: 'GELIR' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: form.type === 'GELIR' ? 'rgba(74,222,128,0.18)' : 'rgba(255,255,255,0.06)', color: form.type === 'GELIR' ? GREEN : MUTED, border: `1px solid ${BORDER}` }}>Gelir</button>
+          <button onClick={() => setForm((old: any) => ({ ...old, type: 'GIDER' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: form.type === 'GIDER' ? 'rgba(248,113,113,0.22)' : 'rgba(255,255,255,0.06)', color: form.type === 'GIDER' ? RED : MUTED, border: `1px solid ${BORDER}` }}>Gider</button>
         </div>
         <Field label="Hesap">
           <select value={form.accountId} onChange={(e) => setForm((old: any) => ({ ...old, accountId: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle}>
@@ -542,7 +549,7 @@ function EntryForm({ form, setForm, accounts, categories, saving, onSave }: {
           <Field label="Tutar"><input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((old: any) => ({ ...old, amount: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} /></Field>
         </div>
         <Field label="Açıklama"><input value={form.description} onChange={(e) => setForm((old: any) => ({ ...old, description: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
-        <button onClick={onSave} disabled={saving} className="w-full py-2 rounded-[8px] text-[12px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+        <button onClick={onSave} disabled={saving} className="w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
           {saving ? <Loader2 size={14} className="animate-spin inline" /> : <><Save size={14} className="inline mr-1" /> Kaydet</>}
         </button>
       </div>
@@ -560,8 +567,8 @@ function TransferForm({ form, setForm, accounts, saving, onSave }: {
   return (
     <div className="rounded-[10px] p-4" style={panel}>
       <div className="flex items-center gap-2 mb-3">
-        <ArrowRightLeft size={15} style={{ color: BLUE }} />
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Hesaplar Arası Transfer</h3>
+        <ArrowRightLeft size={17} style={{ color: BLUE }} />
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Hesaplar Arası Transfer</h3>
       </div>
       <div className="space-y-2.5">
         <Field label="Çıkış Hesabı">
@@ -579,7 +586,7 @@ function TransferForm({ form, setForm, accounts, saving, onSave }: {
           <Field label="Tutar"><input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((old: any) => ({ ...old, amount: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} /></Field>
         </div>
         <Field label="Açıklama"><input value={form.description} onChange={(e) => setForm((old: any) => ({ ...old, description: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
-        <button onClick={onSave} disabled={saving} className="w-full py-2 rounded-[8px] text-[12px] font-bold disabled:opacity-50" style={{ background: 'rgba(96,165,250,0.16)', color: '#bfdbfe', border: '1px solid rgba(96,165,250,0.28)' }}>
+        <button onClick={onSave} disabled={saving} className="w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(96,165,250,0.18)', color: '#bfdbfe', border: '1px solid rgba(96,165,250,0.34)' }}>
           {saving ? <Loader2 size={14} className="animate-spin inline" /> : 'Transferi İşle'}
         </button>
       </div>
@@ -596,8 +603,8 @@ function AccountForm({ form, setForm, saving, onSave }: {
   return (
     <div className="rounded-[10px] p-4" style={panel}>
       <div className="flex items-center gap-2 mb-3">
-        <Building2 size={15} style={{ color: GOLD }} />
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Yeni Hesap</h3>
+        <Building2 size={17} style={{ color: GOLD }} />
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Yeni Hesap</h3>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Field label="Ad"><input value={form.name} onChange={(e) => setForm((old: any) => ({ ...old, name: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
@@ -612,7 +619,7 @@ function AccountForm({ form, setForm, saving, onSave }: {
         <Field label="Açılış"><input type="number" step="0.01" value={form.openingBalance} onChange={(e) => setForm((old: any) => ({ ...old, openingBalance: Number(e.target.value) }))} className="w-full px-3 py-2 rounded-[8px] tabular-nums" style={inputStyle} /></Field>
         <Field label="Renk"><input type="color" value={form.color} onChange={(e) => setForm((old: any) => ({ ...old, color: e.target.value }))} className="w-full h-[36px] rounded-[8px]" style={{ ...inputStyle, padding: 4 }} /></Field>
       </div>
-      <button onClick={onSave} disabled={saving} className="mt-3 w-full py-2 rounded-[8px] text-[12px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.30)' }}>
+      <button onClick={onSave} disabled={saving} className="mt-3 w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
         {saving ? <Loader2 size={14} className="animate-spin inline" /> : 'Hesap Ekle'}
       </button>
     </div>
@@ -629,13 +636,13 @@ function MovementTable({ entries, transfers, onDeleteTransfer }: {
     ...transfers.map((t) => ({ ...t, rowType: 'TRANSFER' as const, type: 'TRANSFER' as const, date: t.date })),
   ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
   if (!rows.length) {
-    return <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.42)' }}>Bu ay hareket yok.</div>;
+    return <div className="py-8 text-center text-[14px] font-medium" style={{ color: SOFT }}>Bu ay hareket yok.</div>;
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-[12px]">
+      <table className="w-full text-[13.5px]">
         <thead>
-          <tr style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <tr style={{ color: MUTED }}>
             <th className="px-4 py-2 text-left">Tarih</th>
             <th className="px-4 py-2 text-left">İşlem</th>
             <th className="px-4 py-2 text-left">Hesap / Kategori</th>
@@ -649,13 +656,13 @@ function MovementTable({ entries, transfers, onDeleteTransfer }: {
             const isTransfer = row.rowType === 'TRANSFER';
             const color = isTransfer ? BLUE : row.type === 'GELIR' ? GREEN : RED;
             return (
-              <tr key={`${row.rowType}-${row.id}`} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: '#fafaf9' }}>
+              <tr key={`${row.rowType}-${row.id}`} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: TEXT }}>
                 <td className="px-4 py-2 tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{new Date(row.date).toLocaleDateString('tr-TR')}</td>
-                <td className="px-4 py-2"><span className="px-2 py-1 rounded-[6px] text-[10px] font-bold" style={{ background: `${color}22`, color }}>{isTransfer ? 'TRANSFER' : row.type}</span></td>
-                <td className="px-4 py-2 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                <td className="px-4 py-2"><span className="px-2.5 py-1 rounded-[6px] text-[11.5px] font-bold" style={{ background: `${color}24`, color }}>{isTransfer ? 'TRANSFER' : row.type}</span></td>
+                <td className="px-4 py-2 font-medium" style={{ color: TEXT }}>
                   {isTransfer ? `${row.fromAccount?.name} → ${row.toAccount?.name}` : `${row.account?.name || 'Hesapsız'} / ${row.category?.name || 'Cari Tahsilat'}`}
                 </td>
-                <td className="px-4 py-2 truncate max-w-[320px]" style={{ color: 'rgba(250,250,249,0.62)' }}>{row.description || '-'}</td>
+                <td className="px-4 py-2 truncate max-w-[320px]" style={{ color: SOFT }}>{row.description || '-'}</td>
                 <td className="px-4 py-2 text-right font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.amount)} TL</td>
                 <td className="px-3 py-2 text-right">
                   {isTransfer && <button onClick={() => onDeleteTransfer(row.id)} className="p-1.5 rounded-[6px]" style={{ color: '#fca5a5', background: 'rgba(248,113,113,0.10)' }}><Trash2 size={12} /></button>}
@@ -683,8 +690,8 @@ export function GelirGiderTablosuView() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(212,184,118,0.72)' }}>Gelir-Gider Tablosu</div>
-          <h2 className="text-[20px] font-semibold mt-1" style={{ color: '#fafaf9' }}>Ay ay kategori toplamları</h2>
+          <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Gelir-Gider Tablosu</div>
+          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Ay ay kategori toplamları</h2>
         </div>
         <PeriodToolbar year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
       </div>
@@ -701,7 +708,7 @@ export function GelirGiderTablosuView() {
 
       <div className="rounded-[10px] overflow-hidden" style={panel}>
         <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{period} hareket detayları</h3>
+          <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>{period} hareket detayları</h3>
         </div>
         <MovementTable entries={data.entries} transfers={[]} onDeleteTransfer={() => undefined} />
       </div>
@@ -713,13 +720,13 @@ function CategoryMatrix({ title, rows, months, color }: { title: string; rows: B
   return (
     <div className="rounded-[10px] overflow-hidden" style={panel}>
       <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{title}</h3>
-        <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.42)' }}>{rows.length} kalem</span>
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>{title}</h3>
+        <span className="text-[13px] font-medium" style={{ color: SOFT }}>{rows.length} kalem</span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-[11.5px] min-w-[1120px]">
+        <table className="w-full text-[13px] min-w-[1120px]">
           <thead>
-            <tr style={{ color: 'rgba(250,250,249,0.45)', background: 'rgba(255,255,255,0.018)' }}>
+            <tr style={{ color: MUTED, background: 'rgba(255,255,255,0.035)' }}>
               <th className="px-3 py-2 text-left w-[210px]">Kalem</th>
               {months.map((m) => <th key={m.period} className="px-2 py-2 text-right">{m.label}</th>)}
               <th className="px-3 py-2 text-right">Yıl Toplam</th>
@@ -729,7 +736,7 @@ function CategoryMatrix({ title, rows, months, color }: { title: string; rows: B
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.045)', color: '#fafaf9' }}>
+              <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.07)', color: TEXT }}>
                 <td className="px-3 py-2 font-semibold">
                   <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: row.color || color }} />
                   {row.name}
@@ -737,13 +744,13 @@ function CategoryMatrix({ title, rows, months, color }: { title: string; rows: B
                 {months.map((m) => {
                   const cell = row.months?.find((x) => x.period === m.period);
                   return (
-                    <td key={m.period} className="px-2 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: cell?.actual ? color : 'rgba(250,250,249,0.28)' }}>
+                    <td key={m.period} className="px-2 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: cell?.actual ? color : DIM }}>
                       {cell?.actual ? fmt(cell.actual) : '-'}
                     </td>
                   );
                 })}
                 <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.annualActual)}</td>
-                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.62)' }}>{fmt(row.annualPlanned)}</td>
+                <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: MUTED }}>{fmt(row.annualPlanned)}</td>
                 <td className="px-3 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.annualActual - row.annualPlanned >= 0 ? GREEN : RED }}>{fmt(row.annualActual - row.annualPlanned)}</td>
               </tr>
             ))}
@@ -813,8 +820,8 @@ export function ButcePlanView() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em]" style={{ color: 'rgba(212,184,118,0.72)' }}>Bütçe Planı</div>
-          <h2 className="text-[20px] font-semibold mt-1" style={{ color: '#fafaf9' }}>Planlanan ve gerçekleşen karşılaştırması</h2>
+          <div className="text-[12px] font-bold uppercase tracking-[.08em]" style={{ color: GOLD }}>Bütçe Planı</div>
+          <h2 className="text-[24px] font-semibold mt-1" style={{ color: TEXT }}>Planlanan ve gerçekleşen karşılaştırması</h2>
         </div>
         <PeriodToolbar year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
       </div>
@@ -829,15 +836,15 @@ export function ButcePlanView() {
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
         <div className="rounded-[10px] overflow-hidden" style={panel}>
           <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{period} plan tablosu</h3>
-            <button onClick={savePlans} disabled={savingPlan} className="px-3 py-1.5 rounded-[8px] text-[12px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+            <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>{period} plan tablosu</h3>
+            <button onClick={savePlans} disabled={savingPlan} className="px-3.5 py-2 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
               {savingPlan ? <Loader2 size={13} className="animate-spin inline" /> : <><Save size={13} className="inline mr-1" /> Planı Kaydet</>}
             </button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[13.5px]">
               <thead>
-                <tr style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <tr style={{ color: MUTED }}>
                   <th className="px-4 py-2 text-left">Kalem</th>
                   <th className="px-4 py-2 text-right">Plan</th>
                   <th className="px-4 py-2 text-right">Gerçekleşen</th>
@@ -849,12 +856,12 @@ export function ButcePlanView() {
                 {data.categoryRows.map((row) => {
                   const color = row.type === 'GELIR' ? GREEN : RED;
                   return (
-                    <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', color: '#fafaf9' }}>
+                    <tr key={row.categoryId} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: TEXT }}>
                       <td className="px-4 py-2 font-semibold"><span className="inline-block w-2 h-2 rounded-full mr-2" style={{ background: row.color || color }} />{row.name}</td>
                       <td className="px-4 py-2 text-right"><input type="number" step="0.01" value={planDraft[row.categoryId] ?? ''} onChange={(e) => setPlanDraft((old) => ({ ...old, [row.categoryId]: e.target.value }))} className="w-[120px] px-2 py-1.5 rounded-[7px] text-right tabular-nums" style={{ ...inputStyle, fontFamily: 'JetBrains Mono, monospace' }} /></td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>{fmt(row.actual)}</td>
                       <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: row.variance >= 0 ? GREEN : RED }}>{fmt(row.variance)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.62)' }}>%{row.realizationPct.toFixed(1)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: MUTED }}>%{row.realizationPct.toFixed(1)}</td>
                     </tr>
                   );
                 })}
@@ -864,15 +871,15 @@ export function ButcePlanView() {
         </div>
 
         <div className="rounded-[10px] p-4 h-fit" style={panel}>
-          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Kategori Ekle</h3>
+          <h3 className="text-[16px] font-semibold mb-3" style={{ color: TEXT }}>Kategori Ekle</h3>
           <div className="space-y-2.5">
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GELIR', color: '#4ade80' }))} className="py-2 rounded-[8px] text-[12px] font-bold" style={{ background: categoryForm.type === 'GELIR' ? 'rgba(74,222,128,0.16)' : 'rgba(255,255,255,0.04)', color: categoryForm.type === 'GELIR' ? GREEN : 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}>Gelir</button>
-              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GIDER', color: '#ef4444' }))} className="py-2 rounded-[8px] text-[12px] font-bold" style={{ background: categoryForm.type === 'GIDER' ? 'rgba(248,113,113,0.16)' : 'rgba(255,255,255,0.04)', color: categoryForm.type === 'GIDER' ? RED : 'rgba(250,250,249,0.55)', border: '1px solid rgba(255,255,255,0.08)' }}>Gider</button>
+              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GELIR', color: '#4ade80' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GELIR' ? 'rgba(74,222,128,0.18)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GELIR' ? GREEN : MUTED, border: `1px solid ${BORDER}` }}>Gelir</button>
+              <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GIDER', color: '#ef4444' }))} className="py-2.5 rounded-[8px] text-[14px] font-bold" style={{ background: categoryForm.type === 'GIDER' ? 'rgba(248,113,113,0.22)' : 'rgba(255,255,255,0.06)', color: categoryForm.type === 'GIDER' ? RED : MUTED, border: `1px solid ${BORDER}` }}>Gider</button>
             </div>
             <Field label="Kategori Adı"><input value={categoryForm.name} onChange={(e) => setCategoryForm((old) => ({ ...old, name: e.target.value }))} className="w-full px-3 py-2 rounded-[8px]" style={inputStyle} /></Field>
             <Field label="Renk"><input type="color" value={categoryForm.color} onChange={(e) => setCategoryForm((old) => ({ ...old, color: e.target.value }))} className="w-full h-[36px] rounded-[8px]" style={{ ...inputStyle, padding: 4 }} /></Field>
-            <button onClick={saveCategory} disabled={savingCategory} className="w-full py-2 rounded-[8px] text-[12px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.30)' }}>
+            <button onClick={saveCategory} disabled={savingCategory} className="w-full py-2.5 rounded-[8px] text-[14px] font-bold disabled:opacity-50" style={{ background: 'rgba(212,184,118,0.16)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
               {savingCategory ? <Loader2 size={14} className="animate-spin inline" /> : 'Kategori Ekle'}
             </button>
           </div>

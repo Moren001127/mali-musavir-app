@@ -14,6 +14,9 @@ import {
 
 const GOLD = '#d4b876';
 const BORDO = '#9c4656';
+const TEXT = '#f8fafc';
+const MUTED = '#cbd5e1';
+const SOFT = '#a8b0bc';
 
 type Taxpayer = {
   id: string;
@@ -147,14 +150,14 @@ export default function CariKasaPage() {
             <ArrowLeft size={16} />
           </button>
           <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
+            <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
               Cari Kasa · Detay
             </div>
-            <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 28, color: '#fafaf9', letterSpacing: '-.02em' }}>
+            <h1 className="font-semibold" style={{ fontSize: 30, color: TEXT }}>
               {selectedAd}
             </h1>
             {selectedTaxpayer?.taxNumber && (
-              <p className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>
+              <p className="text-[13px] mt-1" style={{ color: SOFT, fontFamily: 'JetBrains Mono, monospace' }}>
                 {selectedTaxpayer.taxNumber}
               </p>
             )}
@@ -301,15 +304,15 @@ function SummaryCard({ label, value, text, color, icon: Icon, highlight, big }: 
   big?: boolean;
 }) {
   return (
-    <div className="rounded-2xl p-4 border" style={{ background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)', borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)' }}>
+    <div className="rounded-[10px] p-4 border" style={{ background: highlight ? 'rgba(156,70,86,0.10)' : 'rgba(255,255,255,0.045)', borderColor: highlight ? 'rgba(156,70,86,0.34)' : 'rgba(255,255,255,0.14)' }}>
       <div className="flex items-center gap-2 mb-2">
-        {Icon && <Icon size={13} style={{ color: color || 'rgba(250,250,249,0.5)' }} />}
-        <div className="text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
+        {Icon && <Icon size={16} style={{ color: color || MUTED }} />}
+        <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
       </div>
       {text ? (
-        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.65)' }}>{text}</div>
+        <div className="text-[14px] font-medium" style={{ color: MUTED }}>{text}</div>
       ) : (
-        <div className={big ? 'text-[26px] font-bold' : 'text-[20px] font-bold'} style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+        <div className={big ? 'text-[28px] font-bold' : 'text-[23px] font-bold'} style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
           ₺{fmt(value)}
         </div>
       )}
@@ -324,30 +327,30 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Tanımlı Hizmetler ({hizmetler.length})</h3>
-        <button onClick={onYeni} className="px-3 py-1.5 rounded-md text-[11.5px] font-semibold inline-flex items-center gap-1.5" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.3)' }}>
-          <Plus size={12} /> Yeni Hizmet
+    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
+      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Tanımlı Hizmetler ({hizmetler.length})</h3>
+        <button onClick={onYeni} className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.36)' }}>
+          <Plus size={14} /> Yeni Hizmet
         </button>
       </div>
       {hizmetler.length === 0 ? (
-        <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>
           Henüz hizmet tanımı yok. "Yeni Hizmet" ile başlayın.
         </div>
       ) : (
-        <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
           {hizmetler.map((h: Hizmet) => (
             <div key={h.id} className="px-5 py-3 flex items-center gap-3">
               <div className={`w-2 h-2 rounded-full ${h.aktif ? '' : 'opacity-30'}`} style={{ background: h.aktif ? '#4ade80' : 'rgba(250,250,249,0.3)' }} />
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{h.hizmetAdi}</div>
-                <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                <div className="text-[14.5px] font-semibold" style={{ color: TEXT }}>{h.hizmetAdi}</div>
+                <div className="text-[12.5px] mt-0.5 font-medium" style={{ color: SOFT }}>
                   {h.periyot} · Başlangıç {h.baslangicAy}{h.bitisAy && ` · Bitiş ${h.bitisAy}`}
                   {h.sonTahakkukAy && ` · Son tahakkuk ${h.sonTahakkukAy}`}
                 </div>
               </div>
-              <div className="text-[15px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: GOLD }}>
+              <div className="text-[17px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: GOLD }}>
                 ₺{fmt(h.tutar)}
               </div>
               <button onClick={() => onEdit(h)} className="p-2 rounded-md" style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.6)' }} title="Düzenle">
@@ -369,17 +372,17 @@ function HareketlerView({ hareketler, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
-      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Hareket Listesi ({hareketler.length})</h3>
+    <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
+      <div className="px-5 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+        <h3 className="text-[16px] font-semibold" style={{ color: TEXT }}>Hareket Listesi ({hareketler.length})</h3>
       </div>
       {hareketler.length === 0 ? (
-        <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Henüz hareket yok.</div>
+        <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>Henüz hareket yok.</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
+          <table className="w-full text-[13.5px]">
             <thead>
-              <tr style={{ color: 'rgba(250,250,249,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <tr style={{ color: MUTED, borderBottom: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)' }}>
                 <th className="text-left px-4 py-2">Tarih</th>
                 <th className="text-left px-4 py-2">Tip</th>
                 <th className="text-left px-4 py-2">Açıklama</th>
@@ -391,20 +394,20 @@ function HareketlerView({ hareketler, onDelete }: {
                 <th></th>
               </tr>
             </thead>
-            <tbody style={{ color: '#fafaf9' }}>
+            <tbody style={{ color: TEXT }}>
               {hareketler.map((h: Hareket) => {
                 const borc = h.tip === 'TAHAKKUK' ? h.tutar : h.tip === 'IADE' ? -h.tutar : 0;
                 const alacak = h.tip === 'TAHSILAT' ? h.tutar : h.tip === 'DUZELTME' ? -h.tutar : 0;
                 return (
-                  <tr key={h.id} style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+                  <tr key={h.id} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                     <td className="px-4 py-2 tabular-nums">{new Date(h.tarih).toLocaleDateString('tr-TR')}</td>
                     <td className="px-4 py-2">
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold" style={{
+                      <span className="inline-block px-2.5 py-1 rounded text-[11.5px] font-bold" style={{
                         background: h.tip === 'TAHAKKUK' ? 'rgba(96,165,250,0.12)' : h.tip === 'TAHSILAT' ? 'rgba(74,222,128,0.12)' : 'rgba(250,204,21,0.12)',
                         color: h.tip === 'TAHAKKUK' ? '#60a5fa' : h.tip === 'TAHSILAT' ? '#4ade80' : '#fde047',
                       }}>{h.tip}</span>
                     </td>
-                    <td className="px-4 py-2 truncate max-w-[300px]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                    <td className="px-4 py-2 truncate max-w-[300px]" style={{ color: TEXT }}>
                       {h.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{h.hizmet.hizmetAdi}</span>}
                       {h.hizmet?.hizmetAdi && h.aciklama && ' · '}
                       {h.aciklama}
@@ -415,12 +418,12 @@ function HareketlerView({ hareketler, onDelete }: {
                     <td className="px-4 py-2 text-right tabular-nums" style={{ color: alacak ? '#4ade80' : 'rgba(250,250,249,0.3)', fontFamily: 'JetBrains Mono, monospace' }}>
                       {alacak ? fmt(alacak) : '—'}
                     </td>
-                    <td className="px-4 py-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.55)' }}>{h.odemeYontemi || '—'}</td>
-                    <td className="px-4 py-2 text-[11px]" style={{ color: h.account ? 'rgba(250,250,249,0.72)' : '#fbbf24' }}>
-                      {h.account ? h.account.name : 'AtanmamÄ±ÅŸ'}
+                    <td className="px-4 py-2 text-[12.5px] font-medium" style={{ color: SOFT }}>{h.odemeYontemi || '—'}</td>
+                    <td className="px-4 py-2 text-[12.5px] font-medium" style={{ color: h.account ? MUTED : '#fbbf24' }}>
+                      {h.account ? h.account.name : 'Atanmamış'}
                     </td>
-                    <td className="px-4 py-2 text-center text-[10px]">
-                      {h.otoOlusturuldu ? <span style={{ color: 'rgba(212,184,118,0.7)' }}>OTO</span> : <span style={{ color: 'rgba(250,250,249,0.35)' }}>Manuel</span>}
+                    <td className="px-4 py-2 text-center text-[11.5px] font-semibold">
+                      {h.otoOlusturuldu ? <span style={{ color: GOLD }}>OTO</span> : <span style={{ color: SOFT }}>Manuel</span>}
                     </td>
                     <td className="px-2 py-2">
                       <button onClick={() => onDelete(h.id)} className="p-1.5 rounded" style={{ color: '#fca5a5' }}><Trash2 size={12} /></button>
@@ -722,11 +725,11 @@ function TahsilatModal({ taxpayerId, onClose, onSaved }: { taxpayerId: string; o
   );
 }
 
-const inpStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9', outline: 'none', fontSize: 13 };
+const inpStyle: React.CSSProperties = { background: 'rgba(255,255,255,0.065)', border: '1px solid rgba(255,255,255,0.14)', color: TEXT, outline: 'none', fontSize: 14, fontWeight: 600 };
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</label>
+      <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>{label}</label>
       {children}
     </div>
   );
@@ -859,13 +862,13 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1" style={{ color: 'rgba(212,184,118,0.7)' }}>
+          <div className="text-[12px] font-bold uppercase tracking-[.08em] mb-1" style={{ color: GOLD }}>
             Finansal Takip · Cari
           </div>
-          <h1 className="font-semibold" style={{ fontFamily: 'Fraunces, serif', fontSize: 32, color: '#fafaf9', letterSpacing: '-.03em' }}>
+          <h1 className="font-semibold" style={{ fontSize: 34, color: TEXT }}>
             Cari Kasa
           </h1>
-          <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          <p className="text-[14px] mt-1 font-medium" style={{ color: SOFT }}>
             Tüm mükellefler · muhasebe ücreti + tahakkuk + tahsilat + bakiye. Mükellefe tıkla, detaya gir.
           </p>
         </div>
@@ -885,11 +888,11 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
             <button
               key={t}
               onClick={() => setView(t)}
-              className="px-4 py-2 rounded-[10px] text-[12.5px] font-semibold"
+              className="px-4 py-2.5 rounded-[10px] text-[14px] font-semibold"
               style={{
-                background: active ? 'rgba(184,160,111,0.15)' : 'rgba(255,255,255,0.03)',
-                color: active ? GOLD : 'rgba(250,250,249,0.6)',
-                border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                background: active ? 'rgba(184,160,111,0.20)' : 'rgba(255,255,255,0.055)',
+                color: active ? '#f0d99f' : MUTED,
+                border: `1px solid ${active ? 'rgba(184,160,111,0.45)' : 'rgba(255,255,255,0.12)'}`,
               }}
             >
               {label}
@@ -899,18 +902,18 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
       </div>
 
       {(view === 'ajanda' || view === 'tablo') && (
-      <div className="sticky top-0 z-10 rounded-2xl p-4 border flex items-center gap-3 flex-wrap backdrop-blur" style={{ background: 'rgba(15,13,11,0.88)', borderColor: 'rgba(255,255,255,0.07)' }}>
+      <div className="sticky top-0 z-10 rounded-[10px] p-4 border flex items-center gap-3 flex-wrap backdrop-blur" style={{ background: 'rgba(15,13,11,0.92)', borderColor: 'rgba(255,255,255,0.14)' }}>
         <div className="relative flex-1 min-w-[250px]">
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
+          <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: SOFT }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Mükellef, VKN veya telefon ara..."
-            className="w-full pl-9 pr-3 py-2 rounded-md text-[13px] outline-none"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            className="w-full pl-9 pr-3 py-2.5 rounded-md text-[14px] font-medium outline-none"
+            style={inpStyle}
           />
         </div>
-        <label className="flex items-center gap-2 cursor-pointer text-[12.5px]" style={{ color: 'rgba(250,250,249,0.75)' }}>
+        <label className="flex items-center gap-2 cursor-pointer text-[14px] font-medium" style={{ color: MUTED }}>
           <input
             type="checkbox"
             checked={sadecaBakiyeli}
@@ -920,8 +923,8 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         </label>
         <button
           onClick={indirExcelToplu}
-          className="px-3 py-2 rounded-md text-[12.5px] font-semibold inline-flex items-center gap-1.5"
-          style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}
+          className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5"
+          style={{ background: 'rgba(74,222,128,0.14)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.34)' }}
         >
           <Download size={13} /> Toplu Excel
         </button>
@@ -955,44 +958,44 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
       {view === 'tablo' && (
       <>
       {/* Tarih filtresi */}
-      <div className="rounded-2xl p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-[10px] p-4 border flex items-end gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
         <div>
-          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Dönem-1</label>
-          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+          <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>Dönem-1</label>
+          <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="px-3 py-2.5 rounded-md text-[14px] outline-none" style={inpStyle} />
         </div>
         <div>
-          <label className="text-[10.5px] font-bold uppercase tracking-[.12em] block mb-1" style={{ color: 'rgba(250,250,249,0.5)' }}>Dönem-2</label>
-          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2 rounded-md text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }} />
+          <label className="text-[12.5px] font-semibold block mb-1.5" style={{ color: MUTED }}>Dönem-2</label>
+          <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="px-3 py-2.5 rounded-md text-[14px] outline-none" style={inpStyle} />
         </div>
         <button
           onClick={() => setTarihAktif((v) => !v)}
-          className="px-4 py-2 rounded-md text-[12.5px] font-bold"
+          className="px-4 py-2.5 rounded-md text-[13px] font-bold"
           style={{
             background: tarihAktif ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'rgba(245,158,11,0.12)',
             color: tarihAktif ? '#fff' : '#f59e0b',
             border: '1px solid rgba(245,158,11,0.3)',
           }}
         >
-          {tarihAktif ? '✓ Tarih Filtresi AKTIF' : '☐ Tarihe Göre Filtrele'}
+          {tarihAktif ? '✓ Tarih Filtresi Aktif' : '☐ Tarihe Göre Filtrele'}
         </button>
-        <div className="text-[11px] ml-auto self-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+        <div className="text-[13px] font-medium ml-auto self-center" style={{ color: SOFT }}>
           {tarihAktif ? `Borç/Alacak sadece ${baslangic} – ${bitis} arasında` : 'Tüm zamanlar'}
         </div>
       </div>
 
       {/* Arama ve diğer filtreler */}
-      <div className="rounded-2xl p-4 border flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-[10px] p-4 border flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
         <div className="relative flex-1 min-w-[250px]">
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'rgba(250,250,249,0.4)' }} />
+          <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: SOFT }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Mükellef ara… ad veya VKN"
-            className="w-full pl-9 pr-3 py-2 rounded-md text-[13px] outline-none"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            className="w-full pl-9 pr-3 py-2.5 rounded-md text-[14px] font-medium outline-none"
+            style={inpStyle}
           />
         </div>
-        <label className="flex items-center gap-2 cursor-pointer text-[12.5px]" style={{ color: 'rgba(250,250,249,0.75)' }}>
+        <label className="flex items-center gap-2 cursor-pointer text-[14px] font-medium" style={{ color: MUTED }}>
           <input
             type="checkbox"
             checked={sadecaBakiyeli}
@@ -1002,8 +1005,8 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
         </label>
         <button
           onClick={indirExcelToplu}
-          className="px-3 py-2 rounded-md text-[12.5px] font-semibold inline-flex items-center gap-1.5"
-          style={{ background: 'rgba(74,222,128,0.12)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.3)' }}
+          className="px-3 py-2 rounded-md text-[13px] font-semibold inline-flex items-center gap-1.5"
+          style={{ background: 'rgba(74,222,128,0.14)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.34)' }}
         >
           <Download size={13} /> Excel
         </button>
@@ -1013,22 +1016,22 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
 
       {/* Tablo — sadece tablo view'da */}
       {view === 'tablo' && (
-      <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
         {isLoading && (
-          <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}>
             <Loader2 className="animate-spin inline mr-2" size={16} />Yükleniyor…
           </div>
         )}
         {!isLoading && filtered.length === 0 && (
-          <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
+          <div className="py-10 text-center text-[14px] font-medium" style={{ color: MUTED }}>
             {ozet.length === 0 ? 'Henüz cari hareket yok — mükellefe tıklayıp hizmet tanımlayın.' : 'Filtreye uyan kayıt yok'}
           </div>
         )}
         {!isLoading && filtered.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-[12.5px]">
+            <table className="w-full text-[13.5px]">
               <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.015)', color: 'rgba(250,250,249,0.5)' }}>
+                <tr style={{ background: 'rgba(255,255,255,0.035)', color: MUTED }}>
                   <th className="text-left px-4 py-2.5 font-semibold">Mükellef</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Muhasebe Ücreti</th>
                   <th className="text-right px-4 py-2.5 font-semibold">Borç (Hizmet)</th>
@@ -1043,14 +1046,14 @@ function GenelListeView({ onSelect }: { onSelect: (id: string) => void }) {
                     key={o.id}
                     onClick={() => onSelect(o.id)}
                     className="cursor-pointer transition-colors"
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.03)' }}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(184,160,111,0.04)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
                     <td className="px-4 py-2.5">
-                      <div className="font-semibold truncate max-w-[320px]" style={{ color: '#fafaf9' }}>{o.ad}</div>
+                      <div className="font-semibold truncate max-w-[320px]" style={{ color: TEXT }}>{o.ad}</div>
                       {o.taxNumber && (
-                        <div className="text-[10.5px] tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.4)' }}>
+                        <div className="text-[12px] font-medium tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: SOFT }}>
                           {o.taxNumber}
                         </div>
                       )}
@@ -1172,61 +1175,61 @@ function TahsilatAjandasiView({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(156,70,86,0.08)', borderColor: 'rgba(156,70,86,0.24)' }}>
-          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Açık Bakiye</div>
-          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(toplamBakiye)} TL</div>
+        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(156,70,86,0.10)', borderColor: 'rgba(156,70,86,0.32)' }}>
+          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Açık Bakiye</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(toplamBakiye)} TL</div>
         </div>
-        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(212,184,118,0.08)', borderColor: 'rgba(212,184,118,0.22)' }}>
-          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>Borçlu Mükellef</div>
-          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>{borcluCount}</div>
+        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(212,184,118,0.09)', borderColor: 'rgba(212,184,118,0.30)' }}>
+          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>Borçlu Mükellef</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: GOLD, fontFamily: 'JetBrains Mono, monospace' }}>{borcluCount}</div>
         </div>
-        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.22)' }}>
-          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>WhatsApp Uygun</div>
-          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: 'JetBrains Mono, monospace' }}>{whatsappCount}</div>
+        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(34,197,94,0.09)', borderColor: 'rgba(34,197,94,0.30)' }}>
+          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>WhatsApp Uygun</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#4ade80', fontFamily: 'JetBrains Mono, monospace' }}>{whatsappCount}</div>
         </div>
-        <div className="rounded-2xl p-4 border" style={{ background: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.22)' }}>
-          <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>90+ Gün Risk</div>
-          <div className="text-[22px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: 'JetBrains Mono, monospace' }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
+        <div className="rounded-[10px] p-4 border" style={{ background: 'rgba(239,68,68,0.09)', borderColor: 'rgba(239,68,68,0.30)' }}>
+          <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>90+ Gün Risk</div>
+          <div className="text-[24px] font-bold mt-1 tabular-nums" style={{ color: '#fca5a5', fontFamily: 'JetBrains Mono, monospace' }}>{rows.filter((r) => r.maxBucket === '90+').length}</div>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {bucketCards.map(([label, value, color]) => (
-          <div key={label} className="rounded-2xl p-4 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-            <div className="text-[10px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.45)' }}>{label}</div>
-            <div className="text-[18px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(value)} TL</div>
+          <div key={label} className="rounded-[10px] p-4 border" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
+            <div className="text-[12.5px] font-semibold" style={{ color: MUTED }}>{label}</div>
+            <div className="text-[20px] font-bold mt-1 tabular-nums" style={{ color, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(value)} TL</div>
           </div>
         ))}
       </div>
-      <div className="rounded-2xl p-4 border flex flex-wrap items-center gap-2" style={{ background: 'rgba(156,70,86,0.06)', borderColor: 'rgba(156,70,86,0.22)' }}>
+      <div className="rounded-[10px] p-4 border flex flex-wrap items-center gap-2" style={{ background: 'rgba(156,70,86,0.08)', borderColor: 'rgba(156,70,86,0.30)' }}>
         <MessageCircle size={16} style={{ color: BORDO }} />
-        <div className="text-[12.5px] font-semibold mr-auto" style={{ color: '#fafaf9' }}>
+        <div className="text-[14px] font-semibold mr-auto" style={{ color: TEXT }}>
           {selectedCount ? `${selectedCount} mukellef secildi` : 'Secim yoksa WhatsApp uygun tum borclular hedeflenir'}
         </div>
-        <button onClick={onSelectAll} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.05)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <button onClick={onSelectAll} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: TEXT, border: '1px solid rgba(255,255,255,0.14)' }}>
           <CheckSquare size={13} className="inline mr-1" /> Uygunlari Sec
         </button>
-        <button onClick={onClear} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.65)' }}>Temizle</button>
-        <button onClick={onPreview} className="px-3 py-1.5 rounded-md text-[12px] font-semibold" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD, border: '1px solid rgba(212,184,118,0.28)' }}>Onizle</button>
-        <button onClick={onSend} disabled={sending} className="px-3 py-1.5 rounded-md text-[12px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
-          {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gonder
+        <button onClick={onClear} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(255,255,255,0.05)', color: MUTED }}>Temizle</button>
+        <button onClick={onPreview} className="px-3 py-2 rounded-md text-[13px] font-semibold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD, border: '1px solid rgba(212,184,118,0.34)' }}>Önizle</button>
+        <button onClick={onSend} disabled={sending} className="px-3 py-2 rounded-md text-[13px] font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}>
+          {sending ? <Loader2 size={13} className="animate-spin inline mr-1" /> : <Send size={13} className="inline mr-1" />} Gönder
         </button>
       </div>
       {preview && (
-        <div className="rounded-2xl p-4 border text-[12px]" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.72)' }}>
+        <div className="rounded-[10px] p-4 border text-[14px] font-medium" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)', color: MUTED }}>
           WhatsApp onizleme: <b style={{ color: '#4ade80' }}>{preview.gonderilecek}</b> gonderilecek, <b style={{ color: '#fca5a5' }}>{preview.atlanacak}</b> atlanacak.
           {!preview.whatsapp?.ready && <span style={{ color: '#fbbf24' }}> WhatsApp ayari eksik: {preview.whatsapp?.error}</span>}
         </div>
       )}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+      <div className="rounded-[10px] border overflow-hidden" style={{ background: 'rgba(255,255,255,0.045)', borderColor: 'rgba(255,255,255,0.14)' }}>
         {isLoading ? (
-          <div className="py-8 text-center" style={{ color: 'rgba(250,250,249,0.5)' }}><Loader2 className="animate-spin inline mr-2" size={16} />Yukleniyor...</div>
+          <div className="py-8 text-center text-[14px] font-medium" style={{ color: MUTED }}><Loader2 className="animate-spin inline mr-2" size={16} />Yükleniyor...</div>
         ) : rows.length === 0 ? (
-          <div className="py-10 text-center text-[13px]" style={{ color: 'rgba(250,250,249,0.4)' }}>Acik tahsilat bakiyesi yok.</div>
+          <div className="py-10 text-center text-[14px] font-medium" style={{ color: MUTED }}>Açık tahsilat bakiyesi yok.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-[13.5px]">
               <thead>
-                <tr style={{ color: 'rgba(250,250,249,0.5)', background: 'rgba(255,255,255,0.015)' }}>
+                <tr style={{ color: MUTED, background: 'rgba(255,255,255,0.035)' }}>
                   <th className="px-3 py-2 text-left">Sec</th>
                   <th className="px-3 py-2 text-left">Mukellef</th>
                   <th className="px-3 py-2 text-right">Bakiye</th>
@@ -1241,11 +1244,11 @@ function TahsilatAjandasiView({
                     <td className="px-3 py-2"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={() => onToggle(r.id)} disabled={!r.whatsappUygun} /></td>
                     <td className="px-3 py-2">
                       <button onClick={() => onOpen(r.id)} className="font-semibold text-left hover:underline">{r.ad}</button>
-                      <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
+                      <div className="text-[12px] font-medium" style={{ color: SOFT, fontFamily: 'JetBrains Mono, monospace' }}>{r.taxNumber || '-'} - {r.phone || 'telefon yok'}</div>
                     </td>
                     <td className="px-3 py-2 text-right font-bold tabular-nums" style={{ color: BORDO, fontFamily: 'JetBrains Mono, monospace' }}>{fmt(r.bakiye)} TL</td>
-                    <td className="px-3 py-2 text-center"><span className="px-2 py-1 rounded-md text-[10.5px] font-bold" style={{ background: r.maxBucket === '90+' ? 'rgba(239,68,68,0.16)' : 'rgba(212,184,118,0.12)', color: r.maxBucket === '90+' ? '#fca5a5' : GOLD }}>{r.maxBucket}</span></td>
-                    <td className="px-3 py-2 text-[11px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                    <td className="px-3 py-2 text-center"><span className="px-2.5 py-1 rounded-md text-[11.5px] font-bold" style={{ background: r.maxBucket === '90+' ? 'rgba(239,68,68,0.16)' : 'rgba(212,184,118,0.12)', color: r.maxBucket === '90+' ? '#fca5a5' : GOLD }}>{r.maxBucket}</span></td>
+                    <td className="px-3 py-2 text-[12.5px] font-medium" style={{ color: MUTED }}>
                       {r.sonTahsilatTarihi ? `Son tahsilat: ${new Date(r.sonTahsilatTarihi).toLocaleDateString('tr-TR')}` : 'Tahsilat yok'}<br />
                       {r.sonHatirlatmaTarihi ? `Son hatirlatma: ${new Date(r.sonHatirlatmaTarihi).toLocaleDateString('tr-TR')}` : 'Hatirlatma yok'}
                     </td>
@@ -1402,15 +1405,15 @@ function IstatistiklerView() {
 
 function StatCard({ label, value, text, color, sub, highlight }: { label: string; value?: number; text?: string; color: string; sub?: string; highlight?: boolean }) {
   return (
-    <div className="rounded-2xl p-4 border" style={{
-      background: highlight ? 'rgba(156,70,86,0.08)' : 'rgba(255,255,255,0.02)',
-      borderColor: highlight ? 'rgba(156,70,86,0.3)' : 'rgba(255,255,255,0.05)',
+    <div className="rounded-[10px] p-4 border" style={{
+      background: highlight ? 'rgba(156,70,86,0.10)' : 'rgba(255,255,255,0.045)',
+      borderColor: highlight ? 'rgba(156,70,86,0.34)' : 'rgba(255,255,255,0.14)',
     }}>
-      <div className="text-[10.5px] font-bold uppercase tracking-[.12em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <div className="text-[22px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
+      <div className="text-[12.5px] font-semibold mb-2" style={{ color: MUTED }}>{label}</div>
+      <div className="text-[24px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
         {text ?? `${fmt(value)} ₺`}
       </div>
-      {sub && <div className="text-[10.5px] mt-1" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</div>}
+      {sub && <div className="text-[12.5px] font-medium mt-1" style={{ color: SOFT }}>{sub}</div>}
     </div>
   );
 }
