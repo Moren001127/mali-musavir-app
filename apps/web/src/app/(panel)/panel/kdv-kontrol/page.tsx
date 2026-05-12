@@ -17,6 +17,31 @@ import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel
 
 const GOLD = '#d4b876';
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function wakeLucaAgentForFetch(onStatus?: (status: string) => void) {
+  if (typeof window === 'undefined') return false;
+  const bridge = (window as any).__morenAutoAgent;
+  if (!bridge) return false;
+  try {
+    onStatus?.('Luca ajani uyandiriliyor; acik Luca sekmesine guncel runtime yukleniyor...');
+    if (typeof bridge.openAgent === 'function') {
+      await bridge.openAgent('luca', { focus: false });
+    } else if (typeof bridge.restartAll === 'function') {
+      await bridge.restartAll();
+    } else {
+      return false;
+    }
+    await wait(5200);
+    return true;
+  } catch (e) {
+    console.warn('[KDV Kontrol] Luca agent uyandirma basarisiz:', e);
+    return false;
+  }
+}
+
 /** Canlı akış (log) satırı */
 type FeedItem = {
   ts: number;
@@ -299,6 +324,7 @@ export default function KdvKontrolPage() {
   const lucaAgentMut = useMutation({
     mutationFn: async () => {
       if (!taxpayerId) throw new Error('Önce mükellef seçin');
+      await wakeLucaAgentForFetch(setLucaStatus);
       const queued: LucaQueuedJob[] = [];
       for (const selectedAction of selectedActions) {
         const s = await ensureSessionForAction(selectedAction);
@@ -392,6 +418,11 @@ export default function KdvKontrolPage() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(lucaJobQueries.map((q) => q.data))]);
+
+  const lucaAgentRunningHint = useMemo(
+    () => /Luca agent|Moren Agent|giris ekraninda|LUCASSO|agiris\.luca\.com\.tr|Klasik Luca|auygs\.luca\.com\.tr\/Luca\//i.test(lucaLogLines.join('\n')),
+    [lucaLogLines],
+  );
 
   // === EXCEL UPLOAD + KOLON MAPPING ===
   const excelFileInputRef = useRef<HTMLInputElement>(null);
@@ -981,6 +1012,7 @@ export default function KdvKontrolPage() {
             <LucaInlineCaptchaPanel
               jobIds={lucaJobs.map((job) => job.id)}
               color="#10b981"
+              agentRunningHint={lucaAgentRunningHint}
               onAnswered={() => lucaJobs.forEach((job) => qc.invalidateQueries({ queryKey: ['kdv-luca-job', job.id] }))}
               onCancel={() => cancelLucaJobsMut.mutate()}
             />

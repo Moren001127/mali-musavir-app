@@ -13,6 +13,31 @@ import {
 
 const GOLD = '#d4b876';
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function wakeLucaAgentForFetch(onStatus?: (status: string) => void) {
+  if (typeof window === 'undefined') return false;
+  const bridge = (window as any).__morenAutoAgent;
+  if (!bridge) return false;
+  try {
+    onStatus?.('Luca ajani uyandiriliyor; acik Luca sekmesine guncel runtime yukleniyor...');
+    if (typeof bridge.openAgent === 'function') {
+      await bridge.openAgent('luca', { focus: false });
+    } else if (typeof bridge.restartAll === 'function') {
+      await bridge.restartAll();
+    } else {
+      return false;
+    }
+    await wait(5200);
+    return true;
+  } catch (e) {
+    console.warn('[E-Arsiv] Luca agent uyandirma basarisiz:', e);
+    return false;
+  }
+}
+
 type Taxpayer = {
   id: string;
   firstName?: string | null;
@@ -193,6 +218,7 @@ export default function EarsivPage() {
       if (hedefMukellefler.length === 0) {
         throw new Error('Mükellef seçmedin — ya mükellef seç ya da "Tüm Mükellefler"i işaretle');
       }
+      await wakeLucaAgentForFetch(setLucaStatus);
       // SABIT SIRA: önce Gelen E-Arşiv, sonra Giden E-Arşiv, sonra E-Fatura'lar
       // Mükellef bazlı dış döngü — bir mükellef için tüm tipler bittikten sonra diğeri
       const sortedModes = MODE_ORDER.filter((m) => modes.has(m));
@@ -370,6 +396,11 @@ export default function EarsivPage() {
       liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight;
     }
   }, [lucaLogLines]);
+
+  const lucaAgentRunningHint = useMemo(
+    () => /Luca agent|Moren Agent|giris ekraninda|LUCASSO|agiris\.luca\.com\.tr|Klasik Luca|auygs\.luca\.com\.tr\/Luca\//i.test(lucaLogLines.join('\n')),
+    [lucaLogLines],
+  );
 
   // (Eski yeni-sekme akışı kaldırıldı — artık sayfa içi EarsivPreviewModal ile gösteriliyor)
 
@@ -773,6 +804,7 @@ export default function EarsivPage() {
           <LucaInlineCaptchaPanel
             jobIds={lucaJobIds.length > 0 ? lucaJobIds : (lucaJobId ? [lucaJobId] : [])}
             color={GOLD}
+            agentRunningHint={lucaAgentRunningHint}
             onAnswered={() => lucaJobIds.forEach((id) => qc.invalidateQueries({ queryKey: ['earsiv-luca-job', id] }))}
             onCancel={() => cancelLucaJobsMut.mutate()}
           />

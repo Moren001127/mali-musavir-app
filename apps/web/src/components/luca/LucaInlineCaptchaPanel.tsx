@@ -9,11 +9,12 @@ import { lucaSessionApi } from '@/lib/luca-session';
 type Props = {
   jobIds: string[];
   color?: string;
+  agentRunningHint?: boolean;
   onAnswered?: () => void;
   onCancel?: () => void;
 };
 
-export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', onAnswered, onCancel }: Props) {
+export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunningHint = false, onAnswered, onCancel }: Props) {
   const [answer, setAnswer] = useState('');
   const activeIds = useMemo(() => jobIds.filter(Boolean), [jobIds]);
 
@@ -31,7 +32,7 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', onAnswered, 
     return ch;
   }, [statusQuery.data?.activeChallenge, activeIds]);
 
-  const agentRunning = (statusQuery.data?.devices || []).some((device) => device.running);
+  const agentRunning = agentRunningHint || (statusQuery.data?.devices || []).some((device) => device.running);
 
   const answerMut = useMutation({
     mutationFn: () => {
