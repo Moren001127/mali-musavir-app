@@ -95,6 +95,7 @@ const navGroups = [
       // Cari Kasa Faturalar & Muhasebe altından buraya taşındı —
       // mükellef muhasebesi DEĞİL, senin ofisinin mali müşavirlik ücret tahsilatı.
       { href: '/panel/cari-kasa',   label: 'Cari Kasa & Tahsilat', icon: Coins },
+      { href: '/panel/hatirlatmalar', label: 'Hatırlatmalar',        icon: Bell },
       { href: '/panel/bildirimler', label: 'Bildirimler',           icon: Bell },
       { href: '/panel/duyurular',   label: 'Duyurular',             icon: Megaphone },
     ],

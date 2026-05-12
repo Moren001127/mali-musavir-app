@@ -205,6 +205,7 @@ function SmsTemplateSection() {
 
   const [evrakTalep, setEvrakTalep] = useState('');
   const [evrakGeldi, setEvrakGeldi] = useState('');
+  const [tahsilat, setTahsilat] = useState('');
   const [editing, setEditing] = useState(false);
 
   const { mutate: save, isPending } = useMutation({
@@ -220,6 +221,7 @@ function SmsTemplateSection() {
   const handleEdit = () => {
     setEvrakTalep(data?.evrakTalepMesaji || '');
     setEvrakGeldi(data?.evrakGeldiMesaji || '');
+    setTahsilat(data?.tahsilatHatirlatmaMesaji || '');
     setEditing(true);
   };
 
@@ -245,7 +247,8 @@ function SmsTemplateSection() {
           <p className="text-xs text-gray-500 bg-gray-50 rounded p-2">
             Kullanılabilir değişkenler:{' '}
             <code className="bg-white border rounded px-1">{'{ad}'}</code>{' '}
-            <code className="bg-white border rounded px-1">{'{dönem}'}</code>
+            <code className="bg-white border rounded px-1">{'{dönem}'}</code>{' '}
+            <code className="bg-white border rounded px-1">{'{bakiye}'}</code>
           </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -267,12 +270,22 @@ function SmsTemplateSection() {
               onChange={e => setEvrakGeldi(e.target.value)}
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tahsilat Hatırlatma Mesajı
+            </label>
+            <textarea
+              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+              value={tahsilat}
+              onChange={e => setTahsilat(e.target.value)}
+            />
+          </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => setEditing(false)} className="btn-secondary text-sm">İptal</button>
             <button
               className="btn-primary text-sm"
               disabled={isPending}
-              onClick={() => save({ evrakTalepMesaji: evrakTalep, evrakGeldiMesaji: evrakGeldi })}
+              onClick={() => save({ evrakTalepMesaji: evrakTalep, evrakGeldiMesaji: evrakGeldi, tahsilatHatirlatmaMesaji: tahsilat })}
             >
               {isPending ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
@@ -287,6 +300,10 @@ function SmsTemplateSection() {
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs font-medium text-gray-500 mb-1">İşleme Başlama SMS</p>
             <p className="text-sm text-gray-700">{data?.evrakGeldiMesaji || '—'}</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="text-xs font-medium text-gray-500 mb-1">Tahsilat Hatırlatma</p>
+            <p className="text-sm text-gray-700">{data?.tahsilatHatirlatmaMesaji || '—'}</p>
           </div>
         </div>
       )}
@@ -362,7 +379,7 @@ export default function AyarlarPage() {
           <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>WhatsApp Otomasyonu</h3>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-          WhatsApp entegrasyonu yakında aktif edilecek. Mükellef listesinde telefon numaralarını ve SMS tercihlerinizi şimdiden ayarlayabilirsiniz.
+          WhatsApp hatırlatma akışı aktif. Evrak ve tahsilat mesajlarını <Link href="/panel/hatirlatmalar" className="font-semibold underline">Hatırlatmalar</Link> ekranından önizleyip gönderebilirsiniz.
         </div>
       </div>
 
