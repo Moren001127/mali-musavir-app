@@ -10,11 +10,12 @@ Patron, "şu modüle şunu ekle" der → ekip GitHub'a kod yazar → PR açar �
 onaylar → otomatik deploy. Patron, Claude Code ile aylarca konuşma derdinden
 kurtulur.
 
-## 4 ajan
+## 5 ajan
 
 | Ajan | Rol | Model | Görev |
 |---|---|---|---|
 | **EREN** (32) | Proje Yöneticisi | Gemini 2.5 Flash | Talebi parçalara böl, görev kartları aç, ekibi yönlendir, durum raporla |
+| **MELİS** (27) | UI/UX & Görsel Tasarım | Claude Sonnet 4.6 | Tasarım kararları, renk/tipografi, mockup, CSS/Tailwind, ikon seçimi, görsel tutarlılık |
 | **SEDA** (29) | Senior Developer | Claude Sonnet 4.6 | Backend/frontend kod yaz, dosya düzenle, commit at, PR aç |
 | **OKAN** (31) | Kod Denetçisi | Claude Sonnet 4.6 | PR'ları gözden geçir, hata/güvenlik/mimari kontrol |
 | **BERK** (28) | DevOps Mühendisi | GPT-5 mini | Migration koş, build doğrula, deploy izle, smoke test |
@@ -26,14 +27,25 @@ PATRON YAZIYOR
    ↓
 EREN — talebi analiz, görev kartı
    ↓
-SEDA — branch açar, kod yazar, build çalıştırır
+   ├─ Görsel/UI içeriyorsa: MELİS önce mockup + tasarım kararı
+   ↓                              ↓ (tasarım onaylı)
+SEDA — branch açar, kod yazar (MELİS'in spec'i ile birlikte)
    ↓
-OKAN — PR'da inceler, sorun varsa SEDA'ya geri yollar
+OKAN — PR'da inceler, MELİS görsel uyum kontrolü yapar
    ↓
 BERK — merge sonrası migration + deploy + smoke test
    ↓
 EREN — patrona "tamamlandı, şu URL'de" raporu
 ```
+
+**MELİS ne zaman devreye girer:**
+- ✓ Yeni sayfa/modül tasarımı
+- ✓ Renk/tipografi/ikon seçimi
+- ✓ Layout değişikliği, responsive uyum
+- ✓ Animasyon/transition kararları
+- ✓ Tailwind class refactor (DRY tutarlılık)
+- ✓ Görsel asset (SVG, illustration) tasarım
+- ✗ Backend logic (oraya karışmaz)
 
 ## Teknik gereksinimler
 
@@ -68,6 +80,7 @@ apps/api/src/moren-dev/
 ├── moren-dev.service.ts (orchestrator)
 ├── agents/
 │   ├── eren.ts (manager persona)
+│   ├── melis.ts (designer persona)
 │   ├── seda.ts (developer persona)
 │   ├── okan.ts (reviewer persona)
 │   └── berk.ts (devops persona)
@@ -111,7 +124,76 @@ Moren Ofis'ten farklı — bu **yazılım stüdyosu**:
 - GitHub iconları, branch çizgileri
 - "build yeşil" / "build kırmızı" göstergesi
 
-## Konuşma akışı örneği
+## MELİS — Detaylı tasarımcı profili
+
+- **Yaş:** 27, grafik tasarım + endüstri uygulama deneyimli
+- **Kişilik:** Estet, detaycı, "neden bu renk?" "neden bu boşluk?" sorusunu sorar
+- **Bildikleri:**
+  - Tailwind CSS ileri seviye, design tokens
+  - Figma'da düşünme alışkanlığı (kod yazsa da)
+  - Tipografi (Fraunces, Plus Jakarta Sans — Moren'in mevcut fontları)
+  - Accessible color contrast (WCAG AA minimum)
+  - Renk paleti yönetimi (mevcut tema: altın #d4b876, lacivert, gece)
+  - SVG illustration (Open Peeps, Storyset)
+  - Animasyon: Framer Motion / CSS transitions
+- **Onay verir/vermez:**
+  - ✓ Boşluk/padding tutarlı mı?
+  - ✓ Renk paletine uygun mu?
+  - ✓ Font ölçeği doğru mu (8-10-12-14-16 sistemi)?
+  - ✓ Mobile responsive mi?
+  - ✓ Dark/light okunabilirlik?
+  - ✗ Markaya uymayan renk
+  - ✗ Inline style ile kaos (Tailwind tutarlılığı)
+
+## Konuşma akışı örneği — UI içeren feature
+
+```
+Patron: "Mükellef kartlarını yeniden tasarla, daha modern olsun"
+
+EREN: "Tamam Muzaffer Bey, MELİS önce tasarım kararı versin, sonra SEDA
+       uygulayacak. Tahmini 25dk."
+
+MELİS: "Mevcut kartlara baktım. 3 önerim var:
+       1. Mevcut: düz kart, KDV/SGK info satırı
+       2. Önerim A: Üst rozet (durum), büyük isim, alt grid (4 metrik)
+       3. Önerim B: Avatar baş harfler + sağ tarafta hızlı aksiyonlar
+       
+       B'yi öneriyorum — Moren'in altın aksanı ile daha şık. Renkler:
+       - Aktif: bg rgba(212,184,118,0.06)
+       - Hover: border altın
+       - Risk işareti: kırmızı dot sağ üst
+       
+       SEDA, Tailwind sınıfları hazır:
+       'rounded-lg p-4 border border-white/8 hover:border-[#d4b876]/40 transition-all'
+       
+       Mockup'ı Figma'da gönderiyorum (link), kabul edersen başlasın."
+
+Patron: "Tamam B"
+
+SEDA: "Branch: design/taxpayer-cards-v2
+       MELİS'in spec'i ile uyguluyorum...
+       PR #48 açıldı."
+
+MELİS: "PR #48 görsel kontrol:
+       ✓ Renkler doğru
+       ⚠ Avatar harfler 11px küçük, 13px olsun
+       ⚠ Mobile breakpoint'te 1 sütuna düşmüyor
+       SEDA düzeltebilir mi?"
+
+SEDA: "Düzeltildi, push edildi."
+
+OKAN: "Kod kalitesi OK, accessibility tab order doğru. Onayladım."
+
+BERK: "Deploy ediyorum...
+       Vercel: ready ✓
+       Smoke test: /panel/mukellefler render OK
+       Canlıda."
+
+EREN: "Muzaffer Bey, mükellef kartları yeni tasarımıyla canlıda.
+       MELİS + SEDA 22dk'da bitirdi. Bak ve geri bildirim ver."
+```
+
+## Eski örnek — sadece backend (MELİS gerek olmayan)
 
 ```
 Patron: "Mükellef listesine arama özelliği ekle, ad/VKN ile filtrelesin"
@@ -157,10 +239,11 @@ EREN: "Muzaffer Bey, 'Mükellef listesine arama' tamamlandı.
 | İş türü | LLM çağrı | Aylık tahmin |
 |---|---|---|
 | Küçük bug fix | SEDA + OKAN ~$0.10 | 30 fix × $0.10 = $3 |
-| Orta feature | Tüm ekip ~$0.50 | 10 feature × $0.50 = $5 |
-| Büyük refactor | Tüm ekip ~$2 | 2 refactor × $2 = $4 |
+| Orta feature (UI içeren) | EREN+MELİS+SEDA+OKAN ~$0.60 | 10 feature × $0.60 = $6 |
+| Büyük refactor / yeni modül | Tüm 5 ekip ~$2.50 | 2 refactor × $2.50 = $5 |
+| Sadece görsel iyileştirme | EREN+MELİS+SEDA ~$0.30 | 5 × $0.30 = $1.5 |
 | Otomasyon önerileri (DENİZ ile entegre) | $1-2 | $2 |
-| **Toplam** | | **~$15-30/ay** |
+| **Toplam** | | **~$18-35/ay** |
 
 Patron sürekli Claude Code premium konuşmasından **kurtulur**.
 Ayda $30 ile, sürekli çalışan ekip + sadece sonucu görür.
