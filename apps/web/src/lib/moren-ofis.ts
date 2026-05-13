@@ -24,12 +24,20 @@ export interface OfisAgent {
   personality: string;
 }
 
+export interface OfisToolCall {
+  tool: string;
+  input: any;
+  ok: boolean;
+  durationMs: number;
+}
+
 export interface OfisMessage {
   agent: AgentId | 'user';
   content: string;
   ts: string;
   durationMs?: number;
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
+  toolCalls?: OfisToolCall[];
 }
 
 export interface OfisChatResponse {

@@ -3,6 +3,14 @@ import { OpenRouterAdapter, ChatMessage } from './providers/openrouter.adapter';
 import { PERSONAS, AgentId, suggestAgents } from './agents/personas';
 import { PrismaService } from '../prisma/prisma.service';
 import { MorenOfisMemoryService } from './memory.service';
+import { ToolExecutorService } from '../moren-ai/tool-executor.service';
+
+export interface OfisToolCall {
+  tool: string;
+  input: any;
+  ok: boolean;
+  durationMs: number;
+}
 
 export interface OfisMessage {
   agent: AgentId | 'user';
@@ -12,6 +20,8 @@ export interface OfisMessage {
   durationMs?: number;
   // Cost tracking
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
+  // FAZ 1 — Hangi tool'ları kullandı (UI rozet için)
+  toolCalls?: OfisToolCall[];
 }
 
 export interface OfisTurnResponse {
@@ -29,6 +39,8 @@ export class MorenOfisService {
     private readonly openrouter: OpenRouterAdapter,
     private readonly prisma: PrismaService,
     private readonly memory: MorenOfisMemoryService,
+    // FAZ 1 — Ortak tool beyni (moren-ai modülünden paylaşılıyor)
+    private readonly tools: ToolExecutorService,
   ) {}
 
   /**
@@ -49,8 +61,18 @@ export class MorenOfisService {
     // 0) HAFIZA YÜKLE — geçmiş özetler + ilgili gerçekler
     // Bu metin her ajanın system prompt'una eklenir, "patron'u tanıyor" hissi verir.
     const memoryContext = await this.memory.loadContext(tenantId, text);
-    const enhancedSystemPrompt = (base: string) =>
-      memoryContext ? `${base}\n\n${memoryContext}` : base;
+
+    // FAZ 1 — TOOL PREFETCH: kullanıcı mesajında mükellef adı/KDV/mizan
+    // anahtar kelime varsa ortak tool beynini önceden çağır, sonucu metin
+    // olarak ajan prompt'una enjekte et. Ajanlar gerçek veriyi yorumlar.
+    const { toolContext, toolCalls } = await this.prefetchToolContext(text, tenantId, userId);
+
+    const enhancedSystemPrompt = (base: string) => {
+      let prompt = base;
+      if (memoryContext) prompt += `\n\n${memoryContext}`;
+      if (toolContext) prompt += `\n\n## CANLI VERİ (ortak tool beyninden)\n${toolContext}`;
+      return prompt;
+    };
 
     const newMessages: OfisMessage[] = [];
     const userMsg: OfisMessage = {
@@ -90,6 +112,15 @@ export class MorenOfisService {
         { role: 'user', content: this.buildSynthesisPrompt(text, delegateResponses) },
       ], history);
       newMessages.push(synthesis);
+    }
+
+    // FAZ 1 — Tool çağrılarını ilk delege ajanın mesajına ilişti (UI rozet için)
+    if (toolCalls.length > 0 && newMessages.length > 1) {
+      // ARDA'dan sonraki ilk ajan delegasyonuna ekle
+      const firstAgentMsg = newMessages.find(
+        (m) => m.agent !== 'user' && m.agent !== 'arda',
+      );
+      if (firstAgentMsg) firstAgentMsg.toolCalls = toolCalls;
     }
 
     // 4) Persistans
@@ -243,5 +274,155 @@ ${summary}
   private deriveTitle(messages: OfisMessage[]): string {
     const firstUser = messages.find((m) => m.agent === 'user');
     return firstUser ? firstUser.content.slice(0, 50) : 'Yeni sohbet';
+  }
+
+  // ============================================================
+  // FAZ 1 — TOOL PREFETCH
+  // ============================================================
+  // Kullanıcı mesajında anahtar kelime/firma adı varsa ortak tool beynini
+  // önceden çağırır, sonucu kısa Markdown bloğu olarak döner. Ajan bu metni
+  // system prompt'unda görür ve gerçek veriyi yorumlar.
+  //
+  // Yalnızca READ tool'ları çağrılır — yazma yapmaz. Faz 3'te write tool'lar
+  // PendingAction üzerinden onay ister.
+  //
+  // Hata olursa kullanıcıya görünür mesaj DÖNMEZ — sadece log + boş context.
+  // Ajanlar yine de cevap verir, sadece canlı veri olmaz.
+  // ------------------------------------------------------------
+  private async prefetchToolContext(
+    text: string,
+    tenantId: string,
+    userId: string,
+  ): Promise<{ toolContext: string; toolCalls: OfisToolCall[] }> {
+    const calls: OfisToolCall[] = [];
+    const parts: string[] = [];
+    const ctx = { tenantId, userId };
+    const lower = text.toLocaleLowerCase('tr');
+
+    const runTool = async (tool: string, input: any) => {
+      const t0 = Date.now();
+      try {
+        const result = await this.tools.execute(tool, input, ctx);
+        const ok = !result?.error;
+        calls.push({ tool, input, ok, durationMs: Date.now() - t0 });
+        return ok ? result : null;
+      } catch (e: any) {
+        calls.push({ tool, input, ok: false, durationMs: Date.now() - t0 });
+        this.logger.warn(`prefetch ${tool}: ${e?.message}`);
+        return null;
+      }
+    };
+
+    // 1) Mükellef adı tespiti — önce list_taxpayers ile arama yap.
+    // Mesajda büyük harfle başlayan, 3+ karakterli kelimeler aday.
+    // Yanlış pozitif olursa LLM context'te kullanmaz, zarar yok.
+    const candidateNames = this.extractCompanyCandidates(text);
+    let matchedTaxpayer: any = null;
+    if (candidateNames.length > 0) {
+      const searchTerm = candidateNames[0];
+      const result = await runTool('list_taxpayers', { search: searchTerm, limit: 3 });
+      const list = result?.taxpayers || result?.items || [];
+      if (Array.isArray(list) && list.length > 0) {
+        matchedTaxpayer = list[0];
+        const lines = list.slice(0, 3).map((t: any) => {
+          const name = t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim();
+          return `- **${name}** (vergi no: ${t.taxNumber || '—'}, tip: ${t.taxpayerType || '—'})`;
+        });
+        parts.push(`### Mükellef araması — "${searchTerm}"\n${lines.join('\n')}`);
+      }
+    }
+
+    // 2) Dönem (period) tespiti — YYYY-MM ya da "mayıs", "haziran" gibi.
+    const period = this.extractPeriod(text);
+
+    // 3) KDV anahtar kelimesi + mükellef varsa → KDV özet çek
+    if (matchedTaxpayer && /\bkdv\b/.test(lower)) {
+      const result = await runTool('get_kdv_summary', {
+        taxpayerId: matchedTaxpayer.id,
+        period,
+      });
+      if (result && !result.error) {
+        parts.push(`### KDV Özeti — ${matchedTaxpayer.companyName || ''} (${period})\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+      }
+    }
+
+    // 4) Mizan anahtar kelimesi varsa → mizan dönemleri listele
+    if (matchedTaxpayer && /\bmizan\b/.test(lower)) {
+      const result = await runTool('list_mizan_periods', { taxpayerId: matchedTaxpayer.id });
+      if (result && Array.isArray(result.periods) && result.periods.length > 0) {
+        const latest = result.periods.slice(0, 3).join(', ');
+        parts.push(`### Mizan Dönemleri — ${matchedTaxpayer.companyName || ''}\nSon dönemler: ${latest}`);
+      }
+    }
+
+    // 5) Fatura/belge anahtar kelimesi → liste
+    if (matchedTaxpayer && /(fatura|belge)/.test(lower)) {
+      const result = await runTool('list_invoices', { taxpayerId: matchedTaxpayer.id, limit: 5 });
+      if (result && !result.error) {
+        const items = result.invoices || result.items || [];
+        if (Array.isArray(items) && items.length > 0) {
+          parts.push(`### Son Faturalar — ${matchedTaxpayer.companyName || ''}\n${items.length} kayıt bulundu (ilk 5 ön-yüklendi).`);
+        }
+      }
+    }
+
+    // 6) Vergi takvimi — KDV, beyanname, ödeme gibi takvim sorguları
+    if (/(takvim|son gün|deadline|beyanname tarihi)/.test(lower)) {
+      const result = await runTool('get_tax_calendar', { period });
+      if (result && !result.error) {
+        parts.push(`### Vergi Takvimi — ${period}\n${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 500)}`);
+      }
+    }
+
+    return {
+      toolContext: parts.length > 0 ? parts.join('\n\n') : '',
+      toolCalls: calls,
+    };
+  }
+
+  /**
+   * Mesajdan firma adı adayları çıkarır. Basit heuristic:
+   * - 3+ karakterli kelimeler
+   * - Türkçe büyük harfle başlayan (büyük harf I, İ dahil)
+   * - Yaygın kelimeler ("Mayıs", "Mizan" vb.) hariç
+   */
+  private extractCompanyCandidates(text: string): string[] {
+    const STOPWORDS = new Set([
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz',
+      'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+      'Mizan', 'KDV', 'Bilanço', 'Beyanname', 'Fatura', 'Belge',
+      'Petek', 'Ben', 'Sen', 'Bu', 'Şu', 'Bugün', 'Yarın',
+      'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar',
+    ]);
+    const matches = text.match(/[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2,}/gu) || [];
+    const unique = Array.from(new Set(matches));
+    return unique.filter((w) => !STOPWORDS.has(w));
+  }
+
+  /**
+   * Mesajdan dönem (YYYY-MM) çıkarır. Türkçe ay adı, YYYY-MM, "geçen ay" vb.
+   */
+  private extractPeriod(text: string): string {
+    // Doğrudan YYYY-MM
+    const m1 = text.match(/(\d{4})[-/](\d{1,2})/);
+    if (m1) return `${m1[1]}-${String(m1[2]).padStart(2, '0')}`;
+
+    const months: Record<string, number> = {
+      ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5,
+      haziran: 6, temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9,
+      ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12,
+    };
+    const lower = text.toLocaleLowerCase('tr');
+    for (const [name, num] of Object.entries(months)) {
+      if (lower.includes(name)) {
+        const yearMatch = text.match(/\b(20\d{2})\b/);
+        const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
+        return `${year}-${String(num).padStart(2, '0')}`;
+      }
+    }
+
+    // Default — şu anki ay
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
 }

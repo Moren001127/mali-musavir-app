@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 
@@ -302,6 +302,27 @@ export function BriefingChat({
                 >
                   {m.content}
                 </div>
+                {/* FAZ 1 — Tool çağrı rozeti (hangi canlı veri yüklendi) */}
+                {m.toolCalls && m.toolCalls.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5 px-1">
+                    {m.toolCalls.map((tc, j) => (
+                      <span
+                        key={j}
+                        className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded text-[9.5px] font-mono"
+                        style={{
+                          background: tc.ok ? `${accent}12` : 'rgba(239,68,68,0.12)',
+                          border: `1px solid ${tc.ok ? `${accent}30` : 'rgba(239,68,68,0.30)'}`,
+                          color: tc.ok ? accent : '#fca5a5',
+                        }}
+                        title={`${tc.tool}(${JSON.stringify(tc.input)}) — ${tc.durationMs}ms`}
+                      >
+                        <Wrench size={9} />
+                        {tc.tool}
+                        {!tc.ok && ' ✕'}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })
