@@ -181,16 +181,20 @@ export default function MorenOfisPage() {
 
       {/* OFİS SAHNESİ — opsiyonel, toggle ile */}
       {showOffice && (
-        <Office
-          agents={team}
-          activeAgents={activeAgents}
-          onAgentClick={(id) => setSelectedAgent(id === selectedAgent ? null : id)}
-          selectedAgent={selectedAgent}
-        />
+        <div className="rounded-xl overflow-hidden">
+          <Office
+            agents={team}
+            activeAgents={activeAgents}
+            onAgentClick={(id) => setSelectedAgent(id === selectedAgent ? null : id)}
+            selectedAgent={selectedAgent}
+          />
+        </div>
       )}
 
-      {/* DENİZ PANELİ — alt kısımda */}
-      <DenizPanel />
+      {/* DENİZ PANELİ — sistem önerileri, alt kısımda */}
+      <div className="rounded-xl overflow-hidden">
+        <DenizPanel />
+      </div>
     </div>
   );
 }
