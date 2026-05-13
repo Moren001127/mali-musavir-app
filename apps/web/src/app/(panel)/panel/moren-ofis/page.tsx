@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Briefcase, DollarSign, LayoutGrid, MessageSquare } from 'lucide-react';
+import { Briefcase, DollarSign, LayoutGrid } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
-import { AgentStrip } from './_components/AgentStrip';
-import { ChatPanel } from './_components/ChatPanel';
+import { AgentStatCard } from './_components/AgentStatCard';
+import { BriefingChat } from './_components/BriefingChat';
 import { DenizPanel } from './_components/DenizPanel';
 import type { CharacterState } from './_components/Character';
 import { toast } from 'sonner';
@@ -19,7 +19,7 @@ export default function MorenOfisPage() {
   const [activeAgents, setActiveAgents] = useState<{ id: AgentId; state: CharacterState }[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentId | null>(null);
   const [totalCost, setTotalCost] = useState(0);
-  const [showOffice, setShowOffice] = useState(false); // ofis sahnesi gizli default
+  const [showOffice, setShowOffice] = useState(false);
 
   const { data: team = [] } = useQuery({
     queryKey: ['moren-ofis-team'],
@@ -33,11 +33,9 @@ export default function MorenOfisPage() {
       setConversationId(res.conversationId);
       setTotalCost((c) => c + (res.totalCostUsd || 0));
 
-      // Mesajları kademeli olarak ekle, ajanlar tek tek görünsün
       let delay = 0;
       for (const msg of res.messages) {
         setTimeout(() => {
-          // user mesajı zaten manuel eklendi, skip
           if (msg.agent === 'user') return;
           setMessages((prev) => [...prev, msg]);
           setActiveAgents((curr) => [
@@ -66,15 +64,26 @@ export default function MorenOfisPage() {
     chatMut.mutate(text);
   };
 
+  const stateMap = new Map(activeAgents.map((a) => [a.id, a.state]));
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Üst başlık + araçlar */}
       <div className="flex items-end justify-between gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-[.16em]" style={{ color: GOLD }}>
             <Briefcase size={11} className="inline mr-1" /> Moren AI
           </div>
-          <h1 className="text-2xl font-bold mt-1" style={{ color: '#fafaf9' }}>
+          <h1
+            className="mt-1"
+            style={{
+              fontFamily: 'Fraunces, serif',
+              fontSize: 30,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: '#fafaf9',
+            }}
+          >
             Moren Ofis
           </h1>
           <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
@@ -114,13 +123,25 @@ export default function MorenOfisPage() {
         </div>
       </div>
 
-      {/* ÜST ŞERİT — 7 ajan kafa-isim-durum (her zaman görünür) */}
-      <AgentStrip
-        agents={team}
-        activeAgents={activeAgents}
-        onAgentClick={(id) => setSelectedAgent(id === selectedAgent ? null : id)}
-        selectedAgent={selectedAgent}
-      />
+      {/* ===== AJAN MASASI GRID — gösterge panelindeki StatCard tarzında ===== */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {team.map((agent) => {
+          const state = stateMap.get(agent.id) || 'idle';
+          const isActive = stateMap.has(agent.id);
+          return (
+            <AgentStatCard
+              key={agent.id}
+              agent={agent}
+              state={state}
+              isActive={isActive}
+              selected={selectedAgent === agent.id}
+              onClick={() =>
+                setSelectedAgent(agent.id === selectedAgent ? null : agent.id)
+              }
+            />
+          );
+        })}
+      </div>
 
       {/* Seçili ajan detayı */}
       {selectedAgent && (() => {
@@ -128,7 +149,7 @@ export default function MorenOfisPage() {
         if (!a) return null;
         return (
           <div
-            className="rounded-lg p-3 flex items-start justify-between gap-3"
+            className="rounded-xl p-3 flex items-start justify-between gap-3"
             style={{
               background: `linear-gradient(90deg, ${a.accentColor}15 0%, transparent 100%)`,
               border: `1px solid ${a.accentColor}30`,
@@ -136,7 +157,10 @@ export default function MorenOfisPage() {
           >
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs uppercase tracking-wider font-bold" style={{ color: a.accentColor }}>
+                <span
+                  className="text-xs uppercase tracking-wider font-bold"
+                  style={{ color: a.accentColor }}
+                >
                   {a.displayName}
                 </span>
                 <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
@@ -169,15 +193,13 @@ export default function MorenOfisPage() {
         );
       })()}
 
-      {/* ANA İÇERİK — Chat tam genişlik (Ofis sahnesi opsiyonel altta) */}
-      <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(0,0,0,0.2)' }}>
-        <ChatPanel
-          agents={team}
-          messages={messages}
-          sending={chatMut.isPending}
-          onSend={handleSend}
-        />
-      </div>
+      {/* ===== BRIFING CHAT — gösterge panelindeki Brifing kartı tarzında ===== */}
+      <BriefingChat
+        agents={team}
+        messages={messages}
+        sending={chatMut.isPending}
+        onSend={handleSend}
+      />
 
       {/* OFİS SAHNESİ — opsiyonel, toggle ile */}
       {showOffice && (
@@ -191,10 +213,8 @@ export default function MorenOfisPage() {
         </div>
       )}
 
-      {/* DENİZ PANELİ — sistem önerileri, alt kısımda */}
-      <div className="rounded-xl overflow-hidden">
-        <DenizPanel />
-      </div>
+      {/* DENİZ PANELİ — sistem önerileri */}
+      <DenizPanel />
     </div>
   );
 }

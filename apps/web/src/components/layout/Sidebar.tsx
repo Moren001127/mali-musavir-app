@@ -26,7 +26,8 @@ const navGroups = [
     color: GOLD,
     icon: Brain,
     items: [
-      { href: '/panel/moren-ofis',     label: 'Moren Ofis (AI Ekip)', icon: Brain },
+      { href: '/panel/moren-ofis',              label: 'Moren Ofis (AI Ekip)',     icon: Brain },
+      { href: '/panel/moren-portal-gelistirme', label: 'Portal Geliştirme Ekibi',  icon: Cpu },
     ],
   },
   {
