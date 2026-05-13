@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.22';
+  const AGENT_VERSION = '1.37.23';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5257,6 +5257,40 @@
     }
   }
 
+  async function tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, contextLabel = 'menü') {
+    const target = await findLucaMenuItem('Gelir/Gider Listesi', null, 1800);
+    if (!target) return false;
+    await log(`🖱 Gelir/Gider Listesi raporu açılıyor (${contextLabel}: ${target.frameName} → ${describeLucaMenuElement(target.el)})`);
+    fullActivate(target.el, target.frame.contentWindow || target.frame);
+    const form = await waitUntil(() => findLucaGelirGiderRaporFormNow(), 12000, 250);
+    if (form) {
+      await log('✓ Gelir/Gider Listesi rapor formu menüden açıldı');
+      return true;
+    }
+    await log('ℹ️ Gelir/Gider Listesi menüsü tıklandı ama rapor formu henüz gelmedi; alternatif rota denenecek');
+    return false;
+  }
+
+  async function tryOpenIsletmeReportSubmenus(log) {
+    const submenuNames = [
+      'Raporlar',
+      'Rapor İşlemleri',
+      'Raporlar ve Listeler',
+      'Listeler',
+      'Dökümler',
+      'Döküm İşlemleri',
+    ];
+    for (const submenuName of submenuNames) {
+      const submenu = await findLucaMenuItem(submenuName, null, 1200);
+      if (!submenu) continue;
+      await log(`🖱 İşletme alt menüsü açılıyor: ${submenuName} (${submenu.frameName} → ${describeLucaMenuElement(submenu.el)})`);
+      fullActivate(submenu.el, submenu.frame.contentWindow || submenu.frame);
+      await sleep(700);
+      if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, submenuName)) return true;
+    }
+    return false;
+  }
+
   /**
    * Sayfa Fiş Listesi sayfasında değilse (Mizan menüsü yoksa), Muhasebe →
    * Fiş İşlemleri → Fiş Listesi sırasıyla menü tıklayarak gider.
@@ -5431,6 +5465,8 @@
     await log('🖱 İşletme Defteri açılıyor (hover+click+onclick)');
     fullActivate(isletmeEl, menuFrame.contentWindow);
     await sleep(800);
+    if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'İşletme Defteri')) return;
+    if (await tryOpenIsletmeReportSubmenus(log)) return;
 
     // 2. "Gider İşlemleri" submenü
     await log('🔍 Gider İşlemleri aranıyor');
@@ -5441,6 +5477,7 @@
     await log('🖱 Gider İşlemleri açılıyor (hover+click+onclick)');
     fullActivate(giderIslemleri.el, giderIslemleri.frame.contentWindow || giderIslemleri.frame);
     await sleep(800);
+    if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'Gider İşlemleri')) return;
 
     // 3. "Gider Listesi" tıkla
     await log('🔍 Gider Listesi linki aranıyor');
