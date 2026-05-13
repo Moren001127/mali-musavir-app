@@ -111,7 +111,11 @@ export class MorenOfisService {
     const enhancedSystemPrompt = (base: string) => {
       let prompt = base;
       if (memoryContext) prompt += `\n\n${memoryContext}`;
-      if (toolContext) prompt += `\n\n## CANLI VERİ (ortak tool beyninden)\n${toolContext}`;
+      if (toolContext) {
+        prompt += `\n\nCanlı veri (yorumla, kopyalama — kısa cümle ile geç): ${toolContext}`;
+      }
+      // Son katmanda kısa cevap reminder — modeller çok seviyor uzun rapor yazmayı
+      prompt += `\n\nÖNEMLİ: Cevabın doğal sohbet havası olmalı — başlık/tablo/checkbox yasak. 2-4 cümle, max 80 kelime.`;
       return prompt;
     };
 
@@ -208,8 +212,10 @@ export class MorenOfisService {
       const res = await this.openrouter.chat({
         model: persona.model,
         messages,
-        temperature: 0.3,
-        maxTokens: 1200,
+        temperature: 0.4,
+        // Ekip cevapları kısa olmalı — ChatGPT raporu değil, meslektaş konuşması.
+        // ARDA daha da kısa (delege mesajları), uzmanlar biraz daha alan.
+        maxTokens: agentId === 'arda' ? 250 : 400,
         cachePromptPrefix: true,
       });
       return {
@@ -355,8 +361,6 @@ ${summary}
     };
 
     // 1) Mükellef adı tespiti — önce list_taxpayers ile arama yap.
-    // Mesajda büyük harfle başlayan, 3+ karakterli kelimeler aday.
-    // Yanlış pozitif olursa LLM context'te kullanmaz, zarar yok.
     const candidateNames = this.extractCompanyCandidates(text);
     let matchedTaxpayer: any = null;
     if (candidateNames.length > 0) {
@@ -365,53 +369,50 @@ ${summary}
       const list = result?.taxpayers || result?.items || [];
       if (Array.isArray(list) && list.length > 0) {
         matchedTaxpayer = list[0];
-        const lines = list.slice(0, 3).map((t: any) => {
-          const name = t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim();
-          return `- **${name}** (vergi no: ${t.taxNumber || '—'}, tip: ${t.taxpayerType || '—'})`;
-        });
-        parts.push(`### Mükellef araması — "${searchTerm}"\n${lines.join('\n')}`);
+        const name = matchedTaxpayer.companyName || `${matchedTaxpayer.firstName || ''} ${matchedTaxpayer.lastName || ''}`.trim();
+        parts.push(`Mükellef bulundu: ${name} (vergi no ${matchedTaxpayer.taxNumber || '—'}).`);
       }
     }
 
-    // 2) Dönem (period) tespiti — YYYY-MM ya da "mayıs", "haziran" gibi.
+    // 2) Dönem tespiti
     const period = this.extractPeriod(text);
 
-    // 3) KDV anahtar kelimesi + mükellef varsa → KDV özet çek
+    // 3) KDV — tek cümle özet
     if (matchedTaxpayer && /\bkdv\b/.test(lower)) {
       const result = await runTool('get_kdv_summary', {
         taxpayerId: matchedTaxpayer.id,
         period,
       });
       if (result && !result.error) {
-        parts.push(`### KDV Özeti — ${matchedTaxpayer.companyName || ''} (${period})\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+        parts.push(`KDV özeti (${period}): ${this.summarizeKdv(result)}`);
       }
     }
 
-    // 4) Mizan anahtar kelimesi varsa → mizan dönemleri listele
+    // 4) Mizan dönemleri
     if (matchedTaxpayer && /\bmizan\b/.test(lower)) {
       const result = await runTool('list_mizan_periods', { taxpayerId: matchedTaxpayer.id });
       if (result && Array.isArray(result.periods) && result.periods.length > 0) {
-        const latest = result.periods.slice(0, 3).join(', ');
-        parts.push(`### Mizan Dönemleri — ${matchedTaxpayer.companyName || ''}\nSon dönemler: ${latest}`);
+        parts.push(`Mizan son dönemler: ${result.periods.slice(0, 3).join(', ')}.`);
       }
     }
 
-    // 5) Fatura/belge anahtar kelimesi → liste
+    // 5) Fatura sayısı
     if (matchedTaxpayer && /(fatura|belge)/.test(lower)) {
       const result = await runTool('list_invoices', { taxpayerId: matchedTaxpayer.id, limit: 5 });
       if (result && !result.error) {
         const items = result.invoices || result.items || [];
-        if (Array.isArray(items) && items.length > 0) {
-          parts.push(`### Son Faturalar — ${matchedTaxpayer.companyName || ''}\n${items.length} kayıt bulundu (ilk 5 ön-yüklendi).`);
+        if (Array.isArray(items)) {
+          parts.push(`Sistemde ${items.length} son fatura kaydı görünüyor.`);
         }
       }
     }
 
-    // 6) Vergi takvimi — KDV, beyanname, ödeme gibi takvim sorguları
+    // 6) Vergi takvimi
     if (/(takvim|son gün|deadline|beyanname tarihi)/.test(lower)) {
       const result = await runTool('get_tax_calendar', { period });
       if (result && !result.error) {
-        parts.push(`### Vergi Takvimi — ${period}\n${typeof result === 'string' ? result : JSON.stringify(result).slice(0, 500)}`);
+        const txt = typeof result === 'string' ? result : (result.summary || JSON.stringify(result).slice(0, 200));
+        parts.push(`Vergi takvimi (${period}): ${txt}`);
       }
     }
 
@@ -419,6 +420,25 @@ ${summary}
       toolContext: parts.length > 0 ? parts.join('\n\n') : '',
       toolCalls: calls,
     };
+  }
+
+  /**
+   * KDV özetini insan okunaklı tek satır metne dönüştürür.
+   * JSON dump yerine ajan rapor yapma dürtüsünü tetiklemesin diye.
+   */
+  private summarizeKdv(data: any): string {
+    if (!data || typeof data !== 'object') return 'veri yok';
+    const parts: string[] = [];
+    const fmt = (n: any) => {
+      const num = Number(n);
+      return isFinite(num) ? num.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : '—';
+    };
+    if (data.totalSales !== undefined) parts.push(`satış ${fmt(data.totalSales)} TL`);
+    if (data.totalPurchases !== undefined) parts.push(`alış ${fmt(data.totalPurchases)} TL`);
+    if (data.netVat !== undefined) parts.push(`net KDV ${fmt(data.netVat)} TL`);
+    if (data.status) parts.push(`durum ${data.status}`);
+    if (data.invoiceCount !== undefined) parts.push(`${data.invoiceCount} fatura`);
+    return parts.length > 0 ? parts.join(', ') : 'veri var ama özetlenemedi';
   }
 
   /**
