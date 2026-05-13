@@ -6588,18 +6588,30 @@
       </div>
       <div id="ma-status" style="color:rgba(250,250,249,.7);font-size:12px">Bekleniyor…</div>
       <div id="ma-count" style="margin-top:6px;font-size:11px;color:rgba(250,250,249,.5)"></div>`;
-    document.body.appendChild(panel);
+    // DOM hazır mı bekle — Luca framesetinde body geç yükleniyor, body null
+    // iken appendChild crash atıyor ve TÜM runtime ölüyor, job pending'de
+    // takılı kalıyordu. body/head hazır olunca enjekte et.
     const style = document.createElement('style');
     style.textContent = '@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}';
-    document.head.appendChild(style);
+    const injectWhenReady = () => {
+      if (!document.body || !document.head) {
+        return setTimeout(injectWhenReady, 100);
+      }
+      try { document.body.appendChild(panel); } catch (e) { console.warn('[Moren] panel inject', e?.message); }
+      try { document.head.appendChild(style); } catch (e) {}
+    };
+    injectWhenReady();
     $status = panel.querySelector('#ma-status');
     $count = panel.querySelector('#ma-count');
     setStatus = (s) => { if ($status) $status.textContent = s; };
     setCount = () => { if ($count) $count.textContent = `✓${counters.onay} ⏭${counters.atla} ⏩${counters.demirbas} ⚠${counters.hata}`; };
-    document.getElementById('ma-stop').onclick = () => {
-      window.__morenAgent.stopRequested = true;
-      setStatus('Durduruluyor…');
-    };
+    const stopBtn = panel.querySelector('#ma-stop');
+    if (stopBtn) {
+      stopBtn.onclick = () => {
+        window.__morenAgent.stopRequested = true;
+        setStatus('Durduruluyor…');
+      };
+    }
     // Sürükle-bırak + pozisyonu localStorage'a yaz
     (function(){
       let dx=0,dy=0,dragging=false;
