@@ -12,6 +12,7 @@ export type PendingActionSource =
 export type PendingActionStatus =
   | 'pending'
   | 'approved'
+  | 'processing' // worker tarafından claim edilmiş (atomic), iş halen sürüyor
   | 'rejected'
   | 'expired'
   | 'applied'

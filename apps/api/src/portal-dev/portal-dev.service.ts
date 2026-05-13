@@ -191,10 +191,13 @@ export class PortalDevService {
   async updateTaskStatus(tenantId: string, id: string, status: string) {
     const valid = ['backlog', 'in_progress', 'in_review', 'done', 'cancelled'];
     if (!valid.includes(status)) throw new BadRequestException('Geçersiz durum');
-    return (this.prisma as any).portalDevTask.update({
-      where: { id },
+    // Tenant izolasyonu: updateMany ile id+tenantId şartı tek atomic where'de
+    const result = await (this.prisma as any).portalDevTask.updateMany({
+      where: { id, tenantId },
       data: { status },
     });
+    if (result.count === 0) throw new NotFoundException('Görev bulunamadı');
+    return (this.prisma as any).portalDevTask.findUnique({ where: { id } });
   }
 
   /**

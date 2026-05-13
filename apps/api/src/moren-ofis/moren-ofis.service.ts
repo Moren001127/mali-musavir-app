@@ -409,6 +409,7 @@ ${summary}
     };
 
     // 1) Mükellef adı tespiti — önce list_taxpayers ile arama yap.
+    // Tool-executor alan isimleri: { id, isim, tip, vkn_tckn, vergiDairesi, ... }
     const candidateNames = this.extractCompanyCandidates(text);
     let matchedTaxpayer: any = null;
     if (candidateNames.length > 0) {
@@ -417,30 +418,33 @@ ${summary}
       const list = result?.taxpayers || result?.items || [];
       if (Array.isArray(list) && list.length > 0) {
         matchedTaxpayer = list[0];
-        const name = matchedTaxpayer.companyName || `${matchedTaxpayer.firstName || ''} ${matchedTaxpayer.lastName || ''}`.trim();
-        parts.push(`Mükellef bulundu: ${name} (vergi no ${matchedTaxpayer.taxNumber || '—'}).`);
+        const name = matchedTaxpayer.isim || '—';
+        parts.push(`Mükellef bulundu: ${name} (vergi no ${matchedTaxpayer.vkn_tckn || '—'}).`);
       }
     }
 
-    // 2) Dönem tespiti
-    const period = this.extractPeriod(text);
+    // 2) Dönem tespiti — tool-executor bazı tool'larda 'donem', bazılarında
+    //    'period' kullanıyor. Aşağıda her tool için doğru alan adıyla geçiyoruz.
+    const donem = this.extractPeriod(text);
 
-    // 3) KDV — tek cümle özet
+    // 3) KDV — donem alanı (KdvControlOutput.donem ile eşleşmesi şart)
     if (matchedTaxpayer && /\bkdv\b/.test(lower)) {
       const result = await runTool('get_kdv_summary', {
         taxpayerId: matchedTaxpayer.id,
-        period,
+        donem,
       });
       if (result && !result.error) {
-        parts.push(`KDV özeti (${period}): ${this.summarizeKdv(result)}`);
+        parts.push(`KDV özeti (${donem}): ${this.summarizeKdv(result)}`);
       }
     }
 
     // 4) Mizan dönemleri
     if (matchedTaxpayer && /\bmizan\b/.test(lower)) {
       const result = await runTool('list_mizan_periods', { taxpayerId: matchedTaxpayer.id });
-      if (result && Array.isArray(result.periods) && result.periods.length > 0) {
-        parts.push(`Mizan son dönemler: ${result.periods.slice(0, 3).join(', ')}.`);
+      const periods = result?.periods || result?.donemler || [];
+      if (Array.isArray(periods) && periods.length > 0) {
+        const labels = periods.slice(0, 3).map((p: any) => p.donem || p);
+        parts.push(`Mizan son dönemler: ${labels.join(', ')}.`);
       }
     }
 
@@ -448,19 +452,19 @@ ${summary}
     if (matchedTaxpayer && /(fatura|belge)/.test(lower)) {
       const result = await runTool('list_invoices', { taxpayerId: matchedTaxpayer.id, limit: 5 });
       if (result && !result.error) {
-        const items = result.invoices || result.items || [];
+        const items = result.invoices || result.faturalar || result.items || [];
         if (Array.isArray(items)) {
           parts.push(`Sistemde ${items.length} son fatura kaydı görünüyor.`);
         }
       }
     }
 
-    // 6) Vergi takvimi
+    // 6) Vergi takvimi — get_tax_calendar input.period kullanıyor
     if (/(takvim|son gün|deadline|beyanname tarihi)/.test(lower)) {
-      const result = await runTool('get_tax_calendar', { period });
+      const result = await runTool('get_tax_calendar', { period: donem });
       if (result && !result.error) {
         const txt = typeof result === 'string' ? result : (result.summary || JSON.stringify(result).slice(0, 200));
-        parts.push(`Vergi takvimi (${period}): ${txt}`);
+        parts.push(`Vergi takvimi (${donem}): ${txt}`);
       }
     }
 
@@ -471,22 +475,36 @@ ${summary}
   }
 
   /**
-   * KDV özetini insan okunaklı tek satır metne dönüştürür.
-   * JSON dump yerine ajan rapor yapma dürtüsünü tetiklemesin diye.
+   * KDV özetini tek cümleye sıkıştırır. tool-executor get_kdv_summary çıktısı:
+   *   { aktifSeanslar: [{donem, tip, status, lucaKayitSayisi, faturaSayisi,
+   *     lucaToplamKdv, eslesen, kismiEslesen, eslesmeyen}, ...],
+   *     arsivler: [{donem, tip, tamEslesen, ...}] }
    */
   private summarizeKdv(data: any): string {
     if (!data || typeof data !== 'object') return 'veri yok';
-    const parts: string[] = [];
     const fmt = (n: any) => {
       const num = Number(n);
       return isFinite(num) ? num.toLocaleString('tr-TR', { maximumFractionDigits: 2 }) : '—';
     };
-    if (data.totalSales !== undefined) parts.push(`satış ${fmt(data.totalSales)} TL`);
-    if (data.totalPurchases !== undefined) parts.push(`alış ${fmt(data.totalPurchases)} TL`);
-    if (data.netVat !== undefined) parts.push(`net KDV ${fmt(data.netVat)} TL`);
-    if (data.status) parts.push(`durum ${data.status}`);
-    if (data.invoiceCount !== undefined) parts.push(`${data.invoiceCount} fatura`);
-    return parts.length > 0 ? parts.join(', ') : 'veri var ama özetlenemedi';
+    const sessions = Array.isArray(data.aktifSeanslar) ? data.aktifSeanslar : [];
+    const archives = Array.isArray(data.arsivler) ? data.arsivler : [];
+
+    if (sessions.length === 0 && archives.length === 0) return 'kayıt yok';
+
+    if (sessions.length > 0) {
+      // En son aktif seans
+      const s = sessions[0];
+      const parts: string[] = [];
+      parts.push(`${s.tip || 'KDV'} seansı ${s.status || ''}`.trim());
+      if (s.lucaKayitSayisi !== undefined) parts.push(`Luca ${s.lucaKayitSayisi} kayıt`);
+      if (s.faturaSayisi !== undefined) parts.push(`${s.faturaSayisi} fatura`);
+      if (s.lucaToplamKdv) parts.push(`KDV ${fmt(s.lucaToplamKdv)} TL`);
+      if (s.eslesen !== undefined) parts.push(`${s.eslesen} eşleşen`);
+      return parts.join(', ');
+    }
+
+    const a = archives[0];
+    return `arşivde ${a.tip || ''} kontrol: ${a.tamEslesen || 0} tam, ${a.kismiEslesen || 0} kısmi, ${a.eslesmeyen || 0} eşleşmeyen`;
   }
 
   /**

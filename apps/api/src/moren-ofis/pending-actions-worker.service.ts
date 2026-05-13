@@ -32,16 +32,28 @@ export class MorenOfisPendingActionsWorker {
     if (this.running) return;
     this.running = true;
     try {
-      // Önce süresi dolanları temizle
       await this.pending.expireOldOnes();
 
-      // Approved + moren_ofis olanları al
-      const approved = await (this.prisma as any).pendingAction.findMany({
+      // Aday kayıtları seç
+      const candidates = await (this.prisma as any).pendingAction.findMany({
         where: { status: 'approved', source: 'moren_ofis' },
         take: 20,
+        select: { id: true },
       });
-      for (const action of approved) {
-        await this.apply(action);
+
+      for (const { id } of candidates) {
+        // ATOMIC CLAIM — sadece status='approved' ise 'processing'e çek.
+        // Multi-instance veya aynı tick yeniden tetiklense bile yalnız bir
+        // worker bu kaydı kapar. count===0 ise başka almış demektir, geç.
+        const claim = await (this.prisma as any).pendingAction.updateMany({
+          where: { id, status: 'approved' },
+          data: { status: 'processing' },
+        });
+        if (claim.count === 0) continue;
+
+        // Şimdi tam payload'u al ve uygula
+        const action = await (this.prisma as any).pendingAction.findUnique({ where: { id } });
+        if (action) await this.apply(action);
       }
     } catch (e: any) {
       this.logger.error(`Worker tick hata: ${e?.message}`);

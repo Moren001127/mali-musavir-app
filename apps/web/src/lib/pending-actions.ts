@@ -3,6 +3,7 @@ import { api } from './api';
 export type PendingActionStatus =
   | 'pending'
   | 'approved'
+  | 'processing'
   | 'rejected'
   | 'expired'
   | 'applied'
