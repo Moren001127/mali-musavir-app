@@ -17,25 +17,34 @@ import {
   TrendingUp, Package, Calculator, CloudDownload,
 } from 'lucide-react';
 
+/* ─── İHO Görsel Teması — Brifing Kartı estetiğine yakın
+ * Sayılar: Fraunces serif lider font, büyük tabular-nums
+ * Oranlar: alttan altın rozet, daha okunaklı
+ * Section: altın gradient hairline başlık
+ * Pozitif/negatif vurgular netleştirildi
+ * ─────────────────────────────────────────────────────── */
 const GOLD = '#d4b876';
+const GOLD_DARK = '#b8a06f';
 const TABLE_SURFACE = '#0f0e0c';
-const TABLE_SURFACE_ALT = '#12110f';
+const TABLE_SURFACE_ALT = '#13110d';
 const TABLE_HEADER_BG = '#1c1913';
 const TABLE_SECTION_BG = '#17140f';
-const GRID_LINE = 'rgba(245,240,230,0.20)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.34)';
+const GRID_LINE = 'rgba(245,240,230,0.14)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.30)';
 const REPORT_TEXT = 'rgba(250,250,249,0.95)';
-const REPORT_MUTED = 'rgba(231,229,228,0.74)';
-const REPORT_DIM = 'rgba(214,211,209,0.54)';
+const REPORT_MUTED = 'rgba(231,229,228,0.70)';
+const REPORT_DIM = 'rgba(214,211,209,0.42)';
 const AMOUNT_TEXT = '#f3eee6';
 const AMOUNT_ACCENT = '#ead18a';
-const PROFIT_TEXT = AMOUNT_TEXT;
-const LOSS_TEXT = '#fca5a5';
-const RATIO_TEXT = '#f1d98b';
+const PROFIT_TEXT = '#86efac'; // pozitif — yeşil net
+const LOSS_TEXT = '#f87171';   // negatif — daha canlı kırmızı
+const RATIO_TEXT = GOLD;
+const RATIO_LOSS = '#fca5a5';
 const MANUAL_TEXT = '#ead18a';
-const MANUAL_BORDER = 'rgba(212,184,118,0.62)';
-const MANUAL_ROW_BG = TABLE_SURFACE;
-const TOTAL_ROW_BG = TABLE_SECTION_BG;
+const MANUAL_BORDER = 'rgba(212,184,118,0.55)';
+const MANUAL_ROW_BG = 'rgba(212,184,118,0.025)';
+const TOTAL_ROW_BG = 'rgba(212,184,118,0.05)';
+const SERIF_FONT = "'Fraunces', 'Georgia', serif"; // ana font (Moren brand)
 const REPORT_TABLE_STYLE: React.CSSProperties = {
   tableLayout: 'fixed',
   borderCollapse: 'separate',
@@ -144,17 +153,18 @@ function NumInput({
       onKeyDown={(e) => {
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
-      className="num-input w-full px-2.5 py-1 text-center text-[15px] font-mono tabular-nums transition-all focus:outline-none"
+      className="num-input w-full px-2.5 py-1 text-center tabular-nums transition-all focus:outline-none"
       style={{
         background: 'transparent',
         border: 'none',
         borderBottom: focused ? `1px solid ${GRID_LINE_STRONG}` : '1px solid transparent',
-        // Boş değer (0) çok soluk; dolu değer net görünür
-        // v1.36.33: locked (kesin kayıt) rakam altın renkte net görünür, silikleşmesin
         color: inputColor,
+        fontFamily: SERIF_FONT,
+        fontSize: 16,
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
         fontWeight: inputWeight,
+        letterSpacing: '-0.01em',
       }}
       onMouseEnter={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = `1px solid ${GRID_LINE}`;
@@ -1248,31 +1258,53 @@ function BlockCard({
   const c = accentColors[accent];
   return (
     <div
-      className={`overflow-hidden ${attached ? 'rounded-b-xl' : 'rounded-xl'}`}
+      className={`overflow-hidden relative ${attached ? 'rounded-b-2xl' : 'rounded-2xl'}`}
       style={{
-        background: TABLE_SURFACE,
+        background: `linear-gradient(135deg, rgba(212,184,118,0.04) 0%, ${TABLE_SURFACE} 60%)`,
         borderLeft: `1px solid ${c.border}`,
         borderRight: `1px solid ${c.border}`,
         borderBottom: `1px solid ${c.border}`,
         borderTop: attached ? 'none' : `1px solid ${c.border}`,
-        boxShadow: '0 14px 34px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.035)',
+        boxShadow: '0 14px 34px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04)',
       }}
     >
+      {/* Üst altın hairline — Brifing kartı deseni */}
+      {!attached && (
+        <span
+          className="absolute top-0 left-6 right-6 h-px"
+          style={{
+            background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)`,
+            opacity: 0.55,
+          }}
+        />
+      )}
       <div
-        className="flex items-center gap-2 px-4 py-2"
+        className="flex items-center gap-3 px-5 py-3"
         style={{
-          // v1.36.26: attached durumda yeşil tint kaldırıldı, sadece çizgi kalır
           background: attached ? TABLE_SECTION_BG : c.headerBg,
           borderBottom: `1px solid ${c.border}`,
         }}
       >
         <span
-          className="inline-flex h-6 w-6 items-center justify-center rounded"
-          style={{ background: c.iconBg, color: c.iconText, border: `1px solid ${GRID_LINE}` }}
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
+          style={{
+            background: c.iconBg,
+            color: c.iconText,
+            border: `1px solid ${GRID_LINE_STRONG}`,
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
+          }}
         >
           {icon}
         </span>
-        <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: c.text }}>
+        <h2
+          className="text-[10.5px] font-bold uppercase"
+          style={{
+            color: c.text,
+            letterSpacing: '0.18em',
+            fontFamily: SERIF_FONT,
+            fontWeight: 700,
+          }}
+        >
           {title}
         </h2>
       </div>
@@ -1302,47 +1334,66 @@ function Row({
   raw?: boolean;
   manuel?: boolean; // v1.36.30: manuel giriş satırı — altın tint vurgu
 }) {
-  // v1.36.23: Oran sade renk — sadece text rengi değişir, rozet/border yok
+  // Oran rengi: pozitif altın, negatif soluk kırmızı, sıfır gri
   const ratioColor = (r: string): string => {
-    if (!r || r === '—') return 'rgba(168,162,158,0.55)';
+    if (!r || r === '—') return REPORT_DIM;
     const isNeg = r.includes('-');
     const num = parseFloat(r.replace(/[%,\s]/g, '').replace(',', '.')) || 0;
-    if (isNeg) return LOSS_TEXT;
-    if (num === 0) return 'rgba(168,162,158,0.55)';
+    if (isNeg) return RATIO_LOSS;
+    if (num === 0) return REPORT_DIM;
     return RATIO_TEXT;
   };
 
-  // v1.36.24: Gelir Tablosu stilinde kompakt — px-3 py-2 + küçük fontlar + tek satır rakam
   const rowBg = manuel ? MANUAL_ROW_BG : hl || calc ? TOTAL_ROW_BG : 'transparent';
 
   return (
-    <tr style={{ background: rowBg }}>
+    <tr
+      style={{ background: rowBg, transition: 'background-color 150ms' }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLTableRowElement).style.background = manuel
+          ? 'rgba(212,184,118,0.07)'
+          : 'rgba(212,184,118,0.04)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLTableRowElement).style.background = rowBg;
+      }}
+    >
       <td
-        className={`px-4 py-2 ${
-          bold ? 'text-[12.5px] font-bold tracking-wide' : 'text-[12px] font-semibold'
-        }`}
+        className="px-5 py-3"
         style={{
-          letterSpacing: bold ? '0.025em' : '0.01em',
           color: manuel ? MANUAL_TEXT : bold ? REPORT_TEXT : REPORT_MUTED,
           borderTop: `1px solid ${GRID_LINE}`,
           borderRight: `1px solid ${GRID_LINE}`,
-          borderLeft: manuel ? `4px solid ${MANUAL_BORDER}` : `1px solid transparent`,
-          background: rowBg,
-          lineHeight: 1.22,
+          borderLeft: manuel ? `3px solid ${MANUAL_BORDER}` : `1px solid transparent`,
+          lineHeight: 1.25,
+          fontFamily: bold ? SERIF_FONT : undefined,
+          fontSize: bold ? 13 : 12,
+          fontWeight: bold ? 700 : 600,
+          letterSpacing: bold ? '0.02em' : '0.01em',
+          textTransform: bold ? 'uppercase' as any : 'none',
         }}
       >
         {label}
-        {hint && <span className="ml-2 text-[10px] font-normal" style={{ color: REPORT_DIM }}>{hint}</span>}
+        {hint && (
+          <span
+            className="ml-2 normal-case"
+            style={{ color: REPORT_DIM, fontSize: 10.5, fontWeight: 400, letterSpacing: 0, fontFamily: 'inherit' }}
+          >
+            {hint}
+          </span>
+        )}
         {manuel && (
           <span
-            className="ml-2 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em]"
+            className="ml-2 inline-flex items-center rounded-md px-2 py-[3px] text-[9px] font-bold uppercase tracking-[0.14em] normal-case"
             style={{
-              background: 'rgba(212,184,118,0.12)',
-              border: '1px solid rgba(212,184,118,0.28)',
+              background: 'rgba(212,184,118,0.14)',
+              border: '1px solid rgba(212,184,118,0.32)',
               color: MANUAL_TEXT,
+              letterSpacing: '0.14em',
+              textTransform: 'uppercase',
             }}
           >
-            manuel
+            Manuel
           </span>
         )}
       </td>
@@ -1350,39 +1401,74 @@ function Row({
         const rColor = ratios && ratios[i] ? ratioColor(ratios[i]) : null;
         const cStr = typeof c === 'string' ? c : '';
         const isEmpty = cStr === '0,00' || cStr === '0';
+        const isNegative = cStr.startsWith('-');
         const showRatio = rColor && ratios![i] && ratios![i] !== '—' && !isEmpty;
+
+        // Rakam rengi — pozitif: yeşil (büyük kar/calc), negatif: kırmızı, normal: AMOUNT_TEXT
+        const ratioStr = ratios?.[i] || '';
+        const isRatioNeg = ratioStr.includes('-');
+        const amountColor = isEmpty
+          ? REPORT_DIM
+          : isNegative || isRatioNeg
+          ? LOSS_TEXT
+          : calc && !isEmpty && !isNegative
+          ? PROFIT_TEXT
+          : AMOUNT_TEXT;
+
         return (
           <td
             key={i}
-            className={`px-4 py-2 text-center font-mono tabular-nums ${
-              bold ? 'text-[15px] font-semibold' : 'text-[15px] font-semibold'
-            }`}
+            className="px-5 py-3 text-center tabular-nums"
             style={{
               borderTop: `1px solid ${GRID_LINE}`,
               borderLeft: `1px solid ${GRID_LINE}`,
               fontVariantNumeric: 'tabular-nums',
-              color: isEmpty ? REPORT_DIM : AMOUNT_TEXT,
               lineHeight: 1.2,
-              background: rowBg,
             }}
           >
             {showRatio ? (
-              // v1.36.27: rakam ortalı, oran hücrenin sağ kenarına absolute
-              <div className="flex flex-col items-center justify-center gap-0.5">
-                <span className="tabular-nums">{c}</span>
+              <div className="flex flex-col items-center justify-center gap-1">
                 <span
-                  className="text-[12px] not-italic font-mono tabular-nums"
+                  className="tabular-nums"
+                  style={{
+                    fontFamily: SERIF_FONT,
+                    fontSize: bold ? 17 : 16,
+                    fontWeight: bold ? 700 : 650,
+                    letterSpacing: '-0.01em',
+                    color: amountColor,
+                  }}
+                >
+                  {c}
+                </span>
+                <span
+                  className="inline-block tabular-nums"
                   style={{
                     color: rColor!,
-                    fontWeight: 650,
-                    letterSpacing: 0,
+                    fontWeight: 700,
+                    fontSize: 10.5,
+                    letterSpacing: '0.05em',
+                    padding: '2px 7px',
+                    borderRadius: 4,
+                    background: isRatioNeg ? 'rgba(248,113,113,0.08)' : 'rgba(212,184,118,0.10)',
+                    border: `1px solid ${isRatioNeg ? 'rgba(248,113,113,0.22)' : 'rgba(212,184,118,0.20)'}`,
                   }}
                 >
                   {ratios![i]}
                 </span>
               </div>
             ) : (
-              <span className="tabular-nums">{c}</span>
+              <span
+                className="tabular-nums"
+                style={{
+                  fontFamily: SERIF_FONT,
+                  fontSize: bold ? 17 : 16,
+                  fontWeight: bold ? 700 : 650,
+                  letterSpacing: '-0.01em',
+                  color: amountColor,
+                }}
+              >
+                {c}
+              </span>
             )}
           </td>
         );
