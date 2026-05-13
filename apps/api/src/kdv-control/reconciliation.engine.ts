@@ -512,9 +512,14 @@ export class ReconciliationEngine {
         }
       } else {
         // Klasik toplam karşılaştırması — virtual record veya tek oran + breakdown yok
-        const imgKdvNum = parseFloat(
-          imgKdv.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, ''),
-        );
+        // TR/US karma format desteği:
+        //   "22,04"     → 22.04  (TR decimal virgül)
+        //   "22.04"     → 22.04  (US decimal nokta — OCR çıktısı bu)
+        //   "1.234,56"  → 1234.56 (TR binlik nokta + virgül decimal)
+        //   "1,234.56"  → 1234.56 (US binlik virgül + nokta decimal)
+        //   "2204"      → 2204
+        // Kural: son ayırıcı decimal'dir EĞER ondan sonra 1-2 rakam varsa.
+        const imgKdvNum = this.parseTrUsAmount(imgKdv);
         if (!isNaN(imgKdvNum)) {
           const kdvCandidates = [
             { amount: imgKdvNum, label: 'OCR' },
@@ -904,6 +909,43 @@ export class ReconciliationEngine {
 
   private fmtAmt(n: number): string {
     return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /**
+   * TR/US karma format desteği — bir string'i sağlam parse eder.
+   *
+   *   "22,04"     → 22.04   (TR decimal virgül)
+   *   "22.04"     → 22.04   (US decimal nokta — OCR'ın toFixed çıktısı)
+   *   "1.234,56"  → 1234.56 (TR: nokta binlik, virgül decimal)
+   *   "1,234.56"  → 1234.56 (US: virgül binlik, nokta decimal)
+   *   "2204"      → 2204    (binlik yok, decimal yok)
+   *   "1.234"     → 1234    (3 rakam sonrası → binlik, decimal yok)
+   *   "12.34"     → 12.34   (2 rakam sonrası → decimal)
+   *
+   * Mantık: son ayırıcının yeri ve ondan sonraki rakam sayısına bakar.
+   * Eğer sondaki ayırıcıdan sonra 1-2 rakam varsa decimal, 3+ ise binlik.
+   */
+  private parseTrUsAmount(raw: string | number | null | undefined): number {
+    if (raw === null || raw === undefined) return NaN;
+    if (typeof raw === 'number') return raw;
+    const s = String(raw).replace(/[^\d.,\-]/g, '').trim();
+    if (!s) return NaN;
+    const lastDot = s.lastIndexOf('.');
+    const lastComma = s.lastIndexOf(',');
+    if (lastDot === -1 && lastComma === -1) {
+      return parseFloat(s);
+    }
+    const sepIdx = Math.max(lastDot, lastComma);
+    const afterSep = s.length - sepIdx - 1;
+    if (afterSep === 1 || afterSep === 2) {
+      // Decimal ayırıcı — öncesindeki bütün noktaları/virgülleri sil (binlik), sonrasını . ile kullan
+      const intPart = s.slice(0, sepIdx).replace(/[.,]/g, '');
+      const fracPart = s.slice(sepIdx + 1);
+      const num = parseFloat(`${intPart}.${fracPart}`);
+      return Number.isFinite(num) ? num : NaN;
+    }
+    // 3+ rakam sonrası → binlik ayırıcı, decimal yok
+    return parseFloat(s.replace(/[.,]/g, ''));
   }
 
   /** İki tarihi aynı gün mü karşılaştırır (saat farkını yok sayar) */
