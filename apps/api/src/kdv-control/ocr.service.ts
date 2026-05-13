@@ -2272,13 +2272,17 @@ export class OcrService {
     //   "1.006,00 TL"
     //   "5.030,00 TL"
     // → ilk amount (1.006) %20'nin KDV'si.
-    type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean };
+    type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean; hasMatrahLabel: boolean };
     const markers: Marker[] = [];
-    // Summary satırı = "HESAPLANAN KDV (%N)" veya "TOPKDV (%N)" — fatura altı özet
-    // Item row satırı = ürün tablosundaki "... % N,NN ... X,XX ..." kalemi
+    // Summary satırı = "HESAPLANAN KDV (%N)" / "TOPKDV (%N)" / "HES. MATRAH / KDV(%N)"
+    //                 / "MATRAH KDV(%N)" — fatura altı özet, item row değil.
+    // Item row satırı = ürün tablosundaki "... % N,NN ... X,XX ..." kalemi.
     // Bir oran için HEM summary HEM item row eşleşirse iki kez toplanmayalım:
     // summary authoritative — varsa item row'ları o oran için YOK SAY.
-    const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?/i;
+    const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?|HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
+    // "HES. MATRAH / KDV(%N) [matrah] [kdv]" satırlarında ÖNCE matrah, SONRA KDV gelir.
+    // Bu durumda label'dan sonraki İLK amount değil, SON amount KDV'dir.
+    const matrahLabelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -2297,6 +2301,7 @@ export class OcrService {
       if (prevHasNonKdvTax) continue;
 
       const isSummary = summaryLineRe.test(line);
+      const hasMatrahLabel = matrahLabelRe.test(line);
 
       rateMarkerRe.lastIndex = 0;
       let m: RegExpExecArray | null;
@@ -2309,7 +2314,7 @@ export class OcrService {
         const decimalPart = m[2];
         if (decimalPart && parseInt(decimalPart, 10) > 0) continue;
         const afterLabel = this.stripMatrahFragments(line.slice(m.index + m[0].length));
-        markers.push({ oran, lineIdx: i, afterLabel, isSummary });
+        markers.push({ oran, lineIdx: i, afterLabel, isSummary, hasMatrahLabel });
       }
     }
 
@@ -2327,10 +2332,27 @@ export class OcrService {
       let tutar: number | null = null;
 
       // 1) Aynı satır, label'den sonra amount var mı?
-      const afterLabelMatch = marker.afterLabel.match(amountRe);
-      if (afterLabelMatch) {
-        const parsed = this.parseAmount(afterLabelMatch[1]);
-        if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+      // "HES. MATRAH / KDV(%N)  X,XX TL  Y,YY TL" gibi satırda 2 amount var:
+      // ilki MATRAH, ikincisi KDV. matrahLabel varsa SON amount'u al.
+      if (marker.hasMatrahLabel) {
+        const amountReGlobal = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+        const allMatches = Array.from(marker.afterLabel.matchAll(amountReGlobal));
+        if (allMatches.length >= 2) {
+          // 2+ amount → son tane KDV (ilki matrah)
+          const last = allMatches[allMatches.length - 1];
+          const parsed = this.parseAmount(last[1]);
+          if (parsed >= 0 && parsed < 10_000_000) tutar = parsed;
+        } else if (allMatches.length === 1) {
+          // Tek amount → muhtemelen sadece KDV (matrah ayrı satırda olabilir)
+          const parsed = this.parseAmount(allMatches[0][1]);
+          if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+        }
+      } else {
+        const afterLabelMatch = marker.afterLabel.match(amountRe);
+        if (afterLabelMatch) {
+          const parsed = this.parseAmount(afterLabelMatch[1]);
+          if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
+        }
       }
 
       // 2) Yoksa sonraki 3 satırdan ilk geçerli amount'u al
@@ -2354,7 +2376,9 @@ export class OcrService {
         }
       }
 
-      if (tutar != null) {
+      // KDV 0 olan summary satırlarını (Hes. Matrah / KDV(%8) 0,00 / 0,00)
+      // breakdown'a ekleme — sadece > 0 olanları topla.
+      if (tutar != null && tutar > 0) {
         // Summary satırı için oran başına SET et (overwrite) — birden fazla
         // aynı oran summary çıkarsa (nadir), en son okunanı bırak.
         // Item row için topla (aynı oranda birden fazla kalem olabilir).
