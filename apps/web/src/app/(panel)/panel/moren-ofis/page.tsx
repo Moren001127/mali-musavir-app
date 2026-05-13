@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, DollarSign, LayoutGrid, Plus, History, MessageSquare, Trash2 } from 'lucide-react';
+import { Briefcase, DollarSign, LayoutGrid, Plus, History, MessageSquare, Trash2, Download } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
 import { AgentStatCard } from './_components/AgentStatCard';
@@ -66,6 +66,49 @@ export default function MorenOfisPage() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
   });
+
+  const exportConversation = () => {
+    if (messages.length === 0) {
+      toast.error('Henüz konuşma yok');
+      return;
+    }
+    const team = (qc.getQueryData(['moren-ofis-team']) as any) || [];
+    const lines: string[] = [];
+    lines.push(`# Moren Ofis Konuşma Kaydı`);
+    lines.push(``);
+    lines.push(`**Tarih:** ${new Date().toLocaleString('tr-TR')}`);
+    lines.push(`**Mesaj sayısı:** ${messages.length}`);
+    if (conversationId) lines.push(`**Konuşma ID:** \`${conversationId}\``);
+    lines.push(``);
+    lines.push(`---`);
+    lines.push(``);
+    for (const m of messages) {
+      const ts = new Date(m.ts).toLocaleString('tr-TR');
+      if (m.agent === 'user') {
+        lines.push(`## 👤 Muzaffer Bey · ${ts}`);
+      } else {
+        const persona = team.find((p: any) => p.id === m.agent);
+        lines.push(`## 🤖 ${persona?.displayName || m.agent.toUpperCase()} (${persona?.role || ''}) · ${ts}`);
+      }
+      lines.push(``);
+      lines.push(m.content);
+      if (m.toolCalls && m.toolCalls.length > 0) {
+        lines.push(``);
+        lines.push(`> Tool çağrıları: ${m.toolCalls.map((tc) => `\`${tc.tool}\` (${tc.durationMs}ms${tc.ok ? '' : ' ✕'})`).join(', ')}`);
+      }
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(``);
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `moren-ofis-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('Konuşma indirildi');
+  };
 
   const loadConversation = async (id: string) => {
     const c = await ofisApi.getConversation(id);
@@ -425,23 +468,37 @@ export default function MorenOfisPage() {
             </div>
           )}
           {messages.length > 0 && (
-            <button
-              onClick={() => {
-                setMessages([]);
-                setConversationId(undefined);
-                setActiveAgents([]);
-                setTotalCost(0);
-              }}
-              className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                color: 'rgba(250,250,249,0.7)',
-                border: '1px solid rgba(255,255,255,0.08)',
-              }}
-              title="Yeni sohbet başlat (mevcut konuşma DB'de kalır)"
-            >
-              <Plus size={12} /> Yeni Sohbet
-            </button>
+            <>
+              <button
+                onClick={exportConversation}
+                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'rgba(250,250,249,0.7)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+                title="Bu konuşmayı Markdown dosyası olarak indir"
+              >
+                <Download size={12} /> İndir
+              </button>
+              <button
+                onClick={() => {
+                  setMessages([]);
+                  setConversationId(undefined);
+                  setActiveAgents([]);
+                  setTotalCost(0);
+                }}
+                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  color: 'rgba(250,250,249,0.7)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+                title="Yeni sohbet başlat (mevcut konuşma DB'de kalır)"
+              >
+                <Plus size={12} /> Yeni Sohbet
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowOffice((s) => !s)}
