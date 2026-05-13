@@ -5159,9 +5159,11 @@
     fullActivate(fisListesi.el, fisListesi.frame.contentWindow || fisListesi.frame);
 
     // 4. Sayfa yüklensin diye Mizan menüsü çıkana kadar bekle
-    await log('⏳ Fiş Listesi sayfası yüklensini bekliyor');
-    const mizanReady = await findLucaMenuItem('Mizan', null, 15000);
-    if (!mizanReady) throw new Error('Fiş Listesi açıldı ama Mizan menüsü hazır olmadı (timeout 15sn)');
+    // Luca'nın Fiş Listesi sayfası yüklenmesi yavaş olabiliyor (özellikle
+    // büyük firma verisi olan mükelleflerde). 15sn yetmiyordu — 60sn'ye çıkardık.
+    await log('⏳ Fiş Listesi sayfası yüklensini bekliyor (max 60sn)');
+    const mizanReady = await findLucaMenuItem('Mizan', null, 60000);
+    if (!mizanReady) throw new Error('Fiş Listesi açıldı ama Mizan menüsü hazır olmadı (timeout 60sn) — Luca cevap vermiyor');
     await log('✓ Fiş Listesi hazır, Mizan menüsü görünür');
   }
 
