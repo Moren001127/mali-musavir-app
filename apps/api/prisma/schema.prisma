@@ -1450,12 +1450,48 @@ model MorenOfisConversation {
   title           String?
   // OfisMessage[] — see apps/api/src/moren-ofis/moren-ofis.service.ts
   messages        Json     @default("[]")
+  // ARDA'nın sohbet sonu üretttiği 1-2 cümle özet — gelecek sohbetlerde
+  // yeni sorguya inject edilir (long-term memory).
+  summary         String?
+  // Sohbet konusu / ana entity (mükellef adı vb.) — filter için
+  entities        String[] @default([])
   totalCostUsd    Decimal  @default(0) @db.Decimal(10, 6)
   createdAt       DateTime @default(now())
   lastActivityAt  DateTime @default(now()) @updatedAt
 
   @@index([tenantId, lastActivityAt])
   @@map("moren_ofis_conversations")
+}
+
+// Moren Ofis — Kalıcı gerçekler (long-term facts memory)
+// Her gerçek subject-predicate-object yapısında. Örnek:
+//   subject="Muzaffer Bey", predicate="tercih_eder", object="detayli ozet"
+//   subject="PETRAVET", predicate="geçici_vergi_donemi", object="Q1=433.841 TL"
+//   subject="ofis_genel", predicate="aktif_mukellef_sayisi", object="65"
+//
+// Ajan cevap üretirken ARDA bu gerçekleri context'e enjekte eder.
+model MorenOfisFact {
+  id              String   @id @default(cuid())
+  tenantId        String
+  // Gerçeği oluşturan ajan (genelde ARDA, ama her ajan kendi gerçeğini de saklayabilir)
+  createdByAgent  String?
+  subject         String   // "Ahmet Yılmaz", "ofis", "PETRAVET", "Muzaffer Bey", "muhsap_login"
+  predicate       String   // "tercih_eder", "son_kdv_donemi", "ortalama_gelir", "calisan_sayisi"
+  object          String   // değer — serbest metin
+  // Önem skoru: 1-10 arası. Düşükse zaman içinde silinir.
+  importance      Int      @default(5)
+  // Kaynağı — hangi conversation'dan çıkarıldı (audit + revoke için)
+  sourceConvId    String?
+  // Kaç kez context'e yüklendi — popüler olanlar ilk gelir
+  accessCount     Int      @default(0)
+  lastAccessedAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, subject])
+  @@index([tenantId, importance, lastAccessedAt])
+  @@unique([tenantId, subject, predicate])
+  @@map("moren_ofis_facts")
 }
 
 // Boyut D — Zamanlanmış otomatik Luca işleri

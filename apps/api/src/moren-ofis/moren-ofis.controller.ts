@@ -1,12 +1,16 @@
-import { Controller, Get, Post, Body, Param, Req, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MorenOfisService } from './moren-ofis.service';
+import { MorenOfisMemoryService } from './memory.service';
 import { PERSONAS } from './agents/personas';
 
 @Controller('moren-ofis')
 @UseGuards(AuthGuard('jwt'))
 export class MorenOfisController {
-  constructor(private readonly service: MorenOfisService) {}
+  constructor(
+    private readonly service: MorenOfisService,
+    private readonly memory: MorenOfisMemoryService,
+  ) {}
 
   @Get('team')
   team() {
@@ -42,5 +46,37 @@ export class MorenOfisController {
       conversationId: body.conversationId,
       text: body.text.trim(),
     });
+  }
+
+  // === HAFIZA YÖNETİMİ ===
+
+  /** Tüm gerçekleri listele — UI'da "ekibin neyi bildiği"ni göstermek için */
+  @Get('memory/facts')
+  listFacts(@Req() req: any, @Query('subject') subject?: string, @Query('limit') limit?: string) {
+    return this.memory.listFacts(req.user.tenantId, {
+      subject,
+      limit: limit ? parseInt(limit, 10) : 100,
+    });
+  }
+
+  /** Manuel gerçek ekle/güncelle (ör. "Patron WhatsApp ile iletişimi tercih eder") */
+  @Post('memory/facts')
+  upsertFact(@Req() req: any, @Body() body: { subject: string; predicate: string; object: string; importance?: number }) {
+    if (!body.subject || !body.predicate || !body.object) {
+      throw new BadRequestException('subject, predicate, object zorunlu');
+    }
+    return this.memory.upsertFact({
+      tenantId: req.user.tenantId,
+      subject: body.subject,
+      predicate: body.predicate,
+      object: body.object,
+      importance: body.importance,
+    });
+  }
+
+  /** Gerçeği sil — "bunu unut" */
+  @Delete('memory/facts/:id')
+  deleteFact(@Req() req: any, @Param('id') id: string) {
+    return this.memory.deleteFact(req.user.tenantId, id);
   }
 }

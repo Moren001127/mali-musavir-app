@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OpenRouterAdapter, ChatMessage } from './providers/openrouter.adapter';
 import { PERSONAS, AgentId, suggestAgents } from './agents/personas';
 import { PrismaService } from '../prisma/prisma.service';
+import { MorenOfisMemoryService } from './memory.service';
 
 export interface OfisMessage {
   agent: AgentId | 'user';
@@ -27,6 +28,7 @@ export class MorenOfisService {
   constructor(
     private readonly openrouter: OpenRouterAdapter,
     private readonly prisma: PrismaService,
+    private readonly memory: MorenOfisMemoryService,
   ) {}
 
   /**
@@ -44,6 +46,12 @@ export class MorenOfisService {
     const conv = await this.upsertConversation(tenantId, userId, params.conversationId);
     const history = (conv.messages as OfisMessage[] | null) || [];
 
+    // 0) HAFIZA YÜKLE — geçmiş özetler + ilgili gerçekler
+    // Bu metin her ajanın system prompt'una eklenir, "patron'u tanıyor" hissi verir.
+    const memoryContext = await this.memory.loadContext(tenantId, text);
+    const enhancedSystemPrompt = (base: string) =>
+      memoryContext ? `${base}\n\n${memoryContext}` : base;
+
     const newMessages: OfisMessage[] = [];
     const userMsg: OfisMessage = {
       agent: 'user',
@@ -58,7 +66,8 @@ export class MorenOfisService {
 
     // ARDA delege mesajı (UI animasyonu için, içerik kısa)
     const ardaStart = await this.callAgent('arda', [
-      { role: 'system', content: PERSONAS.arda.systemPrompt },
+      { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
+      ...this.recentHistoryAsMessages(history, 6),
       { role: 'user', content: this.buildArdaTriagePrompt(text, delegateTo) },
     ], history);
     newMessages.push(ardaStart);
@@ -66,7 +75,8 @@ export class MorenOfisService {
     // 2) Delege edilen ajanlar — paralel
     const delegatePromises = delegateTo.map((agentId) =>
       this.callAgent(agentId as AgentId, [
-        { role: 'system', content: PERSONAS[agentId as AgentId].systemPrompt },
+        { role: 'system', content: enhancedSystemPrompt(PERSONAS[agentId as AgentId].systemPrompt) },
+        ...this.recentHistoryAsMessages(history, 6),
         { role: 'user', content: this.buildAgentPrompt(text, agentId as AgentId) },
       ], history),
     );
@@ -76,7 +86,7 @@ export class MorenOfisService {
     // 3) ARDA — sentez (eğer 2+ ajan cevap verdiyse veya complex query ise)
     if (delegateResponses.length > 1) {
       const synthesis = await this.callAgent('arda', [
-        { role: 'system', content: PERSONAS.arda.systemPrompt },
+        { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
         { role: 'user', content: this.buildSynthesisPrompt(text, delegateResponses) },
       ], history);
       newMessages.push(synthesis);
@@ -91,6 +101,19 @@ export class MorenOfisService {
         lastActivityAt: new Date(),
       },
     });
+
+    // 5) HAFIZA YAZ — asenkron, kullanıcı beklemez
+    // Sohbet 2+ mesaj birikince, ARDA özet + gerçek çıkarır → DB
+    if (allMessages.length >= 2) {
+      const messagesText = allMessages
+        .slice(-12) // Son 12 mesaj yeterli (token bütçesi)
+        .map((m) => `[${m.agent.toUpperCase()}]: ${m.content}`)
+        .join('\n\n');
+      // Bekleme, fire-and-forget
+      this.memory
+        .extractAndStore({ conversationId: conv.id, tenantId, messagesText })
+        .catch((e) => this.logger.warn(`Memory extract: ${e?.message}`));
+    }
 
     const totalCost = newMessages.reduce((s, m) => s + (m.usage?.costUsd || 0), 0);
 
@@ -137,6 +160,20 @@ export class MorenOfisService {
         durationMs: Date.now() - t0,
       };
     }
+  }
+
+  /**
+   * Aynı conversation'ın son N mesajını ChatMessage[] olarak döner.
+   * Ajan "bu sohbetin önceki mesajlarını" görsün diye.
+   */
+  private recentHistoryAsMessages(history: OfisMessage[], limit: number): ChatMessage[] {
+    const recent = history.slice(-limit);
+    return recent.map((m) => ({
+      role: (m.agent === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: m.agent === 'user'
+        ? m.content
+        : `[${PERSONAS[m.agent as AgentId]?.displayName || m.agent}]: ${m.content}`,
+    }));
   }
 
   private buildArdaTriagePrompt(query: string, delegateTo: string[]): string {
