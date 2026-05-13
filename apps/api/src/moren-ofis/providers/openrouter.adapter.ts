@@ -73,7 +73,9 @@ export class OpenRouterAdapter {
         'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://portal.morenmusavirlik.com',
-        'X-Title': 'Moren Mali Müşavirlik Ofisi',
+        // HTTP header'lar ASCII-only. Türkçe karakterler "ByteString" hatasını
+        // patlatıyor: ş (U+015F = 351) > 255. Sade ASCII kullan.
+        'X-Title': 'Moren Mali Musavirlik Ofisi',
       },
       body: JSON.stringify(body),
     });

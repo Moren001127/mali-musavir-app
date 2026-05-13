@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
+import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 
 export function ChatPanel({
   agents,
@@ -16,13 +17,69 @@ export function ChatPanel({
   onSend: (text: string) => void;
 }) {
   const [text, setText] = useState('');
+  const [listening, setListening] = useState(false);
+  const [speakEnabled, setSpeakEnabled] = useState(true);
+  const [lastSpokenIdx, setLastSpokenIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listenerRef = useRef<{ stop: () => void } | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages.length]);
+
+  // Yeni ajan mesajları geldikçe sesli oku (eğer ses açıksa)
+  useEffect(() => {
+    if (!speakEnabled || !isSynthesisSupported()) return;
+    if (messages.length === 0) return;
+    // Sadece yeni mesajları işle
+    for (let i = lastSpokenIdx + 1; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.agent !== 'user') {
+        speakAs(m.agent as AgentId, m.content).catch(() => {});
+      }
+    }
+    setLastSpokenIdx(messages.length - 1);
+  }, [messages.length, speakEnabled, lastSpokenIdx]);
+
+  const toggleMic = () => {
+    if (listening) {
+      listenerRef.current?.stop();
+      listenerRef.current = null;
+      setListening(false);
+      return;
+    }
+    if (!isSpeechSupported()) {
+      alert('Sesli komut için Chrome veya Edge kullanın');
+      return;
+    }
+    setListening(true);
+    listenerRef.current = startListening({
+      onResult: (transcript, isFinal) => {
+        setText(transcript);
+        if (isFinal) {
+          listenerRef.current = null;
+          setListening(false);
+        }
+      },
+      onError: () => {
+        setListening(false);
+        listenerRef.current = null;
+      },
+      onEnd: () => {
+        setListening(false);
+        listenerRef.current = null;
+      },
+    });
+  };
+
+  const toggleSpeak = () => {
+    if (speakEnabled) {
+      stopSpeech();
+    }
+    setSpeakEnabled(!speakEnabled);
+  };
 
   const agentMap = Object.fromEntries(agents.map((a) => [a.id, a]));
 
@@ -127,9 +184,39 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Input */}
-      <div className="px-3 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+      {/* Input + ses kontrolleri */}
+      <div className="px-3 py-3 border-t space-y-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        {/* Ses ayar barı */}
+        <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          <button
+            onClick={toggleSpeak}
+            className="flex items-center gap-1 px-2 py-1 rounded transition-colors"
+            style={{
+              background: speakEnabled ? 'rgba(34,197,94,0.10)' : 'rgba(255,255,255,0.04)',
+              color: speakEnabled ? '#86efac' : 'rgba(250,250,249,0.5)',
+            }}
+            title={speakEnabled ? 'Ekip sesli konuşuyor - kapat' : 'Ekibi sesli dinle - aç'}
+          >
+            {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+            {speakEnabled ? 'Sesli' : 'Sessiz'}
+          </button>
+          <span className="opacity-50">·</span>
+          <span>Enter ile gönder · Mikrofonla konuş</span>
+        </div>
         <div className="flex gap-2">
+          <button
+            onClick={toggleMic}
+            disabled={sending}
+            className="px-3 rounded-lg disabled:opacity-50 transition-colors"
+            style={{
+              background: listening ? 'rgba(239,68,68,0.20)' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${listening ? 'rgba(239,68,68,0.45)' : 'rgba(255,255,255,0.08)'}`,
+              color: listening ? '#fca5a5' : 'rgba(250,250,249,0.6)',
+            }}
+            title={listening ? 'Dinlemeyi durdur' : 'Sesli komut için tıkla'}
+          >
+            {listening ? <MicOff size={16} className="animate-pulse" /> : <Mic size={16} />}
+          </button>
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -139,12 +226,12 @@ export function ChatPanel({
                 submit();
               }
             }}
-            placeholder="Ekibe talimat ver..."
+            placeholder={listening ? 'Dinliyorum...' : 'Ekibe talimat ver...'}
             disabled={sending}
             className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
             style={{
               background: 'rgba(0,0,0,0.3)',
-              border: '1px solid rgba(212,184,118,0.25)',
+              border: `1px solid ${listening ? 'rgba(239,68,68,0.35)' : 'rgba(212,184,118,0.25)'}`,
               color: '#fafaf9',
             }}
           />

@@ -22,6 +22,15 @@ const COPPER    = '#d99560';  // Bakır
 // Tüm href'ler aynen korundu. Yeni eklenen 2 öğe: /panel/is-yuku ve /panel/tahsilat.
 const navGroups = [
   {
+    label: 'Moren AI',
+    color: GOLD,
+    icon: Brain,
+    items: [
+      { href: '/panel/moren-ofis',     label: 'Moren Ofis (AI Ekip)', icon: Brain },
+      { href: '/panel/moren-ai',       label: 'Moren AI (Tek Ajan)',  icon: MessageSquare },
+    ],
+  },
+  {
     label: 'Genel',
     color: GOLD,
     icon: Sparkles,
@@ -29,7 +38,6 @@ const navGroups = [
       { href: '/panel',              label: 'Gösterge Paneli',   icon: LayoutDashboard },
       { href: '/panel/is-yuku',      label: 'İş Akışı',           icon: Workflow },        // YENİ
       { href: '/panel/gorevler',     label: 'Görevler & Notlar',  icon: CheckSquare },
-      { href: '/panel/moren-ai',     label: 'Moren AI',           icon: MessageSquare },
     ],
   },
   {
@@ -79,7 +87,6 @@ const navGroups = [
     color: BRONZE,
     icon: Zap,
     items: [
-      { href: '/panel/moren-ofis',        label: 'Moren Ofis (AI Ekip)', icon: Brain },
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajan-saglik',       label: 'Sağlık Panosu',       icon: Activity },
       { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
