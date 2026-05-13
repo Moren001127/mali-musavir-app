@@ -149,24 +149,44 @@ export default function MorenOfisPage() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          {cost && (
-            <div
-              className="px-3 py-2 rounded-md text-[10px] flex items-center gap-2 font-mono"
-              style={{
-                background: 'rgba(212,184,118,0.10)',
-                color: GOLD,
-                border: '1px solid rgba(212,184,118,0.25)',
-              }}
-              title={`Bu konuşma: $${totalCost.toFixed(6)} · Toplam: $${cost.total.toFixed(4)}`}
-            >
-              <DollarSign size={11} />
-              <span><span className="opacity-60">bugün</span> {fmtCost(cost.today)}</span>
-              <span className="opacity-30">·</span>
-              <span><span className="opacity-60">hafta</span> {fmtCost(cost.week)}</span>
-              <span className="opacity-30">·</span>
-              <span><span className="opacity-60">toplam</span> {fmtCost(cost.total)}</span>
-            </div>
-          )}
+          {cost && cost.total > 0 && (() => {
+            // Compact display — aynı değerler tek göster (5¢/5¢/5¢ saçma görünmesin)
+            const sameToday = fmtCost(cost.today);
+            const sameWeek = fmtCost(cost.week);
+            const sameTotal = fmtCost(cost.total);
+            const allSame = sameToday === sameWeek && sameWeek === sameTotal;
+            const weekTotalSame = sameWeek === sameTotal && sameToday !== sameTotal;
+            return (
+              <div
+                className="px-3 py-2 rounded-md text-[10px] flex items-center gap-2 font-mono"
+                style={{
+                  background: 'rgba(212,184,118,0.10)',
+                  color: GOLD,
+                  border: '1px solid rgba(212,184,118,0.25)',
+                }}
+                title={`Tam: $${cost.total.toFixed(6)} (${cost.msgCount} mesaj, ${cost.totalConv} konuşma)`}
+              >
+                <DollarSign size={11} />
+                {allSame ? (
+                  <span>{sameTotal}</span>
+                ) : weekTotalSame ? (
+                  <>
+                    <span><span className="opacity-60">bugün</span> {sameToday}</span>
+                    <span className="opacity-30">·</span>
+                    <span><span className="opacity-60">toplam</span> {sameTotal}</span>
+                  </>
+                ) : (
+                  <>
+                    <span><span className="opacity-60">bugün</span> {sameToday}</span>
+                    <span className="opacity-30">·</span>
+                    <span><span className="opacity-60">hafta</span> {sameWeek}</span>
+                    <span className="opacity-30">·</span>
+                    <span><span className="opacity-60">toplam</span> {sameTotal}</span>
+                  </>
+                )}
+              </div>
+            );
+          })()}
           {sortedConvs.length > 0 && (
             <div className="relative">
               <button

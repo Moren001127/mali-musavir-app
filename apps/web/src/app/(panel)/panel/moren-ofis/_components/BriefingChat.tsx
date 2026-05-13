@@ -26,13 +26,20 @@ export function BriefingChat({
 }) {
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
-  const [speakEnabled, setSpeakEnabled] = useState(true);
+  // speakEnabled localStorage'da kalıcı — sayfa yenilenince geri açılmasın
+  const [speakEnabled, setSpeakEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('moren-ofis-speak') === 'true';
+  });
   const [voiceMode, setVoiceMode] = useState(false);
   const [lastSpokenIdx, setLastSpokenIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
+
+  // İlk mount'ta geçmiş mesajları sesli OKUMA — sadece bookmark olarak işaretle
+  const initialBookmarkRef = useRef(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -41,6 +48,14 @@ export function BriefingChat({
   }, [messages.length]);
 
   useEffect(() => {
+    // İlk yüklemede (sayfa açılınca DB'den gelen geçmiş mesajlar)
+    // hiçbirini sesli OKUMA — sadece son indeksi bookmark koy.
+    if (!initialBookmarkRef.current && messages.length > 0) {
+      initialBookmarkRef.current = true;
+      setLastSpokenIdx(messages.length - 1);
+      return;
+    }
+
     if (!speakEnabled || !isSynthesisSupported()) return;
     if (messages.length === 0) return;
     const newMessages = messages.slice(lastSpokenIdx + 1);
@@ -108,8 +123,12 @@ export function BriefingChat({
   };
 
   const toggleSpeak = () => {
+    const next = !speakEnabled;
     if (speakEnabled) stopSpeech();
-    setSpeakEnabled(!speakEnabled);
+    setSpeakEnabled(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('moren-ofis-speak', String(next));
+    }
   };
 
   const toggleVoiceMode = () => {
@@ -123,6 +142,9 @@ export function BriefingChat({
     } else {
       setVoiceMode(true);
       setSpeakEnabled(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('moren-ofis-speak', 'true');
+      }
       startListeningAuto();
     }
   };

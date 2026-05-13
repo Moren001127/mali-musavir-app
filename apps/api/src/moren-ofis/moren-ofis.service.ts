@@ -255,33 +255,39 @@ export class MorenOfisService {
   }
 
   private buildArdaTriagePrompt(query: string, delegateTo: string[]): string {
-    return `Patron Muzaffer Bey'den şu komut geldi:
-"${query}"
+    return `Muzaffer Bey'den geldi: "${query}"
 
-Sen ekip lideri olarak şu ekip üyelerini görevlendirdin: ${delegateTo.join(', ').toUpperCase()}.
+Sen AYLİN'sin, ekip lideri kadın baş müşavir. Şu ekip üyelerini bu işe sokuyorsun: ${delegateTo.join(', ').toUpperCase()}.
 
-Patrona ÇOK KISA (1-2 cümle) hangi ekip üyelerine sorduğunu, neyi araştırdıklarını söyle.
-Cevabını şimdi bekleme, sadece "şu adama, şuna sordum, geliyor" gibi.
-Örnek: "Tamam Muzaffer Bey, Nevra mevzuata bakıyor, Cem önceki dönemle karşılaştırıyor. Sonuç gelir gelmez özetliyorum."`;
+ÖNEMLİ: "Sordum, bana dönecek" gibi içeriksiz CEVAP YASAK. Bunun yerine:
+- Eğer basit selamlama/merhaba ise: doğal cevap ver ("Hoş geldin, ne var ne yok bugün?").
+- İş ise: kime gönderdiğini SOMUT söyle + neyi araştırdığını anlat
+  ("Cem mizan'a bakıyor, son 3 ayı kıyaslayacak. Nevra da KDV durumunu çıkarıyor").
+- Bazen şaka: "Off yine mi KDV? Helal olsun sana :)" — ama iş soruşturmayı atlama.
+
+2-3 cümle, sıcak, doğal. Çok kısa, samimi.`;
   }
 
   private buildAgentPrompt(query: string, agentId: AgentId): string {
-    return `Patron Muzaffer Bey'den şu komut geldi:
-"${query}"
+    return `Muzaffer Bey: "${query}"
 
-Senden ${PERSONAS[agentId].expertise.join(' / ')} uzmanlığında cevap istiyor. Kendi uzmanlık alanında net, kısa, eylem odaklı cevap ver.`;
+Sen ${PERSONAS[agentId].displayName}'sin. ${PERSONAS[agentId].expertise.join(' / ')} alanında cevap ver.
+2-4 cümle, samimi, mesai arkadaşı havası. Tablo/başlık YOK.`;
   }
 
   private buildSynthesisPrompt(query: string, responses: OfisMessage[]): string {
     const summary = responses
-      .map((r) => `${PERSONAS[r.agent as AgentId].displayName} (${PERSONAS[r.agent as AgentId].role}): ${r.content}`)
+      .map((r) => `${PERSONAS[r.agent as AgentId].displayName}: ${r.content}`)
       .join('\n\n');
-    return `Patronun sorusu: "${query}"
+    return `Muzaffer Bey'in sorusu: "${query}"
 
-Ekibin cevapları:
+Ekip ne dedi:
 ${summary}
 
-Şimdi bunları sen (ARDA) sentezle. Tek kısa paragraf + 2-3 maddelik somut adım. Hangi ajan ne dediğini parantez içinde belirt (örn. "(Nevra'ya göre)").`;
+Şimdi sen AYLİN olarak topla — 2-3 cümle özet, içinden çıkacak SOMUT
+sonuç/eylem (madde madde değil cümle içinde). Ajan adlarını geçirebilirsin
+("Cem'in baktığı kadarıyla...") ama her cümleye "X'e göre" yapıştırma.
+Samimi, mesai arkadaşı havası.`;
   }
 
   // === Conversation persistence ===

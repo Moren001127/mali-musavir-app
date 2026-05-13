@@ -7,7 +7,7 @@ import type { AgentId } from '@/lib/moren-ofis';
 // Her ajan için ses profili — pitch ve rate ile karakter
 // Voice seçimi browser'da mevcut Türkçe ses'lerden yapılır
 export const VOICE_PROFILES: Record<AgentId, { pitch: number; rate: number; voiceGender: 'male' | 'female' | 'neutral' }> = {
-  arda: { pitch: 1.0, rate: 1.0, voiceGender: 'male' },      // baş müşavir — sakin, net
+  arda: { pitch: 1.08, rate: 1.0, voiceGender: 'female' },   // AYLİN baş müşavir — sıcak, kararlı kadın
   nevra: { pitch: 1.1, rate: 1.05, voiceGender: 'female' }, // vergi uzmanı — kararlı
   cem: { pitch: 0.85, rate: 0.95, voiceGender: 'male' },    // denetçi — düşük, sakin
   volkan: { pitch: 1.0, rate: 1.1, voiceGender: 'male' },   // bordro — pratik, hızlı
