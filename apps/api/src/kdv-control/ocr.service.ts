@@ -2256,13 +2256,14 @@ export class OcrService {
     const sumByOran = new Map<number, number>();
 
     // Oran markörü: "% 20,00" / "% 20" / "%20,00" / "%20"
-    const rateMarkerRe = /%\s*(\d{1,2})(?:[,.]\d{1,2})?/gi;
+    // m[1] = tam sayı kısmı (20), m[2] = virgülden sonraki kısım (00, 67 vb.)
+    const rateMarkerRe = /%\s*(\d{1,2})(?:[,.](\d{1,2}))?/gi;
     // Tutar: "1.006,00" / "15,00" / "60.84" (+ opsiyonel TL/TRY/₺)
     const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
     const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
-    // Discount satırı — "İsk %" kolonu KDV değil. Ama tablo satırında hem İsk
-    // hem KDV birlikte olabilir; o durumda satır "KDV" içerir → atlama.
-    const discountRowRe = /İSKONTO|ISKONTO|\bİSK\s*%|\bISK\s*%|İNDİRİM|INDIRIM/i;
+    // Discount satırı — "İsk %", "İsk. Oranı", "İsk. Tutarı", "İSKONTO", "İNDİRİM".
+    // "İsk." (nokta) ve "İsk. Oranı / Tutarı" pattern eklendi.
+    const discountRowRe = /İSKONTO|ISKONTO|\bİSK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|\bISK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|İNDİRİM|INDIRIM/i;
 
     // İki aşamalı scan: önce rate markerları topla, sonra her marker için
     // aynı satır veya sonraki 3 satırdan ilk geçerli amount'u eşleştir.
@@ -2302,6 +2303,11 @@ export class OcrService {
       while ((m = rateMarkerRe.exec(line)) !== null) {
         const oran = parseInt(m[1], 10);
         if (!(oran > 0 && oran <= 30)) continue;
+        // KDV oranları TR'de daima TAM SAYI (1, 8, 10, 18, 20). Virgülden
+        // sonraki kısım sıfırdan farklıysa (örn. %13,67 → iskonto oranı,
+        // %20,00 → KDV oranı), bu marker KDV DEĞİL — atla.
+        const decimalPart = m[2];
+        if (decimalPart && parseInt(decimalPart, 10) > 0) continue;
         const afterLabel = this.stripMatrahFragments(line.slice(m.index + m[0].length));
         markers.push({ oran, lineIdx: i, afterLabel, isSummary });
       }
