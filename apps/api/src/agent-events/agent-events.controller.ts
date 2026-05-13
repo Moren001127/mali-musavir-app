@@ -45,6 +45,30 @@ export class AgentEventsController {
     return tenantId;
   }
 
+  /** Async resolver — DB tenant.slug/id lookup. Status ping için kullanılır. */
+  private async resolveTenantFromTokenAsync(token?: string): Promise<string> {
+    if (!token) throw new UnauthorizedException('Missing X-Agent-Token');
+    // Eski env map (geriye uyumlu)
+    const raw = process.env.AGENT_INGEST_TOKENS || '';
+    if (raw) {
+      const map: Record<string, string> = {};
+      for (const pair of raw.split(',')) {
+        const [tid, tok] = pair.split(':');
+        if (tid && tok) map[tok.trim()] = tid.trim();
+      }
+      const fromEnv = map[token.trim()];
+      if (fromEnv) return fromEnv;
+    }
+    // DB lookup — tenant.slug veya tenant.id ile
+    const t = (token || '').trim();
+    const tenant = await (this.prisma as any).tenant.findFirst({
+      where: { OR: [{ slug: t }, { id: t }] },
+      select: { id: true },
+    });
+    if (!tenant) throw new UnauthorizedException('Invalid agent token');
+    return tenant.id;
+  }
+
   // ---- VERSION LATEST (extension auto-update banner için) ----
   /**
    * v1.36.44: Frontend AgentControlCard bunu çağırıp kullanıcının yüklü versiyonu
@@ -103,19 +127,19 @@ export class AgentEventsController {
 
   /** Yerel ajan bir olay kaydeder */
   @Post('events/ingest')
-  ingest(@Headers('x-agent-token') token: string, @Body() body: AgentEventInput) {
-    const tenantId = this.resolveTenantFromToken(token);
+  async ingest(@Headers('x-agent-token') token: string, @Body() body: AgentEventInput) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!body?.agent || !body?.status) throw new BadRequestException('agent ve status zorunlu');
     return this.service.createEvent(tenantId, body);
   }
 
   /** Yerel ajan çalışma durumunu günceller */
   @Post('status/ping')
-  ping(
+  async ping(
     @Headers('x-agent-token') token: string,
     @Body() body: { agent: string; running?: boolean; hedefAy?: string; meta?: any },
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!body?.agent) throw new BadRequestException('agent zorunlu');
     return this.service.upsertStatus(tenantId, body.agent, body);
   }
