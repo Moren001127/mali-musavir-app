@@ -52,4 +52,8 @@ export const pendingActionsApi = {
     api.patch<PendingAction>(`/pending-actions/${id}/approve`, { note }).then((r) => r.data),
   reject: (id: string, note?: string) =>
     api.patch<PendingAction>(`/pending-actions/${id}/reject`, { note }).then((r) => r.data),
+  bulkApprove: (ids: string[], note?: string) =>
+    api.post<{ affected: number }>('/pending-actions/bulk-approve', { ids, note }).then((r) => r.data),
+  bulkReject: (ids: string[], note?: string) =>
+    api.post<{ affected: number }>('/pending-actions/bulk-reject', { ids, note }).then((r) => r.data),
 };

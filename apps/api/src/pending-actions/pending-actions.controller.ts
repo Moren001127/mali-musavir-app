@@ -51,4 +51,16 @@ export class PendingActionsController {
   ) {
     return this.service.reject(req.user.tenantId, id, req.user.sub, body?.note);
   }
+
+  /** Toplu onay — pending olanları onayla, count döner */
+  @Post('bulk-approve')
+  bulkApprove(@Req() req: any, @Body() body: { ids: string[]; note?: string }) {
+    return this.service.bulkApprove(req.user.tenantId, body?.ids || [], req.user.sub, body?.note);
+  }
+
+  /** Toplu red — pending olanları reddet */
+  @Post('bulk-reject')
+  bulkReject(@Req() req: any, @Body() body: { ids: string[]; note?: string }) {
+    return this.service.bulkReject(req.user.tenantId, body?.ids || [], req.user.sub, body?.note);
+  }
 }

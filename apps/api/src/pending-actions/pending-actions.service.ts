@@ -120,6 +120,39 @@ export class PendingActionsService {
     });
   }
 
+  /**
+   * Toplu onay — verilen id listesi içinde sahibi tenant olan pending'leri
+   * onaylar. Onay diğerleri (zaten approved/rejected) atlanır, count döner.
+   */
+  async bulkApprove(tenantId: string, ids: string[], userId: string, note?: string) {
+    if (!Array.isArray(ids) || ids.length === 0) return { affected: 0 };
+    const result = await (this.prisma as any).pendingAction.updateMany({
+      where: { id: { in: ids }, tenantId, status: 'pending' },
+      data: {
+        status: 'approved',
+        reviewedByUserId: userId,
+        reviewedAt: new Date(),
+        reviewNote: note,
+      },
+    });
+    return { affected: result.count };
+  }
+
+  /** Toplu red — aynı mantık, status: 'rejected' */
+  async bulkReject(tenantId: string, ids: string[], userId: string, note?: string) {
+    if (!Array.isArray(ids) || ids.length === 0) return { affected: 0 };
+    const result = await (this.prisma as any).pendingAction.updateMany({
+      where: { id: { in: ids }, tenantId, status: 'pending' },
+      data: {
+        status: 'rejected',
+        reviewedByUserId: userId,
+        reviewedAt: new Date(),
+        reviewNote: note,
+      },
+    });
+    return { affected: result.count };
+  }
+
   async reject(tenantId: string, id: string, userId: string, note?: string) {
     const existing = await this.getById(tenantId, id);
     if (existing.status !== 'pending') {

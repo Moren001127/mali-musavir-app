@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, AlertTriangle, Check, X, Clock, Sparkles, Filter } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, Check, X, Clock, Sparkles, Filter, CheckSquare, Square } from 'lucide-react';
 import { pendingActionsApi, type PendingAction, type PendingActionStatus, type PendingActionSource } from '@/lib/pending-actions';
 import { toast } from 'sonner';
 
@@ -29,6 +29,7 @@ export default function AiOnayPage() {
   const [sourceFilter, setSourceFilter] = useState<PendingActionSource | undefined>();
   const [selected, setSelected] = useState<PendingAction | null>(null);
   const [note, setNote] = useState('');
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const qc = useQueryClient();
 
   const { data: list = [], isLoading } = useQuery({
@@ -61,6 +62,42 @@ export default function AiOnayPage() {
 
   const pendingCount = list.filter((a) => a.status === 'pending').length;
   const criticalCount = list.filter((a) => a.status === 'pending' && a.riskLevel === 'critical').length;
+
+  const pendingList = list.filter((a) => a.status === 'pending');
+  const allChecked = pendingList.length > 0 && pendingList.every((a) => checkedIds.has(a.id));
+
+  const bulkApproveMut = useMutation({
+    mutationFn: () => pendingActionsApi.bulkApprove(Array.from(checkedIds)),
+    onSuccess: (res) => {
+      toast.success(`${res.affected} kayıt onaylandı`);
+      setCheckedIds(new Set());
+      qc.invalidateQueries({ queryKey: ['ai-pending-actions'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
+  });
+
+  const bulkRejectMut = useMutation({
+    mutationFn: () => pendingActionsApi.bulkReject(Array.from(checkedIds)),
+    onSuccess: (res) => {
+      toast.success(`${res.affected} kayıt reddedildi`);
+      setCheckedIds(new Set());
+      qc.invalidateQueries({ queryKey: ['ai-pending-actions'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
+  });
+
+  const toggleAll = () => {
+    if (allChecked) setCheckedIds(new Set());
+    else setCheckedIds(new Set(pendingList.map((a) => a.id)));
+  };
+  const toggleOne = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -134,6 +171,61 @@ export default function AiOnayPage() {
         ))}
       </div>
 
+      {/* Bulk action bar — pending'de görünür */}
+      {statusFilter === 'pending' && pendingList.length > 0 && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{
+            background: checkedIds.size > 0 ? 'rgba(212,184,118,0.10)' : 'rgba(0,0,0,0.30)',
+            border: `1px solid ${checkedIds.size > 0 ? 'rgba(212,184,118,0.30)' : 'rgba(212,184,118,0.20)'}`,
+            transition: 'all 200ms',
+          }}
+        >
+          <button
+            onClick={toggleAll}
+            className="flex items-center gap-1.5 text-[11px] font-semibold"
+            style={{ color: allChecked ? GOLD : 'rgba(250,250,249,0.65)' }}
+          >
+            {allChecked ? <CheckSquare size={13} /> : <Square size={13} />}
+            {allChecked ? 'Tümünü Kaldır' : 'Tümünü Seç'}
+          </button>
+          {checkedIds.size > 0 && (
+            <>
+              <span className="mx-1" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>
+              <span className="text-[11px] font-bold" style={{ color: GOLD }}>
+                {checkedIds.size} seçili
+              </span>
+              <div className="ml-auto flex gap-1.5">
+                <button
+                  onClick={() => {
+                    if (confirm(`${checkedIds.size} kaydı reddetmek istediğine emin misin?`)) {
+                      bulkRejectMut.mutate();
+                    }
+                  }}
+                  disabled={bulkRejectMut.isPending}
+                  className="px-2.5 py-1 rounded text-[10.5px] font-bold flex items-center gap-1 disabled:opacity-50"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.30)' }}
+                >
+                  <X size={11} /> Toplu Reddet
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`${checkedIds.size} kaydı onaylamak istediğine emin misin?`)) {
+                      bulkApproveMut.mutate();
+                    }
+                  }}
+                  disabled={bulkApproveMut.isPending}
+                  className="px-2.5 py-1 rounded text-[10.5px] font-bold flex items-center gap-1 disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                >
+                  <Check size={11} /> Toplu Onayla
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.04) 0%, rgba(15,11,21,0.85) 100%)', border: '1px solid rgba(212,184,118,0.20)', minHeight: 380 }}>
         {isLoading ? (
           <div className="p-8 text-center text-sm" style={{ color: 'rgba(250,250,249,0.5)' }}>Yükleniyor...</div>
@@ -149,31 +241,51 @@ export default function AiOnayPage() {
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-            {list.map((a) => (
-              <button key={a.id} onClick={() => setSelected(a)} className="w-full text-left px-4 py-3 transition flex items-start gap-3 hover:bg-white/[0.02]">
-                <div className="w-1 h-12 rounded-full flex-shrink-0" style={{ background: RISK_COLOR[a.riskLevel] || RISK_COLOR.low }} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[.12em] px-1.5 py-[2px] rounded" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
-                      {SOURCE_LABEL[a.source] || a.source}
-                    </span>
-                    {a.requestedByAgent && (
-                      <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                        {a.requestedByAgent}
-                      </span>
-                    )}
-                    <span className="text-[9.5px] uppercase font-bold px-1.5 py-[2px] rounded" style={{ background: `${RISK_COLOR[a.riskLevel]}20`, color: RISK_COLOR[a.riskLevel] }}>
-                      {a.riskLevel}
-                    </span>
-                    <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                      {new Date(a.requestedAt).toLocaleString('tr-TR')}
-                    </span>
-                  </div>
-                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: '#fafaf9' }}>{a.title}</p>
-                  <p className="text-[11.5px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.65)' }}>{a.summary}</p>
+            {list.map((a) => {
+              const isChecked = checkedIds.has(a.id);
+              const isPending = a.status === 'pending';
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-stretch hover:bg-white/[0.02] transition"
+                  style={{ background: isChecked ? 'rgba(212,184,118,0.06)' : 'transparent' }}
+                >
+                  {isPending && (
+                    <button
+                      onClick={() => toggleOne(a.id)}
+                      className="px-3 flex items-center"
+                      style={{ color: isChecked ? GOLD : 'rgba(250,250,249,0.35)' }}
+                      title={isChecked ? 'Seçimi kaldır' : 'Seç'}
+                    >
+                      {isChecked ? <CheckSquare size={14} /> : <Square size={14} />}
+                    </button>
+                  )}
+                  <button onClick={() => setSelected(a)} className="flex-1 text-left px-4 py-3 flex items-start gap-3">
+                    <div className="w-1 h-12 rounded-full flex-shrink-0" style={{ background: RISK_COLOR[a.riskLevel] || RISK_COLOR.low }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-[.12em] px-1.5 py-[2px] rounded" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
+                          {SOURCE_LABEL[a.source] || a.source}
+                        </span>
+                        {a.requestedByAgent && (
+                          <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                            {a.requestedByAgent}
+                          </span>
+                        )}
+                        <span className="text-[9.5px] uppercase font-bold px-1.5 py-[2px] rounded" style={{ background: `${RISK_COLOR[a.riskLevel]}20`, color: RISK_COLOR[a.riskLevel] }}>
+                          {a.riskLevel}
+                        </span>
+                        <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                          {new Date(a.requestedAt).toLocaleString('tr-TR')}
+                        </span>
+                      </div>
+                      <p className="text-[13px] font-semibold mb-0.5" style={{ color: '#fafaf9' }}>{a.title}</p>
+                      <p className="text-[11.5px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.65)' }}>{a.summary}</p>
+                    </div>
+                  </button>
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
