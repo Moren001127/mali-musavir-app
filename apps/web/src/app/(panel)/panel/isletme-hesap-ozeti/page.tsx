@@ -1436,10 +1436,10 @@ function Row({
               <span
                 className="tabular-nums"
                 style={{
-                  fontFamily: SERIF_FONT,
-                  fontSize: bold ? 17 : 16,
-                  fontWeight: bold ? 700 : 650,
-                  letterSpacing: '-0.01em',
+                  fontFamily: NUM_FONT,
+                  fontSize: 15,
+                  fontWeight: bold ? 700 : 600,
+                  letterSpacing: 0,
                   color: amountColor,
                 }}
               >
