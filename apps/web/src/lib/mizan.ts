@@ -22,22 +22,10 @@ export const mizanApi = {
   importFromLuca: (data: { taxpayerId: string; donem: string; donemTipi?: MizanDonemTipi }) =>
     api.post('/mizan/import', data).then((r) => r.data),
   // Portal-first Luca çekimi — CAPTCHA gerekirse Luca Oturum Yöneticisi içinde görünür.
-  fetchFromLucaAgent: (data: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi; targetDeviceId?: string }) => {
-    // earsiv.ts ile aynı sebep: Chrome uzantısının DEV-* deviceId'si
-    // unassigned job'ları alamaz; payload'a ekle ki uzantı kendi job'unu görsün.
-    const autoDeviceId =
-      typeof window !== 'undefined'
-        ? (window as any).__morenAutoAgent?.deviceId
-        : undefined;
-    const payload = data.targetDeviceId
-      ? data
-      : autoDeviceId
-        ? { ...data, targetDeviceId: autoDeviceId }
-        : data;
-    return api
-      .post('/mizan/fetch-from-luca', payload)
-      .then((r) => r.data as { jobId: string; status: string });
-  },
+  fetchFromLucaAgent: (data: { mukellefId: string; donem: string; donemTipi?: MizanDonemTipi; targetDeviceId?: string }) =>
+    api
+      .post('/mizan/fetch-from-luca', data)
+      .then((r) => r.data as { jobId: string; status: string }),
   getLucaJob: (jobId: string) =>
     api.get(`/mizan/luca-job/${jobId}`).then((r) => r.data as { job: any; mizan: any }),
   cancelLucaJob: (jobId: string) =>

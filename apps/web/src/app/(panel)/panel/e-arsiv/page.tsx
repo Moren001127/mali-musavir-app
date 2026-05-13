@@ -23,8 +23,14 @@ async function wakeLucaAgentForFetch(onStatus?: (status: string) => void) {
   if (!bridge) return false;
   try {
     onStatus?.('Luca ajani uyandiriliyor; acik Luca sekmesine guncel runtime yukleniyor...');
+    if (typeof bridge.setAgentToken === 'function') {
+      const tokenInfo = await api.get('/agent/me/token').then((r) => r.data).catch(() => null);
+      if (tokenInfo?.token) await bridge.setAgentToken(tokenInfo.token).catch(() => null);
+    }
     if (typeof bridge.openAgent === 'function') {
-      await bridge.openAgent('luca', { focus: false });
+      // create:false, navigate:false → mevcut Luca sekmesi varsa kullan,
+      // yoksa yeni sekme AÇMA (lokal Node agent zaten arka planda hallediyor).
+      await bridge.openAgent('luca', { focus: false, create: false, navigate: false });
     } else if (typeof bridge.restartAll === 'function') {
       await bridge.restartAll();
     } else {

@@ -31,20 +31,10 @@ export const earsivApi = {
     donem: string;
     tip: EarsivTip;
     belgeKaynak?: BelgeKaynak;
-  }) => {
-    // Bu PC'deki ajanın (Chrome uzantısı veya lokal Node worker) deviceId'sini
-    // payload'a ekle. Backend'de canClaimUnassignedLucaJob DEV-* prefix'li deviceId'leri
-    // unassigned (targetDeviceId=null) job'lardan dışlıyor — bu yüzden targetDeviceId
-    // boş bırakılırsa Chrome uzantısı job'u hiç göremiyor ve "1 sırada" sonsuza takılıyor.
-    const deviceId =
-      typeof window !== 'undefined'
-        ? (window as any).__morenAutoAgent?.deviceId
-        : undefined;
-    const payload = deviceId ? { ...data, targetDeviceId: deviceId } : data;
-    return api
-      .post('/earsiv/fetch-from-luca', payload)
-      .then((r) => r.data as { jobId: string; status: string });
-  },
+  }) =>
+    api
+      .post('/earsiv/fetch-from-luca', data)
+      .then((r) => r.data as { jobId: string; status: string }),
 
   getLucaJob: (jobId: string) =>
     api.get(`/earsiv/luca-job/${jobId}`).then((r) => r.data as { job: any }),
