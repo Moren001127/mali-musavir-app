@@ -46,4 +46,6 @@ export const portalDevApi = {
   setStatus: (id: string, status: TaskStatus) =>
     api.patch<DevTask>(`/portal-dev/tasks/${id}/status`, { status }).then((r) => r.data),
   runPlan: (id: string) => api.post<DevTask>(`/portal-dev/tasks/${id}/plan`).then((r) => r.data),
+  fromProposal: (proposalId: string) =>
+    api.post<DevTask>(`/portal-dev/from-proposal/${proposalId}`).then((r) => r.data),
 };

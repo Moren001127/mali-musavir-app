@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Sparkles, AlertTriangle, Zap, Wrench, Info, ChevronRight, RefreshCw, Check, X, Clock } from 'lucide-react';
+import { Sparkles, AlertTriangle, Zap, Wrench, Info, ChevronRight, RefreshCw, Check, X, Clock, Code2 } from 'lucide-react';
 import { ofisApi, type OfisProposal } from '@/lib/moren-ofis';
+import { portalDevApi } from '@/lib/portal-dev';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 const CATEGORY_META: Record<string, { label: string; icon: any; color: string }> = {
   bug: { label: 'Hata', icon: AlertTriangle, color: '#ef4444' },
@@ -22,7 +24,20 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 export function DenizPanel() {
   const qc = useQueryClient();
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<string>('open');
+
+  const toDevMut = useMutation({
+    mutationFn: (proposalId: string) => portalDevApi.fromProposal(proposalId),
+    onSuccess: (task) => {
+      toast.success('Portal Dev görevine çevrildi', {
+        description: 'Geliştirme ekibinin sayfasına yönlendiriliyorsun',
+      });
+      qc.invalidateQueries({ queryKey: ['ofis-proposals'] });
+      setTimeout(() => router.push('/panel/moren-portal-gelistirme'), 800);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
+  });
   const { data: proposals = [], isLoading } = useQuery({
     queryKey: ['ofis-proposals', statusFilter],
     queryFn: () => ofisApi.proposals(statusFilter === 'all' ? undefined : statusFilter),
@@ -171,6 +186,17 @@ export function DenizPanel() {
                           >
                             <X size={9} /> Reddet
                           </button>
+                          {(p.category === 'bug' || p.category === 'perf' || p.category === 'feature' || p.category === 'maintenance') && (
+                            <button
+                              onClick={() => toDevMut.mutate(p.id)}
+                              disabled={toDevMut.isPending}
+                              className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 disabled:opacity-50"
+                              style={{ background: 'rgba(212,184,118,0.18)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.35)' }}
+                              title="Bu öneriyi Portal Geliştirme ekibine görev olarak aktar"
+                            >
+                              <Code2 size={9} /> Portal Dev'e Aktar
+                            </button>
+                          )}
                         </>
                       )}
                     </div>

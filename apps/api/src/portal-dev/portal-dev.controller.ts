@@ -52,4 +52,14 @@ export class PortalDevController {
   runPlanning(@Req() req: any, @Param('id') id: string) {
     return this.service.runTeamPlanning(req.user.tenantId, req.user.sub, id);
   }
+
+  /** FAZ 6 — DENİZ proposal'ını Portal Dev görevine çevir */
+  @Post('from-proposal/:proposalId')
+  fromProposal(@Req() req: any, @Param('proposalId') proposalId: string) {
+    return this.service.fromProposal({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+      proposalId,
+    });
+  }
 }

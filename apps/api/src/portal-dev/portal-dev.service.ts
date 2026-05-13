@@ -130,6 +130,7 @@ export class PortalDevService {
     description: string;
     priority?: string;
     type?: string;
+    sourceProposalId?: string;
   }) {
     return (this.prisma as any).portalDevTask.create({
       data: {
@@ -140,8 +141,41 @@ export class PortalDevService {
         type: params.type || 'feature',
         status: 'backlog',
         createdByUserId: params.userId,
+        sourceProposalId: params.sourceProposalId,
       },
     });
+  }
+
+  /**
+   * FAZ 6 — DENİZ proposal'ını Portal Dev görevine çevir.
+   * MorenOfisProposal tablosundan tetiklenir, kullanıcı onayı ile.
+   */
+  async fromProposal(params: {
+    tenantId: string;
+    userId: string;
+    proposalId: string;
+  }) {
+    const proposal = await (this.prisma as any).morenOfisProposal.findUnique({
+      where: { id: params.proposalId },
+    });
+    if (!proposal || proposal.tenantId !== params.tenantId) {
+      throw new NotFoundException('Proposal bulunamadı');
+    }
+    const task = await this.createTask({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      title: proposal.title,
+      description: `Kaynak: DENİZ patrol\n\n${proposal.description}`,
+      priority: proposal.priority === 'high' ? 'high' : proposal.priority === 'low' ? 'low' : 'medium',
+      type: proposal.category === 'bug' ? 'bug' : proposal.category === 'perf' ? 'refactor' : 'feature',
+      sourceProposalId: proposal.id,
+    });
+    // Proposal'ı in_progress yap
+    await (this.prisma as any).morenOfisProposal.update({
+      where: { id: proposal.id },
+      data: { status: 'in_progress' },
+    });
+    return task;
   }
 
   async getTask(tenantId: string, id: string) {

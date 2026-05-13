@@ -11,6 +11,7 @@ import {
   Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building, FolderCheck} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
+import { pendingActionsApi } from '@/lib/pending-actions';
 
 // Elit Boutique altın ailesi — her grup kendi tonunu alır
 const GOLD      = '#d4b876';  // Ana altın
@@ -135,6 +136,15 @@ export default function Sidebar() {
     staleTime: 10000,
   });
   const bekleyenSayisi = pendingCount?.bekleyen || 0;
+
+  // FAZ 7 — AI Onay Kuyruğu bekleyen sayısı (PendingAction)
+  const { data: aiPendingCount } = useQuery({
+    queryKey: ['ai-pending-count'],
+    queryFn: () => pendingActionsApi.count('pending').catch(() => ({ count: 0 })),
+    refetchInterval: 15000,
+    staleTime: 10000,
+  });
+  const aiBekleyenSayisi = aiPendingCount?.count || 0;
 
   const isActive = (href: string) =>
     href === '/panel' ? pathname === '/panel' : pathname.startsWith(href);
@@ -280,6 +290,21 @@ export default function Sidebar() {
                           }}
                         >
                           {bekleyenSayisi > 99 ? '99+' : bekleyenSayisi}
+                        </span>
+                      )}
+
+                      {/* FAZ 7 — AI Onay Kuyruğu badge */}
+                      {href === '/panel/ai-onay' && aiBekleyenSayisi > 0 && (
+                        <span
+                          className="inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0"
+                          style={{
+                            background: '#d4b876',
+                            color: '#0f0d0b',
+                            minWidth: 16,
+                            boxShadow: '0 0 8px rgba(212, 184, 118, 0.5)',
+                          }}
+                        >
+                          {aiBekleyenSayisi > 99 ? '99+' : aiBekleyenSayisi}
                         </span>
                       )}
 
