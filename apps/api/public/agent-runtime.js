@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.19';
+  const AGENT_VERSION = '1.37.20';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3513,17 +3513,19 @@
     const found = await waitUntil(() => {
       const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
       const matches = [];
+      const target = normalizeLucaMenuText(text);
       for (const fname of candidates) {
         const f = getLucaFrame(fname);
         if (!f || !f.contentDocument) continue;
         for (const el of f.contentDocument.querySelectorAll('*')) {
-          if ((el.textContent || '').trim() === text && el.children.length === 0) {
-            matches.push({ el, frame: f, frameName: fname });
+          const normalized = normalizeLucaMenuText(el.textContent || '');
+          if (normalized === target && isLikelyLucaMenuElement(el, target)) {
+            matches.push({ el: getClickableLucaMenuElement(el), frame: f, frameName: fname });
           }
         }
       }
       return matches.length >= nth ? matches[nth - 1] : null;
-    }, maxMs);
+    }, maxMs, 250);
 
     if (!found) {
       throw new Error(`Sağ menüde "${text}" (${nth}. occurrence) bulunamadı — Fiş Listesi sayfası açık mı?`);
@@ -3546,6 +3548,32 @@
    * eşleşen ilk form'u döndürür. İlk koşumda form bulunamazsa tüm form/input
    * listesini log'a düşürür → user görsün, biz fix edelim.
    */
+  function findLucaAnyFormNow(formNamePattern) {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const fm of f.contentDocument.querySelectorAll('form')) {
+          if (formNamePattern.test(fm.name || '') ||
+              formNamePattern.test(fm.id || '') ||
+              formNamePattern.test(fm.action || '')) {
+            return fm;
+          }
+        }
+      } catch {}
+    }
+    return null;
+  }
+
   async function waitForLucaAnyForm(log, formNamePattern, maxMs = 15000, label = 'form') {
     await log(`⏳ ${label} (pattern: ${formNamePattern}) yüklenmesi bekleniyor…`);
     const collectFrames = (root, depth = 0, acc = []) => {
@@ -4316,10 +4344,15 @@
     await navigateToIsletmeGiderListesi(log);
 
     // 3) Sağ menüde "Gelir/Gider Listesi" tıkla → form yüklenir
-    await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1 });
+    let form = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+    if (form) {
+      await log('Isletme Gelir/Gider formu zaten yuklu; sag menu tiklamasi atlandi');
+    } else {
+      await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1, maxMs: 60000 });
+    }
 
     // 4) Form yüklensin
-    const form = await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme|raporGelirGider/i, 15000, 'İşletme Gelir/Gider formu');
+    form = form || await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme|raporGelirGider/i, 60000, 'İşletme Gelir/Gider formu');
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
@@ -4974,24 +5007,55 @@
    * Sayfa yenilenmesinden sonra menü 1-2 saniye sürebilir; bu yüzden waitUntil ile
    * X saniye boyunca yeniden dene.
    */
+  function normalizeLucaMenuText(value) {
+    return String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function isLikelyLucaMenuElement(el, targetText) {
+    const text = normalizeLucaMenuText(el.textContent || '');
+    if (text !== targetText) return false;
+    if (el.children.length === 0) return true;
+    if (text.length > targetText.length + 20) return false;
+    const tag = String(el.tagName || '').toUpperCase();
+    if (/^(A|SPAN|FONT|TD|DIV|LI|B)$/.test(tag)) return true;
+    return !!(el.getAttribute?.('onclick') || el.closest?.('a,[onclick],[role="button"]'));
+  }
+
+  function getClickableLucaMenuElement(el) {
+    let cur = el;
+    for (let i = 0; i < 5 && cur; i++) {
+      const tag = String(cur.tagName || '').toUpperCase();
+      const style = String(cur.getAttribute?.('style') || '').toLowerCase();
+      if (tag === 'A' || cur.getAttribute?.('onclick') || cur.getAttribute?.('href') ||
+          cur.getAttribute?.('role') === 'button' || style.includes('cursor')) {
+        return cur;
+      }
+      cur = cur.parentElement;
+    }
+    return el;
+  }
+
   async function findLucaMenuItem(text, _log, maxMs = 8000) {
     const result = await waitUntil(() => {
       // Önce frm5 (sağ menü)
       const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
+      const target = normalizeLucaMenuText(text);
       for (const fname of candidates) {
         const f = getLucaFrame(fname);
         if (!f || !f.contentDocument) continue;
         const doc = f.contentDocument;
         for (const el of doc.querySelectorAll('*')) {
-          if ((el.textContent || '').trim() === text && el.children.length === 0) {
-            return { el, frame: f, frameName: fname };
+          const normalized = normalizeLucaMenuText(el.textContent || '');
+          if (normalized === target && isLikelyLucaMenuElement(el, target)) {
+            return { el: getClickableLucaMenuElement(el), frame: f, frameName: fname };
           }
         }
       }
       // Top document'ta da bak (her ihtimale karşı)
       for (const el of document.querySelectorAll('*')) {
-        if ((el.textContent || '').trim() === text && el.children.length === 0) {
-          return { el, frame: window, frameName: 'top' };
+        const normalized = normalizeLucaMenuText(el.textContent || '');
+        if (normalized === target && isLikelyLucaMenuElement(el, target)) {
+          return { el: getClickableLucaMenuElement(el), frame: window, frameName: 'top' };
         }
       }
       return null;
@@ -5251,8 +5315,15 @@
 
     // 4. Sayfa yüklensin — sağ menüde "Gelir/Gider Listesi" çıksın
     await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
-    const ggReady = await findLucaMenuItem('Gelir/Gider Listesi', null, 15000);
-    if (!ggReady) throw new Error('Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 15sn)');
+    const ggReady = await findLucaMenuItem('Gelir/Gider Listesi', null, 60000);
+    if (!ggReady) {
+      const directForm = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+      if (directForm) {
+        await log('✓ Gider Listesi formu dogrudan acildi; sag menu beklenmeden devam');
+        return;
+      }
+      throw new Error('Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 60sn)');
+    }
     await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
   }
 
