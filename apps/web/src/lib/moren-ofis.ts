@@ -86,8 +86,20 @@ export const ofisApi = {
 
   // Hafıza
   facts: (subject?: string) =>
-    api.get('/moren-ofis/memory/facts', { params: subject ? { subject } : {} }).then((r) => r.data),
+    api.get<MorenFact[]>('/moren-ofis/memory/facts', { params: subject ? { subject } : {} }).then((r) => r.data),
   upsertFact: (body: { subject: string; predicate: string; object: string; importance?: number }) =>
-    api.post('/moren-ofis/memory/facts', body).then((r) => r.data),
+    api.post<MorenFact>('/moren-ofis/memory/facts', body).then((r) => r.data),
   deleteFact: (id: string) => api.delete(`/moren-ofis/memory/facts/${id}`).then((r) => r.data),
 };
+
+export interface MorenFact {
+  id: string;
+  tenantId: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  importance: number;
+  source?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

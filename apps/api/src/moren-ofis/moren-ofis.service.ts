@@ -396,16 +396,39 @@ ${summary}
 
     const runTool = async (tool: string, input: any) => {
       const t0 = Date.now();
+      let ok = false;
+      let result: any = null;
+      let errorMsg: string | undefined;
+      let resultSize = 0;
       try {
-        const result = await this.tools.execute(tool, input, ctx);
-        const ok = !result?.error;
-        calls.push({ tool, input, ok, durationMs: Date.now() - t0 });
-        return ok ? result : null;
+        result = await this.tools.execute(tool, input, ctx);
+        ok = !result?.error;
+        if (!ok) errorMsg = String(result?.error || 'unknown');
+        try { resultSize = JSON.stringify(result || {}).length; } catch {}
       } catch (e: any) {
-        calls.push({ tool, input, ok: false, durationMs: Date.now() - t0 });
-        this.logger.warn(`prefetch ${tool}: ${e?.message}`);
-        return null;
+        errorMsg = e?.message || String(e);
+        this.logger.warn(`prefetch ${tool}: ${errorMsg}`);
       }
+      const durationMs = Date.now() - t0;
+      calls.push({ tool, input, ok, durationMs });
+
+      // Audit log — fire and forget, kullanıcı bunu beklemez
+      (this.prisma as any).toolCallLog.create({
+        data: {
+          tenantId,
+          caller: 'moren_ofis',
+          callerRef: null, // conversation id henüz oluşmamış olabilir, bu çağrı pre-conversation
+          agent: null, // prefetch'te genel — ajan-spesifik değil
+          tool,
+          input,
+          ok,
+          durationMs,
+          resultSize,
+          errorMsg: errorMsg || null,
+        },
+      }).catch((e: any) => this.logger.warn(`ToolCallLog yazılamadı: ${e?.message}`));
+
+      return ok ? result : null;
     };
 
     // 1) Mükellef adı tespiti — önce list_taxpayers ile arama yap.

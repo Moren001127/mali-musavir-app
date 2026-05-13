@@ -2579,3 +2579,30 @@ model PortalDevMessage {
   @@index([tenantId, taskId])
   @@map("portal_dev_messages")
 }
+
+// ============================================================
+// TOOL CALL LOG (audit — Faz 3'te promise edildi)
+// ============================================================
+// Her tool çağrısının kalıcı denetim kaydı. Mesaj JSON'una gömülü olan
+// toolCalls alanı sadece UI rozet için; gerçek denetim, maliyet analizi
+// ve kaçak yakalama bu tablo üzerinden yapılır.
+// ------------------------------------------------------------
+model ToolCallLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  caller      String   // moren_ofis | moren_ai | portal_dev | patrol
+  callerRef   String?  // conversation id / task id / agent name
+  agent       String?  // arda|nevra|cem|... (kim çağırdı)
+  tool        String   // list_taxpayers, get_kdv_summary, ...
+  input       Json
+  ok          Boolean
+  durationMs  Int
+  resultSize  Int?     // dönen JSON byte boyutu (yaklaşık)
+  errorMsg    String?
+  ts          DateTime @default(now())
+
+  @@index([tenantId, ts])
+  @@index([tenantId, tool])
+  @@index([tenantId, caller, callerRef])
+  @@map("tool_call_logs")
+}
