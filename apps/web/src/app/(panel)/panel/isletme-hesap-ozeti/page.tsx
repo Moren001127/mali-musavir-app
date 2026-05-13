@@ -967,25 +967,13 @@ function KarsilastirmaTablosu({
               label="DÖNEM KARI"
               cols={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
-                return (
-                  <span
-                    key={d}
-                    style={{
-                      color: lc.donemKar < 0 ? LOSS_TEXT : lc.donemKar > 0 ? PROFIT_TEXT : AMOUNT_TEXT,
-                      display: 'inline-block',
-                      fontSize: 14,
-                      fontWeight: 650,
-                      minWidth: 92,
-                    }}
-                  >
-                    {formatTR(lc.donemKar)}
-                  </span>
-                );
+                return formatTR(lc.donemKar);
               })}
               ratios={tersDonemler.map((d) => {
                 const lc = liveCalc(d);
                 return oran(lc.donemKar, lc.sat);
               })}
+              calc
               raw
               bold
               hl="bg-amber-500/10"
@@ -1080,23 +1068,7 @@ function KarsilastirmaTablosu({
           <tbody>
             <Row
               label="DÖNEM KARI"
-              cols={tersDonemler.map((d) => {
-                const v = liveCalc(d).donemKar;
-                return (
-                  <span
-                    key={d}
-                    style={{
-                      color: v < 0 ? LOSS_TEXT : v > 0 ? PROFIT_TEXT : AMOUNT_TEXT,
-                      display: 'inline-block',
-                      fontSize: 14,
-                      fontWeight: 650,
-                      minWidth: 92,
-                    }}
-                  >
-                    {formatTR(v)}
-                  </span>
-                );
-              })}
+              cols={tersDonemler.map((d) => formatTR(liveCalc(d).donemKar))}
               calc
               bold
             />
@@ -1436,7 +1408,7 @@ function Row({
                   className="tabular-nums"
                   style={{
                     fontFamily: NUM_FONT,
-                    fontSize: bold ? 15 : 14.5,
+                    fontSize: 15,
                     fontWeight: bold ? 700 : 600,
                     letterSpacing: 0,
                     color: amountColor,
