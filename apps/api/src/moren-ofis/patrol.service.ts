@@ -258,19 +258,27 @@ Sadece JSON, başka açıklama yok.`;
       return;
     }
 
-    // Önerileri DB'ye yaz
+    // Önerileri DB'ye yaz + high priority olanlar için bildirim
     if (Array.isArray(parsed.proposals)) {
       for (const p of parsed.proposals) {
-        await (this.prisma as any).morenOfisProposal.create({
+        const priority = ['high', 'medium', 'low'].includes(p.priority) ? p.priority : 'medium';
+        const title = String(p.title || '').slice(0, 200);
+        const description = String(p.description || '').slice(0, 2000);
+        const created = await (this.prisma as any).morenOfisProposal.create({
           data: {
             tenantId,
-            title: String(p.title || '').slice(0, 200),
-            description: String(p.description || '').slice(0, 2000),
-            priority: ['high', 'medium', 'low'].includes(p.priority) ? p.priority : 'medium',
+            title,
+            description,
+            priority,
             category: ['bug', 'perf', 'feature', 'maintenance'].includes(p.category) ? p.category : 'feature',
             status: 'open',
           },
-        }).catch(() => {});
+        }).catch(() => null);
+
+        // Yüksek öncelikli ise kullanıcıya in-app bildirim at — Bell badge'de görünür
+        if (created && priority === 'high') {
+          await this.notifyDenizProposal(tenantId, title, description, created.id).catch(() => {});
+        }
       }
     }
 
@@ -328,6 +336,36 @@ Sadece JSON, başka açıklama yok.`;
     // İleride MorenOfisIntervention tablosu eklenebilir.
     // Şimdilik sadece log yeterli.
     this.logger.log(`DENIZ otomatik mudahale: total=${total}, breakdown=${JSON.stringify(breakdown)}`);
+  }
+
+  /**
+   * DENİZ'in high priority önerisi için tenant kullanıcılarına in-app
+   * bildirim atar — Bell badge'de görünür. Tüm tenant adminleri görür.
+   */
+  private async notifyDenizProposal(
+    tenantId: string,
+    title: string,
+    description: string,
+    proposalId: string,
+  ) {
+    // Tenant aktif kullanıcılarına bildirim — role yapısı UserRole üzerinden,
+    // basitleştirme: tüm aktif kullanıcılar (genelde 1-3 personel)
+    const users = await this.prisma.user.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true },
+    });
+    for (const u of users) {
+      await (this.prisma as any).notification.create({
+        data: {
+          tenantId,
+          userId: u.id,
+          title: `🔔 DENİZ: ${title}`,
+          body: description.slice(0, 500),
+          type: 'AI_PROPOSAL',
+          metadata: { proposalId, source: 'moren_ofis_patrol' },
+        },
+      }).catch(() => {});
+    }
   }
 
   // === Proposals API ===
