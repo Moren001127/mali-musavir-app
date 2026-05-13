@@ -1152,6 +1152,198 @@ ${ocr.text.slice(0, 14000)}`;
     return statuses.map((status) => ({ ...status, meta: null }));
   }
 
+  /**
+   * Ajan sağlık özeti — Sağlık Paneli için tek endpoint'ten her şey.
+   *
+   * Döner:
+   *  - agents[]: agent başı durum, cihaz listesi, kontrol durumu, bugünkü iş sayıları, aktif iş & son hata
+   *  - hourlyActivity[]: son 24 saat, saatlik biten/hata sayısı
+   *  - totals: anlık özet
+   */
+  async getHealthSummary(tenantId: string) {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const recentErrorCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [statuses, lucaJobs, agentEvents, agentCommands] = await Promise.all([
+      this.prisma.agentStatus.findMany({
+        where: { tenantId },
+        orderBy: { lastPing: 'desc' },
+      }),
+      (this.prisma as any).lucaFetchJob.findMany({
+        where: { tenantId, createdAt: { gte: last24h } },
+        orderBy: { createdAt: 'desc' },
+      }) as Promise<Array<any>>,
+      this.prisma.agentEvent.findMany({
+        where: { tenantId, ts: { gte: last24h } },
+        orderBy: { ts: 'desc' },
+        take: 500,
+      }),
+      (this.prisma as any).agentCommand.findMany({
+        where: { tenantId, createdAt: { gte: last24h } },
+        orderBy: { createdAt: 'desc' },
+      }) as Promise<Array<any>>,
+    ]);
+
+    // Cihazları agent'a göre grupla — bir agent için birden çok cihaz olabilir
+    // (örn. ofis + ev PC'sinde local-agent veya farklı tarayıcılarda extension)
+    const devicesByAgent = new Map<string, Array<any>>();
+    for (const s of statuses) {
+      const list = devicesByAgent.get(s.agent) || [];
+      const meta: any = s.meta || {};
+      const lastPingMs = new Date(s.lastPing).getTime();
+      const stale = Date.now() - lastPingMs > 5 * 60 * 1000; // 5dk üstü stale
+      list.push({
+        deviceId: meta.deviceId || null,
+        workerName: meta.workerName || null,
+        version: meta.version || null,
+        running: s.running && !stale,
+        lastPing: s.lastPing,
+        stale,
+        isLocal: !!meta.localWorker || (meta.deviceId && !/^DEV-/i.test(String(meta.deviceId))),
+        jobTypes: Array.isArray(meta.jobTypes) ? meta.jobTypes : null,
+        url: meta.url || null,
+        controlState: s.controlState || 'RUNNING',
+        controlSetBy: s.controlSetBy || null,
+        controlSetAt: s.controlSetAt,
+      });
+      devicesByAgent.set(s.agent, list);
+    }
+
+    // Luca job'ları agent='luca' altına eşle (LucaFetchJob içinde agent field yok)
+    const lucaJobsByStatus = (() => {
+      const buckets = { done: 0, failed: 0, pending: 0, running: 0, cancelled: 0 };
+      for (const j of lucaJobs) {
+        const k = (j.status || 'pending') as keyof typeof buckets;
+        if (k in buckets) buckets[k]++;
+      }
+      return { ...buckets, total: lucaJobs.length };
+    })();
+
+    const lucaActiveJobs = lucaJobs
+      .filter((j: any) => j.status === 'running' || j.status === 'pending')
+      .slice(0, 10)
+      .map((j: any) => ({
+        id: j.id,
+        tip: j.tip,
+        donem: j.donem,
+        status: j.status,
+        startedAt: j.startedAt,
+        createdAt: j.createdAt,
+        targetDeviceId: j.targetDeviceId,
+        mukellefId: j.mukellefId,
+      }));
+
+    const lucaRecentErrors = lucaJobs
+      .filter((j: any) => j.status === 'failed' && j.errorMsg)
+      .slice(0, 5)
+      .map((j: any) => ({
+        id: j.id,
+        message: String(j.errorMsg || '').split('\n').slice(-1)[0]?.slice(0, 200) || '',
+        ts: j.finishedAt || j.createdAt,
+      }));
+
+    // Mihsap & diğer agent'lar için AgentEvent + AgentCommand'tan istatistik
+    const otherAgents = new Set<string>();
+    for (const s of statuses) {
+      if (s.agent && s.agent !== 'luca') otherAgents.add(s.agent);
+    }
+    for (const c of agentCommands) {
+      if (c.agent && c.agent !== 'luca') otherAgents.add(c.agent);
+    }
+
+    const agents: any[] = [];
+
+    // Luca ajanı
+    agents.push({
+      agent: 'luca',
+      displayName: 'Luca (e-Arşiv/E-Fatura/Mizan)',
+      devices: devicesByAgent.get('luca') || [],
+      todayJobs: lucaJobsByStatus,
+      activeJobs: lucaActiveJobs,
+      recentErrors: lucaRecentErrors,
+      controlState: (devicesByAgent.get('luca')?.[0]?.controlState) || 'RUNNING',
+    });
+
+    // Diğer agent'lar (Mihsap, vb.)
+    for (const agentName of otherAgents) {
+      const cmds = agentCommands.filter((c: any) => c.agent === agentName);
+      const evts = agentEvents.filter((e: any) => e.agent === agentName);
+      const cmdBuckets = { done: 0, failed: 0, pending: 0, running: 0, total: cmds.length };
+      for (const c of cmds) {
+        const k = (c.status || 'pending') as keyof typeof cmdBuckets;
+        if (k in cmdBuckets && k !== 'total') (cmdBuckets as any)[k]++;
+      }
+      const recentErrors = evts
+        .filter((e: any) => e.status === 'hata')
+        .slice(0, 5)
+        .map((e: any) => ({
+          id: e.id,
+          message: e.message?.slice(0, 200) || '',
+          mukellef: e.mukellef,
+          ts: e.ts,
+        }));
+      agents.push({
+        agent: agentName,
+        displayName: agentName === 'mihsap' ? 'Mihsap (Fatura Onay)' : agentName,
+        devices: devicesByAgent.get(agentName) || [],
+        todayJobs: cmdBuckets,
+        activeJobs: cmds
+          .filter((c: any) => c.status === 'running' || c.status === 'pending')
+          .slice(0, 10)
+          .map((c: any) => ({
+            id: c.id,
+            tip: c.action,
+            status: c.status,
+            startedAt: c.startedAt,
+            createdAt: c.createdAt,
+          })),
+        recentErrors,
+        controlState: (devicesByAgent.get(agentName)?.[0]?.controlState) || 'RUNNING',
+      });
+    }
+
+    // Saatlik aktivite (son 24h) — Luca job'larının finishedAt'ine göre
+    const hourBuckets = new Map<string, { done: number; failed: number }>();
+    for (let i = 23; i >= 0; i--) {
+      const t = new Date(now.getTime() - i * 60 * 60 * 1000);
+      t.setMinutes(0, 0, 0);
+      hourBuckets.set(t.toISOString(), { done: 0, failed: 0 });
+    }
+    for (const j of lucaJobs) {
+      if (!j.finishedAt) continue;
+      const t = new Date(j.finishedAt);
+      t.setMinutes(0, 0, 0);
+      const key = t.toISOString();
+      const bucket = hourBuckets.get(key);
+      if (!bucket) continue;
+      if (j.status === 'done') bucket.done++;
+      else if (j.status === 'failed') bucket.failed++;
+    }
+    const hourlyActivity = Array.from(hourBuckets.entries()).map(([hour, v]) => ({
+      hour,
+      done: v.done,
+      failed: v.failed,
+    }));
+
+    return {
+      generatedAt: now.toISOString(),
+      agents,
+      hourlyActivity,
+      totals: {
+        activeJobs:
+          lucaActiveJobs.length +
+          agents.reduce((sum, a) => (a.agent !== 'luca' ? sum + a.activeJobs.length : sum), 0),
+        pendingLucaJobs: lucaJobsByStatus.pending,
+        runningLucaJobs: lucaJobsByStatus.running,
+        doneToday: lucaJobsByStatus.done,
+        failedToday: lucaJobsByStatus.failed,
+      },
+    };
+  }
+
   // Rules
   async listRules(tenantId: string) {
     return this.prisma.agentRule.findMany({ where: { tenantId }, orderBy: { mukellef: 'asc' } });

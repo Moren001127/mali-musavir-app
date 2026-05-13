@@ -214,6 +214,13 @@ export class AgentEventsController {
     return this.service.listStatus(req.user.tenantId);
   }
 
+  /** Sağlık Paneli için tek endpoint — agents + activity chart + totals */
+  @Get('health-summary')
+  @UseGuards(AuthGuard('jwt'))
+  healthSummary(@Req() req: any) {
+    return this.service.getHealthSummary(req.user.tenantId);
+  }
+
   @Get('registry')
   @UseGuards(AuthGuard('jwt'))
   registry() {

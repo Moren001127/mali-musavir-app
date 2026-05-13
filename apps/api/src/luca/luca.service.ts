@@ -113,7 +113,16 @@ export class LucaService {
     createdBy?: string;
     mukellefAdi?: string;
     targetDeviceId?: string;
+    preferredAgent?: string;
+    priority?: number;
   }) {
+    // Job tipine göre default affinity (B): e-arşiv/efatura uzun süren işler,
+    // headless local agent daha stabil. Aksi belirtilmedikçe local-node tercih.
+    const defaultAffinity =
+      /^(EARSIV|EFATURA|MIZAN|ACCOUNT_PLAN|IHO_FETCH)/.test(params.tip || '')
+        ? 'local-node'
+        : null;
+    // Beyanname yaklaşırken priority artırma — şimdilik manuel parametre ile.
     return (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId: params.tenantId,
@@ -124,11 +133,26 @@ export class LucaService {
         status: 'pending',
         createdBy: params.createdBy || null,
         targetDeviceId: params.targetDeviceId || null,
+        preferredAgent: params.preferredAgent ?? defaultAffinity,
+        priority: params.priority ?? 0,
         // mukellefAdi'yı errorMsg'in başına meta olarak ekleyelim (yeni column eklemeden)
         // Format: "[META] mukellefAdi=ABC FIRMA"
         errorMsg: params.mukellefAdi ? `[META] mukellefAdi=${params.mukellefAdi}` : null,
       },
     });
+  }
+
+  /**
+   * Agent tipini deviceId'den çıkar.
+   * - moren-* (hostname-based) → 'local-node'
+   * - DEV-* (Chrome extension generated) → 'browser-ext'
+   * - null/empty → null (hiçbiri)
+   */
+  private agentKindForDeviceId(deviceId?: string | null): 'local-node' | 'browser-ext' | null {
+    const id = (deviceId || '').trim();
+    if (!id) return null;
+    if (/^DEV-/i.test(id)) return 'browser-ext';
+    return 'local-node';
   }
 
   async markJobRunning(
@@ -313,16 +337,28 @@ export class LucaService {
    */
   async pendingJobsForAgent(tenantId: string, deviceId?: string) {
     const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
+    const agentKind = this.agentKindForDeviceId(deviceId);
+    // Boyut B — affinity filter: job preferredAgent dolu ise sadece eşleşen ajan görür.
+    // preferredAgent null = herkes (default).
+    const affinityFilter = agentKind
+      ? { OR: [{ preferredAgent: null }, { preferredAgent: agentKind }] }
+      : { preferredAgent: null };
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId,
         status: 'pending',
-        OR: [
-          ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
-          ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+        AND: [
+          {
+            OR: [
+              ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
+              ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+            ],
+          },
+          affinityFilter,
         ],
       },
-      orderBy: { createdAt: 'asc' },
+      // Boyut C — priority önce, sonra eskiden yeni
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
       take: 5,
     });
 

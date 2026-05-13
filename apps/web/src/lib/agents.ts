@@ -46,6 +46,71 @@ export interface AgentCommand {
   finishedAt?: string | null;
 }
 
+export interface AgentHealthDevice {
+  deviceId: string | null;
+  workerName: string | null;
+  version: string | null;
+  running: boolean;
+  lastPing: string;
+  stale: boolean;
+  isLocal: boolean;
+  jobTypes: string[] | null;
+  url: string | null;
+  controlState: 'RUNNING' | 'PAUSED' | 'STOP' | string;
+  controlSetBy: string | null;
+  controlSetAt: string | null;
+}
+
+export interface AgentHealthBuckets {
+  total: number;
+  done: number;
+  failed: number;
+  pending: number;
+  running: number;
+  cancelled?: number;
+}
+
+export interface AgentHealthActiveJob {
+  id: string;
+  tip: string;
+  donem?: string;
+  status: string;
+  startedAt?: string | null;
+  createdAt: string;
+  targetDeviceId?: string | null;
+  mukellefId?: string;
+}
+
+export interface AgentHealthError {
+  id: string;
+  message: string;
+  mukellef?: string | null;
+  ts: string;
+}
+
+export interface AgentHealthEntry {
+  agent: string;
+  displayName: string;
+  devices: AgentHealthDevice[];
+  todayJobs: AgentHealthBuckets;
+  activeJobs: AgentHealthActiveJob[];
+  recentErrors: AgentHealthError[];
+  controlState: string;
+}
+
+export interface AgentHealthSummary {
+  generatedAt: string;
+  agents: AgentHealthEntry[];
+  hourlyActivity: Array<{ hour: string; done: number; failed: number }>;
+  totals: {
+    activeJobs: number;
+    pendingLucaJobs: number;
+    runningLucaJobs: number;
+    doneToday: number;
+    failedToday: number;
+  };
+}
+
 export interface AgentDefinition {
   id: string;
   title: string;
@@ -78,6 +143,7 @@ export const agentsApi = {
     api.post('/agent/ai/credit-topup', body).then((r) => r.data),
   aiCreditTopups: () => api.get('/agent/ai/credit-topups').then((r) => r.data),
   status: () => api.get<AgentStatus[]>('/agent/status').then((r) => r.data),
+  healthSummary: () => api.get<AgentHealthSummary>('/agent/health-summary').then((r) => r.data),
   registry: () => api.get<AgentDefinition[]>('/agent/registry').then((r) => r.data),
   rules: () => api.get<AgentRule[]>('/agent/rules').then((r) => r.data),
   getRule: (mukellef: string) =>

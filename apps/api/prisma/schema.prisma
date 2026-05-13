@@ -1417,6 +1417,13 @@ model LucaFetchJob {
   errorMsg      String?
   targetDeviceId String?
   createdBy     String?
+  // Boyut B — Job affinity: hangi ajan tipi tercih edilir
+  // null = herkes alabilir, 'local-node' = sadece headless worker,
+  // 'browser-ext' = sadece Chrome uzantısı
+  preferredAgent String?
+  // Boyut C — Priority: yüksek = önce işle (default 0)
+  // Beyanname dönemi yaklaşınca portal otomatik 1-5 arası yükseltir
+  priority      Int       @default(0)
   createdAt     DateTime  @default(now())
   startedAt     DateTime?
   finishedAt    DateTime?
@@ -1424,8 +1431,37 @@ model LucaFetchJob {
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, targetDeviceId, status])
+  @@index([tenantId, status, priority])
   @@index([sessionId])
   @@map("luca_fetch_jobs")
+}
+
+// Boyut D — Zamanlanmış otomatik Luca işleri
+// Cron benzeri: belirlenen aralıkta scheduler servisi LucaFetchJob yaratır.
+model ScheduledLucaJob {
+  id          String    @id @default(cuid())
+  tenantId    String
+  name        String    // Kullanıcıya gösterilen ad — "Ay başı tüm mükellefler mizan"
+  active      Boolean   @default(true)
+  // Cron string (standart 5-field: dakika saat gün ay haftaGünü)
+  // Örn: "0 6 1 * *" = her ayın 1'inde 06:00
+  cron        String
+  // Yaratılacak job parametreleri
+  jobTip      String    // "MIZAN" | "ACCOUNT_PLAN" | "EARSIV_ALIS" vb.
+  // Mükellef seçimi: null=tüm aktif mükellefler, string[]=spesifik id listesi
+  mukellefIds String[]  @default([])
+  // İlave parametreler (donem hesaplama vb.)
+  options     Json?
+  preferredAgent String?
+  priority    Int       @default(0)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, active, nextRunAt])
+  @@map("scheduled_luca_jobs")
 }
 
 // Fiş Yazdırma: oluşturulan Word çıktılarının arşivi
