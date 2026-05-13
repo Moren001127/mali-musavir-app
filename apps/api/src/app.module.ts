@@ -19,6 +19,7 @@ import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
 import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
+import { MorenOfisModule } from './moren-ofis/moren-ofis.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
@@ -57,6 +58,7 @@ import { HgsCron } from './schedule/hgs.cron';
     MizanModule,
     EarsivModule,
     MorenAiModule,
+    MorenOfisModule,
     WhatsAppModule,
     VendorMemoryModule,
     PendingDecisionsModule,

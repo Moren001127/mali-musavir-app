@@ -1440,6 +1440,24 @@ model LucaFetchJob {
   @@map("luca_fetch_jobs")
 }
 
+// Moren Ofis — 6 ajanlık AI ekibi konuşma geçmişi
+// Her conversation bir kullanıcı sohbet oturumu; messages JSON array
+// (kullanıcı + ajan cevapları, sırasıyla).
+model MorenOfisConversation {
+  id              String   @id @default(cuid())
+  tenantId        String
+  createdBy       String
+  title           String?
+  // OfisMessage[] — see apps/api/src/moren-ofis/moren-ofis.service.ts
+  messages        Json     @default("[]")
+  totalCostUsd    Decimal  @default(0) @db.Decimal(10, 6)
+  createdAt       DateTime @default(now())
+  lastActivityAt  DateTime @default(now()) @updatedAt
+
+  @@index([tenantId, lastActivityAt])
+  @@map("moren_ofis_conversations")
+}
+
 // Boyut D — Zamanlanmış otomatik Luca işleri
 // Cron benzeri: belirlenen aralıkta scheduler servisi LucaFetchJob yaratır.
 model ScheduledLucaJob {

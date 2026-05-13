@@ -79,6 +79,7 @@ const navGroups = [
     color: BRONZE,
     icon: Zap,
     items: [
+      { href: '/panel/moren-ofis',        label: 'Moren Ofis (AI Ekip)', icon: Brain },
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajan-saglik',       label: 'Sağlık Panosu',       icon: Activity },
       { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
