@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
+import { toast } from 'sonner';
 
 export function ChatPanel({
   agents,
@@ -66,9 +67,15 @@ export function ChatPanel({
    * voiceMode açıkken döngü: dinle → gönder → ekip sesli cevapla → dinlemeye dön.
    */
   const startListeningAuto = () => {
-    if (!isSpeechSupported()) return;
+    if (!isSpeechSupported()) {
+      toast.error('Sesli komut bu tarayıcıda desteklenmiyor', {
+        description: 'Chrome veya Edge ile açıp mikrofon iznini verin.',
+      });
+      setVoiceMode(false);
+      return false;
+    }
     setListening(true);
-    listenerRef.current = startListening({
+    const listener = startListening({
       onResult: (transcript, isFinal) => {
         setText(transcript);
         if (isFinal && transcript.trim().length > 0) {
@@ -79,8 +86,10 @@ export function ChatPanel({
           setText('');
         }
       },
-      onError: () => {
+      onError: (err) => {
+        toast.error('Mikrofon başlatılamadı', { description: err });
         setListening(false);
+        setVoiceMode(false);
         listenerRef.current = null;
       },
       onEnd: () => {
@@ -88,6 +97,12 @@ export function ChatPanel({
         listenerRef.current = null;
       },
     });
+    listenerRef.current = listener;
+    if (!listener) {
+      setListening(false);
+      return false;
+    }
+    return true;
   };
 
   const toggleMic = () => {
@@ -98,7 +113,9 @@ export function ChatPanel({
       return;
     }
     if (!isSpeechSupported()) {
-      alert('Sesli komut için Chrome veya Edge kullanın');
+      toast.error('Sesli komut için Chrome veya Edge kullanın', {
+        description: 'Tarayıcı mikrofon/ses tanıma desteği vermiyor.',
+      });
       return;
     }
     startListeningAuto();
@@ -118,9 +135,10 @@ export function ChatPanel({
       }
       stopSpeech();
     } else {
-      setVoiceMode(true);
       setSpeakEnabled(true); // sesli mod açıksa sesli cevap da açık olmalı
-      startListeningAuto();
+      if (startListeningAuto()) {
+        setVoiceMode(true);
+      }
     }
   };
 
@@ -248,7 +266,7 @@ export function ChatPanel({
             title={speakEnabled ? 'Ekip sesli konuşuyor - kapat' : 'Ekibi sesli dinle - aç'}
           >
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
-            {speakEnabled ? 'Sesli' : 'Sessiz'}
+            {speakEnabled ? 'Yanıt Sesi' : 'Sessiz'}
           </button>
           <button
             onClick={toggleVoiceMode}

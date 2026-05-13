@@ -205,9 +205,15 @@ export function BriefingChat({
   };
 
   const startListeningAuto = () => {
-    if (!isSpeechSupported()) return;
+    if (!isSpeechSupported()) {
+      toast.error('Sesli komut bu tarayıcıda desteklenmiyor', {
+        description: 'Chrome veya Edge ile açıp mikrofon iznini verin.',
+      });
+      setVoiceMode(false);
+      return false;
+    }
     setListening(true);
-    listenerRef.current = startListening({
+    const listener = startListening({
       onResult: (transcript, isFinal) => {
         setText(transcript);
         if (isFinal && transcript.trim().length > 0) {
@@ -217,8 +223,10 @@ export function BriefingChat({
           setText('');
         }
       },
-      onError: () => {
+      onError: (err) => {
+        toast.error('Mikrofon başlatılamadı', { description: err });
         setListening(false);
+        setVoiceMode(false);
         listenerRef.current = null;
       },
       onEnd: () => {
@@ -226,6 +234,12 @@ export function BriefingChat({
         listenerRef.current = null;
       },
     });
+    listenerRef.current = listener;
+    if (!listener) {
+      setListening(false);
+      return false;
+    }
+    return true;
   };
 
   const toggleMic = () => {
@@ -236,7 +250,9 @@ export function BriefingChat({
       return;
     }
     if (!isSpeechSupported()) {
-      alert('Sesli komut için Chrome veya Edge kullanın');
+      toast.error('Sesli komut için Chrome veya Edge kullanın', {
+        description: 'Tarayıcı mikrofon/ses tanıma desteği vermiyor.',
+      });
       return;
     }
     startListeningAuto();
@@ -260,12 +276,13 @@ export function BriefingChat({
       }
       stopSpeech();
     } else {
-      setVoiceMode(true);
       setSpeakEnabled(true);
       if (typeof window !== 'undefined') {
         localStorage.setItem('moren-ofis-speak', 'true');
       }
-      startListeningAuto();
+      if (startListeningAuto()) {
+        setVoiceMode(true);
+      }
     }
   };
 
@@ -341,7 +358,7 @@ export function BriefingChat({
             title={speakEnabled ? 'Sesli kapat' : 'Sesli aç'}
           >
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
-            {speakEnabled ? 'Sesli' : 'Sessiz'}
+            {speakEnabled ? 'Yanıt Sesi' : 'Sessiz'}
           </button>
           <button
             onClick={toggleVoiceMode}
@@ -353,7 +370,7 @@ export function BriefingChat({
             }}
             title="Karşılıklı sesli sohbet — konuşunca otomatik gönderilir"
           >
-            🎙 {voiceMode ? 'Sohbet Açık' : 'Sohbet Modu'}
+            <Mic size={11} /> {voiceMode ? 'Sohbet Açık' : 'Sohbet Modu'}
           </button>
         </div>
       </div>

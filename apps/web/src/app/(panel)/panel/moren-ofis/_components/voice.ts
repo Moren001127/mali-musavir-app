@@ -132,6 +132,26 @@ function getRecognition(): any {
   return new SpeechRec();
 }
 
+function formatSpeechRecognitionError(error?: string): string {
+  switch (error) {
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'Mikrofon izni verilmemiş. Tarayıcı adres çubuğundan mikrofon iznini açın.';
+    case 'no-speech':
+      return 'Ses algılanmadı. Mikrofona daha yakın konuşup tekrar deneyin.';
+    case 'audio-capture':
+      return 'Mikrofon bulunamadı veya başka bir uygulama kullanıyor.';
+    case 'network':
+      return 'Tarayıcının ses tanıma servisine ulaşılamadı. İnternet/Chrome ses servisini kontrol edin.';
+    case 'aborted':
+      return 'Sesli dinleme iptal edildi.';
+    case 'language-not-supported':
+      return 'Tarayıcı Türkçe ses tanımayı desteklemiyor.';
+    default:
+      return error || 'Bilinmeyen mikrofon hatası';
+  }
+}
+
 export function startListening(opts: {
   onResult: (text: string, isFinal: boolean) => void;
   onError?: (err: string) => void;
@@ -156,7 +176,7 @@ export function startListening(opts: {
     }
     opts.onResult(text, isFinal);
   };
-  rec.onerror = (event: any) => opts.onError?.(event.error || 'Bilinmeyen hata');
+  rec.onerror = (event: any) => opts.onError?.(formatSpeechRecognitionError(event.error));
   rec.onend = () => opts.onEnd?.();
 
   try {
