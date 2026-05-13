@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Briefcase, DollarSign, LayoutGrid } from 'lucide-react';
+import { Briefcase, DollarSign, LayoutGrid, Plus } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
 import { AgentStatCard } from './_components/AgentStatCard';
@@ -26,6 +26,33 @@ export default function MorenOfisPage() {
     queryFn: ofisApi.team,
     staleTime: Infinity,
   });
+
+  // Sayfa açılınca son aktif konuşmayı DB'den yükle — state kaybolmasın.
+  const { data: lastConversation } = useQuery({
+    queryKey: ['moren-ofis-last-conv'],
+    queryFn: async () => {
+      const list = await ofisApi.conversations();
+      if (list.length === 0) return null;
+      // En son aktivite
+      const sorted = [...list].sort((a, b) =>
+        new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+      );
+      return ofisApi.getConversation(sorted[0].id);
+    },
+    staleTime: 60_000,
+  });
+
+  // Konuşma yüklendi mi? bir kere yükle, sonra kullanıcı yazdıkça state güncelleniyor
+  useEffect(() => {
+    if (lastConversation && messages.length === 0) {
+      const msgs = (lastConversation as any).messages as OfisMessage[] | null;
+      if (Array.isArray(msgs) && msgs.length > 0) {
+        setMessages(msgs);
+        setConversationId((lastConversation as any).id);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastConversation]);
 
   const chatMut = useMutation({
     mutationFn: (text: string) => ofisApi.chat(text, conversationId),
@@ -106,6 +133,25 @@ export default function MorenOfisPage() {
                 ? `${(totalCost * 100).toFixed(2)} sent`
                 : `${totalCost.toFixed(3)} USD`}
             </div>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={() => {
+                setMessages([]);
+                setConversationId(undefined);
+                setActiveAgents([]);
+                setTotalCost(0);
+              }}
+              className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                color: 'rgba(250,250,249,0.7)',
+                border: '1px solid rgba(255,255,255,0.08)',
+              }}
+              title="Yeni sohbet başlat (mevcut konuşma DB'de kalır)"
+            >
+              <Plus size={12} /> Yeni Sohbet
+            </button>
           )}
           <button
             onClick={() => setShowOffice((s) => !s)}

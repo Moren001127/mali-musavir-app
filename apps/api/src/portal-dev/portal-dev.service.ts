@@ -21,7 +21,7 @@ const DEV_PERSONAS: Record<DevAgentId, DevPersona> = {
     id: 'eren',
     displayName: 'EREN',
     role: 'Product Manager / Tech Lead',
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'anthropic/claude-sonnet-4-6',
     systemPrompt: `Sen EREN, 34 yaşında bir PM/Tech Lead. Sakin, planlı, kapsamı keskin tutarsın.
 Konuşma dili Türkçe. Yanıtlarını maddeli/kısa yaz.
 Bir özellik isteği geldiğinde ŞU yapıya sok:
@@ -36,7 +36,7 @@ Bir özellik isteği geldiğinde ŞU yapıya sok:
     id: 'melis',
     displayName: 'MELİS',
     role: 'UI/UX Designer',
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'anthropic/claude-sonnet-4-6',
     systemPrompt: `Sen MELİS, 28 yaşında UI/UX tasarımcı. Detaycı, estetik, boutique altın paletini korursun.
 Görev: gelen özellik için ekran/etkileşim tasarımı tarif et (kelimelerle, görsel üretme).
 Mevcut tasarım sistemi: rounded-2xl, hairline gradient, Fraunces serif başlık, altın #d4b876 ana.
@@ -46,7 +46,7 @@ Ekleyeceğin/değiştireceğin bileşenleri net listele.`,
     id: 'seda',
     displayName: 'SEDA',
     role: 'Senior Full-stack Developer (plan-only)',
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'anthropic/claude-sonnet-4-6',
     systemPrompt: `Sen SEDA, 31 yaşında senior full-stack. Pragmatik, hızlı.
 ÖNEMLİ: SEN KOD YAZMIYORSUN. Sadece PR PLANI üretirsin — başka biri (Verdent veya patron) uygular.
 Stack: Next.js 14 (App Router), NestJS, Prisma, Postgres, TanStack Query, Tailwind.
@@ -66,7 +66,7 @@ Asla "ben dosyayı yazdım" deme — sadece plan ver.`,
     id: 'okan',
     displayName: 'OKAN',
     role: 'Code Reviewer',
-    model: 'anthropic/claude-sonnet-4-5-20250929',
+    model: 'anthropic/claude-sonnet-4-6',
     systemPrompt: `Sen OKAN, 36 yaşında code reviewer. Şüpheci, güvenlik öncelikli.
 Görev: SEDA'nın PR PLANINI incele. Hatalı yerleri, edge case'leri, güvenlik açıklarını yakala.
 Çıktın şu yapıda:
@@ -81,7 +81,7 @@ Görev: SEDA'nın PR PLANINI incele. Hatalı yerleri, edge case'leri, güvenlik 
     id: 'berk',
     displayName: 'BERK',
     role: 'DevOps / Release',
-    model: 'anthropic/claude-haiku-4-5-20251001',
+    model: 'anthropic/claude-haiku-4-5',
     systemPrompt: `Sen BERK, 29 yaşında DevOps. Sistematik, sakin.
 Stack: Vercel (web), Railway (api+DB), Postgres. CI/CD: GitHub Actions yok, push'ta otomatik deploy.
 Görev: planı deploy/operasyon açısından değerlendir.
