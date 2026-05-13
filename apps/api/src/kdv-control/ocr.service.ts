@@ -2419,6 +2419,103 @@ export class OcrService {
       }));
   }
 
+  /**
+   * "Hes. Matrah / KDV(%N)" tablo formatı için özel ve sağlam parser.
+   * Bu format e-Arşiv fatura altında standart olarak görünür:
+   *
+   *                       Matrah        Kdv
+   *   Hes. Matrah / KDV(%1)    771,70 TL    7,72 TL
+   *   Hes. Matrah / KDV(%8)    0,00 TL      0,00 TL
+   *   Hes. Matrah / KDV(%20)   71,58 TL     14,32 TL
+   *   Hes. Matrah / KDV Toplam 843,28 TL    22,04 TL
+   *
+   * Azure parse'inde tablo hücreleri farklı dizilebilir (sırayla matrah'lar,
+   * sonra KDV'ler bir blokta gelir, ya da yan yana). Bu method her iki düzeni
+   * de yakalamaya çalışır:
+   *
+   *   1. "Hes. Matrah / KDV Toplam" satırını bul → SON amount = TOPLAM KDV
+   *      (en güvenli authoritative değer)
+   *   2. Per oran "Hes. Matrah / KDV(%N)" satırları için breakdown çıkar
+   *
+   * Sonuç dönerse otomatik authoritative kabul edilir, diğer extractor'ları
+   * override eder.
+   */
+  private extractHesMatrahKdvTable(text: string): {
+    totalKdv: number | null;
+    breakdown: KdvBreakdownItem[];
+  } {
+    if (!text) return { totalKdv: null, breakdown: [] };
+
+    // "Hes. Matrah / KDV(%N)" veya "Hes. Matrah / KDV Toplam" satırlarını ara
+    const labelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?\s*(?:TOPLAM|\(?\s*%\s*(\d{1,2})\s*\)?)/i;
+    if (!labelRe.test(text)) return { totalKdv: null, breakdown: [] };
+
+    const normalized = this.normalizeAzureText(text);
+    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
+    const allAmountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+
+    let totalKdv: number | null = null;
+    const breakdown = new Map<number, number>();
+
+    // Her satır için: label varsa, label'dan sonraki amount'ları topla
+    // (aynı satırda veya sonraki 4 satırda)
+    const collectAmountsAfterLine = (startIdx: number, maxLines = 4): number[] => {
+      const amts: number[] = [];
+      // aynı satırın label'dan sonraki kısmı
+      const startLine = lines[startIdx];
+      const labelMatch = startLine.match(labelRe);
+      if (labelMatch) {
+        const after = startLine.slice(labelMatch.index! + labelMatch[0].length);
+        for (const m of after.matchAll(allAmountRe)) {
+          const v = this.parseAmount(m[1]);
+          if (v >= 0 && v < 100_000_000) amts.push(v);
+        }
+      }
+      // sonraki maxLines satır — başka bir label gelene kadar
+      for (let j = 1; j <= maxLines && startIdx + j < lines.length; j++) {
+        const nl = lines[startIdx + j];
+        if (labelRe.test(nl)) break; // yeni label başladı
+        // başka bir oran/% marker geldi → tablonun farklı bir kısmı
+        if (/^%\s*\d{1,2}\s*\)?\s*$/.test(nl.trim())) break;
+        const am = nl.match(amountRe);
+        if (am) {
+          const v = this.parseAmount(am[1]);
+          if (v >= 0 && v < 100_000_000) amts.push(v);
+        }
+      }
+      return amts;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const m = line.match(labelRe);
+      if (!m) continue;
+
+      const isToplam = /TOPLAM/i.test(line);
+      const oran = m[1] ? parseInt(m[1], 10) : null;
+
+      // Amount'ları topla. 2+ amount varsa: 1. matrah, 2. KDV.
+      const amts = collectAmountsAfterLine(i, 4);
+      if (amts.length === 0) continue;
+      const kdvAmount = amts.length >= 2 ? amts[1] : amts[0];
+
+      if (isToplam) {
+        if (kdvAmount > 0) totalKdv = kdvAmount;
+      } else if (oran && oran > 0 && oran <= 30) {
+        // 0,00 olanları kaydetme — breakdown'a girmesin
+        if (kdvAmount > 0) breakdown.set(oran, kdvAmount);
+      }
+    }
+
+    return {
+      totalKdv,
+      breakdown: Array.from(breakdown.entries())
+        .sort((a, b) => b[0] - a[0])
+        .map(([oran, tutar]) => ({ oran, tutar: Math.round(tutar * 100) / 100, matrah: null })),
+    };
+  }
+
   private extractZRaporuKdvFromAzure(text: string): {
     kdvTutari: string | null;
     breakdown: KdvBreakdownItem[];
@@ -2876,12 +2973,27 @@ export class OcrService {
         `Multi-rate auto-fill SKIP: tevkifatlı fatura (auto-correct çalıştı, ${originalName})`,
       );
     } else {
+      // ÖNCELİK 1: "Hes. Matrah / KDV(%N)" tablosu — e-Arşiv fatura altı standart
+      // formatı. Bu format varsa AUTHORITATIVE, diğer extractor'lar atlanır.
+      // Sorun: önceki extractor'lar bu tabloda matrah'ı (1. amount) KDV
+      // sanıyor (Zırhlı Gıda örneği — Toplam KDV: 22,04 doğru, OCR 873,04
+      // bulmuş çünkü matrah'ı KDV almış).
+      const hesMatrah = this.extractHesMatrahKdvTable(azureText);
       const multiA = this.extractMultiRateKdvFromAzure(azureText);
       const multiB = this.extractMultiRateKdvFromItemRows(azureText);
       let azureBreakdown =
+        hesMatrah.breakdown.length >= 2 ? hesMatrah.breakdown :
         multiA.length >= 2 ? multiA :
         multiB.length >= 2 ? multiB :
         multiA;
+      // Eğer Hes. Matrah tablosundan toplam KDV bulunduysa, kdvTutari'yi de
+      // override et (UI'da KDV TUTARI alanı doğru gözüksün).
+      if (hesMatrah.totalKdv !== null && hesMatrah.totalKdv > 0) {
+        result.kdvTutari = hesMatrah.totalKdv.toFixed(2);
+        this.logger.log(
+          `Hes. Matrah / KDV Toplam tablosundan KDV override: ${hesMatrah.totalKdv.toFixed(2)} (${originalName})`,
+        );
+      }
 
       // TEŞHİS LOGU — multi-rate bulunamadıysa veya Claude'dan az orana
       // ulaşıldıysa Azure metninin başını log'a bas ki gerçek çıktı görülsün.
