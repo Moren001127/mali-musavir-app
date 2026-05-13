@@ -1,8 +1,6 @@
-// Web Speech API yardımcıları — ücretsiz, ek maliyet yok
-// Mikrofon: SpeechRecognition (Chrome/Edge native)
-// Konuşma: SpeechSynthesis (tüm browser'larda)
-
 import type { AgentId } from '@/lib/moren-ofis';
+import { synthesize } from '@/lib/moren-ai';
+import { toast } from 'sonner';
 
 type VoiceGender = 'male' | 'female' | 'neutral';
 type VoiceProfile = {
@@ -12,8 +10,6 @@ type VoiceProfile = {
   voiceHints: RegExp[];
 };
 
-// Her ajan için ses profili — pitch ve rate ile karakter
-// Voice seçimi browser'da mevcut Türkçe ses'lerden yapılır
 export const VOICE_PROFILES: Record<AgentId, VoiceProfile> = {
   arda: { pitch: 1.28, rate: 1.0, voiceGender: 'female', voiceHints: [/seda/i, /emel/i, /yelda/i, /filiz/i, /ayşe|ayse/i, /google türkçe|google turkce/i] },
   nevra: { pitch: 1.2, rate: 1.04, voiceGender: 'female', voiceHints: [/emel/i, /seda/i, /ipek/i, /tulay|tülay/i, /female|woman/i] },
@@ -34,12 +30,54 @@ const AGENT_SPEECH_NAMES: Record<AgentId, string> = {
   deniz: 'Deniz',
 };
 
+const OPENAI_AGENT_VOICES: Record<AgentId, string> = {
+  arda: 'coral',
+  nevra: 'sage',
+  cem: 'onyx',
+  volkan: 'ash',
+  defne: 'shimmer',
+  kayra: 'verse',
+  deniz: 'cedar',
+};
+
+const AGENT_TTS_STYLE: Record<AgentId, string> = {
+  arda: 'kadın baş mali müşavir; sakin, net, güven veren, yönetici tonu',
+  nevra: 'kadın vergi uzmanı; dikkatli, mevzuata hakim, profesyonel ton',
+  cem: 'erkek mali analist; sakin, denetçi gibi ölçülü ve analitik ton',
+  volkan: 'erkek bordro uzmanı; pratik, hızlı ama anlaşılır ton',
+  defne: 'kadın müşteri ilişkileri sorumlusu; sıcak, düzenli, nazik ton',
+  kayra: 'genç sistem operatörü; kısa, teknik, net ve enerjik ton',
+  deniz: 'erkek sistem sorumlusu; olgun, teknik ama sade anlatan ton',
+};
+
 let cachedVoices: SpeechSynthesisVoice[] = [];
 let voicesLoadedPromise: Promise<SpeechSynthesisVoice[]> | null = null;
+let currentAudio: HTMLAudioElement | null = null;
+let currentAudioUrl: string | null = null;
+let remoteTtsDisabledUntil = 0;
+let remoteTtsWarningShownUntil = 0;
+
+function releaseCurrentAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.removeAttribute('src');
+    currentAudio.load();
+    currentAudio = null;
+  }
+  if (currentAudioUrl) {
+    URL.revokeObjectURL(currentAudioUrl);
+    currentAudioUrl = null;
+  }
+}
 
 function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   if (voicesLoadedPromise) return voicesLoadedPromise;
   voicesLoadedPromise = new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      resolve([]);
+      return;
+    }
+
     const tryLoad = () => {
       const voices = window.speechSynthesis.getVoices();
       if (voices.length > 0) {
@@ -49,22 +87,16 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
         setTimeout(tryLoad, 100);
       }
     };
-    // Bazı browser'lar 'voiceschanged' event'i ile yükler
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        cachedVoices = window.speechSynthesis.getVoices();
-        resolve(cachedVoices);
-      };
-      tryLoad();
-    } else {
-      resolve([]);
-    }
+
+    window.speechSynthesis.onvoiceschanged = () => {
+      cachedVoices = window.speechSynthesis.getVoices();
+      resolve(cachedVoices);
+    };
+    tryLoad();
   });
   return voicesLoadedPromise;
 }
 
-// Her ajan için en uygun sesi bul. Tarayıcıda ses listesi sınırlıysa gender,
-// isim ipuçları ve pitch/rate ile karakter ayrımı korunur.
 async function pickVoiceForAgent(agentId: AgentId): Promise<SpeechSynthesisVoice | null> {
   const voices = await loadVoices();
   if (voices.length === 0) return null;
@@ -98,24 +130,62 @@ async function pickVoiceForAgent(agentId: AgentId): Promise<SpeechSynthesisVoice
   return [...voices].sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
 }
 
-/**
- * Ajan adına metni sesli oku.
- * Otomatik queue — her ajan kendi sırasıyla konuşur, üst üste binmez.
- */
 export async function speakAs(agentId: AgentId, text: string) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+  const cleaned = cleanTextForSpeech(text);
+  if (!cleaned) return;
+  const spokenText = `${AGENT_SPEECH_NAMES[agentId]}. ${cleaned}`;
 
-  // Mevcut konuşmayı iptal et — yeni ajan başlasın
-  // (alternatif: queue, ama mali müşavirlik için sıralı daha doğal)
-  // window.speechSynthesis.cancel();
+  if (await speakWithRemoteTts(agentId, spokenText)) return;
+  return speakWithBrowserVoice(agentId, spokenText);
+}
+
+async function speakWithRemoteTts(agentId: AgentId, text: string): Promise<boolean> {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
+  if (Date.now() < remoteTtsDisabledUntil) return false;
+
+  try {
+    const audioBlob = await synthesize(text, OPENAI_AGENT_VOICES[agentId], ttsInstructionsForAgent(agentId));
+    const audioUrl = URL.createObjectURL(audioBlob);
+    releaseCurrentAudio();
+    currentAudioUrl = audioUrl;
+    currentAudio = new Audio(audioUrl);
+    currentAudio.preload = 'auto';
+
+    await new Promise<void>((resolve, reject) => {
+      if (!currentAudio) {
+        reject(new Error('Ses nesnesi oluşturulamadı'));
+        return;
+      }
+      currentAudio.onended = () => {
+        releaseCurrentAudio();
+        resolve();
+      };
+      currentAudio.onerror = () => {
+        releaseCurrentAudio();
+        reject(new Error('TTS ses dosyası çalınamadı'));
+      };
+      currentAudio.play().catch(reject);
+    });
+    return true;
+  } catch (err) {
+    remoteTtsDisabledUntil = Date.now() + 60_000;
+    if (Date.now() > remoteTtsWarningShownUntil) {
+      remoteTtsWarningShownUntil = Date.now() + 120_000;
+      toast.warning('AI ses servisi çalışmadı', {
+        description: 'Şimdilik tarayıcı sesiyle devam ediyorum. API tarafında OPENAI_API_KEY gerekli.',
+      });
+    }
+    console.warn('Moren Ofis OpenAI TTS devre dışı, browser sesi kullanılıyor:', err);
+    return false;
+  }
+}
+
+async function speakWithBrowserVoice(agentId: AgentId, text: string) {
+  if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
   const voice = await pickVoiceForAgent(agentId);
   const profile = VOICE_PROFILES[agentId];
-
-  const cleaned = cleanTextForSpeech(text);
-  if (!cleaned) return;
-
-  const utterance = new SpeechSynthesisUtterance(`${AGENT_SPEECH_NAMES[agentId]}. ${cleaned}`);
+  const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'tr-TR';
   if (voice) utterance.voice = voice;
   utterance.pitch = profile.pitch;
@@ -130,30 +200,38 @@ export async function speakAs(agentId: AgentId, text: string) {
 }
 
 export function stopSpeech() {
+  releaseCurrentAudio();
   if (typeof window !== 'undefined' && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
 }
 
-// TTS için metni temizle — markdown ve özel karakterleri kaldır
+function ttsInstructionsForAgent(agentId: AgentId): string {
+  return [
+    'Sadece Türkçe konuş. İngilizce aksan veya İngilizce telaffuz kullanma.',
+    'İstanbul Türkçesiyle, doğal ofis konuşması gibi oku.',
+    'Metindeki muhasebe terimlerini Türkçe telaffuz et; KDV, SGK, Luca, mizan gibi kelimeleri anlaşılır söyle.',
+    'Sayıları Türkçe para ve tarih okuma alışkanlığıyla oku.',
+    `Karakter: ${AGENT_TTS_STYLE[agentId]}.`,
+  ].join(' ');
+}
+
 function cleanTextForSpeech(text: string): string {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '$1') // bold
-    .replace(/\*(.+?)\*/g, '$1') // italic
-    .replace(/`(.+?)`/g, '$1') // inline code
-    .replace(/```[\s\S]+?```/g, '(kod bloğu)') // code blocks
-    .replace(/#{1,6}\s+/g, '') // headers
-    .replace(/\[(.+?)\]\(.+?\)/g, '$1') // links
-    .replace(/\n{2,}/g, '. ') // paragraph -> sentence break
+    .replace(/^\[[^\]]+\]:\s*/g, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .replace(/```[\s\S]+?```/g, '(kod bloğu)')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    .replace(/\n{2,}/g, '. ')
     .replace(/\n/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 800); // TTS uzun metni boğar
+    .slice(0, 800);
 }
 
-// === SPEECH-TO-TEXT (mikrofon) ===
-
-// SpeechRecognition Chrome/Edge'de var, Firefox'ta yok
 function getRecognition(): any {
   if (typeof window === 'undefined') return null;
   const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -188,7 +266,7 @@ export function startListening(opts: {
 }): { stop: () => void } | null {
   const rec = getRecognition();
   if (!rec) {
-    opts.onError?.('Tarayıcınız sesli komutu desteklemiyor — Chrome veya Edge kullanın');
+    opts.onError?.('Tarayıcınız sesli komutu desteklemiyor. Chrome veya Edge kullanın.');
     return null;
   }
   rec.lang = 'tr-TR';
@@ -224,5 +302,5 @@ export function isSpeechSupported(): boolean {
 
 export function isSynthesisSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!window.speechSynthesis;
+  return typeof Audio !== 'undefined' || !!window.speechSynthesis;
 }

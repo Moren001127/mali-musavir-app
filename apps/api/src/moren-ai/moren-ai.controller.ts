@@ -128,9 +128,9 @@ export class MorenAiController {
 
   // -------- SESLİ ÇIKIŞ (OpenAI TTS) --------
   @Post('voice/speak')
-  async speak(@Body() body: { text: string; voice?: string }, @Res() res: any) {
+  async speak(@Body() body: { text: string; voice?: string; instructions?: string }, @Res() res: any) {
     if (!body?.text?.trim()) throw new BadRequestException('text zorunlu');
-    const result = await this.voice.synthesize(body.text.trim(), body.voice);
+    const result = await this.voice.synthesize(body.text.trim(), body.voice, body.instructions);
     res.setHeader('Content-Type', result.contentType);
     res.setHeader('Content-Length', result.audio.length.toString());
     res.setHeader('X-TTS-DurationMs', String(result.durationMs));

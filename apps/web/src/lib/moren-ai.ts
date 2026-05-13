@@ -109,8 +109,8 @@ export async function transcribe(audioBlob: Blob, mimetype: string): Promise<{ t
 }
 
 /** Metni mp3 olarak çevirip Blob döner (browser'da audio.play()) */
-export async function synthesize(text: string, voice = 'nova'): Promise<Blob> {
-  const { data } = await api.post('/moren-ai/voice/speak', { text, voice }, {
+export async function synthesize(text: string, voice = 'nova', instructions?: string): Promise<Blob> {
+  const { data } = await api.post('/moren-ai/voice/speak', { text, voice, instructions }, {
     responseType: 'blob',
   });
   return data;

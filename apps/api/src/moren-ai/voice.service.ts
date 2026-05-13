@@ -70,7 +70,11 @@ export class VoiceService {
    * @param text
    * @returns mp3 buffer
    */
-  async synthesize(text: string, voice = 'nova'): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
+  async synthesize(
+    text: string,
+    voice = 'coral',
+    instructions?: string,
+  ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
@@ -82,18 +86,24 @@ export class VoiceService {
     const trimmed = text.length > 4000 ? text.slice(0, 4000) + '…' : text;
     const started = Date.now();
 
+    const model = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
+    const payload: Record<string, any> = {
+      model,
+      input: trimmed,
+      voice,
+      response_format: 'mp3',
+    };
+    if (instructions?.trim() && model.includes('gpt-4o')) {
+      payload.instructions = instructions.trim().slice(0, 1200);
+    }
+
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'tts-1',
-        input: trimmed,
-        voice,            // nova | alloy | echo | fable | onyx | shimmer
-        response_format: 'mp3',
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
