@@ -85,6 +85,43 @@ export default function MorenOfisPage() {
     return `$${usd.toFixed(2)}`;
   };
 
+  const chatWithFileMut = useMutation({
+    mutationFn: ({ file, text }: { file: File; text: string }) =>
+      ofisApi.chatWithFile(file, text, conversationId),
+    onSuccess: (res) => {
+      setConversationId(res.conversationId);
+      setTotalCost((c) => c + (res.totalCostUsd || 0));
+      // user mesajı zaten backend tarafında "Evrak yüklendi" prefix'i ile geldi,
+      // mesajları kademeli ekle
+      let delay = 0;
+      for (const msg of res.messages) {
+        setTimeout(() => {
+          if (msg.agent === 'user') {
+            // user mesajını da göster (evrak içeriği), zaten backend "Evrak: ..." yazıyor
+            setMessages((prev) => [...prev, msg]);
+            return;
+          }
+          setMessages((prev) => [...prev, msg]);
+          setActiveAgents((curr) => [
+            ...curr.filter((a) => a.id !== msg.agent),
+            { id: msg.agent as AgentId, state: 'talking' },
+          ]);
+          setTimeout(() => {
+            setActiveAgents((curr) =>
+              curr.map((a) => (a.id === msg.agent ? { ...a, state: 'idle' as CharacterState } : a)),
+            );
+          }, 3000);
+        }, delay);
+        delay += msg.agent === 'user' ? 100 : 900;
+      }
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Evrak işlenemedi'),
+  });
+
+  const handleSendFile = (file: File, text: string) => {
+    chatWithFileMut.mutate({ file, text });
+  };
+
   const chatMut = useMutation({
     mutationFn: (text: string) => ofisApi.chat(text, conversationId),
     onSuccess: (res) => {
@@ -347,8 +384,9 @@ export default function MorenOfisPage() {
       <BriefingChat
         agents={team}
         messages={messages}
-        sending={chatMut.isPending}
+        sending={chatMut.isPending || chatWithFileMut.isPending}
         onSend={handleSend}
+        onSendFile={handleSendFile}
       />
 
       {/* OFİS SAHNESİ — opsiyonel, toggle ile */}

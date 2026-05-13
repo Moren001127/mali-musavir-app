@@ -1,4 +1,8 @@
-import { Controller, Get, Post, Delete, Patch, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
+import {
+  Controller, Get, Post, Delete, Patch, Body, Param, Query, Req,
+  UseGuards, UseInterceptors, UploadedFile, BadRequestException,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { MorenOfisService } from './moren-ofis.service';
 import { MorenOfisMemoryService } from './memory.service';
@@ -59,6 +63,36 @@ export class MorenOfisController {
       userId: req.user.sub,
       conversationId: body.conversationId,
       text: body.text.trim(),
+    });
+  }
+
+  /**
+   * Evrak yükle + AI'a sor — resim OCR (tesseract) veya text dosya okunur,
+   * çıkarılan metin chat mesajına prefix olarak eklenir. PDF henüz desteklenmiyor.
+   *
+   * multipart/form-data: file + text + conversationId
+   * Limit: 10MB
+   */
+  @Post('chat-with-file')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async chatWithFile(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { text?: string; conversationId?: string },
+  ) {
+    if (!file) throw new BadRequestException('Dosya gerekli');
+    const text = (body?.text || '').trim();
+    return this.service.sendMessageWithFile({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+      conversationId: body?.conversationId,
+      text,
+      file: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        size: file.size,
+        buffer: file.buffer,
+      },
     });
   }
 

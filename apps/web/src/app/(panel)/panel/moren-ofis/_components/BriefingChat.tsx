@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell, Paperclip, X, FileText } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
 import { ofisApi } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
@@ -18,12 +18,16 @@ export function BriefingChat({
   messages,
   sending,
   onSend,
+  onSendFile,
 }: {
   agents: OfisAgent[];
   messages: OfisMessage[];
   sending: boolean;
   onSend: (text: string) => void;
+  onSendFile?: (file: File, text: string) => void;
 }) {
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   // speakEnabled localStorage'da kalıcı — sayfa yenilenince geri açılmasın
@@ -79,9 +83,27 @@ export function BriefingChat({
   const agentMap = Object.fromEntries(agents.map((a) => [a.id, a]));
 
   const submit = () => {
-    if (!text.trim() || sending) return;
+    if (sending) return;
+    if (pendingFile && onSendFile) {
+      onSendFile(pendingFile, text.trim());
+      setText('');
+      setPendingFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (!text.trim()) return;
     onSend(text.trim());
     setText('');
+  };
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) {
+      toast.error('Dosya 10MB üstü olamaz');
+      return;
+    }
+    setPendingFile(f);
   };
 
   const startListeningAuto = () => {
@@ -381,6 +403,32 @@ export function BriefingChat({
         )}
       </div>
 
+      {/* Pending file chip — input üzerinde */}
+      {pendingFile && (
+        <div
+          className="px-4 py-2 flex items-center gap-2"
+          style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(212,184,118,0.06)' }}
+        >
+          <FileText size={13} style={{ color: GOLD }} />
+          <span className="text-[12px] font-semibold" style={{ color: '#fafaf9' }}>
+            {pendingFile.name}
+          </span>
+          <span className="text-[11px] font-mono" style={{ color: 'rgba(250,250,249,0.55)' }}>
+            {(pendingFile.size / 1024).toFixed(1)} KB · {pendingFile.type || 'bilinmiyor'}
+          </span>
+          <button
+            onClick={() => {
+              setPendingFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = '';
+            }}
+            className="ml-auto p-1 rounded hover:bg-white/5"
+            title="Dosyayı kaldır"
+          >
+            <X size={13} style={{ color: 'rgba(250,250,249,0.55)' }} />
+          </button>
+        </div>
+      )}
+
       {/* Input — alt bar */}
       <div
         className="px-4 py-3 flex items-center gap-2"
@@ -389,6 +437,28 @@ export function BriefingChat({
           background: 'rgba(15,11,21,0.55)',
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.txt,.csv,.md"
+          onChange={onFileChange}
+          style={{ display: 'none' }}
+        />
+        {onSendFile && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition disabled:opacity-50"
+            style={{
+              background: pendingFile ? `${GOLD}25` : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${pendingFile ? `${GOLD}50` : 'rgba(255,255,255,0.08)'}`,
+              color: pendingFile ? GOLD : 'rgba(250,250,249,0.65)',
+            }}
+            title="Evrak/resim ekle (resim için OCR, max 10MB)"
+          >
+            <Paperclip size={15} />
+          </button>
+        )}
         <button
           onClick={toggleMic}
           disabled={sending}
@@ -411,7 +481,7 @@ export function BriefingChat({
               submit();
             }
           }}
-          placeholder={listening ? 'Dinliyorum...' : 'Ekibe talimat ver...'}
+          placeholder={listening ? 'Dinliyorum...' : pendingFile ? 'Evrak hakkında soru yaz (boş bırakırsan AYLİN değerlendirir)...' : 'Ekibe talimat ver...'}
           disabled={sending}
           className="flex-1 px-4 py-2.5 rounded-xl text-[13px] outline-none"
           style={{
@@ -422,14 +492,15 @@ export function BriefingChat({
         />
         <button
           onClick={submit}
-          disabled={!text.trim() || sending}
+          disabled={(!text.trim() && !pendingFile) || sending}
           className="px-4 h-10 rounded-xl text-[13px] font-bold flex items-center gap-1.5 transition disabled:opacity-50"
           style={{
             background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`,
             color: '#0f0d0b',
           }}
         >
-          <Send size={14} /> Gönder
+          {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          {pendingFile ? 'Değerlendir' : 'Gönder'}
         </button>
       </div>
 

@@ -47,6 +47,81 @@ export class MorenOfisService {
   ) {}
 
   /**
+   * Evrak ile chat — yüklenen dosyayı OCR/extract edip user mesajına prefix
+   * olarak ekler, sonra normal sendMessage akışını çalıştırır. AYLİN ve ekip
+   * evrakın içeriği görür ve değerlendirir.
+   */
+  async sendMessageWithFile(params: {
+    tenantId: string;
+    userId: string;
+    conversationId?: string;
+    text: string;
+    file: {
+      originalName: string;
+      mimeType: string;
+      size: number;
+      buffer: Buffer;
+    };
+  }) {
+    const { file, text } = params;
+    let extracted = '';
+    let extractMethod = 'none';
+
+    try {
+      if (file.mimeType.startsWith('image/')) {
+        // OCR — tesseract Türkçe + İngilizce
+        const Tesseract = require('tesseract.js');
+        const ocr = await Tesseract.recognize(file.buffer, 'tur+eng', {
+          logger: () => {},
+        });
+        extracted = ocr?.data?.text?.trim() || '';
+        extractMethod = 'ocr';
+      } else if (
+        file.mimeType.startsWith('text/') ||
+        file.mimeType === 'application/csv' ||
+        /\.(txt|csv|md)$/i.test(file.originalName)
+      ) {
+        extracted = file.buffer.toString('utf8').slice(0, 50_000);
+        extractMethod = 'text';
+      } else if (file.mimeType === 'application/pdf') {
+        extracted = '[PDF henüz desteklenmiyor — sayfayı resim olarak yükleyin]';
+        extractMethod = 'pdf-unsupported';
+      } else {
+        extracted = `[Bilinmeyen dosya tipi: ${file.mimeType}]`;
+        extractMethod = 'unknown';
+      }
+    } catch (e: any) {
+      this.logger.error(`Evrak extract hata: ${e?.message}`);
+      extracted = `[İçerik okunamadı: ${e?.message}]`;
+      extractMethod = 'error';
+    }
+
+    // Çıkarılan metni 8000 karakter ile sınırla (token bütçesi)
+    const trimmed = extracted.length > 8000
+      ? extracted.slice(0, 8000) + '\n\n[...kısaltıldı]'
+      : extracted;
+
+    // Kullanıcının asıl mesajı + evrak içeriği birleştirilir
+    const fileSummary = `📎 Evrak yüklendi: **${file.originalName}** (${this.formatBytes(file.size)}, ${extractMethod})\n\n--- EVRAK İÇERİĞİ ---\n${trimmed}\n--- EVRAK SONU ---`;
+    const combinedText = text
+      ? `${fileSummary}\n\nSoru: ${text}`
+      : `${fileSummary}\n\nBu evrakı değerlendirin — önemli bilgiler ve dikkat çeken noktalar nedir?`;
+
+    return this.sendMessage({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      conversationId: params.conversationId,
+      text: combinedText,
+    });
+  }
+
+  private formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  /**
    * FAZ 3 — Ajan mesajının içeriğini hatırlatma önerisi olarak onay
    * kuyruğuna düşür. Henüz kalıcı Task oluşturmaz, sadece insanın
    * görüp Approve veya Reject yapacağı bir PendingAction üretir.

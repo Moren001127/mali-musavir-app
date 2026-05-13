@@ -74,6 +74,18 @@ export const ofisApi = {
   chat: (text: string, conversationId?: string) =>
     api.post<OfisChatResponse>('/moren-ofis/chat', { text, conversationId }).then((r) => r.data),
 
+  // Evrak ile sohbet — multipart upload, OCR/text extract sonra ekibe sor
+  chatWithFile: (file: File, text: string, conversationId?: string) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (text) fd.append('text', text);
+    if (conversationId) fd.append('conversationId', conversationId);
+    return api.post<OfisChatResponse>('/moren-ofis/chat-with-file', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120_000, // OCR uzun sürebilir
+    }).then((r) => r.data);
+  },
+
   // FAZ 3 — Ajan mesajını hatırlatma önerisi olarak onay kuyruğuna düşür
   proposeReminder: (body: { agent: string; title: string; content: string; dueDate?: string; taxpayerHint?: string }) =>
     api.post('/moren-ofis/propose-reminder', body).then((r) => r.data),
