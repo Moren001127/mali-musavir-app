@@ -35,6 +35,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
+import { PendingActionsModule } from './pending-actions/pending-actions.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { HgsCron } from './schedule/hgs.cron';
     EarsivModule,
     MorenAiModule,
     MorenOfisModule,
+    PendingActionsModule,
     WhatsAppModule,
     VendorMemoryModule,
     PendingDecisionsModule,

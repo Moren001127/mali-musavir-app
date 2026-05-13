@@ -2484,3 +2484,45 @@ model PushSubscription {
   @@index([tenantId, userId])
   @@map("push_subscriptions")
 }
+
+// ============================================================
+// FAZ 2 — MERKEZİ ONAY KUYRUĞU (PendingAction)
+// ============================================================
+// Her AI ekibi (Moren Ofis, Portal Geliştirme, mobil, mükellef mesaj)
+// write/dışa-iletim eylemleri için BU tabloyu kullanır. Tek kuyruk, tek UI,
+// tek audit. Kullanıcı /panel/onay-kuyrugu sayfasından görür, onaylar/reddeder.
+//
+// Karar matrisi (09-REVIZE):
+//   - Veri okuma → otomatik (PendingAction GİRMEZ)
+//   - DB yazımı, mesaj gönderme, GitHub merge, migration → PendingAction
+//
+// payload: gerçek diff/değişiklik JSON (uygulanırken işlenir)
+// source: hangi sistemden geldi (filter için)
+// status: pending → approved | rejected | expired → applied (worker)
+// ------------------------------------------------------------
+model PendingAction {
+  id                String    @id @default(cuid())
+  tenantId          String
+  source            String    // moren_ofis | portal_dev | mukellef_msg | github_merge | migration | mobile
+  sourceRef         String?   // kaynak id (conversation, task, pr no, ...)
+  type              String    // create | update | delete | send_message | merge_pr | run_migration | deploy
+  title             String
+  summary           String    @db.Text
+  payload           Json      // uygulamada parse edilecek değişiklik verisi
+  riskLevel         String    @default("low") // low | medium | high | critical
+  requestedByAgent  String?   // ajan adı (arda, nevra, ..., seda, eren)
+  requestedByUserId String?   // kullanıcı tetiklediyse user id
+  requestedAt       DateTime  @default(now())
+  status            String    @default("pending") // pending | approved | rejected | expired | applied | failed
+  reviewedByUserId  String?
+  reviewedAt        DateTime?
+  reviewNote        String?   @db.Text
+  appliedAt         DateTime?
+  errorMessage      String?   @db.Text
+  expiresAt         DateTime?
+
+  @@index([tenantId, status])
+  @@index([source, sourceRef])
+  @@index([requestedAt])
+  @@map("pending_actions")
+}

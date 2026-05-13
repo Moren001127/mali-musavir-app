@@ -28,6 +28,7 @@ const navGroups = [
     items: [
       { href: '/panel/moren-ofis',              label: 'Moren Ofis (AI Ekip)',     icon: Brain },
       { href: '/panel/moren-portal-gelistirme', label: 'Portal Geliştirme Ekibi',  icon: Cpu },
+      { href: '/panel/ai-onay',                 label: 'AI Onay Kuyruğu',          icon: ShieldCheck },
     ],
   },
   {
