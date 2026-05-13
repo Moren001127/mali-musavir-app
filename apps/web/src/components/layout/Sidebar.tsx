@@ -32,7 +32,7 @@ const navGroups = [
       { href: '/panel/moren-ofis/audit',        label: 'Tool & Maliyet Denetimi',  icon: Activity },
       { href: '/panel/moren-portal-gelistirme', label: 'Portal Geliştirme Ekibi',  icon: Cpu },
       { href: '/panel/ai-onay',                 label: 'AI Onay Kuyruğu',          icon: ShieldCheck },
-      { href: '/mobil/tanitim.html',            label: 'Mobil Tanıtım',            icon: Sparkles },
+      { href: '/panel/mobil-tanitim',           label: 'Mobil Tanıtım',            icon: Sparkles },
     ],
   },
   {
