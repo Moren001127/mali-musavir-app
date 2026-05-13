@@ -31,13 +31,13 @@ const AGENT_SPEECH_NAMES: Record<AgentId, string> = {
 };
 
 const OPENAI_AGENT_VOICES: Record<AgentId, string> = {
-  arda: 'coral',
-  nevra: 'sage',
+  arda: 'nova',
+  nevra: 'shimmer',
   cem: 'onyx',
   volkan: 'ash',
-  defne: 'shimmer',
+  defne: 'coral',
   kayra: 'verse',
-  deniz: 'cedar',
+  deniz: 'echo',
 };
 
 const AGENT_TTS_STYLE: Record<AgentId, string> = {

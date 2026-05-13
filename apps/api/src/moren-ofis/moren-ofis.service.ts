@@ -602,7 +602,7 @@ export class MorenOfisService {
 
     const taxpayer = taxpayerResolution.taxpayer;
     const types = this.resolveKdvControlTypes(params.text);
-    if (this.isStatusQuestion(params.text) && !this.hasExecutionVerb(params.text)) {
+    if (this.isStatusQuestion(params.text) && !this.hasKdvStartVerb(params.text)) {
       return this.buildKdvControlStatusTurn({ ...params, taxpayer, period, types });
     }
 
@@ -1139,6 +1139,14 @@ export class MorenOfisService {
     return /\b(cek|cekin|getir|indir|aktar|sorgula|kontrol|eslestir|mutabakat|baslat|calistir|hazirla|hazirlar|olustur|uret|isle|gonder|yap)\w*/.test(q);
   }
 
+  private hasKdvStartVerb(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    return (
+      /\b(cek|cekin|baslat|baslatin|calistir|calistirin|hazirla|hazirlayin|olustur|olusturun|uret|uretin|sorgula|sorgulayin|eslestir|eslestirin)\w*/.test(q) ||
+      /\b(kontrol\s+et|kontrol\s+yap|kontrolu\s+yap|kontrolunu\s+yap)\b/.test(q)
+    );
+  }
+
   private resolveKdvMonthlyPeriod(text: string): { dash: string; periodLabel: string; label: string } | null {
     const raw = text.toLocaleLowerCase('tr-TR');
     const q = this.normalizeWorkflowText(text);
@@ -1470,12 +1478,12 @@ export class MorenOfisService {
   private normalizeWorkflowText(value: string): string {
     return String(value || '')
       .toLocaleLowerCase('tr-TR')
-      .replace(/ı/g, 'i')
-      .replace(/ğ/g, 'g')
-      .replace(/ü/g, 'u')
-      .replace(/ş/g, 's')
-      .replace(/ö/g, 'o')
-      .replace(/ç/g, 'c')
+      .replace(/\u0131/g, 'i')
+      .replace(/\u011f/g, 'g')
+      .replace(/\u00fc/g, 'u')
+      .replace(/\u015f/g, 's')
+      .replace(/\u00f6/g, 'o')
+      .replace(/\u00e7/g, 'c')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/['’`]/g, '')

@@ -336,9 +336,36 @@ ${COMMON_RULES}`,
 };
 
 // Hangi ajan hangi tip soruyu alır — basit keyword routing
+function normalizeAgentQuery(query: string): string {
+  return String(query || '')
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0131/g, 'i')
+    .replace(/\u011f/g, 'g')
+    .replace(/\u00fc/g, 'u')
+    .replace(/\u015f/g, 's')
+    .replace(/\u00f6/g, 'o')
+    .replace(/\u00e7/g, 'c');
+}
+
 export function suggestAgents(query: string): AgentId[] {
-  const q = query.toLowerCase();
+  const q = normalizeAgentQuery(query);
   const agents: AgentId[] = [];
+  const greeting = /\b(merhaba|selam|gunaydin|iyi\s+gunler|iyi\s+aksamlar)\b/.test(q);
+  const team = /\b(arkadas|arkadaslar|ekip|herkes|ofis)\b/.test(q);
+  if (greeting && (team || q.trim().split(/\s+/).length <= 3)) {
+    return ['nevra', 'cem', 'volkan', 'defne', 'kayra', 'deniz'];
+  }
+  if (/gelir\s+tablo|kar\s*zarar|hazirlandi mi|hazir mi|ne\s+durumda|durum/.test(q)) {
+    agents.push('cem');
+  }
+  if (/job|kuyruk|cekildi mi|hazirlandi mi|hazir mi|ne\s+durumda|durum/.test(q)) {
+    agents.push('kayra');
+  }
+  if (/\bcek\w*|luca|mihsap|gib|otomatik/.test(q)) {
+    agents.push('kayra');
+  }
   if (/kdv|gv|gelir vergi|muhtasar|stopaj|gecici vergi|sgk bildirge|matrah|beyanname|mevzuat|kanun/.test(q)) {
     agents.push('nevra');
   }
@@ -357,5 +384,5 @@ export function suggestAgents(query: string): AgentId[] {
   if (/sistem|hata|crash|yavaş|yavas|performans|bug|fix|iyileştir|öner|fikir|raporla|gece|patrol/.test(q)) {
     agents.push('deniz');
   }
-  return agents;
+  return Array.from(new Set(agents));
 }
