@@ -36,20 +36,55 @@ export class MorenOfisPatrolService {
       const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
 
-      // 1) Stuck pending Luca jobs (60dk+ hala pending)
-      const stuckPending = await (this.prisma as any).lucaFetchJob.updateMany({
+      // 1) Stuck pending Luca jobs — exponential backoff retry
+      // retry sayısı < 2 ise: backoff sürelerine göre nextRetryAt set + retry
+      // retry sayısı >= 2 ise: failed işaretle (gerçek arıza muhtemelen)
+      // Backoff: 1. retry 5dk sonra, 2. retry 15dk sonra (üst sınır 45dk)
+      const stuckCandidates = await (this.prisma as any).lucaFetchJob.findMany({
         where: {
           status: 'pending',
           createdAt: { lt: oneHourAgo },
+          OR: [
+            { nextRetryAt: null },
+            { nextRetryAt: { lt: now } },
+          ],
         },
-        data: {
-          status: 'failed',
-          errorMsg: 'DENIZ patrol: 1 saatten fazla pending kaldı, otomatik iptal edildi',
-          finishedAt: now,
-        },
+        select: { id: true, retryCount: true },
       });
 
-      // 2) Stale running Luca jobs (2sa+ running)
+      let retried = 0;
+      let stuckPendingCount = 0;
+      for (const job of stuckCandidates) {
+        if (job.retryCount >= 2) {
+          // 2 retry sonrası failed — gerçek arıza
+          await (this.prisma as any).lucaFetchJob.update({
+            where: { id: job.id },
+            data: {
+              status: 'failed',
+              errorMsg: `DENIZ patrol: ${job.retryCount} retry sonrası başarısız, iptal`,
+              finishedAt: now,
+            },
+          });
+          stuckPendingCount++;
+        } else {
+          // Retry — backoff: retry 0 → 5dk, retry 1 → 15dk
+          const backoffMin = job.retryCount === 0 ? 5 : 15;
+          const nextRetry = new Date(now.getTime() + backoffMin * 60 * 1000);
+          await (this.prisma as any).lucaFetchJob.update({
+            where: { id: job.id },
+            data: {
+              retryCount: { increment: 1 },
+              nextRetryAt: nextRetry,
+              // pending'de kalır, agent tekrar alır
+            },
+          });
+          retried++;
+        }
+      }
+      const stuckPending = { count: stuckPendingCount };
+
+      // 2) Stale running Luca jobs (2sa+ running) — direkt failed, retry burada anlamsız
+      // (zaten bir agent başlatmış ama bitirememiş, exit yapmamış olabilir)
       const staleRunning = await (this.prisma as any).lucaFetchJob.updateMany({
         where: {
           status: 'running',
@@ -61,6 +96,10 @@ export class MorenOfisPatrolService {
           finishedAt: now,
         },
       });
+
+      if (retried > 0) {
+        this.logger.log(`DENIZ retry: ${retried} job exponential backoff ile yeniden kuyrukta`);
+      }
 
       // 3) Stuck Mihsap commands
       const stuckCommands = await (this.prisma as any).agentCommand.updateMany({
