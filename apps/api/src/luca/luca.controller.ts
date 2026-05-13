@@ -299,11 +299,13 @@ export class LucaController {
     @Headers('x-agent-token') agentToken: string,
     @Query('deviceId') deviceId?: string,
     @Query('limit') limit?: string,
+    @Query('status') status?: string,
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     return this.luca.listJobsForAgent(tenantId, {
       deviceId,
       limit: limit ? Number(limit) : undefined,
+      status,
     });
   }
 

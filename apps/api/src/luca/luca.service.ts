@@ -265,9 +265,10 @@ export class LucaService {
     });
   }
 
-  async listJobsForAgent(tenantId: string, opts: { deviceId?: string; limit?: number } = {}) {
+  async listJobsForAgent(tenantId: string, opts: { deviceId?: string; limit?: number; status?: string } = {}) {
     const deviceId = opts.deviceId?.trim();
     const limit = Math.min(Math.max(Number(opts.limit || 20), 1), 50);
+    const requestedStatus = String(opts.status || '').trim().toLowerCase();
     const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: {
@@ -283,7 +284,10 @@ export class LucaService {
     });
     const where: any = {
       tenantId,
-      status: { in: ['pending', 'running'] },
+      status:
+        requestedStatus && requestedStatus !== 'active'
+          ? { in: requestedStatus.split(',').map((s) => s.trim()).filter(Boolean) }
+          : { in: ['pending', 'running'] },
     };
     if (deviceId) {
       where.OR = [
