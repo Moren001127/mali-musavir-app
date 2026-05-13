@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.20';
+  const AGENT_VERSION = '1.37.21';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3508,7 +3508,7 @@
    * "Defteri Kebir" iki kez var (Nokta Vuruşlu + Tüm Yazıcılar) — Tüm Yazıcılar = 2. occurrence.
    */
   async function clickLucaRightMenu(text, log, opts = {}) {
-    const { nth = 1, maxMs = 8000 } = opts;
+    const { nth = 1, maxMs = 8000, afterClickReady = null, settleMs = 700 } = opts;
     await log(`🔍 Sağ menüde "${text}" aranıyor (${nth}. occurrence)...`);
     const found = await waitUntil(() => {
       const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
@@ -3530,15 +3530,37 @@
     if (!found) {
       throw new Error(`Sağ menüde "${text}" (${nth}. occurrence) bulunamadı — Fiş Listesi sayfası açık mı?`);
     }
-    await log(`🖱 "${text}" tıklanıyor (${found.frameName} → ${found.el.tagName})`);
-    let cur = found.el;
+    await log(`🖱 "${text}" tıklanıyor (${found.frameName} → ${describeLucaMenuElement(found.el)})`);
     const view = found.frame.contentWindow || found.frame;
-    for (let i = 0; i < 5 && cur; i++) {
+
+    const activationTargets = [];
+    const pushTarget = (el) => {
+      if (el && !activationTargets.includes(el)) activationTargets.push(el);
+    };
+    pushTarget(found.el);
+    try {
+      for (const child of found.el.querySelectorAll?.('a[href],a[onclick],[onclick],[href],[role="button"],button,input[type="button"],input[type="submit"]') || []) {
+        pushTarget(child);
+      }
+    } catch {}
+    let cur = found.el.parentElement;
+    for (let i = 0; i < 5 && cur; i++, cur = cur.parentElement) {
+      pushTarget(cur);
+    }
+
+    for (const targetEl of activationTargets) {
       try {
-        cur.click();
-        cur.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
+        fullActivate(targetEl, view);
       } catch {}
-      cur = cur.parentElement;
+      await sleep(settleMs);
+      if (typeof afterClickReady === 'function') {
+        try {
+          if (afterClickReady()) {
+            await log(`✓ "${text}" sonrası hedef ekran açıldı (${describeLucaMenuElement(targetEl)})`);
+            return;
+          }
+        } catch {}
+      }
     }
     await sleep(1500);
   }
@@ -4348,7 +4370,11 @@
     if (form) {
       await log('Isletme Gelir/Gider formu zaten yuklu; sag menu tiklamasi atlandi');
     } else {
-      await clickLucaRightMenu('Gelir/Gider Listesi', log, { nth: 1, maxMs: 60000 });
+      await clickLucaRightMenu('Gelir/Gider Listesi', log, {
+        nth: 1,
+        maxMs: 60000,
+        afterClickReady: () => !!findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i),
+      });
     }
 
     // 4) Form yüklensin
@@ -5021,15 +5047,44 @@
     return !!(el.getAttribute?.('onclick') || el.closest?.('a,[onclick],[role="button"]'));
   }
 
+  function describeLucaMenuElement(el) {
+    try {
+      const tag = String(el?.tagName || '?').toUpperCase();
+      const bits = [tag];
+      const onclick = String(el.getAttribute?.('onclick') || '').trim();
+      const href = String(el.getAttribute?.('href') || '').trim();
+      const role = String(el.getAttribute?.('role') || '').trim();
+      if (href) bits.push('href');
+      if (onclick) bits.push(`onclick=${onclick.slice(0, 45)}`);
+      if (role) bits.push(`role=${role}`);
+      return bits.join(' ');
+    } catch {
+      return String(el?.tagName || '?');
+    }
+  }
+
   function getClickableLucaMenuElement(el) {
+    const isActionable = (node, includeCursor = false) => {
+      if (!node) return false;
+      const tag = String(node.tagName || '').toUpperCase();
+      const style = String(node.getAttribute?.('style') || '').toLowerCase();
+      return tag === 'A' || tag === 'BUTTON' || tag === 'INPUT' ||
+        !!node.getAttribute?.('onclick') || !!node.getAttribute?.('href') ||
+        node.getAttribute?.('role') === 'button' || (includeCursor && style.includes('cursor'));
+    };
+    if (isActionable(el, false)) return el;
+    try {
+      const childAction = el.querySelector?.('a[href],a[onclick],[onclick],[href],[role="button"],button,input[type="button"],input[type="submit"]');
+      if (childAction) return childAction;
+    } catch {}
     let cur = el;
     for (let i = 0; i < 5 && cur; i++) {
-      const tag = String(cur.tagName || '').toUpperCase();
-      const style = String(cur.getAttribute?.('style') || '').toLowerCase();
-      if (tag === 'A' || cur.getAttribute?.('onclick') || cur.getAttribute?.('href') ||
-          cur.getAttribute?.('role') === 'button' || style.includes('cursor')) {
-        return cur;
-      }
+      if (isActionable(cur, false)) return cur;
+      cur = cur.parentElement;
+    }
+    cur = el;
+    for (let i = 0; i < 5 && cur; i++) {
+      if (isActionable(cur, true)) return cur;
       cur = cur.parentElement;
     }
     return el;
@@ -5238,10 +5293,12 @@
    * Sayfa yenilenir ve sağ menüde "Gelir/Gider Listesi" gözükür.
    */
   async function navigateToIsletmeGiderListesi(log) {
-    // Quick check — sağ menüde Gelir/Gider Listesi varsa zaten orada
-    const quick = await findLucaMenuItem('Gelir/Gider Listesi', null, 1500);
-    if (quick) {
-      await log('✓ İşletme Gider Listesi sayfasında (Gelir/Gider Listesi menüsü hazır)');
+    // Rapor formu zaten yüklüyse tekrar menü gezmeye gerek yok. Sadece sağ menü
+    // görünür diye çıkmıyoruz; Luca bazen müşteri bilgi ekranında aynı sağ menüyü
+    // açık bırakıyor ve rapor formu hiç açılmıyor.
+    const readyForm = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+    if (readyForm) {
+      await log('✓ İşletme Gelir/Gider formu zaten açık');
       return;
     }
     await log('🧭 İşletme Defteri → Gider İşlemleri → Gider Listesi navigasyonu');
