@@ -74,6 +74,15 @@ const CHARACTERS: Record<AgentId, CharacterStyle> = {
     glasses: false,
     accessory: 'headphones',
   },
+  deniz: {
+    // Yazılım uzmanı, 27, dağınık saç, gözlük, casual but smart
+    skinTone: '#dab088',
+    hairColor: '#2a1810',
+    hairStyle: 'short-male',
+    shirtColor: '#f97316', // turuncu t-shirt (alert/uyari rengi)
+    pantsColor: '#1f2937',
+    glasses: true,
+  },
 };
 
 /**

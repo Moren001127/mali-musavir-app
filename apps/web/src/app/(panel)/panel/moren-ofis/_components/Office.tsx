@@ -10,15 +10,16 @@ interface ActiveAgent {
   state: CharacterState;
 }
 
-// 6 ajan için ofis pozisyonları — izometrik düzen.
-// 3 sıra × 2 kolon. ARDA önde, diğerleri arkada.
+// 7 ajan için ofis pozisyonları — izometrik düzen.
+// 4 sıra × 2 kolon. DENİZ önde solda "sistem odası" gibi izole.
 const POSITIONS: Record<AgentId, { row: number; col: number }> = {
-  arda: { row: 1, col: 0 },    // önde sol — lider, müşteri görür
   nevra: { row: 0, col: 0 },   // arkada sol — sessiz uzman çalışma
   cem: { row: 0, col: 1 },     // arkada sağ — Nevra'nın yanı (denetim)
-  volkan: { row: 1, col: 1 },  // önde sağ — bordro, telefon ulaşılır
+  arda: { row: 1, col: 0 },    // orta sol — lider, müşteri görür
+  volkan: { row: 1, col: 1 },  // orta sağ — bordro, telefon ulaşılır
   defne: { row: 2, col: 0 },   // resepsiyonda — müşteri ilk kim görür
-  kayra: { row: 2, col: 1 },   // teknik kose — multi-screen alanı
+  kayra: { row: 2, col: 1 },   // teknik köşe — multi-screen alanı
+  deniz: { row: 3, col: 1 },   // önde sağ — yazılım uzmanı, sistem kontrol
 };
 
 export function Office({
@@ -44,9 +45,9 @@ export function Office({
     return () => clearInterval(t);
   }, []);
 
-  // İzometrik 3 sıra × 2 kolon grid
-  // Sıra 0 (arkada) -> Sıra 2 (önde), her sıra kendi y-offset'i
-  const rows = [0, 1, 2];
+  // İzometrik 4 sıra × 2 kolon grid (DENİZ row 3'te)
+  // Sıra 0 (arkada) -> Sıra 3 (önde), her sıra kendi y-offset'i
+  const rows = [0, 1, 2, 3];
   const agentsByPosition: Record<string, AgentId> = {};
   for (const a of agents) {
     const pos = POSITIONS[a.id];

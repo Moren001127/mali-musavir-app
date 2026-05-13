@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Patch, Body, Param, Query, Req, UseGuards, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { MorenOfisService } from './moren-ofis.service';
 import { MorenOfisMemoryService } from './memory.service';
+import { MorenOfisPatrolService } from './patrol.service';
 import { PERSONAS } from './agents/personas';
 
 @Controller('moren-ofis')
@@ -10,6 +11,7 @@ export class MorenOfisController {
   constructor(
     private readonly service: MorenOfisService,
     private readonly memory: MorenOfisMemoryService,
+    private readonly patrol: MorenOfisPatrolService,
   ) {}
 
   @Get('team')
@@ -78,5 +80,31 @@ export class MorenOfisController {
   @Delete('memory/facts/:id')
   deleteFact(@Req() req: any, @Param('id') id: string) {
     return this.memory.deleteFact(req.user.tenantId, id);
+  }
+
+  // === DENİZ PATROL & ÖNERİLER ===
+
+  /** DENİZ'in önerilerini ve gece raporlarını listele */
+  @Get('proposals')
+  listProposals(@Req() req: any, @Query('status') status?: string, @Query('limit') limit?: string) {
+    return this.patrol.listProposals(req.user.tenantId, {
+      status,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
+  }
+
+  /** Öneriyi onayla/reddet/ertele */
+  @Patch('proposals/:id/status')
+  updateProposalStatus(@Req() req: any, @Param('id') id: string, @Body() body: { status: string }) {
+    if (!['open', 'in_progress', 'done', 'dismissed', 'info'].includes(body.status)) {
+      throw new BadRequestException('Geçersiz status');
+    }
+    return this.patrol.updateProposalStatus(req.user.tenantId, id, body.status);
+  }
+
+  /** DENİZ'i manuel tetikle — şimdi sistemi analiz etsin */
+  @Post('patrol/run')
+  runPatrol(@Req() req: any) {
+    return this.patrol.manualPatrol(req.user.tenantId);
   }
 }

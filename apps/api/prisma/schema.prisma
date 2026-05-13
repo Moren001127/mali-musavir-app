@@ -1494,6 +1494,29 @@ model MorenOfisFact {
   @@map("moren_ofis_facts")
 }
 
+// DENİZ'in öneri/rapor kuyruğu — sistem patrol ve gece analizleri
+// Her madde: hata, performans, feature, bakım, veya gece raporu (info)
+model MorenOfisProposal {
+  id          String   @id @default(cuid())
+  tenantId    String
+  title       String
+  description String   @db.Text
+  // Önem: high | medium | low
+  priority    String   @default("medium")
+  // Tip: bug | perf | feature | maintenance | info (gece raporu)
+  category    String   @default("feature")
+  // Durum: open | in_progress | done | dismissed | info
+  status      String   @default("open")
+  // Patron notu eklerse
+  patronNote  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, category])
+  @@map("moren_ofis_proposals")
+}
+
 // Boyut D — Zamanlanmış otomatik Luca işleri
 // Cron benzeri: belirlenen aralıkta scheduler servisi LucaFetchJob yaratır.
 model ScheduledLucaJob {

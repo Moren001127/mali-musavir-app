@@ -21,6 +21,7 @@ const DESK_PROPS: Record<AgentId, {
   volkan: { monitorBg: '#0a1f10', papers: 'few', hasCoffee: true, hasPlant: true },
   defne: { monitorBg: '#1f0a14', hasPhone: true, hasPostits: true, hasPlant: true },
   kayra: { monitorBg: '#001a1f', hasSecondMonitor: true, hasCoffee: true },
+  deniz: { monitorBg: '#1f0c00', hasSecondMonitor: true, hasCoffee: true, papers: 'few' },
 };
 
 export function Desk({

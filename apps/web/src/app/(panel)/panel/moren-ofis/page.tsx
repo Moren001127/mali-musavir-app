@@ -6,6 +6,7 @@ import { Briefcase, Users, DollarSign } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
 import { ChatPanel } from './_components/ChatPanel';
+import { DenizPanel } from './_components/DenizPanel';
 import type { CharacterState } from './_components/Character';
 import { toast } from 'sonner';
 
@@ -111,6 +112,9 @@ export default function MorenOfisPage() {
           onSend={handleSend}
         />
       </div>
+
+      {/* DENİZ Sistem Sorumlusu paneli — sistem sağlığı + öneriler */}
+      <DenizPanel />
 
       {/* Seçili ajan detayı — alt kısımda */}
       {selectedAgent && (() => {
