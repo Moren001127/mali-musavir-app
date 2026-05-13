@@ -25,25 +25,27 @@ import {
  * ─────────────────────────────────────────────────────── */
 const GOLD = '#d4b876';
 const GOLD_DARK = '#b8a06f';
-const TABLE_SURFACE = '#0f0e0c';
-const TABLE_SURFACE_ALT = '#13110d';
-const TABLE_HEADER_BG = '#1c1913';
-const TABLE_SECTION_BG = '#17140f';
-const GRID_LINE = 'rgba(245,240,230,0.14)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.30)';
+// Daha açık tablo zemini — okunaklılık için
+const TABLE_SURFACE = '#181613';
+const TABLE_SURFACE_ALT = '#1d1a16';
+const TABLE_HEADER_BG = '#221d16';
+const TABLE_SECTION_BG = '#1d1a16';
+const GRID_LINE = 'rgba(245,240,230,0.10)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.28)';
 const REPORT_TEXT = 'rgba(250,250,249,0.95)';
-const REPORT_MUTED = 'rgba(231,229,228,0.70)';
-const REPORT_DIM = 'rgba(214,211,209,0.42)';
+const REPORT_MUTED = 'rgba(231,229,228,0.78)';
+const REPORT_DIM = 'rgba(214,211,209,0.45)';
 const AMOUNT_TEXT = '#f3eee6';
 const AMOUNT_ACCENT = '#ead18a';
-const PROFIT_TEXT = '#86efac'; // pozitif — yeşil net
-const LOSS_TEXT = '#f87171';   // negatif — daha canlı kırmızı
+const PROFIT_TEXT = '#86efac';
+const LOSS_TEXT = '#f87171';
 const RATIO_TEXT = GOLD;
 const RATIO_LOSS = '#fca5a5';
 const MANUAL_TEXT = '#ead18a';
 const MANUAL_BORDER = 'rgba(212,184,118,0.55)';
-const MANUAL_ROW_BG = 'rgba(212,184,118,0.025)';
-const TOTAL_ROW_BG = 'rgba(212,184,118,0.05)';
+// Tek satır rengi — alacalı görünüm yok, sade
+const MANUAL_ROW_BG = 'transparent';
+const TOTAL_ROW_BG = 'rgba(212,184,118,0.04)';
 // Rakamlar için: temiz sans-serif tabular — Fraunces serif rakamlarda zor okunuyordu
 const NUM_FONT = "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif";
 const SERIF_FONT = "'Fraunces', 'Georgia', serif"; // sadece section başlıkları için
@@ -1262,12 +1264,12 @@ function BlockCard({
     <div
       className={`overflow-hidden relative ${attached ? 'rounded-b-2xl' : 'rounded-2xl'}`}
       style={{
-        background: `linear-gradient(135deg, rgba(212,184,118,0.04) 0%, ${TABLE_SURFACE} 60%)`,
+        background: TABLE_SURFACE,
         borderLeft: `1px solid ${c.border}`,
         borderRight: `1px solid ${c.border}`,
         borderBottom: `1px solid ${c.border}`,
         borderTop: attached ? 'none' : `1px solid ${c.border}`,
-        boxShadow: '0 14px 34px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04)',
+        boxShadow: '0 10px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
     >
       {/* Üst altın hairline — Brifing kartı deseni */}
@@ -1350,11 +1352,9 @@ function Row({
 
   return (
     <tr
-      style={{ background: rowBg, transition: 'background-color 150ms' }}
+      style={{ background: rowBg, transition: 'background-color 120ms' }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.background = manuel
-          ? 'rgba(212,184,118,0.07)'
-          : 'rgba(212,184,118,0.04)';
+        (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(212,184,118,0.03)';
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLTableRowElement).style.background = rowBg;
@@ -1367,6 +1367,7 @@ function Row({
           borderTop: `1px solid ${GRID_LINE}`,
           borderRight: `1px solid ${GRID_LINE}`,
           borderLeft: manuel ? `3px solid ${MANUAL_BORDER}` : `1px solid transparent`,
+          background: 'transparent',
           lineHeight: 1.25,
           fontFamily: NUM_FONT,
           fontSize: bold ? 12.5 : 12,
@@ -1424,6 +1425,7 @@ function Row({
             style={{
               borderTop: `1px solid ${GRID_LINE}`,
               borderLeft: `1px solid ${GRID_LINE}`,
+              background: 'transparent',
               fontVariantNumeric: 'tabular-nums',
               lineHeight: 1.2,
             }}
