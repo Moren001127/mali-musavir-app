@@ -318,6 +318,54 @@ ${summary}
     return c;
   }
 
+  /**
+   * Tenant'ın AI maliyet özeti — bugün/bu hafta/toplam.
+   * Konuşma mesajlarındaki usage.costUsd alanlarını topluyor.
+   * Maliyet kaçağı varsa burada erken yakalanır.
+   */
+  async getCostSummary(tenantId: string) {
+    const rows = await (this.prisma as any).morenOfisConversation.findMany({
+      where: { tenantId },
+      select: { messages: true, lastActivityAt: true, createdAt: true },
+    });
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(weekStart.getDate() - 7);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    let total = 0, today = 0, week = 0, month = 0;
+    let msgCount = 0, totalConv = 0;
+    const byAgent: Record<string, number> = {};
+
+    for (const conv of rows) {
+      totalConv++;
+      const msgs = (conv.messages as any[] | null) || [];
+      for (const m of msgs) {
+        const cost = m?.usage?.costUsd;
+        if (!cost || typeof cost !== 'number') continue;
+        msgCount++;
+        total += cost;
+        const ts = m.ts ? new Date(m.ts) : null;
+        if (ts && !isNaN(ts.getTime())) {
+          if (ts >= todayStart) today += cost;
+          if (ts >= weekStart) week += cost;
+          if (ts >= monthStart) month += cost;
+        }
+        const agent = m.agent || 'unknown';
+        byAgent[agent] = (byAgent[agent] || 0) + cost;
+      }
+    }
+
+    return {
+      total, today, week, month, msgCount, totalConv,
+      byAgent: Object.entries(byAgent)
+        .sort(([, a], [, b]) => b - a)
+        .map(([agent, cost]) => ({ agent, cost })),
+    };
+  }
+
   private deriveTitle(messages: OfisMessage[]): string {
     const firstUser = messages.find((m) => m.agent === 'user');
     return firstUser ? firstUser.content.slice(0, 50) : 'Yeni sohbet';

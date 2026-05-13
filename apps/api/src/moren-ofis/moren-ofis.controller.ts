@@ -34,6 +34,12 @@ export class MorenOfisController {
     return this.service.listConversations(req.user.tenantId);
   }
 
+  /** AI maliyet özeti — bugün/hafta/ay/toplam + ajan dağılımı */
+  @Get('cost-summary')
+  costSummary(@Req() req: any) {
+    return this.service.getCostSummary(req.user.tenantId);
+  }
+
   @Get('conversations/:id')
   getOne(@Req() req: any, @Param('id') id: string) {
     return this.service.getConversation(req.user.tenantId, id);

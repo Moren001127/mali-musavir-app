@@ -54,9 +54,20 @@ export interface OfisConversationSummary {
   messageCount: number;
 }
 
+export interface AiCostSummary {
+  total: number;
+  today: number;
+  week: number;
+  month: number;
+  msgCount: number;
+  totalConv: number;
+  byAgent: { agent: string; cost: number }[];
+}
+
 export const ofisApi = {
   team: () => api.get<OfisAgent[]>('/moren-ofis/team').then((r) => r.data),
   conversations: () => api.get<OfisConversationSummary[]>('/moren-ofis/conversations').then((r) => r.data),
+  costSummary: () => api.get<AiCostSummary>('/moren-ofis/cost-summary').then((r) => r.data),
   getConversation: (id: string) =>
     api.get(`/moren-ofis/conversations/${id}`).then((r) => r.data as { messages: OfisMessage[] }),
   chat: (text: string, conversationId?: string) =>

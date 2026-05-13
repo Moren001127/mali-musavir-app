@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Briefcase, DollarSign, LayoutGrid, Plus } from 'lucide-react';
+import { Briefcase, DollarSign, LayoutGrid, Plus, History, MessageSquare } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
 import { AgentStatCard } from './_components/AgentStatCard';
@@ -20,6 +20,7 @@ export default function MorenOfisPage() {
   const [selectedAgent, setSelectedAgent] = useState<AgentId | null>(null);
   const [totalCost, setTotalCost] = useState(0);
   const [showOffice, setShowOffice] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   const { data: team = [] } = useQuery({
     queryKey: ['moren-ofis-team'],
@@ -27,20 +28,37 @@ export default function MorenOfisPage() {
     staleTime: Infinity,
   });
 
-  // Sayfa açılınca son aktif konuşmayı DB'den yükle — state kaybolmasın.
-  const { data: lastConversation } = useQuery({
-    queryKey: ['moren-ofis-last-conv'],
-    queryFn: async () => {
-      const list = await ofisApi.conversations();
-      if (list.length === 0) return null;
-      // En son aktivite
-      const sorted = [...list].sort((a, b) =>
-        new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
-      );
-      return ofisApi.getConversation(sorted[0].id);
-    },
-    staleTime: 60_000,
+  // Konuşmalar listesi — geçmiş erişimi
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['moren-ofis-conversations'],
+    queryFn: ofisApi.conversations,
+    refetchInterval: 30_000,
   });
+
+  const sortedConvs = [...conversations].sort(
+    (a, b) => new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime(),
+  );
+
+  // Sayfa açılınca son aktif konuşmayı DB'den yükle
+  const { data: lastConversation } = useQuery({
+    queryKey: ['moren-ofis-last-conv', sortedConvs[0]?.id],
+    queryFn: async () => {
+      if (sortedConvs.length === 0) return null;
+      return ofisApi.getConversation(sortedConvs[0].id);
+    },
+    enabled: sortedConvs.length > 0 && messages.length === 0,
+    staleTime: Infinity,
+  });
+
+  const loadConversation = async (id: string) => {
+    const c = await ofisApi.getConversation(id);
+    const msgs = (c as any)?.messages as OfisMessage[] | null;
+    if (Array.isArray(msgs)) {
+      setMessages(msgs);
+      setConversationId(id);
+      setShowHistory(false);
+    }
+  };
 
   // Konuşma yüklendi mi? bir kere yükle, sonra kullanıcı yazdıkça state güncelleniyor
   useEffect(() => {
@@ -53,6 +71,19 @@ export default function MorenOfisPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastConversation]);
+
+  // AI maliyet özeti — kaçak harcamayı erken yakalamak için
+  const { data: cost } = useQuery({
+    queryKey: ['moren-ofis-cost'],
+    queryFn: ofisApi.costSummary,
+    refetchInterval: 30_000,
+  });
+
+  const fmtCost = (usd: number) => {
+    if (usd < 0.01) return `${(usd * 100).toFixed(1)}¢`;
+    if (usd < 1) return `${(usd * 100).toFixed(0)}¢`;
+    return `$${usd.toFixed(2)}`;
+  };
 
   const chatMut = useMutation({
     mutationFn: (text: string) => ofisApi.chat(text, conversationId),
@@ -118,20 +149,73 @@ export default function MorenOfisPage() {
           </p>
         </div>
         <div className="flex gap-2 items-center">
-          {totalCost > 0 && (
+          {cost && (
             <div
-              className="px-3 py-2 rounded-md text-xs"
+              className="px-3 py-2 rounded-md text-[10px] flex items-center gap-2 font-mono"
               style={{
                 background: 'rgba(212,184,118,0.10)',
                 color: GOLD,
                 border: '1px solid rgba(212,184,118,0.25)',
               }}
-              title={`Tam: $${totalCost.toFixed(6)}`}
+              title={`Bu konuşma: $${totalCost.toFixed(6)} · Toplam: $${cost.total.toFixed(4)}`}
             >
-              <DollarSign size={11} className="inline" />
-              {totalCost < 0.01
-                ? `${(totalCost * 100).toFixed(2)} sent`
-                : `${totalCost.toFixed(3)} USD`}
+              <DollarSign size={11} />
+              <span><span className="opacity-60">bugün</span> {fmtCost(cost.today)}</span>
+              <span className="opacity-30">·</span>
+              <span><span className="opacity-60">hafta</span> {fmtCost(cost.week)}</span>
+              <span className="opacity-30">·</span>
+              <span><span className="opacity-60">toplam</span> {fmtCost(cost.total)}</span>
+            </div>
+          )}
+          {sortedConvs.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowHistory((s) => !s)}
+                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                style={{
+                  background: showHistory ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)',
+                  color: showHistory ? GOLD : 'rgba(250,250,249,0.7)',
+                  border: `1px solid ${showHistory ? 'rgba(212,184,118,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                }}
+                title="Geçmiş konuşmalar"
+              >
+                <History size={12} /> Geçmiş ({sortedConvs.length})
+              </button>
+              {showHistory && (
+                <div
+                  className="absolute right-0 top-full mt-1 w-80 max-h-96 overflow-y-auto rounded-lg z-30 shadow-xl"
+                  style={{
+                    background: 'rgba(15,11,21,0.98)',
+                    border: '1px solid rgba(212,184,118,0.30)',
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  {sortedConvs.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => loadConversation(c.id)}
+                      className="w-full text-left px-3 py-2 hover:bg-white/[0.04] transition border-b"
+                      style={{
+                        borderColor: 'rgba(255,255,255,0.04)',
+                        background: c.id === conversationId ? 'rgba(212,184,118,0.10)' : 'transparent',
+                      }}
+                    >
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <MessageSquare size={10} style={{ color: GOLD, opacity: 0.7 }} />
+                        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+                          {c.messageCount} mesaj
+                        </span>
+                        <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                          {new Date(c.lastActivityAt).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[12px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                        {c.title || 'Yeni sohbet'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {messages.length > 0 && (

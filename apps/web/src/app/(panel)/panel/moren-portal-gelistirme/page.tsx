@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Code2, Sparkles, Play, Plus, X, Loader2, FileCode } from 'lucide-react';
+import { Code2, Sparkles, Play, Plus, X, Loader2, FileCode, ArrowRight, ArrowLeft, ChevronRight } from 'lucide-react';
 import { DEV_TEAM, type DevAgentId } from './_components/team';
 import { DevAgentCard } from './_components/DevAgentCard';
 import { portalDevApi, type DevTask, type TaskStatus } from '@/lib/portal-dev';
@@ -66,6 +66,21 @@ export default function MorenPortalGelistirmePage() {
     mutationFn: (id: string) => portalDevApi.task(id),
     onSuccess: (data) => setSelectedTask(data),
   });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => portalDevApi.setStatus(id, status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-dev-tasks'] }),
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
+  });
+
+  // Kanban: status'a göre grupla
+  const KANBAN_COLS: { status: TaskStatus; next?: TaskStatus; prev?: TaskStatus }[] = [
+    { status: 'backlog', next: 'in_progress' },
+    { status: 'in_progress', next: 'in_review', prev: 'backlog' },
+    { status: 'in_review', next: 'done', prev: 'in_progress' },
+    { status: 'done', prev: 'in_review' },
+  ];
+  const tasksByStatus = (s: TaskStatus) => tasks.filter((t) => t.status === s);
 
   return (
     <div className="space-y-4">
@@ -161,18 +176,16 @@ export default function MorenPortalGelistirmePage() {
         </div>
       )}
 
-      {/* Görev listesi */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.04) 0%, rgba(15,11,21,0.85) 100%)', border: '1px solid rgba(212,184,118,0.20)', minHeight: 320 }}>
-        <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-          <div className="flex items-center gap-2">
-            <Sparkles size={13} style={{ color: GOLD }} />
-            <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD }}>
-              Geliştirme Brifingi
-            </span>
-          </div>
-          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: '#fafaf9', lineHeight: 1.2 }}>
-            {tasks.length === 0 ? 'Henüz görev yok — yeni bir tane aç' : `${tasks.length} görev`}
-          </h2>
+      {/* Kanban Tahtası — 4 sütun */}
+      <div className="rounded-2xl p-3" style={{ background: 'linear-gradient(135deg, rgba(212,184,118,0.04) 0%, rgba(15,11,21,0.85) 100%)', border: '1px solid rgba(212,184,118,0.20)' }}>
+        <div className="px-2 pb-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <Sparkles size={13} style={{ color: GOLD }} />
+          <span className="text-[10.5px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD }}>
+            Kanban Tahtası
+          </span>
+          <span className="text-[10px] ml-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
+            {tasks.length} toplam görev
+          </span>
         </div>
 
         {isLoading ? (
@@ -182,51 +195,108 @@ export default function MorenPortalGelistirmePage() {
             "Yeni Görev" ile bir özellik yaz, ekip plan çıkarır.
           </div>
         ) : (
-          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-            {tasks.map((t) => (
-              <div key={t.id} className="px-4 py-3 flex items-start gap-3 hover:bg-white/[0.02]">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] uppercase font-bold tracking-[.12em] px-1.5 py-[2px] rounded" style={{ background: `${STATUS_COLOR[t.status]}20`, color: STATUS_COLOR[t.status] }}>
-                      {STATUS_LABEL[t.status]}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+            {KANBAN_COLS.map(({ status, next, prev }) => {
+              const colTasks = tasksByStatus(status);
+              return (
+                <div
+                  key={status}
+                  className="rounded-lg flex flex-col"
+                  style={{
+                    background: 'rgba(0,0,0,0.20)',
+                    border: '1px solid rgba(255,255,255,0.04)',
+                    minHeight: 360,
+                  }}
+                >
+                  <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                    <span
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ background: STATUS_COLOR[status] }}
+                    />
+                    <span className="text-[10px] uppercase font-bold tracking-[.14em]" style={{ color: STATUS_COLOR[status] }}>
+                      {STATUS_LABEL[status]}
                     </span>
-                    <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.5)' }}>{t.type}</span>
-                    <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>{new Date(t.createdAt).toLocaleString('tr-TR')}</span>
+                    <span className="text-[10px] ml-auto font-mono" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                      {colTasks.length}
+                    </span>
                   </div>
-                  <p className="text-[13px] font-semibold mb-0.5" style={{ color: '#fafaf9' }}>{t.title}</p>
-                  <p className="text-[11.5px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.65)' }}>{t.description}</p>
-                  {t.proposedFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {t.proposedFiles.slice(0, 5).map((f, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 text-[9.5px] font-mono px-1.5 py-[1px] rounded" style={{ background: `${GOLD}15`, color: GOLD, border: `1px solid ${GOLD}30` }}>
-                          <FileCode size={9} /> {f}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="p-2 space-y-2 flex-1 overflow-y-auto" style={{ maxHeight: 540 }}>
+                    {colTasks.length === 0 && (
+                      <div className="py-6 text-center text-[10px]" style={{ color: 'rgba(250,250,249,0.30)' }}>
+                        boş
+                      </div>
+                    )}
+                    {colTasks.map((t) => (
+                      <div
+                        key={t.id}
+                        className="rounded-md p-2.5"
+                        style={{
+                          background: 'rgba(255,255,255,0.025)',
+                          border: '1px solid rgba(255,255,255,0.05)',
+                        }}
+                      >
+                        <p className="text-[12px] font-semibold mb-1 line-clamp-2" style={{ color: '#fafaf9' }}>
+                          {t.title}
+                        </p>
+                        <p className="text-[10.5px] line-clamp-2 mb-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                          {t.description}
+                        </p>
+                        <div className="flex items-center gap-1 flex-wrap mb-1.5">
+                          <span className="text-[9px] uppercase tracking-wider px-1 py-[1px] rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.55)' }}>
+                            {t.type}
+                          </span>
+                          {t.proposedFiles.length > 0 && (
+                            <span className="text-[9px] flex items-center gap-0.5 font-mono px-1 py-[1px] rounded" style={{ background: `${GOLD}10`, color: GOLD }}>
+                              <FileCode size={8} /> {t.proposedFiles.length}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {prev && (
+                            <button
+                              onClick={() => statusMut.mutate({ id: t.id, status: prev })}
+                              className="p-1 rounded hover:bg-white/5"
+                              style={{ color: 'rgba(250,250,249,0.45)' }}
+                              title={`Geri: ${STATUS_LABEL[prev]}`}
+                            >
+                              <ArrowLeft size={10} />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => detailMut.mutate(t.id)}
+                            className="flex-1 px-1.5 py-0.5 rounded text-[9.5px] font-semibold"
+                            style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.7)' }}
+                          >
+                            Detay
+                          </button>
+                          {status === 'backlog' && (
+                            <button
+                              onClick={() => planMut.mutate(t.id)}
+                              disabled={planMut.isPending}
+                              className="px-1.5 py-0.5 rounded text-[9.5px] font-bold flex items-center gap-1"
+                              style={{ background: `${GOLD}30`, color: GOLD }}
+                              title="Plan Üret"
+                            >
+                              {planMut.isPending && planMut.variables === t.id ? <Loader2 size={9} className="animate-spin" /> : <Play size={9} />}
+                            </button>
+                          )}
+                          {next && (
+                            <button
+                              onClick={() => statusMut.mutate({ id: t.id, status: next })}
+                              className="p-1 rounded hover:bg-white/5"
+                              style={{ color: 'rgba(250,250,249,0.45)' }}
+                              title={`İlerlet: ${STATUS_LABEL[next]}`}
+                            >
+                              <ArrowRight size={10} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  {t.status === 'backlog' && (
-                    <button
-                      onClick={() => planMut.mutate(t.id)}
-                      disabled={planMut.isPending}
-                      className="px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 disabled:opacity-50"
-                      style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-                    >
-                      {planMut.isPending && planMut.variables === t.id ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                      Plan Üret
-                    </button>
-                  )}
-                  <button
-                    onClick={() => detailMut.mutate(t.id)}
-                    className="px-2.5 py-1 rounded text-[10px] font-semibold"
-                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.65)', border: '1px solid rgba(255,255,255,0.08)' }}
-                  >
-                    Detay
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
