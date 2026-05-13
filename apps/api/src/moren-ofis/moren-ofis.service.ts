@@ -47,6 +47,78 @@ export class MorenOfisService {
   ) {}
 
   /**
+   * Çoklu evrak ile chat — birden fazla dosyayı sırayla extract edip
+   * birleştirilmiş prefix olarak gönderir.
+   */
+  async sendMessageWithFiles(params: {
+    tenantId: string;
+    userId: string;
+    conversationId?: string;
+    text: string;
+    files: Array<{ originalName: string; mimeType: string; size: number; buffer: Buffer }>;
+  }) {
+    const parts: string[] = [];
+    for (let i = 0; i < params.files.length; i++) {
+      const f = params.files[i];
+      const { extracted, method } = await this.extractFile(f);
+      parts.push(
+        `📎 Evrak ${i + 1}/${params.files.length}: **${f.originalName}** (${this.formatBytes(f.size)}, ${method})\n--- İÇERİK ---\n${extracted}\n--- SON ---`,
+      );
+    }
+    const filesSection = parts.join('\n\n');
+    const combinedText = params.text
+      ? `${filesSection}\n\nSoru: ${params.text}`
+      : `${filesSection}\n\nBu evrak${params.files.length > 1 ? 'ları' : 'ı'} değerlendir — önemli bilgiler, dikkat çeken noktalar, varsa eşleşme/tutarsızlık.`;
+
+    return this.sendMessage({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      conversationId: params.conversationId,
+      text: combinedText,
+    });
+  }
+
+  /** Tek dosyalık extract helper — sendMessageWithFile için */
+  private async extractFile(file: { originalName: string; mimeType: string; buffer: Buffer }) {
+    let extracted = '';
+    let method = 'none';
+    try {
+      if (file.mimeType.startsWith('image/')) {
+        const Tesseract = require('tesseract.js');
+        const ocr = await Tesseract.recognize(file.buffer, 'tur+eng', { logger: () => {} });
+        extracted = ocr?.data?.text?.trim() || '';
+        method = 'ocr';
+      } else if (
+        file.mimeType.startsWith('text/') ||
+        file.mimeType === 'application/csv' ||
+        /\.(txt|csv|md)$/i.test(file.originalName)
+      ) {
+        extracted = file.buffer.toString('utf8').slice(0, 50_000);
+        method = 'text';
+      } else if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.originalName)) {
+        const pdfParse = require('pdf-parse');
+        const result = await pdfParse(file.buffer, { max: 30 });
+        extracted = (result?.text || '').trim();
+        if (!extracted) {
+          extracted = '[PDF metni boş — taranmış görsel PDF olabilir, PNG olarak yükle]';
+          method = 'pdf-empty';
+        } else {
+          method = `pdf (${result?.numpages || '?'} sayfa)`;
+        }
+      } else {
+        extracted = `[Bilinmeyen tip: ${file.mimeType}]`;
+        method = 'unknown';
+      }
+    } catch (e: any) {
+      this.logger.error(`Evrak extract: ${e?.message}`);
+      extracted = `[Okunamadı: ${e?.message}]`;
+      method = 'error';
+    }
+    const trimmed = extracted.length > 8000 ? extracted.slice(0, 8000) + '\n\n[...kısaltıldı]' : extracted;
+    return { extracted: trimmed, method };
+  }
+
+  /**
    * Evrak ile chat — yüklenen dosyayı OCR/extract edip user mesajına prefix
    * olarak ekler, sonra normal sendMessage akışını çalıştırır. AYLİN ve ekip
    * evrakın içeriği görür ve değerlendirir.
@@ -409,26 +481,51 @@ Samimi, mesai arkadaşı havası.`;
   }
 
   /**
-   * Tool call audit — son N tool çağrısı + tool başına istatistik.
-   * ToolCallLog tablosundan okur.
+   * Tool call audit — filter destekli. Filtreler:
+   *   tool?: string (tek tool için)
+   *   from?: ISO date string
+   *   to?: ISO date string
+   *   onlyFailures?: boolean
    */
-  async getToolAudit(tenantId: string) {
+  async getToolAudit(tenantId: string, filters?: {
+    tool?: string;
+    from?: string;
+    to?: string;
+    onlyFailures?: boolean;
+  }) {
+    const where: any = { tenantId };
+    if (filters?.tool) where.tool = filters.tool;
+    if (filters?.onlyFailures) where.ok = false;
+    if (filters?.from || filters?.to) {
+      where.ts = {};
+      if (filters.from) where.ts.gte = new Date(filters.from);
+      if (filters.to) where.ts.lte = new Date(filters.to);
+    }
+
     const recent = await (this.prisma as any).toolCallLog.findMany({
-      where: { tenantId },
+      where,
       orderBy: { ts: 'desc' },
-      take: 50,
+      take: 100,
     });
     const stats = await (this.prisma as any).toolCallLog.groupBy({
       by: ['tool'],
-      where: { tenantId },
+      where,
       _count: { _all: true },
       _avg: { durationMs: true },
       _sum: { resultSize: true },
     });
     const failures = await (this.prisma as any).toolCallLog.count({
-      where: { tenantId, ok: false },
+      where: { ...where, ok: false },
     });
-    const total = await (this.prisma as any).toolCallLog.count({ where: { tenantId } });
+    const total = await (this.prisma as any).toolCallLog.count({ where });
+
+    // Filtre dropdown'u için tüm distinct tool isimleri
+    const allTools = await (this.prisma as any).toolCallLog.findMany({
+      where: { tenantId },
+      distinct: ['tool'],
+      select: { tool: true },
+    });
+
     return {
       recent,
       stats: stats.map((s: any) => ({
@@ -440,6 +537,7 @@ Samimi, mesai arkadaşı havası.`;
       total,
       failures,
       failureRate: total > 0 ? failures / total : 0,
+      allTools: allTools.map((t: any) => t.tool).sort(),
     };
   }
 

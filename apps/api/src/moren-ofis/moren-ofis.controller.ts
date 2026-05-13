@@ -1,8 +1,8 @@
 import {
   Controller, Get, Post, Delete, Patch, Body, Param, Query, Req,
-  UseGuards, UseInterceptors, UploadedFile, BadRequestException,
+  UseGuards, UseInterceptors, UploadedFile, UploadedFiles, BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import { MorenOfisService } from './moren-ofis.service';
 import { MorenOfisMemoryService } from './memory.service';
@@ -46,8 +46,19 @@ export class MorenOfisController {
 
   /** Tool çağrı denetim/istatistik — ToolCallLog tablosundan */
   @Get('tool-audit')
-  toolAudit(@Req() req: any) {
-    return this.service.getToolAudit(req.user.tenantId);
+  toolAudit(
+    @Req() req: any,
+    @Query('tool') tool?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('onlyFailures') onlyFailures?: string,
+  ) {
+    return this.service.getToolAudit(req.user.tenantId, {
+      tool,
+      from,
+      to,
+      onlyFailures: onlyFailures === 'true' || onlyFailures === '1',
+    });
   }
 
   @Get('conversations/:id')
@@ -67,32 +78,30 @@ export class MorenOfisController {
   }
 
   /**
-   * Evrak yükle + AI'a sor — resim OCR (tesseract) veya text dosya okunur,
-   * çıkarılan metin chat mesajına prefix olarak eklenir. PDF henüz desteklenmiyor.
-   *
-   * multipart/form-data: file + text + conversationId
-   * Limit: 10MB
+   * Evrak yükle + AI'a sor — resim OCR (tesseract), PDF (pdf-parse), text dosya.
+   * Tek veya çoklu dosya: 'file' veya 'files' alanı.
+   * Limit: dosya başı 10MB, max 5 dosya.
    */
   @Post('chat-with-file')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  @UseInterceptors(FilesInterceptor('files', 5, { limits: { fileSize: 10 * 1024 * 1024 } }))
   async chatWithFile(
     @Req() req: any,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles() files: Express.Multer.File[],
     @Body() body: { text?: string; conversationId?: string },
   ) {
-    if (!file) throw new BadRequestException('Dosya gerekli');
+    if (!files || files.length === 0) throw new BadRequestException('Dosya gerekli');
     const text = (body?.text || '').trim();
-    return this.service.sendMessageWithFile({
+    return this.service.sendMessageWithFiles({
       tenantId: req.user.tenantId,
       userId: req.user.sub,
       conversationId: body?.conversationId,
       text,
-      file: {
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        buffer: file.buffer,
-      },
+      files: files.map((f) => ({
+        originalName: f.originalname,
+        mimeType: f.mimetype,
+        size: f.size,
+        buffer: f.buffer,
+      })),
     });
   }
 

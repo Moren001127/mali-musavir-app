@@ -68,21 +68,22 @@ export const ofisApi = {
   team: () => api.get<OfisAgent[]>('/moren-ofis/team').then((r) => r.data),
   conversations: () => api.get<OfisConversationSummary[]>('/moren-ofis/conversations').then((r) => r.data),
   costSummary: () => api.get<AiCostSummary>('/moren-ofis/cost-summary').then((r) => r.data),
-  toolAudit: () => api.get<ToolAuditData>('/moren-ofis/tool-audit').then((r) => r.data),
+  toolAudit: (filters?: { tool?: string; from?: string; to?: string; onlyFailures?: boolean }) =>
+    api.get<ToolAuditData>('/moren-ofis/tool-audit', { params: filters }).then((r) => r.data),
   getConversation: (id: string) =>
     api.get(`/moren-ofis/conversations/${id}`).then((r) => r.data as { messages: OfisMessage[] }),
   chat: (text: string, conversationId?: string) =>
     api.post<OfisChatResponse>('/moren-ofis/chat', { text, conversationId }).then((r) => r.data),
 
-  // Evrak ile sohbet — multipart upload, OCR/text extract sonra ekibe sor
-  chatWithFile: (file: File, text: string, conversationId?: string) => {
+  // Çoklu evrak — max 5 dosya, dosya başı 10MB
+  chatWithFile: (files: File[], text: string, conversationId?: string) => {
     const fd = new FormData();
-    fd.append('file', file);
+    for (const f of files) fd.append('files', f);
     if (text) fd.append('text', text);
     if (conversationId) fd.append('conversationId', conversationId);
     return api.post<OfisChatResponse>('/moren-ofis/chat-with-file', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 120_000, // OCR uzun sürebilir
+      timeout: 180_000, // çoklu OCR uzun sürebilir
     }).then((r) => r.data);
   },
 
@@ -126,6 +127,7 @@ export interface ToolAuditData {
   total: number;
   failures: number;
   failureRate: number;
+  allTools: string[];
 }
 
 export interface MorenFact {

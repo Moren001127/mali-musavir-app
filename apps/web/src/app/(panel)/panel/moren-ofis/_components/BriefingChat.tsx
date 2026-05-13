@@ -24,9 +24,9 @@ export function BriefingChat({
   messages: OfisMessage[];
   sending: boolean;
   onSend: (text: string) => void;
-  onSendFile?: (file: File, text: string) => void;
+  onSendFile?: (files: File[], text: string) => void;
 }) {
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
@@ -84,10 +84,10 @@ export function BriefingChat({
 
   const submit = () => {
     if (sending) return;
-    if (pendingFile && onSendFile) {
-      onSendFile(pendingFile, text.trim());
+    if (pendingFiles.length > 0 && onSendFile) {
+      onSendFile(pendingFiles, text.trim());
       setText('');
-      setPendingFile(null);
+      setPendingFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -97,13 +97,24 @@ export function BriefingChat({
   };
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > 10 * 1024 * 1024) {
-      toast.error('Dosya 10MB üstü olamaz');
-      return;
+    const newFiles = Array.from(e.target.files || []);
+    if (newFiles.length === 0) return;
+    // 10MB üstü reddet
+    const oversize = newFiles.filter((f) => f.size > 10 * 1024 * 1024);
+    if (oversize.length > 0) {
+      toast.error(`${oversize.length} dosya 10MB üstü, atlandı`);
     }
-    setPendingFile(f);
+    const valid = newFiles.filter((f) => f.size <= 10 * 1024 * 1024);
+    setPendingFiles((prev) => {
+      const combined = [...prev, ...valid];
+      if (combined.length > 5) {
+        toast.error('Max 5 dosya — fazlası atıldı');
+        return combined.slice(0, 5);
+      }
+      return combined;
+    });
+    // input clear ki aynı dosya tekrar seçilebilir
+    if (e.target) e.target.value = '';
   };
 
   const startListeningAuto = () => {
@@ -403,29 +414,35 @@ export function BriefingChat({
         )}
       </div>
 
-      {/* Pending file chip — input üzerinde */}
-      {pendingFile && (
+      {/* Pending file chips — çoklu, input üzerinde */}
+      {pendingFiles.length > 0 && (
         <div
-          className="px-4 py-2 flex items-center gap-2"
+          className="px-4 py-2 flex flex-wrap items-center gap-2"
           style={{ borderTop: '1px solid rgba(255,255,255,0.04)', background: 'rgba(212,184,118,0.06)' }}
         >
-          <FileText size={13} style={{ color: GOLD }} />
-          <span className="text-[12px] font-semibold" style={{ color: '#fafaf9' }}>
-            {pendingFile.name}
+          <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: GOLD }}>
+            {pendingFiles.length} evrak
           </span>
-          <span className="text-[11px] font-mono" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            {(pendingFile.size / 1024).toFixed(1)} KB · {pendingFile.type || 'bilinmiyor'}
-          </span>
-          <button
-            onClick={() => {
-              setPendingFile(null);
-              if (fileInputRef.current) fileInputRef.current.value = '';
-            }}
-            className="ml-auto p-1 rounded hover:bg-white/5"
-            title="Dosyayı kaldır"
-          >
-            <X size={13} style={{ color: 'rgba(250,250,249,0.55)' }} />
-          </button>
+          {pendingFiles.map((f, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px]"
+              style={{ background: 'rgba(0,0,0,0.30)', border: `1px solid ${GOLD}30` }}
+            >
+              <FileText size={11} style={{ color: GOLD }} />
+              <span style={{ color: '#fafaf9' }}>{f.name}</span>
+              <span className="font-mono opacity-60" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                {(f.size / 1024).toFixed(0)}KB
+              </span>
+              <button
+                onClick={() => setPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                className="ml-0.5 p-0.5 rounded hover:bg-white/10"
+                title="Kaldır"
+              >
+                <X size={10} style={{ color: 'rgba(250,250,249,0.55)' }} />
+              </button>
+            </span>
+          ))}
         </div>
       )}
 
@@ -440,6 +457,7 @@ export function BriefingChat({
         <input
           ref={fileInputRef}
           type="file"
+          multiple
           accept="image/*,.txt,.csv,.md,.pdf,application/pdf"
           onChange={onFileChange}
           style={{ display: 'none' }}
@@ -447,16 +465,21 @@ export function BriefingChat({
         {onSendFile && (
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={sending}
-            className="w-10 h-10 rounded-xl flex items-center justify-center transition disabled:opacity-50"
+            disabled={sending || pendingFiles.length >= 5}
+            className="w-10 h-10 rounded-xl flex items-center justify-center transition disabled:opacity-50 relative"
             style={{
-              background: pendingFile ? `${GOLD}25` : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${pendingFile ? `${GOLD}50` : 'rgba(255,255,255,0.08)'}`,
-              color: pendingFile ? GOLD : 'rgba(250,250,249,0.65)',
+              background: pendingFiles.length > 0 ? `${GOLD}25` : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${pendingFiles.length > 0 ? `${GOLD}50` : 'rgba(255,255,255,0.08)'}`,
+              color: pendingFiles.length > 0 ? GOLD : 'rgba(250,250,249,0.65)',
             }}
-            title="Evrak/resim ekle (resim için OCR, max 10MB)"
+            title="Evrak/resim ekle (max 5 dosya, dosya başı 10MB, OCR + PDF)"
           >
             <Paperclip size={15} />
+            {pendingFiles.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center" style={{ background: GOLD, color: '#0f0d0b' }}>
+                {pendingFiles.length}
+              </span>
+            )}
           </button>
         )}
         <button
@@ -481,7 +504,7 @@ export function BriefingChat({
               submit();
             }
           }}
-          placeholder={listening ? 'Dinliyorum...' : pendingFile ? 'Evrak hakkında soru yaz (boş bırakırsan AYLİN değerlendirir)...' : 'Ekibe talimat ver...'}
+          placeholder={listening ? 'Dinliyorum...' : pendingFiles.length > 0 ? `${pendingFiles.length} evrak hakkında soru yaz (boş bırakırsan AYLİN değerlendirir)...` : 'Ekibe talimat ver...'}
           disabled={sending}
           className="flex-1 px-4 py-2.5 rounded-xl text-[13px] outline-none"
           style={{
@@ -492,7 +515,7 @@ export function BriefingChat({
         />
         <button
           onClick={submit}
-          disabled={(!text.trim() && !pendingFile) || sending}
+          disabled={(!text.trim() && pendingFiles.length === 0) || sending}
           className="px-4 h-10 rounded-xl text-[13px] font-bold flex items-center gap-1.5 transition disabled:opacity-50"
           style={{
             background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`,
@@ -500,7 +523,7 @@ export function BriefingChat({
           }}
         >
           {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          {pendingFile ? 'Değerlendir' : 'Gönder'}
+          {pendingFiles.length > 0 ? 'Değerlendir' : 'Gönder'}
         </button>
       </div>
 

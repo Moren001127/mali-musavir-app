@@ -1,15 +1,35 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Wrench, AlertCircle, Clock, BarChart3, CheckCircle2, XCircle } from 'lucide-react';
+import { Activity, Wrench, AlertCircle, Clock, BarChart3, CheckCircle2, XCircle, Filter } from 'lucide-react';
 import { ofisApi } from '@/lib/moren-ofis';
 
 const GOLD = '#d4b876';
 
 export default function ToolAuditPage() {
+  const [toolFilter, setToolFilter] = useState<string>('');
+  const [onlyFailures, setOnlyFailures] = useState(false);
+  const [dateRange, setDateRange] = useState<'all' | 'today' | 'week' | 'month'>('all');
+
+  const filters = (() => {
+    const f: any = {};
+    if (toolFilter) f.tool = toolFilter;
+    if (onlyFailures) f.onlyFailures = true;
+    if (dateRange !== 'all') {
+      const now = new Date();
+      const from = new Date(now);
+      if (dateRange === 'today') from.setHours(0, 0, 0, 0);
+      else if (dateRange === 'week') from.setDate(now.getDate() - 7);
+      else if (dateRange === 'month') from.setDate(now.getDate() - 30);
+      f.from = from.toISOString();
+    }
+    return f;
+  })();
+
   const { data, isLoading } = useQuery({
-    queryKey: ['tool-audit'],
-    queryFn: ofisApi.toolAudit,
+    queryKey: ['tool-audit', filters],
+    queryFn: () => ofisApi.toolAudit(filters),
     refetchInterval: 15_000,
   });
 
@@ -31,6 +51,58 @@ export default function ToolAuditPage() {
         <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
           AI ekiplerin sistemden çektiği veriyi ve LLM harcamalarını gözle. Kaçak yakalanır.
         </p>
+      </div>
+
+      {/* Filtreler */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(0,0,0,0.30)', border: '1px solid rgba(212,184,118,0.20)' }}>
+        <Filter size={12} style={{ color: 'rgba(250,250,249,0.55)' }} />
+        <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'rgba(250,250,249,0.55)' }}>Filtre:</span>
+
+        {/* Tarih aralığı */}
+        {(['all', 'today', 'week', 'month'] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDateRange(d)}
+            className="px-2.5 py-1 rounded text-[10.5px] uppercase tracking-wider font-bold"
+            style={{
+              background: dateRange === d ? `${GOLD}22` : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${dateRange === d ? `${GOLD}55` : 'rgba(255,255,255,0.08)'}`,
+              color: dateRange === d ? GOLD : 'rgba(250,250,249,0.55)',
+            }}
+          >
+            {d === 'all' ? 'Tümü' : d === 'today' ? 'Bugün' : d === 'week' ? 'Hafta' : 'Ay'}
+          </button>
+        ))}
+
+        <span className="mx-1" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>
+
+        {/* Tool dropdown */}
+        <select
+          value={toolFilter}
+          onChange={(e) => setToolFilter(e.target.value)}
+          className="px-2 py-1 rounded text-[11px] outline-none"
+          style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.10)', color: '#fafaf9' }}
+        >
+          <option value="">Tüm tool'lar</option>
+          {data?.allTools?.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+
+        <span className="mx-1" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>
+
+        {/* Yalnız hatalar */}
+        <button
+          onClick={() => setOnlyFailures(!onlyFailures)}
+          className="px-2.5 py-1 rounded text-[10.5px] uppercase tracking-wider font-bold flex items-center gap-1"
+          style={{
+            background: onlyFailures ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${onlyFailures ? 'rgba(239,68,68,0.40)' : 'rgba(255,255,255,0.08)'}`,
+            color: onlyFailures ? '#fca5a5' : 'rgba(250,250,249,0.55)',
+          }}
+        >
+          <XCircle size={10} /> Sadece Hata
+        </button>
       </div>
 
       {/* Üst metrik kartlar */}

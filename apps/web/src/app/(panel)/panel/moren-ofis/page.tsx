@@ -86,8 +86,8 @@ export default function MorenOfisPage() {
   };
 
   const chatWithFileMut = useMutation({
-    mutationFn: ({ file, text }: { file: File; text: string }) =>
-      ofisApi.chatWithFile(file, text, conversationId),
+    mutationFn: ({ files, text }: { files: File[]; text: string }) =>
+      ofisApi.chatWithFile(files, text, conversationId),
     onSuccess: (res) => {
       setConversationId(res.conversationId);
       setTotalCost((c) => c + (res.totalCostUsd || 0));
@@ -118,8 +118,8 @@ export default function MorenOfisPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Evrak işlenemedi'),
   });
 
-  const handleSendFile = (file: File, text: string) => {
-    chatWithFileMut.mutate({ file, text });
+  const handleSendFile = (files: File[], text: string) => {
+    chatWithFileMut.mutate({ files, text });
   };
 
   const chatMut = useMutation({
