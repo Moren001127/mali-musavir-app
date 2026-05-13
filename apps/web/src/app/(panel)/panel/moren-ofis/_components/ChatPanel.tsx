@@ -19,9 +19,14 @@ export function ChatPanel({
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [speakEnabled, setSpeakEnabled] = useState(true);
+  // Sesli sohbet modu — açıkken: sen konuş bitir, otomatik gönder;
+  // ekip sesli cevap verir; cevap bitince mikrofon tekrar açılır (sonsuz döngü).
+  const [voiceMode, setVoiceMode] = useState(false);
   const [lastSpokenIdx, setLastSpokenIdx] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
+  const sendingRef = useRef(sending);
+  sendingRef.current = sending;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -33,15 +38,57 @@ export function ChatPanel({
   useEffect(() => {
     if (!speakEnabled || !isSynthesisSupported()) return;
     if (messages.length === 0) return;
-    // Sadece yeni mesajları işle
-    for (let i = lastSpokenIdx + 1; i < messages.length; i++) {
-      const m = messages[i];
-      if (m.agent !== 'user') {
-        speakAs(m.agent as AgentId, m.content).catch(() => {});
-      }
+
+    // Sadece yeni mesajları sırayla oku, hepsi bitince mikrofona dön
+    const newMessages = messages.slice(lastSpokenIdx + 1);
+    const agentMessages = newMessages.filter((m) => m.agent !== 'user');
+    if (agentMessages.length === 0) {
+      setLastSpokenIdx(messages.length - 1);
+      return;
     }
+
+    (async () => {
+      for (const m of agentMessages) {
+        await speakAs(m.agent as AgentId, m.content).catch(() => {});
+      }
+      // Ekip konuşmayı bitirdi — sesli sohbet modu açıksa mikrofonu yeniden aç
+      if (voiceMode && !sendingRef.current) {
+        startListeningAuto();
+      }
+    })();
+
     setLastSpokenIdx(messages.length - 1);
-  }, [messages.length, speakEnabled, lastSpokenIdx]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length, speakEnabled]);
+
+  /**
+   * Mikrofon başlat — final transcript geldiğinde otomatik onSend tetiklenir.
+   * voiceMode açıkken döngü: dinle → gönder → ekip sesli cevapla → dinlemeye dön.
+   */
+  const startListeningAuto = () => {
+    if (!isSpeechSupported()) return;
+    setListening(true);
+    listenerRef.current = startListening({
+      onResult: (transcript, isFinal) => {
+        setText(transcript);
+        if (isFinal && transcript.trim().length > 0) {
+          listenerRef.current = null;
+          setListening(false);
+          // Otomatik gönder — karşılıklı sohbet hissi
+          onSend(transcript.trim());
+          setText('');
+        }
+      },
+      onError: () => {
+        setListening(false);
+        listenerRef.current = null;
+      },
+      onEnd: () => {
+        setListening(false);
+        listenerRef.current = null;
+      },
+    });
+  };
 
   const toggleMic = () => {
     if (listening) {
@@ -54,24 +101,27 @@ export function ChatPanel({
       alert('Sesli komut için Chrome veya Edge kullanın');
       return;
     }
-    setListening(true);
-    listenerRef.current = startListening({
-      onResult: (transcript, isFinal) => {
-        setText(transcript);
-        if (isFinal) {
-          listenerRef.current = null;
-          setListening(false);
-        }
-      },
-      onError: () => {
+    startListeningAuto();
+  };
+
+  /**
+   * Sesli sohbet modu — sürekli karşılıklı konuşma. Açınca mikrofon otomatik
+   * başlar, sen konuşunca gönderilir, ekip sesli cevap verir, bitince
+   * mikrofon yeniden açılır.
+   */
+  const toggleVoiceMode = () => {
+    if (voiceMode) {
+      setVoiceMode(false);
+      if (listening) {
+        listenerRef.current?.stop();
         setListening(false);
-        listenerRef.current = null;
-      },
-      onEnd: () => {
-        setListening(false);
-        listenerRef.current = null;
-      },
-    });
+      }
+      stopSpeech();
+    } else {
+      setVoiceMode(true);
+      setSpeakEnabled(true); // sesli mod açıksa sesli cevap da açık olmalı
+      startListeningAuto();
+    }
   };
 
   const toggleSpeak = () => {
@@ -187,7 +237,7 @@ export function ChatPanel({
       {/* Input + ses kontrolleri */}
       <div className="px-3 py-3 border-t space-y-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         {/* Ses ayar barı */}
-        <div className="flex items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+        <div className="flex items-center gap-2 text-[10px] flex-wrap" style={{ color: 'rgba(250,250,249,0.55)' }}>
           <button
             onClick={toggleSpeak}
             className="flex items-center gap-1 px-2 py-1 rounded transition-colors"
@@ -200,8 +250,20 @@ export function ChatPanel({
             {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
             {speakEnabled ? 'Sesli' : 'Sessiz'}
           </button>
+          <button
+            onClick={toggleVoiceMode}
+            className="flex items-center gap-1 px-2 py-1 rounded transition-colors font-bold"
+            style={{
+              background: voiceMode ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)',
+              color: voiceMode ? '#d4b876' : 'rgba(250,250,249,0.5)',
+              border: voiceMode ? '1px solid rgba(212,184,118,0.4)' : '1px solid transparent',
+            }}
+            title="Karşılıklı sesli sohbet — konuş, ekip cevaplasın, döngü"
+          >
+            {voiceMode ? '🎙 SOHBET AÇIK' : '🎙 Sohbet Modu'}
+          </button>
           <span className="opacity-50">·</span>
-          <span>Enter ile gönder · Mikrofonla konuş</span>
+          <span>{voiceMode ? 'Konuşunca otomatik gönderilir' : 'Enter ile gönder, mikrofonla konuş'}</span>
         </div>
         <div className="flex gap-2">
           <button

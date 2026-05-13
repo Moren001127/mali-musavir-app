@@ -82,7 +82,7 @@ export default function MorenOfisPage() {
             Moren Ofis
           </h1>
           <p className="text-sm mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            6 kişilik yapay zeka ekibi — Arda, Nevra, Cem, Volkan, Defne, Kayra. Her biri kendi uzmanlığında.
+            7 kişilik yapay zeka ekibi — Arda, Nevra, Cem, Volkan, Defne, Kayra, Deniz. Her biri kendi uzmanlığında.
           </p>
         </div>
         <div className="flex gap-2 items-center">
