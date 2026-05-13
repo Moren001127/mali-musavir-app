@@ -2355,9 +2355,14 @@ export class OcrService {
         }
       }
 
-      // 2) Yoksa sonraki 3 satırdan ilk geçerli amount'u al
+      // 2) Yoksa sonraki 4 satırdan amount'u al
+      //    - matrahLabel varsa (Hes. Matrah / KDV): 2 ardışık amount topla, 2.'yi al
+      //      (Azure tablo hücrelerini ayrı satır olarak parse eder:
+      //        "Hes. Matrah / KDV(%1)" / "771,70 TL" / "7,72 TL")
+      //    - değilse: ilk amount'u al (eski mantık)
       if (tutar == null) {
-        for (let j = 1; j <= 3 && marker.lineIdx + j < lines.length; j++) {
+        const collected: number[] = [];
+        for (let j = 1; j <= 4 && marker.lineIdx + j < lines.length; j++) {
           const nextLine = lines[marker.lineIdx + j];
           if (skipTaxRe.test(nextLine)) break;
           if (this.isForbiddenKdvAmountLine(nextLine)) continue;
@@ -2368,10 +2373,23 @@ export class OcrService {
           const am = cleanedNext.match(amountRe);
           if (am) {
             const parsed = this.parseAmount(am[1]);
-            if (parsed > 0 && parsed < 10_000_000) {
-              tutar = parsed;
-              break;
+            if (parsed >= 0 && parsed < 10_000_000) {
+              collected.push(parsed);
+              // matrah label varsa 2 amount topla, sonra dur
+              if (marker.hasMatrahLabel && collected.length >= 2) break;
+              // matrah label yoksa ilk amount yeterli
+              if (!marker.hasMatrahLabel) break;
             }
+          }
+        }
+        if (collected.length > 0) {
+          // matrah label + 2 amount → 2.'si KDV (ilki matrah)
+          // matrah label + 1 amount → KDV varsayalım
+          // matrah label yok → ilk amount
+          if (marker.hasMatrahLabel && collected.length >= 2) {
+            tutar = collected[1];
+          } else {
+            tutar = collected[0];
           }
         }
       }
