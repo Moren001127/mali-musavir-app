@@ -285,7 +285,7 @@ export class AgentEventsController {
     @Headers('x-agent-token') token: string,
     @Query('agent') agent: string,
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!agent) throw new BadRequestException('agent gerekli');
     return this.service.getControlState(tenantId, agent);
   }
@@ -357,29 +357,29 @@ export class AgentEventsController {
   /** Yerel runner bekleyen komutları çeker ve claim eder.
    * v1.36.61: deviceId varsa SADECE bu device'a atanmış (veya target-yok) komutlar döner. */
   @Post('commands/claim')
-  claimCommands(
+  async claimCommands(
     @Headers('x-agent-token') token: string,
     @Body() body: { agent?: string; deviceId?: string } = {},
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     return this.service.claimPendingCommands(tenantId, body?.agent, body?.deviceId);
   }
 
   /** Yerel runner komutu sonucunu günceller */
   @Put('commands/:id')
-  updateCommandLocal(
+  async updateCommandLocal(
     @Headers('x-agent-token') token: string,
     @Param('id') id: string,
     @Body() body: { status?: string; result?: any },
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     return this.service.updateCommand(tenantId, id, body);
   }
 
   /** Tek komutu getir - agent cancel-check icin */
   @Get('commands/:id')
-  getCommandSingle(@Headers('x-agent-token') token: string, @Param('id') id: string) {
-    const tenantId = this.resolveTenantFromToken(token);
+  async getCommandSingle(@Headers('x-agent-token') token: string, @Param('id') id: string) {
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     return this.service.getCommand(tenantId, id);
   }
 
@@ -418,7 +418,7 @@ export class AgentEventsController {
       };
     },
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!body?.faturaImageBase64 || !Array.isArray(body?.hesapKodlari)) {
       throw new BadRequestException('faturaImageBase64 ve hesapKodlari gerekli');
     }
@@ -450,7 +450,7 @@ export class AgentEventsController {
       blokToplam?: number;
     },
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!body?.faturaImageBase64 || !Array.isArray(body?.kayitTuruOptions)) {
       throw new BadRequestException('faturaImageBase64 ve kayitTuruOptions gerekli');
     }
@@ -459,11 +459,11 @@ export class AgentEventsController {
 
   /** Mihsap'tan çekilen mükellefleri toplu upsert */
   @Post('taxpayers/bulk-import')
-  bulkImportTaxpayers(
+  async bulkImportTaxpayers(
     @Headers('x-agent-token') token: string,
     @Body() body: { taxpayers: any[] },
   ) {
-    const tenantId = this.resolveTenantFromToken(token);
+    const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!Array.isArray(body?.taxpayers)) {
       throw new BadRequestException('taxpayers dizisi gerekli');
     }
