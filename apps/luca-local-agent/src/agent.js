@@ -213,7 +213,18 @@ async function getBrowserSession() {
     await closeBrowserSession(pageClosed ? 'page-closed' : 'idle-timeout');
   }
 
-  const browser = await chromium.launch({ headless: HEADLESS, timeout: BROWSER_TIMEOUT });
+  // DNS sorunu yaşatan Chromium "secure DNS / DoH" özelliğini devre dışı bırak.
+  // Sistem DNS'i çalıştığı halde Playwright Chromium agiris.luca.com.tr'yi
+  // ERR_NAME_NOT_RESOLVED ile reddediyordu (DoH provider Türkiye'den engelli olabilir).
+  // --disable-features=DnsOverHttps,AsyncDns sistem resolver'ına geçirir.
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    timeout: BROWSER_TIMEOUT,
+    args: [
+      '--disable-features=DnsOverHttps,AsyncDns',
+      '--dns-over-https-mode=off',
+    ],
+  });
   const context = await browser.newContext({
     acceptDownloads: true,
     viewport: { width: 1366, height: 900 },
