@@ -142,6 +142,7 @@ export const ofisApi = {
   updateProposalStatus: (id: string, status: string) =>
     api.patch(`/moren-ofis/proposals/${id}/status`, { status }).then((r) => r.data),
   runPatrol: () => api.post('/moren-ofis/patrol/run').then((r) => r.data),
+  weeklyReport: () => api.get<WeeklyReport>('/moren-ofis/patrol/weekly-report').then((r) => r.data),
 
   // Hafıza
   facts: (subject?: string) =>
@@ -173,6 +174,21 @@ export interface ToolAuditData {
   failures: number;
   failureRate: number;
   allTools: string[];
+}
+
+export interface WeeklyReport {
+  periodFrom: string;
+  periodTo: string;
+  tenantName: string | null;
+  interventions: any[];
+  totalInterventions: number;
+  proposals: { id: string; title: string; description: string; priority: string; category: string; status: string; createdAt: string }[];
+  proposalsByStatus: Record<string, number>;
+  aiCost: { total: number; week: number; msgCount: number };
+  toolStats: { tool: string; count: number; failureRate: number }[];
+  totalToolCalls: number;
+  toolFailures: number;
+  pendingActions: { total: number; approved: number; rejected: number; applied: number };
 }
 
 export interface MorenFact {

@@ -4,6 +4,26 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OpenRouterAdapter } from './providers/openrouter.adapter';
 import { PERSONAS } from './agents/personas';
 
+export interface WeeklyPatrolReport {
+  periodFrom: string;
+  periodTo: string;
+  tenantName: string | null;
+  // Sistem temizliği
+  interventions: { date: string; total: number; meta: any }[];
+  totalInterventions: number;
+  // Öneriler
+  proposals: { id: string; title: string; description: string; priority: string; category: string; status: string; createdAt: string }[];
+  proposalsByStatus: Record<string, number>;
+  // AI maliyeti
+  aiCost: { total: number; week: number; msgCount: number };
+  // Tool kullanımı
+  toolStats: { tool: string; count: number; failureRate: number }[];
+  totalToolCalls: number;
+  toolFailures: number;
+  // Pending actions
+  pendingActions: { total: number; approved: number; rejected: number; applied: number };
+}
+
 /**
  * DENİZ'in devriye servisi — sistem sağlığını sürekli izler,
  * stuck job'ları temizler, hata kalıplarını analiz eder, fikir üretir.
@@ -328,5 +348,113 @@ Sadece JSON, başka açıklama yok.`;
       where: { id, tenantId },
       data: { status, updatedAt: new Date() },
     });
+  }
+
+  // === Haftalık Rapor ===
+
+  /**
+   * Son 7 gün için DENİZ patrol özeti — sistem temizliği, öneriler,
+   * AI maliyeti, tool kullanımı, onay kuyruğu. HTML rapor sayfasından
+   * tüketilir (kullanıcı Ctrl+P ile PDF'e basabilir).
+   */
+  async getWeeklyReport(tenantId: string): Promise<WeeklyPatrolReport> {
+    const to = new Date();
+    const from = new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+
+    // 1) Proposals (DENİZ önerileri)
+    const proposals = await (this.prisma as any).morenOfisProposal.findMany({
+      where: { tenantId, createdAt: { gte: from } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const proposalsByStatus: Record<string, number> = {};
+    for (const p of proposals) {
+      proposalsByStatus[p.status] = (proposalsByStatus[p.status] || 0) + 1;
+    }
+
+    // 2) AI maliyeti
+    const convs = await (this.prisma as any).morenOfisConversation.findMany({
+      where: { tenantId },
+      select: { messages: true },
+    });
+    let totalCost = 0;
+    let weekCost = 0;
+    let msgCount = 0;
+    for (const c of convs) {
+      const msgs = (c.messages as any[] | null) || [];
+      for (const m of msgs) {
+        const cost = m?.usage?.costUsd;
+        if (typeof cost !== 'number') continue;
+        msgCount++;
+        totalCost += cost;
+        const ts = m.ts ? new Date(m.ts) : null;
+        if (ts && ts >= from) weekCost += cost;
+      }
+    }
+
+    // 3) Tool çağrı istatistik (son 7 gün)
+    const toolStats = await (this.prisma as any).toolCallLog.groupBy({
+      by: ['tool'],
+      where: { tenantId, ts: { gte: from } },
+      _count: { _all: true },
+    });
+    const toolFailures = await (this.prisma as any).toolCallLog.count({
+      where: { tenantId, ts: { gte: from }, ok: false },
+    });
+    const totalToolCalls = await (this.prisma as any).toolCallLog.count({
+      where: { tenantId, ts: { gte: from } },
+    });
+    const toolStatsWithFailure = await Promise.all(
+      toolStats.map(async (s: any) => {
+        const failures = await (this.prisma as any).toolCallLog.count({
+          where: { tenantId, ts: { gte: from }, tool: s.tool, ok: false },
+        });
+        return {
+          tool: s.tool,
+          count: s._count._all,
+          failureRate: s._count._all > 0 ? failures / s._count._all : 0,
+        };
+      }),
+    );
+    toolStatsWithFailure.sort((a, b) => b.count - a.count);
+
+    // 4) Pending actions
+    const allPending = await (this.prisma as any).pendingAction.findMany({
+      where: { tenantId, requestedAt: { gte: from } },
+      select: { status: true },
+    });
+    const pa = { total: allPending.length, approved: 0, rejected: 0, applied: 0 };
+    for (const p of allPending) {
+      if (p.status === 'approved') pa.approved++;
+      else if (p.status === 'rejected') pa.rejected++;
+      else if (p.status === 'applied') pa.applied++;
+    }
+
+    return {
+      periodFrom: from.toISOString(),
+      periodTo: to.toISOString(),
+      tenantName: tenant?.name || null,
+      interventions: [], // ileride MorenOfisIntervention tablosu eklenince
+      totalInterventions: 0,
+      proposals: proposals.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        priority: p.priority,
+        category: p.category,
+        status: p.status,
+        createdAt: p.createdAt.toISOString(),
+      })),
+      proposalsByStatus,
+      aiCost: { total: totalCost, week: weekCost, msgCount },
+      toolStats: toolStatsWithFailure,
+      totalToolCalls,
+      toolFailures,
+      pendingActions: pa,
+    };
   }
 }

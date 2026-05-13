@@ -79,15 +79,25 @@ export function DenizPanel() {
             Gece raporları + sistem önerileri + otomatik müdahaleler
           </div>
         </div>
-        <button
-          onClick={() => patrolMut.mutate()}
-          disabled={patrolMut.isPending}
-          className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
-          style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', border: '1px solid rgba(249,115,22,0.35)' }}
-        >
-          <RefreshCw size={11} className={patrolMut.isPending ? 'animate-spin' : ''} />
-          Şimdi Devriye At
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="/panel/moren-ofis/rapor"
+            className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition hover:opacity-80"
+            style={{ background: 'rgba(212,184,118,0.12)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.30)' }}
+            title="Son 7 gün için DENİZ raporu — Yazdır/PDF olarak kaydet"
+          >
+            📄 Haftalık Rapor
+          </a>
+          <button
+            onClick={() => patrolMut.mutate()}
+            disabled={patrolMut.isPending}
+            className="px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 disabled:opacity-50"
+            style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316', border: '1px solid rgba(249,115,22,0.35)' }}
+          >
+            <RefreshCw size={11} className={patrolMut.isPending ? 'animate-spin' : ''} />
+            Şimdi Devriye At
+          </button>
+        </div>
       </div>
 
       {/* Filter chips */}

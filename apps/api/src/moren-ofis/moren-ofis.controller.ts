@@ -206,4 +206,10 @@ export class MorenOfisController {
   runPatrol(@Req() req: any) {
     return this.patrol.manualPatrol(req.user.tenantId);
   }
+
+  /** Haftalık DENİZ rapor (son 7 gün) — HTML rapor sayfası tüketir */
+  @Get('patrol/weekly-report')
+  weeklyReport(@Req() req: any) {
+    return this.patrol.getWeeklyReport(req.user.tenantId);
+  }
 }
