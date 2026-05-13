@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moren Mobil — Yakında</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(ellipse at top, #1a1612 0%, #0a0907 60%);
+    color: #fafaf9;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    min-height: 100vh;
+    padding: 60px 24px 80px;
+  }
+  .hero {
+    text-align: center;
+    max-width: 900px;
+    margin: 0 auto 60px;
+  }
+  .hero .tag {
+    color: #d4b876;
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(40px, 6vw, 68px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    background: linear-gradient(135deg, #fafaf9 0%, #d4b876 60%, #b8a06f 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 20px;
+  }
+  .hero p {
+    font-size: 17px;
+    color: rgba(250,250,249,0.65);
+    line-height: 1.6;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .hero .cta {
+    display: inline-flex;
+    gap: 12px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hero .badge {
+    padding: 10px 18px;
+    border-radius: 100px;
+    background: rgba(212,184,118,0.10);
+    border: 1px solid rgba(212,184,118,0.30);
+    color: #d4b876;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .phones {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  .phone {
+    position: relative;
+    width: 100%;
+    max-width: 320px;
+    aspect-ratio: 9 / 19.5;
+    margin: 0 auto;
+    background: #0f0d0b;
+    border-radius: 42px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 2px #1c1813,
+      0 0 0 10px #2a2419,
+      0 30px 60px rgba(0,0,0,0.6),
+      0 0 80px rgba(212,184,118,0.06);
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: #0f0d0b;
+    border-radius: 32px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 110px;
+    height: 24px;
+    background: #0a0907;
+    border-radius: 20px;
+    z-index: 10;
+  }
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    padding: 14px 22px 6px;
+    font-size: 11px;
+    color: #fafaf9;
+    font-weight: 600;
+    font-feature-settings: 'tnum';
+  }
+  .screen-label {
+    position: absolute;
+    bottom: -40px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 11px;
+    color: rgba(212,184,118,0.85);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .content {
+    flex: 1;
+    padding: 20px 18px;
+    overflow: hidden;
+  }
+  /* === COMMON UI === */
+  .top-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .logo {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #d4b876, #b8a06f);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f0d0b;
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .logo-text {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fafaf9;
+  }
+  .bell {
+    margin-left: auto;
+    width: 28px;
+    height: 28px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: #d4b876;
+    position: relative;
+  }
+  .bell::after {
+    content: '';
+    position: absolute;
+    top: 4px; right: 4px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+  .greeting {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+  .greeting-sub {
+    font-size: 11px;
+    color: rgba(250,250,249,0.5);
+    margin-bottom: 18px;
+  }
+  /* === SCREEN 1 — DASHBOARD === */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .stat-card {
+    background: linear-gradient(135deg, rgba(212,184,118,0.06), rgba(15,11,21,0.85));
+    border: 1px solid rgba(212,184,118,0.22);
+    border-radius: 12px;
+    padding: 11px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 16px; right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d4b876, transparent);
+    opacity: 0.5;
+  }
+  .stat-label {
+    font-size: 9px;
+    color: rgba(250,250,249,0.55);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .stat-value {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .stat-sub {
+    font-size: 9px;
+    color: rgba(250,250,249,0.45);
+    margin-top: 4px;
+  }
+  .gold { color: #d4b876; }
+  .green { color: #86efac; }
+  .red { color: #fca5a5; }
+  .white { color: #fafaf9; }
+  /* Brifing kart */
+  .brifing {
+    background: linear-gradient(135deg, rgba(212,184,118,0.08), rgba(15,11,21,0.9));
+    border: 1px solid rgba(212,184,118,0.30);
+    border-radius: 14px;
+    padding: 14px;
+    position: relative;
+  }
+  .brifing::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 20px; right: 20px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d4b876, transparent);
+    opacity: 0.55;
+  }
+  .brifing .tag {
+    font-size: 9px;
+    color: #d4b876;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .brifing h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 10px;
+    letter-spacing: -0.01em;
+  }
+  .brifing-item {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    color: rgba(250,250,249,0.78);
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+  .brifing-item::before {
+    content: '◆';
+    color: #d4b876;
+    font-size: 8px;
+    margin-top: 4px;
+  }
+  /* === SCREEN 2 — MOREN OFIS CHAT === */
+  .agent-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-bottom: 14px;
+  }
+  .agent-tile {
+    background: linear-gradient(135deg, rgba(212,184,118,0.10), rgba(255,255,255,0.012));
+    border: 1px solid rgba(212,184,118,0.25);
+    border-radius: 10px;
+    padding: 8px 4px;
+    text-align: center;
+  }
+  .agent-avatar {
+    width: 26px;
+    height: 26px;
+    margin: 0 auto 4px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f0d0b;
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 10px;
+  }
+  .agent-name {
+    font-family: 'Fraunces', serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .agent-role {
+    font-size: 7px;
+    color: rgba(250,250,249,0.5);
+    margin-top: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .chat-box {
+    background: linear-gradient(135deg, rgba(212,184,118,0.05), rgba(15,11,21,0.85));
+    border: 1px solid rgba(212,184,118,0.22);
+    border-radius: 14px;
+    padding: 12px;
+    flex: 1;
+  }
+  .msg-user {
+    align-self: flex-end;
+    background: rgba(212,184,118,0.18);
+    border: 1px solid rgba(212,184,118,0.30);
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #fafaf9;
+    max-width: 85%;
+    margin-left: auto;
+    margin-bottom: 10px;
+  }
+  .msg-agent {
+    margin-bottom: 10px;
+  }
+  .msg-agent .head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 4px;
+  }
+  .msg-agent .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .msg-agent .name {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+  }
+  .msg-agent .body {
+    background: rgba(255,255,255,0.02);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 11.5px;
+    color: rgba(250,250,249,0.92);
+    line-height: 1.4;
+  }
+  .input-row {
+    margin-top: auto;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .input-icon {
+    width: 32px; height: 32px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(250,250,249,0.65);
+    font-size: 12px;
+  }
+  .input-field {
+    flex: 1;
+    height: 32px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(212,184,118,0.22);
+    border-radius: 10px;
+    padding: 0 10px;
+    color: rgba(250,250,249,0.5);
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+  }
+  .send-btn {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #d4b876, #b8a06f);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #0f0d0b;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  /* === SCREEN 3 — AI ONAY === */
+  .onay-card {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 10px;
+  }
+  .risk-bar {
+    width: 3px;
+    border-radius: 100px;
+  }
+  .onay-card.high { border-color: rgba(239,68,68,0.30); background: rgba(239,68,68,0.06); }
+  .onay-card .body { flex: 1; }
+  .onay-card .meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+  .pill {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .pill.gold { background: rgba(212,184,118,0.14); color: #d4b876; }
+  .pill.red { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  .pill.green { background: rgba(34,197,94,0.14); color: #86efac; }
+  .pill.amber { background: rgba(245,158,11,0.16); color: #fbbf24; }
+  .onay-card h4 {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 2px;
+  }
+  .onay-card p {
+    font-size: 10.5px;
+    color: rgba(250,250,249,0.65);
+    line-height: 1.4;
+  }
+  .onay-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .onay-btn {
+    flex: 1;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .onay-btn.approve {
+    background: linear-gradient(135deg, #d4b876, #b8a06f);
+    color: #0f0d0b;
+  }
+  .onay-btn.reject {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(239,68,68,0.30);
+  }
+  /* === SCREEN 4 — MÜKELLEF === */
+  .mukellef-card {
+    background: linear-gradient(135deg, rgba(212,184,118,0.06), rgba(15,11,21,0.85));
+    border: 1px solid rgba(212,184,118,0.22);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  .mukellef-card .name {
+    font-family: 'Fraunces', serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fafaf9;
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+  .mukellef-card .vkn {
+    font-size: 10px;
+    color: rgba(250,250,249,0.5);
+    font-family: 'Plus Jakarta Sans', monospace;
+    margin-bottom: 8px;
+  }
+  .mukellef-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .mukellef-metrics .m {
+    background: rgba(255,255,255,0.025);
+    border-radius: 8px;
+    padding: 6px 7px;
+    text-align: center;
+  }
+  .mukellef-metrics .m-label {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(250,250,249,0.5);
+    margin-bottom: 3px;
+  }
+  .mukellef-metrics .m-value {
+    font-family: 'Fraunces', serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #d4b876;
+  }
+  /* === SCREEN 5 — DENİZ PATROL === */
+  .deniz-header {
+    background: linear-gradient(135deg, rgba(107,163,196,0.12), rgba(15,11,21,0.85));
+    border: 1px solid rgba(107,163,196,0.30);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    text-align: center;
+  }
+  .deniz-header h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    color: #6ba3c4;
+    margin-bottom: 4px;
+  }
+  .deniz-header p {
+    font-size: 10px;
+    color: rgba(107,163,196,0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-weight: 700;
+  }
+  .proposal {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 7px;
+  }
+  .proposal.high { border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.05); }
+  /* === SCREEN 6 — EVRAK YÜKLE === */
+  .upload-box {
+    background: linear-gradient(135deg, rgba(212,184,118,0.06), rgba(15,11,21,0.85));
+    border: 2px dashed rgba(212,184,118,0.35);
+    border-radius: 16px;
+    padding: 30px 16px;
+    text-align: center;
+    margin: 20px 0;
+  }
+  .upload-box .icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+  }
+  .upload-box h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 16px;
+    color: #fafaf9;
+    margin-bottom: 6px;
+  }
+  .upload-box p {
+    font-size: 11px;
+    color: rgba(250,250,249,0.55);
+    margin-bottom: 14px;
+  }
+  .upload-btn {
+    background: linear-gradient(135deg, #d4b876, #b8a06f);
+    color: #0f0d0b;
+    padding: 10px 24px;
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+  }
+  .file-list {
+    margin-top: 12px;
+  }
+  .file-item {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .file-icon {
+    width: 32px; height: 32px;
+    background: rgba(212,184,118,0.12);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #d4b876;
+    font-size: 14px;
+  }
+  .file-name { flex: 1; font-size: 11px; color: #fafaf9; font-weight: 600; }
+  .file-size { font-size: 9.5px; color: rgba(250,250,249,0.5); font-family: monospace; }
+  /* Footer */
+  .footer {
+    max-width: 1100px;
+    margin: 80px auto 0;
+    text-align: center;
+    padding: 40px 20px 0;
+    border-top: 1px solid rgba(212,184,118,0.12);
+  }
+  .footer p {
+    font-size: 13px;
+    color: rgba(250,250,249,0.55);
+    line-height: 1.7;
+    max-width: 600px;
+    margin: 0 auto 20px;
+  }
+  .footer .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin: 28px 0;
+  }
+  .footer .features div {
+    background: rgba(212,184,118,0.04);
+    border: 1px solid rgba(212,184,118,0.15);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .footer .features h4 {
+    color: #d4b876;
+    font-family: 'Fraunces', serif;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .footer .features p {
+    font-size: 11px;
+    color: rgba(250,250,249,0.55);
+    margin: 0;
+  }
+  .signature {
+    margin-top: 40px;
+    font-size: 10px;
+    color: rgba(250,250,249,0.35);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="tag">Moren Mali Müşavirlik</div>
+  <h1>Ofisin Cebine,<br>AI Ekibin Yanına.</h1>
+  <p>
+    Moren Mobil ile mali müşavirlik ofisinin tamamını telefonunuzdan yönetin.
+    7 kişilik AI ekibi, mükellef takibi, AI onay kuyruğu, evrak yükleme ve
+    DENİZ'in gece raporları artık cebinizde.
+  </p>
+  <div class="cta">
+    <span class="badge">📱 iOS · Android</span>
+    <span class="badge">🎙 Sesli Sohbet</span>
+    <span class="badge">🔔 Anlık Bildirim</span>
+    <span class="badge">📎 Belge Yükle + OCR</span>
+  </div>
+</section>
+
+<div class="phones">
+
+  <!-- 1) DASHBOARD -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:41</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">Moren</div>
+            <div class="bell">🔔</div>
+          </div>
+          <h2 class="greeting">Günaydın Muzaffer</h2>
+          <p class="greeting-sub">13 Mayıs · Çarşamba</p>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-label">Bekleyen</div>
+              <div class="stat-value red">3</div>
+              <div class="stat-sub">2 kritik · 1 normal</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Bugün AI</div>
+              <div class="stat-value white">8¢</div>
+              <div class="stat-sub">42 mesaj</div>
+            </div>
+          </div>
+
+          <div class="brifing">
+            <div class="tag">⭐ Bugünkü Brifing</div>
+            <h3>3 Mükellefin KDV Son Günü Yarın</h3>
+            <div class="brifing-item">Petravet · KDV beyanname taslağı hazır</div>
+            <div class="brifing-item">Akgöz Otomotiv · Eksik fatura: 2</div>
+            <div class="brifing-item">Yıldız Tekstil · Mizan kontrolü gerek</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">01 · Gösterge Paneli</div>
+  </div>
+
+  <!-- 2) MOREN OFIS CHAT -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:42</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content" style="display: flex; flex-direction: column;">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">Moren Ofis</div>
+            <div class="bell">🔔</div>
+          </div>
+
+          <div class="agent-strip">
+            <div class="agent-tile">
+              <div class="agent-avatar" style="background: linear-gradient(135deg, #d4b876, #b8a06f);">AY</div>
+              <div class="agent-name gold">AYLİN</div>
+              <div class="agent-role">Müşavir</div>
+            </div>
+            <div class="agent-tile">
+              <div class="agent-avatar" style="background: linear-gradient(135deg, #60a5fa, #3b82f6);">NV</div>
+              <div class="agent-name" style="color:#60a5fa">NEVRA</div>
+              <div class="agent-role">Vergi</div>
+            </div>
+            <div class="agent-tile">
+              <div class="agent-avatar" style="background: linear-gradient(135deg, #a855f7, #7e22ce);">CM</div>
+              <div class="agent-name" style="color:#a855f7">CEM</div>
+              <div class="agent-role">Denetim</div>
+            </div>
+            <div class="agent-tile">
+              <div class="agent-avatar" style="background: linear-gradient(135deg, #6ba3c4, #4a8aa8);">DN</div>
+              <div class="agent-name" style="color:#6ba3c4">DENİZ</div>
+              <div class="agent-role">Sistem</div>
+            </div>
+          </div>
+
+          <div class="chat-box" style="display: flex; flex-direction: column; flex: 1;">
+            <div class="msg-user">Petravet için Mayıs KDV durumu?</div>
+            <div class="msg-agent">
+              <div class="head">
+                <div class="dot gold" style="background:#d4b876"></div>
+                <span class="name gold">AYLİN</span>
+              </div>
+              <div class="body">Tamam Muzaffer Bey, Nevra'ya yönlendiriyorum, KDV durumunu özetleyecek. Cem de mizan açısından bakacak.</div>
+            </div>
+            <div class="msg-agent">
+              <div class="head">
+                <div class="dot" style="background:#60a5fa"></div>
+                <span class="name" style="color:#60a5fa">NEVRA</span>
+              </div>
+              <div class="body">Petravet Nisan KDV: satış 97.729 TL, alış 36.319 TL. Net ödenecek KDV ~12.300 TL. Son tarih 28 Mayıs.</div>
+            </div>
+            <div class="input-row" style="margin-top:8px;">
+              <div class="input-icon">📎</div>
+              <div class="input-icon">🎙</div>
+              <div class="input-field">Ekibe sor...</div>
+              <div class="send-btn">→</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">02 · Moren Ofis · 7 AI Ekibi</div>
+  </div>
+
+  <!-- 3) AI ONAY -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:43</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">AI Onay</div>
+            <div class="bell">🔔</div>
+          </div>
+          <h2 class="greeting">3 Onay Bekliyor</h2>
+          <p class="greeting-sub">AI ekiplerin önerileri</p>
+
+          <div class="onay-card high">
+            <div class="risk-bar" style="background:#ef4444"></div>
+            <div class="body">
+              <div class="meta">
+                <span class="pill red">CRITICAL</span>
+                <span class="pill gold">DENİZ</span>
+              </div>
+              <h4>Captcha modeli güncellensin</h4>
+              <p>Son 24 saatte 8 başarısız Luca giriş. Captcha çözücü %60'a düştü.</p>
+              <div class="onay-actions">
+                <div class="onay-btn reject">✕ Reddet</div>
+                <div class="onay-btn approve">✓ Onayla</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="onay-card">
+            <div class="risk-bar" style="background:#fbbf24"></div>
+            <div class="body">
+              <div class="meta">
+                <span class="pill amber">MEDIUM</span>
+                <span class="pill gold">NEVRA</span>
+              </div>
+              <h4>Petravet'e KDV hatırlatması</h4>
+              <p>Mayıs KDV son günü 28 Mayıs · 3 gün kaldı · WhatsApp ile hatırlat.</p>
+            </div>
+          </div>
+
+          <div class="onay-card">
+            <div class="risk-bar" style="background:#86efac"></div>
+            <div class="body">
+              <div class="meta">
+                <span class="pill green">LOW</span>
+                <span class="pill gold">DEFNE</span>
+              </div>
+              <h4>Akgöz'e teşekkür mesajı</h4>
+              <p>Faturalar zamanında geldi · taslak mesaj hazır.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">03 · AI Onay Kuyruğu</div>
+  </div>
+
+  <!-- 4) MÜKELLEF -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:44</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">Mükellefler</div>
+            <div class="bell">🔔</div>
+          </div>
+          <h2 class="greeting">Hızlı Bakış</h2>
+          <p class="greeting-sub">42 aktif mükellef</p>
+
+          <div class="mukellef-card">
+            <div class="name">Petravet Veteriner Klinik</div>
+            <div class="vkn">VKN: 7290854321 · İstanbul</div>
+            <div class="mukellef-metrics">
+              <div class="m">
+                <div class="m-label">Mizan</div>
+                <div class="m-value green">✓</div>
+              </div>
+              <div class="m">
+                <div class="m-label">KDV</div>
+                <div class="m-value gold">⏳</div>
+              </div>
+              <div class="m">
+                <div class="m-label">Evrak</div>
+                <div class="m-value green">42</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mukellef-card">
+            <div class="name">Akgöz Otomotiv Ltd.</div>
+            <div class="vkn">VKN: 0540123456 · İzmir</div>
+            <div class="mukellef-metrics">
+              <div class="m">
+                <div class="m-label">Mizan</div>
+                <div class="m-value green">✓</div>
+              </div>
+              <div class="m">
+                <div class="m-label">KDV</div>
+                <div class="m-value red">!</div>
+              </div>
+              <div class="m">
+                <div class="m-label">Evrak</div>
+                <div class="m-value gold">38</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mukellef-card">
+            <div class="name">Yıldız Tekstil A.Ş.</div>
+            <div class="vkn">VKN: 9123456789 · Bursa</div>
+            <div class="mukellef-metrics">
+              <div class="m">
+                <div class="m-label">Mizan</div>
+                <div class="m-value gold">⏳</div>
+              </div>
+              <div class="m">
+                <div class="m-label">KDV</div>
+                <div class="m-value green">✓</div>
+              </div>
+              <div class="m">
+                <div class="m-label">Evrak</div>
+                <div class="m-value green">71</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">04 · Mükellef Bakış</div>
+  </div>
+
+  <!-- 5) DENİZ -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:45</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">DENİZ Patrol</div>
+            <div class="bell">🔔</div>
+          </div>
+
+          <div class="deniz-header">
+            <h3>DENİZ</h3>
+            <p>Sistem Sorumlusu · Aktif</p>
+          </div>
+
+          <p class="greeting-sub" style="margin-bottom:10px;">Son 24 saat · 4 öneri</p>
+
+          <div class="proposal high">
+            <div class="meta" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span class="pill red">HIGH</span>
+              <span class="pill gold">Bug</span>
+            </div>
+            <h4 style="font-size:11px;color:#fafaf9;font-weight:700;margin-bottom:3px;">Stuck Luca Job — 60dk+</h4>
+            <p style="font-size:10px;color:rgba(250,250,249,0.65)">2 mizan çekim takıldı, otomatik iptal edildi. Captcha hatası muhtemel.</p>
+          </div>
+
+          <div class="proposal">
+            <div class="meta" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span class="pill amber">MEDIUM</span>
+              <span class="pill gold">Performans</span>
+            </div>
+            <h4 style="font-size:11px;color:#fafaf9;font-weight:700;margin-bottom:3px;">Endpoint yavaş</h4>
+            <p style="font-size:10px;color:rgba(250,250,249,0.65)">/taxpayers p95 2.4s — index önerilir.</p>
+          </div>
+
+          <div class="proposal">
+            <div class="meta" style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+              <span class="pill green">LOW</span>
+              <span class="pill gold">Bilgi</span>
+            </div>
+            <h4 style="font-size:11px;color:#fafaf9;font-weight:700;margin-bottom:3px;">DB Snapshot OK</h4>
+            <p style="font-size:10px;color:rgba(250,250,249,0.65)">Gece yedekleme tamamlandı · 04:12.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">05 · DENİZ · Gece Raporu</div>
+  </div>
+
+  <!-- 6) EVRAK YÜKLE -->
+  <div style="position: relative; padding-bottom: 60px;">
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+        <div class="status-bar">
+          <span>09:46</span>
+          <span>● ● ● 5G</span>
+        </div>
+        <div class="content">
+          <div class="top-row">
+            <div class="logo">M</div>
+            <div class="logo-text">Evrak Yükle</div>
+            <div class="bell">🔔</div>
+          </div>
+
+          <h2 class="greeting">Evrak Gönder</h2>
+          <p class="greeting-sub">AI ekip değerlendirir</p>
+
+          <div class="upload-box">
+            <div class="icon">📎</div>
+            <h3>Fatura · Mizan · PDF</h3>
+            <p>Resim · PDF · Text<br>Maks 10MB · 5 dosya</p>
+            <div class="upload-btn">📷 Kamera ile Çek</div>
+          </div>
+
+          <div class="file-list">
+            <div class="file-item">
+              <div class="file-icon">📄</div>
+              <div class="file-name">eurorepar-fatura.pdf</div>
+              <div class="file-size">245KB</div>
+            </div>
+            <div class="file-item">
+              <div class="file-icon">🖼</div>
+              <div class="file-name">mizan-mayis.jpg</div>
+              <div class="file-size">1.2MB</div>
+            </div>
+          </div>
+
+          <div style="background:linear-gradient(135deg,#d4b876,#b8a06f); color:#0f0d0b; padding:11px; border-radius:12px; text-align:center; font-weight:700; font-size:12px; margin-top:10px;">
+            ⚡ Değerlendir (2 dosya)
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="screen-label">06 · Evrak + OCR</div>
+  </div>
+
+</div>
+
+<section class="footer">
+  <div class="features">
+    <div>
+      <h4>🤖 7 AI Ekibi</h4>
+      <p>AYLİN, NEVRA, CEM, VOLKAN, DEFNE, KAYRA, DENİZ — telefondan sesli sohbet.</p>
+    </div>
+    <div>
+      <h4>🎙 Sesli Konuş</h4>
+      <p>Yolda Moren Ofis ekibiyle konuş; ne yapacaklarını net söylesinler.</p>
+    </div>
+    <div>
+      <h4>📎 Evrak + OCR</h4>
+      <p>Faturayı çek-gönder; AI değerlendirir, doğru kalemi yakalar.</p>
+    </div>
+    <div>
+      <h4>🔔 Akıllı Bildirim</h4>
+      <p>Kritik AI önerisi, mükellef mesajı, son tarih yaklaşınca cebinde.</p>
+    </div>
+  </div>
+
+  <p>
+    <strong style="color:#d4b876">Yakında</strong> — iOS App Store + Google Play.
+    Mevcut Moren web portalın aynısı, mobil cihazınız için optimize edilmiş.
+  </p>
+
+  <div class="signature">Moren Mali Müşavirlik · v1.0 Mobil</div>
+</section>
+
+</body>
+</html>
