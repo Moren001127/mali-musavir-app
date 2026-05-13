@@ -997,6 +997,9 @@ model AgentStatus {
   id        String   @id @default(cuid())
   tenantId  String
   agent     String
+  // Multi-device support: aynı agent için birden çok cihaz (ofis local-agent,
+  // Chrome uzantısı, ev PC'si vb.) ayrı satırlarda. "" = legacy default.
+  deviceId  String   @default("")
   running   Boolean  @default(false)
   hedefAy   String?
   lastPing  DateTime @default(now())
@@ -1007,7 +1010,8 @@ model AgentStatus {
   controlSetBy String?
   controlSetAt DateTime?
 
-  @@unique([tenantId, agent])
+  @@unique([tenantId, agent, deviceId])
+  @@index([tenantId, agent, lastPing])
   @@map("agent_status")
 }
 

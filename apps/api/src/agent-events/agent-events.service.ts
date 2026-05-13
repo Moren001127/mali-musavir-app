@@ -1094,10 +1094,13 @@ ${ocr.text.slice(0, 14000)}`;
   async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
     const safeMeta = this.sanitizeMetaForStorage(data.meta);
     const payload = { ...data, meta: safeMeta ?? undefined };
-    return this.prisma.agentStatus.upsert({
-      where: { tenantId_agent: { tenantId, agent } },
+    // Multi-device: meta.deviceId -> deviceId column. (tenantId, agent, deviceId)
+    // unique key sayesinde her cihaz ayrı satırda kalır, son ping üzerine yazar.
+    const deviceId = String(safeMeta?.deviceId || '').trim();
+    return (this.prisma as any).agentStatus.upsert({
+      where: { tenantId_agent_deviceId: { tenantId, agent, deviceId } },
       update: { ...payload, lastPing: new Date() },
-      create: { tenantId, agent, ...payload },
+      create: { tenantId, agent, deviceId, ...payload },
     });
   }
 
@@ -1190,19 +1193,21 @@ ${ocr.text.slice(0, 14000)}`;
     // Cihazları agent'a göre grupla — bir agent için birden çok cihaz olabilir
     // (örn. ofis + ev PC'sinde local-agent veya farklı tarayıcılarda extension)
     const devicesByAgent = new Map<string, Array<any>>();
-    for (const s of statuses) {
+    for (const s of statuses as any[]) {
       const list = devicesByAgent.get(s.agent) || [];
       const meta: any = s.meta || {};
+      // Multi-device migration sonrası deviceId column'da. Eski satırlar için meta'dan fallback.
+      const deviceId = s.deviceId || meta.deviceId || null;
       const lastPingMs = new Date(s.lastPing).getTime();
       const stale = Date.now() - lastPingMs > 5 * 60 * 1000; // 5dk üstü stale
       list.push({
-        deviceId: meta.deviceId || null,
+        deviceId,
         workerName: meta.workerName || null,
         version: meta.version || null,
         running: s.running && !stale,
         lastPing: s.lastPing,
         stale,
-        isLocal: !!meta.localWorker || (meta.deviceId && !/^DEV-/i.test(String(meta.deviceId))),
+        isLocal: !!meta.localWorker || (deviceId && !/^DEV-/i.test(String(deviceId))),
         jobTypes: Array.isArray(meta.jobTypes) ? meta.jobTypes : null,
         url: meta.url || null,
         controlState: s.controlState || 'RUNNING',
