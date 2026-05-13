@@ -87,10 +87,37 @@ export class OpenRouterAdapter {
 
     const data: any = await res.json();
     const choice = data.choices?.[0];
-    if (!choice) throw new Error('OpenRouter yanıtı boş');
+    if (!choice) {
+      this.logger.error(`OpenRouter boş choices: ${JSON.stringify(data).slice(0, 300)}`);
+      throw new Error('Model yanıtı boş geldi (choices yok)');
+    }
+
+    // İçerik OpenAI/Anthropic farklı yerlerde olabilir; hepsini dene
+    const msg = choice.message || {};
+    let content = '';
+    if (typeof msg.content === 'string') {
+      content = msg.content;
+    } else if (Array.isArray(msg.content)) {
+      // Anthropic content block formatı: [{ type: 'text', text: '...' }]
+      content = msg.content
+        .filter((b: any) => b?.type === 'text' || typeof b === 'string')
+        .map((b: any) => (typeof b === 'string' ? b : b.text || ''))
+        .join('\n');
+    }
+    // Refusal fallback (OpenAI)
+    if (!content && msg.refusal) content = `[Reddedildi: ${msg.refusal}]`;
+    // Tool call fallback
+    if (!content && msg.tool_calls?.length) {
+      content = '[Tool çağrısı: ' + msg.tool_calls.map((t: any) => t.function?.name || 'unknown').join(', ') + ']';
+    }
+    // Hala boşsa raw debug
+    if (!content) {
+      this.logger.warn(`Model ${req.model} boş içerik döndü. Raw choice: ${JSON.stringify(choice).slice(0, 300)}`);
+      content = `[${req.model} boş cevap döndü — modeli kontrol et veya farklı sor]`;
+    }
 
     return {
-      content: choice.message?.content || '',
+      content,
       model: data.model || req.model,
       usage: {
         promptTokens: data.usage?.prompt_tokens || 0,

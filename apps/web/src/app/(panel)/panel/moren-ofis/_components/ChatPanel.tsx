@@ -146,7 +146,7 @@ export function ChatPanel({
         background: 'rgba(15,11,21,0.85)',
         border: '1px solid rgba(212,184,118,0.18)',
         backdropFilter: 'blur(10px)',
-        height: 580,
+        height: 680,
       }}
     >
       {/* Başlık */}

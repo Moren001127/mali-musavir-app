@@ -27,7 +27,6 @@ const navGroups = [
     icon: Brain,
     items: [
       { href: '/panel/moren-ofis',     label: 'Moren Ofis (AI Ekip)', icon: Brain },
-      { href: '/panel/moren-ai',       label: 'Moren AI (Tek Ajan)',  icon: MessageSquare },
     ],
   },
   {
