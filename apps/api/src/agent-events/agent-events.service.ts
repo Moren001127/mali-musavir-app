@@ -1097,11 +1097,26 @@ ${ocr.text.slice(0, 14000)}`;
     // Multi-device: meta.deviceId -> deviceId column. (tenantId, agent, deviceId)
     // unique key sayesinde her cihaz ayrı satırda kalır, son ping üzerine yazar.
     const deviceId = String(safeMeta?.deviceId || '').trim();
-    return (this.prisma as any).agentStatus.upsert({
-      where: { tenantId_agent_deviceId: { tenantId, agent, deviceId } },
-      update: { ...payload, lastPing: new Date() },
-      create: { tenantId, agent, deviceId, ...payload },
-    });
+    try {
+      return await (this.prisma as any).agentStatus.upsert({
+        where: { tenantId_agent_deviceId: { tenantId, agent, deviceId } },
+        update: { ...payload, lastPing: new Date() },
+        create: { tenantId, agent, deviceId, ...payload },
+      });
+    } catch (e: any) {
+      // Legacy production DBs may still have the old (tenantId, agent) unique index.
+      // If create collides there, promote the existing row into a device-specific row.
+      if (e?.code !== 'P2002') throw e;
+      const existing = await (this.prisma as any).agentStatus.findFirst({
+        where: { tenantId, agent },
+        orderBy: { lastPing: 'desc' },
+      });
+      if (!existing) throw e;
+      return (this.prisma as any).agentStatus.update({
+        where: { id: existing.id },
+        data: { deviceId, ...payload, lastPing: new Date() },
+      });
+    }
   }
 
   // === PAUSE/RESUME (control state) ===
@@ -1112,26 +1127,35 @@ ${ocr.text.slice(0, 14000)}`;
     state: 'RUNNING' | 'PAUSED' | 'STOP',
     setBy: string,
   ) {
-    return (this.prisma as any).agentStatus.upsert({
-      where: { tenantId_agent: { tenantId, agent } },
-      update: {
-        controlState: state,
-        controlSetBy: setBy,
-        controlSetAt: new Date(),
-      },
-      create: {
+    const data = {
+      controlState: state,
+      controlSetBy: setBy,
+      controlSetAt: new Date(),
+    };
+    const updated = await (this.prisma as any).agentStatus.updateMany({
+      where: { tenantId, agent },
+      data,
+    });
+    if (updated?.count) {
+      return (this.prisma as any).agentStatus.findFirst({
+        where: { tenantId, agent },
+        orderBy: { lastPing: 'desc' },
+      });
+    }
+    return (this.prisma as any).agentStatus.create({
+      data: {
         tenantId,
         agent,
-        controlState: state,
-        controlSetBy: setBy,
-        controlSetAt: new Date(),
+        deviceId: '',
+        ...data,
       },
     });
   }
 
   async getControlState(tenantId: string, agent: string) {
-    const s = await (this.prisma as any).agentStatus.findUnique({
-      where: { tenantId_agent: { tenantId, agent } },
+    const s = await (this.prisma as any).agentStatus.findFirst({
+      where: { tenantId, agent },
+      orderBy: { lastPing: 'desc' },
       select: { controlState: true, controlSetBy: true, controlSetAt: true, running: true, lastPing: true },
     });
     return s || { controlState: 'RUNNING', running: false, lastPing: null };
