@@ -4,6 +4,7 @@ import { PERSONAS, AgentId, suggestAgents } from './agents/personas';
 import { PrismaService } from '../prisma/prisma.service';
 import { MorenOfisMemoryService } from './memory.service';
 import { ToolExecutorService } from '../moren-ai/tool-executor.service';
+import { PendingActionsService } from '../pending-actions/pending-actions.service';
 
 export interface OfisToolCall {
   tool: string;
@@ -41,7 +42,47 @@ export class MorenOfisService {
     private readonly memory: MorenOfisMemoryService,
     // FAZ 1 — Ortak tool beyni (moren-ai modülünden paylaşılıyor)
     private readonly tools: ToolExecutorService,
+    // FAZ 3 — Yazma niyetleri buradan onay kuyruğuna düşer
+    private readonly pendingActions: PendingActionsService,
   ) {}
+
+  /**
+   * FAZ 3 — Ajan mesajının içeriğini hatırlatma önerisi olarak onay
+   * kuyruğuna düşür. Henüz kalıcı Task oluşturmaz, sadece insanın
+   * görüp Approve veya Reject yapacağı bir PendingAction üretir.
+   *
+   * Onaylanırsa Faz 3b'de eklenecek worker `applyReminderProposal` ile
+   * gerçek Task kaydını açar. Şimdilik insan onayı + audit yeterli.
+   */
+  async proposeReminderFromAgent(params: {
+    tenantId: string;
+    userId: string;
+    agent: string;
+    title: string;
+    content: string;
+    dueDate?: string;
+    taxpayerHint?: string;
+  }) {
+    const { tenantId, userId, agent, title, content, dueDate, taxpayerHint } = params;
+    return this.pendingActions.create({
+      tenantId,
+      source: 'moren_ofis',
+      type: 'create_reminder',
+      title: title.slice(0, 200),
+      summary: content.slice(0, 2000),
+      payload: {
+        agent,
+        proposedTitle: title,
+        proposedContent: content,
+        dueDate: dueDate || null,
+        taxpayerHint: taxpayerHint || null,
+      },
+      riskLevel: 'low',
+      requestedByAgent: agent,
+      requestedByUserId: userId,
+      expiresInMinutes: 60 * 24 * 7, // 7 gün
+    });
+  }
 
   /**
    * Bir kullanıcı mesajını ekibe gönder. Orkestratör (ARDA) önce hangi

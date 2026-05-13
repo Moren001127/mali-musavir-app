@@ -50,6 +50,31 @@ export class MorenOfisController {
     });
   }
 
+  /**
+   * FAZ 3 — Ajan mesajını hatırlatma önerisi olarak onay kuyruğuna düşür.
+   * Kullanıcı UI'dan "Hatırlatmaya çevir" tıklarsa burası çağrılır.
+   * Kalıcı Task açmaz — PendingAction üretir, /panel/ai-onay sayfasından
+   * onaylanınca worker (Faz 3b) gerçek Task'i açacak.
+   */
+  @Post('propose-reminder')
+  proposeReminder(
+    @Req() req: any,
+    @Body() body: { agent: string; title: string; content: string; dueDate?: string; taxpayerHint?: string },
+  ) {
+    if (!body?.title?.trim() || !body?.content?.trim()) {
+      throw new BadRequestException('title ve content gerekli');
+    }
+    return this.service.proposeReminderFromAgent({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+      agent: body.agent || 'arda',
+      title: body.title.trim(),
+      content: body.content.trim(),
+      dueDate: body.dueDate,
+      taxpayerHint: body.taxpayerHint,
+    });
+  }
+
   // === HAFIZA YÖNETİMİ ===
 
   /** Tüm gerçekleri listele — UI'da "ekibin neyi bildiği"ni göstermek için */

@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
+import { ofisApi } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
+import { toast } from 'sonner';
 
 const GOLD = '#d4b876';
 
@@ -323,6 +325,34 @@ export function BriefingChat({
                     ))}
                   </div>
                 )}
+                {/* FAZ 3 — Hatırlatmaya çevir butonu (PendingAction'a düşer) */}
+                <div className="flex gap-1.5 mt-1 px-1">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await ofisApi.proposeReminder({
+                          agent: m.agent as string,
+                          title: m.content.slice(0, 80),
+                          content: m.content,
+                        });
+                        toast.success('Onay kuyruğuna eklendi', {
+                          description: 'AI Onay Kuyruğu sayfasından onaylayabilirsin',
+                        });
+                      } catch (e: any) {
+                        toast.error(e?.response?.data?.message || e?.message || 'Hata');
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded text-[9.5px] uppercase tracking-wider font-bold transition hover:opacity-100 opacity-60"
+                    style={{
+                      background: 'rgba(212,184,118,0.08)',
+                      border: '1px solid rgba(212,184,118,0.20)',
+                      color: GOLD,
+                    }}
+                    title="Bu mesajı hatırlatma önerisi olarak AI Onay Kuyruğu'na ekle"
+                  >
+                    <Bell size={9} /> Hatırlatmaya Çevir
+                  </button>
+                </div>
               </div>
             );
           })

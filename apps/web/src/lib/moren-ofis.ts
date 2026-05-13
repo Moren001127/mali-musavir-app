@@ -62,6 +62,10 @@ export const ofisApi = {
   chat: (text: string, conversationId?: string) =>
     api.post<OfisChatResponse>('/moren-ofis/chat', { text, conversationId }).then((r) => r.data),
 
+  // FAZ 3 — Ajan mesajını hatırlatma önerisi olarak onay kuyruğuna düşür
+  proposeReminder: (body: { agent: string; title: string; content: string; dueDate?: string; taxpayerHint?: string }) =>
+    api.post('/moren-ofis/propose-reminder', body).then((r) => r.data),
+
   // DENİZ — proposals & patrol
   proposals: (status?: string) =>
     api.get<OfisProposal[]>('/moren-ofis/proposals', { params: status ? { status } : {} }).then((r) => r.data),
