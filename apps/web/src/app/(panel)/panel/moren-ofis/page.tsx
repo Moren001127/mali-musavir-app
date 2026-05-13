@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { Briefcase, DollarSign, LayoutGrid, Plus, History, MessageSquare } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Briefcase, DollarSign, LayoutGrid, Plus, History, MessageSquare, Trash2 } from 'lucide-react';
 import { ofisApi, type OfisMessage, type AgentId } from '@/lib/moren-ofis';
 import { Office } from './_components/Office';
 import { AgentStatCard } from './_components/AgentStatCard';
@@ -21,6 +21,7 @@ export default function MorenOfisPage() {
   const [totalCost, setTotalCost] = useState(0);
   const [showOffice, setShowOffice] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [workflowTerminalJobs, setWorkflowTerminalJobs] = useState<Record<string, true>>({});
 
   const { data: team = [] } = useQuery({
     queryKey: ['moren-ofis-team'],
@@ -50,12 +51,29 @@ export default function MorenOfisPage() {
     staleTime: Infinity,
   });
 
+  const qc = useQueryClient();
+
+  const deleteConvMut = useMutation({
+    mutationFn: (id: string) => ofisApi.deleteConversation(id),
+    onSuccess: (_, id) => {
+      toast.success('Konuşma silindi');
+      if (id === conversationId) {
+        setMessages([]);
+        setConversationId(undefined);
+        setWorkflowTerminalJobs({});
+      }
+      qc.invalidateQueries({ queryKey: ['moren-ofis-conversations'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message),
+  });
+
   const loadConversation = async (id: string) => {
     const c = await ofisApi.getConversation(id);
     const msgs = (c as any)?.messages as OfisMessage[] | null;
     if (Array.isArray(msgs)) {
       setMessages(msgs);
       setConversationId(id);
+      setWorkflowTerminalJobs({});
       setShowHistory(false);
     }
   };
@@ -67,6 +85,7 @@ export default function MorenOfisPage() {
       if (Array.isArray(msgs) && msgs.length > 0) {
         setMessages(msgs);
         setConversationId((lastConversation as any).id);
+        setWorkflowTerminalJobs({});
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -85,6 +104,38 @@ export default function MorenOfisPage() {
     return `$${usd.toFixed(2)}`;
   };
 
+  const pushIncomingMessage = (msg: OfisMessage) => {
+    setMessages((prev) => {
+      const wf = msg.workflow;
+      if (
+        wf?.kind === 'mizan_gelir_workflow' &&
+        wf.jobId &&
+        wf.phase &&
+        prev.some(
+          (existing) =>
+            existing.workflow?.kind === 'mizan_gelir_workflow' &&
+            existing.workflow.jobId === wf.jobId &&
+            existing.workflow.phase === wf.phase &&
+            existing.agent === msg.agent,
+        )
+      ) {
+        return prev;
+      }
+      return [...prev, msg];
+    });
+
+    if (msg.agent === 'user' || msg.agent === 'system') return;
+    setActiveAgents((curr) => [
+      ...curr.filter((a) => a.id !== msg.agent),
+      { id: msg.agent as AgentId, state: 'talking' },
+    ]);
+    setTimeout(() => {
+      setActiveAgents((curr) =>
+        curr.map((a) => (a.id === msg.agent ? { ...a, state: 'idle' as CharacterState } : a)),
+      );
+    }, 3000);
+  };
+
   const chatWithFileMut = useMutation({
     mutationFn: ({ files, text }: { files: File[]; text: string }) =>
       ofisApi.chatWithFile(files, text, conversationId),
@@ -99,6 +150,10 @@ export default function MorenOfisPage() {
           if (msg.agent === 'user') {
             // user mesajını da göster (evrak içeriği), zaten backend "Evrak: ..." yazıyor
             setMessages((prev) => [...prev, msg]);
+            return;
+          }
+          if (msg.agent === 'system') {
+            pushIncomingMessage(msg);
             return;
           }
           setMessages((prev) => [...prev, msg]);
@@ -132,6 +187,10 @@ export default function MorenOfisPage() {
       for (const msg of res.messages) {
         setTimeout(() => {
           if (msg.agent === 'user') return;
+          if (msg.agent === 'system') {
+            pushIncomingMessage(msg);
+            return;
+          }
           setMessages((prev) => [...prev, msg]);
           setActiveAgents((curr) => [
             ...curr.filter((a) => a.id !== msg.agent),
@@ -158,6 +217,80 @@ export default function MorenOfisPage() {
     setMessages((prev) => [...prev, userMsg]);
     chatMut.mutate(text);
   };
+
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const terminalJobIds = new Set<string>();
+    for (const msg of messages) {
+      const wf = msg.workflow;
+      if (wf?.kind !== 'mizan_gelir_workflow' || !wf.jobId) continue;
+      if (wf.phase === 'completed' || wf.phase === 'failed' || wf.phase === 'cancelled') {
+        terminalJobIds.add(wf.jobId);
+      }
+    }
+
+    const pendingJobIds = Array.from(
+      new Set(
+        messages
+          .map((msg) => msg.workflow)
+          .filter(
+            (wf): wf is NonNullable<OfisMessage['workflow']> =>
+              wf?.kind === 'mizan_gelir_workflow' &&
+              !!wf.jobId &&
+              !terminalJobIds.has(wf.jobId) &&
+              !workflowTerminalJobs[wf.jobId] &&
+              (wf.phase === 'queued' || wf.phase === 'running' || wf.phase === 'waiting_mizan'),
+          )
+          .map((wf) => wf.jobId as string),
+      ),
+    );
+
+    if (pendingJobIds.length === 0) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      await Promise.all(
+        pendingJobIds.map(async (jobId) => {
+          try {
+            const res = await ofisApi.mizanGelirWorkflowStatus(jobId, conversationId);
+            if (cancelled) return;
+            const isTerminal =
+              res.workflow.phase === 'completed' ||
+              res.workflow.phase === 'failed' ||
+              res.workflow.phase === 'cancelled';
+            if (!isTerminal) {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  const wf = msg.workflow;
+                  if (wf?.kind !== 'mizan_gelir_workflow' || wf.jobId !== jobId) return msg;
+                  return { ...msg, workflow: res.workflow };
+                }),
+              );
+            }
+            if (isTerminal) {
+              setWorkflowTerminalJobs((curr) => ({ ...curr, [jobId]: true }));
+              qc.invalidateQueries({ queryKey: ['moren-ofis-conversations'] });
+            }
+            for (const msg of res.messages || []) {
+              pushIncomingMessage(msg);
+            }
+          } catch (e) {
+            // Poll hatası sohbeti bölmesin; bir sonraki tur tekrar deneyecek.
+            console.warn('mizan-gelir workflow poll failed', e);
+          }
+        }),
+      );
+    };
+
+    poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, messages, workflowTerminalJobs, qc]);
 
   const stateMap = new Map(activeAgents.map((a) => [a.id, a.state]));
 
@@ -248,28 +381,44 @@ export default function MorenOfisPage() {
                   }}
                 >
                   {sortedConvs.map((c) => (
-                    <button
+                    <div
                       key={c.id}
-                      onClick={() => loadConversation(c.id)}
-                      className="w-full text-left px-3 py-2 hover:bg-white/[0.04] transition border-b"
+                      className="flex items-stretch hover:bg-white/[0.04] transition border-b group"
                       style={{
                         borderColor: 'rgba(255,255,255,0.04)',
                         background: c.id === conversationId ? 'rgba(212,184,118,0.10)' : 'transparent',
                       }}
                     >
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <MessageSquare size={10} style={{ color: GOLD, opacity: 0.7 }} />
-                        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                          {c.messageCount} mesaj
-                        </span>
-                        <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                          {new Date(c.lastActivityAt).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p className="text-[12px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.85)' }}>
-                        {c.title || 'Yeni sohbet'}
-                      </p>
-                    </button>
+                      <button
+                        onClick={() => loadConversation(c.id)}
+                        className="flex-1 text-left px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <MessageSquare size={10} style={{ color: GOLD, opacity: 0.7 }} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+                            {c.messageCount} mesaj
+                          </span>
+                          <span className="text-[10px] ml-auto" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                            {new Date(c.lastActivityAt).toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="text-[12px] line-clamp-2" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                          {c.title || 'Yeni sohbet'}
+                        </p>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`"${c.title || 'Bu konuşma'}" silinsin mi?`)) {
+                            deleteConvMut.mutate(c.id);
+                          }
+                        }}
+                        className="px-2 opacity-0 group-hover:opacity-100 transition"
+                        title="Konuşmayı sil"
+                      >
+                        <Trash2 size={11} style={{ color: '#fca5a5' }} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

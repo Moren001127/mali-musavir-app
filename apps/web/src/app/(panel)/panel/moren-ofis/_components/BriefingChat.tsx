@@ -1,13 +1,100 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell, Paperclip, X, FileText } from 'lucide-react';
-import type { OfisAgent, OfisMessage, AgentId } from '@/lib/moren-ofis';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell, Paperclip, X, FileText, CheckCircle2, AlertTriangle, Clock3, FileSpreadsheet } from 'lucide-react';
+import type { OfisAgent, OfisMessage, AgentId, MizanGelirWorkflowEvent } from '@/lib/moren-ofis';
 import { ofisApi } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 import { toast } from 'sonner';
 
 const GOLD = '#d4b876';
+
+function formatTry(value?: number) {
+  const num = Number(value || 0);
+  return `${num.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
+}
+
+function WorkflowEventCard({ workflow, content }: { workflow: MizanGelirWorkflowEvent; content: string }) {
+  const terminal = workflow.phase === 'completed';
+  const failed = workflow.phase === 'failed' || workflow.phase === 'cancelled';
+  const accent = terminal ? '#86efac' : failed ? '#fca5a5' : GOLD;
+  const Icon = terminal ? CheckCircle2 : failed ? AlertTriangle : Clock3;
+  const phaseLabel: Record<string, string> = {
+    queued: 'Sırada',
+    running: 'Çalışıyor',
+    waiting_mizan: 'Mizan bekleniyor',
+    completed: 'Tamamlandı',
+    failed: 'Hata',
+    cancelled: 'İptal',
+    needs_clarification: 'Netleştirme',
+  };
+
+  return (
+    <div
+      className="animate-fade-in-up rounded-lg px-3.5 py-3 text-[12px]"
+      style={{
+        animation: 'fade-in-up 0.35s ease-out',
+        background: 'rgba(15,11,21,0.72)',
+        border: `1px solid ${accent}35`,
+        color: 'rgba(250,250,249,0.88)',
+      }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <Icon size={13} style={{ color: accent }} />
+        <span className="text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: accent }}>
+          Sistem Olayı
+        </span>
+        <span className="ml-auto text-[10px] font-mono" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          {phaseLabel[workflow.phase] || workflow.phase}
+        </span>
+      </div>
+      <div className="font-medium mb-2">{content}</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+        {workflow.jobId && <WorkflowPill label="jobId" value={workflow.jobId} />}
+        {workflow.taxpayerName && <WorkflowPill label="mükellef" value={workflow.taxpayerName} />}
+        {workflow.donem && <WorkflowPill label="dönem" value={workflow.donem} />}
+        {workflow.donemTipi && <WorkflowPill label="tip" value={workflow.donemTipi} />}
+        {workflow.mizanId && <WorkflowPill label="mizanId" value={workflow.mizanId} />}
+        {workflow.gelirTablosuId && <WorkflowPill label="gelirTablosuId" value={workflow.gelirTablosuId} />}
+      </div>
+      {workflow.summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mt-2">
+          <WorkflowPill label="net satış" value={formatTry(workflow.summary.netSatislar)} />
+          <WorkflowPill label="brüt kâr" value={formatTry(workflow.summary.brutSatisKari)} />
+          <WorkflowPill label="faaliyet kârı" value={formatTry(workflow.summary.faaliyetKari)} />
+          <WorkflowPill label="net kâr" value={formatTry(workflow.summary.donemNetKari)} />
+        </div>
+      )}
+      {workflow.error && (
+        <div className="mt-2 text-[11px]" style={{ color: '#fca5a5' }}>
+          {workflow.error}
+        </div>
+      )}
+      {workflow.logs && workflow.logs.length > 0 && (
+        <div className="mt-2 flex items-start gap-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.48)' }}>
+          <FileSpreadsheet size={11} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
+          <span>{workflow.logs.slice(-2).join(' · ')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkflowPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div
+      className="min-w-0 rounded px-2 py-1"
+      style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="text-[9px] uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.36)' }}>
+        {label}
+      </div>
+      <div className="truncate font-mono text-[10.5px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+        {value}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Dashboard'un "Bugünkü Brifing" kartı tarzında — koyu altın çerçeve,
@@ -63,7 +150,7 @@ export function BriefingChat({
     if (!speakEnabled || !isSynthesisSupported()) return;
     if (messages.length === 0) return;
     const newMessages = messages.slice(lastSpokenIdx + 1);
-    const agentMessages = newMessages.filter((m) => m.agent !== 'user');
+    const agentMessages = newMessages.filter((m) => m.agent !== 'user' && m.agent !== 'system');
     if (agentMessages.length === 0) {
       setLastSpokenIdx(messages.length - 1);
       return;
@@ -298,6 +385,24 @@ export function BriefingChat({
           </div>
         ) : (
           messages.map((m, i) => {
+            if (m.agent === 'system') {
+              return m.workflow?.kind === 'mizan_gelir_workflow' ? (
+                <WorkflowEventCard key={i} workflow={m.workflow} content={m.content} />
+              ) : (
+                <div
+                  key={i}
+                  className="rounded-lg px-3.5 py-2.5 text-[12px] animate-fade-in-up"
+                  style={{
+                    animation: 'fade-in-up 0.35s ease-out',
+                    background: 'rgba(212,184,118,0.08)',
+                    border: `1px solid ${GOLD}28`,
+                    color: 'rgba(250,250,249,0.78)',
+                  }}
+                >
+                  {m.content}
+                </div>
+              );
+            }
             if (m.agent === 'user') {
               return (
                 <div

@@ -61,9 +61,28 @@ export class MorenOfisController {
     });
   }
 
+  @Get('workflows/mizan-gelir/:jobId')
+  mizanGelirWorkflowStatus(
+    @Req() req: any,
+    @Param('jobId') jobId: string,
+    @Query('conversationId') conversationId?: string,
+  ) {
+    return this.service.getMizanGelirWorkflowStatus({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+      jobId,
+      conversationId,
+    });
+  }
+
   @Get('conversations/:id')
   getOne(@Req() req: any, @Param('id') id: string) {
     return this.service.getConversation(req.user.tenantId, id);
+  }
+
+  @Delete('conversations/:id')
+  deleteConv(@Req() req: any, @Param('id') id: string) {
+    return this.service.deleteConversation(req.user.tenantId, id);
   }
 
   @Post('chat')

@@ -31,13 +31,44 @@ export interface OfisToolCall {
   durationMs: number;
 }
 
+export type MizanGelirWorkflowPhase =
+  | 'queued'
+  | 'running'
+  | 'waiting_mizan'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'needs_clarification';
+
+export interface MizanGelirWorkflowEvent {
+  kind: 'mizan_gelir_workflow';
+  phase: MizanGelirWorkflowPhase;
+  jobId?: string;
+  status?: string;
+  taxpayerId?: string;
+  taxpayerName?: string;
+  donem?: string;
+  donemTipi?: string;
+  mizanId?: string;
+  gelirTablosuId?: string;
+  error?: string;
+  logs?: string[];
+  summary?: {
+    netSatislar: number;
+    brutSatisKari: number;
+    faaliyetKari: number;
+    donemNetKari: number;
+  };
+}
+
 export interface OfisMessage {
-  agent: AgentId | 'user';
+  agent: AgentId | 'user' | 'system';
   content: string;
   ts: string;
   durationMs?: number;
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
   toolCalls?: OfisToolCall[];
+  workflow?: MizanGelirWorkflowEvent;
 }
 
 export interface OfisChatResponse {
@@ -45,6 +76,12 @@ export interface OfisChatResponse {
   messages: OfisMessage[];
   active: AgentId[];
   totalCostUsd: number;
+}
+
+export interface MizanGelirWorkflowStatusResponse {
+  workflow: MizanGelirWorkflowEvent;
+  job: any;
+  messages: OfisMessage[];
 }
 
 export interface OfisConversationSummary {
@@ -72,6 +109,14 @@ export const ofisApi = {
     api.get<ToolAuditData>('/moren-ofis/tool-audit', { params: filters }).then((r) => r.data),
   getConversation: (id: string) =>
     api.get(`/moren-ofis/conversations/${id}`).then((r) => r.data as { messages: OfisMessage[] }),
+  deleteConversation: (id: string) =>
+    api.delete(`/moren-ofis/conversations/${id}`).then((r) => r.data),
+  mizanGelirWorkflowStatus: (jobId: string, conversationId?: string) =>
+    api
+      .get<MizanGelirWorkflowStatusResponse>(`/moren-ofis/workflows/mizan-gelir/${jobId}`, {
+        params: conversationId ? { conversationId } : undefined,
+      })
+      .then((r) => r.data),
   chat: (text: string, conversationId?: string) =>
     api.post<OfisChatResponse>('/moren-ofis/chat', { text, conversationId }).then((r) => r.data),
 

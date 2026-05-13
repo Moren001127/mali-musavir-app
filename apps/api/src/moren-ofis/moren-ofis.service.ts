@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MorenOfisMemoryService } from './memory.service';
 import { ToolExecutorService } from '../moren-ai/tool-executor.service';
 import { PendingActionsService } from '../pending-actions/pending-actions.service';
+import { LucaService } from '../luca/luca.service';
+import { GelirTablosuService } from '../mizan/gelir-tablosu.service';
 
 export interface OfisToolCall {
   tool: string;
@@ -13,8 +15,38 @@ export interface OfisToolCall {
   durationMs: number;
 }
 
+export type MizanGelirWorkflowPhase =
+  | 'queued'
+  | 'running'
+  | 'waiting_mizan'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'needs_clarification';
+
+export interface MizanGelirWorkflowEvent {
+  kind: 'mizan_gelir_workflow';
+  phase: MizanGelirWorkflowPhase;
+  jobId?: string;
+  status?: string;
+  taxpayerId?: string;
+  taxpayerName?: string;
+  donem?: string;
+  donemTipi?: string;
+  mizanId?: string;
+  gelirTablosuId?: string;
+  error?: string;
+  logs?: string[];
+  summary?: {
+    netSatislar: number;
+    brutSatisKari: number;
+    faaliyetKari: number;
+    donemNetKari: number;
+  };
+}
+
 export interface OfisMessage {
-  agent: AgentId | 'user';
+  agent: AgentId | 'user' | 'system';
   content: string;
   ts: string;
   // UI animasyonu için
@@ -23,6 +55,7 @@ export interface OfisMessage {
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
   // FAZ 1 — Hangi tool'ları kullandı (UI rozet için)
   toolCalls?: OfisToolCall[];
+  workflow?: MizanGelirWorkflowEvent;
 }
 
 export interface OfisTurnResponse {
@@ -30,6 +63,12 @@ export interface OfisTurnResponse {
   messages: OfisMessage[];
   active: AgentId[];
   totalCostUsd: number;
+}
+
+export interface MizanGelirWorkflowStatusResponse {
+  workflow: MizanGelirWorkflowEvent;
+  job: any;
+  messages: OfisMessage[];
 }
 
 @Injectable()
@@ -44,6 +83,8 @@ export class MorenOfisService {
     private readonly tools: ToolExecutorService,
     // FAZ 3 — Yazma niyetleri buradan onay kuyruğuna düşer
     private readonly pendingActions: PendingActionsService,
+    private readonly lucaService: LucaService,
+    private readonly gelirTablosuService: GelirTablosuService,
   ) {}
 
   /**
@@ -255,6 +296,24 @@ export class MorenOfisService {
     const conv = await this.upsertConversation(tenantId, userId, params.conversationId);
     const history = (conv.messages as OfisMessage[] | null) || [];
 
+    const newMessages: OfisMessage[] = [];
+    const userMsg: OfisMessage = {
+      agent: 'user',
+      content: text,
+      ts: new Date().toISOString(),
+    };
+    newMessages.push(userMsg);
+
+    const workflowTurn = await this.tryStartMizanGelirWorkflow({
+      tenantId,
+      userId,
+      conversationId: conv.id,
+      history,
+      userMsg,
+      text,
+    });
+    if (workflowTurn) return workflowTurn;
+
     // 0) HAFIZA YÜKLE — geçmiş özetler + ilgili gerçekler
     // Bu metin her ajanın system prompt'una eklenir, "patron'u tanıyor" hissi verir.
     const memoryContext = await this.memory.loadContext(tenantId, text);
@@ -274,14 +333,6 @@ export class MorenOfisService {
       prompt += `\n\nÖNEMLİ: Cevabın doğal sohbet havası olmalı — başlık/tablo/checkbox yasak. 2-4 cümle, max 80 kelime.`;
       return prompt;
     };
-
-    const newMessages: OfisMessage[] = [];
-    const userMsg: OfisMessage = {
-      agent: 'user',
-      content: text,
-      ts: new Date().toISOString(),
-    };
-    newMessages.push(userMsg);
 
     // 1) ARDA — soruyu analiz, hangi ajanlara delege edileceğine karar
     const suggested = suggestAgents(text);
@@ -355,6 +406,530 @@ export class MorenOfisService {
       active: delegateTo as AgentId[],
       totalCostUsd: totalCost,
     };
+  }
+
+  private async tryStartMizanGelirWorkflow(params: {
+    tenantId: string;
+    userId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+  }): Promise<OfisTurnResponse | null> {
+    if (!this.isMizanGelirWorkflowIntent(params.text)) return null;
+
+    const taxpayerResolution = await this.resolveWorkflowTaxpayer(params.tenantId, params.text);
+    if (taxpayerResolution.kind !== 'matched') {
+      const options =
+        taxpayerResolution.kind === 'ambiguous'
+          ? ` Şunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
+          : '';
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `Mizan-gelir tablosu akışını başlatacağım ama mükellefi tek eşleştiremedim.${options} Mükellef adını veya VKN'yi net yazar mısın?`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return {
+        conversationId: params.conversationId,
+        messages,
+        active: ['arda'],
+        totalCostUsd: 0,
+      };
+    }
+
+    const period = this.resolveWorkflowPeriod(params.text);
+    if (!period) {
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `Tamam, ${taxpayerResolution.taxpayer.name} için gerçek mizan-gelir tablosu akışını açacağım; dönem net değil. "2026 1. dönem", "2026-Q1" veya "2026-03" gibi yazarsan job'u başlatıyorum.`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return {
+        conversationId: params.conversationId,
+        messages,
+        active: ['arda'],
+        totalCostUsd: 0,
+      };
+    }
+
+    const taxpayer = taxpayerResolution.taxpayer;
+    const job = await this.lucaService.createFetchJob({
+      tenantId: params.tenantId,
+      sessionId: undefined as any,
+      mukellefId: taxpayer.id,
+      donem: period.donem,
+      tip: 'MIZAN',
+      createdBy: params.userId,
+      mukellefAdi: taxpayer.name,
+      priority: 2,
+    });
+    await this.lucaService
+      .appendJobLog(job.id, `Moren Ofis mizan-gelir workflow basladi; donemTipi=${period.donemTipi}`)
+      .catch((e: any) => this.logger.warn(`Workflow job log yazilamadi: ${e?.message}`));
+
+    const workflow: MizanGelirWorkflowEvent = {
+      kind: 'mizan_gelir_workflow',
+      phase: 'queued',
+      jobId: job.id,
+      status: job.status,
+      taxpayerId: taxpayer.id,
+      taxpayerName: taxpayer.name,
+      donem: period.donem,
+      donemTipi: period.donemTipi,
+      logs: this.parseLucaJobLogs(job.errorMsg),
+    };
+
+    const aylin: OfisMessage = {
+      agent: 'arda',
+      content: `${taxpayer.name} için ${period.label} mizan çekimini gerçek Luca kuyruğuna açtım. Mizan kaydı oluşmadan Cem analiz yazmayacak; job bitince gelir tablosunu gerçek mizan üzerinden üreteceğim.`,
+      ts: new Date().toISOString(),
+    };
+    const system: OfisMessage = {
+      agent: 'system',
+      content: 'Luca mizan job oluşturuldu.',
+      ts: new Date().toISOString(),
+      workflow,
+    };
+    const messages = [params.userMsg, aylin, system];
+    await this.persistConversationMessages(params.conversationId, params.history, messages);
+
+    return {
+      conversationId: params.conversationId,
+      messages,
+      active: ['kayra'],
+      totalCostUsd: 0,
+    };
+  }
+
+  async getMizanGelirWorkflowStatus(params: {
+    tenantId: string;
+    userId: string;
+    jobId: string;
+    conversationId?: string;
+  }): Promise<MizanGelirWorkflowStatusResponse> {
+    const job = await this.lucaService.getJob(params.jobId, params.tenantId);
+    const taxpayer = await this.getWorkflowTaxpayerById(params.tenantId, job.mukellefId);
+    const period = this.periodFromDonem(job.donem);
+    const logs = this.parseLucaJobLogs(job.errorMsg);
+    const base: Omit<MizanGelirWorkflowEvent, 'phase'> = {
+      kind: 'mizan_gelir_workflow',
+      jobId: job.id,
+      status: job.status,
+      taxpayerId: job.mukellefId,
+      taxpayerName: taxpayer?.name || this.extractMetaValue(job.errorMsg, 'mukellefAdi') || undefined,
+      donem: job.donem,
+      donemTipi: period.donemTipi,
+      logs,
+    };
+
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      const workflow: MizanGelirWorkflowEvent = {
+        ...base,
+        phase: job.status === 'cancelled' ? 'cancelled' : 'failed',
+        error: this.extractWorkflowError(job),
+      };
+      const messages = await this.appendWorkflowMessagesOnce({
+        tenantId: params.tenantId,
+        conversationId: params.conversationId,
+        jobId: job.id,
+        phase: workflow.phase,
+        messages: [
+          {
+            agent: 'system',
+            content: job.status === 'cancelled' ? 'Luca mizan job iptal edildi.' : 'Luca mizan job hata verdi.',
+            ts: new Date().toISOString(),
+            workflow,
+          },
+        ],
+      });
+      return { workflow, job, messages };
+    }
+
+    if (job.status !== 'done') {
+      const workflow: MizanGelirWorkflowEvent = {
+        ...base,
+        phase: job.status === 'running' ? 'running' : 'queued',
+      };
+      return { workflow, job, messages: [] };
+    }
+
+    const mizan = await (this.prisma as any).mizan.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        taxpayerId: job.mukellefId,
+        donem: job.donem,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!mizan) {
+      const workflow: MizanGelirWorkflowEvent = {
+        ...base,
+        phase: 'waiting_mizan',
+        error: 'Job done görünüyor ama mizan kaydı henüz bulunamadı.',
+      };
+      return { workflow, job, messages: [] };
+    }
+
+    let gelirTablosu = await (this.prisma as any).gelirTablosu.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        mizanId: mizan.id,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!gelirTablosu) {
+      gelirTablosu = await this.gelirTablosuService.generateFromMizan({
+        mizanId: mizan.id,
+        tenantId: params.tenantId,
+        donemTipi: period.donemTipi || mizan.donemTipi,
+        createdBy: params.userId,
+      });
+    }
+
+    const summary = this.summarizeGelirTablosu(gelirTablosu);
+    const workflow: MizanGelirWorkflowEvent = {
+      ...base,
+      phase: 'completed',
+      status: 'done',
+      mizanId: mizan.id,
+      gelirTablosuId: gelirTablosu.id,
+      summary,
+    };
+
+    const taxpayerName = workflow.taxpayerName || 'Mükellef';
+    const messages = await this.appendWorkflowMessagesOnce({
+      tenantId: params.tenantId,
+      conversationId: params.conversationId,
+      jobId: job.id,
+      phase: 'completed',
+      messages: [
+        {
+          agent: 'system',
+          content: 'Mizan kaydı bulundu ve gelir tablosu hazırlandı.',
+          ts: new Date().toISOString(),
+          workflow,
+        },
+        {
+          agent: 'cem',
+          content: this.buildCemGelirTablosuComment(taxpayerName, period.label, workflow),
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    return { workflow, job, messages };
+  }
+
+  private async persistConversationMessages(
+    conversationId: string,
+    history: OfisMessage[],
+    messages: OfisMessage[],
+  ) {
+    await (this.prisma as any).morenOfisConversation.update({
+      where: { id: conversationId },
+      data: {
+        messages: [...history, ...messages] as any,
+        lastActivityAt: new Date(),
+      },
+    });
+  }
+
+  private async appendWorkflowMessagesOnce(params: {
+    tenantId: string;
+    conversationId?: string;
+    jobId: string;
+    phase: MizanGelirWorkflowPhase;
+    messages: OfisMessage[];
+  }): Promise<OfisMessage[]> {
+    if (!params.conversationId) return [];
+    const conv = await (this.prisma as any).morenOfisConversation.findFirst({
+      where: { id: params.conversationId, tenantId: params.tenantId },
+      select: { messages: true },
+    });
+    if (!conv) return [];
+
+    const history = (conv.messages as OfisMessage[] | null) || [];
+    const alreadyWritten = history.some(
+      (m) =>
+        m.workflow?.kind === 'mizan_gelir_workflow' &&
+        m.workflow.jobId === params.jobId &&
+        m.workflow.phase === params.phase,
+    );
+    if (alreadyWritten) return [];
+
+    await (this.prisma as any).morenOfisConversation.update({
+      where: { id: params.conversationId },
+      data: {
+        messages: [...history, ...params.messages] as any,
+        lastActivityAt: new Date(),
+      },
+    });
+    return params.messages;
+  }
+
+  private isMizanGelirWorkflowIntent(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    const hasMizan = /\bmizan\w*/.test(q);
+    const hasGelirTablosu =
+      /gelir\s+tablo\w*/.test(q) ||
+      /kar\s+zarar/.test(q) ||
+      /gelir\s+durum/.test(q);
+    const hasAction =
+      /\b(cek|cekin|hazirla|hazirlar|olustur|cikar|uretil|yap|degerlendir|degerlendirme)\w*/.test(q);
+    return hasMizan && hasGelirTablosu && hasAction;
+  }
+
+  private async resolveWorkflowTaxpayer(
+    tenantId: string,
+    text: string,
+  ): Promise<
+    | { kind: 'matched'; taxpayer: { id: string; name: string; taxNumber?: string | null } }
+    | { kind: 'missing' }
+    | { kind: 'ambiguous'; options: Array<{ id: string; name: string; taxNumber?: string | null }> }
+  > {
+    const taxpayers: Array<{
+      id: string;
+      companyName: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      taxNumber: string | null;
+    }> = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
+      take: 1000,
+    });
+
+    const normalizedText = this.normalizeWorkflowText(text);
+    const textDigits = text.replace(/\D/g, '');
+
+    const scored = taxpayers
+      .map((tp) => {
+        const name = this.taxpayerDisplayName(tp);
+        const phrases = [
+          tp.companyName || '',
+          [tp.firstName, tp.lastName].filter(Boolean).join(' '),
+          name,
+        ].filter(Boolean);
+
+        let score = 0;
+        if (tp.taxNumber) {
+          const taxDigits = String(tp.taxNumber).replace(/\D/g, '');
+          if (taxDigits && textDigits.includes(taxDigits)) score = Math.max(score, 120);
+        }
+
+        for (const phrase of phrases) {
+          const normalizedPhrase = this.normalizeWorkflowText(phrase);
+          if (!normalizedPhrase) continue;
+          if (normalizedText.includes(normalizedPhrase)) {
+            score = Math.max(score, 80 + Math.min(normalizedPhrase.length, 30));
+          }
+          const tokens = normalizedPhrase.split(' ').filter((t) => t.length >= 4);
+          if (tokens.length > 0) {
+            const hits = tokens.filter((token) => normalizedText.includes(token)).length;
+            if (hits > 0) score = Math.max(score, 20 + hits * 15 + Math.round((hits / tokens.length) * 20));
+          }
+        }
+
+        return {
+          taxpayer: { id: tp.id, name, taxNumber: tp.taxNumber },
+          score,
+        };
+      })
+      .filter((item) => item.score >= 25)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length === 0) return { kind: 'missing' };
+    const topScore = scored[0].score;
+    const top = scored.filter((item) => topScore - item.score <= 5).slice(0, 5);
+    if (top.length === 1) return { kind: 'matched', taxpayer: top[0].taxpayer };
+    return { kind: 'ambiguous', options: top.map((item) => item.taxpayer) };
+  }
+
+  private resolveWorkflowPeriod(text: string): { donem: string; donemTipi: string; label: string } | null {
+    const q = this.normalizeWorkflowText(text);
+    const raw = text.toLocaleLowerCase('tr-TR');
+
+    const directQuarter =
+      raw.match(/\b(20\d{2})\s*[-/]?\s*q\s*([1-4])\b/i) ||
+      q.match(/\b(20\d{2})\s+q\s*([1-4])\b/);
+    if (directQuarter) return this.quarterPeriod(directQuarter[1], directQuarter[2]);
+
+    const yearThenQuarter = q.match(/\b(20\d{2})\s+([1-4])\s+(?:donem\w*|ceyrek|gecici)\b/);
+    if (yearThenQuarter) return this.quarterPeriod(yearThenQuarter[1], yearThenQuarter[2]);
+
+    const quarterThenYear = q.match(/\b([1-4])\s+(?:donem\w*|ceyrek|gecici)\s+(20\d{2})\b/);
+    if (quarterThenYear) return this.quarterPeriod(quarterThenYear[2], quarterThenYear[1]);
+
+    const yearly = q.match(/\b(20\d{2})\s+(?:yillik|yilsonu|yil\s+sonu)\b/);
+    if (yearly) {
+      return { donem: `${yearly[1]}-YILLIK`, donemTipi: 'YILLIK', label: `${yearly[1]} yıllık` };
+    }
+
+    const monthly = raw.match(/\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/);
+    if (monthly) {
+      const donem = `${monthly[1]}-${String(Number(monthly[2])).padStart(2, '0')}`;
+      return { donem, donemTipi: 'AYLIK', label: this.periodLabel(donem, 'AYLIK') };
+    }
+
+    const months: Record<string, number> = {
+      ocak: 1,
+      subat: 2,
+      mart: 3,
+      nisan: 4,
+      mayis: 5,
+      haziran: 6,
+      temmuz: 7,
+      agustos: 8,
+      eylul: 9,
+      ekim: 10,
+      kasim: 11,
+      aralik: 12,
+    };
+    const year = q.match(/\b(20\d{2})\b/)?.[1];
+    if (year) {
+      for (const [monthName, monthNo] of Object.entries(months)) {
+        if (q.includes(monthName)) {
+          const donem = `${year}-${String(monthNo).padStart(2, '0')}`;
+          return { donem, donemTipi: 'AYLIK', label: this.periodLabel(donem, 'AYLIK') };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private periodFromDonem(donem: string): { donem: string; donemTipi: string; label: string } {
+    const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
+    if (quarter) return this.quarterPeriod(quarter[1], quarter[2]);
+    if (/^\d{4}-YILLIK$/i.test(donem)) {
+      const year = donem.slice(0, 4);
+      return { donem, donemTipi: 'YILLIK', label: `${year} yıllık` };
+    }
+    const monthly = donem.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+    if (monthly) return { donem, donemTipi: 'AYLIK', label: this.periodLabel(donem, 'AYLIK') };
+    return { donem, donemTipi: 'AYLIK', label: donem };
+  }
+
+  private quarterPeriod(year: string, quarter: string): { donem: string; donemTipi: string; label: string } {
+    const q = Math.min(Math.max(Number(quarter), 1), 4);
+    const donem = `${year}-Q${q}`;
+    return { donem, donemTipi: `GECICI_Q${q}`, label: `${year} ${q}. dönem` };
+  }
+
+  private periodLabel(donem: string, donemTipi: string): string {
+    const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
+    if (quarter) return `${quarter[1]} ${quarter[2]}. dönem`;
+    if (donemTipi === 'YILLIK') return `${donem.slice(0, 4)} yıllık`;
+    const monthly = donem.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+    if (!monthly) return donem;
+    const monthNames = [
+      'Ocak',
+      'Şubat',
+      'Mart',
+      'Nisan',
+      'Mayıs',
+      'Haziran',
+      'Temmuz',
+      'Ağustos',
+      'Eylül',
+      'Ekim',
+      'Kasım',
+      'Aralık',
+    ];
+    return `${monthNames[Number(monthly[2]) - 1]} ${monthly[1]}`;
+  }
+
+  private async getWorkflowTaxpayerById(
+    tenantId: string,
+    taxpayerId: string,
+  ): Promise<{ id: string; name: string; taxNumber?: string | null } | null> {
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
+    });
+    if (!taxpayer) return null;
+    return { id: taxpayer.id, name: this.taxpayerDisplayName(taxpayer), taxNumber: taxpayer.taxNumber };
+  }
+
+  private taxpayerDisplayName(taxpayer: {
+    companyName?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }): string {
+    return (
+      taxpayer.companyName ||
+      [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
+      'Mükellef'
+    ).trim();
+  }
+
+  private summarizeGelirTablosu(gt: any) {
+    return {
+      netSatislar: this.toNumber(gt?.netSatislar),
+      brutSatisKari: this.toNumber(gt?.brutSatisKari),
+      faaliyetKari: this.toNumber(gt?.faaliyetKari),
+      donemNetKari: this.toNumber(gt?.donemNetKari),
+    };
+  }
+
+  private buildCemGelirTablosuComment(
+    taxpayerName: string,
+    label: string,
+    workflow: MizanGelirWorkflowEvent,
+  ): string {
+    const s = workflow.summary || { netSatislar: 0, brutSatisKari: 0, faaliyetKari: 0, donemNetKari: 0 };
+    const netLabel = s.donemNetKari >= 0 ? 'dönem net kârı' : 'dönem net zararı';
+    return `${taxpayerName} için ${label} gelir tablosu gerçek mizan üzerinden oluştu. Net satış ${this.formatTry(s.netSatislar)}, brüt kâr ${this.formatTry(s.brutSatisKari)}, faaliyet kârı ${this.formatTry(s.faaliyetKari)}, ${netLabel} ${this.formatTry(Math.abs(s.donemNetKari))}. mizanId ${workflow.mizanId}, gelirTablosuId ${workflow.gelirTablosuId}.`;
+  }
+
+  private parseLucaJobLogs(errorMsg?: string | null): string[] {
+    return String(errorMsg || '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && !line.startsWith('[META]'));
+  }
+
+  private extractWorkflowError(job: any): string {
+    const logs = this.parseLucaJobLogs(job?.errorMsg);
+    const last = [...logs].reverse().find((line) => /(^|\]\s*)X\s+/i.test(line)) || logs[logs.length - 1];
+    return last || (job?.status === 'cancelled' ? 'Job iptal edildi.' : 'Job hata verdi.');
+  }
+
+  private extractMetaValue(errorMsg: string | null | undefined, key: string): string | null {
+    const match = String(errorMsg || '').match(new RegExp(`${key}=([^\\n;]+)`));
+    return match?.[1]?.trim() || null;
+  }
+
+  private normalizeWorkflowText(value: string): string {
+    return String(value || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ı/g, 'i')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/['’`]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+  }
+
+  private toNumber(value: any): number {
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  private formatTry(value: number): string {
+    const num = Number.isFinite(value) ? value : 0;
+    return `${num.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
   }
 
   private async callAgent(
@@ -478,6 +1053,13 @@ Samimi, mesai arkadaşı havası.`;
     const c = await (this.prisma as any).morenOfisConversation.findUnique({ where: { id } });
     if (!c || c.tenantId !== tenantId) return null;
     return c;
+  }
+
+  async deleteConversation(tenantId: string, id: string) {
+    const result = await (this.prisma as any).morenOfisConversation.deleteMany({
+      where: { id, tenantId },
+    });
+    return { deleted: result.count };
   }
 
   /**

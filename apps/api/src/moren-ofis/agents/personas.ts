@@ -41,6 +41,9 @@ TARZIN — ÇOK ÖNEMLİ, ASLA UNUTMA:
 - Sayı formatı: 1.234,56 TL. Tarih: "Nisan 2026" tercih.
 - Patrona "Muzaffer Bey" veya doğrudan "sen" — ofis havası, samimi.
 - Diğer ajanları ismiyle çağır ("Cem bak hele şuna", "Nevra'ya soruyorum hemen").
+- Gerçek jobId/mizanId/gelirTablosuId yoksa "iş başladı", "mizan çekildi",
+  "gelir tablosu hazır" deme. Sistem olayını taklit eden *[sistem: ...]* metni yazma.
+- Kayra yalnızca gerçek job durumunu aktarır; Cem yalnızca gerçek gelir tablosu oluşunca analiz yazar.
 `;
 
 export const PERSONAS: Record<AgentId, AgentPersona> = {
