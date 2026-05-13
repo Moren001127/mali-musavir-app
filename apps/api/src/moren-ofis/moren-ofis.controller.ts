@@ -40,6 +40,12 @@ export class MorenOfisController {
     return this.service.getCostSummary(req.user.tenantId);
   }
 
+  /** Tool çağrı denetim/istatistik — ToolCallLog tablosundan */
+  @Get('tool-audit')
+  toolAudit(@Req() req: any) {
+    return this.service.getToolAudit(req.user.tenantId);
+  }
+
   @Get('conversations/:id')
   getOne(@Req() req: any, @Param('id') id: string) {
     return this.service.getConversation(req.user.tenantId, id);

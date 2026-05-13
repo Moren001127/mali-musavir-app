@@ -319,6 +319,41 @@ ${summary}
   }
 
   /**
+   * Tool call audit — son N tool çağrısı + tool başına istatistik.
+   * ToolCallLog tablosundan okur.
+   */
+  async getToolAudit(tenantId: string) {
+    const recent = await (this.prisma as any).toolCallLog.findMany({
+      where: { tenantId },
+      orderBy: { ts: 'desc' },
+      take: 50,
+    });
+    const stats = await (this.prisma as any).toolCallLog.groupBy({
+      by: ['tool'],
+      where: { tenantId },
+      _count: { _all: true },
+      _avg: { durationMs: true },
+      _sum: { resultSize: true },
+    });
+    const failures = await (this.prisma as any).toolCallLog.count({
+      where: { tenantId, ok: false },
+    });
+    const total = await (this.prisma as any).toolCallLog.count({ where: { tenantId } });
+    return {
+      recent,
+      stats: stats.map((s: any) => ({
+        tool: s.tool,
+        count: s._count._all,
+        avgMs: Math.round(s._avg.durationMs || 0),
+        totalBytes: s._sum.resultSize || 0,
+      })).sort((a: any, b: any) => b.count - a.count),
+      total,
+      failures,
+      failureRate: total > 0 ? failures / total : 0,
+    };
+  }
+
+  /**
    * Tenant'ın AI maliyet özeti — bugün/bu hafta/toplam.
    * Konuşma mesajlarındaki usage.costUsd alanlarını topluyor.
    * Maliyet kaçağı varsa burada erken yakalanır.

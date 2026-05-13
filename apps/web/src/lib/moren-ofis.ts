@@ -68,6 +68,7 @@ export const ofisApi = {
   team: () => api.get<OfisAgent[]>('/moren-ofis/team').then((r) => r.data),
   conversations: () => api.get<OfisConversationSummary[]>('/moren-ofis/conversations').then((r) => r.data),
   costSummary: () => api.get<AiCostSummary>('/moren-ofis/cost-summary').then((r) => r.data),
+  toolAudit: () => api.get<ToolAuditData>('/moren-ofis/tool-audit').then((r) => r.data),
   getConversation: (id: string) =>
     api.get(`/moren-ofis/conversations/${id}`).then((r) => r.data as { messages: OfisMessage[] }),
   chat: (text: string, conversationId?: string) =>
@@ -91,6 +92,29 @@ export const ofisApi = {
     api.post<MorenFact>('/moren-ofis/memory/facts', body).then((r) => r.data),
   deleteFact: (id: string) => api.delete(`/moren-ofis/memory/facts/${id}`).then((r) => r.data),
 };
+
+export interface ToolCallRecord {
+  id: string;
+  tenantId: string;
+  caller: string;
+  callerRef: string | null;
+  agent: string | null;
+  tool: string;
+  input: any;
+  ok: boolean;
+  durationMs: number;
+  resultSize: number | null;
+  errorMsg: string | null;
+  ts: string;
+}
+
+export interface ToolAuditData {
+  recent: ToolCallRecord[];
+  stats: { tool: string; count: number; avgMs: number; totalBytes: number }[];
+  total: number;
+  failures: number;
+  failureRate: number;
+}
 
 export interface MorenFact {
   id: string;
