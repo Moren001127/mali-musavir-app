@@ -6,6 +6,24 @@ import { Toaster } from 'sonner';
 export const metadata: Metadata = {
   title: 'Moren Mali Müşavirlik Yönetim Portali',
   description: 'Moren Mali Müşavirlik — Ofis Yönetim Portali',
+  manifest: '/manifest.json',
+  themeColor: '#d4b876',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Moren',
+  },
+  icons: {
+    apple: '/brand/moren-logo-gold.png',
+  },
+};
+
+export const viewport = {
+  themeColor: '#d4b876',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

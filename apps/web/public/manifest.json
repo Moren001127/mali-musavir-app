@@ -1,0 +1,32 @@
+{
+  "name": "Moren Mali Müşavirlik",
+  "short_name": "Moren",
+  "description": "Moren AI ekibi ile mali müşavirlik portali",
+  "start_url": "/panel",
+  "display": "standalone",
+  "background_color": "#0f0d0b",
+  "theme_color": "#d4b876",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/brand/moren-logo-gold.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Moren Ofis Chat",
+      "short_name": "Ofis",
+      "url": "/panel/moren-ofis",
+      "icons": [{ "src": "/brand/moren-logo-gold.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "AI Onay Kuyruğu",
+      "short_name": "Onay",
+      "url": "/panel/ai-onay",
+      "icons": [{ "src": "/brand/moren-logo-gold.png", "sizes": "192x192" }]
+    }
+  ]
+}
