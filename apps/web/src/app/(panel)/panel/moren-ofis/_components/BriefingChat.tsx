@@ -440,7 +440,7 @@ export function BriefingChat({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,.txt,.csv,.md"
+          accept="image/*,.txt,.csv,.md,.pdf,application/pdf"
           onChange={onFileChange}
           style={{ display: 'none' }}
         />

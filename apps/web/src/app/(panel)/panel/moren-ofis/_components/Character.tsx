@@ -18,14 +18,14 @@ interface CharacterStyle {
 
 const CHARACTERS: Record<AgentId, CharacterStyle> = {
   arda: {
-    // Baş müşavir, 30, gözlüklü, takım elbise — lider
-    skinTone: '#e8c4a0',
-    hairColor: '#3a2820',
-    hairStyle: 'short-male',
-    shirtColor: '#1e293b', // koyu lacivert blazer
+    // AYLİN — Baş müşavir, 34, kadın, profesyonel bob saç, gözlük, blazer
+    skinTone: '#f2d4b0',
+    hairColor: '#2a1810', // koyu kahve
+    hairStyle: 'short-female-bob',
+    shirtColor: '#1e293b', // koyu lacivert blazer (lider duruşu)
     pantsColor: '#0f172a',
     glasses: true,
-    accessory: 'tie',
+    accessory: 'watch', // saat — lider, zamanı yönetir
   },
   nevra: {
     // Vergi uzmanı, 28, kısa saç bob, profesyonel

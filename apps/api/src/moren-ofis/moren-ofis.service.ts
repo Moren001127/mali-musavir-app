@@ -83,9 +83,18 @@ export class MorenOfisService {
       ) {
         extracted = file.buffer.toString('utf8').slice(0, 50_000);
         extractMethod = 'text';
-      } else if (file.mimeType === 'application/pdf') {
-        extracted = '[PDF henüz desteklenmiyor — sayfayı resim olarak yükleyin]';
-        extractMethod = 'pdf-unsupported';
+      } else if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.originalName)) {
+        // PDF metnini çıkar — pdf-parse text-only layer'ı okuyabilir.
+        // Taranmış (resim) PDF'ler boş metin döner — bu durumda kullanıcıya not.
+        const pdfParse = require('pdf-parse');
+        const result = await pdfParse(file.buffer, { max: 30 }); // max 30 sayfa
+        extracted = (result?.text || '').trim();
+        if (!extracted) {
+          extracted = '[PDF metni boş — muhtemelen taranmış görsel PDF. Sayfayı PNG olarak yükle OCR yapayım.]';
+          extractMethod = 'pdf-empty';
+        } else {
+          extractMethod = `pdf (${result?.numpages || '?'} sayfa)`;
+        }
       } else {
         extracted = `[Bilinmeyen dosya tipi: ${file.mimeType}]`;
         extractMethod = 'unknown';
