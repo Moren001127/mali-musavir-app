@@ -345,6 +345,70 @@ export default function IsletmeHesapOzetiPage() {
         onCancel={() => cancelLucaJobsMut.mutate()}
       />
 
+      {/* CANLI JOB DURUMU — her aktif job için son log satırı + spinner */}
+      {Object.entries(lucaJobs).filter(([, j]) => j).length > 0 && (
+        <div
+          className="rounded-xl border p-3 text-sm space-y-2"
+          style={{
+            background: 'rgba(212,184,118,0.04)',
+            borderColor: 'rgba(212,184,118,0.18)',
+          }}
+        >
+          <div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: GOLD }}>
+            Luca İşlem Durumu
+          </div>
+          {Object.entries(lucaJobs)
+            .filter(([, j]) => j)
+            .map(([donemStr, j]) => {
+              if (!j) return null;
+              const donem = Number(donemStr);
+              const statusColor =
+                j.status === 'done' ? '#22c55e'
+                : j.status === 'failed' ? '#ef4444'
+                : j.status === 'running' ? '#60a5fa'
+                : '#f59e0b';
+              const statusText =
+                j.status === 'done' ? 'Tamamlandı'
+                : j.status === 'failed' ? 'Hata'
+                : j.status === 'running' ? 'Çalışıyor'
+                : 'Sırada';
+              // errorMsg satırlarından son [META] olmayan satırı al
+              const lastLine = String(j.message || '')
+                .split('\n')
+                .filter((l) => l.trim() && !l.startsWith('[META]'))
+                .slice(-1)[0] || (j.status === 'pending' ? 'Local agent bekleniyor...' : '');
+              const isActive = j.status === 'pending' || j.status === 'running';
+              return (
+                <div key={donemStr} className="flex items-center gap-2">
+                  {isActive ? (
+                    <Loader2 size={12} className="animate-spin" style={{ color: statusColor }} />
+                  ) : (
+                    <span style={{ color: statusColor, fontSize: 14 }}>
+                      {j.status === 'done' ? '✓' : j.status === 'failed' ? '✗' : '·'}
+                    </span>
+                  )}
+                  <span className="font-semibold" style={{ color: GOLD, minWidth: 70 }}>
+                    {donem}. dönem
+                  </span>
+                  <span
+                    className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                    style={{ background: `${statusColor}22`, color: statusColor }}
+                  >
+                    {statusText}
+                  </span>
+                  <span
+                    className="font-mono text-xs flex-1 truncate"
+                    style={{ color: 'rgba(250,250,249,0.65)' }}
+                    title={lastLine}
+                  >
+                    {lastLine}
+                  </span>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
       <div
         className="rounded-xl border border-white/10 p-4"
         style={{ background: 'rgba(255,255,255,0.02)' }}
