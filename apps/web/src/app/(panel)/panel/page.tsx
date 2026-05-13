@@ -10,6 +10,7 @@ import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
+import { MorenAiOzetWidget } from '@/components/dashboard/MorenAiOzetWidget';
 
 const GOLD = '#d4b876';
 
@@ -1173,6 +1174,8 @@ export default function DashboardPage() {
       </div>
 
       <BrifingKart userName={displayUserName(meUser)} />
+
+      <MorenAiOzetWidget />
 
       <WorkflowOverview counts={workflowCounts} total={workflowTotal} activeCount={activeCount || totalTx} />
 
