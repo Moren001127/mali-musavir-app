@@ -602,8 +602,15 @@ export class MorenOfisService {
 
     const taxpayer = taxpayerResolution.taxpayer;
     const types = this.resolveKdvControlTypes(params.text);
-    if (this.isStatusQuestion(params.text) && !this.hasKdvStartVerb(params.text)) {
-      return this.buildKdvControlStatusTurn({ ...params, taxpayer, period, types });
+    const wantsReconciliationRefresh = this.wantsKdvReconciliationRefresh(params.text);
+    if (this.isStatusQuestion(params.text) || wantsReconciliationRefresh) {
+      return this.buildKdvControlStatusTurn({
+        ...params,
+        taxpayer,
+        period,
+        types,
+        rerunIfNeeded: wantsReconciliationRefresh,
+      });
     }
 
     const toolCalls: OfisToolCall[] = [];
@@ -613,6 +620,10 @@ export class MorenOfisService {
       created: boolean;
       jobId?: string;
       jobStatus?: string;
+      linked?: number;
+      linkedTotal?: number;
+      alreadyLinked?: number;
+      ocrQueued?: number;
       linkMessage?: string;
       ocrMessage?: string;
       error?: string;
@@ -654,7 +665,9 @@ export class MorenOfisService {
         const linkT0 = Date.now();
         try {
           const linked = await this.kdvControlService.linkMihsapInvoices(result.session.id, params.tenantId);
-          item.linkMessage = `${linked.linked} fatura baglandi`;
+          item.linked = linked.linked;
+          item.linkedTotal = linked.total;
+          item.alreadyLinked = linked.alreadyLinked;
           toolCalls.push({
             tool: 'kdv-control.linkMihsapInvoices',
             input: { sessionId: result.session.id, type },
@@ -664,6 +677,7 @@ export class MorenOfisService {
 
           const ocrT0 = Date.now();
           const ocr = await this.kdvControlService.startOcrForSession(result.session.id, params.tenantId);
+          item.ocrQueued = ocr.queued || 0;
           item.ocrMessage = `${ocr.queued || 0} OCR kuyruğa alindi`;
           toolCalls.push({
             tool: 'kdv-control.startOcrForSession',
@@ -672,7 +686,7 @@ export class MorenOfisService {
             durationMs: Date.now() - ocrT0,
           });
         } catch (err: any) {
-          item.linkMessage = err?.message || 'Mihsap fatura baglama atlandi';
+          item.linkMessage = err?.message || 'Mihsap fatura bağlama atlandı';
           toolCalls.push({
             tool: 'kdv-control.linkMihsapInvoices',
             input: { sessionId: result.session.id, type },
@@ -700,22 +714,24 @@ export class MorenOfisService {
 
     const aylin: OfisMessage = {
       agent: 'arda',
-      content: `${taxpayer.name} icin ${period.label} KDV kontrolunu gercek KDV Kontrol modulune bagladim. Ben sonucu uydurmayacagim; Nevra sadece eslestirme sonucu olusunca yorumlar, Kayra da job durumunu takip eder.`,
+      content: `${taxpayer.name} için ${period.label} KDV kontrolünü gerçek KDV Kontrol modülünde başlattım. Sonuç oluşmadan “tamamlandı” demeyeceğim; Kayra çekim durumunu takip edecek, Nevra da eşleşme sonucunu yorumlayacak.`,
       ts: new Date().toISOString(),
     };
     const kayraLines = started.map((item) => {
-      if (item.error) return `${this.formatKdvControlType(item.type)} acilamadi: ${item.error}`;
+      if (item.error) return `${this.formatKdvControlType(item.type)} açılamadı: ${item.error}`;
       const parts = [
-        `${this.formatKdvControlType(item.type)} sessionId ${item.sessionId}`,
-        item.jobId ? `jobId ${item.jobId} (${item.jobStatus || 'queued'})` : 'Luca job yok',
+        `${this.formatKdvControlType(item.type)} tarafı Luca kuyruğuna alındı`,
       ];
-      if (item.linkMessage) parts.push(item.linkMessage);
-      if (item.ocrMessage) parts.push(item.ocrMessage);
+      if (item.linkedTotal !== undefined) {
+        parts.push(`${item.linked || 0} yeni, ${item.alreadyLinked || 0} mevcut fatura bağlandı`);
+      }
+      if (item.ocrQueued !== undefined) parts.push(`${item.ocrQueued} belge OCR kuyruğunda`);
+      else if (item.ocrMessage || item.linkMessage) parts.push(item.ocrMessage || item.linkMessage || '');
       return parts.join(', ');
     });
     const kayra: OfisMessage = {
       agent: 'kayra',
-      content: `Gercek is kaydi acildi: ${kayraLines.join(' | ')}. Luca job bitmeden ve OCR/eslestirme tamamlanmadan basari mesaji yazmayacagim.`,
+      content: `${kayraLines.join('. ')}. Luca çekimi ve OCR/eşleştirme bitmeden başarı sonucu yazmayacağım.`,
       ts: new Date().toISOString(),
       toolCalls,
     };
@@ -740,6 +756,7 @@ export class MorenOfisService {
     taxpayer: { id: string; name: string; taxNumber?: string | null };
     period: { dash: string; periodLabel: string; label: string };
     types: KdvControlWorkflowType[];
+    rerunIfNeeded?: boolean;
   }): Promise<OfisTurnResponse> {
     const sessions = await (this.prisma as any).kdvControlSession.findMany({
       where: {
@@ -756,14 +773,14 @@ export class MorenOfisService {
 
     const aylin: OfisMessage = {
       agent: 'arda',
-      content: `${params.taxpayer.name} icin ${params.period.label} KDV kontrol durumunu gercek kayitlardan kontrol ettim; sadece kayitta olanlari soyluyoruz.`,
+      content: `${params.taxpayer.name} için ${params.period.label} KDV kontrol durumuna gerçek kayıtlardan baktım. Kayra teknik akışı, Nevra da eşleşme sonucunu kısa özetleyecek.`,
       ts: new Date().toISOString(),
     };
 
     if (sessions.length === 0) {
       const nevra: OfisMessage = {
         agent: 'nevra',
-        content: `Bu donem icin KDV Kontrol seansi bulamadim. Yapilmis gibi cevap vermiyorum; "KDV kontrolu baslat" dersen once seans ve Luca job acilmali.`,
+        content: `Bu dönem için KDV Kontrol seansı bulamadım. Yapılmış gibi cevap vermiyorum; kontrol isteniyorsa önce seans ve Luca çekimi açılmalı.`,
         ts: new Date().toISOString(),
       };
       const messages = [params.userMsg, aylin, nevra];
@@ -771,35 +788,84 @@ export class MorenOfisService {
       return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
 
-    const lines: string[] = [];
+    const kayraLines: string[] = [];
+    const nevraLines: string[] = [];
+    const toolCalls: OfisToolCall[] = [];
     for (const session of sessions) {
-      const [stats, job] = await Promise.all([
+      let [stats, job] = await Promise.all([
         this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => null),
         (this.prisma as any).lucaFetchJob.findFirst({
           where: { tenantId: params.tenantId, sessionId: session.id },
           orderBy: { createdAt: 'desc' },
         }),
       ]);
-      const jobPart = job
-        ? `Luca job ${job.status}${job.status === 'failed' ? `, hata: ${this.extractWorkflowError(job)}` : ''}`
-        : 'Luca job yok';
+
+      const typeLabel = this.formatKdvControlType(session.type);
+      const jobStatus = String(job?.status || '');
+      const jobRunning = ['pending', 'running'].includes(jobStatus);
+
+      if (params.rerunIfNeeded && stats && !jobRunning && stats.totalRecords > 0 && stats.totalImages > 0) {
+        const hasProblem =
+          stats.unmatched > 0 ||
+          stats.partialMatch > 0 ||
+          stats.needsReview > 0 ||
+          stats.needsOcrConfirm > 0 ||
+          (session._count?.results || 0) === 0;
+        if (hasProblem) {
+          const t0 = Date.now();
+          try {
+            await this.kdvControlService.runReconciliation(session.id, params.tenantId);
+            toolCalls.push({
+              tool: 'kdv-control.runReconciliation',
+              input: { sessionId: session.id, type: session.type },
+              ok: true,
+              durationMs: Date.now() - t0,
+            });
+            stats = await this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => stats);
+            kayraLines.push(`${typeLabel} tarafında eşleştirmeyi yeniden çalıştırdım.`);
+          } catch (err: any) {
+            toolCalls.push({
+              tool: 'kdv-control.runReconciliation',
+              input: { sessionId: session.id, type: session.type },
+              ok: false,
+              durationMs: Date.now() - t0,
+            });
+            kayraLines.push(`${typeLabel} tarafında yeniden eşleştirme çalışmadı: ${err?.message || String(err)}.`);
+          }
+        } else {
+          kayraLines.push(`${typeLabel} tarafında tekrar eşleştirme gerektiren açık hata görünmedi.`);
+        }
+      } else if (params.rerunIfNeeded && jobRunning) {
+        kayraLines.push(`${typeLabel} tarafında Luca çekimi hâlâ ${jobStatus}; bu bitmeden yeniden eşleştirme başlatmadım.`);
+      }
+
+      if (job?.status === 'failed') {
+        kayraLines.push(`${typeLabel} tarafında Luca çekimi hata vermiş: ${this.extractWorkflowError(job)}.`);
+      } else if (jobRunning && !params.rerunIfNeeded) {
+        kayraLines.push(`${typeLabel} tarafında Luca çekimi ${jobStatus} durumda; sonuç için işin bitmesini bekliyorum.`);
+      }
+
       if (stats) {
-        lines.push(
-          `${this.formatKdvControlType(session.type)}: seans ${session.status}, Luca ${stats.totalRecords} satir, ${stats.totalImages} fatura, ${stats.matched} tam, ${stats.partialMatch} kismi, ${stats.unmatched} eslesmeyen, ${stats.needsReview + stats.needsOcrConfirm} inceleme; ${jobPart}.`,
-        );
+        nevraLines.push(this.buildKdvStatusSentence(typeLabel, stats));
       } else {
-        lines.push(
-          `${this.formatKdvControlType(session.type)}: seans ${session.status}, Luca ${session._count?.kdvRecords || 0} satir, ${session._count?.images || 0} fatura, ${session._count?.results || 0} sonuc; ${jobPart}.`,
-        );
+        nevraLines.push(`${typeLabel} tarafında seans var ama özet istatistik okunamadı.`);
       }
     }
 
+    const kayra: OfisMessage = {
+      agent: 'kayra',
+      content: kayraLines.length > 0
+        ? kayraLines.join(' ')
+        : 'Teknik tarafta bekleyen işlem görünmüyor; mevcut KDV kontrol sonuçlarını okudum.',
+      ts: new Date().toISOString(),
+      toolCalls,
+    };
     const nevra: OfisMessage = {
       agent: 'nevra',
-      content: lines.join(' '),
+      content: nevraLines.join(' '),
       ts: new Date().toISOString(),
     };
-    const messages = [params.userMsg, aylin, nevra];
+    const messages = [params.userMsg, aylin, kayra, nevra];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
     return { conversationId: params.conversationId, messages, active: ['nevra', 'kayra'], totalCostUsd: 0 };
   }
@@ -1122,6 +1188,11 @@ export class MorenOfisService {
     return hasKdv && hasControl;
   }
 
+  private wantsKdvReconciliationRefresh(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    return /tekrar\s+eslestir|yeniden\s+eslestir|eslestirme\s+baslat|eslesme\s+hata|eslesme\s+sorun|sonuclarini\s+bildir|sonucunu\s+bildir/.test(q);
+  }
+
   private isStatusQuestion(text: string): boolean {
     const q = this.normalizeWorkflowText(text);
     return /hazir|hazirlandi|hazirladiniz|yaptiniz|yapildi|olustu|olusturdunuz|cekildi|bitti|tamamlandi|ne\s+durumda|durum|sonuc|var\s+mi/.test(q);
@@ -1236,12 +1307,27 @@ export class MorenOfisService {
       case 'KDV_391':
         return '391 hesaplanan KDV';
       case 'ISLETME_GELIR':
-        return 'isletme gelir';
+        return 'işletme gelir';
       case 'ISLETME_GIDER':
-        return 'isletme gider';
+        return 'işletme gider';
       default:
         return type;
     }
+  }
+
+  private buildKdvStatusSentence(typeLabel: string, stats: any): string {
+    const reviewTotal = Number(stats.needsReview || 0) + Number(stats.needsOcrConfirm || 0);
+    const problemTotal = Number(stats.partialMatch || 0) + Number(stats.unmatched || 0) + reviewTotal;
+    if (Number(stats.totalRecords || 0) === 0) {
+      return `${typeLabel} tarafında Luca kaydı henüz yok; eşleştirme sonucu oluşmamış.`;
+    }
+    if (Number(stats.totalImages || 0) === 0) {
+      return `${typeLabel} tarafında Luca’dan ${stats.totalRecords} satır var ama karşılaştırılacak fatura görseli bağlı değil.`;
+    }
+    if (problemTotal === 0) {
+      return `${typeLabel} tarafında ${stats.totalRecords} Luca satırı ve ${stats.totalImages} fatura kontrol edildi; ${stats.matched} tam eşleşme var, açık hata görünmüyor.`;
+    }
+    return `${typeLabel} tarafında ${stats.totalRecords} Luca satırı ve ${stats.totalImages} fatura kontrol edildi; ${stats.matched} tam eşleşme, ${stats.partialMatch} kısmi, ${stats.unmatched} eşleşmeyen, ${reviewTotal} inceleme bekleyen kayıt var.`;
   }
 
   private detectKnownModuleCommand(text: string): string | null {
