@@ -400,6 +400,9 @@ export class MorenOfisService {
 
     const totalCost = newMessages.reduce((s, m) => s + (m.usage?.costUsd || 0), 0);
 
+    // Günlük maliyet limit kontrolü — fire and forget, kullanıcı bunu beklemez
+    this.checkDailyCostLimit(tenantId).catch(() => {});
+
     return {
       conversationId: conv.id,
       messages: newMessages,
@@ -1127,6 +1130,54 @@ sadece ne YAPILMASI gerektiğini söyle. Eylem patronun elinde.`;
       failureRate: total > 0 ? failures / total : 0,
       allTools: allTools.map((t: any) => t.tool).sort(),
     };
+  }
+
+  /**
+   * Günlük maliyet limit kontrolü. Tenant ayarlarında MOREN_AI_DAILY_LIMIT_USD
+   * tanımlıysa ve bugünkü harcama eşiği aştıysa: kullanıcıya in-app Notification.
+   * sendMessage sonunda çağrılır, fire-and-forget.
+   */
+  private async checkDailyCostLimit(tenantId: string) {
+    try {
+      const limitStr = process.env.MOREN_AI_DAILY_LIMIT_USD;
+      const limit = Number(limitStr || '0');
+      if (!limit || limit <= 0) return;
+
+      // Bugünkü maliyet
+      const cost = await this.getCostSummary(tenantId);
+      if (cost.today < limit) return;
+
+      // Aynı gün için aynı uyarıyı tekrar atma — son 4 saatte var mı bak
+      const fourHrAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+      const existing = await (this.prisma as any).notification.count({
+        where: {
+          tenantId,
+          type: 'AI_COST_LIMIT',
+          createdAt: { gte: fourHrAgo },
+        },
+      });
+      if (existing > 0) return;
+
+      const users = await this.prisma.user.findMany({
+        where: { tenantId, isActive: true },
+        select: { id: true },
+      });
+      for (const u of users) {
+        await (this.prisma as any).notification.create({
+          data: {
+            tenantId,
+            userId: u.id,
+            title: '⚠️ AI Maliyet Limiti Aşıldı',
+            body: `Bugünkü Moren AI harcaması ${cost.today.toFixed(4)} USD oldu (limit ${limit.toFixed(2)} USD). Tool & Maliyet sayfasından detayı kontrol et.`,
+            type: 'AI_COST_LIMIT',
+            metadata: { today: cost.today, limit, msgCount: cost.msgCount },
+          },
+        }).catch(() => {});
+      }
+      this.logger.warn(`AI maliyet limiti aşıldı tenant=${tenantId} today=${cost.today.toFixed(4)} limit=${limit}`);
+    } catch (e: any) {
+      this.logger.warn(`cost limit kontrol: ${e?.message}`);
+    }
   }
 
   /**
