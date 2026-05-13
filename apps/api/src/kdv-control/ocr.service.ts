@@ -1451,7 +1451,7 @@ export class OcrService {
 
     if (grossByRate.size < 2) return [];
     const breakdown = Array.from(grossByRate.entries())
-      .sort((a, b) => b[0] - a[0])
+      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
       .map(([oran, gross]) => ({
         oran,
         tutar: Math.round((gross * oran / (100 + oran)) * 100) / 100,
@@ -2411,7 +2411,7 @@ export class OcrService {
     // 2+ oran bulunduysa anlamlı. Tek oran için zaten kdvTutari var, üretme.
     if (sumByOran.size < 2) return [];
     return Array.from(sumByOran.entries())
-      .sort((a, b) => b[0] - a[0]) // %20, %10, %1 sırayla
+      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
       .map(([oran, tutar]) => ({
         oran,
         tutar: Math.round(tutar * 100) / 100,
@@ -2511,7 +2511,7 @@ export class OcrService {
     return {
       totalKdv,
       breakdown: Array.from(breakdown.entries())
-        .sort((a, b) => b[0] - a[0])
+        .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
         .map(([oran, tutar]) => ({ oran, tutar: Math.round(tutar * 100) / 100, matrah: null })),
     };
   }

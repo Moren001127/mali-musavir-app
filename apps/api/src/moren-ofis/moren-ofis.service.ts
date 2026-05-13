@@ -7,6 +7,7 @@ import { ToolExecutorService } from '../moren-ai/tool-executor.service';
 import { PendingActionsService } from '../pending-actions/pending-actions.service';
 import { LucaService } from '../luca/luca.service';
 import { GelirTablosuService } from '../mizan/gelir-tablosu.service';
+import { KdvControlService } from '../kdv-control/kdv-control.service';
 
 export interface OfisToolCall {
   tool: string;
@@ -71,6 +72,8 @@ export interface MizanGelirWorkflowStatusResponse {
   messages: OfisMessage[];
 }
 
+type KdvControlWorkflowType = 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER';
+
 @Injectable()
 export class MorenOfisService {
   private readonly logger = new Logger(MorenOfisService.name);
@@ -85,6 +88,7 @@ export class MorenOfisService {
     private readonly pendingActions: PendingActionsService,
     private readonly lucaService: LucaService,
     private readonly gelirTablosuService: GelirTablosuService,
+    private readonly kdvControlService: KdvControlService,
   ) {}
 
   /**
@@ -304,6 +308,16 @@ export class MorenOfisService {
     };
     newMessages.push(userMsg);
 
+    const gelirStatusTurn = await this.tryHandleGelirTablosuStatusQuery({
+      tenantId,
+      userId,
+      conversationId: conv.id,
+      history,
+      userMsg,
+      text,
+    });
+    if (gelirStatusTurn) return gelirStatusTurn;
+
     const workflowTurn = await this.tryStartMizanGelirWorkflow({
       tenantId,
       userId,
@@ -313,6 +327,25 @@ export class MorenOfisService {
       text,
     });
     if (workflowTurn) return workflowTurn;
+
+    const kdvControlTurn = await this.tryHandleKdvControlCommand({
+      tenantId,
+      userId,
+      conversationId: conv.id,
+      history,
+      userMsg,
+      text,
+    });
+    if (kdvControlTurn) return kdvControlTurn;
+
+    const guardedModuleTurn = await this.tryGuardKnownModuleCommand({
+      tenantId,
+      conversationId: conv.id,
+      history,
+      userMsg,
+      text,
+    });
+    if (guardedModuleTurn) return guardedModuleTurn;
 
     // 0) HAFIZA YÜKLE — geçmiş özetler + ilgili gerçekler
     // Bu metin her ajanın system prompt'una eklenir, "patron'u tanıyor" hissi verir.
@@ -337,12 +370,13 @@ export class MorenOfisService {
     // 1) ARDA — soruyu analiz, hangi ajanlara delege edileceğine karar
     const suggested = suggestAgents(text);
     const delegateTo = suggested.length > 0 ? suggested : ['nevra']; // fallback: vergi uzmanı
+    const teamGreeting = this.isTeamGreeting(text);
 
     // ARDA delege mesajı (UI animasyonu için, içerik kısa)
     const ardaStart = await this.callAgent('arda', [
       { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
       ...this.recentHistoryAsMessages(history, 6),
-      { role: 'user', content: this.buildArdaTriagePrompt(text, delegateTo) },
+      { role: 'user', content: this.buildArdaTriagePrompt(text, delegateTo, teamGreeting) },
     ], history);
     newMessages.push(ardaStart);
 
@@ -351,14 +385,14 @@ export class MorenOfisService {
       this.callAgent(agentId as AgentId, [
         { role: 'system', content: enhancedSystemPrompt(PERSONAS[agentId as AgentId].systemPrompt) },
         ...this.recentHistoryAsMessages(history, 6),
-        { role: 'user', content: this.buildAgentPrompt(text, agentId as AgentId) },
+        { role: 'user', content: this.buildAgentPrompt(text, agentId as AgentId, teamGreeting) },
       ], history),
     );
     const delegateResponses = await Promise.all(delegatePromises);
     newMessages.push(...delegateResponses);
 
     // 3) ARDA — sentez (eğer 2+ ajan cevap verdiyse veya complex query ise)
-    if (delegateResponses.length > 1) {
+    if (delegateResponses.length > 1 && !teamGreeting) {
       const synthesis = await this.callAgent('arda', [
         { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
         { role: 'user', content: this.buildSynthesisPrompt(text, delegateResponses) },
@@ -409,6 +443,390 @@ export class MorenOfisService {
       active: delegateTo as AgentId[],
       totalCostUsd: totalCost,
     };
+  }
+
+  private async tryHandleGelirTablosuStatusQuery(params: {
+    tenantId: string;
+    userId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+  }): Promise<OfisTurnResponse | null> {
+    if (!this.isGelirTablosuStatusIntent(params.text)) return null;
+
+    const taxpayerResolution = await this.resolveWorkflowTaxpayer(params.tenantId, params.text);
+    if (taxpayerResolution.kind !== 'matched') {
+      const options =
+        taxpayerResolution.kind === 'ambiguous'
+          ? ` Sunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
+          : '';
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `Gelir tablosu durumunu gercek kayitlardan kontrol edecegim ama mukellefi tek eslestiremedim.${options} Mukellef adini veya VKN'yi net yazar misin?`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+    }
+
+    const period = this.resolveWorkflowPeriod(params.text);
+    if (!period) {
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `${taxpayerResolution.taxpayer.name} icin gelir tablosu durumunu kontrol edecegim ama donem net degil. "2026 1. donem", "2026-Q1" veya "2026-03" gibi yazarsan kayitlardan bakarim.`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+    }
+
+    const taxpayer = taxpayerResolution.taxpayer;
+    const [gelirTablosu, mizan, job] = await Promise.all([
+      (this.prisma as any).gelirTablosu.findFirst({
+        where: { tenantId: params.tenantId, taxpayerId: taxpayer.id, donem: period.donem },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (this.prisma as any).mizan.findFirst({
+        where: { tenantId: params.tenantId, taxpayerId: taxpayer.id, donem: period.donem },
+        orderBy: { createdAt: 'desc' },
+      }),
+      (this.prisma as any).lucaFetchJob.findFirst({
+        where: { tenantId: params.tenantId, mukellefId: taxpayer.id, donem: period.donem, tip: 'MIZAN' },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const aylin: OfisMessage = {
+      agent: 'arda',
+      content: `${taxpayer.name} icin ${period.label} gelir tablosu durumunu kayitlardan kontrol ettim; sozu Cem/Kayra soyleyecek, tekrar yapmayacagim.`,
+      ts: new Date().toISOString(),
+    };
+
+    let specialist: OfisMessage;
+    if (gelirTablosu) {
+      const summary = this.summarizeGelirTablosu(gelirTablosu);
+      const workflow: MizanGelirWorkflowEvent = {
+        kind: 'mizan_gelir_workflow',
+        phase: 'completed',
+        status: 'done',
+        taxpayerId: taxpayer.id,
+        taxpayerName: taxpayer.name,
+        donem: period.donem,
+        donemTipi: period.donemTipi,
+        mizanId: gelirTablosu.mizanId || mizan?.id,
+        gelirTablosuId: gelirTablosu.id,
+        summary,
+      };
+      specialist = {
+        agent: 'cem',
+        content: this.buildCemGelirTablosuComment(taxpayer.name, period.label, workflow),
+        ts: new Date().toISOString(),
+        workflow,
+      };
+    } else if (job && ['pending', 'running'].includes(String(job.status))) {
+      specialist = {
+        agent: 'kayra',
+        content: `Hazir degil; ${period.label} mizan job'u ${job.status} durumda. jobId ${job.id}. Job bitmeden Cem gelir tablosu varmis gibi analiz yazmayacak.`,
+        ts: new Date().toISOString(),
+      };
+    } else if (job && ['failed', 'cancelled'].includes(String(job.status))) {
+      specialist = {
+        agent: 'kayra',
+        content: `Hazir degil; Luca mizan job'u ${job.status} kapanmis. Son hata: ${this.extractWorkflowError(job)} jobId ${job.id}.`,
+        ts: new Date().toISOString(),
+      };
+    } else if (mizan) {
+      specialist = {
+        agent: 'cem',
+        content: `Mizan kaydi var ama gelir tablosu kaydi henuz yok. mizanId ${mizan.id}. "Gelir tablosunu olustur" komutu geldiginde bunu gercek mizandan uretmem gerekiyor.`,
+        ts: new Date().toISOString(),
+      };
+    } else {
+      specialist = {
+        agent: 'cem',
+        content: `Hazir degil. ${taxpayer.name} icin ${period.label} mizan ve gelir tablosu kaydi bulamadim; yapilmis gibi cevap vermiyorum.`,
+        ts: new Date().toISOString(),
+      };
+    }
+
+    const messages = [params.userMsg, aylin, specialist];
+    await this.persistConversationMessages(params.conversationId, params.history, messages);
+    return {
+      conversationId: params.conversationId,
+      messages,
+      active: [specialist.agent as AgentId],
+      totalCostUsd: 0,
+    };
+  }
+
+  private async tryHandleKdvControlCommand(params: {
+    tenantId: string;
+    userId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+  }): Promise<OfisTurnResponse | null> {
+    if (!this.isKdvControlIntent(params.text)) return null;
+
+    const taxpayerResolution = await this.resolveWorkflowTaxpayer(params.tenantId, params.text);
+    if (taxpayerResolution.kind !== 'matched') {
+      const options =
+        taxpayerResolution.kind === 'ambiguous'
+          ? ` Sunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
+          : '';
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `KDV kontrolu icin gercek modulu kullanacagim ama mukellefi tek eslestiremedim.${options} Mukellef adini veya VKN'yi netlestirir misin?`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+    }
+
+    const period = this.resolveKdvMonthlyPeriod(params.text);
+    if (!period) {
+      const aylin: OfisMessage = {
+        agent: 'arda',
+        content: `${taxpayerResolution.taxpayer.name} icin KDV kontrolu gercek modulle yapilacak; ay net degil. "Mayis 2026 KDV kontrol" veya "2026-05 KDV kontrol" diye yazarsan seansi acarim.`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+    }
+
+    const taxpayer = taxpayerResolution.taxpayer;
+    const types = this.resolveKdvControlTypes(params.text);
+    if (this.isStatusQuestion(params.text) && !this.hasExecutionVerb(params.text)) {
+      return this.buildKdvControlStatusTurn({ ...params, taxpayer, period, types });
+    }
+
+    const toolCalls: OfisToolCall[] = [];
+    const started: Array<{
+      type: KdvControlWorkflowType;
+      sessionId: string;
+      created: boolean;
+      jobId?: string;
+      jobStatus?: string;
+      linkMessage?: string;
+      ocrMessage?: string;
+      error?: string;
+    }> = [];
+
+    for (const type of types) {
+      const t0 = Date.now();
+      try {
+        const result = await this.kdvControlService.findOrCreateSession(params.tenantId, params.userId, {
+          type,
+          periodLabel: period.periodLabel,
+          taxpayerId: taxpayer.id,
+          notes: 'Moren Ofis komutuyla acildi',
+        });
+        toolCalls.push({
+          tool: 'kdv-control.findOrCreateSession',
+          input: { taxpayerId: taxpayer.id, periodLabel: period.periodLabel, type },
+          ok: true,
+          durationMs: Date.now() - t0,
+        });
+
+        const item = {
+          type,
+          sessionId: result.session.id,
+          created: Boolean(result.created),
+        } as (typeof started)[number];
+
+        const jobT0 = Date.now();
+        const job = await this.kdvControlService.queueLucaImport(result.session.id, params.tenantId, params.userId);
+        item.jobId = job.jobId;
+        item.jobStatus = job.status;
+        toolCalls.push({
+          tool: 'kdv-control.queueLucaImport',
+          input: { sessionId: result.session.id, type },
+          ok: true,
+          durationMs: Date.now() - jobT0,
+        });
+
+        const linkT0 = Date.now();
+        try {
+          const linked = await this.kdvControlService.linkMihsapInvoices(result.session.id, params.tenantId);
+          item.linkMessage = `${linked.linked} fatura baglandi`;
+          toolCalls.push({
+            tool: 'kdv-control.linkMihsapInvoices',
+            input: { sessionId: result.session.id, type },
+            ok: true,
+            durationMs: Date.now() - linkT0,
+          });
+
+          const ocrT0 = Date.now();
+          const ocr = await this.kdvControlService.startOcrForSession(result.session.id, params.tenantId);
+          item.ocrMessage = `${ocr.queued || 0} OCR kuyruğa alindi`;
+          toolCalls.push({
+            tool: 'kdv-control.startOcrForSession',
+            input: { sessionId: result.session.id, type },
+            ok: true,
+            durationMs: Date.now() - ocrT0,
+          });
+        } catch (err: any) {
+          item.linkMessage = err?.message || 'Mihsap fatura baglama atlandi';
+          toolCalls.push({
+            tool: 'kdv-control.linkMihsapInvoices',
+            input: { sessionId: result.session.id, type },
+            ok: false,
+            durationMs: Date.now() - linkT0,
+          });
+        }
+
+        started.push(item);
+      } catch (err: any) {
+        started.push({
+          type,
+          sessionId: '',
+          created: false,
+          error: err?.message || String(err),
+        });
+        toolCalls.push({
+          tool: 'kdv-control.workflow',
+          input: { taxpayerId: taxpayer.id, periodLabel: period.periodLabel, type },
+          ok: false,
+          durationMs: Date.now() - t0,
+        });
+      }
+    }
+
+    const aylin: OfisMessage = {
+      agent: 'arda',
+      content: `${taxpayer.name} icin ${period.label} KDV kontrolunu gercek KDV Kontrol modulune bagladim. Ben sonucu uydurmayacagim; Nevra sadece eslestirme sonucu olusunca yorumlar, Kayra da job durumunu takip eder.`,
+      ts: new Date().toISOString(),
+    };
+    const kayraLines = started.map((item) => {
+      if (item.error) return `${this.formatKdvControlType(item.type)} acilamadi: ${item.error}`;
+      const parts = [
+        `${this.formatKdvControlType(item.type)} sessionId ${item.sessionId}`,
+        item.jobId ? `jobId ${item.jobId} (${item.jobStatus || 'queued'})` : 'Luca job yok',
+      ];
+      if (item.linkMessage) parts.push(item.linkMessage);
+      if (item.ocrMessage) parts.push(item.ocrMessage);
+      return parts.join(', ');
+    });
+    const kayra: OfisMessage = {
+      agent: 'kayra',
+      content: `Gercek is kaydi acildi: ${kayraLines.join(' | ')}. Luca job bitmeden ve OCR/eslestirme tamamlanmadan basari mesaji yazmayacagim.`,
+      ts: new Date().toISOString(),
+      toolCalls,
+    };
+
+    const messages = [params.userMsg, aylin, kayra];
+    await this.persistConversationMessages(params.conversationId, params.history, messages);
+    return {
+      conversationId: params.conversationId,
+      messages,
+      active: ['kayra', 'nevra'],
+      totalCostUsd: 0,
+    };
+  }
+
+  private async buildKdvControlStatusTurn(params: {
+    tenantId: string;
+    userId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+    taxpayer: { id: string; name: string; taxNumber?: string | null };
+    period: { dash: string; periodLabel: string; label: string };
+    types: KdvControlWorkflowType[];
+  }): Promise<OfisTurnResponse> {
+    const sessions = await (this.prisma as any).kdvControlSession.findMany({
+      where: {
+        tenantId: params.tenantId,
+        taxpayerId: params.taxpayer.id,
+        periodLabel: params.period.periodLabel,
+        type: { in: params.types },
+      },
+      include: {
+        _count: { select: { kdvRecords: true, images: true, results: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const aylin: OfisMessage = {
+      agent: 'arda',
+      content: `${params.taxpayer.name} icin ${params.period.label} KDV kontrol durumunu gercek kayitlardan kontrol ettim; sadece kayitta olanlari soyluyoruz.`,
+      ts: new Date().toISOString(),
+    };
+
+    if (sessions.length === 0) {
+      const nevra: OfisMessage = {
+        agent: 'nevra',
+        content: `Bu donem icin KDV Kontrol seansi bulamadim. Yapilmis gibi cevap vermiyorum; "KDV kontrolu baslat" dersen once seans ve Luca job acilmali.`,
+        ts: new Date().toISOString(),
+      };
+      const messages = [params.userMsg, aylin, nevra];
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
+    }
+
+    const lines: string[] = [];
+    for (const session of sessions) {
+      const [stats, job] = await Promise.all([
+        this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => null),
+        (this.prisma as any).lucaFetchJob.findFirst({
+          where: { tenantId: params.tenantId, sessionId: session.id },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+      const jobPart = job
+        ? `Luca job ${job.status}${job.status === 'failed' ? `, hata: ${this.extractWorkflowError(job)}` : ''}`
+        : 'Luca job yok';
+      if (stats) {
+        lines.push(
+          `${this.formatKdvControlType(session.type)}: seans ${session.status}, Luca ${stats.totalRecords} satir, ${stats.totalImages} fatura, ${stats.matched} tam, ${stats.partialMatch} kismi, ${stats.unmatched} eslesmeyen, ${stats.needsReview + stats.needsOcrConfirm} inceleme; ${jobPart}.`,
+        );
+      } else {
+        lines.push(
+          `${this.formatKdvControlType(session.type)}: seans ${session.status}, Luca ${session._count?.kdvRecords || 0} satir, ${session._count?.images || 0} fatura, ${session._count?.results || 0} sonuc; ${jobPart}.`,
+        );
+      }
+    }
+
+    const nevra: OfisMessage = {
+      agent: 'nevra',
+      content: lines.join(' '),
+      ts: new Date().toISOString(),
+    };
+    const messages = [params.userMsg, aylin, nevra];
+    await this.persistConversationMessages(params.conversationId, params.history, messages);
+    return { conversationId: params.conversationId, messages, active: ['nevra', 'kayra'], totalCostUsd: 0 };
+  }
+
+  private async tryGuardKnownModuleCommand(params: {
+    tenantId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+  }): Promise<OfisTurnResponse | null> {
+    const moduleName = this.detectKnownModuleCommand(params.text);
+    if (!moduleName || !this.hasExecutionVerb(params.text)) return null;
+
+    const aylin: OfisMessage = {
+      agent: 'arda',
+      content: `${moduleName} komutunu sohbet cevabi gibi uretmeyecegim. Bu komut icin Moren Ofis tarafinda henuz deterministik workflow baglantisi yoksa "yapildi" demek yasak; Deniz'in baglanti eksigi olarak onune dusuruyorum.`,
+      ts: new Date().toISOString(),
+    };
+    const deniz: OfisMessage = {
+      agent: 'deniz',
+      content: `${moduleName} icin eksik kopru: intent yakalama, ilgili servis/job cagirma, durum polling ve sistem karti. Baglanti kurulmadan ekip sadece yorum yapar, islem tamamlandi mesaji yazamaz.`,
+      ts: new Date().toISOString(),
+    };
+    const messages = [params.userMsg, aylin, deniz];
+    await this.persistConversationMessages(params.conversationId, params.history, messages);
+    return { conversationId: params.conversationId, messages, active: ['deniz'], totalCostUsd: 0 };
   }
 
   private async tryStartMizanGelirWorkflow(params: {
@@ -686,6 +1104,146 @@ export class MorenOfisService {
     const hasAction =
       /\b(cek|cekin|hazirla|hazirlar|olustur|cikar|uretil|yap|degerlendir|degerlendirme)\w*/.test(q);
     return hasMizan && hasGelirTablosu && hasAction;
+  }
+
+  private isGelirTablosuStatusIntent(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    const hasGelirTablosu =
+      /gelir\s+tablo\w*/.test(q) ||
+      /kar\s+zarar/.test(q) ||
+      /gelir\s+durum/.test(q);
+    return hasGelirTablosu && this.isStatusQuestion(text);
+  }
+
+  private isKdvControlIntent(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    const hasKdv = /\bkdv\b|indirilecek\s+kdv|hesaplanan\s+kdv|\b191\b|\b391\b/.test(q);
+    const hasControl = /kontrol|eslestir|mutabakat|karsilastir|beyan|durum|hazir|yap|baslat|cek|sorgula/.test(q);
+    return hasKdv && hasControl;
+  }
+
+  private isStatusQuestion(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    return /hazir|hazirlandi|hazirladiniz|yaptiniz|yapildi|olustu|olusturdunuz|cekildi|bitti|tamamlandi|ne\s+durumda|durum|sonuc|var\s+mi/.test(q);
+  }
+
+  private isTeamGreeting(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    const greeting = /\b(merhaba|selam|gunaydin|iyi\s+gunler|iyi\s+aksamlar)\b/.test(q);
+    const team = /\b(arkadas|arkadaslar|ekip|herkes|ofis)\b/.test(q);
+    return greeting && (team || q.split(' ').length <= 3);
+  }
+
+  private hasExecutionVerb(text: string): boolean {
+    const q = this.normalizeWorkflowText(text);
+    return /\b(cek|cekin|getir|indir|aktar|sorgula|kontrol|eslestir|mutabakat|baslat|calistir|hazirla|hazirlar|olustur|uret|isle|gonder|yap)\w*/.test(q);
+  }
+
+  private resolveKdvMonthlyPeriod(text: string): { dash: string; periodLabel: string; label: string } | null {
+    const raw = text.toLocaleLowerCase('tr-TR');
+    const q = this.normalizeWorkflowText(text);
+
+    const direct = raw.match(/\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/);
+    if (direct) return this.kdvPeriodFromYearMonth(Number(direct[1]), Number(direct[2]));
+
+    const months: Record<string, number> = {
+      ocak: 1,
+      subat: 2,
+      mart: 3,
+      nisan: 4,
+      mayis: 5,
+      haziran: 6,
+      temmuz: 7,
+      agustos: 8,
+      eylul: 9,
+      ekim: 10,
+      kasim: 11,
+      aralik: 12,
+    };
+    const explicitYear = q.match(/\b(20\d{2})\b/)?.[1];
+    for (const [monthName, monthNo] of Object.entries(months)) {
+      if (q.includes(monthName)) {
+        return this.kdvPeriodFromYearMonth(Number(explicitYear || new Date().getFullYear()), monthNo);
+      }
+    }
+
+    if (/\bbu\s+ay\b/.test(q)) {
+      const now = new Date();
+      return this.kdvPeriodFromYearMonth(now.getFullYear(), now.getMonth() + 1);
+    }
+    if (/\bgecen\s+ay\b|\bgecmis\s+ay\b/.test(q)) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return this.kdvPeriodFromYearMonth(d.getFullYear(), d.getMonth() + 1);
+    }
+
+    return null;
+  }
+
+  private kdvPeriodFromYearMonth(year: number, month: number): { dash: string; periodLabel: string; label: string } {
+    const mm = String(month).padStart(2, '0');
+    const dash = `${year}-${mm}`;
+    const monthNames = [
+      'Ocak',
+      'Subat',
+      'Mart',
+      'Nisan',
+      'Mayis',
+      'Haziran',
+      'Temmuz',
+      'Agustos',
+      'Eylul',
+      'Ekim',
+      'Kasim',
+      'Aralik',
+    ];
+    return {
+      dash,
+      periodLabel: `${year}/${mm}`,
+      label: `${monthNames[month - 1]} ${year}`,
+    };
+  }
+
+  private resolveKdvControlTypes(text: string): KdvControlWorkflowType[] {
+    const q = this.normalizeWorkflowText(text);
+    const isletme = /\bisletme\b|isletme\s+defteri|isletme\s+hesap/.test(q);
+    const wantsAlis = /\b191\b|indirilecek|alis|satin\s+alma|gider/.test(q);
+    const wantsSatis = /\b391\b|hesaplanan|satis|gelir/.test(q);
+
+    if (isletme) {
+      if (wantsAlis && !wantsSatis) return ['ISLETME_GIDER'];
+      if (wantsSatis && !wantsAlis) return ['ISLETME_GELIR'];
+      return ['ISLETME_GIDER', 'ISLETME_GELIR'];
+    }
+
+    if (wantsAlis && !wantsSatis) return ['KDV_191'];
+    if (wantsSatis && !wantsAlis) return ['KDV_391'];
+    return ['KDV_191', 'KDV_391'];
+  }
+
+  private formatKdvControlType(type: string): string {
+    switch (type) {
+      case 'KDV_191':
+        return '191 indirilecek KDV';
+      case 'KDV_391':
+        return '391 hesaplanan KDV';
+      case 'ISLETME_GELIR':
+        return 'isletme gelir';
+      case 'ISLETME_GIDER':
+        return 'isletme gider';
+      default:
+        return type;
+    }
+  }
+
+  private detectKnownModuleCommand(text: string): string | null {
+    const q = this.normalizeWorkflowText(text);
+    if (/e\s*fatura|e\s*arsiv|efatura|earsiv/.test(q)) return 'E-Fatura / E-Arsiv Sorgulama';
+    if (/fatura\s+isle|fatura\s+muhasebe|fis\s+yazdir|islenen\s+fatura/.test(q)) return 'Fatura Isleme';
+    if (/isletme\s+hesap\s+ozeti|kar\s+zarar\s+ozeti|stok\s+hareketi/.test(q)) return 'Isletme Hesap Ozeti';
+    if (/kdv\s+beyanname|beyanname\s+hazirla|beyanname\s+gonder/.test(q)) return 'KDV Beyanname';
+    if (/bilanco/.test(q)) return 'Bilanco';
+    return null;
   }
 
   private async resolveWorkflowTaxpayer(
@@ -988,13 +1546,29 @@ export class MorenOfisService {
     }));
   }
 
-  private buildArdaTriagePrompt(query: string, delegateTo: string[]): string {
+  private buildArdaTriagePrompt(query: string, delegateTo: string[], teamGreeting = false): string {
+    if (teamGreeting) {
+      return `Muzaffer Bey'den geldi: "${query}"
+
+Sen AYLİN'sin — baş müşavir. Bu bir ekip selamlaması.
+
+KURALLAR:
+- Kısa karşıla: "Buyurun Muzaffer Bey, ekip burada."
+- Her ekip üyesinin tek tek kısa konuşacağını söyle.
+- Konuyu uzatma, iş cevabı verme.
+- Emoji/şaka YOK.
+
+1-2 cümle.`;
+    }
+
     return `Muzaffer Bey'den geldi: "${query}"
 
 Sen AYLİN'sin — baş müşavir. Bu işe ${delegateTo.join(', ').toUpperCase()} ekip üyelerini koyuyorsun.
 
 KURALLAR:
 - "Sordum, dönecek" gibi içeriksiz cevap YASAK.
+- Uzman kişinin vereceği cevabı sen tekrarlama; sadece kime yönlendirdiğini ve nedenini söyle.
+- Gerçek job/session/kayıt yoksa "başladı", "hazır", "yaptık" deme.
 - Selamlama ise: nezaketli karşıla ("Buyrun Muzaffer Bey, dinliyorum.").
 - İş ise: kime yönlendirdiğini ve NE yapacağını net söyle
   ("Cem mizan'a bakacak, son 3 ayı kıyaslayacak. Nevra KDV durumunu inceleyecek.")
@@ -1005,11 +1579,20 @@ KURALLAR:
 2-3 cümle, kısa, ölçülü.`;
   }
 
-  private buildAgentPrompt(query: string, agentId: AgentId): string {
+  private buildAgentPrompt(query: string, agentId: AgentId, teamGreeting = false): string {
+    if (teamGreeting) {
+      return `Muzaffer Bey: "${query}"
+
+Sen ${PERSONAS[agentId].displayName}'sin. Ekip selamlamasına kendi adınla cevap ver.
+Tek cümle kur: doğal bir selam + kendi rolünü çok kısa söyle. Diğer ajanları taklit etme, Aylin'in cümlesini tekrar etme.`;
+    }
+
     return `Muzaffer Bey: "${query}"
 
 Sen ${PERSONAS[agentId].displayName}'sin. ${PERSONAS[agentId].expertise.join(' / ')} alanında cevap ver.
-2-4 cümle, samimi, mesai arkadaşı havası. Tablo/başlık YOK.`;
+2-4 cümle, samimi, mesai arkadaşı havası. Tablo/başlık YOK.
+AYLİN'in yönlendirme cümlesini tekrar etme. Sadece kendi uzmanlık payını söyle.
+Gerçek jobId/sessionId/kayıt yoksa "başladım", "hazırladım", "tamam" deme.`;
   }
 
   private buildSynthesisPrompt(query: string, responses: OfisMessage[]): string {
