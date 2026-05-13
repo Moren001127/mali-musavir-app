@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.18';
+  const AGENT_VERSION = '1.37.19';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1169,7 +1169,7 @@
     if (job.tip === 'IHO_FETCH') {
       // İşletme Hesap Özeti — yeni menü-bazlı tam otomasyon (v1.36.7+)
       // İşletme Defteri → Gider İşlemleri → Gelir/Gider Listesi yolu izlenir
-      return await fetchLucaGelirGiderListesi(job);
+      return await fetchLucaGelirGiderListesi(job, log);
     }
     if (job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
         job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS') {
@@ -4291,14 +4291,14 @@
         const blob3 = await tryFetch('GET', {
           method: 'GET',
           credentials: 'include',
-        });
+        }, getUrl);
         if (blob3) return blob3;
 
         await log(`⚠ 3 varyant da blob dönmedi — form intercept beklemeye devam`);
       }
       await sleep(300);
     }
-    throw new Error('KDV blob 60sn içinde yakalanamadı (ne form intercept ne rapor_takip)');
+    throw new Error('Excel blob 60sn içinde yakalanamadı (ne form intercept ne rapor_takip)');
   }
 
   async function fetchLucaIsletmeGelirGiderExcel(job, log, mode) {
@@ -4436,11 +4436,12 @@
       await log(`🚩 Rapor öncesi son set: GELIR1=${g1?.value} | GIDER1=${g2?.value}`);
     }
 
-    await clickLucaRaporButton(form, log);
-
-    // 11) Blob yakala
+    // 11) Rapor butonu + blob yakala.
+    // Mizan click-intercept ismine rağmen genel form.submit/window.open/download
+    // yakalayıcısıdır. İHÖ'de Luca bazen rapor_takip XHR göstermeden rapor_indir
+    // form submit'e düştüğü için zayıf KDV bekleyicisi timeout veriyordu.
     try {
-      return await waitForKdvBlob(log, frm3win, 60000);
+      return await fetchMizanByClickIntercept(form, job, log);
     } finally {
       delete window.__lucaJobOverrides;
       delete window.__morenRaporHazir;
@@ -5354,6 +5355,15 @@
   function donemToTarihAraligi(donem, donemTipi) {
     const s = String(donem || '').trim();
 
+    // Format 0: "2026-01-01_2026-03-31" - IHO_FETCH gibi aralik bazli job'lar
+    const rangeMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{4})-(\d{2})-(\d{2})$/);
+    if (rangeMatch) {
+      return {
+        bas: `${rangeMatch[3]}.${rangeMatch[2]}.${rangeMatch[1]}`,
+        bit: `${rangeMatch[6]}.${rangeMatch[5]}.${rangeMatch[4]}`,
+      };
+    }
+
     // Format 1: "2026-Q1", "2026Q1", "2026_Q1" — çeyrek
     const qMatch = s.match(/(\d{4})[-_/]?Q(\d)/i);
     if (qMatch) {
@@ -6217,13 +6227,17 @@
    * v1.36.17: artık fetchLucaIsletmeGelirGiderExcel'e mode='both' ile delegate eder.
    * Bu sayede proper XHR/Fetch/Download hook'ları kullanılır (PDF değil Excel iner).
    */
-  async function fetchLucaGelirGiderListesi(job) {
-    const log = (msg) => {
+  async function fetchLucaGelirGiderListesi(job, upstreamLog = null) {
+    const log = async (msg) => {
+      if (typeof upstreamLog === 'function') {
+        await upstreamLog(msg);
+        return;
+      }
       if (window.__currentLucaJobId && window.__lucaJobLog) {
-        window.__lucaJobLog(window.__currentLucaJobId, msg);
+        await window.__lucaJobLog(window.__currentLucaJobId, msg);
       } else { console.log('[Moren İHÖ]', msg); }
     };
-    log('İHÖ → fetchLucaIsletmeGelirGiderExcel(mode=both) ile delegate ediliyor');
+    await log('İHÖ → fetchLucaIsletmeGelirGiderExcel(mode=both) ile delegate ediliyor');
     return await fetchLucaIsletmeGelirGiderExcel(job, log, 'both');
   }
 
