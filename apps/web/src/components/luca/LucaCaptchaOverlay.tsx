@@ -1,34 +1,30 @@
 'use client';
 
+import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { lucaSessionApi } from '@/lib/luca-session';
 
+// Inline panel sayfaları — kullanıcı bu sayfalardayken zaten LucaInlineCaptchaPanel
+// görünür, ikinci form açmaya gerek yok.
 const INLINE_PAGES = [
   '/panel/mizan',
   '/panel/kdv-kontrol',
   '/panel/kdv-beyanname',
-  '/panel/isletme-hesap-ozeti',
-  '/panel/e-arsiv',
+  // NOT: /panel/e-arsiv, /panel/isletme-hesap-ozeti listeden çıkarıldı —
+  // bu sayfalarda LucaInlineCaptchaPanel sadece kullanıcının BAŞLATTIĞI
+  // jobIds için tetikleniyor. Local agent kuyruktan çektiği eski job için
+  // captcha çıkarsa orada görünmez → overlay devreye girip çözmesi gerekir.
 ];
-
-function routeForJobTip(jobTip?: string | null) {
-  const tip = String(jobTip || '').toUpperCase();
-  if (tip.includes('EARSIV') || tip.includes('EFATURA')) return '/panel/e-arsiv';
-  if (tip === 'MIZAN') return '/panel/mizan';
-  if (tip === 'KDV_MIZAN') return '/panel/kdv-beyanname';
-  if (tip.startsWith('KDV_') || tip.startsWith('ISLETME_')) return '/panel/kdv-kontrol';
-  if (tip === 'IHO_FETCH') return '/panel/isletme-hesap-ozeti';
-  if (tip === 'ACCOUNT_PLAN') return '/panel/fatura-muhasebelestirme';
-  return '/panel/ajanlar/luca';
-}
 
 export function LucaCaptchaOverlay() {
   const pathname = usePathname();
   const hiddenOnManager = pathname?.startsWith('/panel/ajanlar/luca');
   const hiddenOnInlinePage = INLINE_PAGES.some((page) => pathname?.startsWith(page));
+
+  const [answer, setAnswer] = useState('');
 
   const statusQuery = useQuery({
     queryKey: ['luca-captcha-overlay'],
@@ -41,23 +37,38 @@ export function LucaCaptchaOverlay() {
     ? statusQuery.data.activeChallenge
     : null;
 
+  const answerMut = useMutation({
+    mutationFn: () => {
+      if (!challenge) throw new Error('Güvenlik kodu isteği bulunamadı');
+      if (!answer.trim()) throw new Error('Güvenlik kodunu girin');
+      return lucaSessionApi.answerCaptcha(challenge.id, answer.trim());
+    },
+    onSuccess: () => {
+      toast.success('Güvenlik kodu Luca ajanına gönderildi');
+      setAnswer('');
+      statusQuery.refetch();
+    },
+    onError: (e: any) =>
+      toast.error(e?.response?.data?.message || e?.message || 'Güvenlik kodu gönderilemedi'),
+  });
+
   const cancelMut = useMutation({
     mutationFn: async () => {
       if (challenge) await lucaSessionApi.cancelCaptcha(challenge.id).catch(() => null);
     },
     onSuccess: () => {
+      setAnswer('');
       statusQuery.refetch();
-      toast.info('Luca guvenlik kodu istegi iptal edildi');
+      toast.info('Luca güvenlik kodu isteği iptal edildi');
     },
   });
 
   if (hiddenOnManager || hiddenOnInlinePage || !challenge) return null;
 
-  const moduleRoute = routeForJobTip(challenge.context?.jobTip);
-
+  // Captcha formu doğrudan overlay'de — kullanıcı modüle gitmeden çözebilsin.
   return (
     <div
-      className="fixed bottom-4 right-6 z-[80] max-w-md rounded-xl p-4 shadow-2xl"
+      className="fixed bottom-4 right-6 z-[80] w-[420px] max-w-[calc(100vw-2rem)] rounded-xl p-4 shadow-2xl"
       style={{
         background: 'rgba(20,17,13,0.98)',
         border: '1px solid rgba(212,184,118,0.42)',
@@ -66,31 +77,58 @@ export function LucaCaptchaOverlay() {
     >
       <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: '#d4b876' }}>
         <AlertTriangle size={14} />
-        Luca guvenlik kodu bekliyor
+        Luca güvenlik kodu
       </div>
-      <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
-        Kod, isi baslattigin modulun icinde girilecek.
-      </div>
-      <p className="mt-1 text-xs" style={{ color: 'rgba(250,250,249,0.62)' }}>
-        Bu kutu sadece hatirlatma; ikinci kod formu acilmiyor.
-      </p>
-      <div className="mt-3 flex gap-2">
-        <a
-          href={moduleRoute}
-          className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold"
+
+      {challenge.captchaImage ? (
+        <img
+          src={challenge.captchaImage}
+          alt="Luca güvenlik kodu"
+          className="h-16 w-full rounded-md object-contain mb-3"
+          style={{ background: '#fff', border: '1px solid rgba(255,255,255,0.22)' }}
+        />
+      ) : (
+        <div className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}>
+          Kod görseli bekleniyor...
+        </div>
+      )}
+
+      <input
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && answer.trim()) answerMut.mutate();
+        }}
+        autoFocus
+        placeholder="Kodu yazın..."
+        className="h-11 w-full rounded-lg border px-3 text-base font-bold outline-none mb-3"
+        style={{
+          background: 'rgba(0,0,0,0.28)',
+          borderColor: 'rgba(212,184,118,0.35)',
+          color: '#fafaf9',
+          letterSpacing: '.08em',
+        }}
+      />
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => answerMut.mutate()}
+          disabled={answerMut.isPending || !answer.trim()}
+          className="flex-1 inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-bold disabled:opacity-45"
           style={{ background: '#d4b876', color: '#15110b' }}
         >
-          Module don
-        </a>
+          {answerMut.isPending ? 'Gönderiliyor...' : 'Kodu Gönder'}
+        </button>
         <button
           type="button"
           onClick={() => cancelMut.mutate()}
           disabled={cancelMut.isPending}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-bold disabled:opacity-45"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-bold disabled:opacity-45"
           style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.76)' }}
+          title="Bu Luca işini iptal et"
         >
-          <X size={15} />
-          Iptal
+          <X size={15} /> İptal
         </button>
       </div>
     </div>
