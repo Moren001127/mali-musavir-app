@@ -2526,3 +2526,56 @@ model PendingAction {
   @@index([requestedAt])
   @@map("pending_actions")
 }
+
+// ============================================================
+// FAZ 4 — PORTAL GELİŞTİRME EKİBİ (5 AJAN — EREN/MELİS/SEDA/OKAN/BERK)
+// ============================================================
+// Bu ekip kod YAZMAZ — sadece PR planı/diff önerisi üretir.
+// Asıl implementasyon Verdent (veya kullanıcı) tarafından yapılır.
+// Karar: 09-REVIZE'de tartışıldı, Faz 5 (gerçek kod yazımı) ertelendi.
+//
+// Görev döngüsü: backlog → in_progress → in_review → done
+// Plan onaylanırsa PendingAction'a düşer, kullanıcı "Verdent'e ver" butonuyla
+// kapanır (ya da kendi elinden uygular).
+// ------------------------------------------------------------
+model PortalDevTask {
+  id                String   @id @default(cuid())
+  tenantId          String
+  title             String
+  description       String   @db.Text
+  status            String   @default("backlog") // backlog | in_progress | in_review | done | cancelled
+  priority          String   @default("medium")  // high | medium | low
+  type              String   @default("feature") // feature | bug | refactor | doc | infra
+  riskLevel         String   @default("medium")  // low | medium | high | critical
+  assignee          String?                      // eren|melis|seda|okan|berk
+  createdByUserId   String
+  acceptance        String?  @db.Text             // kabul kriteri
+  // PR planı çıktıları — SEDA üretir
+  proposedFiles     String[] @default([])         // değişecek dosya listesi
+  proposedDiff      String?  @db.Text             // markdown ile diff/yapılacaklar
+  estimateHrs       Float?
+  sourceProposalId  String?  // DENİZ proposal'ı tetiklediyse link
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  messages          PortalDevMessage[]
+
+  @@index([tenantId, status])
+  @@index([assignee, status])
+  @@map("portal_dev_tasks")
+}
+
+model PortalDevMessage {
+  id              String   @id @default(cuid())
+  tenantId        String
+  taskId          String?
+  agent           String   // eren|melis|seda|okan|berk|user
+  userId          String?
+  content         String   @db.Text
+  ts              DateTime @default(now())
+
+  task            PortalDevTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, taskId])
+  @@map("portal_dev_messages")
+}

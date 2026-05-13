@@ -36,6 +36,7 @@ import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-m
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 import { PendingActionsModule } from './pending-actions/pending-actions.module';
+import { PortalDevModule } from './portal-dev/portal-dev.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { PendingActionsModule } from './pending-actions/pending-actions.module';
     MorenAiModule,
     MorenOfisModule,
     PendingActionsModule,
+    PortalDevModule,
     WhatsAppModule,
     VendorMemoryModule,
     PendingDecisionsModule,
