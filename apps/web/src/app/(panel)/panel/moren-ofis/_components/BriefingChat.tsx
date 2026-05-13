@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, RefreshCw, Wrench, Bell, Paperclip, X, FileText, CheckCircle2, AlertTriangle, Clock3, FileSpreadsheet } from 'lucide-react';
+import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, Wrench, Bell, Paperclip, X, FileText, CheckCircle2, AlertTriangle, Clock3, FileSpreadsheet } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId, MizanGelirWorkflowEvent } from '@/lib/moren-ofis';
 import { ofisApi } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
@@ -387,7 +387,7 @@ export function BriefingChat({
               : `${messages.length} mesaj akışta`}
           </h2>
           <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            7 kişilik ekip · Arda yönlendirir, uzmanlar cevaplar
+            7 kişilik ekip · İlgili uzman doğrudan cevaplar
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -420,7 +420,7 @@ export function BriefingChat({
       </div>
 
       {/* Mesaj akışı — brifing maddeleri tarzı */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3.5">
         {messages.length === 0 ? (
           <div className="space-y-2 py-4">
             {[
@@ -472,10 +472,10 @@ export function BriefingChat({
                   style={{ animation: 'fade-in-up 0.3s ease-out' }}
                 >
                   <div
-                    className="px-3.5 py-2 rounded-lg max-w-[80%] text-[13px]"
+                    className="px-4 py-2.5 rounded-2xl rounded-tr-md max-w-[min(720px,76%)] text-[13px] leading-relaxed shadow-sm"
                     style={{
-                      background: `${GOLD}18`,
-                      border: `1px solid ${GOLD}30`,
+                      background: 'linear-gradient(135deg, rgba(212,184,118,0.22), rgba(120,92,46,0.18))',
+                      border: `1px solid ${GOLD}42`,
                       color: '#fafaf9',
                     }}
                   >
@@ -489,7 +489,7 @@ export function BriefingChat({
             return (
               <div
                 key={i}
-                className="animate-fade-in-up"
+                className="animate-fade-in-up max-w-[min(900px,88%)]"
                 style={{ animation: 'fade-in-up 0.4s ease-out' }}
               >
                 <div className="flex items-center gap-1.5 mb-1 px-1">
@@ -516,22 +516,24 @@ export function BriefingChat({
                   )}
                 </div>
                 <div
-                  className="px-3.5 py-2.5 rounded-lg text-[13px] leading-relaxed whitespace-pre-wrap"
+                  className="px-4 py-3 rounded-2xl rounded-tl-md text-[13px] leading-relaxed whitespace-pre-wrap shadow-sm"
                   style={{
-                    background: 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${accent}28`,
+                    background: 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018))',
+                    border: `1px solid ${accent}32`,
                     color: 'rgba(250,250,249,0.92)',
+                    boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+                    overflowWrap: 'anywhere',
                   }}
                 >
                   {m.content}
                 </div>
                 {/* FAZ 1 — Tool çağrı rozeti (hangi canlı veri yüklendi) */}
                 {m.toolCalls && m.toolCalls.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5 px-1">
-                    {m.toolCalls.map((tc, j) => (
+                  <div className="flex flex-wrap gap-1 mt-1.5 px-1 max-w-[720px]">
+                    {m.toolCalls.slice(0, 4).map((tc, j) => (
                       <span
                         key={j}
-                        className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded text-[9.5px] font-mono"
+                        className="inline-flex max-w-[180px] items-center gap-1 truncate rounded px-1.5 py-[2px] text-[9.5px] font-mono"
                         style={{
                           background: tc.ok ? `${accent}12` : 'rgba(239,68,68,0.12)',
                           border: `1px solid ${tc.ok ? `${accent}30` : 'rgba(239,68,68,0.30)'}`,
@@ -540,10 +542,15 @@ export function BriefingChat({
                         title={`${tc.tool}(${JSON.stringify(tc.input)}) — ${tc.durationMs}ms`}
                       >
                         <Wrench size={9} />
-                        {tc.tool}
+                        <span className="truncate">{tc.tool}</span>
                         {!tc.ok && ' ✕'}
                       </span>
                     ))}
+                    {m.toolCalls.length > 4 && (
+                      <span className="px-1.5 py-[2px] text-[9.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                        +{m.toolCalls.length - 4}
+                      </span>
+                    )}
                   </div>
                 )}
                 {/* FAZ 3 — Hatırlatmaya çevir butonu (PendingAction'a düşer) */}
@@ -563,7 +570,7 @@ export function BriefingChat({
                         toast.error(e?.response?.data?.message || e?.message || 'Hata');
                       }
                     }}
-                    className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded text-[9.5px] uppercase tracking-wider font-bold transition hover:opacity-100 opacity-60"
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] uppercase tracking-wider font-bold transition hover:opacity-100 opacity-45"
                     style={{
                       background: 'rgba(212,184,118,0.08)',
                       border: '1px solid rgba(212,184,118,0.20)',
@@ -571,7 +578,7 @@ export function BriefingChat({
                     }}
                     title="Bu mesajı hatırlatma önerisi olarak AI Onay Kuyruğu'na ekle"
                   >
-                    <Bell size={9} /> Hatırlatmaya Çevir
+                    <Bell size={9} /> Hatırlat
                   </button>
                 </div>
               </div>
@@ -670,7 +677,7 @@ export function BriefingChat({
               submit();
             }
           }}
-          placeholder={listening ? 'Dinliyorum...' : pendingFiles.length > 0 ? `${pendingFiles.length} evrak hakkında soru yaz (boş bırakırsan AYLİN değerlendirir)...` : 'Ekibe talimat ver...'}
+          placeholder={listening ? 'Dinliyorum...' : pendingFiles.length > 0 ? `${pendingFiles.length} evrak hakkında soru yaz...` : 'Ekibe talimat ver...'}
           disabled={sending}
           className="flex-1 px-4 py-2.5 rounded-xl text-[13px] outline-none"
           style={{

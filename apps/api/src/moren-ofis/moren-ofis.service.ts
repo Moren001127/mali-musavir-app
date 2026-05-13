@@ -372,13 +372,15 @@ export class MorenOfisService {
     const delegateTo = suggested.length > 0 ? suggested : ['nevra']; // fallback: vergi uzmanı
     const teamGreeting = this.isTeamGreeting(text);
 
-    // ARDA delege mesajı (UI animasyonu için, içerik kısa)
-    const ardaStart = await this.callAgent('arda', [
-      { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
-      ...this.recentHistoryAsMessages(history, 6),
-      { role: 'user', content: this.buildArdaTriagePrompt(text, delegateTo, teamGreeting) },
-    ], history);
-    newMessages.push(ardaStart);
+    // Normal iş sorularında ilgili uzman doğrudan cevap verir; Aylin sadece ekip selamlamasında araya girer.
+    if (teamGreeting) {
+      const ardaStart = await this.callAgent('arda', [
+        { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
+        ...this.recentHistoryAsMessages(history, 6),
+        { role: 'user', content: this.buildArdaTriagePrompt(text, delegateTo, teamGreeting) },
+      ], history);
+      newMessages.push(ardaStart);
+    }
 
     // 2) Delege edilen ajanlar — paralel
     const delegatePromises = delegateTo.map((agentId) =>
@@ -390,15 +392,6 @@ export class MorenOfisService {
     );
     const delegateResponses = await Promise.all(delegatePromises);
     newMessages.push(...delegateResponses);
-
-    // 3) ARDA — sentez (eğer 2+ ajan cevap verdiyse veya complex query ise)
-    if (delegateResponses.length > 1 && !teamGreeting) {
-      const synthesis = await this.callAgent('arda', [
-        { role: 'system', content: enhancedSystemPrompt(PERSONAS.arda.systemPrompt) },
-        { role: 'user', content: this.buildSynthesisPrompt(text, delegateResponses) },
-      ], history);
-      newMessages.push(synthesis);
-    }
 
     // FAZ 1 — Tool çağrılarını ilk delege ajanın mesajına ilişti (UI rozet için)
     if (toolCalls.length > 0 && newMessages.length > 1) {
@@ -462,25 +455,25 @@ export class MorenOfisService {
           ? ` Sunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
           : '';
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'cem',
         content: `Gelir tablosu durumunu gercek kayitlardan kontrol edecegim ama mukellefi tek eslestiremedim.${options} Mukellef adini veya VKN'yi net yazar misin?`,
         ts: new Date().toISOString(),
       };
       const messages = [params.userMsg, aylin];
       await this.persistConversationMessages(params.conversationId, params.history, messages);
-      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+      return { conversationId: params.conversationId, messages, active: ['cem'], totalCostUsd: 0 };
     }
 
     const period = this.resolveWorkflowPeriod(params.text);
     if (!period) {
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'cem',
         content: `${taxpayerResolution.taxpayer.name} icin gelir tablosu durumunu kontrol edecegim ama donem net degil. "2026 1. donem", "2026-Q1" veya "2026-03" gibi yazarsan kayitlardan bakarim.`,
         ts: new Date().toISOString(),
       };
       const messages = [params.userMsg, aylin];
       await this.persistConversationMessages(params.conversationId, params.history, messages);
-      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+      return { conversationId: params.conversationId, messages, active: ['cem'], totalCostUsd: 0 };
     }
 
     const taxpayer = taxpayerResolution.taxpayer;
@@ -498,12 +491,6 @@ export class MorenOfisService {
         orderBy: { createdAt: 'desc' },
       }),
     ]);
-
-    const aylin: OfisMessage = {
-      agent: 'arda',
-      content: `${taxpayer.name} icin ${period.label} gelir tablosu durumunu kayitlardan kontrol ettim; sozu Cem/Kayra soyleyecek, tekrar yapmayacagim.`,
-      ts: new Date().toISOString(),
-    };
 
     let specialist: OfisMessage;
     if (gelirTablosu) {
@@ -529,19 +516,19 @@ export class MorenOfisService {
     } else if (job && ['pending', 'running'].includes(String(job.status))) {
       specialist = {
         agent: 'kayra',
-        content: `Hazir degil; ${period.label} mizan job'u ${job.status} durumda. jobId ${job.id}. Job bitmeden Cem gelir tablosu varmis gibi analiz yazmayacak.`,
+        content: `Hazir degil; ${period.label} mizan cekimi ${job.status} durumda. Mizan bitmeden gelir tablosu varmis gibi analiz yazmayacagim.`,
         ts: new Date().toISOString(),
       };
     } else if (job && ['failed', 'cancelled'].includes(String(job.status))) {
       specialist = {
         agent: 'kayra',
-        content: `Hazir degil; Luca mizan job'u ${job.status} kapanmis. Son hata: ${this.extractWorkflowError(job)} jobId ${job.id}.`,
+        content: `Hazir degil; Luca mizan cekimi ${job.status} kapanmis. Son hata: ${this.extractWorkflowError(job)}.`,
         ts: new Date().toISOString(),
       };
     } else if (mizan) {
       specialist = {
         agent: 'cem',
-        content: `Mizan kaydi var ama gelir tablosu kaydi henuz yok. mizanId ${mizan.id}. "Gelir tablosunu olustur" komutu geldiginde bunu gercek mizandan uretmem gerekiyor.`,
+        content: `Mizan kaydi var ama gelir tablosu henuz uretilmemis. "Gelir tablosunu olustur" dediginde bunu gercek mizandan uretmem gerekiyor.`,
         ts: new Date().toISOString(),
       };
     } else {
@@ -552,7 +539,7 @@ export class MorenOfisService {
       };
     }
 
-    const messages = [params.userMsg, aylin, specialist];
+    const messages = [params.userMsg, specialist];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
     return {
       conversationId: params.conversationId,
@@ -579,25 +566,25 @@ export class MorenOfisService {
           ? ` Sunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
           : '';
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'nevra',
         content: `KDV kontrolu icin gercek modulu kullanacagim ama mukellefi tek eslestiremedim.${options} Mukellef adini veya VKN'yi netlestirir misin?`,
         ts: new Date().toISOString(),
       };
       const messages = [params.userMsg, aylin];
       await this.persistConversationMessages(params.conversationId, params.history, messages);
-      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+      return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
 
     const period = this.resolveKdvMonthlyPeriod(params.text);
     if (!period) {
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'nevra',
         content: `${taxpayerResolution.taxpayer.name} icin KDV kontrolu gercek modulle yapilacak; ay net degil. "Mayis 2026 KDV kontrol" veya "2026-05 KDV kontrol" diye yazarsan seansi acarim.`,
         ts: new Date().toISOString(),
       };
       const messages = [params.userMsg, aylin];
       await this.persistConversationMessages(params.conversationId, params.history, messages);
-      return { conversationId: params.conversationId, messages, active: ['arda'], totalCostUsd: 0 };
+      return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
 
     const taxpayer = taxpayerResolution.taxpayer;
@@ -712,11 +699,6 @@ export class MorenOfisService {
       }
     }
 
-    const aylin: OfisMessage = {
-      agent: 'arda',
-      content: `${taxpayer.name} için ${period.label} KDV kontrolünü gerçek KDV Kontrol modülünde başlattım. Sonuç oluşmadan “tamamlandı” demeyeceğim; Kayra çekim durumunu takip edecek, Nevra da eşleşme sonucunu yorumlayacak.`,
-      ts: new Date().toISOString(),
-    };
     const kayraLines = started.map((item) => {
       if (item.error) return `${this.formatKdvControlType(item.type)} açılamadı: ${item.error}`;
       const parts = [
@@ -731,12 +713,12 @@ export class MorenOfisService {
     });
     const kayra: OfisMessage = {
       agent: 'kayra',
-      content: `${kayraLines.join('. ')}. Luca çekimi ve OCR/eşleştirme bitmeden başarı sonucu yazmayacağım.`,
+      content: `${taxpayer.name} için ${period.label} KDV kontrolünü başlattım. ${kayraLines.join('. ')}. Luca çekimi ve OCR/eşleştirme bitmeden başarı sonucu yazmayacağım.`,
       ts: new Date().toISOString(),
       toolCalls,
     };
 
-    const messages = [params.userMsg, aylin, kayra];
+    const messages = [params.userMsg, kayra];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
     return {
       conversationId: params.conversationId,
@@ -771,19 +753,13 @@ export class MorenOfisService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const aylin: OfisMessage = {
-      agent: 'arda',
-      content: `${params.taxpayer.name} için ${params.period.label} KDV kontrol durumuna gerçek kayıtlardan baktım. Kayra teknik akışı, Nevra da eşleşme sonucunu kısa özetleyecek.`,
-      ts: new Date().toISOString(),
-    };
-
     if (sessions.length === 0) {
       const nevra: OfisMessage = {
         agent: 'nevra',
         content: `Bu dönem için KDV Kontrol seansı bulamadım. Yapılmış gibi cevap vermiyorum; kontrol isteniyorsa önce seans ve Luca çekimi açılmalı.`,
         ts: new Date().toISOString(),
       };
-      const messages = [params.userMsg, aylin, nevra];
+      const messages = [params.userMsg, nevra];
       await this.persistConversationMessages(params.conversationId, params.history, messages);
       return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
@@ -803,6 +779,8 @@ export class MorenOfisService {
       const typeLabel = this.formatKdvControlType(session.type);
       const jobStatus = String(job?.status || '');
       const jobRunning = ['pending', 'running'].includes(jobStatus);
+      const totalRecords = Number(stats?.totalRecords ?? session._count?.kdvRecords ?? 0);
+      const totalImages = Number(stats?.totalImages ?? session._count?.images ?? 0);
 
       if (params.rerunIfNeeded && stats && !jobRunning && stats.totalRecords > 0 && stats.totalImages > 0) {
         const hasProblem =
@@ -842,7 +820,8 @@ export class MorenOfisService {
       if (job?.status === 'failed') {
         kayraLines.push(`${typeLabel} tarafında Luca çekimi hata vermiş: ${this.extractWorkflowError(job)}.`);
       } else if (jobRunning && !params.rerunIfNeeded) {
-        kayraLines.push(`${typeLabel} tarafında Luca çekimi ${jobStatus} durumda; sonuç için işin bitmesini bekliyorum.`);
+        const waitLabel = jobStatus === 'pending' ? 'sırada bekliyor' : 'çalışıyor';
+        kayraLines.push(`${typeLabel} tarafında kontrol satırı var: ${totalImages} fatura bağlı, Luca satırı ${totalRecords}. Luca işi ${waitLabel}; bu yüzden tamamlandı demiyorum.`);
       }
 
       if (stats) {
@@ -852,22 +831,23 @@ export class MorenOfisService {
       }
     }
 
-    const kayra: OfisMessage = {
-      agent: 'kayra',
-      content: kayraLines.length > 0
-        ? kayraLines.join(' ')
-        : 'Teknik tarafta bekleyen işlem görünmüyor; mevcut KDV kontrol sonuçlarını okudum.',
-      ts: new Date().toISOString(),
-      toolCalls,
-    };
+    const messages: OfisMessage[] = [params.userMsg];
+    if (kayraLines.length > 0) {
+      messages.push({
+        agent: 'kayra',
+        content: kayraLines.join(' '),
+        ts: new Date().toISOString(),
+        toolCalls,
+      });
+    }
     const nevra: OfisMessage = {
       agent: 'nevra',
       content: nevraLines.join(' '),
       ts: new Date().toISOString(),
     };
-    const messages = [params.userMsg, aylin, kayra, nevra];
+    messages.push(nevra);
     await this.persistConversationMessages(params.conversationId, params.history, messages);
-    return { conversationId: params.conversationId, messages, active: ['nevra', 'kayra'], totalCostUsd: 0 };
+    return { conversationId: params.conversationId, messages, active: (kayraLines.length > 0 ? ['kayra', 'nevra'] : ['nevra']) as AgentId[], totalCostUsd: 0 };
   }
 
   private async tryGuardKnownModuleCommand(params: {
@@ -880,17 +860,12 @@ export class MorenOfisService {
     const moduleName = this.detectKnownModuleCommand(params.text);
     if (!moduleName || !this.hasExecutionVerb(params.text)) return null;
 
-    const aylin: OfisMessage = {
-      agent: 'arda',
-      content: `${moduleName} komutunu sohbet cevabi gibi uretmeyecegim. Bu komut icin Moren Ofis tarafinda henuz deterministik workflow baglantisi yoksa "yapildi" demek yasak; Deniz'in baglanti eksigi olarak onune dusuruyorum.`,
-      ts: new Date().toISOString(),
-    };
     const deniz: OfisMessage = {
       agent: 'deniz',
-      content: `${moduleName} icin eksik kopru: intent yakalama, ilgili servis/job cagirma, durum polling ve sistem karti. Baglanti kurulmadan ekip sadece yorum yapar, islem tamamlandi mesaji yazamaz.`,
+      content: `${moduleName} icin eksik kopru var: intent yakalama, ilgili servis/job cagirma, durum polling ve sistem karti. Baglanti kurulmadan ekip sadece yorum yapar, islem tamamlandi mesaji yazamaz.`,
       ts: new Date().toISOString(),
     };
-    const messages = [params.userMsg, aylin, deniz];
+    const messages = [params.userMsg, deniz];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
     return { conversationId: params.conversationId, messages, active: ['deniz'], totalCostUsd: 0 };
   }
@@ -912,7 +887,7 @@ export class MorenOfisService {
           ? ` Şunlardan hangisi: ${taxpayerResolution.options.map((t) => t.name).join(', ')}?`
           : '';
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'cem',
         content: `Mizan-gelir tablosu akışını başlatacağım ama mükellefi tek eşleştiremedim.${options} Mükellef adını veya VKN'yi net yazar mısın?`,
         ts: new Date().toISOString(),
       };
@@ -921,7 +896,7 @@ export class MorenOfisService {
       return {
         conversationId: params.conversationId,
         messages,
-        active: ['arda'],
+        active: ['cem'],
         totalCostUsd: 0,
       };
     }
@@ -929,7 +904,7 @@ export class MorenOfisService {
     const period = this.resolveWorkflowPeriod(params.text);
     if (!period) {
       const aylin: OfisMessage = {
-        agent: 'arda',
+        agent: 'cem',
         content: `Tamam, ${taxpayerResolution.taxpayer.name} için gerçek mizan-gelir tablosu akışını açacağım; dönem net değil. "2026 1. dönem", "2026-Q1" veya "2026-03" gibi yazarsan job'u başlatıyorum.`,
         ts: new Date().toISOString(),
       };
@@ -938,7 +913,7 @@ export class MorenOfisService {
       return {
         conversationId: params.conversationId,
         messages,
-        active: ['arda'],
+        active: ['cem'],
         totalCostUsd: 0,
       };
     }
@@ -970,9 +945,9 @@ export class MorenOfisService {
       logs: this.parseLucaJobLogs(job.errorMsg),
     };
 
-    const aylin: OfisMessage = {
-      agent: 'arda',
-      content: `${taxpayer.name} için ${period.label} mizan çekimini gerçek Luca kuyruğuna açtım. Mizan kaydı oluşmadan Cem analiz yazmayacak; job bitince gelir tablosunu gerçek mizan üzerinden üreteceğim.`,
+    const kayra: OfisMessage = {
+      agent: 'kayra',
+      content: `${taxpayer.name} için ${period.label} mizan çekimini gerçek Luca kuyruğuna açtım. Mizan kaydı oluşmadan gelir tablosu analizi yazılmayacak.`,
       ts: new Date().toISOString(),
     };
     const system: OfisMessage = {
@@ -981,7 +956,7 @@ export class MorenOfisService {
       ts: new Date().toISOString(),
       workflow,
     };
-    const messages = [params.userMsg, aylin, system];
+    const messages = [params.userMsg, kayra, system];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
 
     return {
@@ -1319,6 +1294,9 @@ export class MorenOfisService {
     const reviewTotal = Number(stats.needsReview || 0) + Number(stats.needsOcrConfirm || 0);
     const problemTotal = Number(stats.partialMatch || 0) + Number(stats.unmatched || 0) + reviewTotal;
     if (Number(stats.totalRecords || 0) === 0) {
+      if (Number(stats.totalImages || 0) > 0) {
+        return `${typeLabel} tarafında ${stats.totalImages} fatura bağlı ama Luca satırı 0; kontrol açılmış, fakat Luca verisi gelmediği için eşleştirme sonucu oluşmamış.`;
+      }
       return `${typeLabel} tarafında Luca kaydı henüz yok; eşleştirme sonucu oluşmamış.`;
     }
     if (Number(stats.totalImages || 0) === 0) {
@@ -1685,7 +1663,7 @@ Tek cümle kur: doğal bir selam + kendi rolünü çok kısa söyle. Diğer ajan
 
 Sen ${PERSONAS[agentId].displayName}'sin. ${PERSONAS[agentId].expertise.join(' / ')} alanında cevap ver.
 2-4 cümle, samimi, mesai arkadaşı havası. Tablo/başlık YOK.
-AYLİN'in yönlendirme cümlesini tekrar etme. Sadece kendi uzmanlık payını söyle.
+Başka ajan adına konuşma; sadece kendi alanındaki net cevabı ver.
 Gerçek jobId/sessionId/kayıt yoksa "başladım", "hazırladım", "tamam" deme.`;
   }
 
