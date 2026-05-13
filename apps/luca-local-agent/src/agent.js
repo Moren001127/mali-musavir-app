@@ -213,33 +213,39 @@ async function getBrowserSession() {
     await closeBrowserSession(pageClosed ? 'page-closed' : 'idle-timeout');
   }
 
-  // DNS sorunu yaşatan Chromium "secure DNS / DoH" özelliğini devre dışı bırak.
-  // Sistem DNS'i çalıştığı halde Playwright Chromium agiris.luca.com.tr'yi
-  // ERR_NAME_NOT_RESOLVED ile reddediyordu (DoH provider Türkiye'den engelli olabilir).
+  // PERSISTENT CONTEXT: user data dir disk'e kayıtlı kalır → Luca cookie'leri
+  // (1-2 gün TTL'li) yeniden başlatınca da var → captcha tekrar tekrar sorulmaz.
+  // Luca oturumu düşene kadar (idle timeout veya cookie expire) login bir kez.
+  //
+  // DNS: Chromium "secure DNS / DoH" devre dışı (DoH provider TR'den engelli).
   // --disable-features=DnsOverHttps,AsyncDns sistem resolver'ına geçirir.
-  const browser = await chromium.launch({
+  const userDataDir = path.join(__dirname, '..', '.browser-data');
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+  const context = await chromium.launchPersistentContext(userDataDir, {
     headless: HEADLESS,
     timeout: BROWSER_TIMEOUT,
+    acceptDownloads: true,
+    viewport: { width: 1366, height: 900 },
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     args: [
       '--disable-features=DnsOverHttps,AsyncDns',
       '--dns-over-https-mode=off',
     ],
   });
-  const context = await browser.newContext({
-    acceptDownloads: true,
-    viewport: { width: 1366, height: 900 },
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  });
-  const page = await context.newPage();
+  // Persistent context'ta browser bir gizli wrapper — page'leri context üzerinden al.
+  const page = context.pages()[0] || await context.newPage();
   browserSession = {
-    browser,
+    browser: context.browser(),
     context,
     page,
     createdAt: now,
     lastUsedAt: now,
     runtimeInstalled: false,
+    persistent: true,
   };
-  log.info('Luca browser oturumu acildi ve sicak tutulacak.');
+  log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
 
