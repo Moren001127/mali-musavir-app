@@ -44,7 +44,9 @@ const MANUAL_TEXT = '#ead18a';
 const MANUAL_BORDER = 'rgba(212,184,118,0.55)';
 const MANUAL_ROW_BG = 'rgba(212,184,118,0.025)';
 const TOTAL_ROW_BG = 'rgba(212,184,118,0.05)';
-const SERIF_FONT = "'Fraunces', 'Georgia', serif"; // ana font (Moren brand)
+// Rakamlar için: temiz sans-serif tabular — Fraunces serif rakamlarda zor okunuyordu
+const NUM_FONT = "'Plus Jakarta Sans', 'Inter', system-ui, sans-serif";
+const SERIF_FONT = "'Fraunces', 'Georgia', serif"; // sadece section başlıkları için
 const REPORT_TABLE_STYLE: React.CSSProperties = {
   tableLayout: 'fixed',
   borderCollapse: 'separate',
@@ -159,12 +161,12 @@ function NumInput({
         border: 'none',
         borderBottom: focused ? `1px solid ${GRID_LINE_STRONG}` : '1px solid transparent',
         color: inputColor,
-        fontFamily: SERIF_FONT,
-        fontSize: 16,
+        fontFamily: NUM_FONT,
+        fontSize: 15,
         fontVariantNumeric: 'tabular-nums',
         colorScheme: 'dark',
         fontWeight: inputWeight,
-        letterSpacing: '-0.01em',
+        letterSpacing: 0,
       }}
       onMouseEnter={(e) => {
         if (!disabled && !focused) (e.currentTarget as HTMLInputElement).style.borderBottom = `1px solid ${GRID_LINE}`;
@@ -1297,11 +1299,11 @@ function BlockCard({
           {icon}
         </span>
         <h2
-          className="text-[10.5px] font-bold uppercase"
+          className="text-[11px] font-bold uppercase"
           style={{
             color: c.text,
             letterSpacing: '0.18em',
-            fontFamily: SERIF_FONT,
+            fontFamily: NUM_FONT,
             fontWeight: 700,
           }}
         >
@@ -1366,10 +1368,10 @@ function Row({
           borderRight: `1px solid ${GRID_LINE}`,
           borderLeft: manuel ? `3px solid ${MANUAL_BORDER}` : `1px solid transparent`,
           lineHeight: 1.25,
-          fontFamily: bold ? SERIF_FONT : undefined,
-          fontSize: bold ? 13 : 12,
+          fontFamily: NUM_FONT,
+          fontSize: bold ? 12.5 : 12,
           fontWeight: bold ? 700 : 600,
-          letterSpacing: bold ? '0.02em' : '0.01em',
+          letterSpacing: bold ? '0.04em' : '0.01em',
           textTransform: bold ? 'uppercase' as any : 'none',
         }}
       >
@@ -1431,10 +1433,10 @@ function Row({
                 <span
                   className="tabular-nums"
                   style={{
-                    fontFamily: SERIF_FONT,
-                    fontSize: bold ? 17 : 16,
-                    fontWeight: bold ? 700 : 650,
-                    letterSpacing: '-0.01em',
+                    fontFamily: NUM_FONT,
+                    fontSize: bold ? 15 : 14.5,
+                    fontWeight: bold ? 700 : 600,
+                    letterSpacing: 0,
                     color: amountColor,
                   }}
                 >
