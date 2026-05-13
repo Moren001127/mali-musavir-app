@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.21';
+  const AGENT_VERSION = '1.37.22';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3596,6 +3596,79 @@
     return null;
   }
 
+  function isLucaGelirGiderRaporForm(form) {
+    if (!form) return false;
+    const identity = `${form.name || ''} ${form.id || ''} ${form.action || ''}`;
+    if (/raporGelirGider|gelir[_-]?gider[_-]?listesi|gelirGider/i.test(identity)) return true;
+    const hasDateRange =
+      !!form.querySelector('#TARIH_ILK, input[name="TARIH_ILK"], input[name="tarih_bas"], input[name="tarih_ilk"]') &&
+      !!form.querySelector('#TARIH_SON, input[name="TARIH_SON"], input[name="tarih_bit"], input[name="tarih_son"]');
+    const hasReportFormat =
+      !!form.querySelector('#RAPOR_DEGISTIR, #REPORT_TYPE, #report_type, select[name="RAPOR_DEGISTIR"], select[name="REPORT_TYPE"], select[name="report_type"]');
+    const hasIhoFlags =
+      !!form.querySelector('#GELIR1, input[name="GELIR1"]') ||
+      !!form.querySelector('#GIDER1, input[name="GIDER1"]');
+    return hasDateRange && (hasReportFormat || hasIhoFlags);
+  }
+
+  function collectLucaFormsBrief() {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+    const all = [];
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const fm of f.contentDocument.querySelectorAll('form')) {
+          const inputs = [...fm.querySelectorAll('input')].slice(0, 8).map((i) => i.name || i.id || i.type || '?').join(',');
+          const selects = [...fm.querySelectorAll('select')].slice(0, 6).map((s) => s.name || s.id || '?').join(',');
+          const buttons = [...fm.querySelectorAll('button, input[type=button], input[type=submit]')].slice(0, 4).map((b) => (b.textContent || b.value || b.name || b.id || '?').trim()).join(',');
+          all.push(`name="${fm.name || '?'}" action="${(fm.action || '?').split('/').pop().slice(0, 45)}" inputs=[${inputs}] selects=[${selects}] buttons=[${buttons}]`);
+        }
+      } catch {}
+    }
+    return all;
+  }
+
+  function findLucaGelirGiderRaporFormNow() {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch (e) {}
+      return acc;
+    };
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const fm of f.contentDocument.querySelectorAll('form')) {
+          if (isLucaGelirGiderRaporForm(fm)) return fm;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  async function waitForLucaGelirGiderRaporForm(log, maxMs = 60000) {
+    await log('⏳ İşletme Gelir/Gider rapor formu yüklenmesi bekleniyor…');
+    const form = await waitUntil(() => findLucaGelirGiderRaporFormNow(), maxMs, 250);
+    if (!form) {
+      throw new Error(`İşletme Gelir/Gider rapor formu bulunamadı. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+    }
+    await log(`✓ İşletme Gelir/Gider rapor formu yüklendi: name="${form.name || '?'}" action="${(form.action || '?').split('/').pop().slice(0, 50)}"`);
+    return form;
+  }
+
   async function waitForLucaAnyForm(log, formNamePattern, maxMs = 15000, label = 'form') {
     await log(`⏳ ${label} (pattern: ${formNamePattern}) yüklenmesi bekleniyor…`);
     const collectFrames = (root, depth = 0, acc = []) => {
@@ -4366,19 +4439,19 @@
     await navigateToIsletmeGiderListesi(log);
 
     // 3) Sağ menüde "Gelir/Gider Listesi" tıkla → form yüklenir
-    let form = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+    let form = findLucaGelirGiderRaporFormNow();
     if (form) {
       await log('Isletme Gelir/Gider formu zaten yuklu; sag menu tiklamasi atlandi');
     } else {
       await clickLucaRightMenu('Gelir/Gider Listesi', log, {
         nth: 1,
         maxMs: 60000,
-        afterClickReady: () => !!findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i),
+        afterClickReady: () => !!findLucaGelirGiderRaporFormNow(),
       });
     }
 
     // 4) Form yüklensin
-    form = form || await waitForLucaAnyForm(log, /gelir|gider|isletme|işletme|raporGelirGider/i, 60000, 'İşletme Gelir/Gider formu');
+    form = form || await waitForLucaGelirGiderRaporForm(log, 60000);
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
@@ -5034,7 +5107,13 @@
    * X saniye boyunca yeniden dene.
    */
   function normalizeLucaMenuText(value) {
-    return String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    return String(value || '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s*\/\s*/g, '/')
+      .replace(/[‐‑–—]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLocaleLowerCase('tr-TR');
   }
 
   function isLikelyLucaMenuElement(el, targetText) {
@@ -5296,7 +5375,7 @@
     // Rapor formu zaten yüklüyse tekrar menü gezmeye gerek yok. Sadece sağ menü
     // görünür diye çıkmıyoruz; Luca bazen müşteri bilgi ekranında aynı sağ menüyü
     // açık bırakıyor ve rapor formu hiç açılmıyor.
-    const readyForm = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+    const readyForm = findLucaGelirGiderRaporFormNow();
     if (readyForm) {
       await log('✓ İşletme Gelir/Gider formu zaten açık');
       return;
@@ -5374,12 +5453,12 @@
     await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
     const ggReady = await findLucaMenuItem('Gelir/Gider Listesi', null, 60000);
     if (!ggReady) {
-      const directForm = findLucaAnyFormNow(/gelir|gider|isletme|işletme|raporGelirGider/i);
+      const directForm = findLucaGelirGiderRaporFormNow();
       if (directForm) {
         await log('✓ Gider Listesi formu dogrudan acildi; sag menu beklenmeden devam');
         return;
       }
-      throw new Error('Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 60sn)');
+      throw new Error(`Gider Listesi açıldı ama "Gelir/Gider Listesi" sağ menüsü hazır olmadı (timeout 60sn). Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
     }
     await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
   }
