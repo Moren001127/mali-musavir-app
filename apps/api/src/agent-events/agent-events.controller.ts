@@ -137,7 +137,15 @@ export class AgentEventsController {
   @Post('status/ping')
   async ping(
     @Headers('x-agent-token') token: string,
-    @Body() body: { agent: string; running?: boolean; hedefAy?: string; meta?: any },
+    @Body() body: {
+      agent: string;
+      running?: boolean;
+      hedefAy?: string;
+      status?: string;
+      version?: string;
+      deviceId?: string;
+      meta?: any;
+    },
   ) {
     const tenantId = await this.resolveTenantFromTokenAsync(token);
     if (!body?.agent) throw new BadRequestException('agent zorunlu');

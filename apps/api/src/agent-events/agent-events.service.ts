@@ -1091,12 +1091,29 @@ ${ocr.text.slice(0, 14000)}`;
     return { perMukellef, digerUsd, toplamAiUsd, toplamCagri, anomalousUsd };
   }
 
-  async upsertStatus(tenantId: string, agent: string, data: { running?: boolean; hedefAy?: string; meta?: any }) {
-    const safeMeta = this.sanitizeMetaForStorage(data.meta);
-    const payload = { ...data, meta: safeMeta ?? undefined };
+  async upsertStatus(
+    tenantId: string,
+    agent: string,
+    data: { running?: boolean; hedefAy?: string; status?: string; version?: string; deviceId?: string; meta?: any },
+  ) {
+    const rawMeta = data.meta && typeof data.meta === 'object' ? { ...data.meta } : {};
+    if (data.version && !rawMeta.version) rawMeta.version = data.version;
+    const safeMeta = this.sanitizeMetaForStorage(rawMeta);
+    const rawStatus = String(data.status || '').toLowerCase();
+    const running =
+      typeof data.running === 'boolean'
+        ? data.running
+        : rawStatus
+          ? ['online', 'running', 'ok', 'ready'].includes(rawStatus)
+          : true;
+    const payload = {
+      running,
+      hedefAy: data.hedefAy ?? undefined,
+      meta: safeMeta ?? undefined,
+    };
     // Multi-device: meta.deviceId -> deviceId column. (tenantId, agent, deviceId)
     // unique key sayesinde her cihaz ayrı satırda kalır, son ping üzerine yazar.
-    const deviceId = String(safeMeta?.deviceId || '').trim();
+    const deviceId = String(data.deviceId || safeMeta?.deviceId || '').trim();
     try {
       return await (this.prisma as any).agentStatus.upsert({
         where: { tenantId_agent_deviceId: { tenantId, agent, deviceId } },
