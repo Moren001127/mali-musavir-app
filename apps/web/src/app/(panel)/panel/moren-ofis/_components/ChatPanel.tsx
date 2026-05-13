@@ -27,7 +27,12 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
   const sendingRef = useRef(sending);
+  const voiceModeRef = useRef(voiceMode);
+  const lastSpokenIdxRef = useRef(lastSpokenIdx);
+  const spokenMessageKeysRef = useRef<Set<string>>(new Set());
+  const conversationFingerprintRef = useRef<string>('');
   sendingRef.current = sending;
+  voiceModeRef.current = voiceMode;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -35,30 +40,62 @@ export function ChatPanel({
     }
   }, [messages.length]);
 
+  const speechMessageKey = (m: OfisMessage, index: number) =>
+    `${index}:${m.ts}:${m.agent}:${m.content.slice(0, 120)}`;
+
+  const bookmarkCurrentMessages = () => {
+    const nextIdx = messages.length - 1;
+    lastSpokenIdxRef.current = nextIdx;
+    setLastSpokenIdx(nextIdx);
+    messages.forEach((m, i) => spokenMessageKeysRef.current.add(speechMessageKey(m, i)));
+  };
+
   // Yeni ajan mesajları geldikçe sesli oku (eğer ses açıksa)
   useEffect(() => {
-    if (!speakEnabled || !isSynthesisSupported()) return;
-    if (messages.length === 0) return;
+    const fingerprint = messages[0] ? `${messages[0].ts}:${messages[0].content.slice(0, 80)}` : '';
+    if (fingerprint !== conversationFingerprintRef.current) {
+      conversationFingerprintRef.current = fingerprint;
+      spokenMessageKeysRef.current.clear();
+      lastSpokenIdxRef.current = -1;
+      setLastSpokenIdx(-1);
+    }
 
-    // Sadece yeni mesajları sırayla oku, hepsi bitince mikrofona dön
-    const newMessages = messages.slice(lastSpokenIdx + 1);
-    const agentMessages = newMessages.filter((m) => m.agent !== 'user');
-    if (agentMessages.length === 0) {
-      setLastSpokenIdx(messages.length - 1);
+    if (messages.length === 0) return;
+    if (!speakEnabled || !isSynthesisSupported()) {
+      bookmarkCurrentMessages();
       return;
     }
 
+    // Sadece yeni mesajları sırayla oku, hepsi bitince mikrofona dön
+    const startIdx = lastSpokenIdxRef.current + 1;
+    const agentMessages = messages
+      .map((message, index) => ({ message, index, key: speechMessageKey(message, index) }))
+      .filter(
+        ({ message, index, key }) =>
+          index >= startIdx &&
+          message.agent !== 'user' &&
+          message.agent !== 'system' &&
+          !spokenMessageKeysRef.current.has(key),
+      );
+    if (agentMessages.length === 0) {
+      bookmarkCurrentMessages();
+      return;
+    }
+    for (const item of agentMessages) {
+      spokenMessageKeysRef.current.add(item.key);
+    }
+    lastSpokenIdxRef.current = messages.length - 1;
+    setLastSpokenIdx(messages.length - 1);
+
     (async () => {
-      for (const m of agentMessages) {
-        await speakAs(m.agent as AgentId, m.content).catch(() => {});
+      for (const { message } of agentMessages) {
+        await speakAs(message.agent as AgentId, message.content).catch(() => {});
       }
       // Ekip konuşmayı bitirdi — sesli sohbet modu açıksa mikrofonu yeniden aç
-      if (voiceMode && !sendingRef.current) {
+      if (voiceModeRef.current && !sendingRef.current && !listenerRef.current) {
         startListeningAuto();
       }
     })();
-
-    setLastSpokenIdx(messages.length - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, speakEnabled]);
 
@@ -135,6 +172,8 @@ export function ChatPanel({
       }
       stopSpeech();
     } else {
+      stopSpeech();
+      bookmarkCurrentMessages();
       setSpeakEnabled(true); // sesli mod açıksa sesli cevap da açık olmalı
       if (startListeningAuto()) {
         setVoiceMode(true);
@@ -145,6 +184,8 @@ export function ChatPanel({
   const toggleSpeak = () => {
     if (speakEnabled) {
       stopSpeech();
+    } else {
+      bookmarkCurrentMessages();
     }
     setSpeakEnabled(!speakEnabled);
   };

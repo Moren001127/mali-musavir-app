@@ -4,16 +4,34 @@
 
 import type { AgentId } from '@/lib/moren-ofis';
 
+type VoiceGender = 'male' | 'female' | 'neutral';
+type VoiceProfile = {
+  pitch: number;
+  rate: number;
+  voiceGender: VoiceGender;
+  voiceHints: RegExp[];
+};
+
 // Her ajan için ses profili — pitch ve rate ile karakter
 // Voice seçimi browser'da mevcut Türkçe ses'lerden yapılır
-export const VOICE_PROFILES: Record<AgentId, { pitch: number; rate: number; voiceGender: 'male' | 'female' | 'neutral' }> = {
-  arda: { pitch: 1.08, rate: 1.0, voiceGender: 'female' },   // AYLİN baş müşavir — sıcak, kararlı kadın
-  nevra: { pitch: 1.1, rate: 1.05, voiceGender: 'female' }, // vergi uzmanı — kararlı
-  cem: { pitch: 0.85, rate: 0.95, voiceGender: 'male' },    // denetçi — düşük, sakin
-  volkan: { pitch: 1.0, rate: 1.1, voiceGender: 'male' },   // bordro — pratik, hızlı
-  defne: { pitch: 1.2, rate: 1.1, voiceGender: 'female' }, // asistan — enerjik
-  kayra: { pitch: 0.95, rate: 1.05, voiceGender: 'neutral' }, // operatör — düz
-  deniz: { pitch: 0.9, rate: 1.0, voiceGender: 'male' },    // yazılım uzmanı — sakin, yorgun
+export const VOICE_PROFILES: Record<AgentId, VoiceProfile> = {
+  arda: { pitch: 1.28, rate: 1.0, voiceGender: 'female', voiceHints: [/seda/i, /emel/i, /yelda/i, /filiz/i, /ayşe|ayse/i, /google türkçe|google turkce/i] },
+  nevra: { pitch: 1.2, rate: 1.04, voiceGender: 'female', voiceHints: [/emel/i, /seda/i, /ipek/i, /tulay|tülay/i, /female|woman/i] },
+  cem: { pitch: 0.82, rate: 0.94, voiceGender: 'male', voiceHints: [/ahmet/i, /tolga/i, /mert/i, /emre/i, /male|man/i] },
+  volkan: { pitch: 0.98, rate: 1.08, voiceGender: 'male', voiceHints: [/tolga/i, /mert/i, /kerem/i, /ozan/i, /male|man/i] },
+  defne: { pitch: 1.32, rate: 1.1, voiceGender: 'female', voiceHints: [/ipek/i, /seda/i, /gizem/i, /emel/i, /female|woman/i] },
+  kayra: { pitch: 0.96, rate: 1.06, voiceGender: 'neutral', voiceHints: [/google türkçe|google turkce/i, /deniz/i, /neutral/i] },
+  deniz: { pitch: 0.88, rate: 0.98, voiceGender: 'male', voiceHints: [/deniz/i, /ahmet/i, /tolga/i, /male|man/i] },
+};
+
+const AGENT_SPEECH_NAMES: Record<AgentId, string> = {
+  arda: 'Aylin',
+  nevra: 'Nevra',
+  cem: 'Cem',
+  volkan: 'Volkan',
+  defne: 'Defne',
+  kayra: 'Kayra',
+  deniz: 'Deniz',
 };
 
 let cachedVoices: SpeechSynthesisVoice[] = [];
@@ -45,31 +63,39 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
   return voicesLoadedPromise;
 }
 
-// Her ajan için bir Türkçe ses bul — gender'a göre filtrele
+// Her ajan için en uygun sesi bul. Tarayıcıda ses listesi sınırlıysa gender,
+// isim ipuçları ve pitch/rate ile karakter ayrımı korunur.
 async function pickVoiceForAgent(agentId: AgentId): Promise<SpeechSynthesisVoice | null> {
   const voices = await loadVoices();
   if (voices.length === 0) return null;
 
-  // Önce Türkçe sesleri filtrele
-  const trVoices = voices.filter((v) => v.lang.startsWith('tr'));
-  const pool = trVoices.length > 0 ? trVoices : voices.filter((v) => v.lang.startsWith('en'));
-
   const profile = VOICE_PROFILES[agentId];
-  // Gender tahmin — Windows TTS'de isim genelde TR-TR-EmelNeural (kadın), TR-TR-AhmetNeural (erkek)
-  const femaleNames = /emel|tulay|aysun|ipek|seda|gizem|female|woman/i;
-  const maleNames = /ahmet|tolga|mert|emre|deniz|kerem|male|man/i;
+  const femaleNames = /emel|tulay|tülay|aysun|ipek|seda|gizem|yelda|filiz|ayşe|ayse|female|woman|zira|google türkçe|google turkce/i;
+  const maleNames = /ahmet|tolga|mert|emre|deniz|kerem|ozan|hakan|yusuf|yunus|male|man/i;
 
-  const tryFind = () => {
+  const scoreVoice = (voice: SpeechSynthesisVoice) => {
+    const name = `${voice.name} ${voice.voiceURI}`.toLocaleLowerCase('tr');
+    const lang = (voice.lang || '').toLocaleLowerCase('tr');
+    const looksFemale = femaleNames.test(name);
+    const looksMale = maleNames.test(name);
+    let score = 0;
+    if (lang.startsWith('tr')) score += 200;
+    else if (lang.startsWith('en')) score += 30;
+    if (voice.localService) score += 8;
+    if (profile.voiceHints.some((hint) => hint.test(name))) score += 500;
     if (profile.voiceGender === 'female') {
-      return pool.find((v) => femaleNames.test(v.name)) || pool.find((v) => !maleNames.test(v.name));
+      if (looksFemale) score += 300;
+      if (looksMale && !looksFemale) score -= 800;
+    } else if (profile.voiceGender === 'male') {
+      if (looksMale) score += 300;
+      if (looksFemale && !looksMale) score -= 800;
+    } else if (!looksMale && !looksFemale) {
+      score += 60;
     }
-    if (profile.voiceGender === 'male') {
-      return pool.find((v) => maleNames.test(v.name)) || pool.find((v) => !femaleNames.test(v.name));
-    }
-    return pool[0];
+    return score;
   };
 
-  return tryFind() || pool[0] || null;
+  return [...voices].sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
 }
 
 /**
@@ -86,7 +112,10 @@ export async function speakAs(agentId: AgentId, text: string) {
   const voice = await pickVoiceForAgent(agentId);
   const profile = VOICE_PROFILES[agentId];
 
-  const utterance = new SpeechSynthesisUtterance(cleanTextForSpeech(text));
+  const cleaned = cleanTextForSpeech(text);
+  if (!cleaned) return;
+
+  const utterance = new SpeechSynthesisUtterance(`${AGENT_SPEECH_NAMES[agentId]}. ${cleaned}`);
   utterance.lang = 'tr-TR';
   if (voice) utterance.voice = voice;
   utterance.pitch = profile.pitch;

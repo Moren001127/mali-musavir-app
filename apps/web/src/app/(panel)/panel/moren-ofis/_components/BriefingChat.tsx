@@ -127,7 +127,12 @@ export function BriefingChat({
   const scrollRef = useRef<HTMLDivElement>(null);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
   const sendingRef = useRef(sending);
+  const voiceModeRef = useRef(voiceMode);
+  const lastSpokenIdxRef = useRef(lastSpokenIdx);
+  const spokenMessageKeysRef = useRef<Set<string>>(new Set());
+  const conversationFingerprintRef = useRef<string>('');
   sendingRef.current = sending;
+  voiceModeRef.current = voiceMode;
 
   // İlk mount'ta geçmiş mesajları sesli OKUMA — sadece bookmark olarak işaretle
   const initialBookmarkRef = useRef(false);
@@ -138,32 +143,68 @@ export function BriefingChat({
     }
   }, [messages.length]);
 
+  const speechMessageKey = (m: OfisMessage, index: number) =>
+    `${index}:${m.ts}:${m.agent}:${m.content.slice(0, 120)}`;
+
+  const bookmarkCurrentMessages = () => {
+    const nextIdx = messages.length - 1;
+    lastSpokenIdxRef.current = nextIdx;
+    setLastSpokenIdx(nextIdx);
+    messages.forEach((m, i) => spokenMessageKeysRef.current.add(speechMessageKey(m, i)));
+  };
+
   useEffect(() => {
+    const fingerprint = messages[0] ? `${messages[0].ts}:${messages[0].content.slice(0, 80)}` : '';
+    if (fingerprint !== conversationFingerprintRef.current) {
+      conversationFingerprintRef.current = fingerprint;
+      spokenMessageKeysRef.current.clear();
+      initialBookmarkRef.current = false;
+      lastSpokenIdxRef.current = -1;
+      setLastSpokenIdx(-1);
+    }
+
     // İlk yüklemede (sayfa açılınca DB'den gelen geçmiş mesajlar)
     // hiçbirini sesli OKUMA — sadece son indeksi bookmark koy.
     if (!initialBookmarkRef.current && messages.length > 0) {
       initialBookmarkRef.current = true;
-      setLastSpokenIdx(messages.length - 1);
+      bookmarkCurrentMessages();
       return;
     }
 
-    if (!speakEnabled || !isSynthesisSupported()) return;
     if (messages.length === 0) return;
-    const newMessages = messages.slice(lastSpokenIdx + 1);
-    const agentMessages = newMessages.filter((m) => m.agent !== 'user' && m.agent !== 'system');
-    if (agentMessages.length === 0) {
-      setLastSpokenIdx(messages.length - 1);
+    if (!speakEnabled || !isSynthesisSupported()) {
+      bookmarkCurrentMessages();
       return;
     }
+
+    const startIdx = lastSpokenIdxRef.current + 1;
+    const agentMessages = messages
+      .map((message, index) => ({ message, index, key: speechMessageKey(message, index) }))
+      .filter(
+        ({ message, index, key }) =>
+          index >= startIdx &&
+          message.agent !== 'user' &&
+          message.agent !== 'system' &&
+          !spokenMessageKeysRef.current.has(key),
+      );
+    if (agentMessages.length === 0) {
+      bookmarkCurrentMessages();
+      return;
+    }
+    for (const item of agentMessages) {
+      spokenMessageKeysRef.current.add(item.key);
+    }
+    lastSpokenIdxRef.current = messages.length - 1;
+    setLastSpokenIdx(messages.length - 1);
+
     (async () => {
-      for (const m of agentMessages) {
-        await speakAs(m.agent as AgentId, m.content).catch(() => {});
+      for (const { message } of agentMessages) {
+        await speakAs(message.agent as AgentId, message.content).catch(() => {});
       }
-      if (voiceMode && !sendingRef.current) {
+      if (voiceModeRef.current && !sendingRef.current && !listenerRef.current) {
         startListeningAuto();
       }
     })();
-    setLastSpokenIdx(messages.length - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, speakEnabled]);
 
@@ -261,6 +302,7 @@ export function BriefingChat({
   const toggleSpeak = () => {
     const next = !speakEnabled;
     if (speakEnabled) stopSpeech();
+    if (next) bookmarkCurrentMessages();
     setSpeakEnabled(next);
     if (typeof window !== 'undefined') {
       localStorage.setItem('moren-ofis-speak', String(next));
@@ -276,6 +318,8 @@ export function BriefingChat({
       }
       stopSpeech();
     } else {
+      stopSpeech();
+      bookmarkCurrentMessages();
       setSpeakEnabled(true);
       if (typeof window !== 'undefined') {
         localStorage.setItem('moren-ofis-speak', 'true');
