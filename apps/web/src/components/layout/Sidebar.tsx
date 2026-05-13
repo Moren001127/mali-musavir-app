@@ -32,7 +32,9 @@ const navGroups = [
       { href: '/panel/moren-ofis/audit',        label: 'Tool & Maliyet Denetimi',  icon: Activity },
       { href: '/panel/moren-portal-gelistirme', label: 'Portal Geliştirme Ekibi',  icon: Cpu },
       { href: '/panel/ai-onay',                 label: 'AI Onay Kuyruğu',          icon: ShieldCheck },
-      { href: '/panel/mobil-tanitim',           label: 'Mobil Tanıtım',            icon: Sparkles },
+      // Mobil tanıtım sidebar'dan kaldırıldı — tasarım gözden geçirme için
+      // doğrudan /panel/mobil-tanitim URL'inden erişilir, müşterilere
+      // yansıtılmaz. Tasarım onaylanınca kodlanacak.
     ],
   },
   {
