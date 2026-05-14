@@ -340,7 +340,7 @@ export class KdvControlService {
       sheetName?: string;
     },
   ): Promise<{ imported: number; skipped: number }> {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
     buffer = this.excelParser.normalizeLucaExcelBuffer(buffer, 'KDV mapping import');
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -429,6 +429,16 @@ export class KdvControlService {
       }
       return null;
     };
+    const isBilancoKdv = session.type === 'KDV_191' || session.type === 'KDV_391';
+    const effectiveKdvCol =
+      session.type === 'KDV_191' ? 'BORÇ' :
+      session.type === 'KDV_391' ? 'ALACAK' :
+      mapping.kdvCol;
+    if (isBilancoKdv) {
+      this.logger.log(
+        `KDV mapping import: ${session.type} icin ilk 2 veri satiri atlanacak, KDV kolonu="${effectiveKdvCol}"`,
+      );
+    }
 
     // Mevcut kayıtları temizle
     await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
@@ -474,9 +484,13 @@ export class KdvControlService {
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
+      if (isBilancoKdv && i < 2) {
+        skipped++;
+        continue;
+      }
       const tarihKey = findKeyInRow(row, mapping.tarihCol);
       const belgeKey = findKeyInRow(row, mapping.belgeNoCol);
-      const kdvKey = findKeyInRow(row, mapping.kdvCol);
+      const kdvKey = findKeyInRow(row, effectiveKdvCol);
 
       const rawKdv = kdvKey ? row[kdvKey] : null;
       const kdvTutari = this.excelParser.toDecimal(rawKdv);
@@ -546,7 +560,6 @@ export class KdvControlService {
     });
 
     // Gösterge panelindeki "Canlı Sistem Akışı"na düşer
-    const session = await this.findSession(sessionId, tenantId);
     await this.pushFeedEvent(tenantId, {
       action: 'luca-import',
       status: 'basarili',

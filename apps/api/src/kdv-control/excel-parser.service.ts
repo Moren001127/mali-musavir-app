@@ -76,14 +76,19 @@ export class ExcelParserService {
     const skipDetail: Array<{ row: number; reason: string; aciklama: string }> = [];
     const skipCounts: Record<string, number> = {};
 
-    // 191: BORÇ önce, 391: ALACAK önce
+    // 191: sadece BORC, 391: sadece ALACAK dikkate alinir.
     const is191 = type === '191';
     const kdvPatterns = is191
-      ? ['borç', 'borc', 'alacak']        // 191 İndirilecek KDV → BORÇ sütunu
-      : ['alacak', 'borç', 'borc'];        // 391 Hesaplanan KDV → ALACAK sütunu
+      ? ['borç', 'borc']
+      : ['alacak'];
 
     for (let i = 0; i < normalizedRows.length; i++) {
       const row = normalizedRows[i];
+      if ((type === '191' || type === '391') && i < 2) {
+        skipDetail.push({ row: i + 2, reason: 'ilk 2 satir', aciklama: '' });
+        skipCounts['ilk 2 satir'] = (skipCounts['ilk 2 satir'] || 0) + 1;
+        continue;
+      }
       const keys = Object.keys(row);
 
       const find = (patterns: string[]): any => {
