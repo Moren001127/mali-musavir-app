@@ -116,6 +116,11 @@ export class LucaService {
     preferredAgent?: string;
     priority?: number;
   }) {
+    // Yeni job oluşturmadan önce stuck running'leri temizle — agent kill
+    // edilmiş olabilir, DB'de zombie running kayıtları kalmış olabilir.
+    // Bu kayıtlar yeni job'ları "seri kural" üzerinden bloke ediyor.
+    await this.cleanupStuckRunning(params.tenantId).catch(() => {});
+
     // Job tipine göre default affinity (B): e-arşiv/efatura uzun süren işler,
     // headless local agent daha stabil. Aksi belirtilmedikçe local-node tercih.
     const defaultAffinity =
@@ -196,6 +201,36 @@ export class LucaService {
       },
     });
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+  }
+
+  /**
+   * Stuck "running" job'ları temizler — agent kill edildiyse veya
+   * crash ettiyse DB'de running kalmış job'lar olabilir. Bu method
+   * 5 dk+ running'de duranları otomatik failed yapar.
+   *
+   * Job creation öncesi çağrılır → temiz başlangıç.
+   */
+  async cleanupStuckRunning(tenantId: string) {
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const result = await (this.prisma as any).lucaFetchJob.updateMany({
+      where: {
+        tenantId,
+        status: 'running',
+        OR: [
+          { startedAt: { lt: fiveMinAgo } },
+          { startedAt: null }, // hiç başlamamış ama running işaretli
+        ],
+      },
+      data: {
+        status: 'failed',
+        errorMsg: 'Cleanup: 5dk+ stuck running, agent crash veya kill olmuş olabilir',
+        finishedAt: new Date(),
+      },
+    });
+    if (result.count > 0) {
+      this.logger.log(`Cleanup: ${result.count} stuck running job → failed (tenant=${tenantId})`);
+    }
+    return result.count;
   }
 
   async markJobFailed(jobId: string, errorMsg: string) {
@@ -353,8 +388,17 @@ export class LucaService {
     // (Aynı mukellefId'de Luca menü navigasyonu paralel olunca çakışıyor —
     //  Gelen E-Fatura + Giden E-Fatura aynı tab'da menü açmaya çalışırsa
     //  birbirini kırıyor.)
+    //
+    // KRİTİK: "stuck running" job'ları sayma — agent kill edildiyse DB'de
+    // running kalır, sonsuza kadar o mükellefi bloke eder. Sadece son
+    // 5 dakikada başlamış olanı gerçekten running say.
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
     const runningMukellefs = await (this.prisma as any).lucaFetchJob.findMany({
-      where: { tenantId, status: 'running' },
+      where: {
+        tenantId,
+        status: 'running',
+        startedAt: { gte: fiveMinAgo }, // son 5dk içinde başlamış olanlar
+      },
       select: { mukellefId: true },
     });
     const busyMukellefIds = Array.from(
