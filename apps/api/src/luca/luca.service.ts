@@ -159,7 +159,6 @@ export class LucaService {
         sessionId: params.sessionId,
         mukellefId: params.mukellefId,
         donem: params.donem,
-        donemTipi: this.inferDonemTipi(params.donem, params.donemTipi),
         tip: params.tip,
         status: 'pending',
         createdBy: params.createdBy || null,
