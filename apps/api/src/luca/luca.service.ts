@@ -392,6 +392,8 @@ export class LucaService {
         status: 'pending',
         startedAt: null,
         finishedAt: null,
+        retryCount: 0,
+        nextRetryAt: null,
       },
     });
     return this.withDerivedDonemTipi(updated);

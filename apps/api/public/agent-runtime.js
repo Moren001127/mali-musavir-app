@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.49';
+  const AGENT_VERSION = '1.37.50';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5269,7 +5269,7 @@
     } catch {
       try { if (typeof btn.click === 'function') btn.click(); } catch {}
     }
-    await log('ℹ Rapor exact handler ile tetiklenecek; varsa onclick tek kez hemen cagrilacak');
+    await log('ℹ Rapor native click ile tetiklendi; gerekirse onclick fallback bekleme icinde tek kez calisacak');
     const triggerDirectOnce = async () => {
       let ran = false;
       if (onclickAttr) {
@@ -5292,10 +5292,6 @@
       }
       return ran;
     };
-    if (onclickAttr) {
-      await triggerDirectOnce();
-      return null;
-    }
     if (/^javascript:/i.test(hrefAttr)) {
       try {
         new win.Function(hrefAttr.replace(/^javascript:/i, '')).call(btn);
@@ -5430,6 +5426,7 @@
     // 10. XHR + fetch hook frm3'e (Luca jasper.jq POST'unu yakalamak için)
     installXhrHook(frm3win);
     installFetchHook(frm3win);
+    installReportFormSubmitHook(frm3win);
     installNativeDownloadHook(frm3win);
     await log(`🔗 frm3 XHR+fetch+native-download hook kuruldu`);
 
@@ -5449,6 +5446,7 @@
     installXhrHookOnAllFrames();
     installXhrHook(frm3win);
     installFetchHook(frm3win);
+    installReportFormSubmitHook(frm3win);
     installNativeDownloadHook(frm3win);
     await log(`🔗 Rapor öncesi hook'lar yeniden kuruldu`);
 
@@ -5487,32 +5485,48 @@
       const ov = window.__lucaJobOverrides || {};
       const setIfAny = (keys, value) => {
         if (value == null || value === '') return;
+        let matched = false;
+        const existingKeys = [...params.keys()];
         for (const key of keys) {
-          if ([...params.keys()].some((k) => k.toLowerCase() === key.toLowerCase())) {
-            params.set(key, String(value));
+          for (const actualKey of existingKeys) {
+            if (actualKey.toLowerCase() === key.toLowerCase()) {
+              params.set(actualKey, String(value));
+              matched = true;
+            }
           }
         }
+        if (!matched) params.set(keys[0], String(value));
       };
       setIfAny(['p_fis_tarihi_ilk_1', 'TARIH_ILK', 'tarih_ilk', 'tarih_bas'], ov.TARIH_ILK);
       setIfAny(['p_fis_tarihi_son_1', 'TARIH_SON', 'tarih_son', 'tarih_bit'], ov.TARIH_SON);
       setIfAny(['p_hesap_no_ilk_1', 'HESAPKODU_ILK', 'HESAP_ILK', 'hesap_bas'], ov.HESAPKODU_ILK);
       setIfAny(['p_hesap_no_son_1', 'HESAPKODU_SON', 'HESAP_SON', 'hesap_bit'], ov.HESAPKODU_SON);
       if (!params.has('ReportName')) params.set('ReportName', 'DEFTERI_KEBIR');
+      for (const key of ['REPORT_TYPE', 'report_type', 'dosya_tipi', 'format']) {
+        params.set(key, 'xlsx');
+      }
       const method = String(form.method || 'POST').toUpperCase();
       const targetUrl = action.startsWith('http') ? action : new URL(action, win.location.href).href;
       await log(`🧪 KDV direct form POST deneniyor: ${targetUrl.split('/').pop().slice(0, 80)} (${params.toString().length} byte)`);
+      const aborter = win.AbortController ? new win.AbortController() : null;
+      const timeoutId = aborter ? win.setTimeout(() => aborter.abort(), 12000) : null;
       const res = await win.fetch(targetUrl, {
         method: method === 'GET' ? 'POST' : method,
         credentials: 'include',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
+        ...(aborter ? { signal: aborter.signal } : {}),
       });
+      if (timeoutId) win.clearTimeout(timeoutId);
       const ct = res.headers.get('content-type') || '';
-      const blob = await res.blob();
-      await log(`🧪 KDV direct form response: HTTP ${res.status}, ${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 60)}`);
-      if (res.ok && blob.size > 1000) return blob;
+      const arr = await res.arrayBuffer();
+      const bytes = new Uint8Array(arr.slice(0, 8));
+      const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+      const blob = new Blob([arr], { type: ct || 'application/octet-stream' });
+      await log(`🧪 KDV direct form response: HTTP ${res.status}, ${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 60)}, zip=${isZip}`);
+      if (res.ok && blob.size > 1000 && (isZip || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct))) return blob;
       try {
-        const txt = await blob.text();
+        const txt = new TextDecoder().decode(arr.slice(0, 600));
         await log(`⚠ KDV direct form küçük/boş yanıt: ${txt.slice(0, 180).replace(/\s+/g, ' ')}`);
       } catch {}
     } catch (e) {
@@ -5525,6 +5539,60 @@
     const t0 = Date.now();
     let directFallbackTriggered = false;
     let directFormFallbackTriggered = false;
+    const postExpecting = (val) => {
+      if (val && lucaManualDownloadMode()) return;
+      const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
+      try { window.postMessage(payload, '*'); } catch {}
+      try { if (window.top && window.top !== window) window.top.postMessage(payload, '*'); } catch {}
+    };
+    const acceptBridgeBlob = async (blob, label, ct = '', filename = '') => {
+      try {
+        if (!blob || blob.size <= 1000 || window.__morenCapturedBlob) return false;
+        let isZip = false;
+        try {
+          const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+          isZip = head[0] === 0x50 && head[1] === 0x4b;
+        } catch {}
+        const meta = `${ct || blob.type || ''} ${filename || ''}`;
+        if (!isZip && !/xlsx|xls|spreadsheet|excel|officedocument|octet-stream|binary/i.test(meta)) return false;
+        window.__morenCapturedBlob = blob;
+        try { if (frm3win) frm3win.__morenCapturedBlob = blob; } catch {}
+        await log(`✅ KDV bridge blob alındı (${label}, ${Math.round(blob.size / 1024)} KB)`);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const onBridgeMessage = async (event) => {
+      try {
+        const data = event.data;
+        if (!data || data.source !== 'moren-bridge' || data.type !== 'lucaDownload') return;
+        const dlUrl = data.url;
+        if (!dlUrl || window.__morenCapturedBlob) return;
+        await log(`🌉 KDV bridge download URL geldi: ${String(dlUrl).split('/').pop().slice(0, 80)}`);
+        const r = await (frm3win?.fetch || fetch)(dlUrl, { credentials: 'include' });
+        if (!r.ok) {
+          await log(`⚠ KDV bridge URL HTTP ${r.status}`);
+          return;
+        }
+        const blob = await r.blob();
+        await acceptBridgeBlob(blob, 'bridge URL', r.headers.get('content-type') || '', dlUrl);
+      } catch (e) {
+        await log(`⚠ KDV bridge URL hata: ${String(e?.message || e).slice(0, 120)}`);
+      }
+    };
+    const onLucaFile = async (e) => {
+      try {
+        const detail = e.detail || {};
+        await acceptBridgeBlob(detail.blob, `disk ${String(detail.filename || '').split(/[\\\/]/).pop()}`, detail.blob?.type || '', detail.filename || '');
+      } catch {}
+    };
+    postExpecting(true);
+    window.addEventListener('message', onBridgeMessage);
+    window.addEventListener('moren-luca-file', onLucaFile);
+    try { if (frm3win && frm3win !== window) frm3win.addEventListener('moren-luca-file', onLucaFile); } catch {}
+    await log('🔔 KDV bridge: native download bekleniyor');
+    try {
     while (Date.now() - t0 < maxMs) {
       // Yol 1: form intercept blob yakaladı (Mizan tarzı)
       if (window.__morenCapturedBlob) {
@@ -5643,10 +5711,19 @@
       if (!directFormFallbackTriggered && typeof directFormFallback === 'function' && Date.now() - t0 > 15000) {
         directFormFallbackTriggered = true;
         await log('⏱ Rapor trafiği hâlâ yok; ID ile doldurulmuş form doğrudan POST ediliyor');
-        const directBlob = await directFormFallback();
-        if (directBlob) return directBlob;
+        directFormFallback()
+          .then((directBlob) => {
+            if (directBlob && !window.__morenCapturedBlob) window.__morenCapturedBlob = directBlob;
+          })
+          .catch((e) => log(`âš  KDV direct form async hata: ${e?.message || e}`).catch(() => {}));
       }
       await sleep(300);
+    }
+    } finally {
+      try { window.removeEventListener('message', onBridgeMessage); } catch {}
+      try { window.removeEventListener('moren-luca-file', onLucaFile); } catch {}
+      try { if (frm3win && frm3win !== window) frm3win.removeEventListener('moren-luca-file', onLucaFile); } catch {}
+      postExpecting(false);
     }
     try {
       const recent = (window.__morenLogs || [])
@@ -5759,14 +5836,22 @@
     // v1.36.22: Top window'a + tüm frame'lere hook kur (URL.createObjectURL özellikle)
     installXhrHook(frm3win);
     installFetchHook(frm3win);
+    installReportFormSubmitHook(frm3win);
     installNativeDownloadHook(frm3win);
     // YENİ: top window ve tüm visible frame'lere de URL.createObjectURL hook
     try {
       installNativeDownloadHook(window);
       installNativeDownloadHook(window.top);
+      installReportFormSubmitHook(window);
+      installReportFormSubmitHook(window.top);
       const allFrames = [...document.querySelectorAll('frame, iframe')];
       for (const f of allFrames) {
-        try { if (f.contentWindow) installNativeDownloadHook(f.contentWindow); } catch {}
+        try {
+          if (f.contentWindow) {
+            installReportFormSubmitHook(f.contentWindow);
+            installNativeDownloadHook(f.contentWindow);
+          }
+        } catch {}
       }
     } catch {}
     await log(`🔗 Hook'lar kuruldu (frm3 + top + ${document.querySelectorAll('frame,iframe').length} frame)`);
@@ -8872,6 +8957,108 @@
   // NATIVE DOWNLOAD HOOK — Luca rapor_indir sonrası dosyayı window.open()
   // veya <a download href=URL> ile veriyor olabilir. Bu URL'yi yakalayıp
   // bizim fetch'imizle blob alıp __morenCapturedBlob'a yazıyoruz.
+  function installReportFormSubmitHook(targetWin) {
+    try {
+      const w = targetWin || window;
+      if (!w || !w.HTMLFormElement || !w.document || w.__morenReportFormHookInstalled) return false;
+      w.__morenReportFormHookInstalled = true;
+      const logLine = (line) => {
+        try {
+          if (Array.isArray(window.__morenLogs)) window.__morenLogs.push(line);
+        } catch {}
+      };
+      const getAction = (form) => String(form?.action || form?.getAttribute?.('action') || '');
+      const shouldCapture = (form) => {
+        try {
+          if (!window.__lucaJobOverrides || !form) return false;
+          const action = getAction(form);
+          return /rapor_indir|raporIndir|rapor_dosya|download|indir|excel|xlsx/i.test(action);
+        } catch {
+          return false;
+        }
+      };
+      const captureForm = (form, reason) => {
+        try {
+          if (!shouldCapture(form)) return false;
+          const now = Date.now();
+          if (form.__morenLastReportFetchTs && now - form.__morenLastReportFetchTs < 1500) return true;
+          form.__morenLastReportFetchTs = now;
+          const action = getAction(form);
+          const method = String(form.method || 'POST').toUpperCase();
+          const params = new URLSearchParams();
+          const fd = new w.FormData(form);
+          for (const [k, v] of fd.entries()) params.append(k, String(v));
+          const bodyStr = params.toString();
+          const targetUrl = /^https?:/i.test(action) ? action : new w.URL(action, w.location.href).href;
+          const isGet = method === 'GET';
+          const fetchUrl = isGet
+            ? targetUrl + (targetUrl.includes('?') ? '&' : '?') + bodyStr
+            : targetUrl;
+          logLine(`[REPORT-FORM-${reason}] action=${targetUrl.split('/').pop().slice(0, 80)} body=${bodyStr.slice(0, 220)}`);
+          const init = {
+            method: isGet ? 'GET' : 'POST',
+            credentials: 'include',
+          };
+          if (!isGet) {
+            init.body = bodyStr;
+            init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+          }
+          w.fetch(fetchUrl, init)
+            .then(async (r) => {
+              const ct = r.headers.get('content-type') || '';
+              const arr = await r.arrayBuffer();
+              const bytes = new Uint8Array(arr.slice(0, 8));
+              const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b;
+              const blob = new w.Blob([arr], { type: ct || 'application/octet-stream' });
+              const isExcel = isZip || /xlsx|spreadsheet|excel|octet-stream|binary/i.test(ct);
+              logLine(`[REPORT-FORM-${reason}-RESP] HTTP ${r.status} ${Math.round(blob.size / 1024)} KB ct=${ct.slice(0, 45)} zip=${isZip}`);
+              if (r.ok && blob.size > 1000 && isExcel) {
+                window.__morenCapturedBlob = blob;
+                try { w.__morenCapturedBlob = blob; } catch {}
+                logLine(`[REPORT-FORM-${reason}-BLOB] captured ${Math.round(blob.size / 1024)} KB`);
+              } else if (arr.byteLength) {
+                try {
+                  const preview = new TextDecoder().decode(arr.slice(0, 260)).replace(/\s+/g, ' ');
+                  logLine(`[REPORT-FORM-${reason}-NO-BLOB] ${preview.slice(0, 220)}`);
+                } catch {}
+              }
+            })
+            .catch((e) => logLine(`[REPORT-FORM-${reason}-ERR] ${e?.message || e}`));
+          return true;
+        } catch (e) {
+          logLine(`[REPORT-FORM-${reason}-CATCH] ${e?.message || e}`);
+          return false;
+        }
+      };
+      const proto = w.HTMLFormElement.prototype;
+      const origSubmit = proto.submit;
+      const origRequestSubmit = proto.requestSubmit;
+      proto.submit = function () {
+        if (captureForm(this, 'SUBMIT')) return;
+        return origSubmit.apply(this, arguments);
+      };
+      if (origRequestSubmit) {
+        proto.requestSubmit = function () {
+          if (captureForm(this, 'REQUESTSUBMIT')) return;
+          return origRequestSubmit.apply(this, arguments);
+        };
+      }
+      w.document.addEventListener('submit', (ev) => {
+        try {
+          const form = ev.target;
+          if (shouldCapture(form)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            captureForm(form, 'EVENT');
+          }
+        } catch {}
+      }, true);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function installNativeDownloadHook(targetWin) {
     try {
       const w = targetWin || window;
@@ -9153,6 +9340,7 @@
     let count = 0;
     if (installXhrHook(window)) count++;
     if (installFetchHook(window)) count++;
+    if (installReportFormSubmitHook(window)) count++;
     if (installNativeDownloadHook(window)) count++;
     const collect = (root, depth = 0) => {
       if (depth > 5) return;
@@ -9162,6 +9350,7 @@
             if (f.contentWindow) {
               if (installXhrHook(f.contentWindow)) count++;
               if (installFetchHook(f.contentWindow)) count++;
+              if (installReportFormSubmitHook(f.contentWindow)) count++;
               if (installNativeDownloadHook(f.contentWindow)) count++;
             }
             if (f.contentDocument) collect(f.contentDocument, depth + 1);
