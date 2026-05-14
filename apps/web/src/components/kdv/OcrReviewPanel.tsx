@@ -566,7 +566,7 @@ export function OcrReviewPanel({
               />
               <FieldInput
                 label={
-                  hasTevkifat && !isSalesSession
+                  hasTevkifat
                     ? 'KDV Tutarı (NET — tevkifat düşülmüş)'
                     : !isSalesSession && form.breakdown && form.breakdown.length > 0
                       ? 'KDV Tutarı (toplam — otomatik)'
@@ -587,7 +587,6 @@ export function OcrReviewPanel({
 
               {/* KDV Tevkifat — varsa görünür (tevkifatsız faturalarda gizleyebiliriz). */}
               {/* confidence verilmediği için badge görünmüyor — opsiyonel alan. */}
-              {!isSalesSession && (
               <FieldInput
                 label="KDV Tevkifatı (varsa)"
                 placeholder="0,00"
@@ -595,9 +594,8 @@ export function OcrReviewPanel({
                 onChange={(v) => setForm((f) => ({ ...f, kdvTevkifat: v }))}
                 onEnter={handleConfirm}
                 numeric
-                />
-              )}
-              {hasTevkifat && !isSalesSession && (
+              />
+              {hasTevkifat && (
                 <div
                   className="rounded-lg px-3 py-2 text-[11px]"
                   style={{ background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.24)', color: 'rgba(250,250,249,0.72)' }}
@@ -609,7 +607,7 @@ export function OcrReviewPanel({
                     </span>
                   </div>
                   <p className="mt-1 leading-relaxed">
-                    Net KDV {fmtLooseMoney(netKdvAmount)} + tevkifat {fmtLooseMoney(tevkifatAmount)} ayrı saklanır. Alış eşleştirmesinde Luca'nın normal KDV ve sorumlu sıfatıyla indirilecek KDV satırları birlikte değerlendirilir.
+                    Net KDV {fmtLooseMoney(netKdvAmount)} + tevkifat {fmtLooseMoney(tevkifatAmount)} ayrı saklanır. Satışta Luca net KDV ile eşleşir; alışta net + tevkifat toplamı da kontrol edilir.
                   </p>
                 </div>
               )}

@@ -3157,6 +3157,53 @@ export class OcrService {
     return n.toFixed(2).replace('.', ',');
   }
 
+  private normalizeTaxText(value: string | null | undefined): string {
+    return String(value ?? '')
+      .replace(/\u0130/g, 'I')
+      .replace(/\u0131/g, 'i')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private decodeXmlText(value: string): string {
+    return value
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'");
+  }
+
+  private getXmlTagValue(xml: string, tag: string): string | null {
+    const name = `(?:[\\w.-]+:)?${tag}`;
+    const match = xml.match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i'));
+    return match?.[1] ? this.decodeXmlText(match[1].trim()) : null;
+  }
+
+  private getXmlBlocks(xml: string, tag: string): string[] {
+    const name = `(?:[\\w.-]+:)?${tag}`;
+    const re = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'gi');
+    const blocks: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(xml)) !== null) {
+      blocks.push(match[1]);
+    }
+    return blocks;
+  }
+
+  private stripXmlBlocks(xml: string, tag: string): string {
+    const name = `(?:[\\w.-]+:)?${tag}`;
+    return xml.replace(new RegExp(`<${name}\\b[^>]*>[\\s\\S]*?<\\/${name}>`, 'gi'), '');
+  }
+
+  private parseXmlAmount(xml: string, tag: string): number {
+    const raw = this.getXmlTagValue(xml, tag);
+    return raw ? this.parseAmount(raw) : 0;
+  }
+
   /**
    * OCR sonucunu kapsamlı doğrular + mümkünse düzeltir. Çağıran taraf
    * (Claude Vision OCR) parse sonrası bu method'u çağırır.
@@ -3658,58 +3705,66 @@ export class OcrService {
     // → KDV 2-N× fazla görünüyor (UKF123'te 16.054,88 = 2 × 8.027,44 bug'ı).
     // Fix: cac:InvoiceLine bloklarını parse'tan önce maskele, kalan XML'de
     // sadece invoice-level TaxTotal kalır.
-    const xmlInvoiceLevelOnly = xml.replace(
-      /<cac:InvoiceLine>[\s\S]*?<\/cac:InvoiceLine>/gi,
-      '',
-    );
+    const xmlInvoiceLevelOnly = this.stripXmlBlocks(xml, 'InvoiceLine');
+    const xmlTaxForKdv = this.stripXmlBlocks(xmlInvoiceLevelOnly, 'WithholdingTaxTotal');
+
+    const getTaxInfo = (block: string) => {
+      const taxScheme = this.getXmlBlocks(block, 'TaxScheme')[0] || '';
+      const taxSchemeName =
+        this.getXmlTagValue(taxScheme, 'Name') ||
+        this.getXmlTagValue(block, 'Name') ||
+        '';
+      const taxSchemeId =
+        this.getXmlTagValue(block, 'TaxTypeCode') ||
+        this.getXmlTagValue(taxScheme, 'ID') ||
+        '';
+      return {
+        name: taxSchemeName.trim(),
+        normalizedName: this.normalizeTaxText(taxSchemeName),
+        id: taxSchemeId.trim(),
+      };
+    };
+
+    const isTevkifatTax = (normalizedName: string, taxSchemeId: string) =>
+      (normalizedName.includes('KDV') && normalizedName.includes('TEVK') && normalizedName.includes('FAT')) ||
+      /^9\d{3}$/.test(taxSchemeId);
 
     const kdvBreakdown: KdvBreakdownItem[] = [];
     // KDV tevkifatı: Luca muavininde satıcının "Hesaplanan KDV" alanına NET KDV
     // (tam KDV − tevkifat) yazılır. Reconciliation'ın doğru eşleşmesi için
     // OCR çıktısındaki kdvTutari da net olmalı.
-    let kdvTevkifat = 0;
-    const subtotalRegex = /<cac:TaxSubtotal>([\s\S]*?)<\/cac:TaxSubtotal>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = subtotalRegex.exec(xmlInvoiceLevelOnly)) !== null) {
-      const block = m[1];
+    let tevkifatFromSubtotals = 0;
+    const subtotalBlocks = this.getXmlBlocks(xmlTaxForKdv, 'TaxSubtotal');
+    for (const block of subtotalBlocks) {
       // Tax türü belirleme — KDV dışındaki vergileri atla
-      const taxSchemeName = block.match(/<cbc:Name>([^<]+)<\/cbc:Name>/i)?.[1]?.trim().toUpperCase() || '';
-      const taxSchemeId =
-        block.match(/<cbc:TaxTypeCode>([^<]+)<\/cbc:TaxTypeCode>/i)?.[1]?.trim() ||
-        block.match(/<cac:TaxScheme>[\s\S]*?<cbc:ID>([^<]+)<\/cbc:ID>/i)?.[1]?.trim() ||
-        '';
-      // Tevkifat tespiti — KDV'den indirilecek withholding kısmı
-      const isTevkifat =
-        /KDV.*TEVKIFAT|KDV.*TEVKİFAT|TEVKIFAT.*KDV|TEVKİFAT.*KDV/i.test(taxSchemeName) ||
-        // GİB TaxTypeCode listesinde KDV tevkifat kodları 9xxx aralığında
-        /^9\d{3}$/.test(taxSchemeId);
+      const { name: taxSchemeName, normalizedName, id: taxSchemeId } = getTaxInfo(block);
+      // Tevkifat tespiti - KDV'den indirilecek withholding kismi
+      const isTevkifat = isTevkifatTax(normalizedName, taxSchemeId);
       if (isTevkifat) {
-        const tutarMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
-        if (tutarMatch) {
-          const tutar = parseFloat(tutarMatch[1]) || 0;
-          if (tutar > 0) {
-            kdvTevkifat += tutar;
-            this.logger.log(
-              `XML parser: KDV tevkifatı yakalandı — Name="${taxSchemeName}" Code="${taxSchemeId}" tutar=${tutar}`,
-            );
-          }
+        const tutar = this.parseXmlAmount(block, 'TaxAmount');
+        if (tutar > 0) {
+          tevkifatFromSubtotals += tutar;
+          this.logger.log(
+            `XML parser: KDV tevkifati TaxSubtotal yakalandi - Name="${taxSchemeName}" Code="${taxSchemeId}" tutar=${tutar}`,
+          );
         }
         continue;
       }
       // KDV dışı vergi türlerini ele (ÖİV, Telsiz, ÖTV, Damga, vb.)
       const isNotKdv =
-        /ÖZEL\s*İLETİŞİM|OZEL\s*ILETISIM|ÖİV|OIV/i.test(taxSchemeName) ||
-        /TELSİZ|TELSIZ/i.test(taxSchemeName) ||
-        /ÖTV|OTV|ÖZEL\s*TÜKETİM/i.test(taxSchemeName) ||
-        /DAMGA/i.test(taxSchemeName) ||
-        /BSMV/i.test(taxSchemeName) ||
-        /KKDF/i.test(taxSchemeName) ||
-        /KONAKLAMA/i.test(taxSchemeName) ||
-        /STOPAJ/i.test(taxSchemeName) ||
+        /OZEL\s*ILETISIM|OIV/.test(normalizedName) ||
+        /TELSIZ/.test(normalizedName) ||
+        /OTV|OZEL\s*TUKETIM/.test(normalizedName) ||
+        /DAMGA/.test(normalizedName) ||
+        /BSMV/.test(normalizedName) ||
+        /KKDF/.test(normalizedName) ||
+        /KONAKLAMA/.test(normalizedName) ||
+        /STOPAJ/.test(normalizedName) ||
         // TaxTypeCode: 0003=Damga, 0059=ÖİV, 0071=ÖTV, 4080=Konaklama (GİB kod listesi)
         ['0003', '0059', '0061', '0071', '0072', '0073', '0074', '0075', '0076', '0077', '4080', '9040', '9077'].includes(taxSchemeId);
       const isKdv =
-        /^KDV$|KATMA\s*DEĞER|KATMA\s*DEGER/i.test(taxSchemeName) ||
+        normalizedName === 'KDV' ||
+        normalizedName.includes('KATMA DEGER') ||
         taxSchemeId === '0015';
       // Eğer kesinlikle KDV değilse atla
       if (isNotKdv) {
@@ -3729,37 +3784,61 @@ export class OcrService {
         continue;
       }
 
-      const taxableMatch = block.match(/<cbc:TaxableAmount[^>]*>([^<]+)<\/cbc:TaxableAmount>/i);
-      const taxAmountMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
-      const percentMatch = block.match(/<cbc:Percent>([^<]+)<\/cbc:Percent>/i);
-      if (taxAmountMatch) {
-        const tutar = parseFloat(taxAmountMatch[1]) || 0;
-        const matrah = taxableMatch ? parseFloat(taxableMatch[1]) : null;
-        const oran = percentMatch ? parseFloat(percentMatch[1]) : 0;
-        if (tutar > 0 || (oran === 0 && matrah && matrah > 0)) {
-          kdvBreakdown.push({ oran, tutar, matrah });
-        }
+      const tutar = this.parseXmlAmount(block, 'TaxAmount');
+      const matrahRaw = this.getXmlTagValue(block, 'TaxableAmount');
+      const matrah = matrahRaw ? this.parseAmount(matrahRaw) : null;
+      const percentRaw = this.getXmlTagValue(block, 'Percent');
+      const oran = percentRaw ? this.parseAmount(percentRaw) : 0;
+      if (tutar > 0 || (oran === 0 && matrah && matrah > 0)) {
+        kdvBreakdown.push({ oran, tutar, matrah });
       }
     }
 
-    // WithholdingTaxTotal bloğu — UBL'de tevkifat bazen burada kodlanır
-    const withholdingRegex = /<cac:WithholdingTaxTotal>([\s\S]*?)<\/cac:WithholdingTaxTotal>/gi;
-    let wm: RegExpExecArray | null;
-    while ((wm = withholdingRegex.exec(xmlInvoiceLevelOnly)) !== null) {
-      const block = wm[1];
-      const taxAmountMatch = block.match(/<cbc:TaxAmount[^>]*>([^<]+)<\/cbc:TaxAmount>/i);
-      if (taxAmountMatch) {
-        const tutar = parseFloat(taxAmountMatch[1]) || 0;
-        if (tutar > 0) {
-          kdvTevkifat += tutar;
-          this.logger.log(`XML parser: WithholdingTaxTotal yakalandı — tutar=${tutar}`);
+    const sumWithholdingTax = (fragment: string) => {
+      let total = 0;
+      for (const block of this.getXmlBlocks(fragment, 'WithholdingTaxTotal')) {
+        const directAmount = this.parseXmlAmount(block, 'TaxAmount');
+        if (directAmount > 0) {
+          total += directAmount;
+          continue;
+        }
+        for (const sub of this.getXmlBlocks(block, 'TaxSubtotal')) {
+          const { normalizedName, id: taxSchemeId } = getTaxInfo(sub);
+          if (isTevkifatTax(normalizedName, taxSchemeId)) {
+            total += this.parseXmlAmount(sub, 'TaxAmount');
+          }
         }
       }
+      return total;
+    };
+
+    const invoiceWithholding = sumWithholdingTax(xmlInvoiceLevelOnly);
+    const lineWithholding = invoiceWithholding > 0 ? 0 : sumWithholdingTax(xml);
+    let kdvTevkifat = Math.max(tevkifatFromSubtotals, invoiceWithholding, lineWithholding);
+    if (kdvTevkifat > 0) {
+      this.logger.log(`XML parser: KDV tevkifati yakalandi - tutar=${kdvTevkifat}`);
     }
 
     // Toplam KDV: breakdown toplamı. Tevkifat varsa NET KDV döndür (Luca muavininde
     // satıcının "Hesaplanan KDV" alanına yazılan değer net KDV'dir).
     const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
+    if (kdvTevkifat <= 0 && kdvToplam > 0) {
+      const xmlMentionsTevkifat = (() => {
+        const normalizedXml = this.normalizeTaxText(xml.slice(0, 250000));
+        return normalizedXml.includes('TEVK') && normalizedXml.includes('FAT');
+      })();
+      if (xmlMentionsTevkifat) {
+        const taxInclusive = this.parseXmlAmount(xmlInvoiceLevelOnly, 'TaxInclusiveAmount');
+        const payable = this.parseXmlAmount(xmlInvoiceLevelOnly, 'PayableAmount');
+        const inferred = Math.round((taxInclusive - payable) * 100) / 100;
+        if (inferred > 0 && inferred <= kdvToplam + 0.05) {
+          kdvTevkifat = inferred;
+          this.logger.warn(
+            `XML parser: tevkifat toplam farkindan cikarildi - taxInclusive=${taxInclusive} payable=${payable} tevkifat=${kdvTevkifat}`,
+          );
+        }
+      }
+    }
     const kdvNet = kdvTevkifat > 0 ? Math.max(0, kdvToplam - kdvTevkifat) : kdvToplam;
     if (kdvTevkifat > 0) {
       this.logger.log(
