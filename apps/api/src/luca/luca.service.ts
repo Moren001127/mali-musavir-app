@@ -347,10 +347,26 @@ export class LucaService {
     const affinityFilter = agentKind
       ? { OR: [{ preferredAgent: null }, { preferredAgent: agentKind }] }
       : { preferredAgent: null };
+    // SERİ İŞ KURALI: aynı mükellef için aynı anda 1 running job.
+    // Bir mükellef için zaten running olan job varsa, o mükellefin
+    // diğer pending'lerini bekletecek şekilde filtrele.
+    // (Aynı mukellefId'de Luca menü navigasyonu paralel olunca çakışıyor —
+    //  Gelen E-Fatura + Giden E-Fatura aynı tab'da menü açmaya çalışırsa
+    //  birbirini kırıyor.)
+    const runningMukellefs = await (this.prisma as any).lucaFetchJob.findMany({
+      where: { tenantId, status: 'running' },
+      select: { mukellefId: true },
+    });
+    const busyMukellefIds = Array.from(
+      new Set(runningMukellefs.map((j: any) => j.mukellefId).filter(Boolean)),
+    );
+
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: {
         tenantId,
         status: 'pending',
+        // Meşgul mükelleflerin diğer job'larını gösterme
+        ...(busyMukellefIds.length > 0 ? { mukellefId: { notIn: busyMukellefIds } } : {}),
         AND: [
           {
             OR: [
