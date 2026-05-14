@@ -1,22 +1,23 @@
 'use client';
 
 /**
- * Global Luca Ajanı durum panel'i — sidebar'da yer alır, her sayfada görünür.
+ * Global Luca Ajanı durum panel'i — üst bar'da (TopBar) yer alır, her
+ * sayfada görünür.
  *
- * Kullanıcı bir mükellefe fatura/mizan/kdv çekmesi tetikledikten sonra başka
- * menüye geçerse, log akışını kaybediyordu. Bu panel global olarak agent'ın
- * o anki kuyruğunu (pending+running) ve son log satırını gösterir; tıklayınca
- * ayrıntılı dropdown açılır, oradan job iptal edilebilir.
+ * Compact buton: 36x36 kutu, sağ üstte aktif job sayısı badge. Tıklayınca
+ * sağ tarafa hizalanmış geniş dropdown açılır; aktif (pending+running) job'lar
+ * listelenir, her job için tip rozeti, mükellef adı, son log satırı ve iptal
+ * butonu gösterilir.
  *
  * Polling: /luca/jobs (mevcut endpoint) — 5 sn'de bir.
- * Veri kalıcılığı: Job log'ları zaten DB'de (LucaFetchJob.errorMsg, son 20 satır)
- * — sayfaya geri gelince otomatik yüklenir.
+ * Veri kalıcılığı: Job log'ları zaten DB'de (LucaFetchJob.errorMsg, son 20
+ * satır) — sayfaya geri gelince otomatik yüklenir.
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Bot, X, ChevronDown, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Bot, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const GOLD = '#d4b876';
@@ -99,7 +100,7 @@ function timeSince(iso?: string | null): string {
 export default function LucaAgentPanel() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   const { data: jobs = [] } = useQuery<LucaJob[]>({
     queryKey: ['luca-agent-jobs'],
@@ -126,12 +127,13 @@ export default function LucaAgentPanel() {
   );
   const runningCount = activeJobs.filter((j) => j.status === 'running').length;
   const pendingCount = activeJobs.filter((j) => j.status === 'pending').length;
+  const totalActive = activeJobs.length;
 
   // Dış tıklamada panel kapansın
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
@@ -146,82 +148,93 @@ export default function LucaAgentPanel() {
     onError: () => toast.error('İptal başarısız'),
   });
 
-  const isIdle = activeJobs.length === 0;
+  const isIdle = totalActive === 0;
   const statusColor = isIdle ? '#22c55e' : runningCount > 0 ? '#f59e0b' : '#64748b';
-  const statusLabel = isIdle
-    ? 'Boşta'
-    : `${runningCount} çalışıyor${pendingCount > 0 ? ` · ${pendingCount} sırada` : ''}`;
 
   return (
-    <div ref={panelRef} className="relative px-2 pt-3 pb-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+    <div ref={wrapperRef} className="relative">
+      {/* COMPACT TRIGGER — TopBar'ın diğer butonları (Tema, Bildirim) ile aynı yükseklikte */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all hover:brightness-110"
+        className="relative h-9 px-3 rounded-lg flex items-center gap-2 transition-all hover:brightness-110"
         style={{
           background: isIdle ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.08)',
-          border: `1px solid ${isIdle ? 'rgba(34,197,94,0.18)' : 'rgba(245,158,11,0.25)'}`,
+          border: `1px solid ${isIdle ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.3)'}`,
         }}
-        title="Luca ajanı durum panel'i"
+        title={isIdle ? 'Luca ajanı boşta' : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`}
       >
         <div className="relative">
           <Bot size={14} style={{ color: statusColor }} />
           {!isIdle && (
-            <div
+            <span
               className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse"
               style={{ background: statusColor }}
             />
           )}
         </div>
-        <div className="flex-1 min-w-0 text-left">
-          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.55)', letterSpacing: '0.12em' }}>
-            Luca Ajanı
-          </p>
-          <p className="text-[11.5px] font-semibold truncate" style={{ color: statusColor }}>
-            {statusLabel}
-          </p>
-        </div>
-        <ChevronDown
-          size={12}
-          style={{
-            color: 'rgba(250,250,249,0.5)',
-            transform: open ? 'rotate(180deg)' : 'rotate(0)',
-            transition: 'transform 0.2s',
-          }}
-        />
+        <span className="text-[12px] font-semibold tabular-nums" style={{ color: statusColor }}>
+          {isIdle ? 'Luca' : `${totalActive}`}
+        </span>
+        {!isIdle && (
+          <span
+            className="text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center"
+            style={{ background: statusColor, color: '#0f0d0b' }}
+          >
+            {runningCount > 0 ? '●' : '◌'}
+          </span>
+        )}
       </button>
 
+      {/* DROPDOWN PANEL — TopBar'ın hemen altına sağa hizalı, geniş */}
       {open && (
         <div
-          className="absolute left-2 right-2 mt-1.5 rounded-xl shadow-2xl overflow-hidden z-50"
+          className="absolute right-0 mt-2 rounded-xl overflow-hidden z-50"
           style={{
+            width: 420,
+            maxWidth: 'calc(100vw - 32px)',
             background: 'rgba(15,13,11,0.98)',
-            border: '1px solid rgba(212,184,118,0.18)',
-            backdropFilter: 'blur(10px)',
-            maxHeight: 520,
+            border: '1px solid rgba(212,184,118,0.2)',
+            boxShadow: '0 18px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(212,184,118,0.08)',
+            backdropFilter: 'blur(14px)',
           }}
         >
+          {/* HEADER */}
           <div
-            className="px-3 py-2.5 flex items-center justify-between"
-            style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(212,184,118,0.04)' }}
+            className="px-4 py-3 flex items-center justify-between"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(212,184,118,0.05)' }}
           >
-            <p className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: GOLD, letterSpacing: '0.14em' }}>
-              Aktif Luca İşleri
-            </p>
-            <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-white/10 transition" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <X size={12} />
+            <div className="flex items-center gap-2">
+              <Bot size={14} style={{ color: GOLD }} />
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD, letterSpacing: '0.14em' }}>
+                  Luca Ajanı
+                </p>
+                <p className="text-[11px] font-medium" style={{ color: statusColor }}>
+                  {isIdle ? 'Boşta · son işten beri bekliyor' : `${runningCount} çalışıyor${pendingCount > 0 ? ` · ${pendingCount} sırada` : ''}`}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setOpen(false)}
+              className="p-1.5 rounded-md hover:bg-white/10 transition"
+              style={{ color: 'rgba(250,250,249,0.5)' }}
+              title="Kapat"
+            >
+              <X size={13} />
             </button>
           </div>
 
-          <div className="overflow-y-auto" style={{ maxHeight: 460 }}>
+          {/* JOB LIST */}
+          <div className="overflow-y-auto" style={{ maxHeight: 520 }}>
             {activeJobs.length === 0 ? (
-              <div className="px-3 py-6 text-center">
-                <CheckCircle2 size={20} className="mx-auto mb-1.5" style={{ color: '#22c55e' }} />
-                <p className="text-[12px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
+              <div className="px-4 py-8 text-center">
+                <CheckCircle2 size={24} className="mx-auto mb-2" style={{ color: '#22c55e' }} />
+                <p className="text-[13px] font-medium" style={{ color: 'rgba(250,250,249,0.65)' }}>
                   Luca ajanı şu an boşta
                 </p>
-                <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.32)' }}>
-                  Yeni iş tetiklendiğinde burada görünür
+                <p className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.35)' }}>
+                  Yeni iş tetiklediğinde burada anlık görürsün
                 </p>
               </div>
             ) : (
@@ -235,51 +248,55 @@ export default function LucaAgentPanel() {
                 return (
                   <div
                     key={job.id}
-                    className="px-3 py-2.5 transition-colors hover:bg-white/[0.025]"
+                    className="px-4 py-3 transition-colors hover:bg-white/[0.03]"
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                   >
-                    <div className="flex items-center gap-2 mb-1">
+                    {/* Üst satır: tip rozeti + dönem + süre */}
+                    <div className="flex items-center gap-2 mb-1.5">
                       {isRunning ? (
                         <Loader2 size={11} className="animate-spin shrink-0" style={{ color: '#f59e0b' }} />
                       ) : (
                         <AlertCircle size={11} className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />
                       )}
                       <span
-                        className="text-[9.5px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wide"
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 uppercase tracking-wide"
                         style={{ background: `${tipColor}22`, color: tipColor }}
                       >
                         {tipLabel}
                       </span>
                       {job.donem && (
-                        <span className="text-[10px] tabular-nums shrink-0" style={{ color: 'rgba(250,250,249,0.5)' }}>
+                        <span className="text-[10.5px] tabular-nums shrink-0" style={{ color: 'rgba(250,250,249,0.55)' }}>
                           {job.donem}
                         </span>
                       )}
-                      <span className="text-[10px] tabular-nums ml-auto shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                      <span className="text-[10.5px] tabular-nums ml-auto shrink-0" style={{ color: 'rgba(250,250,249,0.42)' }}>
                         {timeSince(refTime)}
                       </span>
                     </div>
-                    <p className="text-[12px] font-semibold truncate mb-1" style={{ color: '#fafaf9' }} title={taxpayerName(tp)}>
+                    {/* Mükellef adı */}
+                    <p className="text-[12.5px] font-semibold truncate mb-1" style={{ color: '#fafaf9' }} title={taxpayerName(tp)}>
                       {taxpayerName(tp)}
                     </p>
+                    {/* Son log satırı */}
                     <p
-                      className="text-[10.5px] truncate"
+                      className="text-[11px] truncate"
                       style={{ color: 'rgba(250,250,249,0.55)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}
                       title={lastLogLine(job.errorMsg)}
                     >
                       {lastLogLine(job.errorMsg)}
                     </p>
-                    <div className="flex justify-end mt-1.5">
+                    {/* Aksiyon: iptal */}
+                    <div className="flex justify-end mt-2">
                       <button
                         onClick={() => {
                           if (confirm(`${tipLabel} işi iptal edilsin mi?`)) cancelMut.mutate(job.id);
                         }}
                         disabled={cancelMut.isPending}
-                        className="text-[10px] px-2 py-0.5 rounded transition hover:brightness-110 disabled:opacity-50"
+                        className="text-[10.5px] px-2.5 py-1 rounded-md transition hover:brightness-110 disabled:opacity-50 font-semibold"
                         style={{
-                          background: 'rgba(239,68,68,0.08)',
+                          background: 'rgba(239,68,68,0.1)',
                           color: '#ef4444',
-                          border: '1px solid rgba(239,68,68,0.18)',
+                          border: '1px solid rgba(239,68,68,0.22)',
                         }}
                       >
                         İptal

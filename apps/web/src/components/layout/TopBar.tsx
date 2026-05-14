@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { useEffect, useState } from 'react';
 import SystemHealthBell from './SystemHealthBell';
 import AiOnayBell from './AiOnayBell';
+import LucaAgentPanel from './LucaAgentPanel';
 
 const THEMES = [
   { id: 'A', label: 'Editorial', desc: 'Klasik gazete' },
@@ -102,6 +103,9 @@ export default function TopBar({ user }: { user: any }) {
             </div>
           )}
         </div>
+
+        {/* Luca Ajanı — global agent durum + son log + iptal */}
+        <LucaAgentPanel />
 
         {/* AI Onay Kuyruğu — bekleyen onay varsa görünür, kritik olunca kırmızı */}
         <AiOnayBell />
