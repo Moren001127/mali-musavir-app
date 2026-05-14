@@ -572,6 +572,14 @@ export default function IsletmeHesapOzetiPage() {
             );
             if (onay) lucaCekMutation.mutate(c.id);
           }}
+          onLucaCancel={(donem, jobId) => {
+            isletmeHesapOzetiApi.cancelLucaJob(jobId)
+              .then(() => {
+                setLucaJobs((prev) => ({ ...prev, [donem]: null }));
+                toast.info(`${donem}. dönem Luca çekimi iptal edildi`);
+              })
+              .catch((e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'));
+          }}
           lucaJobs={lucaJobs}
         />
       )}
@@ -590,6 +598,7 @@ function KarsilastirmaTablosu({
   onUnlock,
   onDelete,
   onLucaCek,
+  onLucaCancel,
   lucaJobs,
 }: {
   yilData: IhoYil;
@@ -599,6 +608,7 @@ function KarsilastirmaTablosu({
   onUnlock: (id: string) => void;
   onDelete: (id: string) => void;
   onLucaCek: (donem: number) => void;
+  onLucaCancel: (donem: number, jobId: string) => void;
   lucaJobs: Record<number, { jobId: string; status: string; message?: string } | null>;
 }) {
   const yil = yilData?.yil;
@@ -801,14 +811,19 @@ function KarsilastirmaTablosu({
                 <div className="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
                   {!locked && (
                     <button
-                      onClick={() => onLucaCek(d)}
-                      disabled={fetching}
-                      title="Luca'dan İşletme Defteri Excel'i çek"
-                      className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded disabled:opacity-50"
+                      onClick={() => {
+                        if (fetching && job?.jobId) {
+                          onLucaCancel(d, job.jobId);
+                        } else {
+                          onLucaCek(d);
+                        }
+                      }}
+                      title={fetching ? 'Bu döneme ait Luca çekimini iptal et' : "Luca'dan İşletme Defteri Excel'i çek"}
+                      className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded"
                       style={{
-                        background: 'rgba(184,160,111,0.12)',
-                        color: GOLD,
-                        border: '1px solid rgba(184,160,111,0.3)',
+                        background: fetching ? 'rgba(239,68,68,0.12)' : 'rgba(184,160,111,0.12)',
+                        color: fetching ? '#fca5a5' : GOLD,
+                        border: `1px solid ${fetching ? 'rgba(239,68,68,0.35)' : 'rgba(184,160,111,0.3)'}`,
                         height: 28,
                         padding: '0 10px',
                         minWidth: 100,
@@ -819,7 +834,7 @@ function KarsilastirmaTablosu({
                       ) : (
                         <CloudDownload className="h-3 w-3" />
                       )}
-                      {fetching ? 'Çekiliyor…' : "Luca'dan Çek"}
+                      {fetching ? 'İptal Et' : "Luca'dan Çek"}
                     </button>
                   )}
                   {c && !locked && (

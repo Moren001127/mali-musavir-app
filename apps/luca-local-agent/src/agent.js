@@ -65,7 +65,14 @@ const JOB_TYPES = new Set(cfg.worker?.jobTypes || ['ACCOUNT_PLAN', 'MIZAN', 'MUA
 const LOG_LEVEL = cfg.log?.level || 'info';
 const LOCAL_AGENT_VERSION = 'local-1.0.2';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
-const BROWSER_IDLE_TTL = (cfg.worker?.browserIdleTtlSeconds || 20 * 60) * 1000;
+// v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
+// her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
+// sonrası Luca cookie zaten düşmüş olur, kapatma doğru.
+const BROWSER_IDLE_TTL = (cfg.worker?.browserIdleTtlSeconds || 2 * 60 * 60) * 1000;
+// Keep-alive ping aralığı: idle TTL'in 1/4'ü. Browser session açıkken
+// arka planda hafif bir sayfa içi navigasyon yaparak Luca cookie'sinin
+// sunucu tarafında sıfırlanmasını engelleriz.
+const BROWSER_KEEPALIVE_INTERVAL = Math.max(60_000, BROWSER_IDLE_TTL / 4);
 
 // --------- Logger ---------
 const log = {
@@ -196,9 +203,38 @@ async function closeBrowserSession(reason = 'manual') {
   browserSession = null;
   if (!s) return;
   log.info(`Luca browser oturumu kapatiliyor: ${reason}`);
+  if (s.keepAliveTimer) {
+    clearInterval(s.keepAliveTimer);
+    s.keepAliveTimer = null;
+  }
   await s.page?.close?.().catch(() => {});
   await s.context?.close?.().catch(() => {});
   await s.browser?.close?.().catch(() => {});
+}
+
+/**
+ * Browser açıkken arka planda hafif ping atar — Luca session cookie'sinin
+ * sunucu tarafında 30dk inaktivite ile düşmesini engeller. Her interval'de
+ * mevcut sayfa URL'ini okur (zero-cost) + lastUsedAt'i yenilemez (gerçek
+ * iş gelmediyse idle TTL'i bozma).
+ */
+function startKeepAlive(session) {
+  if (session.keepAliveTimer) return;
+  session.keepAliveTimer = setInterval(async () => {
+    try {
+      if (!browserSession || browserSession !== session) return;
+      const page = session.page;
+      if (!page || page.isClosed()) return;
+      const url = page.url();
+      // Sadece Luca domain'inde keep-alive yap
+      if (!/luca\.com\.tr/i.test(url)) return;
+      // Hafif evaluate — herhangi bir DOM erişimi cookie'yi refresh eder
+      await page.evaluate(() => Date.now()).catch(() => {});
+      log.debug?.(`Luca keep-alive ping (url: ${url.slice(0, 80)})`);
+    } catch (e) {
+      // sessizce yok say — bir sonraki tick'te tekrar dene
+    }
+  }, BROWSER_KEEPALIVE_INTERVAL);
 }
 
 async function getBrowserSession() {
@@ -244,8 +280,12 @@ async function getBrowserSession() {
     lastUsedAt: now,
     runtimeInstalled: false,
     persistent: true,
+    keepAliveTimer: null,
+    // v1.36.X: aynı mükellef hızlı yol — son seçilen firma cache
+    lastTaxpayer: null, // { taxpayerId, selectedAt: number }
   };
-  log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}) — cookie'ler kayitli kalir.`);
+  startKeepAlive(browserSession);
+  log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
 
@@ -523,6 +563,11 @@ async function fetchAccountPlan(page, mukellefAdi) {
 }
 
 // --------- Job processor ---------
+// Aynı mükellef hızlı yol — son seçilen firma cache TTL (varsayılan 5dk).
+// Agent.lastTaxpayer ve job geldiğinde TTL içindeyse Luca'da firma seçim
+// adımı atlanabilir (Moren Runtime hint olarak okuyacak: meta.fastPath).
+const TAXPAYER_FASTPATH_TTL = (cfg.worker?.taxpayerFastPathTtlSeconds || 5 * 60) * 1000;
+
 async function processJob(job) {
   const jobId = job.id;
   const tip = job.tip || job.type;
@@ -530,7 +575,17 @@ async function processJob(job) {
   const mukellefAdi = job.mukellefAdi || job.taxpayer?.companyName || job.taxpayer?.name || '';
   const donem = job.donem || '';
 
-  log.info(`İşleniyor: ${tip} · ${mukellefAdi} · jobId=${jobId.slice(0, 8)}`);
+  // Aynı mükellef hızlı yol kontrolü
+  const session = browserSession; // null olabilir (henüz açılmamış)
+  const last = session?.lastTaxpayer;
+  const sameTaxpayer = !!(last && last.taxpayerId === mukellefId);
+  const withinTtl = !!(last && (Date.now() - last.selectedAt) < TAXPAYER_FASTPATH_TTL);
+  if (sameTaxpayer && withinTtl) {
+    job.meta = { ...(job.meta || {}), fastPath: true, lastTaxpayerSelectedAt: last.selectedAt };
+    log.info(`⚡ Hızlı yol: aynı mükellef (${mukellefAdi}), son seçim ${Math.round((Date.now() - last.selectedAt)/1000)}sn önce — firma seçim atlanabilir`);
+  }
+
+  log.info(`İşleniyor: ${tip} · ${mukellefAdi} · jobId=${jobId.slice(0, 8)}${job.meta?.fastPath ? ' [FASTPATH]' : ''}`);
 
   if (!JOB_TYPES.has(tip)) {
     log.warn(`Bu agent ${tip} tipini desteklemiyor, atlanıyor.`);
@@ -541,6 +596,14 @@ async function processJob(job) {
 
   try {
     await runJobWithMorenRuntime(job);
+    // Aynı mükellef hızlı yol cache güncelle — bir sonraki aynı mükellef
+    // job'unda fastPath ipucu verilir.
+    if (browserSession && mukellefId) {
+      browserSession.lastTaxpayer = {
+        taxpayerId: mukellefId,
+        selectedAt: Date.now(),
+      };
+    }
     log.info(`OK ${tip} tamamlandi/kapandi: jobId=${jobId.slice(0, 8)}`);
     return;
     await withBrowser(async (page) => {
