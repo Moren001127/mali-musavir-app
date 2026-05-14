@@ -132,7 +132,7 @@ export default function KdvKontrolPage() {
   // ── STATE ───────────────────────────────────────────
   const now = new Date();
   const [ay, setAy] = useState(() => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-  const [selectedActions, setSelectedActions] = useState<KdvAction[]>(['BILANCO_ALIS']);
+  const [selectedActions, setSelectedActions] = useState<KdvAction[]>([]);
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -269,18 +269,19 @@ export default function KdvKontrolPage() {
 
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
 
-  // Mükellef defter türüne göre selectedActions'ı otomatik filtrele:
-  // - Mükellef Bilanço esasındaysa İşletme aksiyonlarını çıkar
-  // - Mükellef İşletme defterindeyse Bilanço aksiyonlarını çıkar
-  // - Hiçbir uyumlu aksiyon kalmazsa varsayılan olarak BILANCO_ALIS/ISLETME_ALIS seç
+  // Mükellef seçildiğinde defter türüne göre selectedActions'ı otomatik ayarla:
+  // - Hiçbir aksiyon seçili değilse defter türüne uygun varsayılanı koy
+  // - Seçili aksiyonlardan uyumsuz olanları çıkar
+  // - defterTuru bilinmiyorsa (kart eksik) hiçbir şey yapma — kullanıcı manuel seçer
   useEffect(() => {
     const dt = selectedTp?.defterTuru;
     if (!dt) return;
+    const defaultAction: KdvAction = dt === 'BILANCO' ? 'BILANCO_ALIS' : 'ISLETME_ALIS';
     setSelectedActions((prev) => {
+      if (prev.length === 0) return [defaultAction];
       const filtered = prev.filter((a) => isActionCompatible(a, dt));
       if (filtered.length === prev.length) return prev;
       if (filtered.length > 0) return filtered;
-      const defaultAction: KdvAction = dt === 'BILANCO' ? 'BILANCO_ALIS' : 'ISLETME_ALIS';
       return [defaultAction];
     });
   }, [selectedTp?.defterTuru]);
@@ -884,24 +885,61 @@ export default function KdvKontrolPage() {
 
       {/* KOMUT BARI */}
       <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+        {/* SIRA: 1) Mükellef → 2) Defter/İşlem → 3) Dönem.
+            Mükellef seçilmeden 2 ve 3 disabled (gri); aksiyonlar zaten "Önce mükellef seçin" der. */}
         <div className="flex items-start gap-4 flex-wrap">
-          {/* Dönem */}
-          <div className="flex-shrink-0">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              <Calendar size={11} className="inline mr-1" /> Dönem
+          {/* 1. MÜKELLEF — en sola, en geniş, ilk adım */}
+          <div className="flex-1 min-w-[280px]">
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <span
+                className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
+                style={{ background: GOLD + '26', color: GOLD }}
+              >1</span>
+              <Users size={11} className="inline" /> Mükellef
             </label>
-            <input
-              type="month"
-              value={ay}
-              onChange={(e) => setAy(e.target.value)}
-              className="px-3 py-2.5 rounded-lg text-base font-semibold border outline-none"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 }}
-            />
+            <button
+              onClick={() => setPickerOpen(true)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
+              style={{
+                background: selectedTp ? 'rgba(212,184,118,0.06)' : 'rgba(255,255,255,0.03)',
+                borderColor: selectedTp ? 'rgba(212,184,118,0.3)' : 'rgba(255,255,255,0.05)',
+                color: '#fafaf9',
+              }}
+            >
+              <span className="flex-1 truncate font-medium">
+                {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
+              </span>
+              {selectedTp?.defterTuru && (
+                <span
+                  className="text-[9.5px] px-1.5 py-0.5 rounded font-bold tracking-wide"
+                  style={{
+                    background: selectedTp.defterTuru === 'BILANCO' ? 'rgba(37,99,235,0.18)' : 'rgba(168,85,247,0.18)',
+                    color: selectedTp.defterTuru === 'BILANCO' ? '#60a5fa' : '#c084fc',
+                  }}
+                >
+                  {selectedTp.defterTuru === 'BILANCO' ? 'BİLANÇO' : 'İŞLETME'}
+                </span>
+              )}
+              {selectedTp && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); setTaxpayerId(''); setSelectedActions([]); }}
+                  className="p-0.5 rounded hover:bg-white/10"
+                  style={{ color: 'rgba(250,250,249,0.5)' }}
+                >
+                  <X size={13} />
+                </span>
+              )}
+              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
+            </button>
           </div>
 
-          {/* 4 kontrol türü */}
-          <div className="flex-shrink-0">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+          {/* 2. DEFTER / İŞLEM — mükellef seçilmeden disabled */}
+          <div className="flex-shrink-0" style={{ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' }}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <span
+                className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
+                style={{ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' }}
+              >2</span>
               Defter / İşlem
             </label>
             <div className="grid grid-cols-2 gap-1.5">
@@ -909,12 +947,14 @@ export default function KdvKontrolPage() {
                 const active = selectedActions.includes(k);
                 const c = ACTION_COLOR[k];
                 const compatible = isActionCompatible(k, selectedTp?.defterTuru);
-                const disabled = !compatible;
-                const reason = disabled
-                  ? selectedTp?.defterTuru === 'BILANCO'
-                    ? 'Bu mükellef Bilanço esasında — İşletme seçilemez'
-                    : 'Bu mükellef İşletme defterinde — Bilanço seçilemez'
-                  : '';
+                const disabled = !taxpayerId || !compatible;
+                const reason = !taxpayerId
+                  ? 'Önce mükellef seçin'
+                  : !compatible
+                    ? selectedTp?.defterTuru === 'BILANCO'
+                      ? 'Bu mükellef Bilanço esasında — İşletme seçilemez'
+                      : 'Bu mükellef İşletme defterinde — Bilanço seçilemez'
+                    : '';
                 return (
                   <button
                     key={k}
@@ -934,7 +974,7 @@ export default function KdvKontrolPage() {
                         : active ? c : '#fafaf9',
                       cursor: disabled ? 'not-allowed' : 'pointer',
                       opacity: disabled ? 0.5 : 1,
-                      textDecoration: disabled ? 'line-through' : 'none',
+                      textDecoration: disabled && !compatible && taxpayerId ? 'line-through' : 'none',
                     }}
                   >
                     {ACTION_LABEL[k]}
@@ -944,30 +984,23 @@ export default function KdvKontrolPage() {
             </div>
           </div>
 
-          {/* Mükellef */}
-          <div className="flex-1 min-w-[240px]">
-            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              <Users size={11} className="inline mr-1" /> Mükellef
+          {/* 3. DÖNEM — mükellef seçilmeden disabled */}
+          <div className="flex-shrink-0" style={{ opacity: taxpayerId ? 1 : 0.45, pointerEvents: taxpayerId ? 'auto' : 'none' }}>
+            <label className="block text-[11px] uppercase font-semibold tracking-wider mb-1.5 flex items-center gap-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              <span
+                className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold"
+                style={{ background: taxpayerId ? GOLD + '26' : 'rgba(255,255,255,0.08)', color: taxpayerId ? GOLD : 'rgba(250,250,249,0.35)' }}
+              >3</span>
+              <Calendar size={11} className="inline" /> Dönem
             </label>
-            <button
-              onClick={() => setPickerOpen(true)}
-              className="w-full px-3 py-2.5 rounded-lg text-sm border flex items-center gap-2 text-left hover:brightness-110 transition"
-              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9' }}
-            >
-              <span className="flex-1 truncate font-medium">
-                {selectedTp ? taxpayerName(selectedTp) : 'Mükellef seç…'}
-              </span>
-              {selectedTp && (
-                <span
-                  onClick={(e) => { e.stopPropagation(); setTaxpayerId(''); }}
-                  className="p-0.5 rounded hover:bg-white/10"
-                  style={{ color: 'rgba(250,250,249,0.5)' }}
-                >
-                  <X size={13} />
-                </span>
-              )}
-              <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.45)' }} />
-            </button>
+            <input
+              type="month"
+              value={ay}
+              onChange={(e) => setAy(e.target.value)}
+              disabled={!taxpayerId}
+              className="px-3 py-2.5 rounded-lg text-base font-semibold border outline-none disabled:cursor-not-allowed"
+              style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', color: '#fafaf9', minWidth: 170 }}
+            />
           </div>
         </div>
 
