@@ -298,12 +298,21 @@ async function withBrowser(handler) {
   }
 }
 
-async function installMorenRuntimeBridge(context, page) {
-  if (browserSession?.context === context && browserSession.runtimeInstalled) return;
+async function loadMorenRuntimeCode() {
+  const localRuntimePath = path.resolve(__dirname, '..', '..', 'api', 'public', 'agent-runtime.js');
+  if (cfg.worker?.preferLocalRuntime !== false && fs.existsSync(localRuntimePath)) {
+    log.info(`Local agent-runtime.js kullaniliyor: ${localRuntimePath}`);
+    return fs.readFileSync(localRuntimePath, 'utf8');
+  }
   const runtimeBaseUrl = cfg.api.runtimeUrl || `${cfg.api.baseUrl}/agent/runtime.js`;
   const runtimeUrl = `${runtimeBaseUrl}${runtimeBaseUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
   const runtimeResponse = await axios.get(runtimeUrl, { timeout: 30_000 });
-  const runtimeCode = String(runtimeResponse.data || '');
+  return String(runtimeResponse.data || '');
+}
+
+async function installMorenRuntimeBridge(context, page) {
+  if (browserSession?.context === context && browserSession.runtimeInstalled) return;
+  const runtimeCode = await loadMorenRuntimeCode();
   const bridgeScript = ({ token, deviceId, credential }) => {
     const installIdentity = () => {
       try { document.documentElement.dataset.morenAgentToken = token; } catch {}

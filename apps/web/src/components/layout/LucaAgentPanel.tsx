@@ -15,10 +15,12 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Bot, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Bot, X, Loader2, AlertCircle, CheckCircle2, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
+import { lucaSessionApi } from '@/lib/luca-session';
 
 const GOLD = '#d4b876';
 
@@ -32,6 +34,7 @@ interface LucaJob {
   donem?: string | null;
   errorMsg?: string | null;
   recordCount?: number | null;
+  priority?: number | null;
   startedAt?: string | null;
   finishedAt?: string | null;
   createdAt: string;
@@ -85,6 +88,25 @@ function lastLogLine(errorMsg?: string | null): string {
   return lines.length ? lines[lines.length - 1] : 'Henüz log yok';
 }
 
+function jobNeedsCaptcha(job: LucaJob): boolean {
+  return /captcha|g[uü]venlik kodu.*bekleniyor|kod portalda/i.test(String(job.errorMsg || ''));
+}
+
+function jobHasAgentProgress(job: LucaJob): boolean {
+  if (job.status === 'running') return true;
+  const log = String(job.errorMsg || '');
+  return /Local Node ajan|otomatik giris|giris ekraninda|g[uü]venlik kodu|klasik|firma kontrol|Sira geldi|Sıra geldi|hazir/i.test(log);
+}
+
+function activeSort(a: LucaJob, b: LucaJob): number {
+  const aWorking = jobHasAgentProgress(a) ? 0 : 1;
+  const bWorking = jobHasAgentProgress(b) ? 0 : 1;
+  if (aWorking !== bWorking) return aWorking - bWorking;
+  const priorityDiff = (b.priority || 0) - (a.priority || 0);
+  if (priorityDiff !== 0) return priorityDiff;
+  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+}
+
 function timeSince(iso?: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -100,6 +122,7 @@ function timeSince(iso?: string | null): string {
 export default function LucaAgentPanel() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [captchaText, setCaptchaText] = useState('');
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   const { data: jobs = [] } = useQuery<LucaJob[]>({
@@ -115,6 +138,15 @@ export default function LucaAgentPanel() {
     staleTime: 60_000,
   });
 
+  const { data: lucaSession } = useQuery({
+    queryKey: ['luca-session-manager', 'topbar'],
+    queryFn: lucaSessionApi.status,
+    refetchInterval: 2500,
+    staleTime: 1000,
+  });
+
+  const activeChallenge = lucaSession?.activeChallenge || null;
+
   const taxpayerById = useMemo(() => {
     const m = new Map<string, Taxpayer>();
     for (const t of taxpayers) m.set(t.id, t);
@@ -122,11 +154,11 @@ export default function LucaAgentPanel() {
   }, [taxpayers]);
 
   const activeJobs = useMemo(
-    () => jobs.filter((j) => j.status === 'pending' || j.status === 'running'),
+    () => jobs.filter((j) => j.status === 'pending' || j.status === 'running').sort(activeSort),
     [jobs],
   );
-  const runningCount = activeJobs.filter((j) => j.status === 'running').length;
-  const pendingCount = activeJobs.filter((j) => j.status === 'pending').length;
+  const runningCount = activeJobs.filter(jobHasAgentProgress).length;
+  const pendingCount = Math.max(0, activeJobs.length - runningCount);
   const totalActive = activeJobs.length;
 
   // Dış tıklamada panel kapansın
@@ -148,8 +180,20 @@ export default function LucaAgentPanel() {
     onError: () => toast.error('İptal başarısız'),
   });
 
+  const answerCaptchaMut = useMutation({
+    mutationFn: () => lucaSessionApi.answerCaptcha(activeChallenge!.id, captchaText.trim()),
+    onSuccess: () => {
+      setCaptchaText('');
+      qc.invalidateQueries({ queryKey: ['luca-session-manager'] });
+      qc.invalidateQueries({ queryKey: ['luca-session-manager', 'topbar'] });
+      qc.invalidateQueries({ queryKey: ['luca-agent-jobs'] });
+      toast.success('Güvenlik kodu agenta gönderildi');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kod gönderilemedi'),
+  });
+
   const isIdle = totalActive === 0;
-  const statusColor = isIdle ? '#22c55e' : runningCount > 0 ? '#f59e0b' : '#64748b';
+  const statusColor = activeChallenge ? '#f59e0b' : isIdle ? '#22c55e' : runningCount > 0 ? '#f59e0b' : '#64748b';
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -159,14 +203,16 @@ export default function LucaAgentPanel() {
         onClick={() => setOpen((v) => !v)}
         className="relative h-9 px-3 rounded-lg flex items-center gap-2 transition-all hover:brightness-110"
         style={{
-          background: isIdle ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.08)',
-          border: `1px solid ${isIdle ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.3)'}`,
+          background: activeChallenge
+            ? 'rgba(245,158,11,0.16)'
+            : isIdle ? 'rgba(34,197,94,0.06)' : 'rgba(245,158,11,0.08)',
+          border: `1px solid ${activeChallenge ? 'rgba(245,158,11,0.55)' : isIdle ? 'rgba(34,197,94,0.22)' : 'rgba(245,158,11,0.3)'}`,
         }}
-        title={isIdle ? 'Luca ajanı boşta' : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`}
+        title={activeChallenge ? 'Luca güvenlik kodu bekliyor' : isIdle ? 'Luca ajanı boşta' : `Luca ajanı · ${runningCount} çalışıyor${pendingCount > 0 ? `, ${pendingCount} sırada` : ''}`}
       >
         <div className="relative">
-          <Bot size={14} style={{ color: statusColor }} />
-          {!isIdle && (
+          {activeChallenge ? <KeyRound size={14} style={{ color: statusColor }} /> : <Bot size={14} style={{ color: statusColor }} />}
+          {(!isIdle || activeChallenge) && (
             <span
               className="absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse"
               style={{ background: statusColor }}
@@ -174,9 +220,17 @@ export default function LucaAgentPanel() {
           )}
         </div>
         <span className="text-[12px] font-semibold tabular-nums" style={{ color: statusColor }}>
-          {isIdle ? 'Luca' : `${totalActive}`}
+          {activeChallenge ? 'Kod' : isIdle ? 'Luca' : `${totalActive}`}
         </span>
-        {!isIdle && (
+        {activeChallenge && (
+          <span
+            className="text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center"
+            style={{ background: statusColor, color: '#0f0d0b' }}
+          >
+            !
+          </span>
+        )}
+        {!isIdle && !activeChallenge && (
           <span
             className="text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center"
             style={{ background: statusColor, color: '#0f0d0b' }}
@@ -211,7 +265,7 @@ export default function LucaAgentPanel() {
                   Luca Ajanı
                 </p>
                 <p className="text-[11px] font-medium" style={{ color: statusColor }}>
-                  {isIdle ? 'Boşta · son işten beri bekliyor' : `${runningCount} çalışıyor${pendingCount > 0 ? ` · ${pendingCount} sırada` : ''}`}
+                  {activeChallenge ? 'Güvenlik kodu bekliyor' : isIdle ? 'Boşta · son işten beri bekliyor' : `${runningCount} çalışıyor${pendingCount > 0 ? ` · ${pendingCount} sırada` : ''}`}
                 </p>
               </div>
             </div>
@@ -224,6 +278,48 @@ export default function LucaAgentPanel() {
               <X size={13} />
             </button>
           </div>
+
+          {activeChallenge && (
+            <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(245,158,11,0.08)' }}>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <KeyRound size={13} style={{ color: '#fbbf24' }} />
+                  <span className="text-[12px] font-semibold truncate" style={{ color: '#fafaf9' }}>
+                    Luca güvenlik kodu gerekiyor
+                  </span>
+                </div>
+                <Link href="/panel/ajanlar/luca" className="text-[10.5px] font-semibold shrink-0" style={{ color: GOLD }}>
+                  Oturum
+                </Link>
+              </div>
+              <div className="flex items-center gap-2">
+                {activeChallenge.captchaImage && (
+                  <div className="rounded-md px-2 py-1 shrink-0" style={{ background: '#f8fafc' }}>
+                    <img src={activeChallenge.captchaImage} alt="Luca güvenlik kodu" style={{ width: 112, height: 42, objectFit: 'contain' }} />
+                  </div>
+                )}
+                <input
+                  value={captchaText}
+                  onChange={(e) => setCaptchaText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && captchaText.trim().length >= 3) answerCaptchaMut.mutate();
+                  }}
+                  placeholder="Kod"
+                  className="min-w-0 flex-1 px-2.5 py-2 rounded-md text-[12px] outline-none"
+                  style={{ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+                />
+                <button
+                  type="button"
+                  disabled={answerCaptchaMut.isPending || captchaText.trim().length < 3}
+                  onClick={() => answerCaptchaMut.mutate()}
+                  className="px-3 py-2 rounded-md text-[11px] font-semibold disabled:opacity-50"
+                  style={{ background: GOLD, color: '#111827' }}
+                >
+                  {answerCaptchaMut.isPending ? '...' : 'Gönder'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* JOB LIST */}
           <div className="overflow-y-auto" style={{ maxHeight: 520 }}>
@@ -242,7 +338,8 @@ export default function LucaAgentPanel() {
                 const tp = taxpayerById.get(job.mukellefId);
                 const tipColor = TIP_COLOR[job.tip] || '#64748b';
                 const tipLabel = TIP_LABEL[job.tip] || job.tip;
-                const isRunning = job.status === 'running';
+                const isRunning = jobHasAgentProgress(job);
+                const needsCaptcha = jobNeedsCaptcha(job);
                 const refTime = job.startedAt || job.createdAt;
 
                 return (
@@ -253,7 +350,9 @@ export default function LucaAgentPanel() {
                   >
                     {/* Üst satır: tip rozeti + dönem + süre */}
                     <div className="flex items-center gap-2 mb-1.5">
-                      {isRunning ? (
+                      {needsCaptcha ? (
+                        <KeyRound size={11} className="shrink-0" style={{ color: '#fbbf24' }} />
+                      ) : isRunning ? (
                         <Loader2 size={11} className="animate-spin shrink-0" style={{ color: '#f59e0b' }} />
                       ) : (
                         <AlertCircle size={11} className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />

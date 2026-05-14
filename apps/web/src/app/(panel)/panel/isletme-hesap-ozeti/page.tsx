@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import {
   Search, ChevronDown, Users, Loader2, Sparkles, Download,
   Lock, Unlock, BookOpen, Save, Trash2,
-  TrendingUp, Package, Calculator, CloudDownload,
+  TrendingUp, Package, Calculator, CloudDownload, KeyRound,
 } from 'lucide-react';
 
 /* ─── İHO Görsel Teması — Brifing Kartı estetiğine yakın
@@ -376,25 +376,34 @@ export default function IsletmeHesapOzetiPage() {
             .map(([donemStr, j]) => {
               if (!j) return null;
               const donem = Number(donemStr);
+              const jobMessage = String(j.message || '');
+              const isWaitingSecurityCode = /captcha|g[uü]venlik kodu|kod portalda/i.test(jobMessage);
               const statusColor =
-                j.status === 'done' ? '#22c55e'
+                isWaitingSecurityCode ? '#f59e0b'
+                : j.status === 'done' ? '#22c55e'
                 : j.status === 'failed' ? '#ef4444'
                 : j.status === 'running' ? '#60a5fa'
                 : '#f59e0b';
               const statusText =
-                j.status === 'done' ? 'Tamamlandı'
+                isWaitingSecurityCode ? 'Kod Bekliyor'
+                : j.status === 'done' ? 'Tamamlandı'
                 : j.status === 'failed' ? 'Hata'
                 : j.status === 'running' ? 'Çalışıyor'
                 : 'Sırada';
               // errorMsg satırlarından son [META] olmayan satırı al
-              const lastLine = String(j.message || '')
+              const rawLastLine = jobMessage
                 .split('\n')
                 .filter((l) => l.trim() && !l.startsWith('[META]'))
                 .slice(-1)[0] || (j.status === 'pending' ? 'Local agent bekleniyor...' : '');
+              const lastLine = isWaitingSecurityCode
+                ? 'Luca güvenlik kodu bekliyor; üstteki Luca panelinden kodu girin.'
+                : rawLastLine;
               const isActive = j.status === 'pending' || j.status === 'running';
               return (
                 <div key={donemStr} className="flex items-center gap-2">
-                  {isActive ? (
+                  {isWaitingSecurityCode ? (
+                    <KeyRound size={12} style={{ color: statusColor }} />
+                  ) : isActive ? (
                     <Loader2 size={12} className="animate-spin" style={{ color: statusColor }} />
                   ) : (
                     <span style={{ color: statusColor, fontSize: 14 }}>

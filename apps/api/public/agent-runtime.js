@@ -753,6 +753,13 @@
         for (const job of jobs) {
           await logPendingJob(job, `Klasik Luca URL acik ama frm4/SirketCombo henuz yuklenmedi; sayfa hazirlanıyor. URL=${url}`);
         }
+        if (/\/Luca\/ssoGiris\.do/i.test(location.pathname)) {
+          for (const job of jobs) {
+            await logPendingJob(job, 'Luca SSO ara sayfasi klasik ekrana donusmedi; luca.do deneniyor');
+          }
+          try { location.href = LUCA_CLASSIC_URL; } catch {}
+          return;
+        }
         if (!window.__morenClassicReloadAt || Date.now() - window.__morenClassicReloadAt > 30000) {
           window.__morenClassicReloadAt = Date.now();
           for (const job of jobs) {
@@ -3742,6 +3749,20 @@
    */
   async function clickLucaRightMenu(text, log, opts = {}) {
     const { nth = 1, maxMs = 8000, afterClickReady = null, settleMs = 700 } = opts;
+    const cacheLabel = nth > 1 ? `${text}#${nth}` : text;
+    const cachedRows = cacheVisibleLucaMenuIds();
+    if (cachedRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${cachedRows} satır)`);
+    if (await openCachedLucaMenu(cacheLabel, log, settleMs)) {
+      if (typeof afterClickReady !== 'function') return;
+      const ready = await waitUntil(() => {
+        try { return !!afterClickReady(); } catch { return false; }
+      }, Math.max(3000, settleMs * 6), 250);
+      if (ready) {
+        await log(`✓ "${text}" ID ile açıldı`);
+        return;
+      }
+      await log(`ℹ "${text}" ID ile denendi ama hedef ekran doğrulanmadı; metin keşfine düşülecek`);
+    }
     await log(`🔍 Sağ menüde "${text}" aranıyor (${nth}. occurrence)...`);
     const found = await waitUntil(() => {
       const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
@@ -3764,6 +3785,16 @@
       throw new Error(`Sağ menüde "${text}" (${nth}. occurrence) bulunamadı — Fiş Listesi sayfası açık mı?`);
     }
     await log(`🖱 "${text}" tıklanıyor (${found.frameName} → ${describeLucaMenuElement(found.el)})`);
+    const cached = cacheLucaMenuHit(cacheLabel, found);
+    if (cached?.code && await callLucaMenuCode(cacheLabel, cached.code, log, settleMs)) {
+      if (typeof afterClickReady !== 'function') return;
+      try {
+        if (afterClickReady()) {
+          await log(`✓ "${text}" sonrası hedef ekran açıldı (ID cache)`);
+          return;
+        }
+      } catch {}
+    }
     const view = found.frame.contentWindow || found.frame;
 
     const activationTargets = [];
@@ -5341,12 +5372,198 @@
    */
   function normalizeLucaMenuText(value) {
     return String(value || '')
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/\u00a0/g, ' ')
       .replace(/\s*\/\s*/g, '/')
       .replace(/[‐‑–—]/g, '-')
       .replace(/\s+/g, ' ')
       .trim()
       .toLocaleLowerCase('tr-TR');
+  }
+
+  const LUCA_MENU_ID_CACHE_KEY = 'moren_luca_menu_id_cache_v1';
+
+  function readLucaMenuIdCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LUCA_MENU_ID_CACHE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeLucaMenuIdCache(cache) {
+    try { localStorage.setItem(LUCA_MENU_ID_CACHE_KEY, JSON.stringify(cache)); } catch {}
+  }
+
+  function extractLucaMenuCode(value) {
+    const text = String(value || '');
+    const ii1a = text.match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
+    if (ii1a) return ii1a[1];
+    const direct = text.match(/apy1000m\d+i\d+I/i);
+    return direct ? direct[0] : '';
+  }
+
+  function collectLucaWindows(rootWindow = window, depth = 0, acc = [], seen = new Set()) {
+    if (depth > 6 || !rootWindow || seen.has(rootWindow)) return acc;
+    seen.add(rootWindow);
+    acc.push(rootWindow);
+    try {
+      for (let i = 0; i < (rootWindow.frames?.length || 0); i++) {
+        try { collectLucaWindows(rootWindow.frames[i], depth + 1, acc, seen); } catch {}
+      }
+    } catch {}
+    return acc;
+  }
+
+  function getLucaMenuTextForCache(el) {
+    const text = String(el?.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length > 80) return '';
+    const tag = String(el?.tagName || '').toUpperCase();
+    if (/^(HTML|HEAD|BODY|SCRIPT|STYLE|META|LINK|TITLE|OPTION|SELECT)$/.test(tag)) return '';
+    return text;
+  }
+
+  function getLucaMenuCodeFromElement(el) {
+    let cur = el;
+    for (let i = 0; i < 7 && cur; i++, cur = cur.parentElement) {
+      try {
+        const code = extractLucaMenuCode([
+          cur.getAttribute?.('onclick') || '',
+          cur.getAttribute?.('href') || '',
+          cur.getAttribute?.('id') || '',
+          cur.getAttribute?.('name') || '',
+        ].join(' '));
+        if (code) {
+          return {
+            code,
+            handlerEl: cur,
+            source: cur.getAttribute?.('onclick') ? 'onclick' : cur.getAttribute?.('href') ? 'href' : 'id',
+          };
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  function cacheLucaMenuHit(label, found) {
+    try {
+      const el = found?.el || found;
+      const codeInfo = getLucaMenuCodeFromElement(el);
+      if (!codeInfo?.code) return null;
+      const key = normalizeLucaMenuText(label || getLucaMenuTextForCache(el));
+      if (!key) return null;
+      const cache = readLucaMenuIdCache();
+      const prev = cache[key] || {};
+      const entry = {
+        label: String(label || getLucaMenuTextForCache(el)),
+        code: codeInfo.code,
+        frameName: found?.frameName || found?.frame?.name || '',
+        source: codeInfo.source,
+        hits: Number(prev.hits || 0) + 1,
+        updatedAt: Date.now(),
+      };
+      cache[key] = entry;
+      writeLucaMenuIdCache(cache);
+      return entry;
+    } catch {
+      return null;
+    }
+  }
+
+  function getCachedLucaMenuHit(label) {
+    try {
+      const key = normalizeLucaMenuText(label);
+      const hit = readLucaMenuIdCache()[key];
+      if (!hit?.code) return null;
+      // Luca menu IDs are stable inside the same product tree, but discard very old
+      // entries so a changed Luca release can self-heal through text discovery.
+      if (hit.updatedAt && Date.now() - hit.updatedAt > 30 * 24 * 60 * 60 * 1000) return null;
+      return hit;
+    } catch {
+      return null;
+    }
+  }
+
+  function cacheVisibleLucaMenuIds() {
+    const cache = readLucaMenuIdCache();
+    let count = 0;
+    for (const win of collectLucaWindows()) {
+      let frameName = '';
+      try { frameName = win.frameElement?.name || win.name || ''; } catch {}
+      let nodes = [];
+      try { nodes = Array.from(win.document.querySelectorAll('[onclick],[href],[id]')); } catch { continue; }
+      for (const el of nodes) {
+        const codeInfo = getLucaMenuCodeFromElement(el);
+        if (!codeInfo?.code) continue;
+        const label = getLucaMenuTextForCache(el);
+        if (!label) continue;
+        const key = normalizeLucaMenuText(label);
+        if (!key) continue;
+        cache[key] = {
+          label,
+          code: codeInfo.code,
+          frameName,
+          source: codeInfo.source,
+          hits: Number(cache[key]?.hits || 0),
+          updatedAt: Date.now(),
+        };
+        count++;
+      }
+    }
+    if (count > 0) writeLucaMenuIdCache(cache);
+    return count;
+  }
+
+  async function callLucaMenuCode(label, code, log, settleMs = 800) {
+    if (!code) return false;
+    const fakeEvent = {
+      type: 'click',
+      target: null,
+      currentTarget: null,
+      srcElement: null,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+      stopImmediatePropagation: () => {},
+      returnValue: true,
+      cancelBubble: false,
+    };
+    for (const win of collectLucaWindows()) {
+      try {
+        if (typeof win.II1a !== 'function') continue;
+        if (log) await log(`⚡ "${label}" menüsü ID ile açılıyor: ${code}`);
+        try {
+          win.II1a(fakeEvent, code, '');
+        } catch {
+          win.II1a(code);
+        }
+        await sleep(settleMs);
+        return true;
+      } catch {}
+    }
+    return false;
+  }
+
+  async function openCachedLucaMenu(label, log, settleMs = 800) {
+    const cached = getCachedLucaMenuHit(label);
+    if (!cached?.code) return false;
+    const opened = await callLucaMenuCode(cached.label || label, cached.code, log, settleMs);
+    if (!opened && log) await log(`ℹ "${label}" için cache ID bulundu ama II1a hazır değil; metin keşfine düşülecek`);
+    return opened;
+  }
+
+  try {
+    window.__morenLucaMenuIdCache = () => readLucaMenuIdCache();
+    window.__morenRefreshLucaMenuIdCache = () => cacheVisibleLucaMenuIds();
+  } catch {}
+
+  async function activateLucaMenuItem(label, found, log, settleMs = 800) {
+    const cached = cacheLucaMenuHit(label, found);
+    if (cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) return true;
+    await fullActivateWithParents(found.el, found.frame.contentWindow || found.frame, 5, 120);
+    await sleep(settleMs);
+    return true;
   }
 
   function isLikelyLucaMenuElement(el, targetText) {
@@ -5427,6 +5644,7 @@
       }
       return null;
     }, maxMs, 250);
+    if (result) cacheLucaMenuHit(text, result);
     return result;
   }
 
@@ -5487,6 +5705,17 @@
       } catch (e) {
         // Sessiz: onclick eval başarısız olabilir, mouseevent zaten tetiklendi
       }
+    }
+  }
+
+  async function fullActivateWithParents(el, viewWindow, depth = 5, settleMs = 120) {
+    const view = viewWindow || window;
+    let cur = el;
+    for (let i = 0; i < depth && cur; i++, cur = cur.parentElement) {
+      try {
+        fullActivate(cur, view);
+      } catch {}
+      await sleep(settleMs);
     }
   }
 
@@ -5557,6 +5786,12 @@
       .join(' | ');
     await log(`🧩 Mevcut frame'ler (${allFrameElements.length}): ${allFrames || '(hiç yok)'}`);
 
+    const initialCacheRows = cacheVisibleLucaMenuIds();
+    if (initialCacheRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${initialCacheRows} satır)`);
+    const muhasebeOpenedFromCache = await openCachedLucaMenu('Muhasebe', log, 800);
+    if (muhasebeOpenedFromCache) await log('✓ Muhasebe menüsü ID cache ile açıldı');
+
+    if (!muhasebeOpenedFromCache) {
     // 1. "Muhasebe" text'i olan ilk frame'i bul (recursive arama).
     let menuFrame = null;
     let muhasebeEl = null;
@@ -5604,25 +5839,39 @@
     await log(`✓ Muhasebe menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
 
     await log('🖱 Muhasebe menüsü açılıyor (hover+click+onclick)');
-    fullActivate(muhasebeEl, menuFrame.contentWindow);
+    const cachedMuhasebe = cacheLucaMenuHit('Muhasebe', { el: muhasebeEl, frame: menuFrame, frameName: menuFrame.name || '?' });
+    if (!cachedMuhasebe?.code || !(await callLucaMenuCode('Muhasebe', cachedMuhasebe.code, log, 800))) {
+      await fullActivateWithParents(muhasebeEl, menuFrame.contentWindow);
+    }
     await sleep(800);
+    }
 
     // 2. "Fiş İşlemleri" submenüsü açıldı mı?
-    await log('🔍 Fiş İşlemleri aranıyor');
-    const fisIslemleri = await findLucaMenuItem('Fiş İşlemleri', null, 4000);
-    if (!fisIslemleri) {
-      throw new Error('Muhasebe menüsü açıldı ama "Fiş İşlemleri" görünmedi (menü hover-only olabilir)');
+    const fisIslemleriOpenedFromCache = await openCachedLucaMenu('Fiş İşlemleri', log, 800);
+    if (fisIslemleriOpenedFromCache) {
+      await log('✓ Fiş İşlemleri ID cache ile açıldı');
+    } else {
+      await log('🔍 Fiş İşlemleri aranıyor');
+      const fisIslemleri = await findLucaMenuItem('Fiş İşlemleri', null, 4000);
+      if (!fisIslemleri) {
+        throw new Error('Muhasebe menüsü açıldı ama "Fiş İşlemleri" görünmedi (menü hover-only olabilir)');
+      }
+      await log('🖱 Fiş İşlemleri açılıyor (hover+click+onclick)');
+      await activateLucaMenuItem('Fiş İşlemleri', fisIslemleri, log, 800);
     }
-    await log('🖱 Fiş İşlemleri açılıyor (hover+click+onclick)');
-    fullActivate(fisIslemleri.el, fisIslemleri.frame.contentWindow || fisIslemleri.frame);
-    await sleep(800);
+    cacheVisibleLucaMenuIds();
 
     // 3. "Fiş Listesi" tıkla
-    await log('🔍 Fiş Listesi linki aranıyor');
-    const fisListesi = await findLucaMenuItem('Fiş Listesi', null, 4000);
-    if (!fisListesi) throw new Error('"Fiş Listesi" linki açılmadı');
-    await log('🖱 Fiş Listesi tıklanıyor');
-    fullActivate(fisListesi.el, fisListesi.frame.contentWindow || fisListesi.frame);
+    const fisListesiOpenedFromCache = await openCachedLucaMenu('Fiş Listesi', log, 1000);
+    if (fisListesiOpenedFromCache) {
+      await log('✓ Fiş Listesi ID cache ile açıldı');
+    } else {
+      await log('🔍 Fiş Listesi linki aranıyor');
+      const fisListesi = await findLucaMenuItem('Fiş Listesi', null, 4000);
+      if (!fisListesi) throw new Error('"Fiş Listesi" linki açılmadı');
+      await log('🖱 Fiş Listesi tıklanıyor');
+      await activateLucaMenuItem('Fiş Listesi', fisListesi, log, 1000);
+    }
 
     // 4. Sayfa yüklensin diye Mizan menüsü çıkana kadar bekle
     // Luca'nın Fiş Listesi sayfası yüklenmesi yavaş olabiliyor (özellikle
@@ -5738,6 +5987,12 @@
    * click bubbling ile parent jQuery handler tetiklenir.
    */
   async function openLucaMizan(log) {
+    cacheVisibleLucaMenuIds();
+    if (await openCachedLucaMenu('Mizan', log, 1000)) {
+      await log('✓ Mizan ID cache ile açıldı');
+      await sleep(800);
+      return;
+    }
     await log('🔍 Sağ menüde Mizan linki aranıyor...');
     const found = await findLucaMenuItem('Mizan', log);
     if (!found) {
@@ -5748,6 +6003,7 @@
       );
     }
     await log(`🖱 Mizan tıklanıyor (${found.frameName} → ${found.el.tagName})`);
+    if (await activateLucaMenuItem('Mizan', found, log, 1000)) return;
 
     // Tıklama: element + parent zinciri (5 seviye, click event bubbling)
     let cur = found.el;
