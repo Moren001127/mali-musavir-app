@@ -135,6 +135,21 @@ async function markJobFailed(jobId, errorMsg) {
   }
 }
 
+async function requeueJob(jobId, reason) {
+  try {
+    await api.post(`/agent/luca/jobs/${jobId}/requeue`, { reason });
+  } catch (err) {
+    log.warn(`Job requeue mark hatasi: ${err.message}`);
+    throw err;
+  }
+}
+
+function isTransientLucaConnectivityError(err) {
+  const text = String(err?.message || err || '');
+  return /(ERR_CONNECTION_TIMED_OUT|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_RESET|ERR_TUNNEL_CONNECTION_FAILED|Navigation timeout|page\.goto: Timeout|Timeout .* exceeded|The operation has timed out)/i.test(text)
+    && /(luca\.com\.tr|agiris|auygs|LUCASSO)/i.test(text);
+}
+
 async function pingAgentStatus(running = true, extraMeta = {}) {
   try {
     await api.post('/agent/status/ping', {
@@ -216,8 +231,27 @@ const LUCA_URLS = {
   login: process.env.LUCA_LOGIN_URL || 'https://agiris.luca.com.tr/LUCASSO/giris.erp',
   main: process.env.LUCA_MAIN_URL || 'https://agiris.luca.com.tr/LUCASSO/main.erp',
 };
+const LUCA_CLASSIC_ENTRY = process.env.LUCA_CLASSIC_URL || 'https://auygs.luca.com.tr/Luca/luca.do';
 
 let browserSession = null;
+
+async function gotoLucaWithFallback(page, primaryUrl, jobId, label = 'giris') {
+  try {
+    await page.goto(primaryUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    return primaryUrl;
+  } catch (err) {
+    if (!LUCA_CLASSIC_ENTRY || LUCA_CLASSIC_ENTRY === primaryUrl) throw err;
+    const msg = `${label} acilamadi (${err.message}); klasik Luca URL deneniyor.`;
+    log.warn(msg);
+    if (jobId) await logJob(jobId, msg).catch(() => {});
+    try {
+      await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      return LUCA_CLASSIC_ENTRY;
+    } catch (fallbackErr) {
+      throw new Error(`${label} acilamadi: ${err.message}; klasik Luca URL de acilamadi: ${fallbackErr.message}`);
+    }
+  }
+}
 
 async function closeBrowserSession(reason = 'manual') {
   const s = browserSession;
@@ -605,13 +639,25 @@ async function runJobWithMorenRuntime(job) {
     let currentUrl = page.url();
     if (/^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '')) {
       await logJob(jobId, 'Luca login sayfasi acik; once kayitli oturum main.erp ile kontrol ediliyor.');
-      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(async (err) => {
+          const msg = `SSO main acilamadi (${err.message}); klasik Luca URL deneniyor.`;
+          log.warn(msg);
+          await logJob(jobId, msg).catch(() => {});
+          await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        });
       await page.waitForTimeout(4500).catch(() => {});
       currentUrl = page.url();
     }
     if (/^https:\/\/auygs\.luca\.com\.tr\/Luca\/giris\.do/i.test(currentUrl || '')) {
       await logJob(jobId, 'Klasik Luca giris.do bos gorundu; arka plan oturumu SSO main.erp uzerinden toparlaniyor.');
-      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+        .catch(async (err) => {
+          const msg = `SSO main acilamadi (${err.message}); klasik Luca URL deneniyor.`;
+          log.warn(msg);
+          await logJob(jobId, msg).catch(() => {});
+          await page.goto(LUCA_CLASSIC_ENTRY, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        });
       await page.waitForTimeout(4500).catch(() => {});
       currentUrl = page.url();
     }
@@ -641,7 +687,7 @@ async function runJobWithMorenRuntime(job) {
         await logJob(jobId, `Mevcut arka plan Luca oturumu kullanılacak: ${currentUrl.slice(0, 90)}`);
       }
     } else {
-      await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await gotoLucaWithFallback(page, LUCA_URLS.login, jobId, 'Luca giris');
     }
     const final = await waitForJobFinalStatus(jobId);
     if (final?.status !== 'done') {
@@ -652,7 +698,7 @@ async function runJobWithMorenRuntime(job) {
 
 async function loginToLuca(page) {
   log.info('Luca login sayfasına gidiliyor...');
-  await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Luca giris');
   // Form alanları render olsun
   await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
   await page.waitForTimeout(1500);
@@ -839,6 +885,12 @@ async function processJob(job) {
     log.info(`✓ ${tip} tamamlandı: jobId=${jobId.slice(0, 8)}`);
   } catch (err) {
     log.error(`✗ ${tip} hatası: ${err.message}`);
+    if (isTransientLucaConnectivityError(err)) {
+      const reason = `Gecici Luca baglanti/DNS hatasi; tekrar siraya alindi: ${err.message}`;
+      await logJob(jobId, reason).catch(() => {});
+      await requeueJob(jobId, reason);
+      return;
+    }
     await markJobFailed(jobId, err.message);
   }
 }
@@ -865,7 +917,7 @@ async function preWarmBrowserSession() {
       await installMorenRuntimeBridge(session.context, page).catch(() => {});
       const currentUrl = page.url();
       if (!/luca\.com\.tr/i.test(currentUrl)) {
-        await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Pre-warm Luca giris').catch(() => {});
       } else {
         // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});

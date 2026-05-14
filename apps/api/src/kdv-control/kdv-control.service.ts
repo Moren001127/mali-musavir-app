@@ -376,6 +376,7 @@ export class KdvControlService {
       const cells = row.map((v) => normalize(String(v ?? '')));
       return patterns.some((p) => cells.some((c) => {
         const wanted = normalize(p);
+        if (!c || !wanted) return false;
         return c === wanted || c.includes(wanted) || wanted.includes(c);
       }));
     };
