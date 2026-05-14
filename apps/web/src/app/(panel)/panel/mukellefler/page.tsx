@@ -4,11 +4,11 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
+import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
-const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr) 78px';
+const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr)';
 
 type MonthlyStatus = {
   id?: string;
@@ -356,7 +356,6 @@ export default function MukelleflerPage() {
           <span className="text-center">Hes. KDV</span>
           <span className="text-center">E-Arşiv</span>
           <span className="text-center">Beyanname</span>
-          <span className="text-center">Kart</span>
         </div>
 
         {isLoading ? (
@@ -503,10 +502,19 @@ function TaxpayerRow({
         </div>
       </div>
 
-      {/* Mükellef adı + alt bilgi */}
-      <div className="min-w-0">
+      {/* Mükellef adı + alt bilgi — kart linki olarak */}
+      <Link
+        href={`/panel/mukellefler/${taxpayer.id}`}
+        className="min-w-0 block transition-colors"
+        title="Mükellef kartını aç"
+      >
         <div className="flex items-center gap-2">
-          <p className="text-[13.5px] font-semibold truncate" style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}>{getName(taxpayer)}</p>
+          <p
+            className="text-[13.5px] font-semibold truncate transition-colors hover:text-[#d4b876]"
+            style={{ color: '#fafaf9', letterSpacing: '-0.01em' }}
+          >
+            {getName(taxpayer)}
+          </p>
           {completeness && completeness.score < 80 && (
             <span
               className="text-[10px] tabular-nums font-bold px-1.5 py-0.5 rounded shrink-0"
@@ -520,7 +528,7 @@ function TaxpayerRow({
         <p className="text-[11.5px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.46)', fontFamily: 'Manrope, Inter, system-ui, sans-serif' }}>
           {taxpayer.taxNumber} · {taxpayer.taxOffice || '—'} · {isCompany ? 'Şirket' : 'Şahıs'}
         </p>
-      </div>
+      </Link>
 
       {/* Evrak */}
       <div className="flex justify-center">
@@ -555,30 +563,6 @@ function TaxpayerRow({
         />
       </div>
 
-      {/* Kart aç */}
-      <div className="flex justify-center">
-        <Link
-          href={`/panel/mukellefler/${taxpayer.id}`}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all"
-          style={{
-            color: GOLD,
-            background: 'rgba(212,184,118,0.08)',
-            border: '1px solid rgba(212,184,118,0.28)',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(212,184,118,0.16)';
-            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(212,184,118,0.5)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(212,184,118,0.08)';
-            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(212,184,118,0.28)';
-          }}
-          title="Mükellef kartını aç"
-        >
-          Kart
-          <ChevronRight size={12} />
-        </Link>
-      </div>
     </div>
   );
 }
