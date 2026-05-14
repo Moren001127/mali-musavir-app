@@ -106,12 +106,14 @@ export function BriefingChat({
   sending,
   onSend,
   onSendFile,
+  className = '',
 }: {
   agents: OfisAgent[];
   messages: OfisMessage[];
   sending: boolean;
   onSend: (text: string) => void;
   onSendFile?: (files: File[], text: string) => void;
+  className?: string;
 }) {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -332,12 +334,13 @@ export function BriefingChat({
 
   return (
     <div
-      className="rounded-2xl overflow-hidden flex flex-col"
+      className={`rounded-2xl overflow-hidden flex flex-col ${className}`}
       style={{
         background: 'linear-gradient(135deg, rgba(212,184,118,0.06) 0%, rgba(15,11,21,0.85) 100%)',
         border: '1px solid rgba(212,184,118,0.22)',
         boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
         minHeight: 540,
+        height: '100%',
       }}
     >
       {/* Üst hairline */}
@@ -472,7 +475,7 @@ export function BriefingChat({
                   style={{ animation: 'fade-in-up 0.3s ease-out' }}
                 >
                   <div
-                    className="px-4 py-2.5 rounded-2xl rounded-tr-md max-w-[min(720px,76%)] text-[13px] leading-relaxed shadow-sm"
+                    className="px-4 py-2.5 rounded-2xl rounded-tr-md max-w-[90%] text-[13px] leading-relaxed shadow-sm"
                     style={{
                       background: 'linear-gradient(135deg, rgba(212,184,118,0.22), rgba(120,92,46,0.18))',
                       border: `1px solid ${GOLD}42`,
@@ -489,7 +492,7 @@ export function BriefingChat({
             return (
               <div
                 key={i}
-                className="animate-fade-in-up max-w-[min(900px,88%)]"
+                className="animate-fade-in-up max-w-full"
                 style={{ animation: 'fade-in-up 0.4s ease-out' }}
               >
                 <div className="flex items-center gap-1.5 mb-1 px-1">

@@ -19,7 +19,7 @@ export default function MorenOfisPage() {
   const [activeAgents, setActiveAgents] = useState<{ id: AgentId; state: CharacterState }[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<AgentId | null>(null);
   const [totalCost, setTotalCost] = useState(0);
-  const [showOffice, setShowOffice] = useState(false);
+  const [showOffice, setShowOffice] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [workflowTerminalJobs, setWorkflowTerminalJobs] = useState<Record<string, true>>({});
 
@@ -508,107 +508,111 @@ export default function MorenOfisPage() {
               color: showOffice ? GOLD : 'rgba(250,250,249,0.7)',
               border: `1px solid ${showOffice ? 'rgba(212,184,118,0.4)' : 'rgba(255,255,255,0.08)'}`,
             }}
-            title="Ofis sahnesini göster/gizle"
+            title="Ofis sahnesi / kart görünümü"
           >
             <LayoutGrid size={12} />
-            {showOffice ? 'Ofis Görünümü Açık' : 'Ofis Görünümü'}
+            {showOffice ? 'Masa Görünümü' : 'Kart Görünümü'}
           </button>
         </div>
       </div>
 
-      {/* ===== AJAN MASASI GRID — gösterge panelindeki StatCard tarzında ===== */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {team.map((agent) => {
-          const state = stateMap.get(agent.id) || 'idle';
-          const isActive = stateMap.has(agent.id);
-          return (
-            <AgentStatCard
-              key={agent.id}
-              agent={agent}
-              state={state}
-              isActive={isActive}
-              selected={selectedAgent === agent.id}
-              onClick={() =>
-                setSelectedAgent(agent.id === selectedAgent ? null : agent.id)
-              }
-            />
-          );
-        })}
-      </div>
-
-      {/* Seçili ajan detayı */}
-      {selectedAgent && (() => {
-        const a = team.find((x) => x.id === selectedAgent);
-        if (!a) return null;
-        return (
-          <div
-            className="rounded-xl p-3 flex items-start justify-between gap-3"
-            style={{
-              background: `linear-gradient(90deg, ${a.accentColor}15 0%, transparent 100%)`,
-              border: `1px solid ${a.accentColor}30`,
-            }}
-          >
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="text-xs uppercase tracking-wider font-bold"
-                  style={{ color: a.accentColor }}
-                >
-                  {a.displayName}
-                </span>
-                <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                  {a.fullName} · {a.age} · {a.role}
-                </span>
-              </div>
-              <p className="text-xs mb-1.5" style={{ color: 'rgba(250,250,249,0.75)' }}>
-                {a.personality}
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {a.expertise.map((e) => (
-                  <span
-                    key={e}
-                    className="px-1.5 py-0.5 rounded text-[9px] font-medium"
-                    style={{ background: `${a.accentColor}22`, color: a.accentColor }}
-                  >
-                    {e}
-                  </span>
-                ))}
-              </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px] 2xl:grid-cols-[minmax(0,1fr)_470px] items-start">
+        <div className="min-w-0 space-y-3">
+          {showOffice ? (
+            <div className="rounded-2xl overflow-hidden">
+              <Office
+                agents={team}
+                activeAgents={activeAgents}
+                onAgentClick={(id) => setSelectedAgent(id === selectedAgent ? null : id)}
+                selectedAgent={selectedAgent}
+              />
             </div>
-            <button
-              onClick={() => setSelectedAgent(null)}
-              className="text-xs px-2 py-1 rounded"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)' }}
-            >
-              Kapat
-            </button>
-          </div>
-        );
-      })()}
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3 gap-3">
+              {team.map((agent) => {
+                const state = stateMap.get(agent.id) || 'idle';
+                const isActive = stateMap.has(agent.id);
+                return (
+                  <AgentStatCard
+                    key={agent.id}
+                    agent={agent}
+                    state={state}
+                    isActive={isActive}
+                    selected={selectedAgent === agent.id}
+                    onClick={() =>
+                      setSelectedAgent(agent.id === selectedAgent ? null : agent.id)
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
 
-      {/* ===== BRIFING CHAT — gösterge panelindeki Brifing kartı tarzında ===== */}
-      <BriefingChat
-        agents={team}
-        messages={messages}
-        sending={chatMut.isPending || chatWithFileMut.isPending}
-        onSend={handleSend}
-        onSendFile={handleSendFile}
-      />
+          {selectedAgent && (() => {
+            const a = team.find((x) => x.id === selectedAgent);
+            if (!a) return null;
+            return (
+              <div
+                className="rounded-xl p-3 flex items-start justify-between gap-3"
+                style={{
+                  background: `linear-gradient(90deg, ${a.accentColor}15 0%, transparent 100%)`,
+                  border: `1px solid ${a.accentColor}30`,
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span
+                      className="text-xs uppercase tracking-wider font-bold"
+                      style={{ color: a.accentColor }}
+                    >
+                      {a.displayName}
+                    </span>
+                    <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+                      {a.fullName} · {a.age} · {a.role}
+                    </span>
+                  </div>
+                  <p className="text-xs mb-1.5" style={{ color: 'rgba(250,250,249,0.75)' }}>
+                    {a.personality}
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {a.expertise.map((e) => (
+                      <span
+                        key={e}
+                        className="px-1.5 py-0.5 rounded text-[9px] font-medium"
+                        style={{ background: `${a.accentColor}22`, color: a.accentColor }}
+                      >
+                        {e}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAgent(null)}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.6)' }}
+                >
+                  Kapat
+                </button>
+              </div>
+            );
+          })()}
 
-      {/* OFİS SAHNESİ — opsiyonel, toggle ile */}
-      {showOffice && (
-        <div className="rounded-xl overflow-hidden">
-          <Office
-            agents={team}
-            activeAgents={activeAgents}
-            onAgentClick={(id) => setSelectedAgent(id === selectedAgent ? null : id)}
-            selectedAgent={selectedAgent}
-          />
+          <DenizPanel />
         </div>
-      )}
 
-      {/* DENİZ PANELİ — sistem önerileri */}
-      <DenizPanel />
+        <aside className="min-w-0 xl:sticky xl:top-4">
+          <div className="h-[min(820px,calc(100vh-128px))] min-h-[620px]">
+            <BriefingChat
+              agents={team}
+              messages={messages}
+              sending={chatMut.isPending || chatWithFileMut.isPending}
+              onSend={handleSend}
+              onSendFile={handleSendFile}
+              className="h-full"
+            />
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
