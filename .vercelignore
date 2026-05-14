@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+.turbo/
+.vercel/
+.env
+.env.local
+.env*.local
+*.log
+apps/luca-local-agent/.browser-data/
