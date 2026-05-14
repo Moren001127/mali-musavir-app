@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, Wrench, Bell, Paperclip, X, FileText, CheckCircle2, AlertTriangle, Clock3, FileSpreadsheet } from 'lucide-react';
-import type { OfisAgent, OfisMessage, AgentId, MizanGelirWorkflowEvent } from '@/lib/moren-ofis';
+import type { OfisAgent, OfisMessage, AgentId, OfisWorkflowEvent } from '@/lib/moren-ofis';
 import { ofisApi } from '@/lib/moren-ofis';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ function formatTry(value?: number) {
   return `${num.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
 }
 
-function WorkflowEventCard({ workflow, content }: { workflow: MizanGelirWorkflowEvent; content: string }) {
+function WorkflowEventCard({ workflow, content }: { workflow: OfisWorkflowEvent; content: string }) {
   const terminal = workflow.phase === 'completed';
   const failed = workflow.phase === 'failed' || workflow.phase === 'cancelled';
   const accent = terminal ? '#86efac' : failed ? '#fca5a5' : GOLD;
@@ -23,6 +23,8 @@ function WorkflowEventCard({ workflow, content }: { workflow: MizanGelirWorkflow
     queued: 'Sırada',
     running: 'Çalışıyor',
     waiting_mizan: 'Mizan bekleniyor',
+    waiting_luca: 'Luca bekleniyor',
+    waiting_ocr: 'OCR bekleniyor',
     completed: 'Tamamlandı',
     failed: 'Hata',
     cancelled: 'İptal',
@@ -50,19 +52,29 @@ function WorkflowEventCard({ workflow, content }: { workflow: MizanGelirWorkflow
       </div>
       <div className="font-medium mb-2">{content}</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
-        {workflow.jobId && <WorkflowPill label="jobId" value={workflow.jobId} />}
+        {'jobId' in workflow && workflow.jobId && <WorkflowPill label="jobId" value={workflow.jobId} />}
         {workflow.taxpayerName && <WorkflowPill label="mükellef" value={workflow.taxpayerName} />}
-        {workflow.donem && <WorkflowPill label="dönem" value={workflow.donem} />}
-        {workflow.donemTipi && <WorkflowPill label="tip" value={workflow.donemTipi} />}
-        {workflow.mizanId && <WorkflowPill label="mizanId" value={workflow.mizanId} />}
-        {workflow.gelirTablosuId && <WorkflowPill label="gelirTablosuId" value={workflow.gelirTablosuId} />}
+        {'workflowId' in workflow && workflow.workflowId && <WorkflowPill label="workflow" value={workflow.workflowId} />}
+        {'donem' in workflow && workflow.donem && <WorkflowPill label="dönem" value={workflow.donem} />}
+        {'periodLabel' in workflow && workflow.periodLabel && <WorkflowPill label="dönem" value={workflow.periodLabel} />}
+        {'donemTipi' in workflow && workflow.donemTipi && <WorkflowPill label="tip" value={workflow.donemTipi} />}
+        {'mizanId' in workflow && workflow.mizanId && <WorkflowPill label="mizanId" value={workflow.mizanId} />}
+        {'gelirTablosuId' in workflow && workflow.gelirTablosuId && <WorkflowPill label="gelirTablosuId" value={workflow.gelirTablosuId} />}
       </div>
-      {workflow.summary && (
+      {workflow.kind === 'mizan_gelir_workflow' && workflow.summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mt-2">
           <WorkflowPill label="net satış" value={formatTry(workflow.summary.netSatislar)} />
           <WorkflowPill label="brüt kâr" value={formatTry(workflow.summary.brutSatisKari)} />
           <WorkflowPill label="faaliyet kârı" value={formatTry(workflow.summary.faaliyetKari)} />
           <WorkflowPill label="net kâr" value={formatTry(workflow.summary.donemNetKari)} />
+        </div>
+      )}
+      {workflow.kind === 'kdv_control_workflow' && workflow.summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 mt-2">
+          <WorkflowPill label="Luca" value={String(workflow.summary.totalRecords)} />
+          <WorkflowPill label="fatura" value={String(workflow.summary.totalInvoices)} />
+          <WorkflowPill label="tam" value={String(workflow.summary.matched)} />
+          <WorkflowPill label="hata/incele" value={String(workflow.summary.partialMatch + workflow.summary.unmatched + workflow.summary.needsReview + workflow.summary.needsOcrConfirm)} />
         </div>
       )}
       {workflow.error && (
@@ -211,6 +223,7 @@ export function BriefingChat({
   }, [messages.length, speakEnabled]);
 
   const agentMap = Object.fromEntries(agents.map((a) => [a.id, a]));
+  const showToolBadges = process.env.NODE_ENV !== 'production';
 
   const submit = () => {
     if (sending) return;
@@ -531,7 +544,7 @@ export function BriefingChat({
                   {m.content}
                 </div>
                 {/* FAZ 1 — Tool çağrı rozeti (hangi canlı veri yüklendi) */}
-                {m.toolCalls && m.toolCalls.length > 0 && (
+                {showToolBadges && m.toolCalls && m.toolCalls.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5 px-1 max-w-[720px]">
                     {m.toolCalls.slice(0, 4).map((tc, j) => (
                       <span

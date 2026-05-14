@@ -264,55 +264,67 @@ export default function MorenOfisPage() {
   useEffect(() => {
     if (!conversationId) return;
 
-    const terminalJobIds = new Set<string>();
+    const workflowKey = (wf: NonNullable<OfisMessage['workflow']>) =>
+      wf.kind === 'mizan_gelir_workflow' ? wf.jobId : wf.workflowId;
+    const isTerminalPhase = (phase: string) =>
+      phase === 'completed' || phase === 'failed' || phase === 'cancelled';
+    const isPollablePhase = (phase: string) =>
+      phase === 'queued' ||
+      phase === 'running' ||
+      phase === 'waiting_mizan' ||
+      phase === 'waiting_luca' ||
+      phase === 'waiting_ocr';
+
+    const terminalWorkflowIds = new Set<string>();
     for (const msg of messages) {
       const wf = msg.workflow;
-      if (wf?.kind !== 'mizan_gelir_workflow' || !wf.jobId) continue;
-      if (wf.phase === 'completed' || wf.phase === 'failed' || wf.phase === 'cancelled') {
-        terminalJobIds.add(wf.jobId);
+      if (!wf) continue;
+      const key = workflowKey(wf);
+      if (key && isTerminalPhase(wf.phase)) {
+        terminalWorkflowIds.add(key);
       }
     }
 
-    const pendingJobIds = Array.from(
-      new Set(
-        messages
-          .map((msg) => msg.workflow)
-          .filter(
-            (wf): wf is NonNullable<OfisMessage['workflow']> =>
-              wf?.kind === 'mizan_gelir_workflow' &&
-              !!wf.jobId &&
-              !terminalJobIds.has(wf.jobId) &&
-              !workflowTerminalJobs[wf.jobId] &&
-              (wf.phase === 'queued' || wf.phase === 'running' || wf.phase === 'waiting_mizan'),
-          )
-          .map((wf) => wf.jobId as string),
-      ),
+    const pendingWorkflows = Array.from(
+      messages
+        .map((msg) => msg.workflow)
+        .filter((wf): wf is NonNullable<OfisMessage['workflow']> => {
+          if (!wf) return false;
+          const key = workflowKey(wf);
+          return !!key && !terminalWorkflowIds.has(key) && !workflowTerminalJobs[key] && isPollablePhase(wf.phase);
+        })
+        .reduce((acc, wf) => {
+          const key = workflowKey(wf);
+          if (key && !acc.has(key)) acc.set(key, { key, workflow: wf });
+          return acc;
+        }, new Map<string, { key: string; workflow: NonNullable<OfisMessage['workflow']> }>())
+        .values(),
     );
 
-    if (pendingJobIds.length === 0) return;
+    if (pendingWorkflows.length === 0) return;
     let cancelled = false;
 
     const poll = async () => {
       await Promise.all(
-        pendingJobIds.map(async (jobId) => {
+        pendingWorkflows.map(async ({ key, workflow }) => {
           try {
-            const res = await ofisApi.mizanGelirWorkflowStatus(jobId, conversationId);
+            const res =
+              workflow.kind === 'mizan_gelir_workflow'
+                ? await ofisApi.mizanGelirWorkflowStatus(key, conversationId)
+                : await ofisApi.kdvControlWorkflowStatus(key, conversationId);
             if (cancelled) return;
-            const isTerminal =
-              res.workflow.phase === 'completed' ||
-              res.workflow.phase === 'failed' ||
-              res.workflow.phase === 'cancelled';
+            const isTerminal = isTerminalPhase(res.workflow.phase);
             if (!isTerminal) {
               setMessages((prev) =>
                 prev.map((msg) => {
                   const wf = msg.workflow;
-                  if (wf?.kind !== 'mizan_gelir_workflow' || wf.jobId !== jobId) return msg;
+                  if (!wf || wf.kind !== res.workflow.kind || workflowKey(wf) !== key) return msg;
                   return { ...msg, workflow: res.workflow };
                 }),
               );
             }
             if (isTerminal) {
-              setWorkflowTerminalJobs((curr) => ({ ...curr, [jobId]: true }));
+              setWorkflowTerminalJobs((curr) => ({ ...curr, [key]: true }));
               qc.invalidateQueries({ queryKey: ['moren-ofis-conversations'] });
             }
             for (const msg of res.messages || []) {
@@ -320,7 +332,7 @@ export default function MorenOfisPage() {
             }
           } catch (e) {
             // Poll hatası sohbeti bölmesin; bir sonraki tur tekrar deneyecek.
-            console.warn('mizan-gelir workflow poll failed', e);
+            console.warn('moren-ofis workflow poll failed', e);
           }
         }),
       );

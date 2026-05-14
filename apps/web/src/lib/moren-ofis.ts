@@ -61,6 +61,56 @@ export interface MizanGelirWorkflowEvent {
   };
 }
 
+export type KdvControlWorkflowPhase =
+  | 'queued'
+  | 'running'
+  | 'waiting_luca'
+  | 'waiting_ocr'
+  | 'completed'
+  | 'failed'
+  | 'needs_clarification';
+
+export interface KdvControlWorkflowEvent {
+  kind: 'kdv_control_workflow';
+  phase: KdvControlWorkflowPhase;
+  workflowId: string;
+  taxpayerId?: string;
+  taxpayerName?: string;
+  period?: string;
+  periodLabel?: string;
+  types: string[];
+  sessions: Array<{
+    type: string;
+    typeLabel: string;
+    sessionId?: string;
+    jobId?: string;
+    jobStatus?: string;
+    records: number;
+    invoices: number;
+    results: number;
+    pendingOcr: number;
+    matched: number;
+    partialMatch: number;
+    unmatched: number;
+    needsReview: number;
+    needsOcrConfirm: number;
+    error?: string;
+  }>;
+  summary?: {
+    totalRecords: number;
+    totalInvoices: number;
+    matched: number;
+    partialMatch: number;
+    unmatched: number;
+    needsReview: number;
+    needsOcrConfirm: number;
+  };
+  error?: string;
+  logs?: string[];
+}
+
+export type OfisWorkflowEvent = MizanGelirWorkflowEvent | KdvControlWorkflowEvent;
+
 export interface OfisMessage {
   agent: AgentId | 'user' | 'system';
   content: string;
@@ -68,7 +118,7 @@ export interface OfisMessage {
   durationMs?: number;
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
   toolCalls?: OfisToolCall[];
-  workflow?: MizanGelirWorkflowEvent;
+  workflow?: OfisWorkflowEvent;
 }
 
 export interface OfisChatResponse {
@@ -79,7 +129,7 @@ export interface OfisChatResponse {
 }
 
 export interface MizanGelirWorkflowStatusResponse {
-  workflow: MizanGelirWorkflowEvent;
+  workflow: OfisWorkflowEvent;
   job: any;
   messages: OfisMessage[];
 }
@@ -114,6 +164,12 @@ export const ofisApi = {
   mizanGelirWorkflowStatus: (jobId: string, conversationId?: string) =>
     api
       .get<MizanGelirWorkflowStatusResponse>(`/moren-ofis/workflows/mizan-gelir/${jobId}`, {
+        params: conversationId ? { conversationId } : undefined,
+      })
+      .then((r) => r.data),
+  kdvControlWorkflowStatus: (workflowId: string, conversationId?: string) =>
+    api
+      .get<MizanGelirWorkflowStatusResponse>(`/moren-ofis/workflows/kdv-control/${workflowId}`, {
         params: conversationId ? { conversationId } : undefined,
       })
       .then((r) => r.data),

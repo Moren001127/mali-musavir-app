@@ -46,6 +46,56 @@ export interface MizanGelirWorkflowEvent {
   };
 }
 
+export type KdvControlWorkflowPhase =
+  | 'queued'
+  | 'running'
+  | 'waiting_luca'
+  | 'waiting_ocr'
+  | 'completed'
+  | 'failed'
+  | 'needs_clarification';
+
+export interface KdvControlWorkflowEvent {
+  kind: 'kdv_control_workflow';
+  phase: KdvControlWorkflowPhase;
+  workflowId: string;
+  taxpayerId?: string;
+  taxpayerName?: string;
+  period?: string;
+  periodLabel?: string;
+  types: KdvControlWorkflowType[];
+  sessions: Array<{
+    type: KdvControlWorkflowType;
+    typeLabel: string;
+    sessionId?: string;
+    jobId?: string;
+    jobStatus?: string;
+    records: number;
+    invoices: number;
+    results: number;
+    pendingOcr: number;
+    matched: number;
+    partialMatch: number;
+    unmatched: number;
+    needsReview: number;
+    needsOcrConfirm: number;
+    error?: string;
+  }>;
+  summary?: {
+    totalRecords: number;
+    totalInvoices: number;
+    matched: number;
+    partialMatch: number;
+    unmatched: number;
+    needsReview: number;
+    needsOcrConfirm: number;
+  };
+  error?: string;
+  logs?: string[];
+}
+
+export type OfisWorkflowEvent = MizanGelirWorkflowEvent | KdvControlWorkflowEvent;
+
 export interface OfisMessage {
   agent: AgentId | 'user' | 'system';
   content: string;
@@ -56,7 +106,7 @@ export interface OfisMessage {
   usage?: { promptTokens: number; completionTokens: number; costUsd?: number };
   // FAZ 1 — Hangi tool'ları kullandı (UI rozet için)
   toolCalls?: OfisToolCall[];
-  workflow?: MizanGelirWorkflowEvent;
+  workflow?: OfisWorkflowEvent;
 }
 
 export interface OfisTurnResponse {
@@ -67,7 +117,7 @@ export interface OfisTurnResponse {
 }
 
 export interface MizanGelirWorkflowStatusResponse {
-  workflow: MizanGelirWorkflowEvent;
+  workflow: OfisWorkflowEvent;
   job: any;
   messages: OfisMessage[];
 }
@@ -590,7 +640,7 @@ export class MorenOfisService {
     const taxpayer = taxpayerResolution.taxpayer;
     const types = this.resolveKdvControlTypes(params.text);
     const wantsReconciliationRefresh = this.wantsKdvReconciliationRefresh(params.text);
-    if (this.isStatusQuestion(params.text) || wantsReconciliationRefresh) {
+    if (wantsReconciliationRefresh || (this.isStatusQuestion(params.text) && !this.hasKdvStartVerb(params.text))) {
       return this.buildKdvControlStatusTurn({
         ...params,
         taxpayer,
@@ -615,6 +665,7 @@ export class MorenOfisService {
       ocrMessage?: string;
       error?: string;
     }> = [];
+    const workflowId = this.buildKdvWorkflowId(taxpayer.id, period.dash, types);
 
     for (const type of types) {
       const t0 = Date.now();
@@ -713,12 +764,24 @@ export class MorenOfisService {
     });
     const kayra: OfisMessage = {
       agent: 'kayra',
-      content: `${taxpayer.name} için ${period.label} KDV kontrolünü başlattım. ${kayraLines.join('. ')}. Luca çekimi ve OCR/eşleştirme bitmeden başarı sonucu yazmayacağım.`,
+      content: `${taxpayer.name} için ${period.label} KDV kontrolünü başlattım. ${kayraLines.join('. ')}. Luca verisi gelince karşılaştırmayı otomatik çalıştıracağım; sonuç oluşmadan tamamlandı demeyeceğim.`,
       ts: new Date().toISOString(),
       toolCalls,
     };
+    const system: OfisMessage = {
+      agent: 'system',
+      content: 'KDV kontrol akışı açıldı; fatura, Luca ve eşleştirme adımları takip ediliyor.',
+      ts: new Date().toISOString(),
+      workflow: this.buildInitialKdvWorkflowEvent({
+        workflowId,
+        taxpayer,
+        period,
+        types,
+        started,
+      }),
+    };
 
-    const messages = [params.userMsg, kayra];
+    const messages = [params.userMsg, kayra, system];
     await this.persistConversationMessages(params.conversationId, params.history, messages);
     return {
       conversationId: params.conversationId,
@@ -764,90 +827,56 @@ export class MorenOfisService {
       return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
 
-    const kayraLines: string[] = [];
-    const nevraLines: string[] = [];
-    const toolCalls: OfisToolCall[] = [];
-    for (const session of sessions) {
-      let [stats, job] = await Promise.all([
-        this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => null),
-        (this.prisma as any).lucaFetchJob.findFirst({
-          where: { tenantId: params.tenantId, sessionId: session.id },
-          orderBy: { createdAt: 'desc' },
-        }),
-      ]);
-
-      const typeLabel = this.formatKdvControlType(session.type);
-      const jobStatus = String(job?.status || '');
-      const jobRunning = ['pending', 'running'].includes(jobStatus);
-      const totalRecords = Number(stats?.totalRecords ?? session._count?.kdvRecords ?? 0);
-      const totalImages = Number(stats?.totalImages ?? session._count?.images ?? 0);
-
-      if (params.rerunIfNeeded && stats && !jobRunning && stats.totalRecords > 0 && stats.totalImages > 0) {
-        const hasProblem =
-          stats.unmatched > 0 ||
-          stats.partialMatch > 0 ||
-          stats.needsReview > 0 ||
-          stats.needsOcrConfirm > 0 ||
-          (session._count?.results || 0) === 0;
-        if (hasProblem) {
-          const t0 = Date.now();
-          try {
-            await this.kdvControlService.runReconciliation(session.id, params.tenantId);
-            toolCalls.push({
-              tool: 'kdv-control.runReconciliation',
-              input: { sessionId: session.id, type: session.type },
-              ok: true,
-              durationMs: Date.now() - t0,
-            });
-            stats = await this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => stats);
-            kayraLines.push(`${typeLabel} tarafında eşleştirmeyi yeniden çalıştırdım.`);
-          } catch (err: any) {
-            toolCalls.push({
-              tool: 'kdv-control.runReconciliation',
-              input: { sessionId: session.id, type: session.type },
-              ok: false,
-              durationMs: Date.now() - t0,
-            });
-            kayraLines.push(`${typeLabel} tarafında yeniden eşleştirme çalışmadı: ${err?.message || String(err)}.`);
-          }
-        } else {
-          kayraLines.push(`${typeLabel} tarafında tekrar eşleştirme gerektiren açık hata görünmedi.`);
-        }
-      } else if (params.rerunIfNeeded && jobRunning) {
-        kayraLines.push(`${typeLabel} tarafında Luca çekimi hâlâ ${jobStatus}; bu bitmeden yeniden eşleştirme başlatmadım.`);
-      }
-
-      if (job?.status === 'failed') {
-        kayraLines.push(`${typeLabel} tarafında Luca çekimi hata vermiş: ${this.extractWorkflowError(job)}.`);
-      } else if (jobRunning && !params.rerunIfNeeded) {
-        const waitLabel = jobStatus === 'pending' ? 'sırada bekliyor' : 'çalışıyor';
-        kayraLines.push(`${typeLabel} tarafında kontrol satırı var: ${totalImages} fatura bağlı, Luca satırı ${totalRecords}. Luca işi ${waitLabel}; bu yüzden tamamlandı demiyorum.`);
-      }
-
-      if (stats) {
-        nevraLines.push(this.buildKdvStatusSentence(typeLabel, stats));
-      } else {
-        nevraLines.push(`${typeLabel} tarafında seans var ama özet istatistik okunamadı.`);
-      }
-    }
+    const workflowId = this.buildKdvWorkflowId(params.taxpayer.id, params.period.dash, params.types);
+    const workflow = await this.collectKdvControlWorkflowState({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      workflowId,
+      taxpayer: params.taxpayer,
+      period: params.period,
+      types: params.types,
+      autoReconcile: true,
+      forceReconcile: params.rerunIfNeeded,
+    });
 
     const messages: OfisMessage[] = [params.userMsg];
-    if (kayraLines.length > 0) {
+    if (workflow.phase === 'completed') {
+      messages.push({
+        agent: 'system',
+        content: 'KDV kontrol karşılaştırması tamamlandı.',
+        ts: new Date().toISOString(),
+        workflow,
+      });
+      messages.push({
+        agent: 'nevra',
+        content: this.buildKdvFinalComment(workflow),
+        ts: new Date().toISOString(),
+      });
+    } else if (workflow.phase === 'failed') {
+      messages.push({
+        agent: 'system',
+        content: 'KDV kontrol akışı eksik veya hatalı durumda.',
+        ts: new Date().toISOString(),
+        workflow,
+      });
       messages.push({
         agent: 'kayra',
-        content: kayraLines.join(' '),
+        content: this.buildKdvBlockingComment(workflow),
         ts: new Date().toISOString(),
-        toolCalls,
+      });
+    } else {
+      messages.push({
+        agent: 'kayra',
+        content: this.buildKdvProgressComment(workflow),
+        ts: new Date().toISOString(),
       });
     }
-    const nevra: OfisMessage = {
-      agent: 'nevra',
-      content: nevraLines.join(' '),
-      ts: new Date().toISOString(),
-    };
-    messages.push(nevra);
+
     await this.persistConversationMessages(params.conversationId, params.history, messages);
-    return { conversationId: params.conversationId, messages, active: (kayraLines.length > 0 ? ['kayra', 'nevra'] : ['nevra']) as AgentId[], totalCostUsd: 0 };
+    const active = messages
+      .map((m) => m.agent)
+      .filter((agent): agent is AgentId => agent !== 'user' && agent !== 'system') as AgentId[];
+    return { conversationId: params.conversationId, messages, active, totalCostUsd: 0 };
   }
 
   private async tryGuardKnownModuleCommand(params: {
@@ -1088,6 +1117,369 @@ export class MorenOfisService {
     return { workflow, job, messages };
   }
 
+  async getKdvControlWorkflowStatus(params: {
+    tenantId: string;
+    userId: string;
+    workflowId: string;
+    conversationId?: string;
+  }): Promise<MizanGelirWorkflowStatusResponse> {
+    const parsed = this.parseKdvWorkflowId(params.workflowId);
+    const taxpayer = await this.getWorkflowTaxpayerById(params.tenantId, parsed.taxpayerId);
+    const period = this.kdvPeriodFromDash(parsed.period);
+    const workflow = await this.collectKdvControlWorkflowState({
+      tenantId: params.tenantId,
+      userId: params.userId,
+      workflowId: params.workflowId,
+      taxpayer: taxpayer || { id: parsed.taxpayerId, name: 'Mükellef' },
+      period,
+      types: parsed.types,
+      autoReconcile: true,
+    });
+
+    const messages =
+      workflow.phase === 'completed'
+        ? await this.appendKdvWorkflowMessagesOnce({
+            tenantId: params.tenantId,
+            conversationId: params.conversationId,
+            workflowId: params.workflowId,
+            phase: 'completed',
+            messages: [
+              {
+                agent: 'system',
+                content: 'KDV kontrol karşılaştırması tamamlandı.',
+                ts: new Date().toISOString(),
+                workflow,
+              },
+              {
+                agent: 'nevra',
+                content: this.buildKdvFinalComment(workflow),
+                ts: new Date().toISOString(),
+              },
+            ],
+          })
+        : workflow.phase === 'failed'
+          ? await this.appendKdvWorkflowMessagesOnce({
+              tenantId: params.tenantId,
+              conversationId: params.conversationId,
+              workflowId: params.workflowId,
+              phase: 'failed',
+              messages: [
+                {
+                  agent: 'system',
+                  content: 'KDV kontrol akışı eksik veya hatalı durumda durdu.',
+                  ts: new Date().toISOString(),
+                  workflow,
+                },
+                {
+                  agent: 'kayra',
+                  content: this.buildKdvBlockingComment(workflow),
+                  ts: new Date().toISOString(),
+                },
+              ],
+            })
+          : [];
+
+    return { workflow, job: { workflowId: params.workflowId, sessions: workflow.sessions }, messages };
+  }
+
+  private buildKdvWorkflowId(taxpayerId: string, periodDash: string, types: KdvControlWorkflowType[]) {
+    return `${taxpayerId}__${periodDash}__${types.join('-')}`;
+  }
+
+  private parseKdvWorkflowId(workflowId: string): {
+    taxpayerId: string;
+    period: string;
+    types: KdvControlWorkflowType[];
+  } {
+    const [taxpayerId, period, typePart] = workflowId.split('__');
+    const valid = new Set(['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER']);
+    const types = String(typePart || '')
+      .split('-')
+      .filter((t) => valid.has(t)) as KdvControlWorkflowType[];
+    return {
+      taxpayerId,
+      period,
+      types: types.length > 0 ? types : ['KDV_191', 'KDV_391'],
+    };
+  }
+
+  private kdvPeriodFromDash(periodDash: string): { dash: string; periodLabel: string; label: string } {
+    const m = String(periodDash || '').match(/^(20\d{2})-(0?[1-9]|1[0-2])$/);
+    if (!m) return this.kdvPeriodFromYearMonth(new Date().getFullYear(), new Date().getMonth() + 1);
+    return this.kdvPeriodFromYearMonth(Number(m[1]), Number(m[2]));
+  }
+
+  private buildInitialKdvWorkflowEvent(params: {
+    workflowId: string;
+    taxpayer: { id: string; name: string; taxNumber?: string | null };
+    period: { dash: string; periodLabel: string; label: string };
+    types: KdvControlWorkflowType[];
+    started: Array<{
+      type: KdvControlWorkflowType;
+      sessionId: string;
+      jobId?: string;
+      jobStatus?: string;
+      linkedTotal?: number;
+      alreadyLinked?: number;
+      error?: string;
+    }>;
+  }): KdvControlWorkflowEvent {
+    const sessions = params.types.map((type) => {
+      const item = params.started.find((s) => s.type === type);
+      return {
+        type,
+        typeLabel: this.formatKdvControlType(type),
+        sessionId: item?.sessionId || undefined,
+        jobId: item?.jobId,
+        jobStatus: item?.jobStatus || 'queued',
+        records: 0,
+        invoices: Number(item?.linkedTotal ?? item?.alreadyLinked ?? 0),
+        results: 0,
+        pendingOcr: 0,
+        matched: 0,
+        partialMatch: 0,
+        unmatched: 0,
+        needsReview: 0,
+        needsOcrConfirm: 0,
+        error: item?.error,
+      };
+    });
+    return {
+      kind: 'kdv_control_workflow',
+      phase: sessions.some((s) => s.error) ? 'failed' : 'queued',
+      workflowId: params.workflowId,
+      taxpayerId: params.taxpayer.id,
+      taxpayerName: params.taxpayer.name,
+      period: params.period.dash,
+      periodLabel: params.period.periodLabel,
+      types: params.types,
+      sessions,
+      summary: this.summarizeKdvWorkflowSessions(sessions),
+    };
+  }
+
+  private async collectKdvControlWorkflowState(params: {
+    tenantId: string;
+    userId: string;
+    workflowId: string;
+    taxpayer: { id: string; name: string; taxNumber?: string | null };
+    period: { dash: string; periodLabel: string; label: string };
+    types: KdvControlWorkflowType[];
+    autoReconcile?: boolean;
+    forceReconcile?: boolean;
+  }): Promise<KdvControlWorkflowEvent> {
+    const sessionRows = await (this.prisma as any).kdvControlSession.findMany({
+      where: {
+        tenantId: params.tenantId,
+        taxpayerId: params.taxpayer.id,
+        periodLabel: params.period.periodLabel,
+        type: { in: params.types },
+      },
+      include: {
+        _count: { select: { kdvRecords: true, images: true, results: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const sessionByType = new Map<string, any>();
+    for (const s of sessionRows) {
+      if (!sessionByType.has(String(s.type))) sessionByType.set(String(s.type), s);
+    }
+
+    const states: KdvControlWorkflowEvent['sessions'] = [];
+    const logs: string[] = [];
+    for (const type of params.types) {
+      const session = sessionByType.get(type);
+      if (!session) {
+        states.push({
+          type,
+          typeLabel: this.formatKdvControlType(type),
+          records: 0,
+          invoices: 0,
+          results: 0,
+          pendingOcr: 0,
+          matched: 0,
+          partialMatch: 0,
+          unmatched: 0,
+          needsReview: 0,
+          needsOcrConfirm: 0,
+          error: 'KDV kontrol seansı bulunamadı',
+        });
+        continue;
+      }
+
+      let [stats, job, images, resultCount] = await Promise.all([
+        this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => null),
+        (this.prisma as any).lucaFetchJob.findFirst({
+          where: { tenantId: params.tenantId, sessionId: session.id },
+          orderBy: { createdAt: 'desc' },
+        }),
+        (this.prisma as any).receiptImage.findMany({
+          where: { sessionId: session.id },
+          select: { ocrStatus: true },
+        }),
+        (this.prisma as any).reconciliationResult.count({ where: { sessionId: session.id } }),
+      ]);
+
+      const jobStatus = String(job?.status || '');
+      if (job?.errorMsg) logs.push(...this.parseLucaJobLogs(job.errorMsg).slice(-2));
+      const pendingOcr = images.filter((img: any) => ['PENDING', 'PROCESSING'].includes(String(img.ocrStatus))).length;
+      const records = Number(stats?.totalRecords ?? session._count?.kdvRecords ?? 0);
+      const invoices = Number(stats?.totalImages ?? session._count?.images ?? 0);
+      const canReconcile = records > 0 && invoices > 0 && pendingOcr === 0 && !['pending', 'running'].includes(jobStatus);
+
+      if (params.autoReconcile && canReconcile && (resultCount === 0 || params.forceReconcile)) {
+        try {
+          await this.kdvControlService.runReconciliation(session.id, params.tenantId);
+          stats = await this.kdvControlService.getSessionStats(session.id, params.tenantId).catch(() => stats);
+          resultCount = await (this.prisma as any).reconciliationResult.count({ where: { sessionId: session.id } });
+        } catch (err: any) {
+          states.push({
+            type,
+            typeLabel: this.formatKdvControlType(type),
+            sessionId: session.id,
+            jobId: job?.id,
+            jobStatus,
+            records,
+            invoices,
+            results: resultCount,
+            pendingOcr,
+            matched: Number(stats?.matched || 0),
+            partialMatch: Number(stats?.partialMatch || 0),
+            unmatched: Number(stats?.unmatched || 0),
+            needsReview: Number(stats?.needsReview || 0),
+            needsOcrConfirm: Number(stats?.needsOcrConfirm || 0),
+            error: `Eşleştirme çalışmadı: ${err?.message || String(err)}`,
+          });
+          continue;
+        }
+      }
+
+      states.push({
+        type,
+        typeLabel: this.formatKdvControlType(type),
+        sessionId: session.id,
+        jobId: job?.id,
+        jobStatus,
+        records: Number(stats?.totalRecords ?? records),
+        invoices: Number(stats?.totalImages ?? invoices),
+        results: resultCount,
+        pendingOcr,
+        matched: Number(stats?.matched || 0),
+        partialMatch: Number(stats?.partialMatch || 0),
+        unmatched: Number(stats?.unmatched || 0),
+        needsReview: Number(stats?.needsReview || 0),
+        needsOcrConfirm: Number(stats?.needsOcrConfirm || 0),
+        error: jobStatus === 'failed' ? this.extractWorkflowError(job) : undefined,
+      });
+    }
+
+    const phase = this.resolveKdvWorkflowPhase(states);
+    const workflow: KdvControlWorkflowEvent = {
+      kind: 'kdv_control_workflow',
+      phase,
+      workflowId: params.workflowId,
+      taxpayerId: params.taxpayer.id,
+      taxpayerName: params.taxpayer.name,
+      period: params.period.dash,
+      periodLabel: params.period.periodLabel,
+      types: params.types,
+      sessions: states,
+      summary: this.summarizeKdvWorkflowSessions(states),
+      logs,
+    };
+    if (phase === 'failed') {
+      workflow.error = this.buildKdvBlockingComment(workflow);
+    }
+    return workflow;
+  }
+
+  private resolveKdvWorkflowPhase(states: KdvControlWorkflowEvent['sessions']): KdvControlWorkflowPhase {
+    if (states.some((s) => s.error || s.jobStatus === 'failed' || s.jobStatus === 'cancelled')) return 'failed';
+    if (states.some((s) => s.jobStatus === 'running')) return 'running';
+    if (states.some((s) => s.jobStatus === 'pending' || s.jobStatus === 'queued')) return 'queued';
+    if (states.some((s) => s.records === 0)) return 'waiting_luca';
+    if (states.some((s) => s.invoices === 0 || s.pendingOcr > 0)) return 'waiting_ocr';
+    if (states.every((s) => s.results > 0)) return 'completed';
+    return 'waiting_ocr';
+  }
+
+  private summarizeKdvWorkflowSessions(sessions: KdvControlWorkflowEvent['sessions']): NonNullable<KdvControlWorkflowEvent['summary']> {
+    return sessions.reduce(
+      (acc, s) => {
+        acc.totalRecords += Number(s.records || 0);
+        acc.totalInvoices += Number(s.invoices || 0);
+        acc.matched += Number(s.matched || 0);
+        acc.partialMatch += Number(s.partialMatch || 0);
+        acc.unmatched += Number(s.unmatched || 0);
+        acc.needsReview += Number(s.needsReview || 0);
+        acc.needsOcrConfirm += Number(s.needsOcrConfirm || 0);
+        return acc;
+      },
+      { totalRecords: 0, totalInvoices: 0, matched: 0, partialMatch: 0, unmatched: 0, needsReview: 0, needsOcrConfirm: 0 },
+    );
+  }
+
+  private buildKdvFinalComment(workflow: KdvControlWorkflowEvent): string {
+    const s = workflow.summary || this.summarizeKdvWorkflowSessions(workflow.sessions);
+    const review = Number(s.needsReview || 0) + Number(s.needsOcrConfirm || 0);
+    const problem = Number(s.partialMatch || 0) + Number(s.unmatched || 0) + review;
+    const base = `${workflow.taxpayerName || 'Mükellef'} için ${workflow.periodLabel || workflow.period || ''} KDV kontrolü tamamlandı: ${s.totalRecords} Luca satırı, ${s.totalInvoices} fatura, ${s.matched} tam eşleşme.`;
+    if (problem === 0) return `${base} Açık eşleşme hatası görünmüyor.`;
+    return `${base} ${s.partialMatch} kısmi, ${s.unmatched} eşleşmeyen, ${review} inceleme bekleyen kayıt var; bunları KDV Kontrol ekranında açıp düzeltebiliriz.`;
+  }
+
+  private buildKdvProgressComment(workflow: KdvControlWorkflowEvent): string {
+    const parts = workflow.sessions.map((s) => {
+      if (s.jobStatus === 'pending' || s.jobStatus === 'queued') return `${s.typeLabel}: Luca kuyruğunda`;
+      if (s.jobStatus === 'running') return `${s.typeLabel}: Luca çekimi çalışıyor`;
+      if (s.records === 0) return `${s.typeLabel}: fatura bağlı ${s.invoices}, Luca satırı henüz 0`;
+      if (s.pendingOcr > 0) return `${s.typeLabel}: ${s.pendingOcr} fatura OCR bekliyor`;
+      if (s.results === 0) return `${s.typeLabel}: veri hazır, eşleştirme başlatılacak`;
+      return `${s.typeLabel}: ${s.matched} tam, ${s.unmatched} eşleşmeyen`;
+    });
+    return `${workflow.taxpayerName || 'Mükellef'} için KDV kontrolü henüz tamamlanmadı. ${parts.join('; ')}. Sonuç oluşmadan başarılı/tamamlandı demiyorum.`;
+  }
+
+  private buildKdvBlockingComment(workflow: KdvControlWorkflowEvent): string {
+    const errors = workflow.sessions
+      .filter((s) => s.error || s.jobStatus === 'failed' || s.jobStatus === 'cancelled' || s.invoices === 0)
+      .map((s) => `${s.typeLabel}: ${s.error || (s.invoices === 0 ? 'bağlı fatura yok' : s.jobStatus)}`);
+    return `${workflow.taxpayerName || 'Mükellef'} için KDV kontrolü tamamlanamadı. ${errors.join('; ') || 'Eksik adım var.'}`;
+  }
+
+  private async appendKdvWorkflowMessagesOnce(params: {
+    tenantId: string;
+    conversationId?: string;
+    workflowId: string;
+    phase: KdvControlWorkflowPhase;
+    messages: OfisMessage[];
+  }): Promise<OfisMessage[]> {
+    if (!params.conversationId) return [];
+    const conv = await (this.prisma as any).morenOfisConversation.findFirst({
+      where: { id: params.conversationId, tenantId: params.tenantId },
+      select: { messages: true },
+    });
+    if (!conv) return [];
+
+    const history = (conv.messages as OfisMessage[] | null) || [];
+    const alreadyWritten = history.some(
+      (m) =>
+        m.workflow?.kind === 'kdv_control_workflow' &&
+        m.workflow.workflowId === params.workflowId &&
+        m.workflow.phase === params.phase,
+    );
+    if (alreadyWritten) return [];
+
+    await (this.prisma as any).morenOfisConversation.update({
+      where: { id: params.conversationId },
+      data: {
+        messages: [...history, ...params.messages] as any,
+        lastActivityAt: new Date(),
+      },
+    });
+    return params.messages;
+  }
+
   private async persistConversationMessages(
     conversationId: string,
     history: OfisMessage[],
@@ -1165,12 +1557,12 @@ export class MorenOfisService {
 
   private wantsKdvReconciliationRefresh(text: string): boolean {
     const q = this.normalizeWorkflowText(text);
-    return /tekrar\s+eslestir|yeniden\s+eslestir|eslestirme\s+baslat|eslesme\s+hata|eslesme\s+sorun|sonuclarini\s+bildir|sonucunu\s+bildir/.test(q);
+    return /tekrar\s+eslestir|yeniden\s+eslestir|eslestirme\s+baslat|karsilastirma\s+baslat|eslesme\s+hata|eslesme\s+sorun|sonuclarini\s+bildir|sonucunu\s+bildir/.test(q);
   }
 
   private isStatusQuestion(text: string): boolean {
     const q = this.normalizeWorkflowText(text);
-    return /hazir|hazirlandi|hazirladiniz|yaptiniz|yapildi|olustu|olusturdunuz|cekildi|bitti|tamamlandi|ne\s+durumda|durum|sonuc|var\s+mi/.test(q);
+    return /hazir|hazirlandi|hazirladiniz|yaptiniz|yapildi|yapilmis|yapilmadi|olustu|olusturdunuz|cekildi|cekilmis|bitti|bitmis|tamamlandi|tamamlanmis|ne\s+durumda|durum|sonuc|var\s+mi/.test(q);
   }
 
   private isTeamGreeting(text: string): boolean {

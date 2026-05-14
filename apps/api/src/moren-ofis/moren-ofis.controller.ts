@@ -75,6 +75,20 @@ export class MorenOfisController {
     });
   }
 
+  @Get('workflows/kdv-control/:workflowId')
+  kdvControlWorkflowStatus(
+    @Req() req: any,
+    @Param('workflowId') workflowId: string,
+    @Query('conversationId') conversationId?: string,
+  ) {
+    return this.service.getKdvControlWorkflowStatus({
+      tenantId: req.user.tenantId,
+      userId: req.user.sub,
+      workflowId,
+      conversationId,
+    });
+  }
+
   @Get('conversations/:id')
   getOne(@Req() req: any, @Param('id') id: string) {
     return this.service.getConversation(req.user.tenantId, id);
