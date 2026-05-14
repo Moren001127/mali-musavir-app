@@ -12,6 +12,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 import { pendingActionsApi } from '@/lib/pending-actions';
+import LucaAgentPanel from './LucaAgentPanel';
 
 // Elit Boutique altın ailesi — her grup kendi tonunu alır
 const GOLD      = '#d4b876';  // Ana altın
@@ -191,6 +192,10 @@ export default function Sidebar() {
           />
         </Link>
       </div>
+
+      {/* === LUCA AJANI DURUM PANELİ === */}
+      {/* Kullanıcı herhangi bir sayfadan agent kuyruğunu ve son log'u görebilsin */}
+      <LucaAgentPanel />
 
       {/* === NAVIGASYON === */}
       <nav className="flex-1 px-2 pt-3 pb-4 space-y-4 overflow-y-auto relative">
