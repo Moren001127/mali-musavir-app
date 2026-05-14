@@ -103,9 +103,9 @@ export default function AgentControlCard() {
             <AlertTriangle size={18} />
           </div>
           <div className="flex-1">
-            <div className="text-[14px] font-semibold mb-1" style={{ color: '#fafaf9' }}>Moren Auto-Agent yüklü değil</div>
+            <div className="text-[14px] font-semibold mb-1" style={{ color: '#fafaf9' }}>Moren Auto-Agent algılanmadı</div>
             <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: 'rgba(250,250,249,0.6)' }}>
-              Luca güvenlik kodlarını portal içinde yönetmek ve Mihsap'ı görünür sekmede çalıştırmak için Chrome extension'ını yükle:
+              Extension yüklü olmayabilir ya da Chrome extensions ekranında kapalı olabilir. Luca arka planda, Mihsap ise görünür sekmede çalışsın diye Moren Auto-Agent'ı aç:
             </p>
             <a
               href="/moren-auto-agent.zip"
@@ -116,11 +116,10 @@ export default function AgentControlCard() {
               <Download size={13} /> Extension İndir (.zip)
             </a>
             <ol className="text-[12px] mb-1 space-y-1 list-decimal list-inside" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              <li>İndirilen <code style={codeStyle}>moren-auto-agent.zip</code> dosyasını <strong style={{ color: '#fafaf9' }}>masaüstü</strong>na çıkart</li>
-              <li><code style={codeStyle}>chrome://extensions/</code> aç</li>
-              <li>Sağ üstten <strong style={{ color: '#fafaf9' }}>Geliştirici modu</strong> aç</li>
-              <li><strong style={{ color: '#fafaf9' }}>Paketlenmemiş yükle</strong> → çıkartılan klasörü seç</li>
-              <li>Bu sayfayı yenile</li>
+              <li><code style={codeStyle}>chrome://extensions/</code> ekranında Moren Auto Agent anahtarını aç</li>
+              <li>Açtıktan sonra bu sayfayı yenile</li>
+              <li>Extension yoksa indirilen <code style={codeStyle}>moren-auto-agent.zip</code> dosyasını masaüstüne çıkart</li>
+              <li>Geliştirici modu → <strong style={{ color: '#fafaf9' }}>Paketlenmemiş yükle</strong> ile klasörü seç</li>
             </ol>
           </div>
         </div>
