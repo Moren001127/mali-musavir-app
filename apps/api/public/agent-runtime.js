@@ -3025,7 +3025,6 @@
       } catch {}
       el.dispatchEvent(new win.Event('input', { bubbles: true }));
       el.dispatchEvent(new win.Event('change', { bubbles: true }));
-      el.dispatchEvent(new win.KeyboardEvent('keyup', { bubbles: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 }));
       el.blur?.();
     };
 
@@ -3043,15 +3042,95 @@
       return null;
     };
 
+    const elementLooksLikeEbelgeAction = (el, arg) => {
+      const txt = getElementText(el);
+      const attrs = foldEbelgeText([
+        el?.id,
+        el?.name,
+        el?.title,
+        el?.className,
+        el?.value,
+        el?.getAttribute?.('aria-label'),
+        el?.getAttribute?.('onclick'),
+        el?.getAttribute?.('href'),
+      ].filter(Boolean).join(' '));
+      const hay = `${txt} ${attrs}`;
+      if (arg === 'indir-window') {
+        return hay.includes('indir-window') ||
+          hay.includes('fatura indir') ||
+          hay.includes('belge indir') ||
+          (hay.includes('indir') && !hay.includes('secilenleri') && !hay.includes('zip-window'));
+      }
+      if (arg === 'zip-window') {
+        return hay.includes('zip-window') ||
+          hay.includes('secilenleri indir') ||
+          hay.includes('secilen belge') ||
+          hay.includes('toplu indir');
+      }
+      return hay.includes(arg);
+    };
+
+    const clickEbelgeActionElement = (el) => {
+      const win = el?.ownerDocument?.defaultView || window;
+      try { el.focus?.(); } catch {}
+      try { el.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: win })); } catch {}
+      try { el.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, view: win })); } catch {}
+      try { el.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, view: win })); } catch {}
+      try { el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win })); } catch {}
+      try { if (typeof el.click === 'function') el.click(); } catch {}
+    };
+
+    const callEbelgeGonderEverywhere = async (arg, label) => {
+      const wins = [];
+      for (const w of [fwin, window, window.top, parent]) {
+        try { if (w && !wins.includes(w)) wins.push(w); } catch {}
+      }
+      for (const w of collectAllWindows()) {
+        if (w && !wins.includes(w)) wins.push(w);
+      }
+
+      for (const w of wins) {
+        try {
+          if (typeof w.gonder === 'function') {
+            w.gonder(arg);
+            await log(`✓ ${label}: gonder("${arg}") çağrıldı (${w === fwin ? 'ebelge frame' : w === window ? 'window' : w === window.top ? 'top' : 'frame'})`);
+            return true;
+          }
+        } catch (e) {
+          await log(`⚠ ${label}: gonder("${arg}") hata: ${String(e?.message || e).slice(0, 90)}`);
+        }
+      }
+
+      const directCandidates = [];
+      for (const doc of collectEbelgeDocsDeep()) {
+        try {
+          for (const el of doc.querySelectorAll('[onclick], a[href], button, input[type=button], input[type=submit], input[type=image], [role=button]')) {
+            if (elementLooksLikeEbelgeAction(el, arg)) directCandidates.push(el);
+          }
+        } catch {}
+      }
+      for (const el of directCandidates) {
+        try {
+          const desc = getElementText(el) || String(el.getAttribute?.('onclick') || el.getAttribute?.('href') || '').slice(0, 80);
+          await log(`🖱 ${label}: gonder yok, DOM aksiyonu tıklanıyor: ${desc.slice(0, 80) || arg}`);
+          clickEbelgeActionElement(el);
+          return true;
+        } catch (e) {
+          await log(`⚠ ${label}: DOM aksiyonu hata: ${String(e?.message || e).slice(0, 90)}`);
+        }
+      }
+
+      await log(`⚠ ${label}: gonder("${arg}") veya uygun DOM aksiyonu bulunamadı`);
+      return false;
+    };
+
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
       await throwIfCancelled();
       await log(`🔍 ${etiket}: ${bas} → ${bit}`);
       // Modal aç
-      if (typeof fwin.gonder === 'function') {
-        fwin.gonder('indir-window');
-      } else {
-        throw new Error('window.gonder fonksiyonu yok — Luca sayfası beklenen yapıda değil');
+      if (!await callEbelgeGonderEverywhere('indir-window', `${etiket} tarih modalı`)) {
+        throw new Error('indir-window aksiyonu bulunamadı — Luca sayfası beklenen yapıda değil');
       }
       await sleep(800); // modal animasyonu
 
@@ -3069,6 +3148,7 @@
       // Belgeleri Getir butonu
       const getirBtn = findGetirButtonEverywhere(datePair.doc);
       if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
+      await log(`🖱 Belgeleri Getir tetikleniyor (${getElementText(getirBtn).slice(0, 80) || getirBtn.id || getirBtn.name || 'button'})`);
       getirBtn.click();
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
 
@@ -3444,11 +3524,10 @@
     }
 
     // Seçilenleri İndir (ALT TOOLBAR) → ZIP popup açılır
-    if (typeof fwin.gonder === 'function') {
-      fwin.gonder('zip-window');
+    if (await callEbelgeGonderEverywhere('zip-window', 'Alt toolbar Seçilenleri İndir')) {
       await log('📦 Alt toolbar "Seçilenleri İndir" tetiklendi → popup açılıyor');
     } else {
-      throw new Error('zip-window gonder yok');
+      throw new Error('zip-window aksiyonu bulunamadı');
     }
 
     // Popup açılma animasyonunu bekle
