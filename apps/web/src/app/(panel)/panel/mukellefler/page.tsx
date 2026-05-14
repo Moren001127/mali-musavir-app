@@ -8,7 +8,7 @@ import { Search, Upload, Plus, ChevronRight, AlertCircle, PhoneOff, Check as Che
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
-const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr) 42px';
+const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr) 78px';
 
 type MonthlyStatus = {
   id?: string;
@@ -356,7 +356,7 @@ export default function MukelleflerPage() {
           <span className="text-center">Hes. KDV</span>
           <span className="text-center">E-Arşiv</span>
           <span className="text-center">Beyanname</span>
-          <span></span>
+          <span className="text-center">Kart</span>
         </div>
 
         {isLoading ? (
@@ -555,14 +555,28 @@ function TaxpayerRow({
         />
       </div>
 
-      {/* Detay */}
-      <div className="text-right">
+      {/* Kart aç */}
+      <div className="flex justify-center">
         <Link
           href={`/panel/mukellefler/${taxpayer.id}`}
-          className="inline-flex items-center gap-1 text-[11.5px] font-medium transition-all opacity-60 group-hover:opacity-100"
-          style={{ color: GOLD }}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all"
+          style={{
+            color: GOLD,
+            background: 'rgba(212,184,118,0.08)',
+            border: '1px solid rgba(212,184,118,0.28)',
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(212,184,118,0.16)';
+            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(212,184,118,0.5)';
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(212,184,118,0.08)';
+            (e.currentTarget as HTMLAnchorElement).style.borderColor = 'rgba(212,184,118,0.28)';
+          }}
+          title="Mükellef kartını aç"
         >
-          <ChevronRight size={14} />
+          Kart
+          <ChevronRight size={12} />
         </Link>
       </div>
     </div>

@@ -97,6 +97,21 @@ interface Taxpayer {
   companyName?: string | null;
   taxNumber?: string | null;
   mihsapId?: string | null;
+  /** Mükellef kartından gelen defter türü — 'BILANCO' | 'ISLETME' | null */
+  defterTuru?: 'BILANCO' | 'ISLETME' | null;
+}
+
+/**
+ * Bir KDV aksiyonu, mükellefin defter türüyle uyumlu mu?
+ * - defterTuru BILANCO → sadece BILANCO_* aksiyonları
+ * - defterTuru ISLETME → sadece ISLETME_* aksiyonları
+ * - defterTuru null/undefined → hepsi geçerli (kart doldurulmamış)
+ */
+function isActionCompatible(action: KdvAction, defterTuru?: 'BILANCO' | 'ISLETME' | null): boolean {
+  if (!defterTuru) return true;
+  if (defterTuru === 'BILANCO') return action === 'BILANCO_ALIS' || action === 'BILANCO_SATIS';
+  if (defterTuru === 'ISLETME') return action === 'ISLETME_ALIS' || action === 'ISLETME_SATIS';
+  return true;
 }
 function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
@@ -253,6 +268,23 @@ export default function KdvKontrolPage() {
   });
 
   const selectedTp = taxpayers.find((t) => t.id === taxpayerId);
+
+  // Mükellef defter türüne göre selectedActions'ı otomatik filtrele:
+  // - Mükellef Bilanço esasındaysa İşletme aksiyonlarını çıkar
+  // - Mükellef İşletme defterindeyse Bilanço aksiyonlarını çıkar
+  // - Hiçbir uyumlu aksiyon kalmazsa varsayılan olarak BILANCO_ALIS/ISLETME_ALIS seç
+  useEffect(() => {
+    const dt = selectedTp?.defterTuru;
+    if (!dt) return;
+    setSelectedActions((prev) => {
+      const filtered = prev.filter((a) => isActionCompatible(a, dt));
+      if (filtered.length === prev.length) return prev;
+      if (filtered.length > 0) return filtered;
+      const defaultAction: KdvAction = dt === 'BILANCO' ? 'BILANCO_ALIS' : 'ISLETME_ALIS';
+      return [defaultAction];
+    });
+  }, [selectedTp?.defterTuru]);
+
   const processingCount = images.filter((i: any) => ['PENDING', 'PROCESSING'].includes(i.ocrStatus)).length;
   const pendingOcrCount = images.filter((i: any) => i.ocrStatus === 'PENDING').length;
   /** OCR'ı başarıyla tamamlanmış (veya teyit edilmiş) fatura sayısı */
@@ -876,15 +908,33 @@ export default function KdvKontrolPage() {
               {(Object.keys(ACTION_LABEL) as KdvAction[]).map((k) => {
                 const active = selectedActions.includes(k);
                 const c = ACTION_COLOR[k];
+                const compatible = isActionCompatible(k, selectedTp?.defterTuru);
+                const disabled = !compatible;
+                const reason = disabled
+                  ? selectedTp?.defterTuru === 'BILANCO'
+                    ? 'Bu mükellef Bilanço esasında — İşletme seçilemez'
+                    : 'Bu mükellef İşletme defterinde — Bilanço seçilemez'
+                  : '';
                 return (
                   <button
                     key={k}
-                    onClick={() => toggleAction(k)}
-                    className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap"
+                    onClick={() => { if (!disabled) toggleAction(k); }}
+                    disabled={disabled}
+                    title={reason}
+                    className="px-3 py-2 rounded-lg text-xs font-bold border whitespace-nowrap transition"
                     style={{
-                      background: active ? c + '26' : 'rgba(255,255,255,0.03)',
-                      borderColor: active ? c : 'rgba(255,255,255,0.05)',
-                      color: active ? c : '#fafaf9',
+                      background: disabled
+                        ? 'rgba(255,255,255,0.015)'
+                        : active ? c + '26' : 'rgba(255,255,255,0.03)',
+                      borderColor: disabled
+                        ? 'rgba(255,255,255,0.04)'
+                        : active ? c : 'rgba(255,255,255,0.05)',
+                      color: disabled
+                        ? 'rgba(250,250,249,0.22)'
+                        : active ? c : '#fafaf9',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      opacity: disabled ? 0.5 : 1,
+                      textDecoration: disabled ? 'line-through' : 'none',
                     }}
                   >
                     {ACTION_LABEL[k]}
