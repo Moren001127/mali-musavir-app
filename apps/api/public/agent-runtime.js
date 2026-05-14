@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.50';
+  const AGENT_VERSION = '1.37.56';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5170,6 +5170,7 @@
     // Luca'da "Rapor" butonu form'un DIŞINDA ayrı div'de — mizan akışındaki
     // findExcelButton ile aynı strateji: form.ownerDocument tüm DOM'u tara.
     const doc = form.ownerDocument;
+    const win = doc.defaultView || window;
     const all = [
       ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
       ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a'),
@@ -5215,10 +5216,16 @@
     const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
     const onclickAttr = (btn.getAttribute && btn.getAttribute('onclick')) || '';
     const hrefAttr = (btn.getAttribute && btn.getAttribute('href')) || '';
+    try {
+      if (typeof win.gonder === 'function') {
+        await log(`gonder() source preview: ${String(win.gonder).replace(/\s+/g, ' ').slice(0, 500)}`);
+      } else {
+        await log('frm3 gonder() not found');
+      }
+    } catch {}
     await log(`🎯 Buton bulundu: "${label}" [${btn.tagName}]`);
     await log(`🖱 "${label}" butonu tıklanıyor (gerçek user click sim)`);
     // Gerçek user click — focus + mousedown + mouseup + click sırası
-    const win = doc.defaultView || window;
     try {
       if (typeof btn.focus === 'function') btn.focus();
       btn.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -5259,6 +5266,14 @@
     const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
     const onclickAttr = (btn.getAttribute && btn.getAttribute('onclick')) || '';
     const hrefAttr = (btn.getAttribute && btn.getAttribute('href')) || '';
+    try {
+      if (typeof win.gonder === 'function') {
+        const src = String(win.gonder).replace(/\s+/g, ' ');
+        await log(`🔍 frm3 gonder() source: ${src.slice(0, 900)}`);
+      } else {
+        await log('ℹ frm3 gonder() bulunamadı');
+      }
+    } catch {}
     await log(`🎯 Rapor butonu: "${label}" [${btn.tagName}] onclick="${onclickAttr.slice(0, 120)}" href="${hrefAttr.slice(0, 120)}"`);
     try {
       if (typeof btn.focus === 'function') btn.focus();
@@ -5281,9 +5296,10 @@
           await log(`⚠ Rapor onclick doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
         }
       }
-      if (!ran && typeof win.gonder === 'function') {
+      if (typeof win.gonder === 'function') {
         try {
-          win.gonder();
+          const ret = win.gonder();
+          await log(`Rapor gonder() return=${String(ret).slice(0, 60)}`);
           ran = true;
           await log('🔁 Rapor gonder() kontrollu fallback olarak çağrıldı');
         } catch (e) {
@@ -5348,13 +5364,156 @@
     return true;
   }
 
+  function collectLucaFormsNow(formNamePattern) {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch {}
+      return acc;
+    };
+    const forms = [];
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const fm of f.contentDocument.querySelectorAll('form')) {
+          if (formNamePattern.test(fm.name || '') ||
+              formNamePattern.test(fm.id || '') ||
+              formNamePattern.test(fm.action || '')) {
+            forms.push(fm);
+          }
+        }
+      } catch {}
+    }
+    return forms;
+  }
+
+  function getKdvLedgerReportName(form) {
+    try {
+      return String(form?.querySelector?.('input[name="ReportName"], input#ReportName')?.value || '');
+    } catch {
+      return '';
+    }
+  }
+
+  function isPreferredKdvLedgerForm(form) {
+    if (!form) return false;
+    const reportName = getKdvLedgerReportName(form);
+    const identity = `${form.name || ''} ${form.id || ''} ${form.action || ''} ${reportName}`;
+    if (/MUAVIN_DEFTER/i.test(reportName)) return false;
+    if (/KEBIR|raporKebir|kebir/i.test(identity)) return true;
+    if (form.querySelector('select[name="p_fis_birlestir_0"], select[name="p_siralama_1"]')) return true;
+    return false;
+  }
+
+  function findPreferredKdvLedgerFormNow() {
+    const forms = collectLucaFormsNow(/raporMuavin|muavin|raporKebir|kebir|REPFORM|DefterServlet/i);
+    return forms.find((form) => isPreferredKdvLedgerForm(form)) || null;
+  }
+
+  function findLucaKdvLedgerFormNow() {
+    return findPreferredKdvLedgerFormNow() ||
+      collectLucaFormsNow(/raporMuavin|muavin|raporKebir|kebir|REPFORM|DefterServlet/i)[0] ||
+      null;
+  }
+
+  function describeKdvLedgerForm(form) {
+    if (!form) return '(form yok)';
+    const inputs = [...form.querySelectorAll('input')]
+      .slice(0, 16)
+      .map((i) => `${i.type || '?'}#${i.name || i.id || '?'}=${String(i.value || '').slice(0, 20)}`);
+    const selects = [...form.ownerDocument.querySelectorAll('select')]
+      .slice(0, 10)
+      .map((s) => `select#${s.name || s.id || '?'}(${s.options?.length || 0})`);
+    const reportName = getKdvLedgerReportName(form);
+    return `name="${form.name || '?'}" action="${(form.action || '?').split('/').pop().slice(0, 70)}" report="${reportName || '-'}" preferred=${isPreferredKdvLedgerForm(form)} inputs=[${inputs.join(' | ')}] selects=[${selects.join(' | ')}]`;
+  }
+
+  async function resetLucaFrm3ForKdv(log, reason) {
+    try {
+      const f3 = getLucaFrame('frm3');
+      if (f3) {
+        f3.src = 'about:blank';
+        await sleep(650);
+        await log(`KDV form frame sifirlandi: ${reason}`);
+      }
+    } catch (e) {
+      await log(`KDV frame sifirlama hatasi: ${String(e?.message || e).slice(0, 120)}`);
+    }
+  }
+
+  async function logKdvMenuHints(log) {
+    try {
+      const rows = [
+        ...collectLucaClickMap('Muavin'),
+        ...collectLucaClickMap('Defteri Kebir'),
+      ];
+      const seen = new Set();
+      const hints = [];
+      for (const r of rows) {
+        const key = `${r.frame}|${r.text}|${r.ii1a}|${r.onclick}|${r.href}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        hints.push(`${r.frame}:${r.tag} "${String(r.text || r.value || r.id || '').slice(0, 55)}" code=${r.ii1a || '-'} oc=${String(r.onclick || r.href || '').slice(0, 70)}`);
+        if (hints.length >= 10) break;
+      }
+      if (hints.length) await log(`KDV menu ipuclari: ${hints.join(' || ')}`);
+    } catch {}
+  }
+
+  async function openLucaKdvLedgerReportForm(log) {
+    await logKdvMenuHints(log);
+    const attempts = [
+      { text: 'Defteri Kebir (Tum Yazicilar)', code: 'lI1lI(0,17,"79")', maxMs: 12000 },
+      { text: 'Defteri Kebir', nth: 2, maxMs: 10000 },
+      { text: 'Muavin Defter (Tum Yazicilar)', code: 'lI1lI(0,15,"77")', maxMs: 12000 },
+    ];
+
+    for (const attempt of attempts) {
+      await resetLucaFrm3ForKdv(log, `${attempt.text}${attempt.code ? ` ${attempt.code}` : `#${attempt.nth}`}`);
+      try {
+        await log(`KDV rapor ekrani deneniyor: ${attempt.text}${attempt.code ? ` (${attempt.code})` : ` (${attempt.nth}. occurrence)`}`);
+        if (attempt.code) {
+          const opened = await callLucaMenuCode(attempt.text, attempt.code, log, 1200);
+          if (!opened) {
+            await log(`KDV ${attempt.text} ID cagrilamadi; siradaki deneniyor`);
+            continue;
+          }
+        } else {
+          await clickLucaRightMenu(attempt.text, log, {
+            nth: attempt.nth,
+            maxMs: attempt.maxMs,
+            settleMs: 900,
+            afterClickReady: () => !!findPreferredKdvLedgerFormNow(),
+          });
+        }
+        const form = await waitUntil(() => findPreferredKdvLedgerFormNow(), attempt.maxMs || 10000, 250);
+        if (form && isPreferredKdvLedgerForm(form)) {
+          await log(`KDV rapor formu secildi: ${attempt.text}${attempt.code ? '' : `#${attempt.nth}`} -> ${describeKdvLedgerForm(form)}`);
+          return form;
+        }
+        const anyForm = findLucaKdvLedgerFormNow();
+        if (anyForm) {
+          await log(`KDV ${attempt.text} uygun form acmadi; gorulen form reddedildi -> ${describeKdvLedgerForm(anyForm)}`);
+        } else {
+          await log(`KDV ${attempt.text} form acmadi; siradaki deneniyor`);
+        }
+      } catch (e) {
+        await log(`KDV ${attempt.text}${attempt.code ? '' : `#${attempt.nth}`} denenemedi: ${String(e?.message || e).slice(0, 180)}`);
+      }
+    }
+
+    throw new Error(`KDV Muavin/Defteri Kebir rapor formu acilamadi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+  }
+
   /**
-   * Defteri Kebir flow (KDV 191 / 391) — Mizan'dan BAĞIMSIZ, sıfırdan yazıldı.
+   * KDV 191 / 391 flow — Tüm Yazıcılar > Defteri Kebir ekranı.
    *
-   * Yaklaşım: Luca'nın UI butonlarına tıklamak yerine doğrudan form parametrelerini
-   * topla, kendi fetch POST'umuzu at. Server'dan dönen JSON'daki rapor_id ile
-   * rapor_takip + rapor_indir zincirini bizim parametrelerimizle yürüt.
-   * Bu sayede Luca'nın frontend "input.value submit'e geçmiyor" sorunu bypass.
+   * Yaklaşım: Alanları Luca'nın gerçek ID/name'leriyle doldur, Luca'nın kendi
+   * rapor indirme akışını tetikle ve inen Excel blob'unu yakala.
    */
   async function fetchLucaDefteriKebirExcel(job, log, hesapKodu) {
     if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
@@ -5366,11 +5525,8 @@
     await ensureLucaFirma(job, log);
     await navigateToFisListesi(log);
 
-    // 3. Defteri Kebir (Tüm Yazıcılar) — 2. occurrence
-    await clickLucaRightMenu('Defteri Kebir', log, { nth: 2 });
-
-    // 4. Form yüklensin
-    const form = await waitForLucaAnyForm(log, /raporKebir|kebir|REPFORM|DefterServlet/i, 15000, 'Defteri Kebir formu');
+    // 3-4. KDV için doğru rapor formunu aç: Tüm Yazıcılar > Defteri Kebir.
+    const form = await openLucaKdvLedgerReportForm(log);
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
@@ -5539,6 +5695,8 @@
     const t0 = Date.now();
     let directFallbackTriggered = false;
     let directFormFallbackTriggered = false;
+    window.__morenCapturedBlob = null;
+    try { if (frm3win) frm3win.__morenCapturedBlob = null; } catch {}
     const postExpecting = (val) => {
       if (val && lucaManualDownloadMode()) return;
       const payload = { source: 'moren-agent', type: 'set-expecting', expecting: val };
@@ -8741,9 +8899,10 @@
   function installXhrHook(targetWin) {
     try {
       const w = targetWin || window;
-      if (!w || !w.XMLHttpRequest || w.__morenXhrHookInstalled) return false;
-      w.__morenXhrHookInstalled = true;
+      if (!w || !w.XMLHttpRequest) return false;
       const proto = w.XMLHttpRequest.prototype;
+      if (proto.__morenXhrHookInstalled) return false;
+      proto.__morenXhrHookInstalled = true;
       const origOpen = proto.open;
       const origSend = proto.send;
       proto.open = function (method, url) {
@@ -8863,10 +9022,9 @@
   function installFetchHook(targetWin) {
     try {
       const w = targetWin || window;
-      if (!w || !w.fetch || w.__morenFetchHookInstalled) return false;
-      w.__morenFetchHookInstalled = true;
+      if (!w || !w.fetch || w.fetch.__morenFetchHookInstalled) return false;
       const origFetch = w.fetch;
-      w.fetch = async function (input, init) {
+      const morenFetchWrapper = async function (input, init) {
         const __morenFetchUrl = getRequestUrl(input);
         const __morenFetchMethod = (init && init.method) || (input && input.method) || 'GET';
         const __morenFetchBody = init && init.body;
@@ -8949,6 +9107,8 @@
           throw e;
         }
       };
+      morenFetchWrapper.__morenFetchHookInstalled = true;
+      w.fetch = morenFetchWrapper;
       return true;
     } catch (e) { return false; }
   }
@@ -8960,14 +9120,27 @@
   function installReportFormSubmitHook(targetWin) {
     try {
       const w = targetWin || window;
-      if (!w || !w.HTMLFormElement || !w.document || w.__morenReportFormHookInstalled) return false;
-      w.__morenReportFormHookInstalled = true;
+      if (!w || !w.HTMLFormElement || !w.document) return false;
+      const proto = w.HTMLFormElement.prototype;
+      if (proto.__morenReportFormHookInstalled) return false;
+      proto.__morenReportFormHookInstalled = true;
       const logLine = (line) => {
         try {
           if (Array.isArray(window.__morenLogs)) window.__morenLogs.push(line);
         } catch {}
       };
       const getAction = (form) => String(form?.action || form?.getAttribute?.('action') || '');
+      const logFormSubmit = (form, reason) => {
+        try {
+          if (!window.__lucaJobOverrides || !form) return;
+          const action = getAction(form);
+          const method = String(form.method || 'POST').toUpperCase();
+          const params = new URLSearchParams();
+          const fd = new w.FormData(form);
+          for (const [k, v] of fd.entries()) params.append(k, String(v));
+          logLine(`[FORM-SUBMIT-${reason}] action=${action.split('/').pop().slice(0, 90)} method=${method} target=${String(form.target || '').slice(0, 40)} body=${params.toString().slice(0, 260)}`);
+        } catch {}
+      };
       const shouldCapture = (form) => {
         try {
           if (!window.__lucaJobOverrides || !form) return false;
@@ -9030,15 +9203,16 @@
           return false;
         }
       };
-      const proto = w.HTMLFormElement.prototype;
       const origSubmit = proto.submit;
       const origRequestSubmit = proto.requestSubmit;
       proto.submit = function () {
+        logFormSubmit(this, 'SUBMIT');
         if (captureForm(this, 'SUBMIT')) return;
         return origSubmit.apply(this, arguments);
       };
       if (origRequestSubmit) {
         proto.requestSubmit = function () {
+          logFormSubmit(this, 'REQUESTSUBMIT');
           if (captureForm(this, 'REQUESTSUBMIT')) return;
           return origRequestSubmit.apply(this, arguments);
         };
@@ -9046,6 +9220,7 @@
       w.document.addEventListener('submit', (ev) => {
         try {
           const form = ev.target;
+          logFormSubmit(form, 'EVENT');
           if (shouldCapture(form)) {
             ev.preventDefault();
             ev.stopPropagation();
@@ -9062,8 +9237,8 @@
   function installNativeDownloadHook(targetWin) {
     try {
       const w = targetWin || window;
-      if (!w || w.__morenNativeDlInstalled) return false;
-      w.__morenNativeDlInstalled = true;
+      if (!w) return false;
+      if (w.open && w.open.__morenNativeDlInstalled) return false;
 
       // 0) URL.createObjectURL hook — KRİTİK: Luca sıkça blob → ObjectURL → anchor.click() ile indiriyor.
       //    Blob URL.createObjectURL'ye geçtiği an yakala, bu en güvenilir yol.
@@ -9093,7 +9268,7 @@
 
       // 1) window.open intercept — Luca yeni tab/window ile dosya açabilir
       const origOpen = w.open;
-      w.open = function (url, ...rest) {
+      const morenOpenWrapper = function (url, ...rest) {
         try {
           if (url && typeof url === 'string' && window.__lucaJobOverrides) {
             if (Array.isArray(window.__morenLogs)) {
@@ -9118,6 +9293,8 @@
         } catch (e) {}
         return origOpen.apply(this, [url, ...rest]);
       };
+      morenOpenWrapper.__morenNativeDlInstalled = true;
+      w.open = morenOpenWrapper;
 
       // 2) <a download> click intercept — addEventListener capture
       try {

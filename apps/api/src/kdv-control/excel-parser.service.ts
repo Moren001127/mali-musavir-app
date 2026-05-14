@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as AdmZip from 'adm-zip';
 import * as XLSX from 'xlsx';
 import { isAggregateLucaRecord } from './luca-row-filter';
 
@@ -18,12 +19,40 @@ export interface ParsedKdvRow {
 export class ExcelParserService {
   private readonly logger = new Logger(ExcelParserService.name);
 
+  private normalizeLucaExcelBuffer(buffer: Buffer, context: string): Buffer {
+    const isZip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+    if (!isZip) return buffer;
+
+    try {
+      const zip = new AdmZip(buffer);
+      const entries = zip.getEntries().filter((entry) => !entry.isDirectory);
+      const names = entries.map((entry) => entry.entryName.replace(/\\/g, '/'));
+      const looksLikeXlsx =
+        names.some((name) => name === '[Content_Types].xml') &&
+        names.some((name) => /^xl\//i.test(name));
+      if (looksLikeXlsx) return buffer;
+
+      const excelEntry = entries.find((entry) => /\.(xlsx|xls)$/i.test(entry.entryName));
+      if (!excelEntry) return buffer;
+
+      const inner = excelEntry.getData();
+      this.logger.log(
+        `${context}: Luca ZIP icinden Excel cikarildi (${excelEntry.entryName}, ${Math.round(inner.length / 1024)} KB)`,
+      );
+      return inner;
+    } catch (e: any) {
+      this.logger.warn(`${context}: Luca ZIP acilamadi, ham buffer deneniyor: ${e?.message || e}`);
+      return buffer;
+    }
+  }
+
   /**
    * Luca'dan alınan 191/391 muavin defteri Excel dosyasını parse eder.
    * type='191' → KDV tutarı BORÇ sütununda
    * type='391' → KDV tutarı ALACAK sütununda
    */
   parseKdvExcel(buffer: Buffer, type?: '191' | '391'): ParsedKdvRow[] {
+    buffer = this.normalizeLucaExcelBuffer(buffer, `KDV Excel (${type ?? 'auto'})`);
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
