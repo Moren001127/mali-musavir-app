@@ -4481,7 +4481,7 @@
     await clickLucaRightMenu('Defteri Kebir', log, { nth: 2 });
 
     // 4. Form yüklensin
-    const form = await waitForLucaAnyForm(log, /raporKebir|kebir/i, 15000, 'Defteri Kebir formu');
+    const form = await waitForLucaAnyForm(log, /raporKebir|kebir|REPFORM|DefterServlet/i, 15000, 'Defteri Kebir formu');
     const frm3doc = form.ownerDocument;
     const frm3win = frm3doc.defaultView;
 
@@ -5788,8 +5788,17 @@
 
     const initialCacheRows = cacheVisibleLucaMenuIds();
     if (initialCacheRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${initialCacheRows} satır)`);
-    const muhasebeOpenedFromCache = await openCachedLucaMenu('Muhasebe', log, 800);
-    if (muhasebeOpenedFromCache) await log('✓ Muhasebe menüsü ID cache ile açıldı');
+    let muhasebeOpenedFromCache = await openCachedLucaMenu('Muhasebe', log, 800);
+    if (muhasebeOpenedFromCache) {
+      cacheVisibleLucaMenuIds();
+      const subMenuReady = await findLucaMenuItem('Fiş İşlemleri', null, 1200);
+      if (subMenuReady) {
+        await log('✓ Muhasebe menüsü ID cache ile açıldı');
+      } else {
+        await log('ℹ Muhasebe ID çağrıldı ama alt menü görünmedi; hover fallback denenecek');
+        muhasebeOpenedFromCache = false;
+      }
+    }
 
     if (!muhasebeOpenedFromCache) {
     // 1. "Muhasebe" text'i olan ilk frame'i bul (recursive arama).
@@ -5839,18 +5848,24 @@
     await log(`✓ Muhasebe menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
 
     await log('🖱 Muhasebe menüsü açılıyor (hover+click+onclick)');
-    const cachedMuhasebe = cacheLucaMenuHit('Muhasebe', { el: muhasebeEl, frame: menuFrame, frameName: menuFrame.name || '?' });
-    if (!cachedMuhasebe?.code || !(await callLucaMenuCode('Muhasebe', cachedMuhasebe.code, log, 800))) {
-      await fullActivateWithParents(muhasebeEl, menuFrame.contentWindow);
-    }
+    cacheLucaMenuHit('Muhasebe', { el: muhasebeEl, frame: menuFrame, frameName: menuFrame.name || '?' });
+    await fullActivateWithParents(muhasebeEl, menuFrame.contentWindow);
     await sleep(800);
     }
 
     // 2. "Fiş İşlemleri" submenüsü açıldı mı?
-    const fisIslemleriOpenedFromCache = await openCachedLucaMenu('Fiş İşlemleri', log, 800);
+    let fisIslemleriOpenedFromCache = await openCachedLucaMenu('Fiş İşlemleri', log, 800);
     if (fisIslemleriOpenedFromCache) {
-      await log('✓ Fiş İşlemleri ID cache ile açıldı');
-    } else {
+      cacheVisibleLucaMenuIds();
+      const childReady = await findLucaMenuItem('Fiş Listesi', null, 1200);
+      if (childReady) {
+        await log('✓ Fiş İşlemleri ID cache ile açıldı');
+      } else {
+        await log('ℹ Fiş İşlemleri ID çağrıldı ama Fiş Listesi görünmedi; hover fallback denenecek');
+        fisIslemleriOpenedFromCache = false;
+      }
+    }
+    if (!fisIslemleriOpenedFromCache) {
       await log('🔍 Fiş İşlemleri aranıyor');
       const fisIslemleri = await findLucaMenuItem('Fiş İşlemleri', null, 4000);
       if (!fisIslemleri) {
