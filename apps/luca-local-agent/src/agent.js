@@ -630,6 +630,50 @@ async function processJob(job) {
 // --------- Ana döngü ---------
 let stopped = false;
 
+/**
+ * Pre-warm — agent başladığında veya sabah erken saatlerde browser'ı
+ * önceden aç, Luca'ya login ol, kullanıcı butona bastığında hazır olsun.
+ * İlk tıklama 25sn yerine 5sn'ye düşer.
+ *
+ * Hata olursa sessizce geç — bu yardımcı bir adım, asıl iş polling.
+ */
+async function preWarmBrowserSession() {
+  try {
+    log.info('⚡ Pre-warm: browser açılıyor, Luca login deneniyor...');
+    const session = await getBrowserSession();
+    const page = session.page;
+    if (page && !page.isClosed()) {
+      const currentUrl = page.url();
+      if (!/luca\.com\.tr/i.test(currentUrl)) {
+        await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      }
+      await installMorenRuntimeBridge(session.context, page).catch(() => {});
+      log.info(`✓ Pre-warm tamamlandı (url: ${page.url().slice(0, 80)})`);
+    }
+  } catch (err) {
+    log.warn(`Pre-warm başarısız (önemsiz, gerçek iş geldiğinde tekrar denenecek): ${err.message}`);
+  }
+}
+
+// Sabah pre-warm cron — agent çalışıyorken her gün 08:00'de uyanır.
+// Mali müşavir ofisi 09:00'da açılır; 08:00'de hazırlık tamamlanmış olur.
+const PRE_WARM_HOUR = Number(cfg.worker?.preWarmHour ?? 8); // 0-23
+let preWarmTimer = null;
+
+function schedulePreWarm() {
+  if (preWarmTimer) clearTimeout(preWarmTimer);
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(PRE_WARM_HOUR, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delayMs = next.getTime() - now.getTime();
+  log.info(`Pre-warm planlandı: ${next.toLocaleString('tr-TR')} (${Math.round(delayMs / 60000)}dk sonra)`);
+  preWarmTimer = setTimeout(async () => {
+    await preWarmBrowserSession();
+    schedulePreWarm(); // Bir sonraki gün için tekrar
+  }, delayMs);
+}
+
 async function mainLoop() {
   log.info(`Luca Local Agent başladı.`);
   log.info(`API: ${cfg.api.baseUrl}`);
@@ -637,6 +681,12 @@ async function mainLoop() {
   log.info(`Job tipleri: ${[...JOB_TYPES].join(', ')}`);
   log.info(`Headless: ${HEADLESS}`);
   log.info(`Device: ${DEVICE_ID} (${WORKER_NAME})`);
+  log.info(`Idle TTL: ${Math.round(BROWSER_IDLE_TTL/60000)}dk · Keep-alive: ${Math.round(BROWSER_KEEPALIVE_INTERVAL/60000)}dk`);
+
+  // Agent başlangıcında ilk pre-warm — kullanıcı bilgisayar açar açmaz hazır
+  preWarmBrowserSession().catch(() => {});
+  // Her sabah PRE_WARM_HOUR'de tekrar
+  schedulePreWarm();
 
   while (!stopped) {
     try {
