@@ -2317,6 +2317,91 @@ export class KdvControlService {
    * `uploadExcel` ile aynı ama ayrı bir `jobId` ile job durumunu
    * "done" olarak işaretler.
    */
+  private periodLabelCandidatesFromRunner(donem?: string | null): string[] {
+    const raw = String(donem || '').trim();
+    if (!raw) return [];
+    const m = raw.match(/^(\d{4})[\/\-](\d{1,2})$/);
+    if (!m) return [raw];
+    const month = m[2].padStart(2, '0');
+    return Array.from(new Set([
+      `${m[1]}-${month}`,
+      `${m[1]}/${month}`,
+      `${m[1]}/${Number(month)}`,
+    ]));
+  }
+
+  private async resolveRunnerKdvSession(
+    sessionId: string,
+    tenantId: string,
+    jobId: string,
+  ) {
+    const direct = sessionId
+      ? await this.prisma.kdvControlSession.findFirst({
+          where: { id: sessionId, tenantId },
+          include: { taxpayer: true },
+        })
+      : null;
+    if (direct) return direct;
+
+    const job = jobId
+      ? await (this.prisma as any).lucaFetchJob.findFirst({
+          where: { id: jobId, tenantId },
+        })
+      : null;
+    if (!job || !this.VALID_TYPES.includes(job.tip as any)) {
+      throw new NotFoundException('Oturum bulunamadı');
+    }
+
+    const periodLabels = this.periodLabelCandidatesFromRunner(job.donem);
+    const periodWhere = periodLabels.length > 0
+      ? { periodLabel: { in: periodLabels } }
+      : {};
+
+    let session = await this.prisma.kdvControlSession.findFirst({
+      where: {
+        tenantId,
+        type: job.tip as any,
+        taxpayerId: job.mukellefId || null,
+        ...periodWhere,
+      },
+      include: { taxpayer: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!session) {
+      session = await this.prisma.kdvControlSession.create({
+        data: {
+          tenantId,
+          type: job.tip as any,
+          periodLabel: periodLabels[0] || String(job.donem || ''),
+          taxpayerId: job.mukellefId || null,
+          createdBy: job.createdBy || tenantId,
+          status: 'PROCESSING',
+          notes: sessionId
+            ? `Runner upload icin eksik oturum yeniden olusturuldu. Eski sessionId=${sessionId}`
+            : 'Runner upload icin oturum otomatik olusturuldu.',
+        },
+        include: { taxpayer: true },
+      });
+      await this.pushFeedEvent(tenantId, {
+        action: 'session-recover',
+        status: 'bilgi',
+        message: `KDV kontrol oturumu runner upload sirasinda yeniden olusturuldu - ${session.periodLabel} · ${this.kdvTypeLabel(session.type)}`,
+        mukellef: this.formatMukellefAdi(session),
+        meta: { sessionId: session.id, oldSessionId: sessionId || null, jobId },
+      });
+    }
+
+    if (session.id !== sessionId) {
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: jobId, tenantId },
+        data: { sessionId: session.id },
+      });
+    }
+
+    return session;
+  }
+
   async uploadExcelFromRunner(
     sessionId: string,
     tenantId: string,
@@ -2326,7 +2411,8 @@ export class KdvControlService {
     try {
       // Session type'a göre — KDV_191/391 için MAPPING'li parse et (manuel ile aynı)
       // Çünkü auto-detect parser bazı Excel'lerde fail ediyor.
-      const session = await this.prisma.kdvControlSession.findUnique({ where: { id: sessionId } });
+      const session = await this.resolveRunnerKdvSession(sessionId, tenantId, jobId);
+      sessionId = session.id;
       const isKdv = session?.type === 'KDV_191' || session?.type === 'KDV_391';
       let result: { parsed?: number; imported?: number };
       if (isKdv) {
