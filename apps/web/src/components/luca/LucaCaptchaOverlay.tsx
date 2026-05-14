@@ -36,6 +36,7 @@ export function LucaCaptchaOverlay() {
   const challenge = statusQuery.data?.activeChallenge?.status === 'pending'
     ? statusQuery.data.activeChallenge
     : null;
+  const autoOcr = challenge?.context?.autoOcr;
 
   const answerMut = useMutation({
     mutationFn: () => {
@@ -90,6 +91,14 @@ export function LucaCaptchaOverlay() {
       ) : (
         <div className="flex h-16 items-center justify-center rounded-md text-xs mb-3" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(250,250,249,0.65)' }}>
           Kod görseli bekleniyor...
+        </div>
+      )}
+
+      {autoOcr && (
+        <div className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={{ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' }}>
+          {autoOcr.skippedReason
+            ? autoOcr.skippedReason
+            : `Otomatik okuma güvenli olmadı${autoOcr.confidence != null ? ` · güven ${Math.round(autoOcr.confidence)}%` : ''}. Kodu elle girin.`}
         </div>
       )}
 

@@ -31,6 +31,7 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
     if (ch.jobId && activeIds.length > 0 && !activeIds.includes(ch.jobId)) return null;
     return ch;
   }, [statusQuery.data?.activeChallenge, activeIds]);
+  const autoOcr = challenge?.context?.autoOcr;
 
   const agentRunning = agentRunningHint || (statusQuery.data?.devices || []).some((device) => device.running);
 
@@ -126,6 +127,13 @@ export function LucaInlineCaptchaPanel({ jobIds, color = '#60a5fa', agentRunning
         <p className="mt-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
           Ayrı Luca sekmesi açılmadan, bu kod arka plandaki ajana iletilir.
         </p>
+        {autoOcr && (
+          <p className="mt-2 rounded-md px-2 py-1.5 text-[11.5px]" style={{ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(245,158,11,0.20)' }}>
+            {autoOcr.skippedReason
+              ? autoOcr.skippedReason
+              : `Otomatik okuma güvenli olmadı${autoOcr.confidence != null ? ` · güven ${Math.round(autoOcr.confidence)}%` : ''}. Kodu elle girin.`}
+          </p>
+        )}
       </div>
       <div className="flex items-end gap-2">
         <button

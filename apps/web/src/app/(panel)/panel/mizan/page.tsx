@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, AlertTriangle,
   CheckCircle2, XCircle, Loader2, FileSpreadsheet, Trash2, Eye, Upload,
-  FileText, Lock, Unlock,
+  FileText, Lock, Unlock, Plus, Save, SlidersHorizontal, RefreshCw,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -77,6 +77,21 @@ const AYLAR = [
   { v: '10', l: 'Ekim' }, { v: '11', l: 'Kasım' }, { v: '12', l: 'Aralık' },
 ];
 
+const DENETIM_KOSULLARI = [
+  { value: 'BORC_BAKIYE_GT', label: 'Borç bakiye > eşik' },
+  { value: 'ALACAK_BAKIYE_GT', label: 'Alacak bakiye > eşik' },
+  { value: 'BAKIYE_GT', label: 'Bakiye > eşik' },
+  { value: 'BORC_TOPLAMI_GT', label: 'Borç toplamı > eşik' },
+  { value: 'ALACAK_TOPLAMI_GT', label: 'Alacak toplamı > eşik' },
+  { value: 'BOTH_BAKIYE', label: 'Borç ve alacak bakiye var' },
+  { value: 'EXISTS', label: 'Hesap varsa' },
+  { value: 'MISSING', label: 'Hesap yoksa' },
+] as const;
+
+function denetimEsikIster(kosul: string) {
+  return !['EXISTS', 'MISSING', 'BOTH_BAKIYE'].includes(kosul);
+}
+
 export default function MizanPage() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -113,6 +128,22 @@ export default function MizanPage() {
     queryKey: ['mizan', effectiveId],
     queryFn: () => mizanApi.get(effectiveId!),
     enabled: !!effectiveId,
+  });
+
+  const [criteriaOpen, setCriteriaOpen] = useState(false);
+  const [criterionForSelectedOnly, setCriterionForSelectedOnly] = useState(false);
+  const [criterionForm, setCriterionForm] = useState({
+    ad: '',
+    hesapPattern: '',
+    kosul: 'BORC_BAKIYE_GT',
+    esik: '0',
+    seviye: 'WARN',
+    mesaj: '',
+  });
+
+  const { data: denetimKriterleri = [] } = useQuery<any[]>({
+    queryKey: ['mizan-denetim-kriterleri'],
+    queryFn: mizanApi.denetimKriterleri.list,
   });
 
   const importMut = useMutation({
@@ -347,6 +378,55 @@ export default function MizanPage() {
       qc.invalidateQueries({ queryKey: ['mizan'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kilit açılamadı'),
+  });
+
+  const analyzeMut = useMutation({
+    mutationFn: (id: string) => mizanApi.analyze(id),
+    onSuccess: (_d, id) => {
+      toast.success('Denetim yenilendi');
+      qc.invalidateQueries({ queryKey: ['mizan', id] });
+      qc.invalidateQueries({ queryKey: ['mizan-list'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Denetim yenilenemedi'),
+  });
+
+  const createCriterionMut = useMutation({
+    mutationFn: () => {
+      const scopedTaxpayerId = criterionForSelectedOnly ? (taxpayerId || mizan?.taxpayerId || null) : null;
+      if (criterionForSelectedOnly && !scopedTaxpayerId) throw new Error('Önce mükellef seçin');
+      return mizanApi.denetimKriterleri.create({
+        ...criterionForm,
+        esik: denetimEsikIster(criterionForm.kosul) ? Number(criterionForm.esik || 0) : null,
+        taxpayerId: scopedTaxpayerId,
+      });
+    },
+    onSuccess: () => {
+      toast.success('Denetim kriteri kaydedildi');
+      setCriterionForm({ ad: '', hesapPattern: '', kosul: 'BORC_BAKIYE_GT', esik: '0', seviye: 'WARN', mesaj: '' });
+      setCriterionForSelectedOnly(false);
+      qc.invalidateQueries({ queryKey: ['mizan-denetim-kriterleri'] });
+      if (mizan?.id) analyzeMut.mutate(mizan.id);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kriter kaydedilemedi'),
+  });
+
+  const updateCriterionMut = useMutation({
+    mutationFn: (args: { id: string; data: any }) => mizanApi.denetimKriterleri.update(args.id, args.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['mizan-denetim-kriterleri'] });
+      if (mizan?.id) analyzeMut.mutate(mizan.id);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kriter güncellenemedi'),
+  });
+
+  const deleteCriterionMut = useMutation({
+    mutationFn: (id: string) => mizanApi.denetimKriterleri.remove(id),
+    onSuccess: () => {
+      toast.success('Denetim kriteri silindi');
+      qc.invalidateQueries({ queryKey: ['mizan-denetim-kriterleri'] });
+      if (mizan?.id) analyzeMut.mutate(mizan.id);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kriter silinemedi'),
   });
 
   const exportMut = useMutation({
@@ -737,6 +817,184 @@ export default function MizanPage() {
             </div>
           </div>
         </>
+      )}
+
+      {mizan && (
+        <div className="rounded-xl border p-4" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-[14px] font-semibold flex items-center gap-2.5" style={{ color: '#fafaf9' }}>
+              <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
+              Denetim Kriterleri
+              <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
+                {denetimKriterleri.length}
+              </span>
+            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => analyzeMut.mutate(mizan.id)}
+                disabled={analyzeMut.isPending}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5 disabled:opacity-50"
+                style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)' }}
+              >
+                {analyzeMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                Analizi Yenile
+              </button>
+              <button
+                onClick={() => setCriteriaOpen((v) => !v)}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold flex items-center gap-1.5"
+                style={{ background: criteriaOpen ? 'rgba(184,160,111,0.16)' : 'rgba(255,255,255,0.04)', color: criteriaOpen ? GOLD : 'rgba(250,250,249,0.72)', border: `1px solid ${criteriaOpen ? 'rgba(184,160,111,0.32)' : 'rgba(255,255,255,0.08)'}` }}
+              >
+                <SlidersHorizontal size={12} />
+                {criteriaOpen ? 'Kapat' : 'Kriterler'}
+              </button>
+            </div>
+          </div>
+
+          {criteriaOpen && (
+            <div className="mt-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                <div className="md:col-span-2">
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Kriter Adı</label>
+                  <input
+                    value={criterionForm.ad}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, ad: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Hesap Deseni</label>
+                  <input
+                    value={criterionForm.hesapPattern}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, hesapPattern: e.target.value }))}
+                    placeholder="120, 191, 600*"
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none font-mono"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Koşul</label>
+                  <select
+                    value={criterionForm.kosul}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, kosul: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
+                    style={{ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  >
+                    {DENETIM_KOSULLARI.map((k) => (
+                      <option key={k.value} value={k.value}>{k.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Eşik</label>
+                  <input
+                    type="number"
+                    value={criterionForm.esik}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, esik: e.target.value }))}
+                    disabled={!denetimEsikIster(criterionForm.kosul)}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none font-mono disabled:opacity-35"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Seviye</label>
+                  <select
+                    value={criterionForm.seviye}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, seviye: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
+                    style={{ background: '#11100e', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  >
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="INFO">INFO</option>
+                  </select>
+                </div>
+                <div className="md:col-span-5">
+                  <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Uyarı Mesajı</label>
+                  <input
+                    value={criterionForm.mesaj}
+                    onChange={(e) => setCriterionForm((f) => ({ ...f, mesaj: e.target.value }))}
+                    placeholder="{hesapKodu} hesabı {esik} üstünde bakiye veriyor"
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] border outline-none"
+                    style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <button
+                    onClick={() => createCriterionMut.mutate()}
+                    disabled={createCriterionMut.isPending}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+                  >
+                    {createCriterionMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    Kaydet
+                  </button>
+                </div>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                <input
+                  type="checkbox"
+                  checked={criterionForSelectedOnly}
+                  onChange={(e) => setCriterionForSelectedOnly(e.target.checked)}
+                  className="accent-[#d4b876]"
+                />
+                Sadece seçili mükellef
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {denetimKriterleri.length === 0 ? (
+                  <div className="rounded-lg px-3 py-3 text-[12px]" style={{ background: 'rgba(255,255,255,0.025)', color: 'rgba(250,250,249,0.48)', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                    Kayıtlı kriter yok
+                  </div>
+                ) : denetimKriterleri.map((k: any) => {
+                  const kosulLabel = DENETIM_KOSULLARI.find((x) => x.value === k.kosul)?.label || k.kosul;
+                  const scoped = k.taxpayerId ? 'Mükellef' : 'Genel';
+                  return (
+                    <div key={k.id} className="rounded-lg px-3 py-2.5 flex items-start gap-3" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div className="mt-0.5">
+                        {k.aktif ? <CheckCircle2 size={15} style={{ color: '#22c55e' }} /> : <XCircle size={15} style={{ color: 'rgba(250,250,249,0.36)' }} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[12.5px] font-semibold truncate" style={{ color: '#fafaf9' }}>{k.ad}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(184,160,111,0.10)', color: GOLD }}>{scoped}</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: k.seviye === 'ERROR' ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)', color: k.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b' }}>{k.seviye}</span>
+                        </div>
+                        <div className="mt-1 text-[11.5px] truncate" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                          <span className="font-mono" style={{ color: '#93c5fd' }}>{k.hesapPattern}</span>
+                          <span> · {kosulLabel}</span>
+                          {k.esik != null && <span> · {fmtTRY(k.esik)}</span>}
+                        </div>
+                        <div className="mt-1 text-[11px] truncate" style={{ color: 'rgba(250,250,249,0.42)' }}>{k.mesaj}</div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => updateCriterionMut.mutate({ id: k.id, data: { aktif: !k.aktif } })}
+                          className="p-1.5 rounded-md"
+                          style={{ color: k.aktif ? '#22c55e' : 'rgba(250,250,249,0.44)', background: 'rgba(255,255,255,0.04)' }}
+                          title={k.aktif ? 'Pasif yap' : 'Aktif yap'}
+                        >
+                          {k.aktif ? <CheckCircle2 size={13} /> : <Plus size={13} />}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Bu denetim kriterini silmek istiyor musunuz?')) deleteCriterionMut.mutate(k.id);
+                          }}
+                          className="p-1.5 rounded-md"
+                          style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                          title="Sil"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Anomaliler */}

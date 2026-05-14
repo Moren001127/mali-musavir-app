@@ -1682,19 +1682,31 @@
     const hasEbelgeStructure = (doc, win) => {
       try {
         const html = foldEbelgeText(doc?.documentElement?.innerHTML || '');
-        return Boolean(
-          doc?.getElementById('faturalari-getir-btn') ||
-          doc?.getElementById('tarih1') ||
-          doc?.getElementById('tarih2') ||
-          typeof win?.gonder === 'function' ||
-          html.includes('faturalari-getir') ||
+        const hasExactButton = !!doc?.getElementById('faturalari-getir-btn');
+        const hasDateInputs = !!(doc?.getElementById('tarih1') || doc?.getElementById('tarih2'));
+        const hasScreenFunction = typeof win?.gonder === 'function' || typeof win?.goster === 'function';
+        const hasListControls = !!(
+          doc?.getElementById('tum_belgeyi_sec_btn') ||
+          doc?.querySelector?.('.sec') ||
+          doc?.querySelector?.('input[type="checkbox"][class*="sec" i]')
+        );
+        const hasScreenMarkers = html.includes('faturalari-getir') ||
           html.includes('indir-window') ||
-          html.includes('gib530') ||
-          html.includes('gib_ebelge') ||
-          html.includes('gib_efatura') ||
-          html.includes('gibefatura') ||
-          html.includes('toplufatura') ||
-          html.includes('fatura_list')
+          html.includes('fatura_kaydet') ||
+          html.includes('gib530');
+        const looksLikeMenuShell = html.includes('loadmenu') &&
+          !hasExactButton &&
+          !hasDateInputs &&
+          !hasScreenFunction &&
+          !hasListControls &&
+          !html.includes('indir-window');
+        if (looksLikeMenuShell) return false;
+        return Boolean(
+          hasExactButton ||
+          hasDateInputs ||
+          hasScreenFunction ||
+          hasListControls ||
+          hasScreenMarkers
         );
       } catch {
         return false;
@@ -1819,6 +1831,20 @@
       // Mükellef tipini tespit et: top-level menüde "İşletme Defteri" varsa işletme,
       // "Muhasebe" varsa bilanço esası.
       const detectMukellefTipi = () => {
+        const fromJob = String(job.defterTuru || job.ledgerType || job.mukellefDefterTuru || '').toLocaleUpperCase('tr-TR');
+        if (/ISLETME|İSLETME|İŞLETME/.test(fromJob)) return 'isletme';
+        if (/BILANCO|BİLANCO|BİLANÇO|BILANÇO/.test(fromJob)) return 'bilanco';
+        try {
+          const texts = [];
+          for (const fname of ['frm2', 'frm3', 'frm4', 'frm5']) {
+            const fr = getLucaFrame(fname);
+            if (fr?.contentDocument?.body) texts.push(fr.contentDocument.body.textContent || '');
+          }
+          texts.push(document.body?.textContent || '');
+          const joined = texts.join('\n');
+          if (/Muhasebe/i.test(joined) && /Mizan|Hesap\s+Plan|Fi[şs]\s+İşlemleri|Fis\s+Islemleri/i.test(joined)) return 'bilanco';
+          if (/İşletme\s+Defteri|Isletme\s+Defteri/i.test(joined) && !/Muhasebe/i.test(joined)) return 'isletme';
+        } catch {}
         for (const fname of ['frm2', 'frm3', 'frm4', 'frm5']) {
           try {
             const fr = getLucaFrame(fname);
@@ -1975,8 +2001,11 @@
         let cur = el;
         for (let depth = 0; cur && depth < 4; depth++, cur = cur.parentElement) {
           try {
+            const ownText = String(cur.textContent || '').replace(/\s+/g, ' ').trim();
+            if (ownText && (cur.children?.length === 0 || ownText.length <= (cur === el ? 180 : 80))) {
+              parts.push(ownText);
+            }
             parts.push(
-              cur.textContent,
               cur.value,
               cur.title,
               cur.id,
@@ -2001,8 +2030,9 @@
             const hay = getEbelgeCandidateText(el);
             if (!hay) continue;
             const labelOk = hay.includes(wantedLabel);
-            if (!labelOk && !(ebelgeTypeMatchesJobText(hay) && ebelgeSideMatchesJobText(hay))) continue;
             const code = extractII1aCodeFromText(hay);
+            if (!labelOk && !(code && ebelgeTypeMatchesJobText(hay) && ebelgeSideMatchesJobText(hay))) continue;
+            if (!code && hay.length > 260) continue;
             const key = `${item.label}|${code}|${hay.slice(0, 120)}`;
             if (seen.has(key)) continue;
             seen.add(key);
@@ -4082,7 +4112,7 @@
     await log(`⚠ Rapor Türü select'i bulunamadı. Selects: ${summary}`);
     // 4+ opt'lu select'lerin opsiyonlarını ayrıntılı log
     for (const a of analyses) {
-      if (a.optCount >= 4 && a.optCount <= 12) {
+      if (a.optCount >= 2 && a.optCount <= 12) {
         const opts = [...a.sel.options].slice(0, 8).map((o) => `"${(o.text || '').trim().slice(0, 25)}"=${o.value}`).join(' | ');
         await log(`🔬 ${a.sel.name || a.sel.id || '?'} opts: ${opts}`);
       }
@@ -4095,6 +4125,85 @@
    * Olası name'ler: HESAP_KODU, hesapKodu, BAS_HESAP_KODU, BIT_HESAP_KODU
    * "Tek hesap kodu" alanı varsa onu, yoksa BAS+BIT'i aynı değerle doldurur.
    */
+  const LUCA_FORM_FIELD_CACHE_KEY = 'moren_luca_form_field_cache_v1';
+
+  function readLucaFormFieldCache() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LUCA_FORM_FIELD_CACHE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeLucaFormFieldCache(cache) {
+    try { localStorage.setItem(LUCA_FORM_FIELD_CACHE_KEY, JSON.stringify(cache)); } catch {}
+  }
+
+  function cssAttrValue(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  }
+
+  function getLucaFormFieldCacheKey(form) {
+    const action = String(form?.getAttribute?.('action') || form?.action || '')
+      .split('?')[0]
+      .split('/')
+      .pop();
+    return normalizeLucaMenuText(`${form?.name || form?.id || 'form'}|${action || ''}`) || 'default';
+  }
+
+  function selectorForLucaField(input) {
+    if (!input) return '';
+    const name = input.getAttribute?.('name') || '';
+    const id = input.getAttribute?.('id') || '';
+    if (name) return `input[name="${cssAttrValue(name)}"]`;
+    if (id) return `input[id="${cssAttrValue(id)}"]`;
+    return '';
+  }
+
+  function describeLucaField(input) {
+    if (!input) return '?';
+    return input.getAttribute?.('name') || input.getAttribute?.('id') || input.tagName || '?';
+  }
+
+  function cacheLucaFormField(form, role, input) {
+    try {
+      const selector = selectorForLucaField(input);
+      if (!selector) return null;
+      const formKey = getLucaFormFieldCacheKey(form);
+      const cache = readLucaFormFieldCache();
+      const formEntry = cache[formKey] || { form: formKey, fields: {} };
+      formEntry.fields = formEntry.fields || {};
+      formEntry.fields[role] = {
+        selector,
+        name: input.getAttribute?.('name') || '',
+        id: input.getAttribute?.('id') || '',
+        type: input.getAttribute?.('type') || '',
+        updatedAt: Date.now(),
+      };
+      cache[formKey] = formEntry;
+      writeLucaFormFieldCache(cache);
+      return formEntry.fields[role];
+    } catch {
+      return null;
+    }
+  }
+
+  function getCachedLucaFormField(form, role) {
+    try {
+      const entry = readLucaFormFieldCache()[getLucaFormFieldCacheKey(form)]?.fields?.[role];
+      if (!entry?.selector) return null;
+      if (entry.updatedAt && Date.now() - entry.updatedAt > 30 * 24 * 60 * 60 * 1000) return null;
+      return form.querySelector(entry.selector);
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    window.__morenLucaFormFieldCache = () => readLucaFormFieldCache();
+  } catch {}
+
   async function fillLucaHesapKodu(form, hesapKodu, log) {
     // GERÇEK TYPING SİMÜLASYONU — Luca synthetic value set'ini kabul etmiyor;
     // klavyede gerçekten yazılmış gibi karakter-karakter event chain göndermek lazım.
@@ -4172,8 +4281,19 @@
     };
 
     // Önce tek hesap kodu input'u dene
+    const cachedIlk = getCachedLucaFormField(form, 'hesapIlk');
+    const cachedSon = getCachedLucaFormField(form, 'hesapSon');
+    if (cachedIlk && cachedSon) {
+      setNative(cachedIlk, hesapKodu);
+      setNative(cachedSon, hesapKodu);
+      await sleep(300);
+      await log(`💼 Hesap kodu cache ID ile set: ${hesapKodu} → ${describeLucaField(cachedIlk)}/${describeLucaField(cachedSon)}`);
+      return true;
+    }
+
     const single = form.querySelector('input[name="HESAP_KODU"], input[id="HESAP_KODU"], input[name="hesapKodu"]');
     if (single) {
+      cacheLucaFormField(form, 'hesapIlk', single);
       setNative(single, hesapKodu);
       await log(`💼 Hesap kodu set: ${hesapKodu} (input#${single.name || single.id})`);
       return true;
@@ -4183,6 +4303,8 @@
     const bas = form.querySelector('input[name="BAS_HESAP_KODU"], input[id="BAS_HESAP_KODU"], input[name="basHesapKodu"], input[name*="BAS" i][name*="HESAP" i]');
     const bit = form.querySelector('input[name="BIT_HESAP_KODU"], input[id="BIT_HESAP_KODU"], input[name="bitHesapKodu"], input[name*="BIT" i][name*="HESAP" i]');
     if (bas && bit) {
+      cacheLucaFormField(form, 'hesapIlk', bas);
+      cacheLucaFormField(form, 'hesapSon', bit);
       setNative(bas, hesapKodu);
       setNative(bit, hesapKodu);
       await log(`💼 Hesap kodu (BAS+BIT) set: ${hesapKodu}`);
@@ -4193,6 +4315,8 @@
     const ilk = form.querySelector('input[name="HESAPKODU_ILK"], input[id="HESAPKODU_ILK"], input[name="hesapkoduIlk"]');
     const son = form.querySelector('input[name="HESAPKODU_SON"], input[id="HESAPKODU_SON"], input[name="hesapkoduSon"]');
     if (ilk && son) {
+      cacheLucaFormField(form, 'hesapIlk', ilk);
+      cacheLucaFormField(form, 'hesapSon', son);
       // Karakter karakter typing simulate — Luca synthetic value set'ini kabul etmiyor
       await typeText(ilk, hesapKodu);
       await sleep(400); // ILK onblur'un Luca AJAX'i tamamlansın
@@ -4211,8 +4335,21 @@
     }
 
     // Fallback: name'inde "hesap" geçen ilk text input
+    const ilkGeneric = form.querySelector('input[name*="hesap" i][name*="ilk" i], input[id*="hesap" i][id*="ilk" i]');
+    const sonGeneric = form.querySelector('input[name*="hesap" i][name*="son" i], input[id*="hesap" i][id*="son" i]');
+    if (ilkGeneric && sonGeneric) {
+      cacheLucaFormField(form, 'hesapIlk', ilkGeneric);
+      cacheLucaFormField(form, 'hesapSon', sonGeneric);
+      setNative(ilkGeneric, hesapKodu);
+      setNative(sonGeneric, hesapKodu);
+      await sleep(400);
+      await log(`💼 Hesap kodu (ILK+SON generic) set: ${hesapKodu} → ${ilkGeneric.name || ilkGeneric.id}/${sonGeneric.name || sonGeneric.id}`);
+      return true;
+    }
+
     const anyHesap = form.querySelector('input[name*="hesap" i], input[id*="hesap" i]');
     if (anyHesap) {
+      cacheLucaFormField(form, 'hesapIlk', anyHesap);
       setNative(anyHesap, hesapKodu);
       await log(`💼 Hesap kodu (fallback) set: ${hesapKodu} → ${anyHesap.name || anyHesap.id}`);
       return true;
@@ -4264,9 +4401,19 @@
   async function fillLucaTarih(form, job, log) {
     const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
     if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
-    const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
-    const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
-    if (!tarihIlk || !tarihSon) throw new Error('TARIH_ILK / TARIH_SON bulunamadı');
+    let tarihIlk = getCachedLucaFormField(form, 'tarihIlk') ||
+      form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"], input[name="tarih_bas"], input[id="tarih_bas"], input[name*="tarih" i][name*="bas" i], input[name*="tarih" i][name*="ilk" i], input[id*="tarih" i][id*="ilk" i], input[name*="tar" i][name*="ilk" i], input[id*="tar" i][id*="ilk" i]');
+    let tarihSon = getCachedLucaFormField(form, 'tarihSon') ||
+      form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"], input[name="tarih_bit"], input[id="tarih_bit"], input[name*="tarih" i][name*="bit" i], input[name*="tarih" i][name*="son" i], input[id*="tarih" i][id*="son" i], input[name*="tar" i][name*="son" i], input[id*="tar" i][id*="son" i]');
+    if (!tarihIlk || !tarihSon) {
+      const allInputs = [...form.querySelectorAll('input')]
+        .map((inp) => `${inp.name || inp.id || '?'}:${inp.type || ''}`)
+        .slice(0, 80)
+        .join(' | ');
+      throw new Error(`TARIH_ILK / TARIH_SON bulunamadı. Inputlar: ${allInputs}`);
+    }
+    cacheLucaFormField(form, 'tarihIlk', tarihIlk);
+    cacheLucaFormField(form, 'tarihSon', tarihSon);
     const slashBas = tarih.bas.replace(/\./g, '/');
     const slashBit = tarih.bit.replace(/\./g, '/');
 
@@ -4390,6 +4537,8 @@
     }
 
     const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
+    const onclickAttr = (btn.getAttribute && btn.getAttribute('onclick')) || '';
+    const hrefAttr = (btn.getAttribute && btn.getAttribute('href')) || '';
     await log(`🎯 Buton bulundu: "${label}" [${btn.tagName}]`);
     await log(`🖱 "${label}" butonu tıklanıyor (gerçek user click sim)`);
     // Gerçek user click — focus + mousedown + mouseup + click sırası
@@ -4414,6 +4563,64 @@
    * hesap kodu set sonrası Luca session'ını güncellemek için ŞART.
    * frm3 doc'unda "Yenile" text'li link/button arar (form'un dışında olabilir).
    */
+  async function clickLucaRaporButtonStrict(form, log) {
+    const doc = form.ownerDocument;
+    const win = doc.defaultView || window;
+    const all = [
+      ...form.querySelectorAll('input[type="button"], input[type="submit"], button, a, [onclick]'),
+      ...doc.querySelectorAll('input[type="button"], input[type="submit"], button, a, [onclick]'),
+    ];
+    let btn = all.find((el) => {
+      const txt = (el.value || el.textContent || '').trim();
+      return txt === 'Rapor' || txt === 'RAPOR';
+    }) || all.find((el) => {
+      const txt = (el.value || el.textContent || '').trim();
+      const oc = (el.getAttribute && el.getAttribute('onclick')) || '';
+      return /^rapor( al|u? haz[ıi]rla|u? olustur)?$/i.test(txt) ||
+        /excel.*aktar|aktar.*excel|raporIndir|jasper|rapor_tur|raporGetir|submitForm|raporAl|gonder/i.test(oc);
+    });
+    if (!btn) throw new Error('"Rapor" butonu bulunamadı');
+    const label = (btn.value || btn.textContent || '').trim().slice(0, 30);
+    const onclickAttr = (btn.getAttribute && btn.getAttribute('onclick')) || '';
+    const hrefAttr = (btn.getAttribute && btn.getAttribute('href')) || '';
+    await log(`🎯 Rapor butonu: "${label}" [${btn.tagName}] onclick="${onclickAttr.slice(0, 120)}" href="${hrefAttr.slice(0, 120)}"`);
+    try {
+      if (typeof btn.focus === 'function') btn.focus();
+      btn.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, view: win }));
+      btn.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, view: win }));
+      btn.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win }));
+      if (typeof btn.click === 'function') btn.click();
+    } catch {
+      try { if (typeof btn.click === 'function') btn.click(); } catch {}
+    }
+    if (onclickAttr) {
+      try {
+        const fakeEvent = {
+          type: 'click',
+          target: btn,
+          currentTarget: btn,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+          stopImmediatePropagation: () => {},
+          returnValue: true,
+          cancelBubble: false,
+        };
+        new win.Function('event', onclickAttr).call(btn, fakeEvent);
+        await log('🔁 Rapor onclick attribute doğrudan çağrıldı');
+      } catch (e) {
+        await log(`⚠ Rapor onclick doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
+      }
+    }
+    if (/^javascript:/i.test(hrefAttr)) {
+      try {
+        new win.Function(hrefAttr.replace(/^javascript:/i, '')).call(btn);
+        await log('🔁 Rapor javascript:href doğrudan çağrıldı');
+      } catch (e) {
+        await log(`⚠ Rapor href doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
+      }
+    }
+  }
+
   async function clickLucaYenileButton(form, log) {
     const doc = form.ownerDocument;
     const all = [
@@ -4489,6 +4696,7 @@
     await sleep(800);
 
     // 6. Tarih hesabı (AYLIK)
+    await dumpLucaFormStructure(form, log);
     const TARIH_ILK = parseAylikDonemBaslangic(job.donem);
     const TARIH_SON = parseAylikDonemBitis(job.donem);
     if (!TARIH_ILK || !TARIH_SON) throw new Error(`AYLIK tarih parse edilemedi: ${job.donem}`);
@@ -4507,20 +4715,26 @@
 
     // ── DOĞRU SIRA (manuel kullanıcı gibi) ──
     // 7. ÖNCE Hesap Kodu (hesap planı state'i en kritik)
-    setInput('input[name="HESAPKODU_ILK"]', hesapKodu);
-    setInput('input[name="HESAPKODU_SON"]', hesapKodu);
+    await fillLucaHesapKodu(form, hesapKodu, log);
+    const cachedHesapIlk = getCachedLucaFormField(form, 'hesapIlk');
+    const cachedHesapSon = getCachedLucaFormField(form, 'hesapSon');
+    await log(`💼 Hesap alanları: ${describeLucaField(cachedHesapIlk)}/${describeLucaField(cachedHesapSon)}`);
     await sleep(400); // Luca onblur AJAX'i için
     // VERIFICATION — input gerçekten dolu mu, UI'da görünür mü?
-    const hkIlkActual = form.querySelector('input[name="HESAPKODU_ILK"]')?.value;
-    const hkSonActual = form.querySelector('input[name="HESAPKODU_SON"]')?.value;
+    const hkIlkActual = form.querySelector('input[name="HESAPKODU_ILK"], input[name="hesap_bas"], input[name*="hesap" i][name*="bas" i], input[name*="hesap" i][name*="ilk" i]')?.value;
+    const hkSonActual = form.querySelector('input[name="HESAPKODU_SON"], input[name="hesap_bit"], input[name*="hesap" i][name*="bit" i], input[name*="hesap" i][name*="son" i]')?.value;
     await log(`💼 Hesap kodu set sonrası: ILK="${hkIlkActual}" SON="${hkSonActual}"`);
 
     // 8. SONRA Tarih
-    setInput('input[name="TARIH_ILK"]', TARIH_ILK);
-    setInput('input[name="TARIH_SON"]', TARIH_SON);
+    await clickLucaYenileButton(form, log);
+    await sleep(1000);
+    await fillLucaTarih(form, job, log);
+    const cachedTarihIlk = getCachedLucaFormField(form, 'tarihIlk');
+    const cachedTarihSon = getCachedLucaFormField(form, 'tarihSon');
+    await log(`📅 Tarih alanları: ${describeLucaField(cachedTarihIlk)}/${describeLucaField(cachedTarihSon)}`);
     await sleep(400);
-    const tIlkActual = form.querySelector('input[name="TARIH_ILK"]')?.value;
-    const tSonActual = form.querySelector('input[name="TARIH_SON"]')?.value;
+    const tIlkActual = form.querySelector('input[name="TARIH_ILK"], input[name="tarih_bas"], input[name*="tarih" i][name*="bas" i], input[name*="tarih" i][name*="ilk" i], input[name*="tar" i][name*="ilk" i]')?.value;
+    const tSonActual = form.querySelector('input[name="TARIH_SON"], input[name="tarih_bit"], input[name*="tarih" i][name*="bit" i], input[name*="tarih" i][name*="son" i], input[name*="tar" i][name*="son" i]')?.value;
     await log(`📅 Tarih set sonrası: ILK="${tIlkActual}" SON="${tSonActual}"`);
 
     // 9. EN SON Rapor Türü = Excel (xlsx)
@@ -4554,7 +4768,7 @@
     // 13. Rapor butonu — GERÇEK USER CLICK simülasyonu (gonder() DEĞİL)
     // gonder() Luca'nın iç state'inden okuyor; gerçek click form input.value'ları
     // submit body'sine alıyor. Manuel kullanıcı davranışıyla aynı.
-    await clickLucaRaporButton(form, log);
+    await clickLucaRaporButtonStrict(form, log);
 
     // 14. Blob yakala — iki yol: form intercept VEYA rapor_takip durum=150 → kendi rapor_indir fetch
     try {
@@ -4685,6 +4899,12 @@
       }
       await sleep(300);
     }
+    try {
+      const recent = (window.__morenLogs || [])
+        .filter((line) => /XHR|FETCH|RAPOR|NATIVE|CREATE-OBJ|FORM-SUBMIT|jasper|rapor|Defter/i.test(String(line || '')))
+        .slice(-30);
+      for (const line of recent) await log(`🔬 KDV debug: ${String(line).slice(0, 500)}`);
+    } catch {}
     throw new Error('Excel blob 60sn içinde yakalanamadı (ne form intercept ne rapor_takip)');
   }
 
@@ -5401,6 +5621,8 @@
     const text = String(value || '');
     const ii1a = text.match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
     if (ii1a) return ii1a[1];
+    const rightMenu = text.match(/lI1lI\s*\(\s*([^)]+)\)/);
+    if (rightMenu) return `lI1lI(${rightMenu[1]})`;
     const direct = text.match(/apy1000m\d+i\d+I/i);
     return direct ? direct[0] : '';
   }
@@ -5531,6 +5753,15 @@
     };
     for (const win of collectLucaWindows()) {
       try {
+        if (String(code).startsWith('lI1lI(')) {
+          if (typeof win.lI1lI !== 'function') continue;
+          if (log) await log(`⚡ "${label}" sağ menüsü ID ile açılıyor: ${code}`);
+          const argsText = String(code).replace(/^lI1lI\(/, '').replace(/\)$/, '');
+          const args = new win.Function(`return [${argsText}];`)();
+          win.lI1lI(...args);
+          await sleep(settleMs);
+          return true;
+        }
         if (typeof win.II1a !== 'function') continue;
         if (log) await log(`⚡ "${label}" menüsü ID ile açılıyor: ${code}`);
         try {
@@ -5720,10 +5951,18 @@
   }
 
   async function tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, contextLabel = 'menü') {
+    cacheVisibleLucaMenuIds();
+    if (await openCachedLucaMenu('Gelir/Gider Listesi', log, 800)) {
+      const form = await waitUntil(() => findLucaGelirGiderRaporFormNow(), 12000, 250);
+      if (form) {
+        await log('✓ Gelir/Gider Listesi rapor formu ID cache ile açıldı');
+        return true;
+      }
+    }
     const target = await findLucaMenuItem('Gelir/Gider Listesi', null, 1800);
     if (!target) return false;
     await log(`🖱 Gelir/Gider Listesi raporu açılıyor (${contextLabel}: ${target.frameName} → ${describeLucaMenuElement(target.el)})`);
-    fullActivate(target.el, target.frame.contentWindow || target.frame);
+    await activateLucaMenuItem('Gelir/Gider Listesi', target, log, 800);
     const form = await waitUntil(() => findLucaGelirGiderRaporFormNow(), 12000, 250);
     if (form) {
       await log('✓ Gelir/Gider Listesi rapor formu menüden açıldı');
@@ -5746,7 +5985,7 @@
       const submenu = await findLucaMenuItem(submenuName, null, 1200);
       if (!submenu) continue;
       await log(`🖱 İşletme alt menüsü açılıyor: ${submenuName} (${submenu.frameName} → ${describeLucaMenuElement(submenu.el)})`);
-      fullActivate(submenu.el, submenu.frame.contentWindow || submenu.frame);
+      await activateLucaMenuItem(submenuName, submenu, log, 700);
       await sleep(700);
       if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, submenuName)) return true;
     }
@@ -5960,7 +6199,7 @@
     }
     await log(`✓ İşletme Defteri menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
     await log('🖱 İşletme Defteri açılıyor (hover+click+onclick)');
-    fullActivate(isletmeEl, menuFrame.contentWindow);
+    await activateLucaMenuItem('İşletme Defteri', { el: isletmeEl, frame: menuFrame, frameName: menuFrame.name || 'TOP' }, log, 800);
     await sleep(800);
     if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'İşletme Defteri')) return;
     if (await tryOpenIsletmeReportSubmenus(log)) return;
@@ -5972,7 +6211,7 @@
       throw new Error('İşletme Defteri menüsü açıldı ama "Gider İşlemleri" görünmedi');
     }
     await log('🖱 Gider İşlemleri açılıyor (hover+click+onclick)');
-    fullActivate(giderIslemleri.el, giderIslemleri.frame.contentWindow || giderIslemleri.frame);
+    await activateLucaMenuItem('Gider İşlemleri', giderIslemleri, log, 800);
     await sleep(800);
     if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'Gider İşlemleri')) return;
 
@@ -5981,7 +6220,7 @@
     const giderListesi = await findLucaMenuItem('Gider Listesi', null, 4000);
     if (!giderListesi) throw new Error('"Gider Listesi" linki açılmadı');
     await log('🖱 Gider Listesi tıklanıyor');
-    fullActivate(giderListesi.el, giderListesi.frame.contentWindow || giderListesi.frame);
+    await activateLucaMenuItem('Gider Listesi', giderListesi, log, 1000);
 
     // 4. Sayfa yüklensin — sağ menüde "Gelir/Gider Listesi" çıksın
     await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
@@ -6134,7 +6373,7 @@
       const yil = +mMatch[1];
       const ayMo = +mMatch[2];
 
-      if (donemTipi === 'AY' || donemTipi === 'MONTH') {
+      if (donemTipi === 'AY' || donemTipi === 'AYLIK' || donemTipi === 'MONTH') {
         const lastDay = new Date(yil, ayMo, 0).getDate();
         const mm = String(ayMo).padStart(2, '0');
         return {

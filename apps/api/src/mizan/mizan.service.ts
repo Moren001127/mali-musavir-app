@@ -18,6 +18,29 @@ export type MizanDonemTipi =
   | 'GECICI_Q4'
   | 'YILLIK';
 
+type MizanDenetimKosul =
+  | 'EXISTS'
+  | 'MISSING'
+  | 'BORC_BAKIYE_GT'
+  | 'ALACAK_BAKIYE_GT'
+  | 'BAKIYE_GT'
+  | 'BORC_TOPLAMI_GT'
+  | 'ALACAK_TOPLAMI_GT'
+  | 'BOTH_BAKIYE';
+
+const MIZAN_DENETIM_KOSULLARI = new Set<MizanDenetimKosul>([
+  'EXISTS',
+  'MISSING',
+  'BORC_BAKIYE_GT',
+  'ALACAK_BAKIYE_GT',
+  'BAKIYE_GT',
+  'BORC_TOPLAMI_GT',
+  'ALACAK_TOPLAMI_GT',
+  'BOTH_BAKIYE',
+]);
+
+const MIZAN_DENETIM_SEVIYELERI = new Set(['INFO', 'WARN', 'ERROR']);
+
 /**
  * TDHP (Tek Düzen Hesap Planı) standart ana hesap kodu prefix seti.
  * Denetimde "TDHP dışı" tespiti için.
@@ -143,6 +166,106 @@ export class MizanService {
     @Inject(forwardRef(() => LucaAutoScraperService))
     private lucaAutoScraper: LucaAutoScraperService,
   ) {}
+
+  // ==================== DENETIM KRITERLERI ====================
+
+  async listDenetimKriterleri(tenantId: string) {
+    return (this.prisma as any).mizanDenetimKriteri.findMany({
+      where: { tenantId },
+      orderBy: [{ aktif: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
+  async createDenetimKriteri(tenantId: string, userId: string | undefined, input: any) {
+    const data = this.normalizeDenetimKriteriInput(input);
+    return (this.prisma as any).mizanDenetimKriteri.create({
+      data: {
+        tenantId,
+        createdBy: userId || null,
+        ...data,
+      },
+    });
+  }
+
+  async updateDenetimKriteri(id: string, tenantId: string, input: any) {
+    const current = await (this.prisma as any).mizanDenetimKriteri.findFirst({
+      where: { id, tenantId },
+    });
+    if (!current) throw new NotFoundException('Denetim kriteri bulunamadi');
+
+    const data = this.normalizeDenetimKriteriInput(input, true);
+    return (this.prisma as any).mizanDenetimKriteri.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteDenetimKriteri(id: string, tenantId: string) {
+    const current = await (this.prisma as any).mizanDenetimKriteri.findFirst({
+      where: { id, tenantId },
+    });
+    if (!current) throw new NotFoundException('Denetim kriteri bulunamadi');
+    await (this.prisma as any).mizanDenetimKriteri.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  private normalizeDenetimKriteriInput(input: any, partial = false) {
+    const data: any = {};
+
+    if (!partial || input?.ad !== undefined) {
+      const ad = String(input?.ad ?? '').trim();
+      if (!ad) throw new BadRequestException('Kriter adi zorunlu');
+      data.ad = ad.slice(0, 160);
+    }
+
+    if (!partial || input?.hesapPattern !== undefined) {
+      const hesapPattern = String(input?.hesapPattern ?? '').trim();
+      if (!hesapPattern) throw new BadRequestException('Hesap deseni zorunlu');
+      data.hesapPattern = hesapPattern.slice(0, 240);
+    }
+
+    if (!partial || input?.kosul !== undefined) {
+      const kosul = String(input?.kosul ?? '').trim().toUpperCase() as MizanDenetimKosul;
+      if (!MIZAN_DENETIM_KOSULLARI.has(kosul)) {
+        throw new BadRequestException('Gecersiz denetim kosulu');
+      }
+      data.kosul = kosul;
+    }
+
+    if (!partial || input?.seviye !== undefined) {
+      const seviye = String(input?.seviye ?? 'WARN').trim().toUpperCase();
+      if (!MIZAN_DENETIM_SEVIYELERI.has(seviye)) {
+        throw new BadRequestException('Gecersiz uyari seviyesi');
+      }
+      data.seviye = seviye;
+    }
+
+    if (!partial || input?.mesaj !== undefined || input?.ad !== undefined) {
+      const mesaj = String(input?.mesaj ?? input?.ad ?? '').trim();
+      data.mesaj = (mesaj || 'Denetim kriteri eslesti').slice(0, 500);
+    }
+
+    if (!partial || input?.aktif !== undefined) {
+      data.aktif = input?.aktif === undefined ? true : Boolean(input.aktif);
+    }
+
+    if (!partial || input?.taxpayerId !== undefined) {
+      const taxpayerId = input?.taxpayerId ? String(input.taxpayerId).trim() : null;
+      data.taxpayerId = taxpayerId || null;
+    }
+
+    if (!partial || input?.esik !== undefined) {
+      if (input?.esik === '' || input?.esik == null) {
+        data.esik = null;
+      } else {
+        const esik = Number(input.esik);
+        if (!Number.isFinite(esik)) throw new BadRequestException('Esik sayisal olmali');
+        data.esik = esik;
+      }
+    }
+
+    return data;
+  }
 
   // ==================== IMPORT ====================
 
@@ -678,6 +801,10 @@ export class MizanService {
       });
     }
 
+    if (mizanInfo) {
+      await this.applyCustomDenetimKriterleri(mizanInfo, hesaplar, anomaliler);
+    }
+
     if (anomaliler.length > 0) {
       await (this.prisma as any).mizanAnomali.createMany({
         data: anomaliler.map((a) => ({
@@ -692,6 +819,117 @@ export class MizanService {
     }
 
     return { count: anomaliler.length };
+  }
+
+  private async applyCustomDenetimKriterleri(
+    mizanInfo: any,
+    hesaplar: any[],
+    anomaliler: Array<{ hesapKodu: string | null; tip: string; seviye: string; mesaj: string; detay?: any }>,
+  ) {
+    const rules = await (this.prisma as any).mizanDenetimKriteri.findMany({
+      where: {
+        tenantId: mizanInfo.tenantId,
+        aktif: true,
+        OR: [{ taxpayerId: null }, { taxpayerId: mizanInfo.taxpayerId }],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const rule of rules) {
+      const kosul = String(rule.kosul || '').toUpperCase() as MizanDenetimKosul;
+      const matches = hesaplar.filter((h) => this.hesapPatternMatch(h.hesapKodu, rule.hesapPattern));
+      const esik = Number(rule.esik ?? 0);
+
+      if (kosul === 'MISSING') {
+        const hasMeaningfulMatch = matches.some((h) => this.hasMizanValue(h));
+        if (!hasMeaningfulMatch) {
+          anomaliler.push(this.toCustomAnomali(rule, null, esik));
+        }
+        continue;
+      }
+
+      const triggered =
+        kosul === 'EXISTS'
+          ? matches
+          : matches.filter((h) => this.denetimeTakildi(h, kosul, esik));
+
+      for (const hesap of triggered.slice(0, 50)) {
+        anomaliler.push(this.toCustomAnomali(rule, hesap, esik));
+      }
+    }
+  }
+
+  private hesapPatternMatch(kod: string, pattern: string): boolean {
+    const code = String(kod || '').trim();
+    if (!code) return false;
+    return String(pattern || '')
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .some((token) => {
+        if (token === '*') return true;
+        const normalized = token.replace(/%/g, '*');
+        if (normalized.endsWith('*')) {
+          return code.startsWith(normalized.slice(0, -1));
+        }
+        return code === normalized || code.startsWith(`${normalized}.`) || (normalized.length <= 3 && code.startsWith(normalized));
+      });
+  }
+
+  private hasMizanValue(h: any): boolean {
+    return ['borcToplami', 'alacakToplami', 'borcBakiye', 'alacakBakiye'].some((key) => Number(h?.[key] || 0) !== 0);
+  }
+
+  private denetimeTakildi(h: any, kosul: MizanDenetimKosul, esik: number): boolean {
+    const borcBakiye = Number(h?.borcBakiye || 0);
+    const alacakBakiye = Number(h?.alacakBakiye || 0);
+    const borcToplami = Number(h?.borcToplami || 0);
+    const alacakToplami = Number(h?.alacakToplami || 0);
+    switch (kosul) {
+      case 'BORC_BAKIYE_GT':
+        return borcBakiye > esik;
+      case 'ALACAK_BAKIYE_GT':
+        return alacakBakiye > esik;
+      case 'BAKIYE_GT':
+        return Math.max(Math.abs(borcBakiye), Math.abs(alacakBakiye)) > esik;
+      case 'BORC_TOPLAMI_GT':
+        return borcToplami > esik;
+      case 'ALACAK_TOPLAMI_GT':
+        return alacakToplami > esik;
+      case 'BOTH_BAKIYE':
+        return borcBakiye > 0 && alacakBakiye > 0;
+      default:
+        return false;
+    }
+  }
+
+  private toCustomAnomali(rule: any, hesap: any | null, esik: number) {
+    const replacements: Record<string, string> = {
+      hesapKodu: hesap?.hesapKodu || rule.hesapPattern || '',
+      hesapAdi: hesap?.hesapAdi || '',
+      borcBakiye: this.fmt(hesap?.borcBakiye || 0),
+      alacakBakiye: this.fmt(hesap?.alacakBakiye || 0),
+      borcToplami: this.fmt(hesap?.borcToplami || 0),
+      alacakToplami: this.fmt(hesap?.alacakToplami || 0),
+      esik: this.fmt(esik),
+    };
+    const mesaj = String(rule.mesaj || rule.ad || 'Denetim kriteri eslesti').replace(
+      /\{(hesapKodu|hesapAdi|borcBakiye|alacakBakiye|borcToplami|alacakToplami|esik)\}/g,
+      (_m, key) => replacements[key] ?? '',
+    );
+    return {
+      hesapKodu: hesap?.hesapKodu || rule.hesapPattern || null,
+      tip: `KRITER_${String(rule.kosul || 'OZEL')}`,
+      seviye: String(rule.seviye || 'WARN'),
+      mesaj,
+      detay: {
+        kriterId: rule.id,
+        kriterAdi: rule.ad,
+        hesapPattern: rule.hesapPattern,
+        kosul: rule.kosul,
+        esik,
+      },
+    };
   }
 
   /** Sermaye / amortisman kontrolleri için yardımcılar */

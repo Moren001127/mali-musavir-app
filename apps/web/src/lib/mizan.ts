@@ -8,6 +8,19 @@ export type MizanDonemTipi =
   | 'GECICI_Q4'
   | 'YILLIK';
 
+export type MizanDenetimKriteri = {
+  id: string;
+  ad: string;
+  aktif: boolean;
+  hesapPattern: string;
+  kosul: string;
+  esik?: string | number | null;
+  seviye: string;
+  mesaj: string;
+  taxpayerId?: string | null;
+  createdAt?: string;
+};
+
 export const mizanApi = {
   /* ── Mizan ── */
   list: (taxpayerId?: string) =>
@@ -47,6 +60,14 @@ export const mizanApi = {
   lock: (id: string, note?: string) => api.patch(`/mizan/${id}/lock`, { note }).then((r) => r.data),
   unlock: (id: string, reason: string) => api.patch(`/mizan/${id}/unlock`, { reason }).then((r) => r.data),
   remove: (id: string) => api.delete(`/mizan/${id}`).then((r) => r.data),
+  denetimKriterleri: {
+    list: () => api.get('/mizan/denetim-kriterleri').then((r) => r.data as MizanDenetimKriteri[]),
+    create: (data: Partial<MizanDenetimKriteri> & { hesapPattern: string; kosul: string }) =>
+      api.post('/mizan/denetim-kriterleri', data).then((r) => r.data as MizanDenetimKriteri),
+    update: (id: string, data: Partial<MizanDenetimKriteri>) =>
+      api.patch(`/mizan/denetim-kriterleri/${id}`, data).then((r) => r.data as MizanDenetimKriteri),
+    remove: (id: string) => api.delete(`/mizan/denetim-kriterleri/${id}`).then((r) => r.data),
+  },
 };
 
 export const gelirTablosuApi = {

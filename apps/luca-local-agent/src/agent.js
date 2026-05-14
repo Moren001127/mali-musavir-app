@@ -63,7 +63,7 @@ const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 const HEADLESS = cfg.worker?.headless !== false;
 const JOB_TYPES = new Set(cfg.worker?.jobTypes || ['ACCOUNT_PLAN', 'MIZAN', 'MUAVIN']);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.0.2';
+const LOCAL_AGENT_VERSION = 'local-1.0.3';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -72,7 +72,10 @@ const BROWSER_IDLE_TTL = (cfg.worker?.browserIdleTtlSeconds || 2 * 60 * 60) * 10
 // Keep-alive ping aralığı: idle TTL'in 1/4'ü. Browser session açıkken
 // arka planda hafif bir sayfa içi navigasyon yaparak Luca cookie'sinin
 // sunucu tarafında sıfırlanmasını engelleriz.
-const BROWSER_KEEPALIVE_INTERVAL = Math.max(60_000, BROWSER_IDLE_TTL / 4);
+const configuredKeepAliveSeconds = Number(cfg.worker?.browserKeepAliveSeconds || 0);
+const BROWSER_KEEPALIVE_INTERVAL = configuredKeepAliveSeconds > 0
+  ? configuredKeepAliveSeconds * 1000
+  : Math.max(60_000, Math.min(10 * 60 * 1000, BROWSER_IDLE_TTL / 4));
 
 // --------- Logger ---------
 const log = {

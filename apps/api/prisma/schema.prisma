@@ -1290,6 +1290,26 @@ model MizanAnomali {
 }
 
 // Mizandan üretilen gelir tablosu snapshot'ı
+model MizanDenetimKriteri {
+  id            String   @id @default(cuid())
+  tenantId      String
+  ad            String
+  aktif         Boolean  @default(true)
+  hesapPattern  String
+  kosul         String
+  esik          Decimal? @db.Decimal(18, 2)
+  seviye        String   @default("WARN")
+  mesaj         String
+  taxpayerId    String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, aktif])
+  @@index([tenantId, taxpayerId])
+  @@map("mizan_denetim_kriterleri")
+}
+
 model GelirTablosu {
   id           String   @id @default(cuid())
   tenantId     String

@@ -5,6 +5,8 @@ import {
   UnauthorizedException,
   NotFoundException,
 } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -438,6 +440,7 @@ export class LucaService {
             companyName: true,
             taxNumber: true,
             lucaSlug: true,
+            defterTuru: true,
           },
         });
         return {
@@ -445,6 +448,7 @@ export class LucaService {
           // Agent'a flat olarak göndermek için kök seviyede expose et
           lucaSlug: tp?.lucaSlug || null,
           taxNumber: tp?.taxNumber || null,
+          defterTuru: tp?.defterTuru || null,
           mukellefAdi:
             tp?.companyName ||
             [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') ||
@@ -612,10 +616,151 @@ export class LucaService {
         expiresAt,
       },
     });
+    const challenge = await this.tryAutoSolveCaptchaChallenge(tenantId, created).catch(async (e) => {
+      this.logger.warn(`Luca CAPTCHA OCR denenemedi: ${e?.message || e}`);
+      await (this.prisma as any).lucaCaptchaChallenge.update({
+        where: { id: created.id },
+        data: {
+          context: {
+            ...(created.context || {}),
+            autoOcr: {
+              attempted: true,
+              autoSubmitted: false,
+              error: e?.message || String(e),
+              at: new Date().toISOString(),
+            },
+          },
+        },
+      }).catch(() => null);
+      return created;
+    });
     if (body.jobId) {
       await this.appendJobLog(body.jobId, 'Luca guvenlik kodu bekleniyor; kod portalda gosterildi').catch(() => {});
     }
-    return { ok: true, challenge: this.publicCaptchaChallenge(created, true) };
+    return { ok: true, challenge: this.publicCaptchaChallenge(challenge, challenge.status === 'pending') };
+  }
+
+  private async tryAutoSolveCaptchaChallenge(tenantId: string, challenge: any) {
+    if (String(process.env.LUCA_CAPTCHA_AUTO_OCR || 'true').toLowerCase() === 'false') {
+      return challenge;
+    }
+
+    if (!challenge.jobId) return challenge;
+
+    const priorAutoAttempts = await (this.prisma as any).lucaCaptchaChallenge.count({
+      where: {
+        tenantId,
+        jobId: challenge.jobId,
+        id: { not: challenge.id },
+        answeredBy: 'auto-ocr',
+        createdAt: { gt: new Date(Date.now() - 10 * 60 * 1000) },
+      },
+    }).catch(() => 0);
+    if (priorAutoAttempts >= Number(process.env.LUCA_CAPTCHA_OCR_MAX_ATTEMPTS || 1)) {
+      return (this.prisma as any).lucaCaptchaChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          context: {
+            ...(challenge.context || {}),
+            autoOcr: {
+              attempted: false,
+              autoSubmitted: false,
+              skippedReason: 'Bu is icin otomatik deneme limiti doldu',
+              at: new Date().toISOString(),
+            },
+          },
+        },
+      });
+    }
+
+    const ocr = await this.readCaptchaWithOcr(challenge.captchaImage);
+    const minConfidence = Math.max(0, Math.min(100, Number(process.env.LUCA_CAPTCHA_OCR_MIN_CONFIDENCE || 70)));
+    const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 4));
+    const maxLength = Math.max(minLength, Number(process.env.LUCA_CAPTCHA_OCR_MAX_LENGTH || 8));
+    const accepted =
+      !!ocr.text
+      && ocr.confidence >= minConfidence
+      && ocr.text.length >= minLength
+      && ocr.text.length <= maxLength;
+
+    const context = {
+      ...(challenge.context || {}),
+      autoOcr: {
+        attempted: true,
+        autoSubmitted: accepted,
+        text: ocr.text || null,
+        confidence: ocr.confidence,
+        rawText: ocr.rawText || null,
+        minConfidence,
+        at: new Date().toISOString(),
+      },
+    };
+
+    const updated = await (this.prisma as any).lucaCaptchaChallenge.update({
+      where: { id: challenge.id },
+      data: accepted
+        ? {
+            status: 'answered',
+            answer: ocr.text,
+            answeredBy: 'auto-ocr',
+            answeredAt: new Date(),
+            context,
+          }
+        : { context },
+    });
+
+    if (challenge.jobId) {
+      await this.appendJobLog(
+        challenge.jobId,
+        accepted
+          ? `Luca guvenlik kodu OCR ile otomatik okundu (guven=${Math.round(ocr.confidence)}); agent'a gonderildi`
+          : `Luca guvenlik kodu OCR ile guvenli okunamadi (guven=${Math.round(ocr.confidence)}, okunan="${ocr.text || '-'}"); portalda manuel bekliyor`,
+      ).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  private async readCaptchaWithOcr(dataUrl: string): Promise<{ text: string; rawText: string; confidence: number }> {
+    const match = String(dataUrl || '').match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    if (!match) return { text: '', rawText: '', confidence: 0 };
+
+    const rawBuffer = Buffer.from(match[1], 'base64');
+    let imageBuffer = rawBuffer;
+    try {
+      const sharpMod = await import('sharp');
+      const sharp = (sharpMod as any).default || sharpMod;
+      imageBuffer = await sharp(rawBuffer)
+        .resize({ width: 360, withoutEnlargement: false })
+        .grayscale()
+        .normalize()
+        .threshold(155)
+        .png()
+        .toBuffer();
+    } catch {
+      imageBuffer = rawBuffer;
+    }
+
+    const tesseract = await import('tesseract.js') as any;
+    const workerOptions: any = { logger: () => undefined };
+    const langPath = process.env.TESSDATA_PREFIX || '/app/tessdata';
+    if (existsSync(join(langPath, 'eng.traineddata'))) {
+      workerOptions.langPath = langPath;
+    }
+    const worker = await tesseract.createWorker('eng', tesseract.OEM?.LSTM_ONLY, workerOptions);
+    try {
+      await worker.setParameters({
+        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        tessedit_pageseg_mode: String(tesseract.PSM?.SINGLE_WORD || 8),
+      });
+      const result = await worker.recognize(imageBuffer);
+      const rawText = String(result?.data?.text || '').trim();
+      const text = rawText.replace(/[^0-9A-Za-z]/g, '').trim();
+      const confidence = Number(result?.data?.confidence || 0);
+      return { text, rawText, confidence: Number.isFinite(confidence) ? confidence : 0 };
+    } finally {
+      await worker.terminate().catch(() => undefined);
+    }
   }
 
   async getCaptchaAnswerForAgent(tenantId: string, id: string) {

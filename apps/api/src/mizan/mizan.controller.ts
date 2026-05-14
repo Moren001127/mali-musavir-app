@@ -45,6 +45,30 @@ export class MizanController {
     return this.mizanService.listMizans(req.user.tenantId, taxpayerId);
   }
 
+  @Get('mizan/denetim-kriterleri')
+  listDenetimKriterleri(@Req() req: any) {
+    return this.mizanService.listDenetimKriterleri(req.user.tenantId);
+  }
+
+  @Post('mizan/denetim-kriterleri')
+  @Roles('ADMIN', 'STAFF')
+  createDenetimKriteri(@Req() req: any, @Body() body: any) {
+    return this.mizanService.createDenetimKriteri(req.user.tenantId, req.user.sub, body);
+  }
+
+  @Patch('mizan/denetim-kriterleri/:id')
+  @Roles('ADMIN', 'STAFF')
+  updateDenetimKriteri(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.mizanService.updateDenetimKriteri(id, req.user.tenantId, body);
+  }
+
+  @Delete('mizan/denetim-kriterleri/:id')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDenetimKriteri(@Req() req: any, @Param('id') id: string) {
+    await this.mizanService.deleteDenetimKriteri(id, req.user.tenantId);
+  }
+
   @Get('mizan/:id')
   getOne(@Req() req: any, @Param('id') id: string) {
     return this.mizanService.getMizan(id, req.user.tenantId);
