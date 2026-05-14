@@ -376,7 +376,10 @@ export class KdvControlService {
       const cells = row.map((v) => normalize(String(v ?? '')));
       return patterns.some((p) => cells.some((c) => c === normalize(p) || c.includes(normalize(p))));
     };
-    const headerIdx = matrix.findIndex((row) =>
+    const isBilancoKdv = session.type === 'KDV_191' || session.type === 'KDV_391';
+    const excelStartIdx = isBilancoKdv ? 2 : 0; // Bilanço KDV listesinde ilk 2 Excel satırı okunmaz.
+    const headerIdx = matrix.findIndex((row, idx) =>
+      idx >= excelStartIdx &&
       hasAny(row, ['tarih']) &&
       hasAny(row, ['evrak', 'belge', 'fis', 'fiş', 'madde']) &&
       hasAny(row, ['borc', 'borç', 'alacak', 'kdv']),
@@ -400,6 +403,7 @@ export class KdvControlService {
       rawRows = XLSX.utils.sheet_to_json(sheet, {
         raw: false,
         defval: null,
+        range: excelStartIdx,
       });
       this.logger.warn(`KDV mapping import: header satiri bulunamadi, varsayilan sheet_to_json kullanildi. Ilk kolonlar=${Object.keys(rawRows[0] || {}).slice(0, 12).join(' | ')}`);
     }
@@ -429,7 +433,6 @@ export class KdvControlService {
       }
       return null;
     };
-    const isBilancoKdv = session.type === 'KDV_191' || session.type === 'KDV_391';
     const effectiveKdvCol =
       session.type === 'KDV_191' ? 'BORÇ' :
       session.type === 'KDV_391' ? 'ALACAK' :
@@ -484,10 +487,6 @@ export class KdvControlService {
 
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
-      if (isBilancoKdv && i < 2) {
-        skipped++;
-        continue;
-      }
       const tarihKey = findKeyInRow(row, mapping.tarihCol);
       const belgeKey = findKeyInRow(row, mapping.belgeNoCol);
       const kdvKey = findKeyInRow(row, effectiveKdvCol);
@@ -534,8 +533,15 @@ export class KdvControlService {
     }
 
     if (parsed.length === 0) {
+      const debugKeys = Object.keys(rawRows[0] || {}).slice(0, 16).join(' | ') || '(kolon yok)';
+      const debugRows = rawRows.slice(0, 4).map((row) =>
+        Object.entries(row)
+          .slice(0, 8)
+          .map(([k, v]) => `${String(k).slice(0, 18)}=${String(v ?? '').slice(0, 24)}`)
+          .join(', '),
+      ).join(' || ');
       throw new BadRequestException(
-        'Seçilen sütunlardan hiç geçerli KDV satırı okunamadı. Sütun seçimlerini kontrol edin.',
+        `Seçilen sütunlardan hiç geçerli KDV satırı okunamadı. Kolonlar: ${debugKeys}. İlk satırlar: ${debugRows || '(yok)'}`,
       );
     }
 
