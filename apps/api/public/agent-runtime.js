@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.48';
+  const AGENT_VERSION = '1.37.49';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -7712,6 +7712,8 @@
         let args = arguments;
         if (/jasper\.jq/i.test(url || '') && init && init.body != null) {
           const fixed = forceMizanDatesBody(init.body);
+          jasperBody = String(fixed.body || init.body || '');
+          jasperUrl = url;
           if (fixed.changed) {
             args = [input, { ...init, body: fixed.body }];
             log(`🧷 jasper.jq fetch tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
@@ -7743,6 +7745,8 @@
         if (/jasper\.jq/i.test(url || '')) {
           const fixed = forceMizanDatesBody(body);
           sendBody = fixed.body;
+          jasperBody = String(sendBody || '');
+          jasperUrl = url;
           if (fixed.changed) {
             log(`🧷 jasper.jq XHR tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
           } else {
@@ -8013,8 +8017,9 @@
     window.addEventListener('moren-luca-file', onLucaFile);
     restoreFns.push(() => window.removeEventListener('moren-luca-file', onLucaFile));
 
-    // Eski paralel flow KAPATILDI — Luca native download'a izin veriyoruz, biz disk'ten alıyoruz
-    if (false && jasperBody) (async () => {
+    // Native download gelmezse aynı jasper body ile paralel rapor indirme fallback'i.
+    // Bazı Luca oturumlarında rapor_takip çalışıyor ama disk download event'i düşmüyor.
+    (async () => {
       // Body yakalanmasını bekle (max 15 sn)
       for (let i = 0; i < 75; i++) {
         if (jasperBody) break;
@@ -8043,7 +8048,9 @@
         };
 
         // 1) Yeni jasper.jq POST → bizim rapor_id
-        const fullJasperUrl = jasperUrl.startsWith('http') ? jasperUrl : `${form.ownerDocument.defaultView.location.origin}/Luca/${jasperUrl.replace(/^\//, '')}`;
+        const fullJasperUrl = jasperUrl.startsWith('http')
+          ? jasperUrl
+          : new URL(jasperUrl, form.ownerDocument.defaultView.location.href).toString();
         const r1 = await directFetch(fullJasperUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -8065,6 +8072,9 @@
           const dm = jasperBody.match(/"donem_id"\s*:\s*"?(\d+)"?/);
           donemId = dm ? dm[1] : '';
         }
+        if (!donemId) {
+          donemId = form.querySelector('input[name="DONEM_ID"], input[name="donem_id"]')?.value || '';
+        }
         const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: 'mizan' } });
         const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
 
@@ -8078,9 +8088,10 @@
               body: takipBody,
             });
             const r2text = await r2.text();
-            const durum = (r2text.match(/"durum"\s*:\s*(\d+)/) || [])[1];
+            const dm = r2text.match(/"durum"\s*:\s*(\d+)|\bdurum\s*[:=]\s*(\d+)|^\s*(\d{1,3})\s*$/i);
+            const durum = dm ? (dm[1] || dm[2] || dm[3] || '') : '';
             if (i === 0 || i % 5 === 0) {
-              await log(`⏳ Polling ${i + 1}/30: durum=${durum || '?'}`);
+              await log(`⏳ Polling ${i + 1}/30: durum=${durum || '?'} resp=${r2text.slice(0, 80)}`);
             }
             // Durum 150 = tamamlandı
             if (durum === '150' || /başarılı bir şekilde oluştur/i.test(r2text)) {
@@ -8110,6 +8121,19 @@
           } else {
             const t = await blob.text();
             await log(`⚠ rapor_indir POST küçük (${blob.size}B): ${t.slice(0, 150)}`);
+            const rTakipBody = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: takipBody,
+            }).catch(() => null);
+            if (rTakipBody?.ok) {
+              const blobTakip = await rTakipBody.blob();
+              if (blobTakip.size > 1500) {
+                capturedBlob = blobTakip;
+                await log(`✅ rapor_indir takip body ile blob (${Math.round(blobTakip.size / 1024)} KB)`);
+                return;
+              }
+            }
             // GET fallback
             const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
             if (r4.ok) {
