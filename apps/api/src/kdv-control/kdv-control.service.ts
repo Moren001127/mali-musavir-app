@@ -349,10 +349,6 @@ export class KdvControlService {
     if (!sheet) {
       throw new BadRequestException(`Sheet bulunamadı: ${sheetName}`);
     }
-    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, {
-      raw: false,
-      defval: null,
-    });
 
     // Sütun başlıklarını normalize edip orijinal key'le eşle.
     // Türkçe karakterleri de ASCII'ye indirgeyerek karşılaştır — aksi halde
@@ -369,10 +365,67 @@ export class KdvControlService {
         .replace(/Ö/g, 'O').replace(/ö/g, 'o')
         .replace(/Ü/g, 'U').replace(/ü/g, 'u')
         .toLowerCase();
-    const findKeyInRow = (row: Record<string, any>, target: string): string | null => {
+
+    const matrix: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      raw: false,
+      defval: null,
+      blankrows: false,
+    });
+    const hasAny = (row: any[], patterns: string[]) => {
+      const cells = row.map((v) => normalize(String(v ?? '')));
+      return patterns.some((p) => cells.some((c) => c === normalize(p) || c.includes(normalize(p))));
+    };
+    const headerIdx = matrix.findIndex((row) =>
+      hasAny(row, ['tarih']) &&
+      hasAny(row, ['evrak', 'belge', 'fis', 'fiş', 'madde']) &&
+      hasAny(row, ['borc', 'borç', 'alacak', 'kdv']),
+    );
+
+    let rawRows: any[];
+    if (headerIdx >= 0) {
+      const headers = (matrix[headerIdx] || []).map((v, idx) => {
+        const text = String(v ?? '').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        return text || `COL_${idx + 1}`;
+      });
+      rawRows = matrix.slice(headerIdx + 1)
+        .map((row) => {
+          const out: Record<string, any> = {};
+          headers.forEach((h, idx) => { out[h] = row?.[idx] ?? null; });
+          return out;
+        })
+        .filter((row) => Object.values(row).some((v) => String(v ?? '').trim() !== ''));
+      this.logger.log(`KDV mapping import: header satiri ${headerIdx + 1}, kolonlar=${headers.slice(0, 12).join(' | ')}`);
+    } else {
+      rawRows = XLSX.utils.sheet_to_json(sheet, {
+        raw: false,
+        defval: null,
+      });
+      this.logger.warn(`KDV mapping import: header satiri bulunamadi, varsayilan sheet_to_json kullanildi. Ilk kolonlar=${Object.keys(rawRows[0] || {}).slice(0, 12).join(' | ')}`);
+    }
+
+    const targetAliases = (target: string): string[] => {
       const t = normalize(target);
-      for (const k of Object.keys(row)) {
-        if (normalize(k) === t) return k;
+      if (t.includes('tarih')) return [target, 'evrak tarihi', 'belge tarihi', 'fis tarihi', 'fiş tarihi', 'tarih'];
+      if (t.includes('evrak') || t.includes('belge')) return [target, 'evrak no', 'belge no', 'fis no', 'fiş no', 'fatura no', 'madde no'];
+      if (t.includes('alacak')) return [target, 'alacak', 'alacak tutari', 'alacak tutarı'];
+      if (t.includes('borc') || t.includes('borç')) return [target, 'borc', 'borç', 'borc tutari', 'borç tutarı'];
+      return [target];
+    };
+
+    const findKeyInRow = (row: Record<string, any>, target: string): string | null => {
+      const keys = Object.keys(row);
+      const aliases = targetAliases(target).map(normalize);
+      for (const wanted of aliases) {
+        for (const k of keys) {
+          if (normalize(k) === wanted) return k;
+        }
+      }
+      for (const wanted of aliases) {
+        for (const k of keys) {
+          const nk = normalize(k);
+          if (nk.includes(wanted) || wanted.includes(nk)) return k;
+        }
       }
       return null;
     };
