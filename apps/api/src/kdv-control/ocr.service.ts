@@ -1102,8 +1102,8 @@ export class OcrService {
     const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
     const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
     const okcFis = belgeTipi === 'OKC_FIS' ? this.extractOkcFisKdvFromAzure(fullText) : null;
-    const tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
-    const invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari || okcFis?.kdvTutari
+    let tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
+    let invoiceTotalsKdv = tevkifatli || zRaporu?.kdvTutari || okcFis?.kdvTutari
       ? null
       : this.extractKdvFromInvoiceTotalsAzure(fullText);
     let kdv = zRaporu?.kdvTutari
@@ -1115,6 +1115,17 @@ export class OcrService {
           : invoiceTotalsKdv
             ? this.formatAmount(invoiceTotalsKdv.kdv)
             : this.extractKdvTotal(fullText);
+    if (!tevkifatli && kdv) {
+      const inferredTevkifat = this.inferTevkifatFromAzureAmounts(fullText, this.parseAmount(kdv));
+      if (inferredTevkifat) {
+        tevkifatli = inferredTevkifat;
+        invoiceTotalsKdv = null;
+        kdv = this.formatAmount(inferredTevkifat.netKdv);
+        this.logger.warn(
+          `Azure OCR tevkifat fallback: tam=${this.formatAmount(inferredTevkifat.tamKdv)} tevkifat=${this.formatAmount(inferredTevkifat.tevkifat)} net=${kdv} (${originalName || '-'})`,
+        );
+      }
+    }
     const toplam = this.extractToplam(fullText);
     if (!zRaporu?.kdvTutari && !tevkifatli && kdv && toplam) {
       const kdvNum = this.parseAmount(String(kdv));
@@ -1674,6 +1685,108 @@ export class OcrService {
     return 0;
   }
 
+  private extractMoneyAmountsFromText(text: string): number[] {
+    const amountRe = /(\d{1,3}(?:[.,]\d{3})+[.,]\d{1,2}|\d{4,},\d{1,2}|\d{1,3},\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const values: number[] = [];
+    const seen = new Set<string>();
+    for (const m of text.matchAll(amountRe)) {
+      const value = Math.round(this.parseAmount(m[1]) * 100) / 100;
+      if (value <= 0 || value >= 100_000_000) continue;
+      const key = value.toFixed(2);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      values.push(value);
+    }
+    return values;
+  }
+
+  private inferTevkifatFromAzureAmounts(text: string, tamKdv: number): {
+    tamKdv: number;
+    tevkifat: number;
+    netKdv: number;
+  } | null {
+    if (!text || !(tamKdv > 0)) return null;
+    const folded = this.foldTurkishAscii(text);
+    if (!/TEVK/.test(folded)) return null;
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const isClose = (a: number, b: number, tolerance = 0.05) => Math.abs(a - b) <= tolerance;
+    const amounts = this.extractMoneyAmountsFromText(folded);
+    let effectiveTamKdv = round2(tamKdv);
+    const kdvRateMatch = folded.match(
+      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?(?!\s*TEVK)[^\d%]{0,20}\(\s*%?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/,
+    );
+    const kdvRate = kdvRateMatch ? Number(kdvRateMatch[1]) : 0;
+    if ([1, 8, 10, 18, 20].includes(kdvRate)) {
+      const expectedTax = round2(effectiveTamKdv * kdvRate / 100);
+      const taxAmount = amounts.find((n) =>
+        n > 0 &&
+        n < effectiveTamKdv - 0.05 &&
+        isClose(n, expectedTax, Math.max(0.05, expectedTax * 0.01)),
+      );
+      if (taxAmount) {
+        this.logger.warn(
+          `Tevkifat fallback: gelen KDV adayi matrah gibi gorundu, tam KDV ${this.formatAmount(taxAmount)} olarak duzeltildi (matrah=${this.formatAmount(effectiveTamKdv)}, oran=%${kdvRate})`,
+        );
+        effectiveTamKdv = round2(taxAmount);
+      }
+    }
+    const validTevkifat = (n: number) => n > 0 && n < effectiveTamKdv - 0.05;
+    const lines = folded.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+    const accept = (candidate: number | null | undefined, reason: string) => {
+      const tevkifat = round2(candidate || 0);
+      if (!validTevkifat(tevkifat)) return null;
+      const netKdv = round2(effectiveTamKdv - tevkifat);
+      if (netKdv <= 0) return null;
+      this.logger.log(
+        `Tevkifat fallback OK (${reason}): tam=${effectiveTamKdv} tevkifat=${tevkifat} net=${netKdv}`,
+      );
+      return { tamKdv: effectiveTamKdv, tevkifat, netKdv };
+    };
+
+    // En güvenilir yol: TEVKIFAT geçen satırda veya hemen çevresinde tam KDV'den küçük tutar.
+    for (let i = 0; i < lines.length; i++) {
+      if (!/TEVK/.test(lines[i])) continue;
+      const window = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
+      const candidates = this.extractMoneyAmountsFromText(window)
+        .filter(validTevkifat)
+        .sort((a, b) => b - a);
+      if (candidates.length > 0) {
+        return accept(candidates[0], 'tevkifat-satiri');
+      }
+    }
+
+    // Tevkifat oranı okunuyorsa, tam KDV * oran doğrudan tevkifat tutarıdır.
+    const rate = this.parseTevkifatRate(folded);
+    if (rate > 0 && rate <= 100) {
+      const expected = round2(effectiveTamKdv * rate / 100);
+      const explicit = amounts.find((n) => validTevkifat(n) && isClose(n, expected, Math.max(0.05, expected * 0.01)));
+      return accept(explicit ?? expected, `oran-%${rate}`);
+    }
+
+    // Görsel tablolarda Azure bazen etiketleri ve tutarları ayrı kolon blokları olarak döndürür.
+    // Bu durumda "Vergiler dahil toplam" ile "Ödenecek tutar" farkı tevkifat tutarını verir.
+    const hasTotalsLabels = /VERGILER\s+DAHIL/.test(folded) && /ODENECEK\s+TUTAR/.test(folded);
+    if (hasTotalsLabels && amounts.length >= 2) {
+      for (const high of amounts) {
+        for (const low of amounts) {
+          const diff = round2(high - low);
+          if (!validTevkifat(diff)) continue;
+          if (amounts.some((n) => isClose(n, diff))) {
+            return accept(diff, 'toplam-farki');
+          }
+        }
+      }
+    }
+
+    // Son savunma: %50 tevkifatli belgelerde tutar tam KDV'nin yarısıdır ve çoğu
+    // faturada bu tutar para listesinde ayrıca bulunur.
+    const half = round2(effectiveTamKdv / 2);
+    const halfMatch = amounts.find((n) => validTevkifat(n) && isClose(n, half, Math.max(0.05, half * 0.01)));
+    return accept(halfMatch, 'yarim-kdv');
+  }
+
   /**
    * Tevkifatlı faturalardan TAM KDV ve TEVKİFAT tutarlarını Azure metninden
    * doğrudan yakalar. Claude bazen "Mal Hizmet Toplam" değerini "KDV dahil
@@ -1819,6 +1932,11 @@ export class OcrService {
       }
     }
 
+    if (tevkifat <= 0 && tamKdv > 0) {
+      const inferred = this.inferTevkifatFromAzureAmounts(text, tamKdv);
+      if (inferred) return inferred;
+    }
+
     // ─── 3) Alternatif tevkifat gösterimleri ───
     //   "KDV Tevkifatı (%50,00) = 665,00 TL"
     //   "Tevkifat Tutarı: 665,00"
@@ -1861,7 +1979,7 @@ export class OcrService {
       }
     }
 
-    if (tamKdv <= 0 || tamKdv < tevkifat) {
+    if (tamKdv <= 0 || tamKdv < tevkifat || Math.abs(tamKdv - tevkifat) <= 0.05) {
       this.logger.warn(
         `Tevkifat extract: tamKdv=${tamKdv} tevkifat=${tevkifat} — mantıksız, null döndürüyorum. Flat (ilk 400 char): "${flat.slice(0, 400)}"`,
       );
