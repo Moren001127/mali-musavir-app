@@ -423,7 +423,20 @@ async function runJobWithMorenRuntime(job) {
     await logJob(jobId, `Local Node ajan işi aldı: ${WORKER_NAME} (${DEVICE_ID})`);
     const currentUrl = page.url();
     if (/^https:\/\/(agiris|auygs)\.luca\.com\.tr\//i.test(currentUrl || '')) {
-      await logJob(jobId, `Mevcut arka plan Luca oturumu kullanılacak: ${currentUrl.slice(0, 90)}`);
+      // Mevcut sayfada runtime YÜKLÜ MÜ kontrol et. Persistent context'te
+      // sayfa eski page load'undan kalmış olabilir ve init script o load'a
+      // yetişmemiş olabilir — bu durumda job tetiklenmez ve pending'de kalır.
+      // Runtime kendini window.__morenAgent global'ine kaydeder (agent-runtime.js).
+      // Bu yoksa init script bu sayfaya yetişmemiştir → reload gerekli.
+      const hasRuntime = await page
+        .evaluate(() => typeof window.__morenAgent !== 'undefined' && !!window.__morenAgent.running)
+        .catch(() => false);
+      if (!hasRuntime) {
+        await logJob(jobId, 'Mevcut Luca sayfasında runtime yok — reload ediliyor.');
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      } else {
+        await logJob(jobId, `Mevcut arka plan Luca oturumu kullanılacak: ${currentUrl.slice(0, 90)}`);
+      }
     } else {
       await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     }
@@ -643,11 +656,17 @@ async function preWarmBrowserSession() {
     const session = await getBrowserSession();
     const page = session.page;
     if (page && !page.isClosed()) {
+      // ÖNEMLİ: addInitScript yalnızca SONRAKİ page load'unda çalışır.
+      // O yüzden runtime'ı ÖNCE kur, navigate'i SONRA yap — yoksa Luca
+      // sayfası runtime'sız yüklenir ve job'lar pending'de kalır.
+      await installMorenRuntimeBridge(session.context, page).catch(() => {});
       const currentUrl = page.url();
       if (!/luca\.com\.tr/i.test(currentUrl)) {
         await page.goto(LUCA_URLS.login, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      } else {
+        // Zaten Luca sayfasındaysa reload et ki yeni eklenen init script çalışsın.
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
       }
-      await installMorenRuntimeBridge(session.context, page).catch(() => {});
       log.info(`✓ Pre-warm tamamlandı (url: ${page.url().slice(0, 80)})`);
     }
   } catch (err) {
