@@ -400,7 +400,7 @@ export default function MorenAIPage() {
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl w-full">
                 {[
-                  'Ali Tekstil\'in Q1 gelir tablosunu yorumla',
+                  'Ali Tekstil\'in 1. dönem gelir tablosunu yorumla',
                   'Bu ay hangi beyannameler verilecek?',
                   'X mükellefinin cari oranı sağlıklı mı?',
                   'Geçen yılla kıyasla satışlar ne kadar büyüdü?',

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { lucaSessionApi } from '@/lib/luca-session';
+import { formatDonemLabel, formatDonemTipiLabel, getDonemDateRange, normalizeDonemTipi } from '@/lib/period';
 import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, AlertTriangle,
@@ -20,6 +21,52 @@ const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Mon
 const FINANCIAL_AMOUNT_SIZE = 14.5;
 const FINANCIAL_AMOUNT_WEIGHT = 560;
 const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
+
+type MizanTotals = {
+  borcToplami: number;
+  alacakToplami: number;
+  borcBakiye: number;
+  alacakBakiye: number;
+};
+
+function toMizanAmount(value: any): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function calculateMizanTotals(hesaplar: any[]): MizanTotals {
+  const zero: MizanTotals = { borcToplami: 0, alacakToplami: 0, borcBakiye: 0, alacakBakiye: 0 };
+  const sumOver = (list: any[]): MizanTotals =>
+    list.reduce(
+      (acc, h) => ({
+        borcToplami: acc.borcToplami + toMizanAmount(h?.borcToplami),
+        alacakToplami: acc.alacakToplami + toMizanAmount(h?.alacakToplami),
+        borcBakiye: acc.borcBakiye + toMizanAmount(h?.borcBakiye),
+        alacakBakiye: acc.alacakBakiye + toMizanAmount(h?.alacakBakiye),
+      }),
+      zero,
+    );
+  const hasTutar = (list: any[]) =>
+    list.some(
+      (h) =>
+        toMizanAmount(h?.borcToplami) > 0 ||
+        toMizanAmount(h?.alacakToplami) > 0 ||
+        toMizanAmount(h?.borcBakiye) > 0 ||
+        toMizanAmount(h?.alacakBakiye) > 0,
+    );
+  const code = (h: any) => String(h?.hesapKodu || '').trim();
+  const siniflar = hesaplar.filter((h) => /^[1-9]$/.test(code(h)));
+  const gruplar = hesaplar.filter((h) => /^\d{2}$/.test(code(h)));
+  const anaHesaplar = hesaplar.filter((h) => /^\d{3}$/.test(code(h)));
+
+  if (siniflar.length > 0 && hasTutar(siniflar)) return sumOver(siniflar);
+  if (gruplar.length > 0 && hasTutar(gruplar)) return sumOver(gruplar);
+  if (anaHesaplar.length > 0 && hasTutar(anaHesaplar)) return sumOver(anaHesaplar);
+  if (hesaplar.length === 0) return zero;
+
+  const minSeviye = Math.min(...hesaplar.map((h) => Number(h?.seviye ?? 0)));
+  return sumOver(hesaplar.filter((h) => Number(h?.seviye ?? 0) === minSeviye));
+}
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,9 +166,15 @@ export default function MizanPage() {
     refetchInterval: 5000,
   });
 
-  // Aktif: URL'deki id varsa onu getir, yoksa en son import
+  // Aktif: URL'deki id varsa onu getir, yoksa secili donem/tip ile eslesen en son import
+  const selectedDonem = toDonem(year, month, donemTipi);
+  const selectedDonemTipi = normalizeDonemTipi(selectedDonem, donemTipi);
   const effectiveId = viewId ||
-    mizanList.find((m) => m.taxpayerId === taxpayerId && m.donem === toDonem(year, month, donemTipi))?.id ||
+    mizanList.find((m) =>
+      m.taxpayerId === taxpayerId &&
+      m.donem === selectedDonem &&
+      normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
+    )?.id ||
     (mizanList[0]?.id ?? null);
 
   const { data: mizan } = useQuery<any>({
@@ -1071,6 +1124,12 @@ export default function MizanPage() {
             mukellefAdi={selectedTp ? taxpayerName(selectedTp) : (mizan?.taxpayer ? taxpayerName(mizan.taxpayer) : '—')}
             donem={mizan?.donem || toDonem(year, month, donemTipi)}
             donemTipi={mizan?.donemTipi || donemTipi}
+            toplamlar={{
+              borcToplami: mizan?.toplamlar?.borcToplami ?? mizan?.toplamBorc,
+              alacakToplami: mizan?.toplamlar?.alacakToplami ?? mizan?.toplamAlacak,
+              borcBakiye: mizan?.toplamlar?.borcBakiye ?? mizan?.toplamBorcBakiye,
+              alacakBakiye: mizan?.toplamlar?.alacakBakiye ?? mizan?.toplamAlacakBakiye,
+            }}
           />
         </div>
       )}
@@ -1111,8 +1170,8 @@ export default function MizanPage() {
                       {m.locked && <Lock size={11} style={{ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />}
                       {m.taxpayer ? taxpayerName(m.taxpayer) : '—'}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[12px]">{m.donem}</td>
-                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{DONEM_TIPLERI.find((d) => d.value === m.donemTipi)?.label || m.donemTipi}</td>
+                    <td className="px-4 py-3 text-[12px]">{formatDonemLabel(m.donem, m.donemTipi)}</td>
+                    <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{formatDonemTipiLabel(m.donemTipi, m.donem)}</td>
                     <td className="px-4 py-3 text-center font-mono">{m._count?.hesaplar ?? 0}</td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-[10.5px] font-bold px-2 py-0.5 rounded" style={{ background: (m._count?.anomaliler ?? 0) > 0 ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)', color: (m._count?.anomaliler ?? 0) > 0 ? '#f59e0b' : '#22c55e' }}>
@@ -1212,28 +1271,6 @@ function toDonem(year: number, month: string, donemTipi: string): string {
   return `${year}-${month}`;
 }
 
-// Dönem string'inden tarih aralığı (görüntü için)
-function donemToDateRange(donem: string, donemTipi: string): { baslangic: string; bitis: string } {
-  const m = donem.match(/^(\d{4})-(.+)$/);
-  if (!m) return { baslangic: '', bitis: '' };
-  const year = +m[1];
-  const part = m[2];
-  if (donemTipi === 'YILLIK' || part === 'YILLIK') {
-    return { baslangic: `01/01/${year}`, bitis: `31/12/${year}` };
-  }
-  if (part.startsWith('Q')) {
-    const q = +part.slice(1);
-    const start = (q - 1) * 3;
-    const end = q * 3;
-    const lastDays = [31, 31, 30, 31];
-    return { baslangic: `01/${String(start + 1).padStart(2, '0')}/${year}`, bitis: `${lastDays[q - 1]}/${String(end).padStart(2, '0')}/${year}` };
-  }
-  // AYLIK: "2026-03"
-  const month = +part;
-  const last = new Date(year, month, 0).getDate();
-  return { baslangic: `01/${String(month).padStart(2, '0')}/${year}`, bitis: `${last}/${String(month).padStart(2, '0')}/${year}` };
-}
-
 // ===========================================================================
 // MizanTable — Excel benzeri görsel hiyerarşi + klavye navigasyonu
 // ===========================================================================
@@ -1242,18 +1279,29 @@ function MizanTable({
   mukellefAdi,
   donem,
   donemTipi,
+  toplamlar,
 }: {
   hesaplar: any[];
   mukellefAdi: string;
   donem: string;
   donemTipi: string;
+  toplamlar?: Partial<MizanTotals> | null;
 }) {
-  const dateRange = donemToDateRange(donem, donemTipi);
+  const dateRange = getDonemDateRange(donem, donemTipi);
   const [focusCell, setFocusCell] = useState<{ row: number; col: number } | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   const COLS = 6;
   const ROWS = hesaplar.length;
+  const tableTotals = useMemo(() => {
+    const computed = calculateMizanTotals(hesaplar);
+    return {
+      borcToplami: toplamlar?.borcToplami != null ? toMizanAmount(toplamlar.borcToplami) : computed.borcToplami,
+      alacakToplami: toplamlar?.alacakToplami != null ? toMizanAmount(toplamlar.alacakToplami) : computed.alacakToplami,
+      borcBakiye: toplamlar?.borcBakiye != null ? toMizanAmount(toplamlar.borcBakiye) : computed.borcBakiye,
+      alacakBakiye: toplamlar?.alacakBakiye != null ? toMizanAmount(toplamlar.alacakBakiye) : computed.alacakBakiye,
+    };
+  }, [hesaplar, toplamlar]);
 
   // Klavye navigasyonu (Excel-like)
   useEffect(() => {
@@ -1443,6 +1491,54 @@ function MizanTable({
               );
             })}
           </tbody>
+          <tfoot>
+            <tr style={{ background: 'linear-gradient(180deg, rgba(212,184,118,0.20), rgba(212,184,118,0.13))' }}>
+              <td
+                colSpan={2}
+                className="px-3 py-3 text-left font-bold"
+                style={{
+                  color: TOTAL_AMOUNT_COLOR,
+                  borderTop: '2px solid rgba(212,184,118,0.72)',
+                  borderRight: '1px solid rgba(212,184,118,0.36)',
+                  fontSize: 13,
+                  letterSpacing: 0,
+                  position: 'sticky',
+                  bottom: 0,
+                  zIndex: 1,
+                  background: 'rgba(36,31,20,0.96)',
+                }}
+              >
+                ALT TOPLAM
+              </td>
+              {[
+                tableTotals.borcToplami,
+                tableTotals.alacakToplami,
+                tableTotals.borcBakiye,
+                tableTotals.alacakBakiye,
+              ].map((amount, idx) => (
+                <td
+                  key={idx}
+                  className="px-3 py-3 text-right font-mono"
+                  style={{
+                    color: TOTAL_AMOUNT_COLOR,
+                    borderTop: '2px solid rgba(212,184,118,0.72)',
+                    borderRight: idx < 3 ? '1px solid rgba(212,184,118,0.36)' : 'none',
+                    fontFamily: FINANCIAL_FONT,
+                    fontSize: FINANCIAL_AMOUNT_SIZE,
+                    fontWeight: FINANCIAL_AMOUNT_STRONG_WEIGHT,
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                    position: 'sticky',
+                    bottom: 0,
+                    zIndex: 1,
+                    background: 'rgba(36,31,20,0.96)',
+                  }}
+                >
+                  {fmtTRY(amount)}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
         </table>
       </div>
 

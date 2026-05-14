@@ -63,7 +63,7 @@ const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 const HEADLESS = cfg.worker?.headless !== false;
 const JOB_TYPES = new Set(cfg.worker?.jobTypes || ['ACCOUNT_PLAN', 'MIZAN', 'MUAVIN']);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.0.3';
+const LOCAL_AGENT_VERSION = 'local-1.0.6';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -76,6 +76,7 @@ const configuredKeepAliveSeconds = Number(cfg.worker?.browserKeepAliveSeconds ||
 const BROWSER_KEEPALIVE_INTERVAL = configuredKeepAliveSeconds > 0
   ? configuredKeepAliveSeconds * 1000
   : Math.max(60_000, Math.min(10 * 60 * 1000, BROWSER_IDLE_TTL / 4));
+const nativeBridgePages = new WeakSet();
 
 // --------- Logger ---------
 const log = {
@@ -165,8 +166,24 @@ async function logJob(jobId, line) {
 async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
   const started = Date.now();
   let lastStatus = '';
+  let lastPollError = '';
+  let pollErrorCount = 0;
   while (Date.now() - started < timeoutMs) {
-    const { data } = await api.get(`/agent/luca/jobs/${jobId}/status`);
+    let data = null;
+    try {
+      const res = await api.get(`/agent/luca/jobs/${jobId}/status`);
+      data = res.data;
+      pollErrorCount = 0;
+      lastPollError = '';
+    } catch (err) {
+      pollErrorCount++;
+      lastPollError = err?.message || String(err);
+      if (pollErrorCount === 1 || pollErrorCount % 10 === 0) {
+        log.warn(`Job status poll gecici hata (${jobId.slice(0, 8)}): ${lastPollError}`);
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+      continue;
+    }
     const status = data?.status || '';
     if (status && status !== lastStatus) {
       log.info(`Job durum: ${jobId.slice(0, 8)} -> ${status}`);
@@ -175,7 +192,7 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
     await new Promise((r) => setTimeout(r, 3000));
   }
-  throw new Error(`Job zaman aşımı: ${Math.round(timeoutMs / 1000)}sn`);
+  throw new Error(`Job zaman aşımı: ${Math.round(timeoutMs / 1000)}sn${lastPollError ? ` (son poll hata: ${lastPollError})` : ''}`);
 }
 
 async function uploadAccountPlan(buffer, mukellefId, jobId) {
@@ -197,6 +214,7 @@ async function uploadMizan(buffer, mukellefId, donem, jobId) {
 // --------- Luca Playwright login + scrape ---------
 const LUCA_URLS = {
   login: process.env.LUCA_LOGIN_URL || 'https://agiris.luca.com.tr/LUCASSO/giris.erp',
+  main: process.env.LUCA_MAIN_URL || 'https://agiris.luca.com.tr/LUCASSO/main.erp',
 };
 
 let browserSession = null;
@@ -313,9 +331,145 @@ async function loadMorenRuntimeCode() {
   return String(runtimeResponse.data || '');
 }
 
+function extractMorenRuntimeVersion(runtimeCode) {
+  const m = String(runtimeCode || '').match(/AGENT_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  return m ? m[1] : null;
+}
+
+function normalizeText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u0131/g, 'i')
+    .replace(/\u0130/g, 'i')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('tr-TR');
+}
+
+async function nativeClickText(page, payload = {}) {
+  const text = String(payload?.text || '').trim();
+  if (!text) return { ok: false, reason: 'text boş' };
+  const exact = !!payload?.exact;
+  const hoverOnly = !!payload?.hoverOnly;
+  const timeoutMs = Number(payload?.timeoutMs || 8000);
+  const deadline = Date.now() + Math.max(1000, timeoutMs);
+  const target = normalizeText(text);
+
+  const findInFrame = async (frame, allowHidden = false) => {
+    const handle = await frame.evaluateHandle(
+      ({ target, exact, allowHidden }) => {
+        const norm = (s) => String(s || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\u0131/g, 'i')
+          .replace(/\u0130/g, 'i')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLocaleLowerCase('tr-TR');
+        const isActionable = (node, includeCursor = false) => {
+          if (!node) return false;
+          const tag = String(node.tagName || '').toUpperCase();
+          const style = String(node.getAttribute?.('style') || '').toLowerCase();
+          return tag === 'A' || tag === 'BUTTON' || tag === 'INPUT' ||
+            !!node.getAttribute?.('onclick') || !!node.getAttribute?.('href') ||
+            node.getAttribute?.('role') === 'button' || (includeCursor && style.includes('cursor'));
+        };
+        const clickable = (el) => {
+          try {
+            const child = el.querySelector?.('a[href],a[onclick],[onclick],[href],[role="button"],button,input[type="button"],input[type="submit"]');
+            if (child) return child;
+          } catch {}
+          let cur = el;
+          for (let i = 0; i < 6 && cur; i++, cur = cur.parentElement) {
+            if (isActionable(cur, i > 2)) return cur;
+          }
+          return el;
+        };
+        const visible = (el) => {
+          try {
+            const r = el.getBoundingClientRect();
+            const st = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+          } catch {
+            return true;
+          }
+        };
+        const candidates = [];
+        for (const el of document.querySelectorAll('*')) {
+          const tag = String(el.tagName || '').toUpperCase();
+          if (/^(HTML|HEAD|BODY|SCRIPT|STYLE|META|LINK|TITLE)$/.test(tag)) continue;
+          if (!allowHidden && !visible(el)) continue;
+          const own = norm(el.textContent || el.value || el.getAttribute?.('title') || '');
+          if (!own) continue;
+          if (!exact && own.length > target.length * 5 + 20) continue;
+          const ok = exact ? own === target : (own === target || own.includes(target));
+          if (!ok) continue;
+          const score = (el.children?.length ? 0 : 10) + (isActionable(el, true) ? 5 : 0) - Math.max(0, own.length - target.length);
+          candidates.push({ el, score });
+        }
+        candidates.sort((a, b) => b.score - a.score);
+        return candidates[0]?.el ? clickable(candidates[0].el) : null;
+      },
+      { target, exact, allowHidden },
+    ).catch(() => null);
+    const element = handle?.asElement?.();
+    if (!element) {
+      await handle?.dispose?.().catch(() => {});
+      return null;
+    }
+    return { element, handle };
+  };
+
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      for (const allowHidden of [false, true]) {
+        const found = await findInFrame(frame, allowHidden);
+        if (!found) continue;
+        const { element, handle } = found;
+        try {
+          await element.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+          await element.hover({ timeout: 2500, force: allowHidden }).catch(() => {});
+          if (!hoverOnly) {
+            await element.click({ timeout: 3000, force: allowHidden }).catch(async () => {
+              await element.dispatchEvent('click').catch(() => {});
+            });
+          }
+          await handle.dispose().catch(() => {});
+          return { ok: true, text, frame: frame.name() || frame.url().slice(0, 80), allowHidden, hoverOnly };
+        } catch (e) {
+          await handle.dispose().catch(() => {});
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return { ok: false, reason: `"${text}" bulunamadı`, text };
+}
+
+async function installNativeClickBridge(page) {
+  if (nativeBridgePages.has(page)) return;
+  nativeBridgePages.add(page);
+  await page.exposeBinding('__morenNativeClickText', async (_source, payload) => {
+    return nativeClickText(page, payload);
+  }).catch((e) => {
+    if (!/has been already registered|already registered/i.test(String(e?.message || e))) {
+      throw e;
+    }
+  });
+}
+
 async function installMorenRuntimeBridge(context, page) {
-  if (browserSession?.context === context && browserSession.runtimeInstalled) return;
   const runtimeCode = await loadMorenRuntimeCode();
+  const runtimeVersion = extractMorenRuntimeVersion(runtimeCode);
+  if (
+    browserSession?.context === context &&
+    browserSession.runtimeInstalled &&
+    browserSession.runtimeVersion === runtimeVersion
+  ) {
+    return browserSession.runtimeVersion || null;
+  }
+  await installNativeClickBridge(page);
   const bridgeScript = ({ token, deviceId, credential }) => {
     const installIdentity = () => {
       try { document.documentElement.dataset.morenAgentToken = token; } catch {}
@@ -413,7 +567,20 @@ async function installMorenRuntimeBridge(context, page) {
     bridgeArg,
   );
   await page.addInitScript({ content: runtimeCode });
-  if (browserSession?.context === context) browserSession.runtimeInstalled = true;
+  await page.evaluate(bridgeScript, bridgeArg).catch(() => {});
+  await page.addScriptTag({ content: runtimeCode }).catch(async () => {
+    await page.evaluate((code) => {
+      const script = document.createElement('script');
+      script.textContent = code;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    }, runtimeCode).catch(() => {});
+  });
+  if (browserSession?.context === context) {
+    browserSession.runtimeInstalled = true;
+    browserSession.runtimeVersion = runtimeVersion;
+  }
+  return runtimeVersion;
 }
 
 async function runJobWithMorenRuntime(job) {
@@ -427,14 +594,30 @@ async function runJobWithMorenRuntime(job) {
     });
     page.on('pageerror', (err) => log.warn(`Browser pageerror: ${err.message}`));
     page.on('dialog', async (dialog) => {
-      log.warn(`Browser dialog: ${dialog.message()}`);
+      const msg = dialog.message();
+      log.warn(`Browser dialog: ${msg}`);
+      await logJob(jobId, `Luca dialog uyarisi: ${msg}`).catch(() => {});
       await dialog.dismiss().catch(() => {});
     });
 
-    await installMorenRuntimeBridge(context, page);
+    const expectedRuntimeVersion = await installMorenRuntimeBridge(context, page);
     await logJob(jobId, `Local Node ajan işi aldı: ${WORKER_NAME} (${DEVICE_ID})`);
-    const currentUrl = page.url();
-    if (/^https:\/\/(agiris|auygs)\.luca\.com\.tr\//i.test(currentUrl || '')) {
+    let currentUrl = page.url();
+    if (/^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '')) {
+      await logJob(jobId, 'Luca login sayfasi acik; once kayitli oturum main.erp ile kontrol ediliyor.');
+      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await page.waitForTimeout(4500).catch(() => {});
+      currentUrl = page.url();
+    }
+    if (/^https:\/\/auygs\.luca\.com\.tr\/Luca\/giris\.do/i.test(currentUrl || '')) {
+      await logJob(jobId, 'Klasik Luca giris.do bos gorundu; arka plan oturumu SSO main.erp uzerinden toparlaniyor.');
+      await page.goto(LUCA_URLS.main, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      await page.waitForTimeout(4500).catch(() => {});
+      currentUrl = page.url();
+    }
+    const isLucaLoginPage = /^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '');
+    const isLucaPage = /^https:\/\/(agiris|auygs)\.luca\.com\.tr\//i.test(currentUrl || '');
+    if (isLucaPage) {
       // Mevcut sayfada runtime YÜKLÜ MÜ kontrol et. Persistent context'te
       // sayfa eski page load'undan kalmış olabilir ve init script o load'a
       // yetişmemiş olabilir — bu durumda job tetiklenmez ve pending'de kalır.
@@ -443,9 +626,17 @@ async function runJobWithMorenRuntime(job) {
       const hasRuntime = await page
         .evaluate(() => typeof window.__morenAgent !== 'undefined' && !!window.__morenAgent.running)
         .catch(() => false);
-      if (!hasRuntime) {
-        await logJob(jobId, 'Mevcut Luca sayfasında runtime yok — reload ediliyor.');
+      const pageRuntimeVersion = await page
+        .evaluate(() => window.__morenAgent?.version || null)
+        .catch(() => null);
+      if (!hasRuntime || (expectedRuntimeVersion && pageRuntimeVersion && pageRuntimeVersion !== expectedRuntimeVersion)) {
+        const reloadReason = !hasRuntime
+          ? 'runtime yok'
+          : `runtime versiyonu eski (${pageRuntimeVersion} -> ${expectedRuntimeVersion})`;
+        await logJob(jobId, `Mevcut Luca sayfasinda ${reloadReason} - reload ediliyor.`);
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+      } else if (isLucaLoginPage) {
+        await logJob(jobId, 'Luca login sayfasi acik; otomatik giris denenecek, gerekirse guvenlik kodu istenecek.');
       } else {
         await logJob(jobId, `Mevcut arka plan Luca oturumu kullanılacak: ${currentUrl.slice(0, 90)}`);
       }

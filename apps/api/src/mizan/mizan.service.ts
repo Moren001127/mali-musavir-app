@@ -1034,7 +1034,7 @@ export class MizanService {
     });
     m.taxpayer = tp || null;
 
-    // Toplam borç/alacak hesapla
+    // Toplam borç/alacak ve bakiye sütunlarını hesapla
     // Türk muhasebe mantığı: mizan hiyerarşi üretir (1 = sınıf → 10 = grup →
     // 100 = ana hesap → 100.01 = alt → 100.01.01 = detay). Toplam = en üst
     // seviyenin toplamı (çakışmayı önler).
@@ -1044,30 +1044,16 @@ export class MizanService {
     //   3) Yoksa üç basamaklı ana hesaplar (100, 120, 320...)
     //   4) Yoksa en düşük seviyeli kayıtlar (fallback)
     const hesaplar = m.hesaplar as any[];
-    const sumOver = (list: any[]) => ({
-      borc: list.reduce((s, h) => s + Number(h.borcToplami), 0),
-      alacak: list.reduce((s, h) => s + Number(h.alacakToplami), 0),
-    });
-    let toplamBorc = 0;
-    let toplamAlacak = 0;
-    const siniflar  = hesaplar.filter((h) => /^[1-9]$/.test(h.hesapKodu));
-    const gruplar   = hesaplar.filter((h) => /^\d{2}$/.test(h.hesapKodu));
-    const anaHes    = hesaplar.filter((h) => /^\d{3}$/.test(h.hesapKodu));
-    const hasTutar  = (list: any[]) =>
-      list.some((h) => Number(h.borcToplami) > 0 || Number(h.alacakToplami) > 0);
-    if (siniflar.length > 0 && hasTutar(siniflar)) {
-      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(siniflar));
-    } else if (gruplar.length > 0 && hasTutar(gruplar)) {
-      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(gruplar));
-    } else if (anaHes.length > 0 && hasTutar(anaHes)) {
-      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(anaHes));
-    } else if (hesaplar.length > 0) {
-      const minSeviye = Math.min(...hesaplar.map((h) => h.seviye ?? 0));
-      const leaves = hesaplar.filter((h) => (h.seviye ?? 0) === minSeviye);
-      ({ borc: toplamBorc, alacak: toplamAlacak } = sumOver(leaves));
-    }
+    const toplamlar = this.computeMizanTotals(hesaplar);
 
-    return { ...m, toplamBorc, toplamAlacak };
+    return {
+      ...m,
+      toplamBorc: toplamlar.borcToplami,
+      toplamAlacak: toplamlar.alacakToplami,
+      toplamBorcBakiye: toplamlar.borcBakiye,
+      toplamAlacakBakiye: toplamlar.alacakBakiye,
+      toplamlar,
+    };
   }
 
   async exportToExcel(id: string, tenantId: string): Promise<Buffer> {
@@ -1150,7 +1136,14 @@ export class MizanService {
     }
 
     const totalRow = ws.getRow(rowNo + 1);
-    totalRow.values = ['', 'TOPLAM', Number(m.toplamBorc) || 0, Number(m.toplamAlacak) || 0, '', ''];
+    totalRow.values = [
+      '',
+      'TOPLAM',
+      Number(m.toplamBorc) || 0,
+      Number(m.toplamAlacak) || 0,
+      Number(m.toplamBorcBakiye ?? m.toplamlar?.borcBakiye) || 0,
+      Number(m.toplamAlacakBakiye ?? m.toplamlar?.alacakBakiye) || 0,
+    ];
     totalRow.eachCell((cell: any, col: number) => {
       cell.font = { bold: true, color: { argb: 'FF111827' } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1C2' } };
@@ -1207,6 +1200,45 @@ export class MizanService {
   }
 
   // ==================== YARDIMCI (SERVİS İÇİ) ====================
+
+  private mizanAmount(value: any): number {
+    const n = Number(value ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private computeMizanTotals(hesaplar: any[]) {
+    const zero = { borcToplami: 0, alacakToplami: 0, borcBakiye: 0, alacakBakiye: 0 };
+    const sumOver = (list: any[]) =>
+      list.reduce(
+        (acc, h) => ({
+          borcToplami: acc.borcToplami + this.mizanAmount(h?.borcToplami),
+          alacakToplami: acc.alacakToplami + this.mizanAmount(h?.alacakToplami),
+          borcBakiye: acc.borcBakiye + this.mizanAmount(h?.borcBakiye),
+          alacakBakiye: acc.alacakBakiye + this.mizanAmount(h?.alacakBakiye),
+        }),
+        zero,
+      );
+    const hasTutar = (list: any[]) =>
+      list.some(
+        (h) =>
+          this.mizanAmount(h?.borcToplami) > 0 ||
+          this.mizanAmount(h?.alacakToplami) > 0 ||
+          this.mizanAmount(h?.borcBakiye) > 0 ||
+          this.mizanAmount(h?.alacakBakiye) > 0,
+      );
+    const code = (h: any) => String(h?.hesapKodu || '').trim();
+    const siniflar = hesaplar.filter((h) => /^[1-9]$/.test(code(h)));
+    const gruplar = hesaplar.filter((h) => /^\d{2}$/.test(code(h)));
+    const anaHesaplar = hesaplar.filter((h) => /^\d{3}$/.test(code(h)));
+
+    if (siniflar.length > 0 && hasTutar(siniflar)) return sumOver(siniflar);
+    if (gruplar.length > 0 && hasTutar(gruplar)) return sumOver(gruplar);
+    if (anaHesaplar.length > 0 && hasTutar(anaHesaplar)) return sumOver(anaHesaplar);
+    if (hesaplar.length === 0) return zero;
+
+    const minSeviye = Math.min(...hesaplar.map((h) => Number(h?.seviye ?? 0)));
+    return sumOver(hesaplar.filter((h) => Number(h?.seviye ?? 0) === minSeviye));
+  }
 
   /** Gelir Tablosu ve Bilanço servisleri bu metotla mizanı hesap haritası olarak alır */
   async getHesaplarMap(mizanId: string): Promise<Map<string, ParsedMizanRow>> {

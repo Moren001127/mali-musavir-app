@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, gelirTablosuApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
+import { formatDonemLabel, formatDonemRangeLabel, formatDonemTipiLabel } from '@/lib/period';
 import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, Loader2,
@@ -521,7 +522,7 @@ export default function GelirTablosuPage() {
               </option>
               {mizanList.map((m: any) => (
                 <option key={m.id} value={m.id} style={{ background: '#0f0d0b' }}>
-                  {m.donem} · {m.donemTipi}
+                  {formatDonemRangeLabel(m.donem, m.donemTipi)}
                 </option>
               ))}
             </select>
@@ -1422,7 +1423,7 @@ export default function GelirTablosuPage() {
             <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
             Finansal Oranlar
             <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
-              {latestQuarter.donem}
+              {formatDonemLabel(latestQuarter.donem, latestQuarter.donemTipi)}
             </span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -1481,9 +1482,9 @@ export default function GelirTablosuPage() {
                       {g.locked && <Lock size={11} style={{ color: '#22c55e', display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />}
                       {g.taxpayer ? taxpayerName(g.taxpayer) : '—'}
                     </td>
-                    <td className="px-4 py-3 font-mono">{g.donem}</td>
+                    <td className="px-4 py-3">{formatDonemLabel(g.donem, g.donemTipi)}</td>
                     <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
-                      {g.donemTipi}
+                      {formatDonemTipiLabel(g.donemTipi, g.donem)}
                       {g.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>KESİN</span>}
                     </td>
                     <td className="px-4 py-3 text-right font-mono" style={{ color: GOLD, fontWeight: 600 }}>{fmtTRY(g.donemNetKari)}</td>

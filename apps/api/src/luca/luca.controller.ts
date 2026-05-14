@@ -61,6 +61,20 @@ export class LucaController {
     private readonly faturaMuhasebelestirme: FaturaMuhasebelestirmeService,
   ) {}
 
+  private normalizeMizanDonemTipi(donem?: string | null, donemTipi?: string | null) {
+    const given = String(donemTipi || '').trim().toUpperCase();
+    if (/^GECICI_Q[1-4]$/.test(given)) return given;
+    if (given === 'AY' || given === 'AYLIK' || given === 'MONTH') return 'AYLIK';
+    if (given === 'YILLIK' || given === 'YEAR' || given === 'ANNUAL') return 'YILLIK';
+
+    const s = String(donem || '').trim().toUpperCase();
+    const q = s.match(/(?:^|[-_/])Q([1-4])$/);
+    if (q) return `GECICI_Q${q[1]}`;
+    if (/-YILLIK$/.test(s) || /^\d{4}$/.test(s)) return 'YILLIK';
+    if (/^\d{4}[-_/]\d{1,2}$/.test(s)) return 'AYLIK';
+    return 'AYLIK';
+  }
+
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
   // Extension'daki agent.js sadece küçük bir loader. Asıl kod burada.
   // Cache'lenmemesi için Cache-Control: no-store. Sayfa yüklenince yeni kod gelir.
@@ -449,7 +463,7 @@ export class LucaController {
         tenantId,
         taxpayerId: mukellefId,
         donem,
-        donemTipi: (donemTipi as any) || 'AYLIK',
+        donemTipi: this.normalizeMizanDonemTipi(donem, donemTipi) as any,
         buffer: file.buffer,
         createdBy: 'extension',
       });

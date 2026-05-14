@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.24';
+  const AGENT_VERSION = '1.37.48';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -24,6 +24,7 @@
     delete window.__morenAgent;
   }
   window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION, instanceId: AGENT_INSTANCE_ID };
+  window.__morenAutoAgent = window.__morenAgent;
 
   // Loud console banner — F12 açtığında hangi sürümün yüklü olduğunu net görsün
   console.log(
@@ -33,6 +34,7 @@
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   const LUCA_LOGIN_ENTRY_URL = 'https://agiris.luca.com.tr/LUCASSO/giris.erp';
+  const LUCA_SSO_MAIN_URL = 'https://agiris.luca.com.tr/LUCASSO/main.erp';
   const LUCA_CLASSIC_URL = 'https://auygs.luca.com.tr/Luca/luca.do';
   let TOKEN = (document.documentElement?.dataset?.morenAgentToken || '').trim()
     || localStorage.getItem('moren_agent_token')
@@ -513,6 +515,89 @@
     scored.sort((a, b) => b.score - a.score);
     return scored[0] || null;
   }
+  function classicEntryCandidateHint(limit = 6) {
+    const norm = (value) => normalizeLucaText(value).replace(/\s+/g, ' ').trim();
+    try {
+      return Array.from(document.querySelectorAll('a, button, input, [onclick], [role="button"], img, area, div, li, figure'))
+        .map((el) => {
+          const imgs = Array.from(el.querySelectorAll?.('img') || [])
+            .map((img) => `${img.alt || ''} ${img.title || ''} ${img.src || ''}`)
+            .join(' ');
+          const text = norm([
+            el.textContent,
+            el.value,
+            el.title,
+            el.alt,
+            el.getAttribute?.('aria-label'),
+            imgs,
+          ].filter(Boolean).join(' '));
+          const href = String(el.href || el.getAttribute?.('href') || '');
+          const onclick = String(el.getAttribute?.('onclick') || '');
+          const hay = norm(`${text} ${href} ${onclick}`);
+          let score = 0;
+          if (/formtarget|lucammp|mmp20|auygs|luca\.do/.test(hay)) score += 20;
+          if (/mali musavir|mali musavir paketi|muhasebe/.test(hay)) score += 10;
+          if (/\b2[\.\s]?0\b|v2[\.\s]?0|mobil|mobile|arsiv|arsiv|ofis|office|beta|yeni surum/.test(hay)) score -= 20;
+          return { score, text: text.slice(0, 70), href: href.slice(0, 80), onclick: onclick.slice(0, 90) };
+        })
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((x) => `${x.text || x.href || x.onclick || '?'}${x.onclick ? ` | ${x.onclick}` : ''}`)
+        .join(' || ');
+    } catch {
+      return '';
+    }
+  }
+  function tryOpenClassicLucaKnownAction() {
+    const norm = (value) => normalizeLucaText(value).replace(/\s+/g, ' ').trim();
+    const preferredActions = ['formTarget', 'lucaMmp20'];
+    const candidates = Array.from(document.querySelectorAll(
+      '[onclick], a, button, input[type="button"], input[type="submit"], [role="button"], img, area'
+    ));
+    for (const el of candidates) {
+      if (!visible(el)) continue;
+      const imgs = Array.from(el.querySelectorAll?.('img') || [])
+        .map((img) => `${img.alt || ''} ${img.title || ''} ${img.src || ''}`)
+        .join(' ');
+      const text = norm([
+        el.textContent,
+        el.value,
+        el.title,
+        el.alt,
+        el.getAttribute?.('aria-label'),
+        imgs,
+      ].filter(Boolean).join(' '));
+      const href = String(el.href || el.getAttribute?.('href') || '');
+      const onclick = String(el.getAttribute?.('onclick') || '');
+      const hay = norm(`${text} ${href} ${onclick}`);
+      if (/\b2[\.\s]?0\b|v2[\.\s]?0|mobil|mobile|arsiv|arsiv|ofis|office|beta|yeni surum/.test(hay)) continue;
+      const explicitAction = preferredActions.find((action) => new RegExp(action, 'i').test(`${onclick} ${href} ${text}`));
+      const classicText = (/mali musavir|mali musavir paketi|muhasebe/.test(hay) && /luca|paket|giris|auygs|mmp/.test(hay));
+      const classicUrl = /auygs|luca\.do/.test(hay);
+      if (!classicText && !classicUrl && !(explicitAction && text)) continue;
+      try {
+        el.click();
+        return explicitAction ? `element:${explicitAction}` : `element:${(text || href || onclick).slice(0, 80)}`;
+      } catch {}
+    }
+    for (const action of preferredActions) {
+      const rx = new RegExp(`gonder\\s*\\(\\s*['"]${action}['"]`, 'i');
+      const el = candidates.find((node) => rx.test(String(node.getAttribute?.('onclick') || '')));
+      if (el) {
+        try { el.click(); return `onclick:${action}`; } catch {}
+      }
+    }
+    for (const action of preferredActions) {
+      try {
+        if (typeof window.gonder === 'function' && classicEntryCandidateHint(3)) {
+          window.gonder(action);
+          return `gonder:${action}`;
+        }
+      } catch {}
+    }
+    return '';
+  }
   async function openClassicLucaFromSsoMainForJobs(jobs, logPendingJob) {
     if (!isLucaSsoMainPage()) return false;
     const url = location.href.slice(0, 120);
@@ -522,14 +607,28 @@
     }
     if (!window.__morenLucaClassicRedirectAt || Date.now() - window.__morenLucaClassicRedirectAt > 15000) {
       window.__morenLucaClassicRedirectAt = Date.now();
-      const entry = findClassicLucaEntryElement();
-      if (entry?.el) {
-        for (const job of jobs) {
-          await logPendingJob(job, `Klasik Luca giris aksiyonu tiklaniyor: ${entry.text || entry.href || entry.onclick || 'entry'}`);
+      const started = Date.now();
+      while (Date.now() - started < 12000) {
+        const entry = findClassicLucaEntryElement();
+        if (entry?.el) {
+          for (const job of jobs) {
+            await logPendingJob(job, `Klasik Luca giris aksiyonu tiklaniyor: ${entry.text || entry.href || entry.onclick || 'entry'}`);
+          }
+          try { entry.el.click(); return true; } catch {}
         }
-        try { entry.el.click(); return true; } catch {}
+        const knownAction = tryOpenClassicLucaKnownAction();
+        if (knownAction) {
+          for (const job of jobs) {
+            await logPendingJob(job, `Klasik Luca bilinen ID/action ile aciliyor: ${knownAction}`);
+          }
+          return true;
+        }
+        await sleep(500);
       }
-      try { location.href = LUCA_CLASSIC_URL; } catch {}
+      const hint = classicEntryCandidateHint(5);
+      for (const job of jobs) {
+        await logPendingJob(job, `Klasik Luca SSO ana ekranda paket aksiyonu bulunamadi; bos luca.do URL'sine gidilmeyecek${hint ? `; adaylar: ${hint}` : ''}`);
+      }
     }
     return true;
   }
@@ -753,13 +852,41 @@
         for (const job of jobs) {
           await logPendingJob(job, `Klasik Luca URL acik ama frm4/SirketCombo henuz yuklenmedi; sayfa hazirlanıyor. URL=${url}`);
         }
-        if (/\/Luca\/ssoGiris\.do/i.test(location.pathname)) {
-          for (const job of jobs) {
-            await logPendingJob(job, 'Luca SSO ara sayfasi klasik ekrana donusmedi; luca.do deneniyor');
+        const path = String(location.pathname || '');
+        const bodyText = String(document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+        const isBlankClassicEntry =
+          /\/Luca\/giris\.do/i.test(path) ||
+          (/\/Luca\/(?:luca|giris)\.do/i.test(path) && bodyText.length < 30);
+        if (isBlankClassicEntry) {
+          if (!window.__morenClassicSsoReturnAt || Date.now() - window.__morenClassicSsoReturnAt > 15000) {
+            window.__morenClassicSsoReturnAt = Date.now();
+            for (const job of jobs) {
+              await logPendingJob(job, 'Klasik Luca giris.do bos kaldi; SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak');
+            }
+            try { location.href = LUCA_SSO_MAIN_URL; } catch {}
           }
-          try { location.href = LUCA_CLASSIC_URL; } catch {}
           return;
         }
+        if (/\/Luca\/ssoGiris\.do/i.test(location.pathname)) {
+          const now = Date.now();
+          if (!window.__morenSsoGirisStartedAt) window.__morenSsoGirisStartedAt = now;
+          if (now - window.__morenSsoGirisStartedAt < 30000) {
+            if (!window.__morenSsoGirisWaitLogAt || now - window.__morenSsoGirisWaitLogAt > 10000) {
+              window.__morenSsoGirisWaitLogAt = now;
+              for (const job of jobs) {
+                await logPendingJob(job, 'Luca SSO ara sayfasi bekleniyor; bos luca.do denenmeyecek');
+              }
+            }
+            return;
+          }
+          window.__morenSsoGirisStartedAt = 0;
+          for (const job of jobs) {
+            await logPendingJob(job, 'Luca SSO ara sayfasi klasik ekrana donusmedi; SSO main.erp ekranina donuluyor');
+          }
+          try { location.href = LUCA_SSO_MAIN_URL; } catch {}
+          return;
+        }
+        window.__morenSsoGirisStartedAt = 0;
         if (!window.__morenClassicReloadAt || Date.now() - window.__morenClassicReloadAt > 30000) {
           window.__morenClassicReloadAt = Date.now();
           for (const job of jobs) {
@@ -990,6 +1117,39 @@
           await throwIfCancelled();
           if (!blob) throw new Error(isZipJob ? 'ZIP yakalanamadı' : 'Excel yakalanamadı');
           await log(`📥 ${isZipJob ? 'ZIP' : 'Excel'} indirildi (${Math.round(blob.size / 1024)} KB)`);
+          if (!isZipJob) {
+            try {
+              const withTimeout = (promise, ms) => Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+              ]);
+              const readBlobPart = (part, mode) => new Promise((resolve, reject) => {
+                try {
+                  const reader = new FileReader();
+                  const timer = setTimeout(() => {
+                    try { reader.abort(); } catch {}
+                    reject(new Error('timeout'));
+                  }, 2000);
+                  reader.onload = () => { clearTimeout(timer); resolve(reader.result); };
+                  reader.onerror = () => { clearTimeout(timer); reject(reader.error || new Error('read error')); };
+                  if (mode === 'text') reader.readAsText(part);
+                  else reader.readAsArrayBuffer(part);
+                } catch (e) {
+                  reject(e);
+                }
+              });
+              const bytes = Array.from(new Uint8Array(await withTimeout(readBlobPart(blob.slice(0, 16), 'buffer'), 2500)))
+                .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
+                .join(' ');
+              const head = String(await withTimeout(readBlobPart(blob.slice(0, 160), 'text'), 2500))
+                .replace(/\s+/g, ' ')
+                .replace(/[^\x20-\x7E\u00C0-\u017F]/g, '?')
+                .slice(0, 140);
+              await log(`🧾 Dosya imzasi: type=${blob.type || '-'} magic=${bytes} head="${head}"`);
+            } catch (e) {
+              await log(`⚠ Dosya imzasi okunamadi: ${String(e?.message || e).slice(0, 120)}`);
+            }
+          }
 
           // ─── Tipine göre upload endpoint ───
           const fd = new FormData();
@@ -1001,7 +1161,7 @@
             const params = new URLSearchParams({
               mukellefId: String(job.mukellefId || ''),
               donem: String(job.donem || ''),
-              donemTipi: String(job.donemTipi || 'AY'),
+              donemTipi: String(inferDonemTipi(job.donem, job.donemTipi)),
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-mizan?${params.toString()}`;
@@ -1050,11 +1210,20 @@
             uploadUrl = `${API}/agent/luca/runner/upload-kdv?${params.toString()}`;
           }
 
-          const uploadRes = await fetch(uploadUrl, {
-            method: 'POST',
-            headers: { 'X-Agent-Token': TOKEN },
-            body: fd,
-          });
+          await log(`⬆️ Upload basliyor: ${uploadUrl.split('?')[0].replace(API, '')}`);
+          const uploadController = new AbortController();
+          const uploadTimeout = setTimeout(() => uploadController.abort(), 120000);
+          let uploadRes;
+          try {
+            uploadRes = await fetch(uploadUrl, {
+              method: 'POST',
+              headers: { 'X-Agent-Token': TOKEN },
+              body: fd,
+              signal: uploadController.signal,
+            });
+          } finally {
+            clearTimeout(uploadTimeout);
+          }
           if (!uploadRes.ok) {
             const errText = await uploadRes.text().catch(() => '');
             throw new Error(`Upload HTTP ${uploadRes.status}: ${errText.slice(0, 700)}`);
@@ -1684,7 +1853,6 @@
         const html = foldEbelgeText(doc?.documentElement?.innerHTML || '');
         const hasExactButton = !!doc?.getElementById('faturalari-getir-btn');
         const hasDateInputs = !!(doc?.getElementById('tarih1') || doc?.getElementById('tarih2'));
-        const hasScreenFunction = typeof win?.gonder === 'function' || typeof win?.goster === 'function';
         const hasListControls = !!(
           doc?.getElementById('tum_belgeyi_sec_btn') ||
           doc?.querySelector?.('.sec') ||
@@ -1697,14 +1865,19 @@
         const looksLikeMenuShell = html.includes('loadmenu') &&
           !hasExactButton &&
           !hasDateInputs &&
-          !hasScreenFunction &&
           !hasListControls &&
           !html.includes('indir-window');
         if (looksLikeMenuShell) return false;
+        const looksLikeCustomerShell = (
+          html.includes('selectsirketaction') ||
+          html.includes('musteriform') ||
+          html.includes('vergi_no') ||
+          html.includes('tc_kimlik_no')
+        ) && !hasExactButton && !hasDateInputs && !hasListControls;
+        if (looksLikeCustomerShell) return false;
         return Boolean(
           hasExactButton ||
           hasDateInputs ||
-          hasScreenFunction ||
           hasListControls ||
           hasScreenMarkers
         );
@@ -1717,6 +1890,69 @@
       try {
         const exact = doc?.getElementById('faturalari-getir-btn');
         if (exact) return exact;
+        const describeActionElement = (el) => {
+          try {
+            return foldEbelgeText([
+              getElementText(el),
+              el?.id,
+              el?.name,
+              el?.title,
+              el?.className,
+              el?.value,
+              el?.alt,
+              el?.src,
+              el?.getAttribute?.('aria-label'),
+              el?.getAttribute?.('onclick'),
+              el?.getAttribute?.('href'),
+              Array.from(el?.querySelectorAll?.('img') || [])
+                .map((img) => [img.alt, img.title, img.src].filter(Boolean).join(' '))
+                .join(' '),
+            ].filter(Boolean).join(' '));
+          } catch {
+            return '';
+          }
+        };
+        const isRejectedAction = (el) => {
+          const hay = describeActionElement(el);
+          return /(?:^|\s)(?:iptal|vazgec|kapat|temizle|dur|durdur|stop|ma-stop|pause|bekle|loading)(?:\s|$)/i.test(hay) ||
+            hay.includes('zip-window') ||
+            hay.includes('secilenleri indir') ||
+            hay.includes('tumunu sec') ||
+            hay.includes('tümünü seç') ||
+            hay.includes('selectsirketaction') ||
+            hay.includes('basvurulogo') ||
+            hay.includes('basvuru logo') ||
+            hay.includes('logo.png');
+        };
+        const isActionish = (el) => {
+          try {
+            const tag = String(el.tagName || '').toLowerCase();
+            const type = String(el.type || '').toLowerCase();
+            return tag === 'button' ||
+              tag === 'a' ||
+              type === 'button' ||
+              type === 'submit' ||
+              type === 'image' ||
+              el.getAttribute('role') === 'button' ||
+              typeof el.onclick === 'function' ||
+              !!el.getAttribute('onclick') ||
+              !!el.getAttribute('href');
+          } catch {
+            return false;
+          }
+        };
+        const looksVisible = (el) => {
+          try {
+            const win = el.ownerDocument?.defaultView || window;
+            const style = win.getComputedStyle?.(el);
+            if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0)) return false;
+            const rect = el.getBoundingClientRect?.();
+            if (rect && rect.width === 0 && rect.height === 0) return false;
+            return true;
+          } catch {
+            return true;
+          }
+        };
         const candidates = Array.from(doc?.querySelectorAll([
           'button',
           'input[type=button]',
@@ -1737,33 +1973,28 @@
         ].join(',')) || []);
         const scored = candidates.map((el) => {
           const txt = getElementText(el);
+          const hay = describeActionElement(el);
           let score = 0;
-          if (txt.includes('faturalari getir') || txt.includes('faturalar getir')) score += 10;
-          if (txt.includes('belgeleri getir') || txt.includes('belge getir') || txt.includes('fatura getir')) score += 9;
-          if (txt.includes('getir')) score += 6;
-          if (txt.includes('sorgula') || txt.includes('sorgu')) score += 5;
-          if (txt.includes('listele') || txt.includes('liste')) score += 4;
-          if (txt.includes('ara')) score += 2;
-          if (txt.includes('iptal') || txt.includes('vazgec') || txt.includes('kapat') || txt.includes('temizle')) score -= 20;
-          return { el, score, txt };
+          if (isRejectedAction(el)) score -= 100;
+          if (!isActionish(el)) score -= 25;
+          if (!looksVisible(el)) score -= 10;
+          if (hay.includes('faturalari-getir-btn') || hay.includes('faturalari_getir')) score += 30;
+          if (hay.includes('faturalari getir') || hay.includes('faturalar getir')) score += 20;
+          if (hay.includes('belgeleri getir') || hay.includes('belge getir') || hay.includes('fatura getir')) score += 18;
+          if (/\bgetir\b/i.test(hay)) score += 10;
+          if (/\bsorgula\b|\bsorgu\b/i.test(hay)) score += 7;
+          if (/\blistele\b|\bliste\b/i.test(hay)) score += 5;
+          if (/^(?:ara|arama)$/i.test(txt.trim())) score += 3;
+          return { el, score, txt, hay };
         }).filter((x) => x.score > 0);
         scored.sort((a, b) => b.score - a.score);
         if (scored[0]) return scored[0].el;
 
         // Luca bazen modalda butonu metinsiz input/image olarak veriyor. Tarih
         // alanları olan dokümanda tek makul aksiyon varsa onu kullan.
-        const actionCandidates = candidates.filter((el) => {
-          const txt = getElementText(el);
-          if (txt.includes('iptal') || txt.includes('vazgec') || txt.includes('kapat') || txt.includes('temizle')) return false;
-          try {
-            const tag = String(el.tagName || '').toLowerCase();
-            const type = String(el.type || '').toLowerCase();
-            return tag === 'button' || tag === 'a' || type === 'button' || type === 'submit' || type === 'image' || typeof el.onclick === 'function' || el.getAttribute('onclick');
-          } catch {
-            return false;
-          }
-        });
-        if (actionCandidates.length === 1) return actionCandidates[0];
+        // Tek aksiyon fallback'i riskli: Luca bazen "Dur/stop" elemanini
+        // tek makul aksiyon gibi gosteriyor. Explicit getir/sorgu izi yoksa
+        // temiz hata verip yanlis elemana tiklamiyoruz.
         return null;
       } catch {
         return null;
@@ -2049,6 +2280,35 @@
         return out.slice(0, 12);
       };
 
+      const describeAnyEbelgeMenuHints = (limit = 35) => {
+        const out = [];
+        const seen = new Set();
+        for (const item of collectFrameDocItems()) {
+          let elements = [];
+          try { elements = Array.from(item.doc.querySelectorAll('a[href], area[href], [onclick], [role="button"], td, span, div, li')); } catch {}
+          for (const el of elements) {
+            const hay = getEbelgeCandidateText(el);
+            if (!hay) continue;
+            const code = extractII1aCodeFromText(hay);
+            const looksRelevant =
+              hay.includes('e-arsiv') ||
+              hay.includes('earsiv') ||
+              hay.includes('e-fatura') ||
+              hay.includes('efatura') ||
+              hay.includes('akilli entegrasyon') ||
+              hay.includes('akilli') ||
+              hay.includes('entegrasyon');
+            if (!looksRelevant) continue;
+            const key = `${item.label}|${code}|${hay.slice(0, 100)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(`${item.label}:${code || 'no-code'}:${hay.replace(/\s+/g, ' ').slice(0, 110)}`);
+            if (out.length >= limit) return out.join(' || ');
+          }
+        }
+        return out.join(' || ');
+      };
+
       const tryOpenByMenuCode = async (code, reason) => {
         const fakeEvent = {
           type: 'click', target: null, currentTarget: null, srcElement: null,
@@ -2147,6 +2407,8 @@
         const targets = findEbelgeMenuTargetCandidates();
         if (!targets.length) {
           await log(`ℹ ${menuLabel} icin gorunen Luca menu hedefi bulunamadi (${reason})`);
+          const menuHints = describeAnyEbelgeMenuHints(35);
+          if (menuHints) await log(`🔎 Luca e-belge menu ipuclari: ${menuHints}`);
           return false;
         }
         await log(`🧩 ${menuLabel} icin Luca hedef kesfi: ${targets.map((t) => `${t.code || 'no-code'}@${t.frame}:${t.text.slice(0, 42)}`).join(' | ')}`);
@@ -2168,7 +2430,97 @@
         return false;
       };
 
+      const tryOpenByQuickAccess = async (reason) => {
+        const looksRelevantLabel = (value) => {
+          const hay = foldEbelgeText(value);
+          return ebelgeTypeMatchesJobText(hay) && ebelgeSideMatchesJobText(hay);
+        };
+        const quickHints = [];
+        for (const item of collectFrameDocItems()) {
+          let selects = [];
+          try { selects = Array.from(item.doc.querySelectorAll('select')); } catch {}
+          for (const sel of selects) {
+            try {
+              const desc = foldEbelgeText([
+                sel.id,
+                sel.name,
+                sel.className,
+                sel.title,
+                sel.getAttribute?.('onchange'),
+                sel.closest?.('td,div,form')?.textContent,
+              ].filter(Boolean).join(' '));
+              const options = Array.from(sel.options || []);
+              const related = options
+                .filter((opt) => /e[-\s]?arsiv|earsiv|e[-\s]?fatura|efatura|fatura/i.test(`${opt.text} ${opt.value}`))
+                .slice(0, 10)
+                .map((opt) => `${String(opt.text || '').trim().slice(0, 45)}=>${String(opt.value || '').slice(0, 25)}`);
+              if (related.length) quickHints.push(`${item.label}:${sel.id || sel.name || 'select'}:[${related.join(' | ')}]`);
+              const isQuickAccess = /hizli|hızlı|kisayol|kısayol|shortcut|aktar/.test(desc);
+              const match = options.find((opt) => looksRelevantLabel(`${opt.text} ${opt.value}`));
+              if (!match || !isQuickAccess) continue;
+              await log(`⚡ Hızlı erişim ile ${menuLabel} açılıyor (${item.label} select#${sel.id || sel.name || '?'}, value=${String(match.value).slice(0, 40)})`);
+              sel.value = match.value;
+              const win = item.win || item.doc.defaultView || window;
+              sel.dispatchEvent(new win.Event('input', { bubbles: true }));
+              sel.dispatchEvent(new win.Event('change', { bubbles: true }));
+              try { if (typeof sel.onchange === 'function') sel.onchange.call(sel, new win.Event('change')); } catch {}
+              try { if (typeof win.aktar === 'function') win.aktar(sel.value); } catch {}
+              if (await waitForEbelgePage(10000)) return true;
+            } catch (e) {
+              await log(`⚠ Hızlı erişim denemesi hata: ${String(e?.message || e).slice(0, 90)}`);
+            }
+          }
+        }
+        if (quickHints.length) {
+          await log(`🔎 Hızlı erişim e-belge seçenekleri (${reason}): ${quickHints.slice(0, 4).join(' || ')}`);
+        }
+        return false;
+      };
+
+      const nativeClickLucaText = async (text, opts = {}) => {
+        try {
+          let bridge = null;
+          try { bridge = window.__morenNativeClickText; } catch {}
+          if (!bridge) {
+            try { bridge = window.top?.__morenNativeClickText; } catch {}
+          }
+          if (typeof bridge !== 'function') return false;
+          const res = await bridge({
+            text,
+            exact: !!opts.exact,
+            hoverOnly: !!opts.hoverOnly,
+            timeoutMs: opts.timeoutMs || opts.maxMs || 6000,
+          });
+          if (res?.ok) {
+            await log(`Native ${opts.hoverOnly ? 'hover' : 'click'}: "${text}" (${res.frame || '?'})`);
+            await sleep(opts.settleMs || 800);
+            return true;
+          }
+          await log(`Native click "${text}" bulunamadi: ${res?.reason || 'yok'}`);
+        } catch (e) {
+          await log(`Native click "${text}" hata: ${String(e?.message || e).slice(0, 100)}`);
+        }
+        return false;
+      };
+
+      let basariliAcildi = false;
       await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
+      try {
+        const cachedRows = cacheVisibleLucaMenuIds();
+        if (cachedRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${cachedRows} satır)`);
+      } catch {}
+      if (!__navSkip && await openCachedLucaMenu(menuLabel, log, 3000)) {
+        basariliAcildi = await waitForEbelgePage(10000);
+      }
+      if (!__navSkip && !basariliAcildi && await tryOpenByQuickAccess('ilk deneme')) {
+        basariliAcildi = true;
+      }
+      if (!__navSkip && !basariliAcildi) {
+        await nativeClickLucaText(mukellefTipi === 'isletme' ? '\u0130\u015fletme Defteri' : 'Muhasebe', {
+          timeoutMs: 3500,
+          settleMs: 1000,
+        });
+      }
       // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
       let II1aFn = null, II1aSrc = '';
       const candidateFrames = ['frm2','frm5','frm3','frm4','frm1','frm6','frm7'];
@@ -2198,7 +2550,6 @@
         } catch {}
       }
       // Önce II1a dene; başarısız olursa text-based menü click fallback
-      let basariliAcildi = false;
       if (!__navSkip && II1aFn) {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
         // Luca II1a'nın iç implementasyonu tree.indexOf(code) çağırıyor; tree
@@ -2290,7 +2641,9 @@
 
         for (const menuAdi of denemeler) {
           try {
-            await clickByTextEverywhere(menuAdi, log, { maxMs: 3000 });
+            if (!await nativeClickLucaText(menuAdi, { timeoutMs: 3500, settleMs: 1000 })) {
+              await clickByTextEverywhere(menuAdi, log, { maxMs: 3000 });
+            }
             await log(`🖱 "${menuAdi}" denendi, submenu kontrol ediliyor…`);
             // Submenu açılma süresi verilir
             await sleep(1500);
@@ -2337,6 +2690,12 @@
           return visit(window);
         };
 
+        await nativeClickLucaText('Ak\u0131ll\u0131 Entegrasyon', {
+          hoverOnly: true,
+          timeoutMs: 4000,
+          settleMs: 800,
+        });
+
         const akilliEl = findElByText('Akıllı Entegrasyon');
         let hoverTimer = null;
         if (akilliEl) {
@@ -2381,13 +2740,30 @@
 
         try {
           // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
-          await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
+          if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 2200 })) {
+            await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
+          }
           basariliAcildi = await waitForEbelgePage(8000);
         } catch (e) {
-          await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; direkt II1a kodları tekrar deneniyor`);
-          for (const altId of ii1aIds) {
-            basariliAcildi = await tryOpenByII1a(altId, 'metin menü sonrası');
-            if (basariliAcildi) break;
+          await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; Akıllı Entegrasyon click fallback deneniyor`);
+          try {
+            if (!await nativeClickLucaText('Ak\u0131ll\u0131 Entegrasyon', { timeoutMs: 4000, settleMs: 1200 })) {
+              await clickByTextEverywhere('Akıllı Entegrasyon', log, { maxMs: 4000 });
+              await sleep(1200);
+            }
+            if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 2200 })) {
+              await clickByTextEverywhere(menuLabel, log, { maxMs: 7000 });
+            }
+            basariliAcildi = await waitForEbelgePage(8000);
+          } catch (e2) {
+            await log(`⚠ Akıllı Entegrasyon click fallback sonuç vermedi: ${String(e2?.message || e2).slice(0, 120)}`);
+          }
+          if (!basariliAcildi) {
+            await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; direkt II1a kodları tekrar deneniyor`);
+            for (const altId of ii1aIds) {
+              basariliAcildi = await tryOpenByII1a(altId, 'metin menü sonrası');
+              if (basariliAcildi) break;
+            }
           }
           if (!basariliAcildi) {
             basariliAcildi = await tryOpenByDiscoveredMenuTargets('metin menu sonrasi');
@@ -2875,12 +3251,15 @@
         }
         const silentFor = Date.now() - lastChangeTs;
         if (silentFor >= silenceMs) {
-          await log(`✓ ${label}: ${silenceMs/1000}sn XHR sessizliği (toplam ${c - startCount} ek XHR), devam ediliyor`);
-          return;
+          const delta = c - startCount;
+          await log(`✓ ${label}: ${silenceMs/1000}sn XHR sessizliği (toplam ${delta} ek XHR), devam ediliyor`);
+          return delta;
         }
         await sleep(500);
       }
-      await log(`⚠ ${label}: ${maxWaitMs/1000}sn boyunca aktivite kesilmedi, yine de devam ediliyor`);
+      const delta = getAgentActivityCount() - startCount;
+      await log(`⚠ ${label}: ${maxWaitMs/1000}sn boyunca aktivite kesilmedi (toplam ${delta} ek XHR), yine de devam ediliyor`);
+      return delta;
     }
 
     const collectEbelgeDocsDeep = () => {
@@ -2941,6 +3320,11 @@
       }
     };
 
+    const isRejectedDateInput = (el) => {
+      const desc = inputDescriptor(el);
+      return /vergi|tc|kimlik|mukellef|musteri|sirket|firma|unvan|adres|telefon|mail|eposta|vkn|tckn|hesap|dairesi/i.test(desc);
+    };
+
     const findDatePairInDoc = (doc) => {
       try {
         if (!doc) return null;
@@ -2964,13 +3348,13 @@
         }
 
         const dateLikes = inputs.filter((el) => {
+          if (isRejectedDateInput(el)) return false;
           const desc = inputDescriptor(el);
           const type = String(el.type || '').toLowerCase();
           const val = String(el.value || el.placeholder || '');
           return type === 'date' ||
             dateRx.test(desc) ||
-            /\d{2}[./-]\d{2}[./-]\d{4}/.test(val) ||
-            Number(el.maxLength || 0) >= 8;
+            /\d{2}[./-]\d{2}[./-]\d{4}/.test(val);
         });
         if (dateLikes.length >= 2) {
           return { doc, t1: dateLikes[0], t2: dateLikes[1], source: 'date-like-inputs' };
@@ -3040,6 +3424,68 @@
         if (btn) return btn;
       }
       return null;
+    };
+
+    const describeEbelgeElementForLog = (el) => {
+      try {
+        const text = getElementText(el).replace(/\s+/g, ' ').trim();
+        const tag = String(el?.tagName || '').toLowerCase();
+        const attrs = [
+          tag ? `tag=${tag}` : '',
+          el?.type ? `type=${el.type}` : '',
+          el?.id ? `id=${el.id}` : '',
+          el?.name ? `name=${el.name}` : '',
+          el?.className ? `class=${String(el.className).replace(/\s+/g, '.')}` : '',
+          el?.value ? `value=${el.value}` : '',
+          el?.title ? `title=${el.title}` : '',
+          el?.alt ? `alt=${el.alt}` : '',
+          el?.action ? `action=${String(el.action).slice(0, 80)}` : '',
+          el?.href ? `href=${String(el.href).slice(0, 80)}` : '',
+          el?.getAttribute?.('onclick') ? `onclick=${String(el.getAttribute('onclick')).slice(0, 80)}` : '',
+          Array.from(el?.querySelectorAll?.('img') || [])
+            .map((img) => img.alt ? `imgAlt=${img.alt}` : '')
+            .filter(Boolean)
+            .join(' '),
+        ].filter(Boolean).join(' ');
+        return (text || attrs || String(el?.outerHTML || '').replace(/\s+/g, ' ').slice(0, 120) || 'button').slice(0, 180);
+      } catch {
+        return 'button';
+      }
+    };
+
+    const describeEbelgeActionCandidates = (preferredDoc = null, limit = 35) => {
+      const docs = [];
+      const addDoc = (doc) => {
+        if (doc && !docs.includes(doc)) docs.push(doc);
+      };
+      addDoc(preferredDoc);
+      addDoc(fdoc);
+      for (const doc of collectEbelgeDocsDeep()) addDoc(doc);
+
+      const rows = [];
+      for (const doc of docs) {
+        try {
+          const docLabel = (doc.title || doc.defaultView?.name || doc.defaultView?.frameElement?.id || 'doc')
+            .replace(/\s+/g, ' ')
+            .slice(0, 40);
+          const els = Array.from(doc.querySelectorAll([
+            'form',
+            'button',
+            'input',
+            'a',
+            '[role=button]',
+            '[onclick]',
+            '[href]',
+          ].join(',')));
+          for (const el of els) {
+            const desc = describeEbelgeElementForLog(el).replace(/\s+/g, ' ').trim();
+            if (!desc) continue;
+            rows.push(`${docLabel}: ${desc}`);
+            if (rows.length >= limit) return rows.join(' || ');
+          }
+        } catch {}
+      }
+      return rows.join(' || ');
     };
 
     const elementLooksLikeEbelgeAction = (el, arg) => {
@@ -3124,6 +3570,74 @@
       return false;
     };
 
+    const callEbelgeNamedFunctionEverywhere = async (names, label, preferredWin = null) => {
+      const wins = [];
+      for (const w of [preferredWin, fwin, window, window.top, parent]) {
+        try { if (w && !wins.includes(w)) wins.push(w); } catch {}
+      }
+      for (const w of collectAllWindows()) {
+        if (w && !wins.includes(w)) wins.push(w);
+      }
+      for (const w of wins) {
+        for (const name of names) {
+          try {
+            if (typeof w?.[name] === 'function') {
+              w[name]();
+              await log(`✓ ${label}: ${name}() çağrıldı (${w === preferredWin ? 'date frame' : w === fwin ? 'ebelge frame' : w === window ? 'window' : w === window.top ? 'top' : 'frame'})`);
+              return true;
+            }
+          } catch (e) {
+            await log(`⚠ ${label}: ${name}() hata: ${String(e?.message || e).slice(0, 90)}`);
+          }
+        }
+      }
+      return false;
+    };
+
+    const submitEbelgeDateFormFallback = async (datePair, label) => {
+      try {
+        const doc = datePair?.doc;
+        const win = doc?.defaultView || window;
+        const form = datePair?.t2?.closest?.('form') || datePair?.t1?.closest?.('form') || null;
+        if (form) {
+          const action = String(form.action || form.getAttribute?.('action') || '');
+          if (!/selectSirketAction/i.test(action)) {
+            await log(`🖱 ${label}: tarih formu submit deneniyor (${action.slice(0, 80) || 'aynı sayfa'})`);
+            try {
+              if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit();
+              } else {
+                form.dispatchEvent(new win.Event('submit', { bubbles: true, cancelable: true }));
+                if (typeof form.submit === 'function') form.submit();
+              }
+              return true;
+            } catch (e) {
+              await log(`⚠ ${label}: form submit hata: ${String(e?.message || e).slice(0, 90)}`);
+            }
+          }
+        }
+        const target = datePair?.t2 || datePair?.t1;
+        if (target) {
+          await log(`⌨ ${label}: tarih alaninda Enter deneniyor`);
+          target.focus?.();
+          for (const type of ['keydown', 'keypress', 'keyup']) {
+            target.dispatchEvent(new win.KeyboardEvent(type, {
+              key: 'Enter',
+              code: 'Enter',
+              keyCode: 13,
+              which: 13,
+              bubbles: true,
+              cancelable: true,
+            }));
+          }
+          return true;
+        }
+      } catch (e) {
+        await log(`⚠ ${label}: submit/Enter fallback hata: ${String(e?.message || e).slice(0, 90)}`);
+      }
+      return false;
+    };
+
     // İki sorgu yap — her birinde modal aç → tarih yaz → Belgeleri Getir → bekle
     async function birSorgu(bas, bit, etiket) {
       await throwIfCancelled();
@@ -3146,10 +3660,24 @@
       await sleep(200);
 
       // Belgeleri Getir butonu
+      const activityBeforeClick = getAgentActivityCount();
+      let triggerMethod = '';
       const getirBtn = findGetirButtonEverywhere(datePair.doc);
-      if (!getirBtn) throw new Error('faturalari-getir-btn bulunamadı');
-      await log(`🖱 Belgeleri Getir tetikleniyor (${getElementText(getirBtn).slice(0, 80) || getirBtn.id || getirBtn.name || 'button'})`);
-      getirBtn.click();
+      if (getirBtn) {
+        await log(`🖱 Belgeleri Getir tetikleniyor (${describeEbelgeElementForLog(getirBtn)})`);
+        clickEbelgeActionElement(getirBtn);
+        triggerMethod = 'button';
+      } else if (await callEbelgeNamedFunctionEverywhere(['sorgula', 'faturalariGetir', 'belgeleriGetir', 'getir'], 'Belgeleri Getir fonksiyon fallback', datePair.doc?.defaultView)) {
+        await log(`🖱 Belgeleri Getir fonksiyon ile tetiklendi`);
+        triggerMethod = 'function';
+      } else if (await submitEbelgeDateFormFallback(datePair, 'Belgeleri Getir submit fallback')) {
+        await log(`🖱 Belgeleri Getir form/Enter fallback ile tetiklendi`);
+        triggerMethod = 'form-enter';
+      } else {
+        const actionHints = describeEbelgeActionCandidates(datePair.doc, 35);
+        if (actionHints) await log(`🔎 E-belge aksiyon adaylari: ${actionHints}`);
+        throw new Error('faturalari-getir-btn bulunamadı');
+      }
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
 
       // İşlem Takip popup'ı açılır, GİB sorgu yapar.
@@ -3162,14 +3690,12 @@
       let queryDone = false;
       let lastProgress = '';
       let lastProgressLogTs = 0;
+      let sawQueryActivity = false;
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
+        if (getAgentActivityCount() > activityBeforeClick) sawQueryActivity = true;
+        const allDocs = collectEbelgeDocsDeep();
+        if (!allDocs.includes(document)) allDocs.unshift(document);
         let foundDoneSignal = false;
         let progressLine = '';
         for (const d of allDocs) {
@@ -3216,7 +3742,14 @@
         await sleep(POLL_INTERVAL);
       }
       if (!queryDone) {
-        await log(`⚠ GİB sorgu 5 dk içinde tamamlanmadı (son ilerleme: ${lastProgress || '?'}). Mevcut sonuçlarla devam ediliyor…`);
+        const activityDelta = getAgentActivityCount() - activityBeforeClick;
+        if (!sawQueryActivity && activityDelta <= 0) {
+          const actionHints = describeEbelgeActionCandidates(datePair.doc, 35);
+          await log(`✗ E-belge sorgusu baslamadi: "${triggerMethod || 'unknown'}" tetiklendi ama hic GIB/e-belge XHR olusmadi.`);
+          if (actionHints) await log(`🔎 E-belge aksiyon adaylari: ${actionHints}`);
+          throw new Error(`${etiket} sorgusu baslatilamadi; Belgeleri Getir icin dogru Luca ID/fonksiyon bulunmali`);
+        }
+        await log(`⚠ GİB sorgu 5 dk içinde tamamlanmadı (son ilerleme: ${lastProgress || '?'}, ${activityDelta} XHR). Mevcut sonuçlarla devam ediliyor…`);
       } else {
         const elapsed = Math.round((Date.now() - pollStart) / 1000);
         await log(`✓ GİB sorgu tamamlandı (${elapsed}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
@@ -3229,12 +3762,8 @@
 
       // Tüm frame'lerde "Kapat" butonunu bul ve tıkla (İşlem Takip popup)
       const findAndClick = (label) => {
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
+        const allDocs = collectEbelgeDocsDeep();
+        if (!allDocs.includes(document)) allDocs.unshift(document);
         for (const d of allDocs) {
           try {
             for (const btn of d.querySelectorAll('button, input[type=button], input[type=submit]')) {
@@ -3258,12 +3787,8 @@
       const popupCloseStart = Date.now();
       while (Date.now() - popupCloseStart < 5000) {
         let popupAcik = false;
-        const allDocsCheck = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocsCheck.push(fr.contentDocument);
-          }
-        } catch {}
+        const allDocsCheck = collectEbelgeDocsDeep();
+        if (!allDocsCheck.includes(document)) allDocsCheck.unshift(document);
         for (const d of allDocsCheck) {
           try {
             const txt = d.body ? d.body.textContent : '';
@@ -3283,12 +3808,8 @@
       // Toplam fatura sayısını tespit et — "352 adet fatura bulundu. (Sayfa No: 1)"
       try {
         let bulunanText = '';
-        const allDocs = [document];
-        try {
-          for (const fr of document.querySelectorAll('frame, iframe')) {
-            if (fr.contentDocument) allDocs.push(fr.contentDocument);
-          }
-        } catch {}
+        const allDocs = collectEbelgeDocsDeep();
+        if (!allDocs.includes(document)) allDocs.unshift(document);
         for (const d of allDocs) {
           try {
             const txt = d.body ? d.body.textContent : '';
@@ -3336,7 +3857,7 @@
       const secimSayisi = fdoc.querySelectorAll('.sec:checked').length;
       const tablodaToplam = fdoc.querySelectorAll('.sec').length;
       if (secimSayisi === 0 && tablodaToplam === 0) {
-        await log(`ℹ Bu dönem için fatura bulunamadı (${etiket}). İndirme akışı atlandı.`);
+        await log(`ℹ Bu dönem için fatura bulunamadı. İndirme akışı atlandı.`);
         // Special signal — caller bunu yakalayıp temiz "fatura yok" mesajı göstersin
         const noFaturaErr = new Error('NO_FATURA: Bu dönem için kayıtlı fatura yok');
         (noFaturaErr).isNoFatura = true;
@@ -4438,6 +4959,82 @@
     return false;
   }
 
+  async function ensureDefteriKebirHesapSelection(form, hesapKodu, log) {
+    const win = form.ownerDocument?.defaultView || window;
+    const setInputValue = (inp, value) => {
+      if (!inp) return false;
+      try {
+        const setter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set;
+        setter.call(inp, value);
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+        inp.dispatchEvent(new Event('blur', { bubbles: true }));
+        return true;
+      } catch {
+        try { inp.value = value; return true; } catch { return false; }
+      }
+    };
+    const searchInput = form.querySelector('input[name="hes_kodu"], input#hes_kodu, input[name*="hes_kodu" i]');
+    if (searchInput) {
+      setInputValue(searchInput, hesapKodu);
+      await log(`💼 Hesap arama alanı set: ${searchInput.name || searchInput.id}="${hesapKodu}"`);
+    }
+    const hbox = form.querySelector('select[name="hbox"], select#hbox');
+    let selected = false;
+    if (hbox) {
+      const norm = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\u0131/g, 'i')
+        .replace(/\u0130/g, 'i')
+        .toLowerCase();
+      const opt = Array.from(hbox.options || []).find((o) => {
+        const hay = norm(`${o.value || ''} ${o.text || ''}`);
+        return hay.startsWith(hesapKodu) ||
+          hay.includes(`${hesapKodu} `) ||
+          hay.includes(`${hesapKodu}.`) ||
+          hay.includes(`${hesapKodu}-`);
+      });
+      if (opt) {
+        hbox.value = opt.value;
+        hbox.selectedIndex = Array.from(hbox.options).indexOf(opt);
+        hbox.dispatchEvent(new Event('input', { bubbles: true }));
+        hbox.dispatchEvent(new Event('change', { bubbles: true }));
+        selected = true;
+        await log(`💼 hbox hesap seçimi: "${String(opt.text || opt.value).trim().slice(0, 80)}"`);
+      } else {
+        const sample = Array.from(hbox.options || []).slice(0, 5).map((o) => String(o.text || o.value).trim().slice(0, 40)).join(' | ');
+        await log(`⚠ hbox içinde ${hesapKodu} seçeneği bulunamadı. İlk seçenekler: ${sample}`);
+      }
+    }
+    const addBtn = form.querySelector('input[name="eklemeButton"], input#eklemeButton, button[name="eklemeButton"]');
+    if (selected && addBtn) {
+      try {
+        if (typeof addBtn.focus === 'function') addBtn.focus();
+        addBtn.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, view: win }));
+        addBtn.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, view: win }));
+        addBtn.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win }));
+        if (typeof addBtn.click === 'function') addBtn.click();
+        const oc = addBtn.getAttribute?.('onclick');
+        if (oc) {
+          try { new win.Function(oc).call(addBtn); } catch {}
+        }
+        await log(`💼 Ekle butonu tetiklendi: ${addBtn.name || addBtn.id || addBtn.tagName}`);
+        await sleep(600);
+      } catch (e) {
+        await log(`⚠ Ekle butonu tetiklenemedi: ${String(e?.message || e).slice(0, 120)}`);
+      }
+    }
+    const ilk = getCachedLucaFormField(form, 'hesapIlk') ||
+      form.querySelector('input[name="p_hesap_no_ilk_1"], input[name*="hesap" i][name*="ilk" i]');
+    const son = getCachedLucaFormField(form, 'hesapSon') ||
+      form.querySelector('input[name="p_hesap_no_son_1"], input[name*="hesap" i][name*="son" i]');
+    setInputValue(ilk, hesapKodu);
+    setInputValue(son, hesapKodu);
+    await log(`💼 Defteri Kebir hesap state doğrulandı: ${describeLucaField(ilk)}="${ilk?.value || ''}" / ${describeLucaField(son)}="${son?.value || ''}"`);
+    return true;
+  }
+
   /**
    * İşletme defteri formunda Gelir/Gider checkbox'larını ayarla.
    * Mode: 'gelir' → sadece Gelir işaretli; 'gider' → sadece Gider işaretli.
@@ -4672,23 +5269,32 @@
     } catch {
       try { if (typeof btn.click === 'function') btn.click(); } catch {}
     }
-    if (onclickAttr) {
-      try {
-        const fakeEvent = {
-          type: 'click',
-          target: btn,
-          currentTarget: btn,
-          preventDefault: () => {},
-          stopPropagation: () => {},
-          stopImmediatePropagation: () => {},
-          returnValue: true,
-          cancelBubble: false,
-        };
-        new win.Function('event', onclickAttr).call(btn, fakeEvent);
-        await log('🔁 Rapor onclick attribute doğrudan çağrıldı');
-      } catch (e) {
-        await log(`⚠ Rapor onclick doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
+    await log('ℹ Rapor exact handler ile tetiklenecek; varsa onclick tek kez hemen cagrilacak');
+    const triggerDirectOnce = async () => {
+      let ran = false;
+      if (onclickAttr) {
+        try {
+          new win.Function(onclickAttr).call(btn);
+          ran = true;
+          await log('🔁 Rapor onclick attribute tek kez doğrudan çağrıldı');
+        } catch (e) {
+          await log(`⚠ Rapor onclick doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
+        }
       }
+      if (!ran && typeof win.gonder === 'function') {
+        try {
+          win.gonder();
+          ran = true;
+          await log('🔁 Rapor gonder() kontrollu fallback olarak çağrıldı');
+        } catch (e) {
+          await log(`⚠ Rapor gonder() fallback çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
+        }
+      }
+      return ran;
+    };
+    if (onclickAttr) {
+      await triggerDirectOnce();
+      return null;
     }
     if (/^javascript:/i.test(hrefAttr)) {
       try {
@@ -4698,6 +5304,7 @@
         await log(`⚠ Rapor href doğrudan çağrılamadı: ${String(e?.message || e).slice(0, 120)}`);
       }
     }
+    return triggerDirectOnce;
   }
 
   async function clickLucaYenileButton(form, log) {
@@ -4795,6 +5402,7 @@
     // ── DOĞRU SIRA (manuel kullanıcı gibi) ──
     // 7. ÖNCE Hesap Kodu (hesap planı state'i en kritik)
     await fillLucaHesapKodu(form, hesapKodu, log);
+    await ensureDefteriKebirHesapSelection(form, hesapKodu, log);
     const cachedHesapIlk = getCachedLucaFormField(form, 'hesapIlk');
     const cachedHesapSon = getCachedLucaFormField(form, 'hesapSon');
     await log(`💼 Hesap alanları: ${describeLucaField(cachedHesapIlk)}/${describeLucaField(cachedHesapSon)}`);
@@ -4847,11 +5455,12 @@
     // 13. Rapor butonu — GERÇEK USER CLICK simülasyonu (gonder() DEĞİL)
     // gonder() Luca'nın iç state'inden okuyor; gerçek click form input.value'ları
     // submit body'sine alıyor. Manuel kullanıcı davranışıyla aynı.
-    await clickLucaRaporButtonStrict(form, log);
+    const triggerRaporDirectFallback = await clickLucaRaporButtonStrict(form, log);
+    await log('⏳ KDV Excel blob bekleniyor (max 60sn)');
 
     // 14. Blob yakala — iki yol: form intercept VEYA rapor_takip durum=150 → kendi rapor_indir fetch
     try {
-      const blob = await waitForKdvBlob(log, frm3win, 60000);
+      const blob = await waitForKdvBlob(log, frm3win, 60000, triggerRaporDirectFallback, () => fetchKdvFormDirect(form, log));
       return blob;
     } finally {
       delete window.__lucaJobOverrides;
@@ -4864,8 +5473,58 @@
    * agent kendi rapor_indir fetch'ini atar. Çünkü Luca rapor_indir'i bazen
    * <a download> veya window.open ile yapıyor → form intercept tutmuyor.
    */
-  async function waitForKdvBlob(log, frm3win, maxMs) {
+  async function fetchKdvFormDirect(form, log) {
+    try {
+      const win = form.ownerDocument?.defaultView || window;
+      const action = form.action || form.getAttribute?.('action') || '';
+      if (!action) {
+        await log('⚠ KDV direct form POST atlandı: form action yok');
+        return null;
+      }
+      const params = new URLSearchParams();
+      const fd = new FormData(form);
+      for (const [k, v] of fd.entries()) params.append(k, String(v));
+      const ov = window.__lucaJobOverrides || {};
+      const setIfAny = (keys, value) => {
+        if (value == null || value === '') return;
+        for (const key of keys) {
+          if ([...params.keys()].some((k) => k.toLowerCase() === key.toLowerCase())) {
+            params.set(key, String(value));
+          }
+        }
+      };
+      setIfAny(['p_fis_tarihi_ilk_1', 'TARIH_ILK', 'tarih_ilk', 'tarih_bas'], ov.TARIH_ILK);
+      setIfAny(['p_fis_tarihi_son_1', 'TARIH_SON', 'tarih_son', 'tarih_bit'], ov.TARIH_SON);
+      setIfAny(['p_hesap_no_ilk_1', 'HESAPKODU_ILK', 'HESAP_ILK', 'hesap_bas'], ov.HESAPKODU_ILK);
+      setIfAny(['p_hesap_no_son_1', 'HESAPKODU_SON', 'HESAP_SON', 'hesap_bit'], ov.HESAPKODU_SON);
+      if (!params.has('ReportName')) params.set('ReportName', 'DEFTERI_KEBIR');
+      const method = String(form.method || 'POST').toUpperCase();
+      const targetUrl = action.startsWith('http') ? action : new URL(action, win.location.href).href;
+      await log(`🧪 KDV direct form POST deneniyor: ${targetUrl.split('/').pop().slice(0, 80)} (${params.toString().length} byte)`);
+      const res = await win.fetch(targetUrl, {
+        method: method === 'GET' ? 'POST' : method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const ct = res.headers.get('content-type') || '';
+      const blob = await res.blob();
+      await log(`🧪 KDV direct form response: HTTP ${res.status}, ${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 60)}`);
+      if (res.ok && blob.size > 1000) return blob;
+      try {
+        const txt = await blob.text();
+        await log(`⚠ KDV direct form küçük/boş yanıt: ${txt.slice(0, 180).replace(/\s+/g, ' ')}`);
+      } catch {}
+    } catch (e) {
+      await log(`⚠ KDV direct form POST hata: ${String(e?.message || e).slice(0, 180)}`);
+    }
+    return null;
+  }
+
+  async function waitForKdvBlob(log, frm3win, maxMs, triggerRaporDirectFallback, directFormFallback) {
     const t0 = Date.now();
+    let directFallbackTriggered = false;
+    let directFormFallbackTriggered = false;
     while (Date.now() - t0 < maxMs) {
       // Yol 1: form intercept blob yakaladı (Mizan tarzı)
       if (window.__morenCapturedBlob) {
@@ -4976,11 +5635,23 @@
 
         await log(`⚠ 3 varyant da blob dönmedi — form intercept beklemeye devam`);
       }
+      if (!directFallbackTriggered && typeof triggerRaporDirectFallback === 'function' && Date.now() - t0 > 7000) {
+        directFallbackTriggered = true;
+        await log('⏱ Native click sonrası blob gelmedi; tek seferlik Rapor onclick fallback deneniyor');
+        await triggerRaporDirectFallback();
+      }
+      if (!directFormFallbackTriggered && typeof directFormFallback === 'function' && Date.now() - t0 > 15000) {
+        directFormFallbackTriggered = true;
+        await log('⏱ Rapor trafiği hâlâ yok; ID ile doldurulmuş form doğrudan POST ediliyor');
+        const directBlob = await directFormFallback();
+        if (directBlob) return directBlob;
+      }
       await sleep(300);
     }
     try {
       const recent = (window.__morenLogs || [])
         .filter((line) => /XHR|FETCH|RAPOR|NATIVE|CREATE-OBJ|FORM-SUBMIT|jasper|rapor|Defter/i.test(String(line || '')))
+        .filter((line) => !/mali-musavir-app.*\/api\/v1\/agent\//i.test(String(line || '')))
         .slice(-30);
       for (const line of recent) await log(`🔬 KDV debug: ${String(line).slice(0, 500)}`);
     } catch {}
@@ -5673,12 +6344,15 @@
     return String(value || '')
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0131/g, 'i')
+      .replace(/\u0130/g, 'i')
       .replace(/\u00a0/g, ' ')
       .replace(/\s*\/\s*/g, '/')
       .replace(/[‐‑–—]/g, '-')
       .replace(/\s+/g, ' ')
       .trim()
-      .toLocaleLowerCase('tr-TR');
+      .toLocaleLowerCase('tr-TR')
+      .replace(/\u0131/g, 'i');
   }
 
   const LUCA_MENU_ID_CACHE_KEY = 'moren_luca_menu_id_cache_v1';
@@ -5787,6 +6461,49 @@
     }
   }
 
+  function isDirectLucaMenuCodeUnsafe(label) {
+    const key = normalizeLucaMenuText(label);
+    return [
+      'muhasebe',
+      'isletme defteri',
+      'fis islemleri',
+      'gider islemleri',
+      'gelir islemleri',
+      'raporlar',
+      'rapor islemleri',
+      'raporlar ve listeler',
+      'listeler',
+      'dokumler',
+      'dokum islemleri',
+    ].includes(key);
+  }
+
+  async function nativeLucaMenuHover(label, log, opts = {}) {
+    try {
+      let bridge = null;
+      try { bridge = window.__morenNativeClickText; } catch {}
+      if (!bridge) {
+        try { bridge = window.top?.__morenNativeClickText; } catch {}
+      }
+      if (typeof bridge !== 'function') return false;
+      const res = await bridge({
+        text: label,
+        exact: !!opts.exact,
+        hoverOnly: opts.hoverOnly !== false,
+        timeoutMs: opts.timeoutMs || 4500,
+      });
+      if (res?.ok) {
+        if (log) await log(`Native hover menü: "${label}" (${res.frame || '?'})`);
+        await sleep(opts.settleMs || 900);
+        return true;
+      }
+      if (log) await log(`Native hover "${label}" bulunamadi: ${res?.reason || 'yok'}`);
+    } catch (e) {
+      if (log) await log(`Native hover "${label}" hata: ${String(e?.message || e).slice(0, 100)}`);
+    }
+    return false;
+  }
+
   function cacheVisibleLucaMenuIds() {
     const cache = readLucaMenuIdCache();
     let count = 0;
@@ -5856,6 +6573,7 @@
   }
 
   async function openCachedLucaMenu(label, log, settleMs = 800) {
+    if (isDirectLucaMenuCodeUnsafe(label)) return false;
     const cached = getCachedLucaMenuHit(label);
     if (!cached?.code) return false;
     const opened = await callLucaMenuCode(cached.label || label, cached.code, log, settleMs);
@@ -5870,7 +6588,8 @@
 
   async function activateLucaMenuItem(label, found, log, settleMs = 800) {
     const cached = cacheLucaMenuHit(label, found);
-    if (cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) return true;
+    if (!isDirectLucaMenuCodeUnsafe(label) && cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) return true;
+    if (isDirectLucaMenuCodeUnsafe(label) && await nativeLucaMenuHover(label, log, { settleMs })) return true;
     await fullActivateWithParents(found.el, found.frame.contentWindow || found.frame, 5, 120);
     await sleep(settleMs);
     return true;
@@ -6442,7 +7161,7 @@
       const bitGun = new Date(yil, bitAy, 0).getDate();
       return {
         bas: `01.${basMM}.${yil}`,
-        bit: `${bitGun}.${bitMM}.${yil}`,
+        bit: `${String(bitGun).padStart(2, '0')}.${bitMM}.${yil}`,
       };
     }
 
@@ -6469,7 +7188,7 @@
       const bitGun = new Date(yil, bitAy, 0).getDate();
       return {
         bas: `01.${basMM}.${yil}`,
-        bit: `${bitGun}.${bitMM}.${yil}`,
+        bit: `${String(bitGun).padStart(2, '0')}.${bitMM}.${yil}`,
       };
     }
 
@@ -6481,6 +7200,20 @@
     }
 
     return null;
+  }
+
+  function inferDonemTipi(donem, donemTipi) {
+    const explicit = String(donemTipi || '').trim().toUpperCase();
+    if (/^GECICI_Q[1-4]$/.test(explicit)) return explicit;
+    if (explicit === 'AY' || explicit === 'AYLIK' || explicit === 'MONTH') return 'AYLIK';
+    if (explicit === 'YILLIK' || explicit === 'YEAR' || explicit === 'ANNUAL') return 'YILLIK';
+
+    const s = String(donem || '').trim().toUpperCase();
+    const q = s.match(/(?:^|[-_/])Q([1-4])$/);
+    if (q) return `GECICI_Q${q[1]}`;
+    if (/-YILLIK$/.test(s) || /^\d{4}$/.test(s)) return 'YILLIK';
+    if (/^\d{4}[-_/]\d{1,2}$/.test(s)) return 'AYLIK';
+    return 'AYLIK';
   }
 
   /**
@@ -6701,10 +7434,116 @@
 
     const tarihIlk = form.querySelector('input[name="TARIH_ILK"], input[id="TARIH_ILK"], input[name="tarih_ilk"]');
     const tarihSon = form.querySelector('input[name="TARIH_SON"], input[id="TARIH_SON"], input[name="tarih_son"]');
+    const slashBas = tarih.bas.replace(/\./g, '/');
+    const slashBit = tarih.bit.replace(/\./g, '/');
+    const mizanStartKeys = [
+      'tarih_ilk', 'tarihIlk', 'TARIH_ILK', 'tarih_bas', 'tarihBas',
+      'baslangic', 'basTarih', 'ilkTarih', 'donem_bas', 'cari_donem_bas',
+      'fis_tarihi_ilk', 'p_fis_tarihi_ilk_1',
+    ];
+    const mizanEndKeys = [
+      'tarih_son', 'tarihSon', 'TARIH_SON', 'tarih_bit', 'tarihBit',
+      'bitis', 'bitTarih', 'sonTarih', 'donem_bit', 'cari_donem_bit',
+      'fis_tarihi_son', 'p_fis_tarihi_son_1',
+    ];
+    const setAllMizanDateKeys = (target) => {
+      if (!target || typeof target !== 'object') return false;
+      let changed = false;
+      for (const k of mizanStartKeys) {
+        if (target[k] !== slashBas) {
+          target[k] = slashBas;
+          changed = true;
+        }
+      }
+      for (const k of mizanEndKeys) {
+        if (target[k] !== slashBit) {
+          target[k] = slashBit;
+          changed = true;
+        }
+      }
+      return changed;
+    };
+    const forceNestedMizanDates = (target, depth = 0) => {
+      if (!target || typeof target !== 'object' || depth > 5) return false;
+      let changed = setAllMizanDateKeys(target);
+      for (const key of Object.keys(target)) {
+        const val = target[key];
+        if (val && typeof val === 'object') {
+          if (forceNestedMizanDates(val, depth + 1)) changed = true;
+          continue;
+        }
+        if (typeof val !== 'string') continue;
+        const trimmed = val.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) continue;
+        try {
+          const parsed = JSON.parse(trimmed);
+          const nestedChanged = forceNestedMizanDates(parsed, depth + 1);
+          const next = JSON.stringify(parsed);
+          if (nestedChanged || next !== val) {
+            target[key] = next;
+            changed = true;
+          }
+        } catch {}
+      }
+      return changed;
+    };
+    const forceMizanDatesBody = (body) => {
+      try {
+        if (body == null) return { body, changed: false, preview: '' };
+        if (typeof body === 'string') {
+          const trimmed = body.trim();
+          if (trimmed.startsWith('{')) {
+            const parsed = JSON.parse(trimmed);
+            const changedNested = forceNestedMizanDates(parsed);
+            const next = JSON.stringify(parsed);
+            return {
+              body: next,
+              changed: changedNested || next !== body,
+              preview: next.slice(0, 420),
+            };
+          }
+          if (trimmed.includes('=')) {
+            const params = new URLSearchParams(trimmed);
+            for (const k of mizanStartKeys) params.set(k, slashBas);
+            for (const k of mizanEndKeys) params.set(k, slashBit);
+            for (const [key, val] of Array.from(params.entries())) {
+              const s = String(val || '').trim();
+              if (!s.startsWith('{') && !s.startsWith('[')) continue;
+              try {
+                const parsed = JSON.parse(s);
+                if (forceNestedMizanDates(parsed)) params.set(key, JSON.stringify(parsed));
+              } catch {}
+            }
+            const next = params.toString();
+            return { body: next, changed: next !== body, preview: next.slice(0, 420) };
+          }
+        }
+        if (body && typeof body.set === 'function' && typeof body.entries === 'function') {
+          for (const k of mizanStartKeys) body.set(k, slashBas);
+          for (const k of mizanEndKeys) body.set(k, slashBit);
+          for (const [key, val] of Array.from(body.entries())) {
+            if (typeof val !== 'string') continue;
+            const s = val.trim();
+            if (!s.startsWith('{') && !s.startsWith('[')) continue;
+            try {
+              const parsed = JSON.parse(s);
+              if (forceNestedMizanDates(parsed)) body.set(key, JSON.stringify(parsed));
+            } catch {}
+          }
+          return { body, changed: true, preview: '[FormData/URLSearchParams tarih zorlandi]' };
+        }
+      } catch (e) {
+        return { body, changed: false, preview: `tarih body parse hata: ${e?.message || e}` };
+      }
+      return {
+        body,
+        changed: false,
+        preview: String(body || '').slice(0, 240),
+      };
+    };
+
     if (tarihIlk && tarihSon) {
       // Luca slash formatı kullanıyor (network'ten görüldü: "01/03/2026")
-      const slashBas = tarih.bas.replace(/\./g, '/');
-      const slashBit = tarih.bit.replace(/\./g, '/');
 
       // Set + 5 kez deneme — Luca async olarak silebilir
       let setOk = false;
@@ -6732,6 +7571,29 @@
       }
 
       await log(`📅 Tarih: ${tarihIlk.value || '∅'} → ${tarihSon.value || '∅'} (set ${setOk ? 'OK' : 'FAIL'})`);
+    }
+
+    const dateLikeInputs = [...form.querySelectorAll('input')]
+      .filter((inp) => /tarih|date|tar/i.test(`${inp.name || ''} ${inp.id || ''}`));
+    let dateLikeChanged = 0;
+    for (const inp of dateLikeInputs) {
+      const key = `${inp.name || ''} ${inp.id || ''}`;
+      const isStart = /ilk|bas|baş|start|from|_1\b|1$/i.test(key);
+      const isEnd = /son|bit|end|to|_2\b|2$/i.test(key);
+      if (isStart && !isEnd) {
+        setNative(inp, slashBas);
+        dateLikeChanged++;
+      } else if (isEnd) {
+        setNative(inp, slashBit);
+        dateLikeChanged++;
+      }
+    }
+    if (dateLikeInputs.length) {
+      const state = dateLikeInputs
+        .map((inp) => `${inp.name || inp.id || '?'}="${String(inp.value || '').slice(0, 20)}"`)
+        .slice(0, 12)
+        .join(' | ');
+      await log(`🧷 Mizan tarih ID kontrolü (${dateLikeChanged}/${dateLikeInputs.length} set): ${state}`);
     }
 
     // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
@@ -6847,9 +7709,17 @@
       win.fetch = function (input, init) {
         const url = typeof input === 'string' ? input : (input?.url || '');
         seenUrls.push(`${label}fetch:${url.split('?')[0].split('/').pop()}`);
+        let args = arguments;
+        if (/jasper\.jq/i.test(url || '') && init && init.body != null) {
+          const fixed = forceMizanDatesBody(init.body);
+          if (fixed.changed) {
+            args = [input, { ...init, body: fixed.body }];
+            log(`🧷 jasper.jq fetch tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+          }
+        }
         // PASIF: Luca akışını engelleme, sadece izle. Background script
         // disk'ten dosyayı okuyup bize iletecek.
-        const promise = orig.apply(this, arguments);
+        const promise = orig.apply(this, args);
         promise.then((res) => tryCapture(res, url)).catch(() => {});
         return promise;
       };
@@ -6869,7 +7739,17 @@
       };
       proto.send = function (body) {
         const url = this._capturedUrl || '';
-        this._capturedBody = body;
+        let sendBody = body;
+        if (/jasper\.jq/i.test(url || '')) {
+          const fixed = forceMizanDatesBody(body);
+          sendBody = fixed.body;
+          if (fixed.changed) {
+            log(`🧷 jasper.jq XHR tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+          } else {
+            log(`🧷 jasper.jq XHR tarih kontrolü: beklenen ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+          }
+        }
+        this._capturedBody = sendBody;
         seenUrls.push(`${label}xhr:${url.split('?')[0].split('/').pop()}`);
         // PASIF: Luca akışını engelleme, native download'a izin ver.
         this.addEventListener('load', async () => {
@@ -6927,7 +7807,7 @@
             }
           } catch (e) {}
         });
-        return origSend.apply(this, arguments);
+        return origSend.call(this, sendBody);
       };
     };
 
@@ -7711,6 +8591,44 @@
   // KENDI XMLHttpRequest objesi var. Top window'a hook kurmak yetmiyor —
   // her frame'e ayrı ayrı kurmamız lazım. installXhrHook(targetWindow)
   // helper'ı bunu idempotent şekilde yapar (zaten kurulmuşsa atla).
+  function applyLucaReportOverrides(formObj, ov) {
+    if (!formObj || typeof formObj !== 'object' || !ov) return formObj;
+    const setMany = (keys, value) => {
+      if (value === undefined || value === null || value === '') return;
+      for (const key of keys) formObj[key] = String(value);
+    };
+    setMany([
+      'hesap_bas', 'hesapBas', 'HESAPKODU_ILK', 'HESAP_ILK',
+      'p_hesap_no_ilk_1', 'p_hesap_kodu_ilk_1', 'p_hesap_ilk_1',
+    ], ov.HESAPKODU_ILK);
+    setMany([
+      'hesap_bit', 'hesapBit', 'HESAPKODU_SON', 'HESAP_SON',
+      'p_hesap_no_son_1', 'p_hesap_kodu_son_1', 'p_hesap_son_1',
+    ], ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
+    setMany([
+      'tarih_bas', 'tarihBas', 'TARIH_ILK', 'tarih_ilk', 'tarih_baslangic',
+      'p_fis_tarihi_ilk_1', 'p_tarih_ilk_1', 'p_tarih_bas_1',
+    ], ov.TARIH_ILK);
+    setMany([
+      'tarih_bit', 'tarihBit', 'TARIH_SON', 'tarih_son', 'tarih_bitis',
+      'p_fis_tarihi_son_1', 'p_tarih_son_1', 'p_tarih_bit_1',
+    ], ov.TARIH_SON);
+    if (ov.GELIR1 !== undefined) {
+      formObj.GELIR1 = String(ov.GELIR1);
+      formObj.gelir = String(ov.GELIR1) === '0' ? '1' : '0';
+    }
+    if (ov.GIDER1 !== undefined) {
+      formObj.GIDER1 = String(ov.GIDER1);
+      formObj.gider = String(ov.GIDER1) === '0' ? '1' : '0';
+    }
+    if (ov.REPORT_TYPE) {
+      formObj.report_type = String(ov.REPORT_TYPE);
+      formObj.dosya_tipi = String(ov.REPORT_TYPE);
+      formObj.format = String(ov.REPORT_TYPE);
+    }
+    return formObj;
+  }
+
   function installXhrHook(targetWin) {
     try {
       const w = targetWin || window;
@@ -7739,7 +8657,7 @@
         try {
           if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
             const url = this.__morenUrl || '';
-            if (!/rapor_takip|jasper/i.test(url)) {
+            if (!/rapor_takip|jasper/i.test(url) && !/mali-musavir-app.*\/api\/v1\/agent\//i.test(url)) {
               window.__morenLogs.push(`[XHR-OTHER] ${this.__morenMethod || '?'} ${url.slice(0, 120)}`);
             }
           }
@@ -7797,23 +8715,15 @@
               try {
                 let parsed;
                 try { parsed = JSON.parse(body); } catch { parsed = null; }
-                if (parsed && typeof parsed.form === 'string') {
+                if (parsed && (typeof parsed.form === 'string' || (parsed.form && typeof parsed.form === 'object'))) {
                   let formObj;
-                  try { formObj = JSON.parse(parsed.form); } catch { formObj = null; }
+                  try { formObj = typeof parsed.form === 'string' ? JSON.parse(parsed.form) : parsed.form; } catch { formObj = null; }
                   if (formObj && typeof formObj === 'object') {
-                    if (ov.HESAPKODU_ILK) {
-                      formObj.hesap_bas = String(ov.HESAPKODU_ILK);
-                      formObj.hesap_bit = String(ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
-                    }
-                    if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
-                    if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
-                    // İŞLETME: GELIR1/GIDER1 hidden flag override
-                    if (ov.GELIR1 !== undefined) formObj.GELIR1 = String(ov.GELIR1);
-                    if (ov.GIDER1 !== undefined) formObj.GIDER1 = String(ov.GIDER1);
-                    parsed.form = JSON.stringify(formObj);
+                    applyLucaReportOverrides(formObj, ov);
+                    parsed.form = typeof parsed.form === 'string' ? JSON.stringify(formObj) : formObj;
                     body = JSON.stringify(parsed);
                     if (Array.isArray(window.__morenLogs)) {
-                      window.__morenLogs.push(`[XHR-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
+                      window.__morenLogs.push(`[XHR-INJECT-OK] hesap=${formObj.hesap_bas || formObj.p_hesap_no_ilk_1 || ''}-${formObj.hesap_bit || formObj.p_hesap_no_son_1 || ''} tarih=${formObj.tarih_bas || formObj.p_fis_tarihi_ilk_1 || ''}/${formObj.tarih_bit || formObj.p_fis_tarihi_son_1 || ''} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
                     }
                   } else if (Array.isArray(window.__morenLogs)) {
                     window.__morenLogs.push(`[XHR-FORM-PARSE-FAIL]`);
@@ -7857,7 +8767,7 @@
         try {
           const dbgUrl = typeof input === 'string' ? input : (input && input.url) || '';
           if (window.__lucaJobOverrides && Array.isArray(window.__morenLogs)) {
-            if (!/rapor_takip|jasper/i.test(dbgUrl)) {
+            if (!/rapor_takip|jasper/i.test(dbgUrl) && !/mali-musavir-app.*\/api\/v1\/agent\//i.test(dbgUrl)) {
               window.__morenLogs.push(`[FETCH-OTHER] ${dbgUrl.slice(0, 120)}`);
             }
           }
@@ -7902,29 +8812,15 @@
             try {
               let parsed;
               try { parsed = JSON.parse(init.body); } catch { parsed = null; }
-              if (parsed && typeof parsed.form === 'string') {
+              if (parsed && (typeof parsed.form === 'string' || (parsed.form && typeof parsed.form === 'object'))) {
                 let formObj;
-                try { formObj = JSON.parse(parsed.form); } catch { formObj = null; }
+                try { formObj = typeof parsed.form === 'string' ? JSON.parse(parsed.form) : parsed.form; } catch { formObj = null; }
                 if (formObj && typeof formObj === 'object') {
-                  if (ov.HESAPKODU_ILK) {
-                    formObj.hesap_bas = String(ov.HESAPKODU_ILK);
-                    formObj.hesap_bit = String(ov.HESAPKODU_SON || ov.HESAPKODU_ILK);
-                  }
-                  if (ov.TARIH_ILK) formObj.tarih_bas = String(ov.TARIH_ILK);
-                  if (ov.TARIH_SON) formObj.tarih_bit = String(ov.TARIH_SON);
-                  // İŞLETME: GELIR1/GIDER1 hidden flag override
-                  if (ov.GELIR1 !== undefined) {
-                    formObj.GELIR1 = String(ov.GELIR1);
-                    formObj.gelir = String(ov.GELIR1) === '0' ? '1' : '0';
-                  }
-                  if (ov.GIDER1 !== undefined) {
-                    formObj.GIDER1 = String(ov.GIDER1);
-                    formObj.gider = String(ov.GIDER1) === '0' ? '1' : '0';
-                  }
-                  parsed.form = JSON.stringify(formObj);
+                  applyLucaReportOverrides(formObj, ov);
+                  parsed.form = typeof parsed.form === 'string' ? JSON.stringify(formObj) : formObj;
                   init = { ...init, body: JSON.stringify(parsed) };
                   if (Array.isArray(window.__morenLogs)) {
-                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas}-${formObj.hesap_bit} tarih=${formObj.tarih_bas}/${formObj.tarih_bit} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
+                    window.__morenLogs.push(`[FETCH-INJECT-OK] hesap=${formObj.hesap_bas || formObj.p_hesap_no_ilk_1 || ''}-${formObj.hesap_bit || formObj.p_hesap_no_son_1 || ''} tarih=${formObj.tarih_bas || formObj.p_fis_tarihi_ilk_1 || ''}/${formObj.tarih_bit || formObj.p_fis_tarihi_son_1 || ''} GELIR1=${formObj.GELIR1} GIDER1=${formObj.GIDER1}`);
                   }
                 }
               }

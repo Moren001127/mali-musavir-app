@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, bilancoApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
+import { formatDonemLabel, formatDonemRangeLabel } from '@/lib/period';
 import { toast } from 'sonner';
 import {
   Search, X, ChevronDown, Users, Calendar, Sparkles, Loader2,
@@ -210,7 +211,7 @@ export default function BilancoPage() {
                 {!taxpayerId ? 'Önce mükellef seçin' : mizanList.length === 0 ? 'Mizan yok' : '— Mizan seçin —'}
               </option>
               {mizanList.map((m: any) => (
-                <option key={m.id} value={m.id} style={{ background: '#0f0d0b' }}>{m.donem} · {m.donemTipi}</option>
+                <option key={m.id} value={m.id} style={{ background: '#0f0d0b' }}>{formatDonemRangeLabel(m.donem, m.donemTipi)}</option>
               ))}
             </select>
           </div>
@@ -291,7 +292,7 @@ export default function BilancoPage() {
         <>
           <h3 className="text-[14px] font-semibold mb-3 flex items-center gap-2.5 flex-wrap" style={{ color: '#fafaf9' }}>
             <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
-            Bilanço · {bilanco.tarih ? new Date(bilanco.tarih).toLocaleDateString('tr-TR') : bilanco.donem}
+            Bilanço · {bilanco.tarih ? new Date(bilanco.tarih).toLocaleDateString('tr-TR') : formatDonemLabel(bilanco.donem, bilanco.donemTipi)}
             {selectedTp && (
               <>
                 <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'Fraunces, serif' }}>
@@ -614,7 +615,7 @@ export default function BilancoPage() {
                         {b.taxpayer ? taxpayerName(b.taxpayer) : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono">
-                        {b.tarih ? new Date(b.tarih).toLocaleDateString('tr-TR') : b.donem}
+                        {b.tarih ? new Date(b.tarih).toLocaleDateString('tr-TR') : formatDonemLabel(b.donem, b.donemTipi)}
                         {b.locked && <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>KESİN</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-mono" style={{ color: dk ? GOLD : '#f43f5e', fontWeight: 600 }}>{fmtTRY(b.aktifToplami)}</td>

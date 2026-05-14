@@ -49,6 +49,28 @@ export class LucaService {
     return !/^DEV-/i.test(id);
   }
 
+  private inferDonemTipi(donem?: string | null, explicit?: string | null) {
+    const given = String(explicit || '').trim().toUpperCase();
+    if (/^GECICI_Q[1-4]$/.test(given)) return given;
+    if (given === 'AY' || given === 'AYLIK' || given === 'MONTH') return 'AYLIK';
+    if (given === 'YILLIK' || given === 'YEAR' || given === 'ANNUAL') return 'YILLIK';
+
+    const s = String(donem || '').trim().toUpperCase();
+    const q = s.match(/(?:^|[-_/])Q([1-4])$/);
+    if (q) return `GECICI_Q${q[1]}`;
+    if (/-YILLIK$/.test(s) || /^\d{4}$/.test(s)) return 'YILLIK';
+    if (/^\d{4}[-_/]\d{1,2}$/.test(s)) return 'AYLIK';
+    return 'AYLIK';
+  }
+
+  private withDerivedDonemTipi<T extends Record<string, any> | null>(job: T): T {
+    if (!job) return job;
+    return {
+      ...job,
+      donemTipi: this.inferDonemTipi(job.donem, job.donemTipi),
+    } as T;
+  }
+
   // ==================== TOKEN / OTURUM ====================
 
   /** Eklenti Luca session token/cookie'sini gönderir. */
@@ -111,6 +133,7 @@ export class LucaService {
     sessionId: string;
     mukellefId: string;
     donem: string;
+    donemTipi?: string;
     tip: string;
     createdBy?: string;
     mukellefAdi?: string;
@@ -136,6 +159,7 @@ export class LucaService {
         sessionId: params.sessionId,
         mukellefId: params.mukellefId,
         donem: params.donem,
+        donemTipi: this.inferDonemTipi(params.donem, params.donemTipi),
         tip: params.tip,
         status: 'pending',
         createdBy: params.createdBy || null,
@@ -295,11 +319,12 @@ export class LucaService {
       },
     });
 
-    return (this.prisma as any).lucaFetchJob.findMany({
+    const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    return jobs.map((job: any) => this.withDerivedDonemTipi(job));
   }
 
   async listJobsForAgent(tenantId: string, opts: { deviceId?: string; limit?: number; status?: string } = {}) {
@@ -332,11 +357,12 @@ export class LucaService {
         { targetDeviceId: deviceId },
       ];
     }
-    return (this.prisma as any).lucaFetchJob.findMany({
+    const jobs = await (this.prisma as any).lucaFetchJob.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    return jobs.map((job: any) => this.withDerivedDonemTipi(job));
   }
 
   async getJob(jobId: string, tenantId: string) {
@@ -346,7 +372,7 @@ export class LucaService {
     if (!job || job.tenantId !== tenantId) {
       throw new NotFoundException('Luca fetch job bulunamadı');
     }
-    return job;
+    return this.withDerivedDonemTipi(job);
   }
 
   async requeueJobForAgent(jobId: string, tenantId: string, reason?: string) {
@@ -356,12 +382,12 @@ export class LucaService {
     if (!job || job.tenantId !== tenantId) {
       throw new NotFoundException('Luca fetch job bulunamadı');
     }
-    if (job.status === 'done' || job.status === 'cancelled') return job;
+    if (job.status === 'done' || job.status === 'cancelled') return this.withDerivedDonemTipi(job);
     const line = reason
       ? `Teknik kilit temizlendi; iş tekrar sıraya alındı: ${reason}`
       : 'Teknik kilit temizlendi; iş tekrar sıraya alındı';
     await this.appendJobLog(jobId, line);
-    return (this.prisma as any).lucaFetchJob.update({
+    const updated = await (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
       data: {
         status: 'pending',
@@ -369,6 +395,7 @@ export class LucaService {
         finishedAt: null,
       },
     });
+    return this.withDerivedDonemTipi(updated);
   }
 
   /**
@@ -445,6 +472,7 @@ export class LucaService {
         });
         return {
           ...job,
+          donemTipi: this.inferDonemTipi(job.donem, job.donemTipi),
           // Agent'a flat olarak göndermek için kök seviyede expose et
           lucaSlug: tp?.lucaSlug || null,
           taxNumber: tp?.taxNumber || null,

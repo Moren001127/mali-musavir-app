@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, Wrench, Bell, Paperclip, X, FileText, CheckCircle2, AlertTriangle, Clock3, FileSpreadsheet } from 'lucide-react';
 import type { OfisAgent, OfisMessage, AgentId, OfisWorkflowEvent } from '@/lib/moren-ofis';
 import { ofisApi } from '@/lib/moren-ofis';
+import { formatDonemLabel, formatDonemTipiLabel } from '@/lib/period';
 import { speakAs, stopSpeech, startListening, isSpeechSupported, isSynthesisSupported } from './voice';
 import { toast } from 'sonner';
 
@@ -55,9 +56,9 @@ function WorkflowEventCard({ workflow, content }: { workflow: OfisWorkflowEvent;
         {'jobId' in workflow && workflow.jobId && <WorkflowPill label="jobId" value={workflow.jobId} />}
         {workflow.taxpayerName && <WorkflowPill label="mükellef" value={workflow.taxpayerName} />}
         {'workflowId' in workflow && workflow.workflowId && <WorkflowPill label="workflow" value={workflow.workflowId} />}
-        {'donem' in workflow && workflow.donem && <WorkflowPill label="dönem" value={workflow.donem} />}
+        {'donem' in workflow && workflow.donem && <WorkflowPill label="dönem" value={formatDonemLabel(workflow.donem, 'donemTipi' in workflow ? workflow.donemTipi : undefined)} />}
         {'periodLabel' in workflow && workflow.periodLabel && <WorkflowPill label="dönem" value={workflow.periodLabel} />}
-        {'donemTipi' in workflow && workflow.donemTipi && <WorkflowPill label="tip" value={workflow.donemTipi} />}
+        {'donemTipi' in workflow && workflow.donemTipi && <WorkflowPill label="tip" value={formatDonemTipiLabel(workflow.donemTipi, 'donem' in workflow ? workflow.donem : undefined)} />}
         {'mizanId' in workflow && workflow.mizanId && <WorkflowPill label="mizanId" value={workflow.mizanId} />}
         {'gelirTablosuId' in workflow && workflow.gelirTablosuId && <WorkflowPill label="gelirTablosuId" value={workflow.gelirTablosuId} />}
       </div>

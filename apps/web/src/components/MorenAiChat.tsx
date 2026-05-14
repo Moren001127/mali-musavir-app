@@ -75,7 +75,7 @@ export default function MorenAiChat({ open, onClose }: { open: boolean; onClose:
   const [mounted, setMounted] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<UiMessage[]>([
-    { role: 'ai', text: 'Merhaba 👋 Ben Moren AI. Mükellef verilerinden (mizan, bilanço, gelir tablosu, KDV, SGK, fatura) soru sorabilirsin. "Ali Tekstil\'in Q1 durumu nasıl?" gibi sorulara tool\'larla gerçek veriyle cevap veririm.' },
+    { role: 'ai', text: 'Merhaba 👋 Ben Moren AI. Mükellef verilerinden (mizan, bilanço, gelir tablosu, KDV, SGK, fatura) soru sorabilirsin. "Ali Tekstil\'in 1. dönem durumu nasıl?" gibi sorulara tool\'larla gerçek veriyle cevap veririm.' },
   ]);
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);

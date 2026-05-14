@@ -158,6 +158,7 @@ export class MizanController {
       sessionId: undefined as any, // Mizan için null (KDV kontrol'e bağlı değil)
       mukellefId: body.mukellefId,
       donem: body.donem,
+      donemTipi: body.donemTipi,
       tip: 'MIZAN',
       createdBy: req.user.sub,
       targetDeviceId: body.targetDeviceId || undefined,
