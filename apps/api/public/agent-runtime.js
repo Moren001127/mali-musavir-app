@@ -1902,6 +1902,14 @@
           preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
           returnValue: true, cancelBubble: false,
         };
+        // Luca II1a fonksiyonu içinde "tree.indexOf(code)" çağrısı var; tree
+        // henüz frm2 init olmadıysa undefined olup patlıyor. Bu hata pattern'ine
+        // uyan exception olursa kısa bekle + tekrar dene (max 3 kez per attempt).
+        const isTreeNotReadyError = (e) => {
+          const msg = String(e?.message || e);
+          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?indexOf['"]?/i.test(msg);
+        };
+        const MAX_RETRY = 3;
         for (const candidate of candidates) {
           const attempts = [
             [fakeEvent, code, ''],
@@ -1910,12 +1918,27 @@
             [code],
           ];
           for (const args of attempts) {
-            try {
-              await log(`🧭 II1a ${candidate.src} → ${code} (${reason})`);
-              candidate.fn(...args);
-              if (await waitForEbelgePage(8000)) return true;
-            } catch (e) {
-              await log(`⚠ II1a ${candidate.src} hata: ${String(e?.message || e).slice(0, 90)}`);
+            let retry = 0;
+            let argSetFailed = false;
+            while (retry < MAX_RETRY && !argSetFailed) {
+              try {
+                await log(`🧭 II1a ${candidate.src} → ${code} (${reason}${retry > 0 ? `, retry ${retry}/${MAX_RETRY - 1}` : ''})`);
+                candidate.fn(...args);
+                if (await waitForEbelgePage(8000)) return true;
+                // II1a çağrısı throw etmedi ama sayfa açılmadı → bu arg setiyle olmuyor, diğerine geç
+                argSetFailed = true;
+              } catch (e) {
+                const msg = String(e?.message || e).slice(0, 90);
+                await log(`⚠ II1a ${candidate.src} hata: ${msg}`);
+                if (isTreeNotReadyError(e) && retry < MAX_RETRY - 1) {
+                  retry++;
+                  await log(`⏳ Luca tree henüz hazır değil — 1.5sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
+                  await sleep(1500);
+                  continue;
+                }
+                // Farklı hata ya da retry tükendi → bu arg setini bırak
+                argSetFailed = true;
+              }
             }
           }
         }
@@ -1955,21 +1978,39 @@
       let basariliAcildi = false;
       if (!__navSkip && II1aFn) {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
-        try {
-          // Sahte event obj — bazı Luca buildlerinde gerek
-          const fakeEvent = {
-            type: 'click', target: null, currentTarget: null, srcElement: null,
-            preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
-            returnValue: true, cancelBubble: false,
-          };
-          II1aFn(fakeEvent, ii1aId, '');
-          basariliAcildi = await waitForEbelgePage(8000);
-          if (!basariliAcildi) {
-            await log(`⚠ II1a('${ii1aId}') çağrıldı ama ${menuLabel} ekranı açılmadı`);
+        // Luca II1a'nın iç implementasyonu tree.indexOf(code) çağırıyor; tree
+        // henüz init olmadıysa "Cannot read properties of undefined (reading 'indexOf')"
+        // patlar. Bu pattern'e uyan exception'da 1.5sn bekle + tekrar dene.
+        const isTreeNotReadyError = (e) => {
+          const msg = String(e?.message || e);
+          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?indexOf['"]?/i.test(msg);
+        };
+        const fakeEvent = {
+          type: 'click', target: null, currentTarget: null, srcElement: null,
+          preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
+          returnValue: true, cancelBubble: false,
+        };
+        const MAX_RETRY = 3;
+        let retry = 0;
+        while (retry < MAX_RETRY) {
+          try {
+            II1aFn(fakeEvent, ii1aId, '');
+            basariliAcildi = await waitForEbelgePage(8000);
+            if (!basariliAcildi) {
+              await log(`⚠ II1a('${ii1aId}') çağrıldı ama ${menuLabel} ekranı açılmadı`);
+            }
+            break;
+          } catch (e) {
+            if (isTreeNotReadyError(e) && retry < MAX_RETRY - 1) {
+              retry++;
+              await log(`⏳ II1a('${ii1aId}') tree hazır değil — 1.5sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
+              await sleep(1500);
+              continue;
+            }
+            await log(`⚠ II1a('${ii1aId}') başarısız: ${String(e?.message || e).slice(0, 120)} — fallback: alternatif kodlar / metin menüsü`);
+            basariliAcildi = false;
+            break;
           }
-        } catch (e) {
-          await log(`⚠ II1a('${ii1aId}') başarısız: ${e?.message || e} — fallback: text-based menü click`);
-          basariliAcildi = false;
         }
       }
       if (__navSkip) {
