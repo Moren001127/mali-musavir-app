@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.23';
+  const AGENT_VERSION = '1.37.24';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1179,6 +1179,92 @@
     return await fetchLucaGenericExcel(job, log);
   }
 
+  function collectLucaClickMap(filterText = '') {
+    const rows = [];
+    const seenDocs = new Set();
+    const seenEls = new Set();
+    const fold = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0131/g, 'i')
+      .replace(/\u0130/g, 'i')
+      .toLowerCase();
+    const extractII1a = (value) => {
+      const m = String(value || '').match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
+      return m ? m[1] : '';
+    };
+    const visit = (win, label) => {
+      try {
+        if (!win?.document || seenDocs.has(win.document)) return;
+        seenDocs.add(win.document);
+        const doc = win.document;
+        const nodes = Array.from(doc.querySelectorAll([
+          'a[href]',
+          'area[href]',
+          'button',
+          'input',
+          'select',
+          'textarea',
+          '[onclick]',
+          '[role="button"]',
+          '[id]',
+          '[name]',
+        ].join(',')));
+        for (const el of nodes) {
+          if (!el || seenEls.has(el)) continue;
+          seenEls.add(el);
+          const tag = String(el.tagName || '').toLowerCase();
+          const onclick = String(el.getAttribute?.('onclick') || '');
+          const href = String(el.getAttribute?.('href') || '');
+          const id = String(el.id || '');
+          const name = String(el.getAttribute?.('name') || '');
+          const role = String(el.getAttribute?.('role') || '');
+          const type = String(el.getAttribute?.('type') || '');
+          const value = String(el.value || '');
+          const title = String(el.getAttribute?.('title') || '');
+          const aria = String(el.getAttribute?.('aria-label') || '');
+          const formAction = String(el.form?.getAttribute?.('action') || el.closest?.('form')?.getAttribute?.('action') || '');
+          const text = String(el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+          const hay = `${tag} ${id} ${name} ${role} ${type} ${value} ${title} ${aria} ${text} ${onclick} ${href} ${formAction}`;
+          if (filterText && !fold(hay).includes(fold(filterText))) continue;
+          const isClickable =
+            onclick || href || role === 'button' ||
+            ['a', 'area', 'button', 'select', 'textarea'].includes(tag) ||
+            (tag === 'input' && type !== 'hidden');
+          if (!isClickable && !filterText) continue;
+          rows.push({
+            frame: label,
+            tag,
+            id,
+            name,
+            type,
+            text,
+            value: value.slice(0, 80),
+            ii1a: extractII1a(`${onclick} ${href}`),
+            onclick: onclick.slice(0, 180),
+            href: href.slice(0, 180),
+            formAction: formAction.slice(0, 180),
+          });
+        }
+        for (let i = 0; i < (win.frames?.length || 0); i++) {
+          try { visit(win.frames[i], `${label}/${win.frames[i]?.name || i}`); } catch {}
+        }
+      } catch {}
+    };
+    try { visit(window.top || window, 'top'); } catch {}
+    try { visit(window, 'current'); } catch {}
+    return rows;
+  }
+
+  try {
+    window.__morenLucaClickMap = collectLucaClickMap;
+    window.__morenDumpLucaClickMap = (filterText = '') => {
+      const rows = collectLucaClickMap(filterText);
+      try { console.table(rows); } catch { console.log(rows); }
+      return rows;
+    };
+  } catch {}
+
   // ─────────────────────────────────────────────────────────────
   // E-ARŞİV / E-FATURA — Luca'dan ZIP çekim
   // ─────────────────────────────────────────────────────────────
@@ -1557,16 +1643,33 @@
       }
     };
 
-    const ebelgeTextMatchesJob = (doc) => {
-      const txt = foldEbelgeText(doc?.body?.textContent || '');
+    const includesAnyEbelge = (txt, terms) => terms.some((term) => txt.includes(term));
+
+    const ebelgeTypeMatchesJobText = (txt) => {
       const wantsEarsiv = String(job.tip || '').includes('EARSIV');
       const wantsEfatura = String(job.tip || '').includes('EFATURA');
+      const hasEarsiv = includesAnyEbelge(txt, ['e-arsiv', 'e arsiv', 'earsiv', 'gib_earsiv', 'gibearsiv']);
+      const hasEfatura = includesAnyEbelge(txt, ['e-fatura', 'e fatura', 'efatura', 'gib_efatura', 'gibefatura']);
+      if (wantsEarsiv) return hasEarsiv;
+      if (wantsEfatura) return hasEfatura && !hasEarsiv;
+      return true;
+    };
+
+    const ebelgeSideMatchesJobText = (txt) => {
       const wantsAlis = String(job.tip || '').includes('ALIS');
       const wantsSatis = String(job.tip || '').includes('SATIS');
-      const typeOk = (wantsEarsiv && (txt.includes('e-arsiv') || txt.includes('earsiv'))) ||
-        (wantsEfatura && (txt.includes('e-fatura') || txt.includes('efatura')));
-      const sideOk = (wantsAlis && txt.includes('alis')) || (wantsSatis && txt.includes('satis'));
-      return typeOk && sideOk;
+      const alisTerms = ['alis', 'gelen', 'alinan', 'aliciya gelen', 'girdi'];
+      const satisTerms = ['satis', 'giden', 'gonderilen', 'duzenlenen', 'kesilen', 'cikis'];
+      if (wantsAlis) return includesAnyEbelge(txt, alisTerms);
+      if (wantsSatis) return includesAnyEbelge(txt, satisTerms);
+      return true;
+    };
+
+    const ebelgeTextMatchesJob = (doc) => {
+      const bodyTxt = foldEbelgeText(doc?.body?.textContent || '');
+      const htmlTxt = foldEbelgeText(doc?.documentElement?.innerHTML || '');
+      const txt = `${bodyTxt} ${htmlTxt}`;
+      return ebelgeTypeMatchesJobText(txt) && ebelgeSideMatchesJobText(txt);
     };
 
     const hasEbelgeStructure = (doc, win) => {
@@ -1581,6 +1684,9 @@
           html.includes('indir-window') ||
           html.includes('gib530') ||
           html.includes('gib_ebelge') ||
+          html.includes('gib_efatura') ||
+          html.includes('gibefatura') ||
+          html.includes('toplufatura') ||
           html.includes('fatura_list')
         );
       } catch {
@@ -1673,7 +1779,7 @@
             btnText.includes('fatura getir');
           const textOk = ebelgeTextMatchesJob(doc);
           const structureOk = hasEbelgeStructure(doc, item.win);
-          if (exactBtn || (textOk && (structureOk || btn)) || (structureOk && strongBtn)) {
+          if (textOk && (structureOk || btn || exactBtn)) {
             return {
               doc,
               win: item.win,
@@ -1681,7 +1787,7 @@
               label: describeEbelgeWindow(item.win, item.label),
             };
           }
-          if (!fallback && textOk && structureOk) {
+          if (!fallback && (exactBtn || (structureOk && strongBtn) || (textOk && structureOk))) {
             fallback = {
               doc,
               win: item.win,
@@ -1769,14 +1875,8 @@
       const contextMatchesExpected = (ctx) => {
         try {
           if (!ctx?.doc?.body) return false;
-          const txt = normalizeEbelgeText(ctx.doc.body.textContent || '');
-          const wantsEarsiv = String(job.tip || '').includes('EARSIV');
-          const wantsEfatura = String(job.tip || '').includes('EFATURA');
-          const wantsAlis = String(job.tip || '').includes('ALIS');
-          const wantsSatis = String(job.tip || '').includes('SATIS');
-          const typeOk = (wantsEarsiv && txt.includes('e-arsiv')) || (wantsEfatura && txt.includes('e-fatura'));
-          const sideOk = (wantsAlis && txt.includes('alis')) || (wantsSatis && txt.includes('satis'));
-          return typeOk && sideOk;
+          const txt = `${normalizeEbelgeText(ctx.doc.body.textContent || '')} ${normalizeEbelgeText(ctx.doc.documentElement?.innerHTML || '')}`;
+          return ebelgeTypeMatchesJobText(txt) && ebelgeSideMatchesJobText(txt);
         } catch {
           return false;
         }
@@ -1832,23 +1932,84 @@
       };
 
       const collectFrameDocs = () => {
-        const docs = [];
+        return collectFrameDocItems().map((item) => item.doc);
+      };
+
+      const collectFrameDocItems = () => {
+        const items = [];
         const seenWins = new Set();
-        const visit = (win) => {
+        const visit = (win, label = 'window') => {
           try {
             if (!win || seenWins.has(win)) return;
             seenWins.add(win);
             const doc = win.document;
-            if (doc) docs.push(doc);
-            doc?.querySelectorAll('frame, iframe').forEach((fr) => {
-              try { visit(fr.contentWindow); } catch {}
+            if (doc) items.push({ doc, win, label });
+            Array.from(doc?.querySelectorAll('frame, iframe') || []).forEach((fr, idx) => {
+              try { visit(fr.contentWindow, `${label}/${fr.name || fr.id || idx}`); } catch {}
             });
           } catch {}
         };
-        try { visit(window); } catch {}
-        try { if (parent && parent !== window) visit(parent); } catch {}
-        try { if (top && top !== window) visit(top); } catch {}
-        return docs;
+        try { visit(window, 'current'); } catch {}
+        try { if (parent && parent !== window) visit(parent, 'parent'); } catch {}
+        try { if (top && top !== window) visit(top, 'top'); } catch {}
+        return items;
+      };
+
+      const extractII1aCodeFromText = (value) => {
+        const text = String(value || '');
+        const m = text.match(/II1a\s*\(\s*(?:event\s*,\s*)?['"]([^'"]+)['"]/i);
+        if (m) return m[1];
+        const direct = text.match(/apy1000m\d+i\d+I/i);
+        return direct ? direct[0] : '';
+      };
+
+      const getEbelgeCandidateText = (el) => {
+        const parts = [];
+        let cur = el;
+        for (let depth = 0; cur && depth < 4; depth++, cur = cur.parentElement) {
+          try {
+            parts.push(
+              cur.textContent,
+              cur.value,
+              cur.title,
+              cur.id,
+              cur.name,
+              cur.getAttribute?.('aria-label'),
+              cur.getAttribute?.('onclick'),
+              cur.getAttribute?.('href'),
+            );
+          } catch {}
+        }
+        return foldEbelgeText(parts.filter(Boolean).join(' '));
+      };
+
+      const findEbelgeMenuTargetCandidates = () => {
+        const out = [];
+        const seen = new Set();
+        const wantedLabel = foldEbelgeText(menuLabel);
+        for (const item of collectFrameDocItems()) {
+          let elements = [];
+          try { elements = Array.from(item.doc.querySelectorAll('a[href], area[href], [onclick], [role="button"], td, span, div, li')); } catch {}
+          for (const el of elements) {
+            const hay = getEbelgeCandidateText(el);
+            if (!hay) continue;
+            const labelOk = hay.includes(wantedLabel);
+            if (!labelOk && !(ebelgeTypeMatchesJobText(hay) && ebelgeSideMatchesJobText(hay))) continue;
+            const code = extractII1aCodeFromText(hay);
+            const key = `${item.label}|${code}|${hay.slice(0, 120)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+              doc: item.doc,
+              win: item.win || item.doc.defaultView || window,
+              el,
+              frame: item.label,
+              code,
+              text: hay.replace(/\s+/g, ' ').trim().slice(0, 120),
+            });
+          }
+        }
+        return out.slice(0, 12);
       };
 
       const tryOpenByMenuCode = async (code, reason) => {
@@ -1945,6 +2106,31 @@
         return tryOpenByMenuCode(code, reason);
       };
 
+      const tryOpenByDiscoveredMenuTargets = async (reason) => {
+        const targets = findEbelgeMenuTargetCandidates();
+        if (!targets.length) {
+          await log(`ℹ ${menuLabel} icin gorunen Luca menu hedefi bulunamadi (${reason})`);
+          return false;
+        }
+        await log(`🧩 ${menuLabel} icin Luca hedef kesfi: ${targets.map((t) => `${t.code || 'no-code'}@${t.frame}:${t.text.slice(0, 42)}`).join(' | ')}`);
+        for (const target of targets) {
+          if (target.code && await tryOpenByII1a(target.code, `DOM kesfi/${reason}`)) return true;
+          const win = target.win || target.doc?.defaultView || window;
+          try {
+            await log(`🖱 Kesfedilen Luca hedefi tiklaniyor (${target.frame}: ${target.text.slice(0, 80)})`);
+            target.el.dispatchEvent(new win.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: win }));
+            target.el.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true, cancelable: true, view: win }));
+            target.el.dispatchEvent(new win.MouseEvent('mouseup', { bubbles: true, cancelable: true, view: win }));
+            target.el.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win }));
+            if (typeof target.el.click === 'function') target.el.click();
+            if (await waitForEbelgePage(8000)) return true;
+          } catch (e) {
+            await log(`⚠ Kesfedilen hedef click hata: ${String(e?.message || e).slice(0, 90)}`);
+          }
+        }
+        return false;
+      };
+
       await log(`🧭 II1a('${ii1aId}') aranıyor → ${menuLabel}`);
       // II1a fonksiyonu hangi frame'de tanımlı bilmiyoruz — hepsini tara
       let II1aFn = null, II1aSrc = '';
@@ -2021,6 +2207,9 @@
           basariliAcildi = await tryOpenByII1a(altId, altId === ii1aId ? 'birincil tekrar' : 'alternatif kod');
           if (basariliAcildi) break;
         }
+      }
+      if (!__navSkip && !basariliAcildi) {
+        basariliAcildi = await tryOpenByDiscoveredMenuTargets('alternatif kodlar sonrasi');
       }
       if (!basariliAcildi) {
         // Fallback: menüleri sırayla açıp elementi click et.
@@ -2162,6 +2351,9 @@
           for (const altId of ii1aIds) {
             basariliAcildi = await tryOpenByII1a(altId, 'metin menü sonrası');
             if (basariliAcildi) break;
+          }
+          if (!basariliAcildi) {
+            basariliAcildi = await tryOpenByDiscoveredMenuTargets('metin menu sonrasi');
           }
           if (!basariliAcildi) {
             await log(`⚠ ${menuLabel} ekranı metin/II1a/menü kodu ile açılamadı; son doğrulama yapılacak`);
