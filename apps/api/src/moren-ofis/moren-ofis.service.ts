@@ -388,6 +388,16 @@ export class MorenOfisService {
     });
     if (kdvControlTurn) return kdvControlTurn;
 
+    const contextualWorkflowTurn = await this.tryHandleContextualWorkflowStatusQuery({
+      tenantId,
+      userId,
+      conversationId: conv.id,
+      history,
+      userMsg,
+      text,
+    });
+    if (contextualWorkflowTurn) return contextualWorkflowTurn;
+
     const guardedModuleTurn = await this.tryGuardKnownModuleCommand({
       tenantId,
       conversationId: conv.id,
@@ -414,6 +424,7 @@ export class MorenOfisService {
       }
       // Son katmanda kısa cevap reminder — modeller çok seviyor uzun rapor yazmayı
       prompt += `\n\nÖNEMLİ: Cevabın doğal sohbet havası olmalı — başlık/tablo/checkbox yasak. 2-4 cümle, max 80 kelime.`;
+      prompt += `\n\nMODÜL İŞİ GÜVENLİK KURALI: Kullanıcı gerçek bir modül işi, sorgu, çekim, kontrol, eşleştirme, fişleme veya durum sorarsa; elinde gerçek job/status/kayıt sonucu yoksa "yaptım", "başlattım", "tamamlandı", "çekildi" deme. Başka modül uydurma; sadece eldeki canlı veriyi söyle veya netleştirme iste.`;
       return prompt;
     };
 
@@ -625,7 +636,10 @@ export class MorenOfisService {
       return { conversationId: params.conversationId, messages, active: ['nevra'], totalCostUsd: 0 };
     }
 
-    const period = this.resolveKdvMonthlyPeriod(params.text);
+    let period = this.resolveKdvMonthlyPeriod(params.text);
+    if (!period && this.isStatusQuestion(params.text) && taxpayerResolution.kind === 'matched') {
+      period = await this.findLatestKdvControlPeriod(params.tenantId, taxpayerResolution.taxpayer.id, this.resolveKdvControlTypes(params.text));
+    }
     if (!period) {
       const aylin: OfisMessage = {
         agent: 'nevra',
@@ -887,11 +901,11 @@ export class MorenOfisService {
     text: string;
   }): Promise<OfisTurnResponse | null> {
     const moduleName = this.detectKnownModuleCommand(params.text);
-    if (!moduleName || !this.hasExecutionVerb(params.text)) return null;
+    if (!moduleName || (!this.hasExecutionVerb(params.text) && !this.isStatusQuestion(params.text))) return null;
 
     const deniz: OfisMessage = {
       agent: 'deniz',
-      content: `${moduleName} icin eksik kopru var: intent yakalama, ilgili servis/job cagirma, durum polling ve sistem karti. Baglanti kurulmadan ekip sadece yorum yapar, islem tamamlandi mesaji yazamaz.`,
+      content: `${moduleName} komutunu genel sohbete birakmadim. Bu is icin Moren Ofis tarafinda gercek modul/job/status koprusu bagli degilse ekip "yaptik" diyemez; once ilgili servis, job kuyruğu, durum polling'i ve sonuc karti baglanmali.`,
       ts: new Date().toISOString(),
     };
     const messages = [params.userMsg, deniz];
@@ -1182,6 +1196,151 @@ export class MorenOfisService {
     return { workflow, job: { workflowId: params.workflowId, sessions: workflow.sessions }, messages };
   }
 
+  private async tryHandleContextualWorkflowStatusQuery(params: {
+    tenantId: string;
+    userId: string;
+    conversationId: string;
+    history: OfisMessage[];
+    userMsg: OfisMessage;
+    text: string;
+  }): Promise<OfisTurnResponse | null> {
+    if (!this.isStatusQuestion(params.text)) return null;
+
+    const taxpayerResolution = await this.resolveWorkflowTaxpayer(params.tenantId, params.text).catch(() => ({ kind: 'missing' as const }));
+    const taxpayerId = taxpayerResolution.kind === 'matched' ? taxpayerResolution.taxpayer.id : undefined;
+    const workflow = this.findRecentWorkflowFromHistory(params.history, taxpayerId);
+    if (!workflow) return null;
+
+    if (workflow.kind === 'kdv_control_workflow') {
+      const period =
+        (workflow.period && this.kdvPeriodFromDash(workflow.period)) ||
+        this.kdvPeriodFromLabel(workflow.periodLabel || '') ||
+        (taxpayerId ? await this.findLatestKdvControlPeriod(params.tenantId, taxpayerId, workflow.types) : null);
+      if (!period) return null;
+
+      const taxpayer =
+        (workflow.taxpayerId && (await this.getWorkflowTaxpayerById(params.tenantId, workflow.taxpayerId))) ||
+        (taxpayerResolution.kind === 'matched' ? taxpayerResolution.taxpayer : null) ||
+        { id: workflow.taxpayerId || taxpayerId || '', name: workflow.taxpayerName || 'Mukellef' };
+      if (!taxpayer.id) return null;
+
+      const fresh = await this.collectKdvControlWorkflowState({
+        tenantId: params.tenantId,
+        userId: params.userId,
+        workflowId: workflow.workflowId || this.buildKdvWorkflowId(taxpayer.id, period.dash, workflow.types),
+        taxpayer,
+        period,
+        types: workflow.types?.length ? workflow.types : ['KDV_191', 'KDV_391'],
+        autoReconcile: true,
+      });
+
+      const messages: OfisMessage[] = [
+        params.userMsg,
+        {
+          agent: 'system',
+          content: 'KDV kontrol durumu gerçek kayıtlardan yenilendi.',
+          ts: new Date().toISOString(),
+          workflow: fresh,
+        },
+      ];
+
+      if (fresh.phase === 'completed') {
+        messages.push({ agent: 'nevra', content: this.buildKdvFinalComment(fresh), ts: new Date().toISOString() });
+      } else if (fresh.phase === 'failed') {
+        messages.push({ agent: 'kayra', content: this.buildKdvBlockingComment(fresh), ts: new Date().toISOString() });
+      } else {
+        messages.push({ agent: 'kayra', content: this.buildKdvProgressComment(fresh), ts: new Date().toISOString() });
+      }
+
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      const active = messages
+        .map((m) => m.agent)
+        .filter((agent): agent is AgentId => agent !== 'user' && agent !== 'system');
+      return { conversationId: params.conversationId, messages, active, totalCostUsd: 0 };
+    }
+
+    if (workflow.kind === 'mizan_gelir_workflow') {
+      const fresh =
+        workflow.jobId
+          ? ((await this.getMizanGelirWorkflowStatus({
+              tenantId: params.tenantId,
+              userId: params.userId,
+              jobId: workflow.jobId,
+            }).catch(() => null))?.workflow as MizanGelirWorkflowEvent | undefined) || workflow
+          : workflow;
+      const period = fresh.donem ? this.periodFromDonem(fresh.donem) : null;
+      const messages: OfisMessage[] = [
+        params.userMsg,
+        {
+          agent: 'system',
+          content: 'Mizan ve gelir tablosu akışı gerçek kayıtlardan yenilendi.',
+          ts: new Date().toISOString(),
+          workflow: fresh,
+        },
+      ];
+
+      if (fresh.phase === 'completed') {
+        messages.push({
+          agent: 'cem',
+          content: this.buildCemGelirTablosuComment(fresh.taxpayerName || 'Mukellef', period?.label || fresh.donem || '', fresh),
+          ts: new Date().toISOString(),
+        });
+      } else if (fresh.phase === 'failed' || fresh.phase === 'cancelled') {
+        messages.push({
+          agent: 'kayra',
+          content: `${fresh.taxpayerName || 'Mukellef'} icin mizan/gelir tablosu akisi tamamlanmadi. Luca job ${fresh.status || fresh.phase} durumda${fresh.error ? `: ${fresh.error}` : '.'}`,
+          ts: new Date().toISOString(),
+        });
+      } else {
+        messages.push({
+          agent: 'kayra',
+          content: `${fresh.taxpayerName || 'Mukellef'} icin mizan/gelir tablosu akisi henuz bitmedi. Job ${fresh.status || fresh.phase} durumda; gercek mizan olusmadan analiz yazmiyorum.`,
+          ts: new Date().toISOString(),
+        });
+      }
+
+      await this.persistConversationMessages(params.conversationId, params.history, messages);
+      const active = messages
+        .map((m) => m.agent)
+        .filter((agent): agent is AgentId => agent !== 'user' && agent !== 'system');
+      return { conversationId: params.conversationId, messages, active, totalCostUsd: 0 };
+    }
+
+    return null;
+  }
+
+  private findRecentWorkflowFromHistory(history: OfisMessage[], taxpayerId?: string): OfisWorkflowEvent | null {
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const wf = history[i]?.workflow;
+      if (!wf) continue;
+      if (taxpayerId && wf.taxpayerId && wf.taxpayerId !== taxpayerId) continue;
+      return wf;
+    }
+    return null;
+  }
+
+  private async getLucaAgentStatusLine(tenantId: string): Promise<string | null> {
+    const rows = await (this.prisma as any).agentStatus
+      .findMany({
+        where: { tenantId, agent: 'luca' },
+        orderBy: { lastPing: 'desc' },
+        take: 3,
+      })
+      .catch(() => []);
+    if (!rows.length) return 'Luca ajanı aktif görünmüyor; job kuyrukta kalabilir.';
+
+    const activeLimit = Date.now() - 2 * 60 * 1000;
+    const active = rows.find((s: any) => Boolean(s.running) && new Date(s.lastPing).getTime() >= activeLimit);
+    if (active) {
+      const device = active?.meta?.deviceId || active.deviceId || 'cihaz';
+      return `Luca ajanı aktif (${device}).`;
+    }
+
+    const last = rows[0];
+    const seconds = Math.max(0, Math.round((Date.now() - new Date(last.lastPing).getTime()) / 1000));
+    return `Luca ajanı son ${seconds} sn önce ping attı; şu an aktif görünmüyor.`;
+  }
+
   private buildKdvWorkflowId(taxpayerId: string, periodDash: string, types: KdvControlWorkflowType[]) {
     return `${taxpayerId}__${periodDash}__${types.join('-')}`;
   }
@@ -1207,6 +1366,25 @@ export class MorenOfisService {
     const m = String(periodDash || '').match(/^(20\d{2})-(0?[1-9]|1[0-2])$/);
     if (!m) return this.kdvPeriodFromYearMonth(new Date().getFullYear(), new Date().getMonth() + 1);
     return this.kdvPeriodFromYearMonth(Number(m[1]), Number(m[2]));
+  }
+
+  private kdvPeriodFromLabel(periodLabel: string): { dash: string; periodLabel: string; label: string } | null {
+    const m = String(periodLabel || '').match(/^(20\d{2})[/-](0?[1-9]|1[0-2])$/);
+    if (!m) return null;
+    return this.kdvPeriodFromYearMonth(Number(m[1]), Number(m[2]));
+  }
+
+  private async findLatestKdvControlPeriod(
+    tenantId: string,
+    taxpayerId: string,
+    types: KdvControlWorkflowType[],
+  ): Promise<{ dash: string; periodLabel: string; label: string } | null> {
+    const latest = await (this.prisma as any).kdvControlSession.findFirst({
+      where: { tenantId, taxpayerId, type: { in: types } },
+      select: { periodLabel: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return latest?.periodLabel ? this.kdvPeriodFromLabel(latest.periodLabel) : null;
   }
 
   private buildInitialKdvWorkflowEvent(params: {
@@ -1287,6 +1465,8 @@ export class MorenOfisService {
 
     const states: KdvControlWorkflowEvent['sessions'] = [];
     const logs: string[] = [];
+    const agentStatusLine = await this.getLucaAgentStatusLine(params.tenantId);
+    if (agentStatusLine) logs.push(agentStatusLine);
     for (const type of params.types) {
       const session = sessionByType.get(type);
       if (!session) {
@@ -1437,7 +1617,8 @@ export class MorenOfisService {
       if (s.results === 0) return `${s.typeLabel}: veri hazır, eşleştirme başlatılacak`;
       return `${s.typeLabel}: ${s.matched} tam, ${s.unmatched} eşleşmeyen`;
     });
-    return `${workflow.taxpayerName || 'Mükellef'} için KDV kontrolü henüz tamamlanmadı. ${parts.join('; ')}. Sonuç oluşmadan başarılı/tamamlandı demiyorum.`;
+    const agentLine = (workflow.logs || []).find((line) => line.includes('Luca ajan'));
+    return `${workflow.taxpayerName || 'Mükellef'} için KDV kontrolü henüz tamamlanmadı. ${parts.join('; ')}.${agentLine ? ` ${agentLine}` : ''} Sonuç oluşmadan başarılı/tamamlandı demiyorum.`;
   }
 
   private buildKdvBlockingComment(workflow: KdvControlWorkflowEvent): string {
@@ -1702,9 +1883,12 @@ export class MorenOfisService {
 
   private detectKnownModuleCommand(text: string): string | null {
     const q = this.normalizeWorkflowText(text);
+    if (/\bkdv\b.*kontrol|kontrol.*\bkdv\b|indirilecek\s+kdv|hesaplanan\s+kdv|\b191\b|\b391\b/.test(q)) return 'KDV Kontrol';
+    if (/isletme\s+hesap\s+ozeti|kar\s+zarar\s+ozeti|stok\s+hareketi/.test(q)) return 'Isletme Hesap Ozeti';
+    if (/\bmizan\b/.test(q)) return 'Mizan';
+    if (/gelir\s+tablo\w*|kar\s+zarar/.test(q)) return 'Gelir Tablosu';
     if (/e\s*fatura|e\s*arsiv|efatura|earsiv/.test(q)) return 'E-Fatura / E-Arsiv Sorgulama';
     if (/fatura\s+isle|fatura\s+muhasebe|fis\s+yazdir|islenen\s+fatura/.test(q)) return 'Fatura Isleme';
-    if (/isletme\s+hesap\s+ozeti|kar\s+zarar\s+ozeti|stok\s+hareketi/.test(q)) return 'Isletme Hesap Ozeti';
     if (/kdv\s+beyanname|beyanname\s+hazirla|beyanname\s+gonder/.test(q)) return 'KDV Beyanname';
     if (/bilanco/.test(q)) return 'Bilanco';
     return null;
