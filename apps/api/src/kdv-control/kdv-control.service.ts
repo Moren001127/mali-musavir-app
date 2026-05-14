@@ -556,6 +556,20 @@ export class KdvControlService {
     }
 
     if (parsed.length === 0) {
+      if (isBilancoKdv && headerIdx < 0) {
+        await this.prisma.kdvControlSession.update({
+          where: { id: sessionId },
+          data: { status: 'PROCESSING' },
+        });
+        await this.pushFeedEvent(tenantId, {
+          action: 'luca-import',
+          status: 'bilgi',
+          message: `Luca Excel yÃ¼klendi â€” geÃ§erli ${this.kdvTypeLabel(session.type)} satÄ±rÄ± bulunamadÄ±`,
+          mukellef: this.formatMukellefAdi(session),
+          meta: { sessionId, imported: 0, skipped, emptyLucaReport: true },
+        });
+        return { imported: 0, skipped };
+      }
       const debugKeys = Object.keys(rawRows[0] || {}).slice(0, 16).join(' | ') || '(kolon yok)';
       const debugRows = rawRows.slice(0, 4).map((row) =>
         Object.entries(row)
