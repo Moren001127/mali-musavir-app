@@ -66,7 +66,10 @@ const navGroups = [
     icon: Receipt,
     items: [
       { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
-      { href: '/panel/fatura-muhasebelestirme', label: 'Fatura Muhasebeleştirme', icon: Calculator },
+      // "Fatura Muhasebeleştirme" sayfası kaldırıldı — modül yeniden tasarlanacak.
+      // Backend kaldı (earsiv + luca otomatik bu service'i kullanıyor).
+      // Yeni UI: çoklu entegratör (e-Logo, TÜRMOB, Paraşüt, Mikro, Uyumsoft)
+      // + manuel fiş yükleme + hesap planı eşleştirme + Luca'ya fişleme.
       { href: '/panel/e-arsiv',                label: 'E-Fatura / E-Arşiv Sorgulama', icon: Archive },
       { href: '/panel/ajanlar/mihsap',         label: 'Fatura İşleme',      icon: Bot },
       { href: '/panel/fis-yazdirma',           label: 'Fiş Yazdırma',       icon: Printer },
