@@ -339,7 +339,7 @@ export function BriefingChat({
         background: 'linear-gradient(135deg, rgba(212,184,118,0.06) 0%, rgba(15,11,21,0.85) 100%)',
         border: '1px solid rgba(212,184,118,0.22)',
         boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-        minHeight: 540,
+        minHeight: 0,
         height: '100%',
       }}
     >
@@ -354,7 +354,7 @@ export function BriefingChat({
 
       {/* Başlık — brifing tarzı */}
       <div
-        className="px-5 pt-4 pb-3 flex items-start justify-between gap-3"
+        className="px-4 py-3 flex items-center justify-between gap-3"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
       >
         <div>
@@ -378,7 +378,7 @@ export function BriefingChat({
           <h2
             style={{
               fontFamily: 'Fraunces, serif',
-              fontSize: 24,
+              fontSize: 21,
               fontWeight: 700,
               letterSpacing: '-0.02em',
               color: '#fafaf9',
@@ -389,14 +389,14 @@ export function BriefingChat({
               ? 'Ekibe talimat ver, dinleyelim'
               : `${messages.length} mesaj akışta`}
           </h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          <p className="text-[10.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
             7 kişilik ekip · İlgili uzman doğrudan cevaplar
           </p>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             onClick={toggleSpeak}
-            className="px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase flex items-center gap-1 tracking-wider transition"
+            className="px-2 py-1.5 rounded-md text-[10px] font-bold uppercase flex items-center gap-1 tracking-wider transition"
             style={{
               background: speakEnabled ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
               border: `1px solid ${speakEnabled ? 'rgba(34,197,94,0.30)' : 'rgba(255,255,255,0.08)'}`,
@@ -409,7 +409,7 @@ export function BriefingChat({
           </button>
           <button
             onClick={toggleVoiceMode}
-            className="px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase flex items-center gap-1 tracking-wider transition"
+            className="px-2 py-1.5 rounded-md text-[10px] font-bold uppercase flex items-center gap-1 tracking-wider transition"
             style={{
               background: voiceMode ? `${GOLD}22` : 'rgba(255,255,255,0.04)',
               border: `1px solid ${voiceMode ? `${GOLD}55` : 'rgba(255,255,255,0.08)'}`,
@@ -423,9 +423,9 @@ export function BriefingChat({
       </div>
 
       {/* Mesaj akışı — brifing maddeleri tarzı */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-3.5">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3.5 sm:px-4 py-3 space-y-2.5">
         {messages.length === 0 ? (
-          <div className="space-y-2 py-4">
+          <div className="space-y-1.5 py-2">
             {[
               '"Petravet için Mayıs KDV durumu nedir?" — NEVRA bakar',
               '"Asgari ücretliye AGİ hesabı" — VOLKAN cevaplar',
@@ -475,7 +475,7 @@ export function BriefingChat({
                   style={{ animation: 'fade-in-up 0.3s ease-out' }}
                 >
                   <div
-                    className="px-4 py-2.5 rounded-2xl rounded-tr-md max-w-[90%] text-[13px] leading-relaxed shadow-sm"
+                    className="px-3.5 py-2 rounded-2xl rounded-tr-md max-w-[90%] text-[13px] leading-relaxed shadow-sm"
                     style={{
                       background: 'linear-gradient(135deg, rgba(212,184,118,0.22), rgba(120,92,46,0.18))',
                       border: `1px solid ${GOLD}42`,
@@ -519,7 +519,7 @@ export function BriefingChat({
                   )}
                 </div>
                 <div
-                  className="px-4 py-3 rounded-2xl rounded-tl-md text-[13px] leading-relaxed whitespace-pre-wrap shadow-sm"
+                  className="px-3.5 py-2.5 rounded-2xl rounded-tl-md text-[13px] leading-relaxed whitespace-pre-wrap shadow-sm"
                   style={{
                     background: 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018))',
                     border: `1px solid ${accent}32`,

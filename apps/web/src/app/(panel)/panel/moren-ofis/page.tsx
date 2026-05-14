@@ -338,18 +338,18 @@ export default function MorenOfisPage() {
   const stateMap = new Map(activeAgents.map((a) => [a.id, a.state]));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Üst başlık + araçlar */}
-      <div className="flex items-end justify-between gap-3">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-[.16em]" style={{ color: GOLD }}>
             <Briefcase size={11} className="inline mr-1" /> Moren AI
           </div>
           <h1
-            className="mt-1"
+            className="mt-0.5"
             style={{
               fontFamily: 'Fraunces, serif',
-              fontSize: 30,
+              fontSize: 26,
               fontWeight: 700,
               letterSpacing: '-0.02em',
               color: '#fafaf9',
@@ -357,11 +357,11 @@ export default function MorenOfisPage() {
           >
             Moren Ofis
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          <p className="text-[11px] mt-0.5 truncate" style={{ color: 'rgba(250,250,249,0.55)' }}>
             7 kişilik AI ekibi · Arda · Nevra · Cem · Volkan · Defne · Kayra · Deniz
           </p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-1.5 items-center justify-end">
           {cost && cost.total > 0 && (() => {
             // Compact display — aynı değerler tek göster (5¢/5¢/5¢ saçma görünmesin)
             const sameToday = fmtCost(cost.today);
@@ -371,7 +371,7 @@ export default function MorenOfisPage() {
             const weekTotalSame = sameWeek === sameTotal && sameToday !== sameTotal;
             return (
               <div
-                className="px-3 py-2 rounded-md text-[10px] flex items-center gap-2 font-mono"
+                className="px-2.5 py-1.5 rounded-md text-[10px] flex items-center gap-2 font-mono"
                 style={{
                   background: 'rgba(212,184,118,0.10)',
                   color: GOLD,
@@ -404,7 +404,7 @@ export default function MorenOfisPage() {
             <div className="relative">
               <button
                 onClick={() => setShowHistory((s) => !s)}
-                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                className="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5"
                 style={{
                   background: showHistory ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)',
                   color: showHistory ? GOLD : 'rgba(250,250,249,0.7)',
@@ -471,7 +471,7 @@ export default function MorenOfisPage() {
             <>
               <button
                 onClick={exportConversation}
-                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                className="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   color: 'rgba(250,250,249,0.7)',
@@ -488,7 +488,7 @@ export default function MorenOfisPage() {
                   setActiveAgents([]);
                   setTotalCost(0);
                 }}
-                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+                className="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   color: 'rgba(250,250,249,0.7)',
@@ -502,7 +502,7 @@ export default function MorenOfisPage() {
           )}
           <button
             onClick={() => setShowOffice((s) => !s)}
-            className="px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5"
+            className="px-2.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5"
             style={{
               background: showOffice ? 'rgba(212,184,118,0.18)' : 'rgba(255,255,255,0.04)',
               color: showOffice ? GOLD : 'rgba(250,250,249,0.7)',
@@ -516,7 +516,7 @@ export default function MorenOfisPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_430px] 2xl:grid-cols-[minmax(0,1fr)_470px] items-start">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_430px] 2xl:grid-cols-[minmax(0,1fr)_470px] items-start">
         <div className="min-w-0 space-y-3">
           {showOffice ? (
             <div className="rounded-2xl overflow-hidden">
@@ -597,11 +597,11 @@ export default function MorenOfisPage() {
             );
           })()}
 
-          <DenizPanel />
+          {!showOffice && <DenizPanel />}
         </div>
 
-        <aside className="min-w-0 xl:sticky xl:top-4">
-          <div className="h-[min(820px,calc(100vh-128px))] min-h-[620px]">
+        <aside className="min-w-0 xl:sticky xl:top-3">
+          <div className="h-[min(760px,calc(100vh-176px))] min-h-[520px]">
             <BriefingChat
               agents={team}
               messages={messages}

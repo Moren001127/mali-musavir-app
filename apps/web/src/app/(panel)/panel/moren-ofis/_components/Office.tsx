@@ -62,7 +62,8 @@ export function Office({
       className="relative w-full rounded-2xl overflow-hidden"
       style={{
         background: 'linear-gradient(180deg, #0a0612 0%, #1a0e1f 40%, #221220 100%)',
-        minHeight: 640,
+        height: 'min(760px, calc(100vh - 176px))',
+        minHeight: 520,
         boxShadow: 'inset 0 0 80px rgba(0,0,0,0.55)',
       }}
     >
@@ -219,17 +220,18 @@ export function Office({
       </svg>
 
       {/* MASALAR — 3 sıra × 3 kolon grid, daha sıkı düzen
-          Duvar 0-200, zemin 200-640. Grid pt-40 (160px) duvarın hemen altında. */}
-      <div className="relative pt-40 pb-8 px-8" style={{ zIndex: 2 }}>
+          Duvar 0-200, zemin 200-640. Grid pt-24 sahneyi tek ekrana yaklaştırır. */}
+      <div className="relative pt-24 pb-5 px-6" style={{ zIndex: 2 }}>
         {rows.map((row) => (
           <div
             key={row}
-            className="grid mb-2"
+            className="grid"
             style={{
               gridTemplateColumns: 'repeat(3, 1fr)',
               gap: 0,
+              height: 132,
               // İzometrik perspektif — arka sıra küçük, ön sıra büyük
-              transform: `scale(${0.62 + row * 0.06})`,
+              transform: `scale(${0.55 + row * 0.05})`,
               transformOrigin: 'center top',
             }}
           >
@@ -261,7 +263,7 @@ export function Office({
 
       {/* Sahne overlay — alt karartma */}
       <div
-        className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
+        className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
         style={{
           background: 'linear-gradient(180deg, transparent 0%, rgba(10,6,18,0.85) 100%)',
         }}
