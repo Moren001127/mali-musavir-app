@@ -19,7 +19,7 @@ export interface ParsedKdvRow {
 export class ExcelParserService {
   private readonly logger = new Logger(ExcelParserService.name);
 
-  private normalizeLucaExcelBuffer(buffer: Buffer, context: string): Buffer {
+  normalizeLucaExcelBuffer(buffer: Buffer, context: string): Buffer {
     const isZip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
     if (!isZip) return buffer;
 

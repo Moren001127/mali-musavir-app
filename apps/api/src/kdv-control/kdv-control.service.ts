@@ -252,6 +252,7 @@ export class KdvControlService {
     suggestedMapping: { tarihCol?: string; belgeNoCol?: string; kdvCol?: string };
   }> {
     await this.findSession(sessionId, tenantId);
+    buffer = this.excelParser.normalizeLucaExcelBuffer(buffer, 'KDV column preview');
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
@@ -340,6 +341,7 @@ export class KdvControlService {
     },
   ): Promise<{ imported: number; skipped: number }> {
     await this.findSession(sessionId, tenantId);
+    buffer = this.excelParser.normalizeLucaExcelBuffer(buffer, 'KDV mapping import');
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = mapping.sheetName || workbook.SheetNames[0];
