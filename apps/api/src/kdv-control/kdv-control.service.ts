@@ -374,16 +374,27 @@ export class KdvControlService {
     });
     const hasAny = (row: any[], patterns: string[]) => {
       const cells = row.map((v) => normalize(String(v ?? '')));
-      return patterns.some((p) => cells.some((c) => c === normalize(p) || c.includes(normalize(p))));
+      return patterns.some((p) => cells.some((c) => {
+        const wanted = normalize(p);
+        return c === wanted || c.includes(wanted) || wanted.includes(c);
+      }));
     };
     const isBilancoKdv = session.type === 'KDV_191' || session.type === 'KDV_391';
     const excelStartIdx = isBilancoKdv ? 2 : 0; // Bilanço KDV listesinde ilk 2 Excel satırı okunmaz.
-    const headerIdx = matrix.findIndex((row, idx) =>
+    let headerIdx = matrix.findIndex((row, idx) =>
       idx >= excelStartIdx &&
-      hasAny(row, ['tarih']) &&
+      hasAny(row, ['tarih', 'tar']) &&
       hasAny(row, ['evrak', 'belge', 'fis', 'fiş', 'madde']) &&
       hasAny(row, ['borc', 'borç', 'alacak', 'kdv']),
     );
+
+    if (headerIdx < 0) {
+      headerIdx = matrix.findIndex((row, idx) =>
+        idx >= excelStartIdx &&
+        hasAny(row, ['tarih', 'tar']) &&
+        hasAny(row, ['bor', 'alacak', 'kdv']),
+      );
+    }
 
     let rawRows: any[];
     if (headerIdx >= 0) {
@@ -420,6 +431,10 @@ export class KdvControlService {
     const findKeyInRow = (row: Record<string, any>, target: string): string | null => {
       const keys = Object.keys(row);
       const aliases = targetAliases(target).map(normalize);
+      const wantsDate = aliases.some((a) => a.includes('tarih'));
+      const wantsBelgeNo = aliases.some((a) => a.includes('evrak') || a.includes('belge') || a.includes('fis'));
+      const wantsBorc = aliases.some((a) => a.includes('borc'));
+      const wantsAlacak = aliases.some((a) => a.includes('alacak'));
       for (const wanted of aliases) {
         for (const k of keys) {
           if (normalize(k) === wanted) return k;
@@ -430,6 +445,13 @@ export class KdvControlService {
           const nk = normalize(k);
           if (nk.includes(wanted) || wanted.includes(nk)) return k;
         }
+      }
+      for (const k of keys) {
+        const nk = normalize(k);
+        if (wantsDate && nk.includes('tar')) return k;
+        if (wantsBelgeNo && (nk.includes('evrak') || nk.includes('belge') || nk.includes('fis') || nk.includes('madde'))) return k;
+        if (wantsBorc && nk.includes('bor')) return k;
+        if (wantsAlacak && nk.includes('alacak')) return k;
       }
       return null;
     };
