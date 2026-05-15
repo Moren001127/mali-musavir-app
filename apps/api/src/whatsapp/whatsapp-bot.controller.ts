@@ -161,11 +161,36 @@ export class WhatsAppBotController {
 
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
 
+    const guardedReply = this.buildGuardedTaxpayerReply(msg.text);
+    if (guardedReply) {
+      await this.whatsapp.sendMessage(msg.from, guardedReply);
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: taxpayer.id,
+          channel: 'WHATSAPP',
+          subject: 'WhatsApp bot cevabi',
+          content: guardedReply,
+          occurredAt: new Date(),
+        },
+      });
+      return;
+    }
+
     const prompt = [
-      'Bu mesaj WhatsApp mükellef botundan geldi.',
-      'Cevap mükellefe gidecek; kısa, net ve sadece kendi kayıtlarıyla ilgili konuş.',
-      'Beyanname gönderme, ödeme taahhüdü, hukuki/vergisel kesin karar gibi kritik konularda "mali müşaviriniz kontrol edip dönecek" de.',
-      `Mükellef mesajı: ${msg.text}`,
+      'Bu mesaj WhatsApp mukellef botundan geldi.',
+      'KURAL USTUNLUGU: Bu WhatsApp mukellef cevabi kurallari genel Moren AI ton kurallarinin ustundedir.',
+      'SADECE mukellefe gidecek nihai WhatsApp cevabini yaz.',
+      'Baslik, markdown, madde isareti, emoji, ic not, ofis notu, neden bu cevap, test modu, arac/tool aciklamasi YAZMA.',
+      'Kendine Moren AI deme; "ofisimiz" veya "Moren Mali Musavirlik" gibi konus.',
+      'Cevap 1-3 kisa cumle olsun; sicak, net, profesyonel ve taahhut vermeyen bir dil kullan.',
+      'Sadece kendi kayitlariyla ilgili konus. Portal verisi yoksa rakam veya durum uydurma; "kontrol edip size donus yapacagiz" de.',
+      'Tool/veri sonucu yoksa evrak listesi, KDV tutari, odeme tarihi, beyanname durumu, tahsilat ve cari bakiye konularinda sadece kontrol edip donus yapilacagini soyle.',
+      'Evrak listesi, donem, tutar, mail gonderimi, isleme alma, eksik var/yok gibi bilgileri tool/veri sonucu olmadan ASLA uydurma.',
+      'Beyanname gonderme, odeme taahhudu, hukuki/vergisel kesin karar gibi kritik konularda "mali musaviriniz kontrol edip size donus yapacak" de.',
+      'Dekont/evrak/belge bildirimi varsa alindigini soyle, kontrol icin ofise iletildigini belirt; tarih/saat taahhudu verme.',
+      'Kendi kendine gun, tarih, saat, sure, "hemen", "bugun", "yarin", "haftaya kadar" gibi taahhut ekleme.',
+      'Mukellef tarih onerirse kabul/ret verme; "Notunuzu aldik, ofis takvimine gore kontrol edecegiz." de.',
+      `Mukellef mesaji: ${msg.text}`,
     ].join('\n');
 
     const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
@@ -187,6 +212,43 @@ export class WhatsAppBotController {
         },
       });
     }
+  }
+
+  private buildGuardedTaxpayerReply(text: string): string | null {
+    const t = this.normalizeText(text);
+
+    if (/(beyanname|beyan|tahakkuk)/i.test(t) && /(ver|gonder|gonderin|onay|imza|imzala)/i.test(t)) {
+      return 'Talebinizi aldik. Beyanname islemi mali musaviriniz tarafindan kontrol edilmeden yapilmayacak; kontrol sonrasi size donus yapilacak.';
+    }
+
+    if (/(kdv|borc|borcu|odeme|tutar|ne kadar)/i.test(t)) {
+      return 'Talebinizi aldik. Tutar ve odeme tarihi kayitlarinizdan kontrol edilip size donus yapilacak.';
+    }
+
+    if (/(dekont|makbuz)/i.test(t)) {
+      return 'Dekontunuzu aldik, kontrol icin ofise ilettik. Mali musaviriniz kontrol edip size donus yapacak.';
+    }
+
+    if (/(bugun|yarin|gelemeyecegim|gelemem|getirsem|ugrasam|biraksam)/i.test(t)) {
+      return 'Notunuzu aldik. Ofis takvimine gore kontrol edip size donus yapacagiz.';
+    }
+
+    if (/(evrak|belge|fis|fatura)/i.test(t) && /(hangi|ne|gerek|eksik|getir|gonder|ilettim|gonderdim)/i.test(t)) {
+      return 'Talebinizi aldik. Evrak durumunuz ve donem takviminiz kontrol edilip size donus yapilacak.';
+    }
+
+    return null;
+  }
+
+  private normalizeText(raw: string): string {
+    return String(raw || '')
+      .toLocaleLowerCase('tr-TR')
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ı/g, 'i')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c');
   }
 
   private async maybeCreateDocumentRequestTask(taxpayer: any, text: string) {
