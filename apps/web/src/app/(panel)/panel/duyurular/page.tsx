@@ -233,7 +233,7 @@ export default function DuyurularPage() {
           <AnnouncementPreview draft={draft} exportRef={previewRef} />
         </section>
 
-        <aside className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden">
+        <aside className="min-h-0 space-y-3 overflow-y-auto pr-1">
           <Panel title="Duyuru Girişi">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tarih" value={draft.tarih} onChange={(v) => update('tarih', v)} />
@@ -265,8 +265,8 @@ export default function DuyurularPage() {
             </div>
           </Panel>
 
-          <Panel title={`Kayıtlı Duyurular (${items.length})`} fill>
-            <div className="max-h-full space-y-2 overflow-auto pr-1">
+          <Panel title={`Kayıtlı Duyurular (${items.length})`}>
+            <div className="space-y-2">
               {items.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-center text-[14px] font-medium" style={{ borderColor: BORDER, color: MUTED }}>
                   Henüz kayıt yok.
