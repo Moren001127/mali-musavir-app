@@ -48,6 +48,9 @@ const SOFT = '#9ca3af';
 const BORDER = 'rgba(255,255,255,0.14)';
 const ANNOUNCEMENT_LOGO = '/duyuru-sablonlari/assets/logo-white.png';
 const SANS = 'Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const CANVAS_SIZE = 1080;
+const MIN_PREVIEW_SIZE = 460;
+const MAX_PREVIEW_SIZE = 820;
 type FontOption = { label: string; family: string; weight: number; lineHeight: number; letterSpacing?: string };
 
 const TITLE_STYLES: Record<FontStyleKey, FontOption> = {
@@ -195,16 +198,16 @@ export default function DuyurularPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-92px)] bg-[#080704] px-6 py-7 text-white" style={{ fontFamily: SANS }}>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden px-5 py-4 text-white" style={{ fontFamily: SANS }}>
+      <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
         <div>
           <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: GOLD }}>
             Portal
           </div>
-          <h1 className="mt-2 text-[30px] font-semibold leading-tight" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
+          <h1 className="mt-1 text-[26px] font-semibold leading-tight" style={{ color: TEXT, fontFamily: SANS, letterSpacing: 0 }}>
             Duyurular
           </h1>
-          <p className="mt-2 text-[14px] font-medium" style={{ color: MUTED }}>
+          <p className="mt-1 text-[12.5px] font-medium" style={{ color: MUTED }}>
             HTML şablonundaki kurumsal duyuru düzeni. Tarih, duyuru no, başlık ve içerik girilir.
           </p>
         </div>
@@ -218,26 +221,26 @@ export default function DuyurularPage() {
             href={whatsappUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#1f8f55] px-4 text-[14px] font-semibold text-white transition hover:bg-[#25a563]"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#1f8f55] px-4 text-[13px] font-semibold text-white transition hover:bg-[#25a563]"
           >
             <MessageCircle size={17} /> WhatsApp
           </a>
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(560px,790px)_420px]">
-        <section className="rounded-[10px] border p-5" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' }}>
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(540px,1fr)_minmax(390px,500px)]">
+        <section className="flex min-h-0 items-center justify-center overflow-hidden rounded-[10px] border p-3" style={{ borderColor: BORDER, background: 'rgba(247,244,235,0.035)' }}>
           <AnnouncementPreview draft={draft} exportRef={previewRef} />
         </section>
 
-        <aside className="space-y-4">
+        <aside className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3 overflow-hidden">
           <Panel title="Duyuru Girişi">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Tarih" value={draft.tarih} onChange={(v) => update('tarih', v)} />
               <Field label="Duyuru No" value={draft.no} onChange={(v) => update('no', v)} />
             </div>
             <Field label="Başlık" value={draft.baslik} onChange={(v) => update('baslik', v)} />
-            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={7} />
+            <Field label="İçerik" value={draft.icerik} onChange={(v) => update('icerik', v)} textarea rows={4} />
             <TypeControls draft={draft} onChange={update} />
           </Panel>
 
@@ -262,8 +265,8 @@ export default function DuyurularPage() {
             </div>
           </Panel>
 
-          <Panel title={`Kayıtlı Duyurular (${items.length})`}>
-            <div className="max-h-[280px] space-y-2 overflow-auto pr-1">
+          <Panel title={`Kayıtlı Duyurular (${items.length})`} fill>
+            <div className="max-h-full space-y-2 overflow-auto pr-1">
               {items.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-center text-[14px] font-medium" style={{ borderColor: BORDER, color: MUTED }}>
                   Henüz kayıt yok.
@@ -301,12 +304,41 @@ export default function DuyurularPage() {
 }
 
 function AnnouncementPreview({ draft, exportRef }: { draft: Duyuru; exportRef?: Ref<HTMLDivElement> }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [previewSize, setPreviewSize] = useState(640);
+
+  useEffect(() => {
+    const measure = () => {
+      const rect = hostRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const next = Math.floor(
+        Math.max(MIN_PREVIEW_SIZE, Math.min(MAX_PREVIEW_SIZE, rect.width - 24, rect.height - 24)),
+      );
+      setPreviewSize(next);
+    };
+
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (observer && hostRef.current) observer.observe(hostRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   return (
     <>
-      <div className="mx-auto h-[540px] w-[540px] max-w-full overflow-hidden bg-[#f7f6f3] shadow-2xl">
-        <AnnouncementCanvas draft={draft} scale={0.5} />
+      <div ref={hostRef} className="flex h-full w-full items-center justify-center">
+        <div
+          data-duyuru-preview
+          className="overflow-hidden bg-[#f7f6f3] shadow-2xl"
+          style={{ width: previewSize, height: previewSize }}
+        >
+          <AnnouncementCanvas draft={draft} scale={previewSize / CANVAS_SIZE} />
+        </div>
       </div>
-      <div aria-hidden className="pointer-events-none fixed left-[-2400px] top-0 h-[1080px] w-[1080px] overflow-hidden">
+      <div aria-hidden className="pointer-events-none fixed left-[-2400px] top-0 overflow-hidden" style={{ width: CANVAS_SIZE, height: CANVAS_SIZE }}>
         <AnnouncementCanvas draft={draft} exportRef={exportRef} />
       </div>
     </>
@@ -371,7 +403,7 @@ function AnnouncementCanvas({
               }}
             />
 
-            <div className="relative z-10 mb-[38px] flex items-start justify-between">
+            <div className="relative z-10 mb-[28px] flex items-start justify-between">
               <div className="inline-flex items-center gap-4 text-[13px] font-bold uppercase tracking-[.4em]" style={{ color: NAVY }}>
                 <span className="h-px w-8 bg-[#0d1238]" />
                 Önemli Duyuru
@@ -386,7 +418,7 @@ function AnnouncementCanvas({
               </div>
             </div>
 
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start pt-[74px] pb-[150px]">
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col justify-start pt-[48px] pb-[112px]">
               <h2
                 className="m-0 max-w-[690px]"
                 style={{
@@ -424,7 +456,7 @@ function AnnouncementCanvas({
               </p>
             </div>
 
-            <div className="relative z-10 mb-[-58px] mr-[-30px] mt-auto flex justify-end">
+            <div className="relative z-10 mb-[-24px] mr-[-18px] mt-auto flex justify-end">
               <div className="relative pt-7 text-right" style={{ color: NAVY }}>
                 <div className="absolute right-0 top-0 h-px w-[280px] bg-gradient-to-l from-[#0d1238] via-[#0d1238] to-transparent opacity-50" />
                 <div
@@ -467,7 +499,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-[14px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
       style={styles}
     >
       {icon}
@@ -498,13 +530,13 @@ function Contact({ icon, label, value }: { icon: ReactNode; label: string; value
   );
 }
 
-function Panel({ title, children }: { title: string; children: ReactNode }) {
+function Panel({ title, children, fill = false }: { title: string; children: ReactNode; fill?: boolean }) {
   return (
-    <div className="rounded-[10px] border" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' }}>
-      <div className="border-b px-5 py-4 text-[15px] font-semibold" style={{ borderColor: BORDER, color: TEXT }}>
+    <div className={`min-h-0 rounded-[10px] border ${fill ? 'flex flex-col overflow-hidden' : ''}`} style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.045)' }}>
+      <div className="border-b px-4 py-3 text-[14px] font-semibold" style={{ borderColor: BORDER, color: TEXT }}>
         {title}
       </div>
-      <div className="space-y-4 p-5">{children}</div>
+      <div className={`space-y-3 p-4 ${fill ? 'min-h-0 flex-1 overflow-hidden' : ''}`}>{children}</div>
     </div>
   );
 }
@@ -532,14 +564,14 @@ function Field({
           value={value}
           rows={rows}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full resize-none rounded-lg border px-3.5 py-3 text-[15px] font-medium leading-relaxed outline-none transition focus:border-[#d7c28b]"
+          className="w-full resize-none rounded-lg border px-3.5 py-2.5 text-[14px] font-medium leading-relaxed outline-none transition focus:border-[#d7c28b]"
           style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
         />
       ) : (
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="h-11 w-full rounded-lg border px-3.5 text-[15px] font-semibold outline-none transition focus:border-[#d7c28b]"
+          className="h-10 w-full rounded-lg border px-3.5 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
           style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
         />
       )}
@@ -556,10 +588,10 @@ function TypeControls({
 }) {
   return (
     <div className="rounded-lg border p-3" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.035)' }}>
-      <div className="mb-3 text-[13px] font-semibold" style={{ color: TEXT }}>
+      <div className="mb-2 text-[12.5px] font-semibold" style={{ color: TEXT }}>
         Yazı Ayarları
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2.5">
         <NumberControl
           label="Başlık Punto"
           min={34}
@@ -616,7 +648,7 @@ function NumberControl({
         step={1}
         value={value}
         onChange={(e) => onChange(clampPoint(Number(e.target.value), value, min, max))}
-        className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
+        className="h-9 w-full rounded-lg border px-3 text-[13px] font-semibold outline-none transition focus:border-[#d7c28b]"
         style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
       />
     </label>
@@ -642,7 +674,7 @@ function StyleControl({
       <select
         value={value}
         onChange={(e) => onChange(normalizeStyle(e.target.value))}
-        className="h-10 w-full rounded-lg border px-3 text-[14px] font-semibold outline-none transition focus:border-[#d7c28b]"
+        className="h-9 w-full rounded-lg border px-3 text-[13px] font-semibold outline-none transition focus:border-[#d7c28b]"
         style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.22)', color: TEXT }}
       >
         {Object.entries(options).map(([key, option]) => (
