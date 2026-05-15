@@ -4,25 +4,22 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
-  CheckCircle2,
   Clock,
   Download,
   FileCheck2,
-  KeyRound,
   Loader2,
   Mailbox,
   Play,
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import {
   PortalJob,
   PortalJobType,
-  PortalProvider,
   PORTAL_JOB_LABEL,
-  PORTAL_PROVIDER_LABEL,
   portalAutomationApi,
 } from '@/lib/portal-automation';
 import TaxpayerSelect, { TaxpayerLite } from '@/components/ui/TaxpayerSelect';
@@ -64,17 +61,11 @@ function statusStyle(status: PortalJob['status']) {
 export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus }) {
   const qc = useQueryClient();
   const [selectedTaxpayer, setSelectedTaxpayer] = useState('__ALL__');
-  const [credentialOpen, setCredentialOpen] = useState(false);
 
   const { data: summary, isLoading } = useQuery({
     queryKey: ['portal-automation-summary'],
     queryFn: () => portalAutomationApi.summary(),
     refetchInterval: 8000,
-  });
-
-  const { data: credentials } = useQuery({
-    queryKey: ['portal-automation-credentials'],
-    queryFn: () => portalAutomationApi.credentials(),
   });
 
   const { data: taxpayers = [] } = useQuery({
@@ -135,15 +126,23 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
               e-Beyanname, e-Tebligat ve SGK indirmeleri ayni kuyrukta izlenir. Gece calisir; gerekirse buradan manuel tetiklenir.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setCredentialOpen((v) => !v)}
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Link
+              href="/panel/ayarlar"
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
               style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' }}
             >
-              <KeyRound size={14} /> Sifreler
-            </button>
+              Mali musavir sifresi
+            </Link>
+            {selectedTaxpayer !== '__ALL__' && (
+              <Link
+                href={`/panel/mukellefler/${selectedTaxpayer}`}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] font-semibold"
+                style={{ background: 'rgba(255,255,255,.04)', border: `1px solid ${LINE}`, color: 'rgba(250,250,249,.78)' }}
+              >
+                Mukellef sifreleri
+              </Link>
+            )}
             <button
               type="button"
               disabled={nightlyMut.isPending}
@@ -201,10 +200,6 @@ export default function PortalAutomationPanel({ focus = 'all' }: { focus?: Focus
             )}
           </div>
         </div>
-
-        {credentialOpen && (
-          <CredentialForm taxpayers={taxpayers} credentials={credentials?.rows || []} />
-        )}
       </div>
 
       <div className="grid xl:grid-cols-2 gap-4">
@@ -320,124 +315,5 @@ function DocumentList({ docs }: { docs: any[] }) {
         ))}
       </div>
     </div>
-  );
-}
-
-function CredentialForm({ taxpayers, credentials }: { taxpayers: TaxpayerLite[]; credentials: any[] }) {
-  const qc = useQueryClient();
-  const [provider, setProvider] = useState<PortalProvider>('GIB_EBEYANNAME');
-  const [taxpayerId, setTaxpayerId] = useState('');
-  const [username, setUsername] = useState('');
-  const [userCode, setUserCode] = useState('');
-  const [officeCode, setOfficeCode] = useState('');
-  const [workplaceCode, setWorkplaceCode] = useState('');
-  const [password, setPassword] = useState('');
-  const [secondaryPassword, setSecondaryPassword] = useState('');
-
-  const saveMut = useMutation({
-    mutationFn: () => portalAutomationApi.saveCredential({
-      provider,
-      taxpayerId: provider === 'GIB_EBEYANNAME' ? undefined : taxpayerId,
-      username,
-      userCode,
-      officeCode,
-      workplaceCode,
-      password,
-      secondaryPassword,
-      isActive: true,
-    }),
-    onSuccess: () => {
-      toast.success('Sifre kaydi guncellendi');
-      qc.invalidateQueries({ queryKey: ['portal-automation-credentials'] });
-      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
-      setPassword('');
-      setSecondaryPassword('');
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Sifre kaydedilemedi'),
-  });
-
-  return (
-    <div className="rounded-xl p-4 grid xl:grid-cols-[1.1fr,.9fr] gap-4" style={{ background: 'rgba(0,0,0,.18)', border: `1px solid ${LINE}` }}>
-      <div className="space-y-3">
-        <div className="grid sm:grid-cols-3 gap-2">
-          {(['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as PortalProvider[]).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setProvider(p)}
-              className="px-3 py-2 rounded-lg text-[12px] font-semibold text-left"
-              style={{
-                background: provider === p ? 'rgba(212,184,118,.12)' : 'rgba(255,255,255,.035)',
-                border: `1px solid ${provider === p ? 'rgba(212,184,118,.38)' : LINE}`,
-                color: provider === p ? GOLD : 'rgba(250,250,249,.72)',
-              }}
-            >
-              {PORTAL_PROVIDER_LABEL[p]}
-            </button>
-          ))}
-        </div>
-
-        {provider !== 'GIB_EBEYANNAME' && (
-          <TaxpayerSelect taxpayers={taxpayers} value={taxpayerId} onChange={setTaxpayerId} placeholder="Sifresi kaydedilecek mukellef" />
-        )}
-
-        <div className="grid sm:grid-cols-2 gap-2">
-          <Input label="Kullanici adi / TCKN" value={username} onChange={setUsername} />
-          <Input label="Kullanici kodu" value={userCode} onChange={setUserCode} />
-          <Input label="Ofis / sistem kodu" value={officeCode} onChange={setOfficeCode} />
-          <Input label="SGK isyeri kodu" value={workplaceCode} onChange={setWorkplaceCode} />
-          <Input label="Sifre" value={password} onChange={setPassword} secret />
-          <Input label="Ikinci sifre / parola" value={secondaryPassword} onChange={setSecondaryPassword} secret />
-        </div>
-
-        <button
-          type="button"
-          disabled={saveMut.isPending || (provider !== 'GIB_EBEYANNAME' && !taxpayerId)}
-          onClick={() => saveMut.mutate()}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-bold disabled:opacity-50"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
-        >
-          {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-          Sifreyi kaydet
-        </button>
-      </div>
-
-      <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${LINE}` }}>
-        <div className="px-3 py-2 text-[12px] font-semibold" style={{ color: '#fafaf9', borderBottom: `1px solid ${LINE}` }}>
-          Kayitli sifreler
-        </div>
-        <div className="max-h-[260px] overflow-auto divide-y" style={{ borderColor: LINE }}>
-          {credentials.length === 0 && (
-            <div className="p-4 text-[12px]" style={{ color: 'rgba(250,250,249,.45)' }}>Kayitli portal sifresi yok.</div>
-          )}
-          {credentials.map((c) => (
-            <div key={c.id} className="px-3 py-2">
-              <div className="text-[12.5px] font-semibold" style={{ color: '#fafaf9' }}>
-                {PORTAL_PROVIDER_LABEL[c.provider as PortalProvider] || c.provider}
-              </div>
-              <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,.48)' }}>
-                {c.taxpayer?.name || (c.ownerType === 'TENANT' ? 'Ofis hesabi' : 'Mukellef')} · {c.hasPassword ? 'sifre var' : 'sifre yok'}
-              </div>
-              {c.lastError && <div className="text-[11px] mt-1" style={{ color: '#fca5a5' }}>{c.lastError}</div>}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Input({ label, value, onChange, secret }: { label: string; value: string; onChange: (v: string) => void; secret?: boolean }) {
-  return (
-    <label className="block">
-      <span className="block text-[10.5px] uppercase tracking-[.11em] mb-1" style={{ color: 'rgba(250,250,249,.42)' }}>{label}</span>
-      <input
-        type={secret ? 'password' : 'text'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-[9px] outline-none text-[13px]"
-        style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${LINE}`, color: '#fafaf9' }}
-      />
-    </label>
   );
 }

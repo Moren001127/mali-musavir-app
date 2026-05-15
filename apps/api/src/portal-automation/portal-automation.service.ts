@@ -887,17 +887,17 @@ export class PortalAutomationService {
   private instructionForJob(jobType: PortalJobType) {
     switch (jobType) {
       case 'EBEYANNAME_DAILY_DOWNLOAD':
-        return 'Mali musavir e-Beyanname hesabi ile onceki gun verilen beyannameleri, tahakkuklari ve varsa XML dosyalarini indir; BeyanKaydi olarak teslim et.';
+        return 'Mali musavir e-Beyanname kullanici kodu, parola ve sifresi ile onceki gun verilen beyannameleri, tahakkuklari ve varsa XML dosyalarini indir; BeyanKaydi olarak teslim et.';
       case 'E_TEBLIGAT_CHECK':
-        return 'Mukellefin vergi dairesi / GIB sifresi ile e-Tebligat kutusunu kontrol et; yeni tebligat varsa PDF ve metadata olarak teslim et.';
+        return 'Mukellefin vergi dairesi kullanici kodu, parola ve sifresi ile e-Tebligat kutusunu kontrol et; yeni tebligat varsa PDF ve metadata olarak teslim et.';
       case 'SGK_HIZMET_LISTESI':
-        return 'Mukellefin SGK sifresi ile hizmet listesini indir ve portal belgesi olarak teslim et.';
+        return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile hizmet listesini indir ve portal belgesi olarak teslim et.';
       case 'SGK_TAHAKKUK':
-        return 'Mukellefin SGK sifresi ile cari donem tahakkuklarini indir ve portal belgesi olarak teslim et.';
+        return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile cari donem tahakkuklarini indir ve portal belgesi olarak teslim et.';
       case 'SGK_ISE_GIRIS_CIKIS':
-        return 'Mukellefin SGK sifresi ile ise giris ve isten cikis bildirgelerini indir ve portal belgesi olarak teslim et.';
+        return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile ise giris ve isten cikis bildirgelerini indir ve portal belgesi olarak teslim et.';
       case 'SGK_ISGOREMEZLIK':
-        return 'Mukellefin SGK sifresi ile isgoremezlik raporlarini sorgula; rapor varsa portal belgesi olarak teslim et.';
+        return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile isgoremezlik raporlarini sorgula; rapor varsa portal belgesi olarak teslim et.';
     }
   }
 

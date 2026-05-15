@@ -11,6 +11,7 @@ import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
 import DocumentExpiryWidget from '@/components/DocumentExpiryWidget';
 import { ProfilTamamlikBanner } from '@/components/mukellef/ProfilTamamlikBanner';
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
+import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 
 
 const TAXPAYER_TYPES = [
@@ -255,6 +256,12 @@ export default function MukellefDetayPage() {
       {/* v1.36.76: Mükellefiyetler bölümü — beyanname türleri + dönemleri */}
       {!isNew && id && (
         <MukellefiyetlerCard taxpayerId={id} />
+      )}
+
+      {!isNew && id && (
+        <div className="mt-6">
+          <TaxpayerPortalCredentialsCard taxpayerId={id} />
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">

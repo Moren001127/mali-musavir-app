@@ -121,8 +121,8 @@ export const PORTAL_JOB_LABEL: Record<PortalJobType, string> = {
 
 export const PORTAL_PROVIDER_LABEL: Record<PortalProvider, string> = {
   GIB_EBEYANNAME: 'Mali musavir e-Beyanname',
-  GIB_IVD: 'Mukellef GIB / Vergi Dairesi',
-  SGK_EBILDIRGE: 'Mukellef SGK',
+  GIB_IVD: 'Mukellef Vergi Dairesi',
+  SGK_EBILDIRGE: 'Mukellef SGK e-Bildirge',
 };
 
 export const portalAutomationApi = {

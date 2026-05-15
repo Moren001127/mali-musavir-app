@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Loader2, Copy, Check, ExternalLink, FileCheck2, ArrowRight, UsersRound, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { AdvisorPortalCredentialCard } from '@/components/portal-automation/PortalCredentialCards';
 
 /**
  * Moren Agent = tarayıcıda çalışan bookmarklet.
@@ -319,6 +320,8 @@ export default function AyarlarPage() {
       </div>
 
       <MorenAgentSection />
+
+      <AdvisorPortalCredentialCard />
 
       <Link
         href="/panel/ayarlar/kullanicilar"
