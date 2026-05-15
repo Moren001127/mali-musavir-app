@@ -218,23 +218,23 @@ export class WhatsAppBotController {
     const t = this.normalizeText(text);
 
     if (/(beyanname|beyan|tahakkuk)/i.test(t) && /(ver|gonder|gonderin|onay|imza|imzala)/i.test(t)) {
-      return 'Talebinizi aldik. Beyanname islemi mali musaviriniz tarafindan kontrol edilmeden yapilmayacak; kontrol sonrasi size donus yapilacak.';
+      return 'Beyanname islemi mali musavir kontrolunden gecmeden yapilmaz. Kontrol sonrasi size net bilgi verilecek.';
     }
 
     if (/(kdv|borc|borcu|odeme|tutar|ne kadar)/i.test(t)) {
-      return 'Talebinizi aldik. Tutar ve odeme tarihi kayitlarinizdan kontrol edilip size donus yapilacak.';
+      return 'KDV tutari ve odeme tarihi kayitlarinizdan kontrol edilecek. Kesin bilgiyle size donus yapilacak.';
     }
 
     if (/(dekont|makbuz)/i.test(t)) {
-      return 'Dekontunuzu aldik, kontrol icin ofise ilettik. Mali musaviriniz kontrol edip size donus yapacak.';
+      return 'Dekont ofise iletildi. Kontrol sonrasi size bilgi verilecek.';
     }
 
     if (/(bugun|yarin|gelemeyecegim|gelemem|getirsem|ugrasam|biraksam)/i.test(t)) {
-      return 'Notunuzu aldik. Ofis takvimine gore kontrol edip size donus yapacagiz.';
+      return 'Ofis takvimine gore kontrol edilecek. Uygunluk durumuna gore size donus yapilacak.';
     }
 
     if (/(evrak|belge|fis|fatura)/i.test(t) && /(hangi|ne|gerek|eksik|getir|gonder|ilettim|gonderdim)/i.test(t)) {
-      return 'Talebinizi aldik. Evrak durumunuz ve donem takviminiz kontrol edilip size donus yapilacak.';
+      return 'Evrak durumunuz ve donem takviminiz kontrol edilecek. Gerekli belge listesi size bildirilecek.';
     }
 
     return null;
