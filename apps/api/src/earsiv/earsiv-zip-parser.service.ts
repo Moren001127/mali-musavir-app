@@ -20,6 +20,7 @@ export interface ParsedEarsivFatura {
   pdfBuffer?: Buffer;
   htmlContent?: string;
   zipFileName: string;
+  sourcePath?: string;
 }
 
 @Injectable()
@@ -34,7 +35,7 @@ export class EarsivZipParserService {
   async parseZip(buf: Buffer): Promise<ParsedEarsivFatura[] & { __entries?: string[]; __xmlCount?: number; __zipError?: string }> {
     const results: ParsedEarsivFatura[] = [];
 
-    const xmlFiles: { name: string; content: string }[] = [];
+    const xmlFiles: { name: string; fullPath: string; content: string }[] = [];
     const pdfFiles = new Map<string, { name: string; fullPath: string; buffer: Buffer }>();
     const htmlFiles = new Map<string, { name: string; fullPath: string; content: string }>();
     const allEntries: string[] = [];
@@ -62,7 +63,7 @@ export class EarsivZipParserService {
 
         if (lower.endsWith('.xml') || lower.endsWith('.ubl')) {
           const content = await (file as any).async('text');
-          xmlFiles.push({ name: baseName, content });
+          xmlFiles.push({ name: baseName, fullPath, content });
         } else if (lower.endsWith('.html') || lower.endsWith('.htm')) {
           const content = await (file as any).async('text');
           htmlFiles.set(stem, { name: baseName, fullPath, content });
@@ -78,7 +79,7 @@ export class EarsivZipParserService {
           try {
             const content = await (file as any).async('text');
             if (content.trim().startsWith('<?xml') || content.includes('<Invoice') || content.includes('<CreditNote')) {
-              xmlFiles.push({ name: baseName, content });
+              xmlFiles.push({ name: baseName, fullPath, content });
               this.logger.log(`Uzantısız XML olarak yorumlandı: ${fullPath}`);
             }
           } catch {}
@@ -104,7 +105,8 @@ export class EarsivZipParserService {
       try {
         const parsed = this.parseUblInvoice(xml.content);
         if (parsed) {
-          parsed.zipFileName = xml.name;
+          parsed.zipFileName = xml.fullPath || xml.name;
+          parsed.sourcePath = xml.fullPath;
           parsed.pdfBuffer = this.matchPdfBuffer(parsed, xml.name, xmlFiles.length, pdfFiles);
           if (parsed.pdfBuffer) pdfMatched++;
           parsed.htmlContent = this.matchHtmlContent(parsed, xml.name, xmlFiles.length, htmlFiles);
@@ -117,7 +119,8 @@ export class EarsivZipParserService {
           // FALLBACK 2: Regex ile faturaNo/UUID çıkar — XML parser çuvallasa bile kayıt oluştur
           const fb = this.regexFallback(xml.content);
           if (fb) {
-            fb.zipFileName = xml.name;
+            fb.zipFileName = xml.fullPath || xml.name;
+            fb.sourcePath = xml.fullPath;
             fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
             if (fb.pdfBuffer) pdfMatched++;
             fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
@@ -134,7 +137,8 @@ export class EarsivZipParserService {
         try {
           const fb = this.regexFallback(xml.content);
           if (fb) {
-            fb.zipFileName = xml.name;
+            fb.zipFileName = xml.fullPath || xml.name;
+            fb.sourcePath = xml.fullPath;
             fb.pdfBuffer = this.matchPdfBuffer(fb, xml.name, xmlFiles.length, pdfFiles);
             if (fb.pdfBuffer) pdfMatched++;
             fb.htmlContent = this.matchHtmlContent(fb, xml.name, xmlFiles.length, htmlFiles);
@@ -375,6 +379,57 @@ export class EarsivZipParserService {
       return undefined;
     };
 
+    const digits = (value: any): string | undefined => {
+      const cleaned = String(value || '').replace(/\D/g, '');
+      return cleaned.length === 10 || cleaned.length === 11 ? cleaned : undefined;
+    };
+
+    const asArray = (value: any): any[] => {
+      if (value == null) return [];
+      return Array.isArray(value) ? value : [value];
+    };
+
+    const idText = (node: any): string | undefined => {
+      if (node == null) return undefined;
+      if (typeof node === 'string' || typeof node === 'number') return String(node);
+      return txt(node?.ID) || txt(node?.CompanyID) || txt(node);
+    };
+
+    const idScheme = (node: any): string => String(
+      node?.ID?.['@schemeID'] ||
+      node?.CompanyID?.['@schemeID'] ||
+      node?.['@schemeID'] ||
+      '',
+    ).toUpperCase();
+
+    const taxNoFromParty = (party: any): string | undefined => {
+      const nodes = [
+        ...asArray(party?.PartyTaxScheme),
+        ...asArray(party?.PartyIdentification),
+        ...asArray(party?.PartyLegalEntity),
+      ];
+      for (const node of nodes) {
+        const scheme = idScheme(node);
+        const no = digits(idText(node));
+        if (no && (scheme === 'VKN' || scheme === 'TCKN')) return no;
+      }
+      for (const node of nodes) {
+        const no = digits(idText(node));
+        if (no) return no;
+      }
+      return undefined;
+    };
+
+    const taxNoFromXmlBlock = (tagName: string): string | undefined => {
+      const block = xml.match(new RegExp(`<[^>]*${tagName}[^>]*>([\\s\\S]*?)<\\/[^>]*${tagName}>`, 'i'))?.[1] || '';
+      if (!block) return undefined;
+      const withScheme = block.match(/<[^>]*(?:ID|CompanyID)[^>]*schemeID=["'](?:VKN|TCKN)["'][^>]*>\s*(\d{10,11})\s*<\//i);
+      if (withScheme?.[1]) return withScheme[1];
+      const companyId = block.match(/<[^>]*CompanyID[^>]*>\s*(\d{10,11})\s*<\//i);
+      if (companyId?.[1]) return companyId[1];
+      return undefined;
+    };
+
     const num = (v: any): number | undefined => {
       const s = txt(v);
       if (typeof s !== 'string') return undefined; // ← KRİTİK GUARD
@@ -395,15 +450,15 @@ export class EarsivZipParserService {
     const supplier = get(['AccountingSupplierParty', 'Party']);
     const satici = txt(supplier?.['PartyName']?.['Name'])
       || txt(supplier?.['PartyLegalEntity']?.['RegistrationName']);
-    const saticiVergiNo = txt(supplier?.['PartyTaxScheme']?.['CompanyID'])
-      || txt(supplier?.['PartyIdentification']?.['ID']);
+    const saticiVergiNo = taxNoFromParty(supplier)
+      || taxNoFromXmlBlock('AccountingSupplierParty');
 
     // Alıcı
     const customer = get(['AccountingCustomerParty', 'Party']);
     const alici = txt(customer?.['PartyName']?.['Name'])
       || txt(customer?.['PartyLegalEntity']?.['RegistrationName']);
-    const aliciVergiNo = txt(customer?.['PartyTaxScheme']?.['CompanyID'])
-      || txt(customer?.['PartyIdentification']?.['ID']);
+    const aliciVergiNo = taxNoFromParty(customer)
+      || taxNoFromXmlBlock('AccountingCustomerParty');
 
     // Tutarlar — TaxExclusive ve TaxInclusive AYNI seviyede (KDV'siz / KDV dahil)
     // ki matrah + KDV = toplam tutmasın diye değil, TUTSUN diye.

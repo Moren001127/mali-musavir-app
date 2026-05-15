@@ -378,7 +378,7 @@ export default function AyarlarPage() {
           <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>WhatsApp Otomasyonu</h3>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-          WhatsApp hatırlatma akışı aktif. Evrak ve tahsilat mesajlarını <Link href="/panel/hatirlatmalar" className="font-semibold underline">Hatırlatmalar</Link> ekranından önizleyip gönderebilirsiniz.
+          WhatsApp hatırlatma akışı aktif. Evrak ve tahsilat mesajlarını <Link href="/panel/hatirlatmalar" className="font-semibold underline">WhatsApp Otomasyonu</Link> ekranından önizleyip gönderebilirsiniz.
         </div>
       </div>
 

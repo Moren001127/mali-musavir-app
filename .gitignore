@@ -7,3 +7,4 @@ dist/
 .turbo/
 .vercel
 .env*.local
+apps/luca-local-agent/.browser-data*/

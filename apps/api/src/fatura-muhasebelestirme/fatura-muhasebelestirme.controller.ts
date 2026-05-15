@@ -57,6 +57,20 @@ export class FaturaMuhasebelestirmeController {
     return this.service.dashboard(req.user.tenantId);
   }
 
+  @Get('integrations')
+  integrations(@Req() req: any, @Query('taxpayerId') taxpayerId?: string) {
+    return this.service.listIntegrations(req.user.tenantId, { taxpayerId: taxpayerId || null });
+  }
+
+  @Post('integrations')
+  saveIntegration(@Req() req: any, @Body() body: any) {
+    return this.service.saveIntegration(
+      req.user.tenantId,
+      body || {},
+      req.user?.userId || req.user?.sub,
+    );
+  }
+
   @Post('documents/upload')
   @UseInterceptors(documentUploadInterceptor())
   upload(

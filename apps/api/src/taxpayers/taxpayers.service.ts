@@ -6,6 +6,28 @@ import { CreateTaxpayerDto } from '@mali-musavir/shared';
 export class TaxpayersService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeDefterFields<T extends Record<string, any>>(dto: T): T {
+    const data: any = { ...dto };
+    const defter = String(data.defterTuru || '').trim().toUpperCase();
+    const mihsap = String(data.mihsapDefterTuru || '').trim().toUpperCase();
+
+    if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(defter)) {
+      data.defterTuru = 'ISLETME';
+      data.mihsapDefterTuru = 'DEFTER_BEYAN';
+    } else if (/BILANCO|BİLANÇO|BILANÇO/.test(defter)) {
+      data.defterTuru = 'BILANCO';
+      data.mihsapDefterTuru = 'BILANCO';
+    } else if (/DEFTER[_\s-]*BEYAN|ISLETME|İŞLETME/.test(mihsap)) {
+      data.defterTuru = 'ISLETME';
+      data.mihsapDefterTuru = 'DEFTER_BEYAN';
+    } else if (/BILANCO|BİLANÇO|BILANÇO/.test(mihsap)) {
+      data.defterTuru = 'BILANCO';
+      data.mihsapDefterTuru = 'BILANCO';
+    }
+
+    return data as T;
+  }
+
   async findAll(tenantId: string, search?: string, year?: number, month?: number) {
     // WHERE koşulları düzgün AND ile birleştiriliyor
     const andConditions: any[] = [{ tenantId }, { isActive: true }];
@@ -124,7 +146,7 @@ export class TaxpayersService {
   async create(tenantId: string, dto: any) {
     try {
       return await this.prisma.taxpayer.create({
-        data: { tenantId, ...dto },
+        data: { tenantId, ...this.normalizeDefterFields(dto) },
       });
     } catch (e: any) {
       if (e.code === 'P2002') {
@@ -137,7 +159,7 @@ export class TaxpayersService {
   async update(id: string, tenantId: string, dto: Partial<CreateTaxpayerDto>) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
-    return this.prisma.taxpayer.update({ where: { id }, data: dto as any });
+    return this.prisma.taxpayer.update({ where: { id }, data: this.normalizeDefterFields(dto as any) });
   }
 
   async softDelete(id: string, tenantId: string) {

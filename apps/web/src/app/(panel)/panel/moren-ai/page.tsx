@@ -393,10 +393,10 @@ export default function MorenAIPage() {
                 <Sparkles size={24} style={{ color: GOLD }} />
               </div>
               <h2 className="text-lg font-semibold mb-2" style={{ color: '#fafaf9' }}>
-                Merhaba, ben Moren AI 👋
+                Merhaba, ben MOREN AI
               </h2>
               <p className="text-sm opacity-60 max-w-md mb-6" style={{ color: '#fafaf9' }}>
-                Mükellef verilerinizi analiz eden, mali tabloları yorumlayan, vergi ve SGK mevzuatına hâkim mali müşavir asistanınızım.
+                Mükellef verisi, mali tablolar, beyan süreçleri, portal aksiyonları ve WhatsApp otomasyonu tek modülde bende.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl w-full">
                 {[
@@ -551,8 +551,8 @@ function OfficeBrainPanel({
     <div className="px-4 py-3 space-y-3" style={{ borderBottom: '1px solid rgba(184,160,111,0.12)', background: 'rgba(255,255,255,0.015)' }}>
       <div className="flex items-center gap-2">
         <Brain size={15} style={{ color: GOLD }} />
-        <span className="text-xs font-semibold" style={{ color: GOLD }}>Ofis Beyni</span>
-        <span className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>WhatsApp, portal verisi ve agent komutlari tek hatta</span>
+        <span className="text-xs font-semibold" style={{ color: GOLD }}>MOREN AI Beyni</span>
+        <span className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>WhatsApp, portal verisi ve onayli otomasyon tek hatta</span>
         <button onClick={refetch} className="ml-auto p-1.5 rounded-lg hover:bg-white/5" title="Yenile">
           {loading ? <Loader2 size={13} className="animate-spin" style={{ color: GOLD }} /> : <RefreshCw size={13} style={{ color: GOLD }} />}
         </button>

@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const axios = require('axios');
 const FormData = require('form-data');
 const { chromium } = require('playwright');
@@ -27,6 +28,40 @@ if (!fs.existsSync(CONFIG_PATH)) {
   process.exit(1);
 }
 const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8').replace(/^\uFEFF/, ''));
+
+const PORTAL_WORKER = (() => {
+  const raw = process.env.MOREN_LUCA_WORKER_JSON;
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed?.uyeNo || !parsed?.username || !parsed?.password) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+})();
+
+if (PORTAL_WORKER) {
+  cfg.luca = {
+    uyeNo: PORTAL_WORKER.uyeNo,
+    username: PORTAL_WORKER.username,
+    password: PORTAL_WORKER.password,
+  };
+  cfg.worker = {
+    ...(cfg.worker || {}),
+    workerName: PORTAL_WORKER.displayName || PORTAL_WORKER.username || cfg.worker?.workerName,
+  };
+}
+
+function slugify(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .toLowerCase() || 'worker';
+}
 
 // --------- Device ID (her PC için unique, otomatik üretilir) ---------
 function getOrCreateDeviceId() {
@@ -46,14 +81,22 @@ function getOrCreateDeviceId() {
   fs.writeFileSync(DEVICE_ID_PATH, id, 'utf8');
   return id;
 }
-const DEVICE_ID = getOrCreateDeviceId();
-const WORKER_NAME = cfg.worker?.workerName || os.hostname();
+const BASE_DEVICE_ID = getOrCreateDeviceId();
+const WORKER_SLOT_ID = PORTAL_WORKER
+  ? slugify(PORTAL_WORKER.id || PORTAL_WORKER.username || PORTAL_WORKER.displayName)
+  : '';
+const DEVICE_ID = PORTAL_WORKER
+  ? (PORTAL_WORKER.deviceId || `${BASE_DEVICE_ID}-${WORKER_SLOT_ID}`)
+  : BASE_DEVICE_ID;
+const WORKER_NAME = PORTAL_WORKER?.displayName || cfg.worker?.workerName || os.hostname();
+const WORKER_POOL_INDEX = Math.max(0, Number(PORTAL_WORKER?.slotIndex || 0));
+const WORKER_POOL_SIZE = Math.max(1, Number(PORTAL_WORKER?.poolSize || 1));
 
 if (!cfg.api?.baseUrl || !cfg.api?.agentToken) {
   console.error('HATA: config.json içinde api.baseUrl ve api.agentToken zorunlu.');
   process.exit(1);
 }
-if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {
+if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_WORKER || cfg.worker?.usePortalAccounts === false)) {
   console.error('HATA: config.json içinde luca.uyeNo, luca.username, luca.password zorunlu.');
   process.exit(1);
 }
@@ -63,7 +106,7 @@ const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 const HEADLESS = cfg.worker?.headless !== false;
 const JOB_TYPES = new Set(cfg.worker?.jobTypes || ['ACCOUNT_PLAN', 'MIZAN', 'MUAVIN']);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.0.6';
+const LOCAL_AGENT_VERSION = 'local-1.1.1';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -310,7 +353,11 @@ async function getBrowserSession() {
   //
   // DNS: Chromium "secure DNS / DoH" devre dışı (DoH provider TR'den engelli).
   // --disable-features=DnsOverHttps,AsyncDns sistem resolver'ına geçirir.
-  const userDataDir = path.join(__dirname, '..', '.browser-data');
+  const userDataDir = path.join(
+    __dirname,
+    '..',
+    PORTAL_WORKER ? `.browser-data-${WORKER_SLOT_ID}` : '.browser-data',
+  );
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
@@ -691,6 +738,12 @@ async function runJobWithMorenRuntime(job) {
     }
     const final = await waitForJobFinalStatus(jobId);
     if (final?.status !== 'done') {
+      const runtimeStopRequested = await page
+        .evaluate(() => !!window.__morenAgent?.stopRequested)
+        .catch(() => false);
+      if (runtimeStopRequested) {
+        throw new Error(`RUNTIME_STOP_REQUESTED: Job ${final?.status || 'bilinmeyen'} durumunda kapandi`);
+      }
       throw new Error(`Job ${final?.status || 'bilinmeyen'} durumunda kapandı`);
     }
   });
@@ -885,6 +938,16 @@ async function processJob(job) {
     log.info(`✓ ${tip} tamamlandı: jobId=${jobId.slice(0, 8)}`);
   } catch (err) {
     log.error(`✗ ${tip} hatası: ${err.message}`);
+    if (/RUNTIME_STOP_REQUESTED|guvenlik kodu .*tekrarlandi|captcha .*tekrar/i.test(err.message || '')) {
+      stopped = true;
+      await pingAgentStatus(false, {
+        stoppedReason: err.message,
+        activeJobId: jobId,
+        activeJobType: tip,
+      }).catch(() => {});
+      await closeBrowserSession('runtime-stop-requested').catch(() => {});
+      return;
+    }
     if (isTransientLucaConnectivityError(err)) {
       const reason = `Gecici Luca baglanti/DNS hatasi; tekrar siraya alindi: ${err.message}`;
       await logJob(jobId, reason).catch(() => {});
@@ -948,6 +1011,102 @@ function schedulePreWarm() {
   }, delayMs);
 }
 
+const portalChildWorkers = new Map();
+
+function pipeChildOutput(stream, label, writer) {
+  let buffer = '';
+  stream.on('data', (chunk) => {
+    buffer += chunk.toString();
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (line.trim()) writer(`[${label}] ${line}`);
+    }
+  });
+}
+
+async function fetchPortalWorkerAccounts() {
+  try {
+    const { data } = await api.get('/agent/luca/worker-accounts', { timeout: 30_000 });
+    const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
+    return accounts.filter((a) => a?.uyeNo && a?.username && a?.password);
+  } catch (err) {
+    const status = err.response?.status;
+    const msg = err.response?.data?.message || err.message;
+    log.warn(`Portal Luca kullanici havuzu okunamadi (${status || '-'}): ${msg}`);
+    return [];
+  }
+}
+
+function startPortalWorkerChild(account, index, poolSize = 1) {
+  const key = account.id || `${account.username}-${index}`;
+  const label = account.displayName || account.username || `Luca ${index + 1}`;
+  const deviceSlug = slugify(account.id || account.username || label);
+  const payload = {
+    id: account.id || key,
+    displayName: label,
+    uyeNo: account.uyeNo,
+    username: account.username,
+    password: account.password,
+    deviceId: `${BASE_DEVICE_ID}-slot${index + 1}-${deviceSlug}`,
+    slotIndex: index,
+    poolSize,
+  };
+  const child = spawn(process.execPath, [__filename], {
+    cwd: path.join(__dirname, '..'),
+    env: {
+      ...process.env,
+      MOREN_LUCA_WORKER_JSON: JSON.stringify(payload),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  portalChildWorkers.set(key, { child, account, index });
+  log.info(`Portal Luca worker basladi: ${label} (${payload.deviceId})`);
+  pipeChildOutput(child.stdout, label, (line) => log.info(line));
+  pipeChildOutput(child.stderr, label, (line) => log.warn(line));
+  child.on('exit', (code, signal) => {
+    portalChildWorkers.delete(key);
+    log.warn(`Portal Luca worker kapandi: ${label} (code=${code ?? '-'}, signal=${signal ?? '-'})`);
+    if (!stopped) {
+      setTimeout(() => {
+        if (!stopped) startPortalWorkerChild(account, index, poolSize);
+      }, 10_000);
+    }
+  });
+}
+
+async function startPortalWorkerPoolIfAvailable() {
+  if (PORTAL_WORKER) return false;
+  if (cfg.worker?.usePortalAccounts === false) return false;
+
+  const accounts = await fetchPortalWorkerAccounts();
+  if (accounts.length === 0) {
+    log.info('Portal Luca kullanici havuzu bos; tek config.json Luca kullanicisiyle devam edilecek.');
+    return false;
+  }
+
+  const limit = Math.min(
+    Math.max(Number(cfg.worker?.portalAccountLimit || 5), 1),
+    accounts.length,
+  );
+  const selected = accounts
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+    .slice(0, limit);
+
+  log.info(`Portal Luca havuzu aktif: ${selected.length} worker paralel baslatiliyor.`);
+  selected.forEach((account, index) => startPortalWorkerChild(account, index, selected.length));
+
+  while (!stopped) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  for (const { child } of portalChildWorkers.values()) {
+    try { child.kill('SIGTERM'); } catch {}
+  }
+  return true;
+}
+
 async function mainLoop() {
   log.info(`Luca Local Agent başladı.`);
   log.info(`API: ${cfg.api.baseUrl}`);
@@ -967,9 +1126,12 @@ async function mainLoop() {
       await pingAgentStatus(true);
       const jobs = await pollPendingJobs();
       const filtered = jobs.filter((j) => JOB_TYPES.has(j.tip || j.type));
-      if (filtered.length) {
-        log.info(`${filtered.length} bekleyen job bulundu.`);
-        for (const job of filtered) {
+      const runnable = PORTAL_WORKER && WORKER_POOL_SIZE > 1
+        ? filtered.filter((_, index) => index % WORKER_POOL_SIZE === WORKER_POOL_INDEX)
+        : filtered;
+      if (runnable.length) {
+        log.info(`${runnable.length}/${filtered.length} bekleyen job bu worker'a dustu.`);
+        for (const job of runnable) {
           if (stopped) break;
           await processJob(job);
         }
@@ -993,14 +1155,30 @@ process.on('SIGINT', () => {
   log.info('SIGINT alındı, durduruluyor...');
   stopped = true;
   pingAgentStatus(false).catch(() => {});
+  for (const { child } of portalChildWorkers.values()) {
+    try { child.kill('SIGTERM'); } catch {}
+  }
 });
 process.on('SIGTERM', () => {
   log.info('SIGTERM alındı, durduruluyor...');
   stopped = true;
   pingAgentStatus(false).catch(() => {});
+  for (const { child } of portalChildWorkers.values()) {
+    try { child.kill('SIGTERM'); } catch {}
+  }
 });
 
-mainLoop().catch((err) => {
+async function start() {
+  const poolStarted = await startPortalWorkerPoolIfAvailable();
+  if (!poolStarted) {
+    if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {
+      throw new Error('Portal Luca kullanici havuzu bos ve config.json icinde tekil Luca kullanicisi yok');
+    }
+    await mainLoop();
+  }
+}
+
+start().catch((err) => {
   log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

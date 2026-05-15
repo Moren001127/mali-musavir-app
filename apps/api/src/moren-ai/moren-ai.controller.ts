@@ -68,20 +68,23 @@ export class MorenAiController {
     return {
       briefing,
       agentCatalog: [
-        { id: 'ofis-koordinasyon', ad: 'Ofis Koordinasyon Agent', durum: 'mvp', isler: ['bugünkü işler', 'geciken işler', 'agent önerileri'] },
-        { id: 'luca', ad: 'LUCA Veri Agent', durum: 'aktif', isler: ['e-Arşiv/e-Fatura çekme', 'mizan çekme', 'beyan taslak hazırlık'] },
-        { id: 'mihsap', ad: 'Mihsap Fatura Agent', durum: 'aktif', isler: ['alış/satış faturası işleme', 'kararsızları ayırma', 'log üretme'] },
-        { id: 'beyan-hazirlik', ad: 'Beyanname Hazırlık Agent', durum: 'mvp', isler: ['evrak', 'KDV', 'mizan', 'banka', 'cari risk kontrolü'] },
-        { id: 'luca-beyanname', ad: 'LUCA Beyanname Agent', durum: 'taslak', isler: ['KDV1/KDV2/MUHSGK/Damga taslak', 'son onay', 'PDF/tahakkuk kaydı'] },
-        { id: 'kdv-beyan', ad: 'KDV Beyan Agent', durum: 'mvp', isler: ['fatura-LUCA karşılaştırma', 'KDV risk listesi'] },
-        { id: 'tahsilat', ad: 'Tahsilat Agent', durum: 'aktiflestiriliyor', isler: ['yaşlandırma', 'WhatsApp hatırlatma', 'ödeme sözü takibi'] },
-        { id: 'banka-ekstre', ad: 'Banka Ekstre Agent', durum: 'mvp', isler: ['ekstre eksik takibi', 'görev açma'] },
-        { id: 'whatsapp-bot', ad: 'WhatsApp Bot', durum: 'mvp', isler: ['mükellef sorusu', 'AI cevap', 'portal log'] },
+        {
+          id: 'moren-ai',
+          ad: 'MOREN AI',
+          durum: 'aktif',
+          isler: [
+            'portal verisinin tamamini okuma',
+            'mali tablo uretme ve yorumlama',
+            'vergi, SGK ve beyan sureci analizi',
+            'WhatsApp evrak/tahsilat otomasyonu',
+            'Luca ve Mihsap komutlarini onayli yurutme',
+          ],
+        },
       ],
       modelPolicy: {
-        default: 'ucuz model / kısa cevap',
-        analysis: 'güçlü model / KDV, mizan, beyan yorumu',
-        safety: 'kritik işlemde iki adım onay',
+        default: 'tek MOREN AI / kisa mesleki cevap',
+        analysis: 'portal verisiyle mali musavir analizi',
+        safety: 'kritik islemde iki adim onay',
       },
     };
   }

@@ -19,7 +19,6 @@ import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
 import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
-import { MorenOfisModule } from './moren-ofis/moren-ofis.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
@@ -35,8 +34,6 @@ import { TasksModule } from './tasks/tasks.module';
 import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
-import { PendingActionsModule } from './pending-actions/pending-actions.module';
-import { PortalDevModule } from './portal-dev/portal-dev.module';
 
 @Module({
   imports: [
@@ -60,9 +57,6 @@ import { PortalDevModule } from './portal-dev/portal-dev.module';
     MizanModule,
     EarsivModule,
     MorenAiModule,
-    MorenOfisModule,
-    PendingActionsModule,
-    PortalDevModule,
     WhatsAppModule,
     VendorMemoryModule,
     PendingDecisionsModule,

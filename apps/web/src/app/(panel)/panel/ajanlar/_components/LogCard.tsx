@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { parseAgentMessage, buildFieldRows, FieldRow } from '@/lib/log-format';
 import { LogFieldTable, LogSummary } from './LogFieldTable';
 
@@ -102,6 +104,7 @@ function isModernAgentVersion(version: unknown) {
 }
 
 export function LogCard({ event }: { event: LogEvent }) {
+  const [expanded, setExpanded] = useState(false);
   const d = new Date(event.ts);
   const t = d.toLocaleTimeString('tr-TR', { hour12: false, timeZone: 'Europe/Istanbul' });
   const baseStyle = statusStyle(event.status);
@@ -121,36 +124,42 @@ export function LogCard({ event }: { event: LogEvent }) {
   const visual = warnings.length > 0 && isSuccess
     ? { color: '#d4a94f', icon: '!', bg: 'rgba(180,120,40,.06)', label: 'UYARILI', border: '#a17835' }
     : baseStyle;
+  const importantRows = rows.filter((row) =>
+    ['Tarih', 'Belge No', 'Belge Türü', 'Belge TÃ¼rÃ¼', 'Matrah', 'KDV', 'Cari', 'Cari Hesab'].includes(row.label),
+  );
+  const missingCount = importantRows.filter((row) => row.status === 'missing').length;
+  const warningCount = importantRows.filter((row) => row.status === 'warning' || row.status === 'empty-with-suggestion').length;
 
   return (
     <div
-      className="px-4 py-3 rounded-lg transition-colors hover:brightness-110"
+      className="px-3 py-2 rounded-lg transition-colors hover:brightness-110"
       style={{
         background: visual.bg,
         border: `1px solid ${visual.border}55`,
-        borderLeft: `4px solid ${visual.border}`,
-        boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+        borderLeft: `3px solid ${visual.border}`,
+        boxShadow: '0 6px 18px rgba(0,0,0,0.14)',
       }}
     >
-      <span
-        className="flex-shrink-0 inline-flex items-center justify-center rounded text-[11px] font-bold px-1.5 py-0.5"
-        style={{ background: visual.color + '33', color: visual.color, minWidth: 58 }}
-      >
-        {visual.icon} {visual.label}
-      </span>
-      <span className="text-[11px] tabular-nums flex-shrink-0 pt-0.5" style={{ color: '#6b6b6b' }}>
-        {t}
-      </span>
-      <div className="mt-2.5 w-full min-w-0">
-        <div className="flex items-center gap-2 flex-wrap text-[13px]">
+      <div className="flex items-start gap-2 min-w-0">
+        <span
+          className="flex-shrink-0 inline-flex items-center justify-center rounded-md text-[10px] font-bold px-1.5 py-0.5 leading-none"
+          style={{ background: visual.color + '2b', color: visual.color, minWidth: 52, height: 22 }}
+        >
+          {visual.icon} {visual.label}
+        </span>
+        <span className="text-[10.5px] tabular-nums flex-shrink-0 pt-1" style={{ color: '#6b6b6b' }}>
+          {t}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap text-[12px] min-w-0">
           {event.firma && (
-            <span className="font-semibold truncate" style={{ color: '#b8a06f' }}>
+            <span className="font-semibold truncate max-w-[48ch]" style={{ color: '#b8a06f' }}>
               {event.firma}
             </span>
           )}
           {event.fisNo && (
             <span
-              className="text-[11px] px-1.5 py-0.5 rounded tabular-nums"
+              className="text-[10.5px] px-1.5 py-0.5 rounded tabular-nums leading-none"
               style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' }}
             >
               #{event.fisNo}
@@ -158,17 +167,57 @@ export function LogCard({ event }: { event: LogEvent }) {
           )}
           {event.tutar != null && event.tutar !== '' && (
             <span
-              className="text-[11px] px-1.5 py-0.5 rounded tabular-nums"
+              className="text-[10.5px] px-1.5 py-0.5 rounded tabular-nums leading-none"
               style={{ background: 'rgba(255,255,255,.04)', color: 'rgba(250,250,249,0.55)' }}
             >
               {Number(event.tutar).toLocaleString('tr-TR')} TL
             </span>
           )}
+            {missingCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={{ background: 'rgba(214,95,95,0.12)', color: '#d97070' }}>
+                {missingCount} eksik
+              </span>
+            )}
+            {warningCount > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded leading-none" style={{ background: 'rgba(212,169,79,0.12)', color: '#d4a94f' }}>
+                {warningCount} uyarı
+              </span>
+            )}
+          </div>
+
+          {(needsAttention || event.message) && (
+            <div className="mt-1 truncate text-[11px]" style={{ color: needsAttention ? '#d8c18d' : '#8a8a8a' }}>
+              {needsAttention && (
+                <span className="font-semibold" style={{ color: visual.color }}>
+                  {visual.label === 'ATLA' ? 'Atlama' : visual.label === 'HATA' ? 'Hata' : 'Not'}:{' '}
+                </span>
+              )}
+              {needsAttention ? attentionText : event.message}
+            </div>
+          )}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-0.5 h-6 w-6 rounded-md inline-flex items-center justify-center flex-shrink-0 transition-colors"
+          style={{ color: 'rgba(250,250,249,0.42)', background: expanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)' }}
+          title={expanded ? 'Detayı kapat' : 'Detayı göster'}
+          aria-label={expanded ? 'Detayı kapat' : 'Detayı göster'}
+        >
+          <ChevronDown
+            size={14}
+            style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 140ms ease' }}
+          />
+        </button>
+      </div>
+
+      {expanded && (
+      <div className="mt-2 w-full min-w-0">
 
         {needsAttention && (
           <div
-            className="mt-1.5 rounded-md px-2 py-1.5 text-[11.5px]"
+            className="rounded-md px-2 py-1.5 text-[11.5px]"
             style={{
               background: statusLower === 'skip' || statusLower === 'atlandi'
                 ? 'rgba(184,152,112,0.10)'
@@ -255,6 +304,7 @@ export function LogCard({ event }: { event: LogEvent }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

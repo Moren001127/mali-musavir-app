@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura } from '@/lib/earsiv';
+import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura, type LucaFetchJob } from '@/lib/earsiv';
 import { api } from '@/lib/api';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import { toast } from 'sonner';
@@ -128,6 +128,12 @@ function getJobFailureReason(lines: string[], status: string, isNoFatura: boolea
 }
 // Job kuyruğa atılma sırası — sabit (tıklama sırası önemli değil, kullanıcıya tutarlı görünüm)
 const MODE_ORDER: Mode[] = ['GELEN_EARSIV', 'GIDEN_EARSIV', 'GELEN_EFATURA', 'GIDEN_EFATURA'];
+const JOB_TIP_TO_MODE: Record<string, Mode> = {
+  EARSIV_ALIS: 'GELEN_EARSIV',
+  EARSIV_SATIS: 'GIDEN_EARSIV',
+  EFATURA_ALIS: 'GELEN_EFATURA',
+  EFATURA_SATIS: 'GIDEN_EFATURA',
+};
 
 export default function EarsivPage() {
   const qc = useQueryClient();
@@ -168,8 +174,69 @@ export default function EarsivPage() {
     queryFn: () => api.get('/taxpayers').then((r) => r.data as Taxpayer[]),
   });
 
+  const taxpayerMap = useMemo(
+    () => new Map(taxpayers.map((t) => [t.id, t] as const)),
+    [taxpayers],
+  );
+
   // E-arşiv fatura listesi — her seçili mod için ayrı sorgu, sonra birleştir
   const donem = `${year}-${String(month).padStart(2, '0')}`;
+  const activeJobTips = useMemo(
+    () => modeArr.map((m) => `${MODE_INFO[m].belgeKaynak}_${MODE_INFO[m].tip}`),
+    [modeArr],
+  );
+  const activeJobTipsKey = activeJobTips.join(',');
+
+  const { data: activeLucaJobs = [] } = useQuery({
+    queryKey: ['earsiv-active-luca-jobs', donem, activeJobTipsKey],
+    queryFn: () => earsivApi.listLucaJobs({
+      limit: 100,
+      status: 'active',
+      tip: activeJobTipsKey,
+    }),
+    enabled: activeJobTips.length > 0,
+    refetchInterval: 5000,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+
+  useEffect(() => {
+    const jobs = (activeLucaJobs || [])
+      .filter((job: LucaFetchJob) =>
+        job?.id &&
+        job.donem === donem &&
+        ['pending', 'running'].includes(String(job.status || '').toLowerCase()) &&
+        JOB_TIP_TO_MODE[String(job.tip || '').toUpperCase()]
+      )
+      .sort((a: LucaFetchJob, b: LucaFetchJob) =>
+        new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+      );
+    if (jobs.length === 0) return;
+
+    const ids = jobs.map((job) => job.id);
+    setLucaJobIds((prev) => {
+      const merged = [...new Set([...prev, ...ids])];
+      return merged.length === prev.length && merged.every((id, idx) => id === prev[idx]) ? prev : merged;
+    });
+    setLucaJobMeta((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const job of jobs) {
+        if (next[job.id]) continue;
+        const mode = JOB_TIP_TO_MODE[String(job.tip || '').toUpperCase()] || 'GELEN_EARSIV';
+        const taxpayer = job.mukellefId ? taxpayerMap.get(job.mukellefId) : null;
+        next[job.id] = {
+          mode,
+          mukellef: taxpayer ? taxpayerName(taxpayer) : `Mükellef ${job.mukellefId?.slice(-6) || ''}`.trim(),
+        };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+    setLucaJobId((prev) => prev || ids[0] || null);
+    setLucaStatus((prev) => prev || `Canlı sorgu bulundu: ${jobs.length} iş takip ediliyor`);
+  }, [activeLucaJobs, donem, taxpayerMap]);
+
   const idsKey = [...taxpayerIds].sort().join(',');
   const queries = useQueries({
     queries: modeArr.map((m) => ({

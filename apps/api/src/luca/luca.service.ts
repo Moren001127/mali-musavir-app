@@ -71,6 +71,13 @@ export class LucaService {
     } as T;
   }
 
+  private normalizeDefterTuru(defterTuru?: string | null, mihsapDefterTuru?: string | null) {
+    const raw = `${defterTuru || ''} ${mihsapDefterTuru || ''}`.toLocaleUpperCase('tr-TR');
+    if (/ISLETME|İŞLETME|DEFTER[_\s-]*BEYAN/.test(raw)) return 'ISLETME';
+    if (/BILANCO|BİLANÇO|BILANÇO/.test(raw)) return 'BILANCO';
+    return defterTuru || null;
+  }
+
   // ==================== TOKEN / OTURUM ====================
 
   /** Eklenti Luca session token/cookie'sini gönderir. */
@@ -217,11 +224,18 @@ export class LucaService {
   }
 
   async markJobDone(jobId: string, recordCount: number) {
+    const current = await (this.prisma as any).lucaFetchJob.findUnique({
+      where: { id: jobId },
+      select: { recordCount: true },
+    });
+    const nextRecordCount = Number.isFinite(recordCount) && recordCount > 0
+      ? recordCount
+      : (current?.recordCount || 0);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: {
         status: 'done',
-        recordCount,
+        recordCount: nextRecordCount,
         finishedAt: new Date(),
       },
     });
@@ -302,9 +316,16 @@ export class LucaService {
     });
   }
 
-  async listJobs(tenantId: string, limit = 20) {
+  async listJobs(tenantId: string, opts: number | { limit?: number; status?: string; tip?: string } = 20) {
+    const normalizedOpts = typeof opts === 'number' ? { limit: opts } : (opts || {});
+    const limit = Math.min(Math.max(Number(normalizedOpts.limit || 20), 1), 100);
+    const requestedStatus = String(normalizedOpts.status || '').trim().toLowerCase();
+    const requestedTips = String(normalizedOpts.tip || '')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
     // Stale job'ları temizle: 10 dk'dan eski "running" varsa fail yap
-    const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: {
         tenantId,
@@ -313,13 +334,24 @@ export class LucaService {
       },
       data: {
         status: 'failed',
-        errorMsg: 'Zaman aşımı',
+        errorMsg: 'Zaman aşımı: 20dk+ running kalan iş otomatik kapatıldı',
         finishedAt: new Date(),
       },
     });
 
+    const where: any = { tenantId };
+    if (requestedStatus) {
+      where.status =
+        requestedStatus === 'active'
+          ? { in: ['pending', 'running'] }
+          : { in: requestedStatus.split(',').map((s) => s.trim()).filter(Boolean) };
+    }
+    if (requestedTips.length > 0) {
+      where.tip = { in: requestedTips };
+    }
+
     const jobs = await (this.prisma as any).lucaFetchJob.findMany({
-      where: { tenantId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -330,7 +362,7 @@ export class LucaService {
     const deviceId = opts.deviceId?.trim();
     const limit = Math.min(Math.max(Number(opts.limit || 20), 1), 50);
     const requestedStatus = String(opts.status || '').trim().toLowerCase();
-    const staleCutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const staleCutoff = new Date(Date.now() - 20 * 60 * 1000);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: {
         tenantId,
@@ -339,7 +371,7 @@ export class LucaService {
       },
       data: {
         status: 'failed',
-        errorMsg: 'Zaman asimi (eski calisan is temizlendi)',
+        errorMsg: 'Zaman asimi: 20dk+ running kalan is otomatik kapatildi',
         finishedAt: new Date(),
       },
     });
@@ -469,15 +501,18 @@ export class LucaService {
             taxNumber: true,
             lucaSlug: true,
             defterTuru: true,
+            mihsapDefterTuru: true,
           },
         });
+        const defterTuru = this.normalizeDefterTuru(tp?.defterTuru, tp?.mihsapDefterTuru);
         return {
           ...job,
           donemTipi: this.inferDonemTipi(job.donem, job.donemTipi),
           // Agent'a flat olarak göndermek için kök seviyede expose et
           lucaSlug: tp?.lucaSlug || null,
           taxNumber: tp?.taxNumber || null,
-          defterTuru: tp?.defterTuru || null,
+          defterTuru,
+          mihsapDefterTuru: tp?.mihsapDefterTuru || null,
           mukellefAdi:
             tp?.companyName ||
             [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') ||

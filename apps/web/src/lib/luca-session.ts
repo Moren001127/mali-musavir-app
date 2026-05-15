@@ -40,6 +40,31 @@ export type LucaSessionManagerStatus = {
   activeChallenge?: LucaCaptchaChallenge | null;
 };
 
+export type LucaWorkerAccount = {
+  id: string;
+  displayName: string;
+  uyeNo: string;
+  username: string;
+  hasPassword: boolean;
+  isActive: boolean;
+  maxConcurrency: number;
+  sortOrder: number;
+  lastLoginAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LucaWorkerAccountInput = {
+  displayName: string;
+  uyeNo: string;
+  username: string;
+  password?: string;
+  isActive?: boolean;
+  maxConcurrency?: number;
+  sortOrder?: number;
+};
+
 export const lucaSessionApi = {
   status: () =>
     api.get('/luca/session-manager/status').then((r) => r.data as LucaSessionManagerStatus),
@@ -53,4 +78,12 @@ export const lucaSessionApi = {
     api
       .post(`/luca/session-manager/captcha/${id}/cancel`)
       .then((r) => r.data as LucaCaptchaChallenge),
+  workerAccounts: () =>
+    api.get('/luca/worker-accounts').then((r) => r.data as LucaWorkerAccount[]),
+  createWorkerAccount: (input: LucaWorkerAccountInput) =>
+    api.post('/luca/worker-accounts', input).then((r) => r.data as LucaWorkerAccount),
+  updateWorkerAccount: (id: string, input: Partial<LucaWorkerAccountInput>) =>
+    api.patch(`/luca/worker-accounts/${id}`, input).then((r) => r.data as LucaWorkerAccount),
+  deleteWorkerAccount: (id: string) =>
+    api.delete(`/luca/worker-accounts/${id}`).then((r) => r.data),
 };

@@ -9,8 +9,8 @@ import { PrismaModule } from '../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [MorenAiController],
   providers: [MorenAiService, ToolExecutorService, VoiceService],
-  // ToolExecutorService dışarıya açılır — Moren Ofis (7 ajan) ve ileride
-  // Portal Geliştirme (5 ajan) aynı tool beynini paylaşır. Tek yerde tanımlı.
+  // ToolExecutorService tek MOREN AI beynidir; portal verisi ve operasyon
+  // aksiyonlari buradan yurutulur.
   exports: [MorenAiService, ToolExecutorService],
 })
 export class MorenAiModule {}

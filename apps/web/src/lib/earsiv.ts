@@ -25,6 +25,19 @@ export interface EarsivFatura {
   createdAt: string;
 }
 
+export interface LucaFetchJob {
+  id: string;
+  mukellefId?: string | null;
+  donem?: string | null;
+  tip?: string | null;
+  status?: string | null;
+  recordCount?: number | null;
+  errorMsg?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
 export const earsivApi = {
   fetchFromLuca: (data: {
     mukellefId: string;
@@ -38,6 +51,9 @@ export const earsivApi = {
 
   getLucaJob: (jobId: string) =>
     api.get(`/earsiv/luca-job/${jobId}`).then((r) => r.data as { job: any }),
+
+  listLucaJobs: (params?: { limit?: number; status?: string; tip?: string }) =>
+    api.get('/luca/jobs', { params }).then((r) => r.data as LucaFetchJob[]),
 
   cancelLucaJob: (jobId: string) =>
     api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data as any),

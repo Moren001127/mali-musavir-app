@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -202,6 +203,61 @@ export class LucaController {
     return this.autoScraper.cancelLogin(req.user.tenantId);
   }
 
+  @Get('luca/worker-accounts')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  listWorkerAccounts(@Req() req: any) {
+    return this.autoScraper.listWorkerAccounts(req.user.tenantId);
+  }
+
+  @Post('luca/worker-accounts')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  createWorkerAccount(
+    @Req() req: any,
+    @Body()
+    body: {
+      displayName?: string;
+      uyeNo?: string;
+      username?: string;
+      password?: string;
+      isActive?: boolean;
+      maxConcurrency?: number;
+      sortOrder?: number;
+    },
+  ) {
+    return this.autoScraper.saveWorkerAccount(req.user.tenantId, body, req.user.sub);
+  }
+
+  @Patch('luca/worker-accounts/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  updateWorkerAccount(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      displayName?: string;
+      uyeNo?: string;
+      username?: string;
+      password?: string;
+      isActive?: boolean;
+      maxConcurrency?: number;
+      sortOrder?: number;
+    },
+  ) {
+    return this.autoScraper.saveWorkerAccount(req.user.tenantId, { ...body, id }, req.user.sub);
+  }
+
+  @Delete('luca/worker-accounts/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteWorkerAccount(@Req() req: any, @Param('id') id: string) {
+    await this.autoScraper.deleteWorkerAccount(req.user.tenantId, id);
+  }
+
   // ==================== PORTAL UI → /luca/* ====================
 
   @Get('luca/session')
@@ -220,8 +276,17 @@ export class LucaController {
 
   @Get('luca/jobs')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  listJobs(@Req() req: any) {
-    return this.luca.listJobs(req.user.tenantId);
+  listJobs(
+    @Req() req: any,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+    @Query('tip') tip?: string,
+  ) {
+    return this.luca.listJobs(req.user.tenantId, {
+      limit: limit ? Number(limit) : undefined,
+      status,
+      tip,
+    });
   }
 
   @Get('luca/session-manager/status')
@@ -297,6 +362,12 @@ export class LucaController {
   async getCredentialForAgent(@Headers('x-agent-token') agentToken: string) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     return this.autoScraper.getCredentialForAgent(tenantId);
+  }
+
+  @Get('agent/luca/worker-accounts')
+  async getWorkerAccountsForAgent(@Headers('x-agent-token') agentToken: string) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.autoScraper.getWorkerAccountsForAgent(tenantId);
   }
 
   @Get('agent/luca/jobs/pending')
@@ -470,7 +541,8 @@ export class LucaController {
       return {
         ok: true,
         mizanId: (result as any)?.id,
-        hesapCount: (result as any)?.hesapCount,
+        rows: (result as any)?.rows,
+        hesapCount: (result as any)?.rows ?? (result as any)?.hesapCount,
       };
     } catch (e: any) {
       throw new BadRequestException(

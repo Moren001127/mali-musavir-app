@@ -254,7 +254,11 @@ export default function YeniMukellefPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mihsap Defter Türü</label>
               <select value={form.mihsapDefterTuru}
-                onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  mihsapDefterTuru: e.target.value,
+                  defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                }))}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4b876]">
                 <option value="BILANCO">Bilanço</option>
                 <option value="DEFTER_BEYAN">Defter Beyan</option>
@@ -282,7 +286,7 @@ export default function YeniMukellefPage() {
                 name="defterTuru"
                 value="BILANCO"
                 checked={form.defterTuru === 'BILANCO'}
-                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO' }))}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO', mihsapDefterTuru: 'BILANCO' }))}
                 className="accent-[#d4b876]"
               />
               <div>
@@ -302,7 +306,7 @@ export default function YeniMukellefPage() {
                 name="defterTuru"
                 value="ISLETME"
                 checked={form.defterTuru === 'ISLETME'}
-                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME' }))}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' }))}
                 className="accent-[#a78bfa]"
               />
               <div>

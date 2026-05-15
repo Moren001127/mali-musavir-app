@@ -131,7 +131,7 @@ const WORKFLOW_STEPS: Array<{
   border: string;
 }> = [
   { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#a7a29a', bg: 'rgba(167,162,154,0.08)', border: 'rgba(167,162,154,0.20)' },
-  { key: 'islenme', label: 'Fatura İşleme', sub: 'Mihsap sırası', href: '/panel/ajanlar/mihsap', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
+  { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d4b876', bg: 'rgba(212,184,118,0.10)', border: 'rgba(212,184,118,0.28)' },
   { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#c0a079', bg: 'rgba(192,160,121,0.10)', border: 'rgba(192,160,121,0.28)' },
   { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#d99560', bg: 'rgba(217,149,96,0.10)', border: 'rgba(217,149,96,0.28)' },
   { key: 'tamam', label: 'Tamamlandı', sub: 'Bu ay kapandı', href: '/panel/is-yuku', icon: CheckCircle2, color: '#86a97b', bg: 'rgba(134,169,123,0.10)', border: 'rgba(134,169,123,0.28)' },

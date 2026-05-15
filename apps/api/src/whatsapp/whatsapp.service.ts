@@ -24,6 +24,7 @@ export class WhatsAppService {
   private get templateName() { return process.env.WHATSAPP_TEMPLATE_NAME || ''; }
   private get templateLang() { return process.env.WHATSAPP_TEMPLATE_LANG || 'tr'; }
   private get apiVersion() { return process.env.WHATSAPP_API_VERSION || 'v20.0'; }
+  private get webhookVerifyToken() { return process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || ''; }
 
   private get isConfigured(): boolean {
     return Boolean(this.accessToken && this.phoneNumberId);
@@ -36,6 +37,7 @@ export class WhatsAppService {
         ready: false,
         hasQr: false,
         provider: 'meta-cloud',
+        webhookReady: Boolean(this.webhookVerifyToken),
         error: 'WhatsApp Cloud API ayarlanmamış. WHATSAPP_ACCESS_TOKEN ve WHATSAPP_PHONE_NUMBER_ID env değişkenlerini ayarlayın.',
       };
     }
@@ -45,6 +47,10 @@ export class WhatsAppService {
       provider: 'meta-cloud',
       phoneNumberId: this.phoneNumberId,
       templateName: this.templateName || null,
+      documentTemplateName: process.env.WHATSAPP_DOCUMENT_TEMPLATE_NAME || this.templateName || null,
+      portalTemplateName: process.env.WHATSAPP_PORTAL_TEMPLATE_NAME || this.templateName || null,
+      ownerAlertTemplateName: process.env.WHATSAPP_OWNER_ALERT_TEMPLATE_NAME || null,
+      webhookReady: Boolean(this.webhookVerifyToken),
     };
   }
 

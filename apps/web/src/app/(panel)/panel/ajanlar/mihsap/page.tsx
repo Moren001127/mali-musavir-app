@@ -578,7 +578,7 @@ export default function MihsapAgentPage() {
             Tümü <ArrowRight size={11} />
           </Link>
         </div>
-        <div className="p-3 space-y-3.5 max-h-[600px] overflow-y-auto">
+        <div className="p-2 space-y-2 max-h-[680px] overflow-y-auto">
           {events.length === 0 ? (
             <div className="text-center py-12 text-sm" style={{ color: 'rgba(250,250,249,0.45)' }}>
               Henüz işlem yok. Bir komut çalıştırdığında buraya akar.

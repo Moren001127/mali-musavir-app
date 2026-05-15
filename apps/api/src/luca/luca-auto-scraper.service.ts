@@ -14,6 +14,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { encrypt, decrypt, tryDecrypt } from '../common/crypto';
+import { randomUUID } from 'crypto';
 // Static import — webpack-node-externals bunu externalize edip runtime'da native require ile yükler
 // Dynamic import'ta webpack 5'in externals bug'ı vardı, static import stabil çalışır
 import { chromium as pwChromium } from 'playwright-core';
@@ -67,6 +68,24 @@ interface PendingLogin {
   createdAt: number;
   expiresAt: number; // ms epoch
 }
+
+type LucaWorkerAccountConfig = {
+  id: string;
+  displayName: string;
+  uyeNo: string;
+  username: string;
+  encryptedPassword: string;
+  isActive: boolean;
+  maxConcurrency: number;
+  sortOrder: number;
+  lastLoginAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy?: string | null;
+};
+
+const LUCA_WORKER_PROVIDER = 'LUCA_WORKER_ACCOUNTS';
 
 @Injectable()
 export class LucaAutoScraperService {
@@ -175,6 +194,194 @@ export class LucaAutoScraperService {
   async deleteCredential(tenantId: string) {
     await (this.prisma as any).lucaCredential.deleteMany({ where: { tenantId } });
     return { deleted: true };
+  }
+
+  // ==================== LUCA KULLANICI HAVUZU ====================
+
+  private parseWorkerAccounts(config: any): LucaWorkerAccountConfig[] {
+    const accounts = config && typeof config === 'object' && !Array.isArray(config)
+      ? (config as any).accounts
+      : [];
+    if (!Array.isArray(accounts)) return [];
+    return accounts
+      .map((a: any) => ({
+        id: String(a?.id || '').trim(),
+        displayName: String(a?.displayName || '').trim(),
+        uyeNo: String(a?.uyeNo || '').trim(),
+        username: String(a?.username || '').trim(),
+        encryptedPassword: String(a?.encryptedPassword || '').trim(),
+        isActive: a?.isActive !== false,
+        maxConcurrency: Math.max(1, Math.min(3, Number(a?.maxConcurrency || 1))),
+        sortOrder: Number.isFinite(Number(a?.sortOrder)) ? Number(a?.sortOrder) : 0,
+        lastLoginAt: a?.lastLoginAt || null,
+        lastError: a?.lastError || null,
+        createdAt: a?.createdAt || new Date().toISOString(),
+        updatedAt: a?.updatedAt || new Date().toISOString(),
+        updatedBy: a?.updatedBy || null,
+      }))
+      .filter((a: LucaWorkerAccountConfig) => a.id && a.uyeNo && a.username && a.encryptedPassword)
+      .sort((a: LucaWorkerAccountConfig, b: LucaWorkerAccountConfig) => a.sortOrder - b.sortOrder);
+  }
+
+  private publicWorkerAccount(a: LucaWorkerAccountConfig) {
+    return {
+      id: a.id,
+      displayName: a.displayName,
+      uyeNo: a.uyeNo,
+      username: a.username,
+      hasPassword: !!a.encryptedPassword,
+      isActive: a.isActive,
+      maxConcurrency: a.maxConcurrency,
+      sortOrder: a.sortOrder,
+      lastLoginAt: a.lastLoginAt || null,
+      lastError: a.lastError || null,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+    };
+  }
+
+  private async loadWorkerConnection(tenantId: string) {
+    return (this.prisma as any).integrationConnection.findUnique({
+      where: { tenantId_provider: { tenantId, provider: LUCA_WORKER_PROVIDER } },
+      select: { id: true, config: true, isActive: true },
+    });
+  }
+
+  async listWorkerAccounts(tenantId: string) {
+    const connection = await this.loadWorkerConnection(tenantId);
+    return this.parseWorkerAccounts(connection?.config).map((a) => this.publicWorkerAccount(a));
+  }
+
+  async saveWorkerAccount(
+    tenantId: string,
+    input: {
+      id?: string;
+      displayName?: string;
+      uyeNo?: string;
+      username?: string;
+      password?: string;
+      isActive?: boolean;
+      maxConcurrency?: number;
+      sortOrder?: number;
+    },
+    updatedBy?: string,
+  ) {
+    const connection = await this.loadWorkerConnection(tenantId);
+    const accounts = this.parseWorkerAccounts(connection?.config);
+    const id = String(input?.id || '').trim() || randomUUID();
+    const existing = accounts.find((a) => a.id === id);
+    const displayName = String(input?.displayName || existing?.displayName || '').trim();
+    const uyeNo = String(input?.uyeNo || existing?.uyeNo || '').trim();
+    const username = String(input?.username || existing?.username || '').trim();
+    const password = String(input?.password || '');
+
+    if (!displayName || !uyeNo || !username) {
+      throw new BadRequestException('Luca adi, uye no ve kullanici adi zorunlu');
+    }
+
+    const duplicate = accounts.find(
+      (a) => a.id !== id && a.username.toLowerCase() === username.toLowerCase(),
+    );
+    if (duplicate) {
+      throw new BadRequestException('Bu Luca kullanici adi zaten havuzda var');
+    }
+
+    const encryptedPassword = password ? encrypt(password) : existing?.encryptedPassword;
+    if (!encryptedPassword) {
+      throw new BadRequestException('Yeni Luca kullanicisi icin sifre zorunlu');
+    }
+
+    const now = new Date().toISOString();
+    const account: LucaWorkerAccountConfig = {
+      id,
+      displayName,
+      uyeNo,
+      username,
+      encryptedPassword,
+      isActive: input?.isActive !== false,
+      maxConcurrency: Math.max(1, Math.min(3, Number(input?.maxConcurrency || existing?.maxConcurrency || 1))),
+      sortOrder: Number.isFinite(Number(input?.sortOrder))
+        ? Number(input?.sortOrder)
+        : existing?.sortOrder ?? accounts.length,
+      lastLoginAt: existing?.lastLoginAt || null,
+      lastError: password ? null : existing?.lastError || null,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      updatedBy: updatedBy || null,
+    };
+
+    const nextAccounts = existing
+      ? accounts.map((a) => (a.id === id ? account : a))
+      : [...accounts, account];
+
+    await (this.prisma as any).integrationConnection.upsert({
+      where: { tenantId_provider: { tenantId, provider: LUCA_WORKER_PROVIDER } },
+      update: {
+        isActive: true,
+        config: {
+          version: 1,
+          accounts: nextAccounts.sort((a, b) => a.sortOrder - b.sortOrder),
+          updatedAt: now,
+          updatedBy: updatedBy || null,
+        },
+      },
+      create: {
+        tenantId,
+        provider: LUCA_WORKER_PROVIDER,
+        isActive: true,
+        config: {
+          version: 1,
+          accounts: nextAccounts.sort((a, b) => a.sortOrder - b.sortOrder),
+          updatedAt: now,
+          updatedBy: updatedBy || null,
+        },
+      },
+    });
+
+    return this.publicWorkerAccount(account);
+  }
+
+  async deleteWorkerAccount(tenantId: string, id: string) {
+    const connection = await this.loadWorkerConnection(tenantId);
+    const accounts = this.parseWorkerAccounts(connection?.config);
+    const nextAccounts = accounts.filter((a) => a.id !== id);
+    await (this.prisma as any).integrationConnection.upsert({
+      where: { tenantId_provider: { tenantId, provider: LUCA_WORKER_PROVIDER } },
+      update: {
+        config: {
+          version: 1,
+          accounts: nextAccounts,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      create: {
+        tenantId,
+        provider: LUCA_WORKER_PROVIDER,
+        isActive: true,
+        config: {
+          version: 1,
+          accounts: nextAccounts,
+          updatedAt: new Date().toISOString(),
+        },
+      },
+    });
+    return { deleted: true };
+  }
+
+  async getWorkerAccountsForAgent(tenantId: string) {
+    const connection = await this.loadWorkerConnection(tenantId);
+    const accounts = this.parseWorkerAccounts(connection?.config)
+      .filter((a) => a.isActive)
+      .map((a) => ({
+        id: a.id,
+        displayName: a.displayName,
+        uyeNo: a.uyeNo,
+        username: a.username,
+        password: decrypt(a.encryptedPassword),
+        maxConcurrency: a.maxConcurrency,
+        sortOrder: a.sortOrder,
+      }));
+    return { saved: accounts.length > 0, accounts };
   }
 
   /**

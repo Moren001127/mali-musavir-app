@@ -30,6 +30,37 @@ export class EarsivService {
     return cleaned || fallback;
   }
 
+  private normalizeTaxNo(value: string | null | undefined): string {
+    return String(value || '').replace(/\D/g, '');
+  }
+
+  private taxNoFromZipFileName(value: string | null | undefined): string {
+    const match = String(value || '').match(/#(\d{10,11})(?:\D|$)/);
+    return match?.[1] || '';
+  }
+
+  private invoiceTaxNoForTip(
+    fatura: { tip?: EarsivTip; saticiVergiNo?: string | null; aliciVergiNo?: string | null; zipFileName?: string | null; sourcePath?: string | null },
+    tipFallback: EarsivTip,
+  ): string {
+    const tip = fatura.tip || tipFallback;
+    const fromXml = tip === 'SATIS'
+      ? this.normalizeTaxNo(fatura.saticiVergiNo)
+      : this.normalizeTaxNo(fatura.aliciVergiNo);
+    return fromXml || this.taxNoFromZipFileName(fatura.sourcePath || fatura.zipFileName);
+  }
+
+  private invoiceTaxpayerMatches(
+    fatura: { tip?: EarsivTip; saticiVergiNo?: string | null; aliciVergiNo?: string | null; zipFileName?: string | null; sourcePath?: string | null },
+    taxpayerTaxNo: string | null | undefined,
+    tipFallback: EarsivTip,
+  ): boolean {
+    const expected = this.normalizeTaxNo(taxpayerTaxNo);
+    if (!expected) return true;
+    const actual = this.invoiceTaxNoForTip(fatura, tipFallback);
+    return !!actual && actual === expected;
+  }
+
   private buildPdfStorageKey(opts: {
     tenantId: string;
     taxpayerId: string;
@@ -313,6 +344,16 @@ export class EarsivService {
   }): Promise<{ inserted: number; duplicate: number; skipped: number; total: number; meta?: any }> {
     const { tenantId, taxpayerId, donem: jobDonem, tip, fetchJobId, zipBuffer } = opts;
     const belgeKaynak: BelgeKaynak = opts.belgeKaynak ?? 'EARSIV';
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, taxNumber: true, companyName: true, firstName: true, lastName: true },
+    });
+    if (!taxpayer) throw new BadRequestException('Mükellef bulunamadı');
+    const taxpayerTaxNo = this.normalizeTaxNo(taxpayer.taxNumber);
+    const taxpayerLabel =
+      taxpayer.companyName ||
+      [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ') ||
+      taxpayer.id;
 
     // Fatura tarihinden donem türet — Sorgu 2 (sonraki ay başı→bugün) faturaları
     // job.donem (örn 2026-04) ile gelse bile, faturanın gerçek ay'ına yazılsın.
@@ -347,6 +388,23 @@ export class EarsivService {
 
     for (const f of parsed) {
       try {
+        if (!this.invoiceTaxpayerMatches(f, taxpayerTaxNo, tip)) {
+          const expectedSide = tip === 'SATIS' ? 'satıcı' : 'alıcı';
+          const actualTaxNo = this.invoiceTaxNoForTip(f, tip) || 'boş';
+          const oppositeTaxNo = tip === 'SATIS'
+            ? this.normalizeTaxNo(f.aliciVergiNo)
+            : this.normalizeTaxNo(f.saticiVergiNo);
+          const oppositeHint = oppositeTaxNo === taxpayerTaxNo
+            ? ' Mükellef karşı tarafta görünüyor; sorgu yönü veya Luca firma seçimi hatalı olabilir.'
+            : '';
+          const msg =
+            `Mükellef vergi no uyuşmadı (${taxpayerLabel}). ` +
+            `Beklenen ${taxpayerTaxNo || 'tanımsız'}, XML ${expectedSide} ${actualTaxNo}.${oppositeHint}`;
+          this.logger.warn(`Fatura atlandı (${f.faturaNo}): ${msg}`);
+          skipped++;
+          if (errors.length < 5) errors.push(`${f.faturaNo}: ${msg}`);
+          continue;
+        }
         const fDonem = donemFromTarih(f.faturaTarihi);
         // Önce mevcut mu kontrol et — varsa SKIP (yeniden indirip üzerine yazma)
         const existing = await (this.prisma as any).earsivFatura.findFirst({
@@ -560,12 +618,17 @@ export class EarsivService {
           durum: true, taxpayerId: true, createdAt: true,
           // Mihsap upload tracking — DB'de kolon var (cleanup-migrations PATCH ile eklendi)
           mihsapUploadedAt: true, mihsapUploadStatus: true, mihsapUploadError: true,
+          taxpayer: { select: { taxNumber: true } },
         },
       }),
       (this.prisma as any).earsivFatura.count({ where }),
     ]);
 
-    return { rows, total, page, pageSize };
+    const safeRows = rows
+      .filter((row: any) => this.invoiceTaxpayerMatches(row, row.taxpayer?.taxNumber, row.tip))
+      .map(({ taxpayer, ...row }: any) => row);
+
+    return { rows: safeRows, total: safeRows.length, page, pageSize };
   }
 
   async getById(tenantId: string, id: string) {

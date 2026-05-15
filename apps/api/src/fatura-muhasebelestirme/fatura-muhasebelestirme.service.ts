@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { OcrService, OcrResult } from '../kdv-control/ocr.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
+import { encrypt } from '../common/crypto';
 
 type AccountingLineInput = {
   id?: string;
@@ -46,6 +47,35 @@ type DuplicateSignal = {
   duplicateReason: string;
   duplicateSeverity: 'WARNING' | 'BLOCKING';
 } | null;
+
+type IntegrationSaveInput = {
+  provider?: string;
+  taxpayerId?: string | null;
+  label?: string | null;
+  baseUrl?: string | null;
+  apiKey?: string | null;
+  apiSecret?: string | null;
+  username?: string | null;
+  password?: string | null;
+  senderVkn?: string | null;
+  accountId?: string | null;
+  note?: string | null;
+  isActive?: boolean;
+};
+
+const INTEGRATOR_CATALOG = [
+  { provider: 'LUCA', label: 'Luca', kind: 'luca', tone: 'green' },
+  { provider: 'GIB_PORTAL', label: 'GIB Portal', kind: 'portal', tone: 'amber' },
+  { provider: 'ELOGO', label: 'e-Logo', kind: 'efatura', tone: 'blue' },
+  { provider: 'UYUMSOFT', label: 'Uyumsoft', kind: 'efatura', tone: 'blue' },
+  { provider: 'MIKRO', label: 'Mikro', kind: 'efatura', tone: 'purple' },
+  { provider: 'IZIBIZ', label: 'Izibiz', kind: 'efatura', tone: 'blue' },
+  { provider: 'KOLAYSOFT', label: 'Kolaysoft', kind: 'efatura', tone: 'green' },
+  { provider: 'FORIBA', label: 'Foriba', kind: 'efatura', tone: 'amber' },
+  { provider: 'PARASUT', label: 'Parasut', kind: 'efatura', tone: 'purple' },
+  { provider: 'LOGO_ISBASI', label: 'Logo Isbasi', kind: 'efatura', tone: 'gold' },
+  { provider: 'TURMOB_EFATURA', label: 'TURMOB e-Fatura', kind: 'efatura', tone: 'red' },
+] as const;
 
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
@@ -137,7 +167,7 @@ export class FaturaMuhasebelestirmeService {
       return {
         taxpayerId: tp.id,
         name: tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || 'Adsız mükellef',
-        ledgerType: tp.mihsapDefterTuru || tp.defterTuru || '-',
+        ledgerType: tp.defterTuru || tp.mihsapDefterTuru || '-',
         ...counts,
         totalPending: counts.pendingPurchase + counts.pendingSale + counts.pendingBank,
       };
@@ -156,6 +186,118 @@ export class FaturaMuhasebelestirmeService {
         { pendingPurchase: 0, pendingSale: 0, pendingBank: 0, approvedInvoice: 0, approvedBank: 0 },
       ),
     };
+  }
+
+  async listIntegrations(tenantId: string, opts: { taxpayerId?: string | null } = {}) {
+    const rows = await (this.prisma as any).integrationConnection.findMany({
+      where: {
+        tenantId,
+        provider: { in: INTEGRATOR_CATALOG.map((item) => item.provider) as any },
+      },
+      select: {
+        id: true,
+        provider: true,
+        config: true,
+        isActive: true,
+        lastSyncAt: true,
+        updatedAt: true,
+      },
+    });
+    const byProvider = new Map<string, any>(rows.map((row: any) => [String(row.provider), row]));
+    const taxpayerKey = opts.taxpayerId || 'global';
+
+    return INTEGRATOR_CATALOG.map((item) => {
+      const row = byProvider.get(item.provider);
+      const config = (row?.config || {}) as any;
+      const taxpayerConfig = config.taxpayers?.[taxpayerKey] || config.taxpayers?.global || null;
+      const configured = Boolean(
+        taxpayerConfig?.hasApiKey ||
+          taxpayerConfig?.hasApiSecret ||
+          taxpayerConfig?.hasPassword ||
+          taxpayerConfig?.username ||
+          taxpayerConfig?.baseUrl ||
+          taxpayerConfig?.senderVkn,
+      );
+      return {
+        provider: item.provider,
+        label: config.label || item.label,
+        kind: item.kind,
+        tone: item.tone,
+        isActive: row?.isActive !== false && taxpayerConfig?.isActive !== false,
+        configured,
+        taxpayerScoped: Boolean(config.taxpayers?.[taxpayerKey]),
+        baseUrl: taxpayerConfig?.baseUrl || '',
+        username: taxpayerConfig?.username || '',
+        senderVkn: taxpayerConfig?.senderVkn || '',
+        accountId: taxpayerConfig?.accountId || '',
+        note: taxpayerConfig?.note || '',
+        hasApiKey: Boolean(taxpayerConfig?.hasApiKey),
+        hasApiSecret: Boolean(taxpayerConfig?.hasApiSecret),
+        hasPassword: Boolean(taxpayerConfig?.hasPassword),
+        lastSyncAt: row?.lastSyncAt || null,
+        updatedAt: taxpayerConfig?.updatedAt || row?.updatedAt || null,
+      };
+    });
+  }
+
+  async saveIntegration(tenantId: string, input: IntegrationSaveInput, updatedBy?: string) {
+    const provider = String(input.provider || '').trim().toUpperCase();
+    const catalog = INTEGRATOR_CATALOG.find((item) => item.provider === provider);
+    if (!catalog) throw new BadRequestException('Desteklenmeyen entegrator');
+
+    const taxpayerKey = input.taxpayerId || 'global';
+    const existing = await (this.prisma as any).integrationConnection.findUnique({
+      where: { tenantId_provider: { tenantId, provider } },
+      select: { config: true },
+    });
+    const currentConfig = ((existing?.config || {}) as any) || {};
+    const currentTaxpayer = currentConfig.taxpayers?.[taxpayerKey] || {};
+
+    const apiKey = String(input.apiKey || '').trim();
+    const apiSecret = String(input.apiSecret || '').trim();
+    const password = String(input.password || '');
+    const nextTaxpayer: any = {
+      ...currentTaxpayer,
+      taxpayerId: input.taxpayerId || null,
+      label: String(input.label || catalog.label).trim(),
+      baseUrl: String(input.baseUrl || currentTaxpayer.baseUrl || '').trim(),
+      username: String(input.username || currentTaxpayer.username || '').trim(),
+      senderVkn: String(input.senderVkn || currentTaxpayer.senderVkn || '').trim(),
+      accountId: String(input.accountId || currentTaxpayer.accountId || '').trim(),
+      note: String(input.note || currentTaxpayer.note || '').trim(),
+      isActive: input.isActive !== false,
+      hasApiKey: apiKey ? true : Boolean(currentTaxpayer.hasApiKey),
+      hasApiSecret: apiSecret ? true : Boolean(currentTaxpayer.hasApiSecret),
+      hasPassword: password ? true : Boolean(currentTaxpayer.hasPassword),
+      updatedAt: new Date().toISOString(),
+      updatedBy: updatedBy || null,
+    };
+    if (apiKey) nextTaxpayer.encryptedApiKey = encrypt(apiKey);
+    if (apiSecret) nextTaxpayer.encryptedApiSecret = encrypt(apiSecret);
+    if (password) nextTaxpayer.encryptedPassword = encrypt(password);
+
+    const config = {
+      version: 1,
+      provider,
+      label: String(input.label || currentConfig.label || catalog.label).trim(),
+      kind: catalog.kind,
+      taxpayers: {
+        ...(currentConfig.taxpayers || {}),
+        [taxpayerKey]: nextTaxpayer,
+      },
+      updatedAt: new Date().toISOString(),
+      updatedBy: updatedBy || null,
+    };
+
+    await (this.prisma as any).integrationConnection.upsert({
+      where: { tenantId_provider: { tenantId, provider } },
+      update: { config, isActive: input.isActive !== false },
+      create: { tenantId, provider, config, isActive: input.isActive !== false },
+    });
+
+    const [saved] = await this.listIntegrations(tenantId, { taxpayerId: input.taxpayerId || null });
+    const all = await this.listIntegrations(tenantId, { taxpayerId: input.taxpayerId || null });
+    return all.find((item) => item.provider === provider) || saved;
   }
 
   async accountPlan(tenantId: string, opts: AccountPlanQuery) {
@@ -328,6 +470,7 @@ export class FaturaMuhasebelestirmeService {
 
       const isOcrSupported =
         file.mimetype.startsWith('image/') ||
+        file.mimetype === 'application/pdf' ||
         file.mimetype.includes('xml') ||
         /\.xml$/i.test(file.originalname);
       let ocrResult: OcrResult | null = null;

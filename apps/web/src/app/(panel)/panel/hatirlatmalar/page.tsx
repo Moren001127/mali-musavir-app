@@ -9,10 +9,12 @@ import {
   Calendar,
   CheckCircle2,
   FileInput,
+  Inbox,
   Loader2,
   MessageSquare,
   RefreshCw,
   Send,
+  Settings,
   Wallet,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -36,11 +38,37 @@ type ReminderRow = {
 
 type PreviewData = {
   donem: string;
-  whatsapp?: { ready?: boolean; error?: string; provider?: string; templateName?: string | null };
+  whatsapp?: WhatsAppStatus;
   gonderilecek: number;
   atlanacak: number;
   aday?: number;
   rows: ReminderRow[];
+};
+
+type WhatsAppStatus = {
+  ready?: boolean;
+  error?: string;
+  provider?: string;
+  phoneNumberId?: string;
+  templateName?: string | null;
+  documentTemplateName?: string | null;
+  portalTemplateName?: string | null;
+  ownerAlertTemplateName?: string | null;
+  webhookReady?: boolean;
+  hasQr?: boolean;
+};
+
+type WhatsAppInboxItem = {
+  id: string;
+  subject: string;
+  content: string;
+  occurredAt: string;
+  direction: 'incoming' | 'outgoing';
+  taxpayer: {
+    id: string;
+    name: string;
+    phone?: string | null;
+  };
 };
 
 export default function HatirlatmalarPage() {
@@ -66,6 +94,12 @@ export default function HatirlatmalarPage() {
     refetchInterval: 60_000,
   });
 
+  const inboxQuery = useQuery<WhatsAppInboxItem[]>({
+    queryKey: ['whatsapp-inbox'],
+    queryFn: () => api.get('/whatsapp/inbox?limit=40').then((r) => r.data),
+    refetchInterval: 30_000,
+  });
+
   const evrakSend = useMutation({
     mutationFn: () => api.post('/whatsapp/evrak-reminders/send', { year, month, includeNotDue, force }).then((r) => r.data),
     onSuccess: (r) => {
@@ -86,7 +120,8 @@ export default function HatirlatmalarPage() {
 
   const evrakRows = evrakQuery.data?.rows || [];
   const tahsilatRows = tahsilatQuery.data?.rows || [];
-  const whatsappReady = Boolean(evrakQuery.data?.whatsapp?.ready || tahsilatQuery.data?.whatsapp?.ready);
+  const whatsappStatus = evrakQuery.data?.whatsapp || tahsilatQuery.data?.whatsapp;
+  const whatsappReady = Boolean(whatsappStatus?.ready);
 
   const totals = useMemo(() => {
     const tahsilatTutar = tahsilatRows
@@ -106,14 +141,14 @@ export default function HatirlatmalarPage() {
           <div className="flex items-center gap-2.5 mb-2">
             <span className="w-[26px] h-px" style={{ background: GOLD }} />
             <span className="text-[10px] uppercase font-bold tracking-[.18em]" style={{ color: GOLD_SOFT }}>
-              <Bell size={10} className="inline mr-1" /> HATIRLATMA MERKEZI
+              <Bell size={10} className="inline mr-1" /> WHATSAPP OTOMASYON MERKEZI
             </span>
           </div>
           <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 38, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1 }}>
-            Hatırlatmalar
+            WhatsApp Otomasyonu
           </h1>
           <p className="text-[13px] mt-2" style={{ color: 'rgba(250,250,249,0.48)' }}>
-            Evrak ve tahsilat mesajlarını göndermeden önce kimlere gideceğini gör.
+            Evrak, tahsilat ve portal mesajlarını göndermeden önce alıcıları, atlama sebeplerini ve mesaj içeriğini kontrol et.
           </p>
         </div>
 
@@ -139,7 +174,7 @@ export default function HatirlatmalarPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <SummaryCard icon={MessageSquare} label="WhatsApp" value={whatsappReady ? 'Hazır' : 'Eksik'} tone={whatsappReady ? 'green' : 'amber'} sub={evrakQuery.data?.whatsapp?.provider || 'Meta Cloud'} />
+        <SummaryCard icon={MessageSquare} label="Meta Cloud" value={whatsappReady ? 'Hazır' : 'Eksik'} tone={whatsappReady ? 'green' : 'amber'} sub={evrakQuery.data?.whatsapp?.provider || 'WhatsApp'} />
         <SummaryCard icon={FileInput} label="Evrak Mesajı" value={String(totals.evrak)} tone="gold" sub={`${evrakQuery.data?.atlanacak || 0} atlanacak`} />
         <SummaryCard icon={Wallet} label="Tahsilat Mesajı" value={String(totals.tahsilat)} tone="blue" sub={`${formatMoney(totals.tahsilatTutar)} TL açık bakiye`} />
         <SummaryCard icon={Calendar} label="Dönem" value={evrakQuery.data?.donem || `${AYLAR[month - 1]} ${year}`} tone="neutral" sub="Evrak hatırlatma dönemi" />
@@ -151,11 +186,66 @@ export default function HatirlatmalarPage() {
           <div className="text-sm">
             <div className="font-semibold">WhatsApp ayarı eksik görünüyor.</div>
             <div className="text-[12.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.62)' }}>
-              {evrakQuery.data?.whatsapp?.error || tahsilatQuery.data?.whatsapp?.error || 'Meta Cloud API ortam değişkenlerini kontrol et.'}
+              {evrakQuery.data?.whatsapp?.error || tahsilatQuery.data?.whatsapp?.error || 'WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID ve şablon değişkenlerini kontrol et.'}
             </div>
           </div>
         </div>
       )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-4">
+        <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-5 py-4 flex items-start gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)' }}>
+              <Settings size={17} style={{ color: GOLD }} />
+            </span>
+            <div>
+              <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Bağlantı Ayarları</h2>
+              <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>Meta Cloud API durumu ve kullanılan şablonlar.</p>
+            </div>
+          </div>
+          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <StatusPill label="Sağlayıcı" value={whatsappStatus?.provider || 'meta-cloud'} />
+            <StatusPill label="QR" value={whatsappStatus?.hasQr ? 'Var' : 'Yok'} tone={whatsappStatus?.hasQr ? 'amber' : 'green'} />
+            <StatusPill label="Webhook" value={whatsappStatus?.webhookReady ? 'Hazır' : 'Eksik'} tone={whatsappStatus?.webhookReady ? 'green' : 'amber'} />
+            <StatusPill label="Numara ID" value={whatsappStatus?.phoneNumberId || 'Eksik'} tone={whatsappStatus?.phoneNumberId ? 'green' : 'amber'} />
+            <StatusPill label="Evrak Şablonu" value={whatsappStatus?.documentTemplateName || 'Eksik'} tone={whatsappStatus?.documentTemplateName ? 'green' : 'amber'} />
+            <StatusPill label="Portal Şablonu" value={whatsappStatus?.portalTemplateName || 'Eksik'} tone={whatsappStatus?.portalTemplateName ? 'green' : 'amber'} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-start gap-3">
+              <span className="w-10 h-10 rounded-xl inline-flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.28)' }}>
+                <Inbox size={17} style={{ color: '#10b981' }} />
+              </span>
+              <div>
+                <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Gelen Mesajlar</h2>
+                <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>Webhook ile eşleşen son WhatsApp kayıtları.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => inboxQuery.refetch()}
+              className="h-9 w-9 rounded-lg inline-flex items-center justify-center"
+              title="Gelen mesajları yenile"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+          <div className="max-h-[300px] overflow-auto">
+            {inboxQuery.isLoading ? (
+              <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                <Loader2 size={18} className="inline animate-spin mr-2" /> Yükleniyor...
+              </div>
+            ) : !inboxQuery.data?.length ? (
+              <div className="py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Henüz WhatsApp kaydı yok.</div>
+            ) : (
+              inboxQuery.data.map((item) => <InboxRow key={item.id} item={item} />)
+            )}
+          </div>
+        </section>
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ReminderPanel
@@ -223,6 +313,50 @@ function SummaryCard({ icon: Icon, label, value, sub, tone }: { icon: any; label
         {value}
       </div>
       <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.48)' }}>{sub}</div>
+    </div>
+  );
+}
+
+function StatusPill({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'green' | 'amber' | 'neutral' }) {
+  const color = tone === 'green' ? '#4ade80' : tone === 'amber' ? '#fbbf24' : 'rgba(250,250,249,0.62)';
+  return (
+    <div className="rounded-xl p-3 min-w-0" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="text-[10px] uppercase font-bold tracking-[.14em]" style={{ color: 'rgba(250,250,249,0.38)' }}>{label}</div>
+      <div className="text-[12.5px] mt-1 truncate font-semibold" title={value} style={{ color }}>{value}</div>
+    </div>
+  );
+}
+
+function InboxRow({ item }: { item: WhatsAppInboxItem }) {
+  const incoming = item.direction === 'incoming';
+  return (
+    <div className="px-5 py-3 hover:bg-white/[0.025] transition" style={{ borderBottom: '1px solid rgba(255,255,255,0.045)' }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider flex-shrink-0"
+              style={{
+                color: incoming ? '#10b981' : GOLD,
+                background: incoming ? 'rgba(16,185,129,0.12)' : 'rgba(212,184,118,0.12)',
+                border: incoming ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(212,184,118,0.25)',
+              }}
+            >
+              {incoming ? 'Gelen' : 'Giden'}
+            </span>
+            <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{item.taxpayer.name}</span>
+          </div>
+          <div className="text-[11.5px] mt-1 truncate" style={{ color: 'rgba(250,250,249,0.44)' }}>{item.subject}</div>
+        </div>
+        <div className="text-[11px] whitespace-nowrap" style={{ color: 'rgba(250,250,249,0.36)' }}>
+          {new Date(item.occurredAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+        </div>
+      </div>
+      {item.content ? (
+        <div className="text-[12px] leading-relaxed mt-2 line-clamp-2" style={{ color: 'rgba(250,250,249,0.58)' }}>
+          {item.content}
+        </div>
+      ) : null}
     </div>
   );
 }

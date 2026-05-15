@@ -1,20 +1,30 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Bot,
   CheckCircle2,
   Clock,
+  Eye,
+  EyeOff,
   KeyRound,
   Loader2,
   Monitor,
   RefreshCw,
+  Save,
   ShieldCheck,
+  Trash2,
+  Users,
   X,
 } from 'lucide-react';
-import { lucaSessionApi, type LucaCaptchaChallenge, type LucaSessionManagerStatus } from '@/lib/luca-session';
+import {
+  lucaSessionApi,
+  type LucaCaptchaChallenge,
+  type LucaSessionManagerStatus,
+  type LucaWorkerAccount,
+} from '@/lib/luca-session';
 
 const GOLD = '#d4b876';
 type LucaDevice = LucaSessionManagerStatus['devices'][number];
@@ -135,6 +145,8 @@ export default function LucaSessionPage() {
         />
       </div>
 
+      <LucaWorkerAccountsPanel />
+
       {activeChallenge ? (
         <CaptchaPanel
           challenge={activeChallenge}
@@ -224,6 +236,246 @@ export default function LucaSessionPage() {
       </div>
     </div>
   );
+}
+
+function LucaWorkerAccountsPanel() {
+  const { data: accounts = [], isLoading } = useQuery({
+    queryKey: ['luca-worker-accounts'],
+    queryFn: lucaSessionApi.workerAccounts,
+  });
+
+  const slots = useMemo(() => {
+    const sorted = [...accounts].sort((a, b) => a.sortOrder - b.sortOrder);
+    const blanks = Array.from({ length: Math.max(5 - sorted.length, 0) }, (_, i) => ({
+      key: `new-${i}`,
+      account: null as LucaWorkerAccount | null,
+      slotIndex: sorted.length + i,
+    }));
+    return [
+      ...sorted.map((account, i) => ({ key: account.id, account, slotIndex: i })),
+      ...blanks,
+    ];
+  }, [accounts]);
+
+  return (
+    <section
+      className="rounded-lg border p-4"
+      style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
+        <div>
+          <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: '#fafaf9' }}>
+            <Users size={15} style={{ color: GOLD }} /> Luca Kullanici Havuzu
+          </h2>
+          <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
+            5 Luca kullanicisini buradan tanimla; sifreler kaydedilirken sifreli tutulur.
+          </div>
+        </div>
+        <span
+          className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
+          style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}
+        >
+          {accounts.filter((a) => a.isActive).length}/{Math.max(5, accounts.length)} aktif
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {isLoading ? (
+          <EmptyLine text="Luca kullanicilari yukleniyor" />
+        ) : (
+          slots.map((slot) => (
+            <LucaWorkerAccountRow
+              key={slot.key}
+              account={slot.account}
+              slotIndex={slot.slotIndex}
+            />
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function LucaWorkerAccountRow({
+  account,
+  slotIndex,
+}: {
+  account: LucaWorkerAccount | null;
+  slotIndex: number;
+}) {
+  const qc = useQueryClient();
+  const defaultName = `Luca ${slotIndex + 1}`;
+  const [displayName, setDisplayName] = useState(account?.displayName || defaultName);
+  const [uyeNo, setUyeNo] = useState(account?.uyeNo || '');
+  const [username, setUsername] = useState(account?.username || '');
+  const [password, setPassword] = useState('');
+  const [isActive, setIsActive] = useState(account?.isActive ?? true);
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    setDisplayName(account?.displayName || defaultName);
+    setUyeNo(account?.uyeNo || '');
+    setUsername(account?.username || '');
+    setPassword('');
+    setIsActive(account?.isActive ?? true);
+    setShowPassword(false);
+  }, [account?.id, account?.displayName, account?.uyeNo, account?.username, account?.isActive, defaultName]);
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        displayName: displayName.trim(),
+        uyeNo: uyeNo.trim(),
+        username: username.trim(),
+        password: password.trim() || undefined,
+        isActive,
+        sortOrder: slotIndex,
+      };
+      if (!payload.displayName || !payload.uyeNo || !payload.username) {
+        throw new Error('Ad, uye no ve kullanici adi zorunlu');
+      }
+      if (!account && !payload.password) {
+        throw new Error('Yeni Luca kullanicisi icin sifre zorunlu');
+      }
+      return account
+        ? lucaSessionApi.updateWorkerAccount(account.id, payload)
+        : lucaSessionApi.createWorkerAccount(payload);
+    },
+    onSuccess: () => {
+      setPassword('');
+      toast.success('Luca kullanicisi kaydedildi');
+      qc.invalidateQueries({ queryKey: ['luca-worker-accounts'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kaydedilemedi'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => lucaSessionApi.deleteWorkerAccount(account!.id),
+    onSuccess: () => {
+      toast.info('Luca kullanicisi silindi');
+      qc.invalidateQueries({ queryKey: ['luca-worker-accounts'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Silinemedi'),
+  });
+
+  return (
+    <div
+      className="rounded-md border px-3 py-3"
+      style={{ background: account ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.014)', borderColor: 'rgba(255,255,255,0.06)' }}
+    >
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_.9fr_1fr_1fr_auto] gap-2 items-end">
+        <CompactField label="Gorunen Ad">
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
+            style={inputStyle()}
+          />
+        </CompactField>
+        <CompactField label="Uye No">
+          <input
+            value={uyeNo}
+            onChange={(e) => setUyeNo(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
+            style={inputStyle()}
+          />
+        </CompactField>
+        <CompactField label="Kullanici Adi">
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
+            style={inputStyle()}
+          />
+        </CompactField>
+        <CompactField label={account?.hasPassword ? 'Sifre (degistir)' : 'Sifre'}>
+          <div className="flex">
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={showPassword ? 'text' : 'password'}
+              placeholder={account?.hasPassword ? 'mevcut korunur' : ''}
+              className="w-full px-2.5 py-2 rounded-l-md text-xs outline-none"
+              style={inputStyle()}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="px-2 rounded-r-md"
+              style={{ ...inputStyle(), borderLeft: '0' }}
+              title={showPassword ? 'Gizle' : 'Goster'}
+            >
+              {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+            </button>
+          </div>
+        </CompactField>
+
+        <div className="flex items-center gap-2 xl:justify-end">
+          <button
+            type="button"
+            onClick={() => setIsActive((v) => !v)}
+            className="h-9 px-3 rounded-md text-xs font-semibold"
+            style={{
+              background: isActive ? 'rgba(34,197,94,0.14)' : 'rgba(148,163,184,0.10)',
+              color: isActive ? '#86efac' : 'rgba(250,250,249,0.48)',
+              border: `1px solid ${isActive ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.08)'}`,
+            }}
+          >
+            {isActive ? 'Aktif' : 'Pasif'}
+          </button>
+          <button
+            type="button"
+            disabled={saveMut.isPending}
+            onClick={() => saveMut.mutate()}
+            className="h-9 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+            style={{ background: GOLD, color: '#111827' }}
+          >
+            {saveMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Kaydet
+          </button>
+          {account ? (
+            <button
+              type="button"
+              disabled={deleteMut.isPending}
+              onClick={() => {
+                if (window.confirm(`${displayName} silinsin mi?`)) deleteMut.mutate();
+              }}
+              className="h-9 w-9 rounded-md inline-flex items-center justify-center disabled:opacity-50"
+              style={{ background: 'rgba(239,68,68,0.10)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.18)' }}
+              title="Sil"
+            >
+              {deleteMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {account?.lastError ? (
+        <div className="mt-2 text-[11px]" style={{ color: '#fca5a5' }}>
+          Son hata: {account.lastError}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CompactField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-[10px] uppercase font-bold tracking-[.10em] mb-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function inputStyle(): React.CSSProperties {
+  return {
+    background: 'rgba(15,13,11,0.72)',
+    color: '#fafaf9',
+    border: '1px solid rgba(255,255,255,0.08)',
+  };
 }
 
 function CaptchaPanel({

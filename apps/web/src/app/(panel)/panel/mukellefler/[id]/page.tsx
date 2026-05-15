@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ChevronLeft, ChevronRight, List } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import TaxpayerStatsCard from '@/components/TaxpayerStatsCard';
@@ -57,6 +58,12 @@ export default function MukellefDetayPage() {
     enabled: !isNew,
   });
 
+  const { data: taxpayers = [] } = useQuery({
+    queryKey: ['taxpayers', 'card-nav'],
+    queryFn: () => api.get('/taxpayers').then(r => r.data),
+    enabled: !isNew,
+  });
+
   const [form, setForm] = useState({
     type: 'TUZEL_KISI',
     companyName: '',
@@ -84,6 +91,9 @@ export default function MukellefDetayPage() {
     if (taxpayer) {
       const phones = [...(taxpayer.phones || []), '', '', ''].slice(0, 3);
       const emails = [...(taxpayer.emails || []), '', '', ''].slice(0, 3);
+      const defterTuru = (((taxpayer as any).defterTuru || taxpayer.mihsapDefterTuru) === 'DEFTER_BEYAN'
+        ? 'ISLETME'
+        : ((taxpayer as any).defterTuru ?? 'BILANCO')) as 'BILANCO' | 'ISLETME';
       setForm({
         type: taxpayer.type || 'TUZEL_KISI',
         companyName: taxpayer.companyName || '',
@@ -103,8 +113,8 @@ export default function MukellefDetayPage() {
         isEFaturaMukellefi: (taxpayer as any).isEFaturaMukellefi ?? false,
         lucaSlug: taxpayer.lucaSlug ?? '',
         mihsapId: taxpayer.mihsapId ?? '',
-        mihsapDefterTuru: taxpayer.mihsapDefterTuru ?? 'BILANCO',
-        defterTuru: ((taxpayer as any).defterTuru ?? 'BILANCO') as 'BILANCO' | 'ISLETME',
+        mihsapDefterTuru: taxpayer.mihsapDefterTuru ?? (defterTuru === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO'),
+        defterTuru,
       });
     }
   }, [taxpayer]);
@@ -117,7 +127,8 @@ export default function MukellefDetayPage() {
     onSuccess: () => {
       toast.success(isNew ? 'Mükellef eklendi' : 'Mükellef güncellendi');
       qc.invalidateQueries({ queryKey: ['taxpayers'] });
-      router.push('/panel/mukellefler');
+      qc.invalidateQueries({ queryKey: ['taxpayer', id] });
+      if (isNew) router.push('/panel/mukellefler');
     },
     onError: (err: any) => {
       const msg = err.response?.data?.message;
@@ -148,6 +159,55 @@ export default function MukellefDetayPage() {
     saveData(payload);
   };
 
+  const cardNav = useMemo(() => {
+    const list = Array.isArray(taxpayers) ? taxpayers : [];
+    const index = list.findIndex((t: any) => t.id === id);
+    return {
+      index,
+      total: list.length,
+      prev: index > 0 ? list[index - 1] : null,
+      next: index >= 0 && index < list.length - 1 ? list[index + 1] : null,
+    };
+  }, [taxpayers, id]);
+
+  const displayName = (item: any) => (
+    item?.companyName ||
+    [item?.firstName, item?.lastName].filter(Boolean).join(' ') ||
+    item?.taxNumber ||
+    'Mükellef'
+  );
+
+  const CardNavButtons = ({ compact = false }: { compact?: boolean }) => {
+    if (isNew || cardNav.total <= 1) return null;
+    return (
+      <div className={`flex ${compact ? 'flex-wrap justify-end' : 'flex-col sm:flex-row'} items-center gap-2`}>
+        <button
+          type="button"
+          onClick={() => cardNav.prev && router.push(`/panel/mukellefler/${cardNav.prev.id}`)}
+          disabled={!cardNav.prev}
+          title={cardNav.prev ? displayName(cardNav.prev) : 'İlk mükellef'}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <ChevronLeft size={16} />
+          Önceki
+        </button>
+        <div className="inline-flex min-w-[76px] items-center justify-center rounded-lg border border-[#d4b876]/20 bg-[#d4b876]/10 px-3 py-2 text-xs font-semibold text-[#d4b876]">
+          {cardNav.index >= 0 ? cardNav.index + 1 : '-'} / {cardNav.total}
+        </div>
+        <button
+          type="button"
+          onClick={() => cardNav.next && router.push(`/panel/mukellefler/${cardNav.next.id}`)}
+          disabled={!cardNav.next}
+          title={cardNav.next ? displayName(cardNav.next) : 'Son mükellef'}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/80 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          Sonraki
+          <ChevronRight size={16} />
+        </button>
+      </div>
+    );
+  };
+
   if (!isNew && isLoading) {
     return <div className="p-6 text-center text-gray-500">Yükleniyor...</div>;
   }
@@ -155,15 +215,19 @@ export default function MukellefDetayPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       {/* Başlık */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center">
         <Link href="/panel/mukellefler">
-          <button className="text-gray-500 hover:text-gray-700 text-sm">← Listeye Dön</button>
+          <button className="inline-flex items-center gap-1.5 text-gray-500 hover:text-gray-300 text-sm">
+            <List size={15} />
+            Listeye Dön
+          </button>
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>
             {isNew ? 'Yeni Mükellef' : 'Mükellef Düzenle'}
           </h1>
         </div>
+        <CardNavButtons compact />
         {!isNew && (
           <button
             onClick={() => { if (confirm('Mükellef silinsin mi?')) deleteMukellef(); }}
@@ -444,7 +508,11 @@ export default function MukellefDetayPage() {
               </label>
               <select
                 value={form.mihsapDefterTuru}
-                onChange={e => setForm(f => ({ ...f, mihsapDefterTuru: e.target.value }))}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  mihsapDefterTuru: e.target.value,
+                  defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
+                }))}
                 className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
               >
                 <option value="BILANCO">Bilanço</option>
@@ -473,7 +541,7 @@ export default function MukellefDetayPage() {
                 name="defterTuru"
                 value="BILANCO"
                 checked={form.defterTuru === 'BILANCO'}
-                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO' }))}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'BILANCO', mihsapDefterTuru: 'BILANCO' }))}
                 className="accent-[#d4b876]"
               />
               <div>
@@ -493,7 +561,7 @@ export default function MukellefDetayPage() {
                 name="defterTuru"
                 value="ISLETME"
                 checked={form.defterTuru === 'ISLETME'}
-                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME' }))}
+                onChange={() => setForm(f => ({ ...f, defterTuru: 'ISLETME', mihsapDefterTuru: 'DEFTER_BEYAN' }))}
                 className="accent-[#a78bfa]"
               />
               <div>
@@ -519,6 +587,11 @@ export default function MukellefDetayPage() {
         </div>
 
         {/* Butonlar */}
+        {!isNew && (
+          <div className="flex justify-end">
+            <CardNavButtons />
+          </div>
+        )}
         <div className="flex gap-3 justify-end">
           <Link href="/panel/mukellefler">
             <button type="button" className="btn-secondary">İptal</button>

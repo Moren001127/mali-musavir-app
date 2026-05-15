@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.59';
+  const AGENT_VERSION = '1.37.69';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -132,6 +132,8 @@
   let lucaCredentialCacheAt = 0;
   let activeCaptchaChallengeId = '';
   let activeCaptchaSignature = '';
+  const captchaChallengeCounts = new Map();
+  const MAX_CAPTCHA_CHALLENGES_PER_JOB = 2;
   let lucaLoginBusy = false;
 
   async function getLucaCredentialForAgent() {
@@ -343,6 +345,27 @@
     const signature = `${parts.image.src || ''}|${parts.input.name || parts.input.id || ''}|${location.href}`;
     try {
       if (!activeCaptchaChallengeId || activeCaptchaSignature !== signature) {
+        const captchaKey = job.id || 'global';
+        const storageKey = `moren_luca_captcha_count_${captchaKey}`;
+        let previousCount = captchaChallengeCounts.get(captchaKey) || 0;
+        try {
+          previousCount = Math.max(previousCount, Number(localStorage.getItem(storageKey) || 0));
+        } catch {}
+        const nextCount = previousCount + 1;
+        captchaChallengeCounts.set(captchaKey, nextCount);
+        try { localStorage.setItem(storageKey, String(nextCount)); } catch {}
+        if (nextCount > MAX_CAPTCHA_CHALLENGES_PER_JOB) {
+          const msg = `Luca guvenlik kodu ${MAX_CAPTCHA_CHALLENGES_PER_JOB} kez tekrarlandi; ajan durduruldu. Kullanici/sifre veya CAPTCHA cevabi kontrol edilmeli.`;
+          setStatus(msg);
+          if (log) await log(msg);
+          window.__morenAgent.stopRequested = true;
+          await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+            body: JSON.stringify({ error: msg }),
+          }).catch(() => {});
+          return true;
+        }
         const captchaImage = await imageElementToDataUrl(parts.image);
         if (!captchaImage || !captchaImage.startsWith('data:image/')) return false;
         const r = await fetch(API + '/agent/luca/captcha', {
@@ -384,8 +407,17 @@
         if (ans.status === 'answered' && ans.answer) {
           setNativeValue(parts.input, ans.answer);
           await sleep(200);
+          const submitStartedAt = Date.now();
           if (parts.submit) parts.submit.click();
-          else parts.input.form?.requestSubmit?.();
+          await sleep(700);
+          if (Date.now() - submitStartedAt < 2500 && parts.input?.isConnected && /captchaKontrol|giris\.erp/i.test(location.href)) {
+            submitLoginByEnter(parts.input);
+            await sleep(500);
+          }
+          if (parts.input?.isConnected && /captchaKontrol|giris\.erp/i.test(location.href)) {
+            try { parts.input.form?.requestSubmit?.(); } catch {}
+            try { parts.input.form?.submit?.(); } catch {}
+          }
           await fetch(API + `/agent/luca/captcha/${activeCaptchaChallengeId}/consume`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
@@ -549,7 +581,59 @@
       return '';
     }
   }
-  function tryOpenClassicLucaKnownAction() {
+  async function runClassicSsoOpenAttempt(label, actionFn) {
+    let openedUrl = '';
+    const originalOpen = window.open;
+    const originalSubmit = window.HTMLFormElement?.prototype?.submit;
+    const formTargets = [];
+    const absUrl = (url) => {
+      try { return new URL(String(url || ''), location.href).toString(); }
+      catch { return String(url || ''); }
+    };
+    try {
+      window.open = function(url, target, features) {
+        const href = absUrl(url);
+        if (href) {
+          openedUrl = href;
+          try { location.href = href; } catch {}
+          return window;
+        }
+        return originalOpen ? originalOpen.call(this, url, target, features) : null;
+      };
+      if (originalSubmit) {
+        window.HTMLFormElement.prototype.submit = function() {
+          try { if (this.target && this.target !== '_self') this.target = '_self'; } catch {}
+          return originalSubmit.call(this);
+        };
+      }
+      try {
+        for (const form of Array.from(document.forms || [])) {
+          formTargets.push([form, form.target]);
+          if (form.target && form.target !== '_self') form.target = '_self';
+        }
+      } catch {}
+      await actionFn();
+      await sleep(1800);
+      if (openedUrl && isLucaSsoMainPage()) {
+        try { location.href = openedUrl; } catch {}
+        return `${label} -> ${openedUrl.slice(0, 100)}`;
+      }
+      if (!isLucaSsoMainPage()) return label;
+      return '';
+    } catch {
+      return '';
+    } finally {
+      try { window.open = originalOpen; } catch {}
+      try { if (originalSubmit) window.HTMLFormElement.prototype.submit = originalSubmit; } catch {}
+      try {
+        for (const [form, target] of formTargets) {
+          if (form && form.isConnected) form.target = target || '';
+        }
+      } catch {}
+    }
+  }
+
+  async function tryOpenClassicLucaKnownAction() {
     const norm = (value) => normalizeLucaText(value).replace(/\s+/g, ' ').trim();
     const preferredActions = ['formTarget', 'lucaMmp20'];
     const candidates = Array.from(document.querySelectorAll(
@@ -576,23 +660,25 @@
       const classicText = (/mali musavir|mali musavir paketi|muhasebe/.test(hay) && /luca|paket|giris|auygs|mmp/.test(hay));
       const classicUrl = /auygs|luca\.do/.test(hay);
       if (!classicText && !classicUrl && !(explicitAction && text)) continue;
-      try {
-        el.click();
-        return explicitAction ? `element:${explicitAction}` : `element:${(text || href || onclick).slice(0, 80)}`;
-      } catch {}
+      const opened = await runClassicSsoOpenAttempt(
+        explicitAction ? `element:${explicitAction}` : `element:${(text || href || onclick).slice(0, 80)}`,
+        () => el.click(),
+      );
+      if (opened) return opened;
     }
     for (const action of preferredActions) {
       const rx = new RegExp(`gonder\\s*\\(\\s*['"]${action}['"]`, 'i');
       const el = candidates.find((node) => rx.test(String(node.getAttribute?.('onclick') || '')));
       if (el) {
-        try { el.click(); return `onclick:${action}`; } catch {}
+        const opened = await runClassicSsoOpenAttempt(`onclick:${action}`, () => el.click());
+        if (opened) return opened;
       }
     }
     for (const action of preferredActions) {
       try {
         if (typeof window.gonder === 'function' && classicEntryCandidateHint(3)) {
-          window.gonder(action);
-          return `gonder:${action}`;
+          const opened = await runClassicSsoOpenAttempt(`gonder:${action}`, () => window.gonder(action));
+          if (opened) return opened;
         }
       } catch {}
     }
@@ -614,9 +700,18 @@
           for (const job of jobs) {
             await logPendingJob(job, `Klasik Luca giris aksiyonu tiklaniyor: ${entry.text || entry.href || entry.onclick || 'entry'}`);
           }
-          try { entry.el.click(); return true; } catch {}
+          const opened = await runClassicSsoOpenAttempt(
+            `element:${entry.text || entry.href || entry.onclick || 'entry'}`,
+            () => entry.el.click(),
+          );
+          if (opened) {
+            for (const job of jobs) {
+              await logPendingJob(job, `Klasik Luca ayni sekmede aciliyor: ${opened}`);
+            }
+            return true;
+          }
         }
-        const knownAction = tryOpenClassicLucaKnownAction();
+        const knownAction = await tryOpenClassicLucaKnownAction();
         if (knownAction) {
           for (const job of jobs) {
             await logPendingJob(job, `Klasik Luca bilinen ID/action ile aciliyor: ${knownAction}`);
@@ -797,7 +892,8 @@
         const firstJob = jobs[0];
         const url = location.href.slice(0, 120);
         if (await openLucaLoginEntryForJobs(jobs, logPendingJob)) return;
-        await bridgeLucaCaptchaToPortal(firstJob, (line) => logPendingJob(firstJob, line)).catch(() => {});
+        const captchaHandled = await bridgeLucaCaptchaToPortal(firstJob, (line) => logPendingJob(firstJob, line)).catch(() => false);
+        if (captchaHandled) return;
         if (await openClassicLucaFromSsoMainForJobs(jobs, logPendingJob)) return;
 
         const loginParts = findLoginFormParts();
@@ -870,6 +966,14 @@
         if (/\/Luca\/ssoGiris\.do/i.test(location.pathname)) {
           const now = Date.now();
           if (!window.__morenSsoGirisStartedAt) window.__morenSsoGirisStartedAt = now;
+          if (now - window.__morenSsoGirisStartedAt > 15000 && (!window.__morenSsoGirisDirectClassicAt || now - window.__morenSsoGirisDirectClassicAt > 30000)) {
+            window.__morenSsoGirisDirectClassicAt = now;
+            for (const job of jobs) {
+              await logPendingJob(job, 'Luca SSO ara sayfasi uzadi; klasik luca.do tamamlayici yonlendirme deneniyor');
+            }
+            try { location.href = LUCA_CLASSIC_URL; } catch {}
+            return;
+          }
           if (now - window.__morenSsoGirisStartedAt < 30000) {
             if (!window.__morenSsoGirisWaitLogAt || now - window.__morenSsoGirisWaitLogAt > 10000) {
               window.__morenSsoGirisWaitLogAt = now;
@@ -1238,7 +1342,7 @@
               uploadRecordCount = Number(r.inserted || 0) + Number(r.duplicate || 0);
               respDetail = ` (parse: total=${r.total != null ? r.total : '?'}, inserted=${r.inserted != null ? r.inserted : '?'}, mükerrer=${r.duplicate != null ? r.duplicate : '?'}, hata=${r.skipped != null ? r.skipped : '?'})`;
             } else {
-              uploadRecordCount = Number(r.hesapCount || r.toplamHesapAdet || 0);
+              uploadRecordCount = Number(r.parsed || r.imported || r.rows || r.hesapCount || r.toplamHesapAdet || 0);
               respDetail = ` (resp=${JSON.stringify(r).slice(0, 200)})`;
             }
             if (r.meta) {
@@ -1750,15 +1854,35 @@
       throw new Error(`Geçersiz dönem formatı: ${donemStr}, beklenen: YYYY-MM`);
     }
 
-    // mukellefAdi backend tarafından job.errorMsg'e [META] formatında eklendi
-    let mukellefAdi = '';
-    try {
-      const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
-      if (m) mukellefAdi = m[1].trim();
-    } catch {}
+    // Mükellef adı artık pending job payload'ında flat geliyor. Eski [META]
+    // log formatı yalnızca geriye dönük yedek olmalı; yoksa Luca'da açık kalan
+    // önceki firma üzerinden e-belge çekilip evraklar yanlış mükellefe yazılabilir.
+    let mukellefAdi = String(
+      job.mukellefAdi ||
+      job.taxpayer?.companyName ||
+      [job.taxpayer?.firstName, job.taxpayer?.lastName].filter(Boolean).join(' ') ||
+      job.taxpayer?.name ||
+      ''
+    ).trim();
+    if (!mukellefAdi) {
+      try {
+        const m = String(job.errorMsg || '').match(/\[META\] mukellefAdi=(.+?)(\n|$)/);
+        if (m) mukellefAdi = m[1].trim();
+      } catch {}
+    }
+    if (mukellefAdi && !job.mukellefAdi) job.mukellefAdi = mukellefAdi;
+    if (!mukellefAdi && !job.taxNumber && !job.lucaSlug) {
+      throw new Error('E-belge sorgusu için mükellef bilgisi eksik; yanlış firmadan veri çekmemek için işlem durduruldu');
+    }
 
-    // Firma + yıl seçimini yap (kullanıcı yanlış firmadaysa düzelt)
-    await selectLucaSirketDonem(mukellefAdi, yil, log);
+    // Firma + yıl seçimini yap. Firma doğrulaması başarısızsa devam etmek tehlikeli:
+    // fatura sorgusunda "aktif Luca firması" neyse onun evrakları gelir.
+    const firmaResult = await ensureLucaFirma(job, log);
+    if (firmaResult?.changed) {
+      try { window.__morenLastEbelgeKey = ''; } catch {}
+      await log('Firma değişti — e-belge ekranı eski firma bağlamı kabul edilmeyecek');
+    }
+    await selectLucaSirketDonem('', yil, log);
 
     // job.tip → açılacak menü item'ı
     const menuLabel = {
@@ -2062,7 +2186,13 @@
       // Mükellef tipini tespit et: top-level menüde "İşletme Defteri" varsa işletme,
       // "Muhasebe" varsa bilanço esası.
       const detectMukellefTipi = () => {
-        const fromJob = String(job.defterTuru || job.ledgerType || job.mukellefDefterTuru || '').toLocaleUpperCase('tr-TR');
+        const fromJob = String([
+          job.defterTuru,
+          job.mihsapDefterTuru,
+          job.ledgerType,
+          job.mukellefDefterTuru,
+        ].filter(Boolean).join(' ')).toLocaleUpperCase('tr-TR');
+        if (/DEFTER[_\s-]*BEYAN/.test(fromJob)) return 'isletme';
         if (/ISLETME|İSLETME|İŞLETME/.test(fromJob)) return 'isletme';
         if (/BILANCO|BİLANCO|BİLANÇO|BILANÇO/.test(fromJob)) return 'bilanco';
         try {
@@ -2073,6 +2203,7 @@
           }
           texts.push(document.body?.textContent || '');
           const joined = texts.join('\n');
+          if (/defter[_\s-]*beyan|tur=defter_beyan/i.test(joined)) return 'isletme';
           if (/Muhasebe/i.test(joined) && /Mizan|Hesap\s+Plan|Fi[şs]\s+İşlemleri|Fis\s+Islemleri/i.test(joined)) return 'bilanco';
           if (/İşletme\s+Defteri|Isletme\s+Defteri/i.test(joined) && !/Muhasebe/i.test(joined)) return 'isletme';
         } catch {}
@@ -2081,6 +2212,7 @@
             const fr = getLucaFrame(fname);
             if (!fr || !fr.contentDocument) continue;
             const txt = (fr.contentDocument.body && fr.contentDocument.body.textContent) || '';
+            if (/defter[_\s-]*beyan|tur=defter_beyan/i.test(txt)) return 'isletme';
             if (/İşletme\s+Defteri/i.test(txt) && !/Muhasebe\b/i.test(txt.slice(0, 500))) return 'isletme';
             if (/Muhasebe/i.test(txt)) return 'bilanco';
           } catch {}
@@ -2088,6 +2220,7 @@
         // Tüm document'tan da tara
         try {
           const txt = document.body.textContent || '';
+          if (/defter[_\s-]*beyan|tur=defter_beyan/i.test(txt)) return 'isletme';
           if (/İşletme\s+Defteri/i.test(txt)) return 'isletme';
           if (/Muhasebe/i.test(txt)) return 'bilanco';
         } catch {}
@@ -2113,11 +2246,10 @@
 
       const mukellefTipi = detectMukellefTipi();
       const ii1aId = II1A_CODES[mukellefTipi]?.[job.tip];
-      const ii1aIds = [...new Set([
-        ii1aId,
-        II1A_CODES.bilanco?.[job.tip],
-        II1A_CODES.isletme?.[job.tip],
-      ].filter(Boolean))];
+      // Defter türü biliniyorsa karşı defter ailesinin kodlarını deneme.
+      // Bilanço mükellefinde işletme kodu/menüsü denemek hem bekletiyor hem yanlış
+      // e-belge ekranını açabiliyor.
+      const ii1aIds = [ii1aId].filter(Boolean);
       await log(`📊 Mükellef tipi: ${mukellefTipi.toUpperCase()} → II1a kodu: ${ii1aId}`);
       if (!ii1aId) throw new Error(`Bilinmeyen tip için II1a id yok: ${job.tip} (${mukellefTipi})`);
 
@@ -2365,9 +2497,9 @@
         // uyan exception olursa kısa bekle + tekrar dene (max 3 kez per attempt).
         const isTreeNotReadyError = (e) => {
           const msg = String(e?.message || e);
-          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?indexOf['"]?/i.test(msg);
+          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?(?:indexOf|II11|1)['"]?|Cannot read properties of (?:undefined|null)/i.test(msg);
         };
-        const MAX_RETRY = 3;
+        const MAX_RETRY = 2;
         for (const candidate of candidates) {
           const attempts = [
             [fakeEvent, code, ''],
@@ -2388,11 +2520,15 @@
               } catch (e) {
                 const msg = String(e?.message || e).slice(0, 90);
                 await log(`⚠ II1a ${candidate.src} hata: ${msg}`);
-                if (isTreeNotReadyError(e) && retry < MAX_RETRY - 1) {
-                  retry++;
-                  await log(`⏳ Luca tree henüz hazır değil — 1.5sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
-                  await sleep(1500);
-                  continue;
+                if (isTreeNotReadyError(e)) {
+                  if (retry < MAX_RETRY - 1) {
+                    retry++;
+                    await log(`⏳ Luca menu tree hazır değil — 0.8sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
+                    await sleep(800);
+                    continue;
+                  }
+                  await log(`ℹ II1a ${candidate.src} menu tree hazır değil; metin menüsüne geçiliyor`);
+                  return false;
                 }
                 // Farklı hata ya da retry tükendi → bu arg setini bırak
                 argSetFailed = true;
@@ -2406,7 +2542,7 @@
       const tryOpenByDiscoveredMenuTargets = async (reason) => {
         const targets = findEbelgeMenuTargetCandidates();
         if (!targets.length) {
-          await log(`ℹ ${menuLabel} icin gorunen Luca menu hedefi bulunamadi (${reason})`);
+          await log(`ℹ ${menuLabel} için DOM menü hedefi henüz hazır değil (${reason}); metin menüsüne geçilecek`);
           const menuHints = describeAnyEbelgeMenuHints(35);
           if (menuHints) await log(`🔎 Luca e-belge menu ipuclari: ${menuHints}`);
           return false;
@@ -2509,7 +2645,7 @@
         const cachedRows = cacheVisibleLucaMenuIds();
         if (cachedRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${cachedRows} satır)`);
       } catch {}
-      if (!__navSkip && await openCachedLucaMenu(menuLabel, log, 3000)) {
+      if (!__navSkip && await openCachedLucaMenu(menuLabel, log, 3000, { expectedCode: ii1aId })) {
         basariliAcildi = await waitForEbelgePage(10000);
       }
       if (!__navSkip && !basariliAcildi && await tryOpenByQuickAccess('ilk deneme')) {
@@ -2550,6 +2686,7 @@
         } catch {}
       }
       // Önce II1a dene; başarısız olursa text-based menü click fallback
+      let ii1aTreeNotReady = false;
       if (!__navSkip && II1aFn) {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
         // Luca II1a'nın iç implementasyonu tree.indexOf(code) çağırıyor; tree
@@ -2557,14 +2694,14 @@
         // patlar. Bu pattern'e uyan exception'da 1.5sn bekle + tekrar dene.
         const isTreeNotReadyError = (e) => {
           const msg = String(e?.message || e);
-          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?indexOf['"]?/i.test(msg);
+          return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?(?:indexOf|II11|1)['"]?|Cannot read properties of (?:undefined|null)/i.test(msg);
         };
         const fakeEvent = {
           type: 'click', target: null, currentTarget: null, srcElement: null,
           preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
           returnValue: true, cancelBubble: false,
         };
-        const MAX_RETRY = 3;
+        const MAX_RETRY = 2;
         let retry = 0;
         while (retry < MAX_RETRY) {
           try {
@@ -2575,11 +2712,17 @@
             }
             break;
           } catch (e) {
-            if (isTreeNotReadyError(e) && retry < MAX_RETRY - 1) {
-              retry++;
-              await log(`⏳ II1a('${ii1aId}') tree hazır değil — 1.5sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
-              await sleep(1500);
-              continue;
+            if (isTreeNotReadyError(e)) {
+              if (retry < MAX_RETRY - 1) {
+                retry++;
+                await log(`⏳ II1a('${ii1aId}') menu tree hazır değil — 0.8sn bekle, retry ${retry}/${MAX_RETRY - 1}`);
+                await sleep(800);
+                continue;
+              }
+              ii1aTreeNotReady = true;
+              await log(`ℹ II1a('${ii1aId}') menu tree hazır değil; direkt metin menüsüne geçiliyor`);
+              basariliAcildi = false;
+              break;
             }
             await log(`⚠ II1a('${ii1aId}') başarısız: ${String(e?.message || e).slice(0, 120)} — fallback: alternatif kodlar / metin menüsü`);
             basariliAcildi = false;
@@ -2589,6 +2732,8 @@
       }
       if (__navSkip) {
         basariliAcildi = true;
+      } else if (!basariliAcildi && ii1aTreeNotReady) {
+        await log('ℹ II1a menü ağacı bu oturumda geç hazırlandı; alternatif ID tekrarları atlanıp metin menüsü kullanılacak');
       } else if (!basariliAcildi) {
         await log(`🔁 Alternatif II1a denemeleri: ${ii1aIds.join(', ')}`);
         for (const altId of ii1aIds) {
@@ -2634,9 +2779,9 @@
           return visit(window);
         };
 
-        // Hangi sırayla deneneceği: önce İşletme Defteri (daha spesifik metin),
-        // yoksa Muhasebe. Her ikisinde de sonuç doğrulanıyor.
-        const denemeler = ['İşletme Defteri', 'Muhasebe'];
+        // Defter türüne göre tek doğru kök menüyü dene.
+        // Bilanço: Muhasebe, İşletme: İşletme Defteri.
+        const denemeler = mukellefTipi === 'isletme' ? ['İşletme Defteri'] : ['Muhasebe'];
         let basariliMenu = null;
 
         for (const menuAdi of denemeler) {
@@ -6815,10 +6960,15 @@
     return false;
   }
 
-  async function openCachedLucaMenu(label, log, settleMs = 800) {
+  async function openCachedLucaMenu(label, log, settleMs = 800, opts = {}) {
     if (isDirectLucaMenuCodeUnsafe(label)) return false;
     const cached = getCachedLucaMenuHit(label);
     if (!cached?.code) return false;
+    const expectedCode = opts?.expectedCode ? String(opts.expectedCode) : '';
+    if (expectedCode && String(cached.code) !== expectedCode) {
+      if (log) await log(`ℹ "${label}" cache ID uyumsuz (${cached.code} != ${expectedCode}); metin kesfine dusulecek`);
+      return false;
+    }
     const opened = await callLucaMenuCode(cached.label || label, cached.code, log, settleMs);
     if (!opened && log) await log(`ℹ "${label}" için cache ID bulundu ama II1a hazır değil; metin keşfine düşülecek`);
     return opened;
@@ -10703,7 +10853,7 @@
 
     if (fallbackNotlari.length > 0) {
       next._deterministicFallback = fallbackNotlari.join(', ');
-      console.log('[Moren.fill] isletme deterministic fallback:', {
+      console.log('[Moren.fill] account-code deterministic fallback:', {
         kdvOrani,
         fallback: next._deterministicFallback,
       });
@@ -10718,10 +10868,10 @@
     const o = oneri || {};
     const cf = o.confidence || {};
     const ihtiyac = {
-      matrah: durumlar.matrahDolu === false && (secenekler.matrahKodlari || []).length > 0,
-      kdv:    durumlar.vergiDolu  === false && (secenekler.kdvKodlari    || []).length > 0,
-      cari:   durumlar.cariDolu   === false && (secenekler.cariKodlari   || []).length > 0,
-      odeme:  durumlar.odemeDolu  === false && (secenekler.odemeKodlari  || []).length > 0,
+      matrah: durumlar.matrahDolu === false,
+      kdv:    durumlar.vergiDolu  === false,
+      cari:   durumlar.cariDolu   === false,
+      odeme:  durumlar.odemeDolu  === false,
     };
     const ilkOdemeKodu = (secenekler.odemeKodlari || []).includes('100.01.001')
       ? '100.01.001'
@@ -10738,7 +10888,9 @@
       if (!v) continue;
       const e = eslestir[k];
       if (!e.kod || e.conf < e.esik) {
-        eksikler.push(`${k}=%${Math.round(e.conf * 100)}<%${Math.round(e.esik * 100)}`);
+        eksikler.push(!e.kod
+          ? `${k}=kod yok`
+          : `${k}=%${Math.round(e.conf * 100)}<%${Math.round(e.esik * 100)}`);
       }
     }
     if (eksikler.length > 0) {
@@ -12372,9 +12524,9 @@
                   })
                 : { onerilenler: { confidence: { odeme: 0.95 } } };
               let o = oneriKarari?.onerilenler || {};
-              if (isletmeAccountCodeFlow) {
-                o = applyIsletmeAccountCodeFallback({ action, secenekler, oneri: o });
-              }
+              // AI bazen bos alanlar icin hic oneride bulunmuyor. Ekrandaki uygun hesap
+              // adaylari varken matrah/KDV/cari alanlarini deterministik tamamlayip akisi surdur.
+              o = applyIsletmeAccountCodeFallback({ action, secenekler, oneri: o });
               const cf = o.confidence || {};
               const fmtC = (v) => typeof v === 'number' ? `%${Math.round(v * 100)}` : '?';
               console.log('[Moren] AI önerisi:', { secenekler, oneri: o });

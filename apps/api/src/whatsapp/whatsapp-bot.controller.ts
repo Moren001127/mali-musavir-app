@@ -141,6 +141,24 @@ export class WhatsAppBotController {
       },
     });
 
+    const taxpayerName =
+      taxpayer.companyName ||
+      `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() ||
+      'Mukellef';
+    await this.prisma.notification.create({
+      data: {
+        tenantId: taxpayer.tenantId,
+        type: 'WHATSAPP',
+        title: `WhatsApp mesaji: ${taxpayerName}`,
+        body: msg.text.slice(0, 240),
+        metadata: {
+          taxpayerId: taxpayer.id,
+          phone: msg.from,
+          messageId: msg.id || null,
+        },
+      },
+    }).catch(() => null);
+
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
 
     const prompt = [

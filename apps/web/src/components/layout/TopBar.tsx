@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffect, useState } from 'react';
 import SystemHealthBell from './SystemHealthBell';
-import AiOnayBell from './AiOnayBell';
 import LucaAgentPanel from './LucaAgentPanel';
 
 const THEMES = [
@@ -106,9 +105,6 @@ export default function TopBar({ user }: { user: any }) {
 
         {/* Luca Ajanı — global agent durum + son log + iptal */}
         <LucaAgentPanel />
-
-        {/* AI Onay Kuyruğu — bekleyen onay varsa görünür, kritik olunca kırmızı */}
-        <AiOnayBell />
 
         {/* Sistem Sağlık Durumu — kritik sorun varsa yanıp söner */}
         <SystemHealthBell />

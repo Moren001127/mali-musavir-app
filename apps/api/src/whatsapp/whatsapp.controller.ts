@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { WhatsAppService } from './whatsapp.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,6 +27,55 @@ export class WhatsAppController {
   @Get('status')
   getStatus() {
     return this.whatsappService.getStatus();
+  }
+
+  @Get('inbox')
+  async getInbox(@Req() req: any, @Query('limit') limit?: string) {
+    const take = Math.min(100, Math.max(1, Number(limit) || 30));
+    const logs = await this.prisma.communicationLog.findMany({
+      where: {
+        channel: 'WHATSAPP',
+        taxpayer: { tenantId: req.user.tenantId },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        subject: true,
+        content: true,
+        occurredAt: true,
+        taxpayer: {
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    return logs.map((log) => {
+      const subject = log.subject || '';
+      const incoming = /gelen/i.test(subject);
+      const taxpayerName =
+        log.taxpayer.companyName ||
+        `${log.taxpayer.firstName || ''} ${log.taxpayer.lastName || ''}`.trim() ||
+        'Mukellef';
+      return {
+        id: log.id,
+        subject,
+        content: log.content || '',
+        occurredAt: log.occurredAt,
+        direction: incoming ? 'incoming' : 'outgoing',
+        taxpayer: {
+          id: log.taxpayer.id,
+          name: taxpayerName,
+          phone: log.taxpayer.phone,
+        },
+      };
+    });
   }
 
   @Post('evrak-reminders/preview')

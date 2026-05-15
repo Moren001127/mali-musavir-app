@@ -11,7 +11,6 @@ import {
   Car, Gavel, Wallet, Megaphone, Archive, Landmark, Lock, CheckSquare, Workflow, Coins, Building, FolderCheck} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
-import { pendingActionsApi } from '@/lib/pending-actions';
 
 // Elit Boutique altın ailesi — her grup kendi tonunu alır
 const GOLD      = '#d4b876';  // Ana altın
@@ -27,11 +26,7 @@ const navGroups = [
     color: GOLD,
     icon: Brain,
     items: [
-      { href: '/panel/moren-ofis',              label: 'Moren Ofis (AI Ekip)',     icon: Brain },
-      { href: '/panel/moren-ofis/hafiza',       label: 'Ekip Hafızası',            icon: BookOpen },
-      { href: '/panel/moren-ofis/audit',        label: 'Tool & Maliyet Denetimi',  icon: Activity },
-      { href: '/panel/moren-portal-gelistirme', label: 'Portal Geliştirme Ekibi',  icon: Cpu },
-      { href: '/panel/ai-onay',                 label: 'AI Onay Kuyruğu',          icon: ShieldCheck },
+      { href: '/panel/moren-ai', label: 'MOREN AI', icon: Brain },
       // Mobil tanıtım sidebar'dan kaldırıldı — tasarım gözden geçirme için
       // doğrudan /panel/mobil-tanitim URL'inden erişilir, müşterilere
       // yansıtılmaz. Tasarım onaylanınca kodlanacak.
@@ -65,6 +60,7 @@ const navGroups = [
     color: CHAMPAGNE,
     icon: Receipt,
     items: [
+      { href: '/panel/fatura-isleme',          label: 'Fatura İşleme Merkezi', icon: Workflow },
       { href: '/panel/faturalar',              label: 'İşlenen Faturalar',  icon: Receipt },
       // "Fatura Muhasebeleştirme" sayfası kaldırıldı — modül yeniden tasarlanacak.
       // Backend kaldı (earsiv + luca otomatik bu service'i kullanıyor).
@@ -101,7 +97,6 @@ const navGroups = [
       { href: '/panel/ajan-saglik',       label: 'Sağlık Panosu',       icon: Activity },
       { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
-      { href: '/panel/firma-hafizasi',    label: 'Firma Hafızası',      icon: Brain },
       { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },
       // NOT: Mükellef Profilleri → Mükellefler grubuna taşındı (mükellef-bazlı config)
     ],
@@ -114,7 +109,7 @@ const navGroups = [
       // Cari Kasa Faturalar & Muhasebe altından buraya taşındı —
       // mükellef muhasebesi DEĞİL, senin ofisinin mali müşavirlik ücret tahsilatı.
       { href: '/panel/cari-kasa',   label: 'Cari Kasa & Tahsilat', icon: Coins },
-      { href: '/panel/hatirlatmalar', label: 'Hatırlatmalar',        icon: Bell },
+      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu',  icon: MessageSquare },
       { href: '/panel/bildirimler', label: 'Bildirimler',           icon: Bell },
       { href: '/panel/duyurular',   label: 'Duyurular',             icon: Megaphone },
     ],
@@ -144,15 +139,6 @@ export default function Sidebar() {
     staleTime: 10000,
   });
   const bekleyenSayisi = pendingCount?.bekleyen || 0;
-
-  // FAZ 7 — AI Onay Kuyruğu bekleyen sayısı (PendingAction)
-  const { data: aiPendingCount } = useQuery({
-    queryKey: ['ai-pending-count'],
-    queryFn: () => pendingActionsApi.count('pending').catch(() => ({ count: 0 })),
-    refetchInterval: 15000,
-    staleTime: 10000,
-  });
-  const aiBekleyenSayisi = aiPendingCount?.count || 0;
 
   const isActive = (href: string) =>
     href === '/panel' ? pathname === '/panel' : pathname.startsWith(href);
@@ -298,21 +284,6 @@ export default function Sidebar() {
                           }}
                         >
                           {bekleyenSayisi > 99 ? '99+' : bekleyenSayisi}
-                        </span>
-                      )}
-
-                      {/* FAZ 7 — AI Onay Kuyruğu badge */}
-                      {href === '/panel/ai-onay' && aiBekleyenSayisi > 0 && (
-                        <span
-                          className="inline-flex items-center justify-center px-1.5 h-4 text-[10px] font-bold rounded-full flex-shrink-0"
-                          style={{
-                            background: '#d4b876',
-                            color: '#0f0d0b',
-                            minWidth: 16,
-                            boxShadow: '0 0 8px rgba(212, 184, 118, 0.5)',
-                          }}
-                        >
-                          {aiBekleyenSayisi > 99 ? '99+' : aiBekleyenSayisi}
                         </span>
                       )}
 
