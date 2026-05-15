@@ -10,6 +10,7 @@ import {
   ImportResult,
   beyanKaydiMukellefAdi,
 } from '@/lib/beyan-kayitlari';
+import PortalAutomationPanel from '@/components/portal-automation/PortalAutomationPanel';
 import {
   Search, Download, Upload, FileText, Trash2, ChevronRight,
   CheckCircle2, AlertCircle, FileQuestion, Loader2, X as IconX,
@@ -129,6 +130,8 @@ export default function BeyannamelerPage() {
           <OzetCard label="Geçici Vergi" value={ozet.byTip.GECICI_VERGI || 0} icon={FileText} />
         </div>
       )}
+
+      <PortalAutomationPanel focus="beyanname" />
 
       {/* ARAMA + FİLTRELER */}
       <div className="flex items-center gap-3 flex-wrap">

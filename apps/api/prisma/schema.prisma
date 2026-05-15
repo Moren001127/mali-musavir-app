@@ -23,6 +23,9 @@ model Tenant {
   users                 User[]
   taxpayers             Taxpayer[]
   integrationConnections IntegrationConnection[]
+  portalCredentials      PortalCredential[]
+  portalAutomationJobs   PortalAutomationJob[]
+  portalDocuments        PortalDocument[]
   consents              Consent[]
   dataRetentionPolicies DataRetentionPolicy[]
   notifications         Notification[]
@@ -180,6 +183,9 @@ model Taxpayer {
   beyanConfig         TaxpayerBeyanConfig?
   beyanDurumlari      BeyanDurumu[]
   beyanKayitlari      BeyanKaydi[]
+  portalCredentials    PortalCredential[]
+  portalAutomationJobs PortalAutomationJob[]
+  portalDocuments      PortalDocument[]
   cariHizmetler       CariHizmet[]
   cariHareketler      CariHareket[]
   earsivFaturalar     EarsivFatura[]
@@ -714,6 +720,107 @@ model IntegrationJob {
 
   @@index([connectionId, status])
   @@map("integration_jobs")
+}
+
+// ============================================================
+// GIB / SGK PORTAL OTOMASYONU
+// ============================================================
+
+model PortalCredential {
+  id                         String    @id @default(cuid())
+  tenantId                   String
+  provider                   String    // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
+  ownerType                  String    // TENANT | TAXPAYER
+  ownerId                    String    // TENANT icin tenantId, TAXPAYER icin taxpayerId
+  taxpayerId                 String?
+  username                   String?
+  userCode                   String?
+  officeCode                 String?
+  workplaceCode              String?
+  encryptedPassword          String?   @db.Text
+  encryptedSecondaryPassword String?   @db.Text
+  isActive                   Boolean   @default(true)
+  lastCheckedAt              DateTime?
+  lastSuccessAt              DateTime?
+  lastError                  String?
+  notes                      String?
+  updatedBy                  String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  tenant                     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer                   Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider, ownerType, ownerId])
+  @@index([tenantId, provider, isActive])
+  @@index([taxpayerId])
+  @@map("portal_credentials")
+}
+
+model PortalAutomationJob {
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String?
+  jobType        String    // EBEYANNAME_DAILY_DOWNLOAD | E_TEBLIGAT_CHECK | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS_CIKIS | SGK_ISGOREMEZLIK
+  status         String    @default("pending") // pending | running | done | failed | cancelled
+  source         String    @default("manual")  // manual | nightly | agent
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  donem          String?
+  payload        Json?
+  result         Json?
+  errorMessage   String?
+  recordCount    Int       @default(0)
+  attempts       Int       @default(0)
+  priority       Int       @default(0)
+  targetDeviceId String?
+  createdBy      String?
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer       Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  documents      PortalDocument[]
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, jobType, createdAt])
+  @@index([tenantId, source, scheduledAt])
+  @@index([taxpayerId, jobType, createdAt])
+  @@map("portal_automation_jobs")
+}
+
+model PortalDocument {
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String?
+  jobId          String?
+  belgeTuru      String    // E_TEBLIGAT | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS | SGK_ISTEN_CIKIS | SGK_ISGOREMEZLIK | DIGER
+  sourceProvider String    // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
+  title          String
+  referenceNo    String?
+  period         String?
+  issuedAt       DateTime?
+  receivedAt     DateTime?
+  mimeType       String?
+  sizeBytes      Int?
+  storageKey     String?
+  documentId     String?
+  raw            Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer       Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  job            PortalAutomationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, belgeTuru, createdAt])
+  @@index([tenantId, sourceProvider, createdAt])
+  @@index([taxpayerId, belgeTuru, createdAt])
+  @@index([jobId])
+  @@map("portal_documents")
 }
 
 // ============================================================

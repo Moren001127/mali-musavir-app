@@ -96,6 +96,8 @@ const navGroups = [
       { href: '/panel/ajanlar',           label: 'Tüm Ajanlar',         icon: Cpu },
       { href: '/panel/ajan-saglik',       label: 'Sağlık Panosu',       icon: Activity },
       { href: '/panel/ajanlar/luca',      label: 'Luca Oturumu',        icon: ShieldCheck },
+      { href: '/panel/ajanlar/tebligat',  label: 'e-Tebligat Kontrol',  icon: Mailbox },
+      { href: '/panel/ajanlar/sgk',       label: 'SGK Otomasyonu',      icon: ShieldAlert },
       { href: '/panel/ajanlar/loglar',    label: 'Yapılan İşlemler',    icon: Activity },
       { href: '/panel/galeri/hgs-ihlal',  label: 'HGS İhlal Sorgulama', icon: Gavel },
       // NOT: Mükellef Profilleri → Mükellefler grubuna taşındı (mükellef-bazlı config)

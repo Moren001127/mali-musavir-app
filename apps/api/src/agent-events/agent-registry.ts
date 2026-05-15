@@ -3,6 +3,7 @@ export type AgentMode = 'background' | 'supervised' | 'approval_first' | 'servic
 export type AgentQueue =
   | 'agent-command'
   | 'luca-fetch-job'
+  | 'portal-automation-job'
   | 'mihsap-service'
   | 'hgs-agent'
   | 'service'
@@ -119,19 +120,28 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     id: 'beyanname-collector-agent',
     title: 'Beyanname Collector Agent',
     mode: 'background',
-    queue: 'luca-fetch-job',
-    stage: 'planned',
+    queue: 'portal-automation-job',
+    stage: 'active',
     modules: ['beyannameler'],
-    description: 'Gelecekte verilen beyanname/tahakkuk/onay dosyalarini otomatik indirecek.',
+    description: 'e-Beyanname uzerinden verilen beyanname, tahakkuk ve onay dosyalarini otomatik indirir.',
   },
   {
     id: 'etebligat-watch-agent',
     title: 'E-Tebligat Watch Agent',
     mode: 'approval_first',
-    queue: 'luca-fetch-job',
-    stage: 'planned',
-    modules: ['e-tebligat'],
-    description: 'Gelecekte mukellef GIB hesaplarinda yeni e-tebligat kontrolu yapacak.',
+    queue: 'portal-automation-job',
+    stage: 'active',
+    modules: ['ajanlar/tebligat'],
+    description: 'Mukellef GIB hesaplarinda e-Tebligat kutusunu kontrol eder ve yeni belgeleri indirir.',
+  },
+  {
+    id: 'sgk-portal-agent',
+    title: 'SGK Portal Agent',
+    mode: 'background',
+    queue: 'portal-automation-job',
+    stage: 'active',
+    modules: ['ajanlar/sgk'],
+    description: 'SGK hizmet listesi, tahakkuk, ise giris/cikis ve isgoremezlik sorgularini calistirir.',
   },
   {
     id: 'finansal-rapor-agent',
