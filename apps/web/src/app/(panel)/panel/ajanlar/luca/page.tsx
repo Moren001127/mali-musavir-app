@@ -27,6 +27,8 @@ import {
 } from '@/lib/luca-session';
 
 const GOLD = '#d4b876';
+const SHOW_LUCA_WORKER_ACCOUNTS =
+  process.env.NEXT_PUBLIC_LUCA_WORKER_ACCOUNTS_ENABLED === 'true';
 type LucaDevice = LucaSessionManagerStatus['devices'][number];
 
 function isClassicLucaUrl(url?: string | null) {
@@ -145,7 +147,7 @@ export default function LucaSessionPage() {
         />
       </div>
 
-      <LucaWorkerAccountsPanel />
+      {SHOW_LUCA_WORKER_ACCOUNTS ? <LucaWorkerAccountsPanel /> : null}
 
       {activeChallenge ? (
         <CaptchaPanel

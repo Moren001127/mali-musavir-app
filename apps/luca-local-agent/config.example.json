@@ -11,8 +11,8 @@
   },
   "worker": {
     "pollIntervalSeconds": 30,
-    "usePortalAccounts": true,
-    "portalAccountLimit": 5,
+    "usePortalAccounts": false,
+    "portalAccountLimit": 1,
     "headless": true,
     "browserTimeoutSeconds": 120,
     "jobTypes": [

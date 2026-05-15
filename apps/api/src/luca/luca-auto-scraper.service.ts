@@ -198,6 +198,13 @@ export class LucaAutoScraperService {
 
   // ==================== LUCA KULLANICI HAVUZU ====================
 
+  private isWorkerAccountsEnabled() {
+    return (
+      process.env.LUCA_WORKER_ACCOUNTS_ENABLED === 'true' ||
+      process.env.LUCA_PORTAL_WORKER_ACCOUNTS_ENABLED === 'true'
+    );
+  }
+
   private parseWorkerAccounts(config: any): LucaWorkerAccountConfig[] {
     const accounts = config && typeof config === 'object' && !Array.isArray(config)
       ? (config as any).accounts
@@ -248,6 +255,7 @@ export class LucaAutoScraperService {
   }
 
   async listWorkerAccounts(tenantId: string) {
+    if (!this.isWorkerAccountsEnabled()) return [];
     const connection = await this.loadWorkerConnection(tenantId);
     return this.parseWorkerAccounts(connection?.config).map((a) => this.publicWorkerAccount(a));
   }
@@ -266,6 +274,9 @@ export class LucaAutoScraperService {
     },
     updatedBy?: string,
   ) {
+    if (!this.isWorkerAccountsEnabled()) {
+      throw new BadRequestException('Luca kullanici havuzu kapali');
+    }
     const connection = await this.loadWorkerConnection(tenantId);
     const accounts = this.parseWorkerAccounts(connection?.config);
     const id = String(input?.id || '').trim() || randomUUID();
@@ -342,6 +353,7 @@ export class LucaAutoScraperService {
   }
 
   async deleteWorkerAccount(tenantId: string, id: string) {
+    if (!this.isWorkerAccountsEnabled()) return { deleted: true };
     const connection = await this.loadWorkerConnection(tenantId);
     const accounts = this.parseWorkerAccounts(connection?.config);
     const nextAccounts = accounts.filter((a) => a.id !== id);
@@ -369,6 +381,7 @@ export class LucaAutoScraperService {
   }
 
   async getWorkerAccountsForAgent(tenantId: string) {
+    if (!this.isWorkerAccountsEnabled()) return { saved: false, accounts: [] };
     const connection = await this.loadWorkerConnection(tenantId);
     const accounts = this.parseWorkerAccounts(connection?.config)
       .filter((a) => a.isActive)

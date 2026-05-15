@@ -96,7 +96,7 @@ if (!cfg.api?.baseUrl || !cfg.api?.agentToken) {
   console.error('HATA: config.json içinde api.baseUrl ve api.agentToken zorunlu.');
   process.exit(1);
 }
-if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_WORKER || cfg.worker?.usePortalAccounts === false)) {
+if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_WORKER || cfg.worker?.usePortalAccounts !== true)) {
   console.error('HATA: config.json içinde luca.uyeNo, luca.username, luca.password zorunlu.');
   process.exit(1);
 }
@@ -1078,7 +1078,7 @@ function startPortalWorkerChild(account, index, poolSize = 1) {
 
 async function startPortalWorkerPoolIfAvailable() {
   if (PORTAL_WORKER) return false;
-  if (cfg.worker?.usePortalAccounts === false) return false;
+  if (cfg.worker?.usePortalAccounts !== true) return false;
 
   const accounts = await fetchPortalWorkerAccounts();
   if (accounts.length === 0) {
@@ -1087,7 +1087,7 @@ async function startPortalWorkerPoolIfAvailable() {
   }
 
   const limit = Math.min(
-    Math.max(Number(cfg.worker?.portalAccountLimit || 5), 1),
+    Math.max(Number(cfg.worker?.portalAccountLimit || 1), 1),
     accounts.length,
   );
   const selected = accounts
