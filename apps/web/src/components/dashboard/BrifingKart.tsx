@@ -307,14 +307,14 @@ function BriefingItemControls({ id, onMark }: { id: string; onMark: (id: string,
     color: 'rgba(250,250,249,0.48)',
   };
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <button type="button" title="2 saat ertele" onClick={() => onMark(id, 'snoozed')} className="h-7 w-7 rounded-md grid place-items-center transition hover:text-[#d4b876]" style={btnStyle}>
+    <div className="flex shrink-0 items-center gap-0.5">
+      <button type="button" title="2 saat ertele" onClick={() => onMark(id, 'snoozed')} className="h-6 w-6 rounded-md grid place-items-center transition hover:text-[#d4b876]" style={btnStyle}>
         <TimerReset size={12} />
       </button>
-      <button type="button" title="Bugün gizle" onClick={() => onMark(id, 'hidden')} className="h-7 w-7 rounded-md grid place-items-center transition hover:text-[#fda4af]" style={btnStyle}>
+      <button type="button" title="Bugün gizle" onClick={() => onMark(id, 'hidden')} className="h-6 w-6 rounded-md grid place-items-center transition hover:text-[#fda4af]" style={btnStyle}>
         <EyeOff size={12} />
       </button>
-      <button type="button" title="Tamamlandı say" onClick={() => onMark(id, 'done')} className="h-7 w-7 rounded-md grid place-items-center transition hover:text-[#86efac]" style={btnStyle}>
+      <button type="button" title="Tamamlandı say" onClick={() => onMark(id, 'done')} className="h-6 w-6 rounded-md grid place-items-center transition hover:text-[#86efac]" style={btnStyle}>
         <CheckCircle2 size={12} />
       </button>
     </div>
@@ -372,7 +372,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
   return (
     <div
-      className="rounded-[28px] overflow-hidden relative"
+      className="rounded-[22px] overflow-hidden relative"
       style={{
         background: `radial-gradient(circle at 12% 0%, ${focusTone.glow}, transparent 42%), radial-gradient(circle at 88% 18%, rgba(212,184,118,0.10), transparent 34%), linear-gradient(135deg, rgba(35,30,24,0.84), rgba(14,13,10,0.96))`,
         border: '1px solid rgba(212,184,118,0.22)',
@@ -380,7 +380,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       }}
     >
       {/* Üst etiket bandı */}
-      <div className="px-5 pt-4 pb-1 flex items-center justify-between gap-3 flex-wrap">
+      <div className="px-4 pt-3 pb-1 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2.5">
           <Sparkles size={14} style={{ color: focusTone.color }} />
           <span className="text-[10px] uppercase font-bold tracking-[.22em]" style={{ color: focusTone.text }}>
@@ -395,7 +395,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               {focusTone.label}
             </span>
           )}
-          {(data?.sourceTags || []).slice(0, 4).map((tag) => (
+          {(data?.sourceTags || []).slice(0, 3).map((tag) => (
             <span
               key={tag.key}
               className="text-[9.5px] font-semibold px-2 py-0.5 rounded inline-flex items-center gap-1"
@@ -441,9 +441,9 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {data?.summary && (
-        <div className="px-5 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-5 xl:top-[72px] xl:p-0">
+        <div className="px-4 pb-1 flex justify-start xl:justify-end xl:absolute xl:right-4 xl:top-[55px] xl:p-0">
           <div
-            className="inline-flex w-full xl:w-auto xl:max-w-[520px] items-center gap-2 rounded-2xl px-3.5 py-2 text-[12.5px] font-semibold"
+            className="inline-flex w-full xl:w-auto xl:max-w-[500px] items-center gap-2 rounded-xl px-3 py-1.5 text-[12px] font-semibold"
             style={{
               background: `linear-gradient(135deg, ${focusTone.bg}, rgba(255,255,255,0.025))`,
               color: focusTone.text,
@@ -458,11 +458,11 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {/* Selamlama başlığı */}
-      <div className="px-5 pt-2 pb-2 max-w-[920px]">
+      <div className="px-4 pt-1 pb-1 max-w-[780px]">
         <h2
           style={{
             fontFamily: 'Fraunces, serif',
-            fontSize: 26,
+            fontSize: 23,
             fontWeight: 600,
             color: '#fafaf9',
             letterSpacing: '-.025em',
@@ -472,13 +472,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
           {SELAMLAMA}
           {sanitizeFirstName(userName) ? `, ${sanitizeFirstName(userName)}` : ''}
         </h2>
-        <p className="text-[12px] mt-1 tabular-nums" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          {KISA_TARIH}
-        </p>
       </div>
 
       {/* Ana özet metni */}
-      <div className="px-5 pb-2 max-w-[1120px]">
+      <div className="px-4 pb-2 max-w-[1080px]">
         {isLoading ? (
           <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
             <Loader2 size={14} className="animate-spin" />
@@ -486,10 +483,10 @@ export function BrifingKart({ userName }: { userName?: string }) {
           </div>
         ) : visibleSummary ? (
           <p
-            className="text-[14px]"
+            className="text-[13px]"
             style={{
               color: 'rgba(250,250,249,0.85)',
-              lineHeight: 1.55,
+              lineHeight: 1.35,
               fontFamily: 'Inter, sans-serif',
             }}
           >
@@ -503,26 +500,24 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {data?.sections && data.sections.length > 0 && (
-        <div className="px-5 pb-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div className="px-4 pb-2 grid grid-cols-1 md:grid-cols-3 gap-1.5">
           {data.sections.slice(0, 3).map((section) => {
             const tone = SECTION_TONE[section.key] ?? SECTION_TONE.today;
             const Icon = tone.icon;
+            const preview = section.items.slice(0, 2).join(' · ');
             return (
               <div
                 key={section.key}
-                className="rounded-xl px-3 py-2.5 min-h-[96px]"
+                className="rounded-lg px-2.5 py-1.5 min-w-0"
                 style={{ background: tone.bg, border: `1px solid ${tone.border}` }}
+                title={section.items.join(' · ')}
               >
-                <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-[.16em]" style={{ color: tone.color }}>
+                <div className="flex items-center gap-1.5 text-[9.5px] uppercase font-bold tracking-[.14em]" style={{ color: tone.color }}>
                   <Icon size={12} />
                   {section.title}
                 </div>
-                <div className="mt-2 space-y-1">
-                  {section.items.slice(0, 3).map((item, idx) => (
-                    <div key={idx} className="text-[12px] leading-snug" style={{ color: 'rgba(250,250,249,0.72)' }}>
-                      {item}
-                    </div>
-                  ))}
+                <div className="mt-1 text-[11.5px] truncate" style={{ color: 'rgba(250,250,249,0.70)' }}>
+                  {preview}
                 </div>
               </div>
             );
@@ -532,7 +527,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Uyarılar (alerts) */}
       {visibleAlerts.length > 0 && (
-        <div className="px-5 pb-3 space-y-1.5 max-w-[1240px]">
+        <div className="px-4 pb-2 space-y-1 max-w-[1240px]">
           {visibleAlerts.slice(0, 3).map((a, i) => {
             const effectiveSeverity = EARLY_MONTH && /evrak/i.test(a.text) ? 'low' : a.severity;
             const cfg = effectiveSeverity === 'high'
@@ -544,7 +539,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
             const id = briefItemId('alert', a.id, a.text);
             const Inner = (
               <div
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg transition group"
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition group"
                 style={{
                   background: cfg.bg,
                   border: `1px solid ${cfg.border}`,
@@ -552,7 +547,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
               >
                 <AlertTriangle size={13} style={{ color: cfg.color }} />
                 <Link href={href || '/panel'} className="min-w-0 flex flex-1 items-center gap-2">
-                  <span className="text-[13px] flex-1" style={{ color: '#fafaf9' }}>
+                  <span className="text-[12.5px] min-w-0 flex-1 truncate" style={{ color: '#fafaf9' }}>
                     {cleanBriefAlert(a.text)}
                   </span>
                   {a.source && (
@@ -573,8 +568,8 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {data && hiddenCount > 0 && visibleAlerts.length === 0 && visibleSuggestions.length === 0 && (
-        <div className="px-5 pb-3">
-          <div className="rounded-lg px-3 py-2 text-[12.5px]" style={{ background: 'rgba(125,211,168,0.08)', border: '1px solid rgba(125,211,168,0.18)', color: '#b8e6c9' }}>
+        <div className="px-4 pb-2">
+          <div className="rounded-lg px-3 py-1.5 text-[12px]" style={{ background: 'rgba(125,211,168,0.08)', border: '1px solid rgba(125,211,168,0.18)', color: '#b8e6c9' }}>
             Brifing maddeleri temizlendi. Geri al butonuyla tekrar gösterebilirsin.
           </div>
         </div>
@@ -582,7 +577,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Aksiyon önerileri (suggestions) */}
       {visibleSuggestions.length > 0 && (
-        <div className="px-5 pb-5 pt-1 grid grid-cols-1 xl:grid-cols-3 gap-2">
+        <div className="px-4 pb-3 pt-0 grid grid-cols-1 xl:grid-cols-3 gap-1.5">
           {visibleSuggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
             const href = normalizeDashboardHref(s.href);
@@ -590,16 +585,16 @@ export function BrifingKart({ userName }: { userName?: string }) {
             return (
               <div
                 key={id || i}
-                className="flex items-center gap-1 rounded-lg px-2 py-1.5"
+                className="flex items-center gap-1 rounded-lg px-2 py-1"
                 style={{
                   background: focusTone.actionBg,
                   color: focusTone.text,
                   border: `1px solid ${focusTone.actionBorder}`,
                 }}
               >
-                <Link href={href} className="min-w-0 flex flex-1 items-center justify-between gap-2 text-[12.5px] font-semibold transition hover:scale-[1.01]">
+                <Link href={href} className="min-w-0 flex flex-1 items-center justify-between gap-2 text-[12px] font-semibold transition hover:scale-[1.01]">
                   <Icon size={12} className="shrink-0" />
-                  <span className="min-w-0 flex-1">{cleanSuggestionText(s.text)}</span>
+                  <span className="min-w-0 flex-1 truncate">{cleanSuggestionText(s.text)}</span>
                   <ArrowRight size={11} className="opacity-60 shrink-0" />
                 </Link>
                 <BriefingItemControls id={id} onMark={markBriefItem} />
@@ -610,7 +605,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {/* Suggestion yoksa boş alt boşluk verme — direkt bitir */}
-      {visibleSuggestions.length === 0 && <div className="pb-5" />}
+      {visibleSuggestions.length === 0 && <div className="pb-3" />}
     </div>
   );
 }
