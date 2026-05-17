@@ -55,6 +55,15 @@ const STAGE_CONFIG: Record<Stage, { label: string; short: string; color: string;
 
 const STAGE_ORDER: Stage[] = ['EVRAK_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'];
 
+function getQueryParam(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get(key);
+}
+
+function parseStageParam(value: string | null): Stage | null {
+  return value && STAGE_ORDER.includes(value as Stage) ? value as Stage : null;
+}
+
 /**
  * v1.36.79: İş Akışı sayfası — HERO + KANBAN + GEÇ KALANLAR hibrit tasarımı.
  *
@@ -69,6 +78,8 @@ export default function IsYukuPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [skipIndex, setSkipIndex] = useState(0); // "Sonraki" tıklandığında hero'da kaçıncı item gösterilecek
+  const [stageFilter, setStageFilter] = useState<Stage | null>(() => parseStageParam(getQueryParam('stage')));
+  const [lateOnly, setLateOnly] = useState(() => getQueryParam('late') === '1');
 
   const { data, isLoading } = useQuery<WorkflowData>({
     queryKey: ['workflow-queue', year, month],
@@ -77,16 +88,35 @@ export default function IsYukuPage() {
     refetchInterval: 30_000,
   });
 
+  React.useEffect(() => {
+    setStageFilter(parseStageParam(getQueryParam('stage')));
+    setLateOnly(getQueryParam('late') === '1');
+  }, []);
+
+  React.useEffect(() => {
+    setSkipIndex(0);
+  }, [stageFilter, lateOnly]);
+
+  const filteredQueue = useMemo(() => {
+    let items = data?.siradaki || [];
+    if (stageFilter) items = items.filter((item) => item.stage === stageFilter);
+    if (lateOnly) items = items.filter((item) => item.bekleyenGun >= 5);
+    return items;
+  }, [data?.siradaki, stageFilter, lateOnly]);
+
   // Hero'daki aktif item — atlama ile değişebilir
-  const heroItem = data?.siradaki?.[skipIndex] || null;
-  const nextItems = (data?.siradaki || []).slice(skipIndex + 1, skipIndex + 5);
+  const heroItem = filteredQueue?.[skipIndex] || null;
+  const nextItems = filteredQueue.slice(skipIndex + 1, skipIndex + 5);
   const evrakPct = data?.total ? Math.round((data.counts.evrak / data.total) * 100) : 0;
+  const visibleStages = stageFilter ? [stageFilter] : STAGE_ORDER;
 
   // Geç kalanlar — 5+ gün bekleyenler
   const gecKalanlar = useMemo(() => {
     if (!data) return [];
-    return [...data.siradaki].filter((i) => i.bekleyenGun >= 5).slice(0, 8);
-  }, [data]);
+    let items = [...data.siradaki].filter((i) => i.bekleyenGun >= 5);
+    if (stageFilter) items = items.filter((i) => i.stage === stageFilter);
+    return items.slice(0, 8);
+  }, [data, stageFilter]);
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -106,6 +136,28 @@ export default function IsYukuPage() {
           <p className="text-[13px] mt-2" style={{ color: 'rgba(250,250,249,0.42)' }}>
             Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
           </p>
+          {(stageFilter || lateOnly) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {stageFilter && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
+                  {STAGE_CONFIG[stageFilter].label}
+                </span>
+              )}
+              {lateOnly && (
+                <span className="text-[11px] px-2.5 py-1 rounded-full" style={{ background: 'rgba(239,68,68,0.10)', border: '1px solid rgba(239,68,68,0.24)', color: '#fca5a5' }}>
+                  5+ gün bekleyen
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => { setStageFilter(null); setLateOnly(false); }}
+                className="text-[11px] px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.55)' }}
+              >
+                Filtreyi temizle
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
@@ -136,8 +188,8 @@ export default function IsYukuPage() {
             <HeroCard
               item={heroItem}
               sira={skipIndex + 1}
-              total={data.siradaki.length}
-              onSkip={() => setSkipIndex((idx) => Math.min(idx + 1, data.siradaki.length - 1))}
+              total={filteredQueue.length}
+              onSkip={() => setSkipIndex((idx) => Math.min(idx + 1, filteredQueue.length - 1))}
               canGoBack={skipIndex > 0}
               onBack={() => setSkipIndex((idx) => Math.max(0, idx - 1))}
             />
@@ -173,8 +225,12 @@ export default function IsYukuPage() {
               <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
             </div>
             <div id="pipeline" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-              {STAGE_ORDER.map((stage) => (
-                <PipelineSutun key={stage} stage={stage} items={data.grouped[stage] || []} />
+              {visibleStages.map((stage) => (
+                <PipelineSutun
+                  key={stage}
+                  stage={stage}
+                  items={(data.grouped[stage] || []).filter((item) => !lateOnly || item.bekleyenGun >= 5)}
+                />
               ))}
             </div>
           </div>

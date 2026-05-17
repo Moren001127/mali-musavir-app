@@ -9,6 +9,28 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Maliyet optimizasyonu: Haiku 4.5 — Sonnet'ten 12x ucuz, mali musavir sohbet kalitesi
 // icin yeterli. Istek gelirse body.model ile override edilebilir ('claude-sonnet-4-6').
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
+const BRIFING_ALLOWED_ROUTES = [
+  '/panel/ajanlar/mihsap',
+  '/panel/is-yuku',
+  '/panel/gorevler',
+  '/panel/beyannameler',
+  '/panel/kdv-kontrol',
+  '/panel/mukellefler',
+  '/panel/ajanlar',
+];
+
+const TAX_DEADLINE_RULES: Array<{ day: number | 'last'; tip: string; months?: number[] }> = [
+  { day: 10, tip: 'e-Defter berat (gelir vergisi mükellefleri)' },
+  { day: 14, tip: 'e-Defter berat (kurumlar/diğer mükellefler)' },
+  { day: 17, tip: 'Geçici Vergi', months: [2, 5, 8, 11] },
+  { day: 26, tip: 'Muhtasar/Damga' },
+  { day: 28, tip: 'KDV' },
+  { day: 'last', tip: 'Turizm Payı' },
+];
+
+// Sabit resmi tatiller; dini bayramlar yıllara göre değiştiği için burada özellikle
+// hard-code edilmez. Bu katman en azından hafta sonu ve sabit tatil kaydırmasını sağlar.
+const TR_FIXED_HOLIDAYS = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
 
 function cleanFirstName(raw?: string | null): string | undefined {
@@ -17,6 +39,53 @@ function cleanFirstName(raw?: string | null): string | undefined {
     .trim()
     .split(/\s+/)[0];
   return cleaned || undefined;
+}
+
+function turkeyClock(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const pick = (type: string) => Number(parts.find((p) => p.type === type)?.value || 0);
+  return { year: pick('year'), month: pick('month'), day: pick('day'), hour: pick('hour') };
+}
+
+function utcNoon(year: number, month: number, day: number) {
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+}
+
+function utcDateKey(date: Date) {
+  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function diffDays(from: Date, to: Date) {
+  const a = Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate());
+  const b = Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate());
+  return Math.round((b - a) / 86400000);
+}
+
+function isTurkeyNonWorkingDay(date: Date) {
+  const day = date.getUTCDay();
+  return day === 0 || day === 6 || TR_FIXED_HOLIDAYS.has(utcDateKey(date));
+}
+
+function nextBusinessDate(date: Date) {
+  const d = new Date(date);
+  while (isTurkeyNonWorkingDay(d)) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
+function briefingId(prefix: string, text: string) {
+  const slug = String(text || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[^a-z0-9ğüşöçıİĞÜŞÖÇ]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 56);
+  return `${prefix}-${slug || 'item'}`;
 }
 
 export interface ChatRequest {
@@ -43,11 +112,38 @@ export interface ChatResponse {
 }
 
 
+type BrifingFocus = 'calm' | 'busy' | 'critical' | 'review';
+type BrifingSourceKey = 'workflow' | 'calendar' | 'tasks' | 'agents' | 'notifications';
+type BrifingSeverity = 'high' | 'medium' | 'low';
+
+interface BrifingSourceTag {
+  key: BrifingSourceKey;
+  label: string;
+  count: number;
+}
+
+interface BrifingSection {
+  key: 'today' | 'risk' | 'action';
+  title: string;
+  items: string[];
+}
+
+interface BrifingDeadline {
+  gun: number;
+  tip: string;
+  gunFark: number;
+  originalGun?: number;
+  shifted?: boolean;
+  source?: BrifingSourceKey;
+}
+
 interface BrifingPayload {
   summary: string;
-  alerts: Array<{ severity: 'high' | 'medium' | 'low'; text: string; href?: string }>;
-  suggestions: Array<{ text: string; href: string; icon?: string }>;
-  focus: 'calm' | 'busy' | 'critical' | 'review';
+  alerts: Array<{ id?: string; severity: BrifingSeverity; text: string; href?: string; source?: BrifingSourceKey }>;
+  suggestions: Array<{ id?: string; text: string; href: string; icon?: string; source?: BrifingSourceKey }>;
+  focus: BrifingFocus;
+  sourceTags: BrifingSourceTag[];
+  sections: BrifingSection[];
   metrics: Record<string, any>;
 }
 export interface BrifingResponse extends BrifingPayload {
@@ -63,7 +159,7 @@ interface BrifingContext {
   enUzunBekleyen: { ad: string; gun: number; stage: string; id: string } | null;
   ortalamaBekleme: number;
   eskiBeklemeler: Array<{ ad: string; gun: number; stage: string }>;
-  deadlines: Array<{ gun: number; tip: string; gunFark: number }>;
+  deadlines: BrifingDeadline[];
   gorev: { bugun: number; hafta: number; geciken: number };
   ajan: { bugunOlay: number; bugunHata: number; bugunBasariOrani: number | null; haftaOlay: number; haftaHata: number; haftaBasariOrani: number | null; sonSaatOlay: number };
   okunmamisBildirim: number;
@@ -454,9 +550,12 @@ export class MorenAiService {
           alerts: [],
           suggestions: [],
           focus: 'busy',
+          sourceTags: [],
+          sections: [],
           metrics: ctx.metrics,
         };
       }
+      parsed = this.applyRuleDecisions(parsed, this.buildFallbackPayload(ctx));
       parsed.metrics = {
         ...ctx.metrics,
         day: ctx.day,
@@ -493,11 +592,11 @@ export class MorenAiService {
   /** Genişletilmiş bağlam — workflow + deadlines + agents + 7-day trend + last hour activity */
   private async buildBrifingContext(tenantId: string, userId?: string | null): Promise<BrifingContext> {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const day = now.getDate();
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+    const trNow = turkeyClock(now);
+    const year = trNow.year;
+    const month = trNow.month;
+    const day = trNow.day;
+    const todayStart = new Date(year, month - 1, day); todayStart.setHours(0, 0, 0, 0);
 
     // v1.36.83: Kullanıcının adını dinamik çek — hardcoded "Muzaffer Bey" gitmiş olur
     let userFirstName = 'kullanıcı';
@@ -570,16 +669,7 @@ export class MorenAiService {
     eskiBeklemeler.sort((a, b) => b.gun - a.gun);
 
     // --- BU HAFTA SON TARİHLER
-    const sonuncuGun = new Date(year, month, 0).getDate();
-    const deadlines: Array<{ gun: number; tip: string; gunFark: number }> = [];
-    const inWindow = (g: number) => g >= day && (g - day) <= 7;
-    if (inWindow(10)) deadlines.push({ gun: 10, tip: 'e-Defter berat (gelir vergisi mükellefleri)', gunFark: 10 - day });
-    if (inWindow(14)) deadlines.push({ gun: 14, tip: 'e-Defter berat (kurumlar/diğer mükellefler)', gunFark: 14 - day });
-    if (inWindow(17) && [2, 5, 8, 11].includes(month)) deadlines.push({ gun: 17, tip: 'Geçici Vergi', gunFark: 17 - day });
-    if (inWindow(26)) deadlines.push({ gun: 26, tip: 'Muhtasar/Damga', gunFark: 26 - day });
-    if (inWindow(28)) deadlines.push({ gun: 28, tip: 'KDV', gunFark: 28 - day });
-    if (inWindow(sonuncuGun)) deadlines.push({ gun: sonuncuGun, tip: 'Turizm Payı', gunFark: sonuncuGun - day });
-    deadlines.sort((a, b) => a.gunFark - b.gunFark);
+    const deadlines = this.buildTaxDeadlines(year, month, day);
 
     // --- GÖREVLER
     let bugunGorev = 0, haftaGorev = 0, geciken = 0;
@@ -640,7 +730,7 @@ export class MorenAiService {
     return {
       now,
       year, month, day,
-      saat: now.getHours(),
+      saat: trNow.hour,
       tarihUzun: now.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
       userFirstName,
       workflow: { bekliyorEvrak, isleniyor, kontrol, beyan, tamam, total: aktif.length },
@@ -659,6 +749,32 @@ export class MorenAiService {
         ortalamaBekleme,
       },
     };
+  }
+
+  private buildTaxDeadlines(year: number, month: number, day: number): BrifingDeadline[] {
+    const today = utcNoon(year, month, day);
+    const lastDay = new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+    const deadlines: BrifingDeadline[] = [];
+
+    for (const rule of TAX_DEADLINE_RULES) {
+      if (rule.months && !rule.months.includes(month)) continue;
+      const originalDay = rule.day === 'last' ? lastDay : rule.day;
+      const nominal = utcNoon(year, month, originalDay);
+      const adjusted = nextBusinessDate(nominal);
+      const gunFark = diffDays(today, adjusted);
+      if (gunFark < 0 || gunFark > 7) continue;
+
+      deadlines.push({
+        gun: adjusted.getUTCDate(),
+        originalGun: originalDay,
+        shifted: adjusted.getUTCDate() !== originalDay,
+        tip: rule.tip,
+        gunFark,
+        source: 'calendar',
+      });
+    }
+
+    return deadlines.sort((a, b) => a.gunFark - b.gunFark);
   }
 
   /** Profesyonel sistem prompt — JSON dönüşü ister */
@@ -744,79 +860,136 @@ KURALLAR:
     const erkenDonem = c.day <= 12;
     const hazirlikDonemi = c.day > 12 && c.day <= 16;
     const netUyariDonemi = c.day >= 17;
-    const alerts: Array<{ severity: 'high' | 'medium' | 'low'; text: string; href?: string }> = [];
-    const suggestions: Array<{ text: string; href: string; icon?: string }> = [];
-    let focus: 'calm' | 'busy' | 'critical' | 'review' = 'calm';
+    const alerts: BrifingPayload['alerts'] = [];
+    const suggestions: BrifingPayload['suggestions'] = [];
+    let focus: BrifingFocus = aktifIsYuku > 0 ? 'busy' : 'calm';
     let summary = '';
 
-    // 5+ gün gecikmeler
     if (c.eskiBeklemeler.length > 0 && !erkenDonem) {
+      const text = `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada; en eski kayıt ${c.eskiBeklemeler[0].gun} gün`;
       alerts.push({
+        id: briefingId('workflow-late', text),
         severity: netUyariDonemi ? 'high' : 'medium',
-        text: `${c.eskiBeklemeler.length} mükellef 5+ gündür bekliyor; en eski kayıt ${c.eskiBeklemeler[0].gun} gün`,
-        href: '/panel/is-yuku',
+        text,
+        href: '/panel/is-yuku?late=1',
+        source: 'workflow',
       });
       focus = netUyariDonemi ? 'critical' : 'review';
     }
-    // Bugün/yarın deadline
+
     const yakin = c.deadlines.find((d) => d.gunFark <= 1);
     if (yakin) {
+      const shifted = yakin.shifted && yakin.originalGun ? ` (${yakin.originalGun}'den iş gününe kaydı)` : '';
+      const text = `${yakin.gunFark === 0 ? 'BUGÜN' : 'YARIN'}: ${yakin.tip} son tarih${shifted}`;
       alerts.push({
+        id: briefingId('calendar', text),
         severity: yakin.gunFark === 0 ? 'high' : 'medium',
-        text: `${yakin.gunFark === 0 ? 'BUGÜN' : 'YARIN'}: ${yakin.tip} son tarih`,
+        text,
         href: '/panel/beyannameler',
+        source: 'calendar',
+      });
+      focus = yakin.gunFark === 0 || focus === 'critical' ? 'critical' : 'review';
+    }
+
+    if (c.gorev.geciken > 0) {
+      const text = `${c.gorev.geciken} görev son tarihini geçmiş`;
+      alerts.push({
+        id: briefingId('tasks-late', text),
+        severity: c.gorev.geciken >= 3 ? 'high' : 'medium',
+        text,
+        href: '/panel/gorevler',
+        source: 'tasks',
+      });
+      if (focus !== 'critical') focus = c.gorev.geciken >= 3 ? 'critical' : 'review';
+    }
+
+    if (c.ajan.bugunHata >= 3) {
+      const text = `Bugün ${c.ajan.bugunHata} ajan hatası var; logları kontrol et`;
+      alerts.push({
+        id: briefingId('agents-error', text),
+        severity: c.ajan.bugunHata >= 5 ? 'high' : 'medium',
+        text,
+        href: '/panel/ajanlar',
+        source: 'agents',
       });
       if (focus !== 'critical') focus = 'review';
     }
-    // Ajan hatası
-    if (c.ajan.bugunHata >= 3) {
-      alerts.push({
-        severity: 'medium',
-        text: `Bugün ${c.ajan.bugunHata} ajan hatası`,
-        href: '/panel/ajanlar',
-      });
-    }
 
-    // Aksiyon önerileri
-    if (c.workflow.bekliyorEvrak > 0 && erkenDonem) suggestions.push({ text: 'Evrak takip listesini hazırla', href: '/panel/is-yuku', icon: 'FileText' });
-    if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) suggestions.push({ text: `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, href: '/panel/is-yuku', icon: 'FileText' });
-    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ text: `${c.workflow.bekliyorEvrak} evrak bekleyen mükellefi netleştir`, href: '/panel/is-yuku', icon: 'FileText' });
-    if (c.workflow.isleniyor > 0) suggestions.push({ text: `${c.workflow.isleniyor} fatura işle`, href: '/panel/ajanlar/mihsap', icon: 'Receipt' });
-    if (c.workflow.kontrol > 0) suggestions.push({ text: `${c.workflow.kontrol} KDV kontrolü`, href: '/panel/kdv-kontrol', icon: 'FileCheck' });
-    if (c.workflow.beyan > 0) suggestions.push({ text: `${c.workflow.beyan} beyanname hazırla`, href: '/panel/beyannameler', icon: 'FileText' });
-    if (suggestions.length === 0) suggestions.push({ text: 'İş Akışı sayfasına git', href: '/panel/is-yuku', icon: 'Sparkles' });
+    if (c.workflow.bekliyorEvrak > 0 && erkenDonem) suggestions.push({ id: 'action-evrak-early', text: 'Evrak takip listesini hazırla', href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
+    if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) suggestions.push({ id: 'action-evrak-prepare', text: `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
+    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ id: 'action-evrak-firm', text: `${c.workflow.bekliyorEvrak} evrak bekleyen mükellefi netleştir`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
+    if (c.workflow.isleniyor > 0) suggestions.push({ id: 'action-isleniyor', text: `${c.workflow.isleniyor} işlenmeyi bekleyen işi aç`, href: '/panel/is-yuku?stage=ISLENMEYI_BEKLIYOR', icon: 'Receipt', source: 'workflow' });
+    if (c.workflow.kontrol > 0) suggestions.push({ id: 'action-kdv', text: `${c.workflow.kontrol} KDV kontrolünü sıraya al`, href: '/panel/kdv-kontrol', icon: 'FileCheck', source: 'workflow' });
+    if (c.workflow.beyan > 0) suggestions.push({ id: 'action-beyan', text: `${c.workflow.beyan} beyanname hazırlığını aç`, href: '/panel/beyannameler', icon: 'FileText', source: 'workflow' });
+    if (suggestions.length === 0) suggestions.push({ id: 'action-flow', text: 'İş Akışı sayfasına git', href: '/panel/is-yuku', icon: 'Sparkles', source: 'workflow' });
 
-    // Summary
     if (aktifIsYuku === 0) {
-      if (c.workflow.total === 0) {
-        summary = `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`;
-      } else {
-        summary = erkenDonem
+      summary = c.workflow.total === 0
+        ? `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`
+        : erkenDonem
           ? `${c.userFirstName}, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
           : `${c.userFirstName}, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
-      }
     } else {
       const parcalar: string[] = [];
       if (c.workflow.kontrol > 0) parcalar.push(`${c.workflow.kontrol} KDV kontrol`);
       if (c.workflow.beyan > 0) parcalar.push(`${c.workflow.beyan} beyanname`);
-      if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} fatura işleme`);
+      if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} işlem`);
       summary = `${c.userFirstName}, ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
-      if (c.eskiBeklemeler.length > 0) summary += ` ${c.eskiBeklemeler.length} kayıt 5+ gündür bekliyor.`;
-      else summary += ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
-      if (focus === 'calm') focus = 'busy';
+      summary += c.eskiBeklemeler.length > 0
+        ? ` ${c.eskiBeklemeler.length} kayıt 5+ gündür bekliyor.`
+        : ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
     }
 
+    const sourceTags: BrifingSourceTag[] = [
+      { key: 'workflow', label: 'İş Akışı', count: c.workflow.total },
+      ...(c.deadlines.length ? [{ key: 'calendar' as const, label: 'Takvim', count: c.deadlines.length }] : []),
+      ...(c.gorev.bugun + c.gorev.geciken > 0 ? [{ key: 'tasks' as const, label: 'Görev', count: c.gorev.bugun + c.gorev.geciken }] : []),
+      ...(c.ajan.bugunHata > 0 ? [{ key: 'agents' as const, label: 'Ajan', count: c.ajan.bugunHata }] : []),
+      ...(c.okunmamisBildirim > 0 ? [{ key: 'notifications' as const, label: 'Bildirim', count: c.okunmamisBildirim }] : []),
+    ];
+
+    const todayItems = [
+      `${c.workflow.total} aktif mükellef, ${aktifIsYuku} aktif iş`,
+      c.gorev.bugun > 0 ? `${c.gorev.bugun} görev bugün tarihli` : 'Bugün tarihli açık görev yok',
+      c.deadlines[0]
+        ? `${c.deadlines[0].gunFark === 0 ? 'Bugün' : `${c.deadlines[0].gunFark} gün sonra`}: ${c.deadlines[0].tip}`
+        : 'Bu hafta görünen son tarih yok',
+    ];
+    const riskItems = [
+      c.eskiBeklemeler.length > 0 ? `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada` : '5+ gün bekleyen kritik akış yok',
+      c.gorev.geciken > 0 ? `${c.gorev.geciken} görev gecikmiş` : 'Geciken görev görünmüyor',
+      c.ajan.bugunHata > 0 ? `${c.ajan.bugunHata} ajan hatası izlenmeli` : 'Bugün ajan hatası yok',
+    ];
+
     return {
-      summary,
-      alerts,
+      summary: this.cleanBrifingActionText(summary),
+      alerts: alerts.slice(0, 3).map((a) => ({ ...a, text: this.cleanBrifingActionText(a.text), href: a.href ? this.normalizeBrifingHref(a.href) : undefined })),
       suggestions: suggestions.slice(0, 3).map((s) => ({ ...s, href: this.normalizeBrifingHref(s.href), text: this.cleanBrifingActionText(s.text) })),
       focus,
+      sourceTags,
+      sections: [
+        { key: 'today', title: 'Bugün', items: todayItems.slice(0, 3).map((t) => this.cleanBrifingActionText(t)) },
+        { key: 'risk', title: 'Risk', items: riskItems.slice(0, 3).map((t) => this.cleanBrifingActionText(t)) },
+        { key: 'action', title: 'Aksiyon', items: suggestions.slice(0, 3).map((s) => this.cleanBrifingActionText(s.text)) },
+      ],
       metrics: {
         ...c.metrics,
         day: c.day,
         periodTone: erkenDonem ? 'early' : hazirlikDonemi ? 'prepare' : 'firm',
         bekliyorEvrak: c.workflow.bekliyorEvrak,
         nextDeadline: c.deadlines[0] || null,
+      },
+    };
+  }
+
+  private applyRuleDecisions(aiPayload: BrifingPayload, rulePayload: BrifingPayload): BrifingPayload {
+    const aiSummary = this.cleanBrifingActionText(aiPayload.summary || '');
+    return {
+      ...rulePayload,
+      summary: aiSummary.length >= 20 ? aiSummary.slice(0, 180) : rulePayload.summary,
+      metrics: {
+        ...rulePayload.metrics,
+        ...(aiPayload.metrics || {}),
       },
     };
   }
@@ -840,11 +1013,28 @@ KURALLAR:
       : [];
     const focus = ['calm', 'busy', 'critical', 'review'].includes(obj?.focus) ? obj.focus : 'busy';
     const metrics = (obj?.metrics && typeof obj.metrics === 'object') ? obj.metrics : {};
-    return { summary, alerts, suggestions, focus, metrics };
+    const sourceTags = Array.isArray(obj?.sourceTags)
+      ? obj.sourceTags.slice(0, 5).map((s: any) => ({
+          key: ['workflow', 'calendar', 'tasks', 'agents', 'notifications'].includes(s?.key) ? s.key : 'workflow',
+          label: String(s?.label || 'Kaynak').slice(0, 24),
+          count: Number(s?.count || 0),
+        }))
+      : [];
+    const sections = Array.isArray(obj?.sections)
+      ? obj.sections.slice(0, 3).map((s: any) => ({
+          key: ['today', 'risk', 'action'].includes(s?.key) ? s.key : 'today',
+          title: String(s?.title || 'Bölüm').slice(0, 24),
+          items: Array.isArray(s?.items)
+            ? s.items.slice(0, 3).map((item: any) => this.cleanBrifingActionText(String(item || '')).slice(0, 110)).filter(Boolean)
+            : [],
+        })).filter((s: any) => s.items.length > 0)
+      : [];
+    return { summary, alerts, suggestions, focus, sourceTags, sections, metrics };
   }
 
   private normalizeBrifingHref(href: string): string {
     const value = String(href || '').trim();
+    const [path, query = ''] = value.split('?');
     const routes = [
       '/panel/ajanlar/mihsap',
       '/panel/is-yuku',
@@ -855,13 +1045,14 @@ KURALLAR:
       '/panel/ajanlar',
     ];
     for (const route of routes) {
-      if (value === route || value.startsWith(`${route}/`)) return route;
+      if (path === route || path.startsWith(`${route}/`)) return query ? `${route}?${query}` : route;
     }
     return '/panel';
   }
 
   private cleanBrifingActionText(text: string): string {
     return String(text || '')
+      .replace(/\b(?!KDV\b|SGK\b|GIB\b|GİB\b|LUCA\b|MIHSAP\b|MİHSAP\b)([A-ZÇĞİÖŞÜ]{2,})(?:\s+[A-ZÇĞİÖŞÜ]{2,}){1,3}\b/g, 'ilgili mükellef')
       .replace(/\byapı\s*taşla\b/gi, 'planla')
       .replace(/\byapi\s*tasla\b/gi, 'planla')
       .replace(/\btakılı\b/gi, 'beklemede')

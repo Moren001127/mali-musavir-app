@@ -63,6 +63,13 @@ type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
 type CompletenessItem = { id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
+const PROFILE_FILTER_KEYS: ProfileFilterKey[] = ['all', 'profil-eksik', 'telefon-yok'];
+
+function getQueryParam(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get(key);
+}
 
 function getName(t: Taxpayer): string {
   return t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || '—';
@@ -135,10 +142,29 @@ export default function MukelleflerPage() {
   const [search, setSearch] = useState('');
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [filter, setFilter] = useState<FilterKey>('all');
-  const [profileFilter, setProfileFilter] = useState<ProfileFilterKey>('all');
+  const [filter, setFilter] = useState<FilterKey>(() => {
+    const value = getQueryParam('filter') as FilterKey | null;
+    return value && FILTER_KEYS.includes(value) ? value : 'all';
+  });
+  const [profileFilter, setProfileFilter] = useState<ProfileFilterKey>(() => {
+    const value = getQueryParam('profile') as ProfileFilterKey | null;
+    return value && PROFILE_FILTER_KEYS.includes(value) ? value : 'all';
+  });
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 20;
+
+  useEffect(() => {
+    const nextFilter = getQueryParam('filter') as FilterKey | null;
+    const nextProfile = getQueryParam('profile') as ProfileFilterKey | null;
+    if (nextFilter && FILTER_KEYS.includes(nextFilter)) {
+      setFilter(nextFilter);
+      setPage(1);
+    }
+    if (nextProfile && PROFILE_FILTER_KEYS.includes(nextProfile)) {
+      setProfileFilter(nextProfile);
+      setPage(1);
+    }
+  }, []);
 
   const { data: raw = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', 'list', search, year, month],
