@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -8,7 +8,7 @@ import { Search, Upload, Plus, AlertCircle, PhoneOff, Check as CheckIcon } from 
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
-const TAXPAYER_TABLE_GRID = '40px minmax(300px, 1.6fr) repeat(5, minmax(86px, 0.55fr)) minmax(130px, 0.8fr)';
+const TAXPAYER_TABLE_GRID = '34px minmax(230px, 1.35fr) repeat(6, minmax(54px, 0.34fr)) minmax(190px, 0.95fr)';
 
 type MonthlyStatus = {
   id?: string;
@@ -20,6 +20,7 @@ type MonthlyStatus = {
   indirilecekKdvKontrol: boolean;
   hesaplananKdvKontrol: boolean;
   eArsivKontrol: boolean;
+  notes?: string | null;
 };
 
 type Taxpayer = {
@@ -50,6 +51,7 @@ type StatusKey =
   | 'hesaplananKdvKontrol'
   | 'eArsivKontrol'
   | 'beyannameVerildi';
+type MonthlyStatusPatch = Partial<Pick<MonthlyStatus, StatusKey | 'notes'>>;
 
 type FilterKey = 'all' | 'evrak-gelmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
 type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
@@ -111,11 +113,11 @@ export default function MukelleflerPage() {
   }, [completenessSummary]);
 
   // Checkbox toggle — optimistic update
-  const toggleStatus = useMutation({
-    mutationFn: async ({ id, key, value }: { id: string; key: StatusKey; value: boolean }) => {
-      return api.patch(`/taxpayers/${id}/monthly-status`, { year, month, [key]: value });
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: MonthlyStatusPatch }) => {
+      return api.patch(`/taxpayers/${id}/monthly-status`, { year, month, ...data });
     },
-    onMutate: async ({ id, key, value }) => {
+    onMutate: async ({ id, data }) => {
       await qc.cancelQueries({ queryKey: ['taxpayers', 'list', search, year, month] });
       const prev = qc.getQueryData<Taxpayer[]>(['taxpayers', 'list', search, year, month]);
       qc.setQueryData<Taxpayer[]>(['taxpayers', 'list', search, year, month], (old) =>
@@ -125,8 +127,9 @@ export default function MukelleflerPage() {
             evraklarGeldi: false, evraklarIslendi: false, kontrolEdildi: false,
             beyannameVerildi: false, kdvKontrolEdildi: false,
             indirilecekKdvKontrol: false, hesaplananKdvKontrol: false, eArsivKontrol: false,
+            notes: null,
           };
-          return { ...t, monthlyStatus: { ...base, [key]: value } };
+          return { ...t, monthlyStatus: { ...base, ...data } };
         }),
       );
       return { prev };
@@ -205,7 +208,7 @@ export default function MukelleflerPage() {
             type="button"
             onClick={() => {
               const rows = [
-                ['İsim','Tür','VKN/TC','VD','Evrak','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname'],
+                ['İsim','Tür','VKN/TC','VD','Evrak','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname','Not'],
                 ...raw.map(t => {
                   const s = t.monthlyStatus;
                   return [
@@ -219,6 +222,7 @@ export default function MukelleflerPage() {
                     s?.hesaplananKdvKontrol ? 'Evet' : 'Hayır',
                     s?.eArsivKontrol ? 'Evet' : 'Hayır',
                     deriveBeyannameStatus(s) === 'verildi' ? 'Verildi' : deriveBeyannameStatus(s) === 'bekliyor' ? 'Bekliyor' : 'Verilmedi',
+                    s?.notes || '',
                   ];
                 }),
               ];
@@ -338,10 +342,10 @@ export default function MukelleflerPage() {
       {/* TABLE */}
       <div className="rounded-xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div
-          className="grid min-w-[1180px] w-full items-center px-4 py-2.5 text-[10px] font-semibold uppercase"
+          className="grid min-w-[1120px] w-full items-center px-3 py-2.5 text-[9.5px] font-semibold uppercase"
           style={{
             gridTemplateColumns: TAXPAYER_TABLE_GRID,
-            gap: 10,
+            gap: 8,
             background: 'rgba(212,184,118,0.045)',
             borderBottom: '1px solid rgba(212,184,118,0.13)',
             color: 'rgba(250,250,249,0.48)',
@@ -351,11 +355,12 @@ export default function MukelleflerPage() {
           <span></span>
           <span>Mükellef</span>
           <span className="text-center">Evrak</span>
-          <span className="text-center">İşlendi</span>
-          <span className="text-center">İnd. KDV</span>
-          <span className="text-center">Hes. KDV</span>
-          <span className="text-center">E-Arşiv</span>
-          <span className="text-center">Beyanname</span>
+          <span className="text-center">İşl.</span>
+          <span className="text-center">İnd.</span>
+          <span className="text-center">Hes.</span>
+          <span className="text-center">Arşiv</span>
+          <span className="text-center">Beyan</span>
+          <span>Not / Açıklama</span>
         </div>
 
         {isLoading ? (
@@ -376,7 +381,8 @@ export default function MukelleflerPage() {
               key={t.id}
               taxpayer={t}
               completeness={completenessMap.get(t.id)}
-              onToggle={(key, value) => toggleStatus.mutate({ id: t.id, key, value })}
+              onToggle={(key, value) => updateStatus.mutate({ id: t.id, data: { [key]: value } as MonthlyStatusPatch })}
+              onNotesChange={(notes) => updateStatus.mutate({ id: t.id, data: { notes } })}
             />
           ))
         )}
@@ -452,14 +458,21 @@ function TaxpayerRow({
   taxpayer,
   completeness,
   onToggle,
+  onNotesChange,
 }: {
   taxpayer: Taxpayer;
   completeness?: { score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
   onToggle: (key: StatusKey, value: boolean) => void;
+  onNotesChange: (notes: string) => void;
 }) {
   const s = taxpayer.monthlyStatus;
   const isCompany = taxpayer.type === 'TUZEL_KISI';
   const beyanname = deriveBeyannameStatus(s);
+  const [notesDraft, setNotesDraft] = useState(s?.notes || '');
+
+  useEffect(() => {
+    setNotesDraft(s?.notes || '');
+  }, [s?.notes, taxpayer.id]);
 
   // v1.36.76: Profil tamamlık göstergesi rengi
   const compColor =
@@ -473,11 +486,11 @@ function TaxpayerRow({
 
   return (
     <div
-      className="grid min-w-[1180px] w-full items-center px-4 py-2 transition-all group"
+      className="grid min-w-[1120px] w-full items-center px-3 py-2 transition-all group"
       style={{
         gridTemplateColumns: TAXPAYER_TABLE_GRID,
-        gap: 10,
-        minHeight: 58,
+        gap: 8,
+        minHeight: 54,
         borderBottom: '1px solid rgba(255,255,255,0.035)',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(184,160,111,0.04)'; }}
@@ -557,11 +570,35 @@ function TaxpayerRow({
 
       {/* Beyanname */}
       <div className="flex justify-center">
-        <BeyannamePill
-          status={beyanname}
+        <Check
+          checked={!!s?.beyannameVerildi}
           onClick={() => onToggle('beyannameVerildi', !s?.beyannameVerildi)}
+          title={beyanname === 'verildi' ? 'Beyanname verildi' : beyanname === 'bekliyor' ? 'Beyanname bekliyor' : 'Beyanname verilmedi'}
         />
       </div>
+
+      {/* Not / Açıklama */}
+      <input
+        value={notesDraft}
+        onChange={(e) => setNotesDraft(e.target.value)}
+        onBlur={() => {
+          const next = notesDraft.trim();
+          setNotesDraft(next);
+          if ((s?.notes || '') !== next) onNotesChange(next);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        maxLength={1000}
+        placeholder="Not ekle..."
+        className="h-8 w-full rounded-[7px] px-2.5 text-[11.5px] outline-none transition-colors"
+        style={{
+          background: notesDraft ? 'rgba(212,184,118,0.055)' : 'rgba(255,255,255,0.025)',
+          border: `1px solid ${notesDraft ? 'rgba(212,184,118,0.20)' : 'rgba(255,255,255,0.065)'}`,
+          color: '#fafaf9',
+        }}
+        title={notesDraft || 'Not / açıklama'}
+      />
 
     </div>
   );
@@ -575,7 +612,7 @@ function Check({ checked, onClick, title }: { checked: boolean; onClick: () => v
       title={title}
       className="inline-flex items-center justify-center transition-all hover:brightness-110"
       style={{
-        width: 26, height: 26, borderRadius: 8,
+        width: 22, height: 22, borderRadius: 7,
         border: checked ? '1px solid rgba(74,222,128,0.55)' : '1px solid rgba(255,255,255,0.12)',
         background: checked ? 'rgba(74,222,128,0.16)' : 'rgba(255,255,255,0.035)',
         color: checked ? '#4ade80' : 'rgba(250,250,249,0.28)',
@@ -594,26 +631,7 @@ function Check({ checked, onClick, title }: { checked: boolean; onClick: () => v
         }
       }}
     >
-      {checked ? <CheckIcon size={15} strokeWidth={2.8} /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.25)' }} />}
-    </button>
-  );
-}
-
-function BeyannamePill({ status, onClick }: { status: 'verildi' | 'bekliyor' | 'verilmedi'; onClick: () => void }) {
-  const s = {
-    verildi:   { bg: 'rgba(34,197,94,0.1)',  color: '#22c55e', label: 'Verildi' },
-    bekliyor:  { bg: 'rgba(245,158,11,0.1)', color: '#f59e0b', label: 'Bekliyor' },
-    verilmedi: { bg: 'rgba(239,68,68,0.1)',  color: '#ef4444', label: 'Verilmedi' },
-  }[status];
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={status === 'verildi' ? 'Beyanname verildi — geri al için tıkla' : status === 'bekliyor' ? 'Hazır — tıklayarak "Verildi" işaretle' : 'Kontroller eksik — önce tüm kutucukları tamamla'}
-      className="min-w-[88px] px-2.5 py-[5px] rounded-[8px] text-[10.5px] font-bold uppercase cursor-pointer transition-all hover:brightness-125"
-      style={{ background: s.bg, color: s.color, letterSpacing: '0.04em', border: `1px solid ${s.color}33` }}
-    >
-      {s.label}
+      {checked ? <CheckIcon size={13} strokeWidth={2.8} /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: 'rgba(250,250,249,0.25)' }} />}
     </button>
   );
 }

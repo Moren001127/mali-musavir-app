@@ -582,15 +582,22 @@ export class TaxpayersService {
       indirilecekKdvKontrol?: boolean;
       hesaplananKdvKontrol?: boolean;
       eArsivKontrol?: boolean;
+      notes?: string | null;
     },
   ) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
 
+    const cleanData = { ...data };
+    if (typeof cleanData.notes === 'string') {
+      const trimmed = cleanData.notes.trim();
+      cleanData.notes = trimmed ? trimmed.slice(0, 1000) : null;
+    }
+
     return this.prisma.taxpayerMonthlyStatus.upsert({
       where: { taxpayerId_year_month: { taxpayerId, year, month } },
-      create: { taxpayerId, tenantId, year, month, ...data },
-      update: data,
+      create: { taxpayerId, tenantId, year, month, ...cleanData },
+      update: cleanData,
     });
   }
 

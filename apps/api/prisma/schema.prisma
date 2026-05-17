@@ -1048,6 +1048,7 @@ model TaxpayerMonthlyStatus {
   indirilecekKdvKontrol  Boolean  @default(false)
   hesaplananKdvKontrol   Boolean  @default(false)
   eArsivKontrol          Boolean  @default(false)
+  notes                  String?  @db.Text
   createdAt              DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
