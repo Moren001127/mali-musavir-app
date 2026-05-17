@@ -795,7 +795,7 @@ export class MorenAiService {
 ## Dil ve Takvim Mantığı
 - Bugün ayın ${c.day}'i; dönem tonu: ${donemTonu}
 - Brifing takvim bilgisini aşağıdaki "Bu Hafta Son Tarihler" bölümünden alır. Son tarih yoksa son tarih uyarısı üretme.
-- Ayın 1-12'sinde evrak bekleyen mükellefler için "takılı", "gecikti", "hemen talep et", "hızlandırılmalı" gibi sert ifadeler kullanma. "takip listesi hazırla", "nazik hatırlatma planı çıkar", "gelişi izleyelim" gibi öneri dili kullan.
+- Ayın 1-12'sinde evrak bekleyen mükellefler için "takılı", "gecikti", "hemen talep et", "hemen harekete geç", "hızlandırılmalı" gibi sert ifadeler kullanma. "takip listesi hazırla", "nazik hatırlatma planı çıkar", "gelişi izleyelim" gibi öneri dili kullan.
 - Ayın 13-16'sında dil hazırlık/önceliklendirme dili olsun.
 - Ayın 17'si ve sonrası ya da son tarihe 3 gün kaldıysa net uyarı dili kullanabilirsin.
 - suggestions.href sadece şu rotalardan biri olabilir: ${allowedRoutes}
@@ -866,7 +866,7 @@ KURALLAR:
     let summary = '';
 
     if (c.eskiBeklemeler.length > 0 && !erkenDonem) {
-      const text = `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada; en eski kayıt ${c.eskiBeklemeler[0].gun} gün`;
+      const text = `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada; en eski kayıt ${c.eskiBeklemeler[0].gun} gündür bekliyor`;
       alerts.push({
         id: briefingId('workflow-late', text),
         severity: netUyariDonemi ? 'high' : 'medium',
@@ -880,7 +880,7 @@ KURALLAR:
     const yakin = c.deadlines.find((d) => d.gunFark <= 1);
     if (yakin) {
       const shifted = yakin.shifted && yakin.originalGun ? ` (${yakin.originalGun}'den iş gününe kaydı)` : '';
-      const text = `${yakin.gunFark === 0 ? 'BUGÜN' : 'YARIN'}: ${yakin.tip} son tarih${shifted}`;
+      const text = `${yakin.gunFark === 0 ? 'Bugün' : 'Yarın'}: ${yakin.tip} son tarih${shifted}`;
       alerts.push({
         id: briefingId('calendar', text),
         severity: yakin.gunFark === 0 ? 'high' : 'medium',
@@ -917,8 +917,8 @@ KURALLAR:
 
     if (c.workflow.bekliyorEvrak > 0 && erkenDonem) suggestions.push({ id: 'action-evrak-early', text: 'Evrak takip listesini hazırla', href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
     if (c.workflow.bekliyorEvrak > 0 && hazirlikDonemi) suggestions.push({ id: 'action-evrak-prepare', text: `${c.workflow.bekliyorEvrak} evrak bekleyen için takip planı aç`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
-    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ id: 'action-evrak-firm', text: `${c.workflow.bekliyorEvrak} evrak bekleyen mükellefi netleştir`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
-    if (c.workflow.isleniyor > 0) suggestions.push({ id: 'action-isleniyor', text: `${c.workflow.isleniyor} işlenmeyi bekleyen işi aç`, href: '/panel/is-yuku?stage=ISLENMEYI_BEKLIYOR', icon: 'Receipt', source: 'workflow' });
+    if (c.workflow.bekliyorEvrak > 0 && netUyariDonemi) suggestions.push({ id: 'action-evrak-firm', text: `${c.workflow.bekliyorEvrak} evrak bekleyen kaydı sırala`, href: '/panel/mukellefler?filter=evrak-gelmedi', icon: 'FileText', source: 'workflow' });
+    if (c.workflow.isleniyor > 0) suggestions.push({ id: 'action-isleniyor', text: `${c.workflow.isleniyor} işleme bekleyen kaydı aç`, href: '/panel/is-yuku?stage=ISLENMEYI_BEKLIYOR', icon: 'Receipt', source: 'workflow' });
     if (c.workflow.kontrol > 0) suggestions.push({ id: 'action-kdv', text: `${c.workflow.kontrol} KDV kontrolünü sıraya al`, href: '/panel/kdv-kontrol', icon: 'FileCheck', source: 'workflow' });
     if (c.workflow.beyan > 0) suggestions.push({ id: 'action-beyan', text: `${c.workflow.beyan} beyanname hazırlığını aç`, href: '/panel/beyannameler', icon: 'FileText', source: 'workflow' });
     if (suggestions.length === 0) suggestions.push({ id: 'action-flow', text: 'İş Akışı sayfasına git', href: '/panel/is-yuku', icon: 'Sparkles', source: 'workflow' });
@@ -936,7 +936,7 @@ KURALLAR:
       if (c.workflow.isleniyor > 0) parcalar.push(`${c.workflow.isleniyor} işlem`);
       summary = `${c.userFirstName}, ${aktifIsYuku} aktif iş var: ${parcalar.join(', ')}.`;
       summary += c.eskiBeklemeler.length > 0
-        ? ` ${c.eskiBeklemeler.length} kayıt 5+ gündür bekliyor.`
+        ? ` ${c.eskiBeklemeler.length} kayıt 5+ gündür aynı aşamada bekliyor.`
         : ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
     }
 
@@ -1057,6 +1057,8 @@ KURALLAR:
       .replace(/\byapi\s*tasla\b/gi, 'planla')
       .replace(/\btakılı\b/gi, 'beklemede')
       .replace(/\btakildi\b/gi, 'beklemede')
+      .replace(/\bhemen harekete geç\b/gi, 'öncelik listesine al')
+      .replace(/\bhız ver ya da engel varsa çöz\b/gi, 'engeli kontrol edip sıraya al')
       .replace(/\bhızlandırılmalı\b/gi, 'takip edilmeli')
       .replace(/\bhizlandirilmali\b/gi, 'takip edilmeli')
       .replace(/\bhemen talep et\b/gi, 'talep planı çıkar')
