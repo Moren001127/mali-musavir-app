@@ -81,6 +81,7 @@ export class TaxpayersService {
         emails: true,
         phone: true,
         phones: true,
+        address: true,
         evrakTeslimGunu: true,
         whatsappEvrakTalep: true,
         whatsappEvrakGeldi: true,

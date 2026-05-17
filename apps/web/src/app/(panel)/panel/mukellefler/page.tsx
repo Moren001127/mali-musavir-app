@@ -32,9 +32,14 @@ type Taxpayer = {
   taxNumber: string;
   taxOffice: string;
   email?: string;
+  emails?: string[];
   phone?: string;
   phones?: string[];
   address?: string;
+  evrakTeslimGunu?: number | null;
+  lucaSlug?: string | null;
+  mihsapId?: string | null;
+  defterTuru?: string | null;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -55,6 +60,7 @@ type MonthlyStatusPatch = Partial<Pick<MonthlyStatus, StatusKey | 'notes'>>;
 
 type FilterKey = 'all' | 'evrak-gelmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
 type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
+type CompletenessItem = { id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
@@ -68,6 +74,46 @@ function getInitials(t: Taxpayer): string {
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return '—';
+}
+
+function hasText(value: unknown): boolean {
+  return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+}
+
+function hasUsablePhone(t: Taxpayer): boolean {
+  const phones = [t.phone, ...(Array.isArray(t.phones) ? t.phones : [])];
+  return phones.some(hasText);
+}
+
+function fallbackCompletenessScore(t: Taxpayer): number {
+  const critical = [
+    hasText(t.companyName) || (hasText(t.firstName) && hasText(t.lastName)),
+    hasText(t.taxNumber),
+    hasText(t.taxOffice),
+    hasText(t.defterTuru),
+  ];
+  const important = [
+    hasText(t.type),
+    hasUsablePhone(t),
+    hasText(t.email) || (Array.isArray(t.emails) && t.emails.some(hasText)),
+    hasText(t.address),
+  ];
+  const useful = [
+    hasText(t.evrakTeslimGunu),
+    hasText(t.lucaSlug),
+    hasText(t.mihsapId),
+    hasText(t.startDate),
+  ];
+
+  const ratio = (items: boolean[]) => items.filter(Boolean).length / Math.max(items.length, 1);
+  return Math.round((ratio(critical) * 50) + (ratio(important) * 30) + (ratio(useful) * 20));
+}
+
+function isProfileIncomplete(t: Taxpayer, completeness?: CompletenessItem): boolean {
+  if (completeness) {
+    return completeness.score < 80 || completeness.durum === 'EKSIK' || completeness.durum === 'KRITIK_EKSIK';
+  }
+  return fallbackCompletenessScore(t) < 80;
 }
 
 /** Beyanname durumu türetimi */
@@ -101,13 +147,13 @@ export default function MukelleflerPage() {
   });
 
   // v1.36.76: Tüm mükelleflerin profil tamamlığı — tek toplu fetch
-  const { data: completenessSummary } = useQuery<{ taxpayers: Array<{ id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number }> }>({
+  const { data: completenessSummary } = useQuery<{ taxpayers: CompletenessItem[] }>({
     queryKey: ['taxpayers-completeness-summary'],
     queryFn: () => api.get('/taxpayers/completeness/summary').then(r => r.data).catch(() => ({ taxpayers: [] })),
     staleTime: 60_000, // 1 dk cache — sürekli yeniden hesaplamasın
   });
   const completenessMap = useMemo(() => {
-    const m = new Map<string, { score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number }>();
+    const m = new Map<string, CompletenessItem>();
     (completenessSummary?.taxpayers || []).forEach((t) => m.set(t.id, t));
     return m;
   }, [completenessSummary]);
@@ -170,8 +216,8 @@ export default function MukelleflerPage() {
     else if (filter === 'beyanname-bekliyor') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'bekliyor');
     else if (filter === 'beyanname-verilmedi') list = list.filter(t => deriveBeyannameStatus(t.monthlyStatus) === 'verilmedi');
     else if (filter === 'verildi') list = list.filter(t => t.monthlyStatus?.beyannameVerildi);
-    if (profileFilter === 'profil-eksik') list = list.filter(t => (completenessMap.get(t.id)?.score ?? 100) < 80);
-    if (profileFilter === 'telefon-yok') list = list.filter(t => !t.phone && !(t.phones || []).some(Boolean));
+    if (profileFilter === 'profil-eksik') list = list.filter(t => isProfileIncomplete(t, completenessMap.get(t.id)));
+    else if (profileFilter === 'telefon-yok') list = list.filter(t => !hasUsablePhone(t));
     return list.sort((a, b) => getName(a).localeCompare(getName(b), 'tr', { sensitivity: 'base' }));
   }, [raw, filter, profileFilter, completenessMap]);
 
@@ -185,6 +231,15 @@ export default function MukelleflerPage() {
     { key: 'beyanname-bekliyor', label: 'Beyanname Bekliyor', count: counts.beyannameBekliyor },
     { key: 'beyanname-verilmedi', label: 'Beyanname Verilmedi', count: counts.beyannameVerilmedi },
     { key: 'verildi', label: 'Verildi', count: counts.beyannameVerildi },
+  ];
+
+  const profileCounts = useMemo(() => ({
+    profilEksik: raw.filter(t => isProfileIncomplete(t, completenessMap.get(t.id))).length,
+    telefonYok: raw.filter(t => !hasUsablePhone(t)).length,
+  }), [raw, completenessMap]);
+  const profileFilterBtns: { key: Exclude<ProfileFilterKey, 'all'>; label: string; count: number; icon: typeof AlertCircle }[] = [
+    { key: 'profil-eksik', label: 'Profil Eksik', count: profileCounts.profilEksik, icon: AlertCircle },
+    { key: 'telefon-yok', label: 'Telefon Yok', count: profileCounts.telefonYok, icon: PhoneOff },
   ];
 
   const donemStr = `${AYLAR_TR[month - 1]} ${year}`;
@@ -293,7 +348,7 @@ export default function MukelleflerPage() {
             <button
               key={b.key}
               type="button"
-              onClick={() => { setFilter(b.key); setPage(1); }}
+              onClick={() => { setFilter(b.key); if (b.key === 'all') setProfileFilter('all'); setPage(1); }}
               className="px-3.5 py-2 text-[12px] font-medium rounded-[9px] transition-all"
               style={{
                 background: active ? 'rgba(184,160,111,0.1)' : 'rgba(255,255,255,0.03)',
@@ -305,10 +360,7 @@ export default function MukelleflerPage() {
             </button>
           );
         })}
-        {[
-          { key: 'profil-eksik', label: 'Profil Eksik', icon: AlertCircle },
-          { key: 'telefon-yok', label: 'Telefon Yok', icon: PhoneOff },
-        ].map((b) => {
+        {profileFilterBtns.map((b) => {
           const Icon = b.icon;
           const active = profileFilter === b.key;
           return (
@@ -323,7 +375,7 @@ export default function MukelleflerPage() {
                 color: active ? '#fca5a5' : 'rgba(250,250,249,0.55)',
               }}
             >
-              <Icon size={12} /> {b.label}
+              <Icon size={12} /> {b.label} ({b.count})
             </button>
           );
         })}
