@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -18,6 +18,16 @@ type Taxpayer = {
   lastName?: string;
   companyName?: string;
   taxNumber: string;
+  mihsapId?: string | null;
+};
+
+type MonthlyStatus = {
+  evraklarGeldi: boolean;
+  evraklarIslendi: boolean;
+  kontrolEdildi: boolean;
+  indirilecekKdvKontrol: boolean;
+  hesaplananKdvKontrol: boolean;
+  eArsivKontrol?: boolean;
 };
 
 type Period = 'AYLIK' | 'UCAYLIK' | null;
@@ -101,11 +111,22 @@ type Kdv2 = {
 };
 
 const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12'];
-const MONTH_NAMES = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const MONTH_NAMES = ['Ocak','Åubat','Mart','Nisan','MayÄ±s','Haziran','Temmuz','AÄŸustos','EylÃ¼l','Ekim','KasÄ±m','AralÄ±k'];
 
 const fmt = (n: number | null | undefined) => {
   const v = typeof n === 'number' && isFinite(n) ? n : 0;
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const parseMoneyInput = (value: string) => {
+  const raw = String(value || '').replace(/\s/g, '').replace(/[â‚ºTL]/gi, '');
+  const normalized =
+    raw.includes(',') && raw.includes('.')
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : raw.includes(',')
+        ? raw.replace(',', '.')
+        : raw;
+  const n = Number(normalized.replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(n) ? Math.max(0, Math.round(n * 100) / 100) : 0;
 };
 const TRY = '\u20ba';
 const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
@@ -141,6 +162,7 @@ function MoneyText({
 }
 
 export default function KdvBeyannamePage() {
+  const queryClient = useQueryClient();
   const now = new Date();
   const [selectedMukellef, setSelectedMukellef] = useState<string>('');
   const [year, setYear] = useState(now.getFullYear());
@@ -172,6 +194,20 @@ export default function KdvBeyannamePage() {
   const taxpayerName = (t: Taxpayer) =>
     t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber;
 
+  const selectedTaxpayer = React.useMemo(
+    () => taxpayers.find((t) => t.id === selectedMukellef) || null,
+    [taxpayers, selectedMukellef],
+  );
+
+  const { data: monthlyStatus } = useQuery<MonthlyStatus>({
+    queryKey: ['taxpayer-monthly-status-for-kdv-beyanname', selectedMukellef, year, month],
+    queryFn: () =>
+      api
+        .get(`/taxpayers/${selectedMukellef}/monthly-status`, { params: { year, month: Number(month) } })
+        .then((r) => r.data),
+    enabled: !!selectedMukellef,
+  });
+
   const { data: kdv1, isLoading: kdv1Loading, error: kdv1Error } = useQuery<Kdv1>({
     queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem],
     queryFn: () =>
@@ -196,6 +232,40 @@ export default function KdvBeyannamePage() {
     retry: 0,
   });
 
+  const autoPrepReady = Boolean(
+    tab === 'KDV1' &&
+      selectedMukellef &&
+      monthlyStatus?.evraklarGeldi &&
+      monthlyStatus?.evraklarIslendi &&
+      (monthlyStatus?.kontrolEdildi ||
+        (monthlyStatus?.indirilecekKdvKontrol && monthlyStatus?.hesaplananKdvKontrol)),
+  );
+  const [autoInvoiceAttemptKey, setAutoInvoiceAttemptKey] = useState<string | null>(null);
+
+  const autoInvoiceFetchMut = useMutation({
+    mutationFn: () =>
+      api.post('/agent/mihsap/fetch', {
+        mukellefId: selectedMukellef,
+        mukellefMihsapId: selectedTaxpayer?.mihsapId,
+        donem,
+        forceRefresh: false,
+      }),
+    onSuccess: () => {
+      toast.success('Mihsap faturalarÄ± KDV hazÄ±rlÄ±ÄŸÄ± iÃ§in Ã§ekildi');
+      queryClient.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', selectedMukellef, donem] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Mihsap faturalarÄ± otomatik Ã§ekilemedi'),
+  });
+
+  React.useEffect(() => {
+    const key = `${selectedMukellef}:${donem}`;
+    const faturaAdet = (kdv1?.satis?.faturaAdet || 0) + (kdv1?.alis?.faturaAdet || 0);
+    if (!autoPrepReady || !selectedTaxpayer?.mihsapId || !kdv1 || faturaAdet > 0) return;
+    if (autoInvoiceAttemptKey === key || autoInvoiceFetchMut.isPending) return;
+    setAutoInvoiceAttemptKey(key);
+    autoInvoiceFetchMut.mutate();
+  }, [autoPrepReady, selectedTaxpayer?.mihsapId, selectedMukellef, donem, kdv1, autoInvoiceAttemptKey, autoInvoiceFetchMut.isPending]);
+
   const handleDownload = async () => {
     if (!selectedMukellef) return;
     try {
@@ -216,12 +286,12 @@ export default function KdvBeyannamePage() {
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e: any) {
-      alert(`Excel oluşturulamadı: ${e?.response?.data?.message || e?.message || 'hata'}`);
+      alert(`Excel oluÅŸturulamadÄ±: ${e?.response?.data?.message || e?.message || 'hata'}`);
     }
   };
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="px-6 py-4 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -229,13 +299,13 @@ export default function KdvBeyannamePage() {
             className="text-[10.5px] font-bold uppercase tracking-[.14em] mb-1"
             style={{ color: 'rgba(212,184,118,0.7)' }}
           >
-            Vergi Uyum · Ön Hazırlık
+            Vergi Uyum Â· Ã–n HazÄ±rlÄ±k
           </div>
           <h1
             className="font-semibold"
-            style={{ fontFamily: 'Fraunces, serif', fontSize: 32, color: '#fafaf9', letterSpacing: '-.03em' }}
+            style={{ fontFamily: 'Fraunces, serif', fontSize: 28, color: '#fafaf9', letterSpacing: '-.03em' }}
           >
-            KDV Beyanname Ön Hazırlığı
+            KDV Beyanname Ã–n HazÄ±rlÄ±ÄŸÄ±
           </h1>
           <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
             Mihsap fatura + Luca mizan hibriti. KDV1 genel beyan + KDV2 tevkifat sorumlusu.
@@ -251,43 +321,43 @@ export default function KdvBeyannamePage() {
             boxShadow: '0 2px 10px rgba(212,184,118,0.35)',
           }}
         >
-          <Download size={14} /> Excel İndir
+          <Download size={14} /> Excel Ä°ndir
         </button>
       </div>
 
-      {/* Seçim kartı */}
+      {/* SeÃ§im kartÄ± */}
       <div
-        className="rounded-2xl p-5 border"
+        className="rounded-2xl p-4 border"
         style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-3">
           <span className="w-[3px] h-4 rounded-sm" style={{ background: '#d4b876' }} />
           <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
-            Mükellef & Dönem
+            MÃ¼kellef & DÃ¶nem
           </h3>
         </div>
 
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-12 md:col-span-6">
             <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Users size={11} className="inline mr-1" /> Mükellef
+              <Users size={11} className="inline mr-1" /> MÃ¼kellef
             </label>
             <TaxpayerSelect
               taxpayers={kdvTaxpayers}
               value={selectedMukellef}
               onChange={setSelectedMukellef}
-              placeholder="— Mükellef Seçin —"
+              placeholder="â€” MÃ¼kellef SeÃ§in â€”"
             />
             {beyanConfigs.length > 0 && (
               <p className="text-[11px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
-                {tab} kapsamında {kdvTaxpayers.length} mükellef gösteriliyor; KDV mükellefiyeti olmayanlar gizlendi.
+                {tab} kapsamÄ±nda {kdvTaxpayers.length} mÃ¼kellef gÃ¶steriliyor; KDV mÃ¼kellefiyeti olmayanlar gizlendi.
               </p>
             )}
           </div>
 
           <div className="col-span-6 md:col-span-3">
             <label className="text-[11px] font-bold uppercase tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Calendar size={11} className="inline mr-1" /> Yıl
+              <Calendar size={11} className="inline mr-1" /> YÄ±l
             </label>
             <select
               value={year}
@@ -317,7 +387,7 @@ export default function KdvBeyannamePage() {
         </div>
       </div>
 
-      {/* Tab seçici */}
+      {/* Tab seÃ§ici */}
       {selectedMukellef && (
         <div className="flex gap-2">
           {(['KDV1', 'KDV2'] as const).map((t) => {
@@ -333,14 +403,14 @@ export default function KdvBeyannamePage() {
                   border: `1px solid ${active ? 'rgba(184,160,111,0.35)' : 'rgba(255,255,255,0.08)'}`,
                 }}
               >
-                {t === 'KDV1' ? 'KDV1 · Genel Beyan' : 'KDV2 · Tevkifat Sorumlusu'}
+                {t === 'KDV1' ? 'KDV1 Â· Genel Beyan' : 'KDV2 Â· Tevkifat Sorumlusu'}
               </button>
             );
           })}
         </div>
       )}
 
-      {/* KDV1 içerik */}
+      {/* KDV1 iÃ§erik */}
       {selectedMukellef && tab === 'KDV1' && (
         <div className="space-y-4">
           {kdv1Loading && <LoadingCard />}
@@ -349,12 +419,12 @@ export default function KdvBeyannamePage() {
             <EmptyStateCard donem={donem} />
           )}
           {!kdv1Loading && !kdv1Error && kdv1 && (kdv1.satis.faturaAdet > 0 || kdv1.alis.faturaAdet > 0) && (
-            <Kdv1View data={kdv1} />
+            <Kdv1View data={kdv1} autoHazirlikAktif={autoPrepReady} />
           )}
         </div>
       )}
 
-      {/* KDV2 içerik */}
+      {/* KDV2 iÃ§erik */}
       {selectedMukellef && tab === 'KDV2' && (
         <div className="space-y-4">
           {kdv2Loading && <LoadingCard />}
@@ -365,10 +435,10 @@ export default function KdvBeyannamePage() {
               style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
             >
               <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
-                Bu dönemde tevkifatlı fatura bulunamadı
+                Bu dÃ¶nemde tevkifatlÄ± fatura bulunamadÄ±
               </p>
               <p className="text-[12px] mt-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
-                KDV2 beyanı için tevkifatlı alış faturası gerekir. Faturalar KDV Kontrol'den geçmiş olmalı (OCR tevkifat tutarını okur).
+                KDV2 beyanÄ± iÃ§in tevkifatlÄ± alÄ±ÅŸ faturasÄ± gerekir. Faturalar KDV Kontrol'den geÃ§miÅŸ olmalÄ± (OCR tevkifat tutarÄ±nÄ± okur).
               </p>
             </div>
           )}
@@ -384,9 +454,9 @@ export default function KdvBeyannamePage() {
           <div className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(212,184,118,0.1)' }}>
             <FileCheck size={24} style={{ color: '#d4b876' }} />
           </div>
-          <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>Başlamak için mükellef seçin</p>
+          <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>BaÅŸlamak iÃ§in mÃ¼kellef seÃ§in</p>
           <p className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Sistem Mihsap faturaları + Luca mizan + geçmiş beyanlardan ön hazırlık üretir
+            Sistem Mihsap faturalarÄ± + Luca mizan + geÃ§miÅŸ beyanlardan Ã¶n hazÄ±rlÄ±k Ã¼retir
           </p>
         </div>
       )}
@@ -398,7 +468,7 @@ function LoadingCard() {
   return (
     <div className="rounded-2xl py-16 flex flex-col items-center gap-3 border" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
       <Loader2 size={28} className="animate-spin" style={{ color: '#d4b876' }} />
-      <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>Hesaplanıyor...</span>
+      <span className="text-[12.5px]" style={{ color: 'rgba(250,250,249,0.5)' }}>HesaplanÄ±yor...</span>
     </div>
   );
 }
@@ -420,11 +490,11 @@ function ErrorCard({ error, label }: { error: any; label: string }) {
         <AlertCircle size={22} style={{ color: '#fca5a5', flexShrink: 0, marginTop: 2 }} />
         <div className="flex-1">
           <h3 className="text-[14.5px] font-bold mb-1" style={{ color: '#fca5a5' }}>
-            {label} verisi yüklenemedi
+            {label} verisi yÃ¼klenemedi
           </h3>
           <p className="text-[12.5px] mb-2" style={{ color: 'rgba(252,165,165,0.85)' }}>
-            {isNotFound && 'Backend endpoint bulunamadı (404). Railway deploy tamamlandı mı? API build başarısız olduysa son commit canlıya çıkmamış olabilir.'}
-            {isServerError && `Sunucu hatası (${status}). Backend log'unu kontrol et. Prisma schema eşleşmiyor olabilir veya mükellef bulunamıyor olabilir.`}
+            {isNotFound && 'Backend endpoint bulunamadÄ± (404). Railway deploy tamamlandÄ± mÄ±? API build baÅŸarÄ±sÄ±z olduysa son commit canlÄ±ya Ã§Ä±kmamÄ±ÅŸ olabilir.'}
+            {isServerError && `Sunucu hatasÄ± (${status}). Backend log'unu kontrol et. Prisma schema eÅŸleÅŸmiyor olabilir veya mÃ¼kellef bulunamÄ±yor olabilir.`}
             {!isNotFound && !isServerError && msg}
           </p>
           <code
@@ -435,10 +505,10 @@ function ErrorCard({ error, label }: { error: any; label: string }) {
               wordBreak: 'break-word',
             }}
           >
-            {status ? `HTTP ${status} · ` : ''}{msg}
+            {status ? `HTTP ${status} Â· ` : ''}{msg}
           </code>
           <p className="text-[11px] mt-2" style={{ color: 'rgba(250,250,249,0.4)' }}>
-            DevTools → Network → /kdv-beyanname/on-hazirlik/{label.toLowerCase()} isteğini açıp response'a bak.
+            DevTools â†’ Network â†’ /kdv-beyanname/on-hazirlik/{label.toLowerCase()} isteÄŸini aÃ§Ä±p response'a bak.
           </p>
         </div>
       </div>
@@ -459,11 +529,11 @@ function EmptyStateCard({ donem }: { donem: string }) {
         <Receipt size={24} style={{ color: '#d4b876' }} />
       </div>
       <p className="text-[14px] font-semibold" style={{ color: '#fafaf9' }}>
-        Dönem <span style={{ color: '#d4b876' }}>{donem}</span> için kayıtlı fatura bulunamadı
+        DÃ¶nem <span style={{ color: '#d4b876' }}>{donem}</span> iÃ§in kayÄ±tlÄ± fatura bulunamadÄ±
       </p>
       <p className="text-[12px] mt-2 max-w-md mx-auto" style={{ color: 'rgba(250,250,249,0.55)' }}>
-        Önce <b>Faturalar</b> modülünden Mihsap fatura çekilmiş olmalı. Oradan "Alış Çek" ve "Satış Çek"
-        butonlarıyla dönem verisi geldikten sonra burada KDV1 ön hazırlığı otomatik üretilir.
+        Ã–nce <b>Faturalar</b> modÃ¼lÃ¼nden Mihsap fatura Ã§ekilmiÅŸ olmalÄ±. Oradan "AlÄ±ÅŸ Ã‡ek" ve "SatÄ±ÅŸ Ã‡ek"
+        butonlarÄ±yla dÃ¶nem verisi geldikten sonra burada KDV1 Ã¶n hazÄ±rlÄ±ÄŸÄ± otomatik Ã¼retilir.
       </p>
     </div>
   );
@@ -478,10 +548,10 @@ function VeriGuveniPanel({ guven }: { guven?: VeriGuveni }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            Veri Güveni
+            Veri GÃ¼veni
           </div>
           <div className="text-[13px] mt-1" style={{ color: '#fafaf9' }}>
-            {guven.kesinFaturaAdet}/{guven.toplamFaturaAdet} fatura kesin, {guven.kontrolGerekliAdet} kayıt kontrol bekliyor
+            {guven.kesinFaturaAdet}/{guven.toplamFaturaAdet} fatura kesin, {guven.kontrolGerekliAdet} kayÄ±t kontrol bekliyor
           </div>
         </div>
         <div className="text-right">
@@ -500,7 +570,7 @@ function EksikVeriListesi({ items }: { items: KdvEksikVeri[] }) {
     return (
       <div className="rounded-2xl p-4 border flex items-center gap-2" style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.22)', color: '#86efac' }}>
         <CheckCircle2 size={16} />
-        <span className="text-[12.5px] font-semibold">Eksik veri görünmüyor; yine de Luca karşılaştırmasını kontrol et.</span>
+        <span className="text-[12.5px] font-semibold">Eksik veri gÃ¶rÃ¼nmÃ¼yor; yine de Luca karÅŸÄ±laÅŸtÄ±rmasÄ±nÄ± kontrol et.</span>
       </div>
     );
   }
@@ -515,7 +585,7 @@ function EksikVeriListesi({ items }: { items: KdvEksikVeri[] }) {
           <div key={`${item.tur}-${item.belgeNo || i}`} className="flex items-start justify-between gap-3 rounded-lg px-3 py-2" style={{ background: 'rgba(0,0,0,0.18)' }}>
             <div>
               <div className="text-[12.5px] font-semibold" style={{ color: '#fafaf9' }}>
-                {item.belgeNo ? `${item.belgeNo} · ` : ''}{item.mesaj}
+                {item.belgeNo ? `${item.belgeNo} Â· ` : ''}{item.mesaj}
               </div>
               {item.aksiyon && <div className="text-[11.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.55)' }}>{item.aksiyon}</div>}
             </div>
@@ -548,13 +618,13 @@ function BeyannameAksiyonlari({
       api.put(`/beyanname-takip/durum/${mukellefId}/${tip}/${donem}`, {
         durum: 'beklemede',
         tahakkukTutari: tahakkukTutari ?? null,
-        notlar: `${tip} ön hazırlığı üretildi; kontrol bekliyor.`,
+        notlar: `${tip} Ã¶n hazÄ±rlÄ±ÄŸÄ± Ã¼retildi; kontrol bekliyor.`,
       }),
     onSuccess: () => {
-      toast.success(`${tip} takip kaydı güncellendi`);
+      toast.success(`${tip} takip kaydÄ± gÃ¼ncellendi`);
       qc.invalidateQueries({ queryKey: ['beyanname-takip'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Takip kaydı güncellenemedi'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Takip kaydÄ± gÃ¼ncellenemedi'),
   });
 
   const verildiMut = useMutation({
@@ -563,7 +633,7 @@ function BeyannameAksiyonlari({
         api.put(`/beyanname-takip/durum/${mukellefId}/${tip}/${donem}`, {
           durum: 'onaylandi',
           tahakkukTutari: tahakkukTutari ?? null,
-          notlar: `${tip} beyanı verildi olarak işaretlendi.`,
+          notlar: `${tip} beyanÄ± verildi olarak iÅŸaretlendi.`,
         }),
         api.patch(`/taxpayers/${mukellefId}/monthly-status`, {
           year,
@@ -573,11 +643,11 @@ function BeyannameAksiyonlari({
         }),
       ]),
     onSuccess: () => {
-      toast.success(`${tip} verildi olarak işaretlendi`);
+      toast.success(`${tip} verildi olarak iÅŸaretlendi`);
       qc.invalidateQueries({ queryKey: ['beyanname-takip'] });
       qc.invalidateQueries({ queryKey: ['taxpayers-for-kdv-beyanname'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Durum güncellenemedi'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Durum gÃ¼ncellenemedi'),
   });
 
   return (
@@ -589,7 +659,7 @@ function BeyannameAksiyonlari({
         style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.28)', color: '#d4b876' }}
       >
         {hazirMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Hazır notu düş
+        HazÄ±r notu dÃ¼ÅŸ
       </button>
       <button
         onClick={() => verildiMut.mutate()}
@@ -598,7 +668,7 @@ function BeyannameAksiyonlari({
         style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.28)', color: '#86efac' }}
       >
         {verildiMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Verildi işaretle
+        Verildi iÅŸaretle
       </button>
     </div>
   );
@@ -616,24 +686,32 @@ function KdvTotalsTable({
   devreden: Kdv1['devreden'];
 }) {
   const odenecek = sonuc.odenecekKdv > 0;
-  const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
+  const resultLabel = odenecek ? 'Ã–denecek KDV' : 'Sonraki Aya Devreden';
   const resultValue = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
+  const devredenDetail =
+    devreden?.kaynak === 'manuel'
+      ? 'Elle girildi'
+      : devreden?.kaynak === 'beyan_durumu'
+        ? `Onceki ay aktarimi - ${devreden?.sonKayitDonem || '-'}`
+        : devreden?.kaynak === 'beyan_kaydi'
+          ? `Beyan kaydi - ${devreden?.sonKayitDonem || '-'}`
+          : 'Kayit yok';
   const rows = [
     {
       label: 'Hesaplanan KDV',
-      detail: `${satis.faturaAdet} satış faturası`,
+      detail: `${satis.faturaAdet} satÄ±ÅŸ faturasÄ±`,
       amount: sonuc.hesaplananKdv,
       color: '#86efac',
     },
     {
-      label: 'İndirilecek KDV',
-      detail: `${alis.faturaAdet} alış faturası`,
+      label: 'Ä°ndirilecek KDV',
+      detail: `${alis.faturaAdet} alÄ±ÅŸ faturasÄ±`,
       amount: sonuc.indirilecekKdv,
       color: '#93c5fd',
     },
     {
       label: 'Devreden KDV',
-      detail: devreden?.kaynak === 'beyan_kaydi' ? `Beyan kaydı · ${devreden?.sonKayitDonem || '—'}` : 'Kayıt yok',
+      detail: devredenDetail,
       amount: sonuc.devredenKdv,
       color: '#d8c17f',
     },
@@ -653,7 +731,7 @@ function KdvTotalsTable({
     >
       <div className="px-5 py-3 border-b flex items-center justify-between gap-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: '#d8c17f' }}>
-          KDV Toplam Özeti
+          KDV Toplam Ã–zeti
         </div>
         <div className="flex items-center gap-2" style={{ color: rows[3].color }}>
           {odenecek ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
@@ -664,7 +742,7 @@ function KdvTotalsTable({
         <thead style={{ background: 'rgba(0,0,0,0.18)' }}>
           <tr style={{ color: 'rgba(250,250,249,0.52)' }}>
             <th className="px-5 py-2.5 text-[11.5px] font-semibold">Kalem</th>
-            <th className="px-4 py-2.5 text-[11.5px] font-semibold">Açıklama</th>
+            <th className="px-4 py-2.5 text-[11.5px] font-semibold">AÃ§Ä±klama</th>
             <th className="px-5 py-2.5 text-[11.5px] font-semibold text-right">Tutar</th>
           </tr>
         </thead>
@@ -694,8 +772,87 @@ function KdvTotalsTable({
   );
 }
 
-function Kdv1View({ data }: { data: Kdv1 }) {
-  // Backend'ten gelen veride eksik alanlar olabileceğini varsay; defansif ol
+function DevredenKdvEditor({ data }: { data: Kdv1 }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState(fmt(data.sonuc?.devredenKdv || 0));
+  const devreden = data.devreden || { tutar: 0, kaynak: 'yok', sonKayitDonem: null };
+  const sonraki = data.sonuc?.sonrakiAyaDevreden || 0;
+  const kaynakLabel =
+    devreden.kaynak === 'manuel'
+      ? 'Elle girildi'
+      : devreden.kaynak === 'beyan_durumu'
+        ? `Ã–nceki ay aktarÄ±mÄ± Â· ${devreden.sonKayitDonem || 'â€”'}`
+        : devreden.kaynak === 'beyan_kaydi'
+          ? `Beyan kaydÄ± Â· ${devreden.sonKayitDonem || 'â€”'}`
+          : 'KayÄ±t yok';
+
+  React.useEffect(() => {
+    setValue(fmt(data.sonuc?.devredenKdv || 0));
+  }, [data.mukellefId, data.donem, data.sonuc?.devredenKdv]);
+
+  const saveMut = useMutation({
+    mutationFn: (payload: { tutar: number; mode: 'onceki' | 'sonraki' }) =>
+      api.put('/kdv-beyanname/devreden', {
+        mukellefId: data.mukellefId,
+        donem: data.donem,
+        ...payload,
+      }),
+    onSuccess: (_r, payload) => {
+      toast.success(payload.mode === 'sonraki' ? 'Sonraki aya devreden KDV aktarÄ±ldÄ±' : 'Devreden KDV kaydedildi');
+      qc.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', data.mukellefId, data.donem] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Devreden KDV kaydedilemedi'),
+  });
+
+  return (
+    <div
+      className="rounded-2xl border p-4 space-y-3"
+      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(212,184,118,0.18)' }}
+    >
+      <div>
+        <div className="text-[11px] font-bold uppercase tracking-[.13em]" style={{ color: '#d8c17f' }}>
+          Ã–nceki DÃ¶nemden Devreden
+        </div>
+        <div className="text-[11.5px] mt-1" style={{ color: 'rgba(250,250,249,0.5)' }}>
+          {kaynakLabel}
+        </div>
+      </div>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="w-full px-3 py-2.5 rounded-[10px] text-right outline-none tabular-nums"
+        style={{
+          background: 'rgba(0,0,0,0.22)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: FINANCIAL_TOTAL_COLOR,
+          fontFamily: REPORT_FONT,
+          fontWeight: 750,
+        }}
+      />
+      <div className="grid grid-cols-1 gap-2">
+        <button
+          onClick={() => saveMut.mutate({ tutar: parseMoneyInput(value), mode: 'onceki' })}
+          disabled={saveMut.isPending}
+          className="px-3 py-2 rounded-[9px] text-[12px] font-semibold disabled:opacity-50"
+          style={{ background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.3)', color: '#d8c17f' }}
+        >
+          Bu dÃ¶nem devredenini kaydet
+        </button>
+        <button
+          onClick={() => saveMut.mutate({ tutar: sonraki, mode: 'sonraki' })}
+          disabled={saveMut.isPending || sonraki <= 0}
+          className="px-3 py-2 rounded-[9px] text-[12px] font-semibold disabled:opacity-40"
+          style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.24)', color: '#86efac' }}
+        >
+          Sonraki aya aktar: {TRY}{fmt(sonraki)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Kdv1View({ data, autoHazirlikAktif }: { data: Kdv1; autoHazirlikAktif?: boolean }) {
+  // Backend'ten gelen veride eksik alanlar olabileceÄŸini varsay; defansif ol
   const sonuc = data.sonuc || { hesaplananKdv: 0, indirilecekKdv: 0, devredenKdv: 0, odenecekKdv: 0, sonrakiAyaDevreden: 0 };
   const satis = data.satis || { oranlar: [], toplamMatrah: 0, toplamHesaplananKdv: 0, faturaAdet: 0 };
   const alis = data.alis || { oranlar: [], toplamMatrah: 0, toplamIndirilecekKdv: 0, faturaAdet: 0, tevkifatsiz: { matrah: 0, kdv: 0, adet: 0 }, tevkifatli: { matrah: 0, kdv: 0, adet: 0 } };
@@ -703,7 +860,23 @@ function Kdv1View({ data }: { data: Kdv1 }) {
   const kaliteRapor = data.kaliteRapor || { ocrliFaturaOrani: 0, tahminFaturaOrani: 0, uyarilar: [] };
   return (
     <>
-      {/* Uyarılar */}
+      {autoHazirlikAktif && (
+        <div
+          className="rounded-2xl px-4 py-3 border flex items-center gap-2"
+          style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.2)', color: '#86efac' }}
+        >
+          <CheckCircle2 size={15} />
+          <span className="text-[12.5px] font-semibold">
+            MÃ¼kellef listesinde evrak/iÅŸlem/kontrol tamam: KDV hazÄ±rlÄ±ÄŸÄ± otomatik Ã§alÄ±ÅŸÄ±yor.
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-3">
+        <KdvTotalsTable sonuc={sonuc} satis={satis} alis={alis} devreden={data.devreden} />
+        <DevredenKdvEditor data={data} />
+      </div>
+      {/* UyarÄ±lar */}
       {(kaliteRapor.uyarilar.length > 0 || lucaKontrol.uyarilar.length > 0) && (
         <div
           className="rounded-2xl p-4 border"
@@ -723,9 +896,6 @@ function Kdv1View({ data }: { data: Kdv1 }) {
       <VeriGuveniPanel guven={data.veriGuveni} />
       <EksikVeriListesi items={data.eksikVeriler || []} />
 
-      {/* Toplam tablosu */}
-      <KdvTotalsTable sonuc={sonuc} satis={satis} alis={alis} devreden={data.devreden} />
-
       <BeyannameAksiyonlari
         mukellefId={data.mukellefId}
         donem={data.donem}
@@ -733,9 +903,9 @@ function Kdv1View({ data }: { data: Kdv1 }) {
         tahakkukTutari={sonuc.odenecekKdv}
       />
 
-      {/* Satış oran tablosu */}
+      {/* SatÄ±ÅŸ oran tablosu */}
       <OranTablosu
-        baslik="Satış · Hesaplanan KDV (Oran Bazlı)"
+        baslik="SatÄ±ÅŸ Â· Hesaplanan KDV (Oran BazlÄ±)"
         renk="#4ade80"
         oranlar={satis.oranlar}
         toplamMatrah={satis.toplamMatrah}
@@ -743,21 +913,21 @@ function Kdv1View({ data }: { data: Kdv1 }) {
         adet={satis.faturaAdet}
       />
 
-      {/* Alış oran tablosu */}
+      {/* AlÄ±ÅŸ oran tablosu */}
       <OranTablosu
-        baslik="Alış · İndirilecek KDV (Oran Bazlı)"
+        baslik="AlÄ±ÅŸ Â· Ä°ndirilecek KDV (Oran BazlÄ±)"
         renk="#60a5fa"
         oranlar={alis.oranlar}
         toplamMatrah={alis.toplamMatrah}
         toplamKdv={alis.toplamIndirilecekKdv}
         adet={alis.faturaAdet}
         altSatir={[
-          { ad: 'Tevkifatsız', v: alis.tevkifatsiz },
-          { ad: 'Tevkifatlı (KDV2\'ye)', v: alis.tevkifatli },
+          { ad: 'TevkifatsÄ±z', v: alis.tevkifatsiz },
+          { ad: 'TevkifatlÄ± (KDV2\'ye)', v: alis.tevkifatli },
         ]}
       />
 
-      {/* Luca çapraz kontrol — KDV'ye özel sync ileride aktif olacak */}
+      {/* Luca Ã§apraz kontrol â€” KDV'ye Ã¶zel sync ileride aktif olacak */}
       {lucaKontrol.mizanVar && (
         <div
           className="rounded-2xl p-5 border"
@@ -766,7 +936,7 @@ function Kdv1View({ data }: { data: Kdv1 }) {
           <div className="flex items-center gap-2 mb-3">
             <CheckCircle2 size={14} style={{ color: '#d4b876' }} />
             <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-              Luca Çapraz Kontrol
+              Luca Ã‡apraz Kontrol
             </h3>
           </div>
           <table className="w-full text-[12px]">
@@ -779,25 +949,26 @@ function Kdv1View({ data }: { data: Kdv1 }) {
               </tr>
             </thead>
             <tbody style={{ color: '#fafaf9' }}>
-              <LucaCrossRow hesap="391 · Hesaplanan KDV" mihsap={satis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
-              <LucaCrossRow hesap="191 · İndirilecek KDV" mihsap={alis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
-              <LucaCrossRow hesap="190 · Devreden KDV" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
+              <LucaCrossRow hesap="391 Â· Hesaplanan KDV" mihsap={satis.toplamHesaplananKdv} luca={lucaKontrol.luca391Bakiye} fark={lucaKontrol.fark391} />
+              <LucaCrossRow hesap="191 Â· Ä°ndirilecek KDV" mihsap={alis.toplamIndirilecekKdv} luca={lucaKontrol.luca191Bakiye} fark={lucaKontrol.fark191} />
+              <LucaCrossRow hesap="190 Â· Devreden KDV" mihsap={null} luca={lucaKontrol.luca190Bakiye} fark={null} />
             </tbody>
           </table>
         </div>
       )}
-      <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} />
+      <LucaSnapshotFetchPanel mukellefId={data.mukellefId} donem={data.donem} autoStart={autoHazirlikAktif} />
     </>
   );
 }
 
 /**
- * Luca'dan KDV mizan çekme paneli — kdv-beyanname için bağımsız.
- * Mevcut Mizan modülünden BAĞIMSIZ; KdvLucaSnapshot tablosuna yazar.
+ * Luca'dan KDV mizan Ã§ekme paneli â€” kdv-beyanname iÃ§in baÄŸÄ±msÄ±z.
+ * Mevcut Mizan modÃ¼lÃ¼nden BAÄIMSIZ; KdvLucaSnapshot tablosuna yazar.
  */
-function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; donem: string }) {
+function LucaSnapshotFetchPanel({ mukellefId, donem, autoStart }: { mukellefId: string; donem: string; autoStart?: boolean }) {
   const qc = useQueryClient();
   const [jobId, setJobId] = useState<string | null>(null);
+  const [autoStartedKey, setAutoStartedKey] = useState<string | null>(null);
 
   // Mevcut snapshot
   const { data: snap } = useQuery({
@@ -822,21 +993,28 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
         .then((r) => r.data as { jobId: string; status: string }),
     onSuccess: (d) => {
       setJobId(d.jobId);
-      toast.info('Luca job oluşturuldu — güvenlik kodu gerekirse portalda görünecek');
+      toast.info('Luca job oluÅŸturuldu â€” gÃ¼venlik kodu gerekirse portalda gÃ¶rÃ¼necek');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Job oluşturulamadı'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Job oluÅŸturulamadÄ±'),
   });
+
+  React.useEffect(() => {
+    const key = `${mukellefId}:${donem}`;
+    if (!autoStart || snap?.exists !== false || jobId || fetchMut.isPending || autoStartedKey === key) return;
+    setAutoStartedKey(key);
+    fetchMut.mutate();
+  }, [autoStart, snap?.exists, jobId, fetchMut.isPending, autoStartedKey, mukellefId, donem]);
 
   const cancelJobMut = useMutation({
     mutationFn: () => api.post(`/luca/jobs/${jobId}/cancel`).then((r) => r.data),
     onSuccess: () => {
-      toast.info('Luca çekimi iptal edildi');
+      toast.info('Luca Ã§ekimi iptal edildi');
       setJobId(null);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Luca işlemi iptal edilemedi'),
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Luca iÅŸlemi iptal edilemedi'),
   });
 
-  // Job polling — done olunca snapshot fetch
+  // Job polling â€” done olunca snapshot fetch
   const jobQuery = useQuery({
     queryKey: ['kdv-luca-job', jobId],
     queryFn: () =>
@@ -849,7 +1027,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
     const j = (jobQuery.data as any)?.job;
     if (!j) return;
     if (j.status === 'done') {
-      toast.success('Mizan çekildi');
+      toast.success('Mizan Ã§ekildi');
       qc.invalidateQueries({ queryKey: ['kdv-luca-snapshot', mukellefId, donem] });
       qc.invalidateQueries({ queryKey: ['kdv-beyanname-kdv1', mukellefId, donem] });
       qc.invalidateQueries({ queryKey: ['kdv-beyanname-kdv2', mukellefId, donem] });
@@ -876,17 +1054,17 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
           <div className="flex items-center gap-2">
             <Sparkles size={14} style={{ color: 'rgba(212,184,118,0.8)' }} />
             <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>
-              Luca Mizan Çapraz Kontrol
+              Luca Mizan Ã‡apraz Kontrol
             </h3>
           </div>
           {snap?.exists ? (
             <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              Son çekim: <strong>{new Date(snap.cekildiAt!).toLocaleString('tr-TR')}</strong> · {snap.toplamHesapAdet} hesap satırı
+              Son Ã§ekim: <strong>{new Date(snap.cekildiAt!).toLocaleString('tr-TR')}</strong> Â· {snap.toplamHesapAdet} hesap satÄ±rÄ±
             </p>
           ) : (
             <p className="text-[11.5px] mt-1.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              KDV beyanname için bağımsız Luca mizan henüz çekilmedi.
-              "Luca'dan Çek" ile mizanı al — 191 / 391 / 190 hesapları otomatik karşılaştırılır.
+              KDV beyanname iÃ§in baÄŸÄ±msÄ±z Luca mizan henÃ¼z Ã§ekilmedi.
+              "Luca'dan Ã‡ek" ile mizanÄ± al â€” 191 / 391 / 190 hesaplarÄ± otomatik karÅŸÄ±laÅŸtÄ±rÄ±lÄ±r.
             </p>
           )}
         </div>
@@ -901,7 +1079,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
           ) : (
             <Download size={14} />
           )}
-          {jobId ? 'Çekiliyor…' : "Luca'dan Çek"}
+          {jobId ? 'Ã‡ekiliyorâ€¦' : "Luca'dan Ã‡ek"}
         </button>
       </div>
 
@@ -928,7 +1106,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
         </>
       )}
 
-      {/* KDV-ilgili hesap satırları tablosu */}
+      {/* KDV-ilgili hesap satÄ±rlarÄ± tablosu */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
         <div className="rounded-md overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
           <table className="w-full min-w-[980px] text-[12px]">
@@ -936,9 +1114,9 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
               <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
                 <th className="text-left px-3 py-2 font-semibold">Kod</th>
                 <th className="text-left px-3 py-2 font-semibold">Hesap</th>
-                <th className="text-right px-3 py-2 font-semibold">Borç Hareket</th>
+                <th className="text-right px-3 py-2 font-semibold">BorÃ§ Hareket</th>
                 <th className="text-right px-3 py-2 font-semibold">Alacak Hareket</th>
-                <th className="text-right px-3 py-2 font-semibold">Borç Bakiye</th>
+                <th className="text-right px-3 py-2 font-semibold">BorÃ§ Bakiye</th>
                 <th className="text-right px-3 py-2 font-semibold">Alacak Bakiye</th>
               </tr>
             </thead>
@@ -946,7 +1124,7 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
               {snap.kdvSatirlari.map((r, i) => (
                 <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                   <td className="px-3 py-1.5 font-mono" style={{ color: '#d4b876' }}>{r.kod}</td>
-                  <td className="px-3 py-1.5">{r.ad || '—'}</td>
+                  <td className="px-3 py-1.5">{r.ad || 'â€”'}</td>
                   <td className="text-right px-3 py-1.5">
                     {r.borcToplami ? <MoneyText value={r.borcToplami} /> : ''}
                   </td>
@@ -976,13 +1154,13 @@ function LucaCrossRow({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: nu
     <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td className="py-2">{hesap}</td>
       <td className="text-right">
-        {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={mihsap} />}
+        {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>â€”</span> : <MoneyText value={mihsap} />}
       </td>
       <td className="text-right">
-        {luca == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={luca} />}
+        {luca == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>â€”</span> : <MoneyText value={luca} />}
       </td>
       <td className="text-right">
-        {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong />}
+        {fark == null ? <span style={{ color: farkColor }}>â€”</span> : <MoneyText value={fark} color={farkColor} strong />}
       </td>
     </tr>
   );
@@ -1016,7 +1194,7 @@ function OranTablosu({
         </thead>
         <tbody style={{ color: '#fafaf9' }}>
           {safeOranlar.length === 0 && (
-            <tr><td colSpan={4} className="text-center py-4" style={{ color: 'rgba(250,250,249,0.4)' }}>Bu dönem için kayıt yok</td></tr>
+            <tr><td colSpan={4} className="text-center py-4" style={{ color: 'rgba(250,250,249,0.4)' }}>Bu dÃ¶nem iÃ§in kayÄ±t yok</td></tr>
           )}
           {safeOranlar.map((o) => (
             <tr key={o.oran} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
@@ -1034,7 +1212,7 @@ function OranTablosu({
           </tr>
           {altSatir && altSatir.map((a) => (
             <tr key={a.ad} style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <td className="py-1.5 px-2 text-[11.8px] pl-5">└ {a.ad}</td>
+              <td className="py-1.5 px-2 text-[11.8px] pl-5">â”” {a.ad}</td>
               <td className="text-right px-2"><MoneyText value={a.v.matrah} color="rgba(250,250,249,0.64)" /></td>
               <td className="text-right px-2"><MoneyText value={a.v.kdv} color="rgba(250,250,249,0.64)" /></td>
               <td className="text-right px-2 tabular-nums text-[12px]" style={{ fontWeight: 600 }}>{a.v.adet}</td>
@@ -1063,7 +1241,7 @@ function SummaryCard({ label, value, color, subtitle }: { label: string; value: 
 }
 
 function Kdv2View({ data }: { data: Kdv2 }) {
-  // Defansif: backend eksik alan döndürürse patlamasın
+  // Defansif: backend eksik alan dÃ¶ndÃ¼rÃ¼rse patlamasÄ±n
   const uyarilar = data.uyarilar || [];
   const tevkifatli = data.tevkifatli || [];
   const tevkifatKodlari = data.tevkifatKodlari || [];
@@ -1097,23 +1275,23 @@ function Kdv2View({ data }: { data: Kdv2 }) {
 
       {/* Toplam kart */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <SummaryCard label="Tevkifatlı Fatura" value={toplamlar.faturaAdet} color="#c9a77c" subtitle="adet" />
-        <SummaryCard label="Toplam Matrah" value={toplamlar.toplamMatrah} color="#60a5fa" subtitle="—" />
-        <SummaryCard label="Hesaplanan KDV" value={toplamlar.toplamHesaplananKdv} color="#4ade80" subtitle="—" />
-        <SummaryCard label="Tevkifat Tutarı" value={toplamlar.toplamTevkifat} color="#fca5a5" subtitle="beyan edilecek" />
+        <SummaryCard label="TevkifatlÄ± Fatura" value={toplamlar.faturaAdet} color="#c9a77c" subtitle="adet" />
+        <SummaryCard label="Toplam Matrah" value={toplamlar.toplamMatrah} color="#60a5fa" subtitle="â€”" />
+        <SummaryCard label="Hesaplanan KDV" value={toplamlar.toplamHesaplananKdv} color="#4ade80" subtitle="â€”" />
+        <SummaryCard label="Tevkifat TutarÄ±" value={toplamlar.toplamTevkifat} color="#fca5a5" subtitle="beyan edilecek" />
       </div>
 
-      {/* Detay satır tablosu */}
+      {/* Detay satÄ±r tablosu */}
       <div
         className="rounded-2xl border overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
       >
         <div className="px-5 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Tevkifat Detayı</h3>
+          <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Tevkifat DetayÄ±</h3>
         </div>
         {tevkifatli.length === 0 ? (
           <div className="py-8 text-center text-[12.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>
-            Bu dönemde tevkifatlı alış faturası yok
+            Bu dÃ¶nemde tevkifatlÄ± alÄ±ÅŸ faturasÄ± yok
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1121,7 +1299,7 @@ function Kdv2View({ data }: { data: Kdv2 }) {
               <thead>
                 <tr style={{ color: 'rgba(250,250,249,0.5)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <th className="text-left px-4 py-2">Belge No</th>
-                  <th className="text-left px-4 py-2">Satıcı</th>
+                  <th className="text-left px-4 py-2">SatÄ±cÄ±</th>
                   <th className="text-left px-4 py-2">Tarih</th>
                   <th className="text-right px-4 py-2">Matrah</th>
                   <th className="text-right px-4 py-2">KDV</th>
@@ -1149,13 +1327,13 @@ function Kdv2View({ data }: { data: Kdv2 }) {
         )}
       </div>
 
-      {/* Oran bazlı özet */}
+      {/* Oran bazlÄ± Ã¶zet */}
       {tevkifatKodlari.length > 0 && (
         <div
           className="rounded-2xl p-5 border"
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
         >
-          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Tevkifat Oran Özeti</h3>
+          <h3 className="text-[13px] font-semibold mb-3" style={{ color: '#fafaf9' }}>Tevkifat Oran Ã–zeti</h3>
           <table className="w-full text-[12px]">
             <thead>
               <tr style={{ color: 'rgba(250,250,249,0.5)' }}>

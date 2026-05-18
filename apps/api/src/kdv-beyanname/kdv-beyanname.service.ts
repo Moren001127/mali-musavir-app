@@ -33,6 +33,9 @@ import {
  */
 
 const KDV_KONTROL_DURUMU = 'KDV Kontrol gerekli';
+const GECERLI_KDV_ORANLARI = [1, 8, 10, 18, 20];
+const DEVREDEN_MANUEL_TAG = 'KDV_DEVREDEN_MANUEL';
+const SONRAKI_DEVREDEN_TAG = 'KDV_SONRAKI_DEVREDEN';
 
 @Injectable()
 export class KdvBeyannameService {
@@ -885,6 +888,7 @@ export class KdvBeyannameService {
     let oran = Number(row.oran || 0);
     let matrah = Number(row.matrah || 0);
     let kdv = Number(row.kdv || 0);
+    if (oran > 0) oran = this.nearestKdvRate(oran);
 
     if (!kdv && oran > 0 && matrah > 0) kdv = matrah * (oran / 100);
     if (!matrah && oran > 0 && kdv > 0) matrah = kdv / (oran / 100);
@@ -903,28 +907,55 @@ export class KdvBeyannameService {
       }
     }
 
-    if (!oran && kdv > 0) oran = 20;
+    oran = this.nearestKdvRate(oran);
+    if (!oran && matrah > 0 && kdv > 0) {
+      oran = this.nearestKdvRate((kdv / matrah) * 100);
+    }
+    if (!oran && kdv > 0 && Number(invoice?.toplamTutar || 0) > kdv) {
+      const gross = Number(invoice?.toplamTutar || 0);
+      const inferredBase = gross - kdv;
+      const inferredRate = this.nearestKdvRate((kdv / inferredBase) * 100);
+      if (inferredRate) {
+        oran = inferredRate;
+        matrah = inferredBase;
+      }
+    }
+    if (!oran) return { oran: 0, matrah: 0, kdv: 0 };
     if (!matrah && oran > 0 && kdv > 0) matrah = kdv / (oran / 100);
 
+    if (matrah > 0 && kdv > 0) {
+      const expectedKdv = matrah * (oran / 100);
+      const tolerance = Math.max(0.1, Math.abs(kdv) * 0.03);
+      if (Math.abs(expectedKdv - kdv) > tolerance) {
+        const inferredRate = this.nearestKdvRate((kdv / matrah) * 100);
+        if (inferredRate && inferredRate !== oran) {
+          oran = inferredRate;
+        } else {
+          return { oran: 0, matrah: 0, kdv: 0 };
+        }
+      }
+    }
+
     return {
-      oran: Math.round(oran * 100) / 100,
+      oran,
       matrah: Math.round(matrah * 100) / 100,
       kdv: Math.round(kdv * 100) / 100,
     };
   }
 
   private nearestKdvRate(rate: number): number {
-    const validRates = [1, 8, 10, 18, 20];
-    let best = validRates[0];
+    if (!Number.isFinite(rate) || rate <= 0) return 0;
+    if (rate > 0 && rate < 1) rate = rate * 100;
+    let best = GECERLI_KDV_ORANLARI[0];
     let bestDiff = Math.abs(rate - best);
-    for (const candidate of validRates.slice(1)) {
+    for (const candidate of GECERLI_KDV_ORANLARI.slice(1)) {
       const diff = Math.abs(rate - candidate);
       if (diff < bestDiff) {
         best = candidate;
         bestDiff = diff;
       }
     }
-    return bestDiff <= 2 ? best : Math.round(rate * 100) / 100;
+    return bestDiff <= 1.25 ? best : 0;
   }
 
   private kdvRowsFromControl(record: any, image: any): Array<{ oran: number; matrah: number; kdv: number }> {
@@ -1023,10 +1054,12 @@ export class KdvBeyannameService {
       if (!matrah && kdv) matrah = kdv / (oran / 100);
       if (!kdv && matrah) kdv = matrah * (oran / 100);
       if (!matrah && !kdv) return;
-      const key = `${oran}:${Math.round(matrah * 100)}:${Math.round(kdv * 100)}`;
+      const cleaned = this.completeControlRow({ oran, matrah, kdv }, null);
+      if (!cleaned.oran || !cleaned.matrah || !cleaned.kdv) return;
+      const key = `${cleaned.oran}:${Math.round(cleaned.matrah * 100)}:${Math.round(cleaned.kdv * 100)}`;
       if (seen.has(key)) return;
       seen.add(key);
-      rows.push({ oran, matrah, kdv });
+      rows.push(cleaned);
     };
 
     const visit = (node: any, depth = 0) => {
@@ -1112,6 +1145,61 @@ export class KdvBeyannameService {
     return best[1];
   }
 
+  async setDevredenKdv(params: {
+    tenantId: string;
+    mukellefId: string;
+    donem: string;
+    tutar: number;
+    mode?: 'onceki' | 'sonraki';
+  }) {
+    if (!/^\d{4}-\d{2}$/.test(params.donem)) {
+      throw new BadRequestException('Dönem yyyy-mm formatında olmalı.');
+    }
+    await this.getMukellef(params.tenantId, params.mukellefId);
+    const mode = params.mode === 'sonraki' ? 'sonraki' : 'onceki';
+    const tutar = Math.max(0, Math.round(Number(params.tutar || 0) * 100) / 100);
+    const tag = mode === 'sonraki' ? SONRAKI_DEVREDEN_TAG : DEVREDEN_MANUEL_TAG;
+    const existing = await (this.prisma as any).beyanDurumu.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId: params.tenantId,
+          taxpayerId: params.mukellefId,
+          beyanTipi: 'KDV1',
+          donem: params.donem,
+        },
+      },
+      select: { notlar: true },
+    });
+    const notlar = this.setTaggedAmount(existing?.notlar, tag, tutar);
+    const kayit = await (this.prisma as any).beyanDurumu.upsert({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId: params.tenantId,
+          taxpayerId: params.mukellefId,
+          beyanTipi: 'KDV1',
+          donem: params.donem,
+        },
+      },
+      create: {
+        tenantId: params.tenantId,
+        taxpayerId: params.mukellefId,
+        beyanTipi: 'KDV1',
+        donem: params.donem,
+        durum: 'beklemede',
+        notlar,
+      },
+      update: { notlar },
+    });
+    return {
+      ok: true,
+      mode,
+      donem: params.donem,
+      sonrakiDonem: mode === 'sonraki' ? this.sonrakiDonem(params.donem) : null,
+      tutar,
+      kayitId: kayit.id,
+    };
+  }
+
   /**
    * Geçen dönem sonu devreden KDV tutarını bul.
    * SADECE BeyanKaydi tablosundan — Mizan tablosuna dokunmaz
@@ -1123,6 +1211,46 @@ export class KdvBeyannameService {
     donem: string,
   ) {
     const onceki = this.oncekiDonem(donem);
+
+    const mevcutDurum = await (this.prisma as any).beyanDurumu.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: mukellefId,
+          beyanTipi: 'KDV1',
+          donem,
+        },
+      },
+      select: { notlar: true },
+    });
+    const manuel = this.readTaggedAmount(mevcutDurum?.notlar, DEVREDEN_MANUEL_TAG);
+    if (manuel !== null) {
+      return {
+        tutar: manuel,
+        kaynak: 'manuel' as const,
+        sonKayitDonem: donem,
+      };
+    }
+
+    const oncekiDurum = await (this.prisma as any).beyanDurumu.findUnique({
+      where: {
+        tenantId_taxpayerId_beyanTipi_donem: {
+          tenantId,
+          taxpayerId: mukellefId,
+          beyanTipi: 'KDV1',
+          donem: onceki,
+        },
+      },
+      select: { notlar: true },
+    });
+    const oncekidenAktarilan = this.readTaggedAmount(oncekiDurum?.notlar, SONRAKI_DEVREDEN_TAG);
+    if (oncekidenAktarilan !== null) {
+      return {
+        tutar: oncekidenAktarilan,
+        kaynak: 'beyan_durumu' as const,
+        sonKayitDonem: onceki,
+      };
+    }
 
     const beyan = await (this.prisma as any).beyanKaydi.findFirst({
       where: {
@@ -1517,5 +1645,32 @@ export class KdvBeyannameService {
     const ay = parseInt(m[2], 10);
     if (ay === 1) return `${yil - 1}-12`;
     return `${yil}-${String(ay - 1).padStart(2, '0')}`;
+  }
+
+  private sonrakiDonem(donem: string): string {
+    const m = /^(\d{4})-(\d{2})$/.exec(donem);
+    if (!m) return donem;
+    const yil = parseInt(m[1], 10);
+    const ay = parseInt(m[2], 10);
+    if (ay === 12) return `${yil + 1}-01`;
+    return `${yil}-${String(ay + 1).padStart(2, '0')}`;
+  }
+
+  private readTaggedAmount(notlar: any, tag: string): number | null {
+    if (!notlar) return null;
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\[${escaped}=([^\\]]+)\\]`);
+    const m = re.exec(String(notlar));
+    if (!m) return null;
+    const n = this.parseTrAmount(m[1]);
+    return Number.isFinite(n) ? Math.max(0, Math.round(n * 100) / 100) : null;
+  }
+
+  private setTaggedAmount(notlar: any, tag: string, amount: number): string {
+    const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`\\s*\\[${escaped}=[^\\]]+\\]\\s*`, 'g');
+    const base = String(notlar || '').replace(re, '\n').trim();
+    const line = `[${tag}=${Math.max(0, amount).toFixed(2)}]`;
+    return base ? `${base}\n${line}` : line;
   }
 }

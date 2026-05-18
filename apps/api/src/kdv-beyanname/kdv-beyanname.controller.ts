@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Param,
   Query,
@@ -64,6 +65,25 @@ export class KdvBeyannameController {
       throw new BadRequestException('mukellefId ve donem gerekli');
     }
     return this.service.getLucaSnapshot(req.user.tenantId, mukellefId, donem);
+  }
+
+  /** Devreden KDV elle tanımlama ve sonraki aya aktarım */
+  @Put('devreden')
+  @UseGuards(AuthGuard('jwt'))
+  async setDevreden(
+    @Req() req: any,
+    @Body() body: { mukellefId: string; donem: string; tutar: number; mode?: 'onceki' | 'sonraki' },
+  ) {
+    if (!body?.mukellefId || !body?.donem) {
+      throw new BadRequestException('mukellefId ve donem gerekli');
+    }
+    return this.service.setDevredenKdv({
+      tenantId: req.user.tenantId,
+      mukellefId: body.mukellefId,
+      donem: body.donem,
+      tutar: Number(body.tutar || 0),
+      mode: body.mode || 'onceki',
+    });
   }
 
   /** Belirli bir mükellef + dönem için KDV1 ön hazırlık raporu */
