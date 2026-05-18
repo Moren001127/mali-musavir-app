@@ -58,36 +58,101 @@ function taxpayerName(t: Taxpayer) {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isimsiz)';
 }
 
+type RecorderOptions = {
+  autoStopOnSilence?: boolean;
+  silenceMs?: number;
+  maxDurationMs?: number;
+  onAutoStop?: (blob: Blob) => void;
+};
+
 function useRecorder() {
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const stopResolversRef = useRef<Array<(blob: Blob | null) => void>>([]);
+  const cleanupAudioRef = useRef<() => void>(() => {});
+  const autoStopRef = useRef(false);
+  const optionsRef = useRef<RecorderOptions>({});
 
-  async function start(): Promise<void> {
+  async function start(options: RecorderOptions = {}): Promise<void> {
     try {
+      if (recorderRef.current?.state === 'recording') return;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
+      optionsRef.current = options;
+      autoStopRef.current = false;
+      cleanupAudioRef.current = () => {};
       chunksRef.current = [];
       rec.ondataavailable = (event) => chunksRef.current.push(event.data);
+      rec.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        cleanupAudioRef.current();
+        stream.getTracks().forEach((track) => track.stop());
+        recorderRef.current = null;
+        setMediaRecorder(null);
+        setRecording(false);
+        const resolvers = stopResolversRef.current.splice(0);
+        resolvers.forEach((resolve) => resolve(blob));
+        if (autoStopRef.current && blob.size > 1000) {
+          optionsRef.current.onAutoStop?.(blob);
+        }
+        autoStopRef.current = false;
+      };
       rec.start();
+      recorderRef.current = rec;
       setMediaRecorder(rec);
       setRecording(true);
+
+      if (options.autoStopOnSilence) {
+        const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextCtor) return;
+        const audioContext = new AudioContextCtor();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        const startedAt = Date.now();
+        const silenceMs = options.silenceMs || 1300;
+        const maxDurationMs = options.maxDurationMs || 45_000;
+        let heardVoice = false;
+        let lastVoiceAt = Date.now();
+        const interval = window.setInterval(() => {
+          analyser.getByteTimeDomainData(data);
+          let peak = 0;
+          for (let index = 0; index < data.length; index++) {
+            peak = Math.max(peak, Math.abs(data[index] - 128));
+          }
+          const now = Date.now();
+          if (peak > 8) {
+            heardVoice = true;
+            lastVoiceAt = now;
+          }
+          const silentEnough = heardVoice && now - lastVoiceAt > silenceMs && now - startedAt > 900;
+          const tooLong = now - startedAt > maxDurationMs;
+          if ((silentEnough || tooLong) && recorderRef.current?.state === 'recording') {
+            stop(true).catch(() => {});
+          }
+        }, 180);
+        cleanupAudioRef.current = () => {
+          window.clearInterval(interval);
+          audioContext.close().catch(() => {});
+        };
+      }
     } catch {
       toast.error('Mikrofon izni reddedildi veya kullanılamıyor');
     }
   }
 
-  async function stop(): Promise<Blob | null> {
+  async function stop(autoStop = false): Promise<Blob | null> {
     return new Promise((resolve) => {
-      if (!mediaRecorder) return resolve(null);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
-        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-        setMediaRecorder(null);
-        setRecording(false);
-        resolve(blob);
-      };
-      mediaRecorder.stop();
+      const rec = recorderRef.current || mediaRecorder;
+      if (!rec || rec.state === 'inactive') return resolve(null);
+      autoStopRef.current = autoStop;
+      stopResolversRef.current.push(resolve);
+      cleanupAudioRef.current();
+      rec.stop();
     });
   }
 
@@ -97,14 +162,20 @@ function useRecorder() {
 export default function MorenAIPage() {
   const qc = useQueryClient();
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [isDraftingNewChat, setIsDraftingNewChat] = useState(false);
   const [input, setInput] = useState('');
   const [selectedTaxpayerId, setSelectedTaxpayerId] = useState('');
   const [taxpayerPickerOpen, setTaxpayerPickerOpen] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const [memoryText, setMemoryText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const voiceModeRef = useRef(false);
+  const voiceSendRef = useRef(false);
+  const restartVoiceRef = useRef<() => void>(() => {});
+  const handleVoiceBlobRef = useRef<(blob: Blob | null) => void>(() => {});
   const recorder = useRecorder();
 
   const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
@@ -126,6 +197,12 @@ export default function MorenAIPage() {
     queryFn: () => listConversations(30),
   });
 
+  useEffect(() => {
+    if (!activeConversationId && !isDraftingNewChat && conversations.length > 0) {
+      setActiveConversationId(conversations[0].id);
+    }
+  }, [activeConversationId, conversations, isDraftingNewChat]);
+
   const { data: activeConv } = useQuery({
     queryKey: ['ai-conversation', activeConversationId],
     queryFn: () => (activeConversationId ? getConversation(activeConversationId) : Promise.resolve(null)),
@@ -135,6 +212,15 @@ export default function MorenAIPage() {
 
   const messages: Message[] = activeConv?.messages || [];
   const selectedTaxpayer = taxpayers.find((item) => item.id === selectedTaxpayerId);
+
+  useEffect(() => {
+    voiceModeRef.current = voiceMode;
+    if (!voiceMode && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setVoiceStatus('idle');
+    }
+  }, [voiceMode]);
 
   const sendMutation = useMutation({
     mutationFn: async ({ message, voiceMode: vm }: { message: string; voiceMode?: boolean }) =>
@@ -146,23 +232,44 @@ export default function MorenAIPage() {
       }),
     onSuccess: async (res) => {
       if (!activeConversationId) setActiveConversationId(res.conversationId);
+      setIsDraftingNewChat(false);
       await qc.invalidateQueries({ queryKey: ['ai-conversation', res.conversationId] });
       await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
 
-      if (ttsEnabled && res.assistantMessage) {
+      const shouldSpeak = (ttsEnabled || voiceModeRef.current || voiceSendRef.current) && !!res.assistantMessage;
+      if (shouldSpeak && res.assistantMessage) {
         try {
-          const blob = await synthesize(res.assistantMessage);
+          setVoiceStatus('speaking');
+          const blob = await synthesize(
+            res.assistantMessage,
+            'nova',
+            'Doğal, sıcak, profesyonel bir Türkçe kadın sesiyle konuş. Cümleleri kısa tut, acele etme, robotik okuma yapma.',
+          );
           const url = URL.createObjectURL(blob);
           if (audioRef.current) {
+            audioRef.current.pause();
             audioRef.current.src = url;
-            audioRef.current.play().catch(() => {});
+            audioRef.current.onended = () => {
+              URL.revokeObjectURL(url);
+              setVoiceStatus('idle');
+              if (voiceModeRef.current) {
+                window.setTimeout(() => restartVoiceRef.current(), 250);
+              }
+            };
+            await audioRef.current.play();
           }
         } catch (error: any) {
+          setVoiceStatus('idle');
           toast.error('Sesli okuma başarısız: ' + (error?.response?.data?.message || error?.message));
         }
+      } else {
+        setVoiceStatus('idle');
       }
+      voiceSendRef.current = false;
     },
     onError: (error: any) => {
+      setVoiceStatus('idle');
+      voiceSendRef.current = false;
       toast.error('Mesaj gönderilemedi: ' + (error?.response?.data?.message || error?.message));
     },
   });
@@ -171,6 +278,7 @@ export default function MorenAIPage() {
     mutationFn: deleteConversation,
     onSuccess: () => {
       setActiveConversationId(null);
+      setIsDraftingNewChat(false);
       qc.invalidateQueries({ queryKey: ['ai-conversations'] });
     },
   });
@@ -201,44 +309,105 @@ export default function MorenAIPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, sendMutation.isPending]);
 
+  const handleVoiceBlob = async (blob: Blob | null) => {
+    if (!blob || blob.size < 1000) {
+      setVoiceStatus('idle');
+      if (voiceModeRef.current) window.setTimeout(() => restartVoiceRef.current(), 450);
+      return;
+    }
+    try {
+      setVoiceStatus('transcribing');
+      toast.loading('Ses metne çevriliyor...', { id: 'stt' });
+      const { text } = await transcribe(blob, blob.type || 'audio/webm');
+      toast.dismiss('stt');
+      if (!text) {
+        setVoiceStatus('idle');
+        toast.error('Ses anlaşılmadı, tekrar deneyin.');
+        if (voiceModeRef.current) window.setTimeout(() => restartVoiceRef.current(), 450);
+        return;
+      }
+      setInput('');
+      setVoiceStatus('thinking');
+      voiceSendRef.current = true;
+      sendMutation.mutate({ message: text, voiceMode: true });
+    } catch (error: any) {
+      toast.dismiss('stt');
+      setVoiceStatus('idle');
+      voiceSendRef.current = false;
+      toast.error('STT hatası: ' + (error?.response?.data?.message || error?.message));
+    }
+  };
+
+  handleVoiceBlobRef.current = handleVoiceBlob;
+
+  const startVoiceListening = async () => {
+    if (recorder.recording || sendMutation.isPending) return;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setVoiceStatus('listening');
+    await recorder.start({
+      autoStopOnSilence: true,
+      silenceMs: 1250,
+      maxDurationMs: 45_000,
+      onAutoStop: (blob) => handleVoiceBlobRef.current(blob),
+    });
+  };
+
+  restartVoiceRef.current = () => {
+    if (!voiceModeRef.current || sendMutation.isPending || recorder.recording) return;
+    startVoiceListening().catch(() => {});
+  };
+
+  const handleVoiceModeToggle = async () => {
+    const next = !voiceModeRef.current;
+    setVoiceMode(next);
+    if (next) {
+      setTtsEnabled(true);
+      voiceModeRef.current = true;
+      window.setTimeout(() => restartVoiceRef.current(), 100);
+      return;
+    }
+    voiceModeRef.current = false;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    if (recorder.recording) await recorder.stop();
+    setVoiceStatus('idle');
+  };
+
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
     setInput('');
+    voiceSendRef.current = false;
     sendMutation.mutate({ message: text, voiceMode });
   };
 
   const askQuick = (text: string) => {
     setInput('');
+    voiceSendRef.current = false;
     sendMutation.mutate({ message: text, voiceMode });
   };
 
   const handleNewChat = () => {
     setActiveConversationId(null);
+    setIsDraftingNewChat(true);
     setInput('');
   };
 
   const handleMic = async () => {
     if (recorder.recording) {
       const blob = await recorder.stop();
-      if (!blob) return;
-      try {
-        toast.loading('Ses metne çevriliyor...', { id: 'stt' });
-        const { text } = await transcribe(blob, blob.type || 'audio/webm');
-        toast.dismiss('stt');
-        if (!text) {
-          toast.error('Ses anlaşılmadı, tekrar deneyin.');
-          return;
-        }
-        setInput('');
-        sendMutation.mutate({ message: text, voiceMode: true });
-      } catch (error: any) {
-        toast.dismiss('stt');
-        toast.error('STT hatası: ' + (error?.response?.data?.message || error?.message));
-      }
+      await handleVoiceBlob(blob);
       return;
     }
-    recorder.start();
+    setVoiceMode(true);
+    setTtsEnabled(true);
+    voiceModeRef.current = true;
+    await startVoiceListening();
   };
 
   const handleRename = (conv: ConversationSummary) => {
@@ -249,6 +418,24 @@ export default function MorenAIPage() {
   };
 
   const totalCost = useMemo(() => messages.reduce((sum, message) => sum + (message.costUsd || 0), 0), [messages]);
+  const voiceLabel = recorder.recording
+    ? 'Dinliyor'
+    : voiceStatus === 'transcribing'
+      ? 'Yazıyor'
+      : voiceStatus === 'thinking'
+        ? 'Düşünüyor'
+        : voiceStatus === 'speaking'
+          ? 'Konuşuyor'
+          : voiceMode
+            ? 'Ses açık'
+            : 'Ses modu';
+  const inputPlaceholder = recorder.recording
+    ? 'Dinliyorum...'
+    : voiceStatus === 'speaking'
+      ? 'MOREN AI konuşuyor...'
+      : voiceStatus === 'transcribing'
+        ? 'Ses yazıya çevriliyor...'
+        : 'Mali tablo, mükellef veya ofis akışı sor...';
 
   return (
     <div className="flex h-full min-h-0 max-w-none gap-3 overflow-hidden">
@@ -364,6 +551,7 @@ export default function MorenAIPage() {
                     key={conversation.id}
                     onClick={() => {
                       setActiveConversationId(conversation.id);
+                      setIsDraftingNewChat(false);
                       setInput('');
                     }}
                     className="group relative cursor-pointer rounded-lg border px-3 py-2.5 transition"
@@ -431,12 +619,12 @@ export default function MorenAIPage() {
           )}
           <button
             type="button"
-            onClick={() => setVoiceMode((value) => !value)}
+            onClick={handleVoiceModeToggle}
             className="hidden h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition hover:bg-white/[0.06] md:flex"
             style={{ borderColor: voiceMode ? LINE_GOLD : LINE, color: voiceMode ? GOLD : MUTED }}
           >
-            <Mic size={14} />
-            Ses modu
+            {recorder.recording ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
+            {voiceLabel}
           </button>
           <button
             type="button"
@@ -483,7 +671,7 @@ export default function MorenAIPage() {
                   handleSend();
                 }
               }}
-              placeholder={recorder.recording ? 'Dinleniyor...' : 'Mali tablo, mükellef veya ofis akışı sor...'}
+              placeholder={inputPlaceholder}
               disabled={sendMutation.isPending || recorder.recording}
               rows={1}
               className="moren-ai-input min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"

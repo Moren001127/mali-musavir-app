@@ -2,6 +2,23 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 
+const OFFICIAL_SOURCE_DOMAINS = [
+  'gib.gov.tr',
+  'sgk.gov.tr',
+  'resmigazete.gov.tr',
+  'mevzuat.gov.tr',
+  'bedesten.adalet.gov.tr',
+  'turkiye.gov.tr',
+  'calisma.gov.tr',
+  'ticaret.gov.tr',
+  'kgk.gov.tr',
+  'kvkk.gov.tr',
+  'tcmb.gov.tr',
+  'spk.gov.tr',
+  'bddk.org.tr',
+  'rekabet.gov.tr',
+];
+
 /**
  * Moren AI tool'larının gerçek Prisma sorgularını çalıştıran servis.
  * Her tool için bir metod. Tenant izolasyonu MUTLAKA uygulanır.
@@ -55,6 +72,8 @@ export class ToolExecutorService {
         case 'create_confirmed_agent_command': return this.createAgentCommand(input, ctx);
         case 'get_collection_risk_summary': return this.getCollectionRiskSummary(input, ctx);
         case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
+        case 'get_portal_capability_map': return this.getPortalCapabilityMap();
+        case 'research_official_sources': return this.researchOfficialSources(input, ctx);
         case 'search_ai_memory':      return this.searchAiMemory(input, ctx);
         case 'save_ai_memory':        return this.saveAiMemory(input, ctx);
         case 'create_agent_command':  return this.createAgentCommand(input, ctx);
@@ -104,6 +123,84 @@ export class ToolExecutorService {
     if (score >= 80) return 'HAZIR';
     if (score >= 55) return 'EKSIK';
     return 'RISKLI';
+  }
+
+  private decodeHtml(input: string) {
+    return String(input || '')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private isAllowedOfficialUrl(rawUrl: string, allowedDomains = OFFICIAL_SOURCE_DOMAINS) {
+    try {
+      const url = new URL(rawUrl);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      return allowedDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    } catch {
+      return false;
+    }
+  }
+
+  private normalizeOfficialDomains(domains?: any): string[] {
+    const raw = Array.isArray(domains) ? domains : [];
+    const clean = raw
+      .map((item) => String(item || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].trim())
+      .filter(Boolean)
+      .filter((domain) => OFFICIAL_SOURCE_DOMAINS.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`)));
+    return clean.length ? [...new Set(clean)] : OFFICIAL_SOURCE_DOMAINS;
+  }
+
+  private async fetchText(url: string, timeoutMs = 12000): Promise<string> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'user-agent': 'Mozilla/5.0 MOREN-AI/1.0',
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+        },
+      });
+      if (!res.ok) return '';
+      return await res.text();
+    } catch {
+      return '';
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private parseBingResults(html: string, allowedDomains: string[], limit: number) {
+    const results: Array<{ title: string; url: string; snippet: string; domain: string }> = [];
+    const blocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/gi) || [];
+    for (const block of blocks) {
+      const link = block.match(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      if (!link) continue;
+      const url = this.decodeHtml(link[1]);
+      if (!this.isAllowedOfficialUrl(url, allowedDomains)) continue;
+      const snippetMatch = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+      let domain = '';
+      try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+      results.push({
+        title: this.decodeHtml(link[2]),
+        url,
+        domain,
+        snippet: snippetMatch ? this.decodeHtml(snippetMatch[1]) : '',
+      });
+      if (results.length >= limit) break;
+    }
+    return results;
+  }
+
+  private readerUrl(rawUrl: string) {
+    return `https://r.jina.ai/http://${rawUrl.replace(/^https?:\/\//, '')}`;
   }
 
   // ------------------------------------------------------------
@@ -1516,6 +1613,117 @@ export class ToolExecutorService {
       enSorunlu: base.riskliMukellefler.slice(0, limit),
       ozet: base.ozet,
     };
+  }
+
+  private getPortalCapabilityMap() {
+    const actionAgents = {
+      mihsap: ['isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme'],
+      luca: ['fetch_earsiv', 'fetch_efatura', 'fetch_mizan', 'prepare_beyanname'],
+      kdv: ['kontrol', 'prepare_kdv1', 'prepare_kdv2'],
+      sgk: ['prepare_muhsgk'],
+      tebligat: ['scan'],
+      tahsilat: ['risk_scan', 'whatsapp_preview', 'payment_promise_followup'],
+      'banka-ekstre': ['scan_missing', 'create_tasks'],
+      edefter: ['scan_berat'],
+      whatsapp: ['owner_alert', 'portal_message_preview', 'portal_message_send'],
+    };
+    return {
+      readAndAnalyze: [
+        { module: 'Mükellefler', tools: ['list_taxpayers', 'get_taxpayer', 'list_taxpayers_monthly_status'], scope: 'kimlik, evrak, aylık durum, aktif/pasif durum' },
+        { module: 'Mizan', tools: ['list_mizan_periods', 'get_mizan'], scope: 'hesap kodu, bakiye, TDHP/anomali, dönem karşılaştırma' },
+        { module: 'Gelir Tablosu', tools: ['get_gelir_tablosu'], scope: 'karlılık, satış, maliyet, gider analizi' },
+        { module: 'Bilanço', tools: ['get_bilanco', 'calculate_financial_ratios'], scope: 'likidite, borçluluk, özkaynak, TTK 376 riski' },
+        { module: 'KDV', tools: ['get_kdv_summary', 'get_beyanname_readiness_summary'], scope: 'KDV kontrol, beyan hazırlığı, eksik evrak ve fatura uyuşmazlığı' },
+        { module: 'Faturalar', tools: ['list_invoices', 'get_firma_hafizasi'], scope: 'Mihsap/e-belge, karşı firma kod hafızası, alış/satış analizi' },
+        { module: 'Beyannameler', tools: ['list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet'], scope: 'beyan tipi, onay no, tahakkuk, dönemsel takip' },
+        { module: 'Banka/Cari/Tahsilat', tools: ['get_collection_risk_summary', 'get_operation_briefing'], scope: 'açık bakiye, tahsilat riski, banka aksiyonu' },
+        { module: 'Görevler ve Agentlar', tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'list_pending_decisions'], scope: 'agent durumu, hata, onay bekleyen karar, iş yükü' },
+        { module: 'Evrak ve Galeri', tools: ['list_documents', 'list_araclar_hgs'], scope: 'belge, sözleşme, araç/HGS ihlal durumu' },
+        { module: 'Hafıza', tools: ['search_ai_memory', 'save_ai_memory'], scope: 'ofis tercihi, mükellef notu, araştırma kaydı, tekrar öğrenme' },
+        { module: 'Mevzuat Araştırma', tools: ['research_official_sources'], scope: 'GİB, SGK, Resmi Gazete, mevzuat.gov.tr ve resmi kurum kaynakları' },
+      ],
+      commandAndAction: actionAgents,
+      executionRule: 'Okuma ve analiz doğrudan yapılır. Portalda işlem başlatan komutlar önce preview_agent_command ile özetlenir, kullanıcı ONAYLIYORUM derse create_confirmed_agent_command çalışır.',
+      currentLimits: [
+        'Agent tarafında olmayan yeni bir işlem doğrudan yapılmaz; önce uygun agent/action olarak komut kuyruğuna alınır.',
+        'Resmi kaynak araştırması internet erişimi ve resmi sitelerin erişilebilirliğine bağlıdır.',
+        'Kalıcı öğrenme yalnızca ofis/mükellef/portal hafızasına yazılan notlarla yapılır; gereksiz kişisel veri saklanmaz.',
+      ],
+    };
+  }
+
+  private async researchOfficialSources(input: any, ctx: { tenantId: string; userId?: string | null }) {
+    const query = String(input?.query || '').trim();
+    if (!query) return { error: 'query zorunlu' };
+
+    const limit = Math.max(1, Math.min(Number(input?.limit || 4), 6));
+    const domains = this.normalizeOfficialDomains(input?.domains);
+    const domainFilter = domains.map((domain) => `site:${domain}`).join(' OR ');
+    const searchQuery = `${query} ${domainFilter}`;
+    const bingUrl = `https://www.bing.com/search?setlang=tr&q=${encodeURIComponent(searchQuery)}`;
+    const html = await this.fetchText(bingUrl, 12000);
+    const searchResults = this.parseBingResults(html, domains, limit);
+
+    const sources = await Promise.all(
+      searchResults.map(async (result) => {
+        const markdown = await this.fetchText(this.readerUrl(result.url), 14000);
+        const cleaned = markdown
+          .replace(/\n{3,}/g, '\n\n')
+          .replace(/[ \t]{2,}/g, ' ')
+          .trim();
+        return {
+          ...result,
+          excerpt: cleaned.slice(0, 2400),
+          fetched: cleaned.length > 0,
+        };
+      }),
+    );
+
+    const payload = {
+      query,
+      searchedAt: new Date().toISOString(),
+      officialOnly: true,
+      searchedDomains: domains,
+      count: sources.length,
+      sources,
+      note: sources.length
+        ? 'Cevapta bu resmi kaynaklara dayan; kaynakta açıkça görünmeyen tutarı kesinmiş gibi yazma.'
+        : 'Resmi kaynak sonucu bulunamadı. Kullanıcıya uygulanacak yolu söyle, güncel tutar/süre için kaynak teyidi gerektiğini kısa belirt.',
+    };
+
+    if (sources.length > 0 && input?.remember !== false) {
+      try {
+        const title = `Mevzuat araştırması: ${query.slice(0, 100)}`;
+        const content = sources
+          .slice(0, 4)
+          .map((source, index) => `${index + 1}. ${source.title}\n${source.url}\n${source.snippet || source.excerpt.slice(0, 500)}`)
+          .join('\n\n');
+        const existing = await (this.prisma as any).aiMemory.findFirst({
+          where: { tenantId: ctx.tenantId, scope: 'portal', title, isActive: true },
+        }).catch(() => null);
+        if (existing) {
+          await (this.prisma as any).aiMemory.update({
+            where: { id: existing.id },
+            data: { content, importance: 3, tags: ['mevzuat', 'resmi-kaynak', 'auto-research'] },
+          }).catch(() => null);
+        } else {
+          await (this.prisma as any).aiMemory.create({
+            data: {
+              tenantId: ctx.tenantId,
+              scope: 'portal',
+              title,
+              content,
+              source: 'official-research',
+              importance: 3,
+              tags: ['mevzuat', 'resmi-kaynak', 'auto-research'],
+              createdBy: ctx.userId || null,
+            },
+          }).catch(() => null);
+        }
+      } catch {}
+    }
+
+    return payload;
   }
 
   private async searchAiMemory(input: any, ctx: { tenantId: string }) {

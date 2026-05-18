@@ -72,7 +72,7 @@ export class VoiceService {
    */
   async synthesize(
     text: string,
-    voice = 'coral',
+    voice = 'nova',
     instructions?: string,
   ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
     const key = this.getOpenAiKey();

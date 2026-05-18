@@ -32,6 +32,7 @@ const TAX_DEADLINE_RULES: Array<{ day: number | 'last'; tip: string; months?: nu
 // hard-code edilmez. Bu katman en azından hafta sonu ve sabit tatil kaydırmasını sağlar.
 const TR_FIXED_HOLIDAYS = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
+const MAX_HISTORY_MESSAGES = 18;            // Maliyet kontrolü: son mesaj penceresi + kalıcı hafıza
 
 function cleanFirstName(raw?: string | null): string | undefined {
   const cleaned = String(raw || '')
@@ -289,6 +290,11 @@ export class MorenAiService {
     const taxpayerContext = body.taxpayerId
       ? await this.buildTaxpayerContext(body.taxpayerId, tenantId)
       : '';
+    const memoryContext = await this.buildMemoryContext(
+      tenantId,
+      userMessage,
+      body.taxpayerId || conversation.taxpayerId || undefined,
+    );
 
     const voiceHint = body.voiceMode
       ? '\n\n[SESLİ MOD AKTİF — kısa cümleler, tablo yok, maksimum 200 kelime]'
@@ -303,6 +309,7 @@ export class MorenAiService {
     let stopReason = '';
 
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
+      const dynamicSystemContext = [taxpayerContext, memoryContext, voiceHint].filter(Boolean).join('\n\n');
       const payload: any = {
         model,
         // Maliyet optimizasyonu: 4096 -> 1500. Normal sohbet cevabi 500-1000 token.
@@ -310,8 +317,8 @@ export class MorenAiService {
         // icin de zor okunur. Tool cevabi gerekiyorsa model daha cok yazar degilse kisa.
         max_tokens: 1500,
         system: [
-          { type: 'text', text: systemPrompt + (taxpayerContext ? '\n\n' + taxpayerContext : '') + voiceHint,
-            cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+          ...(dynamicSystemContext ? [{ type: 'text', text: dynamicSystemContext }] : []),
         ],
         tools: MOREN_AI_TOOLS,
         messages: currentMessages,
@@ -432,6 +439,14 @@ export class MorenAiService {
       });
     } catch {}
 
+    await this.autoLearnFromTurn({
+      tenantId,
+      userId,
+      taxpayerId: body.taxpayerId || conversation.taxpayerId || undefined,
+      userMessage,
+      assistantMessage: finalText || '',
+    });
+
     return {
       conversationId: conversation.id,
       assistantMessage: finalText || '(Cevap boş)',
@@ -461,7 +476,9 @@ export class MorenAiService {
     // Her mesaj için Anthropic format'ı:
     //   { role, content }  — content ya string ya block dizisi
     const msgs: any[] = [];
-    for (const m of history) {
+    const windowed = history.slice(-MAX_HISTORY_MESSAGES);
+    while (windowed.length && windowed[0]?.role === 'assistant') windowed.shift();
+    for (const m of windowed) {
       if (m.role === 'user' || m.role === 'assistant') {
         msgs.push({ role: m.role, content: m.content });
       }
@@ -482,6 +499,126 @@ export class MorenAiService {
     if (!t) return '';
     const name = t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim();
     return `## Aktif Mükellef Kontekst\nSoru özellikle bu mükellefle ilgili:\n- İsim: ${name}\n- VKN/TCKN: ${t.taxNumber}\n- Vergi Dairesi: ${t.taxOffice}\n- Tip: ${t.type}\n- Sistem ID (taxpayerId): ${taxpayerId}\n\nTool çağırırken bu taxpayerId'yi kullan.`;
+  }
+
+  private extractMemoryKeywords(text: string): string[] {
+    const stopWords = new Set([
+      'için', 'olan', 'olarak', 'bana', 'bunu', 'şunu', 'şuan', 'şu', 'bir', 've', 'veya',
+      'ile', 'gibi', 'daha', 'sonra', 'önce', 'neden', 'nasıl', 'hangi', 'mı', 'mi', 'mu', 'mü',
+      'de', 'da', 'ki', 'ben', 'biz', 'sen', 'siz', 'moren', 'ai',
+    ]);
+    return [...new Set(
+      String(text || '')
+        .toLocaleLowerCase('tr-TR')
+        .replace(/[^0-9a-zA-ZçğıöşüÇĞİÖŞÜ\s]/g, ' ')
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length >= 4 && !stopWords.has(item)),
+    )].slice(0, 8);
+  }
+
+  private async buildMemoryContext(tenantId: string, query: string, taxpayerId?: string): Promise<string> {
+    try {
+      const aiMemory = (this.prisma as any).aiMemory;
+      if (!aiMemory?.findMany) return '';
+
+      const keywords = this.extractMemoryKeywords(query);
+      const relevantWhere = keywords.length
+        ? {
+            tenantId,
+            isActive: true,
+            OR: keywords.flatMap((keyword) => [
+              { title: { contains: keyword, mode: 'insensitive' } },
+              { content: { contains: keyword, mode: 'insensitive' } },
+            ]),
+          }
+        : null;
+
+      const [coreMemories, taxpayerMemories, relevantMemories] = await Promise.all([
+        aiMemory.findMany({
+          where: { tenantId, isActive: true, scope: { in: ['office', 'portal', 'agent'] } },
+          orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+          take: 8,
+        }).catch(() => []),
+        taxpayerId
+          ? aiMemory.findMany({
+              where: { tenantId, isActive: true, taxpayerId },
+              orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+              take: 6,
+            }).catch(() => [])
+          : Promise.resolve([]),
+        relevantWhere
+          ? aiMemory.findMany({
+              where: relevantWhere,
+              orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+              take: 8,
+            }).catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      const merged = new Map<string, any>();
+      for (const memory of [...taxpayerMemories, ...relevantMemories, ...coreMemories]) {
+        if (memory?.id && !merged.has(memory.id)) merged.set(memory.id, memory);
+      }
+      const memories = [...merged.values()].slice(0, 12);
+      if (!memories.length) return '';
+
+      const lines = memories.map((memory) => {
+        const scope = memory.taxpayerId ? 'mükellef' : memory.scope || 'ofis';
+        const content = String(memory.content || '').replace(/\s+/g, ' ').slice(0, 520);
+        return `- [${scope}] ${memory.title}: ${content}`;
+      });
+      return `## MOREN AI Kalıcı Hafıza\nAşağıdaki notlar sistem hafızasından otomatik geldi; cevapta sessizce kullan, gereksiz yere "hafızamda" deme:\n${lines.join('\n')}`;
+    } catch {
+      return '';
+    }
+  }
+
+  private shouldAutoLearn(text: string) {
+    return /\b(bunu hatırla|hafızaya al|unutma|bundan sonra|her zaman|tercihim|istemiyorum|istiyorum|kısa cevap|uzun cevap|mali müşavir gibi|sürekli öğren|sürekli araştır)\b/i.test(text);
+  }
+
+  private async autoLearnFromTurn(args: {
+    tenantId: string;
+    userId: string | null;
+    taxpayerId?: string;
+    userMessage: string;
+    assistantMessage: string;
+  }): Promise<void> {
+    const text = String(args.userMessage || '').trim();
+    if (!text || !this.shouldAutoLearn(text)) return;
+    if (/(şifre|parola|password|token|api\s*key|gizli anahtar)/i.test(text)) return;
+
+    try {
+      const aiMemory = (this.prisma as any).aiMemory;
+      if (!aiMemory?.create) return;
+      const scope = args.taxpayerId ? 'taxpayer' : 'office';
+      const title = `Kullanıcı tercihi: ${text.replace(/\s+/g, ' ').slice(0, 80)}`;
+      const content = `Kullanıcı talimatı/tercihi (${new Date().toISOString().slice(0, 10)}): ${text.slice(0, 1200)}`;
+      const existing = await aiMemory.findFirst({
+        where: { tenantId: args.tenantId, scope, title, isActive: true, taxpayerId: args.taxpayerId || null },
+      }).catch(() => null);
+      if (existing) {
+        await aiMemory.update({
+          where: { id: existing.id },
+          data: { content, importance: 4, tags: ['kullanici-tercihi', 'auto-learn'] },
+        }).catch(() => null);
+        return;
+      }
+      await aiMemory.create({
+        data: {
+          tenantId: args.tenantId,
+          taxpayerId: args.taxpayerId || null,
+          scope,
+          title,
+          content,
+          source: 'moren-ai-auto-learn',
+          importance: 4,
+          tags: ['kullanici-tercihi', 'auto-learn'],
+          createdBy: args.userId || null,
+        },
+      }).catch(() => null);
+    } catch {}
   }
   // ==========================================================
   // ==========================================================

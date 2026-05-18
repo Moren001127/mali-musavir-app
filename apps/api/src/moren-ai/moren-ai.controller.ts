@@ -164,7 +164,11 @@ export class MorenAiController {
 
     // 3) TTS istenirse
     if (body.speakResponse === 'true' || body.speakResponse === '1') {
-      const tts = await this.voice.synthesize(chatResult.assistantMessage);
+      const tts = await this.voice.synthesize(
+        chatResult.assistantMessage,
+        'nova',
+        'Doğal, sıcak, profesyonel bir Türkçe kadın sesiyle konuş. Kısa duraklamalar kullan; hızlı okuma.',
+      );
       res.setHeader('Content-Type', tts.contentType);
       res.setHeader('X-Conversation-Id', chatResult.conversationId);
       res.setHeader('X-Transcript', encodeURIComponent(stt.text));

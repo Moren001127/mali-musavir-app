@@ -403,7 +403,11 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'], description: 'Opsiyonel ajan filtresi.' },
+        agent: {
+          type: 'string',
+          enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'],
+          description: 'Opsiyonel ajan filtresi.',
+        },
         limit: { type: 'number', description: 'Son komut sayısı. Varsayılan 10.' },
       },
     },
@@ -464,7 +468,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'] },
         action: { type: 'string' },
         payload: { type: 'object' },
       },
@@ -478,7 +482,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'] },
         action: { type: 'string' },
         payload: { type: 'object' },
         confirmationText: { type: 'string' },
@@ -507,6 +511,36 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
         period: { type: 'string', description: 'Dönem YYYY-MM. Boşsa cari ay.' },
         limit: { type: 'number', description: 'En sorunlu mükellef sayısı. Varsayılan 30.' },
       },
+    },
+  },
+  {
+    name: 'get_portal_capability_map',
+    description:
+      'MOREN AI’ın portaldaki hangi modüllerden veri okuyabildiğini, hangilerinde analiz yapabildiğini ve hangi agent/komutlarla işlem başlatabildiğini döner. ' +
+      'Kullanıcı "neler yapabiliyorsun", "bütün modüllere entegre misin", "şu işi hangi modülle yaparsın" gibi geniş kapsamlı soru sorarsa kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'research_official_sources',
+    description:
+      'Güncel vergi, SGK, iş hukuku, ticaret hukuku, e-belge, beyanname, ceza, had, süre ve mevzuat soruları için resmi kaynak araştırması yapar. ' +
+      'GİB, SGK, Resmi Gazete, mevzuat.gov.tr ve ilgili kamu kurumları dışındaki sonuçları filtreler. Güncel rakam/süre/ceza sorularında cevap vermeden önce kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Araştırılacak mevzuat sorusu veya anahtar kelimeler.' },
+        domains: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Opsiyonel resmi alan adı filtresi. Örn: ["gib.gov.tr", "sgk.gov.tr"]. Boşsa tüm güvenilir resmi kaynaklar aranır.',
+        },
+        limit: { type: 'number', description: 'Döndürülecek resmi kaynak sayısı. Varsayılan 4, max 6.' },
+        remember: { type: 'boolean', description: 'Bulunan resmi kaynak özetini MOREN AI hafızasına yaz. Varsayılan true.' },
+      },
+      required: ['query'],
     },
   },
   {
@@ -549,7 +583,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: {
       type: 'object',
       properties: {
-        agent: { type: 'string', enum: ['mihsap', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv'] },
+        agent: { type: 'string', enum: ['mihsap', 'mihsap-supervised-agent', 'mihsap-fatura-isleme-agent', 'luca', 'sgk', 'tebligat', 'kdv', 'beyan-hazirlik', 'luca-beyanname', 'kdv-beyan', 'tahsilat', 'banka-ekstre', 'edefter', 'whatsapp'] },
         action: { type: 'string', description: 'Örn: isle_alis, isle_satis, isle_alis_isletme, isle_satis_isletme.' },
         payload: { type: 'object', description: 'Ajanın beklediği komut yükü.' },
         confirmationText: { type: 'string', description: 'Güvenlik için kullanıcı onay metni. ONAYLIYORUM olmalı.' },
