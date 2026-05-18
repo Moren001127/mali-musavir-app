@@ -2059,7 +2059,422 @@ function DocumentEditor({
 
   const balanced = Math.abs(totals.diff) < 0.01;
 
+
   const addLine = () => {
     setLines((arr) => [
       ...arr,
-      { group: 'Yevmiye', accountCod
+      { group: 'Yevmiye', accountCode: '', description: '', debit: '0', credit: '0' },
+    ]);
+  };
+
+  const updateLine = (idx: number, patch: Partial<ApiLine>) => {
+    setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  };
+
+  const removeLine = (idx: number) => {
+    setLines((arr) => arr.filter((_, i) => i !== idx));
+  };
+
+  const pickAccount = (node: AccountPlanNode) => {
+    const idx = lines.findIndex((l) => !l.accountCode);
+    if (idx >= 0) {
+      updateLine(idx, { accountCode: node.code, description: node.name });
+    } else {
+      setLines((arr) => [
+        ...arr,
+        { group: 'Yevmiye', accountCode: node.code, description: node.name, debit: '0', credit: '0' },
+      ]);
+    }
+  };
+
+  const docType = DOC_TYPE_LABEL[doc.documentType || ''] || doc.documentType || '';
+
+  return (
+    <div className="p-6">
+      <div className="mb-5">
+        <h2 className="text-[20px] font-semibold tracking-tight text-[#2a2723]">
+          {doc.vendorName || doc.customerName || doc.originalName || 'Adsız belge'}
+        </h2>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-[#8a8270]">
+          {docType && <span>{docType}</span>}
+          {doc.belgeNo && (<><span className="text-[#b8b09b]">·</span><span>{doc.belgeNo}</span></>)}
+          {doc.faturaTarihi && (<><span className="text-[#b8b09b]">·</span><span>{fmtDate(doc.faturaTarihi)}</span></>)}
+          {taxpayer && (<><span className="text-[#b8b09b]">·</span><span>{taxpayerLabel(taxpayer)}</span></>)}
+        </div>
+        <div className="mt-3 text-[24px] font-semibold tracking-tight text-[#2a2723] tabular-nums">
+          {fmtMoney(doc.totalAmount)} ₺
+        </div>
+      </div>
+
+      {doc.duplicateReason && (
+        <div className={`mb-5 rounded-lg border-l-[3px] px-4 py-3 text-[13px] leading-[1.55] ${
+          doc.duplicateSeverity === 'BLOCKING'
+            ? 'border-[#9a5851] bg-[#eed5cf] text-[#6e3e38]'
+            : 'border-[#a87a3d] bg-[#f1e4c8] text-[#6f5022]'
+        }`}>
+          <strong>{doc.duplicateSeverity === 'BLOCKING' ? 'Mükerrer engelliyor.' : 'Mükerrer uyarısı.'}</strong>{' '}
+          {doc.duplicateReason}
+        </div>
+      )}
+
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
+            Muhasebe fişi · {lines.length} satır
+          </span>
+          <span className={`text-[13px] font-medium ${balanced ? 'text-[#5d8763]' : 'text-[#9a5851]'}`}>
+            {balanced ? '✓ Dengeli' : `Fark: ${fmtMoney(Math.abs(totals.diff))} ₺`}
+          </span>
+        </div>
+
+        <div className="overflow-hidden rounded-[10px] border border-[#e6e1d6]">
+          <div className="grid grid-cols-[110px_1fr_130px_130px_40px] bg-[#f8f6f1] text-[12px] font-medium text-[#8a8270]">
+            <div className="px-3.5 py-[11px]">Grup</div>
+            <div className="px-3.5 py-[11px]">Hesap</div>
+            <div className="px-3.5 py-[11px] text-right">Borç</div>
+            <div className="px-3.5 py-[11px] text-right">Alacak</div>
+            <div></div>
+          </div>
+          {lines.length === 0 && (
+            <div className="border-t border-[#e6e1d6] px-3.5 py-5 text-center text-[12.5px] text-[#8a8270]">
+              Satır yok · ↘ Hesap planından ekle ya da + ile başla
+            </div>
+          )}
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6]">
+              <input
+                value={l.group || ''}
+                onChange={(e) => updateLine(i, { group: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <input
+                value={l.accountCode ? (l.description ? `${l.accountCode} · ${l.description}` : String(l.accountCode)) : ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const m = v.match(/^([^\s·]+)\s*[·\-]?\s*(.*)$/);
+                  if (m) updateLine(i, { accountCode: m[1] || '', description: m[2] || '' });
+                  else updateLine(i, { accountCode: v, description: '' });
+                }}
+                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="Hesap kodu · ad"
+              />
+              <input
+                value={l.debit?.toString() ?? ''}
+                onChange={(e) => updateLine(i, { debit: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <input
+                value={l.credit?.toString() ?? ''}
+                onChange={(e) => updateLine(i, { credit: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <button onClick={() => removeLine(i)} className="text-[#b8b09b] transition hover:text-[#9a5851]" title="Satırı sil">
+                <X className="mx-auto h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {lines.length > 0 && (
+            <div className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6] bg-[#f8f6f1] font-semibold">
+              <div className="col-span-2 px-3.5 py-3 text-right text-[14px] font-medium text-[#5b5447]">Toplam</div>
+              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">{fmtMoney(totals.debit)}</div>
+              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">{fmtMoney(totals.credit)}</div>
+              <div></div>
+            </div>
+          )}
+        </div>
+
+        <button onClick={addLine} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2">
+          + Satır ekle
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">Hesap planından ekle</span>
+          <button
+            onClick={() => refreshPlanMut.mutate()}
+            disabled={refreshPlanMut.isPending || !doc.taxpayerId}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2.5 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshPlanMut.isPending ? 'animate-spin' : ''}`} />
+            Luca'dan yenile
+          </button>
+        </div>
+        <div className="mb-3.5 flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] px-3.5">
+          <Search className="h-3.5 w-3.5 text-[#8a8270]" />
+          <input
+            value={accountSearch}
+            onChange={(e) => setAccountSearch(e.target.value)}
+            placeholder="Hesap kodu veya adı..."
+            className="w-full bg-transparent text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:outline-none"
+          />
+        </div>
+        <div className="grid grid-cols-4 gap-0.5 max-h-[280px] overflow-y-auto">
+          {accountPlanQ.isLoading && (
+            <div className="col-span-4 py-6 text-center"><Loader2 className="mx-auto h-4 w-4 animate-spin text-[#8a8270]" /></div>
+          )}
+          {!accountPlanQ.isLoading && (accountPlanQ.data || []).length === 0 && (
+            <div className="col-span-4 py-6 text-center text-[12.5px] text-[#8a8270]">
+              {doc.taxpayerId ? "Hesap planı boş · Luca'dan yenile butonuna tıkla" : 'Belgeye mükellef ata'}
+            </div>
+          )}
+          {(accountPlanQ.data || []).map((node) => (
+            <button key={node.code} onClick={() => pickAccount(node)} className="flex items-baseline gap-2 rounded-md px-3 py-2 text-left transition hover:bg-[#e2eceb]">
+              <span className="shrink-0 text-[13px] font-semibold text-[#2f6863]">{node.code}</span>
+              <span className="truncate text-[13px] text-[#5b5447]">{node.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-2.5 border-t border-[#e6e1d6] pt-5">
+        <button onClick={onSkip} className="inline-flex h-9 items-center justify-center rounded-lg px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723]">Atla</button>
+        <button
+          onClick={() => saveMut.mutate()}
+          disabled={saveMut.isPending}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
+        >
+          {saveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Kaydet
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {doc.status === 'READY' ? (
+            <button
+              onClick={() => approveMut.mutate()}
+              disabled={approveMut.isPending}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+            >
+              {approveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Check className="h-3.5 w-3.5" />
+              Luca'ya aktar
+            </button>
+          ) : (
+            <button
+              onClick={() => readyMut.mutate()}
+              disabled={!balanced || lines.length === 0 || readyMut.isPending}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {readyMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Check className="h-3.5 w-3.5" />
+              Fiş tamamlandı
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 4 — FİŞLER
+   ════════════════════════════════════════════════════════════════════ */
+
+function VouchersStage({
+  documents,
+  taxpayerMap,
+  onEdit,
+  onCompleted,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+  onEdit: (id: string) => void;
+  onCompleted: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+
+  const toggleAll = () => {
+    if (selected.size === documents.length) setSelected(new Set());
+    else setSelected(new Set(documents.map((d) => d.id)));
+  };
+
+  const bulkApproveMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+      for (const id of ids) {
+        try {
+          await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`);
+          results.push({ id, ok: true });
+        } catch (e) {
+          const err = e as { message?: string };
+          results.push({ id, ok: false, error: err.message || 'hata' });
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      const ok = results.filter((r) => r.ok).length;
+      const failed = results.filter((r) => !r.ok).length;
+      if (ok > 0) toast.success(`${ok} fiş Luca'ya aktarıldı`);
+      if (failed > 0) toast.error(`${failed} fiş başarısız`);
+      setSelected(new Set());
+      onCompleted();
+    },
+  });
+
+  return (
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{documents.length}</Strong> fiş hazır
+          <Sep />
+          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
+          {selected.size > 0 && (<><Sep /><Strong>{selected.size}</Strong> seçili</>)}
+        </Summary>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAll}
+            disabled={documents.length === 0}
+            className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
+          >
+            {selected.size === documents.length && documents.length > 0 ? 'Seçimi temizle' : 'Tümünü seç'}
+          </button>
+          <button
+            onClick={() => bulkApproveMut.mutate(Array.from(selected))}
+            disabled={selected.size === 0 || bulkApproveMut.isPending}
+            className="inline-flex h-[30px] items-center gap-1.5 rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+          >
+            {bulkApproveMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+            Luca'ya aktar{selected.size > 0 ? ` (${selected.size})` : ''}
+          </button>
+        </div>
+      </WsBar>
+
+      {documents.length === 0 ? (
+        <EmptyState title="Hazır fiş yok" desc="Eşleştirme aşamasında fiş tamamlandığında burada görünür." />
+      ) : (
+        <div>
+          {documents.map((d) => {
+            const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+            const isSel = selected.has(d.id);
+            const lineCount = (d.lines || []).length;
+            const dtype = DOC_TYPE_LABEL[d.documentType || ''] || d.documentType || '';
+            return (
+              <div key={d.id} className="grid grid-cols-[24px_1fr_160px_100px_80px_180px] items-center gap-4 border-b border-[#e6e1d6] px-[22px] py-4 transition last:border-b-0 hover:bg-[#f8f6f1]">
+                <input
+                  type="checkbox"
+                  checked={isSel}
+                  onChange={() => setSelected((s) => {
+                    const n = new Set(s);
+                    if (n.has(d.id)) n.delete(d.id);
+                    else n.add(d.id);
+                    return n;
+                  })}
+                  className="h-4 w-4 accent-[#4a8580]"
+                />
+                <div>
+                  <div className="text-[14px] font-medium text-[#2a2723]">{d.vendorName || d.customerName || d.originalName || 'Adsız'}</div>
+                  <div className="mt-0.5 text-[12.5px] text-[#8a8270]">
+                    {tp ? `${taxpayerLabel(tp)} · ` : ''}{dtype}{d.faturaTarihi ? ` · ${fmtDate(d.faturaTarihi)}` : ''}
+                  </div>
+                </div>
+                <div className="text-right text-[15px] font-semibold tabular-nums text-[#2a2723]">{fmtMoney(d.totalAmount)} ₺</div>
+                <div className="text-right text-[13px] text-[#8a8270]">{lineCount} satır</div>
+                <Badge tone="success">Hazır</Badge>
+                <div className="flex justify-end gap-1.5">
+                  <button onClick={() => onEdit(d.id)} className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723]">Düzenle</button>
+                  <button
+                    onClick={() => bulkApproveMut.mutate([d.id])}
+                    disabled={bulkApproveMut.isPending}
+                    className="inline-flex h-[30px] items-center rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+                  >Aktar</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 5 — LUCA JURNAL
+   ════════════════════════════════════════════════════════════════════ */
+
+function LucaStage({
+  documents,
+  taxpayerMap,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+}) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, ApiDocument[]>();
+    documents.forEach((d) => {
+      const key = d.approvedAt || d.createdAt || '';
+      const day = key ? new Date(key).toISOString().slice(0, 10) : '—';
+      if (!m.has(day)) m.set(day, []);
+      m.get(day)!.push(d);
+    });
+    return Array.from(m.entries()).sort((a, b) => (a[0] > b[0] ? -1 : 1));
+  }, [documents]);
+
+  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+
+  return (
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{documents.length}</Strong> fiş bu ay aktarıldı
+          <Sep />
+          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
+          <Sep />
+          Başarı oranı <Strong>%{documents.length > 0 ? 100 : 0}</Strong>
+        </Summary>
+      </WsBar>
+
+      {grouped.length === 0 ? (
+        <EmptyState title="Henüz transfer yok" desc="Fişler aktarıldıkça burada gün bazlı jurnal halinde listelenir." />
+      ) : (
+        <div>
+          {grouped.map(([day, items]) => {
+            const dayTotal = items.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+            return (
+              <div key={day} className="border-b border-[#e6e1d6] last:border-b-0">
+                <div className="flex items-center gap-3.5 border-b border-[#e6e1d6] bg-[#f8f6f1] px-[22px] py-3.5">
+                  <span className="text-[13px] font-medium text-[#5b5447]">{fmtDateLong(day) || day}</span>
+                  <span className="flex-1 h-px bg-[#e6e1d6]" />
+                  <span className="text-[13px] text-[#8a8270]">{items.length} kayıt · {fmtMoney(dayTotal)} ₺</span>
+                </div>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <Th>Belge</Th>
+                      <Th>Mükellef</Th>
+                      <Th>Saat</Th>
+                      <Th right>Tutar</Th>
+                      <Th right>Durum</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((d) => {
+                      const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+                      return (
+                        <Tr key={d.id}>
+                          <Td>
+                            <div className="flex flex-col gap-0.5">
+                              <strong className="text-[14px] font-medium text-[#2a2723]">{d.vendorName || d.customerName || d.originalName || '—'}</strong>
+                              {d.belgeNo && (<small className="text-[12px] text-[#8a8270]">{d.belgeNo}</small>)}
+                            </div>
+                          </Td>
+                          <Td>{tp ? taxpayerLabel(tp) : '—'}</Td>
+                          <Td>{fmtTime(d.approvedAt || d.createdAt)}</Td>
+                          <Td right><span className="font-medium tabular-nums">{fmtMoney(d.totalAmount)} ₺</span></Td>
+                          <Td right><Badge tone="success">Aktarıldı</Badge></Td>
+                        </Tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
