@@ -463,25 +463,26 @@ export class KdvBeyannameService {
     //   (Tevkifat ayrıca `ayirTevkifatliAlis` ile KDV2'ye yönlendirilir.)
     const faturaOnly = faturalar;
 
-    // OCR verileri — bu dönem için KdvRecord'da olan faturaları bul
-    const belgeNoSet = new Set(faturaOnly.map((f: any) => f.faturaNo).filter(Boolean));
-    const kdvRecords =
-      belgeNoSet.size === 0
-        ? []
-        : await (this.prisma as any).kdvRecord.findMany({
-            where: {
-              session: {
-                tenantId,
-                taxpayerId: mukellefId,
-                periodLabel: { in: [donem, donem.replace('-', '/')] },
-              },
-              belgeNo: { in: Array.from(belgeNoSet) as string[] },
-            },
-          });
+    // KDV Kontrol verileri: SQL tarafında birebir belgeNo arama yapmıyoruz.
+    // Luca/Mihsap belge no formatı sıfır, tire, slash veya boşluk farkıyla gelebiliyor;
+    // bu yüzden ilgili dönem/tip kayıtlarını alıp belge no'yu JS tarafında normalize ederek eşliyoruz.
+    const kdvTipleri =
+      faturaTuru === 'SATIS' ? ['KDV_391', 'ISLETME_GELIR'] : ['KDV_191', 'ISLETME_GIDER'];
+    const kdvRecords = await (this.prisma as any).kdvRecord.findMany({
+      where: {
+        session: {
+          tenantId,
+          taxpayerId: mukellefId,
+          periodLabel: { in: this.periodLabelCandidates(donem) },
+          type: { in: kdvTipleri },
+        },
+      },
+    });
     const ocrMap = new Map<string, any>();
     for (const r of kdvRecords) {
-      const key = this.normalizeBelgeNo(r.belgeNo);
-      if (key && !ocrMap.has(key)) ocrMap.set(key, r);
+      for (const key of this.belgeNoKeys(r.belgeNo)) {
+        if (!ocrMap.has(key)) ocrMap.set(key, r);
+      }
     }
 
     // Oran bazlı toplama
@@ -509,8 +510,7 @@ export class KdvBeyannameService {
     const eksikVeriler: KdvEksikVeri[] = [];
 
     for (const f of faturaOnly) {
-      const belgeNo = this.normalizeBelgeNo(f.faturaNo);
-      const ocr = ocrMap.get(belgeNo);
+      const ocr = this.findByBelgeNo(ocrMap, f.faturaNo);
       if (ocr && ocr.kdvMatrahi != null && ocr.kdvOrani != null && ocr.kdvTutari != null) {
         addToOran(
           this.parseTrAmount(ocr.kdvOrani),
@@ -809,7 +809,45 @@ export class KdvBeyannameService {
   }
 
   private normalizeBelgeNo(value: any): string {
-    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  private belgeNoKeys(value: any): string[] {
+    const normalized = this.normalizeBelgeNo(value);
+    if (!normalized) return [];
+    const keys = new Set<string>([normalized]);
+    const stripped = this.stripLeadingZeros(normalized);
+    if (stripped) keys.add(stripped);
+    keys.add(this.eInvoiceComparableKey(normalized));
+    return Array.from(keys).filter(Boolean);
+  }
+
+  private findByBelgeNo<T>(map: Map<string, T>, belgeNo: any): T | undefined {
+    for (const key of this.belgeNoKeys(belgeNo)) {
+      const hit = map.get(key);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  private stripLeadingZeros(value: string): string {
+    return value.replace(/^0+/, '') || '0';
+  }
+
+  private eInvoiceComparableKey(normalizedBelgeNo: string): string {
+    const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/)
+      ?? normalizedBelgeNo.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
+    if (!m) return normalizedBelgeNo;
+    return `${m[1]}${m[2]}${m[3].replace(/^0+/, '') || '0'}`;
+  }
+
+  private periodLabelCandidates(donem: string): string[] {
+    const m = /^(\d{4})[-/](\d{1,2})$/.exec(String(donem || '').trim());
+    if (!m) return [donem, donem.replace('-', '/')].filter(Boolean);
+    const yil = m[1];
+    const ay = String(Number(m[2]));
+    const ay2 = ay.padStart(2, '0');
+    return Array.from(new Set([`${yil}-${ay2}`, `${yil}/${ay2}`, `${yil}-${ay}`, `${yil}/${ay}`]));
   }
 
   private parseTrAmount(value: any): number {
