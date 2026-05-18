@@ -33,7 +33,7 @@ import {
  */
 
 const KDV_KONTROL_DURUMU = 'KDV Kontrol gerekli';
-const GECERLI_KDV_ORANLARI = [1, 8, 10, 18, 20];
+const GECERLI_KDV_ORANLARI = [1, 10, 20];
 const DEVREDEN_MANUEL_TAG = 'KDV_DEVREDEN_MANUEL';
 const SONRAKI_DEVREDEN_TAG = 'KDV_SONRAKI_DEVREDEN';
 
@@ -439,6 +439,8 @@ export class KdvBeyannameService {
     donem: string,
     faturaTuru: 'ALIS' | 'SATIS',
   ) {
+    return this.derleOranBazliMatrahKdvFromKdvControl(tenantId, mukellefId, donem, faturaTuru);
+
     // ÖNEMLİ: faturaTuru "TEVKIFATLI_ALIS" / "TEVKIFATLI_SATIS" gibi varyantlarda
     // da gelebiliyor. KDV1 ön hazırlığı için tevkifatlı alış da indirilecek
     // KDV'ye dahildir (tevkifat tutarı sonradan ayrılır). contains ile alıyoruz.
@@ -598,6 +600,201 @@ export class KdvBeyannameService {
       xmlAdet,
       kontrolGerekliAdet,
       tahminAdet: kontrolGerekliAdet,
+      eksikVeriler,
+    };
+  }
+
+  /**
+   * KDV beyanname hazirligi icin tek dogru kaynak KDV Kontrol sonucudur.
+   * Mihsap fatura listesi burada toplam uretmek icin baz alinmaz.
+   */
+  private async derleOranBazliMatrahKdvFromKdvControl(
+    tenantId: string,
+    mukellefId: string,
+    donem: string,
+    faturaTuru: 'ALIS' | 'SATIS',
+  ) {
+    const kdvTipleri =
+      faturaTuru === 'SATIS' ? ['KDV_391', 'ISLETME_GELIR'] : ['KDV_191', 'ISLETME_GIDER'];
+    const sessionWhere = {
+      tenantId,
+      OR: [{ taxpayerId: mukellefId }, { taxpayerId: null }],
+      periodLabel: { in: this.periodLabelCandidates(donem) },
+      type: { in: kdvTipleri },
+    };
+
+    const acceptedStatuses = new Set(['MATCHED', 'CONFIRMED', 'PARTIAL_MATCH', 'NEEDS_REVIEW']);
+    const finalStatuses = new Set(['MATCHED', 'CONFIRMED']);
+
+    const kdvResults = await (this.prisma as any).reconciliationResult.findMany({
+      where: { session: sessionWhere },
+      include: { image: true, kdvRecord: true },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    const oranMap = new Map<number, { matrah: number; kdv: number; adet: number; kaynak?: 'kdv_kontrol' }>();
+    const includedDocKeys = new Set<string>();
+    const finalDocKeys = new Set<string>();
+    const kontrolDocKeys = new Set<string>();
+    const issueKeys = new Set<string>();
+    const seenImageIds = new Set<string>();
+    const resultImageIds = new Set<string>();
+    const resultRecordIds = new Set<string>();
+    const eksikVeriler: KdvEksikVeri[] = [];
+
+    const addToOran = (oran: number, matrah: number, kdv: number) => {
+      if (!GECERLI_KDV_ORANLARI.includes(oran)) return;
+      const g = oranMap.get(oran) || { matrah: 0, kdv: 0, adet: 0, kaynak: 'kdv_kontrol' as const };
+      g.matrah += matrah;
+      g.kdv += kdv;
+      g.adet += 1;
+      oranMap.set(oran, g);
+    };
+
+    const addIssue = (
+      docKey: string,
+      belgeNo: string | null,
+      tur: 'kdv_orani' | 'kdv_kontrol',
+      seviye: 'uyari' | 'kritik',
+      mesaj: string,
+    ) => {
+      const key = `${tur}:${docKey}:${mesaj}`;
+      if (issueKeys.has(key)) return;
+      issueKeys.add(key);
+      kontrolDocKeys.add(docKey);
+      eksikVeriler.push({
+        tur,
+        seviye,
+        belgeNo,
+        taraf: faturaTuru,
+        mesaj,
+        aksiyon: KDV_KONTROL_DURUMU,
+      });
+    };
+
+    const addRows = (
+      rows: Array<{ oran: number; matrah: number; kdv: number }>,
+      docKey: string,
+      belgeNo: string | null,
+      isFinal: boolean,
+      status?: string,
+    ) => {
+      if (!rows.length) {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_orani',
+          'uyari',
+          'KDV Kontrol kaydinda gecerli %1 / %10 / %20 oran-matrah detayi yok; beyan toplamina dahil edilmedi.',
+        );
+        return;
+      }
+
+      for (const row of rows) addToOran(row.oran, row.matrah, row.kdv);
+      includedDocKeys.add(docKey);
+      if (isFinal) finalDocKeys.add(docKey);
+      else {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_kontrol',
+          'uyari',
+          status
+            ? `KDV Kontrol kaydi ${status} durumunda; tutar hazirliga alindi ama kapanis onayi gerekir.`
+            : 'KDV Kontrol kaydi eslesme sonucu olmadan hazirliga alindi; kapanis onayi gerekir.',
+        );
+      }
+    };
+
+    for (const res of kdvResults) {
+      const imageId = res.imageId || res.image?.id || null;
+      const recordId = res.kdvRecordId || res.kdvRecord?.id || null;
+      if (imageId) resultImageIds.add(imageId);
+      if (recordId) resultRecordIds.add(recordId);
+
+      const belgeNo = this.controlBelgeNo(res.kdvRecord, res.image);
+      const docKey = this.controlDocKey(res.id, belgeNo, imageId, recordId);
+      const status = String(res.status || '');
+
+      if (!acceptedStatuses.has(status)) {
+        addIssue(
+          docKey,
+          belgeNo,
+          'kdv_kontrol',
+          status === 'REJECTED' ? 'kritik' : 'uyari',
+          `KDV Kontrol kaydi ${status || 'belirsiz'} durumunda; beyan toplamina dahil edilmedi.`,
+        );
+        continue;
+      }
+
+      let rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
+      if (res.image && imageId && !seenImageIds.has(imageId)) {
+        rows = this.completeControlRows(this.kdvRowsFromImage(res.image), res.image);
+        if (rows.length > 0) seenImageIds.add(imageId);
+      }
+
+      if (rows.length === 0 && res.kdvRecord && !(imageId && seenImageIds.has(imageId))) {
+        rows = this.completeControlRows(this.kdvRowsFromRecord(res.kdvRecord), res.kdvRecord);
+      }
+
+      if (imageId && seenImageIds.has(imageId) && rows.length === 0) continue;
+      addRows(rows, docKey, belgeNo, finalStatuses.has(status), status);
+    }
+
+    const [orphanRecords, orphanImages] = await Promise.all([
+      (this.prisma as any).kdvRecord.findMany({ where: { session: sessionWhere } }),
+      (this.prisma as any).receiptImage.findMany({ where: { session: sessionWhere } }),
+    ]);
+
+    for (const r of orphanRecords) {
+      if (resultRecordIds.has(r.id)) continue;
+      const belgeNo = this.controlBelgeNo(r, null);
+      const docKey = this.controlDocKey(`record:${r.id}`, belgeNo, null, r.id);
+      const rows = this.completeControlRows(this.kdvRowsFromRecord(r), r);
+      addRows(rows, docKey, belgeNo, false);
+    }
+
+    for (const image of orphanImages) {
+      if (resultImageIds.has(image.id)) continue;
+      const belgeNo = this.controlBelgeNo(null, image);
+      const docKey = this.controlDocKey(`image:${image.id}`, belgeNo, image.id, null);
+      const rows = this.completeControlRows(this.kdvRowsFromImage(image), image);
+      addRows(rows, docKey, belgeNo, false);
+    }
+
+    if (kdvResults.length === 0 && orphanRecords.length === 0 && orphanImages.length === 0) {
+      addIssue(
+        `${faturaTuru}:${donem}:no-kdv-control`,
+        null,
+        'kdv_kontrol',
+        'kritik',
+        'Bu donem icin KDV Kontrol verisi bulunamadi; beyanname on hazirligi uretilemedi.',
+      );
+    }
+
+    const oranlar: OranRow[] = Array.from(oranMap.entries())
+      .map(([oran, v]) => ({
+        oran,
+        matrah: Math.round(v.matrah * 100) / 100,
+        kdv: Math.round(v.kdv * 100) / 100,
+        kaynak: v.kaynak,
+        adet: v.adet,
+      }))
+      .sort((a: any, b: any) => a.oran - b.oran);
+
+    const toplamMatrah = oranlar.reduce((s: number, o: any) => s + o.matrah, 0);
+    const toplamKdv = oranlar.reduce((s: number, o: any) => s + o.kdv, 0);
+    const allDocKeys = new Set<string>([...includedDocKeys, ...kontrolDocKeys]);
+
+    return {
+      oranlar,
+      toplamMatrah,
+      toplamKdv,
+      faturaAdet: allDocKeys.size,
+      ocrliAdet: finalDocKeys.size,
+      xmlAdet: 0,
+      kontrolGerekliAdet: kontrolDocKeys.size,
+      tahminAdet: 0,
       eksikVeriler,
     };
   }
@@ -872,6 +1069,49 @@ export class KdvBeyannameService {
     return undefined;
   }
 
+  private controlBelgeNo(record: any, image: any): string | null {
+    return (
+      image?.confirmedBelgeNo ||
+      image?.ocrBelgeNo ||
+      record?.belgeNo ||
+      image?.originalName ||
+      null
+    );
+  }
+
+  private controlDocKey(fallback: string, belgeNo: any, imageId?: string | null, recordId?: string | null): string {
+    const normalized = this.normalizeBelgeNo(belgeNo);
+    if (normalized) return normalized;
+    return imageId || recordId || fallback;
+  }
+
+  private kdvRowsFromImage(image: any): Array<{ oran: number; matrah: number; kdv: number }> {
+    const breakdown = this.extractKdvBreakdownFromRaw(
+      image?.confirmedKdvBreakdown ?? image?.ocrKdvBreakdown,
+      image,
+    );
+    if (breakdown.length > 0) return breakdown;
+
+    const imageKdv = this.parseTrAmount(image?.confirmedKdvTutari ?? image?.ocrKdvTutari);
+    if (imageKdv > 0) return [{ oran: 0, matrah: 0, kdv: imageKdv }];
+    return [];
+  }
+
+  private kdvRowsFromRecord(record: any): Array<{ oran: number; matrah: number; kdv: number }> {
+    const oran = this.parseTrAmount(record?.kdvOrani);
+    const matrah = this.parseTrAmount(record?.kdvMatrahi);
+    const kdv = this.parseTrAmount(record?.kdvTutari);
+    if (oran > 0 && (matrah > 0 || kdv > 0)) {
+      return [{
+        oran,
+        matrah: matrah || kdv / (oran / 100),
+        kdv: kdv || matrah * (oran / 100),
+      }];
+    }
+
+    return this.extractKdvBreakdownFromRaw(record?.rawData, record);
+  }
+
   private completeControlRows(
     rows: Array<{ oran: number; matrah: number; kdv: number }>,
     invoice: any,
@@ -964,26 +1204,9 @@ export class KdvBeyannameService {
   }
 
   private kdvRowsFromControl(record: any, image: any): Array<{ oran: number; matrah: number; kdv: number }> {
-    const breakdown = this.extractKdvBreakdownFromRaw(
-      image?.confirmedKdvBreakdown ?? image?.ocrKdvBreakdown,
-    );
-    if (breakdown.length > 0) return breakdown;
-
-    const oran = this.parseTrAmount(record?.kdvOrani);
-    const matrah = this.parseTrAmount(record?.kdvMatrahi);
-    const kdv = this.parseTrAmount(record?.kdvTutari);
-    if (oran > 0 && (matrah > 0 || kdv > 0)) {
-      return [{
-        oran,
-        matrah: matrah || kdv / (oran / 100),
-        kdv: kdv || matrah * (oran / 100),
-      }];
-    }
-    const imageKdv = this.parseTrAmount(image?.confirmedKdvTutari ?? image?.ocrKdvTutari);
-    if (imageKdv > 0) {
-      return [{ oran: 0, matrah: 0, kdv: imageKdv }];
-    }
-    return [];
+    const imageRows = image ? this.kdvRowsFromImage(image) : [];
+    if (imageRows.length > 0) return imageRows;
+    return record ? this.kdvRowsFromRecord(record) : [];
   }
 
   private stripLeadingZeros(value: string): string {
@@ -1101,6 +1324,10 @@ export class KdvBeyannameService {
         if (!oran) oran = pickDeep(obj, rateKeys, ratePatterns);
         if (!matrah) matrah = pickDeep(obj, baseKeys, basePatterns);
         if (!kdv) kdv = pickDeep(obj, vatKeys, vatPatterns);
+      }
+      if (!kdv && oran) {
+        const directTutar = this.parseTrAmount((obj as any)?.tutar);
+        if (directTutar > 0) kdv = directTutar;
       }
       if ((!oran && !(matrah > 0 && kdv > 0) && !(invoice && kdv > 0)) || (!matrah && !kdv)) return;
       if (!matrah && kdv && oran) matrah = kdv / (oran / 100);

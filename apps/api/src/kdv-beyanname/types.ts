@@ -9,7 +9,7 @@ export type KdvTip = 'KDV1' | 'KDV2';
 
 /** Tek bir oranın satır breakdown'u — matrah + KDV */
 export interface OranRow {
-  oran: number; // 1 | 8 | 10 | 18 | 20
+  oran: number; // 1 | 10 | 20
   matrah: number;
   kdv: number;
   kaynak?: 'kdv_kontrol' | 'mihsap_xml';

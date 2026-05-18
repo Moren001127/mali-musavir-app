@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
-  /** KDV oranı (%) — 1, 8, 10, 18, 20 gibi */
+  /** KDV oranı (%) — 1, 10, 20 */
   oran: number;
   /** Matrah (KDV hariç tutar) - opsiyonel, OCR'dan alınabilirse */
   matrah?: number | null;
@@ -1181,7 +1181,7 @@ export class OcrService {
       );
       const oran = oranMatch ? parseInt(oranMatch[1], 10) : null;
       result.kdvBreakdown = [{
-        oran: oran && [1, 8, 10, 18, 20].includes(oran) ? oran : 20,
+        oran: oran && [1, 10, 20].includes(oran) ? oran : 20,
         tutar: tevkifatli.netKdv,
         matrah: null,
       }];
@@ -1189,7 +1189,7 @@ export class OcrService {
       result.kdvBreakdown = okcFis.breakdown;
     } else if (invoiceTotalsKdv) {
       result.kdvBreakdown = [{
-        oran: invoiceTotalsKdv.oran && [1, 8, 10, 18, 20].includes(invoiceTotalsKdv.oran)
+        oran: invoiceTotalsKdv.oran && [1, 10, 20].includes(invoiceTotalsKdv.oran)
           ? invoiceTotalsKdv.oran
           : 20,
         tutar: invoiceTotalsKdv.kdv,
@@ -1403,7 +1403,7 @@ export class OcrService {
       }
       if (tutar > 0) {
         breakdown.push({
-          oran: oran && [1, 8, 10, 18, 20].includes(oran) ? oran : 0,
+          oran: oran && [1, 10, 20].includes(oran) ? oran : 0,
           tutar,
           matrah: null,
         });
@@ -1717,7 +1717,7 @@ export class OcrService {
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?(?!\s*TEVK)[^\d%]{0,20}\(\s*%?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/,
     );
     const kdvRate = kdvRateMatch ? Number(kdvRateMatch[1]) : 0;
-    if ([1, 8, 10, 18, 20].includes(kdvRate)) {
+    if ([1, 10, 20].includes(kdvRate)) {
       const expectedTax = round2(effectiveTamKdv * kdvRate / 100);
       const taxAmount = amounts.find((n) =>
         n > 0 &&
@@ -2134,7 +2134,7 @@ export class OcrService {
         const rateMatch = folded.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?/);
         const rate = rateMatch ? parseInt(rateMatch[1], 10) : null;
         const amounts = extractAmounts(line).filter((n) => !this.isLikelyStandaloneTaxRate(String(n)));
-        if (!rate || ![1, 8, 10, 18, 20].includes(rate) || amounts.length < 2) continue;
+        if (!rate || ![1, 10, 20].includes(rate) || amounts.length < 2) continue;
         for (const candidate of amounts) {
           const hasMatchingBase = amounts.some((base) =>
             base > candidate && Math.abs((base * rate / 100) - candidate) <= Math.max(0.05, candidate * 0.03),
@@ -2426,7 +2426,7 @@ export class OcrService {
       while ((m = rateMarkerRe.exec(line)) !== null) {
         const oran = parseInt(m[1], 10);
         if (!(oran > 0 && oran <= 30)) continue;
-        // KDV oranları TR'de daima TAM SAYI (1, 8, 10, 18, 20). Virgülden
+        // KDV oranları TR'de daima TAM SAYI (1, 10, 20). Virgülden
         // sonraki kısım sıfırdan farklıysa (örn. %13,67 → iskonto oranı,
         // %20,00 → KDV oranı), bu marker KDV DEĞİL — atla.
         const decimalPart = m[2];
@@ -2959,7 +2959,7 @@ export class OcrService {
             );
             if (oranMatch) {
               const oran = parseInt(oranMatch[1], 10);
-              if ([1, 8, 10, 18, 20].includes(oran)) {
+              if ([1, 10, 20].includes(oran)) {
                 result.kdvBreakdown = [{ oran, tutar: azureNet, matrah: null }];
               }
             }
@@ -3138,7 +3138,7 @@ export class OcrService {
       // Azure iki bağımsız tanıkla (A/B) bulduysa zaten güvenilir.
       if (azureBreakdown.length >= 2) {
         const rateEchoCount = azureBreakdown.filter((b) =>
-          [1, 8, 10, 18, 20].some((r) => Math.abs((Number(b.tutar) || 0) - r) < 0.01),
+          [1, 10, 20].some((r) => Math.abs((Number(b.tutar) || 0) - r) < 0.01),
         ).length;
         const looksLikeRatesAsAmounts =
           rateEchoCount >= Math.ceil(azureBreakdown.length * 0.6);
@@ -3618,7 +3618,7 @@ export class OcrService {
    * Yapılan kontroller:
    *   1. breakdown.tutar.sum === kdvTutari (±%2 tolerans, kuruş yuvarlamasına izin)
    *   2. her breakdown satırı: matrah × oran/100 ≈ tutar (±%2 tolerans)
-   *   3. geçerli KDV oranları: 0, 1, 8, 10, 18, 20
+   *   3. geçerli KDV oranları: 0, 1, 10, 20
    *   4. tevkifat ≤ tam KDV (tevkifat > KDV mantıksız)
    *   5. KDV > 0 ama oran 0 → uyarı
    *
@@ -3661,7 +3661,7 @@ export class OcrService {
     }
 
     // ─── 3) GEÇERLİ KDV ORANLARI ───
-    const validRates = [0, 1, 8, 10, 18, 20];
+    const validRates = [0, 1, 10, 20];
     for (const b of breakdown) {
       if (b.oran == null) continue;
       // Yakın oran toleransı (19.5–20.5 → 20 kabul)
