@@ -1,0 +1,38 @@
+# CODEOWNERS — Moren Portal
+# Bu dosya GitHub'da PR review zorunluluğunu işaretler.
+# Her kritik modül için bir "owner" var (şu an tek geliştirici → @moren).
+# Bir PR birden fazla modüle dokunursa GitHub uyarı verir.
+#
+# Genel kural: bir PR mümkün olduğunca TEK modüle dokunmalı.
+# OCR'a dokunmak + reconciliation'a dokunmak = AYRI PR'lar.
+
+# ─── KİLİTLİ MODÜLLER (KILITLI_MODULLER.md'de) ──────────────
+/apps/api/src/mizan/                       @moren
+/apps/web/src/app/(panel)/panel/mizan/     @moren
+/apps/api/src/kdv-control/                 @moren
+/apps/web/src/app/(panel)/panel/kdv-kontrol/ @moren
+
+# ─── AGENT RUNTIME (tek-kaynak kural) ──────────────────────
+# Agent kaynak dosya yalnız burada. Web'deki artifact otomatik kopyalanır.
+/apps/api/public/agent-runtime.js          @moren
+/apps/web/scripts/sync-agent-runtime.js    @moren
+
+# ─── MODÜLLER ARASI KONTRATLAR ─────────────────────────────
+# Bu dosyalar değişirse modüller arasında shape uyumsuzluğu doğar.
+# Değişiklik DAİMA test:contracts geçtikten sonra commit edilir.
+/packages/shared/src/contracts/            @moren
+
+# ─── REGRESSION SCRIPTLERİ ─────────────────────────────────
+# Bunlar bug fixleri pinleyen testler. Test değiştirilirken çok dikkat:
+# pinlenmiş senaryoyu zayıflatmak = gelecekte aynı bug'ın geri gelmesi.
+/scripts/                                  @moren
+/.husky/                                   @moren
+/.github/workflows/                        @moren
+
+# ─── PRISMA & DB ───────────────────────────────────────────
+# Şemaya dokunmak = production migration. DAİMA backup + planlı.
+/apps/api/prisma/schema.prisma             @moren
+/apps/api/prisma/migrations/               @moren
+
+# ─── LUCA AGENT ────────────────────────────────────────────
+/apps/luca-local-agent/                    @moren

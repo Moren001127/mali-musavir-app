@@ -1,7 +1,35 @@
 #!/usr/bin/env sh
-# Husky pre-commit hook — kilitli modül hash kontrolü.
+# Husky pre-commit hook — modül izolasyon duvarı.
 # Bypass için: MOREN_UNLOCK=1 git commit ...
+#
+# Sıra (önemli): erken patlayan kontrolleri öne aldık ki
+# yavaş regression'lara girmeden yakalanır.
 
 . "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
 
+# 1. Kilitli modüller (Mizan, KDV Kontrol) — kullanıcı onayı olmadan değiştirilemez
 node scripts/check-locked-modules.cjs
+
+# 2. Agent runtime tek-kaynak — source = artifact aynı hash mi
+node scripts/check-agent-artifacts.cjs
+
+# 3. Modül sınırları — public API ihlali, parça dosyaları eksik mi
+node scripts/check-module-boundaries.cjs
+
+# 4. Modüller arası sözleşme regression (Zod schema'lar)
+node scripts/contract-violation-regression.cjs
+
+# 5. Luca upload endpoint kontratı
+node scripts/luca-upload-contract-regression.cjs
+
+# 6. KDV reconciliation senaryoları (0622, 0647, GKN038 vb. pinli senaryolar)
+node scripts/kdv-reconciliation-regression.cjs
+
+# 7. KDV export sırası kontratı
+node scripts/kdv-export-order-regression.cjs
+
+# 8. KDV session replace kontratı (Luca'dan yeni veri gelince eski temizlenir)
+node scripts/kdv-session-replace-contract.cjs
+
+# 9. OCR tax (KDV oran/tutar karıştırma) regression
+node scripts/ocr-tax-regression.cjs

@@ -5,3 +5,6 @@ export * from './types';
 export * from './schemas/auth.schemas';
 export * from './schemas/taxpayer.schemas';
 export * from './schemas/document.schemas';
+
+// Modüller arası kontrat katmanı (Zod schemas at module boundaries)
+export * from './contracts';
