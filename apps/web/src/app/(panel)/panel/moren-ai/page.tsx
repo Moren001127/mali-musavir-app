@@ -29,6 +29,7 @@ import {
   deleteConversation,
   getConversation,
   getOfficeBrain,
+  getRealtimeVoiceToken,
   listConversations,
   renameConversation,
   saveMemory,
@@ -168,12 +169,15 @@ export default function MorenAIPage() {
   const [taxpayerPickerOpen, setTaxpayerPickerOpen] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking'>('idle');
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'listening' | 'transcribing' | 'thinking' | 'speaking'>('idle');
   const [memoryText, setMemoryText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const voiceModeRef = useRef(false);
   const voiceSendRef = useRef(false);
+  const realtimePeerRef = useRef<RTCPeerConnection | null>(null);
+  const realtimeStreamRef = useRef<MediaStream | null>(null);
+  const realtimeActiveRef = useRef(false);
   const restartVoiceRef = useRef<() => void>(() => {});
   const handleVoiceBlobRef = useRef<(blob: Blob | null) => void>(() => {});
   const recorder = useRecorder();
@@ -213,14 +217,92 @@ export default function MorenAIPage() {
   const messages: Message[] = activeConv?.messages || [];
   const selectedTaxpayer = taxpayers.find((item) => item.id === selectedTaxpayerId);
 
+  const stopRealtimeVoice = () => {
+    realtimeActiveRef.current = false;
+    realtimePeerRef.current?.close();
+    realtimePeerRef.current = null;
+    realtimeStreamRef.current?.getTracks().forEach((track) => track.stop());
+    realtimeStreamRef.current = null;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.srcObject = null;
+    }
+  };
+
+  const startRealtimeVoice = async () => {
+    if (realtimePeerRef.current) return;
+    setVoiceStatus('connecting');
+    const tokenData = await getRealtimeVoiceToken();
+    const ephemeralKey =
+      tokenData?.value ||
+      tokenData?.client_secret?.value ||
+      tokenData?.clientSecret?.value ||
+      tokenData?.secret?.value;
+    if (!ephemeralKey) throw new Error('Realtime oturum anahtarı alınamadı');
+
+    const pc = new RTCPeerConnection();
+    realtimePeerRef.current = pc;
+    realtimeActiveRef.current = true;
+
+    pc.ontrack = async (event) => {
+      if (!audioRef.current) return;
+      audioRef.current.srcObject = event.streams[0];
+      audioRef.current.autoplay = true;
+      await audioRef.current.play().catch(() => {});
+    };
+    pc.onconnectionstatechange = () => {
+      if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
+        stopRealtimeVoice();
+        if (voiceModeRef.current) setVoiceStatus('idle');
+      }
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    realtimeStreamRef.current = stream;
+    stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+
+    const dc = pc.createDataChannel('oai-events');
+    dc.onopen = () => {
+      setVoiceStatus('listening');
+      dc.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          instructions:
+            'Türkçe konuş. Cevaplar çok kısa, net ve mesleki olsun: 1-3 cümle. Kullanıcı konuşurken sözünü kesme.',
+        },
+      }));
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
+      method: 'POST',
+      body: offer.sdp,
+      headers: {
+        Authorization: `Bearer ${ephemeralKey}`,
+        'Content-Type': 'application/sdp',
+      },
+    });
+    if (!sdpResponse.ok) {
+      const errorText = await sdpResponse.text();
+      throw new Error(errorText.slice(0, 200) || 'Realtime bağlantı kurulamadı');
+    }
+    await pc.setRemoteDescription({ type: 'answer', sdp: await sdpResponse.text() });
+  };
+
   useEffect(() => {
     voiceModeRef.current = voiceMode;
     if (!voiceMode && audioRef.current) {
+      stopRealtimeVoice();
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       setVoiceStatus('idle');
     }
   }, [voiceMode]);
+
+  useEffect(() => () => stopRealtimeVoice(), []);
 
   const sendMutation = useMutation({
     mutationFn: async ({ message, voiceMode: vm }: { message: string; voiceMode?: boolean }) =>
@@ -236,7 +318,7 @@ export default function MorenAIPage() {
       await qc.invalidateQueries({ queryKey: ['ai-conversation', res.conversationId] });
       await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
 
-      const shouldSpeak = (ttsEnabled || voiceModeRef.current || voiceSendRef.current) && !!res.assistantMessage;
+      const shouldSpeak = !realtimeActiveRef.current && (ttsEnabled || voiceModeRef.current || voiceSendRef.current) && !!res.assistantMessage;
       if (shouldSpeak && res.assistantMessage) {
         try {
           setVoiceStatus('speaking');
@@ -341,6 +423,7 @@ export default function MorenAIPage() {
   handleVoiceBlobRef.current = handleVoiceBlob;
 
   const startVoiceListening = async () => {
+    if (realtimeActiveRef.current) return;
     if (recorder.recording || sendMutation.isPending) return;
     if (audioRef.current) {
       audioRef.current.pause();
@@ -366,10 +449,17 @@ export default function MorenAIPage() {
     if (next) {
       setTtsEnabled(true);
       voiceModeRef.current = true;
-      window.setTimeout(() => restartVoiceRef.current(), 100);
+      try {
+        await startRealtimeVoice();
+      } catch (error: any) {
+        stopRealtimeVoice();
+        toast.info('Canlı ses başlatılamadı; kayıtlı ses moduna geçiyorum.');
+        window.setTimeout(() => restartVoiceRef.current(), 100);
+      }
       return;
     }
     voiceModeRef.current = false;
+    stopRealtimeVoice();
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -399,6 +489,13 @@ export default function MorenAIPage() {
   };
 
   const handleMic = async () => {
+    if (realtimeActiveRef.current) {
+      setVoiceMode(false);
+      voiceModeRef.current = false;
+      stopRealtimeVoice();
+      setVoiceStatus('idle');
+      return;
+    }
     if (recorder.recording) {
       const blob = await recorder.stop();
       await handleVoiceBlob(blob);
@@ -407,7 +504,12 @@ export default function MorenAIPage() {
     setVoiceMode(true);
     setTtsEnabled(true);
     voiceModeRef.current = true;
-    await startVoiceListening();
+    try {
+      await startRealtimeVoice();
+    } catch {
+      stopRealtimeVoice();
+      await startVoiceListening();
+    }
   };
 
   const handleRename = (conv: ConversationSummary) => {
@@ -418,24 +520,30 @@ export default function MorenAIPage() {
   };
 
   const totalCost = useMemo(() => messages.reduce((sum, message) => sum + (message.costUsd || 0), 0), [messages]);
-  const voiceLabel = recorder.recording
-    ? 'Dinliyor'
-    : voiceStatus === 'transcribing'
-      ? 'Yazıyor'
-      : voiceStatus === 'thinking'
-        ? 'Düşünüyor'
-        : voiceStatus === 'speaking'
-          ? 'Konuşuyor'
-          : voiceMode
-            ? 'Ses açık'
-            : 'Ses modu';
-  const inputPlaceholder = recorder.recording
-    ? 'Dinliyorum...'
-    : voiceStatus === 'speaking'
-      ? 'MOREN AI konuşuyor...'
-      : voiceStatus === 'transcribing'
-        ? 'Ses yazıya çevriliyor...'
-        : 'Mali tablo, mükellef veya ofis akışı sor...';
+  const voiceLabel = voiceStatus === 'connecting'
+    ? 'Bağlanıyor'
+    : realtimeActiveRef.current
+      ? 'Canlı ses'
+      : recorder.recording
+        ? 'Dinliyor'
+        : voiceStatus === 'transcribing'
+          ? 'Yazıyor'
+          : voiceStatus === 'thinking'
+            ? 'Düşünüyor'
+            : voiceStatus === 'speaking'
+              ? 'Konuşuyor'
+              : voiceMode
+                ? 'Ses açık'
+                : 'Ses modu';
+  const inputPlaceholder = realtimeActiveRef.current
+    ? 'Canlı ses açık; normal konuşabilirsiniz...'
+    : recorder.recording
+      ? 'Dinliyorum...'
+      : voiceStatus === 'speaking'
+        ? 'MOREN AI konuşuyor...'
+        : voiceStatus === 'transcribing'
+          ? 'Ses yazıya çevriliyor...'
+          : 'Mali tablo, mükellef veya ofis akışı sor...';
 
   return (
     <div className="flex h-full min-h-0 max-w-none gap-3 overflow-hidden">
@@ -623,7 +731,7 @@ export default function MorenAIPage() {
             className="hidden h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition hover:bg-white/[0.06] md:flex"
             style={{ borderColor: voiceMode ? LINE_GOLD : LINE, color: voiceMode ? GOLD : MUTED }}
           >
-            {recorder.recording ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
+            {voiceStatus === 'connecting' || recorder.recording ? <Loader2 size={14} className="animate-spin" /> : <Mic size={14} />}
             {voiceLabel}
           </button>
           <button
@@ -683,13 +791,13 @@ export default function MorenAIPage() {
               disabled={sendMutation.isPending}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
               style={{
-                background: recorder.recording ? 'rgba(239,68,68,0.18)' : SOFT,
-                borderColor: recorder.recording ? 'rgba(239,68,68,0.45)' : LINE,
-                color: recorder.recording ? '#fca5a5' : GOLD,
+                background: (recorder.recording || realtimeActiveRef.current) ? 'rgba(239,68,68,0.18)' : SOFT,
+                borderColor: (recorder.recording || realtimeActiveRef.current) ? 'rgba(239,68,68,0.45)' : LINE,
+                color: (recorder.recording || realtimeActiveRef.current) ? '#fca5a5' : GOLD,
               }}
-              title={recorder.recording ? 'Kaydı durdur' : 'Mikrofon'}
+              title={recorder.recording || realtimeActiveRef.current ? 'Sesi durdur' : 'Mikrofon'}
             >
-              {recorder.recording ? <MicOff size={16} /> : <Mic size={16} />}
+              {voiceStatus === 'connecting' ? <Loader2 size={16} className="animate-spin" /> : (recorder.recording || realtimeActiveRef.current) ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
             <button
               type="button"

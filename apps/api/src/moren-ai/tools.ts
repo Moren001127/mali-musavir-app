@@ -537,7 +537,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
           items: { type: 'string' },
           description: 'Opsiyonel resmi alan adı filtresi. Örn: ["gib.gov.tr", "sgk.gov.tr"]. Boşsa tüm güvenilir resmi kaynaklar aranır.',
         },
-        limit: { type: 'number', description: 'Döndürülecek resmi kaynak sayısı. Varsayılan 4, max 6.' },
+        limit: { type: 'number', description: 'Döndürülecek resmi kaynak sayısı. Varsayılan 2, max 4.' },
         remember: { type: 'boolean', description: 'Bulunan resmi kaynak özetini MOREN AI hafızasına yaz. Varsayılan true.' },
       },
       required: ['query'],

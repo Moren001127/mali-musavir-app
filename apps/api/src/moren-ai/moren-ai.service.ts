@@ -32,7 +32,31 @@ const TAX_DEADLINE_RULES: Array<{ day: number | 'last'; tip: string; months?: nu
 // hard-code edilmez. Bu katman en azından hafta sonu ve sabit tatil kaydırmasını sağlar.
 const TR_FIXED_HOLIDAYS = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
-const MAX_HISTORY_MESSAGES = 18;            // Maliyet kontrolü: son mesaj penceresi + kalıcı hafıza
+const MAX_HISTORY_MESSAGES = Number(process.env.MOREN_AI_HISTORY_LIMIT || 8); // Maliyet kontrolü: son mesaj penceresi + kalıcı hafıza
+const NORMAL_MAX_TOKENS = Number(process.env.MOREN_AI_MAX_TOKENS || 650);
+const VOICE_MAX_TOKENS = Number(process.env.MOREN_AI_VOICE_MAX_TOKENS || 260);
+
+const CORE_TOOL_NAMES = [
+  'list_taxpayers',
+  'get_taxpayer',
+  'search_ai_memory',
+  'save_ai_memory',
+  'get_ai_cost_summary',
+  'get_portal_capability_map',
+];
+
+const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
+  { pattern: /mizan|hesap kod|gelir tablos|bilanço|bilanco|rasyo|oran|likidite|özkaynak|ozkaynak/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
+  { pattern: /kdv|beyan|muhtasar|muhsgk|kurumlar|damga|tahakkuk|onay no|hattat/i, tools: ['get_kdv_summary', 'list_beyan_kayitlari', 'get_beyanname_config', 'get_beyan_ozet', 'get_beyanname_readiness_summary', 'get_tax_calendar'] },
+  { pattern: /fatura|muhasebeleştir|muhasebelestir|mihsap|tedarikçi|tedarikci|alıcı|alici|firma hafıza|firma hafiza/i, tools: ['list_invoices', 'get_firma_hafizasi', 'get_mihsap_agent_jobs', 'list_pending_decisions'] },
+  { pattern: /sgk|bordro|personel|prim|işçi|isci|işveren|isveren/i, tools: ['get_payroll_summary', 'list_sgk_declarations'] },
+  { pattern: /evrak|belge|sözleşme|sozlesme|doküman|dokuman/i, tools: ['list_documents', 'get_taxpayer_work_status', 'list_taxpayers_monthly_status'] },
+  { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status'] },
+  { pattern: /ajan|agent|luca|tebligat|otomasyon|komut|çalıştır|calistir|işlem yap|islem yap/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command'] },
+  { pattern: /araç|arac|plaka|hgs|otoyol|ihlal/i, tools: ['list_araclar_hgs'] },
+  { pattern: /vergi|mevzuat|kanun|ceza|had|süre|sure|oran|vuk|kvk|gvk|sgk|resmi gazete|gib|gelir idaresi|işi bırak|isi birak/i, tools: ['research_official_sources'] },
+  { pattern: /herkes|tüm|tum|listele|kimler|kaç tane|kac tane|özet|ozet|durum/i, tools: ['list_taxpayers_monthly_status', 'get_operation_briefing', 'search_all'] },
+];
 
 function cleanFirstName(raw?: string | null): string | undefined {
   const cleaned = String(raw || '')
@@ -301,6 +325,12 @@ export class MorenAiService {
       : '';
 
     // ----- Tool-use döngüsü -----
+    const effectiveVoiceHint = body.voiceMode
+      ? '\n\n[SES MODU AKTIF — gerçek konuşma gibi cevap ver: 1-3 kısa cümle, maksimum 45 kelime, tablo ve başlık yok.]'
+      : voiceHint;
+    const responseMaxTokens = body.voiceMode ? VOICE_MAX_TOKENS : NORMAL_MAX_TOKENS;
+    const selectedTools = this.selectToolsForMessage(userMessage);
+
     const toolUsesLog: Array<{ name: string; input: any; result: any }> = [];
     let totalInput = 0, totalOutput = 0, totalCacheR = 0, totalCacheW = 0;
 
@@ -309,18 +339,19 @@ export class MorenAiService {
     let stopReason = '';
 
     for (let iter = 0; iter < MAX_TOOL_ITERATIONS; iter++) {
-      const dynamicSystemContext = [taxpayerContext, memoryContext, voiceHint].filter(Boolean).join('\n\n');
+      const dynamicSystemContext = [taxpayerContext, memoryContext, effectiveVoiceHint].filter(Boolean).join('\n\n');
       const payload: any = {
         model,
         // Maliyet optimizasyonu: 4096 -> 1500. Normal sohbet cevabi 500-1000 token.
         // Sesli modda 200 kelime (~300 token) zaten limitli. Cok uzun cevap kullanici
         // icin de zor okunur. Tool cevabi gerekiyorsa model daha cok yazar degilse kisa.
-        max_tokens: 1500,
+        max_tokens: responseMaxTokens,
+        temperature: body.voiceMode ? 0.15 : 0.2,
         system: [
           { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
           ...(dynamicSystemContext ? [{ type: 'text', text: dynamicSystemContext }] : []),
         ],
-        tools: MOREN_AI_TOOLS,
+        tools: selectedTools,
         messages: currentMessages,
       };
 
@@ -389,6 +420,8 @@ export class MorenAiService {
     const costUsd = computeCostUsd(model, {
       input: totalInput, output: totalOutput, cacheRead: totalCacheR, cacheWrite: totalCacheW,
     });
+
+    finalText = this.compactFinalAnswer(finalText || '', !!body.voiceMode);
 
     // Assistant mesajını kaydet
     const aiMessageData: any = {
@@ -466,6 +499,33 @@ export class MorenAiService {
   // ==========================================================
   // YARDIMCILAR
   // ==========================================================
+  private selectToolsForMessage(text: string) {
+    const selected = new Set<string>(CORE_TOOL_NAMES);
+    for (const group of TOOL_GROUPS) {
+      if (group.pattern.test(text)) {
+        for (const tool of group.tools) selected.add(tool);
+      }
+    }
+    return MOREN_AI_TOOLS.filter((tool: any) => selected.has(tool.name));
+  }
+
+  private compactFinalAnswer(text: string, voiceMode: boolean) {
+    const cleaned = String(text || '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/^Resmi kaynak doğrudan bulamadım\s*[—-]\s*/i, '')
+      .trim();
+    const maxChars = voiceMode ? 360 : 900;
+    if (cleaned.length <= maxChars) return cleaned;
+    const sentences = cleaned.match(/[^.!?\n]+[.!?]?/g) || [cleaned];
+    let out = '';
+    for (const sentence of sentences) {
+      if ((out + sentence).trim().length > maxChars) break;
+      out += sentence;
+      if (voiceMode && out.length > 220) break;
+    }
+    return (out.trim() || cleaned.slice(0, maxChars).trim()) + ' Detay istersen açarım.';
+  }
+
   private generateTitle(msg: string): string {
     const clean = msg.replace(/\s+/g, ' ').trim();
     if (clean.length <= 50) return clean;

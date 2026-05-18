@@ -115,3 +115,8 @@ export async function synthesize(text: string, voice = 'nova', instructions?: st
   });
   return data;
 }
+
+export async function getRealtimeVoiceToken(): Promise<any> {
+  const { data } = await api.get('/moren-ai/voice/realtime-token');
+  return data;
+}

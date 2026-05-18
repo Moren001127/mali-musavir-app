@@ -140,6 +140,11 @@ export class MorenAiController {
     res.send(result.audio);
   }
 
+  @Get('voice/realtime-token')
+  async realtimeToken() {
+    return this.voice.createRealtimeClientSecret();
+  }
+
   // -------- KISA YOL: ses dosyası → chat → ses (tek uç) --------
   @Post('voice/chat')
   @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))

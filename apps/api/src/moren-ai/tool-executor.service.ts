@@ -1656,7 +1656,7 @@ export class ToolExecutorService {
     const query = String(input?.query || '').trim();
     if (!query) return { error: 'query zorunlu' };
 
-    const limit = Math.max(1, Math.min(Number(input?.limit || 4), 6));
+    const limit = Math.max(1, Math.min(Number(input?.limit || 2), 4));
     const domains = this.normalizeOfficialDomains(input?.domains);
     const domainFilter = domains.map((domain) => `site:${domain}`).join(' OR ');
     const searchQuery = `${query} ${domainFilter}`;
@@ -1666,14 +1666,14 @@ export class ToolExecutorService {
 
     const sources = await Promise.all(
       searchResults.map(async (result) => {
-        const markdown = await this.fetchText(this.readerUrl(result.url), 14000);
+        const markdown = await this.fetchText(this.readerUrl(result.url), 9000);
         const cleaned = markdown
           .replace(/\n{3,}/g, '\n\n')
           .replace(/[ \t]{2,}/g, ' ')
           .trim();
         return {
           ...result,
-          excerpt: cleaned.slice(0, 2400),
+          excerpt: cleaned.slice(0, 900),
           fetched: cleaned.length > 0,
         };
       }),
@@ -1688,7 +1688,7 @@ export class ToolExecutorService {
       sources,
       note: sources.length
         ? 'Cevapta bu resmi kaynaklara dayan; kaynakta açıkça görünmeyen tutarı kesinmiş gibi yazma.'
-        : 'Resmi kaynak sonucu bulunamadı. Kullanıcıya uygulanacak yolu söyle, güncel tutar/süre için kaynak teyidi gerektiğini kısa belirt.',
+        : 'Resmi kaynak sonucu bulunamadı. Sayısal tutar/aralık uydurma; uygulanacak yolu ve hangi bilgiyle netleşeceğini kısa söyle.',
     };
 
     if (sources.length > 0 && input?.remember !== false) {

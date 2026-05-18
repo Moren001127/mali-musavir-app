@@ -15,6 +15,55 @@ export class VoiceService {
     return process.env.OPENAI_API_KEY || null;
   }
 
+  async createRealtimeClientSecret() {
+    const key = this.getOpenAiKey();
+    if (!key) {
+      throw new BadRequestException(
+        'OPENAI_API_KEY ayarlanmamış — gerçek zamanlı sesli sohbet için Railway environmentına eklenmeli.',
+      );
+    }
+
+    const payload = {
+      expires_after: { anchor: 'created_at', seconds: 600 },
+      session: {
+        type: 'realtime',
+        model: process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini',
+        instructions:
+          'Türkçe konuş. Kadın sesli, doğal ve sakin ol. Cevaplar kısa, net ve mesleki olsun: 1-3 cümle, gereksiz açıklama yok. Kullanıcı konuşurken sözünü kesme; sadece konuşması bitince yanıtla.',
+        audio: {
+          input: {
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.55,
+              silence_duration_ms: 850,
+              prefix_padding_ms: 250,
+            },
+          },
+          output: {
+            voice: process.env.OPENAI_REALTIME_VOICE || 'marin',
+          },
+        },
+      },
+    };
+
+    const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      this.logger.error(`Realtime token hata: ${res.status} — ${err.slice(0, 500)}`);
+      throw new BadRequestException(`Realtime ses başlatılamadı: ${err.slice(0, 200)}`);
+    }
+
+    return res.json();
+  }
+
   /**
    * Ses dosyasını metne çevirir (Whisper).
    * @param audio  Buffer (mp3/wav/webm/m4a)
