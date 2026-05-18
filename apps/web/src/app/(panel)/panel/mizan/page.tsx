@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, AlertTriangle,
   CheckCircle2, XCircle, Loader2, FileSpreadsheet, Trash2, Eye, Upload,
-  FileText, Lock, Unlock, Plus, Save, SlidersHorizontal, RefreshCw,
+  FileText, Lock, Unlock, Plus, Save, SlidersHorizontal, RefreshCw, Pencil,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
@@ -261,6 +261,17 @@ function denetimEsikIster(kosul: string) {
   return !['EXISTS', 'MISSING', 'BOTH_BAKIYE'].includes(kosul);
 }
 
+function defaultCriterionForm() {
+  return {
+    ad: '',
+    hesapPattern: '',
+    kosul: 'BORC_BAKIYE_GT',
+    esik: '0',
+    seviye: 'WARN',
+    mesaj: '',
+  };
+}
+
 export default function MizanPage() {
   const qc = useQueryClient();
   const router = useRouter();
@@ -306,15 +317,10 @@ export default function MizanPage() {
   });
 
   const [criteriaOpen, setCriteriaOpen] = useState(false);
+  const criteriaFormRef = useRef<HTMLDivElement>(null);
+  const [editingCriterionId, setEditingCriterionId] = useState<string | null>(null);
   const [criterionForSelectedOnly, setCriterionForSelectedOnly] = useState(false);
-  const [criterionForm, setCriterionForm] = useState({
-    ad: '',
-    hesapPattern: '',
-    kosul: 'BORC_BAKIYE_GT',
-    esik: '0',
-    seviye: 'WARN',
-    mesaj: '',
-  });
+  const [criterionForm, setCriterionForm] = useState(defaultCriterionForm);
 
   const { data: denetimKriterleri = [] } = useQuery<any[]>({
     queryKey: ['mizan-denetim-kriterleri'],
@@ -565,6 +571,41 @@ export default function MizanPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Denetim yenilenemedi'),
   });
 
+  const resetCriterionForm = () => {
+    setEditingCriterionId(null);
+    setCriterionForm(defaultCriterionForm());
+    setCriterionForSelectedOnly(false);
+  };
+
+  const getCriterionTaxpayerScope = () => {
+    const scopedTaxpayerId = criterionForSelectedOnly ? (taxpayerId || mizan?.taxpayerId || null) : null;
+    if (criterionForSelectedOnly && !scopedTaxpayerId) throw new Error('Önce mükellef seçin');
+    return scopedTaxpayerId;
+  };
+
+  const buildCriterionPayload = (scopedTaxpayerId: string | null) => ({
+    ...criterionForm,
+    esik: denetimEsikIster(criterionForm.kosul) ? Number(criterionForm.esik || 0) : null,
+    taxpayerId: scopedTaxpayerId,
+  });
+
+  const handleEditCriterion = (k: any) => {
+    setCriteriaOpen(true);
+    setEditingCriterionId(k.id);
+    setCriterionForSelectedOnly(Boolean(k.taxpayerId));
+    setCriterionForm({
+      ad: k.ad || '',
+      hesapPattern: k.hesapPattern || '',
+      kosul: k.kosul || 'BORC_BAKIYE_GT',
+      esik: k.esik == null ? '0' : String(k.esik),
+      seviye: k.seviye || 'WARN',
+      mesaj: k.mesaj || '',
+    });
+    window.setTimeout(() => {
+      criteriaFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  };
+
   const createCriterionMut = useMutation({
     mutationFn: () => {
       const scopedTaxpayerId = criterionForSelectedOnly ? (taxpayerId || mizan?.taxpayerId || null) : null;
@@ -593,6 +634,31 @@ export default function MizanPage() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kriter güncellenemedi'),
   });
+
+  const submitCriterionForm = () => {
+    if (!editingCriterionId) {
+      createCriterionMut.mutate();
+      return;
+    }
+
+    try {
+      const scopedTaxpayerId = getCriterionTaxpayerScope();
+      updateCriterionMut.mutate(
+        {
+          id: editingCriterionId,
+          data: buildCriterionPayload(scopedTaxpayerId),
+        },
+        {
+          onSuccess: () => {
+            toast.success('Denetim kriteri güncellendi');
+            resetCriterionForm();
+          },
+        },
+      );
+    } catch (e: any) {
+      toast.error(e?.message || 'Kriter güncellenemedi');
+    }
+  };
 
   const deleteCriterionMut = useMutation({
     mutationFn: (id: string) => mizanApi.denetimKriterleri.remove(id),
@@ -1078,10 +1144,10 @@ export default function MizanPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border p-3.5" style={{ background: 'rgba(255,255,255,0.018)', borderColor: 'rgba(255,255,255,0.06)' }}>
+              <div ref={criteriaFormRef} className="rounded-xl border p-3.5" style={{ background: 'rgba(255,255,255,0.018)', borderColor: editingCriterionId ? 'rgba(184,160,111,0.28)' : 'rgba(255,255,255,0.06)' }}>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>Yeni kriter ekle</h4>
+                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>{editingCriterionId ? 'Kriteri düzenle' : 'Yeni kriter ekle'}</h4>
                     <p className="mt-0.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.52)' }}>
                       Ofise veya seçili mükellefe özel hesap deseni kontrolünü buradan ekleyebilirsin.
                     </p>
@@ -1160,16 +1226,27 @@ export default function MizanPage() {
                 </div>
                 <div className="flex items-end">
                   <button
-                    onClick={() => createCriterionMut.mutate()}
-                    disabled={createCriterionMut.isPending}
+                    onClick={submitCriterionForm}
+                    disabled={createCriterionMut.isPending || updateCriterionMut.isPending}
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
                     style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
                   >
-                    {createCriterionMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                    Kaydet
+                    {(createCriterionMut.isPending || updateCriterionMut.isPending) ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    {editingCriterionId ? 'Güncelle' : 'Kaydet'}
                   </button>
                 </div>
               </div>
+
+              {editingCriterionId && (
+                <button
+                  onClick={resetCriterionForm}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-bold"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.68)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
+                  <X size={12} />
+                  Düzenlemeyi iptal et
+                </button>
+              )}
 
               <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.68)' }}>
                 <input
@@ -1208,6 +1285,14 @@ export default function MizanPage() {
                         <div className="mt-1 text-[11px] truncate" style={{ color: 'rgba(250,250,249,0.42)' }}>{k.mesaj}</div>
                       </div>
                       <div className="flex gap-1">
+                        <button
+                          onClick={() => handleEditCriterion(k)}
+                          className="p-1.5 rounded-md"
+                          style={{ color: GOLD, background: editingCriterionId === k.id ? 'rgba(184,160,111,0.18)' : 'rgba(184,160,111,0.08)' }}
+                          title="Düzenle"
+                        >
+                          <Pencil size={13} />
+                        </button>
                         <button
                           onClick={() => updateCriterionMut.mutate({ id: k.id, data: { aktif: !k.aktif } })}
                           className="p-1.5 rounded-md"
