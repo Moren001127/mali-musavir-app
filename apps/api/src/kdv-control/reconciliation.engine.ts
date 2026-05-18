@@ -245,7 +245,12 @@ export class ReconciliationEngine {
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
         const belgeNoMismatchAllowedForReview = strongTwoOfThree && hardBelgeNoMismatch && !hardRateMismatch;
         const blocksPair = (belgeNoTamUyumsuz && !belgeNoMismatchAllowedForReview) || saticiTamUyumsuz || ambiguousSellerMissing;
-        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !blocksPair) {
+        // v1.37.76 - belgeNoExactPair tek basina yeterli olmamali. Ayni sira
+        // no'lu farkli belgeler (Luca "620" / 26.04 / 237,54 ile e-fatura
+        // "0620" / 02.04 / 162,73 gibi farkli donem-tutar) yanlis eslesiyordu.
+        // Belge no esleyse bile tutar VEYA tarih'ten en az biri tutmali -
+        // bu da zaten strongTwoOfThree (3'ten 2) kontroluyle ifade ediliyor.
+        if ((score >= MIN_PAIR_SCORE || strongTwoOfThree) && !blocksPair) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
