@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.72';
+  const AGENT_VERSION = '1.37.73';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -7223,11 +7223,21 @@
    * Fiş İşlemleri → Fiş Listesi sırasıyla menü tıklayarak gider.
    */
   async function navigateToFisListesi(log) {
-    // Önce Mizan menüsü görünür mü? (Fiş Listesi'ndeyse var demektir)
+    // Önce Mizan menüsü görünür mü? Yetmez — Hesap Planı / Stok Tanım gibi
+    // sayfalarda da sağ menü Mizan'ı gösterir ama Mizan tıklayınca form
+    // gelmez (varış frame'i frm3 yok ya da yanlış-modül frame'leri açık).
+    // Gerçek Fiş Listesi check'i: Mizan görünür + frm3 var + yanlış-modül
+    // frame'leri (hplan, stoktanim, mukellef, sirketTanim, …) yok.
     const quick = await findLucaMenuItem('Mizan', null, 1500);
     if (quick) {
-      await log('✓ Fiş Listesi sayfasında (Mizan menüsü hazır)');
-      return;
+      const f3 = getLucaFrame('frm3');
+      const wrongFrameNames = ['hplan', 'stoktanim', 'mukellef', 'sirketTanim', 'tanim'];
+      const wrongFrame = wrongFrameNames.find((n) => !!getLucaFrame(n));
+      if (f3 && !wrongFrame) {
+        await log('✓ Fiş Listesi sayfasında (Mizan menüsü hazır, frm3 var)');
+        return;
+      }
+      await log(`ℹ Mizan görünüyor ama Fiş Listesi'nde değiliz (frm3=${!!f3}, yanlış-frame=${wrongFrame || 'yok'}); navigasyon zorunlu`);
     }
     await log('🧭 Ana sayfada — Fiş Listesi sayfasına geçiliyor');
 
