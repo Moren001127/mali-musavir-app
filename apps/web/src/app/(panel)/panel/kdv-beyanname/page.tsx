@@ -852,12 +852,14 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
 
       {/* KDV-ilgili hesap satırları tablosu */}
       {snap?.exists && snap.kdvSatirlari && snap.kdvSatirlari.length > 0 && (
-        <div className="rounded-md overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-          <table className="w-full text-[12px]">
+        <div className="rounded-md overflow-x-auto" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+          <table className="w-full min-w-[980px] text-[12px]">
             <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
               <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
                 <th className="text-left px-3 py-2 font-semibold">Kod</th>
                 <th className="text-left px-3 py-2 font-semibold">Hesap</th>
+                <th className="text-right px-3 py-2 font-semibold">Borç Hareket</th>
+                <th className="text-right px-3 py-2 font-semibold">Alacak Hareket</th>
                 <th className="text-right px-3 py-2 font-semibold">Borç Bakiye</th>
                 <th className="text-right px-3 py-2 font-semibold">Alacak Bakiye</th>
               </tr>
@@ -867,6 +869,12 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
                 <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                   <td className="px-3 py-1.5 font-mono" style={{ color: '#d4b876' }}>{r.kod}</td>
                   <td className="px-3 py-1.5">{r.ad || '—'}</td>
+                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    {r.borcToplami ? fmt(r.borcToplami) : ''}
+                  </td>
+                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    {r.alacakToplami ? fmt(r.alacakToplami) : ''}
+                  </td>
                   <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
                     {r.borcBakiye ? fmt(r.borcBakiye) : ''}
                   </td>

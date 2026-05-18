@@ -1109,19 +1109,28 @@ export class KdvBeyannameService {
 
     const rows: any[] = Array.isArray(snapshot.hamMizan) ? snapshot.hamMizan : [];
 
-    // Belirli hesap kodunun (alt hesaplar dahil) bakiyesini topla
+    // Luca mizan hiyerarsik gelir: 391, 391.01 ve 391.01.001 ayni bakiyeyi
+    // tasiyabilir. Capraz kontrolde sadece en detay (leaf) satirlari toplayarak
+    // ana/ara hesap tekrarlarini saymiyoruz.
     const sumBakiye = (kodPrefix: string, tip: 'borc' | 'alacak'): number | null => {
-      const matches = rows.filter((r: any) => {
-        const k = String(r.kod || r.hesapKodu || '').trim();
-        return k === kodPrefix || k.startsWith(kodPrefix + '.');
-      });
+      const matches = rows.filter((r: any) => this.isKodOrChild(this.mizanKod(r), kodPrefix));
       if (matches.length === 0) return null;
-      let toplam = 0;
-      for (const m of matches) {
-        const v = tip === 'borc' ? m.borcBakiye : m.alacakBakiye;
-        toplam += Number(v || 0);
+
+      const matchKodlar = new Set(matches.map((r: any) => this.mizanKod(r)).filter(Boolean));
+      const leafMatches = matches.filter((r: any) => this.isLeafMizanKod(this.mizanKod(r), matchKodlar));
+      const sideValue = (r: any) => this.mizanAmount(tip === 'borc' ? r.borcBakiye : r.alacakBakiye);
+      const sumRows = (items: any[]) =>
+        Math.round(items.reduce((acc, r) => acc + sideValue(r), 0) * 100) / 100;
+
+      const leafTotal = sumRows(leafMatches);
+      if (Math.abs(leafTotal) > 0.005) return leafTotal;
+
+      const exact = matches.find((r: any) => this.mizanKod(r) === kodPrefix);
+      if (exact && Math.abs(sideValue(exact)) > 0.005) {
+        return Math.round(sideValue(exact) * 100) / 100;
       }
-      return toplam;
+
+      return sumRows(matches);
     };
 
     const luca391 = sumBakiye('391', 'alacak');
@@ -1233,30 +1242,108 @@ export class KdvBeyannameService {
     };
   }
 
-  /** Ham mizan satırlarından sadece KDV beyannamesini ilgilendirenleri seç */
+  /** UI icin hareket goren, cari/kasa/banka disi leaf mizan satirlarini sec */
   private filterKdvSatirlari(rows: any[]): any[] {
     if (!Array.isArray(rows)) return [];
-    const KDV_PREFIXES = [
-      '190', '191', '192', '193',
-      '391', '392', '393',
-      '600', '601', '602',
-      '610', '611', '612',
-      '150', '153',
-      '730', '740', '760', '770', '780',
-    ];
-    return rows
-      .filter((r: any) => {
-        const k = String(r.kod || r.hesapKodu || '').trim();
-        return KDV_PREFIXES.some((p) => k === p || k.startsWith(p + '.'));
+    const rowsWithKod = rows
+      .map((row: any) => ({ row, kod: this.mizanKod(row) }))
+      .filter(({ kod }) => this.isValidMizanKod(kod));
+    const kodlar = new Set(rowsWithKod.map(({ kod }) => kod));
+
+    return rowsWithKod
+      .filter(({ row, kod }) => {
+        return (
+          (this.hasMizanMovement(row) || (this.isKdvControlKod(kod) && this.hasMizanValue(row))) &&
+          this.isLeafMizanKod(kod, kodlar) &&
+          !this.isKdvSnapshotExcludedKod(kod)
+        );
       })
-      .map((r: any) => ({
-        kod: String(r.kod || r.hesapKodu || ''),
-        ad: r.ad || r.hesapAdi || '',
-        borcToplami: Number(r.borcToplami || 0),
-        alacakToplami: Number(r.alacakToplami || 0),
-        borcBakiye: Number(r.borcBakiye || 0),
-        alacakBakiye: Number(r.alacakBakiye || 0),
+      .sort((a, b) => a.kod.localeCompare(b.kod, 'tr', { numeric: true }))
+      .map(({ row, kod }) => ({
+        kod,
+        ad: row.ad || row.hesapAdi || '',
+        borcToplami: this.mizanAmount(row.borcToplami),
+        alacakToplami: this.mizanAmount(row.alacakToplami),
+        borcBakiye: this.mizanAmount(row.borcBakiye),
+        alacakBakiye: this.mizanAmount(row.alacakBakiye),
       }));
+  }
+
+  /** Mizan kodu ve hareket filtresi icin ortak yardimcilar */
+  private mizanKod(row: any): string {
+    return String(row?.kod || row?.hesapKodu || '').trim();
+  }
+
+  private mizanAmount(value: any): number {
+    const n = Number(value || 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private isValidMizanKod(kod: string): boolean {
+    return /^\d{3}(?:\.\d+)*$/.test(kod);
+  }
+
+  private isKodOrChild(kod: string, prefix: string): boolean {
+    return kod === prefix || kod.startsWith(prefix + '.');
+  }
+
+  private isLeafMizanKod(kod: string, kodlar: Set<string>): boolean {
+    if (!kod) return false;
+    const prefix = kod + '.';
+    for (const other of kodlar) {
+      if (other !== kod && other.startsWith(prefix)) return false;
+    }
+    return true;
+  }
+
+  private hasMizanMovement(row: any): boolean {
+    return (
+      Math.abs(this.mizanAmount(row?.borcToplami)) > 0.005 ||
+      Math.abs(this.mizanAmount(row?.alacakToplami)) > 0.005
+    );
+  }
+
+  private hasMizanValue(row: any): boolean {
+    return (
+      this.hasMizanMovement(row) ||
+      Math.abs(this.mizanAmount(row?.borcBakiye)) > 0.005 ||
+      Math.abs(this.mizanAmount(row?.alacakBakiye)) > 0.005
+    );
+  }
+
+  private isKdvControlKod(kod: string): boolean {
+    return ['190', '191', '192', '193', '391', '392', '393'].some((prefix) =>
+      this.isKodOrChild(kod, prefix),
+    );
+  }
+
+  private isKdvSnapshotExcludedKod(kod: string): boolean {
+    const excludedPrefixes = [
+      '100',
+      '101',
+      '102',
+      '103',
+      '108',
+      '120',
+      '121',
+      '126',
+      '127',
+      '128',
+      '129',
+      '131',
+      '132',
+      '136',
+      '159',
+      '320',
+      '321',
+      '326',
+      '329',
+      '331',
+      '332',
+      '336',
+      '340',
+    ];
+    return excludedPrefixes.some((prefix) => this.isKodOrChild(kod, prefix));
   }
 
   /** Agent yüklediği XLS sonrası snapshot oluştur (parser caller'da, burada sadece DB) */
