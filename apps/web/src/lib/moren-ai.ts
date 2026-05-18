@@ -120,3 +120,30 @@ export async function getRealtimeVoiceToken(): Promise<any> {
   const { data } = await api.get('/moren-ai/voice/realtime-token');
   return data;
 }
+
+export async function realtimePortalQuery(body: {
+  conversationId?: string;
+  taxpayerId?: string;
+  question: string;
+}): Promise<ChatResponse> {
+  const { data } = await api.post('/moren-ai/voice/realtime-portal-query', body);
+  return data;
+}
+
+export async function logRealtimeVoiceUsage(body: {
+  conversationId?: string;
+  taxpayerId?: string;
+  model?: string;
+  responseId?: string;
+  usage: any;
+  durationMs?: number;
+}): Promise<{
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  costUsd: number;
+}> {
+  const { data } = await api.post('/moren-ai/voice/realtime-usage', body);
+  return data;
+}

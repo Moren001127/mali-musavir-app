@@ -1363,6 +1363,28 @@ export class KdvControlService {
           ...result,
         },
       });
+      const reviewCount = Number(result.partial || 0) + Number(result.needsReview || 0);
+      const unmatchedCount = Number(result.unmatched || 0);
+      const issueCount = reviewCount + unmatchedCount;
+      if (issueCount > 0) {
+        await this.pushMorenAiAlert(tenantId, {
+          title: 'MOREN AI uyarısı: KDV kontrol',
+          body: `${mukellefAdi || 'Seçili mükellef'} için ${session.periodLabel} KDV kontrolünde ${issueCount} kayıt dikkat istiyor: ${reviewCount} incele, ${unmatchedCount} hatalı.`,
+          severity: unmatchedCount > 0 ? 'critical' : 'warning',
+          module: 'kdv-control',
+          metadata: {
+            sessionId,
+            taxpayerId: session.taxpayerId,
+            taxpayerName: mukellefAdi,
+            period: session.periodLabel,
+            type: session.type,
+            matched: result.matched,
+            partial: result.partial,
+            needsReview: result.needsReview,
+            unmatched: result.unmatched,
+          },
+        });
+      }
       return result;
     } catch (err) {
       await this.pushFeedEvent(tenantId, {
@@ -1383,6 +1405,37 @@ export class KdvControlService {
     const fullName = [t.firstName, t.lastName].filter(Boolean).join(' ');
     if (fullName) return fullName;
     return t.taxNumber || undefined;
+  }
+
+  private async pushMorenAiAlert(
+    tenantId: string,
+    args: {
+      title: string;
+      body: string;
+      severity: 'warning' | 'critical';
+      module: string;
+      metadata?: any;
+    },
+  ): Promise<void> {
+    try {
+      await (this.prisma as any).notification.create({
+        data: {
+          tenantId,
+          userId: null,
+          title: args.title,
+          body: args.body,
+          type: 'MOREN_AI_ALERT',
+          metadata: {
+            source: 'moren-ai',
+            module: args.module,
+            severity: args.severity,
+            ...(args.metadata || {}),
+          },
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`MOREN AI alert push failed: ${(err as Error).message}`);
+    }
   }
 
   /**

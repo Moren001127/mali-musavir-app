@@ -146,6 +146,16 @@ export class MorenAiController {
   }
 
   // -------- KISA YOL: ses dosyası → chat → ses (tek uç) --------
+  @Post('voice/realtime-portal-query')
+  async realtimePortalQuery(@Req() req: any, @Body() body: any) {
+    return this.service.realtimePortalQuery(req.user.tenantId, req.user.sub, body || {});
+  }
+
+  @Post('voice/realtime-usage')
+  async realtimeUsage(@Req() req: any, @Body() body: any) {
+    return this.service.logRealtimeUsage(req.user.tenantId, req.user.sub, body || {});
+  }
+
   @Post('voice/chat')
   @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 25 * 1024 * 1024 } }))
   async voiceChat(

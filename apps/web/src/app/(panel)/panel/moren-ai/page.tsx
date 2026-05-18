@@ -30,7 +30,9 @@ import {
   getConversation,
   getOfficeBrain,
   getRealtimeVoiceToken,
+  logRealtimeVoiceUsage,
   listConversations,
+  realtimePortalQuery,
   renameConversation,
   saveMemory,
   synthesize,
@@ -47,6 +49,34 @@ const LINE_GOLD = 'rgba(212,184,118,0.22)';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.56)';
 const SOFT = 'rgba(255,255,255,0.035)';
+
+const REALTIME_PORTAL_TOOL = {
+  type: 'function',
+  name: 'portal_query',
+  description:
+    'Her sesli kullanıcı sorusunu MOREN AI portal backendine iletir. Vergi, SGK, hukuk, mevzuat, mükellef, mali tablo, hafıza, maliyet ve portal işlemlerinde mutlaka bunu kullan.',
+  parameters: {
+    type: 'object',
+    properties: {
+      question: {
+        type: 'string',
+        description: 'Kullanıcının sesli sorusunun kısa ve net metin hali.',
+      },
+    },
+    required: ['question'],
+  },
+};
+
+function realtimeInstructions(selectedName?: string) {
+  return [
+    'Türkçe konuş. Kadın sesli, doğal ve sakin ol.',
+    'Sen MOREN AI ses katmanısın; her kullanıcı sorusunda önce portal_query toolunu çağır.',
+    'Cevabı MOREN AI backendinden gelen sonuca göre söyle; kendi başına mali/vergi/hukuk cevabı üretme.',
+    'Karşındaki kişi mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme.',
+    'Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
+    selectedName ? `Seçili mükellef: ${selectedName}.` : 'Seçili mükellef yok; genel ofis sorusu.',
+  ].join(' ');
+}
 
 type Taxpayer = {
   id: string;
@@ -170,6 +200,8 @@ export default function MorenAIPage() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'listening' | 'transcribing' | 'thinking' | 'speaking'>('idle');
+  const [realtimeSessionCost, setRealtimeSessionCost] = useState(0);
+  const [realtimeSessionTokens, setRealtimeSessionTokens] = useState(0);
   const [memoryText, setMemoryText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -178,6 +210,11 @@ export default function MorenAIPage() {
   const realtimePeerRef = useRef<RTCPeerConnection | null>(null);
   const realtimeStreamRef = useRef<MediaStream | null>(null);
   const realtimeActiveRef = useRef(false);
+  const realtimeModelRef = useRef('gpt-realtime-mini');
+  const realtimeStartedAtRef = useRef<number>(0);
+  const realtimeResponsesLoggedRef = useRef<Set<string>>(new Set());
+  const activeConversationIdRef = useRef<string | null>(null);
+  const selectedTaxpayerIdRef = useRef('');
   const restartVoiceRef = useRef<() => void>(() => {});
   const handleVoiceBlobRef = useRef<(blob: Blob | null) => void>(() => {});
   const recorder = useRecorder();
@@ -217,6 +254,14 @@ export default function MorenAIPage() {
   const messages: Message[] = activeConv?.messages || [];
   const selectedTaxpayer = taxpayers.find((item) => item.id === selectedTaxpayerId);
 
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    selectedTaxpayerIdRef.current = selectedTaxpayerId;
+  }, [selectedTaxpayerId]);
+
   const stopRealtimeVoice = () => {
     realtimeActiveRef.current = false;
     realtimePeerRef.current?.close();
@@ -229,10 +274,127 @@ export default function MorenAIPage() {
     }
   };
 
+  const recordRealtimeUsage = async (event: any) => {
+    const response = event?.response;
+    const usage = response?.usage;
+    const responseId = response?.id || event?.event_id;
+    if (!usage || !responseId || realtimeResponsesLoggedRef.current.has(responseId)) return;
+    realtimeResponsesLoggedRef.current.add(responseId);
+    try {
+      const logged = await logRealtimeVoiceUsage({
+        conversationId: activeConversationIdRef.current || undefined,
+        taxpayerId: selectedTaxpayerIdRef.current || undefined,
+        model: realtimeModelRef.current,
+        responseId,
+        usage,
+        durationMs: realtimeStartedAtRef.current ? Date.now() - realtimeStartedAtRef.current : undefined,
+      });
+      setRealtimeSessionCost((value) => value + (logged.costUsd || 0));
+      setRealtimeSessionTokens((value) => value + (logged.inputTokens || 0) + (logged.outputTokens || 0));
+      if (activeConversationIdRef.current) {
+        await qc.invalidateQueries({ queryKey: ['ai-conversation', activeConversationIdRef.current] });
+        await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
+      }
+    } catch {
+      // Maliyet kaydı ses akışını bozmasın.
+    }
+  };
+
+  const runRealtimePortalCall = async (call: any, dc: RTCDataChannel) => {
+    let args: any = {};
+    try {
+      args = call?.arguments ? JSON.parse(call.arguments) : {};
+    } catch {
+      args = {};
+    }
+    const question = String(args?.question || '').trim();
+    if (!question || dc.readyState !== 'open') return;
+
+    setVoiceStatus('thinking');
+    try {
+      const result = await realtimePortalQuery({
+        conversationId: activeConversationIdRef.current || undefined,
+        taxpayerId: selectedTaxpayerIdRef.current || undefined,
+        question,
+      });
+      activeConversationIdRef.current = result.conversationId;
+      if (!activeConversationId) setActiveConversationId(result.conversationId);
+      setIsDraftingNewChat(false);
+      await qc.invalidateQueries({ queryKey: ['ai-conversation', result.conversationId] });
+      await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
+
+      dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: JSON.stringify({
+            answer: result.assistantMessage,
+            conversationId: result.conversationId,
+            usage: result.usage,
+          }),
+        },
+      }));
+      dc.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          tool_choice: 'none',
+          instructions:
+            'Tool çıktısındaki answer alanını temel alarak kısa ve doğal Türkçe söyle. En fazla 1-3 cümle. Mali müşavire danışın, uzmana başvurun veya sorumluluk reddi deme.',
+        },
+      }));
+    } catch (error: any) {
+      dc.send(JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'function_call_output',
+          call_id: call.call_id,
+          output: JSON.stringify({
+            answer: 'Portal cevabı alınamadı; bağlantıyı kontrol edip tekrar deneyelim.',
+            error: error?.response?.data?.message || error?.message || 'portal_query_failed',
+          }),
+        },
+      }));
+      dc.send(JSON.stringify({
+        type: 'response.create',
+        response: {
+          tool_choice: 'none',
+          instructions: 'Kısa söyle: Portal cevabı alınamadı, tekrar deneyelim.',
+        },
+      }));
+    }
+  };
+
+  const handleRealtimeServerEvent = async (raw: MessageEvent, dc: RTCDataChannel) => {
+    let event: any;
+    try {
+      event = JSON.parse(String(raw.data || '{}'));
+    } catch {
+      return;
+    }
+    if (event.type === 'response.created') setVoiceStatus('thinking');
+    if (event.type === 'response.audio.delta' || event.type === 'response.audio_transcript.delta') setVoiceStatus('speaking');
+    if (event.type === 'input_audio_buffer.speech_started') setVoiceStatus('listening');
+    if (event.type !== 'response.done') return;
+
+    await recordRealtimeUsage(event);
+    const calls = (event?.response?.output || []).filter((item: any) => item?.type === 'function_call' && item?.name === 'portal_query');
+    if (calls.length > 0) {
+      for (const call of calls) await runRealtimePortalCall(call, dc);
+      return;
+    }
+    if (voiceModeRef.current && realtimeActiveRef.current) setVoiceStatus('listening');
+  };
+
   const startRealtimeVoice = async () => {
     if (realtimePeerRef.current) return;
     setVoiceStatus('connecting');
+    setRealtimeSessionCost(0);
+    setRealtimeSessionTokens(0);
+    realtimeStartedAtRef.current = Date.now();
+    realtimeResponsesLoggedRef.current = new Set();
     const tokenData = await getRealtimeVoiceToken();
+    realtimeModelRef.current = tokenData?.model || tokenData?.session?.model || 'gpt-realtime-mini';
     const ephemeralKey =
       tokenData?.value ||
       tokenData?.client_secret?.value ||
@@ -264,13 +426,17 @@ export default function MorenAIPage() {
     stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
 
     const dc = pc.createDataChannel('oai-events');
+    dc.onmessage = (event) => {
+      handleRealtimeServerEvent(event, dc).catch(() => {});
+    };
     dc.onopen = () => {
       setVoiceStatus('listening');
       dc.send(JSON.stringify({
         type: 'session.update',
         session: {
-          instructions:
-            'Türkçe konuş. Cevaplar çok kısa, net ve mesleki olsun: 1-3 cümle. Kullanıcı konuşurken sözünü kesme.',
+          instructions: realtimeInstructions(selectedTaxpayer ? taxpayerName(selectedTaxpayer) : undefined),
+          tools: [REALTIME_PORTAL_TOOL],
+          tool_choice: 'required',
         },
       }));
     };
@@ -520,6 +686,7 @@ export default function MorenAIPage() {
   };
 
   const totalCost = useMemo(() => messages.reduce((sum, message) => sum + (message.costUsd || 0), 0), [messages]);
+  const visibleSessionCost = Math.max(activeConv?.totalCostUsd ?? 0, totalCost + realtimeSessionCost);
   const voiceLabel = voiceStatus === 'connecting'
     ? 'Bağlanıyor'
     : realtimeActiveRef.current
@@ -719,10 +886,15 @@ export default function MorenAIPage() {
               {activeConv?.title || 'Yeni konuşma'}
             </h2>
           </div>
-          {messages.length > 0 && (
+          {(messages.length > 0 || realtimeSessionCost > 0) && (
             <div className="hidden rounded-lg border px-3 py-2 text-right sm:block" style={{ borderColor: LINE, color: MUTED }}>
               <p className="text-[10px] uppercase tracking-[0.12em]">Oturum</p>
-              <p className="text-[12px] tabular-nums" style={{ color: TEXT }}>{messages.length} mesaj · ${totalCost.toFixed(4)}</p>
+              <p className="text-[12px] tabular-nums" style={{ color: TEXT }}>{messages.length} mesaj · ${visibleSessionCost.toFixed(4)}</p>
+              {realtimeSessionCost > 0 && (
+                <p className="mt-0.5 text-[10px] tabular-nums" style={{ color: GOLD }}>
+                  Canlı ses · ${realtimeSessionCost.toFixed(4)} · {realtimeSessionTokens} token
+                </p>
+              )}
             </div>
           )}
           <button

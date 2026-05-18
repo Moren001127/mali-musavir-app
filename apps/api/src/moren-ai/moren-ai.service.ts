@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
 import { buildSystemPrompt } from './system-prompt';
-import { computeCostUsd } from '../common/ai-usage-logger';
+import { computeCostUsd, computeRealtimeCostUsd } from '../common/ai-usage-logger';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Maliyet optimizasyonu: Haiku 4.5 — Sonnet'ten 12x ucuz, mali musavir sohbet kalitesi
@@ -496,6 +496,102 @@ export class MorenAiService {
     };
   }
 
+  async realtimePortalQuery(
+    tenantId: string,
+    userId: string | null,
+    body: {
+      conversationId?: string;
+      taxpayerId?: string;
+      question?: string;
+    },
+  ) {
+    const question = String(body?.question || '').replace(/\s+/g, ' ').trim();
+    if (!question) throw new BadRequestException('question zorunlu');
+    return this.chat(tenantId, userId, {
+      conversationId: body.conversationId,
+      taxpayerId: body.taxpayerId,
+      message: question.slice(0, 1200),
+      voiceMode: true,
+    });
+  }
+
+  async logRealtimeUsage(
+    tenantId: string,
+    userId: string | null,
+    body: {
+      conversationId?: string;
+      taxpayerId?: string;
+      model?: string;
+      responseId?: string;
+      usage?: any;
+      durationMs?: number;
+    },
+  ) {
+    const usage = body?.usage || {};
+    const model = body?.model || process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini';
+    const num = (...values: any[]) => {
+      for (const value of values) {
+        const n = Number(value || 0);
+        if (Number.isFinite(n) && n > 0) return Math.round(n);
+      }
+      return 0;
+    };
+    const inputTokens = num(usage.input_tokens, usage.inputTokens);
+    const outputTokens = num(usage.output_tokens, usage.outputTokens);
+    const cacheReadTokens = num(
+      usage?.input_token_details?.cached_tokens,
+      usage?.inputTokenDetails?.cachedTokens,
+    );
+    const costUsd = computeRealtimeCostUsd(model, usage);
+
+    let conversation: any = null;
+    if (body?.conversationId) {
+      conversation = await this.prisma.aiConversation.findFirst({
+        where: { id: body.conversationId, tenantId },
+        select: { id: true },
+      });
+    }
+
+    await this.prisma.aiUsageLog.create({
+      data: {
+        tenantId,
+        taxpayerId: body?.taxpayerId || null,
+        source: 'moren-ai-realtime',
+        model,
+        inputTokens,
+        outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens: 0,
+        costUsd,
+        karar: 'ok',
+        sebep: String(body?.responseId || 'realtime-voice').slice(0, 200),
+        durationMs: body?.durationMs ?? null,
+        cacheHit: false,
+      },
+    });
+
+    if (conversation) {
+      await this.prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data: {
+          totalInputTokens: { increment: inputTokens },
+          totalOutputTokens: { increment: outputTokens },
+          totalCacheReadTokens: { increment: cacheReadTokens },
+          totalCostUsd: { increment: costUsd },
+          taxpayerId: body?.taxpayerId || undefined,
+        },
+      });
+    }
+
+    return {
+      model,
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      costUsd,
+    };
+  }
+
   // ==========================================================
   // YARDIMCILAR
   // ==========================================================
@@ -513,6 +609,8 @@ export class MorenAiService {
     const cleaned = String(text || '')
       .replace(/\n{3,}/g, '\n\n')
       .replace(/^Resmi kaynak doğrudan bulamadım\s*[—-]\s*/i, '')
+      .replace(/Detaylı bilgi için[^.!?\n]*(mali müşavir|uzman|profesyonel)[^.!?\n]*[.!?]?/gi, '')
+      .replace(/[^.!?\n]*(mali müşavire|uzmana|profesyonel destek)[^.!?\n]*(danışın|başvurun|alın)[^.!?\n]*[.!?]?/gi, '')
       .trim();
     const maxChars = voiceMode ? 360 : 900;
     if (cleaned.length <= maxChars) return cleaned;
