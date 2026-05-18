@@ -297,7 +297,7 @@ function UyariSatir({ renk, etiket, mesaj, altMesaj }: { renk: string; etiket: s
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded"
           style={{ background: `${renk}22`, color: renk }}>
-          {etiket}
+          {formatUyariEtiketi(etiket)}
         </span>
         <span className="text-[12.5px]" style={{ color: '#fafaf9' }}>{mesaj}</span>
       </div>
@@ -308,4 +308,11 @@ function UyariSatir({ renk, etiket, mesaj, altMesaj }: { renk: string; etiket: s
       )}
     </div>
   );
+}
+
+function formatUyariEtiketi(etiket: string) {
+  if (etiket === 'CRITICAL') return 'KRİTİK';
+  if (etiket === 'WARNING') return 'UYARI';
+  if (etiket === 'OK') return 'TAMAM';
+  return etiket;
 }

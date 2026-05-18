@@ -442,10 +442,9 @@ export class SystemHealthService {
         versionCounts[v] = (versionCounts[v] || 0) + 1;
       }
 
-      const expected = '1.36'; // major.minor — bu prefix'le başlamayanlar eski
-      const oldVersions = Object.keys(versionCounts).filter(
-        (v) => v !== 'bilinmeyen' && !v.startsWith(expected),
-      );
+      const minBrowserVersion = '1.37.0';
+      const minLocalVersion = 'local-1.1.2';
+      const oldVersions = Object.keys(versionCounts).filter((v) => this.isOldAgentVersion(v));
 
       if (oldVersions.length > 0) {
         const detail = oldVersions.map((v) => `${v}=${versionCounts[v]}`).join(', ');
@@ -453,9 +452,9 @@ export class SystemHealthService {
           type: 'AGENT_VERSION',
           severity: 'WARNING',
           status: 'DEGRADED',
-          message: `Eski sürüm agent aktif: ${detail}`,
-          detail: { versionCounts, oldVersions },
-          acilTavsiye: 'Tüm kullanıcılar Luca/Mihsap sekmelerinde bookmarklet\'i tekrar tıklasın — version-aware reload yükselti yapacak',
+          message: `Güncel olmayan agent aktif: ${detail}`,
+          detail: { versionCounts, oldVersions, minBrowserVersion, minLocalVersion },
+          acilTavsiye: "Luca/Mihsap sekmelerinde bookmarklet'i tekrar tıkla; local agent ise yeniden başlat.",
         });
       } else {
         await this.resolveCheck('AGENT_VERSION');
@@ -565,5 +564,37 @@ export class SystemHealthService {
       IHO_FETCH: 'İşletme hesap özeti',
     };
     return labels[String(tip || '').toUpperCase()] || String(tip || 'Luca job');
+  }
+
+  private isOldAgentVersion(version: string): boolean {
+    const v = String(version || '').trim();
+    if (!v || v === 'bilinmeyen') return false;
+
+    const local = /^local-(\d+)\.(\d+)\.(\d+)/i.exec(v);
+    if (local) {
+      return this.compareVersionParts(
+        [Number(local[1]), Number(local[2]), Number(local[3])],
+        [1, 1, 2],
+      ) < 0;
+    }
+
+    const browser = /^v?(\d+)\.(\d+)(?:\.(\d+))?/i.exec(v);
+    if (browser) {
+      return this.compareVersionParts(
+        [Number(browser[1]), Number(browser[2]), Number(browser[3] || 0)],
+        [1, 37, 0],
+      ) < 0;
+    }
+
+    return false;
+  }
+
+  private compareVersionParts(a: number[], b: number[]): number {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const av = Number.isFinite(a[i]) ? a[i] : 0;
+      const bv = Number.isFinite(b[i]) ? b[i] : 0;
+      if (av !== bv) return av > bv ? 1 : -1;
+    }
+    return 0;
   }
 }
