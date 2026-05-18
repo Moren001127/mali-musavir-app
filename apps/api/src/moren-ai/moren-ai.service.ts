@@ -41,6 +41,7 @@ const CORE_TOOL_NAMES = [
   'get_taxpayer',
   'search_ai_memory',
   'save_ai_memory',
+  'get_operation_briefing',
   'get_ai_cost_summary',
   'get_portal_capability_map',
 ];
@@ -52,6 +53,7 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /sgk|bordro|personel|prim|işçi|isci|işveren|isveren/i, tools: ['get_payroll_summary', 'list_sgk_declarations'] },
   { pattern: /evrak|belge|sözleşme|sozlesme|doküman|dokuman/i, tools: ['list_documents', 'get_taxpayer_work_status', 'list_taxpayers_monthly_status'] },
   { pattern: /tahsilat|borç|borc|cari|ödeme|odeme|whatsapp|hatırlatma|hatirlatma/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'get_taxpayer_work_status'] },
+  { pattern: /bug[üu]n|acil|öncelik|oncelik|yapmam gereken|neye bak|işler|isler|brifing|briefing|operasyon/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status'] },
   { pattern: /ajan|agent|luca|tebligat|otomasyon|komut|çalıştır|calistir|işlem yap|islem yap/i, tools: ['get_agent_status', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'preview_agent_command', 'create_confirmed_agent_command'] },
   { pattern: /araç|arac|plaka|hgs|otoyol|ihlal/i, tools: ['list_araclar_hgs'] },
   { pattern: /vergi|mevzuat|kanun|ceza|had|süre|sure|oran|vuk|kvk|gvk|sgk|resmi gazete|gib|gelir idaresi|işi bırak|isi birak/i, tools: ['research_official_sources'] },
@@ -293,6 +295,43 @@ export class MorenAiService {
     });
 
     // Konuşma geçmişini Anthropic formatına çevir
+    const deterministicAnswer = this.getDeterministicCriticalAnswer(userMessage);
+    if (deterministicAnswer) {
+      const durationMs = Date.now() - started;
+      await this.prisma.aiMessage.create({
+        data: {
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: deterministicAnswer,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0,
+          model: 'moren-ai-verified-rule',
+          durationMs,
+        },
+      });
+      await this.prisma.aiConversation.update({
+        where: { id: conversation.id },
+        data: { taxpayerId: conversation.taxpayerId || body.taxpayerId || null },
+      });
+      return {
+        conversationId: conversation.id,
+        assistantMessage: deterministicAnswer,
+        toolUses: [],
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0,
+          durationMs,
+          model: 'moren-ai-verified-rule',
+        },
+      };
+    }
+
     const messages = this.buildMessages(conversation.messages, userMessage);
 
     // Tenant + kullanıcı + cari dönem bağlamı
@@ -595,6 +634,29 @@ export class MorenAiService {
   // ==========================================================
   // YARDIMCILAR
   // ==========================================================
+  private getDeterministicCriticalAnswer(text: string): string | null {
+    const normalized = text
+      .toLocaleLowerCase('tr-TR')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const businessClosure =
+      /(işi|iş)\s*(bırak|birak|terk)|mükellefiyet\s*(terk|kapanış|kapanis)/i.test(normalized) &&
+      /(bildir|süre|sure|kaç gün|kac gun|ceza|usulsüzlük|usulsuzluk)/i.test(normalized);
+
+    if (businessClosure) {
+      const currentYear = new Date().getFullYear();
+      const currentYearAmounts =
+        currentYear === 2026
+          ? ' 2026 ikinci derece tutarları: sermaye şirketi 17.000 TL; birinci sınıf/serbest meslek 8.700 TL; ikinci sınıf 6.000 TL; beyanname usulü gelir vergisi 4.000 TL; basit usul 2.600 TL.'
+          : ' Tutar yıl ve mükellef sınıfına göre güncel VUK usulsüzlük ceza tarifesinden alınır.';
+
+      return `İşi bırakma bildirimi, işi bırakma tarihinden itibaren 1 ay içinde vergi dairesine yapılır. Geç kalırsa VUK 352/II kapsamında ikinci derece usulsüzlük cezası kesilir.${currentYearAmounts} VUK 359 veya 100 TL sabit ceza değildir.`;
+    }
+
+    return null;
+  }
+
   private selectToolsForMessage(text: string) {
     const selected = new Set<string>(CORE_TOOL_NAMES);
     for (const group of TOOL_GROUPS) {
