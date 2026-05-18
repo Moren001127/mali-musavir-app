@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.70';
+  const AGENT_VERSION = '1.37.71';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1217,7 +1217,7 @@
 
           const isZipJob = ['EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS'].includes(job.tip);
           await throwIfCancelled();
-          const blob = await fetchLucaMuavinExcel(job, log, throwIfCancelled);
+          const blob = await fetchLucaJobExcel(job, log, throwIfCancelled);
           await throwIfCancelled();
           if (!blob) throw new Error(isZipJob ? 'ZIP yakalanamadı' : 'Excel yakalanamadı');
           await log(`📥 ${isZipJob ? 'ZIP' : 'Excel'} indirildi (${Math.round(blob.size / 1024)} KB)`);
@@ -1429,10 +1429,10 @@
    *
    * Desteklenen tipler:
    *   MIZAN          → frm3 / raporMizanForm / raporMizanAction.do
-   *   KDV_191/391    → Defteri Kebir formu (sonradan eklenecek — frame keşif lazım)
-   *   ISLETME_*      → İşletme defteri formu (sonradan)
+   *   KDV_191/391    → Defteri Kebir formu
+   *   ISLETME_*      → İşletme defteri Gelir/Gider Listesi
    */
-  async function fetchLucaMuavinExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
+  async function fetchLucaJobExcel(job, log = (() => {}), throwIfCancelled = async () => {}) {
     // MIZAN ve KDV_MIZAN aynı Luca ekranını kullanır (Mizan ekranı, tüm hesaplar)
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
     if (job.tip === 'MIZAN' || job.tip === 'ACCOUNT_PLAN' || job.tip === 'KDV_MIZAN') {
@@ -1455,8 +1455,7 @@
         job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS') {
       return await fetchLucaEarsivZip(job, log, throwIfCancelled);
     }
-    // Bilinmeyen tip için fallback
-    return await fetchLucaGenericExcel(job, log);
+    throw new Error(`Desteklenmeyen Luca job tipi: ${job.tip}. Guvenlik geregi baska ekran ya da generic Excel fallback denenmedi.`);
   }
 
   function collectLucaClickMap(filterText = '') {
@@ -2224,7 +2223,7 @@
           if (/İşletme\s+Defteri/i.test(txt)) return 'isletme';
           if (/Muhasebe/i.test(txt)) return 'bilanco';
         } catch {}
-        return 'bilanco'; // varsayılan
+        return null;
       };
 
       const II1A_CODES = {
@@ -2245,6 +2244,9 @@
       };
 
       const mukellefTipi = detectMukellefTipi();
+      if (!mukellefTipi) {
+        throw new Error(`E-belge icin defter turu tespit edilemedi; guvenlik geregi Bilanço/İşletme varsayimi yapilmadi. Mukellef kartinda defter turunu kontrol edin. Job=${job.tip}`);
+      }
       const ii1aId = II1A_CODES[mukellefTipi]?.[job.tip];
       // Defter türü biliniyorsa karşı defter ailesinin kodlarını deneme.
       // Bilanço mükellefinde işletme kodu/menüsü denemek hem bekletiyor hem yanlış
@@ -6852,6 +6854,18 @@
     }
   }
 
+  function deleteCachedLucaMenuHit(label) {
+    try {
+      const key = normalizeLucaMenuText(label);
+      if (!key) return;
+      const cache = readLucaMenuIdCache();
+      if (cache[key]) {
+        delete cache[key];
+        writeLucaMenuIdCache(cache);
+      }
+    } catch {}
+  }
+
   function isDirectLucaMenuCodeUnsafe(label) {
     const key = normalizeLucaMenuText(label);
     return [
@@ -6861,6 +6875,7 @@
       'gider islemleri',
       'gelir islemleri',
       'raporlar',
+      'mizan',
       'rapor islemleri',
       'raporlar ve listeler',
       'listeler',
@@ -7444,11 +7459,23 @@
    * click bubbling ile parent jQuery handler tetiklenir.
    */
   async function openLucaMizan(log) {
+    try {
+      const f3 = getLucaFrame('frm3');
+      if (f3) {
+        f3.src = 'about:blank';
+        await sleep(650);
+        await log('Mizan icin frm3 temizlendi; eski/yanlis rapor formu kabul edilmeyecek');
+      }
+    } catch {}
     cacheVisibleLucaMenuIds();
     if (await openCachedLucaMenu('Mizan', log, 1000)) {
-      await log('✓ Mizan ID cache ile açıldı');
-      await sleep(800);
-      return;
+      const ready = await waitUntil(() => findLucaMizanFormNow(), 5000, 250);
+      if (ready) {
+        await log('✓ Mizan ID cache ile açıldı ve raporMizanForm doğrulandı');
+        return;
+      }
+      deleteCachedLucaMenuHit('Mizan');
+      await log('Mizan cache ID hedef formu açmadı; cache silindi ve metinle yeniden denenecek');
     }
     await log('🔍 Sağ menüde Mizan linki aranıyor...');
     const found = await findLucaMenuItem('Mizan', log);
@@ -7460,7 +7487,11 @@
       );
     }
     await log(`🖱 Mizan tıklanıyor (${found.frameName} → ${found.el.tagName})`);
-    if (await activateLucaMenuItem('Mizan', found, log, 1000)) return;
+    if (await activateLucaMenuItem('Mizan', found, log, 1000)) {
+      const ready = await waitUntil(() => findLucaMizanFormNow(), 8000, 250);
+      if (ready) return;
+      await log('Mizan menusu tiklandi ama raporMizanForm dogrulanmadi; klasik tiklama zinciri denenecek');
+    }
 
     // Tıklama: element + parent zinciri (5 seviye, click event bubbling)
     let cur = found.el;
@@ -7474,6 +7505,30 @@
     }
     // about:blank reset sonrası taze form yüklenmesi 1-2sn sürebilir
     await sleep(1500);
+  }
+
+  function findLucaMizanFormNow() {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch {}
+      return acc;
+    };
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        const found =
+          f.contentDocument.querySelector('form[name="raporMizanForm"]') ||
+          f.contentDocument.querySelector('form[action*="raporMizan"]') ||
+          f.contentDocument.querySelector('form[action*="Mizan"]');
+        if (found) return found;
+      } catch {}
+    }
+    return null;
   }
 
   /**
