@@ -7,6 +7,10 @@ import {
   normalizeOcrYear as normalizeOcrYearPure,
 } from './ocr/parsers/date';
 import { extractBelgeNo as extractBelgeNoPure } from './ocr/parsers/belge-no';
+import {
+  extractSaticiVkn as extractSaticiVknPure,
+  extractSaticiUnvan as extractSaticiUnvanPure,
+} from './ocr/parsers/vendor';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -1646,34 +1650,14 @@ export class OcrService {
     return null;
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege ediyor. Yeni kod `extractSaticiVknPure` kullansin. */
   private extractSaticiVknFromAzure(text: string): string | null {
-    if (!text) return null;
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
-    const top = (stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 14)).join('\n');
-    const folded = this.foldTurkishAscii(top);
-    const labeled = folded.match(/\b(?:VKN|TCKN|VERGI\s*NO|MUKELLEF(?:LER)?\s*NO)\b[^0-9]{0,30}(\d{10,11})/);
-    if (labeled?.[1]) return labeled[1];
-    const any = folded.match(/\b(\d{10,11})\b/);
-    return any?.[1] ?? null;
+    return extractSaticiVknPure(text, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege ediyor. Yeni kod `extractSaticiUnvanPure` kullansin. */
   private extractSaticiFromAzure(text: string): string | null {
-    if (!text) return null;
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
-    const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 10);
-    for (const raw of topLines) {
-      const folded = this.foldTurkishAscii(raw);
-      if (folded.length < 5) continue;
-      if (/\b(?:VKN|TCKN|VERGI|TEL|FAKS|WEB|E-?POSTA|MERSIS|TICARET\s+SICIL|FATURA|ETTN)\b/.test(folded)) continue;
-      if (!/[A-Z]/.test(folded)) continue;
-      if (/\b(?:LTD|LIMITED|ANONIM|AS|STI|SIRKET|TICARET|SANAYI|TURIZM|HIZMET|INSAAT|LOJISTIK|TASIMACILIK)\b/.test(folded)) {
-        return raw.slice(0, 200);
-      }
-      if (folded.replace(/[^A-Z]/g, '').length >= 12) return raw.slice(0, 200);
-    }
-    return null;
+    return extractSaticiUnvanPure(text, (s) => this.foldTurkishAscii(s));
   }
 
   private parseTevkifatRate(text: string): number {
