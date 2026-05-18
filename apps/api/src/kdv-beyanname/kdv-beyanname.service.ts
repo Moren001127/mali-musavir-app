@@ -468,21 +468,43 @@ export class KdvBeyannameService {
     // bu yüzden ilgili dönem/tip kayıtlarını alıp belge no'yu JS tarafında normalize ederek eşliyoruz.
     const kdvTipleri =
       faturaTuru === 'SATIS' ? ['KDV_391', 'ISLETME_GELIR'] : ['KDV_191', 'ISLETME_GIDER'];
+    const sessionWhere = {
+      tenantId,
+      OR: [{ taxpayerId: mukellefId }, { taxpayerId: null }],
+      periodLabel: { in: this.periodLabelCandidates(donem) },
+      type: { in: kdvTipleri },
+    };
+
+    const kdvResults = await (this.prisma as any).reconciliationResult.findMany({
+      where: {
+        session: sessionWhere,
+        status: { in: ['MATCHED', 'CONFIRMED', 'PARTIAL_MATCH', 'NEEDS_REVIEW'] },
+      },
+      include: { image: true, kdvRecord: true },
+    });
+
+    const controlMap = new Map<string, Array<{ oran: number; matrah: number; kdv: number }>>();
+    const setControlRows = (belgeNo: any, rows: Array<{ oran: number; matrah: number; kdv: number }>) => {
+      if (!rows.length) return;
+      for (const key of this.belgeNoKeys(belgeNo)) {
+        if (!controlMap.has(key)) controlMap.set(key, rows);
+      }
+    };
+
+    for (const res of kdvResults) {
+      const rows = this.kdvRowsFromControl(res.kdvRecord, res.image);
+      setControlRows(res.image?.confirmedBelgeNo, rows);
+      setControlRows(res.image?.ocrBelgeNo, rows);
+      setControlRows(res.kdvRecord?.belgeNo, rows);
+    }
+
     const kdvRecords = await (this.prisma as any).kdvRecord.findMany({
       where: {
-        session: {
-          tenantId,
-          taxpayerId: mukellefId,
-          periodLabel: { in: this.periodLabelCandidates(donem) },
-          type: { in: kdvTipleri },
-        },
+        session: sessionWhere,
       },
     });
-    const ocrMap = new Map<string, any>();
     for (const r of kdvRecords) {
-      for (const key of this.belgeNoKeys(r.belgeNo)) {
-        if (!ocrMap.has(key)) ocrMap.set(key, r);
-      }
+      setControlRows(r.belgeNo, this.kdvRowsFromControl(r, null));
     }
 
     // Oran bazlı toplama
@@ -510,14 +532,11 @@ export class KdvBeyannameService {
     const eksikVeriler: KdvEksikVeri[] = [];
 
     for (const f of faturaOnly) {
-      const ocr = this.findByBelgeNo(ocrMap, f.faturaNo);
-      if (ocr && ocr.kdvMatrahi != null && ocr.kdvOrani != null && ocr.kdvTutari != null) {
-        addToOran(
-          this.parseTrAmount(ocr.kdvOrani),
-          this.parseTrAmount(ocr.kdvMatrahi),
-          this.parseTrAmount(ocr.kdvTutari),
-          'kdv_kontrol',
-        );
+      const controlRows = this.findByBelgeNo(controlMap, f.faturaNo) || [];
+      if (controlRows.length > 0) {
+        for (const row of controlRows) {
+          addToOran(row.oran, row.matrah, row.kdv, 'kdv_kontrol');
+        }
         ocrliAdet++;
       } else {
         // Tahmin: toplam = matrah * (1 + oran/100) → matrah = toplam / 1.20
@@ -830,6 +849,25 @@ export class KdvBeyannameService {
     return undefined;
   }
 
+  private kdvRowsFromControl(record: any, image: any): Array<{ oran: number; matrah: number; kdv: number }> {
+    const breakdown = this.extractKdvBreakdownFromRaw(
+      image?.confirmedKdvBreakdown ?? image?.ocrKdvBreakdown,
+    );
+    if (breakdown.length > 0) return breakdown;
+
+    const oran = this.parseTrAmount(record?.kdvOrani);
+    const matrah = this.parseTrAmount(record?.kdvMatrahi);
+    const kdv = this.parseTrAmount(record?.kdvTutari);
+    if (oran > 0 && (matrah > 0 || kdv > 0)) {
+      return [{
+        oran,
+        matrah: matrah || kdv / (oran / 100),
+        kdv: kdv || matrah * (oran / 100),
+      }];
+    }
+    return [];
+  }
+
   private stripLeadingZeros(value: string): string {
     return value.replace(/^0+/, '') || '0';
   }
@@ -885,7 +923,7 @@ export class KdvBeyannameService {
     const seen = new Set<string>();
     const rateKeys = ['oran', 'kdvOrani', 'kdv_orani', 'taxRate', 'tax_rate', 'rate', 'percent', 'yuzde'];
     const baseKeys = ['matrah', 'kdvMatrahi', 'kdv_matrahi', 'taxBase', 'tax_base', 'taxableAmount', 'malHizmetTutari'];
-    const vatKeys = ['kdv', 'kdvTutari', 'kdv_tutari', 'taxAmount', 'tax_amount', 'hesaplananKdv'];
+    const vatKeys = ['kdv', 'kdvTutari', 'kdv_tutari', 'taxAmount', 'tax_amount', 'hesaplananKdv', 'tutar', 'amount'];
 
     const pick = (obj: any, keys: string[]) => {
       if (!obj || typeof obj !== 'object') return 0;
