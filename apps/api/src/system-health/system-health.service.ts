@@ -19,6 +19,7 @@ import * as path from 'path';
  *  - MIHSAP_TOKEN_AGE     : Mihsap token backend'e ne kadar süredir senkron olmadı
  *  - PENDING_QUEUE        : Bekleyen Luca/Mihsap job kuyruk derinliği
  *  - FAILED_RATIO         : Son 1h failed/total job oranı
+ *  - LUCA_JOB_FAILURE     : Son 24 saatte tekil Luca job hatası var mı
  *  - MODULE_HASH          : Kilitli modül dosyalarının SHA256 hash'i baseline ile uyumlu mu
  *  - AGENT_VERSION        : Eski sürüm agent kullanımı var mı
  *  - DB_HEALTH            : Prisma bağlantısı sağlam mı (ping)
@@ -41,6 +42,7 @@ export class SystemHealthService {
         this.checkMihsapTokenAge(),
         this.checkPendingQueue(),
         this.checkFailedRatio(),
+        this.checkRecentLucaJobFailures(),
         this.checkModuleHashes(),
         this.checkAgentVersion(),
         this.checkDbHealth(),
@@ -281,6 +283,96 @@ export class SystemHealthService {
     }
   }
 
+  private async checkRecentLucaJobFailures() {
+    try {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const failureWhere = {
+        status: 'failed',
+        OR: [
+          { finishedAt: { gte: dayAgo } },
+          { finishedAt: null, createdAt: { gte: dayAgo } },
+        ],
+      };
+
+      const [failed24h, failed1h, latestFailures] = await Promise.all([
+        (this.prisma as any).lucaFetchJob.count({ where: failureWhere }).catch(() => 0),
+        (this.prisma as any).lucaFetchJob.count({
+          where: {
+            status: 'failed',
+            OR: [
+              { finishedAt: { gte: hourAgo } },
+              { finishedAt: null, createdAt: { gte: hourAgo } },
+            ],
+          },
+        }).catch(() => 0),
+        (this.prisma as any).lucaFetchJob.findMany({
+          where: failureWhere,
+          orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }],
+          take: 5,
+          select: {
+            id: true,
+            tenantId: true,
+            mukellefId: true,
+            donem: true,
+            tip: true,
+            errorMsg: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+          },
+        }).catch(() => []),
+      ]);
+
+      if (!failed24h || latestFailures.length === 0) {
+        await this.resolveCheck('LUCA_JOB_FAILURE');
+        return;
+      }
+
+      const latest = latestFailures[0];
+      const latestAt = latest.finishedAt || latest.createdAt;
+      const ageMin = Math.max(0, Math.floor((Date.now() - new Date(latestAt).getTime()) / 60000));
+      const taxpayerName = this.extractMetaValue(latest.errorMsg, 'mukellefAdi');
+      const errorLine = this.lastUsefulLogLine(latest.errorMsg);
+      const severity = failed1h >= 3 || ageMin <= 30 ? 'CRITICAL' : 'WARNING';
+      const jobLabel = `${this.formatJobTip(latest.tip)}${taxpayerName ? ` · ${taxpayerName}` : ''}`;
+
+      await this.upsertCheck({
+        type: 'LUCA_JOB_FAILURE',
+        severity,
+        status: severity === 'CRITICAL' ? 'DOWN' : 'DEGRADED',
+        message: `${jobLabel} işi hata verdi`,
+        detail: {
+          failed24h,
+          failed1h,
+          latest: {
+            id: latest.id,
+            tip: latest.tip,
+            mukellefId: latest.mukellefId,
+            mukellefAdi: taxpayerName,
+            donem: latest.donem,
+            ageMin,
+            error: errorLine,
+            finishedAt: latest.finishedAt,
+          },
+          recent: latestFailures.map((job: any) => ({
+            id: job.id,
+            tip: job.tip,
+            mukellefAdi: this.extractMetaValue(job.errorMsg, 'mukellefAdi'),
+            donem: job.donem,
+            error: this.lastUsefulLogLine(job.errorMsg),
+            finishedAt: job.finishedAt,
+          })),
+        },
+        acilTavsiye: errorLine
+          ? `Ajan logunu aç: ${errorLine}`
+          : 'Luca iş logunu aç; gerekirse aynı işi yeniden sıraya al.',
+      });
+    } catch (e: any) {
+      this.logger.warn('checkRecentLucaJobFailures hata:', e?.message);
+    }
+  }
+
   private async checkModuleHashes() {
     try {
       const baselinePath = path.resolve(process.cwd(), '../../.locked-modules.json');
@@ -442,5 +534,36 @@ export class SystemHealthService {
       where: { type, resolved: false },
       data: { resolved: true, resolvedAt: new Date() },
     });
+  }
+
+  private extractMetaValue(text: string | null | undefined, key: string): string | null {
+    const match = String(text || '').match(new RegExp(`${key}=([^\\n;]+)`));
+    return match?.[1]?.trim() || null;
+  }
+
+  private lastUsefulLogLine(text: string | null | undefined): string | null {
+    const lines = String(text || '')
+      .split('\n')
+      .map((line) => line.replace(/^\[[^\]]+\]\s*/, '').trim())
+      .filter((line) => line && !line.startsWith('[META]'));
+    return lines.at(-1)?.slice(0, 220) || null;
+  }
+
+  private formatJobTip(tip: string | null | undefined): string {
+    const labels: Record<string, string> = {
+      KDV_MIZAN: 'KDV mizan',
+      MIZAN: 'Mizan',
+      ACCOUNT_PLAN: 'Hesap planı',
+      KDV_191: '191 KDV kontrol',
+      KDV_391: '391 KDV kontrol',
+      ISLETME_GELIR: 'İşletme gelir',
+      ISLETME_GIDER: 'İşletme gider',
+      EARSIV_SATIS: 'E-Arşiv satış',
+      EARSIV_ALIS: 'E-Arşiv alış',
+      EFATURA_SATIS: 'E-Fatura satış',
+      EFATURA_ALIS: 'E-Fatura alış',
+      IHO_FETCH: 'İşletme hesap özeti',
+    };
+    return labels[String(tip || '').toUpperCase()] || String(tip || 'Luca job');
   }
 }

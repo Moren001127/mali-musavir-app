@@ -74,17 +74,24 @@ export function KritikUyariStatCard() {
     });
   }, [agentEvents, todayStart]);
 
-  const critical = health?.summary?.critical ?? 0;
-  const warning = health?.summary?.warning ?? 0;
+  const allHealthChecks = useMemo(() => health?.checks || [], [health?.checks]);
   const moduleHashCheck = useMemo(
-    () => (health?.checks || []).find(
+    () => allHealthChecks.find(
       (c) => (c.type === 'MODULE_HASH' || c.type === 'LOCKED_MODULES') && c.severity !== 'OK'
     ),
-    [health?.checks],
+    [allHealthChecks],
   );
+  const regularHealthChecks = useMemo(
+    () => allHealthChecks.filter((c) => c.severity !== 'OK' && c.id !== moduleHashCheck?.id),
+    [allHealthChecks, moduleHashCheck?.id],
+  );
+  const critical = regularHealthChecks.filter((c) => c.severity === 'CRITICAL').length;
+  const warning = regularHealthChecks.filter((c) => c.severity === 'WARNING').length;
+  const moduleHashCritical = moduleHashCheck?.severity === 'CRITICAL' ? 1 : 0;
+  const moduleHashWarning = moduleHashCheck && moduleHashCheck.severity !== 'CRITICAL' ? 1 : 0;
 
-  const criticalCount = critical + (moduleHashCheck ? 1 : 0) + todayErrors.length;
-  const totalUyari = criticalCount + warning + (unread || 0);
+  const criticalCount = critical + moduleHashCritical + todayErrors.length;
+  const totalUyari = criticalCount + warning + moduleHashWarning + (unread || 0);
   const hasIssue = totalUyari > 0;
 
   return (
@@ -123,6 +130,7 @@ export function KritikUyariStatCard() {
           {totalUyari === 0 ? 'Sorun yok — her şey yolunda' : (
             <>
               {critical > 0 && <span>{critical} sistem · </span>}
+              {warning > 0 && <span>{warning} sistem uyarı · </span>}
               {moduleHashCheck && <span>1 kilit drift · </span>}
               {todayErrors.length > 0 && <span>{todayErrors.length} ajan hata · </span>}
               {(unread || 0) > 0 && <span>{unread} okunmamış</span>}
@@ -165,15 +173,14 @@ export function KritikUyariStatCard() {
               ) : (
                 <>
                   {/* Sistem Sağlık */}
-                  {(critical > 0 || warning > 0) && (
+                  {(regularHealthChecks.length > 0) && (
                     <UyariBolumu
                       icon={ShieldCheck}
                       baslik="Sistem Sağlık Uyarıları"
-                      sayi={critical + warning}
+                      sayi={regularHealthChecks.length}
                       renk={critical > 0 ? '#f43f5e' : '#f59e0b'}
                     >
-                      {(health?.checks || [])
-                        .filter((c) => c.severity !== 'OK')
+                      {regularHealthChecks
                         .slice(0, 5)
                         .map((c) => (
                           <UyariSatir
