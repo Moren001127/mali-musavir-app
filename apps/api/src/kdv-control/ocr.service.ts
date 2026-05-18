@@ -38,6 +38,7 @@ import {
   extractMultiRateKdv as extractMultiRateKdvPure,
   extractKdvFromInvoiceTotals as extractKdvFromInvoiceTotalsPure,
 } from './ocr/providers/azure/kdv-breakdown';
+import { extractZRaporuKdv as extractZRaporuKdvPure } from './ocr/providers/azure/z-raporu';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -2130,94 +2131,17 @@ export class OcrService {
     };
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractZRaporuKdvFromAzure(text: string): {
     kdvTutari: string | null;
     breakdown: KdvBreakdownItem[];
     matrahByOran: Record<number, number>;
   } {
-    const result = {
-      kdvTutari: null as string | null,
-      breakdown: [] as KdvBreakdownItem[],
-      matrahByOran: {} as Record<number, number>,
-    };
-    if (!text) return result;
-
-    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const foldedLines = lines.map((line) => this.foldTurkishAscii(line));
-    const topKdvLabel = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKDV\s*T[O0]PLAM\b|\bT[O0]PLAM\s*KDV\b/;
-    const moneyTokenRe = /[-+]?[\*₺¥]?\s*\d[\d.,\s]*\d|\d+[,.]\d{2}/g;
-    const extractLastMoney = (raw: string): number => {
-      const line = this.foldTurkishAscii(raw)
-        .replace(/[%/]\s*\d{1,2}(?:[.,]\d+)?/g, ' ')
-        .replace(/\b\d{1,2}\s*[%/]/g, ' ');
-      const values = (line.match(moneyTokenRe) || [])
-        .map((token) => this.parseAmount(token))
-        .filter((value) => value > 0);
-      return values.length > 0 ? values[values.length - 1] : 0;
-    };
-    const nextLineMoney = (idx: number): number => {
-      const next = foldedLines[idx + 1] || '';
-      if (!next || /\bKUM\b/.test(next)) return 0;
-      if (/\bT[O0]PLAM\b|\bGENEL\b|\bNAKIT\b|\bKREDI\b|\bKART\b/.test(next)) return 0;
-      const value = extractLastMoney(next);
-      return value > 0 && value < 100_000_000 ? value : 0;
-    };
-
-    // 1) TOPLAM %X satırlarından MATRAH'ları topla
-    //    "TOPLAM %20  *140,00" gibi satırları yakala
-    const matrahRegex = /^TOPLAM\s*[%/]\s*(\d{1,2})\b\s*[\*:]?\s*([\d.,]+)/i;
-    for (const line of lines) {
-      // KUM içeren satırları atla (kümülatif)
-      if (/\bKUM\b/i.test(line)) continue;
-      const m = line.match(matrahRegex);
-      if (m) {
-        const oran = parseInt(m[1], 10);
-        const matrah = this.parseAmount(m[2]);
-        if (oran > 0 && oran <= 30 && matrah > 0) {
-          result.matrahByOran[oran] = matrah;
-        }
-      }
-    }
-
-    // 2) TOPKDV %X satırlarından her oran için KDV tutarını al
-    //    "TOPKDV %20  *23,33" / "TOPKDV /20 *23.33" gibi
-    for (let i = 0; i < foldedLines.length; i++) {
-      const line = foldedLines[i];
-      if (/\bKUM\b/.test(line)) continue; // kümülatifi atla
-      if (!topKdvLabel.test(line)) continue;
-      const rateMatch = line.match(/[%/]\s*(\d{1,2})\b/);
-      if (rateMatch) {
-        const oran = parseInt(rateMatch[1], 10);
-        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
-        if (oran > 0 && oran <= 30 && tutar > 0) {
-          // matrahByOran'dan ilgili matrahı al
-          const matrah = result.matrahByOran[oran] ?? null;
-          result.breakdown.push({ oran, tutar, matrah });
-        }
-      }
-    }
-
-    // 3) Toplam TOPKDV — breakdown varsa toplamını al, yoksa "TOPKDV ..." satırını ara
-    if (result.breakdown.length > 0) {
-      const sum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
-      result.kdvTutari = this.formatAmount(sum);
-    } else {
-      // Tek oranlı / sadece TOPKDV var — "TOPKDV  *344,56" gibi
-      // KUM içermeyen, %X içermeyen sade TOPKDV satırı
-      for (let i = 0; i < foldedLines.length; i++) {
-        const line = foldedLines[i];
-        if (/\bKUM\b/.test(line)) continue;
-        if (/[%/]\s*\d/.test(line)) continue; // %X olan satır
-        if (!topKdvLabel.test(line)) continue;
-        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
-        if (tutar > 0) {
-          result.kdvTutari = this.formatAmount(tutar);
-          break;
-        }
-      }
-    }
-
-    return result;
+    return extractZRaporuKdvPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+    });
   }
 
   /**
