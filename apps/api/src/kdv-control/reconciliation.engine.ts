@@ -1110,10 +1110,10 @@ export class ReconciliationEngine {
     virtualOriginalKdvAmounts: Map<string, number[]>;
   } {
     return aggregateKdvMultiRateRecords(rawRecords, isAlis, {
-      normalizeBelgeNo: (value) => this.normalizeBelgeNo(value),
-      recordPartyKey: (record) => this.recordPartyKey(record),
-      inferRecordRate: (record) => this.inferRecordRate(record),
-      log: (message) => this.logger.log(message),
+      normalizeBelgeNo: (value: string) => this.normalizeBelgeNo(value),
+      recordPartyKey: (record: KdvRecord) => this.recordPartyKey(record),
+      inferRecordRate: (record: KdvRecord) => this.inferRecordRate(record),
+      log: (message: string) => this.logger.log(message),
     });
   }
 
