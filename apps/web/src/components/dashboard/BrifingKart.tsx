@@ -320,7 +320,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       </div>
 
       {/* Ana özet metni */}
-      <div className="px-5 pb-2 max-w-[1120px]">
+      <div className="px-5 pt-1.5 pb-1 max-w-[1120px]">
         {isLoading ? (
           <div className="text-[14px] flex items-center gap-2" style={{ color: 'rgba(250,250,249,0.5)' }}>
             <Loader2 size={14} className="animate-spin" />
@@ -385,7 +385,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
 
       {/* Aksiyon önerileri (suggestions) */}
       {data?.suggestions && data.suggestions.length > 0 && (
-        <div className="px-5 pb-5 pt-1 grid grid-cols-1 xl:grid-cols-3 gap-2">
+        <div className="px-5 pb-4 pt-1 grid grid-cols-1 xl:grid-cols-3 gap-2">
           {data.suggestions.slice(0, 3).map((s, i) => {
             const Icon = ICON_MAP[s.icon || 'Sparkles'] || Sparkles;
             const href = normalizeDashboardHref(s.href);
@@ -410,7 +410,7 @@ export function BrifingKart({ userName }: { userName?: string }) {
       )}
 
       {/* Suggestion yoksa boş alt boşluk verme — direkt bitir */}
-      {(!data?.suggestions || data.suggestions.length === 0) && <div className="pb-5" />}
+      {(!data?.suggestions || data.suggestions.length === 0) && <div className="pb-4" />}
     </div>
   );
 }
