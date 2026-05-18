@@ -11,6 +11,13 @@ import {
   extractSaticiVkn as extractSaticiVknPure,
   extractSaticiUnvan as extractSaticiUnvanPure,
 } from './ocr/parsers/vendor';
+import {
+  isLikelyStandaloneTaxRate as isLikelyStandaloneTaxRatePure,
+  isMatrahOrRateLine as isMatrahOrRateLinePure,
+  isKdvTableHeaderLine as isKdvTableHeaderLinePure,
+  isForbiddenKdvAmountLine as isForbiddenKdvAmountLinePure,
+  isLikelyKdvAmountColumnHeader as isLikelyKdvAmountColumnHeaderPure,
+} from './ocr/parsers/text-classifiers';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -1586,55 +1593,29 @@ export class OcrService {
       .replace(/Ç/g, 'C');
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private isLikelyStandaloneTaxRate(value: string): boolean {
-    const folded = this.foldTurkishAscii(value || '')
-      .replace(/\b(?:TL|TRY)\b|₺/g, ' ')
-      .replace(/[()]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const cleaned = folded
-      .replace(/^%/, '')
-      .replace(/%$/, '')
-      .trim();
-    return /^(0|1|8|10|18|20)(?:[,.]00)?$/.test(cleaned);
+    return isLikelyStandaloneTaxRatePure(value, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private isMatrahOrRateLine(value: string): boolean {
-    const folded = this.foldTurkishAscii(value || '');
-    const withoutMatrahParen = folded.replace(/\([^)]*MATRAH[^)]*\)/g, ' ');
-    return /\bKDV\s*(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*(?:MATRAH|ORAN)\b/.test(withoutMatrahParen);
+    return isMatrahOrRateLinePure(value, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private isKdvTableHeaderLine(value: string): boolean {
-    const folded = this.foldTurkishAscii(value || '');
-    return /\bKDV\s*TUTAR[II]?\b/.test(folded)
-      && /\b(?:KDV\s*ORAN[II]?|DIGER\s+VERGILER|MAL\s+HIZMET)\b/.test(folded);
+    return isKdvTableHeaderLinePure(value, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private isForbiddenKdvAmountLine(value: string): boolean {
-    const folded = this.foldTurkishAscii(value || '');
-    if (!folded) return false;
-    if (this.isMatrahOrRateLine(folded) || this.isKdvTableHeaderLine(folded)) return true;
-
-    const explicitKdvLabel =
-      /\bHESAPLANAN\s+K\.?\s*D\.?\s*V\.?\b|\bKATMA\s+DEGER\s+VERGISI\b|\bK\.?\s*D\.?\s*V\.?\s*TUTAR[II]?\b|\bTOP\s*K\.?\s*D\.?\s*V\.?\b|\bTOPKDV\b|\bODENECEK\s+K\.?\s*D\.?\s*V\.?\b/.test(folded);
-    const totalOrBaseLine =
-      /\bMAL\s+HIZMET\b|\bVERGILER\s+(?:DAHIL|HARIC)\b|\bODENECEK\s+TUTAR\b|\bFATURA\s+TUTAR[II]?\b|\bTOPLAM\s+ISKONTO\b|\bGENEL\s+TOPLAM\b|\bARA\s+TOPLAM\b|\bTOPLAM\s+TUTAR\b/.test(folded);
-
-    return totalOrBaseLine && !explicitKdvLabel;
+    return isForbiddenKdvAmountLinePure(value, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private isLikelyKdvAmountColumnHeader(lines: string[], index: number): boolean {
-    const foldedLine = this.foldTurkishAscii(lines[index] || '').replace(/\s+/g, ' ').trim();
-    const isPlainKdvAmountHeader =
-      /^(?:K\.?\s*D\.?\s*V\.?\s*)?TUTAR[II]?$/.test(foldedLine) ||
-      /^K\.?\s*D\.?\s*V\.?\s*TUTAR[II]?$/.test(foldedLine);
-    if (!isPlainKdvAmountHeader) return false;
-
-    const context = this.foldTurkishAscii(
-      lines.slice(Math.max(0, index - 2), Math.min(lines.length, index + 4)).join(' '),
-    );
-    return /\bKDV\s*ORAN[II]?\b|\bDIGER\s+VERGILER\b|\bMAL\s+HIZMET\b|\bSIRA\s*NO\b/.test(context);
+    return isLikelyKdvAmountColumnHeaderPure(lines, index, (s) => this.foldTurkishAscii(s));
   }
 
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
