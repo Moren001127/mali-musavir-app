@@ -34,6 +34,10 @@ import {
   parseTevkifatRate as parseTevkifatRatePure,
   extractTevkifatliFatura as extractTevkifatliFaturaPure,
 } from './ocr/providers/azure/tevkifatli-fatura';
+import {
+  extractMultiRateKdv as extractMultiRateKdvPure,
+  extractKdvFromInvoiceTotals as extractKdvFromInvoiceTotalsPure,
+} from './ocr/providers/azure/kdv-breakdown';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -1810,263 +1814,34 @@ export class OcrService {
     return null;
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: null; oran: number | null } | null {
-    if (!text) return null;
-    const electricityKdv = this.extractElectricityKdvFromAzure(text);
-    if (electricityKdv != null && electricityKdv > 0) {
-      return { kdv: electricityKdv, matrah: null, oran: null };
-    }
-
-    const normalized = this.normalizeAzureText(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-    const parseLineAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
-      if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
-      if (!opts.allowMatrah && this.isForbiddenKdvAmountLine(line)) return null;
-      const m = line.match(amountRe);
-      if (!m) return null;
-      if (!opts.allowMatrah && this.isLikelyStandaloneTaxRate(m[1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
-        return null;
-      }
-      const n = this.parseAmount(m[1]);
-      return n > 0 && n < 100_000_000 ? n : null;
-    };
-    const parseLastAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
-      if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
-      if (!opts.allowMatrah && this.isForbiddenKdvAmountLine(line)) return null;
-      const matches = [...line.matchAll(amountGlobalRe)];
-      if (matches.length === 0) return null;
-      if (!opts.allowMatrah && matches.length === 1 && this.isLikelyStandaloneTaxRate(matches[0][1]) && /%|ORAN|KDV\s*ORAN/i.test(this.foldTurkishAscii(line))) {
-        return null;
-      }
-      const n = this.parseAmount(matches[matches.length - 1][1]);
-      return n > 0 && n < 100_000_000 ? n : null;
-    };
-    const extractAmounts = (line: string): number[] =>
-      [...line.matchAll(amountGlobalRe)]
-        .map((m) => this.parseAmount(m[1]))
-        .filter((n) => n > 0 && n < 100_000_000);
-    const findKdvFromSummaryMathLine = (): number | null => {
-      for (const line of lines) {
-        const folded = this.foldTurkishAscii(line);
-        if (!/\bHESAPLANAN\s+K\.?\s*D\.?\s*V\.?\b|\bK\.?\s*D\.?\s*V\.?\b/.test(folded)) continue;
-        if (/TEVKIFAT/.test(folded) || this.isForbiddenKdvAmountLine(line)) continue;
-        const rateMatch = folded.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?/);
-        const rate = rateMatch ? parseInt(rateMatch[1], 10) : null;
-        const amounts = extractAmounts(line).filter((n) => !this.isLikelyStandaloneTaxRate(String(n)));
-        if (!rate || ![1, 10, 20].includes(rate) || amounts.length < 2) continue;
-        for (const candidate of amounts) {
-          const hasMatchingBase = amounts.some((base) =>
-            base > candidate && Math.abs((base * rate / 100) - candidate) <= Math.max(0.05, candidate * 0.03),
-          );
-          if (hasMatchingBase) return candidate;
-        }
-        return amounts[amounts.length - 1] ?? null;
-      }
-      return null;
-    };
-    const findKdvFromTableHeader = (): number | null => {
-      for (let i = 0; i < lines.length; i++) {
-        const folded = this.foldTurkishAscii(lines[i]).replace(/\s+/g, ' ');
-        const kdvIdx = folded.search(/\bKDV\s*TUTAR[II]?\b/);
-        let malIdx = folded.search(/\bMAL\s+HIZMET\b/);
-        let kdvFirst = kdvIdx >= 0 && malIdx >= 0 && kdvIdx < malIdx;
-        if (kdvIdx < 0) continue;
-        if (malIdx < 0) {
-          for (let h = 1; h <= 3 && i + h < lines.length; h++) {
-            const nearbyHeader = this.foldTurkishAscii(lines[i + h]).replace(/\s+/g, ' ');
-            if (/\bMAL\s+HIZMET\b/.test(nearbyHeader)) {
-              malIdx = 0;
-              kdvFirst = true;
-              break;
-            }
-          }
-        }
-        if (malIdx < 0) continue;
-
-        for (let j = 0; j <= 4 && i + j < lines.length; j++) {
-          const row = lines[i + j];
-          if (j > 0 && /\b(?:HESAPLANAN|VERGILER|ODENECEK|TOPLAM\s+ISKONTO)\b/i.test(this.foldTurkishAscii(row))) {
-            break;
-          }
-          const amounts = extractAmounts(row);
-          if (amounts.length >= 2) return kdvFirst ? amounts[0] : amounts[amounts.length - 1];
-          if (j > 0 && amounts.length === 1) return amounts[0];
-        }
-      }
-      return null;
-    };
-    const findExplicitKdvAmount = (): number | null => {
-      for (const line of lines) {
-        if (/TEVK[İI]FAT/i.test(line)) continue;
-        if (this.isMatrahOrRateLine(line)) continue;
-        if (this.isForbiddenKdvAmountLine(line)) continue;
-        const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
-        if (!label) continue;
-        const valuePart = this.stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
-        const sameLine = parseLastAmount(valuePart);
-        if (sameLine != null) return sameLine;
-      }
-      return null;
-    };
-    const findAmountNear = (labelRe: RegExp, options: { skipMatrah?: boolean; preferFirst?: boolean } = {}): number | null => {
-      for (let i = 0; i < lines.length; i++) {
-        if (!labelRe.test(lines[i])) continue;
-        if (options.skipMatrah && this.isMatrahOrRateLine(lines[i])) continue;
-        if (options.skipMatrah && this.isForbiddenKdvAmountLine(lines[i])) continue;
-        if (options.skipMatrah && this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
-        const allowMatrah = !options.skipMatrah;
-        const sameSource = lines[i].replace(labelRe, '');
-        const cleanedSame = options.skipMatrah ? this.stripMatrahFragments(sameSource) : sameSource;
-        const same = options.preferFirst
-          ? parseLineAmount(cleanedSame, { allowMatrah })
-          : parseLastAmount(cleanedSame, { allowMatrah });
-        const sameAmounts = extractAmounts(cleanedSame);
-        const firstAmountIndex = cleanedSame.search(/\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2}/);
-        const percentIndex = cleanedSame.indexOf('%');
-        const sameLooksLikeMatrahInRateParen =
-          options.skipMatrah &&
-          sameAmounts.length === 1 &&
-          firstAmountIndex >= 0 &&
-          percentIndex > firstAmountIndex;
-        if (same != null && !sameLooksLikeMatrahInRateParen) return same;
-        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
-          const next = lines[i + j];
-          if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
-          if (options.skipMatrah && this.isMatrahOrRateLine(next)) continue;
-          if (options.skipMatrah && this.isForbiddenKdvAmountLine(next)) continue;
-          if (options.skipMatrah && j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
-          const nearby = this.foldTurkishAscii(
-            [
-              lines[i - 2] || '',
-              lines[i - 1] || '',
-              lines[i],
-              lines[i + j - 1] || '',
-              next,
-              lines[i + j + 1] || '',
-            ].join('\n'),
-          );
-          if (options.skipMatrah && this.isLikelyStandaloneTaxRate(next) && /%|ORAN/.test(nearby)) continue;
-          const val = parseLineAmount(options.skipMatrah ? this.stripMatrahFragments(next) : next, { allowMatrah });
-          if (val != null) return val;
-        }
-      }
-      return null;
-    };
-
-    const explicitKdv = findKdvFromSummaryMathLine() ?? findKdvFromTableHeader() ?? findExplicitKdvAmount() ?? findAmountNear(
-      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
-      { skipMatrah: true },
-    );
-    const oranMatch =
-      normalized.match(/K\.?\s*D\.?\s*V\.?[^\n%]{0,120}%\s*(\d{1,2})(?:[.,]\d{1,2})?/i)
-      ?? normalized.match(/%\s*(\d{1,2})(?:[.,]\d{1,2})?\s*K\.?\s*D\.?\s*V\.?/i);
-    const oran = oranMatch ? parseInt(oranMatch[1], 10) : null;
-
-    if (explicitKdv != null && explicitKdv > 0) {
-      return { kdv: explicitKdv, matrah: null, oran };
-    }
-    return null;
+    return extractKdvFromInvoiceTotalsPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+      isMatrahOrRateLine: (v) => this.isMatrahOrRateLine(v),
+      isForbiddenKdvAmountLine: (v) => this.isForbiddenKdvAmountLine(v),
+      isLikelyKdvAmountColumnHeader: (ls, i) => this.isLikelyKdvAmountColumnHeader(ls, i),
+      isLikelyStandaloneTaxRate: (v) => this.isLikelyStandaloneTaxRate(v),
+      extractElectricityKdvFromAzure: (t) => this.extractElectricityKdvFromAzure(t),
+    });
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractMultiRateKdvFromAzure(text: string): KdvBreakdownItem[] {
-    if (!text) return [];
-    const normalized = this.normalizeAzureText(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const breakdown: KdvBreakdownItem[] = [];
-    const seen = new Set<number>();
-
-    // Label regex: "Hesaplanan KDV (% 20,00 )" / "Hesaplanan KDV(%20)" / "KDV (%10)"
-    // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 ibaresi" gibi) önler
-    // Boşluk toleransı: "Hesaplanan   KDV" (NBSP normalize edildi) ve parantez içi
-    // boşluklar serbest. "%" sonrası ayrıca opsiyonel boşluk (" 20,00" yakala).
-    const labelRe = /(?:HESAPLANAN\s*)?K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
-    // Amount regex: "1.006,00" / "42,00" / "320,15" (opsiyonel TL/TRY/₺)
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      // KDV DIŞI vergi satırlarını atla (Turkcell faturası gibi)
-      if (skipTaxRe.test(line)) {
-        continue;
-      }
-      if (this.isForbiddenKdvAmountLine(line) || this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
-
-      const labelMatch = line.match(labelRe);
-      if (!labelMatch) continue;
-
-      const oran = parseInt(labelMatch[1], 10);
-      if (!(oran > 0 && oran <= 30) || seen.has(oran)) continue;
-
-      // 1) Aynı satırda label'den SONRA amount ara
-      let tutar: number | null = null;
-      const afterLabel = this.stripMatrahFragments(line.slice(labelMatch.index! + labelMatch[0].length));
-      const inlineAmountMatch = afterLabel.match(amountRe);
-      if (inlineAmountMatch) {
-        const parsed = this.parseAmount(inlineAmountMatch[1]);
-        const isRateEcho = this.isLikelyStandaloneTaxRate(inlineAmountMatch[1]) && Math.abs(parsed - oran) < 0.01;
-        if (!isRateEcho && parsed > 0 && parsed < 10_000_000) tutar = parsed;
-      }
-
-      // 2) Aynı satırda bulunamadıysa SONRAKİ 1-8 satıra bak (tablo layout için).
-      //    Azure bazen label ve tutarı 4-6 satır ara ile çıkarıyor (özellikle
-      //    parantez içindeki "( % 20,00 )" yapısı yüzünden). 1-3 yetmiyor.
-      if (tutar == null) {
-        for (let j = 1; j <= 8 && i + j < lines.length; j++) {
-          const nextLine = lines[i + j];
-          // Sonraki satır başka bir KDV label'ı ise kes
-          if (labelRe.test(nextLine)) break;
-          // ÖİV/Telsiz vb. satırı varsa kes
-          if (skipTaxRe.test(nextLine)) break;
-          // Saf yapı satırlarını atla ("(", ")", "%", "% 20,00" tek başına)
-          if (this.isForbiddenKdvAmountLine(nextLine)) continue;
-          if (j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
-          if (/^[\(\)%\s]*$/.test(nextLine)) continue;
-          if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?$/.test(nextLine)) continue;
-          const cleanedNext = this.stripMatrahFragments(nextLine);
-          if (!cleanedNext) continue;
-          const m = cleanedNext.match(amountRe);
-          if (m) {
-            const parsed = this.parseAmount(m[1]);
-            const isRateEcho = this.isLikelyStandaloneTaxRate(cleanedNext) && Math.abs(parsed - oran) < 0.01;
-            if (!isRateEcho && parsed > 0 && parsed < 10_000_000) {
-              tutar = parsed;
-              break;
-            }
-          }
-        }
-      }
-
-      // 3) Yine yoksa ÖNCEKİ 1-2 satıra bak (bazen amount label'ın üstünde)
-      if (tutar == null) {
-        for (let j = 1; j <= 2 && i - j >= 0; j++) {
-          const prevLine = lines[i - j];
-          if (labelRe.test(prevLine)) break;
-          if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
-          if (this.isForbiddenKdvAmountLine(prevLine)) continue;
-          const cleanedPrev = this.stripMatrahFragments(prevLine);
-          if (!cleanedPrev) continue;
-          const m = cleanedPrev.match(amountRe);
-          if (m) {
-            const parsed = this.parseAmount(m[1]);
-            const isRateEcho = this.isLikelyStandaloneTaxRate(cleanedPrev) && Math.abs(parsed - oran) < 0.01;
-            if (!isRateEcho && parsed > 0 && parsed < 10_000_000) {
-              tutar = parsed;
-              break;
-            }
-          }
-        }
-      }
-
-      if (tutar != null) {
-        breakdown.push({ oran, tutar, matrah: null });
-        seen.add(oran);
-      }
-    }
-
-    return breakdown;
+    return extractMultiRateKdvPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+      isMatrahOrRateLine: (v) => this.isMatrahOrRateLine(v),
+      isForbiddenKdvAmountLine: (v) => this.isForbiddenKdvAmountLine(v),
+      isLikelyKdvAmountColumnHeader: (ls, i) => this.isLikelyKdvAmountColumnHeader(ls, i),
+      isLikelyStandaloneTaxRate: (v) => this.isLikelyStandaloneTaxRate(v),
+      extractElectricityKdvFromAzure: (t) => this.extractElectricityKdvFromAzure(t),
+    });
   }
 
   /**
