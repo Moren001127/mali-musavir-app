@@ -6,6 +6,7 @@ import {
   extractDate as extractDatePure,
   normalizeOcrYear as normalizeOcrYearPure,
 } from './ocr/parsers/date';
+import { extractBelgeNo as extractBelgeNoPure } from './ocr/parsers/belge-no';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -1335,36 +1336,9 @@ export class OcrService {
     return extractDatePure(text);
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege ediyor. Yeni kod `extractBelgeNoPure` kullansin. */
   private extractBelgeNo(text: string): string | null {
-    // Z RAPORU tespiti — eğer metinde Z RAPORU geçiyorsa Z NO/Z SAYAÇ'ı al
-    const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report|z\s*g[uü]nl[uü]k/i.test(text);
-    if (isZRapor) {
-      // v1.36.72: "Z SAYAÇ 896" / "Z SAYAC: 896" / "Z SAYACI 896" desenleri ekledim
-      // (bazı ÖKC modelleri "Z NO" yerine "Z SAYAÇ" yazıyor)
-      const zSayac = text.match(/z\s*saya[cç][ıi]?\s*[:\-.#\s]*(\d{1,8})/i);
-      if (zSayac?.[1]) return zSayac[1].trim();
-
-      // "Z NO: 666" formatını ara (iki nokta, tire veya boşluk sonrası rakam)
-      const zNo = text.match(/z\s*no\s*[:\-.#\s]+(\d{1,8})/i);
-      if (zNo?.[1]) return zNo[1].trim();
-
-      // Son çare: belgenin alt kısmındaki çıplak Z numarası ("Z 0896" gibi)
-      const zBare = text.match(/(?:^|\n|\s)z\s*[:\-]?\s*(\d{2,8})\s*(?:$|\n)/im);
-      if (zBare?.[1]) return zBare[1].trim();
-    }
-
-    const foldedText = this.foldTurkishAscii(text);
-    const patterns = [
-      /fis\s*no\s*[:\s#.]*([A-Z0-9]{1,12})/i,
-      /fatura\s*no\s*:?\s*([A-Z0-9]{10,20})/i,
-      /(?:fis|belge|evrak)\s*(?:no|numarasi)?[:\s#.]*([A-Z0-9]{8,20})/i,
-      /\b([A-Z0-9]{3}20\d{2}\d{6,12})\b/i,
-    ];
-    for (const p of patterns) {
-      const m = foldedText.match(p);
-      if (m?.[1]) return m[1].trim().toUpperCase();
-    }
-    return null;
+    return extractBelgeNoPure(text, this.foldTurkishAscii(text));
   }
 
   private extractKdvTotal(text: string): string | null {
