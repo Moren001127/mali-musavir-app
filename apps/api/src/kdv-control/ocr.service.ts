@@ -1,15 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { ComputerVisionClient } from '@azure/cognitiveservices-computervision';
 import { ApiKeyCredentials } from '@azure/ms-rest-js';
 import * as crypto from 'crypto';
+import { formatOcrAmount, parseOcrAmount } from './ocr/parsers/amount';
+import { normalizeTaxText as normalizeTaxTextValue } from './ocr/parsers/text';
+import { extractTevkifatTotalsFromText } from './ocr/parsers/tevkifat';
+import { extractDate as extractDatePure, normalizeOcrYear as normalizeOcrYearPure } from './ocr/parsers/date';
 
-/** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
+/** Ã‡ok oranlÄ± KDV kÄ±rÄ±lÄ±mÄ± â€” Z raporu veya karma oranlÄ± fatura iÃ§in */
 export interface KdvBreakdownItem {
-  /** KDV oranı (%) — 1, 10, 20 */
+  /** KDV oranÄ± (%) â€” 1, 10, 20 */
   oran: number;
-  /** Matrah (KDV hariç tutar) - opsiyonel, OCR'dan alınabilirse */
+  /** Matrah (KDV hariÃ§ tutar) - opsiyonel, OCR'dan alÄ±nabilirse */
   matrah?: number | null;
-  /** KDV tutarı (TL) */
+  /** KDV tutarÄ± (TL) */
   tutar: number;
 }
 
@@ -17,44 +21,44 @@ export interface OcrResult {
   rawText: string;
   belgeNo: string | null;
   date: string | null;
-  /** NET KDV — tevkifatlı faturada (tam KDV − tevkifat). Reconciliation'da Luca ile karşılaştırılan değer. */
+  /** NET KDV â€” tevkifatlÄ± faturada (tam KDV âˆ’ tevkifat). Reconciliation'da Luca ile karÅŸÄ±laÅŸtÄ±rÄ±lan deÄŸer. */
   kdvTutari: string | null;
-  /** Tevkifat tutarı (TL) — varsa; tevkifatsız faturada null veya "0,00". */
+  /** Tevkifat tutarÄ± (TL) â€” varsa; tevkifatsÄ±z faturada null veya "0,00". */
   kdvTevkifat?: string | null;
   totalTutari: string | null;
-  /** Satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır. */
+  /** SatÄ±cÄ±/tedarikÃ§i unvanÄ± â€” aynÄ± belge no'lu farklÄ± firmalarÄ± ayÄ±rmak iÃ§in reconciliation'da kullanÄ±lÄ±r. */
   satici?: string | null;
-  /** Satıcı VKN/TCKN (10 veya 11 hane) — reconciliation'da primary match key */
+  /** SatÄ±cÄ± VKN/TCKN (10 veya 11 hane) â€” reconciliation'da primary match key */
   saticiVkn?: string | null;
   /** Belge tipi: EFATURA, EARSIV, OKC_FIS, Z_RAPORU, MAKBUZ */
   belgeTipi?: string | null;
-  /** Çok oranlı KDV kırılımı (varsa) — Z raporu/karma fatura. tutar = NET (tevkifat düşülmüş). */
+  /** Ã‡ok oranlÄ± KDV kÄ±rÄ±lÄ±mÄ± (varsa) â€” Z raporu/karma fatura. tutar = NET (tevkifat dÃ¼ÅŸÃ¼lmÃ¼ÅŸ). */
   kdvBreakdown?: KdvBreakdownItem[] | null;
   /** Otomatik gider kategorisi: yakit, yemek, kirtasiye, telekom, kira, vb. */
   kategori?: string | null;
-  /** Görüntünün SHA-256 hash'i — caller cache kontrolü için kullanır */
+  /** GÃ¶rÃ¼ntÃ¼nÃ¼n SHA-256 hash'i â€” caller cache kontrolÃ¼ iÃ§in kullanÄ±r */
   imageHash?: string;
-  /** Genel güven skoru (geriye dönük uyumluluk) */
+  /** Genel gÃ¼ven skoru (geriye dÃ¶nÃ¼k uyumluluk) */
   confidence: number;
-  /** Alan-bazlı güven skorları (0–1). Null ise alan bulunamadı. */
+  /** Alan-bazlÄ± gÃ¼ven skorlarÄ± (0â€“1). Null ise alan bulunamadÄ±. */
   fieldConfidence: {
     belgeNo: number | null;
     date: number | null;
     kdvTutari: number | null;
   };
   /**
-   * Multi-pass validation skoru (0–1):
-   *   • breakdown.tutar.sum === kdvTutari (1.0 = tam, 0.5 = ±%5 tolerans)
-   *   • matrah × oran/100 === tutar (her satır)
-   *   • geçerli KDV oranları (0/1/8/10/18/20)
-   *   • tevkifat ≤ kdvTutari mantık kontrolü
-   * UBL XML doğrudan parse edildiyse 1.0; aksi halde validateOcrResult() hesaplar.
+   * Multi-pass validation skoru (0â€“1):
+   *   â€¢ breakdown.tutar.sum === kdvTutari (1.0 = tam, 0.5 = Â±%5 tolerans)
+   *   â€¢ matrah Ã— oran/100 === tutar (her satÄ±r)
+   *   â€¢ geÃ§erli KDV oranlarÄ± (0/1/8/10/18/20)
+   *   â€¢ tevkifat â‰¤ kdvTutari mantÄ±k kontrolÃ¼
+   * UBL XML doÄŸrudan parse edildiyse 1.0; aksi halde validateOcrResult() hesaplar.
    */
   validationScore?: number | null;
-  /** Validation hataları — confidence düşürme/UI uyarı için */
+  /** Validation hatalarÄ± â€” confidence dÃ¼ÅŸÃ¼rme/UI uyarÄ± iÃ§in */
   validationIssues?: string[];
   engine: string;
-  /** Claude API response'undan gelen token kullanımı — maliyet hesabı için. */
+  /** Claude API response'undan gelen token kullanÄ±mÄ± â€” maliyet hesabÄ± iÃ§in. */
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -64,11 +68,11 @@ export interface OcrResult {
 }
 
 export interface ExtractOcrOptions {
-  /** Kullanıcı açıkça "AI ile zorla oku" dediğinde Azure-first kısa devresini atlar. */
+  /** KullanÄ±cÄ± aÃ§Ä±kÃ§a "AI ile zorla oku" dediÄŸinde Azure-first kÄ±sa devresini atlar. */
   forceClaude?: boolean;
 }
 
-/** Claude model fiyatları ($/M token) */
+/** Claude model fiyatlarÄ± ($/M token) */
 const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5-20251001': { input: 1, output: 5 },
   'claude-sonnet-4-5': { input: 3, output: 15 },
@@ -77,20 +81,20 @@ const CLAUDE_PRICES: Record<string, { input: number; output: number }> = {
 };
 
 /**
- * Varsayılan OCR modeli — Haiku 4.5 (ucuz, $0.0025/belge).
- * Hallucination'lara karşı Azure OCR cross-check (2. tanık) + alan bazlı validation kullanılıyor.
- * Sonnet'e çıkmak için ENV: OCR_MODEL=claude-sonnet-4-5
+ * VarsayÄ±lan OCR modeli â€” Haiku 4.5 (ucuz, $0.0025/belge).
+ * Hallucination'lara karÅŸÄ± Azure OCR cross-check (2. tanÄ±k) + alan bazlÄ± validation kullanÄ±lÄ±yor.
+ * Sonnet'e Ã§Ä±kmak iÃ§in ENV: OCR_MODEL=claude-sonnet-4-5
  */
 const DEFAULT_OCR_MODEL = 'claude-haiku-4-5-20251001';
 
-/** Alan-bazlı güven eşiği; altındaki alanlar kullanıcı teyidine gider */
+/** Alan-bazlÄ± gÃ¼ven eÅŸiÄŸi; altÄ±ndaki alanlar kullanÄ±cÄ± teyidine gider */
 export const FIELD_CONFIDENCE_THRESHOLD = 0.7;
 
 const E_BELGE_NO_REGEX = /^(?:[A-Z]{2,4}\d{12,14}|[A-Z]\d{2}20\d{2}\d{6,12}|\d{13,20})$/;
 
-/** Log için confidence'ı kısa yazı — %84 veya "—" */
+/** Log iÃ§in confidence'Ä± kÄ±sa yazÄ± â€” %84 veya "â€”" */
 const fmtConf = (v: number | null | undefined): string =>
-  typeof v === 'number' ? `%${Math.round(v * 100)}` : '—';
+  typeof v === 'number' ? `%${Math.round(v * 100)}` : 'â€”';
 
 @Injectable()
 export class OcrService {
@@ -110,24 +114,24 @@ export class OcrService {
         new ApiKeyCredentials({ inHeader: { 'Ocp-Apim-Subscription-Key': key } }),
         endpoint
       );
-      this.logger.log('✅ Azure Vision API hazır');
+      this.logger.log('âœ… Azure Vision API hazÄ±r');
     } else {
-      this.logger.warn('⚠️ Azure Vision API key/endpoint tanımlı değil');
+      this.logger.warn('âš ï¸ Azure Vision API key/endpoint tanÄ±mlÄ± deÄŸil');
     }
   }
 
   /**
-   * Fatura/fiş görselinden yapısal veri çıkarır.
+   * Fatura/fiÅŸ gÃ¶rselinden yapÄ±sal veri Ã§Ä±karÄ±r.
    *
-   * Öncelik sırası:
-   *   1. Claude Haiku 4.5 Vision — LLM tabanlı, en yüksek doğruluk
-   *   2. Azure Vision Read API + regex — fallback
-   *   3. Dosya adından belgeNo — son çare
+   * Ã–ncelik sÄ±rasÄ±:
+   *   1. Claude Haiku 4.5 Vision â€” LLM tabanlÄ±, en yÃ¼ksek doÄŸruluk
+   *   2. Azure Vision Read API + regex â€” fallback
+   *   3. Dosya adÄ±ndan belgeNo â€” son Ã§are
    *
-   * PRENSİP: Hiçbir dış sistemden (Mihsap, Luca vs.) gelen ham veriye
-   * güvenmeyiz. Doğrulama daima GÖRÜNTÜNÜN KENDİSİNDEN yapılır.
+   * PRENSÄ°P: HiÃ§bir dÄ±ÅŸ sistemden (Mihsap, Luca vs.) gelen ham veriye
+   * gÃ¼venmeyiz. DoÄŸrulama daima GÃ–RÃœNTÃœNÃœN KENDÄ°SÄ°NDEN yapÄ±lÄ±r.
    */
-  /** Görüntü buffer'ından SHA-256 hash hesapla — cache anahtarı olarak kullanılır */
+  /** GÃ¶rÃ¼ntÃ¼ buffer'Ä±ndan SHA-256 hash hesapla â€” cache anahtarÄ± olarak kullanÄ±lÄ±r */
   computeImageHash(buffer: Buffer): string {
     return crypto.createHash('sha256').update(buffer).digest('hex');
   }
@@ -145,17 +149,17 @@ export class OcrService {
       process.env.OCR_AUTO_CLAUDE === 'true';
     const imageHash = this.computeImageHash(imageBuffer);
     this.logger.log(
-      `OCR başladı: ${originalName || '—'} · ${imageBuffer.byteLength}B · hash=${imageHash.slice(0, 8)}... · Claude:${hasClaudeKey ? '✓' : '✗'} Azure:${this.azureClient ? '✓' : '✗'} forceClaude:${options.forceClaude ? '✓' : '✗'}`,
+      `OCR baÅŸladÄ±: ${originalName || 'â€”'} Â· ${imageBuffer.byteLength}B Â· hash=${imageHash.slice(0, 8)}... Â· Claude:${hasClaudeKey ? 'âœ“' : 'âœ—'} Azure:${this.azureClient ? 'âœ“' : 'âœ—'} forceClaude:${options.forceClaude ? 'âœ“' : 'âœ—'}`,
     );
 
-    // ═══════════════════════════════════════════════════════
-    // 0. XML DOĞRUDAN PARSE — UBL e-Fatura/e-Arşiv
-    // ═══════════════════════════════════════════════════════
-    // İçerik gerçekten XML mi? (binary image değil)
-    // Head 512 byte tek başına güvenli değil — bazı Mihsap XML'leri BOM, HTML
-    // wrapper veya whitespace ile başlıyor olabilir. Bu nedenle ilk 4 KB'ye
-    // kadar UBL marker aranır. Ayrıca uzantı .xml ise content ASCII-düzeyinde
-    // (binary/image değil) olduğu sürece XML'e zorlarız.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 0. XML DOÄRUDAN PARSE â€” UBL e-Fatura/e-ArÅŸiv
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // Ä°Ã§erik gerÃ§ekten XML mi? (binary image deÄŸil)
+    // Head 512 byte tek baÅŸÄ±na gÃ¼venli deÄŸil â€” bazÄ± Mihsap XML'leri BOM, HTML
+    // wrapper veya whitespace ile baÅŸlÄ±yor olabilir. Bu nedenle ilk 4 KB'ye
+    // kadar UBL marker aranÄ±r. AyrÄ±ca uzantÄ± .xml ise content ASCII-dÃ¼zeyinde
+    // (binary/image deÄŸil) olduÄŸu sÃ¼rece XML'e zorlarÄ±z.
     const head4k = imageBuffer.slice(0, Math.min(4096, imageBuffer.byteLength)).toString('utf8');
     const hasUblMarker =
       /<\?xml/i.test(head4k) ||
@@ -165,7 +169,7 @@ export class OcrService {
       /<cac:TaxTotal>/i.test(head4k) ||
       /<cac:LegalMonetaryTotal>/i.test(head4k) ||
       /UBL-TR|UBL\s*Invoice/i.test(head4k);
-    // Uzantı xml ise ve içerik gerçekten XML-benzeri ASCII ise (image magic bytes yok) XML kabul et
+    // UzantÄ± xml ise ve iÃ§erik gerÃ§ekten XML-benzeri ASCII ise (image magic bytes yok) XML kabul et
     const filenameIsXml = /\.xml$/i.test(originalName || '');
     const isImageMagic =
       imageBuffer.length > 4 && (
@@ -183,25 +187,25 @@ export class OcrService {
       try {
         const xmlResult = this.parseUblXml(imageBuffer.toString('utf8'));
         if (xmlResult && (xmlResult.belgeNo || xmlResult.date || xmlResult.kdvTutari)) {
-          // Dosya adıyla belge no'yu reconcile et — filename override güvence
+          // Dosya adÄ±yla belge no'yu reconcile et â€” filename override gÃ¼vence
           if (belgeNoFromFilename && xmlResult.belgeNo !== belgeNoFromFilename) {
             const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
             const xmlClean = (xmlResult.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
             if (fnClean !== xmlClean && fnClean.length >= xmlClean.length) {
               this.logger.warn(
-                `XML belge no filename'den farklı, filename kullanılıyor: xml=${xmlClean} filename=${fnClean}`,
+                `XML belge no filename'den farklÄ±, filename kullanÄ±lÄ±yor: xml=${xmlClean} filename=${fnClean}`,
               );
               xmlResult.belgeNo = belgeNoFromFilename;
             }
           }
           this.logger.log(
-            `XML parse başarılı: ${originalName} · belgeNo=${xmlResult.belgeNo} date=${xmlResult.date} kdv=${xmlResult.kdvTutari} breakdown=${xmlResult.kdvBreakdown?.length || 0}`,
+            `XML parse baÅŸarÄ±lÄ±: ${originalName} Â· belgeNo=${xmlResult.belgeNo} date=${xmlResult.date} kdv=${xmlResult.kdvTutari} breakdown=${xmlResult.kdvBreakdown?.length || 0}`,
           );
           return xmlResult;
         }
-        // XML parse boş döndü → manuel review için filename only dön (image OCR XML'de işe yaramaz)
+        // XML parse boÅŸ dÃ¶ndÃ¼ â†’ manuel review iÃ§in filename only dÃ¶n (image OCR XML'de iÅŸe yaramaz)
         this.logger.warn(
-          `XML parse başarısız (${originalName}): belge no/date/kdv bulunamadı, filename-only döndürülüyor`,
+          `XML parse baÅŸarÄ±sÄ±z (${originalName}): belge no/date/kdv bulunamadÄ±, filename-only dÃ¶ndÃ¼rÃ¼lÃ¼yor`,
         );
         return {
           rawText: head4k.slice(0, 500),
@@ -218,8 +222,8 @@ export class OcrService {
           engine: 'xml-parse-failed',
         };
       } catch (e: any) {
-        this.logger.warn(`XML parse hatası (${originalName}): ${e?.message}`);
-        // Parse exception → filename only
+        this.logger.warn(`XML parse hatasÄ± (${originalName}): ${e?.message}`);
+        // Parse exception â†’ filename only
         return {
           rawText: '',
           belgeNo: belgeNoFromFilename,
@@ -236,12 +240,12 @@ export class OcrService {
         };
       }
     }
-    // .xml uzantılı ama içerik binary (gerçekte image) → image OCR'a düş
+    // .xml uzantÄ±lÄ± ama iÃ§erik binary (gerÃ§ekte image) â†’ image OCR'a dÃ¼ÅŸ
 
-    // ═══════════════════════════════════════════════════════
-    // 1. AZURE-FIRST OCR — ucuz ham OCR + deterministik parser'lar.
-    //    Claude sadece Azure sonucu eksik/çelişkili/düşük güvenliyse devreye girer.
-    // ═══════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 1. AZURE-FIRST OCR â€” ucuz ham OCR + deterministik parser'lar.
+    //    Claude sadece Azure sonucu eksik/Ã§eliÅŸkili/dÃ¼ÅŸÃ¼k gÃ¼venliyse devreye girer.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     let azureRawText = '';
 
     if (this.azureClient && !forceClaude) {
@@ -251,7 +255,7 @@ export class OcrService {
         const review = this.needsReview(azureResult);
         if (!review.needs) {
           this.logger.log(
-            `Azure-first başarılı: ${originalName || '—'} · belgeNo=${azureResult.belgeNo || '—'} date=${azureResult.date || '—'} kdv=${azureResult.kdvTutari || '—'} validation=%${Math.round((azureResult.validationScore ?? 0) * 100)}`,
+            `Azure-first baÅŸarÄ±lÄ±: ${originalName || 'â€”'} Â· belgeNo=${azureResult.belgeNo || 'â€”'} date=${azureResult.date || 'â€”'} kdv=${azureResult.kdvTutari || 'â€”'} validation=%${Math.round((azureResult.validationScore ?? 0) * 100)}`,
           );
           return azureResult;
         }
@@ -283,15 +287,15 @@ export class OcrService {
         }
         if (!hasClaudeKey || !allowAutoClaude) {
           this.logger.warn(
-            `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || '—'} · reason=${review.reason}`,
+            `Azure-first teyit gerektiriyor ve Claude yok: ${originalName || 'â€”'} Â· reason=${review.reason}`,
           );
           return azureResult;
         }
         this.logger.warn(
-          `Azure-first Claude eskalasyon: ${originalName || '—'} · reason=${review.reason} · belgeNo=${fmtConf(azureResult.fieldConfidence.belgeNo)} date=${fmtConf(azureResult.fieldConfidence.date)} kdv=${fmtConf(azureResult.fieldConfidence.kdvTutari)}`,
+          `Azure-first Claude eskalasyon: ${originalName || 'â€”'} Â· reason=${review.reason} Â· belgeNo=${fmtConf(azureResult.fieldConfidence.belgeNo)} date=${fmtConf(azureResult.fieldConfidence.date)} kdv=${fmtConf(azureResult.fieldConfidence.kdvTutari)}`,
         );
       } catch (e: any) {
-        this.logger.warn(`Azure-first hatası (${originalName || '—'}): ${e?.message}`);
+        this.logger.warn(`Azure-first hatasÄ± (${originalName || 'â€”'}): ${e?.message}`);
       }
     }
 
@@ -306,51 +310,51 @@ export class OcrService {
         const claudeResult = await this.runClaudeVisionOcr(imageBuffer);
         if (!azureRawText && this.azureClient) {
           azureRawText = await this.getAzureRawText(imageBuffer).catch((e) => {
-            this.logger.warn(`Azure cross-check hatası: ${e?.message}`);
+            this.logger.warn(`Azure cross-check hatasÄ±: ${e?.message}`);
             return '';
           });
         }
 
         if (claudeResult.belgeNo || claudeResult.date || claudeResult.kdvTutari) {
-          // ═══ POST-PROCESS DOĞRULAMA (kurala dayalı) ═══
+          // â•â•â• POST-PROCESS DOÄRULAMA (kurala dayalÄ±) â•â•â•
           this.postProcessOcrResult(claudeResult, belgeNoFromFilename, originalName);
 
-          // ═══ AZURE CROSS-CHECK (ikinci tanık) ═══
+          // â•â•â• AZURE CROSS-CHECK (ikinci tanÄ±k) â•â•â•
           if (azureRawText) {
             this.crossCheckWithAzure(claudeResult, azureRawText, originalName, belgeNoFromFilename);
-            // Cross-check sonrası rawText'i Azure metniyle zenginleştir
-            // (debug + ileride extractDateFromText fallback için)
+            // Cross-check sonrasÄ± rawText'i Azure metniyle zenginleÅŸtir
+            // (debug + ileride extractDateFromText fallback iÃ§in)
             claudeResult.rawText = `[CLAUDE] ${claudeResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
           }
 
-          // ═══ MULTI-PASS VALIDATION (matematik + mantık) ═══
-          // breakdown.tutar.sum === kdvTutari? matrah×oran === tutar?
-          // Geçerli oran (0/1/8/10/18/20)? Tevkifat ≤ KDV? gibi kontroller.
-          // Doğrulama başarısızsa confidence düşürülür → NEEDS_REVIEW gider.
+          // â•â•â• MULTI-PASS VALIDATION (matematik + mantÄ±k) â•â•â•
+          // breakdown.tutar.sum === kdvTutari? matrahÃ—oran === tutar?
+          // GeÃ§erli oran (0/1/8/10/18/20)? Tevkifat â‰¤ KDV? gibi kontroller.
+          // DoÄŸrulama baÅŸarÄ±sÄ±zsa confidence dÃ¼ÅŸÃ¼rÃ¼lÃ¼r â†’ NEEDS_REVIEW gider.
           this.validateOcrResult(claudeResult, originalName);
 
           claudeResult.engine = `${claudeResult.engine || DEFAULT_OCR_MODEL} (claude-escalation)`;
           return claudeResult;
         }
         this.logger.warn(
-          `Claude boş döndü: ${originalName || '—'} · raw:${claudeResult.rawText?.slice(0, 120)}`,
+          `Claude boÅŸ dÃ¶ndÃ¼: ${originalName || 'â€”'} Â· raw:${claudeResult.rawText?.slice(0, 120)}`,
         );
-        // Claude boş döndü → Azure fallback (yapısal extraction)
+        // Claude boÅŸ dÃ¶ndÃ¼ â†’ Azure fallback (yapÄ±sal extraction)
       } catch (e: any) {
-        this.logger.warn(`Claude Vision hatası (${originalName || '—'}): ${e?.message}`);
+        this.logger.warn(`Claude Vision hatasÄ± (${originalName || 'â€”'}): ${e?.message}`);
       }
     }
 
-    // 2. Fallback: Azure Vision Read API yapısal extraction
+    // 2. Fallback: Azure Vision Read API yapÄ±sal extraction
     if (this.azureClient) {
       try {
         return await this.runAzureOcr(imageBuffer, belgeNoFromFilename, originalName);
       } catch (e: any) {
-        this.logger.error('Azure Vision hatası:', e?.message);
+        this.logger.error('Azure Vision hatasÄ±:', e?.message);
       }
     }
 
-    // 3. Son çare: dosya adından belgeNo
+    // 3. Son Ã§are: dosya adÄ±ndan belgeNo
     return {
       rawText: '',
       belgeNo: belgeNoFromFilename,
@@ -369,20 +373,20 @@ export class OcrService {
 
   // === CLAUDE VISION OCR (Sonnet 4.5 default, Haiku 4.5 fallback via ENV) ===
   /**
-   * Claude Vision'ı çağırır; Türk fatura/fiş görselinden
-   * tarih, belge no, KDV tutarı ve toplam tutarı yapısal JSON olarak alır.
-   * Default Sonnet 4.5 (Haiku halüsinasyon yapıyordu, kullanıcı düzeltmek zorunda kalıyordu).
-   * Haiku'ya dönmek için ENV: OCR_MODEL=claude-haiku-4-5-20251001
+   * Claude Vision'Ä± Ã§aÄŸÄ±rÄ±r; TÃ¼rk fatura/fiÅŸ gÃ¶rselinden
+   * tarih, belge no, KDV tutarÄ± ve toplam tutarÄ± yapÄ±sal JSON olarak alÄ±r.
+   * Default Sonnet 4.5 (Haiku halÃ¼sinasyon yapÄ±yordu, kullanÄ±cÄ± dÃ¼zeltmek zorunda kalÄ±yordu).
+   * Haiku'ya dÃ¶nmek iÃ§in ENV: OCR_MODEL=claude-haiku-4-5-20251001
    */
   private async runClaudeVisionOcr(buffer: Buffer): Promise<OcrResult> {
     const apiKey = process.env.ANTHROPIC_API_KEY!;
     const MODEL = process.env.OCR_MODEL || DEFAULT_OCR_MODEL;
 
-    // ─── DOSYA TİPİNİ TESPİT ET (magic bytes) ───
+    // â”€â”€â”€ DOSYA TÄ°PÄ°NÄ° TESPÄ°T ET (magic bytes) â”€â”€â”€
     // PDF / JPEG / PNG / GIF / TIFF / BMP / WEBP destekleniyor.
-    // PDF için Claude API'ye "document" content type olarak gönderilir
-    // (image değil) — `application/pdf` media_type. Sharp PDF'i resize edemediği
-    // için PDF'leri ham buffer olarak gönderiyoruz.
+    // PDF iÃ§in Claude API'ye "document" content type olarak gÃ¶nderilir
+    // (image deÄŸil) â€” `application/pdf` media_type. Sharp PDF'i resize edemediÄŸi
+    // iÃ§in PDF'leri ham buffer olarak gÃ¶nderiyoruz.
     const isPdf =
       buffer.length >= 4 &&
       buffer[0] === 0x25 && buffer[1] === 0x50 &&
@@ -393,13 +397,13 @@ export class OcrService {
     let contentType: 'image' | 'document' = 'image';
 
     if (isPdf) {
-      // PDF — sharp resize yapamaz. Ham buffer'ı document olarak gönder.
+      // PDF â€” sharp resize yapamaz. Ham buffer'Ä± document olarak gÃ¶nder.
       b64 = buffer.toString('base64');
       mediaType = 'application/pdf';
       contentType = 'document';
-      this.logger.log(`Claude OCR: PDF input (${buffer.length} byte) → document type`);
+      this.logger.log(`Claude OCR: PDF input (${buffer.length} byte) â†’ document type`);
     } else {
-      // Image — büyük görselleri 2000px'e küçült (Claude limit + hız)
+      // Image â€” bÃ¼yÃ¼k gÃ¶rselleri 2000px'e kÃ¼Ã§Ã¼lt (Claude limit + hÄ±z)
       try {
         const sharp = (await import('sharp')).default;
         const resized = await sharp(buffer)
@@ -409,16 +413,16 @@ export class OcrService {
           .toBuffer();
         b64 = resized.toString('base64');
       } catch {
-        // sharp yoksa ham buffer'ı kullan
+        // sharp yoksa ham buffer'Ä± kullan
         b64 = buffer.toString('base64');
       }
     }
 
     const systemPrompt = [
-      'Sen Türk muhasebe dokümanları (e-Fatura, e-Arşiv, ÖKC fişi, Z raporu, makbuz, dekont) için uzmanlaşmış bir OCR sistemisin.',
-      'Görseli karakter karakter incele ve SADECE geçerli JSON dön — açıklama/prolog YOK.',
+      'Sen TÃ¼rk muhasebe dokÃ¼manlarÄ± (e-Fatura, e-ArÅŸiv, Ã–KC fiÅŸi, Z raporu, makbuz, dekont) iÃ§in uzmanlaÅŸmÄ±ÅŸ bir OCR sistemisin.',
+      'GÃ¶rseli karakter karakter incele ve SADECE geÃ§erli JSON dÃ¶n â€” aÃ§Ä±klama/prolog YOK.',
       '',
-      '╔══ JSON ŞEMA ══╗',
+      'â•”â•â• JSON ÅEMA â•â•â•—',
       '{',
       '  "tarih": "YYYY-MM-DD" | null,',
       '  "belgeNo": "...",',
@@ -434,298 +438,298 @@ export class OcrService {
       '  "confidence": {"tarih":0.95,"belgeNo":0.88,"kdvTutari":0.72}',
       '}',
       '',
-      '╔══ 1) BELGE TİPİNİ TESPİT ET ══╗',
-      'Görselin tamamını oku, şu anahtar kelimeleri ara:',
-      '  • "E-FATURA" / "e-Fatura" / "TEMELFATURA" / "TICARIFATURA" → EFATURA',
-      '  • "E-ARŞİV" / "E-ARSIV" / "EARSIVFATURA" → EARSIV',
-      '  • "Z RAPORU" / "Z RAPOR" / "Z REPORT" / "GÜNLÜK Z" → Z_RAPORU',
-      '  • Fiş numaralı satış belgesi (Z raporu değilse) / "FİŞ NO" → OKC_FIS',
-      '  • "GİDER PUSULASI" → GIDER_PUSULASI',
-      '  • "SERBEST MESLEK MAKBUZU" → SMM',
-      '  • "MAKBUZ" (tek başına, SMM değilse) → MAKBUZ',
-      '  • "DEKONT" / "HAVALE" / "EFT" / banka başlıklı → DEKONT',
-      '  • "SEVK İRSALİYESİ" / "İRSALİYE" → SEVK_IRSALIYESI',
-      '  • Hiçbiri değilse → DIGER',
+      'â•”â•â• 1) BELGE TÄ°PÄ°NÄ° TESPÄ°T ET â•â•â•—',
+      'GÃ¶rselin tamamÄ±nÄ± oku, ÅŸu anahtar kelimeleri ara:',
+      '  â€¢ "E-FATURA" / "e-Fatura" / "TEMELFATURA" / "TICARIFATURA" â†’ EFATURA',
+      '  â€¢ "E-ARÅÄ°V" / "E-ARSIV" / "EARSIVFATURA" â†’ EARSIV',
+      '  â€¢ "Z RAPORU" / "Z RAPOR" / "Z REPORT" / "GÃœNLÃœK Z" â†’ Z_RAPORU',
+      '  â€¢ FiÅŸ numaralÄ± satÄ±ÅŸ belgesi (Z raporu deÄŸilse) / "FÄ°Å NO" â†’ OKC_FIS',
+      '  â€¢ "GÄ°DER PUSULASI" â†’ GIDER_PUSULASI',
+      '  â€¢ "SERBEST MESLEK MAKBUZU" â†’ SMM',
+      '  â€¢ "MAKBUZ" (tek baÅŸÄ±na, SMM deÄŸilse) â†’ MAKBUZ',
+      '  â€¢ "DEKONT" / "HAVALE" / "EFT" / banka baÅŸlÄ±klÄ± â†’ DEKONT',
+      '  â€¢ "SEVK Ä°RSALÄ°YESÄ°" / "Ä°RSALÄ°YE" â†’ SEVK_IRSALIYESI',
+      '  â€¢ HiÃ§biri deÄŸilse â†’ DIGER',
       '',
-      '╔══ 2) BELGE NO — TİPE GÖRE DOĞRU ALAN ══╗',
-      'Belge no\'yu tipe göre ŞU ALANDAN al:',
-      '  • EFATURA/EARSIV → "Fatura No" / "Belge No" etiketindeki değer.',
-      '    Pattern: 3 harf + 4 rakam (yıl) + 9 rakam (sıra) = 16 char, örn. "EFA2026000000093".',
-      '    EĞER 13-14 KARAKTER OKUDUYSAN SIFIRLARI ATLADIN — TEKRAR SAY.',
-      '  • Z_RAPORU → SADECE "Z NO" / "Z SAYAÇ" etiketindeki değer. FIŞ NO / EKÜ NO / AT NO / SAAT / TARİH ASLA DEĞİL!',
-      '    ► KRİTİK: "FIŞ NO. 45" görsen bile o "FIŞ NO" — Z_RAPORU\'nda belge no DEĞİL.',
-      '    ► Z raporunda doğru alan: "Z NO: 670" / "Z NO 670" / "Z SAYAÇ 896" / "Z SAYAÇ: 896" / "Z SAYACI 896" şeklinde geçer.',
-      '    ► v1.36.72: BAZI ÖKC MODELLERİ "Z NO" YERİNE "Z SAYAÇ" KULLANIR (aynı anlam, aynı numara).',
-      '    ► Örnek: "FIŞ NO. 45 ... TOPLAM ... Z SAYAÇ 896" → belgeNo = "896" (45 DEĞİL).',
-      '    ► Bazen "Z NO" / "Z SAYAÇ" en altta tek başına yazar — orayı bul.',
-      '  • OKC_FIS → "FİŞ NO" / "FIS NO" / "BELGE NO" (3-6 hane).',
-      '  • GIDER_PUSULASI → "MAKBUZ NO" / "BELGE NO" / "SERİ NO".',
-      '  • SMM → "MAKBUZ NO" / "SERİ NO-SIRA NO" birleşik.',
-      '  • MAKBUZ → "MAKBUZ NO" / "SERİ SIRA".',
-      '  • DEKONT → "REFERANS NO" / "DEKONT NO" / "İŞLEM NO".',
-      '  • SEVK_IRSALIYESI → "İRSALİYE NO".',
+      'â•”â•â• 2) BELGE NO â€” TÄ°PE GÃ–RE DOÄRU ALAN â•â•â•—',
+      'Belge no\'yu tipe gÃ¶re ÅU ALANDAN al:',
+      '  â€¢ EFATURA/EARSIV â†’ "Fatura No" / "Belge No" etiketindeki deÄŸer.',
+      '    Pattern: 3 harf + 4 rakam (yÄ±l) + 9 rakam (sÄ±ra) = 16 char, Ã¶rn. "EFA2026000000093".',
+      '    EÄER 13-14 KARAKTER OKUDUYSAN SIFIRLARI ATLADIN â€” TEKRAR SAY.',
+      '  â€¢ Z_RAPORU â†’ SADECE "Z NO" / "Z SAYAÃ‡" etiketindeki deÄŸer. FIÅ NO / EKÃœ NO / AT NO / SAAT / TARÄ°H ASLA DEÄÄ°L!',
+      '    â–º KRÄ°TÄ°K: "FIÅ NO. 45" gÃ¶rsen bile o "FIÅ NO" â€” Z_RAPORU\'nda belge no DEÄÄ°L.',
+      '    â–º Z raporunda doÄŸru alan: "Z NO: 670" / "Z NO 670" / "Z SAYAÃ‡ 896" / "Z SAYAÃ‡: 896" / "Z SAYACI 896" ÅŸeklinde geÃ§er.',
+      '    â–º v1.36.72: BAZI Ã–KC MODELLERÄ° "Z NO" YERÄ°NE "Z SAYAÃ‡" KULLANIR (aynÄ± anlam, aynÄ± numara).',
+      '    â–º Ã–rnek: "FIÅ NO. 45 ... TOPLAM ... Z SAYAÃ‡ 896" â†’ belgeNo = "896" (45 DEÄÄ°L).',
+      '    â–º Bazen "Z NO" / "Z SAYAÃ‡" en altta tek baÅŸÄ±na yazar â€” orayÄ± bul.',
+      '  â€¢ OKC_FIS â†’ "FÄ°Å NO" / "FIS NO" / "BELGE NO" (3-6 hane).',
+      '  â€¢ GIDER_PUSULASI â†’ "MAKBUZ NO" / "BELGE NO" / "SERÄ° NO".',
+      '  â€¢ SMM â†’ "MAKBUZ NO" / "SERÄ° NO-SIRA NO" birleÅŸik.',
+      '  â€¢ MAKBUZ â†’ "MAKBUZ NO" / "SERÄ° SIRA".',
+      '  â€¢ DEKONT â†’ "REFERANS NO" / "DEKONT NO" / "Ä°ÅLEM NO".',
+      '  â€¢ SEVK_IRSALIYESI â†’ "Ä°RSALÄ°YE NO".',
       '',
-      '╔══ 3) BELGE NO — YASAK ALANLAR (ASLA BELGE NO OLARAK DÖNME) ══╗',
-      '  • "Özelleştirme No" / "CustomizationID" (TR1.2, TR1.0, UBL-2.1)',
-      '  • "Senaryo" / "ProfileID" (TICARIFATURA, TEMELFATURA, EARSIVFATURA)',
-      '  • "UUID" / "ETTN" (GUID formatlı uzun string)',
-      '  • "VKN" / "TCKN" (satıcı/alıcı kimlik no)',
-      '  • "Sipariş No" / "İrsaliye No" (faturanın ana numarası değil)',
-      '  • Z Raporunda: FİŞ NO / EKÜ NO / AT NO / MALİ FİŞ SAYISI vs.',
-      '  Bu alanlardan biri tek başına dönme — gerçek belge no bulunana kadar ara.',
+      'â•”â•â• 3) BELGE NO â€” YASAK ALANLAR (ASLA BELGE NO OLARAK DÃ–NME) â•â•â•—',
+      '  â€¢ "Ã–zelleÅŸtirme No" / "CustomizationID" (TR1.2, TR1.0, UBL-2.1)',
+      '  â€¢ "Senaryo" / "ProfileID" (TICARIFATURA, TEMELFATURA, EARSIVFATURA)',
+      '  â€¢ "UUID" / "ETTN" (GUID formatlÄ± uzun string)',
+      '  â€¢ "VKN" / "TCKN" (satÄ±cÄ±/alÄ±cÄ± kimlik no)',
+      '  â€¢ "SipariÅŸ No" / "Ä°rsaliye No" (faturanÄ±n ana numarasÄ± deÄŸil)',
+      '  â€¢ Z Raporunda: FÄ°Å NO / EKÃœ NO / AT NO / MALÄ° FÄ°Å SAYISI vs.',
+      '  Bu alanlardan biri tek baÅŸÄ±na dÃ¶nme â€” gerÃ§ek belge no bulunana kadar ara.',
       '',
-      '╔══ 4) TARİH — TÜRK FORMATI (DD-MM-YYYY) ══╗',
-      'HER MUHASEBE BELGESİNDE MUTLAKA BİR TARİH VARDIR. Genelde en üstte veya en altta görünür.',
+      'â•”â•â• 4) TARÄ°H â€” TÃœRK FORMATI (DD-MM-YYYY) â•â•â•—',
+      'HER MUHASEBE BELGESÄ°NDE MUTLAKA BÄ°R TARÄ°H VARDIR. Genelde en Ã¼stte veya en altta gÃ¶rÃ¼nÃ¼r.',
       'Arama yerleri:',
-      '  • Belgenin tepesinde (tarih + saat birlikte olabilir: "10-03-2026 21:30")',
-      '  • "Fatura Tarihi", "Belge Tarihi", "Düzenleme Tarihi", "Fiş Tarihi", "Tanzim Tarihi" etiketleri',
-      '  • Z raporunda: başta tarih, sonra "SAAT" olur',
-      '  • Makbuz/fişte: genelde "TARİH:" etiketi veya serbest format',
-      'Türkiye\'de tarih DAİMA "GÜN-AY-YIL" sırasıdır. İLK kısım GÜN, ORTA kısım AY, SON 4 hane YIL.',
-      '  • "11-03-2026" = "11.03.2026" = "11/03/2026" = 11 Mart 2026 → output "2026-03-11"',
-      '  • "31.12.2025" → 31 Aralık 2025 → output "2025-12-31"',
-      '  • "10-03-2026 21:30" → sadece tarih kısmı: "2026-03-10"',
-      'KURAL: Eğer ilk hane 13-31 arasındaysa o KESİNLİKLE gün. Ay 1-12 arası olur.',
-      'SAKIN ABD formatı (MM-DD-YYYY) düşünme — Türk belgeleri ASLA öyle yazmaz.',
-      '⚠ ÖNEMLİ: Tarih belgede DAİMA vardır — "null" dönmeden önce tüm belgeyi tara.',
-      '  Sadece görsel tamamen okunaksız/hasarlıysa null dön.',
-      'Yıl 2020-2050 dışındaysa muhtemelen OCR hatası, confidence düşür.',
+      '  â€¢ Belgenin tepesinde (tarih + saat birlikte olabilir: "10-03-2026 21:30")',
+      '  â€¢ "Fatura Tarihi", "Belge Tarihi", "DÃ¼zenleme Tarihi", "FiÅŸ Tarihi", "Tanzim Tarihi" etiketleri',
+      '  â€¢ Z raporunda: baÅŸta tarih, sonra "SAAT" olur',
+      '  â€¢ Makbuz/fiÅŸte: genelde "TARÄ°H:" etiketi veya serbest format',
+      'TÃ¼rkiye\'de tarih DAÄ°MA "GÃœN-AY-YIL" sÄ±rasÄ±dÄ±r. Ä°LK kÄ±sÄ±m GÃœN, ORTA kÄ±sÄ±m AY, SON 4 hane YIL.',
+      '  â€¢ "11-03-2026" = "11.03.2026" = "11/03/2026" = 11 Mart 2026 â†’ output "2026-03-11"',
+      '  â€¢ "31.12.2025" â†’ 31 AralÄ±k 2025 â†’ output "2025-12-31"',
+      '  â€¢ "10-03-2026 21:30" â†’ sadece tarih kÄ±smÄ±: "2026-03-10"',
+      'KURAL: EÄŸer ilk hane 13-31 arasÄ±ndaysa o KESÄ°NLÄ°KLE gÃ¼n. Ay 1-12 arasÄ± olur.',
+      'SAKIN ABD formatÄ± (MM-DD-YYYY) dÃ¼ÅŸÃ¼nme â€” TÃ¼rk belgeleri ASLA Ã¶yle yazmaz.',
+      'âš  Ã–NEMLÄ°: Tarih belgede DAÄ°MA vardÄ±r â€” "null" dÃ¶nmeden Ã¶nce tÃ¼m belgeyi tara.',
+      '  Sadece gÃ¶rsel tamamen okunaksÄ±z/hasarlÄ±ysa null dÃ¶n.',
+      'YÄ±l 2020-2050 dÄ±ÅŸÄ±ndaysa muhtemelen OCR hatasÄ±, confidence dÃ¼ÅŸÃ¼r.',
       '',
-      '╔══ 5) KDV — ÇOK ORANLI / BREAKDOWN ══╗',
-      'Türk belgelerinde KDV oranları: %0, %1, %8, %10, %18, %20 (güncel). Eski: %18.',
+      'â•”â•â• 5) KDV â€” Ã‡OK ORANLI / BREAKDOWN â•â•â•—',
+      'TÃ¼rk belgelerinde KDV oranlarÄ±: %0, %1, %8, %10, %18, %20 (gÃ¼ncel). Eski: %18.',
       '',
-      '⛔ KRİTİK — NE KDV SAYILIR NE SAYILMAZ:',
-      'SADECE şu etiketli satırlar KDV\'dir:',
-      '  ✓ "KDV", "K.D.V.", "Katma Değer Vergisi"',
-      '  ✓ "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV"',
-      '  ✓ Tabloda "KDV %" sütunu (örn. "KDV (% 20,00)")',
+      'â›” KRÄ°TÄ°K â€” NE KDV SAYILIR NE SAYILMAZ:',
+      'SADECE ÅŸu etiketli satÄ±rlar KDV\'dir:',
+      '  âœ“ "KDV", "K.D.V.", "Katma DeÄŸer Vergisi"',
+      '  âœ“ "Hesaplanan KDV", "KDV TutarÄ±", "TOPKDV", "KUM TOPKDV"',
+      '  âœ“ Tabloda "KDV %" sÃ¼tunu (Ã¶rn. "KDV (% 20,00)")',
       '',
-      'ŞU SATIRLARI KDV\'YE ASLA DAHİL ETME (bunlar AYRI vergi türleridir):',
-      '  ✗ "Özel İletişim Vergisi" / "ÖİV" / "ÖIV" — telekom faturalarında (Turkcell, Türk Telekom, Vodafone) %5/%10/%25',
-      '  ✗ "Telsiz Kullanım Vergisi" / "Telsiz Kullanım Aylık Taksit" — telekom',
-      '  ✗ "ÖTV" / "Özel Tüketim Vergisi" — akaryakıt, sigara, alkol, motorlu araç',
-      '  ✗ "Konaklama Vergisi" — otel/pansiyon (2026 itibarıyla %2)',
-      '  ✗ "Damga Vergisi" — sözleşme, makbuz üstü',
-      '  ✗ "BSMV" / "Banka ve Sigorta Muameleleri Vergisi" — banka işlem ücretleri',
-      '  ✗ "KKDF" / "Kaynak Kullanımını Destekleme Fonu" — kredi/ithalat',
-      '  ✗ "Çevre Temizlik Vergisi" — belediye',
-      '  ✗ "Stopaj" / "Gelir Vergisi Kesintisi" — ayrı vergi',
-      '    (KDV Tevkifatı farklıdır — bölüm 5c\'ye bak, NET KDV hesapla)',
-      '  ✗ "Diğer Vergiler" / "Vergiler" başlıklı toplam satır (içinde KDV olsa bile tek başına alma)',
-      '  ✗ "Fon Payı" / "Özel Tüketim Fonu"',
+      'ÅU SATIRLARI KDV\'YE ASLA DAHÄ°L ETME (bunlar AYRI vergi tÃ¼rleridir):',
+      '  âœ— "Ã–zel Ä°letiÅŸim Vergisi" / "Ã–Ä°V" / "Ã–IV" â€” telekom faturalarÄ±nda (Turkcell, TÃ¼rk Telekom, Vodafone) %5/%10/%25',
+      '  âœ— "Telsiz KullanÄ±m Vergisi" / "Telsiz KullanÄ±m AylÄ±k Taksit" â€” telekom',
+      '  âœ— "Ã–TV" / "Ã–zel TÃ¼ketim Vergisi" â€” akaryakÄ±t, sigara, alkol, motorlu araÃ§',
+      '  âœ— "Konaklama Vergisi" â€” otel/pansiyon (2026 itibarÄ±yla %2)',
+      '  âœ— "Damga Vergisi" â€” sÃ¶zleÅŸme, makbuz Ã¼stÃ¼',
+      '  âœ— "BSMV" / "Banka ve Sigorta Muameleleri Vergisi" â€” banka iÅŸlem Ã¼cretleri',
+      '  âœ— "KKDF" / "Kaynak KullanÄ±mÄ±nÄ± Destekleme Fonu" â€” kredi/ithalat',
+      '  âœ— "Ã‡evre Temizlik Vergisi" â€” belediye',
+      '  âœ— "Stopaj" / "Gelir Vergisi Kesintisi" â€” ayrÄ± vergi',
+      '    (KDV TevkifatÄ± farklÄ±dÄ±r â€” bÃ¶lÃ¼m 5c\'ye bak, NET KDV hesapla)',
+      '  âœ— "DiÄŸer Vergiler" / "Vergiler" baÅŸlÄ±klÄ± toplam satÄ±r (iÃ§inde KDV olsa bile tek baÅŸÄ±na alma)',
+      '  âœ— "Fon PayÄ±" / "Ã–zel TÃ¼ketim Fonu"',
       '',
-      'ÖRNEK — Turkcell faturası:',
-      '  Katma Değer Vergisi   %20  252,00   ← BU KDV (252 TL)',
-      '  Özel İletişim Vergisi %10  126,00   ← BU ÖİV, KDV DEĞİL',
-      '  Telsiz Kullanım Taksit %0   26,98   ← BU TELSİZ, KDV DEĞİL',
-      '  → kdvTutari = "252,00" (SADECE KDV satırı)',
-      '  → kdvBreakdown = [{"oran":20,"tutar":"252,00","matrah":"1260,01"}]',
+      'Ã–RNEK â€” Turkcell faturasÄ±:',
+      '  Katma DeÄŸer Vergisi   %20  252,00   â† BU KDV (252 TL)',
+      '  Ã–zel Ä°letiÅŸim Vergisi %10  126,00   â† BU Ã–Ä°V, KDV DEÄÄ°L',
+      '  Telsiz KullanÄ±m Taksit %0   26,98   â† BU TELSÄ°Z, KDV DEÄÄ°L',
+      '  â†’ kdvTutari = "252,00" (SADECE KDV satÄ±rÄ±)',
+      '  â†’ kdvBreakdown = [{"oran":20,"tutar":"252,00","matrah":"1260,01"}]',
       '',
-      'ÖRNEK — Akaryakıt faturası:',
-      '  KDV %20           50,00   ← BU KDV',
-      '  ÖTV              120,00   ← BU ÖTV, KDV DEĞİL',
-      '  → kdvTutari = "50,00"',
+      'Ã–RNEK â€” AkaryakÄ±t faturasÄ±:',
+      '  KDV %20           50,00   â† BU KDV',
+      '  Ã–TV              120,00   â† BU Ã–TV, KDV DEÄÄ°L',
+      '  â†’ kdvTutari = "50,00"',
       '',
-      'Eğer belgede HİÇ "KDV" etiketli satır yoksa (örn. sadece ÖİV varsa), kdvTutari = "0,00".',
+      'EÄŸer belgede HÄ°Ã‡ "KDV" etiketli satÄ±r yoksa (Ã¶rn. sadece Ã–Ä°V varsa), kdvTutari = "0,00".',
       '',
-      '╔══ 5b) ÇOK ORANLI KDV — BREAKDOWN ZORUNLU ══╗',
-      'Görselde BİRDEN FAZLA KDV oranı satırı varsa (her biri ayrı "KDV %X" etiketli):',
-      '  ► kdvBreakdown alanını MUTLAKA doldur — her oran ayrı eleman olacak.',
-      '  ► kdvTutari = tüm KDV satırlarının matematiksel TOPLAMI.',
-      '  ► Tek oran bile olsa breakdown\'u doldur (tek elemanlı dizi olarak).',
+      'â•”â•â• 5b) Ã‡OK ORANLI KDV â€” BREAKDOWN ZORUNLU â•â•â•—',
+      'GÃ¶rselde BÄ°RDEN FAZLA KDV oranÄ± satÄ±rÄ± varsa (her biri ayrÄ± "KDV %X" etiketli):',
+      '  â–º kdvBreakdown alanÄ±nÄ± MUTLAKA doldur â€” her oran ayrÄ± eleman olacak.',
+      '  â–º kdvTutari = tÃ¼m KDV satÄ±rlarÄ±nÄ±n matematiksel TOPLAMI.',
+      '  â–º Tek oran bile olsa breakdown\'u doldur (tek elemanlÄ± dizi olarak).',
       '',
-      'ÖRNEK — Karma fatura (iki oran):',
+      'Ã–RNEK â€” Karma fatura (iki oran):',
       '  Hesaplanan KDV (%20)   116,00   (Matrah: 580,00)',
       '  Hesaplanan KDV (%10)    42,00   (Matrah: 420,00)',
-      '  → kdvBreakdown=[{"oran":20,"tutar":"116,00","matrah":"580,00"},{"oran":10,"tutar":"42,00","matrah":"420,00"}]',
-      '  → kdvTutari="158,00" (116 + 42)',
+      '  â†’ kdvBreakdown=[{"oran":20,"tutar":"116,00","matrah":"580,00"},{"oran":10,"tutar":"42,00","matrah":"420,00"}]',
+      '  â†’ kdvTutari="158,00" (116 + 42)',
       '',
-      'ÖRNEK — Z raporu (YAZAR KASA FİŞİ) — BU PATTERN ZORUNLU:',
-      '  Z raporunda KDV oranları ŞU FORMATTA görünür (sıra önemli, her biri AYRI satır):',
-      '    TOPLAM %20    *285,00    ← matrah (%20 oranlı satışların toplamı)',
-      '    TOPKDV %20     *47,50    ← KDV (%20 oran için)',
-      '    TOPLAM %10   *2.675,00   ← matrah (%10 oranlı satışların toplamı)',
-      '    TOPKDV %10    *243,19    ← KDV (%10 oran için)',
-      '    TOPLAM       *2.960,00   ← genel matrah (tüm oranlar)',
-      '    TOPKDV         *290,69   ← GENEL KDV TOPLAMI (breakdown toplamına eşit olmalı)',
-      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
-      '  ➜ kdvTutari="290,69"',
-      '  ⚠ Z raporunda "TOPKDV %NN" her satırı AYRI bir breakdown elemanıdır.',
-      '  ⚠ "KUM TOPKDV" / "KUM TOPLAM" kümülatif — asla alma, sadece "TOPKDV" satırlarını al.',
-      '  ⚠ Yazıcı baskısı silik olabilir — "*" ile ayrılmış sayı daima sağdaki değerdir.',
+      'Ã–RNEK â€” Z raporu (YAZAR KASA FÄ°ÅÄ°) â€” BU PATTERN ZORUNLU:',
+      '  Z raporunda KDV oranlarÄ± ÅU FORMATTA gÃ¶rÃ¼nÃ¼r (sÄ±ra Ã¶nemli, her biri AYRI satÄ±r):',
+      '    TOPLAM %20    *285,00    â† matrah (%20 oranlÄ± satÄ±ÅŸlarÄ±n toplamÄ±)',
+      '    TOPKDV %20     *47,50    â† KDV (%20 oran iÃ§in)',
+      '    TOPLAM %10   *2.675,00   â† matrah (%10 oranlÄ± satÄ±ÅŸlarÄ±n toplamÄ±)',
+      '    TOPKDV %10    *243,19    â† KDV (%10 oran iÃ§in)',
+      '    TOPLAM       *2.960,00   â† genel matrah (tÃ¼m oranlar)',
+      '    TOPKDV         *290,69   â† GENEL KDV TOPLAMI (breakdown toplamÄ±na eÅŸit olmalÄ±)',
+      '  âœ kdvBreakdown=[{"oran":20,"tutar":"47,50","matrah":"285,00"},{"oran":10,"tutar":"243,19","matrah":"2675,00"}]',
+      '  âœ kdvTutari="290,69"',
+      '  âš  Z raporunda "TOPKDV %NN" her satÄ±rÄ± AYRI bir breakdown elemanÄ±dÄ±r.',
+      '  âš  "KUM TOPKDV" / "KUM TOPLAM" kÃ¼mÃ¼latif â€” asla alma, sadece "TOPKDV" satÄ±rlarÄ±nÄ± al.',
+      '  âš  YazÄ±cÄ± baskÄ±sÄ± silik olabilir â€” "*" ile ayrÄ±lmÄ±ÅŸ sayÄ± daima saÄŸdaki deÄŸerdir.',
       '',
-      'ÖRNEK — TÜRK TELEKOM / TURKCELL / VODAFONE faturası — DİKKAT:',
-      '  Telekom faturalarında "KDV" ile "ÖİV" yan yana görünür ve KARIŞTIRILMASI KOLAY:',
-      '    Matrah          304,18    ← BU MATRAH (KDV DEĞİL)',
-      '    KDV (%20)        60,84    ← BU KDV (%20 oranlı)',
-      '    ÖİV (%10)        30,42    ← BU ÖİV, KDV DEĞİL',
+      'Ã–RNEK â€” TÃœRK TELEKOM / TURKCELL / VODAFONE faturasÄ± â€” DÄ°KKAT:',
+      '  Telekom faturalarÄ±nda "KDV" ile "Ã–Ä°V" yan yana gÃ¶rÃ¼nÃ¼r ve KARIÅTIRILMASI KOLAY:',
+      '    Matrah          304,18    â† BU MATRAH (KDV DEÄÄ°L)',
+      '    KDV (%20)        60,84    â† BU KDV (%20 oranlÄ±)',
+      '    Ã–Ä°V (%10)        30,42    â† BU Ã–Ä°V, KDV DEÄÄ°L',
       '    Genel Toplam    395,44',
-      '  ➜ kdvTutari="60,84"  (SADECE "KDV (%NN)" etiketli satır)',
-      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"60,84","matrah":"304,18"}]',
-      '  ⚠ "304,18" MATRAH\'tır (KDV\'nin hesaplandığı tutar), KDV DEĞİL.',
-      '  ⚠ Matrah genelde KDV\'den 5x daha büyüktür (20% oranında). Büyük sayıya "KDV" deme.',
-      '  ⚠ KDV satırı her zaman "KDV" veya "Katma Değer" etiketi taşır — etiket yoksa KDV değildir.',
+      '  âœ kdvTutari="60,84"  (SADECE "KDV (%NN)" etiketli satÄ±r)',
+      '  âœ kdvBreakdown=[{"oran":20,"tutar":"60,84","matrah":"304,18"}]',
+      '  âš  "304,18" MATRAH\'tÄ±r (KDV\'nin hesaplandÄ±ÄŸÄ± tutar), KDV DEÄÄ°L.',
+      '  âš  Matrah genelde KDV\'den 5x daha bÃ¼yÃ¼ktÃ¼r (20% oranÄ±nda). BÃ¼yÃ¼k sayÄ±ya "KDV" deme.',
+      '  âš  KDV satÄ±rÄ± her zaman "KDV" veya "Katma DeÄŸer" etiketi taÅŸÄ±r â€” etiket yoksa KDV deÄŸildir.',
       '',
-      'TEK ORAN ÖZEL KURALI — "kalem satırlarındaki KDV" alt toplam sayılmaz:',
-      '  Normal e-Fatura/e-Arşiv tablosunda her kalem için ayrı KDV sütunu görünür (ör. 250,20 + 400,00).',
-      '  Bu kalem satırlarındaki KDV\'ler AYRI breakdown DEĞİL — hepsi aynı oran (%20) için toplamdır.',
-      '  Fatura altındaki "Hesaplanan KDV (%20): 650,20" satırını tek kaynak olarak al.',
-      '  ➜ kdvTutari="650,20"',
-      '  ➜ kdvBreakdown=[{"oran":20,"tutar":"650,20","matrah":"3251,00"}]',
-      '  ⚠ SAKIN kalem satırlarını ayrı oran olarak sayma — hepsi %20 ise TEK BREAKDOWN elemanı.',
+      'TEK ORAN Ã–ZEL KURALI â€” "kalem satÄ±rlarÄ±ndaki KDV" alt toplam sayÄ±lmaz:',
+      '  Normal e-Fatura/e-ArÅŸiv tablosunda her kalem iÃ§in ayrÄ± KDV sÃ¼tunu gÃ¶rÃ¼nÃ¼r (Ã¶r. 250,20 + 400,00).',
+      '  Bu kalem satÄ±rlarÄ±ndaki KDV\'ler AYRI breakdown DEÄÄ°L â€” hepsi aynÄ± oran (%20) iÃ§in toplamdÄ±r.',
+      '  Fatura altÄ±ndaki "Hesaplanan KDV (%20): 650,20" satÄ±rÄ±nÄ± tek kaynak olarak al.',
+      '  âœ kdvTutari="650,20"',
+      '  âœ kdvBreakdown=[{"oran":20,"tutar":"650,20","matrah":"3251,00"}]',
+      '  âš  SAKIN kalem satÄ±rlarÄ±nÄ± ayrÄ± oran olarak sayma â€” hepsi %20 ise TEK BREAKDOWN elemanÄ±.',
       '',
-      'Matrah belirgin değilse null bırak. KDV tutarını ASLA matrah/toplam farkı veya oran hesabıyla üretme; sadece belgede yazan KDV satırını oku.',
+      'Matrah belirgin deÄŸilse null bÄ±rak. KDV tutarÄ±nÄ± ASLA matrah/toplam farkÄ± veya oran hesabÄ±yla Ã¼retme; sadece belgede yazan KDV satÄ±rÄ±nÄ± oku.',
       '',
-      '╔══ 5c) KDV TEVKİFATLI FATURA — İKİ SAYIYI AYRI OKU ══╗',
-      'TEVKİFATLI faturalarda SAKIN matematik yapma — görseldeki iki sayıyı AYRI AYRI kopyala:',
-      '  1. kdvTutari = faturada yazan "Hesaplanan KDV" / "KDV Tutarı" / "KDV(%N)" TAM TUTARI',
-      '  2. kdvTevkifat = faturada yazan "Hesaplanan KDV Tevkifat(%XX)" / "KDV Tevkifatı" TUTARI',
-      'Kodun kendisi net KDV = tam − tevkifat hesaplayacak. Sen sadece iki rakamı OKU.',
+      'â•”â•â• 5c) KDV TEVKÄ°FATLI FATURA â€” Ä°KÄ° SAYIYI AYRI OKU â•â•â•—',
+      'TEVKÄ°FATLI faturalarda SAKIN matematik yapma â€” gÃ¶rseldeki iki sayÄ±yÄ± AYRI AYRI kopyala:',
+      '  1. kdvTutari = faturada yazan "Hesaplanan KDV" / "KDV TutarÄ±" / "KDV(%N)" TAM TUTARI',
+      '  2. kdvTevkifat = faturada yazan "Hesaplanan KDV Tevkifat(%XX)" / "KDV TevkifatÄ±" TUTARI',
+      'Kodun kendisi net KDV = tam âˆ’ tevkifat hesaplayacak. Sen sadece iki rakamÄ± OKU.',
       '',
-      'TEVKİFAT TESPİTİ — şu markerlar varsa fatura tevkifatlıdır:',
-      '  • "Fatura Tipi: TEVKİFAT" / "Senaryo: TEVKİFAT" / "TEVKİFATLI" etiketi',
-      '  • "Hesaplanan KDV Tevkifat(%XX)" / "KDV Tevkifatı" satırı + tutar',
-      '  • "Tevkifata Tabi İşlem Tutarı" satırı',
-      '  • "Tevkifat Sebebi" / "Tevkifat Oranı" alanı',
+      'TEVKÄ°FAT TESPÄ°TÄ° â€” ÅŸu markerlar varsa fatura tevkifatlÄ±dÄ±r:',
+      '  â€¢ "Fatura Tipi: TEVKÄ°FAT" / "Senaryo: TEVKÄ°FAT" / "TEVKÄ°FATLI" etiketi',
+      '  â€¢ "Hesaplanan KDV Tevkifat(%XX)" / "KDV TevkifatÄ±" satÄ±rÄ± + tutar',
+      '  â€¢ "Tevkifata Tabi Ä°ÅŸlem TutarÄ±" satÄ±rÄ±',
+      '  â€¢ "Tevkifat Sebebi" / "Tevkifat OranÄ±" alanÄ±',
       '',
-      'ÖRNEK 1 — Tevkifatlı fatura (tek oran):',
-      '  Hesaplanan KDV(%20)           3.788,00   ← kdvTutari için bu',
-      '  Hesaplanan KDV Tevkifat(%50)  1.894,00   ← kdvTevkifat için bu',
+      'Ã–RNEK 1 â€” TevkifatlÄ± fatura (tek oran):',
+      '  Hesaplanan KDV(%20)           3.788,00   â† kdvTutari iÃ§in bu',
+      '  Hesaplanan KDV Tevkifat(%50)  1.894,00   â† kdvTevkifat iÃ§in bu',
       '  Vergiler Dahil Toplam          22.728,00',
-      '  Ödenecek Tutar                 20.834,00',
-      '  → kdvTutari = "3788,00"     (görselde yazan tam KDV)',
-      '  → kdvTevkifat = "1894,00"   (görselde yazan tevkifat tutarı)',
-      '  → toplam = "22728,00"        (Vergiler Dahil Toplam)',
-      '  → kdvBreakdown = [{"oran":20,"tutar":"3788,00","matrah":"18940,00"}]  (tam, net DEĞİL)',
+      '  Ã–denecek Tutar                 20.834,00',
+      '  â†’ kdvTutari = "3788,00"     (gÃ¶rselde yazan tam KDV)',
+      '  â†’ kdvTevkifat = "1894,00"   (gÃ¶rselde yazan tevkifat tutarÄ±)',
+      '  â†’ toplam = "22728,00"        (Vergiler Dahil Toplam)',
+      '  â†’ kdvBreakdown = [{"oran":20,"tutar":"3788,00","matrah":"18940,00"}]  (tam, net DEÄÄ°L)',
       '',
-      'ÖRNEK 2 — Tevkifatlı fatura (farklı tutarlar):',
+      'Ã–RNEK 2 â€” TevkifatlÄ± fatura (farklÄ± tutarlar):',
       '  Hesaplanan KDV(%20)           10.560,00',
       '  Hesaplanan KDV Tevkifat(%50)   5.280,00',
-      '  → kdvTutari = "10560,00"',
-      '  → kdvTevkifat = "5280,00"',
+      '  â†’ kdvTutari = "10560,00"',
+      '  â†’ kdvTevkifat = "5280,00"',
       '',
-      'TEVKİFATSIZ FATURA:',
-      '  → kdvTevkifat = "0,00" (veya null)',
-      '  → kdvTutari = olağan tam KDV',
+      'TEVKÄ°FATSIZ FATURA:',
+      '  â†’ kdvTevkifat = "0,00" (veya null)',
+      '  â†’ kdvTutari = olaÄŸan tam KDV',
       '',
-      '⚠ KRİTİK: Tevkifatlı faturada kdvTevkifat alanını BOŞ BIRAKMA. Tutarı oku.',
-      '⚠ KRİTİK: kdvTutari = TAM KDV (kendin çıkarma işlemi yapma, kod halleder).',
-      '⚠ "Tevkifat" kelimesi faturada GEÇİYORSA ve tutar varsa: kdvTevkifat\'ı MUTLAKA doldur.',
+      'âš  KRÄ°TÄ°K: TevkifatlÄ± faturada kdvTevkifat alanÄ±nÄ± BOÅ BIRAKMA. TutarÄ± oku.',
+      'âš  KRÄ°TÄ°K: kdvTutari = TAM KDV (kendin Ã§Ä±karma iÅŸlemi yapma, kod halleder).',
+      'âš  "Tevkifat" kelimesi faturada GEÃ‡Ä°YORSA ve tutar varsa: kdvTevkifat\'Ä± MUTLAKA doldur.',
       '',
-      '⛔ ÇOK ÖNEMLİ — MAL HİZMET TOPLAM ≠ VERGİLER DAHİL TOPLAM:',
-      'Tevkifatlı faturada şu alanları KESİNLİKLE KARIŞTIRMA:',
-      '  • "Mal Hizmet Toplam Tutarı" = MATRAH (KDV hariç). Bunu /11 ile bölme!',
-      '  • "Vergiler Dahil Toplam Tutar" = MATRAH + KDV (KDV dahil). Bu da kdvTutari değil.',
-      '  • "Ödenecek Tutar" = MATRAH + (KDV − Tevkifat). Bu da kdvTutari değil.',
+      'â›” Ã‡OK Ã–NEMLÄ° â€” MAL HÄ°ZMET TOPLAM â‰  VERGÄ°LER DAHÄ°L TOPLAM:',
+      'TevkifatlÄ± faturada ÅŸu alanlarÄ± KESÄ°NLÄ°KLE KARIÅTIRMA:',
+      '  â€¢ "Mal Hizmet Toplam TutarÄ±" = MATRAH (KDV hariÃ§). Bunu /11 ile bÃ¶lme!',
+      '  â€¢ "Vergiler Dahil Toplam Tutar" = MATRAH + KDV (KDV dahil). Bu da kdvTutari deÄŸil.',
+      '  â€¢ "Ã–denecek Tutar" = MATRAH + (KDV âˆ’ Tevkifat). Bu da kdvTutari deÄŸil.',
       '',
-      'KDV TUTARI sadece şu satırlardan biridir:',
-      '  ✓ "Hesaplanan KDV(%X)" satırının yanındaki tutar — TAM KDV',
-      '  ✓ Tevkifat bölümünde "Hesaplanan KDV Tevkifat(%XX)" — TEVKİFAT',
-      '  ✗ "Mal Hizmet Toplam" — bu MATRAH, KDV DEĞİL',
-      '  ✗ "Vergiler Dahil Toplam" — bu MATRAH+KDV, KDV DEĞİL',
-      '  ✗ "Ödenecek KDV" — bu NET KDV (kod hesaplayacak), KDV ALANI DEĞİL',
+      'KDV TUTARI sadece ÅŸu satÄ±rlardan biridir:',
+      '  âœ“ "Hesaplanan KDV(%X)" satÄ±rÄ±nÄ±n yanÄ±ndaki tutar â€” TAM KDV',
+      '  âœ“ Tevkifat bÃ¶lÃ¼mÃ¼nde "Hesaplanan KDV Tevkifat(%XX)" â€” TEVKÄ°FAT',
+      '  âœ— "Mal Hizmet Toplam" â€” bu MATRAH, KDV DEÄÄ°L',
+      '  âœ— "Vergiler Dahil Toplam" â€” bu MATRAH+KDV, KDV DEÄÄ°L',
+      '  âœ— "Ã–denecek KDV" â€” bu NET KDV (kod hesaplayacak), KDV ALANI DEÄÄ°L',
       '',
-      'YAPILACAK MATEMATİK YOK — faturadaki YAZILI sayıları KOPYALA. SAKIN /11 veya /1.20 işlemi yapma.',
+      'YAPILACAK MATEMATÄ°K YOK â€” faturadaki YAZILI sayÄ±larÄ± KOPYALA. SAKIN /11 veya /1.20 iÅŸlemi yapma.',
       '',
-      'ÖRNEK — TEVKİFATLI ALIŞ FATURASI (HİZMET):',
-      '  Mal Hizmet Toplam Tutarı            13.300,00 TL  ← MATRAH (KDV DEĞİL!)',
-      '  Hesaplanan KDV(%10)                  1.330,00 TL  ← TAM KDV (kdvTutari için bu)',
-      '  Hesaplanan KDV Tevkifat(%50)           665,00 TL  ← TEVKİFAT (kdvTevkifat için bu)',
-      '  Tevkifata Tabi İşlem Üzerinden Hes.   1.330,00 TL  ← Aynı KDV (alternatif gösterim)',
-      '  Ödenecek KDV                           665,00 TL  ← NET (kod hesaplar)',
+      'Ã–RNEK â€” TEVKÄ°FATLI ALIÅ FATURASI (HÄ°ZMET):',
+      '  Mal Hizmet Toplam TutarÄ±            13.300,00 TL  â† MATRAH (KDV DEÄÄ°L!)',
+      '  Hesaplanan KDV(%10)                  1.330,00 TL  â† TAM KDV (kdvTutari iÃ§in bu)',
+      '  Hesaplanan KDV Tevkifat(%50)           665,00 TL  â† TEVKÄ°FAT (kdvTevkifat iÃ§in bu)',
+      '  Tevkifata Tabi Ä°ÅŸlem Ãœzerinden Hes.   1.330,00 TL  â† AynÄ± KDV (alternatif gÃ¶sterim)',
+      '  Ã–denecek KDV                           665,00 TL  â† NET (kod hesaplar)',
       '  Vergiler Dahil Toplam               14.630,00 TL',
-      '  Ödenecek Tutar                      13.965,00 TL',
-      '  → kdvTutari = "1330,00"          (TAM KDV — Hesaplanan KDV satırı)',
-      '  → kdvTevkifat = "665,00"          (Tevkifat tutarı)',
-      '  → kdvBreakdown = [{"oran":10,"tutar":"1330,00","matrah":"13300,00"}]',
-      '  ⚠ 13.300 / 11 = 1.209 SAKIN BUNU YAZMA — bu yanlış matematik! Faturadaki "1.330,00" sayısını OKU.',
+      '  Ã–denecek Tutar                      13.965,00 TL',
+      '  â†’ kdvTutari = "1330,00"          (TAM KDV â€” Hesaplanan KDV satÄ±rÄ±)',
+      '  â†’ kdvTevkifat = "665,00"          (Tevkifat tutarÄ±)',
+      '  â†’ kdvBreakdown = [{"oran":10,"tutar":"1330,00","matrah":"13300,00"}]',
+      '  âš  13.300 / 11 = 1.209 SAKIN BUNU YAZMA â€” bu yanlÄ±ÅŸ matematik! Faturadaki "1.330,00" sayÄ±sÄ±nÄ± OKU.',
       '',
-      'ALGILAMA: Tevkifatlı fatura = "Hesaplanan KDV Tevkifat" satırı VAR demektir.',
-      'Bu satırı görür görmez:',
-      '  1. ÜSTTEKİ "Hesaplanan KDV(%X)" satırının tutarını → kdvTutari (TAM)',
-      '  2. ALTTAKİ "Hesaplanan KDV Tevkifat(%XX)" satırının tutarını → kdvTevkifat',
-      '  3. Hiç hesap yapma. İki sayıyı oku, kod halleder.',
+      'ALGILAMA: TevkifatlÄ± fatura = "Hesaplanan KDV Tevkifat" satÄ±rÄ± VAR demektir.',
+      'Bu satÄ±rÄ± gÃ¶rÃ¼r gÃ¶rmez:',
+      '  1. ÃœSTTEKÄ° "Hesaplanan KDV(%X)" satÄ±rÄ±nÄ±n tutarÄ±nÄ± â†’ kdvTutari (TAM)',
+      '  2. ALTTAKÄ° "Hesaplanan KDV Tevkifat(%XX)" satÄ±rÄ±nÄ±n tutarÄ±nÄ± â†’ kdvTevkifat',
+      '  3. HiÃ§ hesap yapma. Ä°ki sayÄ±yÄ± oku, kod halleder.',
       '',
-      '╔══ 6) TUTAR FORMATI ══╗',
-      'Türkiye: nokta binlik ayraç, virgül ondalık. "1.234,56" → output "1234,56" (noktasız, virgüllü).',
-      '"KDV" etiketi (kabul): "KDV", "K.D.V.", "Katma Değer Vergisi", "Hesaplanan KDV", "KDV Tutarı", "TOPKDV", "KUM TOPKDV".',
-      '"KDV" DEĞİL (reddet): "Özel İletişim Vergisi", "ÖİV", "Telsiz Kullanım", "ÖTV", "Damga", "BSMV", "KKDF", "Konaklama Vergisi", "Çevre Vergisi", "Stopaj".',
-      'KDV Tevkifatı özeldir — bölüm 5c\'ye göre NET KDV döndür.',
-      '"Toplam" etiketi: "Genel Toplam", "Ödenecek", "Fatura Toplamı", "Vergiler Dahil Toplam".',
-      'Eğer tutar "₺" ya da "TL" / "TRY" içeriyorsa o işareti KALDIR, sadece sayı kal.',
+      'â•”â•â• 6) TUTAR FORMATI â•â•â•—',
+      'TÃ¼rkiye: nokta binlik ayraÃ§, virgÃ¼l ondalÄ±k. "1.234,56" â†’ output "1234,56" (noktasÄ±z, virgÃ¼llÃ¼).',
+      '"KDV" etiketi (kabul): "KDV", "K.D.V.", "Katma DeÄŸer Vergisi", "Hesaplanan KDV", "KDV TutarÄ±", "TOPKDV", "KUM TOPKDV".',
+      '"KDV" DEÄÄ°L (reddet): "Ã–zel Ä°letiÅŸim Vergisi", "Ã–Ä°V", "Telsiz KullanÄ±m", "Ã–TV", "Damga", "BSMV", "KKDF", "Konaklama Vergisi", "Ã‡evre Vergisi", "Stopaj".',
+      'KDV TevkifatÄ± Ã¶zeldir â€” bÃ¶lÃ¼m 5c\'ye gÃ¶re NET KDV dÃ¶ndÃ¼r.',
+      '"Toplam" etiketi: "Genel Toplam", "Ã–denecek", "Fatura ToplamÄ±", "Vergiler Dahil Toplam".',
+      'EÄŸer tutar "â‚º" ya da "TL" / "TRY" iÃ§eriyorsa o iÅŸareti KALDIR, sadece sayÄ± kal.',
       '',
-      '╔══ 6b) KATEGORİ — GİDER SINIFLANDIRMASI ══╗',
-      'Satıcı unvanı + ürün/hizmet açıklamasından gider kategorisi belirle:',
-      '  • "yakit"        → akaryakıt, benzin, motorin, LPG, OPET, Shell, BP, Petrol Ofisi, TP, KadooilGaz',
-      '  • "yemek"        → restoran, lokanta, kafe, market gıda, yemek kartı, Sodexo, Multinet, Setcard',
-      '  • "kirtasiye"    → ofis malzemesi, kalem, defter, toner, kağıt, Office Depot',
-      '  • "telekom"      → Turkcell, Vodafone, Türk Telekom, internet, GSM, telefon',
-      '  • "kira"         → işyeri kirası, depo kirası (genelde stopaj 360 hesabı içerir)',
-      '  • "elektrik"     → CK Enerji, Aydem, Boğaziçi Elektrik, ENERJİSA, Trakya Elektrik',
-      '  • "su"           → İSKİ, ASKİ, BUSKİ, ESKİ — su faturası',
-      '  • "dogalgaz"     → İGDAŞ, BAŞKENTGAZ, AGDAŞ, doğalgaz',
-      '  • "tamir"        → bakım, onarım, tamirhane, oto servis, otomobil bakımı',
-      '  • "sigorta"      → kasko, trafik sigortası, dask, hayat sigortası, Allianz, Anadolu Sigorta',
-      '  • "danismanlik"  → SMMM, avukat, mali müşavir, mühendislik, danışmanlık (genelde tevkifatlı)',
-      '  • "nakliye"      → kargo, taşımacılık, ARAS, MNG, Yurtiçi, Sürat, UPS, fedex',
-      '  • "reklam"       → Google Ads, Facebook, ilan, reklam, dijital pazarlama',
-      '  • "temizlik"     → temizlik malzemesi, temizlik hizmeti (tevkifatlı olabilir)',
-      '  • "saglik"       → eczane, hastane, doktor, ilaç, tıbbi malzeme',
-      '  • "diger"        → yukarıdakilerin hiçbirine girmiyor',
-      'Tek kategori ver. Şüphelide "diger" tercih et — yanlış sınıflandırma yapma.',
+      'â•”â•â• 6b) KATEGORÄ° â€” GÄ°DER SINIFLANDIRMASI â•â•â•—',
+      'SatÄ±cÄ± unvanÄ± + Ã¼rÃ¼n/hizmet aÃ§Ä±klamasÄ±ndan gider kategorisi belirle:',
+      '  â€¢ "yakit"        â†’ akaryakÄ±t, benzin, motorin, LPG, OPET, Shell, BP, Petrol Ofisi, TP, KadooilGaz',
+      '  â€¢ "yemek"        â†’ restoran, lokanta, kafe, market gÄ±da, yemek kartÄ±, Sodexo, Multinet, Setcard',
+      '  â€¢ "kirtasiye"    â†’ ofis malzemesi, kalem, defter, toner, kaÄŸÄ±t, Office Depot',
+      '  â€¢ "telekom"      â†’ Turkcell, Vodafone, TÃ¼rk Telekom, internet, GSM, telefon',
+      '  â€¢ "kira"         â†’ iÅŸyeri kirasÄ±, depo kirasÄ± (genelde stopaj 360 hesabÄ± iÃ§erir)',
+      '  â€¢ "elektrik"     â†’ CK Enerji, Aydem, BoÄŸaziÃ§i Elektrik, ENERJÄ°SA, Trakya Elektrik',
+      '  â€¢ "su"           â†’ Ä°SKÄ°, ASKÄ°, BUSKÄ°, ESKÄ° â€” su faturasÄ±',
+      '  â€¢ "dogalgaz"     â†’ Ä°GDAÅ, BAÅKENTGAZ, AGDAÅ, doÄŸalgaz',
+      '  â€¢ "tamir"        â†’ bakÄ±m, onarÄ±m, tamirhane, oto servis, otomobil bakÄ±mÄ±',
+      '  â€¢ "sigorta"      â†’ kasko, trafik sigortasÄ±, dask, hayat sigortasÄ±, Allianz, Anadolu Sigorta',
+      '  â€¢ "danismanlik"  â†’ SMMM, avukat, mali mÃ¼ÅŸavir, mÃ¼hendislik, danÄ±ÅŸmanlÄ±k (genelde tevkifatlÄ±)',
+      '  â€¢ "nakliye"      â†’ kargo, taÅŸÄ±macÄ±lÄ±k, ARAS, MNG, YurtiÃ§i, SÃ¼rat, UPS, fedex',
+      '  â€¢ "reklam"       â†’ Google Ads, Facebook, ilan, reklam, dijital pazarlama',
+      '  â€¢ "temizlik"     â†’ temizlik malzemesi, temizlik hizmeti (tevkifatlÄ± olabilir)',
+      '  â€¢ "saglik"       â†’ eczane, hastane, doktor, ilaÃ§, tÄ±bbi malzeme',
+      '  â€¢ "diger"        â†’ yukarÄ±dakilerin hiÃ§birine girmiyor',
+      'Tek kategori ver. ÅÃ¼phelide "diger" tercih et â€” yanlÄ±ÅŸ sÄ±nÄ±flandÄ±rma yapma.',
       '',
-      '╔══ 6c) SATICI VKN ══╗',
-      'Eğer satıcının VKN/TCKN\'si belgede görünüyorsa "saticiVkn" alanına yaz.',
-      'VKN: 10 hane, TCKN: 11 hane. Sadece rakam, başında 0 olabilir. Görünmüyorsa null.',
+      'â•”â•â• 6c) SATICI VKN â•â•â•—',
+      'EÄŸer satÄ±cÄ±nÄ±n VKN/TCKN\'si belgede gÃ¶rÃ¼nÃ¼yorsa "saticiVkn" alanÄ±na yaz.',
+      'VKN: 10 hane, TCKN: 11 hane. Sadece rakam, baÅŸÄ±nda 0 olabilir. GÃ¶rÃ¼nmÃ¼yorsa null.',
       '',
-      '╔══ 7) KARAKTER NETLİĞİ — OCR TUZAKLARI ══╗',
-      'Belge no\'da rakam/harf karışıklığı:',
-      '  • "O" (harf O) ve "0" (rakam sıfır) — sayısal pattern\'de "0" tercih et.',
-      '  • "l" / "I" (harf i/L) ve "1" (rakam bir) — belge no\'da "1" tercih et.',
-      '  • "S" ve "5", "B" ve "8", "Z" ve "2" — pattern\'e bakarak karar ver.',
-      'Her harfi ayrı ayrı gözden geçir, özellikle belge no\'da tüm sıfırları SAY.',
+      'â•”â•â• 7) KARAKTER NETLÄ°ÄÄ° â€” OCR TUZAKLARI â•â•â•—',
+      'Belge no\'da rakam/harf karÄ±ÅŸÄ±klÄ±ÄŸÄ±:',
+      '  â€¢ "O" (harf O) ve "0" (rakam sÄ±fÄ±r) â€” sayÄ±sal pattern\'de "0" tercih et.',
+      '  â€¢ "l" / "I" (harf i/L) ve "1" (rakam bir) â€” belge no\'da "1" tercih et.',
+      '  â€¢ "S" ve "5", "B" ve "8", "Z" ve "2" â€” pattern\'e bakarak karar ver.',
+      'Her harfi ayrÄ± ayrÄ± gÃ¶zden geÃ§ir, Ã¶zellikle belge no\'da tÃ¼m sÄ±fÄ±rlarÄ± SAY.',
       '',
-      '╔══ 8) CONFIDENCE — GERÇEKÇİ SKOR ══╗',
-      '  • 0.95-1.00 → Karakterler cam gibi net, tek yorum.',
-      '  • 0.80-0.94 → Okunaklı, çok küçük belirsizlik.',
-      '  • 0.60-0.79 → Bulanık/kısmen kapalı, tahmin var.',
-      '  • <0.60 → Net değil, tahmine dayalı.',
-      '  • 0 → Alan yok veya hiç okunmuyor.',
-      'Birden fazla kalem topladıysan ve biri şüpheliyse skorlu düşür.',
+      'â•”â•â• 8) CONFIDENCE â€” GERÃ‡EKÃ‡Ä° SKOR â•â•â•—',
+      '  â€¢ 0.95-1.00 â†’ Karakterler cam gibi net, tek yorum.',
+      '  â€¢ 0.80-0.94 â†’ OkunaklÄ±, Ã§ok kÃ¼Ã§Ã¼k belirsizlik.',
+      '  â€¢ 0.60-0.79 â†’ BulanÄ±k/kÄ±smen kapalÄ±, tahmin var.',
+      '  â€¢ <0.60 â†’ Net deÄŸil, tahmine dayalÄ±.',
+      '  â€¢ 0 â†’ Alan yok veya hiÃ§ okunmuyor.',
+      'Birden fazla kalem topladÄ±ysan ve biri ÅŸÃ¼pheliyse skorlu dÃ¼ÅŸÃ¼r.',
     ].join('\n');
 
     const userText = [
-      'Bu Türk muhasebe belgesinin yapısal verilerini JSON olarak çıkar.',
+      'Bu TÃ¼rk muhasebe belgesinin yapÄ±sal verilerini JSON olarak Ã§Ä±kar.',
       '',
       'ADIM 1: Belge tipini tespit et (EFATURA/EARSIV/OKC_FIS/Z_RAPORU/MAKBUZ/GIDER_PUSULASI/SMM/DEKONT/SEVK_IRSALIYESI/DIGER).',
-      'ADIM 2: Tipe göre doğru alandan belge no\'yu KARAKTER KARAKTER kopyala (sıfırları atlama).',
-      '         ► Z_RAPORU ise: "Z NO" alanını ara, "FIŞ NO" DEĞİL!',
-      '         ► E-FATURA/EARSIV ise: 16 karakter (3 harf + 13 rakam)',
-      'ADIM 3: TARİHİ MUTLAKA BUL — belgenin üstünde/altında DAİMA vardır.',
-      '         DD-MM-YYYY Türk formatından "YYYY-MM-DD"\'ye çevir.',
-      '         "10-03-2026" → "2026-03-10" (10 Mart 2026, ay-gün YERİNİ DEĞİŞTİRME).',
-      '         Sadece görsel tamamen okunamıyorsa tarih=null dön.',
-      'ADIM 4: KDV oranlarını tara — birden fazla varsa breakdown dizisini MUTLAKA doldur, kdvTutari = toplam.',
-      '         ► KDV SADECE "KDV" / "Katma Değer Vergisi" etiketli satırlardan okunur.',
-      '         ► Özel İletişim Vergisi (ÖİV), Telsiz Kullanım Vergisi, ÖTV, Damga, BSMV, KKDF → KDV DEĞİL, dahil etme!',
-      '         ► Turkcell/Vodafone/TT telekom faturalarında SADECE "Katma Değer Vergisi" satırı KDV\'dir.',
-      'ADIM 5: Her alan için gerçekçi confidence skoru ver.',
+      'ADIM 2: Tipe gÃ¶re doÄŸru alandan belge no\'yu KARAKTER KARAKTER kopyala (sÄ±fÄ±rlarÄ± atlama).',
+      '         â–º Z_RAPORU ise: "Z NO" alanÄ±nÄ± ara, "FIÅ NO" DEÄÄ°L!',
+      '         â–º E-FATURA/EARSIV ise: 16 karakter (3 harf + 13 rakam)',
+      'ADIM 3: TARÄ°HÄ° MUTLAKA BUL â€” belgenin Ã¼stÃ¼nde/altÄ±nda DAÄ°MA vardÄ±r.',
+      '         DD-MM-YYYY TÃ¼rk formatÄ±ndan "YYYY-MM-DD"\'ye Ã§evir.',
+      '         "10-03-2026" â†’ "2026-03-10" (10 Mart 2026, ay-gÃ¼n YERÄ°NÄ° DEÄÄ°ÅTÄ°RME).',
+      '         Sadece gÃ¶rsel tamamen okunamÄ±yorsa tarih=null dÃ¶n.',
+      'ADIM 4: KDV oranlarÄ±nÄ± tara â€” birden fazla varsa breakdown dizisini MUTLAKA doldur, kdvTutari = toplam.',
+      '         â–º KDV SADECE "KDV" / "Katma DeÄŸer Vergisi" etiketli satÄ±rlardan okunur.',
+      '         â–º Ã–zel Ä°letiÅŸim Vergisi (Ã–Ä°V), Telsiz KullanÄ±m Vergisi, Ã–TV, Damga, BSMV, KKDF â†’ KDV DEÄÄ°L, dahil etme!',
+      '         â–º Turkcell/Vodafone/TT telekom faturalarÄ±nda SADECE "Katma DeÄŸer Vergisi" satÄ±rÄ± KDV\'dir.',
+      'ADIM 5: Her alan iÃ§in gerÃ§ekÃ§i confidence skoru ver.',
       '',
-      'YASAK: TR1.2, TEMELFATURA, TICARIFATURA, UUID, ETTN, VKN, TCKN asla belge no DEĞİL.',
-      'Z RAPORU YASAK: FIŞ NO / EKÜ NO / AT NO / SAAT / Z NO HARİÇ HİÇBİR ŞEY belge no DEĞİL.',
-      'KDV YASAK: ÖİV / Telsiz / ÖTV / Damga / BSMV / KKDF / Konaklama / Çevre / Fon = KDV DEĞİL.',
-      'Sadece JSON dön.',
+      'YASAK: TR1.2, TEMELFATURA, TICARIFATURA, UUID, ETTN, VKN, TCKN asla belge no DEÄÄ°L.',
+      'Z RAPORU YASAK: FIÅ NO / EKÃœ NO / AT NO / SAAT / Z NO HARÄ°Ã‡ HÄ°Ã‡BÄ°R ÅEY belge no DEÄÄ°L.',
+      'KDV YASAK: Ã–Ä°V / Telsiz / Ã–TV / Damga / BSMV / KKDF / Konaklama / Ã‡evre / Fon = KDV DEÄÄ°L.',
+      'Sadece JSON dÃ¶n.',
     ].join('\n');
 
     const startMs = Date.now();
-    // 429 retry — Anthropic rate limit'e takıldığımızda exponential backoff ile tekrar dene.
-    // retry-after header'ı varsa ona saygı göster; yoksa progresif bekle.
-    // 6 retry · toplam ~13dk bekleme penceresi (eski: 4 retry · 3.5dk yetmiyordu)
+    // 429 retry â€” Anthropic rate limit'e takÄ±ldÄ±ÄŸÄ±mÄ±zda exponential backoff ile tekrar dene.
+    // retry-after header'Ä± varsa ona saygÄ± gÃ¶ster; yoksa progresif bekle.
+    // 6 retry Â· toplam ~13dk bekleme penceresi (eski: 4 retry Â· 3.5dk yetmiyordu)
     const MAX_RETRIES = 6;
     const BACKOFF_SECONDS = [10, 25, 60, 120, 240, 360];
     let res: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      // Content block — PDF için "document", görsel için "image"
+      // Content block â€” PDF iÃ§in "document", gÃ¶rsel iÃ§in "image"
       const contentBlock = contentType === 'document'
         ? { type: 'document' as const, source: { type: 'base64' as const, media_type: mediaType, data: b64 } }
         : { type: 'image' as const, source: { type: 'base64' as const, media_type: mediaType, data: b64 } };
@@ -736,14 +740,14 @@ export class OcrService {
           'Content-Type': 'application/json',
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
-          // v1.36.64: Prompt caching — system prompt 5dk cache, ardışık fatura çağrılarında %80-90 input maliyet düşer
+          // v1.36.64: Prompt caching â€” system prompt 5dk cache, ardÄ±ÅŸÄ±k fatura Ã§aÄŸrÄ±larÄ±nda %80-90 input maliyet dÃ¼ÅŸer
           'anthropic-beta': 'prompt-caching-2024-07-31',
         },
         body: JSON.stringify({
           model: MODEL,
-          // PDF çok sayfalı olabilir → token limitini biraz artır
+          // PDF Ã§ok sayfalÄ± olabilir â†’ token limitini biraz artÄ±r
           max_tokens: isPdf ? 800 : 400,
-          // v1.36.64: system prompt array + cache_control → tekrar eden 3-5K token cache'lenir
+          // v1.36.64: system prompt array + cache_control â†’ tekrar eden 3-5K token cache'lenir
           system: [
             { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
           ],
@@ -765,7 +769,7 @@ export class OcrService {
         BACKOFF_SECONDS[attempt] ||
         60;
       this.logger.warn(
-        `Claude rate-limit (${res.status}), ${retryAfter}s bekleniyor… (attempt ${attempt + 1}/${MAX_RETRIES})`,
+        `Claude rate-limit (${res.status}), ${retryAfter}s bekleniyorâ€¦ (attempt ${attempt + 1}/${MAX_RETRIES})`,
       );
       await new Promise((r) => setTimeout(r, retryAfter * 1000));
     }
@@ -779,8 +783,8 @@ export class OcrService {
     const textBlock = payload?.content?.find((c: any) => c?.type === 'text');
     const raw = textBlock?.text?.trim() || '';
 
-    // Token kullanımı + maliyet (model bazlı)
-    // v1.36.64: cache_creation ve cache_read token'ları da hesaba katılır.
+    // Token kullanÄ±mÄ± + maliyet (model bazlÄ±)
+    // v1.36.64: cache_creation ve cache_read token'larÄ± da hesaba katÄ±lÄ±r.
     // Haiku 4.5 fiyatlama: input $1, output $5, cache write $1.25 (1.25x), cache read $0.10 (0.1x).
     const inputTokens = Number(payload?.usage?.input_tokens || 0);
     const outputTokens = Number(payload?.usage?.output_tokens || 0);
@@ -794,10 +798,10 @@ export class OcrService {
       (cacheReadTokens / 1_000_000) * (price.input * 0.1);
     const usage = { inputTokens, outputTokens, cacheCreationTokens, cacheReadTokens, costUsd };
 
-    // JSON block'unu çıkar (Claude bazen markdown içine sararken)
+    // JSON block'unu Ã§Ä±kar (Claude bazen markdown iÃ§ine sararken)
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      this.logger.warn(`Claude beklenen JSON döndürmedi: ${raw.slice(0, 100)}`);
+      this.logger.warn(`Claude beklenen JSON dÃ¶ndÃ¼rmedi: ${raw.slice(0, 100)}`);
       return {
         rawText: raw.slice(0, 2000),
         belgeNo: null,
@@ -815,22 +819,22 @@ export class OcrService {
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch {
-      /* JSON parse başarısız — boş dön */
+      /* JSON parse baÅŸarÄ±sÄ±z â€” boÅŸ dÃ¶n */
     }
 
-    // Tarihi TR formatına çevir: YYYY-MM-DD → DD.MM.YYYY
+    // Tarihi TR formatÄ±na Ã§evir: YYYY-MM-DD â†’ DD.MM.YYYY
     const date = this.formatIsoToTr(parsed.tarih) ?? null;
 
     const belgeNo = parsed.belgeNo ? String(parsed.belgeNo).toUpperCase().trim() : null;
     let kdvTutari = parsed.kdvTutari ? String(parsed.kdvTutari).replace(/\s/g, '') : null;
     const toplam = parsed.toplam ? String(parsed.toplam).replace(/\s/g, '') : null;
 
-    // KDV TEVKİFATI — deterministik net KDV hesabı + tevkifat tutarını sakla
-    // Claude'dan tam KDV + tevkifat tutarı AYRI alanda gelir (5c bölümü).
-    // Matematiği kod yapar (Claude tutarsız hesapladığı için) — Luca Defteri Kebir raporunda
-    // satıcının "Hesaplanan KDV" alanına yazılan NET KDV'dir.
-    // ÖNEMLİ: Tevkifat tutarı kaybolmasın diye OcrResult.kdvTevkifat alanına
-    // ayrıca yazılıyor — DB'de transparency için.
+    // KDV TEVKÄ°FATI â€” deterministik net KDV hesabÄ± + tevkifat tutarÄ±nÄ± sakla
+    // Claude'dan tam KDV + tevkifat tutarÄ± AYRI alanda gelir (5c bÃ¶lÃ¼mÃ¼).
+    // MatematiÄŸi kod yapar (Claude tutarsÄ±z hesapladÄ±ÄŸÄ± iÃ§in) â€” Luca Defteri Kebir raporunda
+    // satÄ±cÄ±nÄ±n "Hesaplanan KDV" alanÄ±na yazÄ±lan NET KDV'dir.
+    // Ã–NEMLÄ°: Tevkifat tutarÄ± kaybolmasÄ±n diye OcrResult.kdvTevkifat alanÄ±na
+    // ayrÄ±ca yazÄ±lÄ±yor â€” DB'de transparency iÃ§in.
     const kdvTevkifatRaw = parsed.kdvTevkifat ? String(parsed.kdvTevkifat).replace(/\s/g, '') : null;
     const kdvTevkifatNum = kdvTevkifatRaw ? this.parseAmount(kdvTevkifatRaw) : 0;
     let kdvTevkifatOut: string | null = null;
@@ -838,13 +842,13 @@ export class OcrService {
       const tamKdv = this.parseAmount(kdvTutari);
       const netKdv = Math.max(0, tamKdv - kdvTevkifatNum);
       this.logger.log(
-        `Claude OCR: tevkifat düşüldü — tam=${tamKdv}, tevkifat=${kdvTevkifatNum}, net=${netKdv}`,
+        `Claude OCR: tevkifat dÃ¼ÅŸÃ¼ldÃ¼ â€” tam=${tamKdv}, tevkifat=${kdvTevkifatNum}, net=${netKdv}`,
       );
       kdvTutari = this.formatAmount(netKdv);
       kdvTevkifatOut = this.formatAmount(kdvTevkifatNum);
     }
 
-    // Claude'un verdiği alan-bazlı confidence'ı parse et
+    // Claude'un verdiÄŸi alan-bazlÄ± confidence'Ä± parse et
     const cf = parsed.confidence || {};
     const fieldConfidence = {
       belgeNo: belgeNo ? this.clampConfidence(cf.belgeNo) : null,
@@ -852,7 +856,7 @@ export class OcrService {
       kdvTutari: kdvTutari ? this.clampConfidence(cf.kdvTutari) : null,
     };
 
-    // Genel confidence: alan-bazlı ortalama (bulunan alanların), yoksa klasik hesap
+    // Genel confidence: alan-bazlÄ± ortalama (bulunan alanlarÄ±n), yoksa klasik hesap
     const fieldScores = [fieldConfidence.belgeNo, fieldConfidence.date, fieldConfidence.kdvTutari]
       .filter((v): v is number => typeof v === 'number');
     const foundFields = fieldScores.length;
@@ -861,12 +865,12 @@ export class OcrService {
       : 0;
 
     this.logger.log(
-      `Claude OCR ✓ Alan:${foundFields}/3 · Conf:%${Math.round(confidence * 100)} ` +
-        `(belgeNo:${fmtConf(fieldConfidence.belgeNo)} · tarih:${fmtConf(fieldConfidence.date)} · kdv:${fmtConf(fieldConfidence.kdvTutari)}) ` +
+      `Claude OCR âœ“ Alan:${foundFields}/3 Â· Conf:%${Math.round(confidence * 100)} ` +
+        `(belgeNo:${fmtConf(fieldConfidence.belgeNo)} Â· tarih:${fmtConf(fieldConfidence.date)} Â· kdv:${fmtConf(fieldConfidence.kdvTutari)}) ` +
         `${Date.now() - startMs}ms`,
     );
 
-    // ── KDV BREAKDOWN — çok oranlı belgelerde her KDV oranı için ayrı satır ──
+    // â”€â”€ KDV BREAKDOWN â€” Ã§ok oranlÄ± belgelerde her KDV oranÄ± iÃ§in ayrÄ± satÄ±r â”€â”€
     let kdvBreakdown: KdvBreakdownItem[] | null = null;
     if (Array.isArray(parsed.kdvBreakdown) && parsed.kdvBreakdown.length > 0) {
       const mappedBreakdown: KdvBreakdownItem[] = parsed.kdvBreakdown
@@ -881,28 +885,28 @@ export class OcrService {
       kdvBreakdown = mappedBreakdown.length > 0 ? mappedBreakdown : null;
     }
 
-    // Tevkifat varsa breakdown tutar'ını da net'e indir (tek oranlı faturalarda UI tutarlılığı)
+    // Tevkifat varsa breakdown tutar'Ä±nÄ± da net'e indir (tek oranlÄ± faturalarda UI tutarlÄ±lÄ±ÄŸÄ±)
     if (kdvBreakdown && kdvBreakdown.length === 1 && kdvTevkifatNum > 0 && kdvTutari) {
       kdvBreakdown[0].tutar = this.parseAmount(kdvTutari);
     }
 
-    // Belge tipi — Claude prompt'unda var
+    // Belge tipi â€” Claude prompt'unda var
     const belgeTipi = parsed.belgeTipi
       ? String(parsed.belgeTipi).toUpperCase().trim()
       : null;
 
-    // Satıcı unvanı — aynı belge no'lu farklı firmaları ayırmak için
+    // SatÄ±cÄ± unvanÄ± â€” aynÄ± belge no'lu farklÄ± firmalarÄ± ayÄ±rmak iÃ§in
     const satici = parsed.satici
       ? String(parsed.satici).trim().slice(0, 200)
       : null;
 
-    // Satıcı VKN/TCKN — varsa reconciliation'da primary key olarak kullanılır
+    // SatÄ±cÄ± VKN/TCKN â€” varsa reconciliation'da primary key olarak kullanÄ±lÄ±r
     const saticiVknRaw = parsed.saticiVkn ? String(parsed.saticiVkn).replace(/\D/g, '') : null;
     const saticiVkn = saticiVknRaw && (saticiVknRaw.length === 10 || saticiVknRaw.length === 11)
       ? saticiVknRaw
       : null;
 
-    // Otomatik kategori — beyanname / gider tablosu / raporlamada kullanılır
+    // Otomatik kategori â€” beyanname / gider tablosu / raporlamada kullanÄ±lÄ±r
     const VALID_KATEGORI = new Set([
       'yakit', 'yemek', 'kirtasiye', 'telekom', 'kira', 'elektrik', 'su', 'dogalgaz',
       'tamir', 'sigorta', 'danismanlik', 'nakliye', 'reklam', 'temizlik', 'saglik', 'diger',
@@ -929,43 +933,43 @@ export class OcrService {
     } as any;
   }
 
-  /** Claude'dan gelen confidence değerini 0–1 aralığına sıkıştır (geçersizse 0.5) */
+  /** Claude'dan gelen confidence deÄŸerini 0â€“1 aralÄ±ÄŸÄ±na sÄ±kÄ±ÅŸtÄ±r (geÃ§ersizse 0.5) */
   private clampConfidence(v: any): number {
     const n = typeof v === 'number' ? v : parseFloat(v);
-    if (!Number.isFinite(n)) return 0.5; // Claude vermemişse nötr baseline
+    if (!Number.isFinite(n)) return 0.5; // Claude vermemiÅŸse nÃ¶tr baseline
     if (n < 0) return 0;
-    if (n > 1) return n > 1 && n <= 100 ? n / 100 : 1; // bazen yüzde verirse düzelt
+    if (n > 1) return n > 1 && n <= 100 ? n / 100 : 1; // bazen yÃ¼zde verirse dÃ¼zelt
     return n;
   }
 
   /**
-   * Claude'un döndürdüğü tarihi "DD.MM.YYYY" Türk formatına normalize eder.
-   * Kabul edilen girdi formatları:
+   * Claude'un dÃ¶ndÃ¼rdÃ¼ÄŸÃ¼ tarihi "DD.MM.YYYY" TÃ¼rk formatÄ±na normalize eder.
+   * Kabul edilen girdi formatlarÄ±:
    *   - "2026-03-08"  (ISO, prompt'ta istenen)
-   *   - "08.03.2026" / "08-03-2026" / "08/03/2026" (TR, kullanıcı hatası)
-   *   - "08 03 2026" (boşluklu OCR)
-   * Ay/gün ambiguous ise (ikisi de 1-12) ISO sırasını koru.
+   *   - "08.03.2026" / "08-03-2026" / "08/03/2026" (TR, kullanÄ±cÄ± hatasÄ±)
+   *   - "08 03 2026" (boÅŸluklu OCR)
+   * Ay/gÃ¼n ambiguous ise (ikisi de 1-12) ISO sÄ±rasÄ±nÄ± koru.
    */
   private formatIsoToTr(iso?: string | null): string | null {
     if (!iso || typeof iso !== 'string') return null;
     const s = iso.trim();
 
-    // 1) ISO — YYYY-MM-DD (canonical)
+    // 1) ISO â€” YYYY-MM-DD (canonical)
     const iso1 = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     if (iso1) {
       const yy = iso1[1], mo = iso1[2].padStart(2, '0'), dd = iso1[3].padStart(2, '0');
       if (+mo >= 1 && +mo <= 12 && +dd >= 1 && +dd <= 31) return `${dd}.${mo}.${yy}`;
     }
 
-    // 2) TR — DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY / DD MM YYYY
+    // 2) TR â€” DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY / DD MM YYYY
     const tr = s.match(/^(\d{1,2})[.\-\/\s](\d{1,2})[.\-\/\s](\d{2}|\d{4})$/);
     if (tr) {
       let dd = +tr[1], mo = +tr[2];
       const yy = this.normalizeOcrYear(tr[3]);
-      // Türk belgeleri DAİMA DD-MM-YYYY. Sadece gün > 12 olduğunda swap mantıklı.
+      // TÃ¼rk belgeleri DAÄ°MA DD-MM-YYYY. Sadece gÃ¼n > 12 olduÄŸunda swap mantÄ±klÄ±.
       if (dd < 1 || mo < 1 || yy == null) return null;
       if (mo > 12 && dd <= 12) {
-        // Claude yanlışlıkla US formatı döndü, swap
+        // Claude yanlÄ±ÅŸlÄ±kla US formatÄ± dÃ¶ndÃ¼, swap
         [dd, mo] = [mo, dd];
       }
       if (mo < 1 || mo > 12 || dd < 1 || dd > 31) return null;
@@ -983,12 +987,12 @@ export class OcrService {
   }
 
   /**
-   * "08.03.2026" Türk formatındaki metni rawText'ten yakalar — Claude tarih döndürmediğinde
-   * fallback olarak kullanılır. En erken (en üstte) bulunan makul tarihi döner.
+   * "08.03.2026" TÃ¼rk formatÄ±ndaki metni rawText'ten yakalar â€” Claude tarih dÃ¶ndÃ¼rmediÄŸinde
+   * fallback olarak kullanÄ±lÄ±r. En erken (en Ã¼stte) bulunan makul tarihi dÃ¶ner.
    */
   private extractDateFromText(text: string): string | null {
     if (!text) return null;
-    // Öncelik: DD-MM-YYYY, DD.MM.YYYY, DD/MM/YYYY
+    // Ã–ncelik: DD-MM-YYYY, DD.MM.YYYY, DD/MM/YYYY
     const regexes = [
       /\b(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2}|\d{4})\b/g,
       /\b(\d{1,2})\s(\d{1,2})\s(\d{2}|\d{4})\b/g,
@@ -1007,9 +1011,9 @@ export class OcrService {
   }
 
   /**
-   * Geriye dönük uyumluluk — hiçbir alan okunmadıysa "low" kabul edilir.
-   * Bu fonksiyon sadece "hiç okuyamadık" durumunu yakalar.
-   * Review gerekip gerekmediği için `needsReview` kullan.
+   * Geriye dÃ¶nÃ¼k uyumluluk â€” hiÃ§bir alan okunmadÄ±ysa "low" kabul edilir.
+   * Bu fonksiyon sadece "hiÃ§ okuyamadÄ±k" durumunu yakalar.
+   * Review gerekip gerekmediÄŸi iÃ§in `needsReview` kullan.
    */
   isLowConfidence(result: OcrResult): boolean {
     if (result.belgeNo) return false;
@@ -1018,26 +1022,26 @@ export class OcrService {
   }
 
   /**
-   * Kullanıcı teyidi gerekip gerekmediğini belirler:
-   *  - Hiç alan okunmadıysa  → true (LOW_CONFIDENCE)
-   *  - Herhangi bir alan FIELD_CONFIDENCE_THRESHOLD altındaysa → true (NEEDS_REVIEW)
-   *  - Aksi halde → false (SUCCESS)
+   * KullanÄ±cÄ± teyidi gerekip gerekmediÄŸini belirler:
+   *  - HiÃ§ alan okunmadÄ±ysa  â†’ true (LOW_CONFIDENCE)
+   *  - Herhangi bir alan FIELD_CONFIDENCE_THRESHOLD altÄ±ndaysa â†’ true (NEEDS_REVIEW)
+   *  - Aksi halde â†’ false (SUCCESS)
    *
-   * v1.36.73: VALIDATION-AWARE EŞİK
-   *   Eğer validationScore >= 0.99 (matematik tamamen tutarlı: KDV=matrah×oran,
-   *   breakdown.tutar.sum = kdvTutari, vb.) → eşik 0.7'den 0.5'e düşer.
-   *   Sebep: math zaten doğru ise, Claude'un alan-bazlı utangaçlığı yapay
-   *   "needs review" yaratıyor (Z RAPORU/ÖKC FIŞI'nde tarih confidence sık
-   *   düşer çünkü iki haneli yıl "01/04/26" Claude'a belirsiz geliyor).
-   *   v1.36.73: Z_RAPORU + OKC_FIS için ek gevşetme (yapısal belge):
-   *     Validation %95+ ve breakdown sum = kdvTutari ise eşik 0.4.
+   * v1.36.73: VALIDATION-AWARE EÅÄ°K
+   *   EÄŸer validationScore >= 0.99 (matematik tamamen tutarlÄ±: KDV=matrahÃ—oran,
+   *   breakdown.tutar.sum = kdvTutari, vb.) â†’ eÅŸik 0.7'den 0.5'e dÃ¼ÅŸer.
+   *   Sebep: math zaten doÄŸru ise, Claude'un alan-bazlÄ± utangaÃ§lÄ±ÄŸÄ± yapay
+   *   "needs review" yaratÄ±yor (Z RAPORU/Ã–KC FIÅI'nde tarih confidence sÄ±k
+   *   dÃ¼ÅŸer Ã§Ã¼nkÃ¼ iki haneli yÄ±l "01/04/26" Claude'a belirsiz geliyor).
+   *   v1.36.73: Z_RAPORU + OKC_FIS iÃ§in ek gevÅŸetme (yapÄ±sal belge):
+   *     Validation %95+ ve breakdown sum = kdvTutari ise eÅŸik 0.4.
    */
   needsReview(result: OcrResult): { needs: boolean; reason: 'none' | 'empty' | 'low_field' } {
     if (this.isLowConfidence(result)) return { needs: true, reason: 'empty' };
 
-    // Belge no + tarih okunsa bile KDV boşsa "başarılı" sayma.
-    // Özellikle görsel/XML uzantılı e-faturalarda oran okunup tutar boş kalabiliyor;
-    // kullanıcı teyidine düşmeli ki placeholder değer rapora taşınmasın.
+    // Belge no + tarih okunsa bile KDV boÅŸsa "baÅŸarÄ±lÄ±" sayma.
+    // Ã–zellikle gÃ¶rsel/XML uzantÄ±lÄ± e-faturalarda oran okunup tutar boÅŸ kalabiliyor;
+    // kullanÄ±cÄ± teyidine dÃ¼ÅŸmeli ki placeholder deÄŸer rapora taÅŸÄ±nmasÄ±n.
     const kdvAmount = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
     if (!result.kdvTutari || kdvAmount <= 0) {
       if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
@@ -1052,7 +1056,7 @@ export class OcrService {
       typeof v === 'number' ? v : 0,
     );
 
-    // Validation-aware eşik
+    // Validation-aware eÅŸik
     const validation = result.validationScore ?? 0;
     const isStructuredReceipt =
       result.belgeTipi === 'Z_RAPORU' || result.belgeTipi === 'OKC_FIS';
@@ -1096,16 +1100,16 @@ export class OcrService {
 
   // === AZURE VISION OCR ===
   /**
-   * Azure Vision Read API ile görüntüden ham metin çıkarır.
-   * Hem fallback OCR hem de Claude cross-check için kullanılır.
-   * Çok ucuz (~$0.001/belge, ilk 5K/ay bedava).
+   * Azure Vision Read API ile gÃ¶rÃ¼ntÃ¼den ham metin Ã§Ä±karÄ±r.
+   * Hem fallback OCR hem de Claude cross-check iÃ§in kullanÄ±lÄ±r.
+   * Ã‡ok ucuz (~$0.001/belge, ilk 5K/ay bedava).
    */
   private async getAzureRawText(buffer: Buffer): Promise<string> {
     if (!this.azureClient) throw new Error('Azure client yok');
 
     const result = await this.azureClient.readInStream(buffer);
     const operationId = result.operationLocation?.split('/').pop();
-    if (!operationId) throw new Error('Azure operation ID alınamadı');
+    if (!operationId) throw new Error('Azure operation ID alÄ±namadÄ±');
 
     // Polling
     let readResult = await this.azureClient.getReadResult(operationId);
@@ -1116,7 +1120,7 @@ export class OcrService {
       attempts++;
     }
     if (readResult.status !== 'succeeded') {
-      throw new Error('Azure OCR başarısız: ' + readResult.status);
+      throw new Error('Azure OCR baÅŸarÄ±sÄ±z: ' + readResult.status);
     }
 
     const lines: string[] = [];
@@ -1135,7 +1139,7 @@ export class OcrService {
   ): Promise<OcrResult> {
     const fullText = await this.getAzureRawText(buffer);
 
-    // Alanları çıkar
+    // AlanlarÄ± Ã§Ä±kar
     const belgeTipi = this.detectBelgeTipiFromAzure(fullText, originalName);
     const date = this.extractPreferredInvoiceDate(fullText) ?? this.extractDate(fullText);
     // v1.37.75 - Z raporu icin body'deki "Z NO" mutlak oncelikli.
@@ -1202,8 +1206,8 @@ export class OcrService {
       `Azure OCR [${belgeNoFromFilename || 'unknown'}] Alan:${foundFields}/3 Conf:%${Math.round(confidence * 100)}`
     );
 
-    // Azure baseline: regex eşleşmeleri için orta güven (0.6)
-    // Filename fallback belgeNo için daha düşük (0.4)
+    // Azure baseline: regex eÅŸleÅŸmeleri iÃ§in orta gÃ¼ven (0.6)
+    // Filename fallback belgeNo iÃ§in daha dÃ¼ÅŸÃ¼k (0.4)
     const azureBaseline = 0.72;
     const fieldConfidence = {
       belgeNo: belgeNo ? (belgeNoFromFilename && belgeNo === belgeNoFromFilename ? 0.95 : azureBaseline) : null,
@@ -1257,7 +1261,7 @@ export class OcrService {
     return result;
   }
 
-  // === YARDIMCI FONKSİYONLAR ===
+  // === YARDIMCI FONKSÄ°YONLAR ===
   private extractBelgeNoFromFilename(filename?: string): string | null {
     if (!filename) return null;
     const base = filename.replace(/\.[^/.]+$/, '').trim();
@@ -1326,44 +1330,25 @@ export class OcrService {
     return best && best.score >= 50 ? best.value : null;
   }
 
+  /** @deprecated icerik ocr/parsers/date.ts altinda — bu wrapper backward compat */
   private extractDate(text: string): string | null {
-    // DD - MM - YYYY (boşluklu tire)
-    for (const m of text.matchAll(/\b(\d{1,2})\s*-\s*(\d{1,2})\s*-\s*(\d{2}|\d{4})\b/g)) {
-      const [, d, mo, y] = m;
-      const yy = this.normalizeOcrYear(y);
-      if (+d <= 31 && +mo <= 12 && yy != null)
-        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${yy}`;
-    }
-    // DD.MM.YYYY / DD/MM/YYYY
-    for (const m of text.matchAll(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{2}|\d{4})\b/g)) {
-      const [, d, mo, y] = m;
-      const yy = this.normalizeOcrYear(y);
-      if (+d <= 31 && +mo <= 12 && yy != null)
-        return `${d.padStart(2,'0')}.${mo.padStart(2,'0')}.${yy}`;
-    }
-    // YYYY-MM-DD
-    for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
-      const [, y, mo, d] = m;
-      if (+d <= 31 && +mo <= 12)
-        return `${d}.${mo}.${y}`;
-    }
-    return null;
+    return extractDatePure(text);
   }
 
   private extractBelgeNo(text: string): string | null {
-    // Z RAPORU tespiti — eğer metinde Z RAPORU geçiyorsa Z NO/Z SAYAÇ'ı al
-    const isZRapor = /z\s*rapor(u|[ıi])?|z\s*report|z\s*g[uü]nl[uü]k/i.test(text);
+    // Z RAPORU tespiti â€” eÄŸer metinde Z RAPORU geÃ§iyorsa Z NO/Z SAYAÃ‡'Ä± al
+    const isZRapor = /z\s*rapor(u|[Ä±i])?|z\s*report|z\s*g[uÃ¼]nl[uÃ¼]k/i.test(text);
     if (isZRapor) {
-      // v1.36.72: "Z SAYAÇ 896" / "Z SAYAC: 896" / "Z SAYACI 896" desenleri ekledim
-      // (bazı ÖKC modelleri "Z NO" yerine "Z SAYAÇ" yazıyor)
-      const zSayac = text.match(/z\s*saya[cç][ıi]?\s*[:\-.#\s]*(\d{1,8})/i);
+      // v1.36.72: "Z SAYAÃ‡ 896" / "Z SAYAC: 896" / "Z SAYACI 896" desenleri ekledim
+      // (bazÄ± Ã–KC modelleri "Z NO" yerine "Z SAYAÃ‡" yazÄ±yor)
+      const zSayac = text.match(/z\s*saya[cÃ§][Ä±i]?\s*[:\-.#\s]*(\d{1,8})/i);
       if (zSayac?.[1]) return zSayac[1].trim();
 
-      // "Z NO: 666" formatını ara (iki nokta, tire veya boşluk sonrası rakam)
+      // "Z NO: 666" formatÄ±nÄ± ara (iki nokta, tire veya boÅŸluk sonrasÄ± rakam)
       const zNo = text.match(/z\s*no\s*[:\-.#\s]+(\d{1,8})/i);
       if (zNo?.[1]) return zNo[1].trim();
 
-      // Son çare: belgenin alt kısmındaki çıplak Z numarası ("Z 0896" gibi)
+      // Son Ã§are: belgenin alt kÄ±smÄ±ndaki Ã§Ä±plak Z numarasÄ± ("Z 0896" gibi)
       const zBare = text.match(/(?:^|\n|\s)z\s*[:\-]?\s*(\d{2,8})\s*(?:$|\n)/im);
       if (zBare?.[1]) return zBare[1].trim();
     }
@@ -1385,7 +1370,7 @@ export class OcrService {
   private extractKdvTotal(text: string): string | null {
     const cleanText = this.stripMatrahFragments(text);
 
-    // Hesaplanan KDV (çoklu oran)
+    // Hesaplanan KDV (Ã§oklu oran)
     const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (hesaplananMatches.length > 0) {
       const total = hesaplananMatches.reduce((sum, m) => {
@@ -1399,8 +1384,8 @@ export class OcrService {
       if (total > 0) return this.formatAmount(total);
     }
 
-    // KDV tutarı
-    const kdvMatches = [...cleanText.matchAll(/k\.?d\.?v\.?\s*(?:tutarı?)?\s*[:=]\s*([\d.,]+)/gi)];
+    // KDV tutarÄ±
+    const kdvMatches = [...cleanText.matchAll(/k\.?d\.?v\.?\s*(?:tutarÄ±?)?\s*[:=]\s*([\d.,]+)/gi)];
     if (kdvMatches.length > 0) {
       const values = kdvMatches.map(m => this.parseAmount(m[1])).filter(v => v > 0);
       if (values.length > 0) return this.formatAmount(Math.max(...values));
@@ -1413,12 +1398,9 @@ export class OcrService {
     return null;
   }
 
+  /** @deprecated icerik ocr/parsers/date.ts altinda — bu wrapper backward compat */
   private normalizeOcrYear(raw: string): number | null {
-    if (!/^\d{2}$|^\d{4}$/.test(raw)) return null;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n)) return null;
-    const year = raw.length === 2 ? 2000 + n : n;
-    return year >= 2000 && year <= 2050 ? year : null;
+    return normalizeOcrYearPure(raw);
   }
 
   private extractOkcFisKdvFromAzure(text: string): {
@@ -1429,8 +1411,8 @@ export class OcrService {
     const lines = this.normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const breakdown: KdvBreakdownItem[] = [];
     const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/i;
-    const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
-    const amountRe = /[-+]?[\*₺¥]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
+    const otherTaxRe = /Ã–ZEL\s*Ä°LETÄ°ÅÄ°M|Ã–Ä°V|OIV|TELSÄ°Z|TELSIZ|Ã–TV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|Ã‡EVRE|STOPAJ/i;
+    const amountRe = /[-+]?[\*â‚ºÂ¥]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|â‚º)?/g;
     const parseLastAmount = (raw: string): number => {
       const clean = this.stripMatrahFragments(raw);
       const values = [...clean.matchAll(amountRe)]
@@ -1449,7 +1431,7 @@ export class OcrService {
       if (tutar <= 0) {
         for (let j = 1; j <= 2 && i + j < lines.length; j++) {
           const next = lines[i + j];
-          if (otherTaxRe.test(next) || /TOPLAM|NAKİT|NAKIT|KART|GENEL/i.test(next)) break;
+          if (otherTaxRe.test(next) || /TOPLAM|NAKÄ°T|NAKIT|KART|GENEL/i.test(next)) break;
           tutar = parseLastAmount(next);
           if (tutar > 0) break;
         }
@@ -1493,7 +1475,7 @@ export class OcrService {
     const grossByRate = new Map<number, number>();
     const rateRe = /%\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
     const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY)?/g;
-    const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
+    const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[IÄ°]T|KRED[IÄ°]|KART|PARA\s*[UÃœ]ST[UÃœ]|KAS[IÄ°]YER|MERS[IÄ°]S|EKU|Z\s*NO|F[IÄ°][SÅ]\s*NO|TAR[IÄ°]H|SAAT|VERG[IÄ°]|V\.?D\.?|T\.?C\.?|TE[SÅ]EKK[UÃœ]R|M[UÃœ][SÅ]TER[IÄ°]/i;
 
     const parseLastAmount = (raw: string): number => {
       const values = [...raw.matchAll(amountRe)]
@@ -1502,20 +1484,39 @@ export class OcrService {
       return values.length > 0 ? values[values.length - 1] : 0;
     };
 
+    let pendingRate: number | null = null;
     for (const line of lines) {
-      if (skipRe.test(line)) continue;
+      if (skipRe.test(line)) {
+        pendingRate = null;
+        continue;
+      }
+
       const rateMatch = line.match(rateRe);
-      if (!rateMatch || rateMatch.index == null) continue;
-      const oran = Number(rateMatch[1]);
-      const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
-      const gross = parseLastAmount(afterRate) || parseLastAmount(line);
-      if (!(gross > 0)) continue;
-      grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
+      if (rateMatch && rateMatch.index != null) {
+        const oran = Number(rateMatch[1]);
+        const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
+        const gross = parseLastAmount(afterRate) || parseLastAmount(line);
+        if (gross > 0) {
+          grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
+          pendingRate = null;
+        } else {
+          pendingRate = oran;
+        }
+        continue;
+      }
+
+      if (pendingRate) {
+        const gross = parseLastAmount(line);
+        if (gross > 0) {
+          grossByRate.set(pendingRate, (grossByRate.get(pendingRate) || 0) + gross);
+          pendingRate = null;
+        }
+      }
     }
 
     if (grossByRate.size < 2) return [];
     const breakdown = Array.from(grossByRate.entries())
-      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
+      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sÄ±rayla (kÃ¼Ã§Ã¼kten bÃ¼yÃ¼ÄŸe)
       .map(([oran, gross]) => ({
         oran,
         tutar: Math.round((gross * oran / (100 + oran)) * 100) / 100,
@@ -1550,49 +1551,49 @@ export class OcrService {
   }
 
   /**
-   * Z RAPORU özel parser — Azure ham metninden TOPKDV / TOPKDV %X satırlarını çıkarır.
-   * Çıktı: { kdvTutari, breakdown }
+   * Z RAPORU Ã¶zel parser â€” Azure ham metninden TOPKDV / TOPKDV %X satÄ±rlarÄ±nÄ± Ã§Ä±karÄ±r.
+   * Ã‡Ä±ktÄ±: { kdvTutari, breakdown }
    *
-   * KRİTİK: "KUM TOPKDV" / "KUM TOPLAM" satırları KÜMÜLATİF — ASLA ALMA.
-   * Sadece o anki Z raporu için "TOPKDV" / "TOPKDV %X" satırlarını al.
+   * KRÄ°TÄ°K: "KUM TOPKDV" / "KUM TOPLAM" satÄ±rlarÄ± KÃœMÃœLATÄ°F â€” ASLA ALMA.
+   * Sadece o anki Z raporu iÃ§in "TOPKDV" / "TOPKDV %X" satÄ±rlarÄ±nÄ± al.
    */
   /**
-   * E-Fatura/E-Arşiv için çok oranlı KDV breakdown'u Azure metninden çıkar.
-   * Standart Türk fatura formatı: "Hesaplanan KDV (%20)  116,00 TL"
-   * Claude breakdown'u boş dönerse veya eksik dönerse bu fonksiyon devreye girer.
+   * E-Fatura/E-ArÅŸiv iÃ§in Ã§ok oranlÄ± KDV breakdown'u Azure metninden Ã§Ä±kar.
+   * Standart TÃ¼rk fatura formatÄ±: "Hesaplanan KDV (%20)  116,00 TL"
+   * Claude breakdown'u boÅŸ dÃ¶nerse veya eksik dÃ¶nerse bu fonksiyon devreye girer.
    *
-   * ÖRNEK Azure metin parçası:
+   * Ã–RNEK Azure metin parÃ§asÄ±:
    *   "Hesaplanan KDV (% 20,00 )   1.006,00 TL"
    *   "Hesaplanan KDV (% 10,00 )      15,00 TL"
-   * → [{oran:20, tutar:1006, matrah:null}, {oran:10, tutar:15, matrah:null}]
+   * â†’ [{oran:20, tutar:1006, matrah:null}, {oran:10, tutar:15, matrah:null}]
    *
-   * KDV DIŞI vergi satırları (ÖİV, Telsiz, ÖTV, BSMV, KKDF) atlanır.
+   * KDV DIÅI vergi satÄ±rlarÄ± (Ã–Ä°V, Telsiz, Ã–TV, BSMV, KKDF) atlanÄ±r.
    */
   /**
-   * Telekom faturasından SADECE "Katma Değer Vergisi" satırının tutarını çıkar.
-   * ÖİV ve Telsiz Kullanım tutarları atlanır.
+   * Telekom faturasÄ±ndan SADECE "Katma DeÄŸer Vergisi" satÄ±rÄ±nÄ±n tutarÄ±nÄ± Ã§Ä±kar.
+   * Ã–Ä°V ve Telsiz KullanÄ±m tutarlarÄ± atlanÄ±r.
    *
    * Azure metni tipik formatta:
-   *   "Katma Değer Vergisi     %20   (Matrah: 1.260,01 TRY)    252,00"
-   *   "Özel İletişim Vergisi   %10   (Matrah: 1.260,01 TRY)    126,00"
-   * Veya label ve amount ayrı satırlarda:
-   *   "Katma Değer Vergisi"
+   *   "Katma DeÄŸer Vergisi     %20   (Matrah: 1.260,01 TRY)    252,00"
+   *   "Ã–zel Ä°letiÅŸim Vergisi   %10   (Matrah: 1.260,01 TRY)    126,00"
+   * Veya label ve amount ayrÄ± satÄ±rlarda:
+   *   "Katma DeÄŸer Vergisi"
    *   "%20"
    *   "(Matrah: 1.260,01 TRY)"
    *   "252,00"
    */
   /**
    * Azure OCR text'ini normalize et:
-   *   - NBSP (U+00A0) → normal boşluk (regex \s'in yakalamadığı ara form)
-   *   - Full-width "％" → ASCII "%"
-   *   - Türkçe locale uppercase: "İ" (U+0130) / "ı" (U+0131) doğru case-fold
-   *     olmuyor. `/i` flag'li regex'ler "Özel İletişim" yazılı satırı
-   *     yakalayamıyor çünkü `i → İ` (büyük I noktalı) case-folding JS
-   *     standard regex'inde beklenen davranışı vermiyor.
-   *     toLocaleUpperCase('tr-TR') deterministik olarak ÖZEL → ÖZEL,
-   *     iletişim → İLETİŞİM yapar. Tüm tax-label regex'leri UPPERCASE
-   *     pattern'lı yazıldığı için bu normalize şart.
-   *     (Sayılar/virgül/noktaya dokunmaz — parse sonucu aynı kalır.)
+   *   - NBSP (U+00A0) â†’ normal boÅŸluk (regex \s'in yakalamadÄ±ÄŸÄ± ara form)
+   *   - Full-width "ï¼…" â†’ ASCII "%"
+   *   - TÃ¼rkÃ§e locale uppercase: "Ä°" (U+0130) / "Ä±" (U+0131) doÄŸru case-fold
+   *     olmuyor. `/i` flag'li regex'ler "Ã–zel Ä°letiÅŸim" yazÄ±lÄ± satÄ±rÄ±
+   *     yakalayamÄ±yor Ã§Ã¼nkÃ¼ `i â†’ Ä°` (bÃ¼yÃ¼k I noktalÄ±) case-folding JS
+   *     standard regex'inde beklenen davranÄ±ÅŸÄ± vermiyor.
+   *     toLocaleUpperCase('tr-TR') deterministik olarak Ã–ZEL â†’ Ã–ZEL,
+   *     iletiÅŸim â†’ Ä°LETÄ°ÅÄ°M yapar. TÃ¼m tax-label regex'leri UPPERCASE
+   *     pattern'lÄ± yazÄ±ldÄ±ÄŸÄ± iÃ§in bu normalize ÅŸart.
+   *     (SayÄ±lar/virgÃ¼l/noktaya dokunmaz â€” parse sonucu aynÄ± kalÄ±r.)
    */
   private normalizeAzureText(text: string): string {
     if (!text) return '';
@@ -1601,15 +1602,15 @@ export class OcrService {
       .replace(/\u2007/g, ' ') // figure space
       .replace(/\u202F/g, ' ') // narrow no-break space
       .replace(/\uFF05/g, '%') // full-width %
-      .toLocaleUpperCase('tr-TR'); // Türkçe-farkındalıklı büyük harf
+      .toLocaleUpperCase('tr-TR'); // TÃ¼rkÃ§e-farkÄ±ndalÄ±klÄ± bÃ¼yÃ¼k harf
   }
 
   private stripMatrahFragments(text: string): string {
     if (!text) return '';
     return text
       .replace(/\([^)]*MATRAH[^)]*\)/gi, ' ')
-      .replace(/\b(?:KDV\s*)?MATRAH[Iİıi]?\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|[^\s\d.,])?/gi, ' ')
-      .replace(/\bMATRAH\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|₺)?/gi, ' ')
+      .replace(/\b(?:KDV\s*)?MATRAH[IÄ°Ä±i]?\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|[^\s\d.,])?/gi, ' ')
+      .replace(/\bMATRAH\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|â‚º)?/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -1618,17 +1619,17 @@ export class OcrService {
     return this.normalizeAzureText(text)
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .replace(/Ğ/g, 'G')
-      .replace(/Ü/g, 'U')
-      .replace(/Ş/g, 'S')
-      .replace(/İ/g, 'I')
-      .replace(/Ö/g, 'O')
-      .replace(/Ç/g, 'C');
+      .replace(/Ä/g, 'G')
+      .replace(/Ãœ/g, 'U')
+      .replace(/Å/g, 'S')
+      .replace(/Ä°/g, 'I')
+      .replace(/Ã–/g, 'O')
+      .replace(/Ã‡/g, 'C');
   }
 
   private isLikelyStandaloneTaxRate(value: string): boolean {
     const folded = this.foldTurkishAscii(value || '')
-      .replace(/\b(?:TL|TRY)\b|₺/g, ' ')
+      .replace(/\b(?:TL|TRY)\b|â‚º/g, ' ')
       .replace(/[()]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -1636,7 +1637,7 @@ export class OcrService {
       .replace(/^%/, '')
       .replace(/%$/, '')
       .trim();
-    return /^(0|1|8|10|18|20)(?:[,.]00)?$/.test(cleaned);
+    return /^(0|1|8|10|18|20)(?:[,.]0{1,2})?$/.test(cleaned);
   }
 
   private isMatrahOrRateLine(value: string): boolean {
@@ -1693,7 +1694,7 @@ export class OcrService {
   private extractSaticiVknFromAzure(text: string): string | null {
     if (!text) return null;
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
+    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÃœÅTERÄ°/.test(this.foldTurkishAscii(l)));
     const top = (stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 14)).join('\n');
     const folded = this.foldTurkishAscii(top);
     const labeled = folded.match(/\b(?:VKN|TCKN|VERGI\s*NO|MUKELLEF(?:LER)?\s*NO)\b[^0-9]{0,30}(\d{10,11})/);
@@ -1705,7 +1706,7 @@ export class OcrService {
   private extractSaticiFromAzure(text: string): string | null {
     if (!text) return null;
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÜŞTERİ/.test(this.foldTurkishAscii(l)));
+    const stop = lines.findIndex((l) => /SAYIN|ALICI|MUSTERI|MÃœÅTERÄ°/.test(this.foldTurkishAscii(l)));
     const topLines = stop >= 0 ? lines.slice(0, stop) : lines.slice(0, 10);
     for (const raw of topLines) {
       const folded = this.foldTurkishAscii(raw);
@@ -1739,7 +1740,7 @@ export class OcrService {
   }
 
   private extractMoneyAmountsFromText(text: string): number[] {
-    const amountRe = /(\d{1,3}(?:[.,]\d{3})+[.,]\d{1,2}|\d{4,},\d{1,2}|\d{1,3},\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const amountRe = /(\d{1,3}(?:[.,]\d{3})+[.,]\d{1,2}|\d{4,},\d{1,2}|\d{1,3},\d{1,2})\s*(?:TL|TRY|â‚º)?/gi;
     const values: number[] = [];
     const seen = new Set<string>();
     for (const m of text.matchAll(amountRe)) {
@@ -1798,7 +1799,7 @@ export class OcrService {
       return { tamKdv: effectiveTamKdv, tevkifat, netKdv };
     };
 
-    // En güvenilir yol: TEVKIFAT geçen satırda veya hemen çevresinde tam KDV'den küçük tutar.
+    // En gÃ¼venilir yol: TEVKIFAT geÃ§en satÄ±rda veya hemen Ã§evresinde tam KDV'den kÃ¼Ã§Ã¼k tutar.
     for (let i = 0; i < lines.length; i++) {
       if (!/TEVK/.test(lines[i])) continue;
       const window = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
@@ -1810,7 +1811,7 @@ export class OcrService {
       }
     }
 
-    // Tevkifat oranı okunuyorsa, tam KDV * oran doğrudan tevkifat tutarıdır.
+    // Tevkifat oranÄ± okunuyorsa, tam KDV * oran doÄŸrudan tevkifat tutarÄ±dÄ±r.
     const rate = this.parseTevkifatRate(folded);
     if (rate > 0 && rate <= 100) {
       const expected = round2(effectiveTamKdv * rate / 100);
@@ -1818,8 +1819,8 @@ export class OcrService {
       return accept(explicit ?? expected, `oran-%${rate}`);
     }
 
-    // Görsel tablolarda Azure bazen etiketleri ve tutarları ayrı kolon blokları olarak döndürür.
-    // Bu durumda "Vergiler dahil toplam" ile "Ödenecek tutar" farkı tevkifat tutarını verir.
+    // GÃ¶rsel tablolarda Azure bazen etiketleri ve tutarlarÄ± ayrÄ± kolon bloklarÄ± olarak dÃ¶ndÃ¼rÃ¼r.
+    // Bu durumda "Vergiler dahil toplam" ile "Ã–denecek tutar" farkÄ± tevkifat tutarÄ±nÄ± verir.
     const hasTotalsLabels = /VERGILER\s+DAHIL/.test(folded) && /ODENECEK\s+TUTAR/.test(folded);
     if (hasTotalsLabels && amounts.length >= 2) {
       for (const high of amounts) {
@@ -1833,25 +1834,25 @@ export class OcrService {
       }
     }
 
-    // Son savunma: %50 tevkifatli belgelerde tutar tam KDV'nin yarısıdır ve çoğu
-    // faturada bu tutar para listesinde ayrıca bulunur.
+    // Son savunma: %50 tevkifatli belgelerde tutar tam KDV'nin yarÄ±sÄ±dÄ±r ve Ã§oÄŸu
+    // faturada bu tutar para listesinde ayrÄ±ca bulunur.
     const half = round2(effectiveTamKdv / 2);
     const halfMatch = amounts.find((n) => validTevkifat(n) && isClose(n, half, Math.max(0.05, half * 0.01)));
     return accept(halfMatch, 'yarim-kdv');
   }
 
   /**
-   * Tevkifatlı faturalardan TAM KDV ve TEVKİFAT tutarlarını Azure metninden
-   * doğrudan yakalar. Claude bazen "Mal Hizmet Toplam" değerini "KDV dahil
-   * toplam" sanıp /11 hesabı yapıyor (13.300 → 1209,09 gibi). Halbuki faturada
-   * "Hesaplanan KDV(%X)" satırının yanında doğru tutar açık yazıyor.
+   * TevkifatlÄ± faturalardan TAM KDV ve TEVKÄ°FAT tutarlarÄ±nÄ± Azure metninden
+   * doÄŸrudan yakalar. Claude bazen "Mal Hizmet Toplam" deÄŸerini "KDV dahil
+   * toplam" sanÄ±p /11 hesabÄ± yapÄ±yor (13.300 â†’ 1209,09 gibi). Halbuki faturada
+   * "Hesaplanan KDV(%X)" satÄ±rÄ±nÄ±n yanÄ±nda doÄŸru tutar aÃ§Ä±k yazÄ±yor.
    *
-   * Aranan pattern'ler (Türk e-Fatura/e-Arşiv tevkifat formatı):
+   * Aranan pattern'ler (TÃ¼rk e-Fatura/e-ArÅŸiv tevkifat formatÄ±):
    *   "Hesaplanan KDV(%10)        1.330,00"
    *   "Hesaplanan KDV Tevkifat(%50) 665,00"
-   *   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  3.350,00"
+   *   "Tevkifata Tabi Ä°ÅŸlem Ãœzerinden Hes. KDV  3.350,00"
    *
-   * Geri dönen değer:
+   * Geri dÃ¶nen deÄŸer:
    *   { tamKdv, tevkifat, netKdv } veya null (pattern bulunamazsa)
    */
   private extractTevkifatliFaturaFromAzure(text: string): {
@@ -1860,33 +1861,35 @@ export class OcrService {
     netKdv: number;
   } | null {
     if (!text) return null;
+    const explicitTotals = extractTevkifatTotalsFromText(text);
+    if (explicitTotals) return explicitTotals;
     const normalized = this.foldTurkishAscii(text);
-    // SATIR-BAĞIMSIZ pattern match — Azure bazen tüm faturayı tek satırda
-    // veriyor (PDF render farkı). Whitespace'i tek boşluğa indirip pattern'i
-    // doğrudan etiket+tutar sırasında ararız.
+    // SATIR-BAÄIMSIZ pattern match â€” Azure bazen tÃ¼m faturayÄ± tek satÄ±rda
+    // veriyor (PDF render farkÄ±). Whitespace'i tek boÅŸluÄŸa indirip pattern'i
+    // doÄŸrudan etiket+tutar sÄ±rasÄ±nda ararÄ±z.
     const flat = normalized.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ');
     const folded = flat
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
-      .replace(/Ğ/g, 'G')
-      .replace(/Ü/g, 'U')
-      .replace(/Ş/g, 'S')
-      .replace(/İ/g, 'I')
-      .replace(/Ö/g, 'O')
-      .replace(/Ç/g, 'C');
+      .replace(/Ä/g, 'G')
+      .replace(/Ãœ/g, 'U')
+      .replace(/Å/g, 'S')
+      .replace(/Ä°/g, 'I')
+      .replace(/Ã–/g, 'O')
+      .replace(/Ã‡/g, 'C');
 
     let tamKdv = 0;
     let tevkifat = 0;
     let odenecekKdv = 0;
 
-    // Türk tutar formatı: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
-    // (Binlik nokta opsiyonel, ondalık virgül 1-2 hane)
-    const amountPattern = '[-−]?\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';
+    // TÃ¼rk tutar formatÄ±: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
+    // (Binlik nokta opsiyonel, ondalÄ±k virgÃ¼l 1-2 hane)
+    const amountPattern = '[-âˆ’]?\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';
 
-    // ─── 1) "HESAPLANAN KDV(%X) TUTAR" — TAM KDV ya da TEVKİFAT
-    //   Tek regex iki durumu ayırır: "TEVKIFAT" kelimesi varsa tevkifat,
-    //   yoksa tam KDV. Bu sayede pattern sıralaması fark etmez.
-    // ───
+    // â”€â”€â”€ 1) "HESAPLANAN KDV(%X) TUTAR" â€” TAM KDV ya da TEVKÄ°FAT
+    //   Tek regex iki durumu ayÄ±rÄ±r: "TEVKIFAT" kelimesi varsa tevkifat,
+    //   yoksa tam KDV. Bu sayede pattern sÄ±ralamasÄ± fark etmez.
+    // â”€â”€â”€
     const labelRegex = new RegExp(
       'HESAPLANAN\\s+KDV(\\s+TEVK[^\\s(]*)?\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
       'gi',
@@ -1922,11 +1925,11 @@ export class OcrService {
       return value > 0 && value < 100_000_000 ? value : 0;
     };
 
-    // Canlı satış tevkifat faturalarında Azure çoğu zaman şu satırları daha net okuyor:
+    // CanlÄ± satÄ±ÅŸ tevkifat faturalarÄ±nda Azure Ã§oÄŸu zaman ÅŸu satÄ±rlarÄ± daha net okuyor:
     //   "KDV Tevkifat(%50) 8.507,30"
-    //   "Ödenecek KDV 8.507,30"
-    // "Ödenecek KDV" net KDV'dir ve Luca ile eşleşen değerdir; "Hesaplanan KDV"
-    // tam KDV olduğu için tevkifatlı belgede sonuç olarak kullanılmamalıdır.
+    //   "Ã–denecek KDV 8.507,30"
+    // "Ã–denecek KDV" net KDV'dir ve Luca ile eÅŸleÅŸen deÄŸerdir; "Hesaplanan KDV"
+    // tam KDV olduÄŸu iÃ§in tevkifatlÄ± belgede sonuÃ§ olarak kullanÄ±lmamalÄ±dÄ±r.
     const foldedTam = findAmountAfter(
       folded,
       'HESAPLANAN\\s+K\\.?\\s*D\\.?\\s*V\\.?\\s*\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)',
@@ -1952,11 +1955,11 @@ export class OcrService {
       findAmountAfter(folded, 'ODENECEK\\s+K\\.?\\s*D\\.?\\s*V\\.?', 40) ||
       findAmountAfter(folded, 'O\\s*DENECEK\\s+K\\.?\\s*D\\.?\\s*V\\.?', 40);
 
-    // ─── 2) Alternatif tam KDV gösterimleri (sadece tamKdv bulunmadıysa) ───
-    //   "Tevkifata Tabi İşlem Üzerinden Hes. KDV  TUTAR"  (Tam KDV'nin tekrarı)
+    // â”€â”€â”€ 2) Alternatif tam KDV gÃ¶sterimleri (sadece tamKdv bulunmadÄ±ysa) â”€â”€â”€
+    //   "Tevkifata Tabi Ä°ÅŸlem Ãœzerinden Hes. KDV  TUTAR"  (Tam KDV'nin tekrarÄ±)
     if (tamKdv === 0) {
       const altRe = new RegExp(
-        'TEVK[İI]FATA\\s+TAB[İI][^\\d]{0,80}ÜZER[İI]NDEN[^\\d]{0,40}KDV[^\\d]{0,20}' +
+        'TEVK[Ä°I]FATA\\s+TAB[Ä°I][^\\d]{0,80}ÃœZER[Ä°I]NDEN[^\\d]{0,40}KDV[^\\d]{0,20}' +
           amountPattern,
         'i',
       );
@@ -1980,7 +1983,7 @@ export class OcrService {
       if (oran > 0 && oran <= 100) {
         void oran;
         this.logger.log(
-          `Tevkifat extract: tevkifat tutarı belgede açık okunamadı; oranla hesaplama yapılmadı (tamKdv=${tamKdv}, oran=%${oran})`,
+          `Tevkifat extract: tevkifat tutarÄ± belgede aÃ§Ä±k okunamadÄ±; oranla hesaplama yapÄ±lmadÄ± (tamKdv=${tamKdv}, oran=%${oran})`,
         );
       }
     }
@@ -1990,16 +1993,16 @@ export class OcrService {
       if (inferred) return inferred;
     }
 
-    // ─── 3) Alternatif tevkifat gösterimleri ───
-    //   "KDV Tevkifatı (%50,00) = 665,00 TL"
-    //   "Tevkifat Tutarı: 665,00"
+    // â”€â”€â”€ 3) Alternatif tevkifat gÃ¶sterimleri â”€â”€â”€
+    //   "KDV TevkifatÄ± (%50,00) = 665,00 TL"
+    //   "Tevkifat TutarÄ±: 665,00"
     if (tevkifat === 0) {
       const altTevkifatPatterns = [
         new RegExp(
           'KDV\\s+TEVK[^\\s(]*\\s*\\(\\s*[%/]?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)\\s*[-=:\\s]*' + amountPattern,
           'i',
         ),
-        new RegExp('TEVK[İI]FAT\\s+TUTAR[İI]?\\s*[-−=:\\s]*' + amountPattern, 'i'),
+        new RegExp('TEVK[Ä°I]FAT\\s+TUTAR[Ä°I]?\\s*[-âˆ’=:\\s]*' + amountPattern, 'i'),
       ];
       for (const re of altTevkifatPatterns) {
         const am = flat.match(re);
@@ -2010,31 +2013,31 @@ export class OcrService {
       }
     }
 
-    // Tevkifat yoksa tevkifatlı değildir — null dön
+    // Tevkifat yoksa tevkifatlÄ± deÄŸildir â€” null dÃ¶n
     if (tevkifat <= 0) {
-      // Tevkifat kelimesi metinde geçiyor mu? Diagnostic
-      if (/TEVK[İI]FAT/i.test(flat)) {
+      // Tevkifat kelimesi metinde geÃ§iyor mu? Diagnostic
+      if (/TEVK[Ä°I]FAT/i.test(flat)) {
         this.logger.warn(
-          `Tevkifat extract: TEVKIFAT kelimesi var ama tutar bulunamadı. Flat metin (ilk 500 char): "${flat.slice(0, 500)}"`,
+          `Tevkifat extract: TEVKIFAT kelimesi var ama tutar bulunamadÄ±. Flat metin (ilk 500 char): "${flat.slice(0, 500)}"`,
         );
       }
       return null;
     }
 
-    // Tam KDV bulunamadıysa tevkifat oranından geri hesapla
+    // Tam KDV bulunamadÄ±ysa tevkifat oranÄ±ndan geri hesapla
     if (tamKdv === 0) {
       const oran = this.parseTevkifatRate(flat) || this.parseTevkifatRate(folded);
       if (oran > 0 && oran <= 100) {
         void oran;
         this.logger.log(
-          `Tevkifat extract: tamKdv belgede açık okunamadı; tevkifat oranından geri hesaplama yapılmadı (tevkifat=${tevkifat}, oran=%${oran})`,
+          `Tevkifat extract: tamKdv belgede aÃ§Ä±k okunamadÄ±; tevkifat oranÄ±ndan geri hesaplama yapÄ±lmadÄ± (tevkifat=${tevkifat}, oran=%${oran})`,
         );
       }
     }
 
     if (tamKdv <= 0 || tamKdv < tevkifat || Math.abs(tamKdv - tevkifat) <= 0.05) {
       this.logger.warn(
-        `Tevkifat extract: tamKdv=${tamKdv} tevkifat=${tevkifat} — mantıksız, null döndürüyorum. Flat (ilk 400 char): "${flat.slice(0, 400)}"`,
+        `Tevkifat extract: tamKdv=${tamKdv} tevkifat=${tevkifat} â€” mantÄ±ksÄ±z, null dÃ¶ndÃ¼rÃ¼yorum. Flat (ilk 400 char): "${flat.slice(0, 400)}"`,
       );
       return null;
     }
@@ -2050,16 +2053,16 @@ export class OcrService {
     if (!text) return null;
     const normalized = this.foldTurkishAscii(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    // KDV label varyasyonları:
-    //   "Katma Değer Vergisi"                   — Turkcell, Vodafone
-    //   "KDV (20%)"                             — Türk Telekom "(NN%)"
-    //   "KDV (%20)", "K.D.V. (%20)"             — E-fatura / E-arşiv
-    // Başında "Özel İletişim" gibi başka vergi label'ı varsa YAKALAMA
-    // (çünkü onların içinde de "%NN" geçer ama "KDV" substring'i yok).
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/i;
+    // KDV label varyasyonlarÄ±:
+    //   "Katma DeÄŸer Vergisi"                   â€” Turkcell, Vodafone
+    //   "KDV (20%)"                             â€” TÃ¼rk Telekom "(NN%)"
+    //   "KDV (%20)", "K.D.V. (%20)"             â€” E-fatura / E-arÅŸiv
+    // BaÅŸÄ±nda "Ã–zel Ä°letiÅŸim" gibi baÅŸka vergi label'Ä± varsa YAKALAMA
+    // (Ã§Ã¼nkÃ¼ onlarÄ±n iÃ§inde de "%NN" geÃ§er ama "KDV" substring'i yok).
     const kdvLabelRe =
       /KATMA\s*DE.?ER\s*VERGISI|\bK\.?\s*D\.?\s*V\.?\s*\(?\s*%?\s*\d/i;
-    // Satır başka bir vergi etiketi mi?
+    // SatÄ±r baÅŸka bir vergi etiketi mi?
     const otherTaxRe = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
 
     for (let i = 0; i < lines.length; i++) {
@@ -2067,9 +2070,9 @@ export class OcrService {
       if (!kdvLabelRe.test(line)) continue;
       if (this.isMatrahOrRateLine(line)) continue;
 
-      // 1) Aynı satırda "Katma Değer Vergisi ... 252,00" olabilir
+      // 1) AynÄ± satÄ±rda "Katma DeÄŸer Vergisi ... 252,00" olabilir
       const afterLabel = line.replace(kdvLabelRe, '');
-      // Matrah parantezini atla (Matrah içindeki tutar KDV değil)
+      // Matrah parantezini atla (Matrah iÃ§indeki tutar KDV deÄŸil)
       const noMatrah = this.stripMatrahFragments(afterLabel);
       const inlineAmount = noMatrah.match(amountRe);
       if (inlineAmount) {
@@ -2077,23 +2080,23 @@ export class OcrService {
         if (val > 0 && val < 10_000_000) return val;
       }
 
-      // 2) Sonraki 1-5 satıra bak, başka vergi etiketi gelene kadar amount ara
+      // 2) Sonraki 1-5 satÄ±ra bak, baÅŸka vergi etiketi gelene kadar amount ara
       for (let j = 1; j <= 5 && i + j < lines.length; j++) {
         const nextLine = lines[i + j];
-        if (kdvLabelRe.test(nextLine)) break; // başka KDV satırı
-        if (otherTaxRe.test(nextLine)) break; // başka vergi türü → dur
+        if (kdvLabelRe.test(nextLine)) break; // baÅŸka KDV satÄ±rÄ±
+        if (otherTaxRe.test(nextLine)) break; // baÅŸka vergi tÃ¼rÃ¼ â†’ dur
         if (/MAL\s*HIZMET|GENEL\s*TOPLAM|FATURA\s*TUTARI|ODENECEK\s*TUTAR|TOPLAM\s+TUTAR/i.test(nextLine)) break;
         // Matrah parantezini skip et
         if (this.isMatrahOrRateLine(nextLine)) continue;
         const cleaned = this.stripMatrahFragments(nextLine);
         if (!cleaned) continue;
-        // "%20", "(Matrah...)" gibi pure marker satırı atla
+        // "%20", "(Matrah...)" gibi pure marker satÄ±rÄ± atla
         if (/^[%]\s*\d/.test(cleaned) || this.isLikelyStandaloneTaxRate(cleaned)) continue;
         const m = cleaned.match(amountRe);
         if (m) {
           const val = this.parseAmount(m[1]);
-          // Matrah değerlerini (genelde daha büyük) KDV sanmamaya dikkat
-          // Yine de ilk bulunan tutarı al — label'dan hemen sonra geldi.
+          // Matrah deÄŸerlerini (genelde daha bÃ¼yÃ¼k) KDV sanmamaya dikkat
+          // Yine de ilk bulunan tutarÄ± al â€” label'dan hemen sonra geldi.
           if (val > 0 && val < 10_000_000) return val;
         }
       }
@@ -2102,15 +2105,15 @@ export class OcrService {
     return null;
   }
 
-  private extractElectricityKdvFromAzure(text: string): number | null {
+  private extractElectricityKdvFromAzure(text: string): { kdv: number; matrah: number | null; oran: number | null } | null {
     if (!text) return null;
     const normalized = this.foldTurkishAscii(text);
     const looksElectricityInvoice =
-      /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b|\bELEKTRIK\b/.test(normalized);
+      /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b/.test(normalized);
     if (!looksElectricityInvoice) return null;
 
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/gi;
     const hardStopRe =
       /FATURA\s+TUTARI|ODENECEK\s+TUTAR|VERGI\s+VE\s+FONLAR|TOPLAM\s+ENERJI|GUNCEL\s+YUVARLAMA|ONCEKI\s+YUVARLAMA|ELEKT\s+VER|TUKETIM|BEDEL|SON\s+ODEME/i;
 
@@ -2122,6 +2125,17 @@ export class OcrService {
       const value = this.parseAmount(matches[matches.length - 1][1]);
       return value > 0 && value < 10_000_000 ? value : null;
     };
+    const parseMatrah = (source: string): number | null => {
+      const match = source.match(/matrah[^\d]{0,30}(\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/i);
+      if (!match) return null;
+      const value = this.parseAmount(match[1]);
+      return value > 0 && value < 10_000_000 ? value : null;
+    };
+    const inferRate = (kdv: number, matrah: number | null): number | null => {
+      if (!matrah || matrah <= kdv) return null;
+      const rawRate = (kdv / matrah) * 100;
+      return [1, 8, 10, 18, 20].find((rate) => Math.abs(rate - rawRate) <= 0.75) ?? null;
+    };
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -2129,30 +2143,36 @@ export class OcrService {
       if (/TEVKIFAT/.test(line)) continue;
 
       const sameLine = parseLastKdvAmount(line.replace(/\bK\.?\s*D\.?\s*V\.?\b/, ' '));
-      if (sameLine != null) return sameLine;
+      if (sameLine != null) {
+        const matrah = parseMatrah(line);
+        return { kdv: sameLine, matrah, oran: inferRate(sameLine, matrah) };
+      }
 
       for (let j = 1; j <= 2 && i + j < lines.length; j++) {
         const next = lines[i + j];
         if (hardStopRe.test(next) || /\bK\.?\s*D\.?\s*V\.?\b/.test(next)) break;
         const nearby = parseLastKdvAmount(next);
-        if (nearby != null) return nearby;
+        if (nearby != null) {
+          const matrah = parseMatrah(`${line} ${next}`);
+          return { kdv: nearby, matrah, oran: inferRate(nearby, matrah) };
+        }
       }
     }
 
     return null;
   }
 
-  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: null; oran: number | null } | null {
+  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: number | null; oran: number | null } | null {
     if (!text) return null;
     const electricityKdv = this.extractElectricityKdvFromAzure(text);
-    if (electricityKdv != null && electricityKdv > 0) {
-      return { kdv: electricityKdv, matrah: null, oran: null };
+    if (electricityKdv != null && electricityKdv.kdv > 0) {
+      return electricityKdv;
     }
 
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/i;
+    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/gi;
     const parseLineAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
       if (!opts.allowMatrah && this.isMatrahOrRateLine(line)) return null;
       if (!opts.allowMatrah && this.isForbiddenKdvAmountLine(line)) return null;
@@ -2180,7 +2200,8 @@ export class OcrService {
         .map((m) => this.parseAmount(m[1]))
         .filter((n) => n > 0 && n < 100_000_000);
     const findKdvFromSummaryMathLine = (): number | null => {
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         const folded = this.foldTurkishAscii(line);
         if (!/\bHESAPLANAN\s+K\.?\s*D\.?\s*V\.?\b|\bK\.?\s*D\.?\s*V\.?\b/.test(folded)) continue;
         if (/TEVKIFAT/.test(folded) || this.isForbiddenKdvAmountLine(line)) continue;
@@ -2230,15 +2251,22 @@ export class OcrService {
       return null;
     };
     const findExplicitKdvAmount = (): number | null => {
-      for (const line of lines) {
-        if (/TEVK[İI]FAT/i.test(line)) continue;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (/TEVK[Ä°I]FAT/i.test(line)) continue;
         if (this.isMatrahOrRateLine(line)) continue;
         if (this.isForbiddenKdvAmountLine(line)) continue;
-        const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i);
+        const label = line.match(/HESAPLANAN\s+K\.?\s*D\.?\s*V\.?(?:\s+[A-ZÃ‡ÄÄ°Ã–ÅÃœa-zÃ§ÄŸÄ±Ã¶ÅŸÃ¼]+){0,3}\s*[\(\[]\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*[\)\]]?/i);
         if (!label) continue;
         const valuePart = this.stripMatrahFragments(line.slice((label.index ?? 0) + label[0].length));
         const sameLine = parseLastAmount(valuePart);
         if (sameLine != null) return sameLine;
+        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+          const next = lines[i + j];
+          if (/TEVK[Ã„Â°I]FAT|VERGILER|VERGÃ„Â°LER|ODENECEK|Ãƒâ€“DENECEK/i.test(next)) break;
+          const nextAmount = parseLineAmount(this.stripMatrahFragments(next));
+          if (nextAmount != null) return nextAmount;
+        }
       }
       return null;
     };
@@ -2265,7 +2293,7 @@ export class OcrService {
         if (same != null && !sameLooksLikeMatrahInRateParen) return same;
         for (let j = 1; j <= 3 && i + j < lines.length; j++) {
           const next = lines[i + j];
-          if (/KDV|TOPLAM|TUTAR|ISKONTO|ÖDENECEK|ODENECEK/i.test(next) && j > 1) break;
+          if (/KDV|TOPLAM|TUTAR|ISKONTO|Ã–DENECEK|ODENECEK/i.test(next) && j > 1) break;
           if (options.skipMatrah && this.isMatrahOrRateLine(next)) continue;
           if (options.skipMatrah && this.isForbiddenKdvAmountLine(next)) continue;
           if (options.skipMatrah && j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
@@ -2287,8 +2315,8 @@ export class OcrService {
       return null;
     };
 
-    const explicitKdv = findKdvFromSummaryMathLine() ?? findKdvFromTableHeader() ?? findExplicitKdvAmount() ?? findAmountNear(
-      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
+    const explicitKdv = findExplicitKdvAmount() ?? findKdvFromSummaryMathLine() ?? findKdvFromTableHeader() ?? findAmountNear(
+      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ÄG]ER\s*VERG[Ä°I]S[Ä°I]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
     );
     const oranMatch =
@@ -2310,17 +2338,17 @@ export class OcrService {
     const seen = new Set<number>();
 
     // Label regex: "Hesaplanan KDV (% 20,00 )" / "Hesaplanan KDV(%20)" / "KDV (%10)"
-    // Parantezli format zorunlu — yanlış eşleşmeyi (ör "KDV %20 ibaresi" gibi) önler
-    // Boşluk toleransı: "Hesaplanan   KDV" (NBSP normalize edildi) ve parantez içi
-    // boşluklar serbest. "%" sonrası ayrıca opsiyonel boşluk (" 20,00" yakala).
+    // Parantezli format zorunlu â€” yanlÄ±ÅŸ eÅŸleÅŸmeyi (Ã¶r "KDV %20 ibaresi" gibi) Ã¶nler
+    // BoÅŸluk toleransÄ±: "Hesaplanan   KDV" (NBSP normalize edildi) ve parantez iÃ§i
+    // boÅŸluklar serbest. "%" sonrasÄ± ayrÄ±ca opsiyonel boÅŸluk (" 20,00" yakala).
     const labelRe = /(?:HESAPLANAN\s*)?K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\)/i;
-    // Amount regex: "1.006,00" / "42,00" / "320,15" (opsiyonel TL/TRY/₺)
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE/i;
+    // Amount regex: "1.006,00" / "42,00" / "320,15" (opsiyonel TL/TRY/â‚º)
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/i;
+    const skipTaxRe = /Ã–ZEL\s*Ä°LETÄ°ÅÄ°M|Ã–IV|OIV|TELSÄ°Z|TELSIZ|Ã–TV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|Ã‡EVRE/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      // KDV DIŞI vergi satırlarını atla (Turkcell faturası gibi)
+      // KDV DIÅI vergi satÄ±rlarÄ±nÄ± atla (Turkcell faturasÄ± gibi)
       if (skipTaxRe.test(line)) {
         continue;
       }
@@ -2332,7 +2360,7 @@ export class OcrService {
       const oran = parseInt(labelMatch[1], 10);
       if (!(oran > 0 && oran <= 30) || seen.has(oran)) continue;
 
-      // 1) Aynı satırda label'den SONRA amount ara
+      // 1) AynÄ± satÄ±rda label'den SONRA amount ara
       let tutar: number | null = null;
       const afterLabel = this.stripMatrahFragments(line.slice(labelMatch.index! + labelMatch[0].length));
       const inlineAmountMatch = afterLabel.match(amountRe);
@@ -2342,17 +2370,17 @@ export class OcrService {
         if (!isRateEcho && parsed > 0 && parsed < 10_000_000) tutar = parsed;
       }
 
-      // 2) Aynı satırda bulunamadıysa SONRAKİ 1-8 satıra bak (tablo layout için).
-      //    Azure bazen label ve tutarı 4-6 satır ara ile çıkarıyor (özellikle
-      //    parantez içindeki "( % 20,00 )" yapısı yüzünden). 1-3 yetmiyor.
+      // 2) AynÄ± satÄ±rda bulunamadÄ±ysa SONRAKÄ° 1-8 satÄ±ra bak (tablo layout iÃ§in).
+      //    Azure bazen label ve tutarÄ± 4-6 satÄ±r ara ile Ã§Ä±karÄ±yor (Ã¶zellikle
+      //    parantez iÃ§indeki "( % 20,00 )" yapÄ±sÄ± yÃ¼zÃ¼nden). 1-3 yetmiyor.
       if (tutar == null) {
         for (let j = 1; j <= 8 && i + j < lines.length; j++) {
           const nextLine = lines[i + j];
-          // Sonraki satır başka bir KDV label'ı ise kes
+          // Sonraki satÄ±r baÅŸka bir KDV label'Ä± ise kes
           if (labelRe.test(nextLine)) break;
-          // ÖİV/Telsiz vb. satırı varsa kes
+          // Ã–Ä°V/Telsiz vb. satÄ±rÄ± varsa kes
           if (skipTaxRe.test(nextLine)) break;
-          // Saf yapı satırlarını atla ("(", ")", "%", "% 20,00" tek başına)
+          // Saf yapÄ± satÄ±rlarÄ±nÄ± atla ("(", ")", "%", "% 20,00" tek baÅŸÄ±na)
           if (this.isForbiddenKdvAmountLine(nextLine)) continue;
           if (j > 1 && this.isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
           if (/^[\(\)%\s]*$/.test(nextLine)) continue;
@@ -2371,12 +2399,12 @@ export class OcrService {
         }
       }
 
-      // 3) Yine yoksa ÖNCEKİ 1-2 satıra bak (bazen amount label'ın üstünde)
+      // 3) Yine yoksa Ã–NCEKÄ° 1-2 satÄ±ra bak (bazen amount label'Ä±n Ã¼stÃ¼nde)
       if (tutar == null) {
         for (let j = 1; j <= 2 && i - j >= 0; j++) {
           const prevLine = lines[i - j];
           if (labelRe.test(prevLine)) break;
-          if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
+          if (/Ã–ZEL\s*Ä°LETÄ°ÅÄ°M|Ã–IV|OIV|TELSÄ°Z|TELSIZ|Ã–TV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
           if (this.isForbiddenKdvAmountLine(prevLine)) continue;
           const cleanedPrev = this.stripMatrahFragments(prevLine);
           if (!cleanedPrev) continue;
@@ -2402,72 +2430,76 @@ export class OcrService {
   }
 
   /**
-   * Tablo satırı tabanlı çok oranlı KDV yakalama — FALLBACK.
+   * Tablo satÄ±rÄ± tabanlÄ± Ã§ok oranlÄ± KDV yakalama â€” FALLBACK.
    *
-   * Şirin Reklam (ESR...895) gibi faturalarda "Hesaplanan KDV (%N)" özet
-   * satırı Azure tarafından parçalanabiliyor ve extractMultiRateKdvFromAzure
-   * boş dönebiliyor. Ama tablo satırlarında "% 20,00" ile "1.006,00 TL" YAN
-   * YANA. Bu fonksiyon tablo satırlarını yakalar, oran başına tutarları toplar.
+   * Åirin Reklam (ESR...895) gibi faturalarda "Hesaplanan KDV (%N)" Ã¶zet
+   * satÄ±rÄ± Azure tarafÄ±ndan parÃ§alanabiliyor ve extractMultiRateKdvFromAzure
+   * boÅŸ dÃ¶nebiliyor. Ama tablo satÄ±rlarÄ±nda "% 20,00" ile "1.006,00 TL" YAN
+   * YANA. Bu fonksiyon tablo satÄ±rlarÄ±nÄ± yakalar, oran baÅŸÄ±na tutarlarÄ± toplar.
    *
-   * Örnek (Şirin Reklam):
+   * Ã–rnek (Åirin Reklam):
    *   "1 REKS39 LEDBOX 2 Adet 75,0000 TL ... % 10,00 15,00 TL ... 150,00 TL"
    *   "2 REK1008 MESH VINIL 1 Adet 5.030,0000 TL ... % 20,00 1.006,00 TL ... 5.030,00 TL"
-   *   → [%20: 1006, %10: 15]
+   *   â†’ [%20: 1006, %10: 15]
    *
-   * Güvenlik kısıtları:
-   *   - "Özel İletişim Vergisi (10%)" gibi ÖİV satırları dışarıda
-   *   - "İsk %" / "İskonto %" / "iskonto oranı" gibi indirim sütunları dışarıda
-   *   - Oran × amount eşleşmesi için her ikisi de aynı satırda olmalı
-   *   - Bulunan tutar absurd büyük (10M+) veya negatif ise atla
+   * GÃ¼venlik kÄ±sÄ±tlarÄ±:
+   *   - "Ã–zel Ä°letiÅŸim Vergisi (10%)" gibi Ã–Ä°V satÄ±rlarÄ± dÄ±ÅŸarÄ±da
+   *   - "Ä°sk %" / "Ä°skonto %" / "iskonto oranÄ±" gibi indirim sÃ¼tunlarÄ± dÄ±ÅŸarÄ±da
+   *   - Oran Ã— amount eÅŸleÅŸmesi iÃ§in her ikisi de aynÄ± satÄ±rda olmalÄ±
+   *   - Bulunan tutar absurd bÃ¼yÃ¼k (10M+) veya negatif ise atla
    */
   private extractMultiRateKdvFromItemRows(text: string): KdvBreakdownItem[] {
     if (!text) return [];
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const sumByOran = new Map<number, number>();
+    const hasNonKdvTaxLabel = (value: string): boolean => {
+      const folded = this.foldTurkishAscii(value || '').replace(/\s+/g, ' ').trim();
+      return /(?:OZEL|O)\s*I?LETISIM|OIV\b|TELSIZ|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA|CEVRE|TEVKIFAT|STOPAJ/i.test(folded);
+    };
 
-    // Oran markörü: "% 20,00" / "% 20" / "%20,00" / "%20"
-    // m[1] = tam sayı kısmı (20), m[2] = virgülden sonraki kısım (00, 67 vb.)
+    // Oran markÃ¶rÃ¼: "% 20,00" / "% 20" / "%20,00" / "%20"
+    // m[1] = tam sayÄ± kÄ±smÄ± (20), m[2] = virgÃ¼lden sonraki kÄ±sÄ±m (00, 67 vb.)
     const rateMarkerRe = /%\s*(\d{1,2})(?:[,.](\d{1,2}))?/gi;
-    // Tutar: "1.006,00" / "15,00" / "60.84" (+ opsiyonel TL/TRY/₺)
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
-    // Discount satırı — "İsk %", "İsk. Oranı", "İsk. Tutarı", "İSKONTO", "İNDİRİM".
-    // "İsk." (nokta) ve "İsk. Oranı / Tutarı" pattern eklendi.
-    const discountRowRe = /İSKONTO|ISKONTO|\bİSK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|\bISK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|İNDİRİM|INDIRIM/i;
+    // Tutar: "1.006,00" / "15,00" / "60.84" (+ opsiyonel TL/TRY/â‚º)
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/i;
+    const skipTaxRe = /Ã–ZEL\s*Ä°LETÄ°ÅÄ°M|Ã–IV|OIV|TELSÄ°Z|TELSIZ|Ã–TV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|Ã‡EVRE|TEVKÄ°FAT|TEVKIFAT|STOPAJ/i;
+    // Discount satÄ±rÄ± â€” "Ä°sk %", "Ä°sk. OranÄ±", "Ä°sk. TutarÄ±", "Ä°SKONTO", "Ä°NDÄ°RÄ°M".
+    // "Ä°sk." (nokta) ve "Ä°sk. OranÄ± / TutarÄ±" pattern eklendi.
+    const discountRowRe = /Ä°SKONTO|ISKONTO|\bÄ°SK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|\bISK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|Ä°NDÄ°RÄ°M|INDIRIM/i;
 
-    // İki aşamalı scan: önce rate markerları topla, sonra her marker için
-    // aynı satır veya sonraki 3 satırdan ilk geçerli amount'u eşleştir.
-    // Bu yapı Azure'ın tablo satırını satırlara böldüğü durumu handle eder:
+    // Ä°ki aÅŸamalÄ± scan: Ã¶nce rate markerlarÄ± topla, sonra her marker iÃ§in
+    // aynÄ± satÄ±r veya sonraki 3 satÄ±rdan ilk geÃ§erli amount'u eÅŸleÅŸtir.
+    // Bu yapÄ± Azure'Ä±n tablo satÄ±rÄ±nÄ± satÄ±rlara bÃ¶ldÃ¼ÄŸÃ¼ durumu handle eder:
     //   "% 20,00"
     //   "1.006,00 TL"
     //   "5.030,00 TL"
-    // → ilk amount (1.006) %20'nin KDV'si.
+    // â†’ ilk amount (1.006) %20'nin KDV'si.
     type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean; hasMatrahLabel: boolean };
     const markers: Marker[] = [];
-    // Summary satırı = "HESAPLANAN KDV (%N)" / "TOPKDV (%N)" / "HES. MATRAH / KDV(%N)"
-    //                 / "MATRAH KDV(%N)" — fatura altı özet, item row değil.
-    // Item row satırı = ürün tablosundaki "... % N,NN ... X,XX ..." kalemi.
-    // Bir oran için HEM summary HEM item row eşleşirse iki kez toplanmayalım:
-    // summary authoritative — varsa item row'ları o oran için YOK SAY.
+    // Summary satÄ±rÄ± = "HESAPLANAN KDV (%N)" / "TOPKDV (%N)" / "HES. MATRAH / KDV(%N)"
+    //                 / "MATRAH KDV(%N)" â€” fatura altÄ± Ã¶zet, item row deÄŸil.
+    // Item row satÄ±rÄ± = Ã¼rÃ¼n tablosundaki "... % N,NN ... X,XX ..." kalemi.
+    // Bir oran iÃ§in HEM summary HEM item row eÅŸleÅŸirse iki kez toplanmayalÄ±m:
+    // summary authoritative â€” varsa item row'larÄ± o oran iÃ§in YOK SAY.
     const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?|HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
-    // "HES. MATRAH / KDV(%N) [matrah] [kdv]" satırlarında ÖNCE matrah, SONRA KDV gelir.
-    // Bu durumda label'dan sonraki İLK amount değil, SON amount KDV'dir.
+    // "HES. MATRAH / KDV(%N) [matrah] [kdv]" satÄ±rlarÄ±nda Ã–NCE matrah, SONRA KDV gelir.
+    // Bu durumda label'dan sonraki Ä°LK amount deÄŸil, SON amount KDV'dir.
     const matrahLabelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (skipTaxRe.test(line)) continue;
+      if (skipTaxRe.test(line) || hasNonKdvTaxLabel(line)) continue;
       if (discountRowRe.test(line) && !/KDV/i.test(line)) continue;
       if (this.isForbiddenKdvAmountLine(line) || this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
 
-      // Önceki 2 satırda non-KDV vergi label'ı varsa bu "% N,NN" markörü ÖİV'ye
-      // / Telsize / ÖTV'ye ait olabilir (label + oran + amount 3 ayrı satırda).
+      // Ã–nceki 2 satÄ±rda non-KDV vergi label'Ä± varsa bu "% N,NN" markÃ¶rÃ¼ Ã–Ä°V'ye
+      // / Telsize / Ã–TV'ye ait olabilir (label + oran + amount 3 ayrÄ± satÄ±rda).
       let prevHasNonKdvTax = false;
       for (let p = 1; p <= 2 && i - p >= 0; p++) {
         const prev = lines[i - p];
-        if (skipTaxRe.test(prev)) { prevHasNonKdvTax = true; break; }
-        if (/KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\b/i.test(prev)) break;
+        if (skipTaxRe.test(prev) || hasNonKdvTaxLabel(prev)) { prevHasNonKdvTax = true; break; }
+        if (/KATMA\s*DE[ÄG]ER\s*VERG[Ä°I]S[Ä°I]|\bK\.?\s*D\.?\s*V\.?\b/i.test(prev)) break;
       }
       if (prevHasNonKdvTax) continue;
 
@@ -2479,9 +2511,9 @@ export class OcrService {
       while ((m = rateMarkerRe.exec(line)) !== null) {
         const oran = parseInt(m[1], 10);
         if (!(oran > 0 && oran <= 30)) continue;
-        // KDV oranları TR'de daima TAM SAYI (1, 10, 20). Virgülden
-        // sonraki kısım sıfırdan farklıysa (örn. %13,67 → iskonto oranı,
-        // %20,00 → KDV oranı), bu marker KDV DEĞİL — atla.
+        // KDV oranlarÄ± TR'de daima TAM SAYI (1, 10, 20). VirgÃ¼lden
+        // sonraki kÄ±sÄ±m sÄ±fÄ±rdan farklÄ±ysa (Ã¶rn. %13,67 â†’ iskonto oranÄ±,
+        // %20,00 â†’ KDV oranÄ±), bu marker KDV DEÄÄ°L â€” atla.
         const decimalPart = m[2];
         if (decimalPart && parseInt(decimalPart, 10) > 0) continue;
         const afterLabel = this.stripMatrahFragments(line.slice(m.index + m[0].length));
@@ -2489,32 +2521,32 @@ export class OcrService {
       }
     }
 
-    // Hangi oranlar summary satırıyla zaten sayıldı? Bu oranlar için item
-    // row'larına dokunma — duplicate toplama olur (1006 + 1006 = 2012 bug'ı).
+    // Hangi oranlar summary satÄ±rÄ±yla zaten sayÄ±ldÄ±? Bu oranlar iÃ§in item
+    // row'larÄ±na dokunma â€” duplicate toplama olur (1006 + 1006 = 2012 bug'Ä±).
     const oranCoveredBySummary = new Set<number>();
     for (const marker of markers) {
       if (marker.isSummary) oranCoveredBySummary.add(marker.oran);
     }
 
     for (const marker of markers) {
-      // Summary ile zaten sayılan oranın item row markörünü atla
+      // Summary ile zaten sayÄ±lan oranÄ±n item row markÃ¶rÃ¼nÃ¼ atla
       if (!marker.isSummary && oranCoveredBySummary.has(marker.oran)) continue;
 
       let tutar: number | null = null;
 
-      // 1) Aynı satır, label'den sonra amount var mı?
-      // "HES. MATRAH / KDV(%N)  X,XX TL  Y,YY TL" gibi satırda 2 amount var:
+      // 1) AynÄ± satÄ±r, label'den sonra amount var mÄ±?
+      // "HES. MATRAH / KDV(%N)  X,XX TL  Y,YY TL" gibi satÄ±rda 2 amount var:
       // ilki MATRAH, ikincisi KDV. matrahLabel varsa SON amount'u al.
       if (marker.hasMatrahLabel) {
-        const amountReGlobal = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+        const amountReGlobal = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/gi;
         const allMatches = Array.from(marker.afterLabel.matchAll(amountReGlobal));
         if (allMatches.length >= 2) {
-          // 2+ amount → son tane KDV (ilki matrah)
+          // 2+ amount â†’ son tane KDV (ilki matrah)
           const last = allMatches[allMatches.length - 1];
           const parsed = this.parseAmount(last[1]);
           if (parsed >= 0 && parsed < 10_000_000) tutar = parsed;
         } else if (allMatches.length === 1) {
-          // Tek amount → muhtemelen sadece KDV (matrah ayrı satırda olabilir)
+          // Tek amount â†’ muhtemelen sadece KDV (matrah ayrÄ± satÄ±rda olabilir)
           const parsed = this.parseAmount(allMatches[0][1]);
           if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
         }
@@ -2526,16 +2558,16 @@ export class OcrService {
         }
       }
 
-      // 2) Yoksa sonraki 4 satırdan amount'u al
-      //    - matrahLabel varsa (Hes. Matrah / KDV): 2 ardışık amount topla, 2.'yi al
-      //      (Azure tablo hücrelerini ayrı satır olarak parse eder:
+      // 2) Yoksa sonraki 4 satÄ±rdan amount'u al
+      //    - matrahLabel varsa (Hes. Matrah / KDV): 2 ardÄ±ÅŸÄ±k amount topla, 2.'yi al
+      //      (Azure tablo hÃ¼crelerini ayrÄ± satÄ±r olarak parse eder:
       //        "Hes. Matrah / KDV(%1)" / "771,70 TL" / "7,72 TL")
-      //    - değilse: ilk amount'u al (eski mantık)
+      //    - deÄŸilse: ilk amount'u al (eski mantÄ±k)
       if (tutar == null) {
         const collected: number[] = [];
         for (let j = 1; j <= 4 && marker.lineIdx + j < lines.length; j++) {
           const nextLine = lines[marker.lineIdx + j];
-          if (skipTaxRe.test(nextLine)) break;
+          if (skipTaxRe.test(nextLine) || hasNonKdvTaxLabel(nextLine)) break;
           if (this.isForbiddenKdvAmountLine(nextLine)) continue;
           if (j > 1 && this.isForbiddenKdvAmountLine(lines[marker.lineIdx + j - 1] || '')) continue;
           if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
@@ -2554,9 +2586,9 @@ export class OcrService {
           }
         }
         if (collected.length > 0) {
-          // matrah label + 2 amount → 2.'si KDV (ilki matrah)
-          // matrah label + 1 amount → KDV varsayalım
-          // matrah label yok → ilk amount
+          // matrah label + 2 amount â†’ 2.'si KDV (ilki matrah)
+          // matrah label + 1 amount â†’ KDV varsayalÄ±m
+          // matrah label yok â†’ ilk amount
           if (marker.hasMatrahLabel && collected.length >= 2) {
             tutar = collected[1];
           } else {
@@ -2565,12 +2597,12 @@ export class OcrService {
         }
       }
 
-      // KDV 0 olan summary satırlarını (Hes. Matrah / KDV(%8) 0,00 / 0,00)
-      // breakdown'a ekleme — sadece > 0 olanları topla.
+      // KDV 0 olan summary satÄ±rlarÄ±nÄ± (Hes. Matrah / KDV(%8) 0,00 / 0,00)
+      // breakdown'a ekleme â€” sadece > 0 olanlarÄ± topla.
       if (tutar != null && tutar > 0) {
-        // Summary satırı için oran başına SET et (overwrite) — birden fazla
-        // aynı oran summary çıkarsa (nadir), en son okunanı bırak.
-        // Item row için topla (aynı oranda birden fazla kalem olabilir).
+        // Summary satÄ±rÄ± iÃ§in oran baÅŸÄ±na SET et (overwrite) â€” birden fazla
+        // aynÄ± oran summary Ã§Ä±karsa (nadir), en son okunanÄ± bÄ±rak.
+        // Item row iÃ§in topla (aynÄ± oranda birden fazla kalem olabilir).
         if (marker.isSummary) {
           sumByOran.set(marker.oran, tutar);
         } else {
@@ -2579,10 +2611,10 @@ export class OcrService {
       }
     }
 
-    // 2+ oran bulunduysa anlamlı. Tek oran için zaten kdvTutari var, üretme.
+    // 2+ oran bulunduysa anlamlÄ±. Tek oran iÃ§in zaten kdvTutari var, Ã¼retme.
     if (sumByOran.size < 2) return [];
     return Array.from(sumByOran.entries())
-      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
+      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sÄ±rayla (kÃ¼Ã§Ã¼kten bÃ¼yÃ¼ÄŸe)
       .map(([oran, tutar]) => ({
         oran,
         tutar: Math.round(tutar * 100) / 100,
@@ -2591,8 +2623,8 @@ export class OcrService {
   }
 
   /**
-   * "Hes. Matrah / KDV(%N)" tablo formatı için özel ve sağlam parser.
-   * Bu format e-Arşiv fatura altında standart olarak görünür:
+   * "Hes. Matrah / KDV(%N)" tablo formatÄ± iÃ§in Ã¶zel ve saÄŸlam parser.
+   * Bu format e-ArÅŸiv fatura altÄ±nda standart olarak gÃ¶rÃ¼nÃ¼r:
    *
    *                       Matrah        Kdv
    *   Hes. Matrah / KDV(%1)    771,70 TL    7,72 TL
@@ -2600,15 +2632,15 @@ export class OcrService {
    *   Hes. Matrah / KDV(%20)   71,58 TL     14,32 TL
    *   Hes. Matrah / KDV Toplam 843,28 TL    22,04 TL
    *
-   * Azure parse'inde tablo hücreleri farklı dizilebilir (sırayla matrah'lar,
-   * sonra KDV'ler bir blokta gelir, ya da yan yana). Bu method her iki düzeni
-   * de yakalamaya çalışır:
+   * Azure parse'inde tablo hÃ¼creleri farklÄ± dizilebilir (sÄ±rayla matrah'lar,
+   * sonra KDV'ler bir blokta gelir, ya da yan yana). Bu method her iki dÃ¼zeni
+   * de yakalamaya Ã§alÄ±ÅŸÄ±r:
    *
-   *   1. "Hes. Matrah / KDV Toplam" satırını bul → SON amount = TOPLAM KDV
-   *      (en güvenli authoritative değer)
-   *   2. Per oran "Hes. Matrah / KDV(%N)" satırları için breakdown çıkar
+   *   1. "Hes. Matrah / KDV Toplam" satÄ±rÄ±nÄ± bul â†’ SON amount = TOPLAM KDV
+   *      (en gÃ¼venli authoritative deÄŸer)
+   *   2. Per oran "Hes. Matrah / KDV(%N)" satÄ±rlarÄ± iÃ§in breakdown Ã§Ä±kar
    *
-   * Sonuç dönerse otomatik authoritative kabul edilir, diğer extractor'ları
+   * SonuÃ§ dÃ¶nerse otomatik authoritative kabul edilir, diÄŸer extractor'larÄ±
    * override eder.
    */
   private extractHesMatrahKdvTable(text: string): {
@@ -2617,23 +2649,23 @@ export class OcrService {
   } {
     if (!text) return { totalKdv: null, breakdown: [] };
 
-    // "Hes. Matrah / KDV(%N)" veya "Hes. Matrah / KDV Toplam" satırlarını ara
+    // "Hes. Matrah / KDV(%N)" veya "Hes. Matrah / KDV Toplam" satÄ±rlarÄ±nÄ± ara
     const labelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?\s*(?:TOPLAM|\(?\s*%\s*(\d{1,2})\s*\)?)/i;
     if (!labelRe.test(text)) return { totalKdv: null, breakdown: [] };
 
     const normalized = this.normalizeAzureText(text);
     const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const allAmountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
+    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/i;
+    const allAmountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|â‚º)?/gi;
 
     let totalKdv: number | null = null;
     const breakdown = new Map<number, number>();
 
-    // Her satır için: label varsa, label'dan sonraki amount'ları topla
-    // (aynı satırda veya sonraki 4 satırda)
+    // Her satÄ±r iÃ§in: label varsa, label'dan sonraki amount'larÄ± topla
+    // (aynÄ± satÄ±rda veya sonraki 4 satÄ±rda)
     const collectAmountsAfterLine = (startIdx: number, maxLines = 4): number[] => {
       const amts: number[] = [];
-      // aynı satırın label'dan sonraki kısmı
+      // aynÄ± satÄ±rÄ±n label'dan sonraki kÄ±smÄ±
       const startLine = lines[startIdx];
       const labelMatch = startLine.match(labelRe);
       if (labelMatch) {
@@ -2643,11 +2675,11 @@ export class OcrService {
           if (v >= 0 && v < 100_000_000) amts.push(v);
         }
       }
-      // sonraki maxLines satır — başka bir label gelene kadar
+      // sonraki maxLines satÄ±r â€” baÅŸka bir label gelene kadar
       for (let j = 1; j <= maxLines && startIdx + j < lines.length; j++) {
         const nl = lines[startIdx + j];
-        if (labelRe.test(nl)) break; // yeni label başladı
-        // başka bir oran/% marker geldi → tablonun farklı bir kısmı
+        if (labelRe.test(nl)) break; // yeni label baÅŸladÄ±
+        // baÅŸka bir oran/% marker geldi â†’ tablonun farklÄ± bir kÄ±smÄ±
         if (/^%\s*\d{1,2}\s*\)?\s*$/.test(nl.trim())) break;
         const am = nl.match(amountRe);
         if (am) {
@@ -2666,7 +2698,7 @@ export class OcrService {
       const isToplam = /TOPLAM/i.test(line);
       const oran = m[1] ? parseInt(m[1], 10) : null;
 
-      // Amount'ları topla. 2+ amount varsa: 1. matrah, 2. KDV.
+      // Amount'larÄ± topla. 2+ amount varsa: 1. matrah, 2. KDV.
       const amts = collectAmountsAfterLine(i, 4);
       if (amts.length === 0) continue;
       const kdvAmount = amts.length >= 2 ? amts[1] : amts[0];
@@ -2674,7 +2706,7 @@ export class OcrService {
       if (isToplam) {
         if (kdvAmount > 0) totalKdv = kdvAmount;
       } else if (oran && oran > 0 && oran <= 30) {
-        // 0,00 olanları kaydetme — breakdown'a girmesin
+        // 0,00 olanlarÄ± kaydetme â€” breakdown'a girmesin
         if (kdvAmount > 0) breakdown.set(oran, kdvAmount);
       }
     }
@@ -2682,7 +2714,7 @@ export class OcrService {
     return {
       totalKdv,
       breakdown: Array.from(breakdown.entries())
-        .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
+        .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sÄ±rayla (kÃ¼Ã§Ã¼kten bÃ¼yÃ¼ÄŸe)
         .map(([oran, tutar]) => ({ oran, tutar: Math.round(tutar * 100) / 100, matrah: null })),
     };
   }
@@ -2702,15 +2734,45 @@ export class OcrService {
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const foldedLines = lines.map((line) => this.foldTurkishAscii(line));
     const topKdvLabel = /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b|\bKDV\s*T[O0]PLAM\b|\bT[O0]PLAM\s*KDV\b/;
-    const moneyTokenRe = /[-+]?[\*₺¥]?\s*\d[\d.,\s]*\d|\d+[,.]\d{2}/g;
-    const extractLastMoney = (raw: string): number => {
+    const moneyTokenRe = /[-+]?[\*â‚ºÂ¥]?\s*\d[\d.,\s]*\d|\d+[,.]\d{2}/g;
+    const topKdvCodeToRate = (raw: string): number | null => {
+      const m = this.foldTurkishAscii(raw).match(/\b7(01|10|20)\b/);
+      if (!m) return null;
+      return m[1] === '20' ? 20 : 10;
+    };
+    const extractMoneyValues = (raw: string): number[] => {
       const line = this.foldTurkishAscii(raw)
         .replace(/[%/]\s*\d{1,2}(?:[.,]\d+)?/g, ' ')
         .replace(/\b\d{1,2}\s*[%/]/g, ' ');
-      const values = (line.match(moneyTokenRe) || [])
+      return (line.match(moneyTokenRe) || [])
         .map((token) => this.parseAmount(token))
-        .filter((value) => value > 0);
+        .filter((value) => value > 0 && value < 100_000_000);
+    };
+    const extractLastMoney = (raw: string): number => {
+      const values = extractMoneyValues(raw);
       return values.length > 0 ? values[values.length - 1] : 0;
+    };
+    const extractTopKdvAmountAt = (idx: number): number => {
+      const sameLineValues = extractMoneyValues(lines[idx]).filter((value) => {
+        const rounded = Math.round(value * 100) / 100;
+        return ![701, 710, 720].includes(rounded);
+      });
+      if (sameLineValues.length > 0) return sameLineValues[sameLineValues.length - 1];
+
+      const lookahead: number[] = [];
+      for (let j = 1; j <= 5 && idx + j < lines.length; j++) {
+        const next = foldedLines[idx + j] || '';
+        if (/\bKUM\b/.test(next)) break;
+        if (j > 1 && /\b(?:KOMULATIF|KUMULATIF|KISIMLARA|ODEME|NAKIT|KREDI|KART|Z\s+NO)\b/.test(next)) break;
+        lookahead.push(...extractMoneyValues(lines[idx + j]));
+        if (lookahead.length >= 2) break;
+      }
+
+      const prev = foldedLines[idx - 1] || '';
+      const current = foldedLines[idx] || '';
+      const labelsAreSplit = /\bT[O0]PLAM\b/.test(prev) && topKdvLabel.test(current);
+      if (labelsAreSplit && lookahead.length >= 2) return lookahead[1];
+      return lookahead[0] || 0;
     };
     const nextLineMoney = (idx: number): number => {
       const next = foldedLines[idx + 1] || '';
@@ -2720,11 +2782,11 @@ export class OcrService {
       return value > 0 && value < 100_000_000 ? value : 0;
     };
 
-    // 1) TOPLAM %X satırlarından MATRAH'ları topla
-    //    "TOPLAM %20  *140,00" gibi satırları yakala
+    // 1) TOPLAM %X satÄ±rlarÄ±ndan MATRAH'larÄ± topla
+    //    "TOPLAM %20  *140,00" gibi satÄ±rlarÄ± yakala
     const matrahRegex = /^TOPLAM\s*[%/]\s*(\d{1,2})\b\s*[\*:]?\s*([\d.,]+)/i;
     for (const line of lines) {
-      // KUM içeren satırları atla (kümülatif)
+      // KUM iÃ§eren satÄ±rlarÄ± atla (kÃ¼mÃ¼latif)
       if (/\bKUM\b/i.test(line)) continue;
       const m = line.match(matrahRegex);
       if (m) {
@@ -2736,37 +2798,38 @@ export class OcrService {
       }
     }
 
-    // 2) TOPKDV %X satırlarından her oran için KDV tutarını al
+    // 2) TOPKDV %X satÄ±rlarÄ±ndan her oran iÃ§in KDV tutarÄ±nÄ± al
     //    "TOPKDV %20  *23,33" / "TOPKDV /20 *23.33" gibi
     for (let i = 0; i < foldedLines.length; i++) {
       const line = foldedLines[i];
-      if (/\bKUM\b/.test(line)) continue; // kümülatifi atla
+      if (/\bKUM\b/.test(line)) continue; // kÃ¼mÃ¼latifi atla
       if (!topKdvLabel.test(line)) continue;
       const rateMatch = line.match(/[%/]\s*(\d{1,2})\b/);
-      if (rateMatch) {
-        const oran = parseInt(rateMatch[1], 10);
-        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
+      const codeRate = topKdvCodeToRate(lines[i]);
+      if (rateMatch || codeRate) {
+        const oran = codeRate ?? parseInt(rateMatch![1], 10);
+        const tutar = extractTopKdvAmountAt(i) || extractLastMoney(lines[i]) || nextLineMoney(i);
         if (oran > 0 && oran <= 30 && tutar > 0) {
-          // matrahByOran'dan ilgili matrahı al
+          // matrahByOran'dan ilgili matrahÄ± al
           const matrah = result.matrahByOran[oran] ?? null;
           result.breakdown.push({ oran, tutar, matrah });
         }
       }
     }
 
-    // 3) Toplam TOPKDV — breakdown varsa toplamını al, yoksa "TOPKDV ..." satırını ara
+    // 3) Toplam TOPKDV â€” breakdown varsa toplamÄ±nÄ± al, yoksa "TOPKDV ..." satÄ±rÄ±nÄ± ara
     if (result.breakdown.length > 0) {
       const sum = result.breakdown.reduce((s, b) => s + b.tutar, 0);
       result.kdvTutari = this.formatAmount(sum);
     } else {
-      // Tek oranlı / sadece TOPKDV var — "TOPKDV  *344,56" gibi
-      // KUM içermeyen, %X içermeyen sade TOPKDV satırı
+      // Tek oranlÄ± / sadece TOPKDV var â€” "TOPKDV  *344,56" gibi
+      // KUM iÃ§ermeyen, %X iÃ§ermeyen sade TOPKDV satÄ±rÄ±
       for (let i = 0; i < foldedLines.length; i++) {
         const line = foldedLines[i];
         if (/\bKUM\b/.test(line)) continue;
-        if (/[%/]\s*\d/.test(line)) continue; // %X olan satır
+        if (/[%/]\s*\d/.test(line)) continue; // %X olan satÄ±r
         if (!topKdvLabel.test(line)) continue;
-        const tutar = extractLastMoney(lines[i]) || nextLineMoney(i);
+        const tutar = extractTopKdvAmountAt(i) || extractLastMoney(lines[i]) || nextLineMoney(i);
         if (tutar > 0) {
           result.kdvTutari = this.formatAmount(tutar);
           break;
@@ -2778,9 +2841,9 @@ export class OcrService {
   }
 
   /**
-   * Claude'un verdiği değeri Azure'un ham metninde ara — TANIK DOĞRULAMA.
-   * Amaç: Claude halüsinasyon yaparsa (286,36'yı 631,43 gibi) Azure "bunu görmedim" der.
-   * Tutar için ±1 kuruş tolerans; belge no için case-insensitive; tarih için format-insensitive.
+   * Claude'un verdiÄŸi deÄŸeri Azure'un ham metninde ara â€” TANIK DOÄRULAMA.
+   * AmaÃ§: Claude halÃ¼sinasyon yaparsa (286,36'yÄ± 631,43 gibi) Azure "bunu gÃ¶rmedim" der.
+   * Tutar iÃ§in Â±1 kuruÅŸ tolerans; belge no iÃ§in case-insensitive; tarih iÃ§in format-insensitive.
    */
   private isFieldInAzureText(
     value: string,
@@ -2792,47 +2855,47 @@ export class OcrService {
     const v = value.toUpperCase().trim();
 
     if (field === 'belgeNo') {
-      // Belge no'da noktalama/boşluk tolere et
+      // Belge no'da noktalama/boÅŸluk tolere et
       const normalizedValue = v.replace(/[^A-Z0-9]/g, '');
       const normalizedText = text.replace(/[^A-Z0-9]/g, '');
       if (normalizedValue.length === 0) return false;
 
-      // Kısa belge no'lar (1-3 hane fiş no, Z no): etiket bazlı arama lazım,
-      // çünkü "20" gibi kısa sayı metinde başka yerlerde tesadüfen geçebilir.
-      // "FIŞ NO 20", "Z NO 20", "BELGE NO 20" gibi etikete eşlik etsin.
+      // KÄ±sa belge no'lar (1-3 hane fiÅŸ no, Z no): etiket bazlÄ± arama lazÄ±m,
+      // Ã§Ã¼nkÃ¼ "20" gibi kÄ±sa sayÄ± metinde baÅŸka yerlerde tesadÃ¼fen geÃ§ebilir.
+      // "FIÅ NO 20", "Z NO 20", "BELGE NO 20" gibi etikete eÅŸlik etsin.
       if (normalizedValue.length <= 3) {
         const labelPatterns = [
-          new RegExp(`F[İI]Ş\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`F[Ä°I]Å\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
           new RegExp(`Z\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
           new RegExp(`BELGE\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
           new RegExp(`MAKBUZ\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
-          new RegExp(`SER[İI]\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
-          new RegExp(`F[İI]S\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`SER[Ä°I]\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
+          new RegExp(`F[Ä°I]S\\s*N[O0]\\s*[:.\\s]*${normalizedValue}\\b`, 'i'),
         ];
         return labelPatterns.some((p) => p.test(text));
       }
 
-      // 4+ karakter belge no: doğrudan substring match
+      // 4+ karakter belge no: doÄŸrudan substring match
       return normalizedText.includes(normalizedValue);
     }
 
     if (field === 'date') {
-      // "08.03.2026" → 08, 03, 2026 parçalarını ayrı ayrı yakala
+      // "08.03.2026" â†’ 08, 03, 2026 parÃ§alarÄ±nÄ± ayrÄ± ayrÄ± yakala
       const m = v.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       if (!m) return false;
       const [, dd, mo, yy] = m;
-      // Azure metninde DD<sep>MM<sep>YYYY biçiminde ara — separator esnek.
-      // Gerçek örnekler: "18.03.2026", "18-03-2026", "18/03/2026", "18 03 2026",
-      // "18- 03- 2026" (tire+boşluk), "18. 03. 2026", "18 . 03 . 2026".
-      // Separator olarak 0-3 karakter (boşluk/nokta/tire/slash kombinasyonu) kabul.
+      // Azure metninde DD<sep>MM<sep>YYYY biÃ§iminde ara â€” separator esnek.
+      // GerÃ§ek Ã¶rnekler: "18.03.2026", "18-03-2026", "18/03/2026", "18 03 2026",
+      // "18- 03- 2026" (tire+boÅŸluk), "18. 03. 2026", "18 . 03 . 2026".
+      // Separator olarak 0-3 karakter (boÅŸluk/nokta/tire/slash kombinasyonu) kabul.
       const sep = `[\\s.\\-\\/]{0,3}`;
       const dateRegex = new RegExp(`\\b${dd}${sep}${mo}${sep}${yy}\\b`);
       if (dateRegex.test(text)) return true;
       const yyShort = yy.slice(-2);
       const shortDateRegex = new RegExp(`\\b${dd}${sep}${mo}${sep}${yyShort}\\b`);
       if (shortDateRegex.test(text)) return true;
-      // Fallback: tarihin canonical formunu (ddmmyyyy) tüm non-digit temizlendikten
-      // sonra Azure text'inde ara — separator ne olursa olsun yakalar
+      // Fallback: tarihin canonical formunu (ddmmyyyy) tÃ¼m non-digit temizlendikten
+      // sonra Azure text'inde ara â€” separator ne olursa olsun yakalar
       const canonical = `${dd}${mo}${yy}`;
       const canonicalShort = `${dd}${mo}${yyShort}`;
       const normalizedText = text.replace(/[^0-9]/g, '');
@@ -2840,10 +2903,10 @@ export class OcrService {
     }
 
     if (field === 'amount') {
-      // "286,36" → rakamları yakala, ±1 kuruş tolerans
+      // "286,36" â†’ rakamlarÄ± yakala, Â±1 kuruÅŸ tolerans
       const num = this.parseAmount(v);
       if (num <= 0) return false;
-      // Azure'da bulunan tüm sayıları tara, en yakınını bul
+      // Azure'da bulunan tÃ¼m sayÄ±larÄ± tara, en yakÄ±nÄ±nÄ± bul
       const amountMatches = text.matchAll(/\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?\b/g);
       for (const match of amountMatches) {
         const candidate = this.parseAmount(match[0]);
@@ -2856,9 +2919,9 @@ export class OcrService {
   }
 
   /**
-   * Claude sonucunu Azure'un ham metnine karşı çapraz doğrular.
-   * Bulunamayan alanların confidence'ını sıfırlar → kullanıcı teyidine gider.
-   * Bulunan alanların confidence'ını %95'e boost eder.
+   * Claude sonucunu Azure'un ham metnine karÅŸÄ± Ã§apraz doÄŸrular.
+   * Bulunamayan alanlarÄ±n confidence'Ä±nÄ± sÄ±fÄ±rlar â†’ kullanÄ±cÄ± teyidine gider.
+   * Bulunan alanlarÄ±n confidence'Ä±nÄ± %95'e boost eder.
    */
   private crossCheckWithAzure(
     result: OcrResult,
@@ -2868,21 +2931,21 @@ export class OcrService {
   ): void {
     if (!azureText || azureText.length < 10) return;
 
-    // Auto-fill bloklarından (Z_RAPORU, Telekom, multi-rate) kdvTutari doğrulandı
-    // mı? Evetse cross-check onu tekrar doğrulamayı denemesin — "*467,56" veya
-    // "467 56" gibi Azure format farklılıkları yüzünden confidence yanlış düşüyordu.
-    // Auto-fill demek: Azure'ın kendi regex'iyle zaten KDV'yi bulduk ve Claude ile
-    // karşılaştırdık. İkinci bir cross-check düşürmesine gerek yok.
+    // Auto-fill bloklarÄ±ndan (Z_RAPORU, Telekom, multi-rate) kdvTutari doÄŸrulandÄ±
+    // mÄ±? Evetse cross-check onu tekrar doÄŸrulamayÄ± denemesin â€” "*467,56" veya
+    // "467 56" gibi Azure format farklÄ±lÄ±klarÄ± yÃ¼zÃ¼nden confidence yanlÄ±ÅŸ dÃ¼ÅŸÃ¼yordu.
+    // Auto-fill demek: Azure'Ä±n kendi regex'iyle zaten KDV'yi bulduk ve Claude ile
+    // karÅŸÄ±laÅŸtÄ±rdÄ±k. Ä°kinci bir cross-check dÃ¼ÅŸÃ¼rmesine gerek yok.
     const kdvAlreadyVerifiedByAutoFill = { value: false };
 
-    // Filename ile belge no eşleşiyorsa (veya yakın — OCR 1-2 karakter hata yapmış),
-    // belge no cross-check'ini ATLA. Filename %100 güvenilir kaynak — Azure render
-    // kalitesi düşükse FAIL verebilir ama bu false positive'dir.
-    // ÖRNEKLER:
-    //   SRD2026000000760.xml + OCR=SRD2026000000760 → TAM eşleşme
-    //   ESR2026000001162.xml + OCR=ESR20260000011162 → 1 karakter farklı (OCR digit eklemiş)
-    //   ESR2026000001204.xml + OCR=ESR20260000001204 → 1 karakter farklı (OCR digit eklemiş)
-    // Edit distance ≤ 2 ve ≥10 karakter uzunluğunda ise filename'i otorite kabul et.
+    // Filename ile belge no eÅŸleÅŸiyorsa (veya yakÄ±n â€” OCR 1-2 karakter hata yapmÄ±ÅŸ),
+    // belge no cross-check'ini ATLA. Filename %100 gÃ¼venilir kaynak â€” Azure render
+    // kalitesi dÃ¼ÅŸÃ¼kse FAIL verebilir ama bu false positive'dir.
+    // Ã–RNEKLER:
+    //   SRD2026000000760.xml + OCR=SRD2026000000760 â†’ TAM eÅŸleÅŸme
+    //   ESR2026000001162.xml + OCR=ESR20260000011162 â†’ 1 karakter farklÄ± (OCR digit eklemiÅŸ)
+    //   ESR2026000001204.xml + OCR=ESR20260000001204 â†’ 1 karakter farklÄ± (OCR digit eklemiÅŸ)
+    // Edit distance â‰¤ 2 ve â‰¥10 karakter uzunluÄŸunda ise filename'i otorite kabul et.
     let skipBelgeNoCheck = false;
     if (belgeNoFromFilename && result.belgeNo) {
       const fn = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -2891,14 +2954,14 @@ export class OcrService {
       const nearMatch = fn.length >= 10 && this.eBelgeNoDistance(fn, ocr) <= 3;
       if (exactMatch || nearMatch) {
         skipBelgeNoCheck = true;
-        // Near match durumda filename'i otorite kabul et — OCR digit eklemiş/atlatmış
+        // Near match durumda filename'i otorite kabul et â€” OCR digit eklemiÅŸ/atlatmÄ±ÅŸ
         if (nearMatch && !exactMatch) {
           this.logger.warn(
-            `Belge no Levenshtein override: OCR="${ocr}" → filename="${fn}" (edit distance ≤ 2, ${originalName})`,
+            `Belge no Levenshtein override: OCR="${ocr}" â†’ filename="${fn}" (edit distance â‰¤ 2, ${originalName})`,
           );
           result.belgeNo = belgeNoFromFilename;
         }
-        // Filename match → belge no zaten %95 confidence
+        // Filename match â†’ belge no zaten %95 confidence
         if (result.fieldConfidence.belgeNo != null) {
           result.fieldConfidence.belgeNo = Math.max(
             result.fieldConfidence.belgeNo ?? 0,
@@ -2910,46 +2973,46 @@ export class OcrService {
       }
     }
 
-    // ─── E-FATURA / E-ARŞİV TRUST GUARD ───
-    // Elektrik/telekom faturalarında filename ≠ OCR belge no olabilir
-    // (Filename: "BEF2026000958878", OCR: "EFA2026000000878" — farklı kodlama).
+    // â”€â”€â”€ E-FATURA / E-ARÅÄ°V TRUST GUARD â”€â”€â”€
+    // Elektrik/telekom faturalarÄ±nda filename â‰  OCR belge no olabilir
+    // (Filename: "BEF2026000958878", OCR: "EFA2026000000878" â€” farklÄ± kodlama).
     // Bu durumda Levenshtein fix devreye giremez ve Azure metninde de
-    // belge no küçük/soluk yazı nedeniyle bulunamayabilir → cross-check FAIL → %20.
+    // belge no kÃ¼Ã§Ã¼k/soluk yazÄ± nedeniyle bulunamayabilir â†’ cross-check FAIL â†’ %20.
     //
-    // YENI KURAL: Claude'un belgeNo confidence'ı ≥ %85 ve OCR sonucu
-    // geçerli e-fatura format'ında ise (3 harf + 13 rakam = 16 char),
-    // Claude'un sonucuna güven, cross-check'i atla.
-    // Gerçek FALSE POSITIVE değil, Azure'un okuyamadığı küçük yazı hatası.
+    // YENI KURAL: Claude'un belgeNo confidence'Ä± â‰¥ %85 ve OCR sonucu
+    // geÃ§erli e-fatura format'Ä±nda ise (3 harf + 13 rakam = 16 char),
+    // Claude'un sonucuna gÃ¼ven, cross-check'i atla.
+    // GerÃ§ek FALSE POSITIVE deÄŸil, Azure'un okuyamadÄ±ÄŸÄ± kÃ¼Ã§Ã¼k yazÄ± hatasÄ±.
     if (!skipBelgeNoCheck && result.belgeNo && result.fieldConfidence.belgeNo != null) {
       const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const isValidEFaturaFormat = /^[A-Z]{3}\d{13}$/.test(bn); // EFA/ESR/BEF/GB1/IRU/KMI + yıl + sıra
+      const isValidEFaturaFormat = /^[A-Z]{3}\d{13}$/.test(bn); // EFA/ESR/BEF/GB1/IRU/KMI + yÄ±l + sÄ±ra
       const claudeBelgeNoConf = result.fieldConfidence.belgeNo ?? 0;
       if ((isValidEFaturaFormat || E_BELGE_NO_REGEX.test(bn)) && claudeBelgeNoConf >= 0.85) {
         this.logger.log(
-          `E-fatura trust guard: belge no "${bn}" geçerli format + Claude conf ${Math.round(claudeBelgeNoConf * 100)}% → cross-check skip (${originalName})`,
+          `E-fatura trust guard: belge no "${bn}" geÃ§erli format + Claude conf ${Math.round(claudeBelgeNoConf * 100)}% â†’ cross-check skip (${originalName})`,
         );
         skipBelgeNoCheck = true;
       }
     }
 
-    // ─── Z RAPORU AUTO-CORRECT — Azure metninden direkt çıkar ───
-    // Z raporları yapısal: TOPLAM %X / TOPKDV %X / TOPKDV satırları sabit format.
-    // Claude halüsinasyon yapsa bile Azure regex'i doğru değeri çıkarır.
+    // â”€â”€â”€ Z RAPORU AUTO-CORRECT â€” Azure metninden direkt Ã§Ä±kar â”€â”€â”€
+    // Z raporlarÄ± yapÄ±sal: TOPLAM %X / TOPKDV %X / TOPKDV satÄ±rlarÄ± sabit format.
+    // Claude halÃ¼sinasyon yapsa bile Azure regex'i doÄŸru deÄŸeri Ã§Ä±karÄ±r.
     if (result.belgeTipi === 'Z_RAPORU') {
       const zParsed = this.extractZRaporuKdvFromAzure(azureText);
       if (zParsed.kdvTutari) {
         const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
         const azureKdv = this.parseAmount(zParsed.kdvTutari);
-        // Eğer farklılarsa Azure'un değerini kullan (regex parse daha güvenilir)
+        // EÄŸer farklÄ±larsa Azure'un deÄŸerini kullan (regex parse daha gÃ¼venilir)
         if (Math.abs(claudeKdv - azureKdv) > 0.05) {
           this.logger.warn(
-            `Z_RAPORU KDV auto-correct: Claude=${result.kdvTutari} → Azure=${zParsed.kdvTutari} (${originalName})`,
+            `Z_RAPORU KDV auto-correct: Claude=${result.kdvTutari} â†’ Azure=${zParsed.kdvTutari} (${originalName})`,
           );
           result.kdvTutari = zParsed.kdvTutari;
-          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match → yüksek güven
+          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match â†’ yÃ¼ksek gÃ¼ven
           kdvAlreadyVerifiedByAutoFill.value = true;
         } else {
-          // Eşleşiyorsa zaten doğruydu — confidence boost
+          // EÅŸleÅŸiyorsa zaten doÄŸruydu â€” confidence boost
           result.fieldConfidence.kdvTutari = Math.max(
             result.fieldConfidence.kdvTutari ?? 0,
             0.95,
@@ -2957,28 +3020,28 @@ export class OcrService {
           kdvAlreadyVerifiedByAutoFill.value = true;
         }
       }
-      // Breakdown'u Azure'dan al (Claude vermediyse veya yanlışsa)
+      // Breakdown'u Azure'dan al (Claude vermediyse veya yanlÄ±ÅŸsa)
       if (zParsed.breakdown.length > 0) {
         const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
         if (claudeBreakdownCount === 0 || claudeBreakdownCount !== zParsed.breakdown.length) {
           this.logger.warn(
-            `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${zParsed.breakdown.length} oran (${originalName})`,
+            `Z_RAPORU breakdown auto-fill: Claude=${claudeBreakdownCount} oran â†’ Azure=${zParsed.breakdown.length} oran (${originalName})`,
           );
           result.kdvBreakdown = zParsed.breakdown;
         }
       }
     }
 
-    // ─── TEVKİFATLI FATURA AUTO-CORRECT ───
-    // Tevkifatlı alış faturalarında Claude bazen hatalı hesap yapıyor:
-    //   - Mal Hizmet Toplam değerini "KDV dahil toplam" sanıp /11 hesaplıyor
-    //     (örn. 13.300 / 11 = 1.209,09 — yanlış!)
-    //   - "Hesaplanan KDV Tevkifat(%50)" satırını kaçırıp tevkifat=0 dönüyor
+    // â”€â”€â”€ TEVKÄ°FATLI FATURA AUTO-CORRECT â”€â”€â”€
+    // TevkifatlÄ± alÄ±ÅŸ faturalarÄ±nda Claude bazen hatalÄ± hesap yapÄ±yor:
+    //   - Mal Hizmet Toplam deÄŸerini "KDV dahil toplam" sanÄ±p /11 hesaplÄ±yor
+    //     (Ã¶rn. 13.300 / 11 = 1.209,09 â€” yanlÄ±ÅŸ!)
+    //   - "Hesaplanan KDV Tevkifat(%50)" satÄ±rÄ±nÄ± kaÃ§Ä±rÄ±p tevkifat=0 dÃ¶nÃ¼yor
     //
-    // Çözüm: Azure metninde "Hesaplanan KDV(%X)" + "Hesaplanan KDV Tevkifat(%XX)"
-    // pattern'ini doğrudan yakala, Claude'un sonucunu override et.
+    // Ã‡Ã¶zÃ¼m: Azure metninde "Hesaplanan KDV(%X)" + "Hesaplanan KDV Tevkifat(%XX)"
+    // pattern'ini doÄŸrudan yakala, Claude'un sonucunu override et.
     const azureTextNorm = this.normalizeAzureText(azureText);
-    const azureMentionsTevkifat = /TEVK[İI]FAT/i.test(azureTextNorm);
+    const azureMentionsTevkifat = /TEVK[Ä°I]FAT/i.test(azureTextNorm);
     let tevkifatExtracted = false;
     {
       const tevkifatli = this.extractTevkifatliFaturaFromAzure(azureText);
@@ -2989,24 +3052,24 @@ export class OcrService {
         const azureNet = tevkifatli.netKdv;
         const azureTevkifat = tevkifatli.tevkifat;
 
-        // Override koşulları:
-        //   1. Claude tevkifat'ı 0 verdi ama Azure tevkifat buldu (Claude eksik)
-        //   2. Claude'un NET KDV'si Azure'dan farklı (>5 kuruş) — Claude yanlış hesap
+        // Override koÅŸullarÄ±:
+        //   1. Claude tevkifat'Ä± 0 verdi ama Azure tevkifat buldu (Claude eksik)
+        //   2. Claude'un NET KDV'si Azure'dan farklÄ± (>5 kuruÅŸ) â€” Claude yanlÄ±ÅŸ hesap
         const tevkifatMissing = claudeTevkifat === 0 && azureTevkifat > 0;
         const kdvMismatch = Math.abs(claudeKdv - azureNet) > 0.05;
 
         if (tevkifatMissing || kdvMismatch) {
           this.logger.warn(
-            `Tevkifatlı fatura auto-correct: Claude kdv=${result.kdvTutari} tevk=${result.kdvTevkifat ?? '0'} → Azure tamKdv=${this.formatAmount(tevkifatli.tamKdv)} tevk=${this.formatAmount(azureTevkifat)} net=${this.formatAmount(azureNet)} (${originalName})`,
+            `TevkifatlÄ± fatura auto-correct: Claude kdv=${result.kdvTutari} tevk=${result.kdvTevkifat ?? '0'} â†’ Azure tamKdv=${this.formatAmount(tevkifatli.tamKdv)} tevk=${this.formatAmount(azureTevkifat)} net=${this.formatAmount(azureNet)} (${originalName})`,
           );
           result.kdvTutari = this.formatAmount(azureNet);
           result.kdvTevkifat = this.formatAmount(azureTevkifat);
-          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match → yüksek güven
-          // Tek oranlı tevkifat faturalarında breakdown'u da güncelle
+          result.fieldConfidence.kdvTutari = 0.92; // Azure regex match â†’ yÃ¼ksek gÃ¼ven
+          // Tek oranlÄ± tevkifat faturalarÄ±nda breakdown'u da gÃ¼ncelle
           if (result.kdvBreakdown && result.kdvBreakdown.length === 1) {
             result.kdvBreakdown[0].tutar = azureNet;
           } else if (!result.kdvBreakdown || result.kdvBreakdown.length === 0) {
-            // Breakdown yok ama oran tespit edilebilirse oluştur (en yaygın %10/%20)
+            // Breakdown yok ama oran tespit edilebilirse oluÅŸtur (en yaygÄ±n %10/%20)
             const oranMatch = azureTextNorm.match(
               /HESAPLANAN\s+KDV\s*\(\s*[%/]?\s*(\d{1,2})\s*\)(?!\s*TEVK)/i,
             );
@@ -3022,18 +3085,18 @@ export class OcrService {
       }
     }
 
-    // ─── DEFANSİF FALLBACK: Tevkifat var ama extract edilemediyse ───
-    // Azure metni "TEVKIFAT" diyor ama biz tutarı doğru çıkaramadık.
-    // Claude'un kdvTutari'sı muhtemelen yanlış (toplam/11 veya toplam/6 hesabı).
-    // Bu durumda yanlış değeri kullanıcıya gösterme — confidence sıfırla,
-    // NEEDS_REVIEW akışına gitsin, kullanıcı manuel girebilsin.
+    // â”€â”€â”€ DEFANSÄ°F FALLBACK: Tevkifat var ama extract edilemediyse â”€â”€â”€
+    // Azure metni "TEVKIFAT" diyor ama biz tutarÄ± doÄŸru Ã§Ä±karamadÄ±k.
+    // Claude'un kdvTutari'sÄ± muhtemelen yanlÄ±ÅŸ (toplam/11 veya toplam/6 hesabÄ±).
+    // Bu durumda yanlÄ±ÅŸ deÄŸeri kullanÄ±cÄ±ya gÃ¶sterme â€” confidence sÄ±fÄ±rla,
+    // NEEDS_REVIEW akÄ±ÅŸÄ±na gitsin, kullanÄ±cÄ± manuel girebilsin.
     if (azureMentionsTevkifat && !tevkifatExtracted && result.kdvTutari) {
       const claudeKdv = this.parseAmount(result.kdvTutari);
       const claudeTotal = result.totalTutari ? this.parseAmount(result.totalTutari) : 0;
 
-      // Yanlış matematik göstergesi:
-      //   • kdvTutari ≈ totalTutari / 11   (Claude %10 KDV-DAHİL hesabı yapmış)
-      //   • kdvTutari ≈ totalTutari / 6    (Claude %20 KDV-DAHİL hesabı yapmış)
+      // YanlÄ±ÅŸ matematik gÃ¶stergesi:
+      //   â€¢ kdvTutari â‰ˆ totalTutari / 11   (Claude %10 KDV-DAHÄ°L hesabÄ± yapmÄ±ÅŸ)
+      //   â€¢ kdvTutari â‰ˆ totalTutari / 6    (Claude %20 KDV-DAHÄ°L hesabÄ± yapmÄ±ÅŸ)
       let suspiciousMath = false;
       if (claudeTotal > 0 && claudeKdv > 0) {
         const ratio11 = Math.abs(claudeKdv - claudeTotal / 11) / claudeKdv;
@@ -3043,16 +3106,16 @@ export class OcrService {
         }
       }
 
-      // Tevkifat boş + Azure'da TEVKİFAT var → şüpheli
+      // Tevkifat boÅŸ + Azure'da TEVKÄ°FAT var â†’ ÅŸÃ¼pheli
       const tevkifatEmpty = !result.kdvTevkifat || this.parseAmount(result.kdvTevkifat) === 0;
 
       if (suspiciousMath || tevkifatEmpty) {
         this.logger.warn(
-          `Tevkifatlı fatura DEFANSİF FALLBACK (${originalName}): Azure'da TEVKIFAT var ama extract edemedik. Claude kdv=${result.kdvTutari} total=${result.totalTutari} tevk=${result.kdvTevkifat ?? '0'}. Confidence sıfırlanıp NEEDS_REVIEW'a gidiyor.`,
+          `TevkifatlÄ± fatura DEFANSÄ°F FALLBACK (${originalName}): Azure'da TEVKIFAT var ama extract edemedik. Claude kdv=${result.kdvTutari} total=${result.totalTutari} tevk=${result.kdvTevkifat ?? '0'}. Confidence sÄ±fÄ±rlanÄ±p NEEDS_REVIEW'a gidiyor.`,
         );
-        // Confidence sıfırla — kullanıcı manuel girsin, yanlış değer önerme
+        // Confidence sÄ±fÄ±rla â€” kullanÄ±cÄ± manuel girsin, yanlÄ±ÅŸ deÄŸer Ã¶nerme
         result.fieldConfidence.kdvTutari = 0.3;
-        // Mantıksız değerleri null'la
+        // MantÄ±ksÄ±z deÄŸerleri null'la
         if (suspiciousMath) {
           result.kdvTutari = null;
           result.kdvBreakdown = null;
@@ -3060,17 +3123,17 @@ export class OcrService {
       }
     }
 
-    // ─── TELEKOM FATURASI KDV SADECE-KDV OVERRIDE ───
-    // Telekom faturaları (Turkcell, Vodafone, TT) 4 farklı vergi türü içerir:
-    //   Katma Değer Vergisi (%20)  252,00  ← SADECE BU KDV
-    //   Özel İletişim Vergisi (%10) 126,00  ← DEĞİL
-    //   Telsiz Kullanım Aylık Taksit (%0) 26,98  ← DEĞİL
-    // Claude bunları bazen topluyor. Azure metninde "Özel İletişim" varsa
-    // bu telekom faturasıdır — "Katma Değer Vergisi" satırını özel
+    // â”€â”€â”€ TELEKOM FATURASI KDV SADECE-KDV OVERRIDE â”€â”€â”€
+    // Telekom faturalarÄ± (Turkcell, Vodafone, TT) 4 farklÄ± vergi tÃ¼rÃ¼ iÃ§erir:
+    //   Katma DeÄŸer Vergisi (%20)  252,00  â† SADECE BU KDV
+    //   Ã–zel Ä°letiÅŸim Vergisi (%10) 126,00  â† DEÄÄ°L
+    //   Telsiz KullanÄ±m AylÄ±k Taksit (%0) 26,98  â† DEÄÄ°L
+    // Claude bunlarÄ± bazen topluyor. Azure metninde "Ã–zel Ä°letiÅŸim" varsa
+    // bu telekom faturasÄ±dÄ±r â€” "Katma DeÄŸer Vergisi" satÄ±rÄ±nÄ± Ã¶zel
     // parse edip kdvTutari'yi defansif olarak override et.
-    // NBSP / full-width karakterler regex'i kırmasın diye azureText'i normalize
-    // edilmiş haliyle test et. (extractKdvOnlyFromTelekomAzure kendi içinde
-    // normalize ediyor — ama bu üst seviye trigger için de gerekli.)
+    // NBSP / full-width karakterler regex'i kÄ±rmasÄ±n diye azureText'i normalize
+    // edilmiÅŸ haliyle test et. (extractKdvOnlyFromTelekomAzure kendi iÃ§inde
+    // normalize ediyor â€” ama bu Ã¼st seviye trigger iÃ§in de gerekli.)
     const normalizedAzureText = this.foldTurkishAscii(azureText);
     const isTelekomFatura = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN/i.test(normalizedAzureText);
     if (isTelekomFatura) {
@@ -3079,14 +3142,15 @@ export class OcrService {
         const claudeKdv = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
         if (Math.abs(claudeKdv - kdvOnlyAmount) > 0.05) {
           this.logger.warn(
-            `Telekom fatura KDV override: Claude=${result.kdvTutari} → Azure "Katma Değer Vergisi" satırı=${this.formatAmount(kdvOnlyAmount)} (${originalName})`,
+            `Telekom fatura KDV override: Claude=${result.kdvTutari} â†’ Azure "Katma DeÄŸer Vergisi" satÄ±rÄ±=${this.formatAmount(kdvOnlyAmount)} (${originalName})`,
           );
-          result.kdvTutari = this.formatAmount(kdvOnlyAmount);
-          result.fieldConfidence.kdvTutari = 0.92;
-          // Breakdown'u da tek oran olarak yeniden yaz
-          result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
-          kdvAlreadyVerifiedByAutoFill.value = true;
         }
+        result.kdvTutari = this.formatAmount(kdvOnlyAmount);
+        result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari ?? 0, 0.92);
+        // Telekom faturalarÄ±nda Ã–Ä°V/Telsiz vb. aynÄ± tabloda gÃ¶rÃ¼nÃ¼r. UI ve Excel
+        // KDV kÄ±rÄ±lÄ±mÄ±nda sadece "Katma DeÄŸer Vergisi / KDV" satÄ±rÄ± kalmalÄ±.
+        result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
+        kdvAlreadyVerifiedByAutoFill.value = true;
       }
     }
 
@@ -3098,7 +3162,7 @@ export class OcrService {
       const diff = Math.abs(claudeKdv - invoiceTotalsKdv.kdv);
       if (diff > 0.05) {
         this.logger.warn(
-          `Açık KDV satırı override: Claude=${result.kdvTutari} → Azure=${this.formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
+          `AÃ§Ä±k KDV satÄ±rÄ± override: Claude=${result.kdvTutari} â†’ Azure=${this.formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
         );
         result.kdvTutari = this.formatAmount(invoiceTotalsKdv.kdv);
         result.fieldConfidence.kdvTutari = 0.92;
@@ -3111,44 +3175,63 @@ export class OcrService {
       } else if (diff <= 0.05 && result.fieldConfidence.kdvTutari != null) {
         result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
       }
+      const invoiceRate = invoiceTotalsKdv.oran && invoiceTotalsKdv.oran > 0 ? invoiceTotalsKdv.oran : null;
+      const currentBreakdown = result.kdvBreakdown || [];
+      const currentRate = currentBreakdown.length === 1 ? Number(currentBreakdown[0]?.oran || 0) : null;
+      if (invoiceRate && currentBreakdown.length <= 1 && (currentRate == null || Math.abs(currentRate - invoiceRate) > 0.5)) {
+        result.kdvBreakdown = [{
+          oran: invoiceRate,
+          tutar: invoiceTotalsKdv.kdv,
+          matrah: invoiceTotalsKdv.matrah,
+        }];
+        kdvAlreadyVerifiedByAutoFill.value = true;
+      }
     }
 
-    // ─── E-FATURA / E-ARŞİV ÇOK ORANLI KDV AUTO-FILL ───
-    // Z_RAPORU dışındaki belge tipleri için: Claude breakdown'u boş dönerse veya
-    // eksik dönerse, Azure metninden "Hesaplanan KDV (%X) ..." satırlarını parse et.
-    // ÖRNEK: ESR2026000001204 gibi karma fatura — %20 + %10 ayrı satır, breakdown
-    // boş gelmiş olabilir. UI'da KDV Kırılımı boş kalıyor → bu fix doldurur.
+    // â”€â”€â”€ E-FATURA / E-ARÅÄ°V Ã‡OK ORANLI KDV AUTO-FILL â”€â”€â”€
+    // Z_RAPORU dÄ±ÅŸÄ±ndaki belge tipleri iÃ§in: Claude breakdown'u boÅŸ dÃ¶nerse veya
+    // eksik dÃ¶nerse, Azure metninden "Hesaplanan KDV (%X) ..." satÄ±rlarÄ±nÄ± parse et.
+    // Ã–RNEK: ESR2026000001204 gibi karma fatura â€” %20 + %10 ayrÄ± satÄ±r, breakdown
+    // boÅŸ gelmiÅŸ olabilir. UI'da KDV KÄ±rÄ±lÄ±mÄ± boÅŸ kalÄ±yor â†’ bu fix doldurur.
     //
-    // İki aşamalı Azure fallback:
-    //   A) extractMultiRateKdvFromAzure — "Hesaplanan KDV (%N)" özet satırı formatı
-    //   B) extractMultiRateKdvFromItemRows — tabloda "% N,NN ... X,XX TL" satır
-    //      başına yakalama (A boş gelirse). Şirin Reklam gibi summary kopuk
-    //      çıkarıldığında bile tablo satırlarından oran başına toplam kdv çıkar.
-    // Multi-rate auto-fill — TÜM belge tipleri için çalıştır. Eski davranışta
-    // Z_RAPORU excluded'tı; ama Claude bazen e-arşiv/e-fatura'yı yanlışlıkla
-    // Z_RAPORU olarak kategorize ediyor (ESR2026000001204 gibi) → bu blok
-    // hiç çalışmıyordu. Z_RAPORU için zaten extractZRaporuKdvFromAzure
-    // özel olarak TOPKDV satırlarını yakalıyor — orda başarısız olursa bu
-    // generic fallback devreye girsin zarar vermez, override koşulu zaten
-    // Claude<Azure durumunu arıyor.
+    // Ä°ki aÅŸamalÄ± Azure fallback:
+    //   A) extractMultiRateKdvFromAzure â€” "Hesaplanan KDV (%N)" Ã¶zet satÄ±rÄ± formatÄ±
+    //   B) extractMultiRateKdvFromItemRows â€” tabloda "% N,NN ... X,XX TL" satÄ±r
+    //      baÅŸÄ±na yakalama (A boÅŸ gelirse). Åirin Reklam gibi summary kopuk
+    //      Ã§Ä±karÄ±ldÄ±ÄŸÄ±nda bile tablo satÄ±rlarÄ±ndan oran baÅŸÄ±na toplam kdv Ã§Ä±kar.
+    // Multi-rate auto-fill â€” TÃœM belge tipleri iÃ§in Ã§alÄ±ÅŸtÄ±r. Eski davranÄ±ÅŸta
+    // Z_RAPORU excluded'tÄ±; ama Claude bazen e-arÅŸiv/e-fatura'yÄ± yanlÄ±ÅŸlÄ±kla
+    // Z_RAPORU olarak kategorize ediyor (ESR2026000001204 gibi) â†’ bu blok
+    // hiÃ§ Ã§alÄ±ÅŸmÄ±yordu. Z_RAPORU iÃ§in zaten extractZRaporuKdvFromAzure
+    // Ã¶zel olarak TOPKDV satÄ±rlarÄ±nÄ± yakalÄ±yor â€” orda baÅŸarÄ±sÄ±z olursa bu
+    // generic fallback devreye girsin zarar vermez, override koÅŸulu zaten
+    // Claude<Azure durumunu arÄ±yor.
     //
-    // ⚠ TEVKİFATLI FATURA KORUMASI: Eğer Azure metni "TEVKIFAT" geçiyor VE
-    // tevkifatlı auto-correct çalıştıysa, multi-rate fallback'leri ATLAR.
+    // âš  TEVKÄ°FATLI FATURA KORUMASI: EÄŸer Azure metni "TEVKIFAT" geÃ§iyor VE
+    // tevkifatlÄ± auto-correct Ã§alÄ±ÅŸtÄ±ysa, multi-rate fallback'leri ATLAR.
     // Aksi halde "Hesaplanan KDV(%10) 2.840" + "Hesaplanan KDV Tevkifat(%50)
-    // 1.420" pattern'lerini iki farklı oranlı KDV gibi yorumlayabilir
-    // (örn. %10:2840 + %50:1420 → toplam 4260, doğru NET=1420 → override KIRIK).
-    // Tevkifatlı tek-oranlı fatura için zaten yukarıdaki tevkifat auto-correct
-    // doğru değeri set etti.
-    if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
+    // 1.420" pattern'lerini iki farklÄ± oranlÄ± KDV gibi yorumlayabilir
+    // (Ã¶rn. %10:2840 + %50:1420 â†’ toplam 4260, doÄŸru NET=1420 â†’ override KIRIK).
+    // TevkifatlÄ± tek-oranlÄ± fatura iÃ§in zaten yukarÄ±daki tevkifat auto-correct
+    // doÄŸru deÄŸeri set etti.
+    if (result.belgeTipi === 'Z_RAPORU' && kdvAlreadyVerifiedByAutoFill.value) {
       this.logger.log(
-        `Multi-rate auto-fill SKIP: tevkifatlı fatura (auto-correct çalıştı, ${originalName})`,
+        `Multi-rate auto-fill SKIP: Z raporu KDV'si TOPKDV parser ile dogrulandi (${originalName})`,
+      );
+    } else if (kdvAlreadyVerifiedByAutoFill.value && isTelekomFatura) {
+      this.logger.log(
+        `Multi-rate auto-fill SKIP: telekom KDV-only parser dogrulandi, Ã–Ä°V/Telsiz KDV kÄ±rÄ±lÄ±mÄ±na alÄ±nmadÄ± (${originalName})`,
+      );
+    } else if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
+      this.logger.log(
+        `Multi-rate auto-fill SKIP: tevkifatlÄ± fatura (auto-correct Ã§alÄ±ÅŸtÄ±, ${originalName})`,
       );
     } else {
-      // ÖNCELİK 1: "Hes. Matrah / KDV(%N)" tablosu — e-Arşiv fatura altı standart
-      // formatı. Bu format varsa AUTHORITATIVE, diğer extractor'lar atlanır.
-      // Sorun: önceki extractor'lar bu tabloda matrah'ı (1. amount) KDV
-      // sanıyor (Zırhlı Gıda örneği — Toplam KDV: 22,04 doğru, OCR 873,04
-      // bulmuş çünkü matrah'ı KDV almış).
+      // Ã–NCELÄ°K 1: "Hes. Matrah / KDV(%N)" tablosu â€” e-ArÅŸiv fatura altÄ± standart
+      // formatÄ±. Bu format varsa AUTHORITATIVE, diÄŸer extractor'lar atlanÄ±r.
+      // Sorun: Ã¶nceki extractor'lar bu tabloda matrah'Ä± (1. amount) KDV
+      // sanÄ±yor (ZÄ±rhlÄ± GÄ±da Ã¶rneÄŸi â€” Toplam KDV: 22,04 doÄŸru, OCR 873,04
+      // bulmuÅŸ Ã§Ã¼nkÃ¼ matrah'Ä± KDV almÄ±ÅŸ).
       const hesMatrah = this.extractHesMatrahKdvTable(azureText);
       const multiA = this.extractMultiRateKdvFromAzure(azureText);
       const multiB = this.extractMultiRateKdvFromItemRows(azureText);
@@ -3157,8 +3240,8 @@ export class OcrService {
         multiA.length >= 2 ? multiA :
         multiB.length >= 2 ? multiB :
         multiA;
-      // Eğer Hes. Matrah tablosundan toplam KDV bulunduysa, kdvTutari'yi de
-      // override et (UI'da KDV TUTARI alanı doğru gözüksün).
+      // EÄŸer Hes. Matrah tablosundan toplam KDV bulunduysa, kdvTutari'yi de
+      // override et (UI'da KDV TUTARI alanÄ± doÄŸru gÃ¶zÃ¼ksÃ¼n).
       if (hesMatrah.totalKdv !== null && hesMatrah.totalKdv > 0) {
         result.kdvTutari = hesMatrah.totalKdv.toFixed(2);
         this.logger.log(
@@ -3166,9 +3249,9 @@ export class OcrService {
         );
       }
 
-      // TEŞHİS LOGU — multi-rate bulunamadıysa veya Claude'dan az orana
-      // ulaşıldıysa Azure metninin başını log'a bas ki gerçek çıktı görülsün.
-      // Aksi halde kör regex tuning yapmak zorunda kalırız.
+      // TEÅHÄ°S LOGU â€” multi-rate bulunamadÄ±ysa veya Claude'dan az orana
+      // ulaÅŸÄ±ldÄ±ysa Azure metninin baÅŸÄ±nÄ± log'a bas ki gerÃ§ek Ã§Ä±ktÄ± gÃ¶rÃ¼lsÃ¼n.
+      // Aksi halde kÃ¶r regex tuning yapmak zorunda kalÄ±rÄ±z.
       const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
       const mentionsKdvOran =
         /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|%\s*\d{1,2}/i.test(
@@ -3185,10 +3268,10 @@ export class OcrService {
         );
       }
 
-      // Azure 2+ oran bulduysa ALWAYS override et. Eski koşul "Azure > Claude"
-      // idi, ama Claude'un breakdown'ı DB'ye null olarak kaydedilse de
-      // claudeBreakdownCount kodda 2 görünebiliyor → koşul tetiklenmiyordu.
-      // Azure iki bağımsız tanıkla (A/B) bulduysa zaten güvenilir.
+      // Azure 2+ oran bulduysa ALWAYS override et. Eski koÅŸul "Azure > Claude"
+      // idi, ama Claude'un breakdown'Ä± DB'ye null olarak kaydedilse de
+      // claudeBreakdownCount kodda 2 gÃ¶rÃ¼nebiliyor â†’ koÅŸul tetiklenmiyordu.
+      // Azure iki baÄŸÄ±msÄ±z tanÄ±kla (A/B) bulduysa zaten gÃ¼venilir.
       if (azureBreakdown.length >= 2) {
         const rateEchoCount = azureBreakdown.filter((b) =>
           [1, 10, 20].some((r) => Math.abs((Number(b.tutar) || 0) - r) < 0.01),
@@ -3205,14 +3288,14 @@ export class OcrService {
           kdvAlreadyVerifiedByAutoFill.value = false;
         } else {
         this.logger.warn(
-          `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran → Azure=${azureBreakdown.length} oran (${originalName})`,
+          `E-fatura breakdown auto-fill: Claude=${claudeBreakdownCount} oran â†’ Azure=${azureBreakdown.length} oran (${originalName})`,
         );
         result.kdvBreakdown = azureBreakdown;
         const sum = azureBreakdown.reduce((s, b) => s + b.tutar, 0);
         const claudeTotal = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
         if (!result.kdvTutari || claudeTotal <= 0) {
           this.logger.warn(
-            `E-fatura KDV toplamı Azure açık KDV satırlarından dolduruldu: ${this.formatAmount(sum)} (${originalName})`,
+            `E-fatura KDV toplamÄ± Azure aÃ§Ä±k KDV satÄ±rlarÄ±ndan dolduruldu: ${this.formatAmount(sum)} (${originalName})`,
           );
           result.kdvTutari = this.formatAmount(sum);
         } else if (Math.abs(sum - claudeTotal) > 0.05) {
@@ -3247,24 +3330,24 @@ export class OcrService {
 
     for (const c of checks) {
       if (!c.value) continue;
-      // Filename ile belge no eşleşiyorsa cross-check'i atla (yukarıdaki blok hallettı)
+      // Filename ile belge no eÅŸleÅŸiyorsa cross-check'i atla (yukarÄ±daki blok hallettÄ±)
       if (c.key === 'belgeNo' && skipBelgeNoCheck) {
         matched++;
         continue;
       }
-      // KDV yukarıdaki auto-fill bloklarında (Z_RAPORU / Telekom / multi-rate)
-      // Azure'ın kendi regex'leriyle zaten doğrulandıysa, bu generic
-      // isFieldInAzureText tarama gereksiz — Azure'ın text formatı ("*467,56",
-      // "467 56" gibi) generic regex'i kırıp false FAIL üretiyordu.
+      // KDV yukarÄ±daki auto-fill bloklarÄ±nda (Z_RAPORU / Telekom / multi-rate)
+      // Azure'Ä±n kendi regex'leriyle zaten doÄŸrulandÄ±ysa, bu generic
+      // isFieldInAzureText tarama gereksiz â€” Azure'Ä±n text formatÄ± ("*467,56",
+      // "467 56" gibi) generic regex'i kÄ±rÄ±p false FAIL Ã¼retiyordu.
       if (c.key === 'kdvTutari' && kdvAlreadyVerifiedByAutoFill.value) {
         matched++;
         continue;
       }
-      // Z_RAPORU / OKC_FIS için Azure ham metni çoğunlukla bozuk geliyor
-      // ("KDU" yerine "KDV", US format sayılar, ¥/* karakterler). Generic
-      // cross-check %90+ Claude confidence'ı yapay olarak %20'ye çekiyordu.
-      // Bu belgelerde KDV doğrulaması zaten Z_RAPORU regex bloğuyla yapılıyor;
-      // generic cross-check FAIL'ı confidence'ı kırmasın.
+      // Z_RAPORU / OKC_FIS iÃ§in Azure ham metni Ã§oÄŸunlukla bozuk geliyor
+      // ("KDU" yerine "KDV", US format sayÄ±lar, Â¥/* karakterler). Generic
+      // cross-check %90+ Claude confidence'Ä± yapay olarak %20'ye Ã§ekiyordu.
+      // Bu belgelerde KDV doÄŸrulamasÄ± zaten Z_RAPORU regex bloÄŸuyla yapÄ±lÄ±yor;
+      // generic cross-check FAIL'Ä± confidence'Ä± kÄ±rmasÄ±n.
       if (
         c.key === 'kdvTutari' &&
         (result.belgeTipi === 'Z_RAPORU' || result.belgeTipi === 'OKC_FIS')
@@ -3275,7 +3358,7 @@ export class OcrService {
       const found = this.isFieldInAzureText(c.value, c.field, azureText);
       if (found) {
         matched++;
-        // Tanık var → confidence boost (en az %90)
+        // TanÄ±k var â†’ confidence boost (en az %90)
         if (result.fieldConfidence[c.key] != null) {
           result.fieldConfidence[c.key] = Math.max(
             result.fieldConfidence[c.key] ?? 0,
@@ -3288,8 +3371,8 @@ export class OcrService {
         this.logger.warn(
           `Cross-check FAIL: ${c.key}="${c.value}" Azure metninde yok (${originalName})`,
         );
-        // Kısa belge no (1-3 hane) için cross-check güvenilmez (etiket bağlamı sorunu).
-        // Bu durumda confidence'ı çok kırma, sadece orta seviyeye çek (0.6).
+        // KÄ±sa belge no (1-3 hane) iÃ§in cross-check gÃ¼venilmez (etiket baÄŸlamÄ± sorunu).
+        // Bu durumda confidence'Ä± Ã§ok kÄ±rma, sadece orta seviyeye Ã§ek (0.6).
         const isShortBelgeNo =
           c.key === 'belgeNo' &&
           c.value.replace(/[^A-Z0-9]/gi, '').length <= 3;
@@ -3297,7 +3380,7 @@ export class OcrService {
       }
     }
 
-    // Genel confidence'ı yeniden hesapla
+    // Genel confidence'Ä± yeniden hesapla
     const scores = [
       result.fieldConfidence.belgeNo,
       result.fieldConfidence.date,
@@ -3308,35 +3391,21 @@ export class OcrService {
     }
 
     this.logger.log(
-      `Cross-check: ${matched}/${matched + mismatched} eşleşti ` +
-        (mismatches.length > 0 ? `· mismatch: [${mismatches.join(', ')}]` : ''),
+      `Cross-check: ${matched}/${matched + mismatched} eÅŸleÅŸti ` +
+        (mismatches.length > 0 ? `Â· mismatch: [${mismatches.join(', ')}]` : ''),
     );
   }
 
   private parseAmount(str: string): number {
-    const c = String(str)
-      .replace(/\s/g, '')
-      .replace(/(?:TL|TRY|₺)/gi, '')
-      .replace(/[\*¥]/g, '')
-      .replace(/[^\d,.\-]/g, '');
-    if (/^\d{1,3}(\.\d{3})*(,\d+)?$/.test(c))
-      return parseFloat(c.replace(/\./g, '').replace(',', '.'));
-    return parseFloat(c.replace(',', '.')) || 0;
+    return parseOcrAmount(str);
   }
 
   private formatAmount(n: number): string {
-    return n.toFixed(2).replace('.', ',');
+    return formatOcrAmount(n);
   }
 
   private normalizeTaxText(value: string | null | undefined): string {
-    return String(value ?? '')
-      .replace(/\u0130/g, 'I')
-      .replace(/\u0131/g, 'i')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase()
-      .replace(/\s+/g, ' ')
-      .trim();
+    return normalizeTaxTextValue(value);
   }
 
   private decodeXmlText(value: string): string {
@@ -3376,23 +3445,23 @@ export class OcrService {
   }
 
   /**
-   * OCR sonucunu kapsamlı doğrular + mümkünse düzeltir. Çağıran taraf
-   * (Claude Vision OCR) parse sonrası bu method'u çağırır.
+   * OCR sonucunu kapsamlÄ± doÄŸrular + mÃ¼mkÃ¼nse dÃ¼zeltir. Ã‡aÄŸÄ±ran taraf
+   * (Claude Vision OCR) parse sonrasÄ± bu method'u Ã§aÄŸÄ±rÄ±r.
    *
-   * Yaptıkları:
-   *  1. Belge no: yasak değerleri temizle (TR1.2, UUID, vb.), filename override
-   *  2. Belge no: uzunluk/pattern kontrolü, tipine göre uyum doğrulama
-   *  3. Tarih: ay/gün geçerli mi, yıl makul mu
-   *  4. KDV: breakdown toplamı = kdvTutari mi (tolerans ±1 kuruş)
-   *  5. KDV: matrah × oran / 100 ≈ tutar mi (çapraz doğrulama)
-   *  6. Numerik alanlar normalize (₺, TL, boşluk temizle)
+   * YaptÄ±klarÄ±:
+   *  1. Belge no: yasak deÄŸerleri temizle (TR1.2, UUID, vb.), filename override
+   *  2. Belge no: uzunluk/pattern kontrolÃ¼, tipine gÃ¶re uyum doÄŸrulama
+   *  3. Tarih: ay/gÃ¼n geÃ§erli mi, yÄ±l makul mu
+   *  4. KDV: breakdown toplamÄ± = kdvTutari mi (tolerans Â±1 kuruÅŸ)
+   *  5. KDV: matrah Ã— oran / 100 â‰ˆ tutar mi (Ã§apraz doÄŸrulama)
+   *  6. Numerik alanlar normalize (â‚º, TL, boÅŸluk temizle)
    */
   private postProcessOcrResult(
     result: OcrResult,
     belgeNoFromFilename: string | null,
     originalName?: string,
   ): void {
-    // ─── 1. BELGE NO — Yasak değerleri temizle ───
+    // â”€â”€â”€ 1. BELGE NO â€” Yasak deÄŸerleri temizle â”€â”€â”€
     if (result.belgeNo) {
       const cleaned = result.belgeNo.trim().toUpperCase();
       const forbidden = [
@@ -3402,24 +3471,24 @@ export class OcrService {
         /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i, // UUID/ETTN
       ];
       if (forbidden.some((p) => p.test(cleaned))) {
-        this.logger.warn(`OCR yasak belge no değeri: "${cleaned}" → null (${originalName})`);
+        this.logger.warn(`OCR yasak belge no deÄŸeri: "${cleaned}" â†’ null (${originalName})`);
         result.belgeNo = null;
         if (result.fieldConfidence) result.fieldConfidence.belgeNo = null;
       }
     }
 
-    // ─── 2. BELGE NO — Filename override (eksik/yanlış OCR) ───
+    // â”€â”€â”€ 2. BELGE NO â€” Filename override (eksik/yanlÄ±ÅŸ OCR) â”€â”€â”€
     if (belgeNoFromFilename) {
       const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const ocrClean = (result.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
       // Senaryolar:
-      //   a) OCR belge no yok, filename var → kullan
-      //   b) OCR belge no çok kısa (<10 char) ama filename uzun (≥10) → kullan
-      //   c) OCR belge no filename'in prefix'i ile eşleşiyor ama kısa kalmış → kullan
-      //   d) OCR belge no ≥10 char ve filename ile edit distance ≤ 2 → kullan
-      //      (OCR 1-2 karakter hatası yapmış: fazladan digit eklemiş/atlamış)
-      //   e) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
+      //   a) OCR belge no yok, filename var â†’ kullan
+      //   b) OCR belge no Ã§ok kÄ±sa (<10 char) ama filename uzun (â‰¥10) â†’ kullan
+      //   c) OCR belge no filename'in prefix'i ile eÅŸleÅŸiyor ama kÄ±sa kalmÄ±ÅŸ â†’ kullan
+      //   d) OCR belge no â‰¥10 char ve filename ile edit distance â‰¤ 2 â†’ kullan
+      //      (OCR 1-2 karakter hatasÄ± yapmÄ±ÅŸ: fazladan digit eklemiÅŸ/atlamÄ±ÅŸ)
+      //   e) OCR belge no ile filename tamamen farklÄ±ysa â†’ dokunma (kullanÄ±cÄ± dÃ¼zeltsin)
       const editDist =
         fnClean.length >= 10 && ocrClean.length >= 10
           ? this.eBelgeNoDistance(fnClean, ocrClean)
@@ -3438,7 +3507,7 @@ export class OcrService {
 
       if (shouldOverride && fnClean !== ocrClean) {
         this.logger.warn(
-          `Belge no filename override: "${ocrClean}" → "${fnClean}" (editDist=${editDist === Infinity ? 'n/a' : editDist}, ${originalName})`,
+          `Belge no filename override: "${ocrClean}" â†’ "${fnClean}" (editDist=${editDist === Infinity ? 'n/a' : editDist}, ${originalName})`,
         );
         result.belgeNo = belgeNoFromFilename;
         if (result.fieldConfidence) result.fieldConfidence.belgeNo = fnLooksLikeEInvoice ? 0.96 : 0.9;
@@ -3452,20 +3521,20 @@ export class OcrService {
       }
     }
 
-    // ─── 2b. Z_RAPORU özel filename override ───
-    // Z raporu filename'i genelde sadece Z NO'dan oluşur ("670.image", "0670.image", "Z670.image").
-    // Standart filename override şartı (≥10 char) bu kısa numaralar için tetiklenmez,
-    // o yüzden Z raporları için ayrı kural koyuyoruz.
+    // â”€â”€â”€ 2b. Z_RAPORU Ã¶zel filename override â”€â”€â”€
+    // Z raporu filename'i genelde sadece Z NO'dan oluÅŸur ("670.image", "0670.image", "Z670.image").
+    // Standart filename override ÅŸartÄ± (â‰¥10 char) bu kÄ±sa numaralar iÃ§in tetiklenmez,
+    // o yÃ¼zden Z raporlarÄ± iÃ§in ayrÄ± kural koyuyoruz.
     if (result.belgeTipi === 'Z_RAPORU' && originalName) {
       const fnBase = originalName.replace(/\.[^/.]+$/, '').trim();
-      // Salt rakam (1-8 hane) veya "Z" + rakam → Z NO kabul
+      // Salt rakam (1-8 hane) veya "Z" + rakam â†’ Z NO kabul
       const zMatch = fnBase.match(/^Z?(\d{1,8})$/i);
       if (zMatch) {
         const zNoFromFilename = zMatch[1];
         const ocrBn = (result.belgeNo || '').replace(/\D/g, '');
         if (ocrBn !== zNoFromFilename) {
           this.logger.warn(
-            `Z_RAPORU filename override: OCR="${result.belgeNo}" → "${zNoFromFilename}" (${originalName})`,
+            `Z_RAPORU filename override: OCR="${result.belgeNo}" â†’ "${zNoFromFilename}" (${originalName})`,
           );
           result.belgeNo = zNoFromFilename;
           if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.95;
@@ -3473,39 +3542,39 @@ export class OcrService {
       }
     }
 
-    // ─── 3. BELGE NO — Pattern/uzunluk kontrolü ───
+    // â”€â”€â”€ 3. BELGE NO â€” Pattern/uzunluk kontrolÃ¼ â”€â”€â”€
     if (result.belgeNo) {
       const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
       const tipi = result.belgeTipi;
-      // e-Fatura/e-Arşiv: genelde 16 char (3 harf + 13 rakam). 13 altı şüpheli.
+      // e-Fatura/e-ArÅŸiv: genelde 16 char (3 harf + 13 rakam). 13 altÄ± ÅŸÃ¼pheli.
       if ((tipi === 'EFATURA' || tipi === 'EARSIV') && bn.length < 13) {
-        this.logger.warn(`Belge tipi ${tipi} için belge no kısa (${bn.length} char): ${bn}`);
+        this.logger.warn(`Belge tipi ${tipi} iÃ§in belge no kÄ±sa (${bn.length} char): ${bn}`);
         if (result.fieldConfidence && (result.fieldConfidence.belgeNo ?? 0) > 0.5) {
           result.fieldConfidence.belgeNo = 0.5;
         }
       }
     }
 
-    // ─── 3b. TARİH — rawText fallback (Claude null döndürdüyse) ───
+    // â”€â”€â”€ 3b. TARÄ°H â€” rawText fallback (Claude null dÃ¶ndÃ¼rdÃ¼yse) â”€â”€â”€
     if (!result.date && result.rawText) {
       const trDate = this.extractDateFromText(result.rawText);
       if (trDate) {
-        // DD.MM.YYYY → YYYY-MM-DD ile aynı internal tutmak için DD.MM.YYYY kabul et;
-        // postProcess sonraki adımı YYYY-MM-DD bekliyor — bu fallback için DD.MM bypass.
+        // DD.MM.YYYY â†’ YYYY-MM-DD ile aynÄ± internal tutmak iÃ§in DD.MM.YYYY kabul et;
+        // postProcess sonraki adÄ±mÄ± YYYY-MM-DD bekliyor â€” bu fallback iÃ§in DD.MM bypass.
         this.logger.warn(
-          `Tarih Claude'tan boş geldi, rawText'ten yakalandı: ${trDate} (${originalName})`,
+          `Tarih Claude'tan boÅŸ geldi, rawText'ten yakalandÄ±: ${trDate} (${originalName})`,
         );
-        result.date = trDate; // direkt DD.MM.YYYY (zaten Türk display formatı)
+        result.date = trDate; // direkt DD.MM.YYYY (zaten TÃ¼rk display formatÄ±)
         if (result.fieldConfidence) result.fieldConfidence.date = 0.7;
       }
     }
 
-    // ─── 4. TARİH — Ay/gün/yıl geçerlilik ───
-    // Bu noktada result.date formatı DAİMA "DD.MM.YYYY" (formatIsoToTr sonrası Türk display formatı)
+    // â”€â”€â”€ 4. TARÄ°H â€” Ay/gÃ¼n/yÄ±l geÃ§erlilik â”€â”€â”€
+    // Bu noktada result.date formatÄ± DAÄ°MA "DD.MM.YYYY" (formatIsoToTr sonrasÄ± TÃ¼rk display formatÄ±)
     if (result.date) {
       const m = result.date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
       if (!m) {
-        // DD.MM.YYYY değil → normalize etmeye çalış
+        // DD.MM.YYYY deÄŸil â†’ normalize etmeye Ã§alÄ±ÅŸ
         const normalized = this.formatIsoToTr(result.date);
         if (normalized) {
           result.date = normalized;
@@ -3522,11 +3591,11 @@ export class OcrService {
         if (m2) {
           const dd = +m2[1], mo = +m2[2], yy = +m2[3];
           if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
-            this.logger.warn(`Tarih geçersiz: ${result.date}`);
+            this.logger.warn(`Tarih geÃ§ersiz: ${result.date}`);
             result.date = null;
             if (result.fieldConfidence) result.fieldConfidence.date = 0;
           } else if (yy < 2000 || yy > 2050) {
-            this.logger.warn(`Yıl makul dışı: ${yy}`);
+            this.logger.warn(`YÄ±l makul dÄ±ÅŸÄ±: ${yy}`);
             if (result.fieldConfidence) {
               result.fieldConfidence.date = Math.min(result.fieldConfidence.date ?? 1, 0.3);
             }
@@ -3535,11 +3604,11 @@ export class OcrService {
       }
     }
 
-    // ─── 5. TUTAR NORMALIZE — ₺, TL, boşluk temizle ───
+    // â”€â”€â”€ 5. TUTAR NORMALIZE â€” â‚º, TL, boÅŸluk temizle â”€â”€â”€
     const normalizeAmount = (s: string | null | undefined): string | null => {
       if (!s) return null as any;
       return s
-        .replace(/₺|TL|USD|EUR/gi, '')
+        .replace(/â‚º|TL|USD|EUR/gi, '')
         .replace(/\s+/g, '')
         .trim() || null;
     };
@@ -3550,7 +3619,7 @@ export class OcrService {
       if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
     }
 
-    // ─── 6. KDV BREAKDOWN — Toplam kontrolü ───
+    // â”€â”€â”€ 6. KDV BREAKDOWN â€” Toplam kontrolÃ¼ â”€â”€â”€
     let breakdownInconsistent = false;
     if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
       const breakdownSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
@@ -3563,14 +3632,14 @@ export class OcrService {
           `Tevkifatli fatura breakdown net KDV'ye indirildi: breakdown=${breakdownSum.toFixed(2)} net=${declaredTotal.toFixed(2)}`,
         );
       } else
-      // ±1 kuruş tolerans (yuvarlama)
+      // Â±1 kuruÅŸ tolerans (yuvarlama)
       if (Math.abs(breakdownSum - declaredTotal) > 0.05) {
         this.logger.warn(
-          `KDV breakdown tutarsız: breakdown=${breakdownSum.toFixed(2)} vs kdvTutari=${declaredTotal.toFixed(2)} — breakdown toplamını kullan`,
+          `KDV breakdown tutarsÄ±z: breakdown=${breakdownSum.toFixed(2)} vs kdvTutari=${declaredTotal.toFixed(2)} â€” breakdown toplamÄ±nÄ± kullan`,
         );
-        // Breakdown toplamı daha güvenilir — çünkü her oran ayrı görüldü
+        // Breakdown toplamÄ± daha gÃ¼venilir â€” Ã§Ã¼nkÃ¼ her oran ayrÄ± gÃ¶rÃ¼ldÃ¼
         breakdownInconsistent = true;
-        // KDV güvenini düşür — Claude'un kdvTutari'sı yanlıştı
+        // KDV gÃ¼venini dÃ¼ÅŸÃ¼r â€” Claude'un kdvTutari'sÄ± yanlÄ±ÅŸtÄ±
         if (result.fieldConfidence) {
           result.fieldConfidence.kdvTutari = Math.min(
             result.fieldConfidence.kdvTutari ?? 0.5,
@@ -3579,12 +3648,12 @@ export class OcrService {
         }
       }
 
-      // 7. Matrah × oran ≈ tutar çapraz doğrulama (AGRESİF)
-      // Matrah NET (KDV'siz) ise: tutar = matrah × oran / 100
-      // Matrah BRÜT (KDV dahil) ise: tutar = matrah × oran / (100 + oran)
-      // Claude/Azure bazen NET bazen BRÜT matrah veriyor — HER İKİSİNİ de dene,
-      // hangisi ±%2 tolerans içindeyse kabul. Sadece ikisi de başarısız olursa
-      // gerçek inconsistency var demektir.
+      // 7. Matrah Ã— oran â‰ˆ tutar Ã§apraz doÄŸrulama (AGRESÄ°F)
+      // Matrah NET (KDV'siz) ise: tutar = matrah Ã— oran / 100
+      // Matrah BRÃœT (KDV dahil) ise: tutar = matrah Ã— oran / (100 + oran)
+      // Claude/Azure bazen NET bazen BRÃœT matrah veriyor â€” HER Ä°KÄ°SÄ°NÄ° de dene,
+      // hangisi Â±%2 tolerans iÃ§indeyse kabul. Sadece ikisi de baÅŸarÄ±sÄ±z olursa
+      // gerÃ§ek inconsistency var demektir.
       for (const b of result.kdvBreakdown!) {
         if (b.matrah && b.oran > 0) {
           const matrah = Number(b.matrah);
@@ -3595,20 +3664,20 @@ export class OcrService {
           const diffBrutPct = Math.abs(expectedBrut - actual) / (expectedBrut || 1);
           const bestDiff = 0;
           if (bestDiff > 0.02) {
-            // Her iki formül de tutmuyor → gerçek OCR hatası
+            // Her iki formÃ¼l de tutmuyor â†’ gerÃ§ek OCR hatasÄ±
             this.logger.warn(
-              `KDV %${b.oran}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} · NET beklenti=${expectedNet.toFixed(2)} (sapma %${Math.round(diffNetPct * 100)}) · BRÜT beklenti=${expectedBrut.toFixed(2)} (sapma %${Math.round(diffBrutPct * 100)}) — confidence düşürülüyor`,
+              `KDV %${b.oran}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} Â· NET beklenti=${expectedNet.toFixed(2)} (sapma %${Math.round(diffNetPct * 100)}) Â· BRÃœT beklenti=${expectedBrut.toFixed(2)} (sapma %${Math.round(diffBrutPct * 100)}) â€” confidence dÃ¼ÅŸÃ¼rÃ¼lÃ¼yor`,
             );
             breakdownInconsistent = true;
-            // Yakın olan formülü kullanarak düzelt
+            // YakÄ±n olan formÃ¼lÃ¼ kullanarak dÃ¼zelt
             const best = diffNetPct < diffBrutPct ? expectedNet : expectedBrut;
             void best;
           }
-          // İkisinden biri ±%2 tolerans içindeyse tutarlı — dokunma
+          // Ä°kisinden biri Â±%2 tolerans iÃ§indeyse tutarlÄ± â€” dokunma
         }
       }
 
-      // Breakdown'da tutarsızlık varsa kdvTutari'yi yeniden hesapla
+      // Breakdown'da tutarsÄ±zlÄ±k varsa kdvTutari'yi yeniden hesapla
       if (breakdownInconsistent) {
         const fixedSum = result.kdvBreakdown!.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
         result.kdvBreakdown = null;
@@ -3622,26 +3691,26 @@ export class OcrService {
       }
     }
 
-    // ─── 8. Z_RAPORU breakdown — sadece LOG, confidence düşürme ───
-    // Eski davranış: breakdown boşsa confidence 0.4'e düşürülüyordu. Ama
-    // Türkiye'deki Z raporlarının ÇOĞU tek oran (sadece %10 veya sadece %20) —
-    // kırtasiye/market/tekstil bağımsız, tek kategori satan mükellefler için
-    // normal. Breakdown boş olması "multi-rate parse failure" kadar "single-rate
-    // fatura" da anlamına gelir. Confidence düşürmek yanlış pozitif.
+    // â”€â”€â”€ 8. Z_RAPORU breakdown â€” sadece LOG, confidence dÃ¼ÅŸÃ¼rme â”€â”€â”€
+    // Eski davranÄ±ÅŸ: breakdown boÅŸsa confidence 0.4'e dÃ¼ÅŸÃ¼rÃ¼lÃ¼yordu. Ama
+    // TÃ¼rkiye'deki Z raporlarÄ±nÄ±n Ã‡OÄU tek oran (sadece %10 veya sadece %20) â€”
+    // kÄ±rtasiye/market/tekstil baÄŸÄ±msÄ±z, tek kategori satan mÃ¼kellefler iÃ§in
+    // normal. Breakdown boÅŸ olmasÄ± "multi-rate parse failure" kadar "single-rate
+    // fatura" da anlamÄ±na gelir. Confidence dÃ¼ÅŸÃ¼rmek yanlÄ±ÅŸ pozitif.
     //
-    // TOPKDV %X satırı hiç yoksa (sadece "TOPKDV *123,45" gibi) extractZRaporuKdvFromAzure
+    // TOPKDV %X satÄ±rÄ± hiÃ§ yoksa (sadece "TOPKDV *123,45" gibi) extractZRaporuKdvFromAzure
     // zaten kdvTutari'yi simple regex'le doldurur. O kdvTutari Claude'un
-    // kdvTutari'sı ile karşılaştırıldıysa ve auto-fill boost ettiyse sorun yok.
+    // kdvTutari'sÄ± ile karÅŸÄ±laÅŸtÄ±rÄ±ldÄ±ysa ve auto-fill boost ettiyse sorun yok.
     if (result.belgeTipi === 'Z_RAPORU' && (!result.kdvBreakdown || result.kdvBreakdown.length === 0)) {
       if (result.kdvTutari) {
         this.logger.log(
-          `Z_RAPORU single-rate varsayımı: kdvTutari=${result.kdvTutari} breakdown yok (${originalName})`,
+          `Z_RAPORU single-rate varsayÄ±mÄ±: kdvTutari=${result.kdvTutari} breakdown yok (${originalName})`,
         );
       }
     }
 
-    // ─── 9. KDV TUTARI — makul aralık kontrolü ───
-    // Toplam tutara göre KDV oranı %0-%30 arası makul. Dışındaysa şüpheli.
+    // â”€â”€â”€ 9. KDV TUTARI â€” makul aralÄ±k kontrolÃ¼ â”€â”€â”€
+    // Toplam tutara gÃ¶re KDV oranÄ± %0-%30 arasÄ± makul. DÄ±ÅŸÄ±ndaysa ÅŸÃ¼pheli.
     if (result.kdvTutari && result.totalTutari) {
       const kdvNum = this.parseAmount(result.kdvTutari);
       const totalNum = this.parseAmount(result.totalTutari);
@@ -3649,7 +3718,7 @@ export class OcrService {
         const ratio = kdvNum / totalNum;
         if (ratio > 0.35 || ratio < 0.005) {
           this.logger.warn(
-            `KDV/Toplam oranı şüpheli: kdv=${kdvNum} toplam=${totalNum} oran=%${(ratio * 100).toFixed(1)} (${originalName})`,
+            `KDV/Toplam oranÄ± ÅŸÃ¼pheli: kdv=${kdvNum} toplam=${totalNum} oran=%${(ratio * 100).toFixed(1)} (${originalName})`,
           );
           if (result.fieldConfidence) {
             result.fieldConfidence.kdvTutari = Math.min(
@@ -3663,20 +3732,20 @@ export class OcrService {
   }
 
   /**
-   * Multi-pass validation — OCR sonucunun matematiksel ve mantıksal tutarlılığını
-   * kontrol eder. Hatalar `validationIssues`'a yazılır, `validationScore` 0-1
-   * arasında hesaplanır ve gerektiğinde `fieldConfidence.kdvTutari` düşürülür
-   * (NEEDS_REVIEW akışına gitmesi için).
+   * Multi-pass validation â€” OCR sonucunun matematiksel ve mantÄ±ksal tutarlÄ±lÄ±ÄŸÄ±nÄ±
+   * kontrol eder. Hatalar `validationIssues`'a yazÄ±lÄ±r, `validationScore` 0-1
+   * arasÄ±nda hesaplanÄ±r ve gerektiÄŸinde `fieldConfidence.kdvTutari` dÃ¼ÅŸÃ¼rÃ¼lÃ¼r
+   * (NEEDS_REVIEW akÄ±ÅŸÄ±na gitmesi iÃ§in).
    *
-   * Yapılan kontroller:
-   *   1. breakdown.tutar.sum === kdvTutari (±%2 tolerans, kuruş yuvarlamasına izin)
-   *   2. her breakdown satırı: matrah × oran/100 ≈ tutar (±%2 tolerans)
-   *   3. geçerli KDV oranları: 0, 1, 10, 20
-   *   4. tevkifat ≤ tam KDV (tevkifat > KDV mantıksız)
-   *   5. KDV > 0 ama oran 0 → uyarı
+   * YapÄ±lan kontroller:
+   *   1. breakdown.tutar.sum === kdvTutari (Â±%2 tolerans, kuruÅŸ yuvarlamasÄ±na izin)
+   *   2. her breakdown satÄ±rÄ±: matrah Ã— oran/100 â‰ˆ tutar (Â±%2 tolerans)
+   *   3. geÃ§erli KDV oranlarÄ±: 0, 1, 10, 20
+   *   4. tevkifat â‰¤ tam KDV (tevkifat > KDV mantÄ±ksÄ±z)
+   *   5. KDV > 0 ama oran 0 â†’ uyarÄ±
    *
-   * UBL XML parse'lı sonuçlar için validationScore daha önce 1.0 olarak set
-   * edilmiş; bu fonksiyon sadece Claude/Azure çıktılarını doğrular.
+   * UBL XML parse'lÄ± sonuÃ§lar iÃ§in validationScore daha Ã¶nce 1.0 olarak set
+   * edilmiÅŸ; bu fonksiyon sadece Claude/Azure Ã§Ä±ktÄ±larÄ±nÄ± doÄŸrular.
    */
   private validateOcrResult(result: OcrResult, originalName?: string): void {
     const issues: string[] = [];
@@ -3686,20 +3755,20 @@ export class OcrService {
     const tevkifatNum = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
     const breakdown = result.kdvBreakdown || [];
 
-    // ─── 1) BREAKDOWN TUTAR TOPLAMI = kdvTutari ───
+    // â”€â”€â”€ 1) BREAKDOWN TUTAR TOPLAMI = kdvTutari â”€â”€â”€
     if (breakdown.length > 0 && kdvNum > 0) {
       const sum = breakdown.reduce((s, b) => s + (b.tutar || 0), 0);
       const diff = Math.abs(sum - kdvNum);
-      const tol = Math.max(0.05, kdvNum * 0.02); // 5 kuruş VEYA %2
+      const tol = Math.max(0.05, kdvNum * 0.02); // 5 kuruÅŸ VEYA %2
       if (diff > tol) {
         issues.push(
-          `Breakdown toplamı KDV ile uyumsuz: ${this.formatAmount(sum)} ≠ ${this.formatAmount(kdvNum)} (fark ${this.formatAmount(diff)})`,
+          `Breakdown toplamÄ± KDV ile uyumsuz: ${this.formatAmount(sum)} â‰  ${this.formatAmount(kdvNum)} (fark ${this.formatAmount(diff)})`,
         );
         score -= 0.3;
       }
     }
 
-    // ─── 2) HER BREAKDOWN SATIRI: matrah × oran/100 ≈ tutar ───
+    // â”€â”€â”€ 2) HER BREAKDOWN SATIRI: matrah Ã— oran/100 â‰ˆ tutar â”€â”€â”€
     for (const b of breakdown) {
       if (!b.matrah || !b.oran || b.oran <= 0) continue;
       const expectedTutar = b.tutar || 0;
@@ -3707,410 +3776,89 @@ export class OcrService {
       const tol = Math.max(0.05, expectedTutar * 0.02);
       if (diff > tol) {
         issues.push(
-          `KDV hesabı uyumsuz: %${b.oran} matrah=${this.formatAmount(b.matrah)} → beklenen=${this.formatAmount(expectedTutar)}, bulunan=${this.formatAmount(b.tutar)}`,
+          `KDV hesabÄ± uyumsuz: %${b.oran} matrah=${this.formatAmount(b.matrah)} â†’ beklenen=${this.formatAmount(expectedTutar)}, bulunan=${this.formatAmount(b.tutar)}`,
         );
         score -= 0.15;
       }
     }
 
-    // ─── 3) GEÇERLİ KDV ORANLARI ───
+    // â”€â”€â”€ 3) GEÃ‡ERLÄ° KDV ORANLARI â”€â”€â”€
     const validRates = [0, 1, 10, 20];
     for (const b of breakdown) {
       if (b.oran == null) continue;
-      // Yakın oran toleransı (19.5–20.5 → 20 kabul)
+      // YakÄ±n oran toleransÄ± (19.5â€“20.5 â†’ 20 kabul)
       const closest = validRates.find((r) => Math.abs(r - b.oran) < 0.5);
       if (!closest && b.oran !== 0) {
-        issues.push(`Geçersiz KDV oranı: %${b.oran} (beklenen: ${validRates.join(', ')})`);
+        issues.push(`GeÃ§ersiz KDV oranÄ±: %${b.oran} (beklenen: ${validRates.join(', ')})`);
         score -= 0.2;
       }
     }
 
-    // ─── 4) TEVKİFAT MANTIK KONTROLÜ ───
+    // â”€â”€â”€ 4) TEVKÄ°FAT MANTIK KONTROLÃœ â”€â”€â”€
     // Tevkifat NET KDV'den fazla olamaz (tam KDV = NET + tevkifat).
-    // Bu durumda OCR ya net'i ya da tevkifatı yanlış okumuştur.
+    // Bu durumda OCR ya net'i ya da tevkifatÄ± yanlÄ±ÅŸ okumuÅŸtur.
     if (tevkifatNum > 0 && kdvNum > 0 && tevkifatNum > kdvNum * 5) {
-      // tevkifat oranı 1/10 ila 9/10 arası olur — net KDV'nin 5x'inden fazlası mantıksız
+      // tevkifat oranÄ± 1/10 ila 9/10 arasÄ± olur â€” net KDV'nin 5x'inden fazlasÄ± mantÄ±ksÄ±z
       issues.push(
-        `Tevkifat tutarı mantıksız: tevkifat=${this.formatAmount(tevkifatNum)} >> NET KDV=${this.formatAmount(kdvNum)}`,
+        `Tevkifat tutarÄ± mantÄ±ksÄ±z: tevkifat=${this.formatAmount(tevkifatNum)} >> NET KDV=${this.formatAmount(kdvNum)}`,
       );
       score -= 0.25;
     }
 
-    // ─── 5) KDV VAR AMA ORAN 0 → UYARI ───
+    // â”€â”€â”€ 5) KDV VAR AMA ORAN 0 â†’ UYARI â”€â”€â”€
     if (kdvNum > 0 && breakdown.length > 0) {
       const allZeroRate = breakdown.every((b) => !b.oran || b.oran === 0);
       if (allZeroRate) {
-        issues.push('KDV tutarı var ama tüm oranlar %0 — okuma hatası olabilir');
+        issues.push('KDV tutarÄ± var ama tÃ¼m oranlar %0 â€” okuma hatasÄ± olabilir');
         score -= 0.15;
       }
     }
 
-    // ─── 6) BELGE NO FORMAT KONTROLÜ — TİPE GÖRE ───
-    // EFATURA/EARSIV: 16 char (3 harf + 4 yıl + 9 sıra) — örn. "EFA2026000000093"
-    // OKC_FIS: 3-12 hane (büyük yazar kasalarda 12 hane, marketlerde 4-6 hane)
-    // Z_RAPORU: 3-6 hane sayı
+    // â”€â”€â”€ 6) BELGE NO FORMAT KONTROLÃœ â€” TÄ°PE GÃ–RE â”€â”€â”€
+    // EFATURA/EARSIV: 16 char (3 harf + 4 yÄ±l + 9 sÄ±ra) â€” Ã¶rn. "EFA2026000000093"
+    // OKC_FIS: 3-12 hane (bÃ¼yÃ¼k yazar kasalarda 12 hane, marketlerde 4-6 hane)
+    // Z_RAPORU: 3-6 hane sayÄ±
     if (result.belgeNo && result.belgeTipi) {
       const bn = result.belgeNo.replace(/[^A-Z0-9]/gi, '').toUpperCase();
       const tipi = String(result.belgeTipi).toUpperCase();
 
       if (tipi === 'EFATURA' || tipi === 'EARSIV') {
-        // E-fatura/e-arşiv: çoğunlukla 3 harf + 13 hane; sahada IGDAS gibi
-        // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane güvenli kabul.
+        // E-fatura/e-arÅŸiv: Ã§oÄŸunlukla 3 harf + 13 hane; sahada IGDAS gibi
+        // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane gÃ¼venli kabul.
         if (!E_BELGE_NO_REGEX.test(bn)) {
           issues.push(
-            `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yıl + sıra no, örn. EFA2026000000093)`,
+            `${tipi} belge no formatÄ± uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yÄ±l + sÄ±ra no, Ã¶rn. EFA2026000000093)`,
           );
           score -= 0.3;
-          // Confidence'ı da düşür → NEEDS_REVIEW
+          // Confidence'Ä± da dÃ¼ÅŸÃ¼r â†’ NEEDS_REVIEW
           if (result.fieldConfidence.belgeNo != null) {
             result.fieldConfidence.belgeNo = Math.max(0, result.fieldConfidence.belgeNo - 0.3);
           }
         } else {
-          // Yıl validasyonu (4 hane yıl 2020-2050 arası)
+          // YÄ±l validasyonu (4 hane yÄ±l 2020-2050 arasÄ±)
           const yilMatch = bn.match(/^[A-Z]{2,4}(\d{4})/) ?? bn.match(/(20\d{2})/);
           const yil = yilMatch ? parseInt(yilMatch[1], 10) : NaN;
           if (yil < 2020 || yil > 2050) {
-            issues.push(`E-fatura belge no'sundaki yıl mantıksız: ${yil} (beklenen: 2020-2050)`);
+            issues.push(`E-fatura belge no'sundaki yÄ±l mantÄ±ksÄ±z: ${yil} (beklenen: 2020-2050)`);
             score -= 0.15;
           }
         }
       } else if (tipi === 'Z_RAPORU') {
-        // Z raporu: 3-6 hane sayı
+        // Z raporu: 3-6 hane sayÄ±
         if (!/^\d{1,6}$/.test(bn)) {
-          issues.push(`Z raporu belge no formatı: "${result.belgeNo}" (beklenen 1-6 hane sayı)`);
+          issues.push(`Z raporu belge no formatÄ±: "${result.belgeNo}" (beklenen 1-6 hane sayÄ±)`);
           score -= 0.2;
         }
       } else if (tipi === 'OKC_FIS') {
-        // OKC fişi: 3-12 hane
+        // OKC fiÅŸi: 3-12 hane
         if (!/^\d{1,12}$/.test(bn)) {
-          issues.push(`OKC fişi belge no formatı: "${result.belgeNo}" (beklenen sayı)`);
+          issues.push(`OKC fiÅŸi belge no formatÄ±: "${result.belgeNo}" (beklenen sayÄ±)`);
           score -= 0.15;
         }
       }
     }
 
-    // ─── 7) SATICI VKN/TCKN FORMAT KONTROLÜ ───
+    // â”€â”€â”€ 7) SATICI VKN/TCKN FORMAT KONTROLÃœ â”€â”€â”€
     if ((result as any).saticiVkn) {
       const vkn = String((result as any).saticiVkn).replace(/\D/g, '');
-      if (vkn.length !== 10 && vkn.length !== 11) {
-        issues.push(`Satıcı VKN/TCKN format hatası: "${vkn}" (beklenen 10 veya 11 hane)`);
-        score -= 0.1;
-        (result as any).saticiVkn = null;
-      }
-    }
-
-    // Skor 0–1 arası
-    score = Math.max(0, Math.min(1, score));
-    result.validationScore = score;
-    result.validationIssues = issues.length > 0 ? issues : undefined;
-
-    // Skor düşükse confidence'ı da düşür → NEEDS_REVIEW akışına götür
-    if (score < 0.7 && result.fieldConfidence.kdvTutari != null) {
-      const oldConf = result.fieldConfidence.kdvTutari;
-      const newConf = Math.min(oldConf, score);
-      if (newConf < oldConf) {
-        result.fieldConfidence.kdvTutari = newConf;
-        this.logger.warn(
-          `Validation skoru düşük (${score.toFixed(2)}): ${originalName || ''} · kdv conf %${Math.round(oldConf * 100)} → %${Math.round(newConf * 100)} · sorunlar: ${issues.join('; ')}`,
-        );
-      }
-    } else if (score >= 0.95 && issues.length === 0 && result.fieldConfidence.kdvTutari != null) {
-      // Validation tam: confidence boost (Claude düşük verdiyse de çek yukarı)
-      result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
-    }
-  }
-
-  /**
-   * UBL (Universal Business Language) formatındaki Türk e-Fatura/e-Arşiv XML'ini
-   * regex ile parse eder. fast-xml-parser yerine regex çünkü:
-   *   - UBL alanları sabit yapıdadır (standart)
-   *   - Dependency eklemeye gerek yok
-   *   - %100 doğruluk (Claude gibi yanlış okumaz)
-   *
-   * Çıkardığı alanlar:
-   *   - Invoice ID (belge no) — <cbc:ID> (root level, CustomizationID'den sonra)
-   *   - IssueDate (tarih)
-   *   - TaxTotal/TaxAmount (toplam KDV)
-   *   - TaxSubtotal breakdown (her oran için ayrı KDV)
-   *   - PayableAmount (ödenecek toplam)
-   */
-  private parseUblXml(xml: string): OcrResult | null {
-    if (!xml || xml.length < 50) return null;
-
-    // ─── BELGE NO ─────────────────────────────────────
-    // UBL'de top-level ID: CustomizationID + ProfileID sonrasında gelir.
-    // Regex ile ProfileID sonrası ilk <cbc:ID> alınır (CustomizationID=TR1.2 değil).
-    let belgeNo: string | null = null;
-    const afterProfile = xml.match(/<cbc:ProfileID>[^<]*<\/cbc:ProfileID>\s*<cbc:ID>([^<]+)<\/cbc:ID>/i);
-    if (afterProfile) belgeNo = afterProfile[1].trim();
-    // Fallback: Invoice/ArchiveInvoice root altında ilk <cbc:ID>
-    if (!belgeNo) {
-      const rootId = xml.match(/<(?:Invoice|ArchiveInvoice)[^>]*>[\s\S]*?<cbc:ID>([^<]+)<\/cbc:ID>/i);
-      if (rootId) {
-        const candidate = rootId[1].trim();
-        // TR1.2, UBL-2.1 gibi versiyon stringlerini reddet
-        if (!/^(TR|UBL)[\d.\-]+$/i.test(candidate) && candidate.length >= 5) {
-          belgeNo = candidate;
-        }
-      }
-    }
-
-    // ─── TARİH ─────────────────────────────────────────
-    let date: string | null = null;
-    const issueDate = xml.match(/<cbc:IssueDate>([^<]+)<\/cbc:IssueDate>/i);
-    if (issueDate) {
-      const d = issueDate[1].trim();
-      // UBL standardı zaten YYYY-MM-DD
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) date = d;
-    }
-
-    // ─── KDV TUTARI + BREAKDOWN ────────────────────────
-    // Turkish UBL e-Fatura'da bir TaxSubtotal bloğunda KDV dışında vergi türleri
-    // de olabilir (ÖİV, Telsiz Kullanım, ÖTV, Damga, BSMV, KKDF, Konaklama vb.).
-    // TaxCategory > TaxScheme > Name/TaxTypeCode alanına bakarak SADECE KDV'yi al.
-    // KDV için standart kodlar: "KDV" (Name) veya "0015" (TaxTypeCode).
-    //
-    // ÖNEMLİ: UBL e-Fatura yapısında cac:TaxSubtotal HEM invoice-level
-    // cac:TaxTotal içinde HEM DE her cac:InvoiceLine'ın kendi cac:TaxTotal'i
-    // içinde bulunur. Ham XML üzerinde regex çalıştırırsak hepsini topluyoruz
-    // → KDV 2-N× fazla görünüyor (UKF123'te 16.054,88 = 2 × 8.027,44 bug'ı).
-    // Fix: cac:InvoiceLine bloklarını parse'tan önce maskele, kalan XML'de
-    // sadece invoice-level TaxTotal kalır.
-    const xmlInvoiceLevelOnly = this.stripXmlBlocks(xml, 'InvoiceLine');
-    const xmlTaxForKdv = this.stripXmlBlocks(xmlInvoiceLevelOnly, 'WithholdingTaxTotal');
-
-    const getTaxInfo = (block: string) => {
-      const taxScheme = this.getXmlBlocks(block, 'TaxScheme')[0] || '';
-      const taxSchemeName =
-        this.getXmlTagValue(taxScheme, 'Name') ||
-        this.getXmlTagValue(block, 'Name') ||
-        '';
-      const taxSchemeId =
-        this.getXmlTagValue(block, 'TaxTypeCode') ||
-        this.getXmlTagValue(taxScheme, 'ID') ||
-        '';
-      return {
-        name: taxSchemeName.trim(),
-        normalizedName: this.normalizeTaxText(taxSchemeName),
-        id: taxSchemeId.trim(),
-      };
-    };
-
-    const isTevkifatTax = (normalizedName: string, taxSchemeId: string) =>
-      (normalizedName.includes('KDV') && normalizedName.includes('TEVK') && normalizedName.includes('FAT')) ||
-      /^9\d{3}$/.test(taxSchemeId);
-
-    const kdvBreakdown: KdvBreakdownItem[] = [];
-    // KDV tevkifatı: Luca Defteri Kebir raporunda satıcının "Hesaplanan KDV" alanına NET KDV
-    // (tam KDV − tevkifat) yazılır. Reconciliation'ın doğru eşleşmesi için
-    // OCR çıktısındaki kdvTutari da net olmalı.
-    let tevkifatFromSubtotals = 0;
-    const subtotalBlocks = this.getXmlBlocks(xmlTaxForKdv, 'TaxSubtotal');
-    for (const block of subtotalBlocks) {
-      // Tax türü belirleme — KDV dışındaki vergileri atla
-      const { name: taxSchemeName, normalizedName, id: taxSchemeId } = getTaxInfo(block);
-      // Tevkifat tespiti - KDV'den indirilecek withholding kismi
-      const isTevkifat = isTevkifatTax(normalizedName, taxSchemeId);
-      if (isTevkifat) {
-        const tutar = this.parseXmlAmount(block, 'TaxAmount');
-        if (tutar > 0) {
-          tevkifatFromSubtotals += tutar;
-          this.logger.log(
-            `XML parser: KDV tevkifati TaxSubtotal yakalandi - Name="${taxSchemeName}" Code="${taxSchemeId}" tutar=${tutar}`,
-          );
-        }
-        continue;
-      }
-      // KDV dışı vergi türlerini ele (ÖİV, Telsiz, ÖTV, Damga, vb.)
-      const isNotKdv =
-        /OZEL\s*ILETISIM|OIV/.test(normalizedName) ||
-        /TELSIZ/.test(normalizedName) ||
-        /OTV|OZEL\s*TUKETIM/.test(normalizedName) ||
-        /DAMGA/.test(normalizedName) ||
-        /BSMV/.test(normalizedName) ||
-        /KKDF/.test(normalizedName) ||
-        /KONAKLAMA/.test(normalizedName) ||
-        /STOPAJ/.test(normalizedName) ||
-        // TaxTypeCode: 0003=Damga, 0059=ÖİV, 0071=ÖTV, 4080=Konaklama (GİB kod listesi)
-        ['0003', '0059', '0061', '0071', '0072', '0073', '0074', '0075', '0076', '0077', '4080', '9040', '9077'].includes(taxSchemeId);
-      const isKdv =
-        normalizedName === 'KDV' ||
-        normalizedName.includes('KATMA DEGER') ||
-        taxSchemeId === '0015';
-      // Eğer kesinlikle KDV değilse atla
-      if (isNotKdv) {
-        this.logger.log(
-          `XML parser: KDV dışı vergi atlandı — Name="${taxSchemeName}" Code="${taxSchemeId}"`,
-        );
-        continue;
-      }
-      // Ne KDV ne de açıkça KDV dışı — TaxScheme yoksa (eski fatura formatı) varsayım KDV
-      // Ama hem Name hem Code boşsa ve breakdown çoktan başka KDV satırları aldıysa
-      // güvenlik için atla.
-      if (!isKdv && (taxSchemeName || taxSchemeId)) {
-        // Etiket var ama KDV değil — atla
-        this.logger.warn(
-          `XML parser: bilinmeyen vergi türü atlandı — Name="${taxSchemeName}" Code="${taxSchemeId}"`,
-        );
-        continue;
-      }
-
-      const tutar = this.parseXmlAmount(block, 'TaxAmount');
-      const matrahRaw = this.getXmlTagValue(block, 'TaxableAmount');
-      const matrah = matrahRaw ? this.parseAmount(matrahRaw) : null;
-      const percentRaw = this.getXmlTagValue(block, 'Percent');
-      const oran = percentRaw ? this.parseAmount(percentRaw) : 0;
-      if (tutar > 0 || (oran === 0 && matrah && matrah > 0)) {
-        kdvBreakdown.push({ oran, tutar, matrah });
-      }
-    }
-
-    const sumWithholdingTax = (fragment: string) => {
-      let total = 0;
-      for (const block of this.getXmlBlocks(fragment, 'WithholdingTaxTotal')) {
-        const directAmount = this.parseXmlAmount(block, 'TaxAmount');
-        if (directAmount > 0) {
-          total += directAmount;
-          continue;
-        }
-        for (const sub of this.getXmlBlocks(block, 'TaxSubtotal')) {
-          const { normalizedName, id: taxSchemeId } = getTaxInfo(sub);
-          if (isTevkifatTax(normalizedName, taxSchemeId)) {
-            total += this.parseXmlAmount(sub, 'TaxAmount');
-          }
-        }
-      }
-      return total;
-    };
-
-    const invoiceWithholding = sumWithholdingTax(xmlInvoiceLevelOnly);
-    const lineWithholding = invoiceWithholding > 0 ? 0 : sumWithholdingTax(xml);
-    let kdvTevkifat = Math.max(tevkifatFromSubtotals, invoiceWithholding, lineWithholding);
-    if (kdvTevkifat > 0) {
-      this.logger.log(`XML parser: KDV tevkifati yakalandi - tutar=${kdvTevkifat}`);
-    }
-
-    // Toplam KDV: breakdown toplamı. Tevkifat varsa NET KDV döndür (Luca Defteri Kebir raporunda
-    // satıcının "Hesaplanan KDV" alanına yazılan değer net KDV'dir).
-    const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
-    if (kdvTevkifat <= 0 && kdvToplam > 0) {
-      const xmlMentionsTevkifat = (() => {
-        const normalizedXml = this.normalizeTaxText(xml.slice(0, 250000));
-        return normalizedXml.includes('TEVK') && normalizedXml.includes('FAT');
-      })();
-      if (xmlMentionsTevkifat) {
-        const taxInclusive = this.parseXmlAmount(xmlInvoiceLevelOnly, 'TaxInclusiveAmount');
-        const payable = this.parseXmlAmount(xmlInvoiceLevelOnly, 'PayableAmount');
-        const inferred = Math.round((taxInclusive - payable) * 100) / 100;
-        if (inferred > 0 && inferred <= kdvToplam + 0.05) {
-          kdvTevkifat = inferred;
-          this.logger.warn(
-            `XML parser: tevkifat toplam farkindan cikarildi - taxInclusive=${taxInclusive} payable=${payable} tevkifat=${kdvTevkifat}`,
-          );
-        }
-      }
-    }
-    const kdvNet = kdvTevkifat > 0 ? Math.max(0, kdvToplam - kdvTevkifat) : kdvToplam;
-    if (kdvTevkifat > 0) {
-      this.logger.log(
-        `XML parser: Tevkifat hesabı — tam KDV=${kdvToplam}, tevkifat=${kdvTevkifat}, net KDV=${kdvNet}`,
-      );
-      // Tek oranlı faturalarda breakdown da net'e indirilsin (UI tutarlılığı için)
-      if (kdvBreakdown.length === 1) {
-        kdvBreakdown[0].tutar = kdvNet;
-      }
-    }
-    const kdvTutari = kdvNet > 0 ? this.formatAmount(kdvNet) : null;
-
-    // ─── TOPLAM ÖDENECEK ─────────────────────────────
-    let totalTutari: string | null = null;
-    const payable = xml.match(/<cbc:PayableAmount[^>]*>([^<]+)<\/cbc:PayableAmount>/i);
-    if (payable) {
-      const t = parseFloat(payable[1]) || 0;
-      if (t > 0) totalTutari = this.formatAmount(t);
-    }
-
-    // ─── SATICI / BELGE TİPİ ─────────────────────────
-    const isArchive = /<ArchiveInvoice|InvoiceTypeCode[^>]*>EARSIV/i.test(xml);
-    const belgeTipi = isArchive ? 'EARSIV' : 'EFATURA';
-
-    // Satıcı unvanı — UBL'de cac:AccountingSupplierParty > cac:Party > cac:PartyName > cbc:Name
-    let satici: string | null = null;
-    let saticiVkn: string | null = null;
-    const supplierBlock = xml.match(/<cac:AccountingSupplierParty>([\s\S]*?)<\/cac:AccountingSupplierParty>/i);
-    if (supplierBlock) {
-      const nameMatch = supplierBlock[1].match(/<cbc:Name>([^<]+)<\/cbc:Name>/i);
-      if (nameMatch) {
-        satici = nameMatch[1].trim().slice(0, 200);
-      }
-      const supplierText = supplierBlock[1];
-      const vknMatch =
-        supplierText.match(/<cbc:ID[^>]*schemeID=["'](?:VKN|TCKN)["'][^>]*>(\d{10,11})<\/cbc:ID>/i) ||
-        supplierText.match(/<cbc:ID[^>]*>(\d{10,11})<\/cbc:ID>/i);
-      if (vknMatch?.[1]) saticiVkn = vknMatch[1];
-    }
-
-    // Hiç veri yoksa null dön
-    if (!belgeNo && !date && !kdvTutari) return null;
-
-    return {
-      rawText: '', // XML içeriğini log'a taşımıyoruz — büyük olabilir
-      belgeNo,
-      date,
-      kdvTutari,
-      kdvTevkifat: kdvTevkifat > 0 ? this.formatAmount(kdvTevkifat) : null,
-      totalTutari,
-      satici,
-      saticiVkn,
-      belgeTipi,
-      kdvBreakdown: kdvBreakdown.length > 0 ? kdvBreakdown : null,
-      confidence: belgeNo && date && kdvTutari ? 0.99 : 0.85,
-      fieldConfidence: {
-        belgeNo: belgeNo ? 0.99 : null,
-        date: date ? 0.99 : null,
-        kdvTutari: kdvTutari ? 0.99 : null,
-      },
-      // UBL XML doğrudan structured veri — validation'a gerek yok, %100 güven
-      validationScore: 1.0,
-      engine: 'ubl-xml-direct',
-    };
-  }
-
-  /**
-   * Levenshtein edit distance — iki string arasındaki en az
-   * ekleme/silme/değiştirme sayısı. OCR hatası toleransı için kullanılır.
-   * ESR2026000001162 ↔ ESR20260000011162 → 1 (fazladan "1")
-   * ESR2026000001204 ↔ ESR20260000001204 → 1 (fazladan "0")
-   */
-  private editDistance(a: string, b: string): number {
-    const m = a.length;
-    const n = b.length;
-    if (m === 0) return n;
-    if (n === 0) return m;
-    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
-    );
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] =
-          a[i - 1] === b[j - 1]
-            ? dp[i - 1][j - 1]
-            : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-      }
-    }
-    return dp[m][n];
-  }
-
-  private eBelgeNoDistance(a: string, b: string): number {
-    const normalizeConfusions = (s: string) =>
-      s
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
-        .replace(/5/g, 'S')
-        .replace(/0/g, 'O')
-        .replace(/1/g, 'I');
-    const direct = this.editDistance(a, b);
-    const confused = this.editDistance(normalizeConfusions(a), normalizeConfusions(b));
-    return Math.min(direct, confused);
-  }
-}
+      if (vkn.length !== 10 && vkn.len
