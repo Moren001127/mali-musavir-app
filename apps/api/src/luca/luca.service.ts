@@ -156,7 +156,7 @@ export class LucaService {
     // Job tipine göre default affinity (B): e-arşiv/efatura uzun süren işler,
     // headless local agent daha stabil. Aksi belirtilmedikçe local-node tercih.
     const defaultAffinity =
-      /^(EARSIV|EFATURA|MIZAN|ACCOUNT_PLAN|IHO_FETCH|KDV_191|KDV_391|ISLETME_GELIR|ISLETME_GIDER)/.test(params.tip || '')
+      /^(EARSIV|EFATURA|MIZAN|KDV_MIZAN|ACCOUNT_PLAN|IHO_FETCH|KDV_191|KDV_391|ISLETME_GELIR|ISLETME_GIDER)/.test(params.tip || '')
         ? 'local-node'
         : null;
     // Beyanname yaklaşırken priority artırma — şimdilik manuel parametre ile.

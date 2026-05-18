@@ -5771,12 +5771,14 @@
       const yil = +mMatch[1];
       const ayMo = +mMatch[2];
 
-      if (donemTipi === 'AY' || donemTipi === 'MONTH') {
+      const tip = String(donemTipi || '').toUpperCase();
+      const isQuarterTip = /^GECICI_Q[1-4]$/.test(tip) || /^Q[1-4]$/.test(tip) || /CEYREK|QUARTER/.test(tip);
+      if (!isQuarterTip || tip === 'AY' || tip === 'AYLIK' || tip === 'MONTH' || tip === 'MONTHLY') {
         const lastDay = new Date(yil, ayMo, 0).getDate();
         const mm = String(ayMo).padStart(2, '0');
         return {
           bas: `01.${mm}.${yil}`,
-          bit: `${lastDay}.${mm}.${yil}`,
+          bit: `${String(lastDay).padStart(2, '0')}.${mm}.${yil}`,
         };
       }
       // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al

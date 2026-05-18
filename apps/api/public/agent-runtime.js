@@ -7564,7 +7564,9 @@
       const yil = +mMatch[1];
       const ayMo = +mMatch[2];
 
-      if (donemTipi === 'AY' || donemTipi === 'AYLIK' || donemTipi === 'MONTH') {
+      const tip = String(donemTipi || '').toUpperCase();
+      const isQuarterTip = /^GECICI_Q[1-4]$/.test(tip) || /^Q[1-4]$/.test(tip) || /CEYREK|QUARTER/.test(tip);
+      if (!isQuarterTip || tip === 'AY' || tip === 'AYLIK' || tip === 'MONTH' || tip === 'MONTHLY') {
         const lastDay = new Date(yil, ayMo, 0).getDate();
         const mm = String(ayMo).padStart(2, '0');
         return {

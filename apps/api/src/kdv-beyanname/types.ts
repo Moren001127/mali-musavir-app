@@ -12,7 +12,26 @@ export interface OranRow {
   oran: number; // 1 | 8 | 10 | 18 | 20
   matrah: number;
   kdv: number;
+  kaynak?: 'kdv_kontrol' | 'mihsap_xml';
   adet: number; // Kaç fatura bu orana dahil
+}
+
+export interface KdvEksikVeri {
+  tur: 'kdv_orani' | 'kdv_kontrol' | 'luca_mizan' | 'devreden_kdv' | 'tevkifat_ocr' | 'tevkifat_kodu';
+  seviye: 'bilgi' | 'uyari' | 'kritik';
+  belgeNo?: string | null;
+  taraf?: 'ALIS' | 'SATIS' | 'GENEL' | 'LUCA' | 'KDV2';
+  mesaj: string;
+  aksiyon?: string;
+}
+
+export interface VeriGuveni {
+  seviye: 'kesin' | 'kontrol_gerekli' | 'eksik';
+  puan: number;
+  kesinFaturaAdet: number;
+  toplamFaturaAdet: number;
+  kontrolGerekliAdet: number;
+  lucaMizanVar: boolean;
 }
 
 /** KDV1 Beyannamesi Ön Hazırlık sonucu */
@@ -63,6 +82,8 @@ export interface Kdv1OnHazirlik {
     luca190Bakiye: number | null;     // Devreden KDV (aktif borç bakiye)
     fark391: number | null;           // Mihsap hesaplanan - Luca 391
     fark191: number | null;           // Mihsap indirilecek - Luca 191
+    cekildiAt?: Date | string | null;
+    donemTipi?: 'AYLIK';
     uyarilar: string[];
   };
 
@@ -72,6 +93,9 @@ export interface Kdv1OnHazirlik {
     tahminFaturaOrani: number; // 0-1 — Sadece varsayılan %20 ile tahmin edilen oran
     uyarilar: string[];
   };
+
+  eksikVeriler: KdvEksikVeri[];
+  veriGuveni: VeriGuveni;
 }
 
 /** KDV2 Beyannamesi Ön Hazırlık (Tevkifat Sorumlusu) */
@@ -88,7 +112,9 @@ export interface Kdv2OnHazirlik {
     matrah: number;
     hesaplananKdv: number;
     tevkifatOrani: string; // "1/10", "5/10", "9/10" vb.
+    tevkifatKodu: string; // "601", "602" vb. bulunamazsa "KOD_YOK"
     tevkifatTutari: number;
+    kaynak: 'ocr' | 'ocr_eksik';
   }>;
 
   toplamlar: {
@@ -107,6 +133,8 @@ export interface Kdv2OnHazirlik {
   }>;
 
   uyarilar: string[];
+  eksikVeriler: KdvEksikVeri[];
+  veriGuveni: VeriGuveni;
 }
 
 /** Tüm mükellefler için aylık özet (dashboard benzeri) */

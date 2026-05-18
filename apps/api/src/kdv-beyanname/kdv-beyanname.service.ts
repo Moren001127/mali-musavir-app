@@ -1,7 +1,15 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MizanParserService } from '../mizan/mizan-parser.service';
-import { Kdv1OnHazirlik, Kdv2OnHazirlik, OranRow, DonemOzet, KdvTip } from './types';
+import {
+  Kdv1OnHazirlik,
+  Kdv2OnHazirlik,
+  OranRow,
+  DonemOzet,
+  KdvTip,
+  KdvEksikVeri,
+  VeriGuveni,
+} from './types';
 
 /**
  * KDV Beyanname Ön Hazırlık Servisi.
@@ -24,7 +32,7 @@ import { Kdv1OnHazirlik, Kdv2OnHazirlik, OranRow, DonemOzet, KdvTip } from './ty
  * çekimiyle 191/391/190 aylık bakiye çapraz kontrol. Mizan modülünden BAĞIMSIZ.
  */
 
-const DEFAULT_KDV_ORAN = 20; // Mihsap'ta KDV detayı yoksa varsayılan
+const KDV_KONTROL_DURUMU = 'KDV Kontrol gerekli';
 
 @Injectable()
 export class KdvBeyannameService {
@@ -131,6 +139,38 @@ export class KdvBeyannameService {
       );
     }
 
+    const eksikVeriler: KdvEksikVeri[] = [
+      ...satis.eksikVeriler,
+      ...alisTumu.eksikVeriler,
+      ...tevkifatAyri.eksikVeriler,
+    ];
+    if (!lucaKontrol.mizanVar) {
+      eksikVeriler.push({
+        tur: 'luca_mizan',
+        seviye: 'bilgi',
+        taraf: 'LUCA',
+        mesaj: 'Bu dönem için KDV’ye özel Luca aylık mizan henüz çekilmedi.',
+        aksiyon: "Luca'dan Veri Çek ile seçili ay mizanını al.",
+      });
+    }
+    if (devreden.kaynak === 'yok') {
+      eksikVeriler.push({
+        tur: 'devreden_kdv',
+        seviye: 'bilgi',
+        taraf: 'GENEL',
+        mesaj: 'Önceki dönem devreden KDV kaydı bulunamadı; tutar 0 kabul edildi.',
+        aksiyon: 'Önceki KDV1 beyan kaydındaki devreden tutarı kontrol et.',
+      });
+    }
+    const veriGuveni = this.hesaplaVeriGuveni({
+      kesinFaturaAdet: satis.ocrliAdet + satis.xmlAdet + alisTumu.ocrliAdet + alisTumu.xmlAdet,
+      toplamFaturaAdet: satis.faturaAdet + alisTumu.faturaAdet,
+      kontrolGerekliAdet:
+        satis.kontrolGerekliAdet + alisTumu.kontrolGerekliAdet + tevkifatAyri.ocrsizTevkifatliAdet,
+      lucaMizanVar: lucaKontrol.mizanVar,
+      kritikEksikAdet: eksikVeriler.filter((e) => e.seviye === 'kritik').length,
+    });
+
     return {
       mukellefId,
       mukellefAd: this.formatMukellefAd(mukellef),
@@ -167,6 +207,8 @@ export class KdvBeyannameService {
       },
       lucaKontrol,
       kaliteRapor,
+      eksikVeriler,
+      veriGuveni,
     };
   }
 
@@ -193,7 +235,9 @@ export class KdvBeyannameService {
       matrah: Math.round(f.matrah * 100) / 100,
       hesaplananKdv: Math.round(f.hesaplananKdv * 100) / 100,
       tevkifatOrani: f.tevkifatOrani || '1/2',
+      tevkifatKodu: f.tevkifatKodu || 'KOD_YOK',
       tevkifatTutari: Math.round(f.tevkifatTutari * 100) / 100,
+      kaynak: f.kaynak || 'ocr_eksik',
     }));
 
     const toplamMatrah = satirlar.reduce((s: number, r: any) => s + r.matrah, 0);
@@ -203,11 +247,13 @@ export class KdvBeyannameService {
     // Tevkifat oranı bazlı gruplama
     const gruplar = new Map<string, { matrah: number; tevkifat: number; adet: number }>();
     for (const s of satirlar) {
-      const g = gruplar.get(s.tevkifatOrani) || { matrah: 0, tevkifat: 0, adet: 0 };
+      if (s.kaynak !== 'ocr') continue;
+      const kod = s.tevkifatKodu || 'KOD_YOK';
+      const g = gruplar.get(kod) || { matrah: 0, tevkifat: 0, adet: 0 };
       g.matrah += s.matrah;
       g.tevkifat += s.tevkifatTutari;
       g.adet += 1;
-      gruplar.set(s.tevkifatOrani, g);
+      gruplar.set(kod, g);
     }
 
     const tevkifatKodlari = Array.from(gruplar.entries()).map(([kod, v]) => ({
@@ -221,12 +267,44 @@ export class KdvBeyannameService {
     if (satirlar.length === 0) {
       uyarilar.push('Bu dönemde tevkifatlı alış faturası tespit edilmedi.');
     }
-    const tevkifatsizTespitEdilen = faturalar.filter((f: any) => f.kaynak === 'mihsap_only').length;
-    if (tevkifatsizTespitEdilen > 0) {
+    const eksikVeriler: KdvEksikVeri[] = satirlar
+      .filter((f: any) => f.kaynak === 'ocr_eksik')
+      .map((f: any) => ({
+        tur: 'tevkifat_ocr',
+        seviye: 'kritik',
+        belgeNo: f.belgeNo,
+        taraf: 'KDV2',
+        mesaj: 'Tevkifatlı alış faturasında OCR/teyitli tevkifat tutarı yok; KDV2 toplamına dahil edilmedi.',
+        aksiyon: KDV_KONTROL_DURUMU,
+      }));
+    const kodEksikleri: KdvEksikVeri[] = satirlar
+      .filter((f: any) => f.kaynak === 'ocr' && f.tevkifatKodu === 'KOD_YOK')
+      .map((f: any) => ({
+        tur: 'tevkifat_kodu',
+        seviye: 'uyari',
+        belgeNo: f.belgeNo,
+        taraf: 'KDV2',
+        mesaj: 'Tevkifat tutarı bulundu ama GİB tevkifat kodu okunamadı; oran/kod elle kontrol edilmeli.',
+        aksiyon: 'Tevkifat kodunu KDV Kontrol sonucundan veya faturadan teyit et.',
+      }));
+    eksikVeriler.push(...kodEksikleri);
+    if (eksikVeriler.some((e) => e.tur === 'tevkifat_ocr')) {
       uyarilar.push(
-        `${tevkifatsizTespitEdilen} fatura için oran tespiti yapılamadı (varsayılan 1/2). Kesin değer için KDV Kontrol'den geçirin.`,
+        `${eksikVeriler.filter((e) => e.tur === 'tevkifat_ocr').length} tevkifatlı alış faturası için tutar okunamadı. Kesin değer için KDV Kontrol'den geçirin.`,
       );
     }
+
+    if (kodEksikleri.length > 0) {
+      uyarilar.push(`${kodEksikleri.length} tevkifat satırında GİB kodu okunamadı; kod bazlı özet kontrol edilmeli.`);
+    }
+
+    const veriGuveni = this.hesaplaVeriGuveni({
+      kesinFaturaAdet: satirlar.filter((s: any) => s.kaynak === 'ocr').length,
+      toplamFaturaAdet: satirlar.length,
+      kontrolGerekliAdet: eksikVeriler.length,
+      lucaMizanVar: false,
+      kritikEksikAdet: eksikVeriler.filter((e) => e.seviye === 'kritik').length,
+    });
 
     return {
       mukellefId,
@@ -241,6 +319,8 @@ export class KdvBeyannameService {
       },
       tevkifatKodlari,
       uyarilar,
+      eksikVeriler,
+      veriGuveni,
     };
   }
 
@@ -384,7 +464,7 @@ export class KdvBeyannameService {
     const faturaOnly = faturalar;
 
     // OCR verileri — bu dönem için KdvRecord'da olan faturaları bul
-    const belgeNoSet = new Set(faturaOnly.map((f: any) => f.faturaNo));
+    const belgeNoSet = new Set(faturaOnly.map((f: any) => f.faturaNo).filter(Boolean));
     const kdvRecords =
       belgeNoSet.size === 0
         ? []
@@ -400,34 +480,64 @@ export class KdvBeyannameService {
           });
     const ocrMap = new Map<string, any>();
     for (const r of kdvRecords) {
-      if (r.belgeNo && !ocrMap.has(r.belgeNo)) ocrMap.set(r.belgeNo, r);
+      const key = this.normalizeBelgeNo(r.belgeNo);
+      if (key && !ocrMap.has(key)) ocrMap.set(key, r);
     }
 
     // Oran bazlı toplama
-    const oranMap = new Map<number, { matrah: number; kdv: number; adet: number }>();
-    const addToOran = (oran: number, matrah: number, kdv: number) => {
-      const g = oranMap.get(oran) || { matrah: 0, kdv: 0, adet: 0 };
+    const oranMap = new Map<
+      number,
+      { matrah: number; kdv: number; adet: number; kaynak?: 'kdv_kontrol' | 'mihsap_xml' }
+    >();
+    const addToOran = (
+      oran: number,
+      matrah: number,
+      kdv: number,
+      kaynak: 'kdv_kontrol' | 'mihsap_xml',
+    ) => {
+      const g = oranMap.get(oran) || { matrah: 0, kdv: 0, adet: 0, kaynak };
       g.matrah += matrah;
       g.kdv += kdv;
       g.adet += 1;
+      if (g.kaynak !== kaynak) g.kaynak = undefined;
       oranMap.set(oran, g);
     };
 
     let ocrliAdet = 0;
-    let tahminAdet = 0;
+    let xmlAdet = 0;
+    let kontrolGerekliAdet = 0;
+    const eksikVeriler: KdvEksikVeri[] = [];
 
     for (const f of faturaOnly) {
-      const ocr = ocrMap.get(f.faturaNo);
-      if (ocr && ocr.kdvMatrahi && ocr.kdvOrani) {
-        addToOran(Number(ocr.kdvOrani), Number(ocr.kdvMatrahi), Number(ocr.kdvTutari));
+      const belgeNo = this.normalizeBelgeNo(f.faturaNo);
+      const ocr = ocrMap.get(belgeNo);
+      if (ocr && ocr.kdvMatrahi != null && ocr.kdvOrani != null && ocr.kdvTutari != null) {
+        addToOran(
+          this.parseTrAmount(ocr.kdvOrani),
+          this.parseTrAmount(ocr.kdvMatrahi),
+          this.parseTrAmount(ocr.kdvTutari),
+          'kdv_kontrol',
+        );
         ocrliAdet++;
       } else {
         // Tahmin: toplam = matrah * (1 + oran/100) → matrah = toplam / 1.20
-        const toplam = Number(f.toplamTutar || 0);
-        const matrah = toplam / (1 + DEFAULT_KDV_ORAN / 100);
-        const kdv = toplam - matrah;
-        addToOran(DEFAULT_KDV_ORAN, matrah, kdv);
-        tahminAdet++;
+        const breakdown = this.extractKdvBreakdownFromRaw(f.raw);
+        if (breakdown.length > 0) {
+          for (const b of breakdown) {
+            addToOran(b.oran, b.matrah, b.kdv, 'mihsap_xml');
+          }
+          xmlAdet++;
+        } else {
+          kontrolGerekliAdet++;
+          eksikVeriler.push({
+            tur: 'kdv_kontrol',
+            seviye: 'uyari',
+            belgeNo: f.faturaNo,
+            taraf: faturaTuru,
+            mesaj: `${faturaTuru === 'ALIS' ? 'Alış' : 'Satış'} faturasında KDV oran/matrah detayı yok; beyan toplamına dahil edilmedi.`,
+            aksiyon: KDV_KONTROL_DURUMU,
+          });
+        }
       }
     }
 
@@ -436,6 +546,7 @@ export class KdvBeyannameService {
         oran,
         matrah: Math.round(v.matrah * 100) / 100,
         kdv: Math.round(v.kdv * 100) / 100,
+        kaynak: v.kaynak,
         adet: v.adet,
       }))
       .sort((a: any, b: any) => a.oran - b.oran);
@@ -449,7 +560,10 @@ export class KdvBeyannameService {
       toplamKdv,
       faturaAdet: faturaOnly.length,
       ocrliAdet,
-      tahminAdet,
+      xmlAdet,
+      kontrolGerekliAdet,
+      tahminAdet: kontrolGerekliAdet,
+      eksikVeriler,
     };
   }
 
@@ -471,7 +585,27 @@ export class KdvBeyannameService {
     hesaplananKdvToplam: number;
     adet: number;
     ocrsizTevkifatliAdet: number;
+    eksikVeriler: KdvEksikVeri[];
   }> {
+    const faturalar = await this.getTevkifatliAlisFaturalari(tenantId, mukellefId, donem);
+    const kesinSatirlar = faturalar.filter((f: any) => f.kaynak === 'ocr');
+    const eksikSatirlar = faturalar.filter((f: any) => f.kaynak === 'ocr_eksik');
+    return {
+      matrah: kesinSatirlar.reduce((s: number, f: any) => s + Number(f.matrah || 0), 0),
+      tevkifatKdvToplam: kesinSatirlar.reduce((s: number, f: any) => s + Number(f.tevkifatTutari || 0), 0),
+      hesaplananKdvToplam: kesinSatirlar.reduce((s: number, f: any) => s + Number(f.hesaplananKdv || 0), 0),
+      adet: kesinSatirlar.length,
+      ocrsizTevkifatliAdet: eksikSatirlar.length,
+      eksikVeriler: eksikSatirlar.map((f: any) => ({
+        tur: 'tevkifat_ocr',
+        seviye: 'kritik',
+        belgeNo: f.belgeNo,
+        taraf: 'KDV2',
+        mesaj: 'Tevkifatlı alış faturasında OCR/teyitli tevkifat tutarı yok; KDV2 toplamına dahil edilmedi.',
+        aksiyon: KDV_KONTROL_DURUMU,
+      })),
+    };
+
     let matrah = 0;
     let tevkifatKdv = 0;
     let hesaplananKdv = 0;
@@ -518,6 +652,16 @@ export class KdvBeyannameService {
     const ocrsizTevkifatliAdet = mihsapTevkifat.filter(
       (f: any) => !seenBelgeNo.has(f.faturaNo),
     ).length;
+    const eksikVeriler: KdvEksikVeri[] = mihsapTevkifat
+      .filter((f: any) => !seenBelgeNo.has(f.faturaNo))
+      .map((f: any) => ({
+        tur: 'tevkifat_ocr',
+        seviye: 'kritik',
+        belgeNo: f.faturaNo,
+        taraf: 'KDV2',
+        mesaj: 'Tevkifatlı alış faturasında OCR/teyitli tevkifat tutarı yok; KDV2 toplamına dahil edilmedi.',
+        aksiyon: KDV_KONTROL_DURUMU,
+      }));
 
     return {
       matrah,
@@ -525,6 +669,7 @@ export class KdvBeyannameService {
       hesaplananKdvToplam: hesaplananKdv,
       adet,
       ocrsizTevkifatliAdet,
+      eksikVeriler,
     };
   }
 
@@ -543,6 +688,55 @@ export class KdvBeyannameService {
     const satirlar: any[] = [];
     const seenBelgeNo = new Set<string>();
 
+    const results = await (this.prisma as any).reconciliationResult.findMany({
+      where: {
+        session: {
+          tenantId,
+          taxpayerId: mukellefId,
+          periodLabel: { in: [donem, donem.replace('-', '/')] },
+          type: 'KDV_191',
+        },
+      },
+      include: { image: true, kdvRecord: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    for (const res of results) {
+      const image = res.image;
+      const r = res.kdvRecord;
+      const tevkifat = this.parseTrAmount(image?.confirmedKdvTevkifat ?? image?.ocrKdvTevkifat);
+      if (tevkifat <= 0) continue;
+
+      const belgeNo = image?.confirmedBelgeNo || image?.ocrBelgeNo || r?.belgeNo || '';
+      const key = this.normalizeBelgeNo(belgeNo);
+      if (key && seenBelgeNo.has(key)) continue;
+
+      const netKdv =
+        this.parseTrAmount(image?.confirmedKdvTutari ?? image?.ocrKdvTutari) ||
+        this.parseTrAmount(r?.kdvTutari);
+      const hesaplanan = netKdv + tevkifat;
+      const breakdown = this.extractKdvBreakdownFromRaw(image?.confirmedKdvBreakdown ?? image?.ocrKdvBreakdown);
+      const oran = this.parseTrAmount(r?.kdvOrani) || breakdown[0]?.oran || 0;
+      const matrah =
+        breakdown.reduce((sum, b) => sum + b.matrah, 0) ||
+        this.parseTrAmount(r?.kdvMatrahi) ||
+        (oran > 0 ? hesaplanan / (oran / 100) : 0);
+
+      satirlar.push({
+        belgeNo,
+        satici: image?.ocrSatici || r?.karsiTaraf || '—',
+        saticiVkn: image?.ocrSaticiVkn || r?.rawData?.saticiVkn || r?.rawData?.vkn || '',
+        tarih: image?.confirmedDate || image?.ocrDate || (r?.belgeDate ? r.belgeDate.toISOString().slice(0, 10) : ''),
+        matrah,
+        hesaplananKdv: hesaplanan,
+        tevkifatOrani: this.tevkifatOranStr(hesaplanan > 0 ? tevkifat / hesaplanan : 0),
+        tevkifatKodu: this.extractTevkifatKodu(image, r),
+        tevkifatTutari: tevkifat,
+        kaynak: 'ocr' as const,
+      });
+      if (key) seenBelgeNo.add(key);
+    }
+
     // Birincil — OCR (kesin)
     const records = await (this.prisma as any).kdvRecord.findMany({
       where: {
@@ -556,9 +750,11 @@ export class KdvBeyannameService {
       orderBy: { belgeDate: 'asc' },
     });
     for (const r of records) {
-      const tevkifat = Number(r.rawData?.kdvTevkifat || 0);
+      const key = this.normalizeBelgeNo(r.belgeNo);
+      if (key && seenBelgeNo.has(key)) continue;
+      const tevkifat = this.parseTrAmount(r.rawData?.kdvTevkifat);
       if (tevkifat <= 0) continue;
-      const netKdv = Number(r.kdvTutari || 0);
+      const netKdv = this.parseTrAmount(r.kdvTutari);
       const hesaplanan = netKdv + tevkifat;
       const oran = hesaplanan > 0 ? tevkifat / hesaplanan : 0;
       satirlar.push({
@@ -569,10 +765,11 @@ export class KdvBeyannameService {
         matrah: Number(r.kdvMatrahi || 0),
         hesaplananKdv: hesaplanan,
         tevkifatOrani: this.tevkifatOranStr(oran),
+        tevkifatKodu: this.extractTevkifatKodu(null, r),
         tevkifatTutari: tevkifat,
         kaynak: 'ocr' as const,
       });
-      if (r.belgeNo) seenBelgeNo.add(r.belgeNo);
+      if (key) seenBelgeNo.add(key);
     }
 
     // OCR'ı olmayan TEVKIFATLI_ALIS faturalar — işaretli listele (rakamlar 0)
@@ -591,7 +788,8 @@ export class KdvBeyannameService {
       orderBy: { faturaTarihi: 'asc' },
     });
     for (const f of mihsapTevkifat) {
-      if (seenBelgeNo.has(f.faturaNo)) continue;
+      const key = this.normalizeBelgeNo(f.faturaNo);
+      if (key && seenBelgeNo.has(key)) continue;
       satirlar.push({
         belgeNo: f.faturaNo || '',
         satici: f.firmaUnvan || '—',
@@ -600,6 +798,7 @@ export class KdvBeyannameService {
         matrah: 0,
         hesaplananKdv: 0,
         tevkifatOrani: 'OCR gerekli',
+        tevkifatKodu: 'KOD_YOK',
         tevkifatTutari: 0,
         kaynak: 'ocr_eksik' as const,
         toplamTutar: Number(f.toplamTutar || 0), // referans için
@@ -607,6 +806,129 @@ export class KdvBeyannameService {
     }
 
     return satirlar;
+  }
+
+  private normalizeBelgeNo(value: any): string {
+    return String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+  }
+
+  private parseTrAmount(value: any): number {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const raw = String(value)
+      .replace(/\s/g, '')
+      .replace(/TL|TRY|₺/gi, '')
+      .trim();
+    if (!raw) return 0;
+    const normalized =
+      raw.includes(',') && raw.includes('.')
+        ? raw.replace(/\./g, '').replace(',', '.')
+        : raw.includes(',')
+          ? raw.replace(',', '.')
+          : raw;
+    const n = Number(normalized.replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private extractKdvBreakdownFromRaw(raw: any): Array<{ oran: number; matrah: number; kdv: number }> {
+    if (raw == null) return [];
+    let value = raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return [];
+      try {
+        value = JSON.parse(trimmed);
+      } catch {
+        return [];
+      }
+    }
+
+    const rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
+    const seen = new Set<string>();
+    const rateKeys = ['oran', 'kdvOrani', 'kdv_orani', 'taxRate', 'tax_rate', 'rate', 'percent', 'yuzde'];
+    const baseKeys = ['matrah', 'kdvMatrahi', 'kdv_matrahi', 'taxBase', 'tax_base', 'taxableAmount', 'malHizmetTutari'];
+    const vatKeys = ['kdv', 'kdvTutari', 'kdv_tutari', 'taxAmount', 'tax_amount', 'hesaplananKdv'];
+
+    const pick = (obj: any, keys: string[]) => {
+      if (!obj || typeof obj !== 'object') return 0;
+      for (const key of keys) {
+        if (obj[key] != null) return this.parseTrAmount(obj[key]);
+      }
+      return 0;
+    };
+
+    const addIfBreakdown = (obj: any) => {
+      const oran = pick(obj, rateKeys);
+      let matrah = pick(obj, baseKeys);
+      let kdv = pick(obj, vatKeys);
+      if (!oran || (!matrah && !kdv)) return;
+      if (!matrah && kdv) matrah = kdv / (oran / 100);
+      if (!kdv && matrah) kdv = matrah * (oran / 100);
+      if (!matrah && !kdv) return;
+      const key = `${oran}:${Math.round(matrah * 100)}:${Math.round(kdv * 100)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push({ oran, matrah, kdv });
+    };
+
+    const visit = (node: any, depth = 0) => {
+      if (node == null || depth > 5) return;
+      if (Array.isArray(node)) {
+        for (const item of node) visit(item, depth + 1);
+        return;
+      }
+      if (typeof node !== 'object') return;
+      addIfBreakdown(node);
+      for (const child of Object.values(node)) visit(child, depth + 1);
+    };
+
+    visit(value);
+    return rows;
+  }
+
+  private extractTevkifatKodu(image: any, record: any): string {
+    const buckets = [
+      image?.ocrRawText,
+      image?.confirmedKdvBreakdown,
+      image?.ocrKdvBreakdown,
+      record?.rawData,
+    ];
+    for (const bucket of buckets) {
+      if (!bucket) continue;
+      const text = typeof bucket === 'string' ? bucket : JSON.stringify(bucket);
+      const explicit = /tevkifat[^0-9]{0,20}(6\d{2})/i.exec(text);
+      if (explicit?.[1]) return explicit[1];
+      const anyCode = /\b(6\d{2})\b/.exec(text);
+      if (anyCode?.[1]) return anyCode[1];
+    }
+    return 'KOD_YOK';
+  }
+
+  private hesaplaVeriGuveni(params: {
+    kesinFaturaAdet: number;
+    toplamFaturaAdet: number;
+    kontrolGerekliAdet: number;
+    lucaMizanVar: boolean;
+    kritikEksikAdet: number;
+  }): VeriGuveni {
+    const toplam = Math.max(params.toplamFaturaAdet, 0);
+    const kesinOran = toplam > 0 ? params.kesinFaturaAdet / toplam : 1;
+    let puan = Math.round(kesinOran * 85) + (params.lucaMizanVar ? 15 : 0);
+    puan -= Math.min(params.kritikEksikAdet * 10, 40);
+    puan = Math.max(0, Math.min(100, puan));
+    return {
+      seviye:
+        params.kritikEksikAdet > 0 || puan < 60
+          ? 'eksik'
+          : params.kontrolGerekliAdet > 0 || !params.lucaMizanVar || puan < 90
+            ? 'kontrol_gerekli'
+            : 'kesin',
+      puan,
+      kesinFaturaAdet: params.kesinFaturaAdet,
+      toplamFaturaAdet: params.toplamFaturaAdet,
+      kontrolGerekliAdet: params.kontrolGerekliAdet,
+      lucaMizanVar: params.lucaMizanVar,
+    };
   }
 
   private tevkifatOranStr(oran: number): string {
@@ -705,6 +1027,7 @@ export class KdvBeyannameService {
         fark191: null,
         uyarilar,
         cekildiAt: null,
+        donemTipi: 'AYLIK' as const,
       };
     }
 
@@ -758,6 +1081,7 @@ export class KdvBeyannameService {
       fark191,
       uyarilar,
       cekildiAt: snapshot.cekildiAt,
+      donemTipi: 'AYLIK' as const,
     };
   }
 
@@ -775,6 +1099,10 @@ export class KdvBeyannameService {
     createdBy?: string;
     targetDeviceId?: string;
   }) {
+    if (!/^\d{4}-\d{2}$/.test(params.donem)) {
+      throw new BadRequestException('KDV mizan çekimi aylık dönem ister (yyyy-mm).');
+    }
+    const mukellef = await this.getMukellef(params.tenantId, params.mukellefId);
     const job = await (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId: params.tenantId,
@@ -785,6 +1113,9 @@ export class KdvBeyannameService {
         status: 'pending',
         createdBy: params.createdBy || null,
         targetDeviceId: params.targetDeviceId || null,
+        preferredAgent: 'local-node',
+        priority: 2,
+        errorMsg: `[META] mukellefAdi=${this.formatMukellefAd(mukellef)}\nKDV Beyanname aylık mizan: ${params.donem}`,
       },
     });
     return { jobId: job.id, status: job.status };
@@ -915,11 +1246,11 @@ export class KdvBeyannameService {
     const uyarilar: string[] = [];
     if (tahminOran > 0.8) {
       uyarilar.push(
-        'Faturaların %80+\'ı OCR\'dan geçmemiş — oran tespiti varsayılan %20 ile yapıldı. Kesin değerler için KDV Kontrol modülünden geçirin.',
+        'Faturaların %80+ oranında KDV detayı eksik; bu kayıtlar tahmin edilmedi. Kesin değerler için KDV Kontrol modülünden geçirin.',
       );
     } else if (tahminOran > 0.3) {
       uyarilar.push(
-        `Faturaların %${Math.round(tahminOran * 100)}'ı OCR'dan geçmemiş — bu kısım tahmini.`,
+        `Faturaların %${Math.round(tahminOran * 100)}'ında KDV detayı eksik; bu kısım beyan toplamına eklenmedi.`,
       );
     }
     if (toplam === 0) {

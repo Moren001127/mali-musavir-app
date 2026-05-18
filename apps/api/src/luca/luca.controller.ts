@@ -613,12 +613,14 @@ export class LucaController {
         fetchJobId: jobId,
         buffer: file.buffer,
       });
+      if (jobId) await this.luca.markJobDone(jobId, (snapshot as any)?.toplamHesapAdet || 0).catch(() => {});
       return {
         ok: true,
         snapshotId: (snapshot as any)?.id,
         toplamHesapAdet: (snapshot as any)?.toplamHesapAdet,
       };
     } catch (e: any) {
+      if (jobId) await this.luca.markJobFailed(jobId, e?.message || 'bilinmeyen').catch(() => {});
       throw new BadRequestException(
         `KDV mizan snapshot hatası: ${e?.message || 'bilinmeyen'}`,
       );
