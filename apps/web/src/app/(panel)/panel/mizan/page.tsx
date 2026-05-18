@@ -135,6 +135,128 @@ const DENETIM_KOSULLARI = [
   { value: 'MISSING', label: 'Hesap yoksa' },
 ] as const;
 
+const SISTEM_DENETIM_KRITERLERI = [
+  {
+    tip: 'TDHP_DISI',
+    seviye: 'WARN',
+    hesap: 'Ana hesaplar',
+    kosul: 'TDHP listesinde olmayan ana hesap kodu',
+    aciklama: 'Seviye 0 ana hesap kodu Tek Düzen Hesap Planı ana/grup/detay kod listesinde yoksa aktarım hatası uyarısı verir.',
+  },
+  {
+    tip: 'NET_OLMAYAN',
+    seviye: 'ERROR',
+    hesap: 'Ana hesap ve yaprak detay hesaplar',
+    kosul: 'Borç bakiye > 0 ve alacak bakiye > 0',
+    aciklama: 'Ana hesaplarda ve alt kırılımı olmayan detay hesaplarda aynı anda borç ve alacak bakiye varsa mutabakat uyarısı üretir.',
+  },
+  {
+    tip: 'ZIT_BAKIYE',
+    seviye: 'WARN',
+    hesap: 'Kontra olmayan hesaplar',
+    kosul: 'Beklenen bakiye yönünün tersinde tek taraflı bakiye',
+    aciklama: 'Aktif hesaplar ve gider hesapları borç, pasif/özkaynak ve gelir hesapları alacak bakiye bekler; kontra hesaplar bu kontrolden muaftır.',
+  },
+  {
+    tip: 'EKSIK_HESAP',
+    seviye: 'WARN',
+    hesap: '600 / 601 -> 391',
+    kosul: 'Satış hesabı var, 391 yok',
+    aciklama: '600 veya 601 satış hesapları varsa 391 Hesaplanan KDV hesabının mizanda bulunmasını bekler.',
+  },
+  {
+    tip: 'EKSIK_HESAP',
+    seviye: 'WARN',
+    hesap: '153 / 621 -> 191',
+    kosul: 'Alış veya maliyet hesabı var, 191 yok',
+    aciklama: '153 Ticari Mallar veya 621 Satılan Ticari Mallar Maliyeti varsa 191 İndirilecek KDV hesabını arar.',
+  },
+  {
+    tip: 'SERMAYE_TAAHHUT_YOK',
+    seviye: 'ERROR',
+    hesap: '500',
+    kosul: '500 yok veya hareket/bakiye sıfır',
+    aciklama: '500 Sermaye hesabında hareket ya da bakiye yoksa sermaye taahhüdü girilmemiş kabul eder.',
+  },
+  {
+    tip: 'SERMAYE_SURE_DOLDU',
+    seviye: 'ERROR',
+    hesap: '501',
+    kosul: '501 borç bakiye > 0 ve kuruluş üzerinden 24 ay geçti',
+    aciklama: 'Ödenmemiş sermaye bakiyesi 24 aylık yasal süre sonunda hâlâ açıksa kritik uyarı verir.',
+  },
+  {
+    tip: 'SERMAYE_SURE_YAKLASIYOR',
+    seviye: 'WARN',
+    hesap: '501',
+    kosul: '501 borç bakiye > 0 ve kuruluş üzerinden 21-23 ay geçti',
+    aciklama: 'Ödenmemiş sermaye bakiyesi için 24 aylık süre yaklaşırken ön uyarı üretir.',
+  },
+  {
+    tip: 'KASA_NEGATIF',
+    seviye: 'ERROR',
+    hesap: '100',
+    kosul: 'Alacak bakiye > 0 ve borç bakiye = 0',
+    aciklama: '100 Kasa hesabı alacak bakiye verirse kasa negatif olamaz kontrolüyle hata üretir.',
+  },
+  {
+    tip: 'STOK_NEGATIF',
+    seviye: 'ERROR',
+    hesap: '150 / 152 / 153',
+    kosul: 'Alacak bakiye > 0 ve borç bakiye = 0',
+    aciklama: 'Stok hesapları alacak bakiye verirse negatif stok/sayım kontrolü uyarısı verir.',
+  },
+  {
+    tip: 'AMORTISMAN_AYRILMAMIS',
+    seviye: 'WARN',
+    hesap: '250-255 -> 257',
+    kosul: 'Yıl sonu sabit kıymet var, 257 yok veya alacak bakiye sıfır',
+    aciklama: 'Yıl sonunda sabit kıymet bakiyesi varsa 257 Birikmiş Amortisman hesabında amortisman bekler.',
+  },
+  {
+    tip: 'KAPANIS_YAPILMAMIS',
+    seviye: 'WARN',
+    hesap: '690 / 691 / 692',
+    kosul: 'Yıl sonunda bakiye > 0',
+    aciklama: 'Yıl sonu kapanış hesaplarının dönem sonunda bakiye vermemesi gerektiğini kontrol eder.',
+  },
+  {
+    tip: 'DONEM_KARI_DEVREDILMEMIS',
+    seviye: 'WARN',
+    hesap: '590',
+    kosul: 'Bakiye > 0',
+    aciklama: '590 Dönem Net Kârı bakiyesinin geçmiş yıl kârlarına devredilip devredilmediğini kontrol eder.',
+  },
+  {
+    tip: 'KURUMLAR_VERGISI_TAHAKKUKU',
+    seviye: 'WARN',
+    hesap: '370 / 371',
+    kosul: '370 veya 371 bakiye > 0',
+    aciklama: 'Kurumlar vergisi karşılığı ve peşin ödenen vergi hesaplarında kapanmamış bakiye varsa uyarır.',
+  },
+  {
+    tip: 'KDV_INDIRIM_YAPILMAMIS',
+    seviye: 'WARN',
+    hesap: '191',
+    kosul: 'Bakiye > 0',
+    aciklama: '191 İndirilecek KDV hesabında bakiye kalmışsa indirim/mahsup kontrolü yapılması gerektiğini belirtir.',
+  },
+  {
+    tip: 'KDV_BEYAN_TAMAMLANMAMIS',
+    seviye: 'WARN',
+    hesap: '391',
+    kosul: 'Bakiye > 0',
+    aciklama: '391 Hesaplanan KDV hesabında bakiye kalmışsa KDV beyanı veya mahsup tamamlanmamış olabilir uyarısı verir.',
+  },
+  {
+    tip: 'MIZAN_DENGESIZ',
+    seviye: 'ERROR',
+    hesap: 'Seviye 0 toplamlar',
+    kosul: 'Toplam borç ile toplam alacak farkı > 0,50',
+    aciklama: 'Ana hesap seviyesinde toplam borç ve toplam alacak eşit değilse matematiksel mizan denge hatası üretir.',
+  },
+] as const;
+
 function denetimEsikIster(kosul: string) {
   return !['EXISTS', 'MISSING', 'BOTH_BAKIYE'].includes(kosul);
 }
@@ -879,7 +1001,7 @@ export default function MizanPage() {
               <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
               Denetim Kriterleri
               <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.12)', color: GOLD }}>
-                {denetimKriterleri.length}
+                {SISTEM_DENETIM_KRITERLERI.length + denetimKriterleri.length} kriter
               </span>
             </h3>
             <div className="flex flex-wrap items-center gap-2">
@@ -905,6 +1027,70 @@ export default function MizanPage() {
 
           {criteriaOpen && (
             <div className="mt-4 space-y-4">
+              <div className="rounded-xl border p-3.5" style={{ background: 'rgba(184,160,111,0.045)', borderColor: 'rgba(184,160,111,0.18)' }}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>Şu an kontrol edilen kriterler</h4>
+                    <p className="mt-0.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.52)' }}>
+                      Mizan analizi yenilendiğinde aşağıdaki kontroller çalışır; özel eklediğin kriterler de aynı liste mantığıyla altta yer alır.
+                    </p>
+                  </div>
+                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: GOLD }}>
+                    {SISTEM_DENETIM_KRITERLERI.length} mevcut kontrol
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+                  {SISTEM_DENETIM_KRITERLERI.map((kriter) => (
+                    <div
+                      key={`${kriter.tip}-${kriter.hesap}`}
+                      className="rounded-lg border p-3"
+                      style={{ background: 'rgba(10,9,7,0.42)', borderColor: 'rgba(255,255,255,0.07)' }}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="rounded px-1.5 py-0.5 font-mono text-[10px] font-bold"
+                          style={{ background: 'rgba(147,197,253,0.11)', color: '#93c5fd' }}
+                        >
+                          {kriter.hesap}
+                        </span>
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[10px] font-bold"
+                          style={{
+                            background: kriter.seviye === 'ERROR' ? 'rgba(244,63,94,0.12)' : 'rgba(245,158,11,0.12)',
+                            color: kriter.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b',
+                          }}
+                        >
+                          {kriter.seviye}
+                        </span>
+                        <span className="min-w-0 truncate text-[12px] font-semibold" style={{ color: '#fafaf9' }}>
+                          {kriter.tip}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[11.5px] font-semibold" style={{ color: GOLD }}>
+                        {kriter.kosul}
+                      </div>
+                      <p className="mt-1 text-[11.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                        {kriter.aciklama}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-3.5" style={{ background: 'rgba(255,255,255,0.018)', borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-[13px] font-bold" style={{ color: '#fafaf9' }}>Yeni kriter ekle</h4>
+                    <p className="mt-0.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.52)' }}>
+                      Ofise veya seçili mükellefe özel hesap deseni kontrolünü buradan ekleyebilirsin.
+                    </p>
+                  </div>
+                  <span className="rounded-md px-2 py-1 text-[10.5px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(250,250,249,0.62)' }}>
+                    {denetimKriterleri.length} ek kriter
+                  </span>
+                </div>
+
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div className="md:col-span-2">
                   <label className="text-[10.5px] uppercase font-bold tracking-[.1em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.48)' }}>Kriter Adı</label>
@@ -1044,6 +1230,7 @@ export default function MizanPage() {
                     </div>
                   );
                 })}
+              </div>
               </div>
             </div>
           )}
