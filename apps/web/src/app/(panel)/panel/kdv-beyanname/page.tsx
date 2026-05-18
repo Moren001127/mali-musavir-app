@@ -107,6 +107,38 @@ const fmt = (n: number | null | undefined) => {
   const v = typeof n === 'number' && isFinite(n) ? n : 0;
   return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
+const TRY = '\u20ba';
+const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const FINANCIAL_AMOUNT_COLOR = '#fffaf0';
+const FINANCIAL_TOTAL_COLOR = '#fff0b8';
+
+function MoneyText({
+  value,
+  color = FINANCIAL_AMOUNT_COLOR,
+  strong = false,
+  size,
+}: {
+  value: number | null | undefined;
+  color?: string;
+  strong?: boolean;
+  size?: number;
+}) {
+  return (
+    <span
+      className="tabular-nums whitespace-nowrap"
+      style={{
+        color,
+        fontFamily: REPORT_FONT,
+        fontVariantNumeric: 'tabular-nums',
+        fontSize: size ?? (strong ? 15 : 14),
+        fontWeight: strong ? 750 : 650,
+        letterSpacing: 0,
+      }}
+    >
+      {TRY}{fmt(value)}
+    </span>
+  );
+}
 
 export default function KdvBeyannamePage() {
   const now = new Date();
@@ -572,6 +604,96 @@ function BeyannameAksiyonlari({
   );
 }
 
+function KdvTotalsTable({
+  sonuc,
+  satis,
+  alis,
+  devreden,
+}: {
+  sonuc: Kdv1['sonuc'];
+  satis: Kdv1['satis'];
+  alis: Kdv1['alis'];
+  devreden: Kdv1['devreden'];
+}) {
+  const odenecek = sonuc.odenecekKdv > 0;
+  const resultLabel = odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden';
+  const resultValue = odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden;
+  const rows = [
+    {
+      label: 'Hesaplanan KDV',
+      detail: `${satis.faturaAdet} satış faturası`,
+      amount: sonuc.hesaplananKdv,
+      color: '#86efac',
+    },
+    {
+      label: 'İndirilecek KDV',
+      detail: `${alis.faturaAdet} alış faturası`,
+      amount: sonuc.indirilecekKdv,
+      color: '#93c5fd',
+    },
+    {
+      label: 'Devreden KDV',
+      detail: devreden?.kaynak === 'beyan_kaydi' ? `Beyan kaydı · ${devreden?.sonKayitDonem || '—'}` : 'Kayıt yok',
+      amount: sonuc.devredenKdv,
+      color: '#d8c17f',
+    },
+    {
+      label: resultLabel,
+      detail: 'Beyan sonucu',
+      amount: resultValue,
+      color: odenecek ? '#fca5a5' : '#86efac',
+      result: true,
+    },
+  ];
+
+  return (
+    <div
+      className="rounded-2xl border overflow-hidden"
+      style={{ background: 'rgba(255,255,255,0.025)', borderColor: 'rgba(255,255,255,0.07)' }}
+    >
+      <div className="px-5 py-3 border-b flex items-center justify-between gap-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: '#d8c17f' }}>
+          KDV Toplam Özeti
+        </div>
+        <div className="flex items-center gap-2" style={{ color: rows[3].color }}>
+          {odenecek ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
+          <MoneyText value={resultValue} color={rows[3].color} strong />
+        </div>
+      </div>
+      <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', tableLayout: 'fixed' }}>
+        <thead style={{ background: 'rgba(0,0,0,0.18)' }}>
+          <tr style={{ color: 'rgba(250,250,249,0.52)' }}>
+            <th className="px-5 py-2.5 text-[11.5px] font-semibold">Kalem</th>
+            <th className="px-4 py-2.5 text-[11.5px] font-semibold">Açıklama</th>
+            <th className="px-5 py-2.5 text-[11.5px] font-semibold text-right">Tutar</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={row.label}
+              style={{
+                background: row.result ? 'rgba(212,184,118,0.07)' : 'transparent',
+                borderTop: '1px solid rgba(255,255,255,0.055)',
+              }}
+            >
+              <td className="px-5 py-3 text-[13px] font-semibold" style={{ color: row.result ? FINANCIAL_TOTAL_COLOR : '#fafaf9' }}>
+                {row.label}
+              </td>
+              <td className="px-4 py-3 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.58)' }}>
+                {row.detail}
+              </td>
+              <td className="px-5 py-3 text-right">
+                <MoneyText value={row.amount} color={row.color} strong={row.result} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Kdv1View({ data }: { data: Kdv1 }) {
   // Backend'ten gelen veride eksik alanlar olabileceğini varsay; defansif ol
   const sonuc = data.sonuc || { hesaplananKdv: 0, indirilecekKdv: 0, devredenKdv: 0, odenecekKdv: 0, sonrakiAyaDevreden: 0 };
@@ -579,7 +701,6 @@ function Kdv1View({ data }: { data: Kdv1 }) {
   const alis = data.alis || { oranlar: [], toplamMatrah: 0, toplamIndirilecekKdv: 0, faturaAdet: 0, tevkifatsiz: { matrah: 0, kdv: 0, adet: 0 }, tevkifatli: { matrah: 0, kdv: 0, adet: 0 } };
   const lucaKontrol = data.lucaKontrol || { mizanVar: false, luca391Bakiye: null, luca191Bakiye: null, luca190Bakiye: null, fark391: null, fark191: null, uyarilar: [] };
   const kaliteRapor = data.kaliteRapor || { ocrliFaturaOrani: 0, tahminFaturaOrani: 0, uyarilar: [] };
-  const odenecek = sonuc.odenecekKdv > 0;
   return (
     <>
       {/* Uyarılar */}
@@ -602,35 +723,8 @@ function Kdv1View({ data }: { data: Kdv1 }) {
       <VeriGuveniPanel guven={data.veriGuveni} />
       <EksikVeriListesi items={data.eksikVeriler || []} />
 
-      {/* Sonuç kartı — en üstte büyük */}
-      <div
-        className="rounded-2xl p-6 border"
-        style={{
-          background: odenecek
-            ? 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(156,70,86,0.08))'
-            : 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(74,222,128,0.08))',
-          borderColor: odenecek ? 'rgba(239,68,68,0.25)' : 'rgba(74,222,128,0.25)',
-        }}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-[.12em] mb-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
-              {odenecek ? 'Ödenecek KDV' : 'Sonraki Aya Devreden KDV'}
-            </div>
-            <div
-              className="font-bold tabular-nums"
-              style={{
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: 36,
-                color: odenecek ? '#fca5a5' : '#86efac',
-              }}
-            >
-              ₺{fmt(odenecek ? sonuc.odenecekKdv : sonuc.sonrakiAyaDevreden)}
-            </div>
-          </div>
-          {odenecek ? <TrendingUp size={40} style={{ color: '#fca5a5' }} /> : <TrendingDown size={40} style={{ color: '#86efac' }} />}
-        </div>
-      </div>
+      {/* Toplam tablosu */}
+      <KdvTotalsTable sonuc={sonuc} satis={satis} alis={alis} devreden={data.devreden} />
 
       <BeyannameAksiyonlari
         mukellefId={data.mukellefId}
@@ -638,22 +732,6 @@ function Kdv1View({ data }: { data: Kdv1 }) {
         tip="KDV1"
         tahakkukTutari={sonuc.odenecekKdv}
       />
-
-      {/* 3 özet kart */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <SummaryCard label="Hesaplanan KDV" value={sonuc.hesaplananKdv} color="#4ade80" subtitle={`${satis.faturaAdet} satış faturası`} />
-        <SummaryCard label="İndirilecek KDV" value={sonuc.indirilecekKdv} color="#60a5fa" subtitle={`${alis.faturaAdet} alış faturası`} />
-        <SummaryCard
-          label="Devreden KDV"
-          value={sonuc.devredenKdv}
-          color="#d4b876"
-          subtitle={
-            data.devreden?.kaynak === 'beyan_kaydi'
-              ? `Beyan Kaydı · ${data.devreden?.sonKayitDonem || '—'}`
-              : 'Kayıt yok'
-          }
-        />
-      </div>
 
       {/* Satış oran tablosu */}
       <OranTablosu
@@ -869,17 +947,17 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
                 <tr key={i} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                   <td className="px-3 py-1.5 font-mono" style={{ color: '#d4b876' }}>{r.kod}</td>
                   <td className="px-3 py-1.5">{r.ad || '—'}</td>
-                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {r.borcToplami ? fmt(r.borcToplami) : ''}
+                  <td className="text-right px-3 py-1.5">
+                    {r.borcToplami ? <MoneyText value={r.borcToplami} /> : ''}
                   </td>
-                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {r.alacakToplami ? fmt(r.alacakToplami) : ''}
+                  <td className="text-right px-3 py-1.5">
+                    {r.alacakToplami ? <MoneyText value={r.alacakToplami} /> : ''}
                   </td>
-                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {r.borcBakiye ? fmt(r.borcBakiye) : ''}
+                  <td className="text-right px-3 py-1.5">
+                    {r.borcBakiye ? <MoneyText value={r.borcBakiye} /> : ''}
                   </td>
-                  <td className="text-right tabular-nums px-3 py-1.5" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                    {r.alacakBakiye ? fmt(r.alacakBakiye) : ''}
+                  <td className="text-right px-3 py-1.5">
+                    {r.alacakBakiye ? <MoneyText value={r.alacakBakiye} /> : ''}
                   </td>
                 </tr>
               ))}
@@ -893,23 +971,18 @@ function LucaSnapshotFetchPanel({ mukellefId, donem }: { mukellefId: string; don
 
 function LucaCrossRow({ hesap, mihsap, luca, fark }: { hesap: string; mihsap: number | null; luca: number | null; fark: number | null }) {
   const farkliMi = fark !== null && Math.abs(fark) > 0.01;
+  const farkColor = fark == null ? 'rgba(250,250,249,0.4)' : farkliMi ? '#fca5a5' : '#86efac';
   return (
     <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
       <td className="py-2">{hesap}</td>
-      <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-        {mihsap == null ? '—' : `₺${fmt(mihsap)}`}
+      <td className="text-right">
+        {mihsap == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={mihsap} />}
       </td>
-      <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-        {luca == null ? '—' : `₺${fmt(luca)}`}
+      <td className="text-right">
+        {luca == null ? <span style={{ color: 'rgba(250,250,249,0.38)' }}>—</span> : <MoneyText value={luca} />}
       </td>
-      <td
-        className="text-right tabular-nums font-semibold"
-        style={{
-          fontFamily: 'JetBrains Mono, monospace',
-          color: fark == null ? 'rgba(250,250,249,0.4)' : farkliMi ? '#fca5a5' : '#86efac',
-        }}
-      >
-        {fark == null ? '—' : `₺${fmt(fark)}`}
+      <td className="text-right">
+        {fark == null ? <span style={{ color: farkColor }}>—</span> : <MoneyText value={fark} color={farkColor} strong />}
       </td>
     </tr>
   );
@@ -932,13 +1005,13 @@ function OranTablosu({
         <span className="w-[3px] h-4 rounded-sm" style={{ background: renk }} />
         <h3 className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>{baslik}</h3>
       </div>
-      <table className="w-full text-[12px]">
-        <thead>
-          <tr style={{ color: 'rgba(250,250,249,0.5)' }}>
-            <th className="text-left py-2 font-semibold">Oran</th>
-            <th className="text-right py-2 font-semibold">Matrah</th>
-            <th className="text-right py-2 font-semibold">KDV</th>
-            <th className="text-right py-2 font-semibold">Adet</th>
+      <table className="w-full text-[12.5px]" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', tableLayout: 'fixed' }}>
+        <thead style={{ background: 'rgba(0,0,0,0.16)' }}>
+          <tr style={{ color: 'rgba(250,250,249,0.54)' }}>
+            <th className="text-left py-2 px-2 font-semibold">Oran</th>
+            <th className="text-right py-2 px-2 font-semibold">Matrah</th>
+            <th className="text-right py-2 px-2 font-semibold">KDV</th>
+            <th className="text-right py-2 px-2 font-semibold">Adet</th>
           </tr>
         </thead>
         <tbody style={{ color: '#fafaf9' }}>
@@ -947,24 +1020,24 @@ function OranTablosu({
           )}
           {safeOranlar.map((o) => (
             <tr key={o.oran} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-              <td className="py-2 font-semibold">%{o.oran}</td>
-              <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(o.matrah)}</td>
-              <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: renk }}>₺{fmt(o.kdv)}</td>
-              <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: 'rgba(250,250,249,0.5)' }}>{o.adet}</td>
+              <td className="py-2.5 px-2 font-semibold">%{o.oran}</td>
+              <td className="text-right px-2"><MoneyText value={o.matrah} /></td>
+              <td className="text-right px-2"><MoneyText value={o.kdv} color={renk} /></td>
+              <td className="text-right px-2 tabular-nums" style={{ color: 'rgba(250,250,249,0.62)', fontWeight: 650 }}>{o.adet}</td>
             </tr>
           ))}
-          <tr style={{ borderTop: '2px solid rgba(255,255,255,0.1)', fontWeight: 700 }}>
-            <td className="py-2">TOPLAM</td>
-            <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(toplamMatrah)}</td>
-            <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: renk }}>₺{fmt(toplamKdv)}</td>
-            <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{adet}</td>
+          <tr style={{ borderTop: '2px solid rgba(212,184,118,0.28)', background: 'rgba(212,184,118,0.055)' }}>
+            <td className="py-2.5 px-2 font-bold" style={{ color: FINANCIAL_TOTAL_COLOR }}>TOPLAM</td>
+            <td className="text-right px-2"><MoneyText value={toplamMatrah} color={FINANCIAL_TOTAL_COLOR} strong /></td>
+            <td className="text-right px-2"><MoneyText value={toplamKdv} color={renk} strong /></td>
+            <td className="text-right px-2 tabular-nums" style={{ color: FINANCIAL_TOTAL_COLOR, fontWeight: 750 }}>{adet}</td>
           </tr>
           {altSatir && altSatir.map((a) => (
             <tr key={a.ad} style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <td className="py-1 text-[11.5px] pl-3">└ {a.ad}</td>
-              <td className="text-right tabular-nums text-[11.5px]" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(a.v.matrah)}</td>
-              <td className="text-right tabular-nums text-[11.5px]" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(a.v.kdv)}</td>
-              <td className="text-right tabular-nums text-[11.5px]" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{a.v.adet}</td>
+              <td className="py-1.5 px-2 text-[11.8px] pl-5">└ {a.ad}</td>
+              <td className="text-right px-2"><MoneyText value={a.v.matrah} color="rgba(250,250,249,0.64)" /></td>
+              <td className="text-right px-2"><MoneyText value={a.v.kdv} color="rgba(250,250,249,0.64)" /></td>
+              <td className="text-right px-2 tabular-nums text-[12px]" style={{ fontWeight: 600 }}>{a.v.adet}</td>
             </tr>
           ))}
         </tbody>
@@ -974,14 +1047,15 @@ function OranTablosu({
 }
 
 function SummaryCard({ label, value, color, subtitle }: { label: string; value: number; color: string; subtitle: string }) {
+  const countCard = subtitle === 'adet';
   return (
     <div
       className="rounded-2xl p-4 border"
       style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
     >
       <div className="text-[10.5px] font-bold uppercase tracking-[.12em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <div className="text-[22px] font-bold tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color }}>
-        ₺{fmt(value)}
+      <div className="text-[22px] font-bold tabular-nums" style={{ fontFamily: REPORT_FONT, color, fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
+        {countCard ? value : <MoneyText value={value} color={color} strong size={22} />}
       </div>
       <div className="text-[11px] mt-1" style={{ color: 'rgba(250,250,249,0.4)' }}>{subtitle}</div>
     </div>
@@ -1062,11 +1136,11 @@ function Kdv2View({ data }: { data: Kdv2 }) {
                     <td className="px-4 py-2 tabular-nums" style={{ color: '#d4b876', fontFamily: 'JetBrains Mono, monospace' }}>{t.belgeNo}</td>
                     <td className="px-4 py-2 truncate max-w-[220px]">{t.satici}</td>
                     <td className="px-4 py-2 tabular-nums" style={{ color: 'rgba(250,250,249,0.55)' }}>{t.tarih}</td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(t.matrah)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(t.hesaplananKdv)}</td>
+                    <td className="px-4 py-2 text-right"><MoneyText value={t.matrah} /></td>
+                    <td className="px-4 py-2 text-right"><MoneyText value={t.hesaplananKdv} /></td>
                     <td className="px-4 py-2 text-center font-semibold" style={{ color: t.tevkifatKodu === 'KOD_YOK' ? '#fbbf24' : '#93c5fd' }}>{t.tevkifatKodu}</td>
                     <td className="px-4 py-2 text-center font-semibold" style={{ color: '#c9a77c' }}>{t.tevkifatOrani}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-bold" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#fca5a5' }}>₺{fmt(t.tevkifatTutari)}</td>
+                    <td className="px-4 py-2 text-right"><MoneyText value={t.tevkifatTutari} color="#fca5a5" strong /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1095,8 +1169,8 @@ function Kdv2View({ data }: { data: Kdv2 }) {
               {data.tevkifatKodlari.map((k) => (
                 <tr key={k.kod} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                   <td className="py-2 font-semibold" style={{ color: '#c9a77c' }}>{k.kod}</td>
-                  <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>₺{fmt(k.matrah)}</td>
-                  <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace', color: '#fca5a5' }}>₺{fmt(k.tevkifat)}</td>
+                  <td className="text-right"><MoneyText value={k.matrah} /></td>
+                  <td className="text-right"><MoneyText value={k.tevkifat} color="#fca5a5" /></td>
                   <td className="text-right tabular-nums" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{k.adet}</td>
                 </tr>
               ))}

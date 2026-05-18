@@ -507,6 +507,16 @@ export class KdvBeyannameService {
       setControlRows(r.belgeNo, this.kdvRowsFromControl(r, null));
     }
 
+    const receiptImages = await (this.prisma as any).receiptImage.findMany({
+      where: { session: sessionWhere },
+    });
+    for (const image of receiptImages) {
+      const rows = this.kdvRowsFromControl(null, image);
+      setControlRows(image.confirmedBelgeNo, rows);
+      setControlRows(image.ocrBelgeNo, rows);
+      setControlRows(image.originalName, rows);
+    }
+
     // Oran bazlı toplama
     const oranMap = new Map<
       number,
@@ -532,7 +542,10 @@ export class KdvBeyannameService {
     const eksikVeriler: KdvEksikVeri[] = [];
 
     for (const f of faturaOnly) {
-      const controlRows = this.findByBelgeNo(controlMap, f.faturaNo) || [];
+      const controlRows = this.completeControlRows(
+        this.findByBelgeNo(controlMap, f.faturaNo) || [],
+        f,
+      );
       if (controlRows.length > 0) {
         for (const row of controlRows) {
           addToOran(row.oran, row.matrah, row.kdv, 'kdv_kontrol');
@@ -838,6 +851,13 @@ export class KdvBeyannameService {
     const stripped = this.stripLeadingZeros(normalized);
     if (stripped) keys.add(stripped);
     keys.add(this.eInvoiceComparableKey(normalized));
+    const digitRuns = normalized.match(/\d+/g) || [];
+    const lastDigits = digitRuns[digitRuns.length - 1] || '';
+    for (const len of [4, 5, 6, 7, 8, 9]) {
+      if (lastDigits.length >= len) {
+        keys.add(this.stripLeadingZeros(lastDigits.slice(-len)));
+      }
+    }
     return Array.from(keys).filter(Boolean);
   }
 
@@ -847,6 +867,64 @@ export class KdvBeyannameService {
       if (hit) return hit;
     }
     return undefined;
+  }
+
+  private completeControlRows(
+    rows: Array<{ oran: number; matrah: number; kdv: number }>,
+    invoice: any,
+  ): Array<{ oran: number; matrah: number; kdv: number }> {
+    return rows
+      .map((row) => this.completeControlRow(row, invoice))
+      .filter((row) => row.kdv > 0 && row.matrah > 0 && row.oran > 0);
+  }
+
+  private completeControlRow(
+    row: { oran: number; matrah: number; kdv: number },
+    invoice: any,
+  ): { oran: number; matrah: number; kdv: number } {
+    let oran = Number(row.oran || 0);
+    let matrah = Number(row.matrah || 0);
+    let kdv = Number(row.kdv || 0);
+
+    if (!kdv && oran > 0 && matrah > 0) kdv = matrah * (oran / 100);
+    if (!matrah && oran > 0 && kdv > 0) matrah = kdv / (oran / 100);
+
+    if (!oran && matrah > 0 && kdv > 0) {
+      oran = this.nearestKdvRate((kdv / matrah) * 100);
+    }
+
+    if ((!matrah || !oran) && kdv > 0) {
+      const gross = Number(invoice?.toplamTutar || 0);
+      const inferredBase = gross > kdv ? gross - kdv : 0;
+      if (inferredBase > 0) {
+        const inferredRate = this.nearestKdvRate((kdv / inferredBase) * 100);
+        if (!oran) oran = inferredRate;
+        if (!matrah) matrah = inferredBase;
+      }
+    }
+
+    if (!oran && kdv > 0) oran = 20;
+    if (!matrah && oran > 0 && kdv > 0) matrah = kdv / (oran / 100);
+
+    return {
+      oran: Math.round(oran * 100) / 100,
+      matrah: Math.round(matrah * 100) / 100,
+      kdv: Math.round(kdv * 100) / 100,
+    };
+  }
+
+  private nearestKdvRate(rate: number): number {
+    const validRates = [1, 8, 10, 18, 20];
+    let best = validRates[0];
+    let bestDiff = Math.abs(rate - best);
+    for (const candidate of validRates.slice(1)) {
+      const diff = Math.abs(rate - candidate);
+      if (diff < bestDiff) {
+        best = candidate;
+        bestDiff = diff;
+      }
+    }
+    return bestDiff <= 2 ? best : Math.round(rate * 100) / 100;
   }
 
   private kdvRowsFromControl(record: any, image: any): Array<{ oran: number; matrah: number; kdv: number }> {
@@ -864,6 +942,10 @@ export class KdvBeyannameService {
         matrah: matrah || kdv / (oran / 100),
         kdv: kdv || matrah * (oran / 100),
       }];
+    }
+    const imageKdv = this.parseTrAmount(image?.confirmedKdvTutari ?? image?.ocrKdvTutari);
+    if (imageKdv > 0) {
+      return [{ oran: 0, matrah: 0, kdv: imageKdv }];
     }
     return [];
   }
