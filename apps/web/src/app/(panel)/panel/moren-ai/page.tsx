@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   DollarSign,
   Edit3,
+  ChevronDown,
   Loader2,
   Mic,
   MicOff,
@@ -98,6 +99,7 @@ export default function MorenAIPage() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [selectedTaxpayerId, setSelectedTaxpayerId] = useState('');
+  const [taxpayerPickerOpen, setTaxpayerPickerOpen] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   const [memoryText, setMemoryText] = useState('');
@@ -249,7 +251,7 @@ export default function MorenAIPage() {
   const totalCost = useMemo(() => messages.reduce((sum, message) => sum + (message.costUsd || 0), 0), [messages]);
 
   return (
-    <div className="flex h-[calc(100vh-112px)] min-h-[680px] max-w-none gap-3">
+    <div className="flex h-full min-h-0 max-w-none gap-3 overflow-hidden">
       <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
         <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
@@ -270,21 +272,82 @@ export default function MorenAIPage() {
           </button>
         </div>
 
-        <div className="border-b p-3" style={{ borderColor: LINE }}>
+        <div className="relative border-b p-3" style={{ borderColor: LINE }}>
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
             Mükellef konteksti
           </label>
-          <select
-            value={selectedTaxpayerId}
-            onChange={(event) => setSelectedTaxpayerId(event.target.value)}
-            className="h-9 rounded-lg border px-3 text-[12.5px]"
-            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+          <div
+            className="relative"
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setTaxpayerPickerOpen(false);
+              }
+            }}
           >
-            <option value="">Genel ofis sorusu</option>
-            {taxpayers.map((taxpayer) => (
-              <option key={taxpayer.id} value={taxpayer.id}>{taxpayerName(taxpayer)}</option>
-            ))}
-          </select>
+            <button
+              type="button"
+              onClick={() => setTaxpayerPickerOpen((value) => !value)}
+              className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border px-3 text-left text-[12.5px] transition hover:bg-white/[0.06]"
+              style={{ background: SOFT, borderColor: taxpayerPickerOpen ? LINE_GOLD : LINE, color: TEXT }}
+              aria-expanded={taxpayerPickerOpen}
+            >
+              <span className="min-w-0 truncate">
+                {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel ofis sorusu'}
+              </span>
+              <ChevronDown
+                size={14}
+                className={`shrink-0 transition ${taxpayerPickerOpen ? 'rotate-180' : ''}`}
+                style={{ color: GOLD }}
+              />
+            </button>
+
+            {taxpayerPickerOpen && (
+              <div
+                className="absolute left-0 right-0 z-30 mt-2 max-h-[280px] overflow-y-auto rounded-lg border p-1 shadow-2xl"
+                style={{
+                  background: '#14110e',
+                  borderColor: LINE_GOLD,
+                  boxShadow: '0 18px 50px rgba(0,0,0,0.45)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTaxpayerId('');
+                    setTaxpayerPickerOpen(false);
+                  }}
+                  className="w-full rounded-md px-3 py-2 text-left text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
+                  style={{
+                    color: selectedTaxpayerId ? MUTED : TEXT,
+                    background: selectedTaxpayerId ? 'transparent' : 'rgba(212,184,118,0.12)',
+                  }}
+                >
+                  Genel ofis sorusu
+                </button>
+                <div className="my-1 border-t" style={{ borderColor: LINE }} />
+                {taxpayers.map((taxpayer) => {
+                  const active = selectedTaxpayerId === taxpayer.id;
+                  return (
+                    <button
+                      key={taxpayer.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTaxpayerId(taxpayer.id);
+                        setTaxpayerPickerOpen(false);
+                      }}
+                      className="w-full rounded-md px-3 py-2 text-left text-[12.5px] transition hover:bg-white/[0.06]"
+                      style={{
+                        color: active ? TEXT : 'rgba(250,250,249,0.72)',
+                        background: active ? 'rgba(212,184,118,0.12)' : 'transparent',
+                      }}
+                    >
+                      <span className="block truncate">{taxpayerName(taxpayer)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
