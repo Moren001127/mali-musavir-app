@@ -109,11 +109,101 @@ interface IntegrationRow {
   provider: string;
   label?: string;
   kind?: string;
+  tone?: string;
   isActive?: boolean;
+  /** Bu mükellef için credential set edilmiş mi (backend her zaman döner) */
+  configured?: boolean;
+  /** Bu mükellefe özel config var mı (global'den fallback değil) */
+  taxpayerScoped?: boolean;
   hasCredentials?: boolean;
+  hasApiKey?: boolean;
+  hasApiSecret?: boolean;
+  hasPassword?: boolean;
+  baseUrl?: string;
+  username?: string;
+  senderVkn?: string;
+  accountId?: string;
+  note?: string;
   lastSyncAt?: string | null;
+  updatedAt?: string | null;
   config?: unknown;
 }
+
+/* Provider'a göre form alanı haritası — modal dinamik field seçimi için */
+type IntegrationFieldKey =
+  | 'username'
+  | 'password'
+  | 'apiKey'
+  | 'apiSecret'
+  | 'baseUrl'
+  | 'senderVkn'
+  | 'accountId';
+
+interface IntegrationFieldDef {
+  key: IntegrationFieldKey;
+  label: string;
+  type?: 'text' | 'password' | 'url';
+  placeholder?: string;
+  required?: boolean;
+}
+
+const PROVIDER_FIELDS: Record<string, IntegrationFieldDef[]> = {
+  ELOGO: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Servis URL', type: 'url', placeholder: 'https://...' },
+    { key: 'senderVkn', label: 'Gönderici VKN' },
+  ],
+  UYUMSOFT: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Servis URL', type: 'url', placeholder: 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration' },
+  ],
+  PARASUT: [
+    { key: 'apiKey', label: 'API Key (Client ID)', required: true },
+    { key: 'apiSecret', label: 'API Secret', type: 'password', required: true },
+    { key: 'accountId', label: 'Firma ID', required: true },
+    { key: 'username', label: 'Kullanıcı adı (e-posta)' },
+    { key: 'password', label: 'Şifre', type: 'password' },
+  ],
+  KOLAYSOFT: [
+    { key: 'apiKey', label: 'API Key', required: true },
+    { key: 'apiSecret', label: 'API Secret', type: 'password' },
+  ],
+  IZIBIZ: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Servis URL', type: 'url', placeholder: 'https://efaturaws.izibiz.com.tr/EInvoiceWS' },
+  ],
+  FORIBA: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Servis URL', type: 'url' },
+  ],
+  MIKRO: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'accountId', label: 'Hesap / Firma ID' },
+  ],
+  LUCA: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Luca URL', type: 'url' },
+  ],
+  LOGO_ISBASI: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+    { key: 'baseUrl', label: 'Servis URL', type: 'url' },
+  ],
+  TURMOB_EFATURA: [
+    { key: 'username', label: 'Kullanıcı adı', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+  ],
+  GIB_PORTAL: [
+    { key: 'username', label: 'Kullanıcı adı (VKN/TC)', required: true },
+    { key: 'password', label: 'Şifre', type: 'password', required: true },
+  ],
+};
 
 /* ────────────────────────────────────────────────────────────────────
    SABİTLER (palet renkleri inline kullanılıyor)
@@ -387,6 +477,7 @@ export default function FaturaIslemePage() {
             <SourcesStage
               taxpayerId={selectedTaxpayer}
               taxpayer={taxpayerMap.get(selectedTaxpayer)}
+              taxpayers={taxpayers}
               period={period}
               onCompleted={handleRefresh}
               dashboardTotalPending={grandPending}
@@ -552,6 +643,7 @@ function ocrTone(confidence?: number | null) {
 function SourcesStage({
   taxpayerId,
   taxpayer,
+  taxpayers,
   period,
   onCompleted,
   dashboardTotalPending,
@@ -559,11 +651,13 @@ function SourcesStage({
 }: {
   taxpayerId: string;
   taxpayer?: TaxpayerLite;
+  taxpayers: TaxpayerLite[];
   period: string;
   onCompleted: () => void;
   dashboardTotalPending: number;
   dashboardTotalTransferred: number;
 }) {
+  const qc = useQueryClient();
   const [activeSource, setActiveSource] = useState<SourceId>('integrator');
 
   const integrationsQ = useQuery<IntegrationRow[]>({
@@ -577,9 +671,8 @@ function SourcesStage({
   });
 
   const integrations = integrationsQ.data || [];
-  const activeProvidersCount = integrations.filter(
-    (i) => i.hasCredentials || i.isActive,
-  ).length;
+  // Mükellef bazlı: configured olanlar (backend dönüyor)
+  const activeProvidersCount = integrations.filter((i) => i.configured).length;
 
   return (
     <>
@@ -634,8 +727,13 @@ function SourcesStage({
             integrationsLoading={integrationsQ.isLoading}
             taxpayerId={taxpayerId}
             taxpayer={taxpayer}
+            taxpayers={taxpayers}
             period={period}
             onCompleted={onCompleted}
+            onIntegrationsChanged={() => {
+              qc.invalidateQueries({ queryKey: ['fim', 'integrations'] });
+              qc.invalidateQueries({ queryKey: ['fim', 'integrations-overview'] });
+            }}
           />
         )}
         {activeSource === 'ocr' && (
@@ -705,27 +803,38 @@ function IntegratorPanel({
   integrationsLoading,
   taxpayerId,
   taxpayer,
+  taxpayers,
   period,
   onCompleted,
+  onIntegrationsChanged,
 }: {
   integrations: IntegrationRow[];
   integrationsLoading: boolean;
   taxpayerId: string;
   taxpayer?: TaxpayerLite;
+  taxpayers: TaxpayerLite[];
   period: string;
   onCompleted: () => void;
+  onIntegrationsChanged: () => void;
 }) {
   const [direction, setDirection] = useState<Direction>('ALIS');
   const [selected, setSelected] = useState<string[]>([]);
+  const [dialogState, setDialogState] = useState<{
+    open: boolean;
+    provider?: string;
+    existing?: IntegrationRow;
+  }>({ open: false });
 
-  const activeProviders = useMemo(
-    () => integrations.filter((i) => i.hasCredentials || i.isActive).map((i) => i.provider),
+  // Bu mükellef için tanımlı sağlayıcılar (configured = credential var)
+  const configuredProviders = useMemo(
+    () => integrations.filter((i) => i.configured),
     [integrations],
   );
 
+  // Çekim için varsayılan: tüm tanımlı sağlayıcılar seçili
   useEffect(() => {
-    setSelected(activeProviders);
-  }, [activeProviders.join(',')]);
+    setSelected(configuredProviders.map((i) => i.provider));
+  }, [configuredProviders.map((i) => i.provider).join(',')]);
 
   const fetchMut = useMutation({
     mutationFn: async () => {
@@ -745,97 +854,557 @@ function IntegratorPanel({
       const results = data?.results || [];
       const total = results.reduce((acc, r) => acc + (r.imported ?? r.count ?? 0), 0);
       const failed = results.filter((r) => r.ok === false || r.error);
-      if (total > 0) {
-        toast.success(`${total} belge alındı`);
-      }
+      if (total > 0) toast.success(`${total} belge alındı`);
       failed.forEach((r) => toast.error(`${r.provider}: ${r.error || 'hata'}`));
-      if (total === 0 && failed.length === 0) {
-        toast.info('Sonuç dönmedi · dönem boş olabilir');
-      }
+      if (total === 0 && failed.length === 0) toast.info('Sonuç dönmedi · dönem boş olabilir');
       onCompleted();
     },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Çekim başarısız');
-    },
+    onError: (err: Error) => toast.error(err.message || 'Çekim başarısız'),
   });
+
+  /* ─── "Tüm mükellefler" seçili: özet göster ─── */
+  if (!taxpayerId) {
+    return (
+      <div>
+        <div className="mb-4">
+          <div className="text-[15px] font-semibold text-[#2a2723]">Entegratör Çekimi</div>
+          <div className="mt-0.5 text-[13px] text-[#8a8270]">
+            Çekim işlemi mükellef bazında yapılır. Sağ üstten bir mükellef seçin.
+          </div>
+        </div>
+        <GlobalIntegrationSummary taxpayers={taxpayers} />
+      </div>
+    );
+  }
+
+  /* ─── Mükellef seçili: tanımlı entegratörler veya empty state ─── */
+  const hasIntegrations = configuredProviders.length > 0;
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-[15px] font-semibold text-[#2a2723]">Entegratör Çekimi</div>
           <div className="mt-0.5 text-[13px] text-[#8a8270]">
-            Sağlayıcıları seç, yön belirle, çekimi başlat.
+            {hasIntegrations
+              ? `${taxpayerLabel(taxpayer)} için ${configuredProviders.length} sağlayıcı tanımlı.`
+              : `${taxpayerLabel(taxpayer)} için henüz entegratör tanımlanmamış.`}
           </div>
         </div>
-      </div>
-
-      {/* Yön toggle */}
-      <div className="mb-4 inline-flex rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] p-[3px]">
-        {(['ALIS', 'SATIS'] as Direction[]).map((d) => (
-          <button
-            key={d}
-            onClick={() => setDirection(d)}
-            className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition ${
-              direction === d
-                ? 'bg-white text-[#2a2723] shadow-[0_1px_2px_rgba(40,35,25,0.04)]'
-                : 'text-[#8a8270] hover:text-[#2a2723]'
-            }`}
-          >
-            {d === 'ALIS' ? 'Gelen faturalar' : 'Giden faturalar'}
-          </button>
-        ))}
-      </div>
-
-      {/* Sağlayıcı çipleri */}
-      <div className="mb-[18px] flex flex-wrap gap-1.5">
-        {PROVIDERS.map((p) => {
-          const info = integrations.find((i) => i.provider === p.id);
-          const has = !!info?.hasCredentials || !!info?.isActive;
-          const on = selected.includes(p.id);
-          return (
-            <button
-              key={p.id}
-              onClick={() =>
-                setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))
-              }
-              disabled={!taxpayerId}
-              className={`inline-flex items-center gap-1.5 rounded-[18px] border px-3 py-1.5 text-[12.5px] transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                on
-                  ? 'border-[#2a2723] bg-[#2a2723] text-white'
-                  : 'border-[#e6e1d6] bg-white text-[#5b5447] hover:border-[#d4cfbf]'
-              }`}
-            >
-              <span
-                className="h-[5px] w-[5px] rounded-full"
-                style={{
-                  background: has ? '#5d8763' : on ? 'rgba(255,255,255,0.5)' : '#b8b09b',
-                }}
-              />
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2.5">
         <button
-          onClick={() => fetchMut.mutate()}
-          disabled={!taxpayerId || selected.length === 0 || fetchMut.isPending}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setDialogState({ open: true })}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3 text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723]"
         >
-          {fetchMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          Çekimi başlat
+          + Yeni entegratör
         </button>
-        {!taxpayer && (
-          <span className="text-[12.5px] text-[#a87a3d]">↖ Önce mükellef seç</span>
-        )}
-        {integrationsLoading && (
-          <span className="inline-flex items-center gap-1 text-[12.5px] text-[#8a8270]">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            Sağlayıcılar yükleniyor...
-          </span>
-        )}
+      </div>
+
+      {integrationsLoading ? (
+        <div className="py-10 text-center">
+          <Loader2 className="mx-auto h-5 w-5 animate-spin text-[#8a8270]" />
+        </div>
+      ) : !hasIntegrations ? (
+        <EmptyIntegrationState onAdd={() => setDialogState({ open: true })} />
+      ) : (
+        <>
+          {/* Yön toggle */}
+          <div className="mb-4 inline-flex rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] p-[3px]">
+            {(['ALIS', 'SATIS'] as Direction[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDirection(d)}
+                className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition ${
+                  direction === d
+                    ? 'bg-white text-[#2a2723] shadow-[0_1px_2px_rgba(40,35,25,0.04)]'
+                    : 'text-[#8a8270] hover:text-[#2a2723]'
+                }`}
+              >
+                {d === 'ALIS' ? 'Gelen faturalar' : 'Giden faturalar'}
+              </button>
+            ))}
+          </div>
+
+          {/* Tanımlı sağlayıcılar - chip + düzenle */}
+          <div className="mb-[18px] flex flex-wrap gap-1.5">
+            {configuredProviders.map((info) => {
+              const catalog = PROVIDERS.find((p) => p.id === info.provider);
+              const label = info.label || catalog?.label || info.provider;
+              const on = selected.includes(info.provider);
+              return (
+                <div key={info.provider} className="inline-flex items-center">
+                  <button
+                    onClick={() =>
+                      setSelected((s) =>
+                        s.includes(info.provider) ? s.filter((x) => x !== info.provider) : [...s, info.provider],
+                      )
+                    }
+                    className={`inline-flex items-center gap-1.5 rounded-l-[18px] border border-r-0 px-3 py-1.5 text-[12.5px] transition ${
+                      on
+                        ? 'border-[#2a2723] bg-[#2a2723] text-white'
+                        : 'border-[#e6e1d6] bg-white text-[#5b5447] hover:border-[#d4cfbf]'
+                    }`}
+                  >
+                    <span
+                      className="h-[5px] w-[5px] rounded-full"
+                      style={{
+                        background: info.isActive
+                          ? on
+                            ? 'rgba(255,255,255,0.7)'
+                            : '#5d8763'
+                          : '#b8b09b',
+                      }}
+                    />
+                    {label}
+                    {info.taxpayerScoped === false && (
+                      <span className="opacity-60 ml-1 text-[10px]">(genel)</span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setDialogState({ open: true, provider: info.provider, existing: info })}
+                    title="Düzenle"
+                    className={`inline-flex h-[28px] items-center rounded-r-[18px] border px-2 text-[11px] transition ${
+                      on
+                        ? 'border-[#2a2723] bg-[#2a2723] text-white hover:bg-[#1c1a17]'
+                        : 'border-[#e6e1d6] bg-white text-[#8a8270] hover:border-[#d4cfbf] hover:text-[#2a2723]'
+                    }`}
+                  >
+                    ⚙
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Çekim aksiyonu */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => fetchMut.mutate()}
+              disabled={selected.length === 0 || fetchMut.isPending}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {fetchMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {selected.length > 0 ? `Çekimi başlat (${selected.length})` : 'Çekimi başlat'}
+            </button>
+            {selected.length === 0 && (
+              <span className="text-[12.5px] text-[#a87a3d]">En az bir sağlayıcı seç</span>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Dialog */}
+      {dialogState.open && (
+        <IntegrationDialog
+          taxpayerId={taxpayerId}
+          taxpayer={taxpayer}
+          existing={dialogState.existing}
+          fixedProvider={dialogState.provider}
+          allIntegrations={integrations}
+          onClose={() => setDialogState({ open: false })}
+          onSaved={() => {
+            setDialogState({ open: false });
+            onIntegrationsChanged();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── Genel özet (Tüm mükellefler seçili durumda) ─── */
+
+function GlobalIntegrationSummary({ taxpayers }: { taxpayers: TaxpayerLite[] }) {
+  // Her mükellef için entegrasyon listesi paralel çek
+  const queries = useQuery({
+    queryKey: ['fim', 'integrations-overview', taxpayers.map((t) => t.id).join(',')],
+    queryFn: async () => {
+      // Birden fazla istekle yorma — sadece 50 mükellefe kadar overview
+      const subset = taxpayers.slice(0, 80);
+      const results = await Promise.all(
+        subset.map((t) =>
+          api
+            .get('/fatura-muhasebelestirme/integrations', { params: { taxpayerId: t.id } })
+            .then((r) => ({ taxpayer: t, integrations: r.data as IntegrationRow[] }))
+            .catch(() => ({ taxpayer: t, integrations: [] as IntegrationRow[] })),
+        ),
+      );
+      return results;
+    },
+    enabled: taxpayers.length > 0,
+    staleTime: 60_000,
+  });
+
+  if (queries.isLoading) {
+    return (
+      <div className="py-10 text-center">
+        <Loader2 className="mx-auto h-5 w-5 animate-spin text-[#8a8270]" />
+        <div className="mt-2 text-[12.5px] text-[#8a8270]">
+          Mükellef başına entegrasyonlar hesaplanıyor...
+        </div>
+      </div>
+    );
+  }
+
+  const rows = queries.data || [];
+  const taxpayersWithIntegration = rows.filter((r) => r.integrations.some((i) => i.configured));
+  const totalConfigured = rows.reduce(
+    (acc, r) => acc + r.integrations.filter((i) => i.configured).length,
+    0,
+  );
+
+  // Provider başına dağılım
+  const providerStats = new Map<string, number>();
+  rows.forEach((r) =>
+    r.integrations.forEach((i) => {
+      if (i.configured) {
+        providerStats.set(i.provider, (providerStats.get(i.provider) || 0) + 1);
+      }
+    }),
+  );
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        <SummaryStat
+          label="Tanımlı mükellef"
+          value={`${taxpayersWithIntegration.length}/${taxpayers.length}`}
+        />
+        <SummaryStat label="Toplam tanımlama" value={totalConfigured} />
+        <SummaryStat label="Aktif sağlayıcı türü" value={providerStats.size} />
+      </div>
+
+      {providerStats.size > 0 ? (
+        <div>
+          <div className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
+            Sağlayıcı dağılımı
+          </div>
+          <div className="overflow-hidden rounded-[10px] border border-[#e6e1d6]">
+            {Array.from(providerStats.entries())
+              .sort((a, b) => b[1] - a[1])
+              .map(([provider, count], idx, arr) => {
+                const catalog = PROVIDERS.find((p) => p.id === provider);
+                const max = arr[0][1];
+                return (
+                  <div
+                    key={provider}
+                    className="flex items-center justify-between gap-3 border-t border-[#e6e1d6] px-4 py-2.5 first:border-t-0"
+                  >
+                    <span className="text-[13.5px] font-medium text-[#2a2723] min-w-[120px]">
+                      {catalog?.label || provider}
+                    </span>
+                    <div className="flex-1 h-[6px] rounded-full bg-[#f1ebde] overflow-hidden">
+                      <div
+                        className="h-full bg-[#4a8580]"
+                        style={{ width: `${(count / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-[13px] tabular-nums text-[#5b5447] min-w-[60px] text-right">
+                      {count} mükellef
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] px-4 py-6 text-center text-[13px] text-[#8a8270]">
+          Hiçbir mükellef için entegratör tanımlanmamış. Bir mükellef seçip "+ Yeni entegratör" ile başlayın.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-[10px] border border-[#e6e1d6] bg-white p-4">
+      <div className="text-[12px] text-[#8a8270] mb-1">{label}</div>
+      <div className="text-[22px] font-semibold tracking-tight text-[#2a2723] tabular-nums">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Empty state (tanımlama yok) ─── */
+
+function EmptyIntegrationState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="rounded-[10px] border border-dashed border-[#d4cfbf] bg-[#f8f6f1] px-6 py-10 text-center">
+      <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#4a8580]">
+        <ArrowRight className="h-5 w-5" />
+      </div>
+      <div className="mb-1 text-[15px] font-semibold text-[#2a2723]">
+        Bu mükellef için entegratör tanımlanmamış
+      </div>
+      <p className="mx-auto mb-5 max-w-[420px] text-[13px] text-[#8a8270]">
+        e-Fatura sağlayıcısı veya Luca/GİB kimlik bilgilerini ekleyerek bu mükellefin belgelerini
+        otomatik çekmeye başlayabilirsiniz.
+      </p>
+      <button
+        onClick={onAdd}
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-5 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863]"
+      >
+        + Yeni entegratör tanımla
+      </button>
+    </div>
+  );
+}
+
+/* ─── IntegrationDialog (yeni / düzenle modal) ─── */
+
+function IntegrationDialog({
+  taxpayerId,
+  taxpayer,
+  existing,
+  fixedProvider,
+  allIntegrations,
+  onClose,
+  onSaved,
+}: {
+  taxpayerId: string;
+  taxpayer?: TaxpayerLite;
+  existing?: IntegrationRow;
+  fixedProvider?: string;
+  allIntegrations: IntegrationRow[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = !!existing;
+  const [provider, setProvider] = useState<string>(
+    fixedProvider || existing?.provider || '',
+  );
+  const [values, setValues] = useState<Record<IntegrationFieldKey, string>>({
+    username: existing?.username || '',
+    password: '',
+    apiKey: '',
+    apiSecret: '',
+    baseUrl: existing?.baseUrl || '',
+    senderVkn: existing?.senderVkn || '',
+    accountId: existing?.accountId || '',
+  });
+  const [isActive, setIsActive] = useState<boolean>(existing?.isActive !== false);
+  const [note, setNote] = useState<string>(existing?.note || '');
+
+  // Provider seçimi değişince form alanları/preset güncellensin
+  useEffect(() => {
+    if (!provider || isEdit) return;
+    // Yeni provider seçildi, sadece o provider'ın alanlarını sıfırla
+    const fields = PROVIDER_FIELDS[provider] || [];
+    setValues((v) => {
+      const next = { ...v };
+      // İlgili olmayanları temizleme — sadece yeni provider için sıfır gibi davran
+      fields.forEach((f) => {
+        if (!next[f.key]) next[f.key] = '';
+      });
+      return next;
+    });
+  }, [provider, isEdit]);
+
+  const fields = provider ? PROVIDER_FIELDS[provider] || [] : [];
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!provider) throw new Error('Sağlayıcı seçin');
+      // Zorunlu alan kontrolü
+      const missing = fields.filter((f) => f.required && !values[f.key]?.trim()).map((f) => f.label);
+      // Düzenleme modunda: önceden kayıtlı password/apiKey var ise (hasPassword/hasApiKey true) boş bırakmaya izin ver
+      const skipIfStored: IntegrationFieldKey[] = isEdit
+        ? ([
+            existing?.hasPassword ? 'password' : null,
+            existing?.hasApiKey ? 'apiKey' : null,
+            existing?.hasApiSecret ? 'apiSecret' : null,
+          ].filter(Boolean) as IntegrationFieldKey[])
+        : [];
+      const realMissing = missing.filter(
+        (label) =>
+          !skipIfStored.includes(
+            (fields.find((f) => f.label === label)?.key || '') as IntegrationFieldKey,
+          ),
+      );
+      if (realMissing.length > 0) {
+        throw new Error('Zorunlu alanlar eksik: ' + realMissing.join(', '));
+      }
+
+      const payload: Record<string, unknown> = {
+        provider,
+        taxpayerId: taxpayerId || null,
+        isActive,
+        note,
+      };
+      fields.forEach((f) => {
+        const v = values[f.key]?.trim();
+        if (v) payload[f.key] = v;
+      });
+      if (values.baseUrl?.trim()) payload.baseUrl = values.baseUrl.trim();
+
+      return api
+        .post('/fatura-muhasebelestirme/integrations', payload)
+        .then((r) => r.data);
+    },
+    onSuccess: () => {
+      toast.success(isEdit ? 'Entegratör güncellendi' : 'Entegratör eklendi');
+      onSaved();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Kayıt başarısız');
+    },
+  });
+
+  // Henüz tanımlı olmayan provider'lar — yeni eklemede gösterilir
+  const availableProviders = useMemo(() => {
+    if (isEdit) return PROVIDERS;
+    const configuredIds = new Set(
+      allIntegrations.filter((i) => i.configured).map((i) => i.provider),
+    );
+    return PROVIDERS.filter((p) => !configuredIds.has(p.id));
+  }, [isEdit, allIntegrations]);
+
+  const providerLabel = useMemo(() => {
+    if (!provider) return '';
+    return PROVIDERS.find((p) => p.id === provider)?.label || provider;
+  }, [provider]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[520px] rounded-[14px] bg-[#fbf9f4] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 border-b border-[#e6e1d6] px-6 py-4">
+          <div>
+            <div className="text-[17px] font-semibold text-[#2a2723]">
+              {isEdit ? `${providerLabel} — düzenle` : 'Yeni entegratör tanımla'}
+            </div>
+            <div className="mt-1 text-[13px] text-[#8a8270]">
+              {taxpayer ? taxpayerLabel(taxpayer) : 'Mükellef yok'}
+              {taxpayer?.taxNumber ? ` · ${taxpayer.taxNumber}` : ''}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[#8a8270] transition hover:text-[#2a2723]"
+            title="Kapat"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          {/* Provider seçimi */}
+          {!isEdit && (
+            <div className="mb-4">
+              <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">
+                Sağlayıcı
+              </label>
+              <div className="relative">
+                <select
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                  className="h-10 w-full appearance-none rounded-lg border border-[#e6e1d6] bg-white px-3 pr-9 text-[14px] text-[#2a2723] focus:border-[#4a8580] focus:outline-none"
+                >
+                  <option value="">Sağlayıcı seçin...</option>
+                  {availableProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8270]" />
+              </div>
+              {availableProviders.length === 0 && (
+                <p className="mt-1.5 text-[12px] text-[#a87a3d]">
+                  Bu mükellef için tüm sağlayıcılar zaten tanımlı. Mevcut olanı düzenleyin.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Dinamik alanlar */}
+          {provider && fields.length > 0 && (
+            <div className="space-y-3">
+              {fields.map((f) => {
+                const isPasswordField = f.type === 'password';
+                const hasStored =
+                  isEdit &&
+                  ((f.key === 'password' && existing?.hasPassword) ||
+                    (f.key === 'apiKey' && existing?.hasApiKey) ||
+                    (f.key === 'apiSecret' && existing?.hasApiSecret));
+                return (
+                  <div key={f.key}>
+                    <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">
+                      {f.label}
+                      {f.required && !hasStored && (
+                        <span className="ml-1 text-[#a8645e]">*</span>
+                      )}
+                    </label>
+                    <input
+                      type={isPasswordField ? 'password' : f.type === 'url' ? 'url' : 'text'}
+                      value={values[f.key]}
+                      onChange={(e) =>
+                        setValues((v) => ({ ...v, [f.key]: e.target.value }))
+                      }
+                      placeholder={
+                        hasStored ? '••••• (değiştirmek için yeni değer girin)' : f.placeholder || ''
+                      }
+                      autoComplete={isPasswordField ? 'new-password' : 'off'}
+                      className="h-10 w-full rounded-lg border border-[#e6e1d6] bg-white px-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:border-[#4a8580] focus:outline-none"
+                    />
+                  </div>
+                );
+              })}
+
+              {/* Not */}
+              <div>
+                <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">
+                  Not (opsiyonel)
+                </label>
+                <input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Ekip notu, geçerlilik tarihi vs."
+                  className="h-10 w-full rounded-lg border border-[#e6e1d6] bg-white px-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:border-[#4a8580] focus:outline-none"
+                />
+              </div>
+
+              {/* Aktif toggle */}
+              <label className="flex cursor-pointer items-center gap-3 pt-2">
+                <input
+                  type="checkbox"
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
+                  className="h-4 w-4 accent-[#4a8580]"
+                />
+                <span className="text-[13.5px] text-[#2a2723]">
+                  Aktif (devre dışı bırakırsanız çekim listesinde görünmez)
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[#e6e1d6] bg-[#f8f6f1] px-6 py-4">
+          <button
+            onClick={onClose}
+            className="inline-flex h-9 items-center rounded-lg px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:bg-white hover:text-[#2a2723]"
+          >
+            İptal
+          </button>
+          <button
+            onClick={() => saveMut.mutate()}
+            disabled={!provider || saveMut.isPending}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {isEdit ? 'Güncelle' : 'Kaydet'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1493,559 +2062,4 @@ function DocumentEditor({
   const addLine = () => {
     setLines((arr) => [
       ...arr,
-      { group: 'Yevmiye', accountCode: '', description: '', debit: '0', credit: '0' },
-    ]);
-  };
-
-  const updateLine = (idx: number, patch: Partial<ApiLine>) => {
-    setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  };
-
-  const removeLine = (idx: number) => {
-    setLines((arr) => arr.filter((_, i) => i !== idx));
-  };
-
-  const pickAccount = (node: AccountPlanNode) => {
-    const idx = lines.findIndex((l) => !l.accountCode);
-    if (idx >= 0) {
-      updateLine(idx, { accountCode: node.code, description: node.name });
-    } else {
-      setLines((arr) => [
-        ...arr,
-        {
-          group: 'Yevmiye',
-          accountCode: node.code,
-          description: node.name,
-          debit: '0',
-          credit: '0',
-        },
-      ]);
-    }
-  };
-
-  const docType = DOC_TYPE_LABEL[doc.documentType || ''] || doc.documentType || '';
-
-  return (
-    <div className="p-6">
-      {/* Başlık */}
-      <div className="mb-5">
-        <h2 className="text-[20px] font-semibold tracking-tight text-[#2a2723]">
-          {doc.vendorName || doc.customerName || doc.originalName || 'Adsız belge'}
-        </h2>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-[#8a8270]">
-          {docType && <span>{docType}</span>}
-          {doc.belgeNo && (
-            <>
-              <span className="text-[#b8b09b]">·</span>
-              <span>{doc.belgeNo}</span>
-            </>
-          )}
-          {doc.faturaTarihi && (
-            <>
-              <span className="text-[#b8b09b]">·</span>
-              <span>{fmtDate(doc.faturaTarihi)}</span>
-            </>
-          )}
-          {taxpayer && (
-            <>
-              <span className="text-[#b8b09b]">·</span>
-              <span>{taxpayerLabel(taxpayer)}</span>
-            </>
-          )}
-        </div>
-        <div className="mt-3 text-[24px] font-semibold tracking-tight text-[#2a2723] tabular-nums">
-          {fmtMoney(doc.totalAmount)} ₺
-        </div>
-      </div>
-
-      {/* Uyarılar */}
-      {doc.duplicateReason && (
-        <div
-          className={`mb-5 rounded-lg border-l-[3px] px-4 py-3 text-[13px] leading-[1.55] ${
-            doc.duplicateSeverity === 'BLOCKING'
-              ? 'border-[#9a5851] bg-[#eed5cf] text-[#6e3e38]'
-              : 'border-[#a87a3d] bg-[#f1e4c8] text-[#6f5022]'
-          }`}
-        >
-          <strong>{doc.duplicateSeverity === 'BLOCKING' ? 'Mükerrer engelliyor.' : 'Mükerrer uyarısı.'}</strong>{' '}
-          {doc.duplicateReason}
-        </div>
-      )}
-
-      {/* Satırlar */}
-      <div className="mt-6">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
-            Muhasebe fişi · {lines.length} satır
-          </span>
-          <span
-            className={`text-[13px] font-medium ${
-              balanced ? 'text-[#5d8763]' : 'text-[#9a5851]'
-            }`}
-          >
-            {balanced ? '✓ Dengeli' : `Fark: ${fmtMoney(Math.abs(totals.diff))} ₺`}
-          </span>
-        </div>
-
-        <div className="overflow-hidden rounded-[10px] border border-[#e6e1d6]">
-          <div className="grid grid-cols-[110px_1fr_130px_130px_40px] bg-[#f8f6f1] text-[12px] font-medium text-[#8a8270]">
-            <div className="px-3.5 py-[11px]">Grup</div>
-            <div className="px-3.5 py-[11px]">Hesap</div>
-            <div className="px-3.5 py-[11px] text-right">Borç</div>
-            <div className="px-3.5 py-[11px] text-right">Alacak</div>
-            <div></div>
-          </div>
-          {lines.length === 0 && (
-            <div className="border-t border-[#e6e1d6] px-3.5 py-5 text-center text-[12.5px] text-[#8a8270]">
-              Satır yok · ↘ Hesap planından sürükle ya da + ekle
-            </div>
-          )}
-          {lines.map((l, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6]"
-            >
-              <input
-                value={l.group || ''}
-                onChange={(e) => updateLine(i, { group: e.target.value })}
-                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
-                placeholder="—"
-              />
-              <input
-                value={
-                  l.accountCode
-                    ? l.description
-                      ? `${l.accountCode} · ${l.description}`
-                      : String(l.accountCode)
-                    : ''
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  const m = v.match(/^([^\s·]+)\s*[·\-]?\s*(.*)$/);
-                  if (m) {
-                    updateLine(i, { accountCode: m[1] || '', description: m[2] || '' });
-                  } else {
-                    updateLine(i, { accountCode: v, description: '' });
-                  }
-                }}
-                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
-                placeholder="Hesap kodu · ad"
-              />
-              <input
-                value={l.debit?.toString() ?? ''}
-                onChange={(e) => updateLine(i, { debit: e.target.value })}
-                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
-                placeholder="—"
-              />
-              <input
-                value={l.credit?.toString() ?? ''}
-                onChange={(e) => updateLine(i, { credit: e.target.value })}
-                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
-                placeholder="—"
-              />
-              <button
-                onClick={() => removeLine(i)}
-                className="text-[#b8b09b] transition hover:text-[#9a5851]"
-                title="Satırı sil"
-              >
-                <X className="mx-auto h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-          {lines.length > 0 && (
-            <div className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6] bg-[#f8f6f1] font-semibold">
-              <div className="col-span-2 px-3.5 py-3 text-right text-[14px] font-medium text-[#5b5447]">
-                Toplam
-              </div>
-              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">
-                {fmtMoney(totals.debit)}
-              </div>
-              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">
-                {fmtMoney(totals.credit)}
-              </div>
-              <div></div>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={addLine}
-          className="mt-2 inline-flex h-7 items-center gap-1 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2"
-        >
-          + Satır ekle
-        </button>
-      </div>
-
-      {/* Hesap planı */}
-      <div className="mt-6">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
-            Hesap planından ekle
-          </span>
-          <button
-            onClick={() => refreshPlanMut.mutate()}
-            disabled={refreshPlanMut.isPending || !doc.taxpayerId}
-            className="inline-flex h-7 items-center gap-1.5 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2.5 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3 w-3 ${refreshPlanMut.isPending ? 'animate-spin' : ''}`} />
-            Luca'dan yenile
-          </button>
-        </div>
-        <div className="mb-3.5 flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] px-3.5">
-          <Search className="h-3.5 w-3.5 text-[#8a8270]" />
-          <input
-            value={accountSearch}
-            onChange={(e) => setAccountSearch(e.target.value)}
-            placeholder="Hesap kodu veya adı..."
-            className="w-full bg-transparent text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:outline-none"
-          />
-        </div>
-        <div className="grid grid-cols-4 gap-0.5 max-h-[280px] overflow-y-auto">
-          {accountPlanQ.isLoading && (
-            <div className="col-span-4 py-6 text-center">
-              <Loader2 className="mx-auto h-4 w-4 animate-spin text-[#8a8270]" />
-            </div>
-          )}
-          {!accountPlanQ.isLoading && (accountPlanQ.data || []).length === 0 && (
-            <div className="col-span-4 py-6 text-center text-[12.5px] text-[#8a8270]">
-              {doc.taxpayerId
-                ? 'Hesap planı boş · Luca\'dan yenile butonuna tıkla'
-                : 'Belgeye mükellef ata'}
-            </div>
-          )}
-          {(accountPlanQ.data || []).map((node) => (
-            <button
-              key={node.code}
-              onClick={() => pickAccount(node)}
-              className="flex items-baseline gap-2 rounded-md px-3 py-2 text-left transition hover:bg-[#e2eceb]"
-            >
-              <span className="shrink-0 text-[13px] font-semibold text-[#2f6863]">
-                {node.code}
-              </span>
-              <span className="truncate text-[13px] text-[#5b5447]">{node.name}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Footer aksiyonlar */}
-      <div className="mt-6 flex items-center gap-2.5 border-t border-[#e6e1d6] pt-5">
-        <button
-          onClick={onSkip}
-          className="inline-flex h-9 items-center justify-center rounded-lg px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723]"
-        >
-          Atla
-        </button>
-        <button
-          onClick={() => saveMut.mutate()}
-          disabled={saveMut.isPending}
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
-        >
-          {saveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-          Kaydet
-        </button>
-
-        <div className="ml-auto flex items-center gap-2">
-          {doc.status === 'READY' && (
-            <button
-              onClick={() => approveMut.mutate()}
-              disabled={approveMut.isPending}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
-            >
-              {approveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              <Check className="h-3.5 w-3.5" />
-              Luca'ya aktar
-            </button>
-          )}
-          {doc.status !== 'READY' && (
-            <button
-              onClick={() => readyMut.mutate()}
-              disabled={!balanced || lines.length === 0 || readyMut.isPending}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {readyMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              <Check className="h-3.5 w-3.5" />
-              Fiş tamamlandı
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   SAHNE 4 — FİŞLER
-   ════════════════════════════════════════════════════════════════════ */
-
-function VouchersStage({
-  documents,
-  taxpayerMap,
-  onEdit,
-  onCompleted,
-}: {
-  documents: ApiDocument[];
-  taxpayerMap: Map<string, TaxpayerLite>;
-  onEdit: (id: string) => void;
-  onCompleted: () => void;
-}) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
-
-  const toggleAll = () => {
-    if (selected.size === documents.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(documents.map((d) => d.id)));
-    }
-  };
-
-  const bulkApproveMut = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const results: Array<{ id: string; ok: boolean; error?: string }> = [];
-      for (const id of ids) {
-        try {
-          await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`);
-          results.push({ id, ok: true });
-        } catch (e) {
-          const err = e as { message?: string };
-          results.push({ id, ok: false, error: err.message || 'hata' });
-        }
-      }
-      return results;
-    },
-    onSuccess: (results) => {
-      const ok = results.filter((r) => r.ok).length;
-      const failed = results.filter((r) => !r.ok).length;
-      if (ok > 0) toast.success(`${ok} fiş Luca'ya aktarıldı`);
-      if (failed > 0) toast.error(`${failed} fiş başarısız`);
-      setSelected(new Set());
-      onCompleted();
-    },
-  });
-
-  const handleBulkApprove = () => {
-    const ids = Array.from(selected);
-    if (ids.length === 0) return;
-    bulkApproveMut.mutate(ids);
-  };
-
-  const handleSingleApprove = (id: string) => {
-    bulkApproveMut.mutate([id]);
-  };
-
-  return (
-    <>
-      <WsBar>
-        <Summary>
-          <Strong>{documents.length}</Strong> fiş hazır
-          <Sep />
-          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
-          {selected.size > 0 && (
-            <>
-              <Sep />
-              <Strong>{selected.size}</Strong> seçili
-            </>
-          )}
-        </Summary>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleAll}
-            disabled={documents.length === 0}
-            className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
-          >
-            {selected.size === documents.length && documents.length > 0 ? 'Seçimi temizle' : 'Tümünü seç'}
-          </button>
-          <button
-            onClick={handleBulkApprove}
-            disabled={selected.size === 0 || bulkApproveMut.isPending}
-            className="inline-flex h-[30px] items-center gap-1.5 rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
-          >
-            {bulkApproveMut.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Upload className="h-3 w-3" />
-            )}
-            Luca'ya aktar{selected.size > 0 ? ` (${selected.size})` : ''}
-          </button>
-        </div>
-      </WsBar>
-
-      {documents.length === 0 ? (
-        <EmptyState
-          title="Hazır fiş yok"
-          desc="Eşleştirme aşamasında fiş tamamlandığında burada görünür."
-        />
-      ) : (
-        <div>
-          {documents.map((d) => {
-            const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
-            const isSel = selected.has(d.id);
-            const lineCount = (d.lines || []).length;
-            const docType = DOC_TYPE_LABEL[d.documentType || ''] || d.documentType || '';
-            return (
-              <div
-                key={d.id}
-                className="grid grid-cols-[24px_1fr_160px_100px_80px_180px] items-center gap-4 border-b border-[#e6e1d6] px-[22px] py-4 transition last:border-b-0 hover:bg-[#f8f6f1]"
-              >
-                <input
-                  type="checkbox"
-                  checked={isSel}
-                  onChange={() =>
-                    setSelected((s) => {
-                      const n = new Set(s);
-                      if (n.has(d.id)) n.delete(d.id);
-                      else n.add(d.id);
-                      return n;
-                    })
-                  }
-                  className="h-4 w-4 accent-[#4a8580]"
-                />
-                <div>
-                  <div className="text-[14px] font-medium text-[#2a2723]">
-                    {d.vendorName || d.customerName || d.originalName || 'Adsız'}
-                  </div>
-                  <div className="mt-0.5 text-[12.5px] text-[#8a8270]">
-                    {tp ? `${taxpayerLabel(tp)} · ` : ''}
-                    {docType}
-                    {d.faturaTarihi ? ` · ${fmtDate(d.faturaTarihi)}` : ''}
-                  </div>
-                </div>
-                <div className="text-right text-[15px] font-semibold tabular-nums text-[#2a2723]">
-                  {fmtMoney(d.totalAmount)} ₺
-                </div>
-                <div className="text-right text-[13px] text-[#8a8270]">
-                  {lineCount} satır
-                </div>
-                <Badge tone="success">Hazır</Badge>
-                <div className="flex justify-end gap-1.5">
-                  <button
-                    onClick={() => onEdit(d.id)}
-                    className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723]"
-                  >
-                    Düzenle
-                  </button>
-                  <button
-                    onClick={() => handleSingleApprove(d.id)}
-                    disabled={bulkApproveMut.isPending}
-                    className="inline-flex h-[30px] items-center rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
-                  >
-                    Aktar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   SAHNE 5 — LUCA JURNAL
-   ════════════════════════════════════════════════════════════════════ */
-
-function LucaStage({
-  documents,
-  taxpayerMap,
-}: {
-  documents: ApiDocument[];
-  taxpayerMap: Map<string, TaxpayerLite>;
-}) {
-  const grouped = useMemo(() => {
-    const m = new Map<string, ApiDocument[]>();
-    documents.forEach((d) => {
-      const key = d.approvedAt || d.createdAt || '';
-      const day = key ? new Date(key).toISOString().slice(0, 10) : '—';
-      if (!m.has(day)) m.set(day, []);
-      m.get(day)!.push(d);
-    });
-    return Array.from(m.entries()).sort((a, b) => (a[0] > b[0] ? -1 : 1));
-  }, [documents]);
-
-  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
-  const success = documents.length; // hepsi APPROVED bu listede
-  const successRate = success > 0 ? 100 : 0;
-
-  return (
-    <>
-      <WsBar>
-        <Summary>
-          <Strong>{documents.length}</Strong> fiş bu ay aktarıldı
-          <Sep />
-          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
-          <Sep />
-          Başarı oranı <Strong>%{successRate}</Strong>
-        </Summary>
-      </WsBar>
-
-      {grouped.length === 0 ? (
-        <EmptyState
-          title="Henüz transfer yok"
-          desc="Fişler aktarıldıkça burada gün bazlı jurnal halinde listelenir."
-        />
-      ) : (
-        <div>
-          {grouped.map(([day, items]) => {
-            const dayTotal = items.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
-            return (
-              <div key={day} className="border-b border-[#e6e1d6] last:border-b-0">
-                <div className="flex items-center gap-3.5 border-b border-[#e6e1d6] bg-[#f8f6f1] px-[22px] py-3.5">
-                  <span className="text-[13px] font-medium text-[#5b5447]">
-                    {fmtDateLong(day) || day}
-                  </span>
-                  <span className="flex-1 h-px bg-[#e6e1d6]" />
-                  <span className="text-[13px] text-[#8a8270]">
-                    {items.length} kayıt · {fmtMoney(dayTotal)} ₺
-                  </span>
-                </div>
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <Th>Belge</Th>
-                      <Th>Mükellef</Th>
-                      <Th>Saat</Th>
-                      <Th right>Tutar</Th>
-                      <Th right>Durum</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((d) => {
-                      const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
-                      return (
-                        <Tr key={d.id}>
-                          <Td>
-                            <div className="flex flex-col gap-0.5">
-                              <strong className="text-[14px] font-medium text-[#2a2723]">
-                                {d.vendorName || d.customerName || d.originalName || '—'}
-                              </strong>
-                              {d.belgeNo && (
-                                <small className="text-[12px] text-[#8a8270]">{d.belgeNo}</small>
-                              )}
-                            </div>
-                          </Td>
-                          <Td>{tp ? taxpayerLabel(tp) : '—'}</Td>
-                          <Td>{fmtTime(d.approvedAt || d.createdAt)}</Td>
-                          <Td right>
-                            <span className="font-medium tabular-nums">
-                              {fmtMoney(d.totalAmount)} ₺
-                            </span>
-                          </Td>
-                          <Td right>
-                            <Badge tone="success">Aktarıldı</Badge>
-                          </Td>
-                        </Tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
-}
+      { group: 'Yevmiye', accountCod
