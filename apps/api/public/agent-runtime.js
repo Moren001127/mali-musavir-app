@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.73';
+  const AGENT_VERSION = '1.37.74';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -6845,9 +6845,10 @@
       const key = normalizeLucaMenuText(label);
       const hit = readLucaMenuIdCache()[key];
       if (!hit?.code) return null;
-      // Luca menu IDs are stable inside the same product tree, but discard very old
-      // entries so a changed Luca release can self-heal through text discovery.
-      if (hit.updatedAt && Date.now() - hit.updatedAt > 30 * 24 * 60 * 60 * 1000) return null;
+      // Luca menu ID'leri stabil — bir kez keşfedildiyse kalıcı tutulur.
+      // Eski sürüm 30 günde dropluyordu, ama bu "her ay otomatik bozulma"
+      // davranışına yol açıyordu. Stale code afterClickReady doğrulamasında
+      // yakalanıp deleteCachedLucaMenuHit ile düzeltiliyor.
       return hit;
     } catch {
       return null;
@@ -6988,7 +6989,10 @@
   }
 
   async function openCachedLucaMenu(label, log, settleMs = 800, opts = {}) {
-    if (isDirectLucaMenuCodeUnsafe(label)) return false;
+    // Eskiden isDirectLucaMenuCodeUnsafe ile Mizan/Fiş İşlemleri gibi etiketler
+    // tamamen blokeli idi. Bu, cache'lenmiş kod olsa bile DOM tıklamaya zorluyordu.
+    // afterClickReady ile stale kod yakalanıp deleteCachedLucaMenuHit ile
+    // temizlendiği için bloke etmek yerine deneyip doğrulamak daha güvenli.
     const cached = getCachedLucaMenuHit(label);
     if (!cached?.code) return false;
     const expectedCode = opts?.expectedCode ? String(opts.expectedCode) : '';
@@ -7007,17 +7011,36 @@
   } catch {}
 
   async function activateLucaMenuItem(label, found, log, settleMs = 800) {
-    const cached = cacheLucaMenuHit(label, found);
-    // Path A: safe label + cached code → direct JS call. Terminates on success.
-    if (!isDirectLucaMenuCodeUnsafe(label) && cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) return true;
-    // Path B: unsafe label → native hover only opens a popup the leaf may hide
-    // in; it never fires the leaf's onclick (Playwright's nativeClickText runs
-    // with hoverOnly=true). Falling through to the click chain below is what
-    // actually triggers the menu (Mizan, Fiş İşlemleri, Gider Listesi …).
-    if (isDirectLucaMenuCodeUnsafe(label)) {
-      try { await nativeLucaMenuHover(label, log, { settleMs }); } catch {}
+    // === KURAL ===
+    // Tıklama hedefleri öncelik sırasıyla denenir:
+    //   A) Element'in onclick'inden çıkarılan veya kalıcı cache'teki Luca JS
+    //      fonksiyonunu DOĞRUDAN çağır (lI1lI / II1a). DOM event zincirine,
+    //      mouse pozisyonuna, hover zamanlamasına bağımlı değil — Luca'nın
+    //      kendi fonksiyonunu çağırıyoruz.
+    //   B) Element popup arkasında gizliyse (Mizan, Fiş İşlemleri, vd. —
+    //      isDirectLucaMenuCodeUnsafe listesi): Playwright native hover ile
+    //      popup'ı aç, sonra leaf'i YENİDEN BUL (hover sonrası gerçek DOM
+    //      elemanı farklı olabilir), yeni element'ten kod çıkar, tekrar dene.
+    //   C) Son çare: synthetic mouse sequence + onclick eval (DOM tıklama).
+    let cached = cacheLucaMenuHit(label, found) || getCachedLucaMenuHit(label);
+    if (cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) {
+      return true;
     }
-    // Path C: dispatch full mouse sequence + onclick eval on element + 4 parents.
+
+    if (isDirectLucaMenuCodeUnsafe(label)) {
+      try { await nativeLucaMenuHover(label, log, { settleMs: 300 }); } catch {}
+      try {
+        const fresh = await findLucaMenuItem(label, null, 1500);
+        if (fresh && fresh.el !== found.el) {
+          found = fresh;
+          cached = cacheLucaMenuHit(label, fresh) || cached;
+          if (cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) {
+            return true;
+          }
+        }
+      } catch {}
+    }
+
     await fullActivateWithParents(found.el, found.frame.contentWindow || found.frame, 5, 120);
     await sleep(settleMs);
     return true;
