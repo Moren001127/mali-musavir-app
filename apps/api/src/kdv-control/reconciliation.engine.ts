@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvRecord, ReceiptImage } from '@prisma/client';
+import { detectDoubleOrphans } from '@mali-musavir/shared';
 import { isAggregateLucaRecord } from './luca-row-filter';
 import { formatAmountTr, parseMoneyLike, parseTrUsAmount } from './reconciliation/validators/amount-check';
 import { formatTrDate, likelyOcrYearMisread, parseTrDate, sameDay } from './reconciliation/validators/date-helpers';
@@ -344,8 +345,6 @@ export class ReconciliationEngine {
     // kadar beklemez. Geriye dönük observability için DB'ye düşmüyor; log
     // tabanlı izlemek yeterli.
     try {
-      // dynamic import — packages/shared circular dependency riskini kes
-      const { detectDoubleOrphans } = require('@mali-musavir/shared');
       const violations = detectDoubleOrphans(createData);
       if (violations.length > 0) {
         this.logger.error(
@@ -353,8 +352,8 @@ export class ReconciliationEngine {
         );
       }
     } catch (e: any) {
-      // shared paketi yoksa veya import bozulduysa session'ı bozmadan geç
-      this.logger.warn(`[INVARIANT] Çift-orphan kontrolü çalıştırılamadı: ${e?.message}`);
+      // İhlal kontrolü engine akışını bozmasın — sadece log
+      this.logger.warn(`[INVARIANT] Çift-orphan kontrolü hata verdi: ${e?.message}`);
     }
 
     // Oturum durumunu güncelle

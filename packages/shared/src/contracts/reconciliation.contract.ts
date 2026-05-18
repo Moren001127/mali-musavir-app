@@ -1,25 +1,22 @@
 /**
- * Reconciliation Sözleşmesi — Engine girdi/çıktı SINIR
+ * Reconciliation Sozlesmesi - Engine girdi/cikti SINIR
  * ====================================================
- * Reconciliation engine'in input/output shape'i. Engine + export + UI
- * üçü buradan referans alır. Birinde değişikliği diğerinin görmesi GARANTİ.
+ * Engine + export + UI ucu buradan referans alir.
  */
 
 import { z } from 'zod';
 import { KdvBreakdownItemSchema } from './ocr.contract';
 
-/** Reconciliation result statüsü */
 export const ReconciliationStatusSchema = z.enum([
-  'MATCHED',         // Otomatik tam eşleşme (strict)
-  'CONFIRMED',       // Kullanıcı "İncele"den onayladı
-  'PARTIAL_MATCH',   // Kısmi eşleşme (incele)
-  'NEEDS_REVIEW',    // Düşük güvenli eşleşme (incele)
-  'UNMATCHED',       // Hiç eşleşme yok (orphan)
-  'REJECTED',        // Kullanıcı reddetti
+  'MATCHED',
+  'CONFIRMED',
+  'PARTIAL_MATCH',
+  'NEEDS_REVIEW',
+  'UNMATCHED',
+  'REJECTED',
 ]);
 export type ReconciliationStatus = z.infer<typeof ReconciliationStatusSchema>;
 
-/** Status -> kategori haritası — export/render bunu kullanır */
 export const RECONCILIATION_STATUS_CATEGORY = {
   MATCHED: 'matched',
   CONFIRMED: 'matched',
@@ -32,7 +29,7 @@ export const RECONCILIATION_STATUS_CATEGORY = {
 export type ReconciliationStatusCategory = 'matched' | 'review' | 'error';
 
 export function categoryOf(status: ReconciliationStatus): ReconciliationStatusCategory {
-  return RECONCILIATION_STATUS_CATEGORY[status];
+  return RECONCILIATION_STATUS_CATEGORY[status as keyof typeof RECONCILIATION_STATUS_CATEGORY];
 }
 
 export function isMatchedStatus(s: string | null | undefined): boolean {
@@ -47,7 +44,6 @@ export function isErrorStatus(s: string | null | undefined): boolean {
   return s === 'UNMATCHED' || s === 'REJECTED';
 }
 
-/** KDV record — Luca'dan gelen ham satır (DB temsili) */
 export const KdvRecordSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
@@ -67,7 +63,6 @@ export const KdvRecordSchema = z.object({
 });
 export type KdvRecord = z.infer<typeof KdvRecordSchema>;
 
-/** Reconciliation engine output — tek bir result satırı */
 export const ReconciliationResultSchema = z.object({
   sessionId: z.string(),
   kdvRecordId: z.string().nullable(),
@@ -78,7 +73,6 @@ export const ReconciliationResultSchema = z.object({
 });
 export type ReconciliationResult = z.infer<typeof ReconciliationResultSchema>;
 
-/** Engine.runReconciliation() return tipi */
 export const ReconciliationStatsSchema = z.object({
   matched: z.number().int().min(0),
   partial: z.number().int().min(0),
@@ -88,12 +82,7 @@ export const ReconciliationStatsSchema = z.object({
 export type ReconciliationStats = z.infer<typeof ReconciliationStatsSchema>;
 
 /**
- * Çift-orphan invariant — aynı kayıt için **en fazla 1 result** satırı olmalı.
- * Bu fonksiyon export/test'lerde çağırılır; bir mukellef/donem'in result tablosu
- * üzerinde **aynı (kdvRecordId, image hash) çiftinin hem MATCHED hem UNMATCHED
- * olarak yazılmadığını** garanti eder.
- *
- * Aynı belgeyi hem matched hem orphan görüyorsanız bu invariant ihlal edilmiştir.
+ * Cift-orphan invariant - ayni kayit icin en fazla 1 result satiri olmali.
  */
 export function detectDoubleOrphans(
   results: Array<{
@@ -104,7 +93,6 @@ export function detectDoubleOrphans(
 ): Array<{ kdvRecordId: string | null; imageId: string | null; reason: string }> {
   const issues: Array<{ kdvRecordId: string | null; imageId: string | null; reason: string }> = [];
 
-  // Kural 1: kdvRecordId hem MATCHED hem UNMATCHED yazılmış mı
   const recordStatus = new Map<string, Set<string>>();
   for (const r of results) {
     if (!r.kdvRecordId) continue;
@@ -118,12 +106,11 @@ export function detectDoubleOrphans(
       issues.push({
         kdvRecordId: recId,
         imageId: null,
-        reason: 'Aynı KDV record hem MATCHED hem UNMATCHED',
+        reason: 'Ayni KDV record hem MATCHED hem UNMATCHED',
       });
     }
   }
 
-  // Kural 2: imageId hem MATCHED hem UNMATCHED yazılmış mı
   const imageStatus = new Map<string, Set<string>>();
   for (const r of results) {
     if (!r.imageId) continue;
@@ -137,7 +124,7 @@ export function detectDoubleOrphans(
       issues.push({
         kdvRecordId: null,
         imageId: imgId,
-        reason: 'Aynı image hem MATCHED hem UNMATCHED',
+        reason: 'Ayni image hem MATCHED hem UNMATCHED',
       });
     }
   }
@@ -145,21 +132,20 @@ export function detectDoubleOrphans(
   return issues;
 }
 
-export function parseReconciliationResult(
-  value: unknown,
-  origin: string,
-): ReconciliationResult {
+interface IssueLike {
+  path: Array<string | number>;
+  message: string;
+}
+
+export function parseReconciliationResult(value: unknown, origin: string): ReconciliationResult {
   const r = ReconciliationResultSchema.safeParse(value);
   if (!r.success) {
     const issues = r.error.issues
-      .map((i) => `${i.path.join('.')}: ${i.message}`)
+      .map((i: IssueLike) => i.path.join('.') + ': ' + i.message)
       .join('; ');
-    throw new Error(
-      `[contract] ReconciliationResult shape bozulmuş — origin=${origin} — ${issues}`,
-    );
+    throw new Error('[contract] ReconciliationResult shape invalid - origin=' + origin + ' - ' + issues);
   }
   return r.data;
 }
 
-// Re-export for convenience
 export { KdvBreakdownItemSchema };
