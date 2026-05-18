@@ -256,16 +256,30 @@ export class OcrService {
           return azureResult;
         }
         const azureKdvAmount = azureResult.kdvTutari ? this.parseAmount(azureResult.kdvTutari) : 0;
-        const belgeNoLen = (azureResult.belgeNo || belgeNoFromFilename || '').replace(/[^A-Z0-9]/gi, '').length;
-        const isReceiptLike =
-          azureResult.belgeTipi === 'OKC_FIS' ||
-          azureResult.belgeTipi === 'Z_RAPORU' ||
-          (belgeNoLen > 0 && belgeNoLen <= 6);
-        if (isReceiptLike && azureKdvAmount > 0) {
+        const azureValidation = azureResult.validationScore ?? 0;
+        const isStructuredReceipt =
+          azureResult.belgeTipi === 'OKC_FIS' || azureResult.belgeTipi === 'Z_RAPORU';
+        // v1.37.75 - kumulatif/gunluk karisikligi: gunluk POS KDV genelde <50K TL.
+        // Daha yuksekse Azure muhtemelen KUM.KDV satirini gunluk KDV alanina yazmis
+        // demektir -> Claude'a ikinci goz olarak gonder.
+        const looksCumulative = isStructuredReceipt && azureKdvAmount > 50_000;
+        // v1.37.75 - Azure-first kabulu SADECE matematik tam tutarli + kumulatif
+        // suphesi yokken yapilir. Eski "isReceiptLike" her zaman donuyordu -> sessiz hatalar.
+        if (
+          isStructuredReceipt &&
+          azureKdvAmount > 0 &&
+          azureValidation >= 0.95 &&
+          !looksCumulative
+        ) {
           this.logger.log(
-            `Azure-first fis/Z sonucu kullanildi, Claude eskalasyonu yok: ${originalName || '-'} - reason=${review.reason} - kdv=${azureResult.kdvTutari}`,
+            `Azure-first fis/Z guvenilir (validation=%${Math.round(azureValidation * 100)}), Claude eskalasyonu yok: ${originalName || '-'} - kdv=${azureResult.kdvTutari}`,
           );
           return azureResult;
+        }
+        if (looksCumulative) {
+          this.logger.warn(
+            `Azure-first supheli (olasi KUMULATIF KDV ${azureResult.kdvTutari} > 50K) -> Claude eskalasyonu: ${originalName || '-'}`,
+          );
         }
         if (!hasClaudeKey || !allowAutoClaude) {
           this.logger.warn(
@@ -1052,6 +1066,31 @@ export class OcrService {
     if (scores.some((s) => s < effectiveThreshold)) {
       return { needs: true, reason: 'low_field' };
     }
+
+    // v1.37.75 - Mantik kontrolu: Z raporu/fislerde GUNLUK KDV mantiken <50K TL.
+    // Daha yuksekse Azure muhtemelen KUM.KDV (kumulatif) satirini "gunluk KDV"
+    // alanina yazmistir -> kullanici teyidine dusur. Math validation bunu
+    // yakalayamaz cunku kumulatif degerler de oran x matrah = KDV uyumlu.
+    if (isStructuredReceipt && kdvAmount >= 50_000) {
+      if (result.fieldConfidence) result.fieldConfidence.kdvTutari = 0.3;
+      return { needs: true, reason: 'low_field' };
+    }
+
+    // v1.37.75 - Z raporunda hem gunluk TOPLAM hem KUM.TOP varsa,
+    // gunluk TOPLAM > KUM.TOP imkansiz. Bu da kumulatif/gunluk karisikligi sinyali.
+    if (result.belgeTipi === 'Z_RAPORU' && result.rawText) {
+      const raw = this.foldTurkishAscii(result.rawText).toUpperCase();
+      const kumMatch = raw.match(/\bKUM\s*\.?\s*T[O0]P\b\s*\*?\s*([\d.,]+)/);
+      const dailyToplam = result.totalTutari ? this.parseAmount(result.totalTutari) : 0;
+      if (kumMatch && dailyToplam > 0) {
+        const kumToplam = this.parseAmount(kumMatch[1]);
+        if (kumToplam > 0 && dailyToplam > kumToplam) {
+          if (result.fieldConfidence) result.fieldConfidence.kdvTutari = 0.3;
+          return { needs: true, reason: 'low_field' };
+        }
+      }
+    }
+
     return { needs: false, reason: 'none' };
   }
 
@@ -1099,7 +1138,21 @@ export class OcrService {
     // Alanları çıkar
     const belgeTipi = this.detectBelgeTipiFromAzure(fullText, originalName);
     const date = this.extractPreferredInvoiceDate(fullText) ?? this.extractDate(fullText);
-    const belgeNo = belgeNoFromFilename ?? this.extractBelgeNo(fullText);
+    // v1.37.75 - Z raporu icin body'deki "Z NO" mutlak oncelikli.
+    // Dosya adi sikca FIS NO veya tarih-bazli string olabilir; Z raporlarinda
+    // belge kimligi SADECE "Z NO" / "Z SAYAC" alanidir, asla FIS NO/EKU NO degil.
+    const bodyBelgeNo = this.extractBelgeNo(fullText);
+    let belgeNo: string | null;
+    if (belgeTipi === 'Z_RAPORU' && bodyBelgeNo) {
+      belgeNo = bodyBelgeNo;
+      if (belgeNoFromFilename && belgeNoFromFilename !== bodyBelgeNo) {
+        this.logger.log(
+          `Z_RAPORU belgeNo override: filename "${belgeNoFromFilename}" yerine body Z NO "${bodyBelgeNo}" kullanildi (${originalName || '-'})`,
+        );
+      }
+    } else {
+      belgeNo = belgeNoFromFilename ?? bodyBelgeNo;
+    }
     const zRaporu = belgeTipi === 'Z_RAPORU' ? this.extractZRaporuKdvFromAzure(fullText) : null;
     const okcFis = belgeTipi === 'OKC_FIS' ? this.extractOkcFisKdvFromAzure(fullText) : null;
     let tevkifatli = this.extractTevkifatliFaturaFromAzure(fullText);
