@@ -1,24 +1,37 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Copy, Check, ExternalLink, FileCheck2, ArrowRight, UsersRound, ShieldCheck } from 'lucide-react';
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  Copy,
+  ExternalLink,
+  FileCheck2,
+  KeyRound,
+  Loader2,
+  MessageSquareText,
+  Save,
+  Send,
+  Settings2,
+  ShieldCheck,
+  UsersRound,
+  Workflow,
+} from 'lucide-react';
 import Link from 'next/link';
 import { AdvisorPortalCredentialCard } from '@/components/portal-automation/PortalCredentialCards';
 
-/**
- * Moren Agent = tarayıcıda çalışan bookmarklet.
- *
- * Luca işlemleri portal içindeki Luca Oturum Yöneticisi ile yönetilir; güvenlik
- * kodu gerekirse portalda görünür. Mihsap işlemleri görünür Mihsap sekmesinde
- * çalışır, çünkü fatura işleme sırasında ekranı görmek gerekir.
- *
- * Neden bu yol? Railway cloud IP'leri Luca tarafından bloklandığı için
- * backend Playwright yolu çalışmıyor. Kullanıcının tarayıcısı zaten Luca'da
- * giriş yapmış durumda — o oturumu kullanıyoruz.
- */
+const GOLD = '#d4b876';
+const GOLD_DEEP = '#8b7649';
+const LINE = 'rgba(255,255,255,0.08)';
+const LINE_GOLD = 'rgba(212,184,118,0.24)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const SOFT = 'rgba(255,255,255,0.035)';
+
 function MorenAgentSection() {
   const [copiedToken, setCopiedToken] = useState(false);
   const [copiedBookmarklet, setCopiedBookmarklet] = useState(false);
@@ -27,15 +40,12 @@ function MorenAgentSection() {
     queryKey: ['agent-me-token'],
     queryFn: () =>
       api.get('/agent/me/token').then(
-        (r) => r.data as { token: string; tenantName: string | null },
+        (res) => res.data as { token: string; tenantName: string | null },
       ),
   });
 
-  // Portal'ın üzerinde çalıştığı origin — bookmarklet script'ini buradan çeker
-  const portalOrigin =
-    typeof window !== 'undefined' ? window.location.origin : '';
+  const portalOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const scriptUrl = `${portalOrigin}/moren-agent.js`;
-
   const bookmarkletCode =
     `javascript:(function(){var s=document.createElement('script');` +
     `s.src='${scriptUrl}?v='+Date.now();` +
@@ -53,154 +63,89 @@ function MorenAgentSection() {
       }
       toast.success('Kopyalandı');
     } catch {
-      toast.error('Kopyalanamadı — elle seçip kopyalayın');
+      toast.error('Kopyalanamadı');
     }
   };
 
   return (
-    <div className="card">
-      <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">🤖</span>
-        <div>
-          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>
-            Moren Agent Bookmarklet
-          </h3>
-          <p className="text-xs text-gray-500">
-            Luca güvenlik kodlarını portal içinde yönetir; Mihsap tarafında
-            görünür sekmede çalışan fatura işlerini yürütür.
-          </p>
-        </div>
-      </div>
+    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <SectionHeader
+        icon={Bot}
+        title="Moren Agent"
+        subtitle="Tarayıcı oturumu ve yerel otomasyon bağlantısı"
+        action={
+          <a
+            href={bookmarkletCode}
+            onClick={(event) => event.preventDefault()}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-bold"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+          >
+            <ExternalLink size={14} />
+            Başlat
+          </a>
+        }
+      />
 
       {isLoading ? (
-        <div className="text-sm text-gray-400 flex items-center gap-2">
-          <Loader2 size={14} className="animate-spin" /> Yükleniyor…
-        </div>
+        <LoadingLine />
       ) : (
-        <div className="space-y-4">
-          {/* Token */}
-          <div>
-            <label
-              className="block text-xs font-medium mb-1"
-              style={{ color: 'rgba(250,250,249,0.7)' }}
-            >
-              Agent Token (ilk kurulumda bir kez istenir)
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                readOnly
-                value={info?.token || ''}
-                className="flex-1 px-3 py-2 rounded-lg text-sm border outline-none font-mono"
-                style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  borderColor: 'rgba(255,255,255,0.08)',
-                  color: '#fafaf9',
-                }}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                onClick={() => copy(info?.token || '', 'token')}
-                className="btn-secondary text-sm flex items-center gap-1.5"
-              >
-                {copiedToken ? <Check size={13} /> : <Copy size={13} />}
-                {copiedToken ? 'Tamam' : 'Kopyala'}
-              </button>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="space-y-4">
+            <Field label="Agent token">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={info?.token || ''}
+                  className="h-10 flex-1 rounded-lg border px-3 font-mono text-[12px] outline-none"
+                  style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <IconTextButton onClick={() => copy(info?.token || '', 'token')} active={copiedToken}>
+                  {copiedToken ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedToken ? 'Tamam' : 'Kopyala'}
+                </IconTextButton>
+              </div>
+            </Field>
+
+            <Field label="Bookmarklet kodu">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={bookmarkletCode}
+                  className="h-10 flex-1 rounded-lg border px-3 font-mono text-[12px] outline-none"
+                  style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <IconTextButton onClick={() => copy(bookmarkletCode, 'bookmarklet')} active={copiedBookmarklet}>
+                  {copiedBookmarklet ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedBookmarklet ? 'Kopyalandı' : 'Kopyala'}
+                </IconTextButton>
+              </div>
+            </Field>
+          </div>
+
+          <div className="rounded-lg border p-4" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.07)' }}>
+            <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, color: GOLD }}>
+              <Workflow size={17} />
             </div>
-            <p className="text-[11px] text-gray-500 mt-1">
-              Bookmarklet ilk çalıştığında bu token'ı soracak. Bir kez
-              yapıştırdıktan sonra tarayıcıda saklanır.
+            <h3 className="text-sm font-semibold" style={{ color: TEXT }}>Otomasyon kanalı hazır</h3>
+            <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: MUTED }}>
+              Luca güvenlik kodları, Mihsap işlemleri ve portal komutları aynı agent hattından yönetilir.
             </p>
-          </div>
-
-          {/* Bookmarklet */}
-          <div>
-            <label
-              className="block text-xs font-medium mb-1"
-              style={{ color: 'rgba(250,250,249,0.7)' }}
-            >
-              Bookmarklet
-            </label>
-            <div className="rounded-lg border p-3"
-              style={{
-                background: 'rgba(255,255,255,0.02)',
-                borderColor: 'rgba(255,255,255,0.08)',
-              }}>
-              <a
-                href={bookmarkletCode}
-                onClick={(e) => e.preventDefault()}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold"
-                style={{
-                  background: '#d4b876',
-                  color: '#1a1a19',
-                  textDecoration: 'none',
-                }}
-              >
-                <ExternalLink size={13} />
-                Moren Agent'ı Başlat
-              </a>
-              <p className="text-[11px] text-gray-500 mt-2">
-                Yukarıdaki düğmeyi tarayıcının sık kullanılanlar çubuğuna{' '}
-                <strong style={{ color: '#d4b876' }}>sürükle-bırak</strong> →
-                bookmark oluşur. Sürüklemek yerine kodu kopyalayıp yeni
-                bookmark olarak da ekleyebilirsin.
-              </p>
-            </div>
-            <div className="flex gap-2 mt-2">
-              <button
-                onClick={() => copy(bookmarkletCode, 'bookmarklet')}
-                className="btn-secondary text-sm flex items-center gap-1.5"
-              >
-                {copiedBookmarklet ? <Check size={13} /> : <Copy size={13} />}
-                {copiedBookmarklet ? 'Kopyalandı' : 'Kodu Kopyala'}
-              </button>
-            </div>
-          </div>
-
-          {/* Kullanım */}
-          <div
-            className="rounded-lg p-3 text-xs leading-relaxed"
-            style={{
-              background: 'rgba(212,184,118,0.06)',
-              border: '1px solid rgba(212,184,118,0.18)',
-              color: 'rgba(250,250,249,0.85)',
-            }}
-          >
-            <div className="font-semibold mb-1.5" style={{ color: '#d4b876' }}>
-              Nasıl kullanılır?
-            </div>
-            <ol className="space-y-1 list-decimal list-inside">
-              <li>
-                Luca için güvenlik kodu gerekirse portalda Luca Oturum Yöneticisi açılır.
-              </li>
-              <li>
-                Mihsap fatura işleme için Mihsap sekmesini görünür tut; kapalıysa portal açabilir.
-              </li>
-              <li>
-                Sık kullanılanlardaki <strong>Moren Agent'ı Başlat</strong>{' '}
-                bookmarklet'ine gerekirse tıkla veya Chrome extension'ı kullan.
-              </li>
-              <li>
-                Sayfanın sağ üstünde bir panel çıkar ("MOREN AGENT · Bekleniyor").
-              </li>
-              <li>
-                Portaldan "Luca'dan veri çek" / "Mizan çek" butonuna bas.
-                Kod gerekirse portal içinde girilir; işlem aynı ekranda loglanır.
-              </li>
-            </ol>
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
-
 
 function SmsTemplateSection() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['sms-templates'],
-    queryFn: () => api.get('/sms-templates').then(r => r.data),
+    queryFn: () => api.get('/sms-templates').then((res) => res.data),
   });
 
   const [evrakTalep, setEvrakTalep] = useState('');
@@ -209,9 +154,9 @@ function SmsTemplateSection() {
   const [editing, setEditing] = useState(false);
 
   const { mutate: save, isPending } = useMutation({
-    mutationFn: (d: any) => api.patch('/sms-templates', d),
+    mutationFn: (payload: any) => api.patch('/sms-templates', payload),
     onSuccess: () => {
-      toast.success('SMS şablonları kaydedildi');
+      toast.success('Mesaj şablonları kaydedildi');
       qc.invalidateQueries({ queryKey: ['sms-templates'] });
       setEditing(false);
     },
@@ -226,169 +171,269 @@ function SmsTemplateSection() {
   };
 
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">💬</span>
-          <div>
-            <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>SMS / WhatsApp Şablonları</h3>
-            <p className="text-xs text-gray-500">Mükellef evrak hatırlatma mesaj şablonları</p>
-          </div>
-        </div>
-        {!editing && (
-          <button onClick={handleEdit} className="btn-secondary text-sm">Düzenle</button>
-        )}
-      </div>
+    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <SectionHeader
+        icon={MessageSquareText}
+        title="SMS / WhatsApp Şablonları"
+        subtitle="Evrak ve tahsilat mesaj metinleri"
+        action={!editing ? (
+          <IconTextButton onClick={handleEdit}>
+            <Settings2 size={14} />
+            Düzenle
+          </IconTextButton>
+        ) : null}
+      />
 
       {isLoading ? (
-        <p className="text-sm text-gray-400">Yükleniyor...</p>
+        <LoadingLine />
       ) : editing ? (
         <div className="space-y-4">
-          <p className="text-xs text-gray-500 bg-gray-50 rounded p-2">
-            Kullanılabilir değişkenler:{' '}
-            <code className="bg-white border rounded px-1">{'{ad}'}</code>{' '}
-            <code className="bg-white border rounded px-1">{'{dönem}'}</code>{' '}
-            <code className="bg-white border rounded px-1">{'{bakiye}'}</code>
-          </p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Evrak Talebi SMS (Hatırlatma)
-            </label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
-              value={evrakTalep}
-              onChange={e => setEvrakTalep(e.target.value)}
-            />
+          <div className="flex flex-wrap gap-2 text-[11.5px]" style={{ color: MUTED }}>
+            {['{ad}', '{dönem}', '{bakiye}'].map((tag) => (
+              <code key={tag} className="rounded-md border px-2 py-1" style={{ borderColor: LINE, background: SOFT, color: GOLD }}>{tag}</code>
+            ))}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              İşleme Başlama SMS (Onay)
-            </label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
-              value={evrakGeldi}
-              onChange={e => setEvrakGeldi(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tahsilat Hatırlatma Mesajı
-            </label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
-              value={tahsilat}
-              onChange={e => setTahsilat(e.target.value)}
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setEditing(false)} className="btn-secondary text-sm">İptal</button>
+          <TemplateTextarea label="Evrak talebi" value={evrakTalep} onChange={setEvrakTalep} />
+          <TemplateTextarea label="İşleme başlama onayı" value={evrakGeldi} onChange={setEvrakGeldi} />
+          <TemplateTextarea label="Tahsilat hatırlatma" value={tahsilat} onChange={setTahsilat} />
+          <div className="flex justify-end gap-2">
+            <IconTextButton onClick={() => setEditing(false)}>İptal</IconTextButton>
             <button
-              className="btn-primary text-sm"
+              type="button"
               disabled={isPending}
               onClick={() => save({ evrakTalepMesaji: evrakTalep, evrakGeldiMesaji: evrakGeldi, tahsilatHatirlatmaMesaji: tahsilat })}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12.5px] font-bold disabled:opacity-50"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
             >
-              {isPending ? 'Kaydediliyor...' : 'Kaydet'}
+              {isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Kaydet
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs font-medium text-gray-500 mb-1">Evrak Talebi SMS</p>
-            <p className="text-sm text-gray-700">{data?.evrakTalepMesaji || '—'}</p>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs font-medium text-gray-500 mb-1">İşleme Başlama SMS</p>
-            <p className="text-sm text-gray-700">{data?.evrakGeldiMesaji || '—'}</p>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3">
-            <p className="text-xs font-medium text-gray-500 mb-1">Tahsilat Hatırlatma</p>
-            <p className="text-sm text-gray-700">{data?.tahsilatHatirlatmaMesaji || '—'}</p>
-          </div>
+        <div className="grid gap-3 lg:grid-cols-3">
+          <TemplatePreview label="Evrak Talebi" value={data?.evrakTalepMesaji || '—'} />
+          <TemplatePreview label="İşleme Başlama" value={data?.evrakGeldiMesaji || '—'} />
+          <TemplatePreview label="Tahsilat" value={data?.tahsilatHatirlatmaMesaji || '—'} />
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
 export default function AyarlarPage() {
+  const links = [
+    {
+      href: '/panel/ayarlar/kullanicilar',
+      title: 'Kullanıcılar & Erişim',
+      text: 'Personel hesapları ve roller',
+      icon: UsersRound,
+    },
+    {
+      href: '/panel/ayarlar/beyanname-takip',
+      title: 'Mükellef Beyanname Takip',
+      text: 'Beyan türleri ve dönem ayarları',
+      icon: FileCheck2,
+    },
+    {
+      href: '/panel/ayarlar/denetim',
+      title: 'Denetim Günlüğü',
+      text: 'Sistem kayıtları ve izler',
+      icon: ShieldCheck,
+    },
+  ];
+
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#d4b876' }}>Ayarlar</h1>
-        <p className="text-sm text-gray-500 mt-1">Sistem ve entegrasyon ayarları</p>
+    <div className="mx-auto max-w-7xl space-y-5">
+      <header className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>Sistem</p>
+            <h1 className="mt-1 text-[30px] font-semibold leading-tight" style={{ color: TEXT }}>Ayarlar</h1>
+            <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
+              Yetki, portal şifreleri, agent bağlantısı ve mesaj metinleri tek düzende.
+            </p>
+          </div>
+          <Link
+            href="/panel/hatirlatmalar"
+            className="inline-flex h-10 items-center gap-2 rounded-lg px-4 text-[13px] font-bold"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+          >
+            <Send size={15} />
+            WhatsApp Akışları
+          </Link>
+        </div>
+      </header>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {links.map((item) => (
+          <SettingsTile key={item.href} {...item} />
+        ))}
       </div>
 
-      <MorenAgentSection />
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <main className="space-y-5">
+          <MorenAgentSection />
+          <AdvisorPortalCredentialCard />
+          <SmsTemplateSection />
+        </main>
 
-      <AdvisorPortalCredentialCard />
-
-      <Link
-        href="/panel/ayarlar/kullanicilar"
-        className="card hover:border-amber-300 transition-colors flex items-center gap-4 group cursor-pointer"
-      >
-        <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 flex-shrink-0">
-          <UsersRound size={22} />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>Kullanıcılar &amp; Erişim</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Portala giriş yapacak personel hesapları ekle, mevcut kullanıcıları listele, rolleri yönet (ADMIN / STAFF / READONLY).
-          </p>
-        </div>
-        <ArrowRight size={18} className="text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
-      </Link>
-
-      <Link
-        href="/panel/ayarlar/beyanname-takip"
-        className="card hover:border-amber-300 transition-colors flex items-center gap-4 group cursor-pointer"
-      >
-        <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 flex-shrink-0">
-          <FileCheck2 size={22} />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>Mükellef Beyanname Takip</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Her mükellefin hangi beyannameleri verdiğini (KDV/MUHSGK/Kurumlar/E-Defter) ve dönem yapısını ayarla.
-            Toplu Beyanname Kontrol paneli bu ayarlara göre çalışır.
-          </p>
-        </div>
-        <ArrowRight size={18} className="text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
-      </Link>
-
-      <Link
-        href="/panel/ayarlar/denetim"
-        className="card hover:border-amber-300 transition-colors flex items-center gap-4 group cursor-pointer"
-      >
-        <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 flex-shrink-0">
-          <ShieldCheck size={22} />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>Denetim Günlüğü</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Sistemde yapılan tüm yazma işlemlerinin kaydı (kim, ne zaman, neyi değiştirdi).
-            Sadece ADMIN görebilir. Kullanıcı, kaynak ve tarih filtreleri ile arama yap.
-          </p>
-        </div>
-        <ArrowRight size={18} className="text-gray-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
-      </Link>
-
-      <SmsTemplateSection />
-
-      <div className="card">
-        <div className="flex items-center gap-3 mb-3">
-          <span className="text-2xl">📱</span>
-          <h3 className="text-base font-semibold" style={{ color: '#d4b876' }}>WhatsApp Otomasyonu</h3>
-        </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-          WhatsApp hatırlatma akışı aktif. Evrak ve tahsilat mesajlarını <Link href="/panel/hatirlatmalar" className="font-semibold underline">WhatsApp Otomasyonu</Link> ekranından önizleyip gönderebilirsiniz.
-        </div>
+        <aside className="space-y-5">
+          <SidePanel
+            icon={MessageSquareText}
+            title="WhatsApp Otomasyonu"
+            text="Evrak ve tahsilat mesajları hatırlatma ekranından önizlenir ve gönderilir."
+            href="/panel/hatirlatmalar"
+            action="Akışı Aç"
+          />
+          <SidePanel
+            icon={KeyRound}
+            title="Şifre Yönetimi"
+            text="e-Beyanname, Vergi Dairesi ve SGK bilgileri şifreli kasada saklanır."
+          />
+          <div className="rounded-lg border bg-[#0f0d0b]/80 p-5 opacity-75" style={{ borderColor: LINE }}>
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE, color: MUTED }}>
+              <Settings2 size={18} />
+            </div>
+            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Diğer Ayarlar</h2>
+            <p className="mt-2 text-[13px]" style={{ color: MUTED }}>
+              Ofis bilgileri, logo ve bildirim tercihleri için alan ayrıldı.
+            </p>
+          </div>
+        </aside>
       </div>
+    </div>
+  );
+}
 
-      <div className="card opacity-60">
-        <h3 className="text-base font-semibold mb-2" style={{ color: '#d4b876' }}>Diğer Ayarlar</h3>
-        <p className="text-sm text-gray-400">Yakında eklenecek: Ofis bilgileri, logo, bildirim tercihleri...</p>
+function SectionHeader({
+  icon: Icon,
+  title,
+  subtitle,
+  action,
+}: {
+  icon: React.ElementType;
+  title: string;
+  subtitle: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-5 flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
+        <Icon size={18} />
       </div>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[16px] font-semibold" style={{ color: TEXT }}>{title}</h2>
+        <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>{subtitle}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function IconTextButton({ children, onClick, active }: { children: React.ReactNode; onClick?: () => void; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
+      style={{ borderColor: active ? LINE_GOLD : LINE, color: active ? GOLD : TEXT, background: active ? 'rgba(212,184,118,0.08)' : SOFT }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TemplateTextarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: MUTED }}>{label}</span>
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-24 w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none"
+        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+      />
+    </label>
+  );
+}
+
+function TemplatePreview({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border p-4" style={{ borderColor: LINE, background: SOFT }}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: GOLD }}>{label}</p>
+      <p className="mt-3 min-h-[54px] text-[13px] leading-relaxed" style={{ color: TEXT }}>{value}</p>
+    </div>
+  );
+}
+
+function SettingsTile({ href, title, text, icon: Icon }: { href: string; title: string; text: string; icon: React.ElementType }) {
+  return (
+    <Link
+      href={href}
+      className="group rounded-lg border bg-[#0f0d0b]/80 p-4 transition hover:bg-white/[0.035]"
+      style={{ borderColor: LINE }}
+    >
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}>
+          <Icon size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[15px] font-semibold" style={{ color: TEXT }}>{title}</h2>
+          <p className="mt-1 truncate text-[12.5px]" style={{ color: MUTED }}>{text}</p>
+        </div>
+        <ArrowRight size={16} className="transition group-hover:translate-x-0.5" style={{ color: GOLD }} />
+      </div>
+    </Link>
+  );
+}
+
+function SidePanel({
+  icon: Icon,
+  title,
+  text,
+  href,
+  action,
+}: {
+  icon: React.ElementType;
+  title: string;
+  text: string;
+  href?: string;
+  action?: string;
+}) {
+  const content = (
+    <div className="rounded-lg border bg-[#0f0d0b]/80 p-5 transition hover:bg-white/[0.035]" style={{ borderColor: LINE }}>
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}>
+        <Icon size={18} />
+      </div>
+      <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>{title}</h2>
+      <p className="mt-2 text-[13px] leading-relaxed" style={{ color: MUTED }}>{text}</p>
+      {action && (
+        <p className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: GOLD }}>
+          {action}
+          <ArrowRight size={14} />
+        </p>
+      )}
+    </div>
+  );
+
+  return href ? <Link href={href}>{content}</Link> : content;
+}
+
+function LoadingLine() {
+  return (
+    <div className="flex items-center gap-2 text-sm" style={{ color: MUTED }}>
+      <Loader2 size={14} className="animate-spin" />
+      Yükleniyor...
     </div>
   );
 }

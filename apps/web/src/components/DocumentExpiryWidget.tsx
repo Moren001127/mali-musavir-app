@@ -41,13 +41,14 @@ export default function DocumentExpiryWidget({
       }),
   });
 
-  const expired = docs.filter((d: ExpiringDocument) => d.status === 'EXPIRED');
-  const soon = docs.filter((d: ExpiringDocument) => d.status === 'EXPIRING_SOON');
+  const safeDocs = Array.isArray(docs) ? docs : [];
+  const expired = safeDocs.filter((d: ExpiringDocument) => d.status === 'EXPIRED');
+  const soon = safeDocs.filter((d: ExpiringDocument) => d.status === 'EXPIRING_SOON');
 
   if (isLoading) return null;
-  if (docs.length === 0) return null;
+  if (safeDocs.length === 0) return null;
 
-  const visible = compact ? docs.slice(0, 5) : docs;
+  const visible = compact ? safeDocs.slice(0, 5) : safeDocs;
 
   function taxpayerName(t: ExpiringDocument['taxpayer']) {
     return (
@@ -128,14 +129,14 @@ export default function DocumentExpiryWidget({
         })}
       </div>
 
-      {compact && docs.length > visible.length && !taxpayerId && (
+      {compact && safeDocs.length > visible.length && !taxpayerId && (
         <div className="mt-2 text-center">
           <Link
             href="/panel/evraklar/yenileme"
             className="text-[11px]"
             style={{ color: GOLD }}
           >
-            +{docs.length - visible.length} daha…
+            +{safeDocs.length - visible.length} daha…
           </Link>
         </div>
       )}

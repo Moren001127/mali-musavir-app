@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
-  AlertCircle,
   Brain,
   FileCheck,
   FileText,
@@ -12,7 +11,6 @@ import {
   Loader2,
   Receipt,
   Scale,
-  TrendingUp,
   Wallet,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -62,26 +60,63 @@ function fmtTokens(n: number): string {
   return (n / 1_000_000).toFixed(1) + 'M';
 }
 
+function normalizeStats(stats: Partial<Stats>): Stats {
+  return {
+    taxpayerId: stats.taxpayerId ?? '',
+    months: stats.months ?? 0,
+    since: stats.since ?? '',
+    counts: {
+      kdvSessions: 0,
+      mihsapInvoices: 0,
+      earsivInvoices: 0,
+      documents: 0,
+      receiptImages: 0,
+      mizanCount: 0,
+      beyanCount: 0,
+      aiCalls: 0,
+      ...(stats.counts ?? {}),
+    },
+    aiUsage: {
+      calls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+      ...(stats.aiUsage ?? {}),
+    },
+    cari: {
+      tahakkukToplam: 0,
+      tahsilatToplam: 0,
+      bakiye: 0,
+      ...(stats.cari ?? {}),
+    },
+  };
+}
+
 export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }) {
   const [months, setMonths] = useState<number>(1);
 
-  const { data: stats, isLoading } = useQuery<Stats>({
+  const { data: stats, isLoading } = useQuery<Partial<Stats>>({
     queryKey: ['taxpayer-stats', taxpayerId, months],
     queryFn: () =>
       api.get(`/taxpayers/${taxpayerId}/stats`, { params: { months } }).then((r) => r.data),
     enabled: !!taxpayerId,
   });
 
-  const items = stats
+  const normalizedStats = stats ? normalizeStats(stats) : null;
+
+  const items = normalizedStats
     ? [
-        { icon: FileCheck, label: 'KDV Kontrol', value: stats.counts.kdvSessions, color: GOLD },
-        { icon: Receipt, label: 'Mihsap Fatura', value: stats.counts.mihsapInvoices, color: '#3b82f6' },
-        { icon: FileText, label: 'E-Arşiv', value: stats.counts.earsivInvoices, color: '#10b981' },
-        { icon: ImageIcon, label: 'Fiş Görüntü', value: stats.counts.receiptImages, color: '#f59e0b' },
-        { icon: Scale, label: 'Mizan', value: stats.counts.mizanCount, color: '#a78bfa' },
-        { icon: FileText, label: 'Beyanname', value: stats.counts.beyanCount, color: '#ef4444' },
-        { icon: FileText, label: 'Evrak', value: stats.counts.documents, color: '#94a3b8' },
-        { icon: Brain, label: 'AI Çağrı', value: stats.counts.aiCalls, color: '#d4b876' },
+        { icon: FileCheck, label: 'KDV Kontrol', value: normalizedStats.counts.kdvSessions, color: GOLD },
+        { icon: Receipt, label: 'Mihsap Fatura', value: normalizedStats.counts.mihsapInvoices, color: '#3b82f6' },
+        { icon: FileText, label: 'E-Arşiv', value: normalizedStats.counts.earsivInvoices, color: '#10b981' },
+        { icon: ImageIcon, label: 'Fiş Görüntü', value: normalizedStats.counts.receiptImages, color: '#f59e0b' },
+        { icon: Scale, label: 'Mizan', value: normalizedStats.counts.mizanCount, color: '#a78bfa' },
+        { icon: FileText, label: 'Beyanname', value: normalizedStats.counts.beyanCount, color: '#ef4444' },
+        { icon: FileText, label: 'Evrak', value: normalizedStats.counts.documents, color: '#94a3b8' },
+        { icon: Brain, label: 'AI Çağrı', value: normalizedStats.counts.aiCalls, color: '#d4b876' },
       ]
     : [];
 
@@ -127,7 +162,7 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
         >
           <Loader2 size={14} className="animate-spin" /> Yükleniyor…
         </div>
-      ) : !stats ? (
+      ) : !normalizedStats ? (
         <div
           className="text-sm py-4"
           style={{ color: 'rgba(250,250,249,0.4)' }}
@@ -187,21 +222,21 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
               </div>
               <div className="flex justify-between text-[11px] mb-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
                 <span>Tahakkuk</span>
-                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{fmtTRY(stats.cari.tahakkukToplam)} ₺</span>
+                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{fmtTRY(normalizedStats.cari.tahakkukToplam)} ₺</span>
               </div>
               <div className="flex justify-between text-[11px] mb-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
                 <span>Tahsilat</span>
-                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{fmtTRY(stats.cari.tahsilatToplam)} ₺</span>
+                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{fmtTRY(normalizedStats.cari.tahsilatToplam)} ₺</span>
               </div>
               <div className="flex justify-between text-[12px] pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <span style={{ color: GOLD, fontWeight: 600 }}>Bakiye</span>
                 <span
                   style={{
-                    color: stats.cari.bakiye > 0 ? '#ef4444' : '#10b981',
+                    color: normalizedStats.cari.bakiye > 0 ? '#ef4444' : '#10b981',
                     fontWeight: 700,
                   }}
                 >
-                  {fmtTRY(stats.cari.bakiye)} ₺
+                  {fmtTRY(normalizedStats.cari.bakiye)} ₺
                 </span>
               </div>
             </div>
@@ -225,24 +260,24 @@ export default function TaxpayerStatsCard({ taxpayerId }: { taxpayerId: string }
               </div>
               <div className="flex justify-between text-[11px] mb-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
                 <span>Çağrı sayısı</span>
-                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{stats.aiUsage.calls}</span>
+                <span style={{ color: 'rgba(250,250,249,0.85)' }}>{normalizedStats.aiUsage.calls}</span>
               </div>
               <div className="flex justify-between text-[11px] mb-0.5" style={{ color: 'rgba(250,250,249,0.6)' }}>
                 <span>Token (toplam)</span>
                 <span style={{ color: 'rgba(250,250,249,0.85)' }}>
-                  {fmtTokens(stats.aiUsage.totalTokens ?? (stats.aiUsage.inputTokens + stats.aiUsage.outputTokens + (stats.aiUsage.cacheReadTokens ?? 0) + (stats.aiUsage.cacheWriteTokens ?? 0)))}
+                  {fmtTokens(normalizedStats.aiUsage.totalTokens ?? (normalizedStats.aiUsage.inputTokens + normalizedStats.aiUsage.outputTokens + (normalizedStats.aiUsage.cacheReadTokens ?? 0) + (normalizedStats.aiUsage.cacheWriteTokens ?? 0)))}
                 </span>
               </div>
               <div className="flex justify-between text-[10px] mb-0.5" style={{ color: 'rgba(250,250,249,0.45)' }}>
                 <span>in / out / cache</span>
                 <span>
-                  {fmtTokens(stats.aiUsage.inputTokens)} / {fmtTokens(stats.aiUsage.outputTokens)} / {fmtTokens((stats.aiUsage.cacheReadTokens ?? 0) + (stats.aiUsage.cacheWriteTokens ?? 0))}
+                  {fmtTokens(normalizedStats.aiUsage.inputTokens)} / {fmtTokens(normalizedStats.aiUsage.outputTokens)} / {fmtTokens((normalizedStats.aiUsage.cacheReadTokens ?? 0) + (normalizedStats.aiUsage.cacheWriteTokens ?? 0))}
                 </span>
               </div>
               <div className="flex justify-between text-[12px] pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <span style={{ color: GOLD, fontWeight: 600 }}>Maliyet</span>
                 <span style={{ color: '#fafaf9', fontWeight: 700 }}>
-                  {fmtUSD(stats.aiUsage.costUsd)}
+                  {fmtUSD(normalizedStats.aiUsage.costUsd)}
                 </span>
               </div>
             </div>

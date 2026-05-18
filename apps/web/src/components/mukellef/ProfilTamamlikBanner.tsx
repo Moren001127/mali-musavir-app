@@ -54,7 +54,7 @@ export function ProfilTamamlikBanner({ taxpayerId }: { taxpayerId: string }) {
     refetchInterval: 60_000,
   });
 
-  if (isLoading || !data) return null;
+  if (isLoading || !data || !data.durum || !STATUS_CONFIG[data.durum]) return null;
   // Tam profil için banner göstermeyelim
   if (data.durum === 'TAM') return null;
 

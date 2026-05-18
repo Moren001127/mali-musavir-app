@@ -11,7 +11,12 @@ import {
 } from '@/lib/portal-automation';
 
 const GOLD = '#d4b876';
+const GOLD_DEEP = '#8b7649';
 const LINE = 'rgba(255,255,255,0.08)';
+const LINE_GOLD = 'rgba(212,184,118,0.24)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const SOFT = 'rgba(255,255,255,0.035)';
 
 type FieldSpec = {
   key: 'username' | 'userCode';
@@ -25,28 +30,28 @@ type PasswordSpec = {
 };
 
 const PROVIDER_TITLES: Record<PortalProvider, string> = {
-  GIB_EBEYANNAME: 'Mali Musavir Sistem Sifresi',
-  GIB_IVD: 'Vergi Dairesi Sifresi',
-  SGK_EBILDIRGE: 'SGK e-Bildirge Girisi',
+  GIB_EBEYANNAME: 'Mali Müşavir Sistem Şifresi',
+  GIB_IVD: 'Vergi Dairesi Şifresi',
+  SGK_EBILDIRGE: 'SGK e-Bildirge Girişi',
 };
 
 const FIELD_SPECS: Record<PortalProvider, FieldSpec[]> = {
-  GIB_EBEYANNAME: [{ key: 'userCode', label: 'Kullanici Kodu' }],
-  GIB_IVD: [{ key: 'userCode', label: 'Kullanici Kodu' }],
-  SGK_EBILDIRGE: [{ key: 'username', label: 'Kullanici Adi / E-Kod' }],
+  GIB_EBEYANNAME: [{ key: 'userCode', label: 'Kullanıcı kodu' }],
+  GIB_IVD: [{ key: 'userCode', label: 'Kullanıcı kodu' }],
+  SGK_EBILDIRGE: [{ key: 'username', label: 'Kullanıcı adı / E-Kod' }],
 };
 
 const PASSWORD_SPECS: Record<PortalProvider, PasswordSpec> = {
-  GIB_EBEYANNAME: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Sifre' },
-  GIB_IVD: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Sifre' },
-  SGK_EBILDIRGE: { passwordLabel: 'Sistem Sifresi', secondaryPasswordLabel: 'Isyeri Sifresi' },
+  GIB_EBEYANNAME: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Şifre' },
+  GIB_IVD: { passwordLabel: 'Parola', secondaryPasswordLabel: 'Şifre' },
+  SGK_EBILDIRGE: { passwordLabel: 'Sistem şifresi', secondaryPasswordLabel: 'İşyeri şifresi' },
 };
 
 function getCredential(rows: PortalCredentialPublic[], provider: PortalProvider, taxpayerId?: string) {
   if (provider === 'GIB_EBEYANNAME') {
-    return rows.find((c) => c.provider === provider && c.ownerType === 'TENANT') || null;
+    return rows.find((credential) => credential.provider === provider && credential.ownerType === 'TENANT') || null;
   }
-  return rows.find((c) => c.provider === provider && c.taxpayerId === taxpayerId) || null;
+  return rows.find((credential) => credential.provider === provider && credential.taxpayerId === taxpayerId) || null;
 }
 
 export function AdvisorPortalCredentialCard() {
@@ -60,24 +65,14 @@ export function AdvisorPortalCredentialCard() {
   );
 
   return (
-    <div className="card">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-700">
-          <KeyRound size={19} />
-        </div>
-        <div>
-          <h3 className="text-base font-semibold" style={{ color: GOLD }}>Mali Musavir e-Beyanname Sifresi</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            e-Beyanname sistem girisi icin kullanici kodu, parola ve sifre.
-          </p>
-        </div>
-      </div>
-      {isLoading ? (
-        <LoadingLine />
-      ) : (
-        <CredentialEditor provider="GIB_EBEYANNAME" credential={credential} />
-      )}
-    </div>
+    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <CardHeader
+        icon={KeyRound}
+        title="Mali Müşavir e-Beyanname Şifresi"
+        subtitle="e-Beyanname sistem girişi için kayıtlı bilgiler"
+      />
+      {isLoading ? <LoadingLine /> : <CredentialEditor provider="GIB_EBEYANNAME" credential={credential} />}
+    </section>
   );
 }
 
@@ -97,32 +92,22 @@ export function TaxpayerPortalCredentialsCard({ taxpayerId }: { taxpayerId: stri
     [data?.rows, taxpayerId],
   );
 
-  if (isLoading) {
-    return (
-      <div className="card">
-        <LoadingLine />
-      </div>
-    );
-  }
-
   return (
-    <div className="card">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-50 border border-amber-200 text-amber-700">
-          <ShieldCheck size={19} />
+    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
+      <CardHeader
+        icon={ShieldCheck}
+        title="Vergi ve SGK Şifreleri"
+        subtitle="Bu mükellefin portal giriş bilgileri"
+      />
+      {isLoading ? (
+        <LoadingLine />
+      ) : (
+        <div className="grid gap-3">
+          <CredentialEditor provider="GIB_IVD" taxpayerId={taxpayerId} credential={gibCredential} compact />
+          <CredentialEditor provider="SGK_EBILDIRGE" taxpayerId={taxpayerId} credential={sgkCredential} compact />
         </div>
-        <div>
-          <h2 className="text-base font-semibold" style={{ color: GOLD }}>Vergi ve SGK Sifreleri</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Bu mukellefin Vergi Dairesi ve SGK e-Bildirge giris bilgileri.
-          </p>
-        </div>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <CredentialEditor provider="GIB_IVD" taxpayerId={taxpayerId} credential={gibCredential} compact />
-        <CredentialEditor provider="SGK_EBILDIRGE" taxpayerId={taxpayerId} credential={sgkCredential} compact />
-      </div>
-    </div>
+      )}
+    </section>
   );
 }
 
@@ -158,8 +143,8 @@ function CredentialEditor({
       portalAutomationApi.saveCredential({
         provider,
         taxpayerId: provider === 'GIB_EBEYANNAME' ? undefined : taxpayerId,
-        username: fields.some((f) => f.key === 'username') ? username : '',
-        userCode: fields.some((f) => f.key === 'userCode') ? userCode : '',
+        username: fields.some((field) => field.key === 'username') ? username : '',
+        userCode: fields.some((field) => field.key === 'userCode') ? userCode : '',
         officeCode: '',
         workplaceCode: '',
         password,
@@ -167,13 +152,13 @@ function CredentialEditor({
         isActive: true,
       }),
     onSuccess: () => {
-      toast.success('Sifre kaydi guncellendi');
+      toast.success('Şifre kaydı güncellendi');
       qc.invalidateQueries({ queryKey: ['portal-automation-credentials'] });
       qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
       setPassword('');
       setSecondaryPassword('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Sifre kaydedilemedi'),
+    onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Şifre kaydedilemedi'),
   });
 
   const hasIdentity = provider === 'SGK_EBILDIRGE' ? username.trim() : userCode.trim();
@@ -184,22 +169,17 @@ function CredentialEditor({
     (!credential && (!password || !secondaryPassword));
 
   return (
-    <div
-      className={compact ? 'rounded-xl p-4' : 'rounded-xl p-4'}
-      style={{ background: compact ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.02)', border: `1px solid ${LINE}` }}
-    >
-      <div className="flex items-center justify-between gap-3 mb-3">
+    <div className="rounded-lg border p-4" style={{ background: compact ? 'rgba(255,255,255,0.025)' : SOFT, borderColor: LINE }}>
+      <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold" style={{ color: '#fafaf9' }}>
-            {PROVIDER_TITLES[provider]}
-          </div>
-          <div className="text-[11px] mt-0.5" style={{ color: credential ? '#86efac' : 'rgba(250,250,249,.42)' }}>
-            {credential ? 'Kayitli' : 'Kayit yok'}
-          </div>
+          <h3 className="text-sm font-semibold" style={{ color: TEXT }}>{PROVIDER_TITLES[provider]}</h3>
+          <p className="mt-0.5 text-[11.5px]" style={{ color: credential ? '#86efac' : MUTED }}>
+            {credential ? 'Kayıtlı' : 'Kayıt yok'}
+          </p>
         </div>
         {credential?.lastSuccessAt && (
-          <span className="text-[10.5px] px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300">
-            Calisiyor
+          <span className="rounded-md border px-2 py-1 text-[10.5px] font-semibold" style={{ borderColor: 'rgba(134,239,172,0.25)', background: 'rgba(34,197,94,0.10)', color: '#86efac' }}>
+            Çalışıyor
           </span>
         )}
       </div>
@@ -229,7 +209,7 @@ function CredentialEditor({
       </div>
 
       {credential?.lastError && (
-        <div className="mt-3 text-[11px] rounded-lg px-3 py-2 bg-red-500/10 text-red-200">
+        <div className="mt-3 rounded-lg border px-3 py-2 text-[11.5px]" style={{ borderColor: 'rgba(248,113,113,0.24)', background: 'rgba(239,68,68,0.10)', color: '#fecaca' }}>
           {credential.lastError}
         </div>
       )}
@@ -238,12 +218,26 @@ function CredentialEditor({
         type="button"
         disabled={disabled}
         onClick={() => saveMut.mutate()}
-        className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-[9px] text-[12.5px] font-bold disabled:opacity-50"
-        style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
+        className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[12.5px] font-bold transition disabled:opacity-50"
+        style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
       >
         {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-        Sifreyi Kaydet
+        Şifreyi Kaydet
       </button>
+    </div>
+  );
+}
+
+function CardHeader({ icon: Icon, title, subtitle }: { icon: React.ElementType; title: string; subtitle: string }) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.09)', color: GOLD }}>
+        <Icon size={18} />
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-[16px] font-semibold" style={{ color: TEXT }}>{title}</h2>
+        <p className="mt-1 text-[12.5px]" style={{ color: MUTED }}>{subtitle}</p>
+      </div>
     </div>
   );
 }
@@ -256,18 +250,19 @@ function TextInput({
 }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   placeholder?: string;
 }) {
   return (
     <label className="block">
-      <span className="block text-[11px] font-semibold mb-1" style={{ color: 'rgba(250,250,249,.62)' }}>{label}</span>
+      <span className="mb-1.5 block text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
       <input
         type="text"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+        className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
+        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
       />
     </label>
   );
@@ -281,18 +276,19 @@ function PasswordInput({
 }: {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   hasSaved: boolean;
 }) {
   return (
     <label className="block">
-      <span className="block text-[11px] font-semibold mb-1" style={{ color: 'rgba(250,250,249,.62)' }}>{label}</span>
+      <span className="mb-1.5 block text-[11.5px] font-semibold" style={{ color: MUTED }}>{label}</span>
       <input
         type="password"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={hasSaved ? 'Kayitli - degistirmek icin yaz' : ''}
-        className="w-full border border-white/10 bg-black/20 text-white rounded-lg px-3 py-2 text-sm placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#d4b876]"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={hasSaved ? 'Kayıtlı - değiştirmek için yaz' : ''}
+        className="h-10 w-full rounded-lg border px-3 text-sm outline-none"
+        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
       />
     </label>
   );
@@ -300,8 +296,9 @@ function PasswordInput({
 
 function LoadingLine() {
   return (
-    <div className="text-sm text-gray-400 flex items-center gap-2">
-      <Loader2 size={14} className="animate-spin" /> Yukleniyor...
+    <div className="flex items-center gap-2 text-sm" style={{ color: MUTED }}>
+      <Loader2 size={14} className="animate-spin" />
+      Yükleniyor...
     </div>
   );
 }

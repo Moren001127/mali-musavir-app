@@ -1,33 +1,62 @@
 'use client';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { toast } from 'sonner';
 import {
-  Send, Mic, MicOff, Volume2, VolumeX, Plus, Trash2,
-  Loader2, Sparkles, MessageSquare, DollarSign, Clock, Edit3,
-  Bot, Brain, ShieldCheck, RefreshCw, CheckCircle2,
+  Bot,
+  Brain,
+  CheckCircle2,
+  DollarSign,
+  Edit3,
+  Loader2,
+  Mic,
+  MicOff,
+  MessageSquare,
+  Plus,
+  RefreshCw,
+  Send,
+  Sparkles,
+  Trash2,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import {
-  listConversations, getConversation, chat, deleteConversation, renameConversation,
-  transcribe, synthesize, getOfficeBrain, saveMemory,
-  type ConversationSummary, type Message,
+  chat,
+  deleteConversation,
+  getConversation,
+  getOfficeBrain,
+  listConversations,
+  renameConversation,
+  saveMemory,
+  synthesize,
+  transcribe,
+  type ConversationSummary,
+  type Message,
 } from '@/lib/moren-ai';
 import { api } from '@/lib/api';
 
 const GOLD = '#d4b876';
+const GOLD_DEEP = '#8b7649';
+const LINE = 'rgba(255,255,255,0.08)';
+const LINE_GOLD = 'rgba(212,184,118,0.22)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.56)';
+const SOFT = 'rgba(255,255,255,0.035)';
 
 type Taxpayer = {
-  id: string; companyName?: string | null; firstName?: string | null; lastName?: string | null;
+  id: string;
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
 };
+
 function taxpayerName(t: Taxpayer) {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isimsiz)';
 }
 
-// --------------------------------------------
-// Mikrofon Kayıt Hook (MediaRecorder)
-// --------------------------------------------
 function useRecorder() {
   const [recording, setRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -38,11 +67,11 @@ function useRecorder() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const rec = new MediaRecorder(stream);
       chunksRef.current = [];
-      rec.ondataavailable = (e) => chunksRef.current.push(e.data);
+      rec.ondataavailable = (event) => chunksRef.current.push(event.data);
       rec.start();
       setMediaRecorder(rec);
       setRecording(true);
-    } catch (e: any) {
+    } catch {
       toast.error('Mikrofon izni reddedildi veya kullanılamıyor');
     }
   }
@@ -51,10 +80,8 @@ function useRecorder() {
     return new Promise((resolve) => {
       if (!mediaRecorder) return resolve(null);
       mediaRecorder.onstop = () => {
-        const type = mediaRecorder.mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type });
-        // Stream'ı kapat
-        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
+        mediaRecorder.stream.getTracks().forEach((track) => track.stop());
         setMediaRecorder(null);
         setRecording(false);
         resolve(blob);
@@ -66,9 +93,6 @@ function useRecorder() {
   return { recording, start, stop };
 }
 
-// --------------------------------------------
-// Ana Sayfa
-// --------------------------------------------
 export default function MorenAIPage() {
   const qc = useQueryClient();
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -81,56 +105,48 @@ export default function MorenAIPage() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const recorder = useRecorder();
 
-  // Mükellef listesi (opsiyonel kontekst)
   const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers-mini'],
     queryFn: async () => {
       const { data } = await api.get('/taxpayers', { params: { search: '' } });
-      return Array.isArray(data) ? data : (data?.taxpayers || data?.data || []);
+      return Array.isArray(data) ? data : data?.taxpayers || data?.data || [];
     },
   });
 
   const { data: officeBrain, isLoading: brainLoading, refetch: refetchBrain } = useQuery({
     queryKey: ['moren-ai-office-brain'],
     queryFn: () => getOfficeBrain(),
-    refetchInterval: 60000,
+    refetchInterval: 60_000,
   });
 
-  // Konuşma listesi
-  const { data: conversations = [], refetch: refetchConvs } = useQuery<ConversationSummary[]>({
+  const { data: conversations = [] } = useQuery<ConversationSummary[]>({
     queryKey: ['ai-conversations'],
     queryFn: () => listConversations(30),
   });
 
-  // Aktif konuşma detayı
   const { data: activeConv } = useQuery({
     queryKey: ['ai-conversation', activeConversationId],
-    queryFn: () => activeConversationId ? getConversation(activeConversationId) : Promise.resolve(null),
+    queryFn: () => (activeConversationId ? getConversation(activeConversationId) : Promise.resolve(null)),
     enabled: !!activeConversationId,
     refetchOnWindowFocus: false,
   });
 
   const messages: Message[] = activeConv?.messages || [];
+  const selectedTaxpayer = taxpayers.find((item) => item.id === selectedTaxpayerId);
 
-  // Yeni mesaj gönder
   const sendMutation = useMutation({
-    mutationFn: async ({ message, voiceMode: vm }: { message: string; voiceMode?: boolean }) => {
-      return chat({
+    mutationFn: async ({ message, voiceMode: vm }: { message: string; voiceMode?: boolean }) =>
+      chat({
         conversationId: activeConversationId || undefined,
         message,
         taxpayerId: selectedTaxpayerId || undefined,
         voiceMode: vm,
-      });
-    },
+      }),
     onSuccess: async (res) => {
-      if (!activeConversationId) {
-        setActiveConversationId(res.conversationId);
-      }
-      // Aktif konuşmayı yeniden çek
+      if (!activeConversationId) setActiveConversationId(res.conversationId);
       await qc.invalidateQueries({ queryKey: ['ai-conversation', res.conversationId] });
       await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
 
-      // TTS açıksa sesi çal
       if (ttsEnabled && res.assistantMessage) {
         try {
           const blob = await synthesize(res.assistantMessage);
@@ -139,13 +155,13 @@ export default function MorenAIPage() {
             audioRef.current.src = url;
             audioRef.current.play().catch(() => {});
           }
-        } catch (e: any) {
-          toast.error('Sesli okuma başarısız: ' + (e?.response?.data?.message || e?.message));
+        } catch (error: any) {
+          toast.error('Sesli okuma başarısız: ' + (error?.response?.data?.message || error?.message));
         }
       }
     },
-    onError: (e: any) => {
-      toast.error('Mesaj gönderilemedi: ' + (e?.response?.data?.message || e?.message));
+    onError: (error: any) => {
+      toast.error('Mesaj gönderilemedi: ' + (error?.response?.data?.message || error?.message));
     },
   });
 
@@ -163,22 +179,22 @@ export default function MorenAIPage() {
   });
 
   const saveMemoryMut = useMutation({
-    mutationFn: () => saveMemory({
-      title: memoryText.slice(0, 80) || 'Ofis hafızası',
-      content: memoryText,
-      taxpayerId: selectedTaxpayerId || undefined,
-      scope: selectedTaxpayerId ? 'taxpayer' : 'office',
-      importance: 4,
-      tags: selectedTaxpayerId ? ['mukellef'] : ['ofis'],
-    }),
+    mutationFn: () =>
+      saveMemory({
+        title: memoryText.slice(0, 80) || 'Ofis hafızası',
+        content: memoryText,
+        taxpayerId: selectedTaxpayerId || undefined,
+        scope: selectedTaxpayerId ? 'taxpayer' : 'office',
+        importance: 4,
+        tags: selectedTaxpayerId ? ['mukellef'] : ['ofis'],
+      }),
     onSuccess: () => {
       toast.success('MOREN hafızasına alındı');
       setMemoryText('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Hafıza kaydedilemedi'),
+    onError: (error: any) => toast.error(error?.response?.data?.message || error?.message || 'Hafıza kaydedilemedi'),
   });
 
-  // Scroll to bottom on new message
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length, sendMutation.isPending]);
@@ -187,11 +203,11 @@ export default function MorenAIPage() {
     const text = input.trim();
     if (!text) return;
     setInput('');
-    sendMutation.mutate({ message: text });
+    sendMutation.mutate({ message: text, voiceMode });
   };
 
   const askQuick = (text: string) => {
-    setInput(text);
+    setInput('');
     sendMutation.mutate({ message: text, voiceMode });
   };
 
@@ -206,31 +222,21 @@ export default function MorenAIPage() {
       if (!blob) return;
       try {
         toast.loading('Ses metne çevriliyor...', { id: 'stt' });
-        const mimetype = blob.type || 'audio/webm';
-        const { text } = await transcribe(blob, mimetype);
+        const { text } = await transcribe(blob, blob.type || 'audio/webm');
         toast.dismiss('stt');
         if (!text) {
           toast.error('Ses anlaşılmadı, tekrar deneyin.');
           return;
         }
-        setInput(text);
-        // Otomatik gönder + voice mode
-        setTimeout(() => {
-          sendMutation.mutate({ message: text, voiceMode: true });
-          setInput('');
-        }, 50);
-      } catch (e: any) {
+        setInput('');
+        sendMutation.mutate({ message: text, voiceMode: true });
+      } catch (error: any) {
         toast.dismiss('stt');
-        toast.error('STT hatası: ' + (e?.response?.data?.message || e?.message));
+        toast.error('STT hatası: ' + (error?.response?.data?.message || error?.message));
       }
-    } else {
-      recorder.start();
+      return;
     }
-  };
-
-  const handleSelectConv = (id: string) => {
-    setActiveConversationId(id);
-    setInput('');
+    recorder.start();
   };
 
   const handleRename = (conv: ConversationSummary) => {
@@ -240,205 +246,166 @@ export default function MorenAIPage() {
     }
   };
 
-  const totalCost = useMemo(() =>
-    messages.reduce((s, m) => s + (m.costUsd || 0), 0),
-    [messages],
-  );
+  const totalCost = useMemo(() => messages.reduce((sum, message) => sum + (message.costUsd || 0), 0), [messages]);
 
   return (
-    <div className="flex h-full gap-4" style={{ height: 'calc(100vh - 120px)' }}>
-      {/* === SOL: Konuşma Listesi === */}
-      <aside
-        className="w-72 flex flex-col rounded-xl overflow-hidden"
-        style={{
-          background: 'rgba(15,13,11,0.7)',
-          border: '1px solid rgba(184,160,111,0.15)',
-          backdropFilter: 'blur(10px)',
-        }}
-      >
-        <div className="p-3 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(184,160,111,0.15)' }}>
-          <Sparkles size={16} style={{ color: GOLD }} />
-          <span className="flex-1 text-sm font-semibold" style={{ color: GOLD }}>Moren AI</span>
+    <div className="flex h-[calc(100vh-112px)] min-h-[680px] max-w-none gap-3">
+      <aside className="flex w-[260px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
+        <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>
+            <Brain size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-[15px] font-semibold leading-tight" style={{ color: TEXT }}>MOREN AI</h1>
+            <p className="truncate text-[11px]" style={{ color: MUTED }}>Ofis hafızası ve sohbetler</p>
+          </div>
           <button
+            type="button"
             onClick={handleNewChat}
-            className="p-1.5 rounded-lg hover:bg-white/5 transition"
-            title="Yeni Konuşma"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+            style={{ borderColor: LINE_GOLD, color: GOLD }}
+            title="Yeni konuşma"
           >
-            <Plus size={16} style={{ color: GOLD }} />
+            <Plus size={16} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.length === 0 && (
-            <p className="text-xs text-center py-8 opacity-50" style={{ color: '#fafaf9' }}>
-              Henüz konuşma yok.<br />Bir soru sor, konuşma başlasın.
-            </p>
-          )}
-          {conversations.map((c) => (
-            <div
-              key={c.id}
-              onClick={() => handleSelectConv(c.id)}
-              className="group relative px-3 py-2 rounded-lg cursor-pointer transition-all"
-              style={{
-                background: activeConversationId === c.id
-                  ? `linear-gradient(90deg, ${GOLD}22, ${GOLD}08)`
-                  : 'transparent',
-                border: activeConversationId === c.id ? `1px solid ${GOLD}44` : '1px solid transparent',
-              }}
-            >
-              <div className="flex items-start gap-2">
-                <MessageSquare size={12} style={{ color: GOLD, opacity: 0.7, marginTop: 3 }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate" style={{ color: '#fafaf9' }}>
-                    {c.title}
-                  </p>
-                  <p className="text-[10px] mt-0.5 opacity-50" style={{ color: '#fafaf9' }}>
-                    {new Date(c.updatedAt).toLocaleDateString('tr-TR')} · ${c.totalCostUsd.toFixed(3)}
-                  </p>
-                </div>
-              </div>
-              <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRename(c); }}
-                  className="p-1 rounded hover:bg-white/10"
-                  title="Yeniden adlandır"
-                >
-                  <Edit3 size={10} style={{ color: '#fafaf9' }} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); if (confirm('Silinsin mi?')) deleteMut.mutate(c.id); }}
-                  className="p-1 rounded hover:bg-red-500/20"
-                  title="Sil"
-                >
-                  <Trash2 size={10} style={{ color: '#ef4444' }} />
-                </button>
-              </div>
+        <div className="border-b p-3" style={{ borderColor: LINE }}>
+          <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Mükellef konteksti
+          </label>
+          <select
+            value={selectedTaxpayerId}
+            onChange={(event) => setSelectedTaxpayerId(event.target.value)}
+            className="h-9 rounded-lg border px-3 text-[12.5px]"
+            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+          >
+            <option value="">Genel ofis sorusu</option>
+            {taxpayers.map((taxpayer) => (
+              <option key={taxpayer.id} value={taxpayer.id}>{taxpayerName(taxpayer)}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {conversations.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[12px]" style={{ color: MUTED }}>
+              Henüz konuşma yok.
             </div>
-          ))}
+          ) : (
+            <div className="space-y-1.5">
+              {conversations.map((conversation) => {
+                const active = activeConversationId === conversation.id;
+                return (
+                  <div
+                    key={conversation.id}
+                    onClick={() => {
+                      setActiveConversationId(conversation.id);
+                      setInput('');
+                    }}
+                    className="group relative cursor-pointer rounded-lg border px-3 py-2.5 transition"
+                    style={{
+                      background: active ? 'rgba(212,184,118,0.11)' : 'transparent',
+                      borderColor: active ? LINE_GOLD : 'transparent',
+                    }}
+                  >
+                    <div className="flex gap-2">
+                      <MessageSquare size={14} className="mt-0.5 shrink-0" style={{ color: active ? GOLD : 'rgba(250,250,249,0.38)' }} />
+                      <div className="min-w-0 flex-1 pr-9">
+                        <p className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>{conversation.title}</p>
+                        <p className="mt-1 text-[10.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)' }}>
+                          {new Date(conversation.updatedAt).toLocaleDateString('tr-TR')} · ${conversation.totalCostUsd.toFixed(3)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="absolute right-2 top-2 flex opacity-0 transition group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleRename(conversation);
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-white/10"
+                        title="Yeniden adlandır"
+                      >
+                        <Edit3 size={11} style={{ color: MUTED }} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (confirm('Konuşma silinsin mi?')) deleteMut.mutate(conversation.id);
+                        }}
+                        className="flex h-6 w-6 items-center justify-center rounded-md hover:bg-red-500/15"
+                        title="Sil"
+                      >
+                        <Trash2 size={11} style={{ color: '#f87171' }} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </aside>
 
-      {/* === SAĞ: Chat === */}
-      <div
-        className="flex-1 flex flex-col rounded-xl overflow-hidden"
-        style={{
-          background: 'rgba(15,13,11,0.7)',
-          border: '1px solid rgba(184,160,111,0.15)',
-          backdropFilter: 'blur(10px)',
-        }}
-      >
-        {/* Üst Bar */}
-        <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: '1px solid rgba(184,160,111,0.15)' }}>
-          <div className="flex-1">
-            <h1 className="text-sm font-semibold" style={{ color: GOLD }}>
-              {activeConv?.title || 'Yeni Konuşma'}
-            </h1>
-            {messages.length > 0 && (
-              <p className="text-[10px] opacity-50 mt-0.5" style={{ color: '#fafaf9' }}>
-                {messages.length} mesaj · Toplam maliyet: ${totalCost.toFixed(4)}
-              </p>
-            )}
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80" style={{ borderColor: LINE }}>
+        <div className="flex items-center gap-3 border-b px-5 py-3" style={{ borderColor: LINE }}>
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color: GOLD }}>
+              {selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Genel çalışma'}
+            </p>
+            <h2 className="truncate text-[18px] font-semibold" style={{ color: TEXT }}>
+              {activeConv?.title || 'Yeni konuşma'}
+            </h2>
           </div>
-
-          {/* Mükellef Kontekst */}
-          <select
-            value={selectedTaxpayerId}
-            onChange={(e) => setSelectedTaxpayerId(e.target.value)}
-            className="text-xs px-3 py-1.5 rounded-lg max-w-[200px]"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(184,160,111,0.2)',
-              color: '#fafaf9',
-            }}
-          >
-            <option value="">— Genel soru —</option>
-            {taxpayers.map((t) => (
-              <option key={t.id} value={t.id}>{taxpayerName(t)}</option>
-            ))}
-          </select>
-
-          {/* TTS Toggle */}
+          {messages.length > 0 && (
+            <div className="hidden rounded-lg border px-3 py-2 text-right sm:block" style={{ borderColor: LINE, color: MUTED }}>
+              <p className="text-[10px] uppercase tracking-[0.12em]">Oturum</p>
+              <p className="text-[12px] tabular-nums" style={{ color: TEXT }}>{messages.length} mesaj · ${totalCost.toFixed(4)}</p>
+            </div>
+          )}
           <button
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-            className="p-2 rounded-lg transition"
-            style={{
-              background: ttsEnabled ? `${GOLD}22` : 'transparent',
-              border: `1px solid ${ttsEnabled ? GOLD : 'rgba(255,255,255,0.1)'}`,
-            }}
+            type="button"
+            onClick={() => setVoiceMode((value) => !value)}
+            className="hidden h-9 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition hover:bg-white/[0.06] md:flex"
+            style={{ borderColor: voiceMode ? LINE_GOLD : LINE, color: voiceMode ? GOLD : MUTED }}
+          >
+            <Mic size={14} />
+            Ses modu
+          </button>
+          <button
+            type="button"
+            onClick={() => setTtsEnabled((value) => !value)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+            style={{ borderColor: ttsEnabled ? LINE_GOLD : LINE, color: ttsEnabled ? GOLD : MUTED }}
             title={ttsEnabled ? 'Sesli okuma açık' : 'Sesli okuma kapalı'}
           >
-            {ttsEnabled ? <Volume2 size={14} style={{ color: GOLD }} /> : <VolumeX size={14} style={{ color: '#fafaf9', opacity: 0.5 }} />}
+            {ttsEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
         </div>
 
-        <OfficeBrainPanel
-          data={officeBrain}
-          loading={brainLoading}
-          memoryText={memoryText}
-          setMemoryText={setMemoryText}
-          saveMemory={() => saveMemoryMut.mutate()}
-          savingMemory={saveMemoryMut.isPending}
-          refetch={() => refetchBrain()}
-          askQuick={askQuick}
-        />
-
-        {/* Mesajlar */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 && !sendMutation.isPending && (
-            <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                style={{ background: `linear-gradient(135deg, ${GOLD}44, ${GOLD}11)`, border: `1px solid ${GOLD}44` }}
-              >
-                <Sparkles size={24} style={{ color: GOLD }} />
-              </div>
-              <h2 className="text-lg font-semibold mb-2" style={{ color: '#fafaf9' }}>
-                Merhaba, ben MOREN AI
-              </h2>
-              <p className="text-sm opacity-60 max-w-md mb-6" style={{ color: '#fafaf9' }}>
-                Mükellef verisi, mali tablolar, beyan süreçleri, portal aksiyonları ve WhatsApp otomasyonu tek modülde bende.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl w-full">
-                {[
-                  'Ali Tekstil\'in 1. dönem gelir tablosunu yorumla',
-                  'Bu ay hangi beyannameler verilecek?',
-                  'X mükellefinin cari oranı sağlıklı mı?',
-                  'Geçen yılla kıyasla satışlar ne kadar büyüdü?',
-                ].map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { setInput(q); }}
-                    className="text-left text-xs px-3 py-2.5 rounded-lg transition"
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(184,160,111,0.15)',
-                      color: '#fafaf9',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = `${GOLD}11`)}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                  >
-                    "{q}"
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
-
-          {sendMutation.isPending && (
-            <div className="flex items-center gap-2 text-xs" style={{ color: GOLD }}>
-              <Loader2 size={14} className="animate-spin" />
-              <span>Moren AI düşünüyor ve verileri çekiyor...</span>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5">
+          {messages.length === 0 && !sendMutation.isPending ? (
+            <EmptyChatState askQuick={askQuick} />
+          ) : (
+            <div className="space-y-4">
+              {messages.map((message) => (
+                <MessageBubble key={message.id} message={message} />
+              ))}
+              {sendMutation.isPending && (
+                <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
+                  <Loader2 size={14} className="animate-spin" />
+                  MOREN AI verileri topluyor...
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Girdi */}
-        <div className="p-3" style={{ borderTop: '1px solid rgba(184,160,111,0.15)' }}>
-          <div className="flex items-end gap-2">
+        <div className="border-t p-3" style={{ borderColor: LINE }}>
+          <div className="flex items-end gap-2 rounded-lg border bg-black/20 p-2" style={{ borderColor: LINE }}>
             <textarea
               name="moren-ai-question"
               autoComplete="off"
@@ -446,72 +413,101 @@ export default function MorenAIPage() {
               autoCapitalize="off"
               spellCheck={false}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
                   handleSend();
                 }
               }}
-              placeholder={recorder.recording ? 'Dinleniyor...' : 'Soru sor... (Enter ile gönder)'}
+              placeholder={recorder.recording ? 'Dinleniyor...' : 'Mali tablo, mükellef veya ofis akışı sor...'}
               disabled={sendMutation.isPending || recorder.recording}
               rows={1}
-              className="moren-ai-input flex-1 px-3 py-2 rounded-lg text-sm resize-none"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                backgroundColor: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(184,160,111,0.2)',
-                color: '#fafaf9',
-                WebkitTextFillColor: '#fafaf9',
-                caretColor: '#d4b876',
-                minHeight: 40,
-                maxHeight: 160,
-              }}
+              className="moren-ai-input min-h-[42px] flex-1 resize-none border-0 bg-transparent px-2 py-2 text-sm outline-none"
+              style={{ color: TEXT, caretColor: GOLD, boxShadow: 'none' }}
             />
-
-            {/* Mikrofon */}
             <button
+              type="button"
               onClick={handleMic}
               disabled={sendMutation.isPending}
-              className="p-2.5 rounded-lg transition"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
               style={{
-                background: recorder.recording ? '#ef4444' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${recorder.recording ? '#ef4444' : 'rgba(184,160,111,0.2)'}`,
-                color: recorder.recording ? '#fff' : GOLD,
+                background: recorder.recording ? 'rgba(239,68,68,0.18)' : SOFT,
+                borderColor: recorder.recording ? 'rgba(239,68,68,0.45)' : LINE,
+                color: recorder.recording ? '#fca5a5' : GOLD,
               }}
-              title={recorder.recording ? 'Durdur ve gönder' : 'Mikrofon'}
+              title={recorder.recording ? 'Kaydı durdur' : 'Mikrofon'}
             >
               {recorder.recording ? <MicOff size={16} /> : <Mic size={16} />}
             </button>
-
-            {/* Gönder */}
             <button
+              type="button"
               onClick={handleSend}
               disabled={!input.trim() || sendMutation.isPending}
-              className="p-2.5 rounded-lg transition disabled:opacity-40"
-              style={{
-                background: `linear-gradient(135deg, ${GOLD}, #8b7649)`,
-                color: '#0f0d0b',
-              }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold transition disabled:opacity-40"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
+              title="Gönder"
             >
               {sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>
           </div>
-          <p className="text-[9.5px] opacity-40 mt-2" style={{ color: '#fafaf9' }}>
-            Enter: Gönder · Shift+Enter: Satır atla · Mikrofon: konuşarak sor (Türkçe)
-          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Gizli audio — TTS playback */}
+      <OfficeBrainPanel
+        data={officeBrain}
+        loading={brainLoading}
+        memoryText={memoryText}
+        setMemoryText={setMemoryText}
+        saveMemory={() => saveMemoryMut.mutate()}
+        savingMemory={saveMemoryMut.isPending}
+        refetch={() => refetchBrain()}
+        askQuick={askQuick}
+      />
+
       <audio ref={audioRef} />
     </div>
   );
 }
 
-// --------------------------------------------
-// Mesaj Baloncuğu
-// --------------------------------------------
+function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
+  const prompts = [
+    'Bu hafta beyanname riski en yüksek mükellefleri sırala.',
+    'Evrak bekleyen mükellefler için kısa aksiyon listesi çıkar.',
+    'Bugünkü LUCA ve Mihsap agent hatalarını özetle.',
+    'Tahsilat ve evrak WhatsApp mesajlarını hazırla.',
+  ];
+
+  return (
+    <div className="flex h-full flex-col justify-center">
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}>
+            <Sparkles size={22} />
+          </div>
+          <div>
+            <h3 className="text-[22px] font-semibold" style={{ color: TEXT }}>Ofis aklını tek yerde topla</h3>
+            <p className="mt-1 text-sm" style={{ color: MUTED }}>Mükellef, beyan, evrak, agent ve tahsilat verileri aynı konuşma içinde.</p>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {prompts.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => askQuick(prompt)}
+              className="rounded-lg border p-3 text-left text-[12.5px] leading-relaxed transition hover:bg-white/[0.05]"
+              style={{ borderColor: LINE, color: TEXT, background: SOFT }}
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OfficeBrainPanel({
   data,
   loading,
@@ -525,69 +521,107 @@ function OfficeBrainPanel({
   data: any;
   loading: boolean;
   memoryText: string;
-  setMemoryText: (v: string) => void;
+  setMemoryText: (value: string) => void;
   saveMemory: () => void;
   savingMemory: boolean;
   refetch: () => void;
   askQuick: (text: string) => void;
 }) {
-  const ozet = data?.briefing?.ozet || {};
+  const summary = data?.briefing?.ozet || {};
   const agents = data?.agentCatalog || [];
   const metrics = [
-    { label: 'Evrak bekleyen', value: ozet.evrakEksik ?? 0 },
-    { label: 'KDV/beyan eksik', value: ozet.kdvKontrolEksik ?? 0 },
-    { label: 'Banka aksiyonu', value: (ozet.bankaEksik ?? 0) + (ozet.bankaHesapsiz ?? 0) },
-    { label: 'Cari borclu', value: ozet.borcluMukellef ?? 0 },
-    { label: 'Agent hata', value: ozet.bugunAgentHata ?? 0 },
+    { label: 'Evrak bekleyen', value: summary.evrakEksik ?? 0 },
+    { label: 'Beyan riski', value: summary.kdvKontrolEksik ?? 0 },
+    { label: 'Banka aksiyonu', value: (summary.bankaEksik ?? 0) + (summary.bankaHesapsiz ?? 0) },
+    { label: 'Cari borçlu', value: summary.borcluMukellef ?? 0 },
   ];
   const quicks = [
-    'Bugun ne yapmaliyim? En onemli 5 isi kisa listele.',
-    'Bu ay beyana hazir olmayan mukellefleri risk sirasi ile goster.',
-    'LUCA ve Mihsap agent loglarinda bugun hata var mi, acikla.',
-    'WhatsApp ile uyarmam gereken tahsilat ve evrak aksiyonlarini hazirla.',
+    'Bugün önce neye bakmalıyım?',
+    'Beyana hazır olmayanları risk sırasına koy.',
+    'Agent hatalarında acil bir şey var mı?',
   ];
 
   return (
-    <div className="px-4 py-3 space-y-3" style={{ borderBottom: '1px solid rgba(184,160,111,0.12)', background: 'rgba(255,255,255,0.015)' }}>
-      <div className="flex items-center gap-2">
-        <Brain size={15} style={{ color: GOLD }} />
-        <span className="text-xs font-semibold" style={{ color: GOLD }}>MOREN AI Beyni</span>
-        <span className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>WhatsApp, portal verisi ve onayli otomasyon tek hatta</span>
-        <button onClick={refetch} className="ml-auto p-1.5 rounded-lg hover:bg-white/5" title="Yenile">
-          {loading ? <Loader2 size={13} className="animate-spin" style={{ color: GOLD }} /> : <RefreshCw size={13} style={{ color: GOLD }} />}
+    <aside className="hidden w-[292px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80 xl:flex" style={{ borderColor: LINE }}>
+      <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', color: GOLD }}>
+          <Brain size={17} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-semibold" style={{ color: TEXT }}>Ofis Beyni</h2>
+          <p className="text-[11px]" style={{ color: MUTED }}>Canlı özet ve hafıza</p>
+        </div>
+        <button type="button" onClick={refetch} className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: GOLD }} title="Yenile">
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
         </button>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
-        {metrics.map((m) => (
-          <div key={m.label} className="rounded-lg px-3 py-2" style={{ border: '1px solid rgba(184,160,111,0.14)', background: 'rgba(15,13,11,0.35)' }}>
-            <div className="text-[10px] opacity-50" style={{ color: '#fafaf9' }}>{m.label}</div>
-            <div className="text-lg font-semibold leading-tight" style={{ color: '#fafaf9' }}>{m.value}</div>
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {quicks.map((q) => (
-          <button key={q} onClick={() => askQuick(q)} className="text-[11px] px-2.5 py-1.5 rounded-lg transition" style={{ border: '1px solid rgba(184,160,111,0.18)', color: '#fafaf9', background: 'rgba(255,255,255,0.035)' }}>
-            {q}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          {agents.slice(0, 9).map((a: any) => (
-            <span key={a.id} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px]" style={{ border: '1px solid rgba(184,160,111,0.12)', color: 'rgba(250,250,249,0.72)' }}>
-              <Bot size={10} style={{ color: GOLD }} /> {a.ad}
-            </span>
+
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="grid grid-cols-2 gap-2">
+          {metrics.map((metric) => (
+            <div key={metric.label} className="rounded-lg border p-3" style={{ borderColor: LINE, background: SOFT }}>
+              <p className="text-[10.5px]" style={{ color: MUTED }}>{metric.label}</p>
+              <p className="mt-1 text-[24px] font-semibold leading-none tabular-nums" style={{ color: TEXT }}>{metric.value}</p>
+            </div>
           ))}
         </div>
+
+        <div className="mt-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Hızlı analiz</p>
+          <div className="space-y-2">
+            {quicks.map((quick) => (
+              <button
+                key={quick}
+                type="button"
+                onClick={() => askQuick(quick)}
+                className="w-full rounded-lg border px-3 py-2 text-left text-[12px] transition hover:bg-white/[0.05]"
+                style={{ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' }}
+              >
+                {quick}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Aktif ajanlar</p>
+          <div className="flex flex-wrap gap-1.5">
+            {agents.slice(0, 10).map((agent: any) => (
+              <span key={agent.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px]" style={{ borderColor: LINE, color: MUTED }}>
+                <Bot size={10} style={{ color: GOLD }} />
+                {agent.ad}
+              </span>
+            ))}
+            {agents.length === 0 && <span className="text-[12px]" style={{ color: MUTED }}>Ajan bilgisi yok.</span>}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t p-4" style={{ borderColor: LINE }}>
+        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+          Hafızaya not
+        </label>
         <div className="flex gap-2">
-          <input value={memoryText} onChange={(e) => setMemoryText(e.target.value)} placeholder="Ofis/mukellef hafizasina not al..." className="flex-1 px-2 py-1.5 rounded-lg text-[11px] outline-none" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(184,160,111,0.18)', color: '#fafaf9' }} />
-          <button disabled={!memoryText.trim() || savingMemory} onClick={saveMemory} className="px-2.5 py-1.5 rounded-lg text-[11px] disabled:opacity-40" style={{ background: `${GOLD}22`, border: `1px solid ${GOLD}55`, color: GOLD }}>
-            {savingMemory ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+          <input
+            value={memoryText}
+            onChange={(event) => setMemoryText(event.target.value)}
+            placeholder="Kısa not..."
+            className="h-9 rounded-lg border px-3 text-[12px]"
+            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+          />
+          <button
+            type="button"
+            disabled={!memoryText.trim() || savingMemory}
+            onClick={saveMemory}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
+            style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+            title="Kaydet"
+          >
+            {savingMemory ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
           </button>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -597,26 +631,19 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${isUser ? '' : 'space-y-2'}`}
+        className="max-w-[78%] rounded-lg border px-4 py-3 text-sm"
         style={{
-          background: isUser
-            ? `linear-gradient(135deg, ${GOLD}33, ${GOLD}11)`
-            : 'rgba(255,255,255,0.03)',
-          border: `1px solid ${isUser ? `${GOLD}44` : 'rgba(184,160,111,0.15)'}`,
-          color: '#fafaf9',
+          background: isUser ? 'rgba(212,184,118,0.12)' : 'rgba(255,255,255,0.035)',
+          borderColor: isUser ? LINE_GOLD : LINE,
+          color: TEXT,
         }}
       >
-        {/* Tool çağrı chip'leri gizlendi — kullanıcıya teknik tool isimleri gösterilmez */}
-
-        {/* İçerik — Markdown render */}
-        <div className="moren-md text-[13px] leading-[1.55]">
+        <div className="moren-md text-[13px] leading-[1.6]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
-
-        {/* Alt meta */}
         {!isUser && (message.inputTokens || message.outputTokens) ? (
-          <div className="flex gap-3 text-[9px] opacity-40 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <span className="flex items-center gap-1"><DollarSign size={9} />${message.costUsd?.toFixed(4) || '0.0000'}</span>
+          <div className="mt-2 flex gap-3 border-t pt-2 text-[10px]" style={{ borderColor: LINE, color: 'rgba(250,250,249,0.36)' }}>
+            <span className="flex items-center gap-1"><DollarSign size={10} />${message.costUsd?.toFixed(4) || '0.0000'}</span>
             <span>{message.inputTokens}+{message.outputTokens} token</span>
           </div>
         ) : null}
