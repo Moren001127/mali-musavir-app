@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.71';
+  const AGENT_VERSION = '1.37.72';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -7008,8 +7008,16 @@
 
   async function activateLucaMenuItem(label, found, log, settleMs = 800) {
     const cached = cacheLucaMenuHit(label, found);
+    // Path A: safe label + cached code → direct JS call. Terminates on success.
     if (!isDirectLucaMenuCodeUnsafe(label) && cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) return true;
-    if (isDirectLucaMenuCodeUnsafe(label) && await nativeLucaMenuHover(label, log, { settleMs })) return true;
+    // Path B: unsafe label → native hover only opens a popup the leaf may hide
+    // in; it never fires the leaf's onclick (Playwright's nativeClickText runs
+    // with hoverOnly=true). Falling through to the click chain below is what
+    // actually triggers the menu (Mizan, Fiş İşlemleri, Gider Listesi …).
+    if (isDirectLucaMenuCodeUnsafe(label)) {
+      try { await nativeLucaMenuHover(label, log, { settleMs }); } catch {}
+    }
+    // Path C: dispatch full mouse sequence + onclick eval on element + 4 parents.
     await fullActivateWithParents(found.el, found.frame.contentWindow || found.frame, 5, 120);
     await sleep(settleMs);
     return true;
@@ -7490,18 +7498,32 @@
     if (await activateLucaMenuItem('Mizan', found, log, 1000)) {
       const ready = await waitUntil(() => findLucaMizanFormNow(), 8000, 250);
       if (ready) return;
-      await log('Mizan menusu tiklandi ama raporMizanForm dogrulanmadi; klasik tiklama zinciri denenecek');
+      await log('Mizan tıklamasından sonra form yüklenmedi; element yeniden bulunup güçlü tıklama denenecek');
     }
 
-    // Tıklama: element + parent zinciri (5 seviye, click event bubbling)
-    let cur = found.el;
-    const view = found.frame.contentWindow || found.frame;
-    for (let i = 0; i < 5 && cur; i++) {
-      try {
-        cur.click();
-        cur.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view }));
-      } catch {}
-      cur = cur.parentElement;
+    // Re-find + güçlü tıklama: popup hover sonrası gerçek leaf değişmiş olabilir;
+    // child clickables + parent zincirini fullActivate ile (mouse sequence +
+    // onclick eval) tetikle.
+    const refresh = await findLucaMenuItem('Mizan', null, 2000);
+    const retry = refresh || found;
+    const view = retry.frame.contentWindow || retry.frame;
+    const candidates = [retry.el];
+    try {
+      for (const child of retry.el.querySelectorAll?.('a[href],a[onclick],[onclick],[href],[role="button"]') || []) {
+        if (!candidates.includes(child)) candidates.push(child);
+      }
+    } catch {}
+    let cur = retry.el.parentElement;
+    for (let i = 0; i < 5 && cur; i++, cur = cur.parentElement) {
+      if (!candidates.includes(cur)) candidates.push(cur);
+    }
+    for (const c of candidates) {
+      try { fullActivate(c, view); } catch {}
+      await sleep(150);
+      if (findLucaMizanFormNow()) {
+        await sleep(800);
+        return;
+      }
     }
     // about:blank reset sonrası taze form yüklenmesi 1-2sn sürebilir
     await sleep(1500);
