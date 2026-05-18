@@ -1,1456 +1,2051 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+/* =====================================================================
+   FATURA İŞLEME — v3 (Sıcak teal · Tek workspace)
+   ---------------------------------------------------------------------
+   Akış:  KAYNAKLAR → HAVUZ → EŞLEŞTİR → FİŞLER → LUCA
+   ===================================================================== */
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
-import type { LucideIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   AlertTriangle,
   ArrowRight,
-  Building2,
-  Calendar,
-  CheckCircle2,
-  CircleDashed,
+  Check,
+  ChevronDown,
   Download,
-  FileCheck2,
-  FileText,
-  Filter,
-  Gauge,
-  Layers3,
-  ListChecks,
-  LockKeyhole,
-  PlugZap,
-  ReceiptText,
+  Loader2,
   RefreshCw,
   Search,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Table2,
   Upload,
-  WalletCards,
-  Workflow,
-  Zap,
+  X,
 } from 'lucide-react';
+import { api } from '@/lib/api';
+import TaxpayerSelect, { TaxpayerLite } from '@/components/ui/TaxpayerSelect';
 
-type Tone = 'gold' | 'green' | 'blue' | 'amber' | 'red' | 'slate' | 'purple';
-type TabKey = 'pool' | 'accounts' | 'match' | 'transfer' | 'sources' | 'templates';
-type DocumentStatus = 'ready' | 'review' | 'blocked' | 'draft';
-type SourceView = 'incoming' | 'outgoing';
-type ProcessDirection = 'ALIS' | 'SATIS';
+/* ────────────────────────────────────────────────────────────────────
+   TİPLER
+   ──────────────────────────────────────────────────────────────────── */
 
-type Taxpayer = {
-  id: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  companyName?: string | null;
-  taxNumber?: string | null;
-  defterTuru?: string | null;
-  mihsapDefterTuru?: string | null;
-  lucaSlug?: string | null;
-};
+type Direction = 'ALIS' | 'SATIS';
+type DocStatus = 'NEEDS_REVIEW' | 'READY' | 'APPROVED' | 'REJECTED';
+type StageId = 'sources' | 'pool' | 'match' | 'vouchers' | 'luca';
+type SourceId = 'integrator' | 'ocr' | 'earsiv';
 
-type ApiLine = {
+interface ApiLine {
   id?: string;
   group?: string | null;
   accountCode?: string | null;
   description?: string | null;
   rate?: string | null;
-  debit?: unknown;
-  credit?: unknown;
-};
+  debit?: string | number | null;
+  credit?: string | number | null;
+  orderNo?: number | null;
+}
 
-type ApiDocument = {
+interface ApiDocument {
   id: string;
-  taxpayerId?: string | null;
   source?: string | null;
   documentType?: string | null;
   invoiceKind?: string | null;
   status?: string | null;
+  duplicateOfId?: string | null;
   duplicateReason?: string | null;
+  duplicateSeverity?: 'WARNING' | 'BLOCKING' | string | null;
   originalName?: string | null;
   belgeNo?: string | null;
   faturaTarihi?: string | null;
   vendorName?: string | null;
   customerName?: string | null;
-  sellerVkn?: string | null;
-  buyerVkn?: string | null;
-  totalAmount?: unknown;
+  totalAmount?: string | number | null;
   ocrStatus?: string | null;
   ocrEngine?: string | null;
   ocrConfidence?: number | null;
-  ocrData?: any;
+  ocrData?: unknown;
   lines?: ApiLine[];
-};
+  createdAt?: string;
+  taxpayerId?: string | null;
+  approvedAt?: string | null;
+}
 
-type AccountPlan = {
-  source: { id: string; accountCount: number; createdAt: string; sourceJobId?: string | null } | null;
-  accounts: Array<{ id: string; code: string; name: string; level: number; debitBalance: number; creditBalance: number }>;
-};
+interface DashboardRow {
+  taxpayerId: string;
+  name: string;
+  ledgerType: string;
+  pendingPurchase: number;
+  pendingSale: number;
+  pendingBank: number;
+  approvedInvoice: number;
+  approvedBank: number;
+  totalPending: number;
+}
 
-type IntegrationRow = {
-  provider: string;
-  label: string;
-  kind: string;
-  tone: Tone;
-  isActive: boolean;
-  configured: boolean;
-  taxpayerScoped: boolean;
-  baseUrl?: string;
-  username?: string;
-  senderVkn?: string;
-  accountId?: string;
-  note?: string;
-  hasApiKey?: boolean;
-  hasApiSecret?: boolean;
-  hasPassword?: boolean;
-  updatedAt?: string | null;
-};
-
-type UploadJob = {
-  id: string;
-  type: 'receipt' | 'zreport';
-  fileName: string;
-  status: 'Yukleniyor' | 'OCR okunuyor' | 'Tamamlandi' | 'Hata';
-  progress: number;
-};
-
-type DocumentRow = {
-  id: string;
-  title: string;
-  documentNo: string;
-  source: string;
-  provider: string;
-  direction: ProcessDirection;
-  defter: 'Bilanco' | 'Isletme';
-  date: string;
-  amount: number;
-  account: string;
-  kdv: string;
-  confidence: number;
-  status: DocumentStatus;
-  missing: string[];
-  rule: string;
-  engine: string;
-};
-
-const toneClasses: Record<Tone, { text: string; bg: string; border: string; dot: string; glow: string }> = {
-  gold: {
-    text: 'text-[#d4b876]',
-    bg: 'bg-[#d4b876]/10',
-    border: 'border-[#d4b876]/30',
-    dot: 'bg-[#d4b876]',
-    glow: 'shadow-[0_0_0_1px_rgba(212,184,118,0.12)]',
-  },
-  green: {
-    text: 'text-emerald-300',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-400/25',
-    dot: 'bg-emerald-400',
-    glow: 'shadow-[0_0_0_1px_rgba(52,211,153,0.10)]',
-  },
-  blue: {
-    text: 'text-sky-300',
-    bg: 'bg-sky-500/10',
-    border: 'border-sky-400/25',
-    dot: 'bg-sky-400',
-    glow: 'shadow-[0_0_0_1px_rgba(56,189,248,0.10)]',
-  },
-  amber: {
-    text: 'text-amber-300',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-400/25',
-    dot: 'bg-amber-400',
-    glow: 'shadow-[0_0_0_1px_rgba(251,191,36,0.10)]',
-  },
-  red: {
-    text: 'text-rose-300',
-    bg: 'bg-rose-500/10',
-    border: 'border-rose-400/25',
-    dot: 'bg-rose-400',
-    glow: 'shadow-[0_0_0_1px_rgba(251,113,133,0.10)]',
-  },
-  slate: {
-    text: 'text-stone-300',
-    bg: 'bg-stone-500/10',
-    border: 'border-stone-400/20',
-    dot: 'bg-stone-400',
-    glow: 'shadow-[0_0_0_1px_rgba(168,162,158,0.08)]',
-  },
-  purple: {
-    text: 'text-violet-300',
-    bg: 'bg-violet-500/10',
-    border: 'border-violet-400/25',
-    dot: 'bg-violet-400',
-    glow: 'shadow-[0_0_0_1px_rgba(167,139,250,0.10)]',
-  },
-};
-
-const tabs: Array<{ key: TabKey; label: string; icon: LucideIcon }> = [
-  { key: 'pool', label: 'Belge Havuzu', icon: ReceiptText },
-  { key: 'accounts', label: 'Hesap Plani', icon: Layers3 },
-  { key: 'match', label: 'Eslestirme', icon: Workflow },
-  { key: 'transfer', label: 'Luca Aktarim', icon: Send },
-  { key: 'sources', label: 'Baglantilar', icon: PlugZap },
-  { key: 'templates', label: 'Isletme Sablonu', icon: ListChecks },
-];
-
-const integratorDefaults: IntegrationRow[] = [
-  { provider: 'LUCA', label: 'Luca', kind: 'luca', tone: 'green', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'GIB_PORTAL', label: 'GIB Portal', kind: 'portal', tone: 'amber', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'ELOGO', label: 'e-Logo', kind: 'efatura', tone: 'blue', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'UYUMSOFT', label: 'Uyumsoft', kind: 'efatura', tone: 'blue', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'MIKRO', label: 'Mikro', kind: 'efatura', tone: 'purple', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'IZIBIZ', label: 'Izibiz', kind: 'efatura', tone: 'blue', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'KOLAYSOFT', label: 'Kolaysoft', kind: 'efatura', tone: 'green', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'FORIBA', label: 'Foriba', kind: 'efatura', tone: 'amber', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'PARASUT', label: 'Parasut', kind: 'efatura', tone: 'purple', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'LOGO_ISBASI', label: 'Logo Isbasi', kind: 'efatura', tone: 'gold', configured: false, isActive: true, taxpayerScoped: false },
-  { provider: 'TURMOB_EFATURA', label: 'TURMOB e-Fatura', kind: 'efatura', tone: 'red', configured: false, isActive: true, taxpayerScoped: false },
-];
-
-const isletmeFields = [
-  'Alis gider turu',
-  'Satis gelir turu',
-  'Belge turu',
-  'KDV orani',
-  'Odeme sekli',
-  'Kayit aciklamasi',
-  'Stopaj / tevkifat',
-  'Istisna kodu',
-];
-
-const formatMoney = (value: number) =>
-  new Intl.NumberFormat('tr-TR', {
-    style: 'currency',
-    currency: 'TRY',
-    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-  }).format(Number.isFinite(value) ? value : 0);
-
-const formatDate = (value?: string | null) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return new Intl.DateTimeFormat('tr-TR').format(date);
-};
-
-const toNumber = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return 0;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const raw = typeof value === 'object' && value && 'toString' in value ? String(value) : String(value);
-  const normalized = raw.replace(/\./g, '').replace(',', '.');
-  const num = Number(normalized);
-  return Number.isFinite(num) ? num : 0;
-};
-
-const taxpayerName = (taxpayer: Taxpayer) =>
-  (
-    taxpayer.companyName ||
-    `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() ||
-    taxpayer.taxNumber ||
-    ''
-  ).trim();
-
-const taxpayerLedgerLabel = (taxpayer?: Taxpayer | null): 'Bilanco' | 'Isletme' => {
-  const raw = (taxpayer?.defterTuru || taxpayer?.mihsapDefterTuru || '').toLocaleUpperCase('tr-TR');
-  return raw.includes('ISLETME') || raw.includes('İŞLETME') || raw.includes('DEFTER_BEYAN') ? 'Isletme' : 'Bilanco';
-};
-
-const visibleLedgerLabel = (value: 'Bilanco' | 'Isletme') => (value === 'Isletme' ? 'İşletme' : 'Bilanço');
-const directionLabel = (value: ProcessDirection) => (value === 'SATIS' ? 'Satış' : 'Alış');
-
-function mapDocument(doc: ApiDocument, taxpayer: Taxpayer | null): DocumentRow {
-  const direction: ProcessDirection = String(doc.invoiceKind || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
-  const lines = doc.lines || [];
-  const matrah = lines.find((line) => String(line.group || '').toLowerCase() === 'matrah') || lines[0];
-  const tax = lines.find((line) => String(line.group || '').toLowerCase() === 'vergi');
-  const amount = toNumber(doc.totalAmount);
-  const title =
-    (direction === 'SATIS' ? doc.customerName || doc.vendorName : doc.vendorName || doc.customerName) ||
-    doc.originalName ||
-    'Adsiz belge';
-  const documentType = String(doc.documentType || '').toUpperCase();
-  const source = String(doc.source || '').toLowerCase();
-  const sourceLabel = documentType.includes('Z_RAPORU')
-    ? 'Z raporu'
-    : documentType.includes('OKC') || source.includes('receipt')
-      ? 'Gider fisi'
-      : documentType.includes('E_FATURA')
-        ? 'e-Fatura'
-        : documentType.includes('E_ARSIV')
-          ? 'e-Arsiv'
-          : source.includes('manual')
-            ? 'Manuel OCR'
-            : 'Belge';
-  const provider = source.includes('manual')
-    ? 'OCR'
-    : source.includes('earsiv')
-      ? 'Luca / GIB'
-      : doc.ocrEngine || 'Entegrator';
-  const confidenceRaw = Number(doc.ocrConfidence ?? doc.ocrData?.confidence ?? 0);
-  const confidence = confidenceRaw > 1 ? Math.round(confidenceRaw) : Math.round(confidenceRaw * 100);
-  const account = [matrah?.accountCode, matrah?.description].filter(Boolean).join(' - ') || '';
-  const missing: string[] = [];
-  if (!doc.faturaTarihi) missing.push('Tarih');
-  if (!doc.belgeNo) missing.push('Belge no');
-  if (!doc.vendorName && !doc.customerName) missing.push('Cari');
-  if (!amount) missing.push('Tutar');
-  if (!account) missing.push(taxpayerLedgerLabel(taxpayer) === 'Isletme' ? 'İşletme alanı' : 'Hesap kodu');
-  if (doc.duplicateReason) missing.push('Mukerrer');
-
-  const apiStatus = String(doc.status || '').toUpperCase();
-  const ocrStatus = String(doc.ocrStatus || '').toUpperCase();
-  const status: DocumentStatus =
-    apiStatus === 'APPROVED' || (apiStatus === 'READY' && missing.length === 0)
-      ? 'ready'
-      : apiStatus === 'REJECTED' || ocrStatus === 'FAILED'
-        ? 'blocked'
-        : apiStatus === 'READY'
-          ? 'review'
-          : 'draft';
-
-  return {
-    id: doc.id,
-    title,
-    documentNo: doc.belgeNo || doc.originalName || doc.id.slice(-8),
-    source: sourceLabel,
-    provider,
-    direction,
-    defter: taxpayerLedgerLabel(taxpayer),
-    date: formatDate(doc.faturaTarihi),
-    amount,
-    account,
-    kdv: tax?.rate || doc.ocrData?.kdvOrani ? String(tax?.rate || `%${doc.ocrData?.kdvOrani}`) : '-',
-    confidence,
-    status,
-    missing,
-    rule: doc.duplicateReason || doc.ocrEngine || doc.ocrData?.kategori || 'Kaynak veriden olusturuldu',
-    engine: doc.ocrEngine || doc.ocrStatus || 'direct',
+interface DashboardResponse {
+  rows: DashboardRow[];
+  totals: {
+    pendingPurchase: number;
+    pendingSale: number;
+    pendingBank: number;
+    approvedInvoice: number;
+    approvedBank: number;
   };
 }
 
-export default function FaturaIslemeMerkeziPage() {
-  const queryClient = useQueryClient();
-  const [tab, setTab] = useState<TabKey>('pool');
-  const [period, setPeriod] = useState('2026-05');
-  const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState('');
-  const [selectedTaxpayerId, setSelectedTaxpayerId] = useState('');
-  const [sourceView, setSourceView] = useState<SourceView>('incoming');
-  const [processDirection, setProcessDirection] = useState<ProcessDirection>('ALIS');
-  const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState('ELOGO');
-  const [notice, setNotice] = useState('');
-  const [integrationForm, setIntegrationForm] = useState({
-    baseUrl: '',
-    apiKey: '',
-    apiSecret: '',
-    username: '',
-    password: '',
-    senderVkn: '',
-    accountId: '',
-    note: '',
-  });
+interface AccountPlanNode {
+  code: string;
+  name: string;
+  parentCode?: string | null;
+  isLeaf?: boolean;
+}
 
-  useEffect(() => {
-    const storedTaxpayerId = localStorage.getItem('fatura-isleme-taxpayer-id');
-    if (storedTaxpayerId) setSelectedTaxpayerId(storedTaxpayerId);
-  }, []);
+interface IntegrationRow {
+  provider: string;
+  label?: string;
+  kind?: string;
+  isActive?: boolean;
+  hasCredentials?: boolean;
+  lastSyncAt?: string | null;
+  config?: unknown;
+}
 
-  const { data: taxpayers = [], isLoading: taxpayersLoading } = useQuery<Taxpayer[]>({
-    queryKey: ['taxpayers-for-fatura-isleme'],
+/* ────────────────────────────────────────────────────────────────────
+   SABİTLER (palet renkleri inline kullanılıyor)
+   ──────────────────────────────────────────────────────────────────── */
+
+const PROVIDERS: Array<{ id: string; label: string }> = [
+  { id: 'ELOGO', label: 'e-Logo' },
+  { id: 'UYUMSOFT', label: 'Uyumsoft' },
+  { id: 'PARASUT', label: 'Paraşüt' },
+  { id: 'KOLAYSOFT', label: 'Kolaysoft' },
+  { id: 'GIB_PORTAL', label: 'GİB Portal' },
+  { id: 'LUCA', label: 'Luca' },
+  { id: 'IZIBIZ', label: 'Izibiz' },
+  { id: 'FORIBA', label: 'Foriba' },
+  { id: 'MIKRO', label: 'Mikro' },
+  { id: 'LOGO_ISBASI', label: 'Logo İşbaşı' },
+  { id: 'TURMOB_EFATURA', label: 'TÜRMOB' },
+];
+
+const STAGES: Array<{ id: StageId; label: string }> = [
+  { id: 'sources', label: 'Kaynaklar' },
+  { id: 'pool', label: 'Havuz' },
+  { id: 'match', label: 'Eşleştirme' },
+  { id: 'vouchers', label: 'Fişler' },
+  { id: 'luca', label: 'Luca' },
+];
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  E_FATURA: 'e-Fatura',
+  E_ARSIV: 'e-Arşiv',
+  OKC_FIS: 'ÖKC Fişi',
+  FIS: 'Fiş',
+  Z_RAPORU: 'Z Raporu',
+  DIGER: 'Diğer',
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   YARDIMCILAR
+   ──────────────────────────────────────────────────────────────────── */
+
+const fmtMoney = (v: unknown) => {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+const fmtDate = (v: unknown) => {
+  if (!v) return '—';
+  const d = new Date(v as string);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+};
+
+const fmtDateLong = (v: unknown) => {
+  if (!v) return '';
+  const d = new Date(v as string);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' });
+};
+
+const fmtTime = (v: unknown) => {
+  if (!v) return '—';
+  const d = new Date(v as string);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+};
+
+const taxpayerLabel = (t?: TaxpayerLite | null) => {
+  if (!t) return '—';
+  return (
+    t.companyName ||
+    `${t.firstName || ''} ${t.lastName || ''}`.trim() ||
+    t.taxNumber ||
+    'Adsız'
+  );
+};
+
+const currentPeriod = () => {
+  const d = new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+const periodOptions = () => {
+  const out: Array<{ value: string; label: string }> = [];
+  const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+                  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const d = new Date();
+  for (let i = 0; i < 12; i += 1) {
+    const dd = new Date(d.getUTCFullYear(), d.getUTCMonth() - i, 1);
+    const year = dd.getUTCFullYear();
+    const month = dd.getUTCMonth();
+    out.push({
+      value: `${year}-${String(month + 1).padStart(2, '0')}`,
+      label: `${months[month]} ${year}`,
+    });
+  }
+  return out;
+};
+
+const parseNum = (v: unknown): number => {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   ANA SAYFA
+   ════════════════════════════════════════════════════════════════════ */
+
+export default function FaturaIslemePage() {
+  const qc = useQueryClient();
+
+  const [stage, setStage] = useState<StageId>('sources');
+  const [period, setPeriod] = useState<string>(currentPeriod());
+  const [selectedTaxpayer, setSelectedTaxpayer] = useState<string>('');
+  const [activeDocId, setActiveDocId] = useState<string | null>(null);
+
+  /* ─── Veri çekme ─── */
+
+  const taxpayersQ = useQuery<TaxpayerLite[]>({
+    queryKey: ['fim', 'taxpayers'],
     queryFn: () => api.get('/taxpayers').then((r) => r.data),
   });
 
-  const selectedTaxpayer = useMemo(
-    () => taxpayers.find((taxpayer) => taxpayer.id === selectedTaxpayerId) ?? null,
-    [taxpayers, selectedTaxpayerId],
-  );
-  const selectedTaxpayerName = selectedTaxpayer ? taxpayerName(selectedTaxpayer) : '';
-  const hasTaxpayerContext = Boolean(selectedTaxpayer);
+  const dashboardQ = useQuery<DashboardResponse>({
+    queryKey: ['fim', 'dashboard', period],
+    queryFn: () =>
+      api.get('/fatura-muhasebelestirme/dashboard', { params: { period } }).then((r) => r.data),
+    refetchInterval: 30_000,
+  });
 
-  const documentsQuery = useQuery<ApiDocument[]>({
-    queryKey: ['fatura-isleme-documents', selectedTaxpayerId],
-    enabled: hasTaxpayerContext,
+  const documentsQ = useQuery<ApiDocument[]>({
+    queryKey: ['fim', 'documents', selectedTaxpayer, period],
     queryFn: () =>
       api
         .get('/fatura-muhasebelestirme/documents', {
-          params: { taxpayerId: selectedTaxpayerId, limit: 500 },
+          params: { taxpayerId: selectedTaxpayer || undefined, period, limit: 500 },
         })
         .then((r) => r.data),
+    refetchInterval: 20_000,
   });
 
-  const accountPlanQuery = useQuery<AccountPlan>({
-    queryKey: ['fatura-isleme-account-plan', selectedTaxpayerId],
-    enabled: hasTaxpayerContext,
-    queryFn: () =>
-      api
-        .get('/fatura-muhasebelestirme/account-plan', {
-          params: { taxpayerId: selectedTaxpayerId, limit: 300 },
-        })
-        .then((r) => r.data),
-  });
+  const taxpayers = taxpayersQ.data || [];
+  const dashboard = dashboardQ.data;
+  const documents = documentsQ.data || [];
 
-  const integrationsQuery = useQuery<IntegrationRow[]>({
-    queryKey: ['fatura-isleme-integrations', selectedTaxpayerId],
-    queryFn: () =>
-      api
-        .get('/fatura-muhasebelestirme/integrations', {
-          params: selectedTaxpayerId ? { taxpayerId: selectedTaxpayerId } : {},
-        })
-        .then((r) => r.data),
-  });
+  /* ─── Türetilmiş veri ─── */
 
-  const integrations = integrationsQuery.data?.length ? integrationsQuery.data : integratorDefaults;
+  const taxpayerMap = useMemo(() => {
+    const m = new Map<string, TaxpayerLite>();
+    taxpayers.forEach((t) => m.set(t.id, t));
+    return m;
+  }, [taxpayers]);
 
-  useEffect(() => {
-    const row = integrations.find((item) => item.provider === selectedProvider);
-    if (!row) return;
-    setIntegrationForm((prev) => ({
-      ...prev,
-      baseUrl: row.baseUrl || '',
-      username: row.username || '',
-      senderVkn: row.senderVkn || '',
-      accountId: row.accountId || '',
-      note: row.note || '',
-      apiKey: '',
-      apiSecret: '',
-      password: '',
-    }));
-  }, [integrations, selectedProvider]);
+  const documentsByStage = useMemo(() => {
+    const pool: ApiDocument[] = [];
+    const match: ApiDocument[] = [];
+    const vouchers: ApiDocument[] = [];
+    const luca: ApiDocument[] = [];
+    documents.forEach((d) => {
+      const s = (d.status || 'NEEDS_REVIEW') as DocStatus;
+      if (s === 'APPROVED') luca.push(d);
+      else if (s === 'READY') vouchers.push(d);
+      else if (s === 'NEEDS_REVIEW' && (d.lines || []).length > 0) match.push(d);
+      else pool.push(d);
+    });
+    return { pool, match, vouchers, luca };
+  }, [documents]);
 
-  const documentRows = useMemo(
-    () => (documentsQuery.data || []).map((document) => mapDocument(document, selectedTaxpayer)),
-    [documentsQuery.data, selectedTaxpayer],
-  );
-
-  const filteredDocuments = useMemo(() => {
-    const direction: ProcessDirection = sourceView === 'incoming' ? 'ALIS' : 'SATIS';
-    const scoped = documentRows.filter((item) => item.direction === direction);
-    const q = query.trim().toLocaleLowerCase('tr-TR');
-    if (!q) return scoped;
-    return scoped.filter((item) =>
-      [item.title, item.documentNo, item.source, item.account, item.rule, item.provider]
-        .join(' ')
-        .toLocaleLowerCase('tr-TR')
-        .includes(q),
-    );
-  }, [documentRows, query, sourceView]);
-
-  useEffect(() => {
-    if (!selectedTaxpayerId || taxpayers.length === 0) return;
-    if (!taxpayers.some((taxpayer) => taxpayer.id === selectedTaxpayerId)) {
-      setSelectedTaxpayerId('');
-      localStorage.removeItem('fatura-isleme-taxpayer-id');
-    }
-  }, [selectedTaxpayerId, taxpayers]);
-
-  useEffect(() => {
-    if (!filteredDocuments.length) {
-      setSelectedId('');
-      return;
-    }
-    if (!filteredDocuments.some((item) => item.id === selectedId)) {
-      setSelectedId(filteredDocuments[0].id);
-    }
-  }, [filteredDocuments, selectedId]);
-
-  const selected = filteredDocuments.find((item) => item.id === selectedId) ?? filteredDocuments[0] ?? null;
-  const readyForTransfer = Boolean(selected && selected.missing.length === 0 && selected.status === 'ready');
-
-  const metrics = useMemo(() => {
-    const ready = documentRows.filter((item) => item.status === 'ready').length;
-    const review = documentRows.filter((item) => item.status === 'review' || item.status === 'draft').length;
-    const blocked = documentRows.filter((item) => item.status === 'blocked' || item.missing.length).length;
-    const amount = documentRows.reduce((sum, item) => sum + item.amount, 0);
-    return [
-      { label: 'Belge', value: documentRows.length, hint: hasTaxpayerContext ? period : 'mukellef secin', icon: ReceiptText, tone: 'gold' as Tone },
-      { label: 'Hazir', value: ready, hint: 'Luca aktarim', icon: CheckCircle2, tone: 'green' as Tone },
-      { label: 'Onay', value: review, hint: 'insan kontrolu', icon: ShieldCheck, tone: 'amber' as Tone },
-      { label: 'Kilitli', value: blocked, hint: 'eksik alan', icon: LockKeyhole, tone: 'red' as Tone },
-      { label: 'Toplam', value: formatMoney(amount), hint: 'secili havuz', icon: WalletCards, tone: 'blue' as Tone },
-    ];
-  }, [documentRows, hasTaxpayerContext, period]);
-
-  const uploadMutation = useMutation({
-    mutationFn: async ({ files, type, jobIds }: { files: File[]; type: UploadJob['type']; jobIds: string[] }) => {
-      const form = new FormData();
-      files.forEach((file) => form.append('files', file));
-      form.append('taxpayerId', selectedTaxpayerId);
-      form.append('source', type === 'receipt' ? 'manual-receipt' : 'manual-z-report');
-      form.append('documentType', type === 'receipt' ? 'OKC_FIS' : 'Z_RAPORU');
-      form.append('invoiceKind', type === 'receipt' ? 'ALIS' : 'SATIS');
-      setUploadJobs((prev) =>
-        prev.map((job) =>
-          jobIds.includes(job.id) ? { ...job, status: 'OCR okunuyor' as UploadJob['status'], progress: 62 } : job,
-        ),
-      );
-      return api.post('/fatura-muhasebelestirme/documents/upload', form).then((r) => r.data);
-    },
-    onSuccess: (_data, variables) => {
-      setUploadJobs((prev) =>
-        prev
-          .map((job) =>
-            variables.jobIds.includes(job.id) ? { ...job, status: 'Tamamlandi' as UploadJob['status'], progress: 100 } : job,
-          )
-          .slice(0, 8),
-      );
-      setNotice('OCR tamamlandi, belge havuzu yenilendi.');
-      queryClient.invalidateQueries({ queryKey: ['fatura-isleme-documents', selectedTaxpayerId] });
-    },
-    onError: (_error, variables) => {
-      setUploadJobs((prev) =>
-        prev.map((job) =>
-          variables.jobIds.includes(job.id) ? { ...job, status: 'Hata' as UploadJob['status'], progress: 100 } : job,
-        ),
-      );
-      setNotice('OCR sirasinda hata olustu. Dosya/kredi/anahtar kontrol edilmeli.');
-    },
-  });
-
-  const accountPlanMutation = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/account-plan/refresh', { taxpayerId: selectedTaxpayerId }).then((r) => r.data),
-    onSuccess: () => {
-      setNotice('Luca hesap plani isi kuyruga alindi.');
-      queryClient.invalidateQueries({ queryKey: ['fatura-isleme-account-plan', selectedTaxpayerId] });
-    },
-  });
-
-  const scanMutation = useMutation({
-    mutationFn: async () => {
-      const tip = sourceView === 'incoming' ? 'ALIS' : 'SATIS';
-      await api.post('/earsiv/fetch-from-luca', {
-        mukellefId: selectedTaxpayerId,
-        donem: period,
-        tip,
-        belgeKaynak: sourceView === 'incoming' ? 'EARSIV' : 'EARSIV',
-      });
-      return api.post('/fatura-muhasebelestirme/documents/backfill-earsiv', {
-        taxpayerId: selectedTaxpayerId,
-        donem: period,
-        tip,
-        limit: 5000,
-      });
-    },
-    onSuccess: () => {
-      setNotice('Kaynak tarama kuyruga alindi; gelen kayitlar belge havuzuna aktarilacak.');
-      queryClient.invalidateQueries({ queryKey: ['fatura-isleme-documents', selectedTaxpayerId] });
-    },
-    onError: () => setNotice('Kaynak tarama baslatilamadi. Luca/GIB baglantisini kontrol et.'),
-  });
-
-  const saveIntegrationMutation = useMutation({
-    mutationFn: () =>
-      api
-        .post('/fatura-muhasebelestirme/integrations', {
-          provider: selectedProvider,
-          taxpayerId: selectedTaxpayerId || null,
-          ...integrationForm,
-        })
-        .then((r) => r.data),
-    onSuccess: () => {
-      setNotice('Entegrator API kaydi saklandi.');
-      setIntegrationForm((prev) => ({ ...prev, apiKey: '', apiSecret: '', password: '' }));
-      queryClient.invalidateQueries({ queryKey: ['fatura-isleme-integrations', selectedTaxpayerId] });
-    },
-    onError: () => setNotice('API kaydi saklanamadi. Zorunlu alanlari ve sifreleme anahtarini kontrol et.'),
-  });
-
-  const selectTaxpayer = (id: string) => {
-    setSelectedTaxpayerId(id);
-    setSelectedId('');
-    setQuery('');
-    setUploadJobs([]);
-    setNotice('');
-    if (id) localStorage.setItem('fatura-isleme-taxpayer-id', id);
-    else localStorage.removeItem('fatura-isleme-taxpayer-id');
+  const totals = dashboard?.totals || {
+    pendingPurchase: 0,
+    pendingSale: 0,
+    pendingBank: 0,
+    approvedInvoice: 0,
+    approvedBank: 0,
   };
 
-  const switchSourceView = (view: SourceView) => {
-    setSourceView(view);
-    setProcessDirection(view === 'incoming' ? 'ALIS' : 'SATIS');
-    const next = documentRows.find((item) => (view === 'incoming' ? item.direction === 'ALIS' : item.direction === 'SATIS'));
-    if (next) setSelectedId(next.id);
-  };
+  const grandPending = totals.pendingPurchase + totals.pendingSale + totals.pendingBank;
+  const grandTransferred = totals.approvedInvoice + totals.approvedBank;
 
-  const addUploadJobs = (files: File[], type: UploadJob['type']) => {
-    if (files.length === 0 || !hasTaxpayerContext) return;
-    const now = Date.now();
-    const jobs = files.map((file, index) => ({
-      id: `${type}-${now}-${index}`,
-      type,
-      fileName: file.name,
-      status: 'Yukleniyor' as const,
-      progress: 28,
-    }));
-    setUploadJobs((prev) => [...jobs, ...prev].slice(0, 8));
-    uploadMutation.mutate({ files, type, jobIds: jobs.map((job) => job.id) });
-  };
+  /* ─── Yenileme ─── */
+
+  const handleRefresh = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['fim'] });
+    toast.success('Veriler yenilendi');
+  }, [qc]);
+
+  /* ─── Sahne değişince aktif belgeyi temizle (etkili olduğunda match sahnesinden gelmiyorsa) ─── */
+  useEffect(() => {
+    if (stage !== 'match') return;
+    // ilk uygun belgeyi seç
+    const list = [...documentsByStage.match, ...documentsByStage.pool];
+    if (!activeDocId && list.length > 0) {
+      setActiveDocId(list[0].id);
+    } else if (activeDocId && !list.find((d) => d.id === activeDocId)) {
+      setActiveDocId(list[0]?.id || null);
+    }
+  }, [stage, activeDocId, documentsByStage]);
 
   return (
-    <main
-      className="min-h-screen px-4 py-3 text-stone-100 lg:px-6"
-      style={{ background: '#0f0f0f' }}
-    >
-      <div className="mx-auto flex max-w-[1720px] flex-col gap-3">
-        <header
-          className="overflow-hidden rounded-[8px] border"
-          style={{
-            borderColor: 'rgba(255,255,255,0.08)',
-            background: '#151515',
-          }}
-        >
-          <div className="flex flex-col gap-3 px-3 py-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-            <div className="min-w-0">
-              <h1 className="font-sans text-xl font-semibold tracking-normal text-[#f6edd4] md:text-2xl">Fatura İşleme Merkezi</h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-stone-400 md:text-xs">
-                <Calendar size={15} className="text-[#d4b876]" />
-                <span>{period} çalışma dönemi</span>
-                <span className="hidden h-1 w-1 rounded-full bg-stone-600 sm:block" />
-                <span>e-Arşiv, e-Fatura, fiş ve Z raporu mükellef bazlı işlenir</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="min-w-[260px] sm:min-w-[380px]">
-                <TaxpayerSelect
-                  taxpayers={taxpayers}
-                  value={selectedTaxpayerId}
-                  onChange={selectTaxpayer}
-                  placeholder={taxpayersLoading ? 'Mükellefler yükleniyor...' : 'Mükellef seçin'}
-                  disabled={taxpayersLoading}
-                  style={{
-                    minHeight: 38,
-                    borderRadius: 8,
-                    borderColor: selectedTaxpayer ? 'rgba(212,184,118,0.45)' : 'rgba(248,113,113,0.35)',
-                    background: 'rgba(16,13,10,0.86)',
-                  }}
-                />
-              </div>
-              <label className="flex h-9 items-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-2.5 text-xs text-stone-300">
-                <Calendar size={16} className="text-[#d4b876]" />
-                <select
-                  value={period}
-                  onChange={(event) => setPeriod(event.target.value)}
-                  className="bg-transparent text-xs font-semibold text-stone-100 outline-none"
-                >
-                  <option value="2026-05">Mayıs 2026</option>
-                  <option value="2026-04">Nisan 2026</option>
-                  <option value="2026-03">Mart 2026</option>
-                </select>
-              </label>
-              <button
-                disabled={!hasTaxpayerContext || scanMutation.isPending}
-                onClick={() => scanMutation.mutate()}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-2.5 text-xs font-semibold text-stone-200 transition hover:border-[#d4b876]/45 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <RefreshCw size={16} className={scanMutation.isPending ? 'animate-spin' : ''} />
-                Kaynakları Tara
-              </button>
-              <button
-                disabled={!hasTaxpayerContext}
-                onClick={() => setTab('transfer')}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[8px] bg-[#d4b876] px-2.5 text-xs font-bold text-[#17120c] shadow-lg shadow-black/20 transition hover:bg-[#e4ca88] disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                <Sparkles size={16} />
-                Taslak Oluştur
-              </button>
-            </div>
+    <div className="min-h-screen bg-[#f3f1ec] text-[#2a2723]">
+      <div className="mx-auto max-w-[1280px] px-8 pt-7 pb-16">
+        {/* SAYFA BAŞLIĞI */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-[22px] font-semibold tracking-tight text-[#2a2723]">
+              Fatura İşleme
+            </h1>
+            <span className="text-[13px] text-[#8a8270]">Moren Mali Müşavirlik</span>
           </div>
-
-          <div className="border-t border-[#2a231a] bg-black/10 px-3 py-1.5">
-            {selectedTaxpayer ? (
-              <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-400 md:text-xs">
-                <Badge tone="green" icon={Building2}>{selectedTaxpayerName}</Badge>
-                <span>VKN/TCKN: {selectedTaxpayer.taxNumber || '-'}</span>
-                <span className="hidden h-1 w-1 rounded-full bg-stone-600 sm:block" />
-                <span>Defter: {visibleLedgerLabel(taxpayerLedgerLabel(selectedTaxpayer))}</span>
-                <span className="hidden h-1 w-1 rounded-full bg-stone-600 sm:block" />
-                <span className="hidden xl:inline">Kaynak, hesap planı, OCR ve Luca aktarımı sadece bu mükellef için çalışır.</span>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 text-sm text-amber-200">
-                <AlertTriangle size={16} />
-                <span>Önce mükellef seçin. Belge çekme, OCR ve Luca aktarımı mükellef olmadan başlamaz.</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2 border-t border-[#2a231a] bg-black/10 px-3 py-2">
-            {metrics.map((metric) => <Metric key={metric.label} {...metric} />)}
-          </div>
-        </header>
-
-        <section
-          className="flex flex-col gap-2 rounded-[8px] border border-white/10 bg-[#151515] p-2 xl:flex-row xl:items-center xl:justify-between"
-        >
           <div className="flex flex-wrap items-center gap-2">
-            <DirectionButton active={sourceView === 'incoming'} tone="blue" icon={Download} label="Gelen belgeler" onClick={() => switchSourceView('incoming')} />
-            <DirectionButton active={sourceView === 'outgoing'} tone="gold" icon={Send} label="Giden belgeler" onClick={() => switchSourceView('outgoing')} />
-            <span className="hidden text-xs text-stone-500 lg:inline">{sourceView === 'incoming' ? 'Alış belgeleri' : 'Satış belgeleri'}</span>
-            {notice && <Badge tone="amber">{notice}</Badge>}
-          </div>
-          <div className="grid gap-2 md:grid-cols-3 xl:min-w-[760px]">
-            <UploadBox
-              title="Gider fişi yükle"
-              detail={hasTaxpayerContext ? 'Seçilince anlık OCR başlar' : 'Önce mükellef seçin'}
-              icon={Upload}
-              accept="image/*,.pdf"
-              disabled={!hasTaxpayerContext || uploadMutation.isPending}
-              tone="purple"
-              onFiles={(files) => addUploadJobs(files, 'receipt')}
+            <TaxpayerPicker
+              taxpayers={taxpayers}
+              value={selectedTaxpayer}
+              onChange={setSelectedTaxpayer}
             />
-            <UploadBox
-              title="Z raporu yükle"
-              detail={hasTaxpayerContext ? 'Satış yönüne OCR kaydı açar' : 'Önce mükellef seçin'}
-              icon={FileText}
-              accept="image/*,.pdf"
-              disabled={!hasTaxpayerContext || uploadMutation.isPending}
-              tone="gold"
-              onFiles={(files) => addUploadJobs(files, 'zreport')}
-            />
-            <OcrQueue jobs={uploadJobs} />
-          </div>
-        </section>
-
-        <section className="rounded-[8px] border border-white/10 bg-[#151515] p-1">
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((item) => (
-              <TabButton key={item.key} active={tab === item.key} icon={item.icon} label={item.label} onClick={() => setTab(item.key)} />
-            ))}
-          </div>
-        </section>
-
-        {tab === 'pool' && (
-          <BelgeHavuzu
-            filteredDocuments={filteredDocuments}
-            documentsLoading={documentsQuery.isFetching}
-            query={query}
-            selected={selected}
-            selectedId={selectedId}
-            sourceView={sourceView}
-            processDirection={processDirection}
-            hasTaxpayerContext={hasTaxpayerContext}
-            selectedTaxpayerName={selectedTaxpayerName}
-            readyForTransfer={readyForTransfer}
-            onQueryChange={setQuery}
-            onSelect={setSelectedId}
-            onProcessDirectionChange={setProcessDirection}
-          />
-        )}
-
-        {tab === 'accounts' && (
-          <AccountPlanPanel
-            selectedTaxpayer={selectedTaxpayer}
-            accountPlan={accountPlanQuery.data}
-            loading={accountPlanQuery.isFetching}
-            refreshing={accountPlanMutation.isPending}
-            onRefresh={() => accountPlanMutation.mutate()}
-          />
-        )}
-        {tab === 'match' && <MatchPanel selected={selected} />}
-        {tab === 'transfer' && <TransferPanel documents={documentRows} selected={selected} />}
-        {tab === 'sources' && (
-          <ConnectionsPanel
-            selectedTaxpayer={selectedTaxpayer}
-            integrations={integrations}
-            selectedProvider={selectedProvider}
-            form={integrationForm}
-            saving={saveIntegrationMutation.isPending}
-            onProviderChange={setSelectedProvider}
-            onFormChange={setIntegrationForm}
-            onSave={() => saveIntegrationMutation.mutate()}
-          />
-        )}
-        {tab === 'templates' && <TemplatesPanel />}
-      </div>
-    </main>
-  );
-}
-
-function BelgeHavuzu({
-  filteredDocuments,
-  documentsLoading,
-  query,
-  selected,
-  selectedId,
-  sourceView,
-  processDirection,
-  hasTaxpayerContext,
-  selectedTaxpayerName,
-  readyForTransfer,
-  onQueryChange,
-  onSelect,
-  onProcessDirectionChange,
-}: {
-  filteredDocuments: DocumentRow[];
-  documentsLoading: boolean;
-  query: string;
-  selected: DocumentRow | null;
-  selectedId: string;
-  sourceView: SourceView;
-  processDirection: ProcessDirection;
-  hasTaxpayerContext: boolean;
-  selectedTaxpayerName: string;
-  readyForTransfer: boolean;
-  onQueryChange: (value: string) => void;
-  onSelect: (id: string) => void;
-  onProcessDirectionChange: (value: ProcessDirection) => void;
-}) {
-  return (
-    <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_390px]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515]">
-        <div className="flex flex-col gap-2 border-b border-[#2a231a] p-2.5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-[#f4e8c9]">{sourceView === 'incoming' ? 'Gelen belge havuzu' : 'Giden belge havuzu'}</h2>
-            <p className="mt-0.5 text-xs text-stone-500">
-              {hasTaxpayerContext ? `${selectedTaxpayerName} için ${sourceView === 'incoming' ? 'alış' : 'satış'} yönündeki belgeler` : 'Mükellef seçildikten sonra açılır'}
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="flex h-9 min-w-[240px] items-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-3 text-sm">
-              <Search size={15} className="text-stone-500" />
-              <input
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="Firma, belge no, hesap ara"
-                className="w-full bg-transparent text-stone-200 outline-none placeholder:text-stone-600"
-              />
-            </label>
-            <button className="inline-flex h-9 items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-3 text-sm font-semibold text-stone-300 transition hover:border-white/20">
-              <Filter size={15} />
-              Filtre
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-2 p-2">
-          {!hasTaxpayerContext ? (
-            <TaxpayerRequiredCard />
-          ) : documentsLoading ? (
-            <div className="rounded-[8px] border border-white/10 bg-[#101010] p-5 text-sm text-stone-400">Belgeler yükleniyor...</div>
-          ) : filteredDocuments.length === 0 ? (
-            <div className="rounded-[8px] border border-dashed border-white/10 bg-[#101010] p-5 text-sm text-stone-500">
-              Bu mükellef ve filtre için belge bulunamadı. Kaynakları tara veya fiş/Z raporu yükle.
-            </div>
-          ) : (
-            filteredDocuments.map((document) => (
-              <DocumentItem key={document.id} document={document} selected={selectedId === document.id} onClick={() => onSelect(document.id)} />
-            ))
-          )}
-        </div>
-      </section>
-
-      {hasTaxpayerContext ? (
-        <DraftPanel
-          selected={selected}
-          readyForTransfer={readyForTransfer}
-          processDirection={processDirection}
-          onProcessDirectionChange={onProcessDirectionChange}
-        />
-      ) : (
-        <TaxpayerRequiredCard compact />
-      )}
-    </div>
-  );
-}
-
-function DocumentItem({ document, selected, onClick }: { document: DocumentRow; selected: boolean; onClick: () => void }) {
-  const status = getStatusView(document.status, document.missing.length);
-  const directionTone: Tone = document.direction === 'ALIS' ? 'blue' : 'gold';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`grid w-full gap-2 rounded-[8px] border px-2.5 py-2 text-left transition lg:grid-cols-[minmax(0,1fr)_132px_150px_96px] lg:items-center ${
-        selected ? 'border-[#d4b876]/55 bg-[#1b1913]' : 'border-white/10 bg-[#101010] hover:border-white/20'
-      }`}
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-xs font-semibold text-[#f4e8c9] md:text-sm">{document.title}</span>
-          <Badge tone={directionTone}>{directionLabel(document.direction)}</Badge>
-          {document.missing.length > 0 && <Badge tone="red">{document.missing.length} eksik</Badge>}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-stone-500">
-          <span>{document.documentNo}</span>
-          <span>·</span>
-          <span>{document.source}</span>
-          <span>·</span>
-          <span>{visibleLedgerLabel(document.defter)}</span>
-        </div>
-      </div>
-      <div className="text-xs text-stone-300 md:text-sm">
-        <div className="font-semibold">{formatMoney(document.amount)}</div>
-        <div className="mt-0.5 text-xs text-stone-500">{document.date || '-'}</div>
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium text-stone-200 md:text-sm">{document.account || 'Hesap/alan bekliyor'}</div>
-        <div className="mt-0.5 truncate text-xs text-stone-500">{document.rule}</div>
-      </div>
-      <div className="flex items-center justify-start gap-2 lg:justify-end">
-        <Badge tone={status.tone} icon={status.icon}>{status.label}</Badge>
-      </div>
-    </button>
-  );
-}
-
-function DraftPanel({
-  selected,
-  readyForTransfer,
-  processDirection,
-  onProcessDirectionChange,
-}: {
-  selected: DocumentRow | null;
-  readyForTransfer: boolean;
-  processDirection: ProcessDirection;
-  onProcessDirectionChange: (value: ProcessDirection) => void;
-}) {
-  if (!selected) {
-    return (
-      <aside className="rounded-[8px] border border-white/10 bg-[#151515] p-3">
-        <div className="text-sm font-semibold text-[#f4e8c9]">Belge seçilmedi</div>
-        <p className="mt-1 text-xs leading-5 text-stone-500">Havuzdan belge seçildiğinde kısa kayıt özeti burada görünür.</p>
-      </aside>
-    );
-  }
-
-  const status = getStatusView(selected.status, selected.missing.length);
-  return (
-    <aside className="self-start rounded-[8px] border border-white/10 bg-[#151515] xl:sticky xl:top-3">
-      <div className="border-b border-[#2a231a] p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[#f4e8c9]">{selected.title}</h2>
-            <p className="mt-0.5 truncate text-xs text-stone-500">{selected.documentNo} · {selected.provider}</p>
-          </div>
-          <Badge tone={readyForTransfer ? 'green' : status.tone} icon={readyForTransfer ? CheckCircle2 : status.icon}>
-            {readyForTransfer ? 'Hazır' : status.label}
-          </Badge>
-        </div>
-      </div>
-
-      <div className="grid gap-2 p-3">
-        <div className="grid grid-cols-2 gap-2">
-          <DirectionButton active={processDirection === 'ALIS'} tone="blue" icon={Download} label="Alış" onClick={() => onProcessDirectionChange('ALIS')} />
-          <DirectionButton active={processDirection === 'SATIS'} tone="gold" icon={Send} label="Satış" onClick={() => onProcessDirectionChange('SATIS')} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <FieldChip tone="green" label="Kaynak" value={selected.source} ok />
-          <FieldChip tone="blue" label="Defter" value={visibleLedgerLabel(selected.defter)} ok />
-          <FieldChip tone={selected.date ? 'green' : 'red'} label="Tarih" value={selected.date || '-'} ok={!!selected.date} />
-          <FieldChip tone="gold" label="Tutar" value={formatMoney(selected.amount)} ok={selected.amount > 0} />
-          <FieldChip tone={selected.kdv !== '-' ? 'purple' : 'red'} label="KDV" value={selected.kdv} ok={selected.kdv !== '-'} />
-          <FieldChip tone={selected.confidence >= 90 ? 'green' : 'amber'} label="Güven" value={`%${selected.confidence || 0}`} ok={selected.confidence >= 70} />
-        </div>
-
-        <div className="rounded-[8px] border border-white/10 bg-[#101010] p-2.5">
-          <div className="mb-1 flex items-center gap-2 text-xs font-semibold text-[#d4b876]">
-            {selected.defter === 'Bilanco' ? <Layers3 size={15} /> : <ListChecks size={15} />}
-            {selected.defter === 'Bilanco' ? 'Hesap planı eşleşmesi' : 'İşletme defteri alanı'}
-          </div>
-          <div className="truncate text-sm font-semibold text-stone-100">{selected.account || 'Öneri bekliyor'}</div>
-          <div className="mt-0.5 truncate text-[11px] text-stone-500">{selected.rule}</div>
-        </div>
-
-        <div className="rounded-[8px] border border-white/10 bg-[#101010] p-2.5">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#d4b876]">
-            <LockKeyhole size={15} />
-            Zorunlu alan
-          </div>
-          {selected.missing.length ? (
-            <div className="flex flex-wrap gap-1.5">{selected.missing.map((missing) => <Badge key={missing} tone="red">{missing}</Badge>)}</div>
-          ) : (
-            <Badge tone="green" icon={CheckCircle2}>Eksik yok</Badge>
-          )}
-        </div>
-
-        <button
-          className={`inline-flex h-9 items-center justify-center gap-2 rounded-[8px] text-xs font-bold transition ${
-            readyForTransfer ? 'bg-[#d4b876] text-[#17120c] hover:bg-[#e4ca88]' : 'cursor-not-allowed border border-[#3a2b23] bg-[#211916] text-stone-500'
-          }`}
-        >
-          {readyForTransfer ? <Send size={15} /> : <LockKeyhole size={15} />}
-          Luca paketine al
-        </button>
-      </div>
-    </aside>
-  );
-}
-
-function AccountPlanPanel({
-  selectedTaxpayer,
-  accountPlan,
-  loading,
-  refreshing,
-  onRefresh,
-}: {
-  selectedTaxpayer: Taxpayer | null;
-  accountPlan?: AccountPlan;
-  loading: boolean;
-  refreshing: boolean;
-  onRefresh: () => void;
-}) {
-  const hasTaxpayer = Boolean(selectedTaxpayer);
-  const accounts = accountPlan?.accounts || [];
-  return (
-    <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <div className="mb-4 flex items-center gap-2">
-          <Layers3 size={18} className="text-[#d4b876]" />
-          <h2 className="text-lg font-semibold text-[#f4e8c9]">Luca hesap planı</h2>
-        </div>
-        <div className="grid gap-2">
-          <FieldLine label="Mükellef" value={selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Mükellef seçin'} ok={hasTaxpayer} />
-          <FieldLine label="Kapsam" value={hasTaxpayer ? visibleLedgerLabel(taxpayerLedgerLabel(selectedTaxpayer)) : 'Kapalı'} ok={hasTaxpayer} />
-          <FieldLine label="Son çekim" value={accountPlan?.source ? formatDate(accountPlan.source.createdAt) : '-'} ok={Boolean(accountPlan?.source)} />
-          <FieldLine label="Hesap adedi" value={accountPlan?.source ? `${accountPlan.source.accountCount} satır` : '-'} ok={Boolean(accountPlan?.source)} />
-        </div>
-        <button
-          disabled={!hasTaxpayer || refreshing}
-          onClick={onRefresh}
-          className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] bg-[#d4b876] px-4 text-sm font-bold text-[#17120c] disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          Luca'dan Hesap Planı Çek
-        </button>
-        <div className="mt-3 rounded-[8px] border border-white/10 bg-[#101010] p-3 text-sm leading-6 text-stone-300">
-          Bilanço firmalarında otomatik eşleştirme bu hesap planı geldikten sonra güvenli çalışır.
-        </div>
-      </section>
-
-      <section className="rounded-[8px] border border-white/10 bg-[#151515]">
-        <div className="flex items-center justify-between border-b border-[#2a231a] p-4">
-          <div>
-            <h3 className="font-semibold text-[#f4e8c9]">Hesap planı satırları</h3>
-            <p className="mt-1 text-sm text-stone-500">{loading ? 'Yükleniyor...' : accounts.length ? 'Luca snapshot üzerinden' : 'Henüz veri yok'}</p>
-          </div>
-          <Badge tone={accounts.length ? 'green' : 'amber'} icon={accounts.length ? CheckCircle2 : CircleDashed}>{accounts.length ? 'Güncel' : 'Bekliyor'}</Badge>
-        </div>
-        <div className="max-h-[520px] divide-y divide-[#2a231a] overflow-auto">
-          {accounts.length === 0 ? (
-            <div className="p-5 text-sm text-stone-500">Hesap planı çekilmemiş. Soldaki buton Luca ajanına iş açar.</div>
-          ) : (
-            accounts.slice(0, 120).map((row) => (
-              <div key={row.id} className="grid gap-3 px-4 py-3 md:grid-cols-[140px_minmax(0,1fr)_110px] md:items-center">
-                <div className="font-mono text-sm font-semibold text-[#d4b876]">{row.code}</div>
-                <div className="truncate text-sm font-medium text-stone-100">{row.name}</div>
-                <Badge tone={row.code.startsWith('191') || row.code.startsWith('391') ? 'blue' : row.code.startsWith('600') ? 'green' : 'amber'}>
-                  Seviye {row.level}
-                </Badge>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ConnectionsPanel({
-  selectedTaxpayer,
-  integrations,
-  selectedProvider,
-  form,
-  saving,
-  onProviderChange,
-  onFormChange,
-  onSave,
-}: {
-  selectedTaxpayer: Taxpayer | null;
-  integrations: IntegrationRow[];
-  selectedProvider: string;
-  form: Record<string, string>;
-  saving: boolean;
-  onProviderChange: (provider: string) => void;
-  onFormChange: (form: any) => void;
-  onSave: () => void;
-}) {
-  const selected = integrations.find((item) => item.provider === selectedProvider) || integrations[0];
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515]">
-        <div className="border-b border-[#2a231a] p-4">
-          <h2 className="text-lg font-semibold text-[#f4e8c9]">Entegratör API kayıtları</h2>
-          <p className="mt-1 text-sm text-stone-500">e-Logo, Uyumsoft, Mikro, İzibiz, Kolaysoft, Foriba, Paraşüt, Logo İşbaşı, TÜRMOB e-Fatura ve GİB Portal</p>
-        </div>
-        <div className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-3">
-          {integrations.map((row) => (
+            <PeriodPicker value={period} onChange={setPeriod} />
             <button
-              key={row.provider}
-              type="button"
-              onClick={() => onProviderChange(row.provider)}
-              className={`rounded-[8px] border bg-[#101010] p-3 text-left transition ${row.provider === selectedProvider ? 'border-[#d4b876]/55' : 'border-white/10 hover:border-white/20'}`}
+              onClick={handleRefresh}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3 text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723]"
+              title="Verileri yenile"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-[#f4e8c9]">{row.label}</div>
-                  <div className="mt-1 text-xs text-stone-500">{row.kind}</div>
-                </div>
-                <Badge tone={row.configured ? 'green' : 'amber'}>{row.configured ? 'Kayıtlı' : 'Kurulum'}</Badge>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {row.hasApiKey && <Badge tone="blue">API key</Badge>}
-                {row.hasApiSecret && <Badge tone="purple">Secret</Badge>}
-                {row.hasPassword && <Badge tone="gold">Şifre</Badge>}
-                {row.taxpayerScoped && <Badge tone="green">Mükellef</Badge>}
-              </div>
+              <RefreshCw className="h-3.5 w-3.5" />
+              Yenile
             </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-[#f4e8c9]">{selected?.label || 'Entegratör'} kaydı</h3>
-            <p className="mt-1 text-xs text-stone-500">{selectedTaxpayer ? taxpayerName(selectedTaxpayer) : 'Global kayıt'}</p>
           </div>
-          <Badge tone={selected?.configured ? 'green' : 'amber'}>{selected?.configured ? 'Aktif' : 'Eksik'}</Badge>
         </div>
-        <div className="grid gap-2">
-          <ApiInput label="API adresi" value={form.baseUrl} onChange={(value) => onFormChange({ ...form, baseUrl: value })} placeholder="https://api..." />
-          <ApiInput label="Kullanıcı / hesap" value={form.username} onChange={(value) => onFormChange({ ...form, username: value })} placeholder="kullanıcı adı" />
-          <ApiInput label="API key" value={form.apiKey} onChange={(value) => onFormChange({ ...form, apiKey: value })} placeholder={selected?.hasApiKey ? 'Kayıtlı - değiştirmek için yaz' : 'API key'} secret />
-          <ApiInput label="API secret" value={form.apiSecret} onChange={(value) => onFormChange({ ...form, apiSecret: value })} placeholder={selected?.hasApiSecret ? 'Kayıtlı - değiştirmek için yaz' : 'API secret'} secret />
-          <ApiInput label="Şifre / token" value={form.password} onChange={(value) => onFormChange({ ...form, password: value })} placeholder={selected?.hasPassword ? 'Kayıtlı - değiştirmek için yaz' : 'Şifre veya token'} secret />
-          <ApiInput label="Gönderici VKN" value={form.senderVkn} onChange={(value) => onFormChange({ ...form, senderVkn: value })} placeholder="VKN/TCKN" />
-          <ApiInput label="Hesap / firma kodu" value={form.accountId} onChange={(value) => onFormChange({ ...form, accountId: value })} placeholder="entegratör firma kodu" />
-          <ApiInput label="Not" value={form.note} onChange={(value) => onFormChange({ ...form, note: value })} placeholder="opsiyonel" />
-        </div>
-        <button
-          disabled={saving}
-          onClick={onSave}
-          className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] bg-[#d4b876] text-sm font-bold text-[#17120c] disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          <PlugZap size={16} />
-          {saving ? 'Kaydediliyor...' : 'API kaydını sakla'}
-        </button>
-      </section>
-    </div>
-  );
-}
 
-function MatchPanel({ selected }: { selected: DocumentRow | null }) {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <h2 className="text-lg font-semibold text-[#f4e8c9]">Eşleştirme kuralları</h2>
-        <div className="mt-3 grid gap-2 md:grid-cols-2">
-          <RuleCard tone="green" title="Telekom koruması" detail="Superonline/Turkcell gibi faturalar yemek giderine düşmez; haberleşme veya ilgili hizmet hesabı aranır." />
-          <RuleCard tone="amber" title="Akaryakıt kilidi" detail="Fiş tarihi, cari ve belge no dolmadan otomatik Luca paketi oluşmaz." />
-          <RuleCard tone="blue" title="Hesap planı tanığı" detail="Bilanço firmalarında 191/391, 120/320 ve gider hesapları Luca snapshot üstünden seçilir." />
-          <RuleCard tone="purple" title="İşletme alanı" detail="İşletme defterlerinde hesap kodu yerine yüklenen seçilebilir alan şablonu kullanılır." />
-        </div>
-      </section>
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <Gauge size={18} className="mb-3 text-[#d4b876]" />
-        <div className="text-sm font-semibold text-[#f4e8c9]">{selected?.title || 'Belge seçilmedi'}</div>
-        <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#2b241b]">
-          <div className="h-full rounded-full bg-[#d4b876]" style={{ width: `${selected?.confidence || 0}%` }} />
-        </div>
-        <div className="mt-2 flex justify-between text-xs text-stone-500">
-          <span>Güven</span>
-          <span className="font-semibold text-[#d4b876]">%{selected?.confidence || 0}</span>
-        </div>
-      </section>
-    </div>
-  );
-}
+        {/* WORKSPACE */}
+        <div className="overflow-hidden rounded-[14px] border border-[#e6e1d6] bg-white shadow-[0_1px_2px_rgba(40,35,25,0.04)]">
+          {/* TABS */}
+          <nav className="flex overflow-x-auto border-b border-[#e6e1d6] px-[22px]">
+            {STAGES.map((s) => {
+              const active = stage === s.id;
+              const count =
+                s.id === 'sources'
+                  ? 3
+                  : s.id === 'pool'
+                  ? documentsByStage.pool.length
+                  : s.id === 'match'
+                  ? documentsByStage.match.length + documentsByStage.pool.length
+                  : s.id === 'vouchers'
+                  ? documentsByStage.vouchers.length
+                  : documentsByStage.luca.length;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setStage(s.id)}
+                  className={`-mb-[1px] inline-flex items-center gap-2 border-b-2 px-[18px] py-4 text-[14px] font-medium transition ${
+                    active
+                      ? 'border-[#4a8580] text-[#2f6863]'
+                      : 'border-transparent text-[#8a8270] hover:text-[#2a2723]'
+                  }`}
+                >
+                  {s.label}
+                  <span
+                    className={`rounded-[10px] px-2 py-[1px] text-[12px] font-medium ${
+                      active ? 'bg-[#e2eceb] text-[#2f6863]' : 'bg-[#f8f6f1] text-[#8a8270]'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
 
-function TransferPanel({ documents, selected }: { documents: DocumentRow[]; selected: DocumentRow | null }) {
-  const transferRows = documents.map((document) => ({ ...document, ready: document.status === 'ready' && document.missing.length === 0 }));
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515]">
-        <div className="flex items-center justify-between border-b border-[#2a231a] p-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[#f4e8c9]">Luca aktarım kuyruğu</h2>
-            <p className="mt-1 text-sm text-stone-500">Eksik alan varsa kayıt paketi oluşmaz</p>
-          </div>
-          <button className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-[#d4b876] px-4 text-sm font-bold text-[#17120c]">
-            <Send size={15} />
-            Hazırları Aktar
-          </button>
-        </div>
-        <div className="divide-y divide-[#2a231a]">
-          {transferRows.length === 0 ? (
-            <div className="p-5 text-sm text-stone-500">Aktarılacak belge yok.</div>
-          ) : (
-            transferRows.map((row) => (
-              <div key={row.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[1.1fr_0.7fr_0.8fr_0.5fr] lg:items-center">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-stone-100">{row.title}</div>
-                  <div className="mt-1 text-xs text-stone-500">{row.source} · {row.documentNo}</div>
-                </div>
-                <div className="truncate text-sm text-stone-300">{row.account || 'Hesap/alan yok'}</div>
-                <div className="flex flex-wrap gap-1">
-                  {row.missing.length ? row.missing.map((missing) => <Badge key={missing} tone="red">{missing}</Badge>) : <Badge tone="green" icon={CheckCircle2}>Tamam</Badge>}
-                </div>
-                <div className="flex justify-start lg:justify-end">
-                  <Badge tone={row.ready ? 'green' : 'amber'} icon={row.ready ? CheckCircle2 : CircleDashed}>{row.ready ? 'Hazır' : 'Bekler'}</Badge>
-                </div>
-              </div>
-            ))
+          {/* SAHNE İÇERİĞİ */}
+          {stage === 'sources' && (
+            <SourcesStage
+              taxpayerId={selectedTaxpayer}
+              taxpayer={taxpayerMap.get(selectedTaxpayer)}
+              period={period}
+              onCompleted={handleRefresh}
+              dashboardTotalPending={grandPending}
+              dashboardTotalTransferred={grandTransferred}
+            />
+          )}
+          {stage === 'pool' && (
+            <PoolStage
+              documents={documentsByStage.pool}
+              taxpayerMap={taxpayerMap}
+              onOpenForMatch={(id) => {
+                setActiveDocId(id);
+                setStage('match');
+              }}
+              isLoading={documentsQ.isLoading}
+            />
+          )}
+          {stage === 'match' && (
+            <MatchStage
+              documents={[...documentsByStage.match, ...documentsByStage.pool]}
+              taxpayerMap={taxpayerMap}
+              activeId={activeDocId}
+              onSelectDoc={setActiveDocId}
+              onCompleted={handleRefresh}
+            />
+          )}
+          {stage === 'vouchers' && (
+            <VouchersStage
+              documents={documentsByStage.vouchers}
+              taxpayerMap={taxpayerMap}
+              onEdit={(id) => {
+                setActiveDocId(id);
+                setStage('match');
+              }}
+              onCompleted={handleRefresh}
+            />
+          )}
+          {stage === 'luca' && (
+            <LucaStage documents={documentsByStage.luca} taxpayerMap={taxpayerMap} />
           )}
         </div>
-      </section>
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <h3 className="mb-3 font-semibold text-[#f4e8c9]">Kayıt kapısı</h3>
-        <div className="grid gap-2">
-          <MiniCheck ok={Boolean(selected && selected.missing.length === 0)} title="Zorunlu alanlar" detail={selected?.missing.length ? selected.missing.join(', ') : 'Eksik yok'} />
-          <MiniCheck ok={Boolean(selected && selected.confidence >= 70)} title="OCR/veri güveni" detail={`%${selected?.confidence || 0}`} />
-          <MiniCheck ok={Boolean(selected?.account)} title="Hesap veya işletme alanı" detail={selected?.account || 'Yok'} />
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
 
-function TemplatesPanel() {
-  return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <section className="rounded-[8px] border border-white/10 bg-[#151515]">
-        <div className="flex items-center justify-between border-b border-[#2a231a] p-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[#f4e8c9]">İşletme defteri seçilebilir alanları</h2>
-            <p className="mt-1 text-sm text-stone-500">Hesap planı olmayan firmalar için şablon seti</p>
-          </div>
-          <button className="inline-flex h-10 items-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-3 text-sm font-semibold text-stone-300">
-            <Upload size={15} />
-            Liste Yükle
-          </button>
-        </div>
-        <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-4">
-          {isletmeFields.map((field, index) => (
-            <div key={field} className="rounded-[8px] border border-white/10 bg-[#101010] p-4">
-              <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-[8px] bg-white/[0.04] text-sm font-bold text-emerald-300">
-                {String(index + 1).padStart(2, '0')}
-              </div>
-              <div className="text-sm font-semibold text-[#f4e8c9]">{field}</div>
-              <div className="mt-2 text-xs text-stone-500">Firma bazlı seçim listesi</div>
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="rounded-[8px] border border-white/10 bg-[#151515] p-4">
-        <Table2 size={18} className="mb-3 text-[#d4b876]" />
-        <div className="grid gap-2">
-          <FieldLine label="Belge" value="Z Raporu" ok />
-          <FieldLine label="Yön" value="Satış / Gelir" ok />
-          <FieldLine label="Gelir türü" value="Perakende satış" ok />
-          <FieldLine label="KDV" value="%20" ok />
-        </div>
-      </section>
-    </div>
-  );
-}
+/* ════════════════════════════════════════════════════════════════════
+   ÜST SEÇİCİLER
+   ════════════════════════════════════════════════════════════════════ */
 
-function UploadBox({
-  title,
-  detail,
-  icon: Icon,
-  accept,
-  disabled = false,
-  tone,
-  onFiles,
+function TaxpayerPicker({
+  taxpayers,
+  value,
+  onChange,
 }: {
-  title: string;
-  detail: string;
-  icon: LucideIcon;
-  accept: string;
-  disabled?: boolean;
-  tone: Tone;
-  onFiles: (files: File[]) => void;
+  taxpayers: TaxpayerLite[];
+  value: string;
+  onChange: (v: string) => void;
 }) {
-  const classes = toneClasses[tone];
   return (
-    <label className={`group flex min-h-[52px] items-center gap-3 rounded-[8px] border border-white/10 bg-[#101010] p-2.5 transition ${disabled ? 'cursor-not-allowed opacity-55' : 'cursor-pointer hover:border-[#d4b876]/45 hover:bg-[#181818]'}`}>
-      <input
-        type="file"
-        multiple
-        accept={accept}
-        disabled={disabled}
-        className="hidden"
-        onChange={(event) => {
-          if (disabled) return;
-          const files = Array.from(event.target.files ?? []);
-          if (files.length > 0) onFiles(files);
-          event.currentTarget.value = '';
+    <div className="min-w-[240px]">
+      <TaxpayerSelect
+        taxpayers={taxpayers}
+        value={value}
+        onChange={onChange}
+        allLabel={`Tüm mükellefler · ${taxpayers.length}`}
+        allValue=""
+        placeholder="Mükellef seçin"
+        style={{
+          height: 36,
+          borderRadius: 8,
+          borderColor: '#e6e1d6',
+          background: 'white',
+          color: '#2a2723',
+          fontSize: 13.5,
         }}
       />
-      <div className={`flex h-8 w-8 items-center justify-center rounded-[8px] bg-white/[0.04] ${classes.text}`}>
-        <Icon size={16} />
-      </div>
-      <div className="min-w-0">
-        <div className="text-sm font-semibold text-[#f4e8c9]">{title}</div>
-        <div className="mt-0.5 truncate text-xs text-stone-500">{detail}</div>
-      </div>
-      <ArrowRight size={16} className="ml-auto text-stone-600 transition group-hover:text-[#d4b876]" />
-    </label>
-  );
-}
-
-function OcrQueue({ jobs }: { jobs: UploadJob[] }) {
-  const active = jobs.some((job) => job.status === 'Yukleniyor' || job.status === 'OCR okunuyor');
-  return (
-    <section className="flex min-h-[52px] items-center justify-between gap-3 rounded-[8px] border border-white/10 bg-[#101010] px-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <Zap size={16} className="shrink-0 text-[#d4b876]" />
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-[#f4e8c9]">OCR kuyruğu</div>
-          <div className="truncate text-xs text-stone-500">{jobs.length ? `${jobs[0].fileName} · ${jobs[0].status}` : 'Boş'}</div>
-        </div>
-      </div>
-      <Badge tone={active ? 'amber' : jobs.length ? 'green' : 'slate'}>{jobs.length ? `${jobs.length} dosya` : 'Boş'}</Badge>
-    </section>
-  );
-}
-
-function Metric({ label, value, hint, icon: Icon, tone }: { label: string; value: number | string; hint: string; icon: LucideIcon; tone: Tone }) {
-  const classes = toneClasses[tone];
-  return (
-    <div className="flex h-10 min-w-[132px] items-center gap-2 rounded-[8px] border border-white/10 bg-[#101010] px-2.5">
-      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] bg-white/[0.04] ${classes.text}`}>
-        <Icon size={15} />
-      </div>
-      <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500">{label}</div>
-        <div className="truncate text-sm font-semibold text-[#f4e8c9]">{value}</div>
-        <div className="hidden truncate text-[10px] text-stone-500 2xl:block">{hint}</div>
-      </div>
     </div>
   );
 }
 
-function DirectionButton({ active, icon: Icon, label, tone = 'gold', onClick }: { active: boolean; icon: LucideIcon; label: string; tone?: Tone; onClick: () => void }) {
+function PeriodPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-9 items-center justify-center gap-2 rounded-[8px] px-3 text-xs font-semibold transition ${
-        active ? 'border border-[#d4b876]/55 bg-[#d4b876] text-[#17120c]' : 'border border-white/10 bg-[#101010] text-stone-400 hover:border-white/20 hover:text-stone-100'
-      }`}
-    >
-      <Icon size={15} />
-      {label}
-    </button>
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 min-w-[150px] appearance-none rounded-lg border border-[#e6e1d6] bg-white pl-[14px] pr-9 text-[13.5px] text-[#2a2723] transition hover:border-[#d4cfbf] focus:border-[#4a8580] focus:outline-none"
+      >
+        {periodOptions().map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8a8270]" />
+    </div>
   );
 }
 
-function TabButton({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) {
+/* ════════════════════════════════════════════════════════════════════
+   YENİDEN KULLANILANLAR
+   ════════════════════════════════════════════════════════════════════ */
+
+function WsBar({ children }: { children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-9 items-center gap-2 rounded-[8px] px-3 text-xs font-semibold transition ${
-        active ? 'bg-[#d4b876] text-[#17120c]' : 'border border-white/10 bg-[#101010] text-stone-400 hover:border-white/20 hover:text-stone-100'
-      }`}
-    >
-      <Icon size={15} />
-      {label}
-    </button>
+    <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e6e1d6] bg-[#f8f6f1] px-[22px] py-4">
+      {children}
+    </div>
   );
 }
 
-function Badge({ tone, icon: Icon, children }: { tone: Tone; icon?: LucideIcon; children: React.ReactNode }) {
-  const classes = toneClasses[tone];
+function Summary({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-wrap items-center gap-x-1.5 text-[14px] text-[#5b5447]">{children}</div>;
+}
+
+function Sep() {
+  return <span className="mx-1.5 text-[#b8b09b]">·</span>;
+}
+
+function Strong({ children }: { children: React.ReactNode }) {
+  return <strong className="font-semibold text-[#2a2723]">{children}</strong>;
+}
+
+function Badge({
+  tone = 'neutral',
+  children,
+}: {
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'accent';
+  children: React.ReactNode;
+}) {
+  const styles: Record<string, { bg: string; color: string; dot: string }> = {
+    neutral: { bg: '#f8f6f1', color: '#5b5447', dot: '#8a8270' },
+    success: { bg: '#e5eee0', color: '#466a4b', dot: '#5d8763' },
+    warning: { bg: '#f1e4c8', color: '#7a572b', dot: '#a87a3d' },
+    danger: { bg: '#eed5cf', color: '#6e3e38', dot: '#9a5851' },
+    accent: { bg: '#e2eceb', color: '#2f6863', dot: '#4a8580' },
+  };
+  const s = styles[tone];
   return (
-    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border px-2 text-[11px] font-semibold ${classes.bg} ${classes.border} ${classes.text}`}>
-      {Icon ? <Icon size={12} /> : <span className={`h-1.5 w-1.5 rounded-full ${classes.dot}`} />}
+    <span
+      className="inline-flex items-center gap-1.5 rounded-[14px] px-2.5 py-[3px] text-[12px] font-medium leading-[1.4]"
+      style={{ background: s.bg, color: s.color }}
+    >
+      <span className="h-[5px] w-[5px] rounded-full" style={{ background: s.dot }} />
       {children}
     </span>
   );
 }
 
-function FieldLine({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+function ocrTone(confidence?: number | null) {
+  if (confidence == null) return null;
+  const pct = Math.round(confidence * 100);
+  if (pct >= 85) return { tone: 'success' as const, label: `OCR %${pct}` };
+  if (pct >= 60) return { tone: 'warning' as const, label: `OCR %${pct}` };
+  return { tone: 'danger' as const, label: `OCR %${pct}` };
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 1 — KAYNAKLAR
+   ════════════════════════════════════════════════════════════════════ */
+
+function SourcesStage({
+  taxpayerId,
+  taxpayer,
+  period,
+  onCompleted,
+  dashboardTotalPending,
+  dashboardTotalTransferred,
+}: {
+  taxpayerId: string;
+  taxpayer?: TaxpayerLite;
+  period: string;
+  onCompleted: () => void;
+  dashboardTotalPending: number;
+  dashboardTotalTransferred: number;
+}) {
+  const [activeSource, setActiveSource] = useState<SourceId>('integrator');
+
+  const integrationsQ = useQuery<IntegrationRow[]>({
+    queryKey: ['fim', 'integrations', taxpayerId || 'all'],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/integrations', {
+          params: { taxpayerId: taxpayerId || undefined },
+        })
+        .then((r) => r.data),
+  });
+
+  const integrations = integrationsQ.data || [];
+  const activeProvidersCount = integrations.filter(
+    (i) => i.hasCredentials || i.isActive,
+  ).length;
+
   return (
-    <div className="rounded-[8px] border border-white/10 bg-[#101010] p-2.5">
-      <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500">
-        <span className={`h-2 w-2 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-        {label}
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{activeProvidersCount}</Strong> aktif sağlayıcı
+          <Sep />
+          Bu ay <Strong>{dashboardTotalPending}</Strong> bekleyen, <Strong>{dashboardTotalTransferred}</Strong> aktarıldı
+        </Summary>
+      </WsBar>
+
+      {/* 3 kaynak kartı */}
+      <div className="grid grid-cols-3 border-b border-[#e6e1d6]">
+        <SourceCard
+          number={1}
+          name="Entegratör Çekimi"
+          desc="e-Logo, Uyumsoft, Paraşüt vb. sağlayıcılardan gelen/giden e-Faturalar."
+          stat={
+            <>
+              <Strong>{activeProvidersCount}</Strong> aktif sağlayıcı
+            </>
+          }
+          active={activeSource === 'integrator'}
+          onClick={() => setActiveSource('integrator')}
+          isLast={false}
+        />
+        <SourceCard
+          number={2}
+          name="OCR Yükleme"
+          desc="Fiş, Z raporu, makbuz, banka dekontu — yükle, otomatik tanıt."
+          stat={<span>Azure Vision + Claude</span>}
+          active={activeSource === 'ocr'}
+          onClick={() => setActiveSource('ocr')}
+          isLast={false}
+        />
+        <SourceCard
+          number={3}
+          name="e-Arşiv Köprü"
+          desc="e-Arşiv modülünde mevcut belgeleri bu havuza taşı."
+          stat={<span>Mükerrer kontrolü açık</span>}
+          active={activeSource === 'earsiv'}
+          onClick={() => setActiveSource('earsiv')}
+          isLast
+        />
       </div>
-      <div className="truncate text-sm font-semibold text-stone-100">{value}</div>
-    </div>
-  );
-}
 
-function FieldChip({ tone, label, value, ok }: { tone: Tone; label: string; value: string; ok: boolean }) {
-  const classes = toneClasses[ok ? tone : 'red'];
-  return (
-    <div className="min-w-0 rounded-[8px] border border-white/10 bg-[#101010] px-2 py-2">
-      <div className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${classes.text}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${classes.dot}`} />
-        {label}
+      {/* Aktif kaynağın detayı */}
+      <div className="px-[22px] py-6">
+        {activeSource === 'integrator' && (
+          <IntegratorPanel
+            integrations={integrations}
+            integrationsLoading={integrationsQ.isLoading}
+            taxpayerId={taxpayerId}
+            taxpayer={taxpayer}
+            period={period}
+            onCompleted={onCompleted}
+          />
+        )}
+        {activeSource === 'ocr' && (
+          <OcrPanel
+            taxpayerId={taxpayerId}
+            taxpayer={taxpayer}
+            onCompleted={onCompleted}
+          />
+        )}
+        {activeSource === 'earsiv' && (
+          <EarsivBridgePanel
+            taxpayerId={taxpayerId}
+            taxpayer={taxpayer}
+            period={period}
+            onCompleted={onCompleted}
+          />
+        )}
       </div>
-      <div className="mt-1 truncate text-xs font-semibold text-stone-100">{value}</div>
+    </>
+  );
+}
+
+function SourceCard({
+  number,
+  name,
+  desc,
+  stat,
+  active,
+  onClick,
+  isLast,
+}: {
+  number: number;
+  name: string;
+  desc: string;
+  stat: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  isLast: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`p-6 text-left transition ${active ? 'bg-[#e2eceb]' : 'hover:bg-[#f8f6f1]'} ${
+        isLast ? '' : 'border-r border-[#e6e1d6]'
+      }`}
+    >
+      <div className="mb-2.5 flex items-center gap-2.5">
+        <span
+          className={`flex h-[26px] w-[26px] items-center justify-center rounded-md text-[13px] font-semibold ${
+            active ? 'bg-[#4a8580] text-white' : 'bg-[#f8f6f1] text-[#5b5447]'
+          }`}
+        >
+          {number}
+        </span>
+        <span className="text-[15px] font-semibold tracking-tight text-[#2a2723]">{name}</span>
+      </div>
+      <p className="mb-3.5 text-[13px] leading-[1.6] text-[#5b5447]">{desc}</p>
+      <div className="text-[12px] text-[#8a8270]">{stat}</div>
+    </button>
+  );
+}
+
+/* ─── Entegratör paneli ─── */
+
+function IntegratorPanel({
+  integrations,
+  integrationsLoading,
+  taxpayerId,
+  taxpayer,
+  period,
+  onCompleted,
+}: {
+  integrations: IntegrationRow[];
+  integrationsLoading: boolean;
+  taxpayerId: string;
+  taxpayer?: TaxpayerLite;
+  period: string;
+  onCompleted: () => void;
+}) {
+  const [direction, setDirection] = useState<Direction>('ALIS');
+  const [selected, setSelected] = useState<string[]>([]);
+
+  const activeProviders = useMemo(
+    () => integrations.filter((i) => i.hasCredentials || i.isActive).map((i) => i.provider),
+    [integrations],
+  );
+
+  useEffect(() => {
+    setSelected(activeProviders);
+  }, [activeProviders.join(',')]);
+
+  const fetchMut = useMutation({
+    mutationFn: async () => {
+      if (!taxpayerId) throw new Error('Önce mükellef seçin');
+      if (selected.length === 0) throw new Error('En az bir sağlayıcı seçin');
+      return api
+        .post('/fatura-muhasebelestirme/integrations/fetch', {
+          taxpayerId,
+          donem: period,
+          direction,
+          providers: selected,
+          limit: 500,
+        })
+        .then((r) => r.data);
+    },
+    onSuccess: (data: { results?: Array<{ provider: string; imported?: number; count?: number; ok?: boolean; error?: string }> }) => {
+      const results = data?.results || [];
+      const total = results.reduce((acc, r) => acc + (r.imported ?? r.count ?? 0), 0);
+      const failed = results.filter((r) => r.ok === false || r.error);
+      if (total > 0) {
+        toast.success(`${total} belge alındı`);
+      }
+      failed.forEach((r) => toast.error(`${r.provider}: ${r.error || 'hata'}`));
+      if (total === 0 && failed.length === 0) {
+        toast.info('Sonuç dönmedi · dönem boş olabilir');
+      }
+      onCompleted();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Çekim başarısız');
+    },
+  });
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[15px] font-semibold text-[#2a2723]">Entegratör Çekimi</div>
+          <div className="mt-0.5 text-[13px] text-[#8a8270]">
+            Sağlayıcıları seç, yön belirle, çekimi başlat.
+          </div>
+        </div>
+      </div>
+
+      {/* Yön toggle */}
+      <div className="mb-4 inline-flex rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] p-[3px]">
+        {(['ALIS', 'SATIS'] as Direction[]).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDirection(d)}
+            className={`rounded-md px-3.5 py-1.5 text-[13px] font-medium transition ${
+              direction === d
+                ? 'bg-white text-[#2a2723] shadow-[0_1px_2px_rgba(40,35,25,0.04)]'
+                : 'text-[#8a8270] hover:text-[#2a2723]'
+            }`}
+          >
+            {d === 'ALIS' ? 'Gelen faturalar' : 'Giden faturalar'}
+          </button>
+        ))}
+      </div>
+
+      {/* Sağlayıcı çipleri */}
+      <div className="mb-[18px] flex flex-wrap gap-1.5">
+        {PROVIDERS.map((p) => {
+          const info = integrations.find((i) => i.provider === p.id);
+          const has = !!info?.hasCredentials || !!info?.isActive;
+          const on = selected.includes(p.id);
+          return (
+            <button
+              key={p.id}
+              onClick={() =>
+                setSelected((s) => (s.includes(p.id) ? s.filter((x) => x !== p.id) : [...s, p.id]))
+              }
+              disabled={!taxpayerId}
+              className={`inline-flex items-center gap-1.5 rounded-[18px] border px-3 py-1.5 text-[12.5px] transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                on
+                  ? 'border-[#2a2723] bg-[#2a2723] text-white'
+                  : 'border-[#e6e1d6] bg-white text-[#5b5447] hover:border-[#d4cfbf]'
+              }`}
+            >
+              <span
+                className="h-[5px] w-[5px] rounded-full"
+                style={{
+                  background: has ? '#5d8763' : on ? 'rgba(255,255,255,0.5)' : '#b8b09b',
+                }}
+              />
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5">
+        <button
+          onClick={() => fetchMut.mutate()}
+          disabled={!taxpayerId || selected.length === 0 || fetchMut.isPending}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {fetchMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Çekimi başlat
+        </button>
+        {!taxpayer && (
+          <span className="text-[12.5px] text-[#a87a3d]">↖ Önce mükellef seç</span>
+        )}
+        {integrationsLoading && (
+          <span className="inline-flex items-center gap-1 text-[12.5px] text-[#8a8270]">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Sağlayıcılar yükleniyor...
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-function ApiInput({ label, value, placeholder, secret, onChange }: { label: string; value: string; placeholder: string; secret?: boolean; onChange: (value: string) => void }) {
+/* ─── OCR yükleme paneli ─── */
+
+function OcrPanel({
+  taxpayerId,
+  taxpayer,
+  onCompleted,
+}: {
+  taxpayerId: string;
+  taxpayer?: TaxpayerLite;
+  onCompleted: () => void;
+}) {
+  const [docType, setDocType] = useState<string>('OKC_FIS');
+  const [invoiceKind, setInvoiceKind] = useState<Direction>('ALIS');
+  const [forceClaude, setForceClaude] = useState(false);
+  const [drag, setDrag] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const uploadMut = useMutation({
+    mutationFn: async (files: File[]) => {
+      if (!taxpayerId) throw new Error('Önce mükellef seçin');
+      const form = new FormData();
+      files.forEach((f) => form.append('files', f));
+      form.append('taxpayerId', taxpayerId);
+      form.append('source', 'manual-web');
+      form.append('documentType', docType);
+      form.append('invoiceKind', invoiceKind);
+      if (forceClaude) form.append('forceClaude', 'true');
+      return api
+        .post('/fatura-muhasebelestirme/documents/upload', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 120_000,
+        })
+        .then((r) => r.data);
+    },
+    onSuccess: (data: unknown) => {
+      const count = Array.isArray(data) ? data.length : 1;
+      toast.success(`${count} belge işlendi`);
+      onCompleted();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'OCR başarısız');
+    },
+  });
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    uploadMut.mutate(Array.from(files));
+  };
+
   return (
-    <label className="grid gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500">{label}</span>
-      <input
-        type={secret ? 'password' : 'text'}
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 rounded-[8px] border border-white/10 bg-[#101010] px-3 text-sm text-stone-100 outline-none placeholder:text-stone-600 focus:border-[#d4b876]/45"
-      />
-    </label>
+    <div>
+      <div className="mb-4">
+        <div className="text-[15px] font-semibold text-[#2a2723]">OCR Yükleme</div>
+        <div className="mt-0.5 text-[13px] text-[#8a8270]">
+          Belgeyi bırak, sistem otomatik tanıt ve havuza ekle.
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 max-w-[640px]">
+        <div>
+          <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">Belge Tipi</label>
+          <div className="relative">
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="h-9 w-full appearance-none rounded-lg border border-[#e6e1d6] bg-white px-3 pr-9 text-[13.5px] text-[#2a2723] focus:border-[#4a8580] focus:outline-none"
+            >
+              <option value="OKC_FIS">ÖKC Fişi</option>
+              <option value="Z_RAPORU">Z Raporu</option>
+              <option value="FIS">Fiş / Makbuz</option>
+              <option value="E_FATURA">e-Fatura (XML)</option>
+              <option value="E_ARSIV">e-Arşiv (PDF)</option>
+              <option value="DIGER">Diğer</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8270]" />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">Yön</label>
+          <div className="relative">
+            <select
+              value={invoiceKind}
+              onChange={(e) => setInvoiceKind(e.target.value as Direction)}
+              className="h-9 w-full appearance-none rounded-lg border border-[#e6e1d6] bg-white px-3 pr-9 text-[13.5px] text-[#2a2723] focus:border-[#4a8580] focus:outline-none"
+            >
+              <option value="ALIS">Alış</option>
+              <option value="SATIS">Satış</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8270]" />
+          </div>
+        </div>
+      </div>
+
+      <label className="mb-4 inline-flex cursor-pointer items-center gap-2 text-[13px] text-[#5b5447]">
+        <input
+          type="checkbox"
+          checked={forceClaude}
+          onChange={(e) => setForceClaude(e.target.checked)}
+          className="h-[14px] w-[14px] accent-[#4a8580]"
+        />
+        Sadece Claude OCR (Azure'u atla)
+      </label>
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDrag(true);
+        }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDrag(false);
+          handleFiles(e.dataTransfer.files);
+        }}
+        onClick={() => inputRef.current?.click()}
+        className={`relative cursor-pointer rounded-[10px] border-2 border-dashed py-12 text-center transition max-w-[640px] ${
+          drag
+            ? 'border-[#4a8580] bg-[#e2eceb]'
+            : 'border-[#e6e1d6] bg-[#f8f6f1] hover:border-[#b8d0cc]'
+        }`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept="image/*,application/pdf,.xml"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        {uploadMut.isPending ? (
+          <>
+            <Loader2 className="mx-auto mb-2 h-7 w-7 animate-spin text-[#4a8580]" />
+            <div className="text-[14px] font-medium text-[#5b5447]">OCR çalışıyor...</div>
+          </>
+        ) : (
+          <>
+            <Upload className="mx-auto mb-3 h-7 w-7 text-[#8a8270]" />
+            <div className="text-[14px] font-medium text-[#5b5447]">Bırak veya seç</div>
+            <div className="mt-1 text-[12px] text-[#b8b09b]">
+              .jpg .png .pdf .xml · max 25 MB
+            </div>
+          </>
+        )}
+      </div>
+
+      {!taxpayer && (
+        <p className="mt-3 text-[12.5px] text-[#a87a3d]">↖ Önce mükellef seç</p>
+      )}
+    </div>
   );
 }
 
-function TaxpayerRequiredCard({ compact = false }: { compact?: boolean }) {
+/* ─── e-Arşiv köprü paneli ─── */
+
+function EarsivBridgePanel({
+  taxpayerId,
+  taxpayer,
+  period,
+  onCompleted,
+}: {
+  taxpayerId: string;
+  taxpayer?: TaxpayerLite;
+  period: string;
+  onCompleted: () => void;
+}) {
+  const [tip, setTip] = useState<string>('all');
+
+  const lucaFetchMut = useMutation({
+    mutationFn: async () => {
+      if (!taxpayerId) throw new Error('Mükellef seçin');
+      return api
+        .post('/earsiv/fetch-from-luca', { taxpayerId, donem: period })
+        .then((r) => r.data);
+    },
+    onSuccess: (data: { jobId?: string }) => {
+      toast.success(`Luca işi başlatıldı${data?.jobId ? ` · ${data.jobId.slice(0, 8)}` : ''}`);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Luca hatası');
+    },
+  });
+
+  const backfillMut = useMutation({
+    mutationFn: async () => {
+      if (!taxpayerId) throw new Error('Mükellef seçin');
+      return api
+        .post('/fatura-muhasebelestirme/documents/backfill-earsiv', {
+          taxpayerId,
+          donem: period,
+          tip: tip === 'all' ? undefined : tip,
+          limit: 500,
+        })
+        .then((r) => r.data);
+    },
+    onSuccess: (data: { imported?: number; skipped?: number }) => {
+      toast.success(`${data?.imported ?? 0} aktarıldı, ${data?.skipped ?? 0} atlandı`);
+      onCompleted();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Köprü hatası');
+    },
+  });
+
   return (
-    <div className={`rounded-[8px] border border-amber-400/25 bg-amber-500/10 ${compact ? 'p-4' : 'p-5'}`}>
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-amber-500/12 text-amber-300">
-          <AlertTriangle size={18} />
+    <div className="max-w-[640px]">
+      <div className="mb-4">
+        <div className="text-[15px] font-semibold text-[#2a2723]">e-Arşiv Köprü</div>
+        <div className="mt-0.5 text-[13px] text-[#8a8270]">
+          İki adım: önce Luca'dan listele, ardından havuza aktar.
         </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-amber-200">Mükellef seçimi gerekli</div>
-          <div className="mt-1 text-sm leading-6 text-stone-400">Belge havuzu, OCR, hesap planı ve Luca aktarımı seçili mükellefe göre çalışır.</div>
+      </div>
+
+      <div className="mb-4">
+        <label className="mb-1.5 block text-[12px] font-medium text-[#5b5447]">Tip</label>
+        <div className="relative max-w-[220px]">
+          <select
+            value={tip}
+            onChange={(e) => setTip(e.target.value)}
+            className="h-9 w-full appearance-none rounded-lg border border-[#e6e1d6] bg-white px-3 pr-9 text-[13.5px] text-[#2a2723] focus:border-[#4a8580] focus:outline-none"
+          >
+            <option value="all">Tümü</option>
+            <option value="GELEN">Gelen</option>
+            <option value="GIDEN">Giden</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8a8270]" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <button
+          onClick={() => lucaFetchMut.mutate()}
+          disabled={!taxpayerId || lucaFetchMut.isPending}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#e6e1d6] bg-white text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {lucaFetchMut.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span className="text-[#4a8580]">1.</span>
+          )}
+          Luca'dan çek
+        </button>
+        <button
+          onClick={() => backfillMut.mutate()}
+          disabled={!taxpayerId || backfillMut.isPending}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#4a8580] text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {backfillMut.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <span className="opacity-70">2.</span>
+          )}
+          Havuza aktar
+        </button>
+      </div>
+
+      {!taxpayer && (
+        <p className="mt-3 text-[12.5px] text-[#a87a3d]">↖ Önce mükellef seç</p>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 2 — HAVUZ
+   ════════════════════════════════════════════════════════════════════ */
+
+function PoolStage({
+  documents,
+  taxpayerMap,
+  onOpenForMatch,
+  isLoading,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+  onOpenForMatch: (id: string) => void;
+  isLoading: boolean;
+}) {
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return documents;
+    const q = query.toLocaleLowerCase('tr');
+    return documents.filter((d) => {
+      const haystack = [
+        d.vendorName,
+        d.customerName,
+        d.originalName,
+        d.belgeNo,
+        d.taxpayerId ? taxpayerLabel(taxpayerMap.get(d.taxpayerId)) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+        .toLocaleLowerCase('tr');
+      return haystack.includes(q);
+    });
+  }, [documents, query, taxpayerMap]);
+
+  const total = documents.length;
+  const newToday = documents.filter((d) => {
+    if (!d.createdAt) return false;
+    const c = new Date(d.createdAt);
+    const t = new Date();
+    return (
+      c.getDate() === t.getDate() &&
+      c.getMonth() === t.getMonth() &&
+      c.getFullYear() === t.getFullYear()
+    );
+  }).length;
+  const duplicates = documents.filter((d) => !!d.duplicateOfId).length;
+  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+
+  return (
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{total}</Strong> belge
+          <Sep />
+          <Strong>{newToday}</Strong> bugün geldi
+          <Sep />
+          <Strong>{duplicates}</Strong> mükerrer uyarısı
+          <Sep />
+          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
+        </Summary>
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3 w-[280px] focus-within:border-[#4a8580]">
+            <Search className="h-3.5 w-3.5 text-[#8a8270]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Satıcı, müşteri, belge no..."
+              className="w-full bg-transparent text-[13.5px] text-[#2a2723] placeholder:text-[#b8b09b] focus:outline-none"
+            />
+          </div>
+        </div>
+      </WsBar>
+
+      {isLoading ? (
+        <div className="px-[22px] py-16 text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#8a8270]" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="Havuz boş"
+          desc={query ? 'Arama kriterine uyan belge yok.' : 'Stage 1\'den belge ekleyebilirsin.'}
+        />
+      ) : (
+        <table className="w-full border-collapse">
+          <thead>
+            <tr>
+              <Th>Belge</Th>
+              <Th>Mükellef</Th>
+              <Th>Tarih</Th>
+              <Th right>Tutar</Th>
+              <Th right>Durum</Th>
+              <Th></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((d) => {
+              const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+              const ocr = ocrTone(d.ocrConfidence);
+              const isDuplicate = !!d.duplicateOfId;
+              const docType = DOC_TYPE_LABEL[d.documentType || ''] || d.documentType || '';
+              return (
+                <Tr key={d.id}>
+                  <Td>
+                    <div className="flex flex-col gap-0.5">
+                      <strong className="text-[14px] font-medium text-[#2a2723]">
+                        {d.vendorName || d.customerName || d.originalName || '—'}
+                      </strong>
+                      <small className="text-[12px] text-[#8a8270]">
+                        {docType}
+                        {d.belgeNo ? ` · ${d.belgeNo}` : ''}
+                      </small>
+                    </div>
+                  </Td>
+                  <Td>{tp ? taxpayerLabel(tp) : '—'}</Td>
+                  <Td>{fmtDate(d.faturaTarihi || d.createdAt)}</Td>
+                  <Td right>
+                    <span className="font-medium tabular-nums">{fmtMoney(d.totalAmount)} ₺</span>
+                  </Td>
+                  <Td right>
+                    {isDuplicate ? (
+                      <Badge tone="warning">Mükerrer?</Badge>
+                    ) : ocr ? (
+                      <Badge tone={ocr.tone}>{ocr.label}</Badge>
+                    ) : (
+                      <Badge tone="neutral">Yeni</Badge>
+                    )}
+                  </Td>
+                  <Td right>
+                    <button
+                      onClick={() => onOpenForMatch(d.id)}
+                      className="inline-flex items-center gap-1 text-[13px] font-medium text-[#2f6863] transition hover:text-[#4a8580] hover:underline"
+                    >
+                      Eşleştir
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </Td>
+                </Tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
+function Th({
+  children,
+  right,
+}: {
+  children?: React.ReactNode;
+  right?: boolean;
+}) {
+  return (
+    <th
+      className={`border-b border-[#e6e1d6] bg-[#f8f6f1] px-[22px] py-3 text-[12px] font-medium text-[#8a8270] ${
+        right ? 'text-right' : 'text-left'
+      }`}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Tr({ children }: { children: React.ReactNode }) {
+  return <tr className="group transition hover:bg-[#f8f6f1]">{children}</tr>;
+}
+
+function Td({
+  children,
+  right,
+}: {
+  children: React.ReactNode;
+  right?: boolean;
+}) {
+  return (
+    <td
+      className={`border-b border-[#e6e1d6] px-[22px] py-3.5 text-[14px] align-middle ${
+        right ? 'text-right' : 'text-left'
+      }`}
+    >
+      {children}
+    </td>
+  );
+}
+
+function EmptyState({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div className="px-[22px] py-16 text-center">
+      <div className="mb-1 text-[15px] font-medium text-[#5b5447]">{title}</div>
+      <div className="text-[13px] text-[#8a8270]">{desc}</div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 3 — EŞLEŞTİRME
+   ════════════════════════════════════════════════════════════════════ */
+
+function MatchStage({
+  documents,
+  taxpayerMap,
+  activeId,
+  onSelectDoc,
+  onCompleted,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+  activeId: string | null;
+  onSelectDoc: (id: string | null) => void;
+  onCompleted: () => void;
+}) {
+  const active = documents.find((d) => d.id === activeId) || documents[0] || null;
+
+  return (
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{documents.length}</Strong> belge eşleştirme sırasında
+        </Summary>
+      </WsBar>
+
+      <div className="grid grid-cols-[280px_1fr] min-h-[600px]">
+        {/* Sol: sırada listesi */}
+        <div className="border-r border-[#e6e1d6] bg-[#f8f6f1]">
+          <div className="flex items-center justify-between border-b border-[#e6e1d6] px-[18px] py-3.5">
+            <span className="text-[13px] font-medium text-[#8a8270]">Sırada</span>
+            <span className="text-[13px] font-medium text-[#8a8270]">{documents.length}</span>
+          </div>
+          <div className="max-h-[calc(100vh-360px)] overflow-y-auto">
+            {documents.length === 0 ? (
+              <div className="py-10 text-center text-[12.5px] text-[#8a8270]">
+                Eşleştirme sırasında belge yok
+              </div>
+            ) : (
+              documents.map((d) => {
+                const isActive = d.id === (active?.id || null);
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => onSelectDoc(d.id)}
+                    className={`block w-full border-b border-[#e6e1d6] px-[18px] py-3.5 text-left transition ${
+                      isActive
+                        ? 'bg-white shadow-[inset_3px_0_0_#4a8580]'
+                        : 'hover:bg-white'
+                    }`}
+                  >
+                    <div className="truncate text-[14px] font-medium text-[#2a2723]">
+                      {d.vendorName || d.customerName || d.originalName || 'Adsız'}
+                    </div>
+                    <div className="mt-0.5 text-[12.5px] text-[#8a8270]">
+                      {fmtMoney(d.totalAmount)} ₺ · {fmtDate(d.faturaTarihi)}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Sağ: editör */}
+        <div>
+          {active ? (
+            <DocumentEditor
+              key={active.id}
+              doc={active}
+              taxpayer={active.taxpayerId ? taxpayerMap.get(active.taxpayerId) : undefined}
+              onCompleted={onCompleted}
+              onSkip={() => {
+                const idx = documents.findIndex((d) => d.id === active.id);
+                const next = documents[idx + 1] || documents[0];
+                onSelectDoc(next?.id || null);
+              }}
+            />
+          ) : (
+            <EmptyState
+              title="Eşleştirme sırasında belge yok"
+              desc="Havuza yeni belge ekledikçe burada görünür."
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─── Belge editörü ─── */
+
+function DocumentEditor({
+  doc,
+  taxpayer,
+  onCompleted,
+  onSkip,
+}: {
+  doc: ApiDocument;
+  taxpayer?: TaxpayerLite;
+  onCompleted: () => void;
+  onSkip: () => void;
+}) {
+  const qc = useQueryClient();
+
+  const [lines, setLines] = useState<ApiLine[]>(() => doc.lines || []);
+  const [accountSearch, setAccountSearch] = useState('');
+
+  useEffect(() => {
+    setLines(doc.lines || []);
+  }, [doc.id]);
+
+  const accountPlanQ = useQuery<AccountPlanNode[]>({
+    queryKey: ['fim', 'account-plan', doc.taxpayerId, accountSearch],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/account-plan', {
+          params: { taxpayerId: doc.taxpayerId, q: accountSearch || undefined, limit: 60 },
+        })
+        .then((r) => r.data),
+    enabled: !!doc.taxpayerId,
+    staleTime: 60_000,
+  });
+
+  const refreshPlanMut = useMutation({
+    mutationFn: () =>
+      api
+        .post('/fatura-muhasebelestirme/account-plan/refresh', { taxpayerId: doc.taxpayerId })
+        .then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Hesap planı Luca\'dan yenilendi');
+      qc.invalidateQueries({ queryKey: ['fim', 'account-plan'] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Hesap planı yenileme başarısız');
+    },
+  });
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      api
+        .patch(`/fatura-muhasebelestirme/documents/${doc.id}`, { lines })
+        .then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Kaydedildi');
+      qc.invalidateQueries({ queryKey: ['fim', 'documents'] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Kayıt başarısız');
+    },
+  });
+
+  const readyMut = useMutation({
+    mutationFn: () =>
+      api
+        .patch(`/fatura-muhasebelestirme/documents/${doc.id}`, { status: 'READY', lines })
+        .then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Fiş hazır olarak işaretlendi');
+      onCompleted();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'İşaretleme başarısız');
+    },
+  });
+
+  const approveMut = useMutation({
+    mutationFn: () =>
+      api.post(`/fatura-muhasebelestirme/documents/${doc.id}/approve`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Luca\'ya aktarıldı');
+      onCompleted();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Aktarım başarısız');
+    },
+  });
+
+  const totals = useMemo(() => {
+    let debit = 0;
+    let credit = 0;
+    lines.forEach((l) => {
+      debit += parseNum(l.debit);
+      credit += parseNum(l.credit);
+    });
+    return { debit, credit, diff: debit - credit };
+  }, [lines]);
+
+  const balanced = Math.abs(totals.diff) < 0.01;
+
+  const addLine = () => {
+    setLines((arr) => [
+      ...arr,
+      { group: 'Yevmiye', accountCode: '', description: '', debit: '0', credit: '0' },
+    ]);
+  };
+
+  const updateLine = (idx: number, patch: Partial<ApiLine>) => {
+    setLines((arr) => arr.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  };
+
+  const removeLine = (idx: number) => {
+    setLines((arr) => arr.filter((_, i) => i !== idx));
+  };
+
+  const pickAccount = (node: AccountPlanNode) => {
+    const idx = lines.findIndex((l) => !l.accountCode);
+    if (idx >= 0) {
+      updateLine(idx, { accountCode: node.code, description: node.name });
+    } else {
+      setLines((arr) => [
+        ...arr,
+        {
+          group: 'Yevmiye',
+          accountCode: node.code,
+          description: node.name,
+          debit: '0',
+          credit: '0',
+        },
+      ]);
+    }
+  };
+
+  const docType = DOC_TYPE_LABEL[doc.documentType || ''] || doc.documentType || '';
+
+  return (
+    <div className="p-6">
+      {/* Başlık */}
+      <div className="mb-5">
+        <h2 className="text-[20px] font-semibold tracking-tight text-[#2a2723]">
+          {doc.vendorName || doc.customerName || doc.originalName || 'Adsız belge'}
+        </h2>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] text-[#8a8270]">
+          {docType && <span>{docType}</span>}
+          {doc.belgeNo && (
+            <>
+              <span className="text-[#b8b09b]">·</span>
+              <span>{doc.belgeNo}</span>
+            </>
+          )}
+          {doc.faturaTarihi && (
+            <>
+              <span className="text-[#b8b09b]">·</span>
+              <span>{fmtDate(doc.faturaTarihi)}</span>
+            </>
+          )}
+          {taxpayer && (
+            <>
+              <span className="text-[#b8b09b]">·</span>
+              <span>{taxpayerLabel(taxpayer)}</span>
+            </>
+          )}
+        </div>
+        <div className="mt-3 text-[24px] font-semibold tracking-tight text-[#2a2723] tabular-nums">
+          {fmtMoney(doc.totalAmount)} ₺
+        </div>
+      </div>
+
+      {/* Uyarılar */}
+      {doc.duplicateReason && (
+        <div
+          className={`mb-5 rounded-lg border-l-[3px] px-4 py-3 text-[13px] leading-[1.55] ${
+            doc.duplicateSeverity === 'BLOCKING'
+              ? 'border-[#9a5851] bg-[#eed5cf] text-[#6e3e38]'
+              : 'border-[#a87a3d] bg-[#f1e4c8] text-[#6f5022]'
+          }`}
+        >
+          <strong>{doc.duplicateSeverity === 'BLOCKING' ? 'Mükerrer engelliyor.' : 'Mükerrer uyarısı.'}</strong>{' '}
+          {doc.duplicateReason}
+        </div>
+      )}
+
+      {/* Satırlar */}
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
+            Muhasebe fişi · {lines.length} satır
+          </span>
+          <span
+            className={`text-[13px] font-medium ${
+              balanced ? 'text-[#5d8763]' : 'text-[#9a5851]'
+            }`}
+          >
+            {balanced ? '✓ Dengeli' : `Fark: ${fmtMoney(Math.abs(totals.diff))} ₺`}
+          </span>
+        </div>
+
+        <div className="overflow-hidden rounded-[10px] border border-[#e6e1d6]">
+          <div className="grid grid-cols-[110px_1fr_130px_130px_40px] bg-[#f8f6f1] text-[12px] font-medium text-[#8a8270]">
+            <div className="px-3.5 py-[11px]">Grup</div>
+            <div className="px-3.5 py-[11px]">Hesap</div>
+            <div className="px-3.5 py-[11px] text-right">Borç</div>
+            <div className="px-3.5 py-[11px] text-right">Alacak</div>
+            <div></div>
+          </div>
+          {lines.length === 0 && (
+            <div className="border-t border-[#e6e1d6] px-3.5 py-5 text-center text-[12.5px] text-[#8a8270]">
+              Satır yok · ↘ Hesap planından sürükle ya da + ekle
+            </div>
+          )}
+          {lines.map((l, i) => (
+            <div
+              key={i}
+              className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6]"
+            >
+              <input
+                value={l.group || ''}
+                onChange={(e) => updateLine(i, { group: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <input
+                value={
+                  l.accountCode
+                    ? l.description
+                      ? `${l.accountCode} · ${l.description}`
+                      : String(l.accountCode)
+                    : ''
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const m = v.match(/^([^\s·]+)\s*[·\-]?\s*(.*)$/);
+                  if (m) {
+                    updateLine(i, { accountCode: m[1] || '', description: m[2] || '' });
+                  } else {
+                    updateLine(i, { accountCode: v, description: '' });
+                  }
+                }}
+                className="bg-transparent px-3.5 py-3 text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="Hesap kodu · ad"
+              />
+              <input
+                value={l.debit?.toString() ?? ''}
+                onChange={(e) => updateLine(i, { debit: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <input
+                value={l.credit?.toString() ?? ''}
+                onChange={(e) => updateLine(i, { credit: e.target.value })}
+                className="bg-transparent px-3.5 py-3 text-right text-[14px] font-medium tabular-nums text-[#2a2723] placeholder:text-[#b8b09b] focus:bg-[#e2eceb] focus:outline-none"
+                placeholder="—"
+              />
+              <button
+                onClick={() => removeLine(i)}
+                className="text-[#b8b09b] transition hover:text-[#9a5851]"
+                title="Satırı sil"
+              >
+                <X className="mx-auto h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {lines.length > 0 && (
+            <div className="grid grid-cols-[110px_1fr_130px_130px_40px] border-t border-[#e6e1d6] bg-[#f8f6f1] font-semibold">
+              <div className="col-span-2 px-3.5 py-3 text-right text-[14px] font-medium text-[#5b5447]">
+                Toplam
+              </div>
+              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">
+                {fmtMoney(totals.debit)}
+              </div>
+              <div className="px-3.5 py-3 text-right text-[14px] tabular-nums">
+                {fmtMoney(totals.credit)}
+              </div>
+              <div></div>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={addLine}
+          className="mt-2 inline-flex h-7 items-center gap-1 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2"
+        >
+          + Satır ekle
+        </button>
+      </div>
+
+      {/* Hesap planı */}
+      <div className="mt-6">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-[13px] font-semibold uppercase tracking-wide text-[#5b5447]">
+            Hesap planından ekle
+          </span>
+          <button
+            onClick={() => refreshPlanMut.mutate()}
+            disabled={refreshPlanMut.isPending || !doc.taxpayerId}
+            className="inline-flex h-7 items-center gap-1.5 rounded-md text-[13px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723] px-2.5 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3 w-3 ${refreshPlanMut.isPending ? 'animate-spin' : ''}`} />
+            Luca'dan yenile
+          </button>
+        </div>
+        <div className="mb-3.5 flex h-9 items-center gap-2 rounded-lg border border-[#e6e1d6] bg-[#f8f6f1] px-3.5">
+          <Search className="h-3.5 w-3.5 text-[#8a8270]" />
+          <input
+            value={accountSearch}
+            onChange={(e) => setAccountSearch(e.target.value)}
+            placeholder="Hesap kodu veya adı..."
+            className="w-full bg-transparent text-[14px] text-[#2a2723] placeholder:text-[#b8b09b] focus:outline-none"
+          />
+        </div>
+        <div className="grid grid-cols-4 gap-0.5 max-h-[280px] overflow-y-auto">
+          {accountPlanQ.isLoading && (
+            <div className="col-span-4 py-6 text-center">
+              <Loader2 className="mx-auto h-4 w-4 animate-spin text-[#8a8270]" />
+            </div>
+          )}
+          {!accountPlanQ.isLoading && (accountPlanQ.data || []).length === 0 && (
+            <div className="col-span-4 py-6 text-center text-[12.5px] text-[#8a8270]">
+              {doc.taxpayerId
+                ? 'Hesap planı boş · Luca\'dan yenile butonuna tıkla'
+                : 'Belgeye mükellef ata'}
+            </div>
+          )}
+          {(accountPlanQ.data || []).map((node) => (
+            <button
+              key={node.code}
+              onClick={() => pickAccount(node)}
+              className="flex items-baseline gap-2 rounded-md px-3 py-2 text-left transition hover:bg-[#e2eceb]"
+            >
+              <span className="shrink-0 text-[13px] font-semibold text-[#2f6863]">
+                {node.code}
+              </span>
+              <span className="truncate text-[13px] text-[#5b5447]">{node.name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer aksiyonlar */}
+      <div className="mt-6 flex items-center gap-2.5 border-t border-[#e6e1d6] pt-5">
+        <button
+          onClick={onSkip}
+          className="inline-flex h-9 items-center justify-center rounded-lg px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:bg-[#f8f6f1] hover:text-[#2a2723]"
+        >
+          Atla
+        </button>
+        <button
+          onClick={() => saveMut.mutate()}
+          disabled={saveMut.isPending}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#e6e1d6] bg-white px-3.5 text-[13.5px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
+        >
+          {saveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Kaydet
+        </button>
+
+        <div className="ml-auto flex items-center gap-2">
+          {doc.status === 'READY' && (
+            <button
+              onClick={() => approveMut.mutate()}
+              disabled={approveMut.isPending}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+            >
+              {approveMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Check className="h-3.5 w-3.5" />
+              Luca'ya aktar
+            </button>
+          )}
+          {doc.status !== 'READY' && (
+            <button
+              onClick={() => readyMut.mutate()}
+              disabled={!balanced || lines.length === 0 || readyMut.isPending}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#4a8580] px-4 text-[13.5px] font-medium text-white transition hover:bg-[#2f6863] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {readyMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              <Check className="h-3.5 w-3.5" />
+              Fiş tamamlandı
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function RuleCard({ tone, title, detail }: { tone: Tone; title: string; detail: string }) {
-  const classes = toneClasses[tone];
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 4 — FİŞLER
+   ════════════════════════════════════════════════════════════════════ */
+
+function VouchersStage({
+  documents,
+  taxpayerMap,
+  onEdit,
+  onCompleted,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+  onEdit: (id: string) => void;
+  onCompleted: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+
+  const toggleAll = () => {
+    if (selected.size === documents.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(documents.map((d) => d.id)));
+    }
+  };
+
+  const bulkApproveMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results: Array<{ id: string; ok: boolean; error?: string }> = [];
+      for (const id of ids) {
+        try {
+          await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`);
+          results.push({ id, ok: true });
+        } catch (e) {
+          const err = e as { message?: string };
+          results.push({ id, ok: false, error: err.message || 'hata' });
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      const ok = results.filter((r) => r.ok).length;
+      const failed = results.filter((r) => !r.ok).length;
+      if (ok > 0) toast.success(`${ok} fiş Luca'ya aktarıldı`);
+      if (failed > 0) toast.error(`${failed} fiş başarısız`);
+      setSelected(new Set());
+      onCompleted();
+    },
+  });
+
+  const handleBulkApprove = () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    bulkApproveMut.mutate(ids);
+  };
+
+  const handleSingleApprove = (id: string) => {
+    bulkApproveMut.mutate([id]);
+  };
+
   return (
-    <div className={`rounded-[8px] border p-4 ${classes.bg} ${classes.border}`}>
-      <div className={`text-sm font-semibold ${classes.text}`}>{title}</div>
-      <div className="mt-2 text-sm leading-6 text-stone-400">{detail}</div>
-    </div>
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{documents.length}</Strong> fiş hazır
+          <Sep />
+          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
+          {selected.size > 0 && (
+            <>
+              <Sep />
+              <Strong>{selected.size}</Strong> seçili
+            </>
+          )}
+        </Summary>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleAll}
+            disabled={documents.length === 0}
+            className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723] disabled:opacity-50"
+          >
+            {selected.size === documents.length && documents.length > 0 ? 'Seçimi temizle' : 'Tümünü seç'}
+          </button>
+          <button
+            onClick={handleBulkApprove}
+            disabled={selected.size === 0 || bulkApproveMut.isPending}
+            className="inline-flex h-[30px] items-center gap-1.5 rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+          >
+            {bulkApproveMut.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Upload className="h-3 w-3" />
+            )}
+            Luca'ya aktar{selected.size > 0 ? ` (${selected.size})` : ''}
+          </button>
+        </div>
+      </WsBar>
+
+      {documents.length === 0 ? (
+        <EmptyState
+          title="Hazır fiş yok"
+          desc="Eşleştirme aşamasında fiş tamamlandığında burada görünür."
+        />
+      ) : (
+        <div>
+          {documents.map((d) => {
+            const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+            const isSel = selected.has(d.id);
+            const lineCount = (d.lines || []).length;
+            const docType = DOC_TYPE_LABEL[d.documentType || ''] || d.documentType || '';
+            return (
+              <div
+                key={d.id}
+                className="grid grid-cols-[24px_1fr_160px_100px_80px_180px] items-center gap-4 border-b border-[#e6e1d6] px-[22px] py-4 transition last:border-b-0 hover:bg-[#f8f6f1]"
+              >
+                <input
+                  type="checkbox"
+                  checked={isSel}
+                  onChange={() =>
+                    setSelected((s) => {
+                      const n = new Set(s);
+                      if (n.has(d.id)) n.delete(d.id);
+                      else n.add(d.id);
+                      return n;
+                    })
+                  }
+                  className="h-4 w-4 accent-[#4a8580]"
+                />
+                <div>
+                  <div className="text-[14px] font-medium text-[#2a2723]">
+                    {d.vendorName || d.customerName || d.originalName || 'Adsız'}
+                  </div>
+                  <div className="mt-0.5 text-[12.5px] text-[#8a8270]">
+                    {tp ? `${taxpayerLabel(tp)} · ` : ''}
+                    {docType}
+                    {d.faturaTarihi ? ` · ${fmtDate(d.faturaTarihi)}` : ''}
+                  </div>
+                </div>
+                <div className="text-right text-[15px] font-semibold tabular-nums text-[#2a2723]">
+                  {fmtMoney(d.totalAmount)} ₺
+                </div>
+                <div className="text-right text-[13px] text-[#8a8270]">
+                  {lineCount} satır
+                </div>
+                <Badge tone="success">Hazır</Badge>
+                <div className="flex justify-end gap-1.5">
+                  <button
+                    onClick={() => onEdit(d.id)}
+                    className="inline-flex h-[30px] items-center rounded-md border border-[#e6e1d6] bg-white px-2.5 text-[13px] font-medium text-[#5b5447] transition hover:border-[#d4cfbf] hover:text-[#2a2723]"
+                  >
+                    Düzenle
+                  </button>
+                  <button
+                    onClick={() => handleSingleApprove(d.id)}
+                    disabled={bulkApproveMut.isPending}
+                    className="inline-flex h-[30px] items-center rounded-md bg-[#4a8580] px-2.5 text-[13px] font-medium text-white transition hover:bg-[#2f6863] disabled:opacity-50"
+                  >
+                    Aktar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
   );
 }
 
-function MiniCheck({ ok, title, detail }: { ok: boolean; title: string; detail: string }) {
-  return (
-    <div className={`rounded-[8px] border p-3 ${ok ? 'border-emerald-400/20 bg-emerald-500/10' : 'border-amber-400/20 bg-amber-500/10'}`}>
-      <div className="flex items-start gap-3">
-        <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] ${ok ? 'bg-emerald-500/12 text-emerald-300' : 'bg-amber-500/12 text-amber-300'}`}>
-          {ok ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-stone-100">{title}</div>
-          <div className="mt-1 text-xs leading-5 text-stone-500">{detail}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+/* ════════════════════════════════════════════════════════════════════
+   SAHNE 5 — LUCA JURNAL
+   ════════════════════════════════════════════════════════════════════ */
 
-function getStatusView(status: DocumentStatus, missingCount: number): { label: string; tone: Tone; icon: LucideIcon } {
-  if (status === 'ready') return { label: 'Hazır', tone: 'green', icon: CheckCircle2 };
-  if (status === 'blocked') return { label: `${missingCount || 1} eksik`, tone: 'red', icon: LockKeyhole };
-  if (status === 'draft') return { label: 'Taslak', tone: 'blue', icon: FileCheck2 };
-  return { label: missingCount ? `${missingCount} eksik` : 'Onay', tone: 'amber', icon: AlertTriangle };
+function LucaStage({
+  documents,
+  taxpayerMap,
+}: {
+  documents: ApiDocument[];
+  taxpayerMap: Map<string, TaxpayerLite>;
+}) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, ApiDocument[]>();
+    documents.forEach((d) => {
+      const key = d.approvedAt || d.createdAt || '';
+      const day = key ? new Date(key).toISOString().slice(0, 10) : '—';
+      if (!m.has(day)) m.set(day, []);
+      m.get(day)!.push(d);
+    });
+    return Array.from(m.entries()).sort((a, b) => (a[0] > b[0] ? -1 : 1));
+  }, [documents]);
+
+  const totalAmount = documents.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+  const success = documents.length; // hepsi APPROVED bu listede
+  const successRate = success > 0 ? 100 : 0;
+
+  return (
+    <>
+      <WsBar>
+        <Summary>
+          <Strong>{documents.length}</Strong> fiş bu ay aktarıldı
+          <Sep />
+          <Strong>{fmtMoney(totalAmount)} ₺</Strong> toplam
+          <Sep />
+          Başarı oranı <Strong>%{successRate}</Strong>
+        </Summary>
+      </WsBar>
+
+      {grouped.length === 0 ? (
+        <EmptyState
+          title="Henüz transfer yok"
+          desc="Fişler aktarıldıkça burada gün bazlı jurnal halinde listelenir."
+        />
+      ) : (
+        <div>
+          {grouped.map(([day, items]) => {
+            const dayTotal = items.reduce((acc, d) => acc + parseNum(d.totalAmount), 0);
+            return (
+              <div key={day} className="border-b border-[#e6e1d6] last:border-b-0">
+                <div className="flex items-center gap-3.5 border-b border-[#e6e1d6] bg-[#f8f6f1] px-[22px] py-3.5">
+                  <span className="text-[13px] font-medium text-[#5b5447]">
+                    {fmtDateLong(day) || day}
+                  </span>
+                  <span className="flex-1 h-px bg-[#e6e1d6]" />
+                  <span className="text-[13px] text-[#8a8270]">
+                    {items.length} kayıt · {fmtMoney(dayTotal)} ₺
+                  </span>
+                </div>
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <Th>Belge</Th>
+                      <Th>Mükellef</Th>
+                      <Th>Saat</Th>
+                      <Th right>Tutar</Th>
+                      <Th right>Durum</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((d) => {
+                      const tp = d.taxpayerId ? taxpayerMap.get(d.taxpayerId) : undefined;
+                      return (
+                        <Tr key={d.id}>
+                          <Td>
+                            <div className="flex flex-col gap-0.5">
+                              <strong className="text-[14px] font-medium text-[#2a2723]">
+                                {d.vendorName || d.customerName || d.originalName || '—'}
+                              </strong>
+                              {d.belgeNo && (
+                                <small className="text-[12px] text-[#8a8270]">{d.belgeNo}</small>
+                              )}
+                            </div>
+                          </Td>
+                          <Td>{tp ? taxpayerLabel(tp) : '—'}</Td>
+                          <Td>{fmtTime(d.approvedAt || d.createdAt)}</Td>
+                          <Td right>
+                            <span className="font-medium tabular-nums">
+                              {fmtMoney(d.totalAmount)} ₺
+                            </span>
+                          </Td>
+                          <Td right>
+                            <Badge tone="success">Aktarıldı</Badge>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
 }
