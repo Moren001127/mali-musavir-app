@@ -1,0 +1,8 @@
+{
+  "scenario": "tevkifat-alis",
+  "module": "reconciliation",
+  "description": "Alış: Luca 2 satır (NET + tevkifat) → 1 OCR",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}

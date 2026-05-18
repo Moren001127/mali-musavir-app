@@ -1,0 +1,8 @@
+{
+  "scenario": "kdv-alis",
+  "module": "luca",
+  "description": "KDV 191 indirilecek - bilanço alış",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}

@@ -2,6 +2,29 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { KdvRecord, ReceiptImage } from '@prisma/client';
 import { isAggregateLucaRecord } from './luca-row-filter';
+import { formatAmountTr, parseMoneyLike, parseTrUsAmount } from './reconciliation/validators/amount-check';
+import { formatTrDate, likelyOcrYearMisread, parseTrDate, sameDay } from './reconciliation/validators/date-helpers';
+import {
+  eInvoiceComparableKey,
+  normalizeBelgeNo,
+  sameBelgeNo,
+  stringSimilarity,
+  stripLeadingZeros,
+} from './reconciliation/validators/belge-no-check';
+import {
+  buildAmbiguousDocDateAmountKeys as buildKdvAmbiguousDocDateAmountKeys,
+  companyNameSimilarity as kdvCompanyNameSimilarity,
+  hasSellerMatch as hasKdvSellerMatch,
+  hasStrongTwoOfThree as hasKdvStrongTwoOfThree,
+  inferRecordRate as inferKdvRecordRate,
+  isAccountingDescription as isKdvAccountingDescription,
+  recordDocDateAmountKey as kdvRecordDocDateAmountKey,
+  recordDocDateKey as kdvRecordDocDateKey,
+  recordPartyKey as kdvRecordPartyKey,
+  stripLucaDescriptionDocumentSuffix as stripKdvLucaDescriptionDocumentSuffix,
+} from './reconciliation/validators/record-helpers';
+import { scoreToStatus } from './reconciliation/status/score-to-status';
+import { aggregateMultiRateRecords as aggregateKdvMultiRateRecords } from './reconciliation/matching/multi-rate-aggregate';
 
 export interface MatchCandidate {
   kdvRecord: KdvRecord;
@@ -42,17 +65,6 @@ function getImageBreakdown(image: ReceiptImage): BreakdownItem[] {
     .filter((b: BreakdownItem) => b.tutar > 0);
 }
 
-function parseMoneyLike(value: unknown): number {
-  if (value == null) return 0;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const normalized = String(value)
-    .replace(/\./g, '')
-    .replace(',', '.')
-    .replace(/[^\d.-]/g, '');
-  const parsed = parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
 @Injectable()
 export class ReconciliationEngine {
   private readonly logger = new Logger(ReconciliationEngine.name);
@@ -68,8 +80,8 @@ export class ReconciliationEngine {
     unmatched: number;
     needsReview: number;
   }> {
-    // Mevcut sonuçları temizle
-    await this.prisma.reconciliationResult.deleteMany({ where: { sessionId } });
+    // Sonuç yazımı aşağıda transaction + advisory lock ile yapılır. Böylece aynı
+    // oturuma iki kontrol aynı anda gelirse sonuç tablosu çift yazılmaz.
 
     // Session type — alış/satış ayrımı için (tevkifat farkı kontrolü ALIŞ'ta
     // devreye girer, SATIŞ'ta atlanır — Türk muhasebe pratiğine göre alışlarda
@@ -108,7 +120,7 @@ export class ReconciliationEngine {
     //   → Virtual: ESR...1204/2026-03-23/kdv=158 → Fatura ile eşleşir
     //   → Sonuç: her iki Luca satırı da bu fatura ile MATCHED işaretlenir
     // ═══════════════════════════════════════════════════════
-    const { records, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts } = this.aggregateMultiRateRecords(rawRecords);
+    const { records, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts } = this.aggregateMultiRateRecords(rawRecords, isAlis);
     const ambiguousDocDateAmountKeys = this.buildAmbiguousDocDateAmountKeys(records);
 
     // Mihsap kaynaklı görseller için Mihsap'ın kayıtlı belge tarihini topla.
@@ -241,16 +253,14 @@ export class ReconciliationEngine {
         const saticiTamUyumsuz = reasons.some((r) =>
           /VKN\/TCKN uyumsuz|Satıcı uyumsuz/i.test(r),
         );
-        const ambiguousSellerMissing = !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+        const ambiguousSellerMissing = isAlis && !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
         const belgeNoExactPair = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
         const belgeNoMismatchAllowedForReview = strongTwoOfThree && hardBelgeNoMismatch && !hardRateMismatch;
-        const blocksPair = (belgeNoTamUyumsuz && !belgeNoMismatchAllowedForReview) || saticiTamUyumsuz || ambiguousSellerMissing;
-        // v1.37.76 - belgeNoExactPair tek basina yeterli olmamali. Ayni sira
-        // no'lu farkli belgeler (Luca "620" / 26.04 / 237,54 ile e-fatura
-        // "0620" / 02.04 / 162,73 gibi farkli donem-tutar) yanlis eslesiyordu.
-        // Belge no esleyse bile tutar VEYA tarih'ten en az biri tutmali -
-        // bu da zaten strongTwoOfThree (3'ten 2) kontroluyle ifade ediliyor.
-        if ((score >= MIN_PAIR_SCORE || strongTwoOfThree) && !blocksPair) {
+        const blocksPair =
+          (belgeNoTamUyumsuz && !belgeNoMismatchAllowedForReview) ||
+          (saticiTamUyumsuz && reasons.some((r) => /VKN\/TCKN uyumsuz/i.test(r))) ||
+          ambiguousSellerMissing;
+        if ((score >= MIN_PAIR_SCORE || belgeNoExactPair || strongTwoOfThree) && !blocksPair) {
           allPairs.push({ kdvRecord: record, image, score, reasons, strictMatch });
         }
       }
@@ -307,10 +317,13 @@ export class ReconciliationEngine {
       }
     }
 
-    // Toplu kayıt
-    for (const data of createData) {
-      await this.prisma.reconciliationResult.create({ data });
-    }
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`;
+      await tx.reconciliationResult.deleteMany({ where: { sessionId } });
+      for (const data of createData) {
+        await tx.reconciliationResult.create({ data });
+      }
+    });
 
     // İstatistik
     const stats = createData.reduce(
@@ -323,6 +336,26 @@ export class ReconciliationEngine {
       },
       { matched: 0, partial: 0, unmatched: 0, needsReview: 0 },
     );
+
+    // ─── INVARIANT CHECK (Faz 0 modül-izolasyon kontratı) ──────
+    // Engine kendi çıktısını doğrular: aynı record veya image hem MATCHED hem
+    // UNMATCHED yazılmamış olmalı. İhlal varsa logger.error + sessionId ile
+    // alarm — bug üretildiği anda fark edilir, kullanıcı Excel'i alıp anlayana
+    // kadar beklemez. Geriye dönük observability için DB'ye düşmüyor; log
+    // tabanlı izlemek yeterli.
+    try {
+      // dynamic import — packages/shared circular dependency riskini kes
+      const { detectDoubleOrphans } = require('@mali-musavir/shared');
+      const violations = detectDoubleOrphans(createData);
+      if (violations.length > 0) {
+        this.logger.error(
+          `[INVARIANT] Çift orphan tespit edildi · sessionId=${sessionId} · ihlal=${violations.length} · örnek=${JSON.stringify(violations.slice(0, 3))}`,
+        );
+      }
+    } catch (e: any) {
+      // shared paketi yoksa veya import bozulduysa session'ı bozmadan geç
+      this.logger.warn(`[INVARIANT] Çift-orphan kontrolü çalıştırılamadı: ${e?.message}`);
+    }
 
     // Oturum durumunu güncelle
     await this.prisma.kdvControlSession.update({
@@ -446,23 +479,22 @@ export class ReconciliationEngine {
     // o oranın bulunup bulunmadığı ve tutarın eşleşip eşleşmediği kontrol edilir.
     // Çok oranlı faturalarda virtual record (aggregate) kullanıldığında ise
     // kdvOrani=null gelir → klasik toplam karşılaştırması yapılır.
-    const recordRate = record.kdvOrani != null
-      ? parseFloat(record.kdvOrani.toString())
-      : null;
-    const imageBreakdown = getImageBreakdown(image);
+    const recordRate = this.inferRecordRate(record);
+    const imageBreakdown = this.normalizeImageBreakdownRates(image, getImageBreakdown(image));
+    const rateAwareImageBreakdown = imageBreakdown.filter((b) => b.oran > 0);
 
     // v1.36.64: Çelişki düzeltmesi — virtual multi-rate record + breakdown varsa
     // klasik toplam kontrolü skip edilsin (line 547'deki kalem-kalem kontrol yeterli).
     // Önceden hem toplam bonus hem kalem uyumsuzluk warning aynı anda yazılıyordu.
     const hasMultiRateBreakdown =
-      expectedBreakdown && expectedBreakdown.length > 1 && imageBreakdown.length > 0;
+      expectedBreakdown && expectedBreakdown.length > 1 && rateAwareImageBreakdown.length > 0;
 
     if (record.kdvTutari && imgKdv && !hasMultiRateBreakdown) {
       const recordKdv = parseFloat(record.kdvTutari.toString());
 
       // Bu BİR ORANLI Luca kaydı + OCR breakdown var → oran-bazlı karşılaştırma
-      if (recordRate != null && recordRate > 0 && imageBreakdown.length > 0) {
-        const matchingItem = imageBreakdown.find(
+      if (recordRate != null && recordRate > 0 && rateAwareImageBreakdown.length > 0) {
+        const matchingItem = rateAwareImageBreakdown.find(
           (b) => Math.abs(b.oran - recordRate) < 0.5,
         );
         if (matchingItem) {
@@ -510,7 +542,7 @@ export class ReconciliationEngine {
         } else {
           // Luca'da %20 var ama OCR breakdown'unda %20 yok — KESİN UYUMSUZ
           rateMismatched = true;
-          const ranges = imageBreakdown.map((b) => `%${b.oran}`).join(', ');
+          const ranges = rateAwareImageBreakdown.map((b) => `%${b.oran}`).join(', ');
           reasons.push(
             `KDV oranı uyumsuz: Luca %${recordRate} → Faturada bulunamadı (faturada: ${ranges || 'yok'})`,
           );
@@ -586,7 +618,7 @@ export class ReconciliationEngine {
               && originalRecordKdvList.some(
                 (k) => Math.abs(k - imgKdvNum) / (imgKdvNum || 1) < 0.01,
               );
-            const sellerVerifiedForAmbiguous = isIsletme || !sameDocDateAmbiguous || this.hasSellerMatch(record, image);
+            const sellerVerifiedForAmbiguous = !isAlis || isIsletme || !sameDocDateAmbiguous || this.hasSellerMatch(record, image);
 
             if (isAlis && imgTevkifat > 0 && tamDiff < 0.01 && sellerVerifiedForAmbiguous) {
               // YOL 1: OCR tevkifat var, TAM kontrolü tutuyor
@@ -632,7 +664,7 @@ export class ReconciliationEngine {
     // Aynı belge no'lu farklı firmaların faturaları eşleşmesin.
     let saticiMismatch = false;
     const recordRawData = (record.rawData || {}) as Record<string, any>;
-    const recordSatici = (record.karsiTaraf || '').trim();
+    const recordSatici = stripKdvLucaDescriptionDocumentSuffix((record.karsiTaraf || '').trim());
     const recordVkn = String(
       (record as any).karsiVergiNo ||
       recordRawData.karsiVergiNo ||
@@ -659,7 +691,7 @@ export class ReconciliationEngine {
       }
     }
     // 2) AD BENZERLİĞİ — VKN yoksa veya farklılaşmadıysa
-    else if (!isIsletme && recordSatici && imgSatici && !this.isAccountingDescription(recordSatici)) {
+    else if (isAlis && !isIsletme && recordSatici && imgSatici && !this.isAccountingDescription(recordSatici)) {
       const sim = this.companyNameSimilarity(recordSatici, imgSatici);
       if (sim >= 0.5) {
         score = Math.min(1, score + 0.05);
@@ -675,10 +707,10 @@ export class ReconciliationEngine {
     // Multi-rate Luca aggregate'inde her oran için beklenen tutar var.
     // OCR breakdown'unda her oran bulunmalı VE tutarlar eşleşmeli; aksi halde
     // total uyumlu olsa bile MATCHED verme — başka bir belgeyle karıştırma riski.
-    if (expectedBreakdown && expectedBreakdown.length > 1 && imageBreakdown.length > 0) {
+    if (expectedBreakdown && expectedBreakdown.length > 1 && rateAwareImageBreakdown.length > 0) {
       let allRatesMatched = true;
       for (const exp of expectedBreakdown) {
-        const item = imageBreakdown.find((b) => Math.abs(b.oran - exp.oran) < 0.5);
+        const item = rateAwareImageBreakdown.find((b) => Math.abs(b.oran - exp.oran) < 0.5);
         if (!item) {
           allRatesMatched = false;
           rateMismatched = true;
@@ -696,9 +728,22 @@ export class ReconciliationEngine {
         }
       }
       if (allRatesMatched) {
+        kdvExact = true;
         // Toplam zaten eşleştiği için kdvExact=true, ek bonus
         rateExact = true;
-        score = Math.min(1, score + 0.05);
+        score = Math.min(1, score + 0.35);
+      } else if (record.kdvTutari && imgKdv) {
+        const recordKdv = parseFloat(record.kdvTutari.toString());
+        const imgKdvNum = this.parseTrUsAmount(imgKdv);
+        const totalDiff = Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1);
+        if (Number.isFinite(imgKdvNum) && totalDiff < 0.01) {
+          kdvExact = true;
+          score = Math.min(1, score + 0.3);
+          reasons.push(
+            `Çok oranlı toplam KDV eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR oran kırılımı güvenilir olmadığı için toplam esas alındı`,
+          );
+          rateMismatched = false;
+        }
       }
     }
     // suppress unused-var lint (rateExact rezerve, gelecekte UI'da kullanılabilir)
@@ -757,14 +802,16 @@ export class ReconciliationEngine {
     const sellerMismatchHard =
       saticiMismatch &&
       reasons.some((r) => r.includes('VKN/TCKN uyumsuz') || r.includes('Satıcı uyumsuz'));
-    const ambiguousSellerHard = !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+    const ambiguousSellerHard = isAlis && !isIsletme && sameDocDateAmbiguous && !this.hasSellerMatch(record, image);
+    const sellerMismatchBlocksStrict =
+      sellerMismatchHard && reasons.some((r) => r.includes('VKN/TCKN uyumsuz'));
     if (ambiguousSellerHard && belgeNoExact && dateExact) {
       reasons.push(
         'Ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan tam eslesme verilmedi',
       );
     }
     const strictMatch =
-      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchHard && !ambiguousSellerHard;
+      belgeNoExact && kdvExact && dateExact && !rateMismatched && !sellerMismatchBlocksStrict && !ambiguousSellerHard;
 
     // Oran uyumsuzluğu varsa skoru sert düşür — drift bekle, aday bile olmasın
     if (rateMismatched) {
@@ -779,141 +826,194 @@ export class ReconciliationEngine {
     return { score: Math.min(score, 1), reasons, strictMatch };
   }
 
-  /**
-   * İki firma adının benzerliğini (0–1) hesaplar.
-   *
-   * Türk firma adlarında kısaltma/varyasyon yaygın:
-   *   "ÖZ ELA TURİZM TAŞIMACILIK İNŞAAT TİCARET LİMİTED ŞİRKETİ"
-   *   "ÖZ ELA TURİZM TAŞ. İNŞ. TİC. LTD. ŞTİ."
-   *   "Öz Ela Turizm Taşımacılık"
-   * Bu varyasyonların hepsi aynı firma olarak kabul edilmeli.
-   *
-   * Strateji:
-   *   1. Normalize: upper case, noktalama temizliği, çoklu boşluk tek boşluk
-   *   2. Suffix temizliği: LTD ŞTİ / A.Ş. / TİC. / İNŞ. / TURİZM gibi yaygın
-   *      kelimeler atılır (varyasyon yaratıyorlar)
-   *   3. Token-based Jaccard similarity: kelime kümeleri kesişimi / birleşim
-   *   4. Edge: çok kısa (1-2 kelime) firma adlarında string similarity'ye düş
-   */
   private companyNameSimilarity(a: string, b: string): number {
-    // v1.36.72: Türkçe muhasebede sık kullanılan firma adı kısaltmaları.
-    // Token genişlet: "MLZ" → "MALZEME" gibi. Sonra prefix-match ile
-    // "MALZEME" ↔ "MALZEMELERI" eşit sayılır.
-    // Türkçe karakterleri normalize ettiğimiz için tablo I-Z bazlı (Ş→S, İ→I).
-    const ABBREV: Record<string, string> = {
-      MLZ: 'MALZEME', MALZ: 'MALZEME',
-      INS: 'INSAAT',
-      TIC: 'TICARET',
-      SAN: 'SANAYI',
-      TUR: 'TURIZM', TURZ: 'TURIZM',
-      GID: 'GIDA',
-      TEKN: 'TEKNOLOJI', TEKNO: 'TEKNOLOJI',
-      NAK: 'NAKLIYAT', NAKL: 'NAKLIYAT', NAKLIY: 'NAKLIYAT',
-      LOJ: 'LOJISTIK',
-      KOZ: 'KOZMETIK',
-      TEKS: 'TEKSTIL', TEKST: 'TEKSTIL',
-      PETR: 'PETROL', PET: 'PETROL',
-      OTOM: 'OTOMOTIV', OTM: 'OTOMOTIV',
-      BIL: 'BILISIM',
-      MAK: 'MAKINE',
-      MOB: 'MOBILYA',
-      KIRT: 'KIRTASIYE',
-      PAZ: 'PAZARLAMA',
-      DAG: 'DAGITIM',
-      ITH: 'ITHALAT',
-      IHR: 'IHRACAT',
-      PERAK: 'PERAKENDE',
-      TOPT: 'TOPTAN',
-      HIZ: 'HIZMET',
-      MUH: 'MUHASEBE',
-      IMA: 'IMALAT',
-      EM: 'EMLAK',
-      GAY: 'GAYRIMENKUL',
-      ECZ: 'ECZACILIK',
-      EGT: 'EGITIM',
-      KIM: 'KIMYA',
-      ELEK: 'ELEKTRIK', ELEKT: 'ELEKTRIK',
-      AKAR: 'AKARYAKIT',
-      MED: 'MEDIKAL',
-      DEK: 'DEKORASYON', DEKO: 'DEKORASYON',
-    };
-
-    const normalize = (s: string): string[] => {
-      // Türkçe karakter sadeleştirme: Ş→S, İ→I, vb.
-      // Hem ABBREV tablosu hem prefix-match için tutarlı zemin lazım.
-      const upper = s
-        .toLocaleUpperCase('tr-TR')
-        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
-        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
-        .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
-        .replace(/[.,;:'"\-/\\()&]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      // Yaygın firma suffix/prefix'lerini at — varyasyon yaratıyorlar.
-      // v1.36.72: "AS" eklendi (A.Ş.→AS sonrası), "ANONIM SIRKETI" varyasyonları.
-      const SUFFIX_REMOVE = new Set([
-        'LTD', 'STI', 'AS', 'ANONIM', 'LIMITED',
-        'SIRKETI', 'SIRKET',
-        'TICARET', 'TIC',
-        'SANAYI', 'SAN',
-        'INSAAT', 'INS',
-        'VE', 'ILE',
-      ]);
-      return upper
-        .split(' ')
-        .map((w) => (w.length > 1 && ABBREV[w] ? ABBREV[w] : w)) // kısaltmaları genişlet
-        .filter((w) => w.length > 1 && !SUFFIX_REMOVE.has(w));
-    };
-
-    const tokensA = normalize(a);
-    const tokensB = normalize(b);
-    if (tokensA.length === 0 || tokensB.length === 0) {
-      // Fallback: ham string similarity (Türkçe karakter sadeleştirme ile)
-      const flat = (s: string) => s.toLocaleUpperCase('tr-TR')
-        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
-        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
-        .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
-        .replace(/\s+/g, '');
-      return this.stringSimilarity(flat(a), flat(b));
-    }
-
-    // v1.36.72: Prefix-match destekli Jaccard.
-    // İki token "match" sayılır eğer:
-    //   - tam eşitse, VEYA
-    //   - biri diğerinin prefix'i ise ve kısa olan ≥ 3 karakter
-    //     (örn. MALZEME ↔ MALZEMELERI, INSAAT ↔ INSAATCILIK)
-    const tokensMatch = (x: string, y: string): boolean => {
-      if (x === y) return true;
-      if (x.length < 3 || y.length < 3) return false;
-      return x.startsWith(y) || y.startsWith(x);
-    };
-
-    // Custom intersection: A'daki her token B'de eşleşmesi var mı?
-    const matchedA: Set<string> = new Set();
-    const matchedB: Set<string> = new Set();
-    for (const ta of tokensA) {
-      for (const tb of tokensB) {
-        if (tokensMatch(ta, tb)) {
-          matchedA.add(ta);
-          matchedB.add(tb);
-        }
-      }
-    }
-    const intersection = matchedA.size; // A tarafından bakınca eşleşen unique token
-    const union = new Set([...tokensA, ...tokensB]).size;
-    const jaccard = union > 0 ? intersection / union : 0;
-
-    // Tek-kelime kısa firma adları için ek string similarity (Jaccard yetersiz)
-    if (Math.min(tokensA.length, tokensB.length) <= 2) {
-      const stringSim = this.stringSimilarity(tokensA.join(''), tokensB.join(''));
-      return Math.max(jaccard, stringSim);
-    }
-
-    return jaccard;
+    return kdvCompanyNameSimilarity(a, b);
   }
 
   private fmtAmt(n: number): string {
-    return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatAmountTr(n);
+  }
+
+  private normalizeImageBreakdownRates(image: ReceiptImage, breakdown: BreakdownItem[]): BreakdownItem[] {
+    const okcBreakdown = this.extractOkcItemRateBreakdownFromImageText(image);
+    if (okcBreakdown.length >= 2) return okcBreakdown;
+
+    if (breakdown.length !== 1 || !(breakdown[0]?.tutar > 0)) return breakdown;
+    const inferred = this.inferSingleBreakdownRateFromImageText(image, breakdown[0].tutar);
+    if (!inferred) return breakdown;
+
+    const currentRate = Number(breakdown[0].oran || 0);
+    const shouldReplaceRate = currentRate <= 0 || Math.abs(currentRate - inferred.oran) > 0.5;
+    if (!shouldReplaceRate && breakdown[0].matrah) return breakdown;
+
+    return [{
+      ...breakdown[0],
+      oran: shouldReplaceRate ? inferred.oran : currentRate,
+      matrah: breakdown[0].matrah ?? inferred.matrah,
+    }];
+  }
+
+  private inferSingleBreakdownRateFromImageText(
+    image: ReceiptImage,
+    kdvAmount: number,
+  ): { oran: number; matrah: number } | null {
+    const rawText = String((image as any).ocrRawText || '');
+    if (!rawText || !(kdvAmount > 0)) return null;
+
+    const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const fold = (value: string) =>
+      value
+        .toLocaleUpperCase('tr-TR')
+        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+        .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
+    const amountRe = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/g;
+    const validRates = [1, 8, 10, 18, 20];
+
+    for (let i = 0; i < lines.length; i++) {
+      const foldedLine = fold(lines[i]);
+      if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(foldedLine)) continue;
+      if (!/MATRAH/.test(foldedLine) || /TEVKIFAT/.test(foldedLine)) continue;
+
+      const window = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
+      const matrahMatch = window.match(/matrah[^\d]{0,30}(\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2})/i);
+      const matrah = matrahMatch ? this.parseTrUsAmount(matrahMatch[1]) : NaN;
+      if (!Number.isFinite(matrah) || matrah <= 0 || matrah <= kdvAmount) continue;
+
+      amountRe.lastIndex = 0;
+      const amounts = [...window.matchAll(amountRe)]
+        .map((match) => this.parseTrUsAmount(match[1]))
+        .filter((amount) => Number.isFinite(amount) && amount > 0);
+      const hasKdvAmountInWindow = amounts.some((amount) => Math.abs(amount - kdvAmount) <= 0.05);
+      if (!hasKdvAmountInWindow) continue;
+
+      const rawRate = (kdvAmount / matrah) * 100;
+      const nearest = validRates.find((rate) => Math.abs(rate - rawRate) <= 0.75);
+      if (nearest) return { oran: nearest, matrah };
+    }
+
+    return null;
+  }
+
+  private extractOkcItemRateBreakdownFromImageText(image: ReceiptImage): BreakdownItem[] {
+    const rawText = String((image as any).ocrRawText || '');
+    const belgeTipi = String((image as any).ocrBelgeTipi || '').toUpperCase();
+    if (!rawText || (belgeTipi && belgeTipi !== 'OKC_FIS')) return [];
+
+    const foldedText = rawText
+      .toLocaleUpperCase('tr-TR')
+      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+      .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
+    if (!/\bTOPKDV\b/.test(foldedText) || !/\bFIS\s*NO\b/.test(foldedText)) return [];
+
+    const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const fold = (value: string) =>
+      value
+        .toLocaleUpperCase('tr-TR')
+        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+        .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
+    const rateRe = /%\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
+    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+    const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTAR|NAKIT|KREDI|KART|KASIYER|MERSIS|EKU|Z\s*NO|FIS\s*NO|TARIH|SAAT|VERGI|V\.?D\.?|T\.?C\.?/i;
+    const grossByRate = new Map<number, number>();
+    let pendingRate: number | null = null;
+
+    const parseLastAmount = (value: string): number => {
+      amountRe.lastIndex = 0;
+      const values = [...value.matchAll(amountRe)]
+        .map((match) => this.parseTrUsAmount(match[1]))
+        .filter((amount) => Number.isFinite(amount) && amount > 0 && amount < 100_000_000);
+      return values.length > 0 ? values[values.length - 1] : 0;
+    };
+    const addGross = (rate: number, gross: number) => {
+      if (!(gross > 0)) return;
+      grossByRate.set(rate, (grossByRate.get(rate) || 0) + gross);
+    };
+
+    for (const line of lines) {
+      const folded = fold(line);
+      if (skipRe.test(folded)) {
+        pendingRate = null;
+        continue;
+      }
+
+      const rateMatch = line.match(rateRe);
+      if (rateMatch && rateMatch.index != null) {
+        const rate = Number(rateMatch[1]);
+        const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
+        const gross = parseLastAmount(afterRate) || parseLastAmount(line);
+        if (gross > 0) {
+          addGross(rate, gross);
+          pendingRate = null;
+        } else {
+          pendingRate = rate;
+        }
+        continue;
+      }
+
+      if (pendingRate) {
+        const gross = parseLastAmount(line);
+        if (gross > 0) {
+          addGross(pendingRate, gross);
+          pendingRate = null;
+        }
+      }
+    }
+
+    if (grossByRate.size < 2) return [];
+
+    const breakdown = Array.from(grossByRate.entries())
+      .map(([oran, gross]) => ({
+        oran,
+        tutar: Math.round((gross * oran / (100 + oran)) * 100) / 100,
+        matrah: Math.round((gross / (1 + oran / 100)) * 100) / 100,
+      }))
+      .filter((item) => item.tutar > 0);
+    if (breakdown.length < 2) return [];
+
+    const topKdv = this.extractTopKdvFromOkcText(rawText);
+    if (topKdv && topKdv > 0) {
+      const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
+      const tolerance = Math.max(0.08, topKdv * 0.03);
+      if (Math.abs(sum - topKdv) > tolerance) return [];
+    }
+
+    return breakdown;
+  }
+
+  private extractTopKdvFromOkcText(rawText: string): number | null {
+    const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+    const fold = (value: string) =>
+      value
+        .toLocaleUpperCase('tr-TR')
+        .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+        .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+        .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
+
+    const parseLastAmount = (value: string): number => {
+      amountRe.lastIndex = 0;
+      const values = [...value.matchAll(amountRe)]
+        .map((match) => this.parseTrUsAmount(match[1]))
+        .filter((amount) => Number.isFinite(amount) && amount > 0);
+      return values.length > 0 ? values[values.length - 1] : 0;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      if (!/\bTOPKDV\b/.test(fold(lines[i]))) continue;
+      const sameLine = parseLastAmount(lines[i]);
+      if (sameLine > 0) return sameLine;
+      for (let j = 1; j <= 2 && i + j < lines.length; j++) {
+        const next = fold(lines[i + j]);
+        if (/TOPLAM|NAKIT|KREDI|KART/.test(next)) break;
+        const amount = parseLastAmount(lines[i + j]);
+        if (amount > 0) return amount;
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -931,35 +1031,11 @@ export class ReconciliationEngine {
    * Eğer sondaki ayırıcıdan sonra 1-2 rakam varsa decimal, 3+ ise binlik.
    */
   private parseTrUsAmount(raw: string | number | null | undefined): number {
-    if (raw === null || raw === undefined) return NaN;
-    if (typeof raw === 'number') return raw;
-    const s = String(raw).replace(/[^\d.,\-]/g, '').trim();
-    if (!s) return NaN;
-    const lastDot = s.lastIndexOf('.');
-    const lastComma = s.lastIndexOf(',');
-    if (lastDot === -1 && lastComma === -1) {
-      return parseFloat(s);
-    }
-    const sepIdx = Math.max(lastDot, lastComma);
-    const afterSep = s.length - sepIdx - 1;
-    if (afterSep === 1 || afterSep === 2) {
-      // Decimal ayırıcı — öncesindeki bütün noktaları/virgülleri sil (binlik), sonrasını . ile kullan
-      const intPart = s.slice(0, sepIdx).replace(/[.,]/g, '');
-      const fracPart = s.slice(sepIdx + 1);
-      const num = parseFloat(`${intPart}.${fracPart}`);
-      return Number.isFinite(num) ? num : NaN;
-    }
-    // 3+ rakam sonrası → binlik ayırıcı, decimal yok
-    return parseFloat(s.replace(/[.,]/g, ''));
+    return parseTrUsAmount(raw);
   }
 
-  /** İki tarihi aynı gün mü karşılaştırır (saat farkını yok sayar) */
   private sameDay(a: Date, b: Date): boolean {
-    return (
-      a.getFullYear() === b.getFullYear() &&
-      a.getMonth() === b.getMonth() &&
-      a.getDate() === b.getDate()
-    );
+    return sameDay(a, b);
   }
 
   /**
@@ -968,122 +1044,51 @@ export class ReconciliationEngine {
    * bu kadarla sınırlıyoruz.
    */
   private likelyOcrYearMisread(a: Date, b: Date): boolean {
-    if (a.getDate() !== b.getDate()) return false;
-    if (a.getMonth() !== b.getMonth()) return false;
-    const yearDiff = Math.abs(a.getFullYear() - b.getFullYear());
-    return yearDiff > 0 && yearDiff <= 5;
+    return likelyOcrYearMisread(a, b);
   }
 
   private scoreToStatus(score: number, image: ReceiptImage, strictMatch: boolean, forcePartial: boolean = false): string {
-    // Sadece FAILED durum NEEDS_REVIEW'a zorla; LOW_CONFIDENCE artık normal akışta
-    if (image.ocrStatus === 'FAILED' && !image.isManuallyConfirmed) return 'NEEDS_REVIEW';
-    // MATCHED sadece 3 alan (tarih + belge no + KDV) EXACT eşleşirse verilir.
-    // Herhangi biri tutmuyorsa PARTIAL_MATCH veya NEEDS_REVIEW.
-    if (strictMatch) return 'MATCHED';
-    if (forcePartial) return 'PARTIAL_MATCH';
-    if (score >= 0.65) return 'PARTIAL_MATCH';
-    if (score >= 0.45) return 'PARTIAL_MATCH';
-    return 'NEEDS_REVIEW';
+    return scoreToStatus(score, image, strictMatch, forcePartial);
   }
 
-  /** Belge no'yu karşılaştırma için normalize et: UPPER + sadece alfa-sayısal */
   private normalizeBelgeNo(s: string): string {
-    return (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalizeBelgeNo(s);
   }
 
   private isAccountingDescription(value: string): boolean {
-    const v = value
-      .toLocaleUpperCase('tr-TR')
-      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
-      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
-      .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
-      .replace(/[.,;:'"\-/\\()&%]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!v) return true;
-    return /\b(KDV|TEVKIFAT|TEVKIFATLI|HESAPLANAN|INDIRILECEK|SORUMLU|SATIN|ALMA|IADE|391|191)\b/.test(v);
+    return isKdvAccountingDescription(value);
   }
 
   private recordDocDateKey(record: KdvRecord): string | null {
-    const belgeNo = this.normalizeBelgeNo(record.belgeNo || '');
-    if (!belgeNo || !record.belgeDate) return null;
-    return `${belgeNo}|${new Date(record.belgeDate).toISOString().slice(0, 10)}`;
+    return kdvRecordDocDateKey(record);
   }
 
   private recordDocDateAmountKey(record: KdvRecord): string | null {
-    const base = this.recordDocDateKey(record);
-    if (!base) return null;
-    const amount = parseFloat(record.kdvTutari?.toString() || '0');
-    if (!Number.isFinite(amount) || amount <= 0) return base;
-    return `${base}|${amount.toFixed(2)}`;
+    return kdvRecordDocDateAmountKey(record);
+  }
+
+  private inferRecordRate(record: KdvRecord): number | null {
+    return inferKdvRecordRate(record);
   }
 
   private buildAmbiguousDocDateAmountKeys(records: KdvRecord[]): Set<string> {
-    const counts = new Map<string, number>();
-    for (const record of records) {
-      const key = this.recordDocDateAmountKey(record);
-      if (!key) continue;
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    return new Set(
-      Array.from(counts.entries())
-        .filter(([, count]) => count > 1)
-        .map(([key]) => key),
-    );
+    return buildKdvAmbiguousDocDateAmountKeys(records);
   }
 
   private hasSellerMatch(record: KdvRecord, image: ReceiptImage): boolean {
-    const rawData = (record.rawData || {}) as Record<string, any>;
-    const recordVkn = String(
-      (record as any).karsiVergiNo ||
-      rawData.karsiVergiNo ||
-      rawData.vergiNo ||
-      rawData.vkn ||
-      rawData.tckn ||
-      '',
-    ).replace(/\D/g, '');
-    const imgVkn = String((image as any).ocrSaticiVkn || '').replace(/\D/g, '');
-    if (recordVkn && imgVkn && (imgVkn.length === 10 || imgVkn.length === 11)) {
-      return recordVkn === imgVkn;
-    }
-
-    const recordSatici = (record.karsiTaraf || '').trim();
-    const imgSatici = ((image as any).ocrSatici || '').trim();
-    if (!recordSatici || !imgSatici || this.isAccountingDescription(recordSatici)) return false;
-    return this.companyNameSimilarity(recordSatici, imgSatici) >= 0.5;
+    return hasKdvSellerMatch(record, image);
   }
 
   private sameBelgeNo(a: string, b: string): boolean {
-    const normA = this.normalizeBelgeNo(a);
-    const normB = this.normalizeBelgeNo(b);
-    if (!normA || !normB) return false;
-    return (
-      normA === normB ||
-      this.stripLeadingZeros(normA) === this.stripLeadingZeros(normB) ||
-      this.eInvoiceComparableKey(normA) === this.eInvoiceComparableKey(normB)
-    );
+    return sameBelgeNo(a, b);
   }
 
   private eInvoiceComparableKey(normalizedBelgeNo: string): string {
-    const m = normalizedBelgeNo.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/)
-      ?? normalizedBelgeNo.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
-    if (!m) return normalizedBelgeNo;
-    return `${m[1]}${m[2]}${m[3].replace(/^0+/, '') || '0'}`;
+    return eInvoiceComparableKey(normalizedBelgeNo);
   }
 
   private hasStrongTwoOfThree(record: KdvRecord, image: ReceiptImage, mihsapBelgeTarihi: Date | null): boolean {
-    const belgeOk = this.sameBelgeNo(record.belgeNo || '', image.confirmedBelgeNo || image.ocrBelgeNo || '');
-    const recordKdv = record.kdvTutari ? parseMoneyLike(record.kdvTutari as any) : 0;
-    const imageKdv = parseMoneyLike(image.confirmedKdvTutari || image.ocrKdvTutari);
-    const kdvOk = recordKdv > 0 && imageKdv > 0 && Math.abs(recordKdv - imageKdv) / recordKdv < 0.01;
-    let tarihOk = false;
-    if (record.belgeDate) {
-      const recordDate = new Date(record.belgeDate);
-      const imageDate = this.parseTrDate(image.confirmedDate || image.ocrDate || '');
-      tarihOk = !!imageDate && this.sameDay(recordDate, imageDate);
-      if (!tarihOk && mihsapBelgeTarihi) tarihOk = this.sameDay(recordDate, mihsapBelgeTarihi);
-    }
-    return [belgeOk, kdvOk, tarihOk].filter(Boolean).length >= 2;
+    return hasKdvStrongTwoOfThree(record, image, mihsapBelgeTarihi);
   }
 
   /**
@@ -1092,203 +1097,36 @@ export class ReconciliationEngine {
    * "0599" → "599" · "00123" → "123" · "EFA2026000000093" → aynı (harfle başlar)
    */
   private stripLeadingZeros(s: string): string {
-    if (!s) return '';
-    // Tamamı rakamsa
-    if (/^\d+$/.test(s)) return s.replace(/^0+/, '') || '0';
-    // Karışık ise değiştirme — "EFA..." sıfırlar ortasında kritik
-    return s;
+    return stripLeadingZeros(s);
   }
 
-  /** Levenshtein tabanlı basit string benzerliği */
   private stringSimilarity(a: string, b: string): number {
-    if (a === b) return 1;
-    if (!a || !b) return 0;
-    const longer = a.length > b.length ? a : b;
-    const shorter = a.length > b.length ? b : a;
-    const dist = this.levenshtein(longer, shorter);
-    return (longer.length - dist) / longer.length;
+    return stringSimilarity(a, b);
   }
 
-  private levenshtein(a: string, b: string): number {
-    const m = a.length, n = b.length;
-    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
-      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
-    );
-    for (let i = 1; i <= m; i++)
-      for (let j = 1; j <= n; j++)
-        dp[i][j] = a[i - 1] === b[j - 1]
-          ? dp[i - 1][j - 1]
-          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
-    return dp[m][n];
-  }
-
-  /**
-   * Luca satırlarını (belge no + tarih) kombinasyonuna göre gruplar.
-   * Aynı belge için farklı KDV oranları (ör: %20 + %10) 2 satır gelir;
-   * bunları tek virtual record olarak aggregate ediyoruz.
-   *
-   * Dönüş:
-   *   records: reconciliation'ın kullanacağı liste (tek-oranlı + aggregated virtual)
-   *   virtualGroups: virtualRecord.id → [origRecordId, origRecordId, ...]
-   *     (match sonucunu orijinallere fan-out etmek için)
-   *
-   * NOT: Sadece belge no ≥ 4 karakter olan satırlar gruplanır. Kısa belge no
-   * (ör. ÖKC fiş "0014") farklı günlerde aynı numara alabileceğinden
-   * (belge_no + tarih) bile unique değil, aggregate etmiyoruz.
-   */
-  private aggregateMultiRateRecords(rawRecords: KdvRecord[]): {
+  private aggregateMultiRateRecords(rawRecords: KdvRecord[], isAlis = false): {
     records: KdvRecord[];
     virtualGroups: Map<string, string[]>;
-    /**
-     * Virtual record id → [{oran, tutar}] — Luca tarafından beklenen
-     * KDV oranları ve tutarları. calculateScore içinde OCR breakdown'u
-     * ile karşılaştırılır (kalem-kalem doğrulama).
-     */
     virtualExpectedBreakdown: Map<string, Array<{ oran: number; tutar: number }>>;
-    /**
-     * Virtual record id → orijinal Luca satırlarındaki KDV tutarları listesi.
-     * ALIŞ tevkifatlı faturalarda Luca'da 2 satır vardır (NET + Tevkifat),
-     * aggregate sonrası record.kdvTutari = TAM. Ama orijinal NET satırının
-     * tutarı OCR NET ile eşleşiyorsa bu AYNI BELGE'dir → MATCHED ver.
-     */
     virtualOriginalKdvAmounts: Map<string, number[]>;
   } {
-    const groups = new Map<string, KdvRecord[]>();
-    const unaggregated: KdvRecord[] = [];
-
-    for (const rec of rawRecords) {
-      const bn = this.normalizeBelgeNo(rec.belgeNo || '');
-      if (!bn || !rec.belgeDate) {
-        unaggregated.push(rec);
-        continue;
-      }
-      const dateKey = new Date(rec.belgeDate).toISOString().slice(0, 10);
-      const partyKey = this.recordPartyKey(rec);
-      const kdvAmount = parseFloat(rec.kdvTutari?.toString() || '0');
-      // GIB/EARSIV gibi seri numaraları farklı satıcılarda tekrar edebilir.
-      // Bu yüzden karşı taraf/VKN varsa uzun e-faturada bile aggregate anahtarına
-      // eklenir; yoksa eski belge no + tarih davranışına düşeriz.
-      // Kısa fiş/Z raporu no'larında ise karşı taraf/VKN yoksa aggregate etmiyoruz.
-      // Guncel kural: uzun e-belgede satici/VKN yoksa ayni belge+tarih+tutar
-      // tekrarlari tevkifatli alis fan-out kabul edilir. Farkli tutarlar ayni
-      // belge no altinda ayri gorsellere eslesebilsin diye tutar key'e dahil.
-      if (partyKey === 'noparty') {
-        const isShortReceiptNo = bn.length < 10;
-        const canGroupShortOkcNo = isShortReceiptNo && /^\d{1,8}$/.test(bn);
-        if (!(kdvAmount > 0) || (isShortReceiptNo && !canGroupShortOkcNo)) {
-          unaggregated.push(rec);
-          continue;
-        }
-      }
-      const key = partyKey === 'noparty'
-        ? (bn.length < 10
-          ? `${bn}|${dateKey}|okc-short`
-          : `${bn}|${dateKey}|amount:${kdvAmount.toFixed(2)}`)
-        : `${bn}|${dateKey}|${partyKey}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(rec);
-    }
-
-    const result: KdvRecord[] = [...unaggregated];
-    const virtualGroups = new Map<string, string[]>();
-    const virtualExpectedBreakdown = new Map<string, Array<{ oran: number; tutar: number }>>();
-    const virtualOriginalKdvAmounts = new Map<string, number[]>();
-
-    for (const [key, group] of groups) {
-      if (group.length === 1) {
-        // Tek satır, aggregate etmeye gerek yok
-        result.push(group[0]);
-        continue;
-      }
-      // Çok satırlı grup → KDV ve matrah toplayıp virtual record üret.
-      // KdvTutari/KdvMatrahi Prisma Decimal tipinde — toString() string-safe,
-      // parseFloat ile topla, sonra number olarak geri yerleştir.
-      // calculateScore sadece parseFloat(record.kdvTutari.toString()) yapıyor,
-      // number'ın .toString()'i zaten sayısal string döndüğü için bu güvenli.
-      let kdvToplam = 0;
-      let matrahToplam = 0;
-      // Beklenen breakdown — aynı oran iki satırda ise toplanır
-      const expectedByRate = new Map<number, number>();
-      for (const r of group) {
-        const tutar = parseFloat(r.kdvTutari?.toString() || '0');
-        kdvToplam += tutar;
-        matrahToplam += parseFloat(r.kdvMatrahi?.toString() || '0');
-        const oran = r.kdvOrani != null ? parseFloat(r.kdvOrani.toString()) : 0;
-        if (oran > 0 && tutar > 0) {
-          expectedByRate.set(oran, (expectedByRate.get(oran) || 0) + tutar);
-        }
-      }
-      const base = group[0];
-      const virtualId = `__virtual__:${key}`;
-      const virtual: KdvRecord = {
-        ...base,
-        id: virtualId,
-        kdvTutari: kdvToplam as any,
-        // Multi-rate virtual'da kdvOrani null — calculateScore total karşılaştırması yapacak,
-        // expected breakdown ayrı parametre olarak iletilecek.
-        kdvOrani: null,
-        ...(matrahToplam > 0 ? { kdvMatrahi: matrahToplam as any } : {}),
-      };
-      result.push(virtual);
-      virtualGroups.set(virtualId, group.map((r) => r.id));
-      if (expectedByRate.size > 0) {
-        virtualExpectedBreakdown.set(
-          virtualId,
-          Array.from(expectedByRate.entries())
-            .map(([oran, tutar]) => ({ oran, tutar }))
-            .sort((a, b) => b.oran - a.oran),
-        );
-      }
-      // Orijinal satırlardaki KDV tutarları — ALIŞ tevkifat tespiti için
-      virtualOriginalKdvAmounts.set(
-        virtualId,
-        group.map((r) => parseFloat(r.kdvTutari?.toString() || '0')).filter((n) => n > 0),
-      );
-      this.logger.log(
-        `Çok oranlı KDV aggregate: belge=${base.belgeNo} · ${group.length} satır → toplam KDV=${kdvToplam.toFixed(2)} · oranlar=[${Array.from(expectedByRate.entries()).map(([o, t]) => `%${o}:${t.toFixed(2)}`).join(', ')}]`,
-      );
-    }
-
-    return { records: result, virtualGroups, virtualExpectedBreakdown, virtualOriginalKdvAmounts };
+    return aggregateKdvMultiRateRecords(rawRecords, isAlis, {
+      normalizeBelgeNo: (value) => this.normalizeBelgeNo(value),
+      recordPartyKey: (record) => this.recordPartyKey(record),
+      inferRecordRate: (record) => this.inferRecordRate(record),
+      log: (message) => this.logger.log(message),
+    });
   }
 
   private recordPartyKey(rec: KdvRecord): string {
-    const rawData = (rec.rawData || {}) as Record<string, any>;
-    const taxNo = String(
-      (rawData.karsiVergiNo ?? rawData.vergiNo ?? rawData.vkn ?? rawData.tckn ?? '')
-    ).replace(/\D/g, '');
-    if (taxNo.length === 10 || taxNo.length === 11) return `tax:${taxNo}`;
-
-    const name = (rec.karsiTaraf || rec.aciklama || '').trim();
-    if (!name || this.isAccountingDescription(name)) return 'noparty';
-    return `name:${name
-      .toLocaleUpperCase('tr-TR')
-      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
-      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
-      .replace(/Ü/g, 'U').replace(/Ö/g, 'O')
-      .replace(/[^A-Z0-9]/g, '')
-      .slice(0, 32) || 'noparty'}`;
+    return kdvRecordPartyKey(rec);
   }
 
   private parseTrDate(s: string): Date | null {
-    // DD.MM.YYYY / DD-MM-YYYY / DD/MM/YYYY
-    const m = s.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{2}|\d{4})$/);
-    if (m) {
-      const year = m[3].length === 2 ? 2000 + parseInt(m[3], 10) : parseInt(m[3], 10);
-      if (year < 2000 || year > 2050) return null;
-      const d = new Date(`${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    // YYYY-MM-DD
-    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (iso) {
-      const d = new Date(s);
-      return isNaN(d.getTime()) ? null : d;
-    }
-    return null;
+    return parseTrDate(s);
   }
 
   private fmtDate(d: Date): string {
-    return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+    return formatTrDate(d);
   }
 }

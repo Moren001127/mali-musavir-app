@@ -1,0 +1,8 @@
+{
+  "scenario": "mukerrer",
+  "module": "reconciliation",
+  "description": "Aynı belge 2 kere yüklenmiş, biri kabul biri red",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}

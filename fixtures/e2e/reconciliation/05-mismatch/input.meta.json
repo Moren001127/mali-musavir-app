@@ -1,0 +1,8 @@
+{
+  "scenario": "mismatch",
+  "module": "reconciliation",
+  "description": "1 gün tarih farkı veya KDV uyumsuz, NEEDS_REVIEW",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}

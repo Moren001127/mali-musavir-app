@@ -1,0 +1,8 @@
+{
+  "scenario": "multi-rate",
+  "module": "reconciliation",
+  "description": "Karma %20 + %10 KDV, virtual aggregate match",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}

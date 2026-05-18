@@ -1,0 +1,8 @@
+{
+  "scenario": "petravet-alis-mayis",
+  "module": "pipeline",
+  "description": "Mayıs 2026 tam akış - 143 Luca satırı",
+  "status": "skeleton-placeholder",
+  "addedAt": "2026-05-18",
+  "_note": "Gerçek dosya eklendiğinde runner çalışır. README.md'deki anonimleştirme kurallarını uygula."
+}
