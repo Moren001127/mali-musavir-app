@@ -18,6 +18,13 @@ import {
   isForbiddenKdvAmountLine as isForbiddenKdvAmountLinePure,
   isLikelyKdvAmountColumnHeader as isLikelyKdvAmountColumnHeaderPure,
 } from './ocr/parsers/text-classifiers';
+import {
+  decodeXmlText as decodeXmlTextPure,
+  getXmlTagValue as getXmlTagValuePure,
+  getXmlBlocks as getXmlBlocksPure,
+  stripXmlBlocks as stripXmlBlocksPure,
+  parseXmlAmount as parseXmlAmountPure,
+} from './ocr/parsers/xml-helpers';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -3260,40 +3267,29 @@ export class OcrService {
       .trim();
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private decodeXmlText(value: string): string {
-    return value
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'");
+    return decodeXmlTextPure(value);
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private getXmlTagValue(xml: string, tag: string): string | null {
-    const name = `(?:[\\w.-]+:)?${tag}`;
-    const match = xml.match(new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'i'));
-    return match?.[1] ? this.decodeXmlText(match[1].trim()) : null;
+    return getXmlTagValuePure(xml, tag);
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private getXmlBlocks(xml: string, tag: string): string[] {
-    const name = `(?:[\\w.-]+:)?${tag}`;
-    const re = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)<\\/${name}>`, 'gi');
-    const blocks: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(xml)) !== null) {
-      blocks.push(match[1]);
-    }
-    return blocks;
+    return getXmlBlocksPure(xml, tag);
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private stripXmlBlocks(xml: string, tag: string): string {
-    const name = `(?:[\\w.-]+:)?${tag}`;
-    return xml.replace(new RegExp(`<${name}\\b[^>]*>[\\s\\S]*?<\\/${name}>`, 'gi'), '');
+    return stripXmlBlocksPure(xml, tag);
   }
 
+  /** @deprecated Faz 1 — saf fonksiyona delege. */
   private parseXmlAmount(xml: string, tag: string): number {
-    const raw = this.getXmlTagValue(xml, tag);
-    return raw ? this.parseAmount(raw) : 0;
+    return parseXmlAmountPure(xml, tag, (s) => this.parseAmount(s));
   }
 
   /**
