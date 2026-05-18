@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.69';
+  const AGENT_VERSION = '1.37.70';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4523,11 +4523,11 @@
    * "Defteri Kebir" iki kez var (Nokta Vuruşlu + Tüm Yazıcılar) — Tüm Yazıcılar = 2. occurrence.
    */
   async function clickLucaRightMenu(text, log, opts = {}) {
-    const { nth = 1, maxMs = 8000, afterClickReady = null, settleMs = 700 } = opts;
+    const { nth = 1, maxMs = 8000, afterClickReady = null, settleMs = 700, allowCache = true, expectedCode = '' } = opts;
     const cacheLabel = nth > 1 ? `${text}#${nth}` : text;
     const cachedRows = cacheVisibleLucaMenuIds();
     if (cachedRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${cachedRows} satır)`);
-    if (await openCachedLucaMenu(cacheLabel, log, settleMs)) {
+    if (allowCache && await openCachedLucaMenu(cacheLabel, log, settleMs, { expectedCode })) {
       if (typeof afterClickReady !== 'function') return;
       const ready = await waitUntil(() => {
         try { return !!afterClickReady(); } catch { return false; }
@@ -4561,7 +4561,11 @@
     }
     await log(`🖱 "${text}" tıklanıyor (${found.frameName} → ${describeLucaMenuElement(found.el)})`);
     const cached = cacheLucaMenuHit(cacheLabel, found);
-    if (cached?.code && await callLucaMenuCode(cacheLabel, cached.code, log, settleMs)) {
+    if (
+      cached?.code &&
+      (!expectedCode || String(cached.code) === String(expectedCode)) &&
+      await callLucaMenuCode(cacheLabel, cached.code, log, settleMs)
+    ) {
       if (typeof afterClickReady !== 'function') return;
       try {
         if (afterClickReady()) {
@@ -5555,13 +5559,13 @@
   }
 
   function findPreferredKdvLedgerFormNow() {
-    const forms = collectLucaFormsNow(/raporMuavin|muavin|raporKebir|kebir|REPFORM|DefterServlet/i);
+    const forms = collectLucaFormsNow(/raporKebir|kebir|REPFORM|DefterServlet/i);
     return forms.find((form) => isPreferredKdvLedgerForm(form)) || null;
   }
 
   function findLucaKdvLedgerFormNow() {
     return findPreferredKdvLedgerFormNow() ||
-      collectLucaFormsNow(/raporMuavin|muavin|raporKebir|kebir|REPFORM|DefterServlet/i)[0] ||
+      collectLucaFormsNow(/raporKebir|kebir|REPFORM|DefterServlet/i)[0] ||
       null;
   }
 
@@ -5593,7 +5597,6 @@
   async function logKdvMenuHints(log) {
     try {
       const rows = [
-        ...collectLucaClickMap('Muavin'),
         ...collectLucaClickMap('Defteri Kebir'),
       ];
       const seen = new Set();
@@ -5613,8 +5616,7 @@
     await logKdvMenuHints(log);
     const attempts = [
       { text: 'Defteri Kebir (Tum Yazicilar)', code: 'lI1lI(0,17,"79")', maxMs: 12000 },
-      { text: 'Defteri Kebir', nth: 2, maxMs: 10000 },
-      { text: 'Muavin Defter (Tum Yazicilar)', code: 'lI1lI(0,15,"77")', maxMs: 12000 },
+      { text: 'Defteri Kebir', nth: 2, maxMs: 12000, allowCache: false },
     ];
 
     for (const attempt of attempts) {
@@ -5631,6 +5633,7 @@
           await clickLucaRightMenu(attempt.text, log, {
             nth: attempt.nth,
             maxMs: attempt.maxMs,
+            allowCache: attempt.allowCache !== false,
             settleMs: 900,
             afterClickReady: () => !!findPreferredKdvLedgerFormNow(),
           });
@@ -5651,7 +5654,7 @@
       }
     }
 
-    throw new Error(`KDV Muavin/Defteri Kebir rapor formu acilamadi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+    throw new Error(`KDV Defteri Kebir rapor formu acilamadi; guvenlik kuralı geregi Muavin Defter'e gecilmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
   }
 
   /**
@@ -6935,7 +6938,16 @@
       returnValue: true,
       cancelBubble: false,
     };
-    for (const win of collectLucaWindows()) {
+    const windows = collectLucaWindows();
+    const preferred = [];
+    for (const win of windows) {
+      try {
+        const nodes = Array.from(win.document.querySelectorAll('[onclick],[href],[id],[name]'));
+        if (nodes.some((el) => getLucaMenuCodeFromElement(el)?.code === code)) preferred.push(win);
+      } catch {}
+    }
+    const orderedWindows = [...preferred, ...windows.filter((win) => !preferred.includes(win))];
+    for (const win of orderedWindows) {
       try {
         if (String(code).startsWith('lI1lI(')) {
           if (typeof win.lI1lI !== 'function') continue;

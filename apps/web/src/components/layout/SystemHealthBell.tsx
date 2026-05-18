@@ -299,6 +299,7 @@ function CheckRow({ check: c }: { check: any }) {
     MIHSAP_TOKEN_AGE: 'Mihsap Oturumu',
     PENDING_QUEUE: 'İş Kuyruğu',
     FAILED_RATIO: 'Başarısızlık Oranı',
+    LUCA_JOB_FAILURE: 'Luca Job Hatası',
     MODULE_HASH: 'Kilitli Modül Hash',
     AGENT_VERSION: 'Agent Sürümü',
     DB_HEALTH: 'Veritabanı',

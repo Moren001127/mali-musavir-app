@@ -69,10 +69,9 @@ export function isAggregateLucaRecord(record: LucaRecordLike): boolean {
     /(^|\s)toplam\s*:/.test(text) ||
     /^toplam\b/.test(text);
 
-  // Luca muavininde nakli yekun ve final toplam satirlari KDV kolonu dolu olsa
+  // Luca Defteri Kebir raporunda nakli yekun ve final toplam satirlari KDV kolonu dolu olsa
   // bile belge degildir: tarih ve evrak no tasimazlar.
   if (!hasDate && !hasBelgeNo) return true;
 
   return hasAggregateLabel && (!hasDate || !hasBelgeNo);
 }
-

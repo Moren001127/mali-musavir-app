@@ -28,7 +28,7 @@ import {
  *   - Geçen ay BeyanKaydi'nden devreden KDV.
  *   - Sonuç: ödenecek veya sonraki aya devreden.
  *
- * TODO (gelecek iş): KDV'ye özel Luca sync — `KdvLucaSnapshot` tablosu + muavin
+ * TODO (gelecek iş): KDV'ye özel Luca sync — `KdvLucaSnapshot` tablosu + Defteri Kebir
  * çekimiyle 191/391/190 aylık bakiye çapraz kontrol. Mizan modülünden BAĞIMSIZ.
  */
 

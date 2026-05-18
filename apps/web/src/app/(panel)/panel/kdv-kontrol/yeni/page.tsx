@@ -19,8 +19,8 @@ const YEARS = Array.from({ length: 6 }, (_, i) => currentYear + 1 - i);
 type KdvTypeOption = 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER';
 
 const TYPE_OPTIONS: { value: KdvTypeOption; label: string; sub: string; color: string }[] = [
-  { value: 'KDV_191',       label: '191 — İndirilecek KDV',  sub: 'Luca → KDV Muavin Defteri (Alış)',   color: 'border-blue-500 bg-blue-50' },
-  { value: 'KDV_391',       label: '391 — Hesaplanan KDV',   sub: 'Luca → KDV Muavin Defteri (Satış)',  color: 'border-emerald-500 bg-emerald-50' },
+  { value: 'KDV_191',       label: '191 — İndirilecek KDV',  sub: 'Luca → Defteri Kebir (Alış)',   color: 'border-blue-500 bg-blue-50' },
+  { value: 'KDV_391',       label: '391 — Hesaplanan KDV',   sub: 'Luca → Defteri Kebir (Satış)',  color: 'border-emerald-500 bg-emerald-50' },
   { value: 'ISLETME_GELIR', label: 'İşletme — Gelir',        sub: 'Luca → İşletme Defteri Gelir Sayfası', color: 'border-purple-500 bg-purple-50' },
   { value: 'ISLETME_GIDER', label: 'İşletme — Gider',        sub: 'Luca → İşletme Defteri Gider Sayfası', color: 'border-orange-500 bg-orange-50' },
 ];

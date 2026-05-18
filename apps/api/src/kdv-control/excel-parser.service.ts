@@ -47,7 +47,7 @@ export class ExcelParserService {
   }
 
   /**
-   * Luca'dan alınan 191/391 muavin defteri Excel dosyasını parse eder.
+   * Luca'dan alınan 191/391 Defteri Kebir Excel dosyasını parse eder.
    * type='191' → KDV tutarı BORÇ sütununda
    * type='391' → KDV tutarı ALACAK sütununda
    */

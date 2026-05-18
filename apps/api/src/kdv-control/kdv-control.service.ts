@@ -2290,7 +2290,7 @@ export class KdvControlService {
   // ============================================================
 
   /**
-   * Luca'dan muavin/işletme defteri verisini otomatik çekmek için
+   * Luca'dan Defteri Kebir / işletme defteri verisini otomatik çekmek için
    * bir Luca fetch job oluşturur. Runner (moren-agent.js) bu job'u
    * Luca sayfasında çalıştırır — Excel indirip buraya yollar.
    *

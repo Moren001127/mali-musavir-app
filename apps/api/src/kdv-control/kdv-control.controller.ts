@@ -283,7 +283,7 @@ export class KdvControlController {
   /* ── OTOMATİK ÇEKİM (LUCA + MIHSAP) ──────────────── */
 
   /**
-   * Luca'dan muavin/işletme defteri otomatik çekimi başlat.
+   * Luca'dan Defteri Kebir / işletme defteri otomatik çekimi başlat.
    * Arka planda bir Luca fetch job yaratır; güvenlik kodu gerekirse
    * portal içindeki Luca Oturum Yöneticisi gösterir.
    */

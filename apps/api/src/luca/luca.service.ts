@@ -16,7 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
  *   1. Tarayıcı eklentisi (moren-agent.js) Luca sayfasında açıkken session
  *      token/cookie'sini yakalar ve `POST /luca/token` endpoint'ine gönderir.
  *   2. Portal bu oturumla Luca'ya proxy yapar — ya da kullanıcı runner
- *      ile "Luca muavinini çek" dediğinde runner Luca sayfasında Excel
+ *      ile "Luca Defteri Kebir/KDV verisini çek" dediğinde runner Luca sayfasında Excel
  *      indirip portala `POST /kdv-control/sessions/:id/excel-from-runner`
  *      ile gönderir.
  *
@@ -28,8 +28,8 @@ const LUCA_ENDPOINTS = {
   baseUrl: 'https://web.luca.com.tr',
   // Keşif yoluyla doldurulacak endpoint'ler. Backend şu anda bunları
   // kullanmıyor — runner DOM üzerinden Excel indiriyor.
-  muavin191: '/api/muhasebe/muavin?hesap=191',
-  muavin391: '/api/muhasebe/muavin?hesap=391',
+  defteriKebir191: '/api/muhasebe/defteri-kebir?hesap=191',
+  defteriKebir391: '/api/muhasebe/defteri-kebir?hesap=391',
   isletmeGelir: '/api/isletme-defteri/gelir',
   isletmeGider: '/api/isletme-defteri/gider',
 };

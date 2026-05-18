@@ -813,7 +813,7 @@ export class OcrService {
 
     // KDV TEVKİFATI — deterministik net KDV hesabı + tevkifat tutarını sakla
     // Claude'dan tam KDV + tevkifat tutarı AYRI alanda gelir (5c bölümü).
-    // Matematiği kod yapar (Claude tutarsız hesapladığı için) — Luca muavininde
+    // Matematiği kod yapar (Claude tutarsız hesapladığı için) — Luca Defteri Kebir raporunda
     // satıcının "Hesaplanan KDV" alanına yazılan NET KDV'dir.
     // ÖNEMLİ: Tevkifat tutarı kaybolmasın diye OcrResult.kdvTevkifat alanına
     // ayrıca yazılıyor — DB'de transparency için.
@@ -3848,7 +3848,7 @@ export class OcrService {
       /^9\d{3}$/.test(taxSchemeId);
 
     const kdvBreakdown: KdvBreakdownItem[] = [];
-    // KDV tevkifatı: Luca muavininde satıcının "Hesaplanan KDV" alanına NET KDV
+    // KDV tevkifatı: Luca Defteri Kebir raporunda satıcının "Hesaplanan KDV" alanına NET KDV
     // (tam KDV − tevkifat) yazılır. Reconciliation'ın doğru eşleşmesi için
     // OCR çıktısındaki kdvTutari da net olmalı.
     let tevkifatFromSubtotals = 0;
@@ -3937,7 +3937,7 @@ export class OcrService {
       this.logger.log(`XML parser: KDV tevkifati yakalandi - tutar=${kdvTevkifat}`);
     }
 
-    // Toplam KDV: breakdown toplamı. Tevkifat varsa NET KDV döndür (Luca muavininde
+    // Toplam KDV: breakdown toplamı. Tevkifat varsa NET KDV döndür (Luca Defteri Kebir raporunda
     // satıcının "Hesaplanan KDV" alanına yazılan değer net KDV'dir).
     const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
     if (kdvTevkifat <= 0 && kdvToplam > 0) {
