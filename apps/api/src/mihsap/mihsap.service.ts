@@ -281,6 +281,7 @@ export class MihsapService {
         mihsapFaturaId: item.faturaId ? String(item.faturaId) : null,
         orjDosyaTuru: item.orjDosyaTuru || null,
         mihsapFileLink: item.fileLink || null,
+        raw: item as any,
         ...(storageKey ? { storageKey, storageUrl, downloadedAt: new Date() } : {}),
       },
       create: {

@@ -556,7 +556,7 @@ export class KdvBeyannameService {
         ocrliAdet++;
       } else {
         // Tahmin: toplam = matrah * (1 + oran/100) → matrah = toplam / 1.20
-        const breakdown = this.extractKdvBreakdownFromRaw(f.raw);
+        const breakdown = this.extractKdvBreakdownFromRaw(f.raw, f);
         if (breakdown.length > 0) {
           for (const b of breakdown) {
             addToOran(b.oran, b.matrah, b.kdv, 'mihsap_xml');
@@ -888,6 +888,13 @@ export class KdvBeyannameService {
     let oran = Number(row.oran || 0);
     let matrah = Number(row.matrah || 0);
     let kdv = Number(row.kdv || 0);
+    const invoiceGross = this.parseTrAmount(
+      invoice?.toplamTutar
+      ?? invoice?.totalAmount
+      ?? invoice?.genelToplam
+      ?? invoice?.odenecekTutar
+      ?? invoice?.total,
+    );
     if (oran > 0) oran = this.nearestKdvRate(oran);
 
     if (!kdv && oran > 0 && matrah > 0) kdv = matrah * (oran / 100);
@@ -898,8 +905,7 @@ export class KdvBeyannameService {
     }
 
     if ((!matrah || !oran) && kdv > 0) {
-      const gross = Number(invoice?.toplamTutar || 0);
-      const inferredBase = gross > kdv ? gross - kdv : 0;
+      const inferredBase = invoiceGross > kdv ? invoiceGross - kdv : 0;
       if (inferredBase > 0) {
         const inferredRate = this.nearestKdvRate((kdv / inferredBase) * 100);
         if (!oran) oran = inferredRate;
@@ -911,9 +917,8 @@ export class KdvBeyannameService {
     if (!oran && matrah > 0 && kdv > 0) {
       oran = this.nearestKdvRate((kdv / matrah) * 100);
     }
-    if (!oran && kdv > 0 && Number(invoice?.toplamTutar || 0) > kdv) {
-      const gross = Number(invoice?.toplamTutar || 0);
-      const inferredBase = gross - kdv;
+    if (!oran && kdv > 0 && invoiceGross > kdv) {
+      const inferredBase = invoiceGross - kdv;
       const inferredRate = this.nearestKdvRate((kdv / inferredBase) * 100);
       if (inferredRate) {
         oran = inferredRate;
@@ -1019,7 +1024,7 @@ export class KdvBeyannameService {
     return Number.isFinite(n) ? n : 0;
   }
 
-  private extractKdvBreakdownFromRaw(raw: any): Array<{ oran: number; matrah: number; kdv: number }> {
+  private extractKdvBreakdownFromRaw(raw: any, invoice?: any): Array<{ oran: number; matrah: number; kdv: number }> {
     if (raw == null) return [];
     let value = raw;
     if (typeof raw === 'string') {
@@ -1034,27 +1039,74 @@ export class KdvBeyannameService {
 
     const rows: Array<{ oran: number; matrah: number; kdv: number }> = [];
     const seen = new Set<string>();
-    const rateKeys = ['oran', 'kdvOrani', 'kdv_orani', 'taxRate', 'tax_rate', 'rate', 'percent', 'yuzde'];
-    const baseKeys = ['matrah', 'kdvMatrahi', 'kdv_matrahi', 'taxBase', 'tax_base', 'taxableAmount', 'malHizmetTutari'];
-    const vatKeys = ['kdv', 'kdvTutari', 'kdv_tutari', 'taxAmount', 'tax_amount', 'hesaplananKdv', 'tutar', 'amount'];
+    const rateKeys = [
+      'oran', 'kdvOran', 'kdv_oran', 'kdvOrani', 'kdv_orani', 'kdvOraniText',
+      'taxRate', 'tax_rate', 'taxPercent', 'taxPercentage', 'vatRate', 'vat_rate',
+      'rate', 'percent', 'yuzde',
+    ];
+    const baseKeys = [
+      'matrah', 'matrahTutari', 'kdvMatrahi', 'kdv_matrahi', 'taxBase', 'tax_base',
+      'taxableAmount', 'taxExclusiveAmount', 'lineExtensionAmount', 'malHizmetTutari',
+      'malHizmetToplamTutari', 'araToplam', 'netTutar',
+    ];
+    const vatKeys = [
+      'kdv', 'kdvTutari', 'kdv_tutari', 'kdvTutar', 'kdvToplam', 'kdvToplami',
+      'toplamKdv', 'taxAmount', 'tax_amount', 'taxTotal', 'vatAmount', 'vat_amount',
+      'hesaplananKdv', 'indirilecekKdv', 'vergiTutari',
+    ];
+    const ratePatterns = [/kdv.*oran/i, /tax.*rate/i, /tax.*percent/i, /vat.*rate/i, /oran/i, /percent/i, /yuzde/i];
+    const basePatterns = [/matrah/i, /tax.*base/i, /taxable/i, /tax.*exclusive/i, /mal.*hizmet/i, /ara.*toplam/i, /net.*tutar/i];
+    const vatPatterns = [/kdv.*(tutar|toplam|amount)/i, /(hesaplanan|indirilecek).*kdv/i, /tax.*amount/i, /vat.*amount/i, /vergi.*tutar/i];
 
-    const pick = (obj: any, keys: string[]) => {
+    const pick = (obj: any, keys: string[], patterns: RegExp[] = []) => {
       if (!obj || typeof obj !== 'object') return 0;
       for (const key of keys) {
         if (obj[key] != null) return this.parseTrAmount(obj[key]);
+      }
+      for (const [key, val] of Object.entries(obj)) {
+        if (patterns.some((pattern) => pattern.test(key))) {
+          const parsed = this.parseTrAmount(val);
+          if (parsed > 0) return parsed;
+        }
+      }
+      return 0;
+    };
+
+    const pickDeep = (node: any, keys: string[], patterns: RegExp[], depth = 0): number => {
+      if (node == null || depth > 3) return 0;
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          const parsed = pickDeep(item, keys, patterns, depth + 1);
+          if (parsed > 0) return parsed;
+        }
+        return 0;
+      }
+      if (typeof node !== 'object') return 0;
+      const direct = pick(node, keys, patterns);
+      if (direct > 0) return direct;
+      for (const child of Object.values(node)) {
+        const parsed = pickDeep(child, keys, patterns, depth + 1);
+        if (parsed > 0) return parsed;
       }
       return 0;
     };
 
     const addIfBreakdown = (obj: any) => {
-      const oran = pick(obj, rateKeys);
-      let matrah = pick(obj, baseKeys);
-      let kdv = pick(obj, vatKeys);
-      if (!oran || (!matrah && !kdv)) return;
-      if (!matrah && kdv) matrah = kdv / (oran / 100);
-      if (!kdv && matrah) kdv = matrah * (oran / 100);
+      const keyText = Object.keys(obj || {}).join(' ');
+      const taxLike = /kdv|tax|vat|vergi|matrah|oran/i.test(keyText);
+      let oran = pick(obj, rateKeys, ratePatterns);
+      let matrah = pick(obj, baseKeys, basePatterns);
+      let kdv = pick(obj, vatKeys, vatPatterns);
+      if (taxLike) {
+        if (!oran) oran = pickDeep(obj, rateKeys, ratePatterns);
+        if (!matrah) matrah = pickDeep(obj, baseKeys, basePatterns);
+        if (!kdv) kdv = pickDeep(obj, vatKeys, vatPatterns);
+      }
+      if ((!oran && !(matrah > 0 && kdv > 0) && !(invoice && kdv > 0)) || (!matrah && !kdv)) return;
+      if (!matrah && kdv && oran) matrah = kdv / (oran / 100);
+      if (!kdv && matrah && oran) kdv = matrah * (oran / 100);
       if (!matrah && !kdv) return;
-      const cleaned = this.completeControlRow({ oran, matrah, kdv }, null);
+      const cleaned = this.completeControlRow({ oran, matrah, kdv }, invoice);
       if (!cleaned.oran || !cleaned.matrah || !cleaned.kdv) return;
       const key = `${cleaned.oran}:${Math.round(cleaned.matrah * 100)}:${Math.round(cleaned.kdv * 100)}`;
       if (seen.has(key)) return;

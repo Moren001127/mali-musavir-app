@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const net = require('net');
 const { spawn } = require('child_process');
 const axios = require('axios');
 const FormData = require('form-data');
@@ -104,9 +105,10 @@ if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_
 const POLL_INTERVAL = (cfg.worker?.pollIntervalSeconds || 30) * 1000;
 const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 const HEADLESS = cfg.worker?.headless !== false;
-const JOB_TYPES = new Set(cfg.worker?.jobTypes || ['ACCOUNT_PLAN', 'MIZAN', 'MUAVIN']);
+const DEFAULT_JOB_TYPES = ['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN'];
+const JOB_TYPES = new Set(cfg.worker?.jobTypes || DEFAULT_JOB_TYPES);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.1.1';
+const LOCAL_AGENT_VERSION = 'local-1.1.2';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -193,6 +195,37 @@ function isTransientLucaConnectivityError(err) {
     && /(luca\.com\.tr|agiris|auygs|LUCASSO)/i.test(text);
 }
 
+function checkTcp(host, port = 443, timeoutMs = 6000) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(ok);
+    };
+    socket.setTimeout(timeoutMs, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
+async function assertLucaConnectivity(jobId) {
+  const targets = ['agiris.luca.com.tr', 'auygs.luca.com.tr'];
+  const results = await Promise.all(targets.map(async (host) => ({
+    host,
+    ok: await checkTcp(host),
+  })));
+  if (results.some((r) => r.ok)) return;
+
+  const summary = results.map((r) => `${r.host}=kapali`).join(', ');
+  const msg = `Luca baglantisi kapali (${summary}). Cloudflare WARP/VPN/firewall Luca erisimini kesiyor olabilir; WARP kapatilip tekrar denenmeli.`;
+  log.warn(msg);
+  if (jobId) await logJob(jobId, msg).catch(() => {});
+  throw new Error(`LUCA_NETWORK_BLOCKED: ${msg}`);
+}
+
 async function pingAgentStatus(running = true, extraMeta = {}) {
   try {
     await api.post('/agent/status/ping', {
@@ -277,6 +310,8 @@ const LUCA_URLS = {
 const LUCA_CLASSIC_ENTRY = process.env.LUCA_CLASSIC_URL || 'https://auygs.luca.com.tr/Luca/luca.do';
 
 let browserSession = null;
+let activeJobCount = 0;
+let preWarmPromise = null;
 
 async function gotoLucaWithFallback(page, primaryUrl, jobId, label = 'giris') {
   try {
@@ -666,6 +701,7 @@ async function installMorenRuntimeBridge(context, page) {
 
 async function runJobWithMorenRuntime(job) {
   const jobId = job.id;
+  await assertLucaConnectivity(jobId);
   await withBrowser(async (page, context) => {
     page.on('console', (msg) => {
       const text = msg.text();
@@ -675,9 +711,13 @@ async function runJobWithMorenRuntime(job) {
     });
     page.on('pageerror', (err) => log.warn(`Browser pageerror: ${err.message}`));
     page.on('dialog', async (dialog) => {
-      const msg = dialog.message();
-      log.warn(`Browser dialog: ${msg}`);
-      await logJob(jobId, `Luca dialog uyarisi: ${msg}`).catch(() => {});
+      const msg = String(dialog.message() || '').trim();
+      if (msg) {
+        log.warn(`Luca dialog kapatildi: ${msg}`);
+        await logJob(jobId, `Luca uyarı penceresi kapatıldı: ${msg}`).catch(() => {});
+      } else {
+        log.debug('Bos Luca dialog kapatildi.');
+      }
       await dialog.dismiss().catch(() => {});
     });
 
@@ -907,6 +947,7 @@ async function processJob(job) {
     return;
   }
 
+  activeJobCount += 1;
   await pingAgentStatus(true, { activeJobId: jobId, activeJobType: tip });
 
   try {
@@ -955,6 +996,8 @@ async function processJob(job) {
       return;
     }
     await markJobFailed(jobId, err.message);
+  } finally {
+    activeJobCount = Math.max(0, activeJobCount - 1);
   }
 }
 
@@ -969,7 +1012,15 @@ let stopped = false;
  * Hata olursa sessizce geç — bu yardımcı bir adım, asıl iş polling.
  */
 async function preWarmBrowserSession() {
-  try {
+  if (activeJobCount > 0) {
+    log.info('Pre-warm atlandi: aktif Luca isi var.');
+    return;
+  }
+  if (preWarmPromise) {
+    return preWarmPromise;
+  }
+  preWarmPromise = (async () => {
+    try {
     log.info('⚡ Pre-warm: browser açılıyor, Luca login deneniyor...');
     const session = await getBrowserSession();
     const page = session.page;
@@ -987,9 +1038,13 @@ async function preWarmBrowserSession() {
       }
       log.info(`✓ Pre-warm tamamlandı (url: ${page.url().slice(0, 80)})`);
     }
-  } catch (err) {
-    log.warn(`Pre-warm başarısız (önemsiz, gerçek iş geldiğinde tekrar denenecek): ${err.message}`);
-  }
+    } catch (err) {
+      log.warn(`Pre-warm başarısız (önemsiz, gerçek iş geldiğinde tekrar denenecek): ${err.message}`);
+    } finally {
+      preWarmPromise = null;
+    }
+  })();
+  return preWarmPromise;
 }
 
 // Sabah pre-warm cron — agent çalışıyorken her gün 08:00'de uyanır.
@@ -1116,8 +1171,9 @@ async function mainLoop() {
   log.info(`Device: ${DEVICE_ID} (${WORKER_NAME})`);
   log.info(`Idle TTL: ${Math.round(BROWSER_IDLE_TTL/60000)}dk · Keep-alive: ${Math.round(BROWSER_KEEPALIVE_INTERVAL/60000)}dk`);
 
-  // Agent başlangıcında ilk pre-warm — kullanıcı bilgisayar açar açmaz hazır
-  preWarmBrowserSession().catch(() => {});
+  // Agent başlangıcında ilk pre-warm gerçek job yoksa çalışır. Aksi halde
+  // aynı Playwright sayfasında iki navigation çakışıp job'u pending bırakabiliyor.
+  let initialPreWarmPending = true;
   // Her sabah PRE_WARM_HOUR'de tekrar
   schedulePreWarm();
 
@@ -1130,12 +1186,20 @@ async function mainLoop() {
         ? filtered.filter((_, index) => index % WORKER_POOL_SIZE === WORKER_POOL_INDEX)
         : filtered;
       if (runnable.length) {
+        if (preWarmPromise) {
+          log.info('Aktif job geldi; pre-warm bitmesi bekleniyor.');
+          await preWarmPromise.catch((err) => log.warn(`Pre-warm bekleme hatasi: ${err.message}`));
+        }
         log.info(`${runnable.length}/${filtered.length} bekleyen job bu worker'a dustu.`);
         for (const job of runnable) {
           if (stopped) break;
           await processJob(job);
         }
       } else {
+        if (initialPreWarmPending) {
+          initialPreWarmPending = false;
+          await preWarmBrowserSession().catch((err) => log.warn(`Ilk pre-warm hatasi: ${err.message}`));
+        }
         log.debug('Bekleyen job yok.');
       }
     } catch (err) {
