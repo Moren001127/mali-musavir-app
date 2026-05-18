@@ -640,6 +640,22 @@ export class MorenAiService {
       .replace(/\s+/g, ' ')
       .trim();
 
+    const employeeSeparation =
+      /(işçi|isci|personel|sigortalı|sigortali|çalışan|calisan|4\s*\/?\s*a|sgk)/i.test(normalized) &&
+      (/(işten|isten)\s*(ayrıl|ayril|çık|cik|çıkış|cikis)|ayrılış|ayrilis|çıkış bildir|cikis bildir|fesih/i.test(normalized) ||
+        /(işi|iş)\s*(bırak|birak)/i.test(normalized)) &&
+      /(bildir|süre|sure|kaç gün|kac gun|ceza|idari para|ipc|süresinde|suresinde|geç|gec)/i.test(normalized);
+
+    if (employeeSeparation) {
+      const currentYear = new Date().getFullYear();
+      const currentYearAmount =
+        currentYear === 2026
+          ? ' 2026 için brüt asgari ücret 33.030 TL olduğundan ceza 3.303 TL olur.'
+          : ' Tutar, bildirimin verileceği yıldaki brüt asgari ücretin 1/10’u olarak hesaplanır.';
+
+      return `4/A personel işten ayrılış bildirgesi, işten ayrılış tarihini takip eden 10 gün içinde SGK'ya verilir. Süresinde verilmezse 5510/102 kapsamında her bir sigortalı için brüt asgari ücretin 1/10’u idari para cezası uygulanır.${currentYearAmount} Bu ceza geç çıkış bildirgesi içindir; eksik/yanlış aylık prim bildirimi varsa o ayrıca değerlendirilir.`;
+    }
+
     const businessClosure =
       /(işi|iş)\s*(bırak|birak|terk)|mükellefiyet\s*(terk|kapanış|kapanis)/i.test(normalized) &&
       /(bildir|süre|sure|kaç gün|kac gun|ceza|usulsüzlük|usulsuzluk)/i.test(normalized);
