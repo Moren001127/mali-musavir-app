@@ -205,6 +205,30 @@ export function postProcessOcrResult(
     if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
   }
 
+  // ─── 5b. SALT-RATE GUARD — KDV oran echo'su tutar olarak okunamaz ───
+  // BUG FIX (WASH faturasi v1.37.76): Hangi extractor'dan gelirse gelsin, eger
+  // kdvTutari salt rakam (0/1/8/10/18/20 — KDV oranlari) ise bu kesinlikle
+  // "%20" gibi bir oran echo'sudur, KDV tutari degil. Gerçek KDV tutari her
+  // zaman ondaliklidir (824,00 / 1.330,00) — 20 / 10 gibi tam sayi olamaz.
+  if (result.kdvTutari) {
+    const kdvNum = parseAmount(result.kdvTutari);
+    const cleanedKdv = result.kdvTutari.replace(/[^\d,.\-]/g, '').trim();
+    const isJustRate = /^(0|1|8|10|18|20)(?:[,.]00?)?$/.test(cleanedKdv);
+    if (isJustRate && kdvNum <= 30) {
+      logger.warn(
+        `KDV salt-rate guard: "${result.kdvTutari}" oran echo'su gibi gorunuyor (KDV oranlari: 0/1/8/10/18/20) — null'a cekildi (${originalName})`,
+      );
+      result.kdvTutari = null;
+      if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
+      if (result.kdvBreakdown && result.kdvBreakdown.length === 1) {
+        const breakdownTutar = Number(result.kdvBreakdown[0].tutar);
+        if (Math.abs(breakdownTutar - kdvNum) < 0.01) {
+          result.kdvBreakdown = null;
+        }
+      }
+    }
+  }
+
   // ─── 6. KDV BREAKDOWN — Toplam kontrolu ───
   let breakdownInconsistent = false;
   if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
