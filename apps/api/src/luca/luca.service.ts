@@ -294,6 +294,27 @@ export class LucaService {
   async markJobFailed(jobId: string, errorMsg: string) {
     const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
     if (job?.status === 'cancelled') return job;
+    const retryableLucaRuntimeError =
+      /Firma\s+DE[ĞG][Iİ]S[ŞS]MED[Iİ]|firma degisimi|frm4\/SirketCombo|firma frame|classic frame|giris\.do bos|giris\.do bo[sş]|TRANSIENT_LUCA/i.test(errorMsg || '');
+    if (job && retryableLucaRuntimeError && Number(job.retryCount || 0) < 3) {
+      const nextRetryCount = Number(job.retryCount || 0) + 1;
+      const retryDelayMs = Math.min(5 * 60 * 1000, 30 * 1000 * nextRetryCount);
+      const reason = `TRANSIENT_LUCA_FIRMA_OR_FRAME_STUCK_RESET: ${String(errorMsg || '').slice(0, 500)}`;
+      await this.appendJobLog(jobId, `Teknik Luca kilidi algilandi; browser oturumu sifirlanip is otomatik tekrar denenecek (${nextRetryCount}/3): ${reason}`);
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: jobId, status: { notIn: ['done', 'cancelled'] } },
+        data: {
+          status: 'pending',
+          startedAt: null,
+          finishedAt: null,
+          retryCount: nextRetryCount,
+          nextRetryAt: new Date(Date.now() + retryDelayMs),
+          targetDeviceId: null,
+          preferredAgent: 'local-node',
+        },
+      });
+      return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
+    }
     await this.appendJobLog(jobId, `X ${errorMsg}`);
     await (this.prisma as any).lucaFetchJob.updateMany({
       where: { id: jobId, status: { notIn: ['cancelled'] } },
@@ -645,13 +666,20 @@ export class LucaService {
           }
         : { saved: false },
       session: session || { connected: false },
-      devices: (statuses || []).map((s: any) => ({
-        id: s?.meta?.deviceId || null,
-        running: !!s.running,
-        lastPing: s.lastPing,
-        url: s?.meta?.url || null,
-        version: s?.meta?.version || null,
-      })),
+      devices: (statuses || []).map((s: any) => {
+        const lastPingMs = s?.lastPing ? new Date(s.lastPing).getTime() : 0;
+        const ageSec = lastPingMs ? Math.round((Date.now() - lastPingMs) / 1000) : null;
+        const fresh = typeof ageSec === 'number' && ageSec <= 120;
+        return {
+          id: s?.meta?.deviceId || s?.deviceId || null,
+          running: !!s.running && fresh,
+          stale: !fresh,
+          ageSec,
+          lastPing: s.lastPing,
+          url: s?.meta?.url || null,
+          version: s?.meta?.version || null,
+        };
+      }),
       activeChallenge,
     };
   }

@@ -94,8 +94,10 @@ function image(partial) {
 
 function prismaFor({ sessionType, records, images }) {
   const created = [];
+  const sessionUpdates = [];
   const prisma = {
     __created: created,
+    __sessionUpdates: sessionUpdates,
     $executeRaw: async () => 0,
     $transaction: async (callback) => callback(prisma),
     reconciliationResult: {
@@ -107,7 +109,10 @@ function prismaFor({ sessionType, records, images }) {
     },
     kdvControlSession: {
       findUnique: async () => ({ type: sessionType }),
-      update: async () => ({}),
+      update: async (args) => {
+        sessionUpdates.push(args);
+        return args?.data ?? {};
+      },
     },
     kdvRecord: {
       findMany: async () => records,
@@ -489,12 +494,23 @@ const cases = [
     const statsOk = JSON.stringify(stats) === JSON.stringify(testCase.expectedStats);
     const expectedRows = sortRows(testCase.expectedRows);
     const rowsOk = JSON.stringify(rows) === JSON.stringify(expectedRows);
-    if (!statsOk || !rowsOk) {
+    const lastSessionUpdate = prisma.__sessionUpdates[prisma.__sessionUpdates.length - 1];
+    const expectedSessionStatus =
+      testCase.expectedStats.matched > 0 &&
+      testCase.expectedStats.partial === 0 &&
+      testCase.expectedStats.unmatched === 0 &&
+      testCase.expectedStats.needsReview === 0
+        ? 'COMPLETED'
+        : 'REVIEWING';
+    const sessionStatusOk = lastSessionUpdate?.data?.status === expectedSessionStatus;
+    if (!statsOk || !rowsOk || !sessionStatusOk) {
       console.error(`\n[kdv-regression] FAIL: ${testCase.name}`);
       console.error('stats:', JSON.stringify(stats));
       console.error('expectedStats:', JSON.stringify(testCase.expectedStats));
       console.error('rows:', JSON.stringify(rows));
       console.error('expectedRows:', JSON.stringify(expectedRows));
+      console.error('sessionStatus:', lastSessionUpdate?.data?.status);
+      console.error('expectedSessionStatus:', expectedSessionStatus);
       process.exit(1);
     }
     console.log(`[kdv-regression] OK: ${testCase.name}`);

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { KdvRecord, ReceiptImage } from '@prisma/client';
+import { KdvRecord, ReceiptImage, SessionStatus } from '@prisma/client';
 import { detectDoubleOrphans } from '@mali-musavir/shared';
 import { isAggregateLucaRecord } from './luca-row-filter';
 import { formatAmountTr, parseMoneyLike, parseTrUsAmount } from './reconciliation/validators/amount-check';
@@ -366,9 +366,14 @@ export class ReconciliationEngine {
     }
 
     // Oturum durumunu güncelle
+    const nextSessionStatus =
+      stats.matched > 0 && stats.partial === 0 && stats.unmatched === 0 && stats.needsReview === 0
+        ? SessionStatus.COMPLETED
+        : SessionStatus.REVIEWING;
+
     await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
-      data: { status: 'REVIEWING' },
+      data: { status: nextSessionStatus },
     });
 
     this.logger.log(

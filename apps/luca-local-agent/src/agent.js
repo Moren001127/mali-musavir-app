@@ -153,7 +153,7 @@ function normalizeJobTypeConfig(rawJobTypes) {
 const JOB_TYPE_CONFIG = normalizeJobTypeConfig(cfg.worker?.jobTypes);
 const JOB_TYPES = new Set(JOB_TYPE_CONFIG.jobTypes);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.1.5';
+const LOCAL_AGENT_VERSION = 'local-1.1.6';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -399,8 +399,8 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
       lastStatus = status;
     }
     const jobLog = String(data?.errorMsg || '');
-    if (/TRANSIENT_LUCA_CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)/i.test(jobLog)) {
-      throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma frame acilmadi; browser oturumu resetlenecek');
+    if (/TRANSIENT_LUCA_(CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)|FIRMA_OR_FRAME_STUCK_RESET|FIRMA_CHANGE_STUCK_RESET)/i.test(jobLog)) {
+      throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma/frame akisi takildi; browser oturumu resetlenecek');
     }
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
     await new Promise((r) => setTimeout(r, 3000));

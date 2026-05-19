@@ -48,6 +48,10 @@ requireText('job tipi hedef modulle uyusmuyor', 'exactTip hata mesajı yok; mod�
 requireText('nextRetryAt: { lte: new Date() }', 'pending Luca jobs nextRetryAt cooldown filtresinden geçmiyor');
 requireText('nextRetryCount', 'teknik Luca requeue retry sayacı yok');
 requireText('shouldFailTransient', 'teknik Luca requeue sınırsız döngüye girebilir');
+requireText('TRANSIENT_LUCA_FIRMA_OR_FRAME_STUCK_RESET', 'firma/frame takilmasi teknik retry olarak etiketlenmiyor');
+requireText('targetDeviceId: null', 'teknik retry cihaz kilidini temizlemiyor');
+requireText('stale: !fresh', 'eski Luca ajan pingleri canli cihaz gibi gosteriliyor');
+requireText('ageSec <= 120', 'Luca ajan canlilik esigi korunmuyor');
 requireText('retryDelayMs', 'teknik Luca requeue cooldown/backoff yok');
 requireText('Luca klasik ekran 3 kez', 'klasik Luca frame takılması diğer işleri bloklamadan failed olmuyor');
 requireText('Number(repairState.count || 0) >= 5', 'agent klasik Luca frame reset eşiği çok geç; işler uzun süre takılabilir');

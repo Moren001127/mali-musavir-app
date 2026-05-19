@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.81';
+  const AGENT_VERSION = '1.37.82';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1452,6 +1452,20 @@
             }).catch(() => {});
             setStatus(`Luca: ${job.tip} — fatura yok`);
           } else {
+            const isRetryableLucaRuntimeError =
+              /Firma\s+DE[ĞG][Iİ]S[ŞS]MED[Iİ]|firma degisimi|frm4\/SirketCombo|firma frame|classic frame|giris\.do bos|giris\.do bo[sş]|TRANSIENT_LUCA/i.test(msg);
+            if (isRetryableLucaRuntimeError) {
+              const reason = `TRANSIENT_LUCA_FIRMA_OR_FRAME_STUCK_RESET: ${msg.slice(0, 500)}`;
+              await safeLog(`Teknik Luca kilidi algilandi; browser oturumu sifirlanip is otomatik tekrar denenecek: ${reason}`);
+              await fetch(API + `/agent/luca/jobs/${job.id}/requeue`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ reason }),
+              }).catch(() => {});
+              window.__morenAgent.stopRequested = true;
+              setStatus(`Luca: ${job.tip} teknik kilit temizleniyor`);
+              continue;
+            }
             console.error('[Moren] Luca job hata:', e);
             await safeLog(`✗ ${job.tip} hata: ${msg.slice(0, 200)}`);
             // KRİTİK: /fail çağrısı SADECE try-catch içinde, log undefined olsa bile çalışır.
