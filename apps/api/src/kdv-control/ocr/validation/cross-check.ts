@@ -97,6 +97,18 @@ export function crossCheckWithAzure(
 
   const kdvAlreadyVerifiedByAutoFill = { value: false };
 
+  // ─── SALT-RATE GUARD ────────────────────────────────────────────────
+  // BUG FIX (WASH faturasi v1.37.77): Azure'in re-extract'inden gelen kdvTutari
+  // "20" / "20,00" / "10" gibi salt KDV oranlari olabilir (Azure ham metnindeki
+  // "%20.0" gibi rate echo'larini tutar sanip donduruyor). Bu degerler postProcess
+  // tarafindan zaten null'a cekilmis olabilir, ama cross-check overwrite ediyor.
+  // Her override oncesi bu helper'la "salt rate" mi kontrol et.
+  const isLikelyRateEcho = (n: number): boolean => {
+    if (n > 30) return false;
+    const rounded = Math.round(n * 100) / 100;
+    return [0, 1, 8, 10, 18, 20].some((r) => Math.abs(rounded - r) < 0.01);
+  };
+
   // ─── Filename match → belge no cross-check skip ───
   let skipBelgeNoCheck = false;
   if (belgeNoFromFilename && result.belgeNo) {
@@ -243,15 +255,21 @@ export function crossCheckWithAzure(
   if (isTelekomFatura) {
     const kdvOnlyAmount = extractKdvOnlyFromTelekomAzure(azureText);
     if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
-      const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
-      if (Math.abs(claudeKdv - kdvOnlyAmount) > 0.05) {
+      if (isLikelyRateEcho(kdvOnlyAmount)) {
         logger.warn(
-          `Telekom fatura KDV override: Claude=${result.kdvTutari} → Azure "Katma Değer Vergisi" satırı=${formatAmount(kdvOnlyAmount)} (${originalName})`,
+          `Telekom KDV override iptal: ${kdvOnlyAmount} salt KDV orani gibi gorunuyor (rate echo, ${originalName})`,
         );
-        result.kdvTutari = formatAmount(kdvOnlyAmount);
-        result.fieldConfidence.kdvTutari = 0.92;
-        result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
-        kdvAlreadyVerifiedByAutoFill.value = true;
+      } else {
+        const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
+        if (Math.abs(claudeKdv - kdvOnlyAmount) > 0.05) {
+          logger.warn(
+            `Telekom fatura KDV override: Claude=${result.kdvTutari} → Azure "Katma Değer Vergisi" satırı=${formatAmount(kdvOnlyAmount)} (${originalName})`,
+          );
+          result.kdvTutari = formatAmount(kdvOnlyAmount);
+          result.fieldConfidence.kdvTutari = 0.92;
+          result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
+          kdvAlreadyVerifiedByAutoFill.value = true;
+        }
       }
     }
   }
@@ -261,22 +279,28 @@ export function crossCheckWithAzure(
     ? null
     : extractKdvFromInvoiceTotalsAzure(azureText);
   if (invoiceTotalsKdv && invoiceTotalsKdv.kdv > 0) {
-    const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
-    const diff = Math.abs(claudeKdv - invoiceTotalsKdv.kdv);
-    if (diff > 0.05) {
+    if (isLikelyRateEcho(invoiceTotalsKdv.kdv)) {
       logger.warn(
-        `Açık KDV satırı override: Claude=${result.kdvTutari} → Azure=${formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
+        `Acik KDV satiri override iptal: ${invoiceTotalsKdv.kdv} salt KDV orani gibi gorunuyor (rate echo - "%20" tutar sanildi, ${originalName})`,
       );
-      result.kdvTutari = formatAmount(invoiceTotalsKdv.kdv);
-      result.fieldConfidence.kdvTutari = 0.92;
-      result.kdvBreakdown = [{
-        oran: invoiceTotalsKdv.oran && invoiceTotalsKdv.oran > 0 ? invoiceTotalsKdv.oran : 20,
-        tutar: invoiceTotalsKdv.kdv,
-        matrah: invoiceTotalsKdv.matrah,
-      }];
-      kdvAlreadyVerifiedByAutoFill.value = true;
-    } else if (diff <= 0.05 && result.fieldConfidence.kdvTutari != null) {
-      result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
+    } else {
+      const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
+      const diff = Math.abs(claudeKdv - invoiceTotalsKdv.kdv);
+      if (diff > 0.05) {
+        logger.warn(
+          `Açık KDV satırı override: Claude=${result.kdvTutari} → Azure=${formatAmount(invoiceTotalsKdv.kdv)} (${originalName})`,
+        );
+        result.kdvTutari = formatAmount(invoiceTotalsKdv.kdv);
+        result.fieldConfidence.kdvTutari = 0.92;
+        result.kdvBreakdown = [{
+          oran: invoiceTotalsKdv.oran && invoiceTotalsKdv.oran > 0 ? invoiceTotalsKdv.oran : 20,
+          tutar: invoiceTotalsKdv.kdv,
+          matrah: invoiceTotalsKdv.matrah,
+        }];
+        kdvAlreadyVerifiedByAutoFill.value = true;
+      } else if (diff <= 0.05 && result.fieldConfidence.kdvTutari != null) {
+        result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
+      }
     }
   }
 
@@ -295,10 +319,16 @@ export function crossCheckWithAzure(
       multiB.length >= 2 ? multiB :
       multiA;
     if (hesMatrah.totalKdv !== null && hesMatrah.totalKdv > 0) {
-      result.kdvTutari = hesMatrah.totalKdv.toFixed(2);
-      logger.log(
-        `Hes. Matrah / KDV Toplam tablosundan KDV override: ${hesMatrah.totalKdv.toFixed(2)} (${originalName})`,
-      );
+      if (isLikelyRateEcho(hesMatrah.totalKdv)) {
+        logger.warn(
+          `Hes. Matrah KDV override iptal: ${hesMatrah.totalKdv} salt KDV orani gibi gorunuyor (rate echo, ${originalName})`,
+        );
+      } else {
+        result.kdvTutari = hesMatrah.totalKdv.toFixed(2);
+        logger.log(
+          `Hes. Matrah / KDV Toplam tablosundan KDV override: ${hesMatrah.totalKdv.toFixed(2)} (${originalName})`,
+        );
+      }
     }
 
     const claudeBreakdownCount = result.kdvBreakdown?.length || 0;
