@@ -116,6 +116,7 @@ const SUPPORTED_JOB_TYPES = Object.freeze([
   'ISLETME_GELIR',
   'ISLETME_GIDER',
   'IHO_FETCH',
+  'EDEFTER_FIS_LISTESI',
   'EARSIV_SATIS',
   'EARSIV_ALIS',
   'EFATURA_SATIS',
@@ -153,7 +154,7 @@ function normalizeJobTypeConfig(rawJobTypes) {
 const JOB_TYPE_CONFIG = normalizeJobTypeConfig(cfg.worker?.jobTypes);
 const JOB_TYPES = new Set(JOB_TYPE_CONFIG.jobTypes);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.1.6';
+const LOCAL_AGENT_VERSION = 'local-1.1.7';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik

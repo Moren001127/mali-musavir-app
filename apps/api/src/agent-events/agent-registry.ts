@@ -79,7 +79,7 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     queue: 'luca-fetch-job',
     stage: 'active',
     modules: ['mizan', 'bilanco', 'gelir-tablosu'],
-    lucaJobTips: ['MIZAN', 'KDV_MIZAN'],
+    lucaJobTips: ['MIZAN', 'KDV_MIZAN', 'EDEFTER_FIS_LISTESI'],
     legacyRunner: 'luca',
     description: 'Mizani Luca uzerinden ceker; bilanco ve gelir tablosu bu veriden uretilir.',
   },

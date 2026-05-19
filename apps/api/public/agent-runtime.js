@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.82';
+  const AGENT_VERSION = '1.37.83';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1103,7 +1103,7 @@
           // Kapsam: e-arşiv + e-fatura + mizan + kdv kontrol + tüm Luca veri çekmeleri
           const isLucaDataJob = [
             'EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS',
-            'MIZAN','ACCOUNT_PLAN','KDV_MIZAN','IHO_FETCH',
+            'MIZAN','ACCOUNT_PLAN','KDV_MIZAN','IHO_FETCH','EDEFTER_FIS_LISTESI',
             'KDV_191','KDV_391','ISLETME_GELIR','ISLETME_GIDER',
             'MUAVIN','ISLETME',
             'GELIR_TABLOSU','BILANCO'
@@ -1253,6 +1253,7 @@
             MIZAN: 'Mizan ekranı (Genel Raporlar > Mizan)',
             ACCOUNT_PLAN: 'Hesap planı güncelleme için Mizan ekranı',
             KDV_MIZAN: 'KDV Beyanname için Mizan ekranı',
+            EDEFTER_FIS_LISTESI: 'e-Defter On Kontrol icin Detay Fis Listesi ekrani',
             KDV_191: 'Defteri Kebir (Tüm Yazıcılar) — 191 hesap kodu',
             KDV_391: 'Defteri Kebir (Tüm Yazıcılar) — 391 hesap kodu',
             ISLETME_GELIR: 'İşletme defteri (gelir kayıtları)',
@@ -1346,6 +1347,14 @@
               jobId: job.id,
             });
             uploadUrl = `${API}/agent/luca/runner/upload-iho?${params.toString()}`;
+          } else if (job.tip === 'EDEFTER_FIS_LISTESI') {
+            const params = new URLSearchParams({
+              mukellefId: String(job.mukellefId || ''),
+              donem: String(job.donem || ''),
+              donemTipi: String(inferDonemTipi(job.donem, job.donemTipi)),
+              jobId: job.id,
+            });
+            uploadUrl = `${API}/agent/luca/runner/upload-edefter-fis-listesi?${params.toString()}`;
           } else if (
             job.tip === 'EARSIV_SATIS' || job.tip === 'EARSIV_ALIS' ||
             job.tip === 'EFATURA_SATIS' || job.tip === 'EFATURA_ALIS'
@@ -1507,6 +1516,9 @@
     // Sadece backend'de farklı tabloya yazılır (Mizan vs KdvLucaSnapshot)
     if (job.tip === 'MIZAN' || job.tip === 'ACCOUNT_PLAN' || job.tip === 'KDV_MIZAN') {
       return await fetchLucaMizanExcel(job, log);
+    }
+    if (job.tip === 'EDEFTER_FIS_LISTESI') {
+      return await fetchLucaDetayFisListesiExcel(job, log);
     }
     if (job.tip === 'KDV_191' || job.tip === 'KDV_391') {
       const hesap = job.tip === 'KDV_191' ? '191' : '391';
@@ -7944,6 +7956,102 @@
     await log('✓ İşletme Gider Listesi hazır, Gelir/Gider Listesi sağ menüsü görünür');
   }
 
+  async function openLucaDetayFisListesi(log) {
+    try {
+      const f3 = getLucaFrame('frm3');
+      if (f3) {
+        f3.src = 'about:blank';
+        await sleep(650);
+        await log('Detay Fis Listesi icin frm3 temizlendi; eski/yanlis rapor formu kabul edilmeyecek');
+      }
+    } catch {}
+    cacheVisibleLucaMenuIds();
+    if (await openCachedLucaMenu('Detay Fiş Listesi', log, 1000) || await openCachedLucaMenu('Detay Fis Listesi', log, 1000)) {
+      const ready = await waitUntil(() => findLucaDetayFisListesiFormNow(), 7000, 250);
+      if (ready) {
+        await log('✓ Detay Fis Listesi ID cache ile acildi ve form dogrulandi');
+        return;
+      }
+      deleteCachedLucaMenuHit('Detay Fiş Listesi');
+      deleteCachedLucaMenuHit('Detay Fis Listesi');
+      await log('Detay Fis Listesi cache ID hedef formu acmadi; metinle yeniden denenecek');
+    }
+
+    await log('🔍 Sağ menüde Detay Fiş Listesi linki aranıyor...');
+    const found = await findLucaMenuItemAny(['Detay Fiş Listesi', 'Detay Fis Listesi'], log, 7000);
+    if (!found) {
+      throw new Error(
+        'Luca Detay Fis Listesi linki bulunamadi. Muhasebe > Fis Islemleri > Fis Listesi sayfasinda, Genel Raporlar bolumunde olmaliyiz.',
+      );
+    }
+    await log(`🖱 Detay Fis Listesi tiklaniyor (${found.frameName} -> ${found.el.tagName})`);
+    await activateLucaMenuItem(found.foundLabel || 'Detay Fiş Listesi', found, log, 1000);
+    const ready = await waitUntil(() => findLucaDetayFisListesiFormNow(), 12000, 250);
+    if (ready) return;
+    throw new Error(`Detay Fis Listesi tiklandi ama form yuklenmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+  }
+
+  function findLucaDetayFisListesiFormNow() {
+    const collectFrames = (root, depth = 0, acc = []) => {
+      if (depth > 5) return acc;
+      try {
+        for (const f of root.querySelectorAll('frame, iframe')) {
+          acc.push(f);
+          if (f.contentDocument) collectFrames(f.contentDocument, depth + 1, acc);
+        }
+      } catch {}
+      return acc;
+    };
+    const looksLikeDetailFis = (form) => {
+      const docText = (form.ownerDocument?.body?.textContent || '').toLocaleLowerCase('tr-TR');
+      const formText = `${form.name || ''} ${form.id || ''} ${form.action || ''} ${docText}`.toLocaleLowerCase('tr-TR');
+      const hasTitle = /detay\s+fi[şs]\s+listesi/.test(formText);
+      const hasControls = form.querySelectorAll('input, select, button').length > 0;
+      const isMizan = /mizan/.test(`${form.name || ''} ${form.action || ''}`.toLocaleLowerCase('tr-TR'));
+      return hasTitle && hasControls && !isMizan;
+    };
+    for (const f of collectFrames(document)) {
+      if (!f.contentDocument) continue;
+      try {
+        for (const form of f.contentDocument.querySelectorAll('form')) {
+          if (looksLikeDetailFis(form)) return form;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  async function waitForLucaDetayFisListesiForm(log, maxMs = 15000) {
+    await log('⏳ Detay Fis Listesi formu bekleniyor...');
+    const form = await waitUntil(() => findLucaDetayFisListesiFormNow(), maxMs, 250);
+    if (!form) {
+      await log(`🔍 Bulunan form'lar: ${collectLucaFormsBrief().join(' | ') || '(hic yok)'}`);
+      throw new Error('Detay Fis Listesi formu yuklenmedi (timeout)');
+    }
+    await log(`✓ Detay Fis Listesi formu yuklendi: name="${form.name || '?'}" action="${(form.action || '').split('/').pop()}"`);
+    return form;
+  }
+
+  async function fetchLucaDetayFisListesiExcel(job, log) {
+    if (location.hostname.includes('agiris.luca') || location.pathname.includes('LUCASSO')) {
+      throw new Error(
+        'Bu Luca v2.1 (LUCASSO) surumu. Lutfen klasik Luca icinde calisin: auygs.luca.com.tr/Luca/luca.do',
+      );
+    }
+
+    const firmaResult = await ensureLucaFirma(job, log);
+    await navigateToFisListesi(log);
+    if (firmaResult?.changed) {
+      await log('🔁 Firma degisti - Detay Fis Listesi formu taze acilacak');
+    }
+    await openLucaDetayFisListesi(log);
+    const form = await waitForLucaDetayFisListesiForm(log);
+    return await fetchMizanByClickIntercept(form, job, log, {
+      label: 'Detay Fis Listesi',
+      raporTur: 'detayFisListesi',
+    });
+  }
+
   /**
    * Sağ menüde "Mizan" linkine tıkla — frm5 öncelikli. Element FONT içinde olabilir,
    * click bubbling ile parent jQuery handler tetiklenir.
@@ -8377,11 +8485,40 @@
     return await fetchMizanByClickIntercept(form, job, log);
   }
 
+  async function preferExcelReportType(form, log, label = 'Rapor') {
+    let seenReportSelect = false;
+    let changed = false;
+    for (const sel of form.querySelectorAll('select')) {
+      const nameText = `${sel.name || ''} ${sel.id || ''}`.toLocaleLowerCase('tr-TR');
+      const isReportSelect =
+        /rapor|report|tur|degistir|dosya|format/.test(nameText) ||
+        [...sel.options].some((opt) => /excel|xlsx|xls|pdf/i.test(`${opt.text || ''} ${opt.value || ''}`));
+      if (!isReportSelect) continue;
+      seenReportSelect = true;
+      const option = [...sel.options].find((opt) => {
+        const text = `${opt.text || ''} ${opt.value || ''}`.toLocaleLowerCase('tr-TR');
+        return /excel|xlsx|xls/.test(text);
+      });
+      if (!option) continue;
+      if (sel.value !== option.value) {
+        sel.value = option.value;
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        changed = true;
+      }
+      await log(`📊 ${label} rapor turu: ${String(option.text || option.value).trim()}`);
+      break;
+    }
+    if (seenReportSelect && !changed) {
+      await log(`ℹ ${label} rapor turu zaten uygun ya da Excel secenegi yok; mevcut secim korunuyor`);
+    }
+  }
+
   /**
    * Luca'nın "Excel'e Aktar" butonuna programmatik tıkla, fetch'i monkey-patch
    * ederek rapor_indir.jq response'unu (Excel blob) yakala.
    */
-  async function fetchMizanByClickIntercept(form, job, log) {
+  async function fetchMizanByClickIntercept(form, job, log, options = {}) {
     // Önce tarihleri formda elle doldur (button click bunları kullanacak)
     const tarih = donemToTarihAraligi(job.donem, job.donemTipi);
     if (!tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
@@ -8405,12 +8542,12 @@
     const mizanStartKeys = [
       'tarih_ilk', 'tarihIlk', 'TARIH_ILK', 'tarih_bas', 'tarihBas',
       'baslangic', 'basTarih', 'ilkTarih', 'donem_bas', 'cari_donem_bas',
-      'fis_tarihi_ilk', 'p_fis_tarihi_ilk_1',
+      'fis_tarihi_ilk', 'p_fis_tarihi_ilk_1', 'baslangicFisTarihi', 'BASLANGIC_FIS_TARIHI',
     ];
     const mizanEndKeys = [
       'tarih_son', 'tarihSon', 'TARIH_SON', 'tarih_bit', 'tarihBit',
       'bitis', 'bitTarih', 'sonTarih', 'donem_bit', 'cari_donem_bit',
-      'fis_tarihi_son', 'p_fis_tarihi_son_1',
+      'fis_tarihi_son', 'p_fis_tarihi_son_1', 'bitisFisTarihi', 'BITIS_FIS_TARIHI',
     ];
     const setAllMizanDateKeys = (target) => {
       if (!target || typeof target !== 'object') return false;
@@ -8560,6 +8697,7 @@
         .slice(0, 12)
         .join(' | ');
       await log(`🧷 Mizan tarih ID kontrolü (${dateLikeChanged}/${dateLikeInputs.length} set): ${state}`);
+      await preferExcelReportType(form, log, options.label || 'Mizan');
     }
 
     // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
@@ -9041,7 +9179,7 @@
         if (!donemId) {
           donemId = form.querySelector('input[name="DONEM_ID"], input[name="donem_id"]')?.value || '';
         }
-        const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: 'mizan' } });
+        const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: options.raporTur || 'mizan' } });
         const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
 
         for (let i = 0; i < 30; i++) {

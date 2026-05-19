@@ -32,6 +32,7 @@ import { BankaTakipModule } from './banka-takip/banka-takip.module';
 import { SystemHealthModule } from './system-health/system-health.module';
 import { TasksModule } from './tasks/tasks.module';
 import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-muhasebelestirme.module';
+import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
@@ -71,6 +72,7 @@ import { HgsCron } from './schedule/hgs.cron';
     SystemHealthModule,
     TasksModule,
     FaturaMuhasebelestirmeModule,
+    EDefterControlModule,
     PortalAutomationModule,
   ],
   providers: [ReminderCron, HgsCron],

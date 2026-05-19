@@ -552,6 +552,7 @@ export class SystemHealthService {
     const labels: Record<string, string> = {
       KDV_MIZAN: 'KDV mizan',
       MIZAN: 'Mizan',
+      EDEFTER_FIS_LISTESI: 'e-Defter detay fis listesi',
       ACCOUNT_PLAN: 'Hesap planı',
       KDV_191: '191 KDV kontrol',
       KDV_391: '391 KDV kontrol',

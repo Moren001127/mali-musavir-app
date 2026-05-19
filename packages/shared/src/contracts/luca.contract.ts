@@ -21,8 +21,13 @@ export const LucaJobTipiSchema = z.enum([
   'EFATURA_SATIS',
   'EFATURA_ALIS',
   'ACCOUNT_PLAN',
+  'EDEFTER_FIS_LISTESI',
 ]);
 export type LucaJobTipi = z.infer<typeof LucaJobTipiSchema>;
+
+export const LucaDonemSchema = z.string().regex(
+  /^(\d{4}-\d{2}|\d{4}-Q[1-4]|\d{4}|\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2})$/,
+);
 
 /**
  * Job tipi -> upload endpoint sozlesmesi.
@@ -41,6 +46,7 @@ export const LUCA_JOB_TO_ENDPOINT: Record<LucaJobTipi, string> = {
   EFATURA_SATIS: 'upload-earsiv',
   EFATURA_ALIS: 'upload-earsiv',
   ACCOUNT_PLAN: 'upload-account-plan',
+  EDEFTER_FIS_LISTESI: 'upload-edefter-fis-listesi',
 };
 
 /** Job upload payload - agent -> backend */
@@ -48,7 +54,7 @@ export const LucaJobUploadSchema = z.object({
   jobId: z.string().min(1),
   tip: LucaJobTipiSchema,
   mukellefId: z.string().min(1),
-  donem: z.string().regex(/^\d{4}-\d{2}$/),
+  donem: LucaDonemSchema,
   sessionId: z.string().nullable().optional(),
   contentSize: z.number().int().min(0).optional(),
   rows: z.array(z.unknown()).optional(),
@@ -79,7 +85,7 @@ export type LucaRow = z.infer<typeof LucaRowSchema>;
 
 export const LucaSheetSchema = z.object({
   taxpayerId: z.string().min(1),
-  period: z.string().regex(/^\d{4}-\d{2}$/),
+  period: LucaDonemSchema,
   sessionType: LucaJobTipiSchema,
   rows: z.array(LucaRowSchema),
   aggregateRows: z.array(LucaRowSchema).optional(),

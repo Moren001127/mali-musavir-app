@@ -1418,6 +1418,85 @@ model MizanDenetimKriteri {
   @@map("mizan_denetim_kriterleri")
 }
 
+// e-Defter on kontrol icin Luca Detay Fis Listesi snapshot'i.
+// Kaynak yevmiye defteri degil, defter olusmadan once muhasebe fis satirlaridir.
+model EDefterControlSession {
+  id             String   @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  donem          String   // "2026-Q1", "2026-04" veya "2026"
+  donemTipi      String   @default("GECICI_Q1") // GECICI_Q1..Q4 | AYLIK | YILLIK
+  donemBaslangic DateTime?
+  donemBitis     DateTime?
+  kaynak         String   @default("LUCA") // LUCA | EXCEL
+  status         String   @default("READY") // READY | REVIEWING | FAILED
+  totalLines     Int      @default(0)
+  totalVouchers  Int      @default(0)
+  findingCount   Int      @default(0)
+  rawExcelBytes  Bytes?
+  rawExcelSize   Int      @default(0)
+  notes          String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lines          EDefterVoucherLine[]
+  findings       EDefterFinding[]
+
+  @@index([tenantId, taxpayerId, donem])
+  @@index([tenantId, createdAt])
+  @@map("edefter_control_sessions")
+}
+
+model EDefterVoucherLine {
+  id            String   @id @default(cuid())
+  sessionId     String
+  rowIndex      Int      @default(0)
+  voucherKey    String
+  fisNo         String?
+  yevmiyeNo     String?
+  fisTarihi     DateTime?
+  fisTipi       String?
+  evrakNo       String?
+  evrakTarihi   DateTime?
+  belgeTuru     String?
+  hesapKodu     String?
+  hesapAdi      String?
+  aciklama      String?
+  karsiHesap    String?
+  vknTckn       String?
+  borc          Decimal  @default(0) @db.Decimal(18, 2)
+  alacak        Decimal  @default(0) @db.Decimal(18, 2)
+  rawData       Json?
+  createdAt     DateTime @default(now())
+
+  session       EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, voucherKey])
+  @@index([sessionId, hesapKodu])
+  @@map("edefter_voucher_lines")
+}
+
+model EDefterFinding {
+  id            String   @id @default(cuid())
+  sessionId     String
+  severity      String   @default("WARN") // INFO | WARN | ERROR
+  category      String
+  message       String
+  voucherKey    String?
+  rowIndex      Int?
+  hesapKodu     String?
+  detail        Json?
+  status        String   @default("OPEN") // OPEN | RESOLVED | IGNORED
+  createdAt     DateTime @default(now())
+
+  session       EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, severity])
+  @@index([sessionId, category])
+  @@map("edefter_findings")
+}
+
 model GelirTablosu {
   id           String   @id @default(cuid())
   tenantId     String

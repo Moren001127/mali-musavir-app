@@ -73,12 +73,13 @@ const expectedSharedJobTypes = [
   'EARSIV_ALIS',
   'EFATURA_SATIS',
   'EFATURA_ALIS',
+  'EDEFTER_FIS_LISTESI',
 ];
 for (const jobType of expectedSharedJobTypes) {
   requireIn(sharedContractSrc, `'${jobType}'`, `shared Luca kontrati gercek job tipini icermiyor: ${jobType}`);
   requireIn(localAgentSrc, `'${jobType}'`, `local agent job tipi destek listesinde yok: ${jobType}`);
 }
-for (const endpoint of ['upload-mizan', 'upload-account-plan', 'upload-kdv-mizan', 'upload-iho', 'upload-earsiv', 'upload-kdv']) {
+for (const endpoint of ['upload-mizan', 'upload-account-plan', 'upload-kdv-mizan', 'upload-iho', 'upload-earsiv', 'upload-kdv', 'upload-edefter-fis-listesi']) {
   requireIn(sharedContractSrc, endpoint, `shared Luca kontrati endpoint eslesmesini icermiyor: ${endpoint}`);
 }
 for (const legacy of ['EARSIV_GELEN', 'EARSIV_GIDEN', 'EFATURA_GELEN', 'EFATURA_GIDEN', 'HESAP_PLANI', 'upload-hesap-plani']) {
