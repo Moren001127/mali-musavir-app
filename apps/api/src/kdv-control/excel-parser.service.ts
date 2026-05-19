@@ -15,6 +15,11 @@ export interface ParsedKdvRow {
   rawData: Record<string, any>;
 }
 
+export interface DateParseOptions {
+  expectedYear?: number;
+  expectedMonth?: number; // 1-12
+}
+
 @Injectable()
 export class ExcelParserService {
   private readonly logger = new Logger(ExcelParserService.name);
@@ -51,7 +56,7 @@ export class ExcelParserService {
    * type='191' → KDV tutarı BORÇ sütununda
    * type='391' → KDV tutarı ALACAK sütununda
    */
-  parseKdvExcel(buffer: Buffer, type?: '191' | '391'): ParsedKdvRow[] {
+  parseKdvExcel(buffer: Buffer, type?: '191' | '391', dateOptions?: DateParseOptions): ParsedKdvRow[] {
     buffer = this.normalizeLucaExcelBuffer(buffer, `KDV Excel (${type ?? 'auto'})`);
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheetName = workbook.SheetNames[0];
@@ -91,15 +96,30 @@ export class ExcelParserService {
       }
       const keys = Object.keys(row);
 
+      const normalizeKey = (value: any): string =>
+        String(value ?? '')
+          .toLocaleUpperCase('tr-TR')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\uFFFD/g, '')
+          .replace(/[^A-Z0-9]+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .replace(/\bA\s*IKLAMA\b/g, 'ACIKLAMA')
+          .replace(/\bA\s*CIKLAMA\b/g, 'ACIKLAMA')
+          .replace(/\bACIKLAMA\b/g, 'ACIKLAMA')
+          .replace(/\bHESAP\s+AD\b/g, 'HESAP ADI');
+
       const find = (patterns: string[]): any => {
+        const normalizedPatterns = patterns.map(normalizeKey).filter(Boolean);
         // Önce tam eşleşme dene
-        for (const p of patterns) {
-          const exactKey = keys.find((k) => k.toLowerCase() === p.toLowerCase());
+        for (const p of normalizedPatterns) {
+          const exactKey = keys.find((k) => normalizeKey(k) === p);
           if (exactKey) return row[exactKey];
         }
         // Sonra içerir kontrolü
         const key = keys.find((k) =>
-          patterns.some((p) => k.toLowerCase().includes(p.toLowerCase())),
+          normalizedPatterns.some((p) => normalizeKey(k).includes(p)),
         );
         return key ? row[key] : null;
       };
@@ -108,27 +128,54 @@ export class ExcelParserService {
       const kdvTutari = this.toDecimal(kdvRaw);
       if (kdvTutari === null || kdvTutari === 0) continue;
 
-      // Belge No: Luca Defteri Kebir'de "EVRAK NO" kesin eşleşme önce
-      const belgeNo = find([
-        'evrak no', 'evrak numarasi', 'belge no', 'fiş no', 'fis no',
-        'fatura no', 'belge numarası', 'fiş numarası', 'belge',
-      ]);
+      // Belge No: Luca Defteri Kebir'de "EVRAK NO" kesin eşleşme önce.
+      //
+      // BUG FIX (WASH CLEAN Nisan 2026): Eski mantik onceki sirada 'fiş no' / 'fis no'
+      // de vardi, FİŞ NO (Luca ic yevmiye sirasi - 670/671/...) yanlislikla belge no
+      // saniliyordu. Yeni mantik 3 fazli:
+      //   1. EVRAK NO kolonu (Luca'daki "EVRAK NO" sutunu) - gercek e-fatura no
+      //   2. Aciklama icinde e-fatura pattern var mi (EM02026.../EFA2026.../SA02026...)
+      //   3. SADECE 1 ve 2 bos donduyse: 'belge no'/'fatura no'/'fiş no' fallback
+      //
+      // Bu sayede Luca her zaman "EVRAK NO" sutununu okur, FİŞ NO'ya hicbir zaman
+      // dusmez (cunku FİŞ NO Luca'nin ic yevmiye sirasi, e-fatura no degil).
+      const aciklamaValue = find(['aÃ§Ä±klama', 'aciklama', 'hesap adÄ±', 'hesap adi']);
+      const evrakNoColumn = find(['evrak no', 'evrak numarasi']);
+      const evrakNoStr = evrakNoColumn != null ? String(evrakNoColumn).trim() : '';
+      const eFaturaPattern = /^[A-Z]{2,4}\d{0,2}20\d{2}\d{6,14}$/i;
+      const isEvrakNoEFatura = eFaturaPattern.test(evrakNoStr.toUpperCase());
+      const aciklamaEFatura = this.extractBelgeNoFromDescription(aciklamaValue);
+      let belgeNo: any;
+      if (isEvrakNoEFatura) {
+        // EN GUVENILIR: EVRAK NO kolonu zaten e-fatura formatinda (EM02026...)
+        belgeNo = evrakNoStr;
+      } else if (aciklamaEFatura) {
+        // 2. SECENEK: Aciklama icinde e-fatura formati bulundu
+        belgeNo = aciklamaEFatura;
+      } else if (evrakNoStr) {
+        // 3. SECENEK: EVRAK NO dolu ama e-fatura format degil (kasa/yev kayit vs)
+        belgeNo = evrakNoStr;
+      } else {
+        // SON CARE: belge no / fatura no / fis no fallback
+        belgeNo = find([
+          'belge no', 'fatura no', 'belge numarası', 'belge',
+          'fiş no', 'fis no', 'fiş numarası',
+        ]);
+      }
 
       // Tarih: "EVRAK TARİHİ" ya da "TARİH"
       const dateRaw = find([
         'evrak tarihi', 'belge tarihi', 'tarih', 'fiş tarihi',
         'fatura tarihi', 'işlem tarihi',
       ]);
-      const belgeDate = this.parseDate(dateRaw);
+      const belgeDate = this.parseDate(dateRaw, dateOptions);
 
       // ─── ÖZEL SATIR FİLTRESİ ───
       // Luca Defteri Kebir Excel'inde "NAKLİ YEKÜN" (devir bakiyesi) ve "Toplam:"
       // satırları KDV sütunu doluysa yanlışlıkla kayıt olarak alınır.
       // Bunlar transaction değil — TARIH/MADDE NO/EVRAK NO boş olur,
       // AÇIKLAMA "NAKLİ YEKÜN" / "TOPLAM" / "GENEL TOPLAM" içerir.
-      const aciklamaText = String(
-        find(['açıklama', 'aciklama', 'hesap adı', 'hesap adi']) ?? '',
-      ).toLocaleUpperCase('tr-TR').trim();
+      const aciklamaText = String(aciklamaValue ?? '').toLocaleUpperCase('tr-TR').trim();
       const rowText = Object.values(row)
         .map((v) => String(v ?? ''))
         .join(' ')
@@ -181,7 +228,9 @@ export class ExcelParserService {
 
       // Hesap kodu'ndan KDV oranı çıkar (Ör: "191.01.001" → %1)
       const hesapKodu = String(find(['hesap kodu']) ?? '');
-      const extractedOran = kdvOrani ?? this.extractKdvOraniFromHesapKodu(hesapKodu);
+      const hesapAdi = String(find(['hesap adi', 'hesap ad', 'hesap adı']) ?? '');
+      const oranFromText = this.extractKdvOraniFromText(`${hesapAdi} ${aciklamaValue ?? ''}`);
+      const extractedOran = kdvOrani ?? oranFromText ?? this.extractKdvOraniFromHesapKodu(hesapKodu);
 
       const parsedRow: ParsedKdvRow = {
         rowIndex: i + 2,
@@ -495,12 +544,20 @@ export class ExcelParserService {
   }
 
   /** "191.01.001" → 1, "191.01.004" → 20, "191.01.005" → 10 */
-  private extractKdvOraniFromHesapKodu(kod: string): number | null {
+  extractKdvOraniFromHesapKodu(kod: string): number | null {
     const map: Record<string, number> = {
       '001': 1, '002': 8, '003': 18, '004': 20, '005': 10,
     };
     const suffix = kod.slice(-3);
     return map[suffix] ?? null;
+  }
+
+  extractKdvOraniFromText(text: string | null | undefined): number | null {
+    const raw = String(text ?? '').toLocaleUpperCase('tr-TR');
+    const match = raw.match(/%\s*(\d{1,2})(?:[,.]\d{1,2})?/);
+    if (!match) return null;
+    const n = Number(match[1]);
+    return Number.isFinite(n) && n > 0 && n <= 100 ? n : null;
   }
 
   /** rawData'yı Prisma JSON'una uygun hale getirir (Date, NaN, Infinity temizler) */
@@ -582,17 +639,62 @@ export class ExcelParserService {
     return Math.abs(num);
   }
 
-  parseDate(val: any): Date | null {
+  parseDate(val: any, options: DateParseOptions = {}): Date | null {
     if (!val) return null;
-    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+    const expectedMonth = options.expectedMonth && options.expectedMonth >= 1 && options.expectedMonth <= 12
+      ? options.expectedMonth
+      : null;
+    const expectedYear = options.expectedYear && options.expectedYear >= 1900
+      ? options.expectedYear
+      : null;
+
+    const makeDate = (year: number, month: number, day: number): Date | null => {
+      if (!year || !month || !day) return null;
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      const d = new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
+      if (
+        d.getUTCFullYear() !== year ||
+        d.getUTCMonth() !== month - 1 ||
+        d.getUTCDate() !== day
+      ) {
+        return null;
+      }
+      return d;
+    };
+
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) return null;
+      if (expectedMonth && (val.getMonth() + 1) !== expectedMonth && val.getDate() === expectedMonth) {
+        const swapped = makeDate(
+          expectedYear || val.getFullYear(),
+          expectedMonth,
+          val.getMonth() + 1,
+        );
+        if (swapped) return swapped;
+      }
+      return val;
+    }
 
     const str = String(val).trim();
 
     // DD.MM.YYYY veya DD/MM/YYYY veya DD-MM-YYYY
-    const trMatch = str.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{4})$/);
+    const trMatch = str.match(/^(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})$/);
     if (trMatch) {
-      const d = new Date(`${trMatch[3]}-${trMatch[2].padStart(2, '0')}-${trMatch[1].padStart(2, '0')}`);
-      return isNaN(d.getTime()) ? null : d;
+      const first = parseInt(trMatch[1], 10);
+      const second = parseInt(trMatch[2], 10);
+      const yearRaw = parseInt(trMatch[3], 10);
+      const year = trMatch[3].length === 2 ? 2000 + yearRaw : yearRaw;
+      const dmy = makeDate(year, second, first);
+      const mdy = makeDate(year, first, second);
+
+      if (expectedMonth) {
+        const dmyMatchesPeriod = !!dmy && dmy.getUTCMonth() + 1 === expectedMonth;
+        const mdyMatchesPeriod = !!mdy && mdy.getUTCMonth() + 1 === expectedMonth;
+        if (mdyMatchesPeriod && !dmyMatchesPeriod) return mdy;
+        if (dmyMatchesPeriod) return dmy;
+      }
+
+      return dmy || mdy;
     }
 
     // YYYY-MM-DD (ISO)
@@ -604,6 +706,50 @@ export class ExcelParserService {
 
     const d = new Date(str);
     return isNaN(d.getTime()) ? null : d;
+  }
+
+  extractBelgeNoFromDescription(value: any): string | null {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    const upper = raw.toLocaleUpperCase('tr-TR');
+
+    const validCandidate = (candidate: string | null | undefined): string | null => {
+      const value = String(candidate ?? '').trim().toUpperCase();
+      if (!value || !/\d/.test(value)) return null;
+      if (/^(KDV|RAPORU|FATURA|SATIS|SATIŞ|ALIS|ALIŞ|NO|TARIH|TARİH)$/i.test(value)) return null;
+      return value;
+    };
+
+    // BUG FIX (WASH CLEAN Nisan 2026): "EM02026000000235" formatinda EM ile 2026
+    // arasinda "0" var. Eski regex `[A-Z]{2,4}20\d{2}` direkt prefix+yil bekliyordu,
+    // EM02026 patternde "EM" sonrasi "0" geliyor -> match'lemiyordu. Yeni regex
+    // `\d{0,2}` ile prefix+0-2-digit+yil destegi ekleniyor.
+    // Desteklenen formatlar:
+    //   EFA2026000000093  (3 letter + year + 10 digit)
+    //   EM02026000000235  (2 letter + 0 + year + 10 digit)
+    //   SA02026000000009  (2 letter + 0 + year + 10 digit)
+    //   GIB12026000000001 (3 letter + 1 digit + year + 10 digit)
+    const eBelge = upper.match(/\b[A-Z]{2,4}\d{0,2}20\d{2}\d{6,14}\b/);
+    if (eBelge) return eBelge[0];
+
+    const zRaporu = upper.match(/\bZ\s*RAPORU\s*[-:]\s*([A-Z0-9]{3,12})\b/);
+    if (zRaporu) return zRaporu[1];
+
+    const dashBeforeDate = upper.match(/-+\s*([A-Z0-9]{1,30})\s*-+\s*(?:\d{1,2}[.\/\-]\d{1,2}[.\/\-]\d{2,4})\s*$/);
+    const dashCandidate = validCandidate(dashBeforeDate?.[1]);
+    if (dashCandidate) return dashCandidate;
+
+    const beforeDate = upper.match(/(?:^|[-\s])([A-Z0-9]{3,20})\s*[-\s]+(?:\d{1,2}[.\/\-]\d{1,2}[.\/\-]\d{2,4})\b/);
+    if (beforeDate) {
+      const candidate = validCandidate(beforeDate[1]) || '';
+      if (candidate) return candidate;
+      return null;
+      if (!/^(KDV|RAPORU|FATURA|SATIS|SATIÅž|ALIS|ALIÅž)$/i.test(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 /**
    * İŞLETME HESAP ÖZETİ için detaylı parse — tek excel'den 4 toplam çıkarır:
