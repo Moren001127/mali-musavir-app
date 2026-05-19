@@ -33,3 +33,6 @@ node scripts/kdv-session-replace-contract.cjs
 
 # 9. OCR tax (KDV oran/tutar karıştırma) regression
 node scripts/ocr-tax-regression.cjs
+
+# 10. OCR moduller davranis regression (Faz 3 — Faz 1 + Faz 2 pure modul testleri)
+node scripts/ocr-modules-regression.cjs

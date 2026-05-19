@@ -9,7 +9,7 @@
     "guard:modules": "node scripts/check-agent-artifacts.cjs && node scripts/check-module-boundaries.cjs && node scripts/luca-upload-contract-regression.cjs",
     "test:contracts": "node scripts/contract-violation-regression.cjs",
     "test:e2e": "node scripts/e2e-pipeline-regression.cjs",
-    "test:regression": "pnpm test:contracts && node scripts/kdv-reconciliation-regression.cjs && node scripts/kdv-export-order-regression.cjs && node scripts/kdv-session-replace-contract.cjs && node scripts/ocr-tax-regression.cjs && pnpm test:e2e",
+    "test:regression": "pnpm test:contracts && node scripts/kdv-reconciliation-regression.cjs && node scripts/kdv-export-order-regression.cjs && node scripts/kdv-session-replace-contract.cjs && node scripts/ocr-tax-regression.cjs && pnpm test:e2e && node scripts/ocr-modules-regression.cjs",
     "test:smoke": "pnpm guard:modules && pnpm test:regression && pnpm --filter @mali-musavir/api exec tsc --noEmit --pretty false && pnpm --filter @mali-musavir/web exec tsc --noEmit --pretty false"
   },
   "devDependencies": {
