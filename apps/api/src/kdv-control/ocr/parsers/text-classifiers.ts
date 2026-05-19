@@ -15,7 +15,13 @@
 
 type FoldFn = (s: string) => string;
 
-/** "0", "1", "8", "10", "18", "20" (opsiyonel ",00" / "%" ile) — salt KDV orani mi? */
+/** "0", "1", "8", "10", "18", "20" (opsiyonel ",0" / ",00" / "%" ile) — salt KDV orani mi?
+ *
+ * BUG FIX (WASH faturasi v1.37.78): Eski regex `[,.]00` SADECE iki sifirli formati
+ * yakaliyordu (20,00 / 20.00). Azure "%20.0" (tek sifir) yaziyor satirlarda. O yuzden
+ * "20.0" tutar sanildi -> KDV=20 bug'i. Yeni regex `[,.]0{1,2}` her iki formati da
+ * yakalar ama "10.000" (1000 TL tutari) eslesmesin diye max 2 sifir sinirli.
+ */
 export function isLikelyStandaloneTaxRate(value: string, foldFn: FoldFn): boolean {
   const folded = foldFn(value || '')
     .replace(/\b(?:TL|TRY)\b|₺/g, ' ')
@@ -26,7 +32,7 @@ export function isLikelyStandaloneTaxRate(value: string, foldFn: FoldFn): boolea
     .replace(/^%/, '')
     .replace(/%$/, '')
     .trim();
-  return /^(0|1|8|10|18|20)(?:[,.]00)?$/.test(cleaned);
+  return /^(0|1|8|10|18|20)(?:[,.]0{1,2})?$/.test(cleaned);
 }
 
 /** "KDV MATRAH" / "KDV ORAN" / "MATRAH" / "ORAN" basliklarini iceren satir mi? */
