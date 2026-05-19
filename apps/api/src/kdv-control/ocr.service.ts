@@ -857,13 +857,23 @@ export class OcrService {
   private extractKdvTotal(text: string): string | null {
     const cleanText = this.stripMatrahFragments(text);
 
-    // Hesaplanan KDV (çoklu oran)
-    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
+    // Hesaplanan KDV (çoklu oran) — "GERCEK/TEVKIFAT/NET/BRUT" ara kelimeleri de destekle.
+    // BUG FIX (v1.37.76): "Hesaplanan KDV GERÇEK (%20.0) 824,00" satırında eski regex
+    // parantezi atlayıp "20.0" değerini KDV tutarı olarak okuyordu. İki katman koruma:
+    //   (a) Ara kelime kabul edilir (?:\s+\S+)? — "GERÇEK" gibi
+    //   (b) amount kendisi salt rakam (0/1/8/10/18/20) ise her zaman skip — rate echo
+    const hesaplananMatches = [...cleanText.matchAll(/hesaplanan\s*kdv(?:\s+\S+)?\s*(?:\(\s*%?\s*(\d{1,2})(?:[,.]\d{1,2})?\s*\))?\s*[:\s]+([\d.,]+)/gi)];
     if (hesaplananMatches.length > 0) {
       const total = hesaplananMatches.reduce((sum, m) => {
         const rate = m[1] ? Number(m[1]) : null;
         const amount = this.parseAmount(m[2]);
+        // Eski guard: rate parantezde + amount = rate → skip
         if (rate != null && this.isLikelyStandaloneTaxRate(m[2]) && Math.abs(amount - rate) < 0.01) {
+          return sum;
+        }
+        // YENI guard: amount salt rakam (0/1/8/10/18/20) ise rate echo — gerçek
+        // KDV asla salt rakam olamaz, her zaman ondalıklı tutar.
+        if (this.isLikelyStandaloneTaxRate(m[2])) {
           return sum;
         }
         return sum + amount;
