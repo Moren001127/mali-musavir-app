@@ -29,6 +29,10 @@ import { parseUblXml as parseUblXmlPure } from './ocr/providers/ubl';
 import { runClaudeVisionOcr as runClaudeVisionOcrPure } from './ocr/providers/claude';
 import { crossCheckWithAzure as crossCheckWithAzurePure } from './ocr/validation/cross-check';
 import {
+  postProcessOcrResult as postProcessOcrResultPure,
+  validateOcrResult as validateOcrResultPure,
+} from './ocr/validation/post-process';
+import {
   extractOkcFisKdv as extractOkcFisKdvPure,
   extractOkcFisItemRateBreakdown as extractOkcFisItemRateBreakdownPure,
 } from './ocr/providers/azure/okc-fis';
@@ -1611,279 +1615,22 @@ export class OcrService {
    *  5. KDV: matrah × oran / 100 ≈ tutar mi (çapraz doğrulama)
    *  6. Numerik alanlar normalize (₺, TL, boşluk temizle)
    */
+  /** @deprecated Faz 4 — saf validation modülüne delege. */
   private postProcessOcrResult(
     result: OcrResult,
     belgeNoFromFilename: string | null,
     originalName?: string,
   ): void {
-    // ─── 1. BELGE NO — Yasak değerleri temizle ───
-    if (result.belgeNo) {
-      const cleaned = result.belgeNo.trim().toUpperCase();
-      const forbidden = [
-        /^TR[\d.\-_]+$/,                         // TR1.2, TR1.0
-        /^UBL[\d.\-_]*$/,                        // UBL-2.1
-        /^(TEMELFATURA|TICARIFATURA|EARSIVFATURA)$/,
-        /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i, // UUID/ETTN
-      ];
-      if (forbidden.some((p) => p.test(cleaned))) {
-        this.logger.warn(`OCR yasak belge no değeri: "${cleaned}" → null (${originalName})`);
-        result.belgeNo = null;
-        if (result.fieldConfidence) result.fieldConfidence.belgeNo = null;
-      }
-    }
-
-    // ─── 2. BELGE NO — Filename override (eksik/yanlış OCR) ───
-    if (belgeNoFromFilename) {
-      const fnClean = belgeNoFromFilename.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const ocrClean = (result.belgeNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-      // Senaryolar:
-      //   a) OCR belge no yok, filename var → kullan
-      //   b) OCR belge no çok kısa (<10 char) ama filename uzun (≥10) → kullan
-      //   c) OCR belge no filename'in prefix'i ile eşleşiyor ama kısa kalmış → kullan
-      //   d) OCR belge no ≥10 char ve filename ile edit distance ≤ 2 → kullan
-      //      (OCR 1-2 karakter hatası yapmış: fazladan digit eklemiş/atlamış)
-      //   e) OCR belge no ile filename tamamen farklıysa → dokunma (kullanıcı düzeltsin)
-      const editDist =
-        fnClean.length >= 10 && ocrClean.length >= 10
-          ? this.eBelgeNoDistance(fnClean, ocrClean)
-          : Infinity;
-      const filenameMatchesOcr =
-        fnClean.length >= 10 &&
-        (fnClean === ocrClean || editDist <= 2);
-      const fnLooksLikeEInvoice = E_BELGE_NO_REGEX.test(fnClean);
-      const lowBelgeNoConfidence = (result.fieldConfidence?.belgeNo ?? 0) < 0.85;
-      const shouldOverride =
-        !ocrClean ||
-        (ocrClean.length < 10 && fnClean.length >= 10) ||
-        (fnClean.length > ocrClean.length && fnClean.startsWith(ocrClean.slice(0, 3))) ||
-        (fnClean.length >= 10 && editDist <= 2) ||
-        (fnLooksLikeEInvoice && lowBelgeNoConfidence && editDist <= 4);
-
-      if (shouldOverride && fnClean !== ocrClean) {
-        this.logger.warn(
-          `Belge no filename override: "${ocrClean}" → "${fnClean}" (editDist=${editDist === Infinity ? 'n/a' : editDist}, ${originalName})`,
-        );
-        result.belgeNo = belgeNoFromFilename;
-        if (result.fieldConfidence) result.fieldConfidence.belgeNo = fnLooksLikeEInvoice ? 0.96 : 0.9;
-      }
-
-      if (filenameMatchesOcr && result.fieldConfidence) {
-        result.fieldConfidence.belgeNo = Math.max(
-          result.fieldConfidence.belgeNo ?? 0,
-          fnLooksLikeEInvoice ? 0.96 : 0.9,
-        );
-      }
-    }
-
-    // ─── 2b. Z_RAPORU özel filename override ───
-    // Z raporu filename'i genelde sadece Z NO'dan oluşur ("670.image", "0670.image", "Z670.image").
-    // Standart filename override şartı (≥10 char) bu kısa numaralar için tetiklenmez,
-    // o yüzden Z raporları için ayrı kural koyuyoruz.
-    if (result.belgeTipi === 'Z_RAPORU' && originalName) {
-      const fnBase = originalName.replace(/\.[^/.]+$/, '').trim();
-      // Salt rakam (1-8 hane) veya "Z" + rakam → Z NO kabul
-      const zMatch = fnBase.match(/^Z?(\d{1,8})$/i);
-      if (zMatch) {
-        const zNoFromFilename = zMatch[1];
-        const ocrBn = (result.belgeNo || '').replace(/\D/g, '');
-        if (ocrBn !== zNoFromFilename) {
-          this.logger.warn(
-            `Z_RAPORU filename override: OCR="${result.belgeNo}" → "${zNoFromFilename}" (${originalName})`,
-          );
-          result.belgeNo = zNoFromFilename;
-          if (result.fieldConfidence) result.fieldConfidence.belgeNo = 0.95;
-        }
-      }
-    }
-
-    // ─── 3. BELGE NO — Pattern/uzunluk kontrolü ───
-    if (result.belgeNo) {
-      const bn = result.belgeNo.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const tipi = result.belgeTipi;
-      // e-Fatura/e-Arşiv: genelde 16 char (3 harf + 13 rakam). 13 altı şüpheli.
-      if ((tipi === 'EFATURA' || tipi === 'EARSIV') && bn.length < 13) {
-        this.logger.warn(`Belge tipi ${tipi} için belge no kısa (${bn.length} char): ${bn}`);
-        if (result.fieldConfidence && (result.fieldConfidence.belgeNo ?? 0) > 0.5) {
-          result.fieldConfidence.belgeNo = 0.5;
-        }
-      }
-    }
-
-    // ─── 3b. TARİH — rawText fallback (Claude null döndürdüyse) ───
-    if (!result.date && result.rawText) {
-      const trDate = this.extractDateFromText(result.rawText);
-      if (trDate) {
-        // DD.MM.YYYY → YYYY-MM-DD ile aynı internal tutmak için DD.MM.YYYY kabul et;
-        // postProcess sonraki adımı YYYY-MM-DD bekliyor — bu fallback için DD.MM bypass.
-        this.logger.warn(
-          `Tarih Claude'tan boş geldi, rawText'ten yakalandı: ${trDate} (${originalName})`,
-        );
-        result.date = trDate; // direkt DD.MM.YYYY (zaten Türk display formatı)
-        if (result.fieldConfidence) result.fieldConfidence.date = 0.7;
-      }
-    }
-
-    // ─── 4. TARİH — Ay/gün/yıl geçerlilik ───
-    // Bu noktada result.date formatı DAİMA "DD.MM.YYYY" (formatIsoToTr sonrası Türk display formatı)
-    if (result.date) {
-      const m = result.date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-      if (!m) {
-        // DD.MM.YYYY değil → normalize etmeye çalış
-        const normalized = this.formatIsoToTr(result.date);
-        if (normalized) {
-          result.date = normalized;
-        } else {
-          this.logger.warn(`Tarih format bozuk: "${result.date}" (${originalName})`);
-          result.date = null;
-          if (result.fieldConfidence) result.fieldConfidence.date = 0;
-        }
-      }
-
-      // Yeniden kontrol et (normalize edildi olabilir)
-      if (result.date) {
-        const m2 = result.date.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-        if (m2) {
-          const dd = +m2[1], mo = +m2[2], yy = +m2[3];
-          if (mo < 1 || mo > 12 || dd < 1 || dd > 31) {
-            this.logger.warn(`Tarih geçersiz: ${result.date}`);
-            result.date = null;
-            if (result.fieldConfidence) result.fieldConfidence.date = 0;
-          } else if (yy < 2000 || yy > 2050) {
-            this.logger.warn(`Yıl makul dışı: ${yy}`);
-            if (result.fieldConfidence) {
-              result.fieldConfidence.date = Math.min(result.fieldConfidence.date ?? 1, 0.3);
-            }
-          }
-        }
-      }
-    }
-
-    // ─── 5. TUTAR NORMALIZE — ₺, TL, boşluk temizle ───
-    const normalizeAmount = (s: string | null | undefined): string | null => {
-      if (!s) return null as any;
-      return s
-        .replace(/₺|TL|USD|EUR/gi, '')
-        .replace(/\s+/g, '')
-        .trim() || null;
-    };
-    result.kdvTutari = normalizeAmount(result.kdvTutari);
-    result.totalTutari = normalizeAmount(result.totalTutari);
-    if (!result.kdvTutari || this.parseAmount(result.kdvTutari) <= 0) {
-      result.kdvTutari = null;
-      if (result.fieldConfidence) result.fieldConfidence.kdvTutari = null;
-    }
-
-    // ─── 6. KDV BREAKDOWN — Toplam kontrolü ───
-    let breakdownInconsistent = false;
-    if (result.kdvBreakdown && result.kdvBreakdown.length > 0 && result.kdvTutari) {
-      const breakdownSum = result.kdvBreakdown.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
-      const declaredTotal = this.parseAmount(result.kdvTutari);
-      const normalizedTevkifat = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
-      if (normalizedTevkifat > 0 && Math.abs(breakdownSum - declaredTotal) > 0.05) {
-        const oran = Number(result.kdvBreakdown.find((b) => Number(b.oran) > 0)?.oran || 0);
-        result.kdvBreakdown = [{ oran, tutar: declaredTotal, matrah: null }];
-        this.logger.warn(
-          `Tevkifatli fatura breakdown net KDV'ye indirildi: breakdown=${breakdownSum.toFixed(2)} net=${declaredTotal.toFixed(2)}`,
-        );
-      } else
-      // ±1 kuruş tolerans (yuvarlama)
-      if (Math.abs(breakdownSum - declaredTotal) > 0.05) {
-        this.logger.warn(
-          `KDV breakdown tutarsız: breakdown=${breakdownSum.toFixed(2)} vs kdvTutari=${declaredTotal.toFixed(2)} — breakdown toplamını kullan`,
-        );
-        // Breakdown toplamı daha güvenilir — çünkü her oran ayrı görüldü
-        breakdownInconsistent = true;
-        // KDV güvenini düşür — Claude'un kdvTutari'sı yanlıştı
-        if (result.fieldConfidence) {
-          result.fieldConfidence.kdvTutari = Math.min(
-            result.fieldConfidence.kdvTutari ?? 0.5,
-            0.5,
-          );
-        }
-      }
-
-      // 7. Matrah × oran ≈ tutar çapraz doğrulama (AGRESİF)
-      // Matrah NET (KDV'siz) ise: tutar = matrah × oran / 100
-      // Matrah BRÜT (KDV dahil) ise: tutar = matrah × oran / (100 + oran)
-      // Claude/Azure bazen NET bazen BRÜT matrah veriyor — HER İKİSİNİ de dene,
-      // hangisi ±%2 tolerans içindeyse kabul. Sadece ikisi de başarısız olursa
-      // gerçek inconsistency var demektir.
-      for (const b of result.kdvBreakdown!) {
-        if (b.matrah && b.oran > 0) {
-          const matrah = Number(b.matrah);
-          const actual = Number(b.tutar);
-          const expectedNet = actual;
-          const expectedBrut = actual;
-          const diffNetPct = Math.abs(expectedNet - actual) / (expectedNet || 1);
-          const diffBrutPct = Math.abs(expectedBrut - actual) / (expectedBrut || 1);
-          const bestDiff = 0;
-          if (bestDiff > 0.02) {
-            // Her iki formül de tutmuyor → gerçek OCR hatası
-            this.logger.warn(
-              `KDV %${b.oran}: matrah=${matrah.toFixed(2)} tutar=${actual.toFixed(2)} · NET beklenti=${expectedNet.toFixed(2)} (sapma %${Math.round(diffNetPct * 100)}) · BRÜT beklenti=${expectedBrut.toFixed(2)} (sapma %${Math.round(diffBrutPct * 100)}) — confidence düşürülüyor`,
-            );
-            breakdownInconsistent = true;
-            // Yakın olan formülü kullanarak düzelt
-            const best = diffNetPct < diffBrutPct ? expectedNet : expectedBrut;
-            void best;
-          }
-          // İkisinden biri ±%2 tolerans içindeyse tutarlı — dokunma
-        }
-      }
-
-      // Breakdown'da tutarsızlık varsa kdvTutari'yi yeniden hesapla
-      if (breakdownInconsistent) {
-        const fixedSum = result.kdvBreakdown!.reduce((s, b) => s + (Number(b.tutar) || 0), 0);
-        result.kdvBreakdown = null;
-        void fixedSum;
-        if (result.fieldConfidence) {
-          result.fieldConfidence.kdvTutari = Math.min(
-            result.fieldConfidence.kdvTutari ?? 0.4,
-            0.4,
-          );
-        }
-      }
-    }
-
-    // ─── 8. Z_RAPORU breakdown — sadece LOG, confidence düşürme ───
-    // Eski davranış: breakdown boşsa confidence 0.4'e düşürülüyordu. Ama
-    // Türkiye'deki Z raporlarının ÇOĞU tek oran (sadece %10 veya sadece %20) —
-    // kırtasiye/market/tekstil bağımsız, tek kategori satan mükellefler için
-    // normal. Breakdown boş olması "multi-rate parse failure" kadar "single-rate
-    // fatura" da anlamına gelir. Confidence düşürmek yanlış pozitif.
-    //
-    // TOPKDV %X satırı hiç yoksa (sadece "TOPKDV *123,45" gibi) extractZRaporuKdvFromAzure
-    // zaten kdvTutari'yi simple regex'le doldurur. O kdvTutari Claude'un
-    // kdvTutari'sı ile karşılaştırıldıysa ve auto-fill boost ettiyse sorun yok.
-    if (result.belgeTipi === 'Z_RAPORU' && (!result.kdvBreakdown || result.kdvBreakdown.length === 0)) {
-      if (result.kdvTutari) {
-        this.logger.log(
-          `Z_RAPORU single-rate varsayımı: kdvTutari=${result.kdvTutari} breakdown yok (${originalName})`,
-        );
-      }
-    }
-
-    // ─── 9. KDV TUTARI — makul aralık kontrolü ───
-    // Toplam tutara göre KDV oranı %0-%30 arası makul. Dışındaysa şüpheli.
-    if (result.kdvTutari && result.totalTutari) {
-      const kdvNum = this.parseAmount(result.kdvTutari);
-      const totalNum = this.parseAmount(result.totalTutari);
-      if (totalNum > 0 && kdvNum > 0) {
-        const ratio = kdvNum / totalNum;
-        if (ratio > 0.35 || ratio < 0.005) {
-          this.logger.warn(
-            `KDV/Toplam oranı şüpheli: kdv=${kdvNum} toplam=${totalNum} oran=%${(ratio * 100).toFixed(1)} (${originalName})`,
-          );
-          if (result.fieldConfidence) {
-            result.fieldConfidence.kdvTutari = Math.min(
-              result.fieldConfidence.kdvTutari ?? 0.5,
-              0.5,
-            );
-          }
-        }
-      }
-    }
+    postProcessOcrResultPure(result, belgeNoFromFilename, originalName, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatIsoToTr: (iso) => this.formatIsoToTr(iso),
+      eBelgeNoDistance: (a, b) => this.eBelgeNoDistance(a, b),
+      extractDateFromText: (t) => this.extractDateFromText(t),
+      logger: {
+        log: (m) => this.logger.log(m),
+        warn: (m) => this.logger.warn(m),
+      },
+    });
   }
 
   /**
@@ -1902,146 +1649,16 @@ export class OcrService {
    * UBL XML parse'lı sonuçlar için validationScore daha önce 1.0 olarak set
    * edilmiş; bu fonksiyon sadece Claude/Azure çıktılarını doğrular.
    */
+  /** @deprecated Faz 4 — saf validation modülüne delege. */
   private validateOcrResult(result: OcrResult, originalName?: string): void {
-    const issues: string[] = [];
-    let score = 1.0;
-
-    const kdvNum = result.kdvTutari ? this.parseAmount(result.kdvTutari) : 0;
-    const tevkifatNum = result.kdvTevkifat ? this.parseAmount(result.kdvTevkifat) : 0;
-    const breakdown = result.kdvBreakdown || [];
-
-    // ─── 1) BREAKDOWN TUTAR TOPLAMI = kdvTutari ───
-    if (breakdown.length > 0 && kdvNum > 0) {
-      const sum = breakdown.reduce((s, b) => s + (b.tutar || 0), 0);
-      const diff = Math.abs(sum - kdvNum);
-      const tol = Math.max(0.05, kdvNum * 0.02); // 5 kuruş VEYA %2
-      if (diff > tol) {
-        issues.push(
-          `Breakdown toplamı KDV ile uyumsuz: ${this.formatAmount(sum)} ≠ ${this.formatAmount(kdvNum)} (fark ${this.formatAmount(diff)})`,
-        );
-        score -= 0.3;
-      }
-    }
-
-    // ─── 2) HER BREAKDOWN SATIRI: matrah × oran/100 ≈ tutar ───
-    for (const b of breakdown) {
-      if (!b.matrah || !b.oran || b.oran <= 0) continue;
-      const expectedTutar = b.tutar || 0;
-      const diff = Math.abs(expectedTutar - (b.tutar || 0));
-      const tol = Math.max(0.05, expectedTutar * 0.02);
-      if (diff > tol) {
-        issues.push(
-          `KDV hesabı uyumsuz: %${b.oran} matrah=${this.formatAmount(b.matrah)} → beklenen=${this.formatAmount(expectedTutar)}, bulunan=${this.formatAmount(b.tutar)}`,
-        );
-        score -= 0.15;
-      }
-    }
-
-    // ─── 3) GEÇERLİ KDV ORANLARI ───
-    const validRates = [0, 1, 10, 20];
-    for (const b of breakdown) {
-      if (b.oran == null) continue;
-      // Yakın oran toleransı (19.5–20.5 → 20 kabul)
-      const closest = validRates.find((r) => Math.abs(r - b.oran) < 0.5);
-      if (!closest && b.oran !== 0) {
-        issues.push(`Geçersiz KDV oranı: %${b.oran} (beklenen: ${validRates.join(', ')})`);
-        score -= 0.2;
-      }
-    }
-
-    // ─── 4) TEVKİFAT MANTIK KONTROLÜ ───
-    // Tevkifat NET KDV'den fazla olamaz (tam KDV = NET + tevkifat).
-    // Bu durumda OCR ya net'i ya da tevkifatı yanlış okumuştur.
-    if (tevkifatNum > 0 && kdvNum > 0 && tevkifatNum > kdvNum * 5) {
-      // tevkifat oranı 1/10 ila 9/10 arası olur — net KDV'nin 5x'inden fazlası mantıksız
-      issues.push(
-        `Tevkifat tutarı mantıksız: tevkifat=${this.formatAmount(tevkifatNum)} >> NET KDV=${this.formatAmount(kdvNum)}`,
-      );
-      score -= 0.25;
-    }
-
-    // ─── 5) KDV VAR AMA ORAN 0 → UYARI ───
-    if (kdvNum > 0 && breakdown.length > 0) {
-      const allZeroRate = breakdown.every((b) => !b.oran || b.oran === 0);
-      if (allZeroRate) {
-        issues.push('KDV tutarı var ama tüm oranlar %0 — okuma hatası olabilir');
-        score -= 0.15;
-      }
-    }
-
-    // ─── 6) BELGE NO FORMAT KONTROLÜ — TİPE GÖRE ───
-    // EFATURA/EARSIV: 16 char (3 harf + 4 yıl + 9 sıra) — örn. "EFA2026000000093"
-    // OKC_FIS: 3-12 hane (büyük yazar kasalarda 12 hane, marketlerde 4-6 hane)
-    // Z_RAPORU: 3-6 hane sayı
-    if (result.belgeNo && result.belgeTipi) {
-      const bn = result.belgeNo.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-      const tipi = String(result.belgeTipi).toUpperCase();
-
-      if (tipi === 'EFATURA' || tipi === 'EARSIV') {
-        // E-fatura/e-arşiv: çoğunlukla 3 harf + 13 hane; sahada IGDAS gibi
-        // 2 harf + 14 hane seri de geliyor. 2-4 harf + 12-14 hane güvenli kabul.
-        if (!E_BELGE_NO_REGEX.test(bn)) {
-          issues.push(
-            `${tipi} belge no formatı uyumsuz: "${result.belgeNo}" (beklenen: e-belge seri + yıl + sıra no, örn. EFA2026000000093)`,
-          );
-          score -= 0.3;
-          // Confidence'ı da düşür → NEEDS_REVIEW
-          if (result.fieldConfidence.belgeNo != null) {
-            result.fieldConfidence.belgeNo = Math.max(0, result.fieldConfidence.belgeNo - 0.3);
-          }
-        } else {
-          // Yıl validasyonu (4 hane yıl 2020-2050 arası)
-          const yilMatch = bn.match(/^[A-Z]{2,4}(\d{4})/) ?? bn.match(/(20\d{2})/);
-          const yil = yilMatch ? parseInt(yilMatch[1], 10) : NaN;
-          if (yil < 2020 || yil > 2050) {
-            issues.push(`E-fatura belge no'sundaki yıl mantıksız: ${yil} (beklenen: 2020-2050)`);
-            score -= 0.15;
-          }
-        }
-      } else if (tipi === 'Z_RAPORU') {
-        // Z raporu: 3-6 hane sayı
-        if (!/^\d{1,6}$/.test(bn)) {
-          issues.push(`Z raporu belge no formatı: "${result.belgeNo}" (beklenen 1-6 hane sayı)`);
-          score -= 0.2;
-        }
-      } else if (tipi === 'OKC_FIS') {
-        // OKC fişi: 3-12 hane
-        if (!/^\d{1,12}$/.test(bn)) {
-          issues.push(`OKC fişi belge no formatı: "${result.belgeNo}" (beklenen sayı)`);
-          score -= 0.15;
-        }
-      }
-    }
-
-    // ─── 7) SATICI VKN/TCKN FORMAT KONTROLÜ ───
-    if ((result as any).saticiVkn) {
-      const vkn = String((result as any).saticiVkn).replace(/\D/g, '');
-      if (vkn.length !== 10 && vkn.length !== 11) {
-        issues.push(`Satıcı VKN/TCKN format hatası: "${vkn}" (beklenen 10 veya 11 hane)`);
-        score -= 0.1;
-        (result as any).saticiVkn = null;
-      }
-    }
-
-    // Skor 0–1 arası
-    score = Math.max(0, Math.min(1, score));
-    result.validationScore = score;
-    result.validationIssues = issues.length > 0 ? issues : undefined;
-
-    // Skor düşükse confidence'ı da düşür → NEEDS_REVIEW akışına götür
-    if (score < 0.7 && result.fieldConfidence.kdvTutari != null) {
-      const oldConf = result.fieldConfidence.kdvTutari;
-      const newConf = Math.min(oldConf, score);
-      if (newConf < oldConf) {
-        result.fieldConfidence.kdvTutari = newConf;
-        this.logger.warn(
-          `Validation skoru düşük (${score.toFixed(2)}): ${originalName || ''} · kdv conf %${Math.round(oldConf * 100)} → %${Math.round(newConf * 100)} · sorunlar: ${issues.join('; ')}`,
-        );
-      }
-    } else if (score >= 0.95 && issues.length === 0 && result.fieldConfidence.kdvTutari != null) {
-      // Validation tam: confidence boost (Claude düşük verdiyse de çek yukarı)
-      result.fieldConfidence.kdvTutari = Math.max(result.fieldConfidence.kdvTutari, 0.92);
-    }
+    validateOcrResultPure(result, originalName, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      logger: {
+        log: (m) => this.logger.log(m),
+        warn: (m) => this.logger.warn(m),
+      },
+    });
   }
 
   /**
