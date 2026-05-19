@@ -44,6 +44,10 @@ import {
   extractMultiRateKdv as extractMultiRateKdvPure,
   extractKdvFromInvoiceTotals as extractKdvFromInvoiceTotalsPure,
 } from './ocr/providers/azure/kdv-breakdown';
+import {
+  extractMultiRateKdvFromItemRows as extractMultiRateKdvFromItemRowsPure,
+  extractHesMatrahKdvTable as extractHesMatrahKdvTablePure,
+} from './ocr/providers/azure/kdv-item-rows';
 import { extractZRaporuKdv as extractZRaporuKdvPure } from './ocr/providers/azure/z-raporu';
 import {
   normalizeAzureText as normalizeAzureTextPure,
@@ -1161,174 +1165,15 @@ export class OcrService {
    *   - Oran × amount eşleşmesi için her ikisi de aynı satırda olmalı
    *   - Bulunan tutar absurd büyük (10M+) veya negatif ise atla
    */
+  /** @deprecated Faz 4 — saf provider'a delege. */
   private extractMultiRateKdvFromItemRows(text: string): KdvBreakdownItem[] {
-    if (!text) return [];
-    const normalized = this.normalizeAzureText(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const sumByOran = new Map<number, number>();
-
-    // Oran markörü: "% 20,00" / "% 20" / "%20,00" / "%20"
-    // m[1] = tam sayı kısmı (20), m[2] = virgülden sonraki kısım (00, 67 vb.)
-    const rateMarkerRe = /%\s*(\d{1,2})(?:[,.](\d{1,2}))?/gi;
-    // Tutar: "1.006,00" / "15,00" / "60.84" (+ opsiyonel TL/TRY/₺)
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const skipTaxRe = /ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|TEVKİFAT|TEVKIFAT|STOPAJ/i;
-    // Discount satırı — "İsk %", "İsk. Oranı", "İsk. Tutarı", "İSKONTO", "İNDİRİM".
-    // "İsk." (nokta) ve "İsk. Oranı / Tutarı" pattern eklendi.
-    const discountRowRe = /İSKONTO|ISKONTO|\bİSK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|\bISK\.?\s*(?:%|Oran|TUTAR|TUTARI|ORANI)|İNDİRİM|INDIRIM/i;
-
-    // İki aşamalı scan: önce rate markerları topla, sonra her marker için
-    // aynı satır veya sonraki 3 satırdan ilk geçerli amount'u eşleştir.
-    // Bu yapı Azure'ın tablo satırını satırlara böldüğü durumu handle eder:
-    //   "% 20,00"
-    //   "1.006,00 TL"
-    //   "5.030,00 TL"
-    // → ilk amount (1.006) %20'nin KDV'si.
-    type Marker = { oran: number; lineIdx: number; afterLabel: string; isSummary: boolean; hasMatrahLabel: boolean };
-    const markers: Marker[] = [];
-    // Summary satırı = "HESAPLANAN KDV (%N)" / "TOPKDV (%N)" / "HES. MATRAH / KDV(%N)"
-    //                 / "MATRAH KDV(%N)" — fatura altı özet, item row değil.
-    // Item row satırı = ürün tablosundaki "... % N,NN ... X,XX ..." kalemi.
-    // Bir oran için HEM summary HEM item row eşleşirse iki kez toplanmayalım:
-    // summary authoritative — varsa item row'ları o oran için YOK SAY.
-    const summaryLineRe = /HESAPLANAN\s*K\.?\s*D\.?\s*V\.?|TOPKDV|TOP\s*K\.?\s*D\.?\s*V\.?|HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
-    // "HES. MATRAH / KDV(%N) [matrah] [kdv]" satırlarında ÖNCE matrah, SONRA KDV gelir.
-    // Bu durumda label'dan sonraki İLK amount değil, SON amount KDV'dir.
-    const matrahLabelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?|MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?/i;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (skipTaxRe.test(line)) continue;
-      if (discountRowRe.test(line) && !/KDV/i.test(line)) continue;
-      if (this.isForbiddenKdvAmountLine(line) || this.isLikelyKdvAmountColumnHeader(lines, i)) continue;
-
-      // Önceki 2 satırda non-KDV vergi label'ı varsa bu "% N,NN" markörü ÖİV'ye
-      // / Telsize / ÖTV'ye ait olabilir (label + oran + amount 3 ayrı satırda).
-      let prevHasNonKdvTax = false;
-      for (let p = 1; p <= 2 && i - p >= 0; p++) {
-        const prev = lines[i - p];
-        if (skipTaxRe.test(prev)) { prevHasNonKdvTax = true; break; }
-        if (/KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|\bK\.?\s*D\.?\s*V\.?\b/i.test(prev)) break;
-      }
-      if (prevHasNonKdvTax) continue;
-
-      const isSummary = summaryLineRe.test(line);
-      const hasMatrahLabel = matrahLabelRe.test(line);
-
-      rateMarkerRe.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = rateMarkerRe.exec(line)) !== null) {
-        const oran = parseInt(m[1], 10);
-        if (!(oran > 0 && oran <= 30)) continue;
-        // KDV oranları TR'de daima TAM SAYI (1, 10, 20). Virgülden
-        // sonraki kısım sıfırdan farklıysa (örn. %13,67 → iskonto oranı,
-        // %20,00 → KDV oranı), bu marker KDV DEĞİL — atla.
-        const decimalPart = m[2];
-        if (decimalPart && parseInt(decimalPart, 10) > 0) continue;
-        const afterLabel = this.stripMatrahFragments(line.slice(m.index + m[0].length));
-        markers.push({ oran, lineIdx: i, afterLabel, isSummary, hasMatrahLabel });
-      }
-    }
-
-    // Hangi oranlar summary satırıyla zaten sayıldı? Bu oranlar için item
-    // row'larına dokunma — duplicate toplama olur (1006 + 1006 = 2012 bug'ı).
-    const oranCoveredBySummary = new Set<number>();
-    for (const marker of markers) {
-      if (marker.isSummary) oranCoveredBySummary.add(marker.oran);
-    }
-
-    for (const marker of markers) {
-      // Summary ile zaten sayılan oranın item row markörünü atla
-      if (!marker.isSummary && oranCoveredBySummary.has(marker.oran)) continue;
-
-      let tutar: number | null = null;
-
-      // 1) Aynı satır, label'den sonra amount var mı?
-      // "HES. MATRAH / KDV(%N)  X,XX TL  Y,YY TL" gibi satırda 2 amount var:
-      // ilki MATRAH, ikincisi KDV. matrahLabel varsa SON amount'u al.
-      if (marker.hasMatrahLabel) {
-        const amountReGlobal = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-        const allMatches = Array.from(marker.afterLabel.matchAll(amountReGlobal));
-        if (allMatches.length >= 2) {
-          // 2+ amount → son tane KDV (ilki matrah)
-          const last = allMatches[allMatches.length - 1];
-          const parsed = this.parseAmount(last[1]);
-          if (parsed >= 0 && parsed < 10_000_000) tutar = parsed;
-        } else if (allMatches.length === 1) {
-          // Tek amount → muhtemelen sadece KDV (matrah ayrı satırda olabilir)
-          const parsed = this.parseAmount(allMatches[0][1]);
-          if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
-        }
-      } else {
-        const afterLabelMatch = marker.afterLabel.match(amountRe);
-        if (afterLabelMatch) {
-          const parsed = this.parseAmount(afterLabelMatch[1]);
-          if (parsed > 0 && parsed < 10_000_000) tutar = parsed;
-        }
-      }
-
-      // 2) Yoksa sonraki 4 satırdan amount'u al
-      //    - matrahLabel varsa (Hes. Matrah / KDV): 2 ardışık amount topla, 2.'yi al
-      //      (Azure tablo hücrelerini ayrı satır olarak parse eder:
-      //        "Hes. Matrah / KDV(%1)" / "771,70 TL" / "7,72 TL")
-      //    - değilse: ilk amount'u al (eski mantık)
-      if (tutar == null) {
-        const collected: number[] = [];
-        for (let j = 1; j <= 4 && marker.lineIdx + j < lines.length; j++) {
-          const nextLine = lines[marker.lineIdx + j];
-          if (skipTaxRe.test(nextLine)) break;
-          if (this.isForbiddenKdvAmountLine(nextLine)) continue;
-          if (j > 1 && this.isForbiddenKdvAmountLine(lines[marker.lineIdx + j - 1] || '')) continue;
-          if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?\s*$/.test(nextLine.trim())) break;
-          const cleanedNext = this.stripMatrahFragments(nextLine);
-          if (!cleanedNext) continue;
-          const am = cleanedNext.match(amountRe);
-          if (am) {
-            const parsed = this.parseAmount(am[1]);
-            if (parsed >= 0 && parsed < 10_000_000) {
-              collected.push(parsed);
-              // matrah label varsa 2 amount topla, sonra dur
-              if (marker.hasMatrahLabel && collected.length >= 2) break;
-              // matrah label yoksa ilk amount yeterli
-              if (!marker.hasMatrahLabel) break;
-            }
-          }
-        }
-        if (collected.length > 0) {
-          // matrah label + 2 amount → 2.'si KDV (ilki matrah)
-          // matrah label + 1 amount → KDV varsayalım
-          // matrah label yok → ilk amount
-          if (marker.hasMatrahLabel && collected.length >= 2) {
-            tutar = collected[1];
-          } else {
-            tutar = collected[0];
-          }
-        }
-      }
-
-      // KDV 0 olan summary satırlarını (Hes. Matrah / KDV(%8) 0,00 / 0,00)
-      // breakdown'a ekleme — sadece > 0 olanları topla.
-      if (tutar != null && tutar > 0) {
-        // Summary satırı için oran başına SET et (overwrite) — birden fazla
-        // aynı oran summary çıkarsa (nadir), en son okunanı bırak.
-        // Item row için topla (aynı oranda birden fazla kalem olabilir).
-        if (marker.isSummary) {
-          sumByOran.set(marker.oran, tutar);
-        } else {
-          sumByOran.set(marker.oran, (sumByOran.get(marker.oran) || 0) + tutar);
-        }
-      }
-    }
-
-    // 2+ oran bulunduysa anlamlı. Tek oran için zaten kdvTutari var, üretme.
-    if (sumByOran.size < 2) return [];
-    return Array.from(sumByOran.entries())
-      .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
-      .map(([oran, tutar]) => ({
-        oran,
-        tutar: Math.round(tutar * 100) / 100,
-        matrah: null,
-      }));
+    return extractMultiRateKdvFromItemRowsPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+      isForbiddenKdvAmountLine: (v) => this.isForbiddenKdvAmountLine(v),
+      isLikelyKdvAmountColumnHeader: (ls, i) => this.isLikelyKdvAmountColumnHeader(ls, i),
+    });
   }
 
   /**
@@ -1352,80 +1197,15 @@ export class OcrService {
    * Sonuç dönerse otomatik authoritative kabul edilir, diğer extractor'ları
    * override eder.
    */
+  /** @deprecated Faz 4 — saf provider'a delege. */
   private extractHesMatrahKdvTable(text: string): {
     totalKdv: number | null;
     breakdown: KdvBreakdownItem[];
   } {
-    if (!text) return { totalKdv: null, breakdown: [] };
-
-    // "Hes. Matrah / KDV(%N)" veya "Hes. Matrah / KDV Toplam" satırlarını ara
-    const labelRe = /HES\.?\s*MATRAH\s*[/-]?\s*K\.?\s*D\.?\s*V\.?\s*(?:TOPLAM|\(?\s*%\s*(\d{1,2})\s*\)?)/i;
-    if (!labelRe.test(text)) return { totalKdv: null, breakdown: [] };
-
-    const normalized = this.normalizeAzureText(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    const allAmountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-
-    let totalKdv: number | null = null;
-    const breakdown = new Map<number, number>();
-
-    // Her satır için: label varsa, label'dan sonraki amount'ları topla
-    // (aynı satırda veya sonraki 4 satırda)
-    const collectAmountsAfterLine = (startIdx: number, maxLines = 4): number[] => {
-      const amts: number[] = [];
-      // aynı satırın label'dan sonraki kısmı
-      const startLine = lines[startIdx];
-      const labelMatch = startLine.match(labelRe);
-      if (labelMatch) {
-        const after = startLine.slice(labelMatch.index! + labelMatch[0].length);
-        for (const m of after.matchAll(allAmountRe)) {
-          const v = this.parseAmount(m[1]);
-          if (v >= 0 && v < 100_000_000) amts.push(v);
-        }
-      }
-      // sonraki maxLines satır — başka bir label gelene kadar
-      for (let j = 1; j <= maxLines && startIdx + j < lines.length; j++) {
-        const nl = lines[startIdx + j];
-        if (labelRe.test(nl)) break; // yeni label başladı
-        // başka bir oran/% marker geldi → tablonun farklı bir kısmı
-        if (/^%\s*\d{1,2}\s*\)?\s*$/.test(nl.trim())) break;
-        const am = nl.match(amountRe);
-        if (am) {
-          const v = this.parseAmount(am[1]);
-          if (v >= 0 && v < 100_000_000) amts.push(v);
-        }
-      }
-      return amts;
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const m = line.match(labelRe);
-      if (!m) continue;
-
-      const isToplam = /TOPLAM/i.test(line);
-      const oran = m[1] ? parseInt(m[1], 10) : null;
-
-      // Amount'ları topla. 2+ amount varsa: 1. matrah, 2. KDV.
-      const amts = collectAmountsAfterLine(i, 4);
-      if (amts.length === 0) continue;
-      const kdvAmount = amts.length >= 2 ? amts[1] : amts[0];
-
-      if (isToplam) {
-        if (kdvAmount > 0) totalKdv = kdvAmount;
-      } else if (oran && oran > 0 && oran <= 30) {
-        // 0,00 olanları kaydetme — breakdown'a girmesin
-        if (kdvAmount > 0) breakdown.set(oran, kdvAmount);
-      }
-    }
-
-    return {
-      totalKdv,
-      breakdown: Array.from(breakdown.entries())
-        .sort((a, b) => a[0] - b[0]) // %1, %10, %20 sırayla (küçükten büyüğe)
-        .map(([oran, tutar]) => ({ oran, tutar: Math.round(tutar * 100) / 100, matrah: null })),
-    };
+    return extractHesMatrahKdvTablePure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+    });
   }
 
   /** @deprecated Faz 2 — saf provider'a delege. */
