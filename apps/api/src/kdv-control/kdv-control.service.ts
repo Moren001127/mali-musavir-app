@@ -149,6 +149,10 @@ export class KdvControlService {
     const ocrTotal = this.parseKdvAmount(result.image.confirmedKdvTutari || result.image.ocrKdvTutari);
     if (ocrTotal <= 0) return 0;
     const luca = result.kdvRecord?.kdvTutari ? Number(result.kdvRecord.kdvTutari) : 0;
+    const fanOutCount = allResults.filter((x: any) => x.imageId === result.imageId && x.kdvRecordId).length;
+    if (forDetailRow && fanOutCount > 1 && this.isKdvMatchedStatus(result.status)) {
+      return Number.isFinite(luca) ? luca : 0;
+    }
     if (luca <= 0) return ocrTotal;
 
     const rawBreakdown = result.image.confirmedKdvBreakdown ?? result.image.ocrKdvBreakdown;
@@ -165,11 +169,6 @@ export class KdvControlService {
     }
 
     const isSatis = sessionType === 'KDV_391' || sessionType === 'ISLETME_GELIR';
-    const fanOutCount = allResults.filter((x: any) => x.imageId === result.imageId && x.kdvRecordId).length;
-    if (forDetailRow && fanOutCount > 1 && this.isKdvMatchedStatus(result.status)) {
-      return luca;
-    }
-
     const reasonText = Array.isArray(result.mismatchReasons) ? result.mismatchReasons.join(' ') : '';
     if (!isSatis && /Alış tevkifat bileşen eşleşmesi|Alis tevkifat bilesen/i.test(reasonText)) {
       return luca;
@@ -1872,13 +1871,16 @@ export class KdvControlService {
       const ocrTotal = parseKdv(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
       if (ocrTotal <= 0) return 0;
       const luca = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
+      const fanOutCount = results.filter((x: any) => x.imageId === r.imageId && x.kdvRecordId).length;
+      if (forDetailRow && fanOutCount > 1 && isMatchedStatus(r.status)) {
+        return Number.isFinite(luca) ? luca : 0;
+      }
       if (luca <= 0) return ocrTotal;
       if (forDetailRow && isMatchedStatus(r.status)) {
         return luca;
       }
 
       const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
-      const fanOutCount = results.filter((x: any) => x.imageId === r.imageId && x.kdvRecordId).length;
       if (forDetailRow && fanOutCount > 1) {
         const rawBreakdown = r.image.confirmedKdvBreakdown ?? r.image.ocrKdvBreakdown;
         const recordRate = inferRecordRate(r.kdvRecord);
@@ -2072,9 +2074,9 @@ export class KdvControlService {
       }
     };
     setSummary(9,  'Toplam Satır',                       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
-    setSummary(10, '✓ Eşleşen (otomatik + onaylanan)',   matchedCount,                                                       'Fatura OCR (tüm satırlar)', fmtTl(sumOcrAll));
+    setSummary(10, '✓ Eşleşen (otomatik + onaylanan)',   matchedCount,                                                       'Fatura OCR (satır payı)',   fmtTl(sumOcrAll));
     setSummary(11, '⚠ Kısmi / İnceleme',                 partialCount,                                                       'Luca (sadece eşleşen)',     fmtTl(sumLucaMatched));
-    setSummary(12, '✗ Hatalı (orphan + reddedilen)',     unmatchedCount,                                                     'Fatura (sadece eşleşen)',   fmtTl(sumOcrMatched));
+    setSummary(12, '✗ Hatalı (orphan + reddedilen)',     unmatchedCount,                                                     'Fatura (eşleşen satır payı)', fmtTl(sumOcrMatched));
     setSummary(13, 'Eşleşme Oranı',                      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Eşleşenler farkı',          fmtTl(zeroKurusTolerance(sumLucaMatched - sumOcrMatched)));
 
     ws.getRow(14).height = 8;
