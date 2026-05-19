@@ -8,3 +8,5 @@ dist/
 .vercel
 .env*.local
 apps/luca-local-agent/.browser-data*/
+apps/web/public/moren-agent.js
+apps/web/public/moren-agent.js.bak-*

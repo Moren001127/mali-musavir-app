@@ -38,6 +38,8 @@ export const kdvApi = {
     api.post('/kdv-control/sessions/find-or-create', data).then((r) => r.data as { session: any; created: boolean }),
   completeSession: (id: string) =>
     api.patch(`/kdv-control/sessions/${id}/complete`).then((r) => r.data),
+  unlockSession: (id: string) =>
+    api.patch(`/kdv-control/sessions/${id}/unlock`).then((r) => r.data),
 
   /* ── EXCEL ── */
   uploadExcel: (sessionId: string, file: File) => {

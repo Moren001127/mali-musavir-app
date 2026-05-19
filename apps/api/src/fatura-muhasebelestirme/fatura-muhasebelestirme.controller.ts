@@ -43,18 +43,20 @@ export class FaturaMuhasebelestirmeController {
     @Req() req: any,
     @Query('status') status?: string,
     @Query('taxpayerId') taxpayerId?: string,
+    @Query('period') period?: string,
     @Query('limit') limit?: string,
   ) {
     return this.service.list(req.user.tenantId, {
       status,
       taxpayerId,
+      period,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
   }
 
   @Get('dashboard')
-  dashboard(@Req() req: any) {
-    return this.service.dashboard(req.user.tenantId);
+  dashboard(@Req() req: any, @Query('period') period?: string) {
+    return this.service.dashboard(req.user.tenantId, { period });
   }
 
   @Get('integrations')
@@ -65,6 +67,15 @@ export class FaturaMuhasebelestirmeController {
   @Post('integrations')
   saveIntegration(@Req() req: any, @Body() body: any) {
     return this.service.saveIntegration(
+      req.user.tenantId,
+      body || {},
+      req.user?.userId || req.user?.sub,
+    );
+  }
+
+  @Post('integrations/fetch')
+  fetchIntegrations(@Req() req: any, @Body() body: any) {
+    return this.service.fetchConfiguredIntegrations(
       req.user.tenantId,
       body || {},
       req.user?.userId || req.user?.sub,

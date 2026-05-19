@@ -963,10 +963,31 @@
           /\/Luca\/giris\.do/i.test(path) ||
           (/\/Luca\/(?:luca|giris)\.do/i.test(path) && bodyText.length < 30);
         if (isBlankClassicEntry) {
+          // BUG FIX (E-Arsiv multi-mukellef takilma): Eski kodda sadece 15sn throttle
+          // vardi, sayaç yoktu - sonsuz recovery loop'u olusabiliyordu (5 mukellef
+          // hep ayni 'giris.do bos kaldi' log'unda kaliyordu). Yeni: max 5 deneme
+          // sonrasi job'lari requeue edip oturumu sifirla.
+          window.__morenClassicSsoReturnCount = (window.__morenClassicSsoReturnCount || 0);
           if (!window.__morenClassicSsoReturnAt || Date.now() - window.__morenClassicSsoReturnAt > 15000) {
             window.__morenClassicSsoReturnAt = Date.now();
+            window.__morenClassicSsoReturnCount += 1;
+            if (window.__morenClassicSsoReturnCount >= 5) {
+              const reason = `TRANSIENT_LUCA_CLASSIC_GIRIS_DO_BLANK: giris.do ${window.__morenClassicSsoReturnCount} kez bos kaldi; browser oturumu sifirlanacak`;
+              for (const job of jobs) {
+                await logPendingJob(job, reason);
+                await fetch(API + `/agent/luca/jobs/${job.id}/requeue`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                  body: JSON.stringify({ reason }),
+                }).catch(() => {});
+              }
+              window.__morenClassicSsoReturnCount = 0;
+              window.__morenClassicSsoReturnAt = 0;
+              window.__morenAgent.stopRequested = true;
+              return;
+            }
             for (const job of jobs) {
-              await logPendingJob(job, 'Klasik Luca giris.do bos kaldi; SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak');
+              await logPendingJob(job, `Klasik Luca giris.do bos kaldi (${window.__morenClassicSsoReturnCount}/5); SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak`);
             }
             try { location.href = LUCA_SSO_MAIN_URL; } catch {}
           }
@@ -1083,8 +1104,9 @@
           // Kapsam: e-arşiv + e-fatura + mizan + kdv kontrol + tüm Luca veri çekmeleri
           const isLucaDataJob = [
             'EARSIV_SATIS','EARSIV_ALIS','EFATURA_SATIS','EFATURA_ALIS',
-            'MIZAN','ACCOUNT_PLAN','KDV_MIZAN','KDV_KONTROL','KDV1','KDV2','KDV_191','KDV_391',
-            'MUAVIN','ISLETME','ISLETME_GELIR','ISLETME_GIDER','IHO_FETCH',
+            'MIZAN','ACCOUNT_PLAN','KDV_MIZAN','IHO_FETCH',
+            'KDV_191','KDV_391','ISLETME_GELIR','ISLETME_GIDER',
+            'MUAVIN','ISLETME',
             'GELIR_TABLOSU','BILANCO'
           ].includes(job.tip);
           if (isLucaDataJob) {
@@ -5649,12 +5671,63 @@
     } catch {}
   }
 
+  function buildKdvLedgerMenuAttempts() {
+    const attempts = [];
+    const dynamic = [];
+    const seen = new Set();
+    const fold = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0131/g, 'i')
+      .replace(/\u0130/g, 'i')
+      .toLowerCase();
+    const push = (attempt) => {
+      const key = attempt.code ? `code:${attempt.code}` : `text:${attempt.text}#${attempt.nth || 1}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      attempts.push(attempt);
+    };
+
+    try {
+      const rows = collectLucaClickMap('Defteri Kebir');
+      for (const row of rows) {
+        const text = String(row.text || row.value || row.id || '').replace(/\s+/g, ' ').trim();
+        const hay = `${row.onclick || ''} ${row.href || ''} ${row.ii1a || ''} ${row.formAction || ''}`;
+        const code = extractLucaMenuCode(hay) || String(row.ii1a || '').trim();
+        const folded = fold(`${text} ${hay}`);
+        if (!code || !folded.includes('defteri kebir')) continue;
+
+        let score = 0;
+        if (/tum.*yazicilar|yazicilar.*tum/.test(folded)) score += 120;
+        if (/["']79["']/.test(code)) score += 80;
+        if (/frm5|menu|right/i.test(String(row.frame || ''))) score += 15;
+        if (/nokta|vurus|matrix|dot/.test(folded)) score -= 80;
+        if (/["']75["']/.test(code)) score -= 35;
+        dynamic.push({
+          text: text || 'Defteri Kebir',
+          code,
+          maxMs: 14000,
+          score,
+        });
+      }
+    } catch {}
+
+    dynamic
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .forEach(push);
+    push({ text: 'Defteri Kebir (Tum Yazicilar)', code: 'lI1lI(0,17,"79")', maxMs: 14000, score: -5 });
+    push({ text: 'Defteri Kebir', nth: 2, maxMs: 14000, allowCache: false, score: -10 });
+    push({ text: 'Defteri Kebir', nth: 1, maxMs: 12000, allowCache: false, score: -20 });
+    return attempts;
+  }
+
   async function openLucaKdvLedgerReportForm(log) {
     await logKdvMenuHints(log);
-    const attempts = [
-      { text: 'Defteri Kebir (Tum Yazicilar)', code: 'lI1lI(0,17,"79")', maxMs: 12000 },
-      { text: 'Defteri Kebir', nth: 2, maxMs: 12000, allowCache: false },
-    ];
+    const attempts = buildKdvLedgerMenuAttempts();
+    if (attempts.length) {
+      await log(`KDV Defteri Kebir deneme sirasi: ${attempts.slice(0, 8).map((a) => a.code ? `${a.text}(${a.code})` : `${a.text}#${a.nth}`).join(' | ')}`);
+    }
 
     for (const attempt of attempts) {
       await resetLucaFrm3ForKdv(log, `${attempt.text}${attempt.code ? ` ${attempt.code}` : `#${attempt.nth}`}`);
@@ -5707,7 +5780,10 @@
       await log(`KDV fallback exception: ${String(e?.message || e).slice(0, 180)}`);
     }
 
-    throw new Error(`KDV Defteri Kebir rapor formu acilamadi (2 strict + 1 fallback denendi). Muavin Defter formu yanlis veri verebilir, kabul edilmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+    for (const label of ['Defteri Kebir', 'Defteri Kebir#2', 'Defteri Kebir (Tum Yazicilar)']) {
+      try { deleteCachedLucaMenuHit(label); } catch {}
+    }
+    throw new Error(`KDV Defteri Kebir rapor formu acilamadi (${attempts.length} deneme + 1 fallback denendi). Muavin Defter formu yanlis veri verebilir, kabul edilmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
   }
 
   /**

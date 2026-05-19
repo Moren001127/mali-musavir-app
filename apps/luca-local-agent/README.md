@@ -17,7 +17,7 @@ node --version
 ### 2. Bağımlılıkları yükle
 
 ```cmd
-cd C:\Users\moren\.verdent\verdent-projects\mali-mavirlik-ofisim-iin\mali-musavir-app\apps\luca-local-agent
+cd /d <repo-klasoru>\apps\luca-local-agent
 npm install
 npx playwright install chromium
 ```
@@ -77,6 +77,12 @@ Portal'da fatura muhasebeleştirme ekranında "Hesap seç" popup'ında o mükell
 
 Her seferinde `npm start` yazmamak için Windows servis yap:
 
+### Yöntem 0 — Tek tıkla onarım/kurulum (önerilen)
+
+`scripts\onar-servis.bat` dosyasına sağ tıkla → **Yönetici olarak çalıştır**.
+
+Bu script eski `Luca Local Agent` görevini siler, yenisini doğru şekilde kurar, logları temizler ve servisi hemen başlatır. Birden fazla PC kullanıyorsan her PC'de bir kere bunu çalıştır.
+
 ### Yöntem 1 — Task Scheduler (basit)
 
 1. Windows tuşu → "Görev Zamanlayıcı" yaz, aç
@@ -84,11 +90,13 @@ Her seferinde `npm start` yazmamak için Windows servis yap:
 3. **Ad**: `Luca Local Agent`
 4. **Tetikleyiciler** sekmesi → Yeni → **Oturum açıldığında**
 5. **Eylemler** sekmesi → Yeni → 
-   - **Program**: `C:\Program Files\nodejs\node.exe`
+   - **Program**: `node.exe` ya da `where node` çıktısındaki `node.exe` yolu
    - **Argümanlar**: `src\agent.js`
-   - **Başlat (isteğe bağlı)**: `C:\Users\moren\.verdent\verdent-projects\mali-mavirlik-ofisim-iin\mali-musavir-app\apps\luca-local-agent`
+   - **Başlat (isteğe bağlı)**: Bu klasörün tam yolu (`...\apps\luca-local-agent`)
 6. **Koşullar** → "AC gücü gerektirir" tikini KALDIR
 7. Tamam. PC'yi yeniden başlat, kendiliğinden çalışır.
+
+> UYARI: Program, Argümanlar ve Başlat alanlarına elle ekstra tırnak işareti ekleme. Windows boşluklu path'leri kendi yönetir. Tırnak eklersen `'""C:\Program' is not recognized...` hatası alabilirsin.
 
 ### Yöntem 2 — PM2 (daha güçlü, dashboard'lu)
 

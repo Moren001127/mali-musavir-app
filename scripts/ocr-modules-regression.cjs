@@ -79,6 +79,7 @@ loadTsNode();
 
 // ─── PARSERS ───────────────────────────────────────────────
 const dateParser = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/date.ts'));
+const amountParser = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/amount.ts'));
 const belgeNoParser = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/belge-no.ts'));
 const vendorParser = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/vendor.ts'));
 const textClassifiers = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/parsers/text-classifiers.ts'));
@@ -184,7 +185,7 @@ const ublXml = `<?xml version="1.0"?>
 </Invoice>`;
 const silentLogger = { log: () => {}, warn: () => {} };
 const ublDeps = {
-  parseAmount: (s) => parseFloat(String(s).replace(/[^\d.,-]/g, '').replace(',', '.')) || 0,
+  parseAmount: (s) => amountParser.parseOcrAmount(s),
   formatAmount: (n) => n.toFixed(2).replace('.', ','),
   normalizeTaxText: (v) => String(v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(),
   logger: silentLogger,

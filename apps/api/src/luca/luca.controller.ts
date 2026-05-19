@@ -394,6 +394,24 @@ export class LucaController {
     });
   }
 
+  @Post('agent/luca/kdv-control/repair-belge-no')
+  @HttpCode(HttpStatus.OK)
+  async repairKdvBelgeNoForAgent(
+    @Headers('x-agent-token') agentToken: string,
+    @Body()
+    body: {
+      sessionId?: string;
+      taxpayerName?: string;
+      periodLabel?: string;
+      type?: 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER';
+      dryRun?: boolean;
+      reconcile?: boolean;
+    },
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.kdvControl.repairLucaRecordBelgeNosForAgent(tenantId, body || {});
+  }
+
   @Post('agent/luca/captcha')
   @HttpCode(HttpStatus.OK)
   async createAgentCaptcha(
@@ -408,6 +426,24 @@ export class LucaController {
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     return this.luca.createCaptchaChallengeFromAgent(tenantId, body);
+  }
+
+  @Get('agent/luca/captcha/active')
+  async getActiveAgentCaptcha(@Headers('x-agent-token') agentToken: string) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    return this.luca.getActiveCaptchaChallenge(tenantId);
+  }
+
+  @Post('agent/luca/captcha/:id/answer')
+  @HttpCode(HttpStatus.OK)
+  async submitAgentCaptchaAnswer(
+    @Param('id') id: string,
+    @Body() body: { answer?: string; captchaText?: string },
+    @Headers('x-agent-token') agentToken: string,
+  ) {
+    const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const answer = body?.answer || body?.captchaText || '';
+    return this.luca.submitCaptchaAnswer(tenantId, id, answer, 'local-agent-recovery');
   }
 
   @Get('agent/luca/captcha/:id/answer')
@@ -489,7 +525,17 @@ export class LucaController {
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
     const job = await this.luca.getJob(id, tenantId);
-    return { id: job.id, status: job.status };
+    return {
+      id: job.id,
+      status: job.status,
+      tip: job.tip,
+      sessionId: job.sessionId,
+      targetDeviceId: job.targetDeviceId,
+      recordCount: job.recordCount,
+      errorMsg: job.errorMsg,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+    };
   }
 
   /** Agent her aşamada ilerleme mesajı yollar — Mizan sayfası canlı gösterir. */
@@ -522,12 +568,21 @@ export class LucaController {
     @Query('mukellefId') mukellefId: string,
     @Query('donem') donem: string,
     @Query('donemTipi') donemTipi?: string,
+    @Query('jobId') jobId?: string,
   ) {
     if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
     if (!mukellefId || !donem) {
       throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
     }
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['MIZAN'],
+      mukellefId,
+      donem,
+      label: 'Mizan',
+    });
 
     try {
       const result = await this.mizan.importFromExcel({
@@ -563,6 +618,13 @@ export class LucaController {
     if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
     if (!mukellefId) throw new BadRequestException('mukellefId query parametresi gerekli');
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['ACCOUNT_PLAN'],
+      mukellefId,
+      label: 'Hesap plani',
+    });
 
     try {
       const rows = this.mizanParser.parse(file.buffer, {
@@ -604,6 +666,14 @@ export class LucaController {
       throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
     }
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['KDV_MIZAN'],
+      mukellefId,
+      donem,
+      label: 'KDV mizan',
+    });
 
     try {
       const snapshot = await this.kdvBeyanname.importLucaSnapshotXls({
@@ -643,6 +713,13 @@ export class LucaController {
     if (!file) throw new BadRequestException('Excel dosyası gerekli (field: file)');
     if (!ihoId) throw new BadRequestException('ihoId query parametresi gerekli');
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['IHO_FETCH'],
+      sessionId: ihoId,
+      label: 'Isletme hesap ozeti',
+    });
 
     try {
       const updated = await this.isletmeHesapOzeti.applyLucaSnapshot({
@@ -686,6 +763,15 @@ export class LucaController {
       throw new BadRequestException('mukellefId, donem, tip, belgeKaynak query parametreleri gerekli');
     }
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['EARSIV_SATIS', 'EARSIV_ALIS', 'EFATURA_SATIS', 'EFATURA_ALIS'],
+      exactTip: `${String(belgeKaynak).toUpperCase()}_${String(tip).toUpperCase()}`,
+      mukellefId,
+      donem,
+      label: 'E-Arsiv/E-Fatura',
+    });
 
     try {
       const result = await this.earsiv.importFromZip({
@@ -731,6 +817,15 @@ export class LucaController {
       throw new BadRequestException('sessionId ve jobId query parametreleri gerekli');
     }
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const session = await this.kdvControl.findSession(sessionId, tenantId);
+    await this.assertRunnerUploadJob({
+      tenantId,
+      jobId,
+      allowedTips: ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'],
+      exactTip: session.type,
+      sessionId,
+      label: 'KDV kontrol',
+    });
     try {
       const result = await this.kdvControl.uploadExcelFromRunner(
         sessionId,
@@ -752,6 +847,51 @@ export class LucaController {
   //  2. Bulunamazsa tenant.slug / tenant.id direkt
   // Her iki yol da kabul edilir — eski slug bazlı akış kırılmaz.
   // --------------------------------------------------------------
+  private async assertRunnerUploadJob(opts: {
+    tenantId: string;
+    jobId?: string | null;
+    allowedTips: string[];
+    exactTip?: string | null;
+    mukellefId?: string | null;
+    donem?: string | null;
+    sessionId?: string | null;
+    label: string;
+  }) {
+    const jobId = String(opts.jobId || '').trim();
+    if (!jobId) {
+      throw new BadRequestException(`${opts.label} upload icin jobId zorunlu`);
+    }
+    const job = await this.luca.getJob(jobId, opts.tenantId).catch(() => null);
+    if (!job) {
+      throw new BadRequestException(`${opts.label} upload icin Luca job bulunamadi`);
+    }
+    if (!opts.allowedTips.includes(job.tip)) {
+      throw new BadRequestException(
+        `${opts.label} upload reddedildi: job tipi ${job.tip}, beklenen ${opts.allowedTips.join('/')}`,
+      );
+    }
+    if (opts.exactTip && job.tip !== opts.exactTip) {
+      throw new BadRequestException(`${opts.label} upload reddedildi: job tipi hedef modulle uyusmuyor`);
+    }
+    if (job.status !== 'running') {
+      throw new BadRequestException(`${opts.label} upload reddedildi: job running degil (${job.status})`);
+    }
+    if (opts.mukellefId && job.mukellefId !== opts.mukellefId) {
+      throw new BadRequestException(`${opts.label} upload reddedildi: mukellefId job ile uyusmuyor`);
+    }
+    if (opts.donem && this.normalizeRunnerDonem(job.donem) !== this.normalizeRunnerDonem(opts.donem)) {
+      throw new BadRequestException(`${opts.label} upload reddedildi: donem job ile uyusmuyor`);
+    }
+    if (opts.sessionId && job.sessionId !== opts.sessionId) {
+      throw new BadRequestException(`${opts.label} upload reddedildi: sessionId job ile uyusmuyor`);
+    }
+    return job;
+  }
+
+  private normalizeRunnerDonem(value?: string | null): string {
+    return String(value || '').trim().replace('/', '-');
+  }
+
   private async resolveTenantFromAgentToken(token?: string): Promise<string> {
     if (!token) throw new ForbiddenException('Agent token eksik');
     const t = token.trim();

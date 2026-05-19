@@ -10,6 +10,7 @@ import {
   Play, Calendar, Users, Search, CheckCircle2, Loader2, Clock, FileSpreadsheet,
   ImageIcon, ScanLine, ChevronDown, X, Sparkles, Download, Trash2, Archive,
   ArrowRight, Activity, AlertTriangle, XCircle, FileText, Zap, Upload,
+  Lock, Unlock,
 } from 'lucide-react';
 import { OcrReviewPanel } from '@/components/kdv/OcrReviewPanel';
 import { MatchReviewPanel } from '@/components/kdv/MatchReviewPanel';
@@ -236,6 +237,7 @@ export default function KdvKontrolPage() {
   }, [allSessions, taxpayerId, periodLabel, type]);
 
   const sessionId: string | undefined = activeSession?.id;
+  const activeLocked = activeSession?.status === 'COMPLETED';
 
   // Seans değişince canlı akış buffer'ını sıfırla — önceki seansın event'leri yeni seansa
   // sızmasın (aksi halde "Eşleşti: 126" gibi kümülatif sayıları görürsün).
@@ -826,6 +828,26 @@ export default function KdvKontrolPage() {
     },
   });
 
+  const lockSessionMut = useMutation({
+    mutationFn: (id: string) => kdvApi.completeSession(id),
+    onSuccess: (_d, id) => {
+      toast.success('Kontrol kilitlendi');
+      qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', id] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kilitlenemedi'),
+  });
+
+  const unlockSessionMut = useMutation({
+    mutationFn: (id: string) => kdvApi.unlockSession(id),
+    onSuccess: (_d, id) => {
+      toast.success('Kilit açıldı');
+      qc.invalidateQueries({ queryKey: ['kdv-sessions'] });
+      qc.invalidateQueries({ queryKey: ['kdv-stats', id] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kilit açılamadı'),
+  });
+
   const downloadOutput = useMutation({
     mutationFn: async (o: { id: string; filename: string }) => {
       const ab = await kdvApi.downloadOutput(o.id);
@@ -882,6 +904,27 @@ export default function KdvKontrolPage() {
           </p>
         </div>
       </div>
+
+      {activeLocked && activeSession && (
+        <div
+          className="rounded-xl border px-4 py-3 flex items-center justify-between gap-3"
+          style={{ background: 'rgba(34,197,94,0.08)', borderColor: 'rgba(34,197,94,0.22)' }}
+        >
+          <div className="flex items-center gap-2 text-sm" style={{ color: '#bbf7d0' }}>
+            <Lock size={15} />
+            <span>Bu kontrol sorunsuz tamamlandığı için kilitli. Müdahale etmek için kilidi aç.</span>
+          </div>
+          <button
+            onClick={() => unlockSessionMut.mutate(activeSession.id)}
+            disabled={unlockSessionMut.isPending}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5"
+            style={{ background: 'rgba(34,197,94,0.14)', color: '#bbf7d0' }}
+          >
+            <Unlock size={13} />
+            Kilidi Aç
+          </button>
+        </div>
+      )}
 
       {/* KOMUT BARI */}
       <div className="rounded-xl border p-5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}>
@@ -1452,20 +1495,14 @@ export default function KdvKontrolPage() {
                 </span>
               )}
             </h3>
-            <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <table className="w-full text-left">
+            <div className="rounded-2xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <table className="w-full min-w-[1120px] table-fixed text-left">
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tarih</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Mükellef</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Dönem</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Tip</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Luca</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Fatura</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşen</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-center" style={{ color: 'rgba(250,250,249,0.45)' }}>Eşleşmedi</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>Maliyet</th>
-                    <th className="px-4 py-3 text-[10.5px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
+                    <th className="w-[34%] px-5 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Kontrol</th>
+                    <th className="w-[18%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Veri</th>
+                    <th className="w-[28%] px-3 py-3 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(250,250,249,0.45)' }}>Sonuç</th>
+                    <th className="w-[20%] px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-right" style={{ color: 'rgba(250,250,249,0.45)' }}>İşlem</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1476,58 +1513,83 @@ export default function KdvKontrolPage() {
                     const tip = s?.type ?? o?.tip ?? '—';
                     const luca = s?._count?.kdvRecords ?? '—';
                     const fatura = s?._count?.images ?? '—';
-                    const matched = o?.matchedCount ?? null;
-                    const unmatched = o?.unmatchedCount ?? null;
+                    const summary = s?.matchSummary;
+                    const matched = summary?.matched ?? o?.matchedCount ?? null;
+                    const review = summary?.reviewTotal ?? o?.partialCount ?? null;
+                    const amountMismatch = summary?.amountMismatch ?? 0;
+                    const unmatched = summary ? (summary.unmatched ?? 0) + (summary.rejected ?? 0) : (o?.unmatchedCount ?? null);
+                    const totalResults = summary?.totalResults ?? null;
+                    const isLocked = Boolean(s?.isLocked || s?.status === 'COMPLETED');
+                    const canLock = Boolean(s && !isLocked && totalResults && totalResults > 0);
                     const rowKey = s?.id || o?.id || idx;
                     return (
                       <tr key={rowKey} style={{ borderTop: idx === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)' }}>
-                        <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(date)}</td>
-                        <td className="px-4 py-3 text-[12.5px] font-medium" style={{ color: '#fafaf9' }}>{tname}</td>
-                        <td className="px-4 py-3 text-[12px] tabular-nums" style={{ color: 'rgba(250,250,249,0.65)' }}>{donem}</td>
-                        <td className="px-4 py-3 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{TYPE_LABEL[tip] || tip}</td>
-                        <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{luca}</td>
-                        <td className="px-4 py-3 text-center tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fatura}</td>
-                        <td
-                          className="px-4 py-3 text-center tabular-nums"
-                          style={{
-                            fontFamily: 'Fraunces, serif',
-                            fontSize: 15,
-                            fontWeight: 600,
-                            color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.3)',
-                          }}
-                        >
-                          {matched ?? '—'}
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2 min-w-0 text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
+                            <span className="block min-w-0 truncate">{tname}</span>
+                            {isLocked && (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold"
+                                style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}
+                              >
+                                <Lock size={11} />
+                                Kilitli
+                              </span>
+                            )}
+                            {!isLocked && review != null && review > 0 && (
+                              <span
+                                className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-bold"
+                                style={{ background: 'rgba(245,158,11,0.13)', color: '#fbbf24' }}
+                              >
+                                <AlertTriangle size={11} />
+                                {amountMismatch > 0 ? `Fark ${amountMismatch}` : 'İncele'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex min-w-0 items-center gap-2.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.50)' }}>
+                            <span className="shrink-0 tabular-nums">{fmtDate(date)}</span>
+                            <span className="shrink-0 tabular-nums">{donem}</span>
+                            <span className="min-w-0 truncate">{TYPE_LABEL[tip] || tip}</span>
+                            {s?.maliyetUsd && s.maliyetUsd > 0 ? (
+                              <span className="shrink-0 tabular-nums" style={{ color: 'rgba(168,85,247,0.82)' }}>
+                                ${Number(s.maliyetUsd).toFixed(4)}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
-                        <td
-                          className="px-4 py-3 text-center tabular-nums"
-                          style={{
-                            fontFamily: 'Fraunces, serif',
-                            fontSize: 15,
-                            fontWeight: 600,
-                            color: unmatched == null
-                              ? 'rgba(250,250,249,0.3)'
-                              : unmatched > 0
-                                ? '#f43f5e'
-                                : 'rgba(250,250,249,0.35)',
-                          }}
-                        >
-                          {unmatched ?? '—'}
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
+                            <span className="px-2.5 py-1 rounded-lg" style={{ background: 'rgba(184,160,111,0.10)', color: GOLD }}>Luca {luca}</span>
+                            <span className="px-2.5 py-1 rounded-lg" style={{ background: 'rgba(96,165,250,0.10)', color: '#93c5fd' }}>Fatura {fatura}</span>
+                          </div>
                         </td>
-                        <td
-                          className="px-4 py-3 text-right tabular-nums"
-                          style={{
-                            fontSize: 11.5,
-                            color: s?.maliyetUsd && s.maliyetUsd > 0
-                              ? 'rgba(168,85,247,0.85)'
-                              : 'rgba(250,250,249,0.3)',
-                          }}
-                        >
-                          {s?.maliyetUsd && s.maliyetUsd > 0
-                            ? `$${Number(s.maliyetUsd).toFixed(4)}`
-                            : '—'}
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(34,197,94,0.10)', color: matched != null ? '#22c55e' : 'rgba(250,250,249,0.35)' }}>Eşleşen {matched ?? '—'}</span>
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(245,158,11,0.10)', color: review && review > 0 ? '#fbbf24' : 'rgba(250,250,249,0.35)' }}>İnceleme {review ?? '—'}</span>
+                            {amountMismatch > 0 && (
+                              <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(245,158,11,0.14)', color: '#fbbf24' }}>Fark {amountMismatch}</span>
+                            )}
+                            <span className="px-2.5 py-1 rounded-lg font-bold" style={{ background: 'rgba(244,63,94,0.10)', color: unmatched && unmatched > 0 ? '#f43f5e' : 'rgba(250,250,249,0.35)' }}>Hata {unmatched ?? '—'}</span>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="inline-flex items-center gap-1.5">
+                          <div className="inline-flex min-w-[166px] items-center justify-end gap-1.5">
+                            {/* Sil — session varsa session'ı, yoksa output'u sil */}
+                            <button
+                              onClick={() => {
+                                if (s) {
+                                  if (confirm('Bu seansı silmek istediğinize emin misiniz? (Kayıtlı Excel arşivi korunacak)')) deleteSessionMut.mutate(s.id);
+                                } else if (o) {
+                                  if (confirm('Bu arşivlenmiş çıktıyı silmek istediğinize emin misiniz?')) deleteOutput.mutate(o.id);
+                                }
+                              }}
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                              style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
+                              title="Sil"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                             {/* Excel indir — önce archive'daki snapshot, yoksa session'dan canlı üret */}
                             <button
                               onClick={async () => {
@@ -1560,38 +1622,64 @@ export default function KdvKontrolPage() {
                                   toast.error(e?.message || 'Excel indirilemedi', { id: `dl-${s?.id}` });
                                 }
                               }}
-                              className="p-1.5 rounded-md"
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                               style={{ color: '#22c55e', background: 'rgba(34,197,94,0.08)' }}
                               title={o ? 'Arşivlenmiş Excel indir' : 'Excel üret ve indir'}
                             >
                               <Download size={14} />
                             </button>
-                            {/* Detay — sadece session varsa */}
-                            {s && (
+                            {/* Detay */}
+                            {s ? (
                               <Link
                                 href={`/panel/kdv-kontrol?s=${s.id}`}
-                                className="p-1.5 rounded-md"
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
                                 style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }}
                                 title="Detay"
                               >
                                 <ArrowRight size={14} />
                               </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg cursor-not-allowed"
+                                style={{ color: 'rgba(184,160,111,0.25)', background: 'rgba(184,160,111,0.04)' }}
+                                title="Detay yok"
+                              >
+                                <ArrowRight size={14} />
+                              </button>
                             )}
-                            {/* Sil — session varsa session'ı, yoksa output'u sil */}
-                            <button
-                              onClick={() => {
-                                if (s) {
-                                  if (confirm('Bu seansı silmek istediğinize emin misiniz? (Kayıtlı Excel arşivi korunacak)')) deleteSessionMut.mutate(s.id);
-                                } else if (o) {
-                                  if (confirm('Bu arşivlenmiş çıktıyı silmek istediğinize emin misiniz?')) deleteOutput.mutate(o.id);
-                                }
-                              }}
-                              className="p-1.5 rounded-md"
-                              style={{ color: '#f43f5e', background: 'rgba(244,63,94,0.08)' }}
-                              title="Sil"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {s && isLocked ? (
+                              <button
+                                onClick={() => unlockSessionMut.mutate(s.id)}
+                                disabled={unlockSessionMut.isPending}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                                style={{ color: '#4ade80', background: 'rgba(34,197,94,0.08)' }}
+                                title="Kilidi aç"
+                              >
+                                <Unlock size={14} />
+                              </button>
+                            ) : s && canLock ? (
+                              <button
+                                onClick={() => lockSessionMut.mutate(s.id)}
+                                disabled={lockSessionMut.isPending}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                                style={{ color: '#60a5fa', background: 'rgba(96,165,250,0.08)' }}
+                                title="Bu kontrolü kilitle"
+                              >
+                                <Lock size={14} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg cursor-not-allowed"
+                                style={{ color: 'rgba(96,165,250,0.25)', background: 'rgba(96,165,250,0.04)' }}
+                                title="Kilit işlemi yok"
+                              >
+                                <Lock size={14} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

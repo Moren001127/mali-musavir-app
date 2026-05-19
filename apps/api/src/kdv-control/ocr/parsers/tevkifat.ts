@@ -45,16 +45,26 @@ function collectAmountsAfter(source: string, labelPattern: string, maxGap = 120)
   return values;
 }
 
-function collectTevkifatLineAmounts(source: string): number[] {
-  const re = new RegExp(
-    `K\\.?\\s*D\\.?\\s*V\\.?\\s+TEVK[^\\r\\n]{0,180}?\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)?\\s*[-=:\\s]*${AMOUNT_PATTERN}`,
-    'gi',
+function collectTevkifatLineAmounts(source: string, options: { totalsOnly?: boolean } = {}): number[] {
+  const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const amountAfterRateRe = new RegExp(
+    `\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)?\\s*[-=:\\s]*${AMOUNT_PATTERN}`,
+    'i',
   );
   const values: number[] = [];
-  let match: RegExpExecArray | null;
 
-  while ((match = re.exec(source)) !== null) {
-    const parsed = Math.abs(parseOcrAmount(match[1]));
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isTevkifatLine = /K\.?\s*D\.?\s*V\.?\s+TEVK|TEVKIFAT\s+TUTAR/.test(line);
+    const isTotalLine = /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?.*TEVK|TEVKIFAT\s+TUTAR/.test(line);
+    if (!isTevkifatLine && !isTotalLine) continue;
+    if (options.totalsOnly && !isTotalLine) continue;
+    if (!options.totalsOnly && isTotalLine) continue;
+
+    const window = [line, lines[i + 1] || '', lines[i + 2] || '', lines[i + 3] || ''].join(' ');
+    const amount = window.match(amountAfterRateRe);
+    if (!amount) continue;
+    const parsed = Math.abs(parseOcrAmount(amount[1]));
     if (parsed > 0 && parsed < 100_000_000) values.push(round2(parsed));
   }
 
@@ -71,7 +81,8 @@ function max(values: number[]): number {
 
 export function extractTevkifatTotalsFromText(text: string): TevkifatTotals | null {
   if (!text) return null;
-  const flat = foldTurkishAscii(text).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ');
+  const foldedText = foldTurkishAscii(text);
+  const flat = foldedText.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ');
   if (!/TEVK/.test(flat)) return null;
 
   const tamKdvCandidates = [
@@ -96,6 +107,7 @@ export function extractTevkifatTotalsFromText(text: string): TevkifatTotals | nu
       80,
     ),
     ...collectAmountsAfter(flat, 'TEVKIFAT\\s+TUTAR[II]?', 80),
+    ...collectTevkifatLineAmounts(foldedText, { totalsOnly: true }),
   ];
 
   let lineTevkifatAmounts = collectAmountsAfter(
@@ -103,14 +115,18 @@ export function extractTevkifatTotalsFromText(text: string): TevkifatTotals | nu
     'K\\.?\\s*D\\.?\\s*V\\.?\\s+TEVK[^\\s(]*\\s*\\(\\s*%?\\s*\\d{1,2}(?:[.,]\\d+)?\\s*\\)?',
     80,
   );
-  const interleavedLineAmounts = collectTevkifatLineAmounts(flat);
+  const interleavedLineAmounts = collectTevkifatLineAmounts(foldedText);
   if (interleavedLineAmounts.length > lineTevkifatAmounts.length) {
     lineTevkifatAmounts = interleavedLineAmounts;
   }
 
   const explicitTotal = max(explicitTevkifatTotals);
   const lineSum = sum(lineTevkifatAmounts.filter((value) => value < tamKdv - 0.05));
-  const tevkifat = round2(explicitTotal > 0 ? explicitTotal : lineSum);
+  const tevkifat = round2(
+    lineTevkifatAmounts.length > 1 && lineSum > 0
+      ? (explicitTotal > 0 && Math.abs(explicitTotal - lineSum) <= 0.05 ? explicitTotal : lineSum)
+      : (explicitTotal > 0 ? explicitTotal : lineSum),
+  );
   if (!(tevkifat > 0) || tevkifat >= tamKdv - 0.05) return null;
 
   return {

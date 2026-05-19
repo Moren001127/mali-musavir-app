@@ -767,3 +767,25 @@ textarea:-webkit-autofill:focus {
 
 /* Input caret rengi belli olsun */
 input, textarea { caret-color: #d4b876; }
+
+/* Finansal raporlar: mizan, gelir tablosu ve bilanco icin tek, net sans font. */
+.financial-report-readable,
+.financial-report-readable table,
+.financial-report-readable input,
+.financial-report-readable button,
+.financial-report-readable select,
+.financial-report-readable textarea,
+.financial-report-readable .font-mono {
+  font-family: var(--font-body, 'Inter'), system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+}
+
+.financial-report-readable {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.financial-report-readable [class*="tracking-"],
+.financial-report-readable .italic {
+  letter-spacing: 0 !important;
+  font-style: normal !important;
+}

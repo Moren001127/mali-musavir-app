@@ -16,11 +16,12 @@ const GRID_LINE = 'rgba(212,184,118,0.24)';
 const GRID_LINE_STRONG = 'rgba(212,184,118,0.48)';
 const AMOUNT_COLOR = '#fffaf0';
 const TOTAL_COLOR = '#fff0b8';
-const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
-const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.66)';
+const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const FINANCIAL_FONT = REPORT_FONT;
 const FINANCIAL_AMOUNT_SIZE = 14.5;
-const FINANCIAL_AMOUNT_WEIGHT = 560;
-const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
+const FINANCIAL_AMOUNT_WEIGHT = 600;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 700;
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; };
 function taxpayerName(t: Taxpayer): string {
@@ -151,7 +152,7 @@ export default function BilancoPage() {
   const denk = Math.abs(fark) < 0.01;
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="financial-report-readable space-y-5 max-w-7xl">
       <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
@@ -159,7 +160,7 @@ export default function BilancoPage() {
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Bilanço
           {selectedTp && (
             <span style={{ color: GOLD, fontWeight: 700, fontSize: 22, marginLeft: 12 }}>
@@ -295,11 +296,11 @@ export default function BilancoPage() {
             Bilanço · {bilanco.tarih ? new Date(bilanco.tarih).toLocaleDateString('tr-TR') : formatDonemLabel(bilanco.donem, bilanco.donemTipi)}
             {selectedTp && (
               <>
-                <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'Fraunces, serif' }}>
+                <span style={{ color: GOLD, fontWeight: 700, fontFamily: REPORT_FONT }}>
                   · {taxpayerName(selectedTp)}
                 </span>
                 {selectedTp.taxNumber && (
-                  <span className="font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 400 }}>
+                  <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.58)', fontFamily: REPORT_FONT, fontWeight: 500 }}>
                     · VKN/TCKN: {selectedTp.taxNumber}
                   </span>
                 )}
@@ -541,7 +542,7 @@ export default function BilancoPage() {
                                   </span>
                                 </div>
                                 <div className="flex items-baseline justify-between mt-2">
-                                  <span className="font-mono tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 700, color: kat.renk }}>
+                                  <span className="tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: 26, fontWeight: 700, color: kat.renk, letterSpacing: 0 }}>
                                     {o.degerFmt}
                                   </span>
                                   {o.trend && (
@@ -685,7 +686,7 @@ function Kpi({ label, val, color }: { label: string; val: string; color: string 
   return (
     <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
       <div className="text-[11px] font-bold uppercase tracking-[.1em] mb-2" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</div>
-      <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color }}>{val}</p>
+      <p className="leading-none tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: 22, fontWeight: 700, color, letterSpacing: 0 }}>{val}</p>
     </div>
   );
 }
@@ -707,7 +708,7 @@ function BilancoAmount({
   const isStrong = isTotal || isGroup;
   return (
     <span
-      className="font-mono tabular-nums"
+      className="tabular-nums"
       style={{
         display: 'block',
         textAlign: 'right',
@@ -740,12 +741,13 @@ function BilancoColumn({
       background: TABLE_BG,
       border: `1px solid ${GRID_LINE_STRONG}`,
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
+      fontFamily: REPORT_FONT,
     }}>
       <div className="flex items-center justify-between px-5 py-3.5 border-b" style={{
         borderColor: GRID_LINE_STRONG,
         background: 'linear-gradient(180deg, rgba(184,160,111,0.13), rgba(184,160,111,0.045))',
       }}>
-        <h4 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: '0.01em' }}>{baslik}</h4>
+        <h4 style={{ fontFamily: REPORT_FONT, fontSize: 17, fontWeight: 700, color: TOTAL_COLOR, margin: 0, letterSpacing: 0 }}>{baslik}</h4>
         <BilancoAmount value={toplam} variant="total" color={TOTAL_COLOR} />
       </div>
       <div>
@@ -771,11 +773,11 @@ function BilancoColumn({
                 </div>
                 {k.hesaplar?.slice(0, 6).map((h: any, hi: number) => (
                   <div key={hi} className="px-5 py-2 pl-10 grid grid-cols-[1fr_auto] gap-3 text-[13.5px] items-center" style={{
-                    color: 'rgba(250,250,249,0.72)',
+                    color: 'rgba(250,250,249,0.82)',
                     borderTop: '1px solid rgba(255,255,255,0.10)',
                     background: 'rgba(255,255,255,0.006)',
                   }}>
-                    <div style={{ fontWeight: 400 }}><span style={{ color: 'rgba(216,193,127,0.72)', fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, marginRight: 8, fontWeight: 500 }}>{h.kod}</span>{h.ad}</div>
+                    <div style={{ fontWeight: 500 }}><span style={{ color: 'rgba(216,193,127,0.82)', fontFamily: REPORT_FONT, fontSize: 12.5, marginRight: 8, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{h.kod}</span>{h.ad}</div>
                     <BilancoAmount value={h.tutar} variant="account" />
                   </div>
                 ))}

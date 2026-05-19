@@ -16,11 +16,12 @@ import {
 const GOLD = '#d4b876';
 const AMOUNT_COLOR = '#fffaf0';
 const TOTAL_AMOUNT_COLOR = '#fff0b8';
-const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.54)';
-const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.66)';
+const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const FINANCIAL_FONT = REPORT_FONT;
 const FINANCIAL_AMOUNT_SIZE = 14.5;
-const FINANCIAL_AMOUNT_WEIGHT = 560;
-const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
+const FINANCIAL_AMOUNT_WEIGHT = 600;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 700;
 
 type MizanTotals = {
   borcToplami: number;
@@ -355,7 +356,7 @@ export default function MizanPage() {
 
   const lucaAgentMut = useMutation({
     mutationFn: async () => {
-      await wakeLucaAgentForFetch(setLucaStatus);
+      setLucaStatus('Mizan cekimi local Luca ajanina aktariliyor...');
       return mizanApi.fetchFromLucaAgent({
         mukellefId: taxpayerId,
         donem: toDonem(year, month, donemTipi),
@@ -395,6 +396,10 @@ export default function MizanPage() {
   }, [lucaSessionQuery.data?.activeChallenge, lucaJobId]);
 
   const lucaLogText = useMemo(() => lucaLogLines.join('\n'), [lucaLogLines]);
+  const lucaPreparingDevice = useMemo(
+    () => /frm4\/SirketCombo henuz yuklenmedi|firma frame'i acilmadi|firma frame'i beklenenden gec|bos kaldi|bo[sş] kald[ıi]|haz[ıi]rlan[ıi]yor|SSO ana ekran|yeniden acilacak/i.test(lucaLogText),
+    [lucaLogText],
+  );
   const lucaDeviceRunning = useMemo(
     () =>
       (lucaSessionQuery.data?.devices || []).some((device) => device.running)
@@ -403,11 +408,15 @@ export default function MizanPage() {
   );
   const lucaReadyDevice = useMemo(
     () =>
-      (lucaSessionQuery.data?.devices || []).some((device) =>
-        device.running && /auygs\.luca\.com\.tr\/Luca\//i.test(String(device.url || '')),
-      )
-      || /Klasik Luca|frm4|Mizan ekrani|auygs\.luca\.com\.tr\/Luca\//i.test(lucaLogText),
-    [lucaSessionQuery.data?.devices, lucaLogText],
+      !lucaPreparingDevice && (
+        (lucaSessionQuery.data?.devices || []).some((device) =>
+          device.running
+          && /auygs\.luca\.com\.tr\/Luca\//i.test(String(device.url || ''))
+          && !/\/Luca\/(?:luca|giris)\.do(?:$|[?#])/i.test(String(device.url || '')),
+        )
+        || /S[ıi]ra geldi|Firma kontrol|Moren Agent v|Mizan formu|Sayfa haz[ıi]r|Excel indirildi|backend'e y[uü]klendi/i.test(lucaLogText)
+      ),
+    [lucaSessionQuery.data?.devices, lucaLogText, lucaPreparingDevice],
   );
   const lucaLoginDevice = useMemo(
     () =>
@@ -708,7 +717,7 @@ export default function MizanPage() {
   const toplamAlacak = mizan?.toplamAlacak ?? 0;
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="financial-report-readable space-y-5 max-w-7xl">
       {/* Header */}
       <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
@@ -717,7 +726,7 @@ export default function MizanPage() {
             <Sparkles size={10} className="inline mr-1" /> Kontrol
           </span>
         </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Mizan
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -937,6 +946,8 @@ export default function MizanPage() {
               <span>
                 {lucaReadyDevice
                   ? 'Luca ajani klasik Luca ekraninda hazir. Guvenlik kodu cikarsa burada sorulacak.'
+                  : lucaPreparingDevice
+                    ? 'Klasik Luca acildi ama firma alani yuklenmedi; ajan SSO uzerinden klasik paketi yeniden aciyor.'
                   : lucaLoginDevice
                     ? 'Luca ajani giris ekraninda. Otomatik giris veya klasik Luca gecisi bekleniyor; kod gerekirse burada acilacak.'
                     : lucaDeviceRunning
@@ -1526,7 +1537,7 @@ function Kpi({ label, val, color, small, icon: Icon }: { label: string; val: str
         {Icon ? <Icon size={12} style={{ color }} /> : null}
         {label}
       </div>
-      <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: small ? 15 : 22, fontWeight: 700, color }}>
+      <p className="leading-none tabular-nums" style={{ fontFamily: FINANCIAL_FONT, fontSize: small ? 15 : 22, fontWeight: 700, color, letterSpacing: 0 }}>
         {val}
       </p>
     </div>
@@ -1623,6 +1634,7 @@ function MizanTable({
       background: '#0a0907',
       border: '1px solid rgba(212,184,118,0.42)',
       boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 18px 40px rgba(0,0,0,0.30)',
+      fontFamily: REPORT_FONT,
     }}>
       {/* === ÜST BAŞLIK BLOĞU (Excel benzeri: MİZAN / Mükellef / Dönem) === */}
       <div style={{
@@ -1651,7 +1663,7 @@ function MizanTable({
 
       {/* === TABLO === */}
       <div style={{ overflowX: 'auto' }}>
-        <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 1080 }}>
+        <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed', minWidth: 1080 }}>
           <colgroup>
             <col style={{ width: 110 }} /> {/* HESAP KODU */}
             <col /> {/* HESAP ADI — esnek */}
@@ -1729,7 +1741,7 @@ function MizanTable({
                         tabIndex={0}
                         onClick={() => setFocusCell({ row: rowIdx, col: colIdx })}
                         onFocus={() => setFocusCell({ row: rowIdx, col: colIdx })}
-                        className={`px-3 py-2.5 ${colIdx >= 2 || colIdx === 0 ? 'font-mono' : ''} ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
+                        className={`px-3 py-2.5 ${c.align === 'right' ? 'text-right' : 'text-left'} truncate`}
                         style={{
                           borderRight: colIdx < COLS - 1 ? '1px solid rgba(212,184,118,0.24)' : 'none',
                           borderBottom: '1px solid rgba(255,255,255,0.14)',
@@ -1742,8 +1754,8 @@ function MizanTable({
                                 : AMOUNT_COLOR
                             : c.color,
                           fontWeight: isAmountCell ? (!hasAmountValue ? 500 : amountStrong ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT) : weight,
-                          fontFamily: isAmountCell ? FINANCIAL_FONT : undefined,
-                          fontVariantNumeric: isAmountCell ? 'tabular-nums' : undefined,
+                          fontFamily: REPORT_FONT,
+                          fontVariantNumeric: isAmountCell || colIdx === 0 ? 'tabular-nums' : undefined,
                           cursor: 'cell',
                           outline: focused ? `2px solid ${GOLD}` : 'none',
                           outlineOffset: focused ? '-2px' : '0',

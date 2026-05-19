@@ -3,8 +3,8 @@ import { MulterModule } from '@nestjs/platform-express';
 import { KdvControlService } from './kdv-control.service';
 import { KdvControlController } from './kdv-control.controller';
 import { ExcelParserService } from './excel-parser.service';
-import { OcrService } from './ocr.service';
-import { ReconciliationEngine } from './reconciliation.engine';
+import { OcrService } from './ocr';
+import { ReconciliationEngine } from './reconciliation';
 import { LucaModule } from '../luca/luca.module';
 import { AgentEventsModule } from '../agent-events/agent-events.module';
 

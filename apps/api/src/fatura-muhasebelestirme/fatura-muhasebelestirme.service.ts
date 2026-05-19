@@ -1,11 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import * as JSZip from 'jszip';
+import { XMLParser } from 'fast-xml-parser';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { OcrService, OcrResult } from '../kdv-control/ocr.service';
+import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
-import { encrypt } from '../common/crypto';
+import { encrypt, tryDecrypt } from '../common/crypto';
 
 type AccountingLineInput = {
   id?: string;
@@ -42,6 +44,10 @@ type AccountPlanQuery = {
   limit?: number;
 };
 
+type PeriodQuery = {
+  period?: string;
+};
+
 type DuplicateSignal = {
   duplicateOfId: string;
   duplicateReason: string;
@@ -63,6 +69,50 @@ type IntegrationSaveInput = {
   isActive?: boolean;
 };
 
+type IntegrationFetchInput = {
+  taxpayerId?: string;
+  donem?: string;
+  direction?: 'ALIS' | 'SATIS';
+  providers?: string[];
+  limit?: number;
+};
+
+type RuntimeIntegrationConfig = {
+  provider: string;
+  label: string;
+  baseUrl: string;
+  username: string;
+  password: string;
+  apiKey: string;
+  apiSecret: string;
+  senderVkn: string;
+  accountId: string;
+  note: string;
+};
+
+type ProviderInvoicePayload = {
+  xml: string;
+  externalId?: string | null;
+  originalName?: string | null;
+  pdfBuffer?: Buffer | null;
+  htmlContent?: string | null;
+};
+
+type ParsedProviderInvoice = {
+  faturaNo: string;
+  faturaTarihi: Date | null;
+  ettn?: string | null;
+  satici?: string | null;
+  saticiVergiNo?: string | null;
+  alici?: string | null;
+  aliciVergiNo?: string | null;
+  matrah?: number | null;
+  kdvTutari?: number | null;
+  kdvOrani?: number | null;
+  toplamTutar?: number | null;
+  paraBirimi?: string | null;
+};
+
 const INTEGRATOR_CATALOG = [
   { provider: 'LUCA', label: 'Luca', kind: 'luca', tone: 'green' },
   { provider: 'GIB_PORTAL', label: 'GIB Portal', kind: 'portal', tone: 'amber' },
@@ -76,6 +126,13 @@ const INTEGRATOR_CATALOG = [
   { provider: 'LOGO_ISBASI', label: 'Logo Isbasi', kind: 'efatura', tone: 'gold' },
   { provider: 'TURMOB_EFATURA', label: 'TURMOB e-Fatura', kind: 'efatura', tone: 'red' },
 ] as const;
+
+const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
+  UYUMSOFT: 'http://efatura.uyumsoft.com.tr/Services/BasicIntegration',
+  IZIBIZ: 'https://efaturaws.izibiz.com.tr/EInvoiceWS',
+};
+
+const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
 
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
@@ -91,13 +148,45 @@ function parseDate(value: string | null | undefined) {
 
 function money(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === '') return null;
-  const n = Number(String(value).replace(/\./g, '').replace(',', '.'));
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    return new Prisma.Decimal(value.toFixed(2));
+  }
+  const raw = String(value).trim();
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw.replace(/[^\d.-]/g, '');
+  const n = Number(normalized);
   if (!Number.isFinite(n)) return null;
   return new Prisma.Decimal(n.toFixed(2));
 }
 
+function periodRange(period?: string | null) {
+  const match = String(period || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return null;
+  const start = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+  return { start, end };
+}
+
+function periodWhere(period?: string | null) {
+  const range = periodRange(period);
+  if (!range) return {};
+  return {
+    OR: [
+      { faturaTarihi: { gte: range.start, lt: range.end } },
+      { faturaTarihi: null, createdAt: { gte: range.start, lt: range.end } },
+    ],
+  };
+}
+
 @Injectable()
 export class FaturaMuhasebelestirmeService {
+  private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
@@ -105,12 +194,13 @@ export class FaturaMuhasebelestirmeService {
     private readonly earsivRender: EarsivRenderService,
   ) {}
 
-  async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string }) {
+  async list(tenantId: string, opts: { status?: string; limit?: number; taxpayerId?: string; period?: string }) {
     return (this.prisma as any).invoiceAccountingDocument.findMany({
       where: {
         tenantId,
         ...(opts.status ? { status: opts.status } : {}),
         ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+        ...periodWhere(opts.period),
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
       orderBy: { createdAt: 'desc' },
@@ -118,7 +208,7 @@ export class FaturaMuhasebelestirmeService {
     });
   }
 
-  async dashboard(tenantId: string) {
+  async dashboard(tenantId: string, opts: PeriodQuery = {}) {
     const [taxpayers, grouped] = await Promise.all([
       (this.prisma as any).taxpayer.findMany({
         where: { tenantId, isActive: true },
@@ -134,7 +224,7 @@ export class FaturaMuhasebelestirmeService {
       }),
       (this.prisma as any).invoiceAccountingDocument.groupBy({
         by: ['taxpayerId', 'invoiceKind', 'status'],
-        where: { tenantId, taxpayerId: { not: null } },
+        where: { tenantId, taxpayerId: { not: null }, ...periodWhere(opts.period) },
         _count: { _all: true },
       }),
     ]);
@@ -298,6 +388,192 @@ export class FaturaMuhasebelestirmeService {
     const [saved] = await this.listIntegrations(tenantId, { taxpayerId: input.taxpayerId || null });
     const all = await this.listIntegrations(tenantId, { taxpayerId: input.taxpayerId || null });
     return all.find((item) => item.provider === provider) || saved;
+  }
+
+  async fetchConfiguredIntegrations(
+    tenantId: string,
+    input: IntegrationFetchInput,
+    userId?: string,
+  ) {
+    const taxpayerId = String(input.taxpayerId || '').trim();
+    if (!taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const direction = input.direction === 'SATIS' ? 'SATIS' : 'ALIS';
+    const period = this.monthRange(input.donem);
+    const limit = Math.min(Math.max(Number(input.limit || 500), 1), 1000);
+    const requestedProviders = new Set(
+      (input.providers || [])
+        .map((p) => String(p || '').trim().toUpperCase())
+        .filter(Boolean),
+    );
+
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: {
+        id: true,
+        companyName: true,
+        firstName: true,
+        lastName: true,
+        taxNumber: true,
+        identityNumber: true,
+      },
+    });
+    if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    const rows = await (this.prisma as any).integrationConnection.findMany({
+      where: {
+        tenantId,
+        provider: {
+          in: INTEGRATOR_CATALOG.filter((item) => item.provider !== 'LUCA').map((item) => item.provider) as any,
+        },
+      },
+      select: { id: true, provider: true, config: true, isActive: true },
+    });
+    const byProvider = new Map<string, any>(rows.map((row: any) => [String(row.provider), row]));
+    const providers = INTEGRATOR_CATALOG.filter((item) => {
+      if (item.provider === 'LUCA') return false;
+      if (requestedProviders.size && !requestedProviders.has(item.provider)) return false;
+      return true;
+    });
+
+    const statuses: any[] = [];
+    const totals = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
+
+    for (const item of providers) {
+      const row = byProvider.get(item.provider);
+      const cfg = this.resolveRuntimeConfig(row, item, taxpayerId);
+      if (!row || !cfg) {
+        totals.skipped++;
+        statuses.push({ provider: item.provider, label: item.label, status: 'SKIPPED', reason: 'API kaydi yok' });
+        continue;
+      }
+      if (row.isActive === false || cfg.note === '__inactive__') {
+        totals.skipped++;
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: 'Pasif' });
+        continue;
+      }
+      if (cfg.provider === 'GIB_PORTAL' && !cfg.baseUrl) {
+        totals.skipped++;
+        statuses.push({
+          provider: item.provider,
+          label: cfg.label,
+          status: 'SKIPPED',
+          reason: 'GIB Portal icin resmi API yok; API adresi veya portal ajani gerekir',
+        });
+        continue;
+      }
+      const credentialCheck = this.providerCredentialProblem(cfg);
+      if (credentialCheck) {
+        totals.skipped++;
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: credentialCheck });
+        continue;
+      }
+
+      const job = await (this.prisma as any).integrationJob.create({
+        data: {
+          connectionId: row.id,
+          jobType: 'INVOICE_FETCH',
+          status: 'RUNNING',
+          attempts: 1,
+          startedAt: new Date(),
+          payload: {
+            taxpayerId,
+            direction,
+            donem: period.donem,
+            startDate: period.startDate,
+            endDate: period.endDate,
+            limit,
+          },
+        },
+        select: { id: true },
+      });
+
+      try {
+        const payloads = await this.fetchProviderInvoices(cfg, {
+          taxpayer,
+          direction,
+          period,
+          limit,
+        });
+        let created = 0;
+        let alreadyQueued = 0;
+        let failed = 0;
+        const errors: Array<{ ref: string; message: string }> = [];
+        for (const payload of payloads) {
+          try {
+            const result = await this.createDocumentFromProviderXml(
+              tenantId,
+              userId,
+              taxpayer,
+              cfg,
+              direction,
+              payload,
+            );
+            if (result.created) created++;
+            else alreadyQueued++;
+          } catch (e: any) {
+            failed++;
+            if (errors.length < 10) {
+              errors.push({ ref: payload.externalId || payload.originalName || '-', message: e?.message || 'parse hatasi' });
+            }
+          }
+        }
+        totals.created += created;
+        totals.alreadyQueued += alreadyQueued;
+        totals.failed += failed;
+        totals.fetched += payloads.length;
+        await (this.prisma as any).integrationConnection.update({
+          where: { id: row.id },
+          data: { lastSyncAt: new Date() },
+        });
+        await (this.prisma as any).integrationJob.update({
+          where: { id: job.id },
+          data: {
+            status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+            completedAt: new Date(),
+            result: { fetched: payloads.length, created, alreadyQueued, failed, errors },
+            errorMessage: failed && errors.length ? errors[0].message : null,
+          },
+        });
+        statuses.push({
+          provider: item.provider,
+          label: cfg.label,
+          status: failed && !created && !alreadyQueued ? 'FAILED' : 'SUCCESS',
+          fetched: payloads.length,
+          created,
+          alreadyQueued,
+          failed,
+          errors,
+        });
+      } catch (e: any) {
+        totals.failed++;
+        const message = e?.message || 'entegrator cekme hatasi';
+        await (this.prisma as any).integrationJob.update({
+          where: { id: job.id },
+          data: { status: 'FAILED', completedAt: new Date(), errorMessage: message },
+        });
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'FAILED', reason: message });
+      }
+    }
+
+    if (totals.created > 0) {
+      const latest = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+        where: { tenantId, taxpayerId, status: 'READY' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (latest?.id) {
+        await this.rematchPendingDocumentsWithAccountPlan(tenantId, taxpayerId, latest.id);
+      }
+    }
+
+    return {
+      ok: true,
+      taxpayerId,
+      direction,
+      donem: period.donem,
+      ...totals,
+      providers: statuses,
+    };
   }
 
   async accountPlan(tenantId: string, opts: AccountPlanQuery) {
@@ -869,6 +1145,597 @@ export class FaturaMuhasebelestirmeService {
       this.storage.deleteObject(doc.s3Key).catch(() => {});
     }
     return { deleted: true };
+  }
+
+  private resolveRuntimeConfig(
+    row: any,
+    catalog: (typeof INTEGRATOR_CATALOG)[number],
+    taxpayerId: string,
+  ): RuntimeIntegrationConfig | null {
+    if (!row) return null;
+    const config = ((row.config || {}) as any) || {};
+    const scoped = config.taxpayers?.[taxpayerId] || config.taxpayers?.global || null;
+    if (!scoped) return null;
+    const password = tryDecrypt(scoped.encryptedPassword) || '';
+    const apiKey = tryDecrypt(scoped.encryptedApiKey) || '';
+    const apiSecret = tryDecrypt(scoped.encryptedApiSecret) || '';
+    return {
+      provider: catalog.provider,
+      label: scoped.label || config.label || catalog.label,
+      baseUrl: String(scoped.baseUrl || PROVIDER_DEFAULT_BASE_URL[catalog.provider] || '').trim(),
+      username: String(scoped.username || '').trim(),
+      password,
+      apiKey,
+      apiSecret,
+      senderVkn: String(scoped.senderVkn || '').trim(),
+      accountId: String(scoped.accountId || '').trim(),
+      note: scoped.isActive === false ? '__inactive__' : String(scoped.note || '').trim(),
+    };
+  }
+
+  private providerCredentialProblem(cfg: RuntimeIntegrationConfig): string | null {
+    if (cfg.provider === 'UYUMSOFT' && (!cfg.username || !cfg.password)) return 'Uyumsoft kullanici/sifre eksik';
+    if (I2I_SOAP_PROVIDERS.has(cfg.provider) && (!cfg.username || !cfg.password)) return 'Izibiz/i2i kullanici/sifre eksik';
+    if (cfg.provider !== 'UYUMSOFT' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
+    if (!cfg.username && !cfg.password && !cfg.apiKey && !cfg.apiSecret && !cfg.baseUrl) return 'Kimlik bilgisi eksik';
+    return null;
+  }
+
+  private monthRange(value?: string) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})$/);
+    const now = new Date();
+    const year = match ? Number(match[1]) : now.getFullYear();
+    const month = match ? Number(match[2]) : now.getMonth() + 1;
+    const start = new Date(Date.UTC(year, month - 1, 1));
+    const end = new Date(Date.UTC(year, month, 0));
+    const mm = String(month).padStart(2, '0');
+    return {
+      donem: `${year}-${mm}`,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+    };
+  }
+
+  private async fetchProviderInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
+    if (I2I_SOAP_PROVIDERS.has(cfg.provider) || /EInvoiceWS/i.test(cfg.baseUrl)) {
+      return this.fetchI2iInvoices(cfg, opts);
+    }
+    return this.fetchGenericRestInvoices(cfg, opts);
+  }
+
+  private async fetchUyumsoftInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { startDate: string; endDate: string };
+      limit: number;
+    },
+  ) {
+    const method = opts.direction === 'SATIS' ? 'GetOutboxInvoicesData' : 'GetInboxInvoicesData';
+    const action = `http://tempuri.org/IBasicIntegration/${method}`;
+    const queryAttrs =
+      opts.direction === 'SATIS'
+        ? `PageIndex="0" PageSize="${opts.limit}"`
+        : `PageIndex="0" PageSize="${opts.limit}" SetTaken="false" OnlyNewestInvoices="false"`;
+    const body = `
+      <${method} xmlns="http://tempuri.org/">
+        <userInfo Username="${this.xmlEscape(cfg.username)}" Password="${this.xmlEscape(cfg.password)}" />
+        <query ${queryAttrs}>
+          <ExecutionStartDate>${opts.period.startDate}T00:00:00</ExecutionStartDate>
+          <ExecutionEndDate>${opts.period.endDate}T23:59:59</ExecutionEndDate>
+        </query>
+      </${method}>`;
+    const text = await this.soapPost(cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT, action, body);
+    return this.extractPayloadsFromProviderResponse(text, ['Data']);
+  }
+
+  private async fetchI2iInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { startDate: string; endDate: string };
+      limit: number;
+    },
+  ) {
+    const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.IZIBIZ;
+    const loginBody = `
+      <LoginRequest xmlns="http://schemas.i2i.com/ei/wsdl">
+        <USER_NAME>${this.xmlEscape(cfg.username)}</USER_NAME>
+        <PASSWORD>${this.xmlEscape(cfg.password)}</PASSWORD>
+      </LoginRequest>`;
+    const loginText = await this.soapPost(baseUrl, '', loginBody);
+    const sessionId = this.tagText(loginText, 'SESSION_ID');
+    if (!sessionId) throw new Error('Izibiz/i2i oturum alinamadi');
+    const direction = opts.direction === 'SATIS' ? 'OUT' : 'IN';
+    const fetchBody = `
+      <GetInvoiceRequest xmlns="http://schemas.i2i.com/ei/wsdl">
+        <REQUEST_HEADER>
+          <SESSION_ID>${this.xmlEscape(sessionId)}</SESSION_ID>
+          <APPLICATION_NAME>MOREN_PORTAL</APPLICATION_NAME>
+        </REQUEST_HEADER>
+        <INVOICE_SEARCH_KEY>
+          <LIMIT>${opts.limit}</LIMIT>
+          <DATE_TYPE>ISSUE</DATE_TYPE>
+          <START_DATE>${opts.period.startDate}</START_DATE>
+          <END_DATE>${opts.period.endDate}</END_DATE>
+          <READ_INCLUDED>true</READ_INCLUDED>
+          <DIRECTION>${direction}</DIRECTION>
+        </INVOICE_SEARCH_KEY>
+        <HEADER_ONLY>N</HEADER_ONLY>
+        <INVOICE_CONTENT_TYPE>XML</INVOICE_CONTENT_TYPE>
+      </GetInvoiceRequest>`;
+    const text = await this.soapPost(baseUrl, '', fetchBody);
+    return this.extractPayloadsFromProviderResponse(text, ['CONTENT', 'XML_CONTENT', 'DATA']);
+  }
+
+  private async fetchGenericRestInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ) {
+    if (!cfg.baseUrl) throw new Error('API adresi eksik');
+    const taxNo = opts.taxpayer.taxNumber || opts.taxpayer.identityNumber || cfg.senderVkn || '';
+    const url = new URL(cfg.baseUrl);
+    const addParam = (key: string, value: string | number) => {
+      if (!url.searchParams.has(key) && value !== '') url.searchParams.set(key, String(value));
+    };
+    addParam('taxpayerId', opts.taxpayer.id);
+    addParam('vkn', taxNo);
+    addParam('donem', opts.period.donem);
+    addParam('direction', opts.direction);
+    addParam('startDate', opts.period.startDate);
+    addParam('endDate', opts.period.endDate);
+    addParam('limit', opts.limit);
+
+    const headers = this.providerHeaders(cfg);
+    let res = await fetch(url.toString(), { method: 'GET', headers });
+    if (res.status === 405 || res.status === 404) {
+      res = await fetch(cfg.baseUrl, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taxpayerId: opts.taxpayer.id,
+          vkn: taxNo,
+          donem: opts.period.donem,
+          direction: opts.direction,
+          startDate: opts.period.startDate,
+          endDate: opts.period.endDate,
+          limit: opts.limit,
+        }),
+      });
+    }
+    const text = await res.text();
+    if (!res.ok) throw new Error(`${cfg.provider} API ${res.status}: ${text.slice(0, 300)}`);
+    return this.extractPayloadsFromProviderResponse(text, ['xml', 'ubl', 'content', 'data', 'base64']);
+  }
+
+  private providerHeaders(cfg: RuntimeIntegrationConfig): Record<string, string> {
+    const headers: Record<string, string> = {
+      Accept: 'application/xml, text/xml, application/json, */*',
+      'User-Agent': 'MorenPortal/1.0',
+    };
+    if (cfg.apiKey) {
+      headers.Authorization = `Bearer ${cfg.apiKey}`;
+      headers['X-API-Key'] = cfg.apiKey;
+    }
+    if (cfg.apiSecret) headers['X-API-Secret'] = cfg.apiSecret;
+    if (cfg.username && cfg.password && !headers.Authorization) {
+      headers.Authorization = `Basic ${Buffer.from(`${cfg.username}:${cfg.password}`).toString('base64')}`;
+    }
+    if (cfg.accountId) headers['X-Account-Id'] = cfg.accountId;
+    return headers;
+  }
+
+  private async soapPost(url: string, soapAction: string, body: string) {
+    const envelope = `<?xml version="1.0" encoding="utf-8"?>
+      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+        <soapenv:Body>${body}</soapenv:Body>
+      </soapenv:Envelope>`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'text/xml; charset=utf-8',
+      Accept: 'text/xml, application/xml',
+      'User-Agent': 'MorenPortal/1.0',
+    };
+    if (soapAction) headers.SOAPAction = `"${soapAction}"`;
+    const res = await fetch(url, { method: 'POST', headers, body: envelope });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`SOAP ${res.status}: ${text.slice(0, 400)}`);
+    if (/<(?:[^:>]+:)?Fault\b/i.test(text)) throw new Error(this.tagText(text, 'faultstring') || 'SOAP Fault');
+    return text;
+  }
+
+  private async extractPayloadsFromProviderResponse(text: string, contentTags: string[]) {
+    const payloads: ProviderInvoicePayload[] = [];
+    const collected: string[] = [];
+    const pushString = (value: string) => {
+      const trimmed = String(value || '').trim();
+      if (trimmed.length > 20) collected.push(trimmed);
+    };
+
+    try {
+      const json = JSON.parse(text);
+      const visit = (node: any, key = '') => {
+        if (node == null) return;
+        if (typeof node === 'string') {
+          if (/xml|ubl|content|data|base64|document|invoice/i.test(key) || this.looksLikeXmlOrBase64(node)) pushString(node);
+          return;
+        }
+        if (Array.isArray(node)) {
+          node.forEach((item) => visit(item, key));
+          return;
+        }
+        if (typeof node === 'object') {
+          for (const [childKey, childValue] of Object.entries(node)) visit(childValue, childKey);
+        }
+      };
+      visit(json);
+    } catch {
+      // Not JSON; continue with XML/text extraction.
+    }
+
+    const decoded = this.decodeXmlEntities(text);
+    this.extractXmlDocuments(decoded).forEach(pushString);
+    const tagGroup = contentTags.map((tag) => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    if (tagGroup) {
+      const re = new RegExp(`<[^:>]*(?::)?(?:${tagGroup})\\b[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?(?:${tagGroup})>`, 'gi');
+      for (const match of decoded.matchAll(re)) {
+        pushString(match[1].replace(/<[^>]+>/g, '').trim());
+      }
+    }
+
+    for (const value of collected) {
+      await this.addPayloadString(payloads, value);
+    }
+    const unique = new Map<string, ProviderInvoicePayload>();
+    for (const payload of payloads) {
+      const key = payload.externalId || createHash('sha1').update(payload.xml).digest('hex');
+      if (!unique.has(key)) unique.set(key, payload);
+    }
+    return [...unique.values()];
+  }
+
+  private async addPayloadString(payloads: ProviderInvoicePayload[], value: string) {
+    const raw = this.decodeXmlEntities(value).trim();
+    const xmlDocs = this.extractXmlDocuments(raw);
+    if (xmlDocs.length) {
+      xmlDocs.forEach((xml) => payloads.push({
+        xml,
+        externalId: this.tagText(xml, 'UUID') || this.tagText(xml, 'ID') || null,
+        originalName: `${this.tagText(xml, 'ID') || this.tagText(xml, 'UUID') || randomUUID()}.xml`,
+      }));
+      return;
+    }
+    const compact = raw.replace(/\s+/g, '');
+    if (!this.looksLikeBase64(compact)) return;
+    await this.addPayloadBuffer(payloads, Buffer.from(compact, 'base64'));
+  }
+
+  private async addPayloadBuffer(payloads: ProviderInvoicePayload[], buffer: Buffer) {
+    if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+      const zip = await JSZip.loadAsync(buffer);
+      const files = Object.values(zip.files).filter((file) => !file.dir);
+      for (const file of files) {
+        const name = file.name || '';
+        if (!/\.(xml|ubl)$/i.test(name)) continue;
+        const xml = await file.async('string');
+        const xmlDocs = this.extractXmlDocuments(this.decodeXmlEntities(xml));
+        for (const doc of xmlDocs.length ? xmlDocs : [xml]) {
+          payloads.push({
+            xml: doc,
+            externalId: this.tagText(doc, 'UUID') || this.tagText(doc, 'ID') || null,
+            originalName: name.split('/').pop() || `${randomUUID()}.xml`,
+          });
+        }
+      }
+      return;
+    }
+    const text = buffer.toString('utf8');
+    const xmlDocs = this.extractXmlDocuments(this.decodeXmlEntities(text));
+    for (const xml of xmlDocs) {
+      payloads.push({
+        xml,
+        externalId: this.tagText(xml, 'UUID') || this.tagText(xml, 'ID') || null,
+        originalName: `${this.tagText(xml, 'ID') || this.tagText(xml, 'UUID') || randomUUID()}.xml`,
+      });
+    }
+  }
+
+  private extractXmlDocuments(text: string) {
+    const source = String(text || '').trim();
+    const docs: string[] = [];
+    const patterns = [
+      /<\?xml[\s\S]*?<\/(?:[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)>/gi,
+      /<(?:[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)\b[\s\S]*?<\/(?:[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)>/gi,
+    ];
+    for (const pattern of patterns) {
+      for (const match of source.matchAll(pattern)) {
+        const xml = match[0].trim();
+        if (!docs.some((item) => item === xml)) docs.push(xml);
+      }
+    }
+    return docs;
+  }
+
+  private looksLikeXmlOrBase64(value: string) {
+    const raw = String(value || '').trim();
+    return /<(?:\?xml|[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)\b/i.test(raw) || this.looksLikeBase64(raw.replace(/\s+/g, ''));
+  }
+
+  private looksLikeBase64(value: string) {
+    const raw = String(value || '').trim();
+    return raw.length > 80 && raw.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(raw);
+  }
+
+  private decodeXmlEntities(value: string) {
+    return String(value || '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&#x([0-9a-f]+);/gi, (_m, hex) => String.fromCharCode(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_m, dec) => String.fromCharCode(parseInt(dec, 10)));
+  }
+
+  private tagText(xml: string, tag: string) {
+    const re = new RegExp(`<[^:>]*(?::)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?${tag}>`, 'i');
+    return (String(xml || '').match(re)?.[1] || '').replace(/<[^>]+>/g, '').trim();
+  }
+
+  private xmlEscape(value: string) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  private async createDocumentFromProviderXml(
+    tenantId: string,
+    userId: string | undefined,
+    taxpayer: any,
+    cfg: RuntimeIntegrationConfig,
+    direction: 'ALIS' | 'SATIS',
+    payload: ProviderInvoicePayload,
+  ) {
+    const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+    if (!parsed) throw new Error('UBL/XML fatura okunamadi');
+    const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
+    const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex');
+    const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { tenantId, taxpayerId: taxpayer.id, source, sourceRefId },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+    if (existing) return { created: false, document: existing };
+
+    const xmlBuffer = Buffer.from(payload.xml, 'utf8');
+    const s3Key = `invoice-accounting/${tenantId}/${taxpayer.id}/${cfg.provider.toLowerCase()}-${randomUUID()}.xml`;
+    await this.storage.putBuffer(s3Key, xmlBuffer, 'application/xml', {
+      'tenant-id': tenantId,
+      'taxpayer-id': taxpayer.id,
+      provider: cfg.provider,
+      source,
+    });
+
+    const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+    const duplicate = await this.findDuplicate(tenantId, {
+      taxpayerId: taxpayer.id,
+      belgeNo: parsed.faturaNo,
+      sellerVkn: parsed.saticiVergiNo || null,
+      buyerVkn: parsed.aliciVergiNo || null,
+      totalAmount: total,
+    });
+    const lines = this.linesFromAmounts({
+      invoiceKind: direction,
+      matrah: parsed.matrah,
+      kdvTutari: parsed.kdvTutari,
+      kdvOrani: parsed.kdvOrani,
+      total,
+      vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
+    });
+
+    const doc = await (this.prisma as any).invoiceAccountingDocument.create({
+      data: {
+        tenantId,
+        taxpayerId: taxpayer.id,
+        source,
+        sourceRefId,
+        documentType: this.documentTypeFromProviderXml(payload.xml),
+        invoiceKind: direction,
+        status: duplicate ? 'NEEDS_REVIEW' : 'READY',
+        duplicateOfId: duplicate?.duplicateOfId || null,
+        duplicateReason: duplicate?.duplicateReason || null,
+        duplicateSeverity: duplicate?.duplicateSeverity || null,
+        originalName: payload.originalName || `${parsed.faturaNo || sourceRefId}.xml`,
+        mimeType: 'application/xml',
+        sizeBytes: xmlBuffer.length,
+        s3Key,
+        currency: parsed.paraBirimi || 'TL',
+        belgeNo: parsed.faturaNo || null,
+        faturaTarihi: parsed.faturaTarihi || null,
+        sellerVkn: parsed.saticiVergiNo || null,
+        buyerVkn: parsed.aliciVergiNo || null,
+        vendorName: parsed.satici || null,
+        customerName: parsed.alici || null,
+        totalAmount: money(total),
+        ocrStatus: 'SUCCESS',
+        ocrEngine: `${cfg.provider.toLowerCase()}-api`,
+        ocrConfidence: 1,
+        ocrData: {
+          provider: cfg.provider,
+          source: 'provider-api',
+          direction,
+          matrah: parsed.matrah,
+          kdvTutari: parsed.kdvTutari,
+          kdvOrani: parsed.kdvOrani,
+          ettn: parsed.ettn,
+        },
+        createdBy: userId || null,
+        lines: { create: lines },
+      },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
+    });
+    return { created: true, document: doc };
+  }
+
+  private documentTypeFromProviderXml(xml: string) {
+    return /EARSIV|E-ARSIV|EARCHIVE|E-ARCHIVE/i.test(xml) ? 'E_ARSIV' : 'E_FATURA';
+  }
+
+  private parseProviderUblInvoice(xml: string): ParsedProviderInvoice | null {
+    try {
+      const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '@',
+        removeNSPrefix: true,
+      });
+      const parsed = parser.parse(xml);
+      const findRoot = (obj: any): any => {
+        if (!obj || typeof obj !== 'object') return null;
+        for (const key of Object.keys(obj)) {
+          if (/^(Invoice|CreditNote)$/i.test(key)) return obj[key];
+        }
+        for (const key of Object.keys(obj)) {
+          const inner = findRoot(obj[key]);
+          if (inner) return inner;
+        }
+        return null;
+      };
+      const root = findRoot(parsed);
+      if (!root) return null;
+      const get = (path: string[]) => {
+        let cur = root;
+        for (const part of path) {
+          if (!cur) return undefined;
+          cur = cur[part];
+        }
+        return cur;
+      };
+      const txt = (value: any): string | undefined => {
+        if (value == null) return undefined;
+        if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
+        if (Array.isArray(value)) return txt(value[0]);
+        if (typeof value === 'object') return txt(value['#text'] ?? value._);
+        return undefined;
+      };
+      const asArray = (value: any): any[] => (value == null ? [] : Array.isArray(value) ? value : [value]);
+      const digits = (value: any): string | undefined => {
+        const cleaned = String(value || '').replace(/\D/g, '');
+        return cleaned.length === 10 || cleaned.length === 11 ? cleaned : undefined;
+      };
+      const idText = (node: any): string | undefined => txt(node?.ID) || txt(node?.CompanyID) || txt(node);
+      const idScheme = (node: any): string =>
+        String(node?.ID?.['@schemeID'] || node?.CompanyID?.['@schemeID'] || node?.['@schemeID'] || '').toUpperCase();
+      const taxNoFromParty = (party: any): string | undefined => {
+        const nodes = [
+          ...asArray(party?.PartyTaxScheme),
+          ...asArray(party?.PartyIdentification),
+          ...asArray(party?.PartyLegalEntity),
+        ];
+        for (const node of nodes) {
+          const no = digits(idText(node));
+          const scheme = idScheme(node);
+          if (no && (scheme === 'VKN' || scheme === 'TCKN')) return no;
+        }
+        for (const node of nodes) {
+          const no = digits(idText(node));
+          if (no) return no;
+        }
+        return undefined;
+      };
+      const taxNoFromXmlBlock = (tag: string): string | undefined => {
+        const block = xml.match(new RegExp(`<[^>]*${tag}[^>]*>([\\s\\S]*?)<\\/[^>]*${tag}>`, 'i'))?.[1] || '';
+        return (
+          block.match(/<[^>]*(?:ID|CompanyID)[^>]*schemeID=["'](?:VKN|TCKN)["'][^>]*>\s*(\d{10,11})\s*<\//i)?.[1] ||
+          block.match(/<[^>]*CompanyID[^>]*>\s*(\d{10,11})\s*<\//i)?.[1]
+        );
+      };
+      const num = (value: any): number | undefined => {
+        const raw = txt(value);
+        if (!raw) return undefined;
+        const normalized = raw.includes(',')
+          ? raw.replace(/\./g, '').replace(',', '.')
+          : raw.replace(/[^\d.-]/g, '');
+        const n = Number(normalized);
+        return Number.isFinite(n) ? n : undefined;
+      };
+      const faturaNo = txt(get(['ID'])) || '';
+      const ettn = txt(get(['UUID']));
+      const issueDateRaw = txt(get(['IssueDate']));
+      const issueDate = issueDateRaw ? new Date(issueDateRaw) : null;
+      const supplier = get(['AccountingSupplierParty', 'Party']);
+      const customer = get(['AccountingCustomerParty', 'Party']);
+      const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']);
+      const taxTotalRaw = get(['TaxTotal']);
+      const taxTotal = Array.isArray(taxTotalRaw) ? taxTotalRaw[0] : taxTotalRaw;
+      const matrah = num(monetaryTotal?.TaxExclusiveAmount) ?? num(monetaryTotal?.LineExtensionAmount);
+      const kdvTutari = num(taxTotal?.TaxAmount);
+      const toplamTutar = num(monetaryTotal?.TaxInclusiveAmount) ?? num(monetaryTotal?.PayableAmount);
+      return {
+        faturaNo: faturaNo || ettn || 'BILINMIYOR',
+        faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
+        ettn,
+        satici: txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || null,
+        saticiVergiNo: taxNoFromParty(supplier) || taxNoFromXmlBlock('AccountingSupplierParty') || null,
+        alici: txt(customer?.PartyName?.Name) || txt(customer?.PartyLegalEntity?.RegistrationName) || null,
+        aliciVergiNo: taxNoFromParty(customer) || taxNoFromXmlBlock('AccountingCustomerParty') || null,
+        matrah,
+        kdvTutari,
+        kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
+        toplamTutar,
+        paraBirimi: (txt(get(['DocumentCurrencyCode'])) || 'TRY') === 'TRY' ? 'TL' : txt(get(['DocumentCurrencyCode'])) || 'TL',
+      };
+    } catch (e: any) {
+      this.logger.warn(`Provider XML parse hata: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  private regexProviderInvoiceFallback(xml: string): ParsedProviderInvoice | null {
+    const id = this.tagText(xml, 'ID');
+    const uuid = this.tagText(xml, 'UUID');
+    if (!id && !uuid) return null;
+    const dateRaw = this.tagText(xml, 'IssueDate');
+    const issueDate = dateRaw ? new Date(dateRaw) : null;
+    const amount = (tag: string) => {
+      const raw = this.tagText(xml, tag);
+      if (!raw) return undefined;
+      const normalized = raw.includes(',')
+        ? raw.replace(/\./g, '').replace(',', '.')
+        : raw.replace(/[^\d.-]/g, '');
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    const matrah = amount('TaxExclusiveAmount') ?? amount('LineExtensionAmount');
+    const kdvTutari = amount('TaxAmount');
+    const toplamTutar = amount('TaxInclusiveAmount') ?? amount('PayableAmount');
+    return {
+      faturaNo: id || uuid || 'BILINMIYOR',
+      faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
+      ettn: uuid || null,
+      matrah,
+      kdvTutari,
+      kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
+      toplamTutar,
+      paraBirimi: 'TL',
+    };
   }
 
   private async findDuplicate(

@@ -105,10 +105,53 @@ if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_
 const POLL_INTERVAL = (cfg.worker?.pollIntervalSeconds || 30) * 1000;
 const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 const HEADLESS = cfg.worker?.headless !== false;
-const DEFAULT_JOB_TYPES = ['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN'];
-const JOB_TYPES = new Set(cfg.worker?.jobTypes || DEFAULT_JOB_TYPES);
+const SUPPORTED_JOB_TYPES = Object.freeze([
+  'ACCOUNT_PLAN',
+  'MIZAN',
+  'KDV_MIZAN',
+  'KDV_191',
+  'KDV_391',
+  'ISLETME_GELIR',
+  'ISLETME_GIDER',
+  'IHO_FETCH',
+  'EARSIV_SATIS',
+  'EARSIV_ALIS',
+  'EFATURA_SATIS',
+  'EFATURA_ALIS',
+]);
+const LEGACY_DEFAULT_JOB_TYPES = Object.freeze(['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN']);
+
+function normalizeJobTypeConfig(rawJobTypes) {
+  const raw = Array.isArray(rawJobTypes)
+    ? rawJobTypes.map((t) => String(t || '').trim()).filter(Boolean)
+    : [];
+  const supported = new Set(SUPPORTED_JOB_TYPES);
+  const accepted = raw.filter((t) => supported.has(t));
+  const unknown = raw.filter((t) => !supported.has(t));
+  const strict = cfg.worker?.strictJobTypes === true;
+  const legacyDefaultConfig =
+    raw.length === LEGACY_DEFAULT_JOB_TYPES.length &&
+    LEGACY_DEFAULT_JOB_TYPES.every((t) => raw.includes(t));
+
+  if (raw.length === 0 || (!strict && legacyDefaultConfig)) {
+    return {
+      jobTypes: [...SUPPORTED_JOB_TYPES],
+      upgradedFromLegacy: legacyDefaultConfig,
+      unknown,
+    };
+  }
+
+  return {
+    jobTypes: accepted.length ? accepted : [...SUPPORTED_JOB_TYPES],
+    upgradedFromLegacy: false,
+    unknown,
+  };
+}
+
+const JOB_TYPE_CONFIG = normalizeJobTypeConfig(cfg.worker?.jobTypes);
+const JOB_TYPES = new Set(JOB_TYPE_CONFIG.jobTypes);
 const LOG_LEVEL = cfg.log?.level || 'info';
-const LOCAL_AGENT_VERSION = 'local-1.1.2';
+const LOCAL_AGENT_VERSION = 'local-1.1.5';
 const JOB_TIMEOUT = (cfg.worker?.jobTimeoutSeconds || 15 * 60) * 1000;
 // v1.36.X: idle TTL 20dk → 2 saat. Mali müşavir ofisi tüm gün açık;
 // her tıklamada login için 10-20sn kayıp anlamsız. 2 saat hareketsizlik
@@ -132,6 +175,13 @@ const log = {
     if (LOG_LEVEL === 'debug') console.log(`[${new Date().toISOString()}] DEBUG`, ...args);
   },
 };
+
+if (JOB_TYPE_CONFIG.upgradedFromLegacy) {
+  log.warn('worker.jobTypes eski varsayilan listeden otomatik genisletildi; tum Luca veri cekme modulleri aktif.');
+}
+if (JOB_TYPE_CONFIG.unknown.length) {
+  log.warn(`worker.jobTypes icinde desteklenmeyen tipler yok sayildi: ${JOB_TYPE_CONFIG.unknown.join(', ')}`);
+}
 
 // --------- API client ---------
 const api = axios.create({
@@ -193,6 +243,16 @@ function isTransientLucaConnectivityError(err) {
   const text = String(err?.message || err || '');
   return /(ERR_CONNECTION_TIMED_OUT|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION_RESET|ERR_TUNNEL_CONNECTION_FAILED|Navigation timeout|page\.goto: Timeout|Timeout .* exceeded|The operation has timed out)/i.test(text)
     && /(luca\.com\.tr|agiris|auygs|LUCASSO)/i.test(text);
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} ${Math.round(timeoutMs / 1000)}sn icinde bitmedi`)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 function checkTcp(host, port = 443, timeoutMs = 6000) {
@@ -280,6 +340,10 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
       log.info(`Job durum: ${jobId.slice(0, 8)} -> ${status}`);
       lastStatus = status;
     }
+    const jobLog = String(data?.errorMsg || '');
+    if (/TRANSIENT_LUCA_CLASSIC_FRAME_STUCK_RESET/i.test(jobLog)) {
+      throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma frame acilmadi; browser oturumu resetlenecek');
+    }
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
     await new Promise((r) => setTimeout(r, 3000));
   }
@@ -313,6 +377,14 @@ let browserSession = null;
 let activeJobCount = 0;
 let preWarmPromise = null;
 
+function getBrowserUserDataDir() {
+  return path.join(
+    __dirname,
+    '..',
+    PORTAL_WORKER ? `.browser-data-${WORKER_SLOT_ID}` : '.browser-data',
+  );
+}
+
 async function gotoLucaWithFallback(page, primaryUrl, jobId, label = 'giris') {
   try {
     await page.goto(primaryUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
@@ -343,6 +415,20 @@ async function closeBrowserSession(reason = 'manual') {
   await s.page?.close?.().catch(() => {});
   await s.context?.close?.().catch(() => {});
   await s.browser?.close?.().catch(() => {});
+}
+
+function rotateBrowserProfile(reason = 'runtime-recovery') {
+  const userDataDir = getBrowserUserDataDir();
+  if (!fs.existsSync(userDataDir)) return;
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDir = `${userDataDir}.reset-${stamp}`;
+  try {
+    fs.renameSync(userDataDir, backupDir);
+    log.warn(`Luca browser profili yenilendi (${reason}); eski profil kenara alindi: ${backupDir}`);
+  } catch (err) {
+    log.warn(`Luca browser profili yenilenemedi (${reason}): ${err.message}`);
+  }
 }
 
 /**
@@ -388,11 +474,7 @@ async function getBrowserSession() {
   //
   // DNS: Chromium "secure DNS / DoH" devre dışı (DoH provider TR'den engelli).
   // --disable-features=DnsOverHttps,AsyncDns sistem resolver'ına geçirir.
-  const userDataDir = path.join(
-    __dirname,
-    '..',
-    PORTAL_WORKER ? `.browser-data-${WORKER_SLOT_ID}` : '.browser-data',
-  );
+  const userDataDir = getBrowserUserDataDir();
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
@@ -578,13 +660,11 @@ async function installNativeClickBridge(page) {
 async function installMorenRuntimeBridge(context, page) {
   const runtimeCode = await loadMorenRuntimeCode();
   const runtimeVersion = extractMorenRuntimeVersion(runtimeCode);
-  if (
+  const contextRuntimeAlreadyInstalled = (
     browserSession?.context === context &&
     browserSession.runtimeInstalled &&
     browserSession.runtimeVersion === runtimeVersion
-  ) {
-    return browserSession.runtimeVersion || null;
-  }
+  );
   await installNativeClickBridge(page);
   const bridgeScript = ({ token, deviceId, credential }) => {
     const installIdentity = () => {
@@ -636,8 +716,10 @@ async function installMorenRuntimeBridge(context, page) {
       password: cfg.luca.password,
     },
   };
-  await context.addInitScript(bridgeScript, bridgeArg);
-  await context.addInitScript({ content: runtimeCode });
+  if (!contextRuntimeAlreadyInstalled) {
+    await context.addInitScript(bridgeScript, bridgeArg);
+    await context.addInitScript({ content: runtimeCode });
+  }
   await page.addInitScript(
     ({ token, deviceId, credential }) => {
       const installIdentity = () => {
@@ -684,14 +766,19 @@ async function installMorenRuntimeBridge(context, page) {
   );
   await page.addInitScript({ content: runtimeCode });
   await page.evaluate(bridgeScript, bridgeArg).catch(() => {});
-  await page.addScriptTag({ content: runtimeCode }).catch(async () => {
-    await page.evaluate((code) => {
-      const script = document.createElement('script');
-      script.textContent = code;
-      (document.head || document.documentElement).appendChild(script);
-      script.remove();
-    }, runtimeCode).catch(() => {});
-  });
+  const currentPageRuntimeVersion = await page
+    .evaluate(() => window.__morenAgent?.version || null)
+    .catch(() => null);
+  if (currentPageRuntimeVersion !== runtimeVersion) {
+    await page.addScriptTag({ content: runtimeCode }).catch(async () => {
+      await page.evaluate((code) => {
+        const script = document.createElement('script');
+        script.textContent = code;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+      }, runtimeCode).catch(() => {});
+    });
+  }
   if (browserSession?.context === context) {
     browserSession.runtimeInstalled = true;
     browserSession.runtimeVersion = runtimeVersion;
@@ -722,7 +809,10 @@ async function runJobWithMorenRuntime(job) {
     });
 
     const expectedRuntimeVersion = await installMorenRuntimeBridge(context, page);
-    await logJob(jobId, `Local Node ajan işi aldı: ${WORKER_NAME} (${DEVICE_ID})`);
+    await logJob(
+      jobId,
+      `Local Node ajan işi aldı: ${WORKER_NAME} (${DEVICE_ID}) · runtime=${expectedRuntimeVersion || 'bilinmiyor'}`,
+    );
     let currentUrl = page.url();
     if (/^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '')) {
       await logJob(jobId, 'Luca login sayfasi acik; once kayitli oturum main.erp ile kontrol ediliyor.');
@@ -767,7 +857,22 @@ async function runJobWithMorenRuntime(job) {
           ? 'runtime yok'
           : `runtime versiyonu eski (${pageRuntimeVersion} -> ${expectedRuntimeVersion})`;
         await logJob(jobId, `Mevcut Luca sayfasinda ${reloadReason} - reload ediliyor.`);
-        await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        try {
+          await withTimeout(
+            page.reload({ waitUntil: 'domcontentloaded', timeout: 45_000 }),
+            50_000,
+            'Luca reload',
+          );
+        } catch (err) {
+          throw new Error(`TRANSIENT_LUCA_RELOAD_STUCK: ${err.message}`);
+        }
+        await page.waitForTimeout(2000).catch(() => {});
+        const runtimeAfterReload = await page
+          .evaluate(() => typeof window.__morenAgent !== 'undefined' && !!window.__morenAgent.running)
+          .catch(() => false);
+        if (!runtimeAfterReload) {
+          throw new Error('TRANSIENT_AGENT_RUNTIME_MISSING: Luca reload sonrasi runtime baslamadi');
+        }
       } else if (isLucaLoginPage) {
         await logJob(jobId, 'Luca login sayfasi acik; otomatik giris denenecek, gerekirse guvenlik kodu istenecek.');
       } else {
@@ -980,13 +1085,24 @@ async function processJob(job) {
   } catch (err) {
     log.error(`✗ ${tip} hatası: ${err.message}`);
     if (/RUNTIME_STOP_REQUESTED|guvenlik kodu .*tekrarlandi|captcha .*tekrar/i.test(err.message || '')) {
-      stopped = true;
+      const reason = `Luca browser oturumu sifirlandi; worker calismaya devam edecek: ${err.message}`;
+      await logJob(jobId, reason).catch(() => {});
       await pingAgentStatus(false, {
         stoppedReason: err.message,
         activeJobId: jobId,
         activeJobType: tip,
       }).catch(() => {});
       await closeBrowserSession('runtime-stop-requested').catch(() => {});
+      return;
+    }
+    if (/TRANSIENT_(AGENT_RUNTIME_MISSING|LUCA_RELOAD_STUCK)/i.test(err.message || '')) {
+      const reason = `Luca runtime toparlanamadi; browser oturumu sifirlanip is tekrar siraya alindi: ${err.message}`;
+      await logJob(jobId, reason).catch(() => {});
+      await closeBrowserSession('runtime-recovery').catch(() => {});
+      if (/LUCA_RELOAD_STUCK|CLASSIC_FRAME/i.test(err.message || '')) {
+        rotateBrowserProfile('classic-frame-stuck');
+      }
+      await requeueJob(jobId, reason);
       return;
     }
     if (isTransientLucaConnectivityError(err)) {

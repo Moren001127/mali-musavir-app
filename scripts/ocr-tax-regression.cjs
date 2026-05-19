@@ -180,4 +180,10 @@ const zeyrekInterleavedTevkifatText = [
   'Odenecek Tutar',
   '12.504,80 TL',
 ].join('\n');
-const zeyrekInterleavedTevkifat = service.extractTevkifatliFaturaFromAzu
+const zeyrekInterleavedTevkifat = service.extractTevkifatliFaturaFromAzure(zeyrekInterleavedTevkifatText);
+assert(zeyrekInterleavedTevkifat, 'Zeyrek araya aciklama giren tevkifat faturasi parse edilmeli');
+approx(zeyrekInterleavedTevkifat.tamKdv, 2156, 'Zeyrek 103 tam KDV');
+approx(zeyrekInterleavedTevkifat.tevkifat, 431.2, 'Zeyrek 103 toplam tevkifat');
+approx(zeyrekInterleavedTevkifat.netKdv, 1724.8, 'Zeyrek 103 net KDV');
+
+console.log('OK ocr-tax-regression');

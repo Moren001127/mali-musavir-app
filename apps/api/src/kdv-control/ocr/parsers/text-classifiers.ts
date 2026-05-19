@@ -39,7 +39,7 @@ export function isLikelyStandaloneTaxRate(value: string, foldFn: FoldFn): boolea
 export function isMatrahOrRateLine(value: string, foldFn: FoldFn): boolean {
   const folded = foldFn(value || '');
   const withoutMatrahParen = folded.replace(/\([^)]*MATRAH[^)]*\)/g, ' ');
-  return /\bKDV\s*(?:MATRAH|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*(?:MATRAH|ORAN)\b/.test(withoutMatrahParen);
+  return /\bKDV\s*(?:MATRAH[II]?|ORAN[II]?|UYGULANAN\s+TUTAR)\b|^\s*(?:MATRAH[II]?|ORAN[II]?)\b/.test(withoutMatrahParen);
 }
 
 /** "KDV TUTARI" + ("KDV ORANI" | "DIGER VERGILER" | "MAL HIZMET") iceren tablo basligi mi? */

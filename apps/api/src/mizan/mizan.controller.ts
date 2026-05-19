@@ -153,6 +153,10 @@ export class MizanController {
     if (!body?.mukellefId || !body?.donem) {
       throw new BadRequestException('mukellefId ve donem gerekli');
     }
+    const requestedDeviceId = body.targetDeviceId?.trim() || undefined;
+    const targetDeviceId =
+      requestedDeviceId && !/^DEV-/i.test(requestedDeviceId) ? requestedDeviceId : undefined;
+    const preferredAgent = targetDeviceId ? 'local-node' : undefined;
     const job = await this.lucaService.createFetchJob({
       tenantId: req.user.tenantId,
       sessionId: undefined as any, // Mizan için null (KDV kontrol'e bağlı değil)
@@ -161,12 +165,13 @@ export class MizanController {
       donemTipi: body.donemTipi,
       tip: 'MIZAN',
       createdBy: req.user.sub,
-      targetDeviceId: body.targetDeviceId || undefined,
+      targetDeviceId,
+      preferredAgent,
     });
     await this.lucaService
       .appendJobLog(
         job.id,
-        body.targetDeviceId
+        targetDeviceId
           ? 'Mizan cekimi siraya alindi; secili Luca ajani bekleniyor'
           : 'Mizan cekimi siraya alindi; Luca ajani bekleniyor',
       )
@@ -177,8 +182,25 @@ export class MizanController {
   // Polling endpoint — frontend portal içi Luca durumunu gösterirken bunu çağırır.
   @Get('mizan/luca-job/:id')
   async getLucaJob(@Req() req: any, @Param('id') id: string) {
-    const job = await this.lucaService.getJob(id, req.user.tenantId);
+    let job = await this.lucaService.getJob(id, req.user.tenantId);
     // Job done olduysa yeni oluşan mizan kaydını da dön
+    if (
+      job.status === 'pending' &&
+      job.tip === 'MIZAN' &&
+      /^DEV-/i.test(String(job.targetDeviceId || ''))
+    ) {
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: job.id, tenantId: req.user.tenantId, status: 'pending' },
+        data: {
+          targetDeviceId: null,
+          preferredAgent: 'local-node',
+        },
+      });
+      await this.lucaService
+        .appendJobLog(job.id, 'Mizan isi Chrome sekmesine kilitlenmisti; local Luca ajanina yonlendirildi')
+        .catch(() => undefined);
+      job = await this.lucaService.getJob(id, req.user.tenantId);
+    }
     let mizan: any = null;
     if (job.status === 'done') {
       mizan = await (this.prisma as any).mizan.findFirst({

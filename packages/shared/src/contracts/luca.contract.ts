@@ -16,11 +16,11 @@ export const LucaJobTipiSchema = z.enum([
   'ISLETME_GELIR',
   'ISLETME_GIDER',
   'IHO_FETCH',
-  'EARSIV_GELEN',
-  'EARSIV_GIDEN',
-  'EFATURA_GELEN',
-  'EFATURA_GIDEN',
-  'HESAP_PLANI',
+  'EARSIV_SATIS',
+  'EARSIV_ALIS',
+  'EFATURA_SATIS',
+  'EFATURA_ALIS',
+  'ACCOUNT_PLAN',
 ]);
 export type LucaJobTipi = z.infer<typeof LucaJobTipiSchema>;
 
@@ -36,11 +36,11 @@ export const LUCA_JOB_TO_ENDPOINT: Record<LucaJobTipi, string> = {
   ISLETME_GELIR: 'upload-kdv',
   ISLETME_GIDER: 'upload-kdv',
   IHO_FETCH: 'upload-iho',
-  EARSIV_GELEN: 'upload-earsiv',
-  EARSIV_GIDEN: 'upload-earsiv',
-  EFATURA_GELEN: 'upload-earsiv',
-  EFATURA_GIDEN: 'upload-earsiv',
-  HESAP_PLANI: 'upload-hesap-plani',
+  EARSIV_SATIS: 'upload-earsiv',
+  EARSIV_ALIS: 'upload-earsiv',
+  EFATURA_SATIS: 'upload-earsiv',
+  EFATURA_ALIS: 'upload-earsiv',
+  ACCOUNT_PLAN: 'upload-account-plan',
 };
 
 /** Job upload payload - agent -> backend */

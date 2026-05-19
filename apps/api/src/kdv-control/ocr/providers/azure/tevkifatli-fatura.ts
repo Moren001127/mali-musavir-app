@@ -15,6 +15,8 @@
  * vb.) cagirilabilir.
  */
 
+import { extractTevkifatTotalsFromText } from '../../parsers/tevkifat';
+
 type FoldFn = (s: string) => string;
 
 export interface TevkifatliFaturaDeps {
@@ -97,6 +99,14 @@ export function extractTevkifatliFatura(
   let tamKdv = 0;
   let tevkifat = 0;
   let odenecekKdv = 0;
+
+  const parsedTotals = extractTevkifatTotalsFromText(text);
+  if (parsedTotals) {
+    logger.log(
+      `Tevkifat extract OK: tamKdv=${parsedTotals.tamKdv} tevkifat=${parsedTotals.tevkifat} netKdv=${parsedTotals.netKdv}`,
+    );
+    return parsedTotals;
+  }
 
   // Turk tutar formati: "1.330,00" / "665,00" / "28.400,00" / "1.234,56"
   const amountPattern = '[-−]?\\s*(\\d{1,3}(?:\\.\\d{3})*,\\d{1,2}|\\d+,\\d{1,2}|\\d{1,3}(?:\\.\\d{3})+(?!\\d))';

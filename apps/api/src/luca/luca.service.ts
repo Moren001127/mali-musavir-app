@@ -153,6 +153,25 @@ export class LucaService {
     // Bu kayıtlar yeni job'ları "seri kural" üzerinden bloke ediyor.
     await this.cleanupStuckRunning(params.tenantId).catch(() => {});
 
+    const activeDuplicate = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: {
+        tenantId: params.tenantId,
+        sessionId: params.sessionId,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        tip: params.tip,
+        status: { in: ['pending', 'running'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (activeDuplicate) {
+      await this.appendJobLog(
+        activeDuplicate.id,
+        'Ayni Luca cekimi zaten kuyrukta; yeni kopya olusturulmadi',
+      ).catch(() => {});
+      return this.withDerivedDonemTipi(activeDuplicate);
+    }
+
     // Job tipine göre default affinity (B): e-arşiv/efatura uzun süren işler,
     // headless local agent daha stabil. Aksi belirtilmedikçe local-node tercih.
     const defaultAffinity =
@@ -280,6 +299,12 @@ export class LucaService {
       where: { id: jobId, status: { notIn: ['cancelled'] } },
       data: { status: 'failed', finishedAt: new Date() },
     });
+    if (job?.sessionId && ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'].includes(job.tip)) {
+      await this.prisma.kdvControlSession.updateMany({
+        where: { id: job.sessionId, tenantId: job.tenantId, status: 'PROCESSING' },
+        data: { status: 'REVIEWING' },
+      }).catch(() => undefined);
+    }
     return (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
   }
 
@@ -413,20 +438,50 @@ export class LucaService {
     if (!job || job.tenantId !== tenantId) {
       throw new NotFoundException('Luca fetch job bulunamadı');
     }
-    if (job.status === 'done' || job.status === 'cancelled') return this.withDerivedDonemTipi(job);
+    const recoveryReason = String(reason || '');
+    const isTechnicalRecovery =
+      /TRANSIENT_LUCA|runtime toparlanamadi|classic frame|firma frame|browser oturumu/i.test(recoveryReason);
+    if (job.status === 'done' || (job.status === 'cancelled' && !isTechnicalRecovery)) {
+      return this.withDerivedDonemTipi(job);
+    }
     const line = reason
       ? `Teknik kilit temizlendi; iş tekrar sıraya alındı: ${reason}`
       : 'Teknik kilit temizlendi; iş tekrar sıraya alındı';
     await this.appendJobLog(jobId, line);
+    const refreshed = await (this.prisma as any).lucaFetchJob.findUnique({
+      where: { id: jobId },
+    });
+    const sanitizedLog = String(refreshed?.errorMsg || '')
+      .split('\n')
+      .filter((logLine) => !/TRANSIENT_LUCA_CLASSIC_FRAME_STUCK_RESET|TRANSIENT_LUCA_RELOAD_STUCK/i.test(logLine))
+      .filter((logLine) => !/Iptal edildi: kullanici durdurdu/i.test(logLine))
+      .slice(-20)
+      .join('\n')
+      .slice(-2000);
+    const nextRetryCount = isTechnicalRecovery ? Number(job.retryCount || 0) + 1 : 0;
+    const shouldFailTransient = isTechnicalRecovery && nextRetryCount >= 3;
+    const retryDelayMs = isTechnicalRecovery
+      ? Math.min(5 * 60 * 1000, 30 * 1000 * nextRetryCount)
+      : 0;
     const updated = await (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
-      data: {
-        status: 'pending',
-        startedAt: null,
-        finishedAt: null,
-        retryCount: 0,
-        nextRetryAt: null,
-      },
+      data: shouldFailTransient
+        ? {
+            status: 'failed',
+            startedAt: null,
+            finishedAt: new Date(),
+            retryCount: nextRetryCount,
+            nextRetryAt: null,
+            errorMsg: `${sanitizedLog ? `${sanitizedLog}\n` : ''}[AUTO] Luca klasik ekran 3 kez toparlanamadı; diğer işler bloklanmasın diye kapatıldı`.slice(-2000),
+          }
+        : {
+            status: 'pending',
+            startedAt: null,
+            finishedAt: null,
+            retryCount: nextRetryCount,
+            nextRetryAt: retryDelayMs ? new Date(Date.now() + retryDelayMs) : null,
+            errorMsg: sanitizedLog || null,
+          },
     });
     return this.withDerivedDonemTipi(updated);
   }
@@ -471,6 +526,10 @@ export class LucaService {
       where: {
         tenantId,
         status: 'pending',
+        OR: [
+          { nextRetryAt: null },
+          { nextRetryAt: { lte: new Date() } },
+        ],
         // Meşgul mükelleflerin diğer job'larını gösterme
         ...(busyMukellefIds.length > 0 ? { mukellefId: { notIn: busyMukellefIds } } : {}),
         AND: [

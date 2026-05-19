@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, Loader2,
   Trash2, Eye, TrendingUp, TrendingDown, Zap, FileSpreadsheet, Lock, Unlock,
+  Printer,
 } from 'lucide-react';
 
 const GOLD = '#e6c979';
@@ -19,17 +20,18 @@ const CELL_LINE = 'rgba(245,240,230,0.16)';
 const CELL_LINE_STRONG = 'rgba(212,184,118,0.42)';
 const AMOUNT_COLOR = '#fffaf0';
 const TOTAL_COLOR = '#fff0b8';
-const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.58)';
-const MISSING_AMOUNT_COLOR = 'rgba(250,250,249,0.28)';
+const MUTED_AMOUNT_COLOR = 'rgba(250,250,249,0.66)';
+const MISSING_AMOUNT_COLOR = 'rgba(250,250,249,0.46)';
 const PROFIT_COLOR = '#86efac';
 const LOSS_COLOR = '#fca5a5';
 const RATIO_COLOR = '#ffffff';
 const RATIO_BG = 'rgba(13,148,136,0.58)';
 const RATIO_BORDER = 'rgba(153,246,228,0.80)';
-const FINANCIAL_FONT = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+const REPORT_FONT = "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const FINANCIAL_FONT = REPORT_FONT;
 const FINANCIAL_AMOUNT_SIZE = 14.5;
-const FINANCIAL_AMOUNT_WEIGHT = 560;
-const FINANCIAL_AMOUNT_STRONG_WEIGHT = 620;
+const FINANCIAL_AMOUNT_WEIGHT = 600;
+const FINANCIAL_AMOUNT_STRONG_WEIGHT = 700;
 const ACCOUNT_ROW_BG = 'rgba(255,255,255,0.045)';
 const MAIN_ROW_BG = 'rgba(0,0,0,0.24)';
 const FINAL_ROW_BG = 'linear-gradient(90deg, rgba(0,0,0,0.34), rgba(184,160,111,0.08))';
@@ -90,6 +92,26 @@ type RowType = {
   manual?: 'satisMaliyetiManuel' | 'faaliyetGiderleri' | 'digerGiderler' | 'finansmanGiderleri' | 'olaganDisiGider' | 'vergiKarsiligi';
 };
 
+type ClientReportRow = {
+  code: string;
+  label: string;
+  value: number;
+  percent?: string;
+  type: 'group' | 'total' | 'final' | 'sub' | 'manual';
+};
+
+type ClientReportRatio = {
+  label: string;
+  value: string;
+  tone: 'good' | 'neutral' | 'warn' | 'bad';
+};
+
+type ClientReportHighlight = {
+  label: string;
+  value: string;
+  tone: 'good' | 'neutral' | 'warn' | 'bad';
+};
+
 const TDHP_ROWS: RowType[] = [
   // A. BRÜT SATIŞLAR
   { k: 'brutSatislar', label: 'A. BRÜT SATIŞLAR', group: true },
@@ -108,7 +130,7 @@ const TDHP_ROWS: RowType[] = [
   { sub: '620', subLabel: '1. Satılan Mamuller Maliyeti (-)',          label: '1. Satılan Mamuller Maliyeti (-)' },
   { sub: '621', subLabel: '2. Satılan Ticari Mallar Maliyeti (-)',     label: '2. Satılan Ticari Mallar Maliyeti (-)' },
   // Manuel düzeltme — SADECE burada (2. Satılan Ticari Mallar Maliyeti altında)
-  { manual: 'satisMaliyetiManuel', label: '2. Satılan Ticari Mallar Maliyeti (-)' },
+  { manual: 'satisMaliyetiManuel', kod: '621', label: '2. Satılan Ticari Mallar Maliyeti (-)' },
   { sub: '622', subLabel: '3. Satılan Hizmet Maliyeti (-)',            label: '3. Satılan Hizmet Maliyeti (-)' },
   { sub: '740', subLabel: '3. Satılan Hizmet Maliyeti (7/A)',          label: '3. Satılan Hizmet Maliyeti (7/A)' },
   { sub: '623', subLabel: '4. Diğer Satışların Maliyeti (-)',          label: '4. Diğer Satışların Maliyeti (-)' },
@@ -273,7 +295,7 @@ export default function GelirTablosuPage() {
     return (
       <>
         <div style={{ fontSize: 13 }}>{year} · {t.no}</div>
-        <div className="font-normal mt-0.5" style={{ fontSize: 11, color: 'rgba(250,250,249,0.55)', fontFamily: 'Plus Jakarta Sans, sans-serif', letterSpacing: 0 }}>
+        <div className="font-normal mt-0.5" style={{ fontSize: 11, color: 'rgba(250,250,249,0.55)', fontFamily: REPORT_FONT, letterSpacing: 0 }}>
           {t.range}
         </div>
       </>
@@ -286,6 +308,7 @@ export default function GelirTablosuPage() {
   // { [gelirTablosuId]: { satisMaliyeti: 150000, faaliyetGiderleri: 20000, ... } }
   const [duzeltmelerDraft, setDuzeltmelerDraft] = useState<Record<string, Record<string, number>>>({});
   const [editingManual, setEditingManual] = useState<Record<string, boolean>>({});
+  const [clientOutputLoadingId, setClientOutputLoadingId] = useState<string | null>(null);
 
   const setDuzeltme = (gtId: string, key: string, val: number) => {
     setDuzeltmelerDraft((prev) => {
@@ -449,8 +472,264 @@ export default function GelirTablosuPage() {
 
   const latestDerived = latestQuarter ? derived(latestQuarter) : null;
 
+  const getPreviousQuarter = (gt: any): any | null => {
+    const yearOfGt = parseInt(String(gt?.donem || '').slice(0, 4), 10);
+    if (yearOfGt !== year) return null;
+    const qMatch = String(gt?.donem || '').match(/Q(\d)/) || String(gt?.donemTipi || '').match(/Q(\d)/);
+    if (!qMatch) return null;
+    const qIndex = parseInt(qMatch[1], 10) - 1;
+    if (qIndex <= 0) return null;
+    return quarterSlots[qIndex - 1] || null;
+  };
+
+  const reportPct = (numerator: number, denominator: number): string => {
+    if (!denominator) return '—';
+    return pct(numerator, denominator);
+  };
+
+  const buildClientReportRows = (gt: any, values: any): ClientReportRow[] => {
+    const rows: ClientReportRow[] = [];
+    const netSales = Number(values?.netSatislar) || 0;
+    const hasMissingSalesCost = netSales > 0 && Math.abs(Number(values?.satisMaliyeti) || 0) <= 0.004;
+    const costSensitiveKeys = new Set(['brutSatisKari', 'faaliyetKari', 'olaganKar', 'donemKari', 'donemNetKari']);
+    const push = (row: ClientReportRow, force = false) => {
+      if (force || Math.abs(Number(row.value) || 0) > 0.004) rows.push(row);
+    };
+
+    for (const row of TDHP_ROWS) {
+      if (row.manual) {
+        const draft = duzeltmelerDraft[gt.id]?.[row.manual];
+        const saved = gt?.duzeltmeler?.[row.manual];
+        const v = typeof draft === 'number' ? draft : (typeof saved === 'number' ? saved : 0);
+        push({ code: row.kod || '', label: row.label, value: v, type: 'manual' });
+        continue;
+      }
+
+      if (row.sub) {
+        const v = getSubAccountAmount(gt, row.sub);
+        push({ code: row.sub, label: row.subLabel || row.label, value: v, type: 'sub' });
+        continue;
+      }
+
+      if (row.k) {
+        const v = Number(values?.[row.k]) || 0;
+        const forceMissingCostRow = hasMissingSalesCost && row.k === 'satisMaliyeti';
+        const percent = forceMissingCostRow
+          ? 'Kayıt yok'
+          : hasMissingSalesCost && costSensitiveKeys.has(row.k)
+          ? 'Kontrol'
+          : showPct(row.k) && netSales
+          ? reportPct(v, netSales)
+          : undefined;
+        push({
+          code: row.kod || '',
+          label: row.label,
+          value: v,
+          percent,
+          type: row.final ? 'final' : row.total ? 'total' : 'group',
+        }, forceMissingCostRow);
+      }
+    }
+
+    return rows;
+  };
+
+  const buildClientReportRatios = (gt: any, values: any): ClientReportRatio[] => {
+    const netSales = Number(values?.netSatislar) || 0;
+    const netProfit = Number(values?.donemNetKari) || 0;
+    const grossProfit = Number(values?.brutSatisKari) || 0;
+    const operatingProfit = Number(values?.faaliyetKari) || 0;
+    const cost = Number(values?.satisMaliyeti) || 0;
+    const financeCost = Number(values?.finansmanGiderleri) || 0;
+    const hasMissingSalesCost = netSales > 0 && Math.abs(cost) <= 0.004;
+    const previous = getPreviousQuarter(gt);
+    const previousSales = Number(previous?.netSatislar) || 0;
+    const salesGrowth = previousSales ? netSales - previousSales : 0;
+
+    const ratios: ClientReportRatio[] = [
+      { label: 'Brüt Kar Marjı', value: hasMissingSalesCost ? 'Kontrol' : reportPct(grossProfit, netSales), tone: hasMissingSalesCost ? 'warn' : grossProfit >= 0 ? 'good' : 'bad' },
+      { label: 'Faaliyet Kar Marjı', value: hasMissingSalesCost ? 'Kontrol' : reportPct(operatingProfit, netSales), tone: hasMissingSalesCost ? 'warn' : operatingProfit >= 0 ? 'good' : 'warn' },
+      { label: 'Net Kar Marjı', value: hasMissingSalesCost ? 'Kontrol' : reportPct(netProfit, netSales), tone: hasMissingSalesCost ? 'warn' : netProfit >= 0 ? 'good' : 'bad' },
+      { label: 'Maliyet / Ciro', value: hasMissingSalesCost ? 'Kayıt yok' : reportPct(cost, netSales), tone: hasMissingSalesCost || cost > netSales * 0.75 ? 'warn' : 'neutral' },
+      ...(financeCost ? [{ label: 'Finansman Gider Oranı', value: reportPct(financeCost, netSales), tone: financeCost > netSales * 0.1 ? 'warn' : 'neutral' } as ClientReportRatio] : []),
+      ...(previousSales ? [{ label: 'Satış Büyümesi', value: reportPct(salesGrowth, previousSales), tone: salesGrowth >= 0 ? 'good' : 'bad' } as ClientReportRatio] : []),
+    ];
+    return ratios.filter((r) => r.value !== '—');
+  };
+
+  const buildClientTaxPayable = (gt: any, values: any): number => {
+    const tax = gt?.geciciVergiHesabi;
+    if (!tax) return Number(values?.vergiKarsiligi) || 0;
+
+    const manualState = gt?.id ? getManuel(gt.id) : { gecmisYil: '', oncekiOdenen: '' };
+    const draftGY = manualState?.gecmisYil ? parseLocale(manualState.gecmisYil) : null;
+    const draftOO = manualState?.oncekiOdenen ? parseLocale(manualState.oncekiOdenen) : null;
+    const gecmisYil = draftGY !== null ? draftGY : Number(tax.gecmisYilZarari || 0);
+    const oncekiOdenen =
+      draftOO !== null
+        ? draftOO
+        : Number(tax.oncekiDonemOdenenGeciciVergi ?? tax.oncekiDonemOdenen ?? 0);
+    const toplamKar = (Number(values?.donemNetKari) || 0) + (Number(tax.kkeg) || 0);
+    const matrah = Math.max(0, toplamKar - gecmisYil);
+    const oran = Number(tax.gecicVergiOrani) || 0.25;
+
+    return Math.max(0, matrah * oran - oncekiOdenen);
+  };
+
+  const buildClientHighlights = (gt: any, values: any): ClientReportHighlight[] => {
+    const netProfit = Number(values?.donemNetKari) || 0;
+    const netSales = Number(values?.netSatislar) || 0;
+    const cost = Number(values?.satisMaliyeti) || 0;
+    const hasMissingSalesCost = netSales > 0 && Math.abs(cost) <= 0.004;
+    const taxPayable = buildClientTaxPayable(gt, values);
+    return [
+      {
+        label: hasMissingSalesCost ? (netProfit >= 0 ? 'Tablodaki kâr' : 'Tablodaki zarar') : netProfit >= 0 ? 'Çıkan kâr' : 'Çıkan zarar',
+        value: `${fmtTRY(Math.abs(netProfit))} TL`,
+        tone: hasMissingSalesCost ? 'warn' : netProfit >= 0 ? 'good' : 'bad',
+      },
+      {
+        label: hasMissingSalesCost ? 'Vergi kontrol' : 'Ödenecek vergi',
+        value: `${fmtTRY(taxPayable)} TL`,
+        tone: hasMissingSalesCost || taxPayable > 0 ? 'warn' : 'neutral',
+      },
+    ];
+  };
+
+  const buildClientAssessment = (gt: any, values: any, ratios: ClientReportRatio[]): string[] => {
+    const netSales = Number(values?.netSatislar) || 0;
+    const netProfit = Number(values?.donemNetKari) || 0;
+    const grossProfit = Number(values?.brutSatisKari) || 0;
+    const operatingProfit = Number(values?.faaliyetKari) || 0;
+    const cost = Number(values?.satisMaliyeti) || 0;
+    const expenses = Number(values?.faaliyetGiderleri) || 0;
+    const financeCost = Number(values?.finansmanGiderleri) || 0;
+    const taxPayable = buildClientTaxPayable(gt, values);
+    const hasMissingSalesCost = netSales > 0 && Math.abs(cost) <= 0.004;
+    const netMargin = ratios.find((r) => r.label === 'Net Kar Marjı')?.value || '—';
+    const grossMargin = ratios.find((r) => r.label === 'Brüt Kar Marjı')?.value || '—';
+    const costRatio = ratios.find((r) => r.label === 'Maliyet / Ciro')?.value || '—';
+    const expenseRatio = reportPct(expenses, netSales);
+    const growth = ratios.find((r) => r.label === 'Satış Büyümesi')?.value;
+    const netMarginValue = netSales ? (netProfit / netSales) * 100 : 0;
+
+    if (!netSales) {
+      return [
+        'Bu dönem için satış hareketi görünmüyor.',
+        'Mükellefe göndermeden önce satış, maliyet ve gider kayıtlarının eksiksiz aktarıldığını kontrol etmek iyi olur.',
+      ];
+    }
+
+    if (hasMissingSalesCost) {
+      const lines = [
+        `Genel tablo: ${fmtTRY(netSales)} ciro görünüyor; ancak satış maliyeti eksik olduğu için tablodaki ${fmtTRY(Math.abs(netProfit))} ${netProfit >= 0 ? 'kâr' : 'zarar'} nihai sonuç değildir.`,
+        'Kritik kontrol: Alış, stok ve maliyet kayıtları tamamlanmadan brüt kâr, net kâr ve vergi tutarı sağlıklı yorumlanamaz.',
+        `Vergi etkisi: Şu anki vergi görünümü ${fmtTRY(taxPayable)} TL; maliyet kaydı eklendiğinde bu tutar değişebilir.`,
+        'Aksiyon: Mizan, stok ve maliyet kayıtları kontrol edilip rapor tekrar alınmalıdır.',
+      ];
+      if (financeCost > netSales * 0.05) {
+        lines.push(`Ek kontrol: Finansman gideri ${fmtTRY(financeCost)} seviyesinde. Borçlanma maliyeti ayrıca izlenmeli.`);
+      }
+      if (growth) lines.push(`Önceki döneme göre satışlardaki değişim ${growth}.`);
+      return lines.slice(0, 6);
+    }
+
+    const resultText = netProfit >= 0
+      ? `${fmtTRY(netProfit)} kâr`
+      : `${fmtTRY(Math.abs(netProfit))} zarar`;
+    const costText = cost > netSales * 0.75
+      ? `Maliyet oranı ${costRatio}; bu seviye kârı baskılıyor. Alış maliyeti, satış fiyatı ve indirimler birlikte gözden geçirilmeli.`
+      : cost < netSales * 0.45
+      ? `Maliyet oranı ${costRatio}; brüt kâr marjı ${grossMargin}. Bu güçlü görünüm stok ve maliyet kayıtlarıyla teyit edilmeli.`
+      : `Maliyet oranı ${costRatio}; brüt kâr marjı ${grossMargin}. Mevcut yapı korunursa kârlılık dengeli ilerler.`;
+    const expenseText = financeCost > netSales * 0.05
+      ? `Faaliyet giderleri ${expenseRatio}; ayrıca ${fmtTRY(financeCost)} finansman gideri var. Borçlanma maliyeti net kârı aşağı çekebilir.`
+      : operatingProfit >= 0
+      ? `Faaliyet giderleri cironun ${expenseRatio} kadarını kullanıyor; gider seviyesi mevcut kârlılığı destekliyor.`
+      : `Faaliyet giderleri kârı aşağı çekiyor; giderlerin ciroya oranı ${expenseRatio}. Gider kalemleri ayrı ayrı izlenmeli.`;
+    const profitText = netProfit >= 0
+      ? netMarginValue >= 15
+        ? `Net kâr marjı ${netMargin}; işletme satıştan güçlü kâr üretiyor.`
+        : `Net kâr marjı ${netMargin}; kâr var ancak marj hassas, gider ve maliyet artışları yakından izlenmeli.`
+      : `Dönem zarar ile kapanıyor; fiyatlama, maliyet ve gider planı birlikte yeniden değerlendirilmelidir.`;
+    const taxText = taxPayable > 0
+      ? `Vergi hazırlığı: Bu tabloya göre ${fmtTRY(taxPayable)} TL geçici vergi karşılığı ayrılması gerekir.`
+      : 'Vergi hazırlığı: Bu tabloya göre ödenecek geçici vergi görünmüyor; yine de mahsup ve geçmiş dönem kayıtları kontrol edilmelidir.';
+    const forecastText = netProfit >= 0
+      ? 'Nakit ve öngörü: Kâr, tahsilat anlamına gelmez. Cari hesap, banka/kasa ve tahsilat yaşlandırması birlikte kontrol edilirse dönem daha güvenli yönetilir.'
+      : 'Nakit ve öngörü: Zarar dönemlerinde tahsilat ve gider ödeme planı birlikte hazırlanmalı; nakit açığı oluşmadan önlem alınmalıdır.';
+
+    const lines = [
+      `Genel tablo: Bu dönem ${fmtTRY(netSales)} ciro yapılmış ve dönem sonunda ${resultText} oluşmuştur.`,
+      `Kârlılık: ${profitText}`,
+      `Maliyet disiplini: ${costText}`,
+      `Gider kontrolü: ${expenseText}`,
+      taxText,
+      forecastText,
+    ];
+    if (growth) lines[0] += ` Önceki döneme göre satış değişimi ${growth}.`;
+    return lines.slice(0, 6);
+  };
+
+  const handleClientOutput = async (gt: any) => {
+    if (!gt?.id) {
+      toast.error('Önce gelir tablosu oluşturun');
+      return;
+    }
+
+    setClientOutputLoadingId(gt.id);
+    try {
+      const full = await gelirTablosuApi.get(gt.id);
+      const values = derived(full);
+      if (!values) {
+        toast.error('Gelir tablosu verisi hazırlanamadı');
+        return;
+      }
+
+      const taxpayer = selectedTp || full.taxpayer || gt.taxpayer;
+      const rows = buildClientReportRows(full, values);
+      if (!rows.length) {
+        toast.info('Çıktıya yansıyacak hareket bulunmuyor');
+        return;
+      }
+      const ratios = buildClientReportRatios(full, values);
+      const highlights = buildClientHighlights(full, values);
+      const assessment = buildClientAssessment(full, values, ratios);
+      const reportHtml = buildClientReportHtml({
+        taxpayerName: taxpayer ? taxpayerName(taxpayer) : 'Mükellef',
+        taxNumber: taxpayer?.taxNumber || '',
+        period: formatDonemRangeLabel(full.donem, full.donemTipi),
+        logoUrl: `${window.location.origin}/brand/moren-logo-gold.png`,
+        rows,
+        ratios,
+        highlights,
+        assessment,
+        generatedAt: new Date().toLocaleDateString('tr-TR'),
+      });
+
+      const printWindow = window.open('', '_blank', 'width=960,height=720');
+      if (!printWindow) {
+        toast.error('Çıktı penceresi açılamadı. Tarayıcı pop-up iznini kontrol edin.');
+        return;
+      }
+      printWindow.document.open();
+      printWindow.document.write(reportHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.document.title = '';
+      setTimeout(() => {
+        printWindow.document.title = '';
+        printWindow.print();
+      }, 750);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.message || 'Mükellef çıktısı hazırlanamadı');
+    } finally {
+      setClientOutputLoadingId(null);
+    }
+  };
+
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="financial-report-readable space-y-5 max-w-7xl">
       <div className="pb-5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="flex items-center gap-2.5 mb-2">
           <span className="w-[26px] h-px" style={{ background: GOLD }} />
@@ -458,7 +737,7 @@ export default function GelirTablosuPage() {
             <Sparkles size={10} className="inline mr-1" /> Mali Rapor
           </span>
         </div>
-        <h1 style={{ fontFamily: 'Fraunces, serif', fontSize: 34, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em' }}>
+        <h1 style={{ fontFamily: REPORT_FONT, fontSize: 34, fontWeight: 700, color: '#fafaf9', letterSpacing: 0 }}>
           Gelir Tablosu
         </h1>
         <p className="text-[13px] mt-1.5" style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -557,13 +836,29 @@ export default function GelirTablosuPage() {
           <span className="text-[10.5px] font-medium px-2 py-[2px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
             {quarterSlots.filter(Boolean).length}/4 çeyrek
           </span>
+          {latestQuarter && (
+            <button
+              type="button"
+              onClick={() => handleClientOutput(latestQuarter)}
+              disabled={clientOutputLoadingId === latestQuarter.id}
+              className="ml-auto inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
+              style={{
+                background: 'rgba(212,184,118,0.12)',
+                border: '1px solid rgba(212,184,118,0.32)',
+                color: AMOUNT_COLOR,
+              }}
+            >
+              {clientOutputLoadingId === latestQuarter.id ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+              Mükellef Çıktısı
+            </button>
+          )}
         </h3>
         <div className="rounded-xl overflow-hidden overflow-x-auto" style={{
           background: TABLE_BG,
           border: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), 0 16px 34px rgba(0,0,0,0.24)',
         }}>
-          <table className="w-full text-left" style={{ fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
+          <table className="w-full text-left" style={{ fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderCollapse: 'collapse', borderSpacing: 0, tableLayout: 'fixed' }}>
             <colgroup>
               <col style={{ width: CODE_COL_WIDTH }} />
               <col style={{ width: ACCOUNT_COL_WIDTH }} />
@@ -581,7 +876,7 @@ export default function GelirTablosuPage() {
                     className="px-4 py-2.5 text-left"
                     style={{
                       color: GOLD,
-                      fontFamily: 'Fraunces, serif',
+                      fontFamily: REPORT_FONT,
                       fontSize: 14,
                       fontWeight: 600,
                       letterSpacing: '-0.01em',
@@ -589,7 +884,7 @@ export default function GelirTablosuPage() {
                   >
                     {taxpayerName(selectedTp)}
                     {selectedTp.taxNumber && (
-                      <span className="ml-2 font-mono text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'JetBrains Mono, monospace', fontWeight: 400 }}>
+                      <span className="ml-2 text-[12px]" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: REPORT_FONT, fontWeight: 500 }}>
                         · VKN/TCKN: {selectedTp.taxNumber}
                       </span>
                     )}
@@ -619,23 +914,23 @@ export default function GelirTablosuPage() {
                         background: locked ? 'rgba(184,160,111,0.14)' : 'rgba(184,160,111,0.08)',
                         borderLeft: `1px solid ${GRID_LINE}`,
                         borderBottom: `1px solid ${GRID_LINE}`,
-                        fontFamily: 'Fraunces, serif',
+                        fontFamily: REPORT_FONT,
                         fontWeight: 600,
                         letterSpacing: '-0.01em',
                       }}
                     >
                       <div style={{ fontSize: 15 }}>{year} · {t.no}</div>
-                      <div className="font-normal mt-0.5" style={{ fontSize: 11.5, color: gt ? 'rgba(250,250,249,0.6)' : 'rgba(250,250,249,0.3)', fontFamily: 'Plus Jakarta Sans, sans-serif', letterSpacing: 0 }}>
+                      <div className="font-normal mt-0.5" style={{ fontSize: 11.5, color: gt ? 'rgba(250,250,249,0.6)' : 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT, letterSpacing: 0 }}>
                         {t.range}
                       </div>
                       {locked && (
-                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', fontFamily: REPORT_FONT }}>
                           <Lock size={9} /> KESİN
                         </span>
                       )}
-                      {!gt && <div className="text-[10px] font-normal mt-0.5" style={{ color: 'rgba(250,250,249,0.3)', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Veri yok</div>}
+                      {!gt && <div className="text-[10px] font-normal mt-0.5" style={{ color: 'rgba(250,250,249,0.3)', fontFamily: REPORT_FONT }}>Veri yok</div>}
                       {gt && (
-                        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                        <div className="flex items-center justify-center gap-1 mt-1.5" style={{ fontFamily: REPORT_FONT }}>
                           <button
                             onClick={() => locked ? handleUnlock(gt.id) : handleLock(gt.id)}
                             className="text-[10px] font-semibold px-2 py-0.5 rounded"
@@ -675,8 +970,8 @@ export default function GelirTablosuPage() {
                 if (row.sub) {
                   return (
                     <tr key={idx} style={{ borderTop: `1px solid ${GRID_LINE}`, background: ACCOUNT_ROW_BG }}>
-                      <td className="px-3 py-2 font-mono text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
-                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.78)', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
+                      <td className="px-3 py-2 text-[13px]" style={{ color: '#d8c17f', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>{row.sub}</td>
+                      <td className="px-3 py-2 text-[13px]" style={{ color: 'rgba(250,250,249,0.82)', fontWeight: 500, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${CELL_LINE}` }}>
                         {row.subLabel}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -697,8 +992,8 @@ export default function GelirTablosuPage() {
                 if (row.manual) {
                   return (
                     <tr key={idx} style={{ borderTop: '1px dashed rgba(96,165,250,0.30)', background: 'rgba(96,165,250,0.045)' }}>
-                      <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', fontWeight: 700, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
-                      <td className="px-3 py-2.5 text-[13.5px] italic" style={{ color: '#60a5fa', paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
+                      <td className="px-3 py-2.5 text-[12.5px]" style={{ color: '#60a5fa', textAlign: 'left', fontWeight: 700, fontFamily: REPORT_FONT, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>Manuel</td>
+                      <td className="px-3 py-2.5 text-[13.5px]" style={{ color: '#60a5fa', fontWeight: 600, paddingLeft: 8, borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px dashed rgba(96,165,250,0.35)' }}>
                         {row.label}
                       </td>
                       {DISPLAY_ORDER.map((qi) => {
@@ -740,7 +1035,7 @@ export default function GelirTablosuPage() {
                   ACCOUNT_ROW_BG;
                 const bold = row.final || row.total || row.group;
                 const labelColor = row.final ? TOTAL_COLOR : row.total ? TOTAL_COLOR : row.group ? '#fafaf9' : 'rgba(250,250,249,0.7)';
-                const labelFont = 'Plus Jakarta Sans';
+                const labelFont = REPORT_FONT;
                 return (
                   <tr
                     key={idx}
@@ -750,17 +1045,17 @@ export default function GelirTablosuPage() {
                       borderBottom: row.total ? `1px solid ${GRID_LINE_STRONG}` : undefined,
                     }}
                   >
-                    <td className="px-3 py-2.5 font-mono text-[12.5px]" style={{ color: 'rgba(250,250,249,0.55)', textAlign: 'left', fontWeight: 600, borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
+                    <td className="px-3 py-2.5 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.62)', textAlign: 'left', fontWeight: 600, fontFamily: REPORT_FONT, fontVariantNumeric: 'tabular-nums', borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}` }}>{row.kod || ''}</td>
                     <td
                       className="px-3 py-2.5"
                       style={{
                         color: labelColor,
-                        fontWeight: row.final ? 650 : bold ? 700 : 400,
+                        fontWeight: row.final ? 700 : bold ? 700 : 500,
                         fontFamily: labelFont,
                         fontSize: row.final ? 14.5 : row.total ? 14.5 : row.group ? 14.5 : 14,
-                        fontStyle: row.total && !row.final ? 'italic' : 'normal',
-                        textTransform: row.total && !row.final ? 'uppercase' : 'none',
-                        letterSpacing: row.total && !row.final ? '.04em' : '0',
+                        fontStyle: 'normal',
+                        textTransform: 'none',
+                        letterSpacing: 0,
                         borderRight: `1px solid ${GRID_LINE}`,
                         borderBottom: `1px solid ${row.total || row.final ? CELL_LINE_STRONG : CELL_LINE}`,
                       }}
@@ -784,7 +1079,7 @@ export default function GelirTablosuPage() {
                       return (
                         <td
                           key={qi}
-                          className="px-3 py-2.5 text-center font-mono"
+                          className="px-3 py-2.5 text-center"
                           style={{
                             // v1.36.50: Kar/Zarar satırları (brutSatisKari, faaliyetKari, olaganKar, donemKari, donemNetKari)
                             // → pozitif yeşil, negatif kırmızı (önceden total altın renkti, kar/zarar belli olmuyordu)
@@ -887,7 +1182,7 @@ export default function GelirTablosuPage() {
               {/* Dönem başlığı */}
               <div className="flex items-baseline gap-3">
                 <span className="w-1 h-7 rounded-sm" style={{ background: GOLD }} />
-                <h2 className="text-[20px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>
+                <h2 className="text-[20px] font-semibold" style={{ color: '#fafaf9', fontFamily: REPORT_FONT }}>
                   {qi + 1}. Dönem
                 </h2>
                 <span className="text-[12px] font-medium px-2.5 py-[3px] rounded-md" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>
@@ -1082,7 +1377,7 @@ export default function GelirTablosuPage() {
                         padding: '10px 14px',
                         background: 'rgba(184,160,111,0.08)',
                         borderLeft: `1px solid ${GRID_LINE}`,
-                        fontFamily: 'Fraunces, serif',
+                        fontFamily: REPORT_FONT,
                         fontWeight: 600,
                       }}
                     >
@@ -1142,7 +1437,8 @@ export default function GelirTablosuPage() {
                         const draftGY = manuelState?.gecmisYil ? parseLocale(manuelState.gecmisYil) : null;
                         const draftOO = manuelState?.oncekiOdenen ? parseLocale(manuelState.oncekiOdenen) : null;
                         const gecmisYil = draftGY !== null ? draftGY : Number(v.gecmisYilZarari || 0);
-                        const oncekiOdenen = draftOO !== null ? draftOO : Number(v.oncekiDonemOdenen || 0);
+                        const oncekiOdenen =
+                          draftOO !== null ? draftOO : Number(v.oncekiDonemOdenenGeciciVergi ?? v.oncekiDonemOdenen ?? 0);
                         const matrah = Math.max(0, liveToplamKar - gecmisYil);
                         // v1.36.57: Vergi oranı backend'den (TUZEL %25, GERCEK %15) — hardcoded 0.25 değildi BUG idi
                         const oran = Number(v.gecicVergiOrani) || 0.25;
@@ -1264,7 +1560,7 @@ export default function GelirTablosuPage() {
                           padding: '10px 14px',
                           background: 'rgba(184,160,111,0.08)',
                           borderLeft: `1px solid ${GRID_LINE}`,
-                          fontFamily: 'Fraunces, serif',
+                          fontFamily: REPORT_FONT,
                           fontWeight: 600,
                         }}
                       >
@@ -1490,6 +1786,15 @@ export default function GelirTablosuPage() {
                     <td className="px-4 py-3 text-right font-mono" style={{ color: GOLD, fontWeight: 600 }}>{fmtTRY(g.donemNetKari)}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-1.5">
+                        <button
+                          onClick={() => handleClientOutput(g)}
+                          disabled={clientOutputLoadingId === g.id}
+                          className="p-1.5 rounded-md disabled:opacity-50"
+                          style={{ color: AMOUNT_COLOR, background: 'rgba(212,184,118,0.10)' }}
+                          title="Mükellef Çıktısı"
+                        >
+                          {clientOutputLoadingId === g.id ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+                        </button>
                         <button onClick={() => exportMut.mutate(g.id)} disabled={exportMut.isPending} className="p-1.5 rounded-md" style={{ color: GOLD, background: 'rgba(184,160,111,0.08)' }} title="Excel İndir">
                           <Download size={14} />
                         </button>
@@ -1661,6 +1966,191 @@ function AmountText({
       {missing ? '—' : fmtTRY(value ?? 0)}
     </span>
   );
+}
+
+function escapeReportHtml(v: string | number | null | undefined): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildClientReportHtml({
+  taxpayerName,
+  taxNumber,
+  period,
+  logoUrl,
+  rows,
+  ratios,
+  highlights,
+  assessment,
+  generatedAt,
+}: {
+  taxpayerName: string;
+  taxNumber?: string;
+  period: string;
+  logoUrl?: string;
+  rows: ClientReportRow[];
+  ratios: ClientReportRatio[];
+  highlights: ClientReportHighlight[];
+  assessment: string[];
+  generatedAt: string;
+}) {
+  const toneStyles: Record<ClientReportRatio['tone'], string> = {
+    good: 'color:#087f5b;border-color:#a7f3d0;background:#ecfdf5;',
+    neutral: 'color:#525252;border-color:#e5e5e5;background:#fafafa;',
+    warn: 'color:#9a5b00;border-color:#fde68a;background:#fffbeb;',
+    bad: 'color:#b91c1c;border-color:#fecaca;background:#fef2f2;',
+  };
+  const rowClass = (type: ClientReportRow['type']) =>
+    type === 'final' ? 'report-final' : type === 'total' ? 'report-total' : type === 'manual' ? 'report-manual' : '';
+  const escapedLogoUrl = logoUrl ? escapeReportHtml(logoUrl) : '';
+  const ratioColumns = Math.min(Math.max(ratios.length, 1), 4);
+  const subjectGap = rows.length >= 19 ? '26px' : rows.length >= 17 ? '34px' : '44px';
+  const signoffGap = rows.length >= 19 ? '8mm' : rows.length >= 17 ? '14mm' : '20mm';
+  const highlightClass = (tone: ClientReportHighlight['tone']) =>
+    tone === 'good' ? 'highlight-good' : tone === 'bad' ? 'highlight-bad' : tone === 'warn' ? 'highlight-warn' : 'highlight-neutral';
+
+  return `<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title></title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #1c1917; background: #f2eee5; font-family: Inter, Arial, sans-serif; font-size: 10.5px; }
+    .page { width: 210mm; min-height:277mm; margin: 32px auto; background:#fff; padding: 18mm 13mm 12mm; border:1px solid #e8dcc1; box-shadow:0 18px 48px rgba(45,35,18,.16); position:relative; overflow:hidden; display:flex; flex-direction:column; }
+    .page:before { content:""; position:absolute; inset:0 0 auto 0; height:8px; background:linear-gradient(90deg,#1f1a12,#d4b876,#1f1a12); }
+    .letterhead { display:flex; align-items:center; justify-content:space-between; gap:18px; border-bottom:2px solid #d4b876; padding:0 0 12px; }
+    .office-logo { width:128px; height:auto; display:block; }
+    .logo-fallback { color:#8a6f35; font-weight:900; font-size:18px; letter-spacing:.08em; }
+    .report-label { text-align:right; color:#8a6f35; font-weight:900; letter-spacing:.12em; text-transform:uppercase; font-size:10px; padding-top:4px; }
+    .report-sub { margin-top:5px; color:#6b6258; font-size:9px; font-weight:700; letter-spacing:.04em; }
+    .subject { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin:20px 0 12px; }
+    h1 { margin:0; font-size:25px; line-height:1.08; letter-spacing:0; color:#17130d; }
+    .meta { color:#6b6258; font-weight:700; line-height:1.5; }
+    .highlights { list-style:none; margin:12px 0; padding:10px 12px; display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px 18px; border:1px solid #d7bd75; border-radius:10px; background:#fff9ea; }
+    .highlights li { position:relative; padding-left:14px; color:#2a2114; font-size:12px; line-height:1.2; }
+    .highlights li:before { content:""; position:absolute; left:0; top:.42em; width:6px; height:6px; border-radius:999px; background:#b88a2f; }
+    .highlights strong { font-weight:900; color:#5f4721; }
+    .highlights b { font-size:16px; line-height:1; font-weight:900; font-variant-numeric:tabular-nums; color:#1f1a12; margin-left:4px; }
+    .highlights .highlight-good b { color:#087f5b; }
+    .highlights .highlight-bad b { color:#b91c1c; }
+    .highlights .highlight-warn b { color:#9a5b00; }
+    .ratios { display:grid; grid-template-columns:repeat(${ratioColumns}, 1fr); gap:8px; margin:12px 0 13px; }
+    .ratio { border:1px solid #e5e5e5; border-radius:9px; padding:9px 10px; min-height:52px; box-shadow:inset 0 1px 0 rgba(255,255,255,.8); }
+    .ratio span { display:block; color:#78716c; font-size:8.5px; text-transform:uppercase; letter-spacing:.08em; font-weight:900; margin-bottom:5px; }
+    .ratio strong { font-size:18px; line-height:1; letter-spacing:0; font-variant-numeric:tabular-nums; }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:8px; border:1px solid #d7c8a8; border-radius:9px; overflow:hidden; }
+    th { background:#251f14; color:#fff8e6; font-size:9px; text-transform:uppercase; letter-spacing:.08em; padding:8px 9px; text-align:right; border-bottom:1px solid #b99b58; }
+    th:first-child { text-align:left; width:11%; }
+    th:nth-child(2) { text-align:left; width:53%; }
+    th + th { border-left:1px solid rgba(255,248,230,.24); }
+    th:nth-child(3), td:nth-child(3) { border-left:1.5px solid #c9b06f; }
+    th:nth-child(4), td:nth-child(4) { border-left:1.5px solid #c9b06f; }
+    td { border-bottom:1px solid #d9cfbd; padding:6px 9px; text-align:right; font-size:10.8px; font-weight:760; font-variant-numeric:tabular-nums; }
+    td + td { border-left:1px solid #e0d6c2; }
+    td:first-child, td:nth-child(2) { text-align:left; }
+    td:first-child { color:#8a6f35; font-weight:800; }
+    td:nth-child(2) { color:#3f3a33; font-weight:700; }
+    tbody tr:nth-child(even) td { background:#fcfaf5; }
+    tr.report-total td, tr.report-final td { background:#fff5dd !important; font-weight:900; }
+    tr.report-final td { color:#087f5b; border-bottom-color:#b7e4c7; }
+    tr.report-manual td:first-child { color:#8a6f35; }
+    .assessment { margin-top:12px; border:1px solid #d7bd75; border-radius:10px; padding:10px 12px; background:#fffaf0; }
+    .assessment h2 { margin:0 0 8px; font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:#7b5d24; }
+    .assessment ul { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:1fr 1fr; gap:7px 10px; }
+    .assessment li { line-height:1.32; color:#3f3a33; font-weight:650; padding:8px 9px; border:1px solid #eadbb8; border-radius:8px; background:#fffdf7; }
+    .assessment li:last-child:nth-child(odd) { grid-column:1 / -1; }
+    .assessment li strong { display:block; margin-bottom:2px; color:#17130d; font-size:9.5px; text-transform:uppercase; letter-spacing:.07em; }
+    .assessment li span { display:block; }
+    .signoff { display:flex; justify-content:flex-end; margin-top:16px; padding-top:6px; break-inside:avoid; }
+    .signoff-inner { min-width:270px; text-align:center; padding-top:8px; border-top:1px solid #d7bd75; }
+    .signoff-name { font-family:"Segoe Script","Brush Script MT","Lucida Handwriting",cursive; font-size:26px; line-height:1; font-weight:650; color:#202020; transform:rotate(-1deg); }
+    .signoff-title { margin-top:4px; font-family:Georgia,"Times New Roman",serif; font-size:12px; line-height:1.1; font-style:italic; color:#7b5d24; letter-spacing:.01em; }
+    @media print {
+      html, body { width:210mm; height:297mm; overflow:hidden; }
+      body { background:#fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { width:210mm; height:297mm; min-height:0; margin:0; padding:9mm 9mm 7mm; border:0; box-shadow:none; display:block; overflow:hidden; page-break-before:avoid; page-break-after:avoid; break-before:avoid; break-after:avoid; }
+      .page:before { display:none; }
+      .letterhead { padding-bottom:12px; }
+      .office-logo { width:116px; }
+      .report-label { font-size:9.5px; }
+      .report-sub { font-size:8.5px; }
+      .subject { margin:${subjectGap} 0 10px; }
+      h1 { font-size:24px; }
+      .meta { font-size:9.5px; }
+      .highlights { margin:9px 0; padding:8px 10px; }
+      .highlights li { font-size:11.4px; }
+      .highlights b { font-size:15px; }
+      .ratios { margin:9px 0 10px; gap:7px; }
+      .ratio { min-height:44px; padding:7.5px 9px; }
+      .ratio strong { font-size:16px; }
+      table { margin-top:7px; }
+      th { padding:6px 7px; font-size:8.5px; }
+      td { padding:4.2px 7px; font-size:9.7px; line-height:1.18; }
+      .assessment { margin-top:10px; padding:8px 9px; border-radius:8px; }
+      .assessment h2 { margin-bottom:6px; font-size:9.2px; }
+      .assessment ul { gap:7px 8px; }
+      .assessment li { padding:6px 8px; line-height:1.22; font-size:9.5px; }
+      .assessment li strong { font-size:8.7px; }
+      .signoff { position:static; margin-top:${signoffGap}; padding-top:0; display:flex; justify-content:flex-end; }
+      .signoff-inner { min-width:66mm; padding-top:5px; }
+      .signoff-name { font-size:23px; }
+      .signoff-title { margin-top:2px; font-size:10.5px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="letterhead">
+      <div>
+        ${escapedLogoUrl ? `<img class="office-logo" src="${escapedLogoUrl}" alt="Moren Mali Müşavirlik" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />` : ''}
+        <span class="logo-fallback" style="${escapedLogoUrl ? 'display:none' : 'display:block'}">MOREN MALİ MÜŞAVİRLİK</span>
+      </div>
+      <div>
+        <div class="report-label">Gelir Tablosu Özeti</div>
+        <div class="report-sub">${escapeReportHtml(generatedAt)}</div>
+      </div>
+    </section>
+    <section class="subject">
+      <div>
+        <h1>${escapeReportHtml(taxpayerName)}</h1>
+        <div class="meta">${taxNumber ? `Vergi No: ${escapeReportHtml(taxNumber)} · ` : ''}${escapeReportHtml(period)} Gelir Tablosu</div>
+      </div>
+    </section>
+    <ul class="highlights">
+      ${highlights.map((h) => `<li class="${highlightClass(h.tone)}"><strong>${escapeReportHtml(h.label)}:</strong><b>${escapeReportHtml(h.value)}</b></li>`).join('')}
+    </ul>
+    <section class="ratios">
+      ${ratios.map((r) => `<div class="ratio" style="${toneStyles[r.tone]}"><span>${escapeReportHtml(r.label)}</span><strong>${escapeReportHtml(r.value)}</strong></div>`).join('')}
+    </section>
+    <table>
+      <thead><tr><th>Kod</th><th>Kalem</th><th>Tutar</th><th>Oran</th></tr></thead>
+      <tbody>
+        ${rows.map((r) => `<tr class="${rowClass(r.type)}"><td>${escapeReportHtml(r.code)}</td><td>${escapeReportHtml(r.label)}</td><td>${escapeReportHtml(fmtTRY(r.value))}</td><td>${escapeReportHtml(r.percent || '')}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <section class="assessment">
+      <h2>Değerlendirme, Öngörü ve Dikkat Noktaları</h2>
+      <ul>${assessment.map((line) => {
+        const idx = line.indexOf(':');
+        if (idx <= 0) return `<li><span>${escapeReportHtml(line)}</span></li>`;
+        return `<li><strong>${escapeReportHtml(line.slice(0, idx))}</strong><span>${escapeReportHtml(line.slice(idx + 1).trim())}</span></li>`;
+      }).join('')}</ul>
+    </section>
+    <section class="signoff" aria-label="Meslek mensubu">
+      <div class="signoff-inner">
+        <div class="signoff-name">Muzaffer Ören</div>
+        <div class="signoff-title">Serbest Muhasebeci Mali Müşavir</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>`;
 }
 
 function getSubAccountAmount(gt: any, kod: string): number {

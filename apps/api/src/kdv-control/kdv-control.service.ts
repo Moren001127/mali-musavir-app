@@ -10,9 +10,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ExcelParserService } from './excel-parser.service';
-import { OcrService } from './ocr.service';
-import { ReconciliationEngine } from './reconciliation.engine';
+import { OcrService } from './ocr';
+import { ReconciliationEngine } from './reconciliation';
 import { isAggregateLucaRecord } from './luca-row-filter';
+import { compareKdvExportRows } from './export/export-row-order';
+import { replaceSessionLucaRecordsInDb } from './session/session-record-replacement';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
@@ -70,6 +72,156 @@ export class KdvControlService {
   private readonly VALID_TYPES = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'] as const;
   private readonly ISLETME_TYPES = ['ISLETME_GELIR', 'ISLETME_GIDER'];
 
+  private isLockedSession(session: { status?: string | null }): boolean {
+    return session.status === 'COMPLETED';
+  }
+
+  private assertSessionUnlocked(session: { status?: string | null }) {
+    if (this.isLockedSession(session)) {
+      throw new BadRequestException('Bu KDV kontrolü kilitli. Müdahale etmek için önce kilidi açın.');
+    }
+  }
+
+  private isKdvMatchedStatus(status?: string | null): boolean {
+    return status === 'MATCHED' || status === 'CONFIRMED';
+  }
+
+  private zeroKurusTolerance(value: number): number {
+    return Math.abs(Number(value.toFixed(2))) <= 0.01 ? 0 : value;
+  }
+
+  private parseKdvAmount(value: any): number {
+    if (value === null || value === undefined || value === '') return 0;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const text = String(value).trim();
+    const hasDot = text.includes('.');
+    const hasComma = text.includes(',');
+    let cleaned: string;
+    if (hasDot && hasComma) {
+      cleaned = text.lastIndexOf(',') > text.lastIndexOf('.')
+        ? text.replace(/\./g, '').replace(',', '.')
+        : text.replace(/,/g, '');
+    } else if (hasComma) {
+      cleaned = text.replace(',', '.');
+    } else if (hasDot) {
+      const parts = text.split('.');
+      const last = parts[parts.length - 1] || '';
+      const looksLikeThousands =
+        parts.length > 1 &&
+        last.length === 3 &&
+        parts.every((part, idx) => idx === 0 ? /^\d{1,3}$/.test(part) : /^\d{3}$/.test(part));
+      cleaned = looksLikeThousands ? text.replace(/\./g, '') : text;
+    } else {
+      cleaned = text;
+    }
+    const parsed = parseFloat(cleaned.replace(/[^\d.\-]/g, ''));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private inferKdvRecordRate(record: any): number | null {
+    if (!record) return null;
+    if (record.kdvOrani != null) {
+      const explicit = Number(record.kdvOrani);
+      if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    }
+    const raw = record.rawData || {};
+    const source = [
+      record.karsiTaraf,
+      record.aciklama,
+      raw['HESAP ADI'],
+      raw.hesapAdi,
+      raw.accountName,
+      raw['AÇIKLAMA'],
+    ].filter(Boolean).join(' ');
+    const match = source.match(/%\s*(\d{1,2}(?:[,.]\d{1,2})?)/);
+    if (!match) return null;
+    const parsed = this.parseKdvAmount(match[1]);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  private getExportFaturaKdvValue(
+    result: any,
+    allResults: any[],
+    sessionType?: string | null,
+    forDetailRow = false,
+  ): number {
+    if (!result?.image || !result.imageId) return 0;
+    const ocrTotal = this.parseKdvAmount(result.image.confirmedKdvTutari || result.image.ocrKdvTutari);
+    if (ocrTotal <= 0) return 0;
+    const luca = result.kdvRecord?.kdvTutari ? Number(result.kdvRecord.kdvTutari) : 0;
+    if (luca <= 0) return ocrTotal;
+
+    const rawBreakdown = result.image.confirmedKdvBreakdown ?? result.image.ocrKdvBreakdown;
+    const recordRate = this.inferKdvRecordRate(result.kdvRecord);
+    if (Array.isArray(rawBreakdown) && recordRate != null && Number.isFinite(recordRate)) {
+      const rateMatch = rawBreakdown.find((item: any) => {
+        const itemRate = Number(item?.oran);
+        return Number.isFinite(itemRate) && Math.abs(itemRate - recordRate) < 0.5;
+      });
+      const componentKdv = rateMatch ? this.parseKdvAmount(rateMatch.tutar) : 0;
+      if (componentKdv > 0 && Math.abs(componentKdv - luca) / (luca || 1) < 0.01) {
+        return componentKdv;
+      }
+    }
+
+    const isSatis = sessionType === 'KDV_391' || sessionType === 'ISLETME_GELIR';
+    const fanOutCount = allResults.filter((x: any) => x.imageId === result.imageId && x.kdvRecordId).length;
+    if (forDetailRow && fanOutCount > 1 && this.isKdvMatchedStatus(result.status)) {
+      return luca;
+    }
+
+    const reasonText = Array.isArray(result.mismatchReasons) ? result.mismatchReasons.join(' ') : '';
+    if (!isSatis && /Alış tevkifat bileşen eşleşmesi|Alis tevkifat bilesen/i.test(reasonText)) {
+      return luca;
+    }
+
+    const tevkifat = this.parseKdvAmount(result.image.confirmedKdvTevkifat || result.image.ocrKdvTevkifat);
+    const candidates = [
+      ocrTotal,
+      ...(isSatis && tevkifat > 0 && ocrTotal > tevkifat ? [ocrTotal - tevkifat] : []),
+    ].filter((n) => Number.isFinite(n) && n > 0);
+
+    const best = candidates.sort((a, b) => Math.abs(a - luca) - Math.abs(b - luca))[0] ?? ocrTotal;
+    const bestDiff = Math.abs(best - luca) / (luca || 1);
+    if (bestDiff < 0.01) return best;
+    return forDetailRow && this.isKdvMatchedStatus(result.status) ? luca : ocrTotal;
+  }
+
+  private getExportFarkValue(result: any, allResults: any[], sessionType?: string | null): number {
+    const lucaKdv = result?.kdvRecord?.kdvTutari ? Number(result.kdvRecord.kdvTutari) : null;
+    if (lucaKdv == null || !Number.isFinite(lucaKdv)) return 0;
+    const faturaKdv = this.getExportFaturaKdvValue(result, allResults, sessionType, true);
+    if (faturaKdv <= 0) return 0;
+    return this.zeroKurusTolerance(Number((lucaKdv - faturaKdv).toFixed(2)));
+  }
+
+  private buildMatchSummary(results: Array<{ status: string; kdvRecord?: any | null; image?: any | null; imageId?: string | null; kdvRecordId?: string | null; mismatchReasons?: string[] }>, sessionType?: string | null) {
+    const visibleResults = results.filter((r) => !r.kdvRecord || !isAggregateLucaRecord(r.kdvRecord));
+    const statusMap: Record<string, number> = {};
+    visibleResults.forEach((r) => (statusMap[r.status] = (statusMap[r.status] ?? 0) + 1));
+    const partialMatch = statusMap['PARTIAL_MATCH'] ?? 0;
+    const needsReview = statusMap['NEEDS_REVIEW'] ?? 0;
+    const unmatched = statusMap['UNMATCHED'] ?? 0;
+    const rejected = statusMap['REJECTED'] ?? 0;
+    const mismatch = statusMap['MISMATCH'] ?? 0;
+    const matchedAmountMismatch = visibleResults.filter((r) =>
+      this.isKdvMatchedStatus(r.status) && Math.abs(this.getExportFarkValue(r, visibleResults, sessionType)) > 0.01,
+    ).length;
+    const matchedRaw = (statusMap['MATCHED'] ?? 0) + (statusMap['CONFIRMED'] ?? 0);
+    return {
+      matched: Math.max(0, matchedRaw - matchedAmountMismatch),
+      partialMatch,
+      needsReview,
+      amountMismatch: matchedAmountMismatch,
+      reviewTotal: partialMatch + needsReview + matchedAmountMismatch,
+      unmatched,
+      rejected,
+      mismatch,
+      issueTotal: partialMatch + needsReview + matchedAmountMismatch + unmatched + rejected + mismatch,
+      totalResults: visibleResults.length,
+    };
+  }
+
   /** KDV type → Excel başlığı için okunur isim */
   private kdvTypeLabel(type?: string | null): string {
     switch (type) {
@@ -117,10 +269,26 @@ export class KdvControlService {
       costBySession.set(row.sebep, (costBySession.get(row.sebep) || 0) + Number(row.costUsd || 0));
     }
 
+    const resultRows = await this.prisma.reconciliationResult.findMany({
+      where: { sessionId: { in: sessions.map((s) => s.id) } },
+      include: { kdvRecord: true, image: true },
+    });
+    const resultsBySession = new Map<string, typeof resultRows>();
+    for (const row of resultRows) {
+      if (!resultsBySession.has(row.sessionId)) resultsBySession.set(row.sessionId, [] as any);
+      resultsBySession.get(row.sessionId)!.push(row);
+    }
+
     return sessions.map((s) => {
       const maliyetUsd = costBySession.get(`session:${s.id}`) || 0;
+      const matchSummary = this.buildMatchSummary(resultsBySession.get(s.id) ?? [], s.type);
 
-      return { ...s, maliyetUsd };
+      return {
+        ...s,
+        maliyetUsd,
+        isLocked: this.isLockedSession(s),
+        matchSummary,
+      };
     });
   }
 
@@ -140,6 +308,7 @@ export class KdvControlService {
   /** Oturum sil */
   async deleteSession(id: string, tenantId: string) {
     const session = await this.findSession(id, tenantId);
+    this.assertSessionUnlocked(session);
     
     // İlişkili kayıtları sil (cascade delete yerine manuel)
     await this.prisma.reconciliationResult.deleteMany({ where: { sessionId: id } });
@@ -341,6 +510,7 @@ export class KdvControlService {
     },
   ): Promise<{ imported: number; skipped: number }> {
     const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     buffer = this.excelParser.normalizeLucaExcelBuffer(buffer, 'KDV mapping import');
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
@@ -467,13 +637,12 @@ export class KdvControlService {
     }
 
     // Mevcut kayıtları temizle
-    await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
-
     const parsed: Array<{
       rowIndex: number;
       belgeNo: string | null;
       belgeDate: Date | null;
       kdvTutari: number;
+      kdvOrani: number | null;
       karsiTaraf: string | null;
       hesapKodu: string | null;
       rawData: any;
@@ -502,7 +671,31 @@ export class KdvControlService {
       }
       return null;
     };
-    const aciklamaCol = findAutoCol(aciklamaKeywords);
+    const normalizeColumnLabel = (value: string) =>
+      String(value ?? '')
+        .replace(/\uFFFD/g, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\u0130/g, 'I').replace(/\u0131/g, 'i')
+        .replace(/\u011E/g, 'G').replace(/\u011F/g, 'g')
+        .replace(/\u015E/g, 'S').replace(/\u015F/g, 's')
+        .replace(/\u00C7/g, 'C').replace(/\u00E7/g, 'c')
+        .replace(/\u00D6/g, 'O').replace(/\u00F6/g, 'o')
+        .replace(/\u00DC/g, 'U').replace(/\u00FC/g, 'u')
+        .replace(/Ä°/g, 'I').replace(/Ä±/g, 'i')
+        .replace(/Ä/g, 'G').replace(/ÄŸ/g, 'g')
+        .replace(/Å/g, 'S').replace(/ÅŸ/g, 's')
+        .replace(/Ã‡/g, 'C').replace(/Ã§/g, 'c')
+        .replace(/Ã–/g, 'O').replace(/Ã¶/g, 'o')
+        .replace(/Ãœ/g, 'U').replace(/Ã¼/g, 'u')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+    const aciklamaExactCol = firstRowKeys.find((k) => {
+      const n = normalizeColumnLabel(k);
+      return n === 'ACIKLAMA' || n === 'AIKLAMA' || n.includes('ACIKLAMA');
+    }) || null;
+    const aciklamaCol = aciklamaExactCol || findAutoCol(aciklamaKeywords);
     const hesapKoduCol = findAutoCol(hesapKoduKeywords);
     if (aciklamaCol) {
       this.logger.log(`Luca import: AÇIKLAMA sütunu otomatik tespit: "${aciklamaCol}"`);
@@ -521,15 +714,21 @@ export class KdvControlService {
         continue;
       }
 
-      const rawBelgeNo = belgeKey ? row[belgeKey] : null;
-      const belgeNo = rawBelgeNo ? String(rawBelgeNo).trim() : null;
-
-      const rawDate = tarihKey ? row[tarihKey] : null;
-      const belgeDate = this.excelParser.parseDate(rawDate);
-
       // Opsiyonel alanlar
       const aciklamaRaw = aciklamaCol && row[aciklamaCol] ? String(row[aciklamaCol]).trim() : null;
       const hesapKoduRaw = hesapKoduCol && row[hesapKoduCol] ? String(row[hesapKoduCol]).trim() : null;
+      const kdvOrani = hesapKoduRaw ? this.excelParser.extractKdvOraniFromHesapKodu(hesapKoduRaw) : null;
+      const rawBelgeNo = belgeKey ? row[belgeKey] : null;
+      const rowTextForBelgeNo = Object.values(row)
+        .map((v) => String(v ?? ''))
+        .join(' ');
+      const belgeNo = this.excelParser.extractBelgeNoFromDescription(aciklamaRaw)
+        || this.excelParser.extractBelgeNoFromDescription(rowTextForBelgeNo)
+        || (rawBelgeNo ? String(rawBelgeNo).trim() : null);
+
+      const rawDate = tarihKey ? row[tarihKey] : null;
+      const belgeDate = this.excelParser.parseDate(rawDate, this.kdvDateParseOptions(session.periodLabel));
+
       const rowText = Object.values(row)
         .map((v) => String(v ?? ''))
         .join(' ')
@@ -549,6 +748,7 @@ export class KdvControlService {
         belgeNo,
         belgeDate,
         kdvTutari,
+        kdvOrani,
         karsiTaraf: aciklamaRaw,
         hesapKodu: hesapKoduRaw,
         rawData: row,
@@ -557,6 +757,7 @@ export class KdvControlService {
 
     if (parsed.length === 0) {
       if (isBilancoKdv && headerIdx < 0) {
+        await this.replaceSessionLucaRecords(sessionId, []);
         await this.prisma.kdvControlSession.update({
           where: { id: sessionId },
           data: { status: 'PROCESSING' },
@@ -582,8 +783,9 @@ export class KdvControlService {
       );
     }
 
-    await this.prisma.kdvRecord.createMany({
-      data: parsed.map((r) => ({
+    await this.replaceSessionLucaRecords(
+      sessionId,
+      parsed.map((r) => ({
         sessionId,
         rowIndex: r.rowIndex,
         belgeNo: r.belgeNo,
@@ -591,11 +793,11 @@ export class KdvControlService {
         karsiTaraf: r.karsiTaraf,
         kdvMatrahi: null,
         kdvTutari: r.kdvTutari,
-        kdvOrani: null,
+        kdvOrani: r.kdvOrani,
         aciklama: r.hesapKodu,
         rawData: r.rawData,
       })),
-    });
+    );
 
     await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
@@ -623,16 +825,19 @@ export class KdvControlService {
     tenantId: string,
     buffer: Buffer,
   ) {
-    await this.findSession(sessionId, tenantId);
+    const existingSession = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(existingSession);
 
     // Mevcut kayıtları temizle
-    await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
-
     // Session type'a göre doğru parser'ı seç
     const session = await this.prisma.kdvControlSession.findUnique({ where: { id: sessionId } });
     let rows = this.ISLETME_TYPES.includes(session!.type)
       ? this.excelParser.parseIsletmeExcel(buffer, session!.type as 'ISLETME_GELIR' | 'ISLETME_GIDER')
-      : this.excelParser.parseKdvExcel(buffer, session!.type === 'KDV_191' ? '191' : '391');
+      : this.excelParser.parseKdvExcel(
+          buffer,
+          session!.type === 'KDV_191' ? '191' : '391',
+          this.kdvDateParseOptions(session!.periodLabel),
+        );
 
     // ── İŞLETME: dönem (ay) tarih filtresi ──
     // Luca formunda tarih kutusu tutmadığı için Excel tüm dönemi getirebiliyor.
@@ -684,6 +889,7 @@ export class KdvControlService {
     if (rows.length === 0) {
       // İŞLETME tiplerinde 0 satır = "o dönemde işlem yok" demek olabilir, hata fırlatma
       if (this.ISLETME_TYPES.includes(session!.type)) {
+        await this.replaceSessionLucaRecords(sessionId, []);
         this.logger.warn(
           `İşletme ${session!.type} 0 satır — session boş bırakılıyor (dönem ${session!.periodLabel}). ` +
             `Sebepleri: (1) o dönemde işlem yok, (2) Excel'de yanlış bölüm, (3) tarih dışı.`,
@@ -701,8 +907,9 @@ export class KdvControlService {
     }
 
     try {
-      await this.prisma.kdvRecord.createMany({
-        data: rows.map((r) => ({
+      await this.replaceSessionLucaRecords(
+        sessionId,
+        rows.map((r) => ({
           sessionId,
           rowIndex:   r.rowIndex,
           belgeNo:    r.belgeNo,
@@ -714,7 +921,7 @@ export class KdvControlService {
           aciklama:   r.aciklama,
           rawData:    r.rawData,
         })),
-      });
+      );
     } catch (err: any) {
       this.logger.error(
         `createMany hatası: ${err?.message} | İlk satır: ${JSON.stringify(rows[0]?.rawData ?? {})}`,
@@ -733,6 +940,10 @@ export class KdvControlService {
   }
 
   /** KDV kayıtları listesi */
+  private async replaceSessionLucaRecords(sessionId: string, rows: any[]) {
+    await replaceSessionLucaRecordsInDb(this.prisma, sessionId, rows);
+  }
+
   async getKdvRecords(sessionId: string, tenantId: string) {
     await this.findSession(sessionId, tenantId);
     const records = await this.prisma.kdvRecord.findMany({
@@ -757,7 +968,8 @@ export class KdvControlService {
     tenantId: string,
     dto: { originalName: string; mimeType: string },
   ) {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     const ext = dto.originalName.split('.').pop() || 'jpg';
     const s3Key = `kdv-control/${tenantId}/${sessionId}/${randomUUID()}.${ext}`;
 
@@ -786,7 +998,8 @@ export class KdvControlService {
     originalName: string,
     mimeType: string,
   ) {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     const ext = originalName.split('.').pop() || 'jpg';
     const s3Key = `kdv-control/${tenantId}/${sessionId}/${randomUUID()}.${ext}`;
 
@@ -826,7 +1039,8 @@ export class KdvControlService {
     tenantId: string,
     dto: { s3Key: string; originalName: string; mimeType: string },
   ) {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     const meta = await this.storage.getObjectMeta(dto.s3Key);
     if (!meta) throw new BadRequestException('Görsel S3\'e henüz yüklenmemiş');
 
@@ -1208,8 +1422,10 @@ export class KdvControlService {
   async getImageDownloadUrl(imageId: string, tenantId: string) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
+      include: { session: true },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
+    this.assertSessionUnlocked(image.session);
 
     // Mihsap kaynaklı görsel → CDN link
     if (image.s3Key?.startsWith('mihsap://')) {
@@ -1247,8 +1463,10 @@ export class KdvControlService {
   ) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
+      include: { session: true },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
+    this.assertSessionUnlocked(image.session);
 
     // KDV breakdown verilmişse kaydet; verilmezse OCR'dakini koru (override yok)
     const breakdownToSave =
@@ -1285,8 +1503,10 @@ export class KdvControlService {
   async reocrSingleImage(imageId: string, tenantId: string, opts: { forceClaude?: boolean } = {}) {
     const image = await this.prisma.receiptImage.findFirst({
       where: { id: imageId, session: { tenantId } },
+      include: { session: true },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
+    this.assertSessionUnlocked(image.session);
     if (!image.s3Key) {
       throw new BadRequestException('Görselin kaynağı (s3Key) yok — OCR yapılamaz');
     }
@@ -1343,6 +1563,7 @@ export class KdvControlService {
   /** Eşleştirme motorunu çalıştır */
   async runReconciliation(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     const mukellefAdi = this.formatMukellefAdi(session);
     try {
       // ÖNCE: Bozuk OCR belge no'larını dosya adından düzelt (UBL versiyon string'leri gibi)
@@ -1366,6 +1587,24 @@ export class KdvControlService {
       const reviewCount = Number(result.partial || 0) + Number(result.needsReview || 0);
       const unmatchedCount = Number(result.unmatched || 0);
       const issueCount = reviewCount + unmatchedCount;
+      if (issueCount === 0 && Number(result.matched || 0) > 0) {
+        await this.prisma.kdvControlSession.update({
+          where: { id: sessionId },
+          data: { status: 'COMPLETED' },
+        });
+        await this.pushFeedEvent(tenantId, {
+          action: 'session-lock',
+          status: 'basarili',
+          message: 'KDV kontrolü sorunsuz tamamlandı ve kilitlendi',
+          mukellef: mukellefAdi,
+          meta: { sessionId, period: session.periodLabel, type: session.type },
+        });
+      } else {
+        await this.prisma.kdvControlSession.update({
+          where: { id: sessionId },
+          data: { status: 'REVIEWING' },
+        });
+      }
       if (issueCount > 0) {
         await this.pushMorenAiAlert(tenantId, {
           title: 'MOREN AI uyarısı: KDV kontrol',
@@ -1603,6 +1842,27 @@ export class KdvControlService {
       // Math.abs KALDIRILDI — iptal/iade faturaları negatif olabilir, işaret korunsun
       return Number.isFinite(n) ? n : 0;
     };
+    const inferRecordRate = (record: any): number | null => {
+      if (!record) return null;
+      if (record.kdvOrani != null) {
+        const explicit = Number(record.kdvOrani);
+        if (Number.isFinite(explicit) && explicit > 0) return explicit;
+      }
+      const raw = record.rawData || {};
+      const source = [
+        record.karsiTaraf,
+        record.aciklama,
+        raw['HESAP ADI'],
+        raw.hesapAdi,
+        raw.accountName,
+        raw['AÇIKLAMA'],
+      ].filter(Boolean).join(' ');
+      const match = source.match(/%\s*(\d{1,2}(?:[,.]\d{1,2})?)/);
+      if (!match) return null;
+      const parsed = parseKdv(match[1]);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    };
+    results.sort(compareKdvExportRows(results, inferRecordRate));
 
     // Özet toplamlar aynı imageId'yi tek kez sayarak çift sayımı önler.
     // Detay satırında fan-out varsa her Luca satırının karşısında kendi payı gösterilir.
@@ -1613,11 +1873,29 @@ export class KdvControlService {
       if (ocrTotal <= 0) return 0;
       const luca = r.kdvRecord?.kdvTutari ? Number(r.kdvRecord.kdvTutari) : 0;
       if (luca <= 0) return ocrTotal;
+      if (forDetailRow && isMatchedStatus(r.status)) {
+        return luca;
+      }
 
       const isSatis = session.type === 'KDV_391' || session.type === 'ISLETME_GELIR';
       const fanOutCount = results.filter((x: any) => x.imageId === r.imageId && x.kdvRecordId).length;
-      if (forDetailRow && !isSatis && fanOutCount > 1) {
-        return luca;
+      if (forDetailRow && fanOutCount > 1) {
+        const rawBreakdown = r.image.confirmedKdvBreakdown ?? r.image.ocrKdvBreakdown;
+        const recordRate = inferRecordRate(r.kdvRecord);
+        if (Array.isArray(rawBreakdown) && recordRate != null && Number.isFinite(recordRate)) {
+          const rateMatch = rawBreakdown.find((item: any) => {
+            const itemRate = Number(item?.oran);
+            return Number.isFinite(itemRate) && Math.abs(itemRate - recordRate) < 0.5;
+          });
+          const componentKdv = rateMatch ? parseKdv(rateMatch.tutar) : 0;
+          if (componentKdv > 0 && Math.abs(componentKdv - luca) / (luca || 1) < 0.01) {
+            return componentKdv;
+          }
+        }
+
+        if (isMatchedStatus(r.status)) {
+          return luca;
+        }
       }
       const reasonText = Array.isArray(r.mismatchReasons) ? r.mismatchReasons.join(' ') : '';
       if (!isSatis && /Alış tevkifat bileşen eşleşmesi|Alis tevkifat bilesen/i.test(reasonText)) {
@@ -1635,13 +1913,19 @@ export class KdvControlService {
     };
     /** Özetlerde aynı imageId birden fazla Luca satırına fan-out olduysa tek say. */
     const sumUniqueImageKdv = (rows: any[]): number => {
-      const seen = new Set<string>();
-      return rows.reduce((s, r: any) => {
-        if (!r.image || !r.imageId) return s;
-        if (seen.has(r.imageId)) return s;
-        seen.add(r.imageId);
-        return s + getFaturaKdvValue(r);
-      }, 0);
+      const byImage = new Map<string, any[]>();
+      for (const r of rows) {
+        if (!r.image || !r.imageId) continue;
+        byImage.set(r.imageId, [...(byImage.get(r.imageId) || []), r]);
+      }
+      let total = 0;
+      for (const group of byImage.values()) {
+        const detailSum = group
+          .filter((r: any) => r.kdvRecord && isMatchedStatus(r.status))
+          .reduce((s, r: any) => s + getFaturaKdvValue(r, true), 0);
+        total += detailSum > 0 ? detailSum : getFaturaKdvValue(group[0]);
+      }
+      return total;
     };
 
     // Özet için 3 ayrı grup — kullanıcının "fark" kafa karışıklığını çözer
@@ -1656,6 +1940,7 @@ export class KdvControlService {
     const matchedRows = results.filter((r: any) => isMatchedStatus(r.status)) as any[];
     const sumOcrMatched = sumUniqueImageKdv(matchedRows);
     const fmtTl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
+    const zeroKurusTolerance = (n: number) => Math.abs(Number(n.toFixed(2))) <= 0.01 ? 0 : n;
 
     // ═══════════════ ExcelJS ile oluştur ═══════════════
     const wb = new ExcelJS.Workbook();
@@ -1679,7 +1964,7 @@ export class KdvControlService {
     const ALT_BG = 'FFF9FAFB';
 
     // Sütun tanımı (genişlikler + number formatları veri satırları için)
-    // 9 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Durum · Açıklama
+    // 10 sütun: # · Luca Tarihi · Luca Evrak · Luca KDV · Fatura Tarihi · Fatura Belge · Fatura KDV · Fark · Durum · Açıklama
     ws.columns = [
       { width: 6 },
       { width: 16 },
@@ -1688,6 +1973,7 @@ export class KdvControlService {
       { width: 16 },
       { width: 26 },
       { width: 16, style: { numFmt: '#,##0.00 "₺"' } },
+      { width: 14, style: { numFmt: '#,##0.00;[Red]-#,##0.00;0.00' } },
       { width: 16 },
       { width: 72 },
     ];
@@ -1710,7 +1996,7 @@ export class KdvControlService {
       this.logger.warn(`Moren logo Excel'e eklenemedi: ${e?.message}`);
     }
 
-    ws.mergeCells('A1:I1');
+    ws.mergeCells('A1:J1');
     const r1 = ws.getCell('A1');
     r1.value = 'MOREN MALİ MÜŞAVİRLİK';
     r1.font = { name: 'Calibri', size: 22, bold: true, color: { argb: GOLD } };
@@ -1718,7 +2004,7 @@ export class KdvControlService {
     r1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: DARK } };
     ws.getRow(1).height = 50;
 
-    ws.mergeCells('A2:I2');
+    ws.mergeCells('A2:J2');
     const r2 = ws.getCell('A2');
     r2.value = 'KDV Kontrol Raporu';
     r2.font = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -1745,7 +2031,7 @@ export class KdvControlService {
         const c3 = ws.getCell(`E${r}`);
         c3.value = label2; c3.font = infoLabelStyle.font;
         c3.alignment = { horizontal: 'left', vertical: 'middle' };
-        ws.mergeCells(`F${r}:I${r}`);
+        ws.mergeCells(`F${r}:J${r}`);
         const c4 = ws.getCell(`F${r}`);
         c4.value = val2; c4.font = infoValueStyle.font;
         c4.alignment = { horizontal: 'left', vertical: 'middle' };
@@ -1758,7 +2044,7 @@ export class KdvControlService {
     ws.getRow(7).height = 8;
 
     // ÖZET başlığı
-    ws.mergeCells('A8:I8');
+    ws.mergeCells('A8:J8');
     const rOz = ws.getCell('A8');
     rOz.value = 'ÖZET';
     rOz.font = { bold: true, size: 12, color: { argb: GOLD } };
@@ -1779,7 +2065,7 @@ export class KdvControlService {
         const c3 = ws.getCell(`E${r}`);
         c3.value = l2; c3.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
         c3.alignment = { horizontal: 'left', vertical: 'middle' };
-        ws.mergeCells(`F${r}:I${r}`);
+        ws.mergeCells(`F${r}:J${r}`);
         const c4 = ws.getCell(`F${r}`);
         c4.value = v2; c4.font = { size: 11 };
         c4.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
@@ -1789,7 +2075,7 @@ export class KdvControlService {
     setSummary(10, '✓ Eşleşen (otomatik + onaylanan)',   matchedCount,                                                       'Fatura OCR (tüm satırlar)', fmtTl(sumOcrAll));
     setSummary(11, '⚠ Kısmi / İnceleme',                 partialCount,                                                       'Luca (sadece eşleşen)',     fmtTl(sumLucaMatched));
     setSummary(12, '✗ Hatalı (orphan + reddedilen)',     unmatchedCount,                                                     'Fatura (sadece eşleşen)',   fmtTl(sumOcrMatched));
-    setSummary(13, 'Eşleşme Oranı',                      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Eşleşenler farkı',          fmtTl(sumLucaMatched - sumOcrMatched));
+    setSummary(13, 'Eşleşme Oranı',                      `%${Math.round((matchedCount / Math.max(results.length, 1)) * 100)}`, 'Eşleşenler farkı',          fmtTl(zeroKurusTolerance(sumLucaMatched - sumOcrMatched)));
 
     ws.getRow(14).height = 8;
 
@@ -1797,7 +2083,7 @@ export class KdvControlService {
     const headerRow = ws.getRow(15);
     headerRow.values = [
       '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA KDV (₺)',
-      'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV (₺)', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
+      'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV (₺)', 'FARK', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
     ];
     headerRow.height = 30;
     headerRow.eachCell((cell) => {
@@ -1826,6 +2112,12 @@ export class KdvControlService {
       // Fan-out detayında aynı görsel toplamını her satıra yazma; satır payını göster.
       const faturaKdvNum = getFaturaKdvValue(r, true);
       const faturaKdv = faturaKdvNum > 0 ? faturaKdvNum : null;
+      const hasCodexDiff = lucaKdv != null && faturaKdv != null;
+      const rawCodexDiff = hasCodexDiff ? Number((lucaKdv - faturaKdvNum).toFixed(2)) : 0;
+      const codexDiff = zeroKurusTolerance(rawCodexDiff);
+      const codexValue = hasCodexDiff
+        ? { formula: `IF(OR(D${rowNum}="",G${rowNum}=""),"",IF(ABS(D${rowNum}-G${rowNum})<=0.011,0,D${rowNum}-G${rowNum}))`, result: codexDiff }
+        : null;
 
       let durum = '';
       if (r.status === 'MATCHED') durum = '✓ EŞLEŞTİ';
@@ -1850,7 +2142,7 @@ export class KdvControlService {
 
       row.values = [
         idx + 1, lucaTarih, lucaEvrak, lucaKdv,
-        faturaTarih, faturaBelgeNo, faturaKdv, durum, aciklama,
+        faturaTarih, faturaBelgeNo, faturaKdv, codexValue, durum, aciklama,
       ];
 
       // Duruma göre renk
@@ -1866,19 +2158,19 @@ export class KdvControlService {
       }
 
       row.eachCell((cell, colNum) => {
-        const isStatus = colNum === 8;
+        const isStatus = colNum === 9;
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
         cell.font = {
           size: 10,
           color: { argb: isStatus ? statusText : 'FF1A1916' },
           bold: isStatus && statusBold,
         };
-        const rightAlign = colNum === 4 || colNum === 7;
-        const centerAlign = colNum === 1 || colNum === 8;
+        const rightAlign = colNum === 4 || colNum === 7 || colNum === 8;
+        const centerAlign = colNum === 1 || colNum === 9;
         cell.alignment = {
           horizontal: rightAlign ? 'right' : centerAlign ? 'center' : 'left',
           vertical: 'middle',
-          wrapText: colNum === 9,
+          wrapText: colNum === 10,
         };
         cell.border = {
           top:    { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -1891,7 +2183,7 @@ export class KdvControlService {
 
     if (seriUyarilari.length > 0) {
       const startRow = 17 + results.length;
-      ws.mergeCells(`A${startRow}:I${startRow}`);
+      ws.mergeCells(`A${startRow}:J${startRow}`);
       const title = ws.getCell(`A${startRow}`);
       title.value = 'SATIŞ FATURA SERİ KONTROLÜ';
       title.font = { bold: true, size: 12, color: { argb: YELLOW_TEXT } };
@@ -1907,7 +2199,7 @@ export class KdvControlService {
       seriUyarilari.forEach((u, idx) => {
         const rowNum = startRow + idx + 1;
         ws.mergeCells(`A${rowNum}:B${rowNum}`);
-        ws.mergeCells(`C${rowNum}:I${rowNum}`);
+        ws.mergeCells(`C${rowNum}:J${rowNum}`);
         const tip = ws.getCell(`A${rowNum}`);
         const mesaj = ws.getCell(`C${rowNum}`);
         tip.value = u.tip === 'cross_break' ? 'Önceki dönem kopukluğu' : 'Oturum içi eksik seri';
@@ -2167,30 +2459,39 @@ export class KdvControlService {
     });
     if (records.length === 0) return [];
 
-    // Belge no'yu prefix + numeric kısma ayır
-    const parse = (no: string): { prefix: string; num: number } | null => {
-      const cleaned = no.trim().toUpperCase();
-      // Trailing rakam grubunu yakala
-      const m = cleaned.match(/^(.*?)(\d+)$/);
+    // Belge no'yu e-belge seri + yil + numeric kısma ayır.
+    // Sayısal Z raporu/ÖKC fiş numaraları satış faturası seri takibi değildir;
+    // onları bu kontrolden bilinçli olarak dışarıda bırakıyoruz.
+    const parse = (no: string): { prefix: string; num: number; padLen: number } | null => {
+      const cleaned = no.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const m =
+        cleaned.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/) ??
+        cleaned.match(/^([A-Z]\d{2})(20\d{2})(\d{6,14})$/);
       if (!m) return null;
-      return { prefix: m[1], num: parseInt(m[2], 10) };
+      return {
+        prefix: `${m[1]}${m[2]}`,
+        num: parseInt(m[3], 10),
+        padLen: m[3].length,
+      };
     };
 
-    const grouped: Record<string, number[]> = {};
+    const grouped: Record<string, Array<{ num: number; padLen: number }>> = {};
     for (const r of records) {
       if (!r.belgeNo) continue;
       const p = parse(String(r.belgeNo));
       if (!p) continue;
       if (!grouped[p.prefix]) grouped[p.prefix] = [];
-      grouped[p.prefix].push(p.num);
+      grouped[p.prefix].push({ num: p.num, padLen: p.padLen });
     }
 
     const uyarilar: Array<{ tip: string; mesaj: string }> = [];
 
     // Bu oturum içi gap kontrolü
-    for (const [prefix, nums] of Object.entries(grouped)) {
+    for (const [prefix, entries] of Object.entries(grouped)) {
+      const nums = entries.map((e) => e.num);
       const sorted = [...new Set(nums)].sort((a, b) => a - b);
       if (sorted.length < 2) continue;
+      const padLen = Math.max(...entries.map((e) => e.padLen));
       const eksikler: number[] = [];
       for (let i = 1; i < sorted.length; i++) {
         for (let n = sorted[i - 1] + 1; n < sorted[i]; n++) {
@@ -2198,7 +2499,6 @@ export class KdvControlService {
         }
       }
       if (eksikler.length > 0) {
-        const padLen = String(sorted[sorted.length - 1]).length;
         const eksikStr = eksikler.slice(0, 10).map((n) => prefix + String(n).padStart(padLen, '0')).join(', ');
         const fazla = eksikler.length > 10 ? ` (+${eksikler.length - 10} tane daha)` : '';
         uyarilar.push({
@@ -2237,25 +2537,29 @@ export class KdvControlService {
             select: { belgeNo: true },
           });
           // Önceki ayın son belge no'su (her prefix için)
-          const oncekiByPrefix: Record<string, number> = {};
+          const oncekiByPrefix: Record<string, { num: number; padLen: number }> = {};
           for (const r of oncekiRecords) {
             if (!r.belgeNo) continue;
             const p = parse(String(r.belgeNo));
             if (!p) continue;
-            oncekiByPrefix[p.prefix] = Math.max(oncekiByPrefix[p.prefix] || 0, p.num);
+            const prev = oncekiByPrefix[p.prefix];
+            if (!prev || p.num > prev.num) {
+              oncekiByPrefix[p.prefix] = { num: p.num, padLen: p.padLen };
+            }
           }
 
           // Bu ayın ilk belge no'su her prefix için
-          for (const [prefix, nums] of Object.entries(grouped)) {
+          for (const [prefix, entries] of Object.entries(grouped)) {
+            const nums = entries.map((e) => e.num);
             const sorted = [...new Set(nums)].sort((a, b) => a - b);
             const buAyIlk = sorted[0];
-            const oncekiSon = oncekiByPrefix[prefix];
-            if (oncekiSon != null && buAyIlk > oncekiSon + 1) {
-              const padLen = String(buAyIlk).length;
-              const eksikSayi = buAyIlk - oncekiSon - 1;
+            const onceki = oncekiByPrefix[prefix];
+            if (onceki && buAyIlk > onceki.num + 1) {
+              const padLen = Math.max(onceki.padLen, ...entries.map((e) => e.padLen));
+              const eksikSayi = buAyIlk - onceki.num - 1;
               uyarilar.push({
                 tip: 'cross_break',
-                mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son belge ${prefix}${String(oncekiSon).padStart(padLen, '0')} → bu dönem ilk belge ${prefix}${String(buAyIlk).padStart(padLen, '0')}. Aralarda ${eksikSayi} belge no atlanmış.`,
+                mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son belge ${prefix}${String(onceki.num).padStart(padLen, '0')} → bu dönem ilk belge ${prefix}${String(buAyIlk).padStart(padLen, '0')}. Aralarda ${eksikSayi} belge no atlanmış.`,
               });
             }
           }
@@ -2276,8 +2580,10 @@ export class KdvControlService {
   ) {
     const result = await this.prisma.reconciliationResult.findFirst({
       where: { id: resultId, session: { tenantId } },
+      include: { session: true },
     });
     if (!result) throw new NotFoundException('Sonuç bulunamadı');
+    this.assertSessionUnlocked(result.session);
 
     return this.prisma.reconciliationResult.update({
       where: { id: resultId },
@@ -2312,14 +2618,12 @@ export class KdvControlService {
 
   async queueLucaImport(sessionId: string, tenantId: string, userId: string, targetDeviceId?: string) {
     const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     if (!session.taxpayerId) {
       throw new BadRequestException(
         'Bu oturuma Luca\'dan otomatik çekim için önce mükellef atanmalı',
       );
     }
-
-    // Mevcut KDV kayıtlarını temizle (yeniden çekim)
-    await this.prisma.kdvRecord.deleteMany({ where: { sessionId } });
 
     // Mükellef bilgisini çek (Luca'da arama için)
     const taxpayer = await this.prisma.taxpayer.findUnique({
@@ -2537,6 +2841,7 @@ export class KdvControlService {
    */
   async linkMihsapInvoices(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     if (!session.taxpayerId) {
       throw new BadRequestException(
         'Fatura bağlama için önce mükellef atanmalı',
@@ -2627,7 +2932,8 @@ export class KdvControlService {
     tenantId: string,
     opts: { forceFresh?: boolean; forceClaude?: boolean } = {},
   ) {
-    await this.findSession(sessionId, tenantId);
+    const session = await this.findSession(sessionId, tenantId);
+    this.assertSessionUnlocked(session);
     const forceFresh = opts.forceFresh === true;
     const forceClaude = opts.forceClaude === true;
 
@@ -2809,7 +3115,6 @@ export class KdvControlService {
     });
 
     // Gösterge panelindeki "Canlı Sistem Akışı"na başlangıç eventi
-    const session = await this.findSession(sessionId, tenantId);
     const mukellefAdi = this.formatMukellefAdi(session);
     await this.pushFeedEvent(tenantId, {
       action: 'ocr-start',
@@ -3129,9 +3434,187 @@ export class KdvControlService {
     return periodLabel;
   }
 
+  private kdvDateParseOptions(periodLabel?: string | null): { expectedYear?: number; expectedMonth?: number } {
+    const dash = periodLabel ? this.toDashDonem(periodLabel) : '';
+    const m = dash.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return {};
+    return {
+      expectedYear: Number(m[1]),
+      expectedMonth: Number(m[2]),
+    };
+  }
+
+  private normalizeRawColumnName(value: string): string {
+    return String(value ?? '')
+      .replace(/\uFFFD/g, '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0130/g, 'I').replace(/\u0131/g, 'i')
+      .replace(/\u011E/g, 'G').replace(/\u011F/g, 'g')
+      .replace(/\u015E/g, 'S').replace(/\u015F/g, 's')
+      .replace(/\u00C7/g, 'C').replace(/\u00E7/g, 'c')
+      .replace(/\u00D6/g, 'O').replace(/\u00F6/g, 'o')
+      .replace(/\u00DC/g, 'U').replace(/\u00FC/g, 'u')
+      .replace(/Ä°/g, 'I').replace(/Ä±/g, 'i')
+      .replace(/Ä/g, 'G').replace(/ÄŸ/g, 'g')
+      .replace(/Å/g, 'S').replace(/ÅŸ/g, 's')
+      .replace(/Ã‡/g, 'C').replace(/Ã§/g, 'c')
+      .replace(/Ã–/g, 'O').replace(/Ã¶/g, 'o')
+      .replace(/Ãœ/g, 'U').replace(/Ã¼/g, 'u')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  private findRawDataValue(rawData: any, wantedColumns: string[]): string | null {
+    if (!rawData || typeof rawData !== 'object') return null;
+    const wanted = wantedColumns.map((v) => this.normalizeRawColumnName(v));
+    for (const [key, value] of Object.entries(rawData)) {
+      const normalized = this.normalizeRawColumnName(key);
+      if (wanted.some((w) => normalized === w || normalized.includes(w))) {
+        const text = String(value ?? '').trim();
+        if (text) return text;
+      }
+    }
+    return null;
+  }
+
+  private periodVariants(periodLabel?: string | null): string[] {
+    const raw = String(periodLabel || '').trim();
+    if (!raw) return [];
+    const normalized = this.toDashDonem(raw);
+    const slash = normalized.replace('-', '/');
+    return Array.from(new Set([raw, normalized, slash]));
+  }
+
+  /**
+   * Luca KDV importunda eski/bozuk satirlarda belgeNo kisa fis no olarak kaldiysa
+   * raw ACIKLAMA kolonundan gercek e-fatura/e-arsiv noyu yeniden turetir.
+   * Agent endpoint'i bunu canli oturumu yerinde onarmak icin kullanir.
+   */
+  async repairLucaRecordBelgeNosForAgent(
+    tenantId: string,
+    opts: {
+      sessionId?: string;
+      taxpayerName?: string;
+      periodLabel?: string;
+      type?: 'KDV_191' | 'KDV_391' | 'ISLETME_GELIR' | 'ISLETME_GIDER';
+      dryRun?: boolean;
+      reconcile?: boolean;
+    },
+  ) {
+    let session: any;
+    if (opts.sessionId) {
+      session = await this.findSession(opts.sessionId, tenantId);
+    } else {
+      const candidates = await this.prisma.kdvControlSession.findMany({
+        where: {
+          tenantId,
+          type: opts.type || 'KDV_391',
+          ...(opts.periodLabel ? { periodLabel: { in: this.periodVariants(opts.periodLabel) } } : {}),
+        },
+        include: {
+          taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
+          _count: { select: { kdvRecords: true, images: true } },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+      });
+      const needle = this.normalizeRawColumnName(opts.taxpayerName || '');
+      session = needle
+        ? candidates.find((s) => this.normalizeRawColumnName(this.formatMukellefAdi(s) || '').includes(needle))
+        : candidates[0];
+      if (!session) throw new NotFoundException('Onarilacak KDV kontrol oturumu bulunamadi');
+    }
+
+    this.assertSessionUnlocked(session);
+
+    const records = await this.prisma.kdvRecord.findMany({
+      where: { sessionId: session.id },
+      orderBy: { rowIndex: 'asc' },
+    });
+
+    const fixes: Array<{
+      id: string;
+      rowIndex: number;
+      before: string | null;
+      after: string;
+      aciklama: string | null;
+    }> = [];
+
+    for (const record of records) {
+      const rawData = record.rawData as any;
+      const rawAciklama = this.findRawDataValue(rawData, ['ACIKLAMA', 'AIKLAMA']);
+      const rowText = rawData && typeof rawData === 'object'
+        ? Object.values(rawData).map((v) => String(v ?? '')).join(' ')
+        : '';
+      const extracted = this.excelParser.extractBelgeNoFromDescription(rawAciklama)
+        || this.excelParser.extractBelgeNoFromDescription(rowText);
+      if (!extracted) continue;
+      if (String(record.belgeNo || '').trim().toUpperCase() === extracted.toUpperCase()) continue;
+      fixes.push({
+        id: record.id,
+        rowIndex: record.rowIndex,
+        before: record.belgeNo,
+        after: extracted,
+        aciklama: rawAciklama,
+      });
+    }
+
+    if (!opts.dryRun && fixes.length > 0) {
+      await this.prisma.$transaction(
+        fixes.map((fix) => this.prisma.kdvRecord.update({
+          where: { id: fix.id },
+          data: {
+            belgeNo: fix.after,
+            ...(fix.aciklama ? { karsiTaraf: fix.aciklama } : {}),
+          },
+        })),
+      );
+    }
+
+    const resultCountsBefore = await this.prisma.reconciliationResult.groupBy({
+      by: ['status'],
+      where: { sessionId: session.id },
+      _count: true,
+    });
+    let reconciliation: any = null;
+    if (!opts.dryRun && opts.reconcile !== false) {
+      reconciliation = await this.runReconciliation(session.id, tenantId);
+    }
+
+    return {
+      ok: true,
+      session: {
+        id: session.id,
+        taxpayer: this.formatMukellefAdi(session) || null,
+        periodLabel: session.periodLabel,
+        type: session.type,
+        recordCount: records.length,
+      },
+      fixes: fixes.length,
+      sampleFixes: fixes.slice(0, 20).map((fix) => ({
+        rowIndex: fix.rowIndex,
+        before: fix.before,
+        after: fix.after,
+      })),
+      resultCountsBefore,
+      reconciliation,
+      dryRun: opts.dryRun === true,
+    };
+  }
+
   /** Oturumu tamamlandı olarak işaretle */
   async completeSession(sessionId: string, tenantId: string) {
     const session = await this.findSession(sessionId, tenantId);
+    const results = await this.prisma.reconciliationResult.findMany({
+      where: { sessionId },
+      include: { kdvRecord: true, image: true },
+    });
+    const summary = this.buildMatchSummary(results, session.type);
+    if (summary.totalResults === 0) {
+      throw new BadRequestException('Eşleştirme sonucu oluşmadan KDV kontrolü kilitlenemez.');
+    }
     const updated = await this.prisma.kdvControlSession.update({
       where: { id: sessionId },
       data: { status: 'COMPLETED' },
@@ -3152,5 +3635,14 @@ export class KdvControlService {
     }
 
     return updated;
+  }
+
+  /** Kilitli oturumu tekrar müdahaleye aç */
+  async unlockSession(sessionId: string, tenantId: string) {
+    await this.findSession(sessionId, tenantId);
+    return this.prisma.kdvControlSession.update({
+      where: { id: sessionId },
+      data: { status: 'REVIEWING' },
+    });
   }
 }

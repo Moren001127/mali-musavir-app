@@ -14,7 +14,25 @@
  */
 
 const path = require('path');
-const tsNode = require.resolve('ts-node/register', { paths: [path.join(__dirname, '..')] });
+const ROOT = path.join(__dirname, '..');
+process.env.TS_NODE_TRANSPILE_ONLY = 'true';
+process.env.TS_NODE_PROJECT = path.join(ROOT, 'apps', 'api', 'tsconfig.json');
+process.env.TS_NODE_COMPILER_OPTIONS = JSON.stringify({
+  module: 'CommonJS',
+  moduleResolution: 'Node',
+});
+const tsNode = (() => {
+  for (const candidate of [
+    'ts-node/register/transpile-only',
+    path.join(ROOT, 'node_modules', 'ts-node', 'register', 'transpile-only'),
+    path.join(ROOT, 'apps', 'api', 'node_modules', 'ts-node', 'register', 'transpile-only'),
+  ]) {
+    try {
+      return require.resolve(candidate, { paths: [ROOT] });
+    } catch {}
+  }
+  return null;
+})();
 try {
   require(tsNode);
 } catch (e) {

@@ -70,6 +70,13 @@ export class KdvControlController {
     return this.kdvService.completeSession(id, req.user.tenantId);
   }
 
+  @Patch('sessions/:id/unlock')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  unlockSession(@Req() req: any, @Param('id') id: string) {
+    return this.kdvService.unlockSession(id, req.user.tenantId);
+  }
+
   /* ── EXCEL ───────────────────────────────────────── */
 
   @Post('sessions/:id/excel')
