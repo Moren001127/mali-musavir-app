@@ -967,12 +967,11 @@
           // vardi, sayaç yoktu - sonsuz recovery loop'u olusabiliyordu (5 mukellef
           // hep ayni 'giris.do bos kaldi' log'unda kaliyordu). Yeni: max 5 deneme
           // sonrasi job'lari requeue edip oturumu sifirla.
-          window.__morenClassicSsoReturnCount = (window.__morenClassicSsoReturnCount || 0);
-          if (!window.__morenClassicSsoReturnAt || Date.now() - window.__morenClassicSsoReturnAt > 15000) {
-            window.__morenClassicSsoReturnAt = Date.now();
-            window.__morenClassicSsoReturnCount += 1;
-            if (window.__morenClassicSsoReturnCount >= 5) {
-              const reason = `TRANSIENT_LUCA_CLASSIC_GIRIS_DO_BLANK: giris.do ${window.__morenClassicSsoReturnCount} kez bos kaldi; browser oturumu sifirlanacak`;
+          const blankState = readClassicLucaGirisBlankState();
+          if (!blankState.lastActionAt || Date.now() - blankState.lastActionAt > 15000) {
+            const nextBlankState = noteClassicLucaGirisBlank();
+            if (nextBlankState.count >= 5) {
+              const reason = `TRANSIENT_LUCA_CLASSIC_GIRIS_DO_BLANK: giris.do ${nextBlankState.count} kez bos kaldi; browser oturumu sifirlanacak`;
               for (const job of jobs) {
                 await logPendingJob(job, reason);
                 await fetch(API + `/agent/luca/jobs/${job.id}/requeue`, {
@@ -981,13 +980,12 @@
                   body: JSON.stringify({ reason }),
                 }).catch(() => {});
               }
-              window.__morenClassicSsoReturnCount = 0;
-              window.__morenClassicSsoReturnAt = 0;
+              resetClassicLucaGirisBlankState();
               window.__morenAgent.stopRequested = true;
               return;
             }
             for (const job of jobs) {
-              await logPendingJob(job, `Klasik Luca giris.do bos kaldi (${window.__morenClassicSsoReturnCount}/5); SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak`);
+              await logPendingJob(job, `Klasik Luca giris.do bos kaldi (${nextBlankState.count}/5); SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak`);
             }
             try { location.href = LUCA_SSO_MAIN_URL; } catch {}
           }
@@ -1056,6 +1054,7 @@
       }
 
       resetClassicLucaRepairState();
+      resetClassicLucaGirisBlankState();
 
       window.__lucaJobRunning = true;
       for (const job of jobs) {
@@ -6506,6 +6505,7 @@
 
   /** Bir koşul sağlanana kadar bekle (max ms) */
   const CLASSIC_LUCA_REPAIR_KEY = '__morenClassicLucaRepairState';
+  const CLASSIC_LUCA_GIRIS_BLANK_KEY = '__morenClassicLucaGirisBlankState';
 
   function readClassicLucaRepairState() {
     try {
@@ -6527,6 +6527,46 @@
 
   function writeClassicLucaRepairState(state) {
     try { sessionStorage.setItem(CLASSIC_LUCA_REPAIR_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  function readClassicLucaGirisBlankState() {
+    try {
+      const raw = sessionStorage.getItem(CLASSIC_LUCA_GIRIS_BLANK_KEY)
+        || localStorage.getItem(CLASSIC_LUCA_GIRIS_BLANK_KEY);
+      const state = raw ? JSON.parse(raw) : {};
+      if (!state.lastSeenAt || Date.now() - Number(state.lastSeenAt) > 2 * 60 * 1000) {
+        return { count: 0, lastSeenAt: 0, lastActionAt: 0 };
+      }
+      return {
+        count: Number(state.count || 0),
+        lastSeenAt: Number(state.lastSeenAt || 0),
+        lastActionAt: Number(state.lastActionAt || 0),
+      };
+    } catch {
+      return { count: 0, lastSeenAt: 0, lastActionAt: 0 };
+    }
+  }
+
+  function writeClassicLucaGirisBlankState(state) {
+    const serialized = JSON.stringify(state);
+    try { sessionStorage.setItem(CLASSIC_LUCA_GIRIS_BLANK_KEY, serialized); } catch {}
+    try { localStorage.setItem(CLASSIC_LUCA_GIRIS_BLANK_KEY, serialized); } catch {}
+  }
+
+  function noteClassicLucaGirisBlank() {
+    const prev = readClassicLucaGirisBlankState();
+    const state = {
+      count: Number(prev.count || 0) + 1,
+      lastSeenAt: Date.now(),
+      lastActionAt: Date.now(),
+    };
+    writeClassicLucaGirisBlankState(state);
+    return state;
+  }
+
+  function resetClassicLucaGirisBlankState() {
+    try { sessionStorage.removeItem(CLASSIC_LUCA_GIRIS_BLANK_KEY); } catch {}
+    try { localStorage.removeItem(CLASSIC_LUCA_GIRIS_BLANK_KEY); } catch {}
   }
 
   function noteClassicLucaNotReady() {

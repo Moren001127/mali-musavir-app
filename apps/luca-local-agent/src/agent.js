@@ -92,6 +92,8 @@ const DEVICE_ID = PORTAL_WORKER
 const WORKER_NAME = PORTAL_WORKER?.displayName || cfg.worker?.workerName || os.hostname();
 const WORKER_POOL_INDEX = Math.max(0, Number(PORTAL_WORKER?.slotIndex || 0));
 const WORKER_POOL_SIZE = Math.max(1, Number(PORTAL_WORKER?.poolSize || 1));
+const SINGLE_INSTANCE_LOCK_PATH = path.join(__dirname, '..', '.agent.lock');
+let singleInstanceLockAcquired = false;
 
 if (!cfg.api?.baseUrl || !cfg.api?.agentToken) {
   console.error('HATA: config.json içinde api.baseUrl ve api.agentToken zorunlu.');
@@ -175,6 +177,62 @@ const log = {
     if (LOG_LEVEL === 'debug') console.log(`[${new Date().toISOString()}] DEBUG`, ...args);
   },
 };
+
+function isProcessAlive(pid) {
+  const n = Number(pid);
+  if (!Number.isFinite(n) || n <= 0) return false;
+  try {
+    process.kill(n, 0);
+    return true;
+  } catch (err) {
+    return err?.code === 'EPERM';
+  }
+}
+
+function acquireSingleInstanceLock() {
+  if (PORTAL_WORKER) return;
+
+  const payload = JSON.stringify({
+    pid: process.pid,
+    deviceId: DEVICE_ID,
+    startedAt: new Date().toISOString(),
+  }, null, 2);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const fd = fs.openSync(SINGLE_INSTANCE_LOCK_PATH, 'wx');
+      fs.writeFileSync(fd, payload, 'utf8');
+      fs.closeSync(fd);
+      singleInstanceLockAcquired = true;
+      return;
+    } catch (err) {
+      if (err?.code !== 'EEXIST') throw err;
+      let existing = null;
+      try {
+        existing = JSON.parse(fs.readFileSync(SINGLE_INSTANCE_LOCK_PATH, 'utf8'));
+      } catch {}
+      if (isProcessAlive(existing?.pid)) {
+        console.error(`[${new Date().toISOString()}] ERROR Luca Local Agent zaten calisiyor (pid=${existing.pid}). Yeni instance kapatildi.`);
+        process.exit(0);
+      }
+      try { fs.unlinkSync(SINGLE_INSTANCE_LOCK_PATH); } catch {}
+    }
+  }
+
+  throw new Error('Luca Local Agent lock dosyasi alinamadi');
+}
+
+function releaseSingleInstanceLock() {
+  if (!singleInstanceLockAcquired) return;
+  try {
+    const existing = JSON.parse(fs.readFileSync(SINGLE_INSTANCE_LOCK_PATH, 'utf8'));
+    if (Number(existing?.pid) === process.pid) {
+      fs.unlinkSync(SINGLE_INSTANCE_LOCK_PATH);
+    }
+  } catch {}
+}
+
+process.on('exit', releaseSingleInstanceLock);
 
 if (JOB_TYPE_CONFIG.upgradedFromLegacy) {
   log.warn('worker.jobTypes eski varsayilan listeden otomatik genisletildi; tum Luca veri cekme modulleri aktif.');
@@ -341,7 +399,7 @@ async function waitForJobFinalStatus(jobId, timeoutMs = JOB_TIMEOUT) {
       lastStatus = status;
     }
     const jobLog = String(data?.errorMsg || '');
-    if (/TRANSIENT_LUCA_CLASSIC_FRAME_STUCK_RESET/i.test(jobLog)) {
+    if (/TRANSIENT_LUCA_CLASSIC_(FRAME_STUCK_RESET|GIRIS_DO_BLANK)/i.test(jobLog)) {
       throw new Error('TRANSIENT_LUCA_RELOAD_STUCK: Klasik Luca firma frame acilmadi; browser oturumu resetlenecek');
     }
     if (['done', 'failed', 'cancelled'].includes(status)) return data;
@@ -1349,6 +1407,7 @@ process.on('SIGTERM', () => {
 });
 
 async function start() {
+  acquireSingleInstanceLock();
   const poolStarted = await startPortalWorkerPoolIfAvailable();
   if (!poolStarted) {
     if (!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) {

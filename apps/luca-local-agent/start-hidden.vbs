@@ -3,4 +3,4 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 
 baseDir = fso.GetParentFolderName(WScript.ScriptFullName)
 shell.CurrentDirectory = baseDir
-shell.Run "cmd /c node src\agent.js", 0, False
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -File """ & baseDir & "\scripts\start-agent.ps1""", 0, False

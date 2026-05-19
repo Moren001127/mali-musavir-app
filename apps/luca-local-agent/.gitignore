@@ -4,4 +4,6 @@ config.json
 .DS_Store
 
 .device-id
+.agent.lock
 .browser-data/
+.browser-data.reset-*/
