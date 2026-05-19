@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.74';
+  const AGENT_VERSION = '1.37.80';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -25,6 +25,12 @@
   }
   window.__morenAgent = { running: true, stopRequested: false, version: AGENT_VERSION, instanceId: AGENT_INSTANCE_ID };
   window.__morenAutoAgent = window.__morenAgent;
+
+  function isCurrentAgentInstance() {
+    return window.__morenAgent?.instanceId === AGENT_INSTANCE_ID
+      && window.__morenAgent?.running === true
+      && window.__morenAgent?.stopRequested !== true;
+  }
 
   // Loud console banner — F12 açtığında hangi sürümün yüklü olduğunu net görsün
   console.log(
@@ -855,6 +861,7 @@
   // geri yükler.
   async function processLucaJobs() {
     try {
+      if (!isCurrentAgentInstance()) return;
       if (!isLucaOrigin()) return;
       // Luca'nin herhangi bir top frame'inde pending job'u gor ve agentin
       // hangi ekranda bekledigini portala yaz. Klasik Luca disinda islem
@@ -864,6 +871,7 @@
       // yani üst pencerede yürür. İçerik frame'lerinde agent sadece DOM yardımcı
       // (frame-aware Excel button arama vs.).
       if (window !== window.top) return;
+      if (!isCurrentAgentInstance()) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
       await pingAgentStatus(true);
@@ -943,6 +951,7 @@
 
       const classicReady = await waitForClassicLucaReady(12000);
       if (!classicReady) {
+        const repairState = noteClassicLucaNotReady();
         const url = location.href.slice(0, 120);
         setStatus('Klasik Luca açıldı; firma ekranı yükleniyor');
         for (const job of jobs) {
@@ -958,6 +967,30 @@
             window.__morenClassicSsoReturnAt = Date.now();
             for (const job of jobs) {
               await logPendingJob(job, 'Klasik Luca giris.do bos kaldi; SSO main.erp ekranina donulup bilinen ID/action ile yeniden acilacak');
+            }
+            try { location.href = LUCA_SSO_MAIN_URL; } catch {}
+          }
+          return;
+        }
+        if (shouldReturnClassicLucaToSso(repairState)) {
+          if (Number(repairState.count || 0) >= 5) {
+            const reason = `TRANSIENT_LUCA_CLASSIC_FRAME_STUCK_RESET: Klasik Luca firma frame'i ${repairState.count} kontroldur acilmadi; browser oturumu sifirlanacak`;
+            for (const job of jobs) {
+              await logPendingJob(job, reason);
+              await fetch(API + `/agent/luca/jobs/${job.id}/requeue`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ reason }),
+              }).catch(() => {});
+            }
+            resetClassicLucaRepairState();
+            window.__morenAgent.stopRequested = true;
+            return;
+          }
+          if (!classicLucaRepairRecentlyActed(repairState, 12000)) {
+            markClassicLucaRepairAction('sso-main');
+            for (const job of jobs) {
+              await logPendingJob(job, `Klasik Luca firma frame'i acilmadi (${repairState.count}. kontrol); SSO ana ekrandan klasik paket yeniden acilacak`);
             }
             try { location.href = LUCA_SSO_MAIN_URL; } catch {}
           }
@@ -991,15 +1024,17 @@
           return;
         }
         window.__morenSsoGirisStartedAt = 0;
-        if (!window.__morenClassicReloadAt || Date.now() - window.__morenClassicReloadAt > 30000) {
-          window.__morenClassicReloadAt = Date.now();
+        if (!classicLucaRepairRecentlyActed(repairState, 20000)) {
+          markClassicLucaRepairAction('reload');
           for (const job of jobs) {
-            await logPendingJob(job, 'Klasik Luca boş kaldı; sekme yenileniyor, job pending kalacak');
+            await logPendingJob(job, 'Klasik Luca firma frame\'i beklenenden gec geldi; sekme bir kez yenileniyor');
           }
           try { location.reload(); } catch {}
         }
         return;
       }
+
+      resetClassicLucaRepairState();
 
       window.__lucaJobRunning = true;
       for (const job of jobs) {
@@ -5656,7 +5691,23 @@
       }
     }
 
-    throw new Error(`KDV Defteri Kebir rapor formu acilamadi; guvenlik kuralı geregi Muavin Defter'e gecilmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
+    // BUG FIX (Luca KDV_391 BILANCO SATIS - WASH faturasi): Luca menusu guncellenmis
+    // veya form name'leri degisinmis olabilir. Iki strict attempt basarisiz olduysa,
+    // SON CARE: kebir/REPFORM/DefterServlet pattern'i ile eslesen ANY formu (Muavin
+    // hari) kabul et. Bu sayede form name varyasyonu kabul ediliyor, Muavin Defter
+    // hala reddediliyor (yanlis veri cikarmasin diye).
+    try {
+      const fallback = collectLucaFormsNow(/raporKebir|kebir|REPFORM|DefterServlet/i)
+        .find((f) => !/MUAVIN_DEFTER/i.test(getKdvLedgerReportName(f)));
+      if (fallback) {
+        await log(`KDV fallback: strict match basarisiz - kebir-benzeri form kabul edildi -> ${describeKdvLedgerForm(fallback)}`);
+        return fallback;
+      }
+    } catch (e) {
+      await log(`KDV fallback exception: ${String(e?.message || e).slice(0, 180)}`);
+    }
+
+    throw new Error(`KDV Defteri Kebir rapor formu acilamadi (2 strict + 1 fallback denendi). Muavin Defter formu yanlis veri verebilir, kabul edilmedi. Mevcut form'lar: ${collectLucaFormsBrief().join(' | ') || '(yok)'}`);
   }
 
   /**
@@ -6378,6 +6429,68 @@
   }
 
   /** Bir koşul sağlanana kadar bekle (max ms) */
+  const CLASSIC_LUCA_REPAIR_KEY = '__morenClassicLucaRepairState';
+
+  function readClassicLucaRepairState() {
+    try {
+      const raw = sessionStorage.getItem(CLASSIC_LUCA_REPAIR_KEY);
+      const state = raw ? JSON.parse(raw) : {};
+      if (!state.lastSeenAt || Date.now() - Number(state.lastSeenAt) > 2 * 60 * 1000) {
+        return { count: 0, lastSeenAt: 0, lastActionAt: 0, lastAction: '' };
+      }
+      return {
+        count: Number(state.count || 0),
+        lastSeenAt: Number(state.lastSeenAt || 0),
+        lastActionAt: Number(state.lastActionAt || 0),
+        lastAction: String(state.lastAction || ''),
+      };
+    } catch {
+      return { count: 0, lastSeenAt: 0, lastActionAt: 0, lastAction: '' };
+    }
+  }
+
+  function writeClassicLucaRepairState(state) {
+    try { sessionStorage.setItem(CLASSIC_LUCA_REPAIR_KEY, JSON.stringify(state)); } catch {}
+  }
+
+  function noteClassicLucaNotReady() {
+    const prev = readClassicLucaRepairState();
+    const state = {
+      ...prev,
+      count: Number(prev.count || 0) + 1,
+      lastSeenAt: Date.now(),
+    };
+    writeClassicLucaRepairState(state);
+    return state;
+  }
+
+  function markClassicLucaRepairAction(action) {
+    const state = {
+      ...readClassicLucaRepairState(),
+      lastActionAt: Date.now(),
+      lastAction: action,
+    };
+    writeClassicLucaRepairState(state);
+    return state;
+  }
+
+  function resetClassicLucaRepairState() {
+    try { sessionStorage.removeItem(CLASSIC_LUCA_REPAIR_KEY); } catch {}
+  }
+
+  function classicLucaRepairRecentlyActed(state, minMs) {
+    return !!state?.lastActionAt && Date.now() - Number(state.lastActionAt) < minMs;
+  }
+
+  function shouldReturnClassicLucaToSso(state) {
+    const path = String(location.pathname || '');
+    if (!/\/Luca\/(?:luca|giris)\.do/i.test(path)) return false;
+    const frameCount = document.querySelectorAll('frame, iframe').length;
+    const hasFrm4 = !!getLucaFrame('frm4');
+    const bodyLen = String(document.body?.textContent || '').replace(/\s+/g, ' ').trim().length;
+    return Number(state?.count || 0) >= 2 || (!hasFrm4 && frameCount === 0) || (!hasFrm4 && bodyLen < 250);
+  }
+
   async function waitUntil(predicate, maxMs = 10000, intervalMs = 200) {
     const t0 = Date.now();
     while (Date.now() - t0 < maxMs) {
@@ -6550,7 +6663,7 @@
       const tokens = wantedSlug.split('_').filter((w) => w.length >= 4);
       if (tokens.length >= 1) {
         for (const tok of tokens) {
-          const matchingOpts = combo.options.filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
+          const matchingOpts = [...combo.options].filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
           if (matchingOpts.length === 1) {
             targetOpt = matchingOpts[0]; matchedBy = `eşsiz token "${tok}"`; break;
           }
@@ -6575,8 +6688,18 @@
       throw new Error(`Eşleşen option boş value taşıyor: "${targetText}". Luca DOM yapısı değişmiş olabilir.`);
     }
 
+    const setComboToTarget = (selectEl, optionEl) => {
+      try {
+        const idx = [...selectEl.options].findIndex((opt) => String(opt.value || '').trim() === targetValue);
+        if (idx >= 0) selectEl.selectedIndex = idx;
+      } catch {}
+      try { optionEl.selected = true; } catch {}
+      try { selectEl.value = targetValue; } catch {}
+      try { selectEl.setAttribute('value', targetValue); } catch {}
+    };
+
     await log(`🔄 Firma değiştiriliyor (${matchedBy}): ${currentText || '∅'} → ${targetText}`);
-    combo.value = targetValue;
+    setComboToTarget(combo, targetOpt);
 
     // Luca'nın KENDI onchange handler'ını tetikle — synthetic event yetmiyor çünkü
     // Luca server-side session cookie'yi onchange'in yaptığı POST/redirect ile günceller.
@@ -6678,29 +6801,82 @@
       }
     }
 
-    // Sayfa yenilenmesini bekle — frm4 reload edecek
-    await sleep(2500);
+    // Sayfa yenilenmesini bekle — frm4 reload edecek. Luca bazen firma değişimini
+    // 10+ saniyede oturtuyor; erken fail etmek WASH CLEAN gibi işleri boşa düşürüyordu.
+    await sleep(3500);
 
     // DOĞRULAMA: SirketCombo'da seçili option gerçekten hedef mi?
     // (frm4 reload sonrası DOM yeniden oluştuğu için tekrar fetch ediyoruz)
-    // v1.36.25: HIZLANDIRMA — verify 18s→8s + polling 500ms→200ms (daha sık check)
     let verified = false;
     let lastSelectedText = currentText;
-    const verifyDeadline = Date.now() + 8000;
-    while (Date.now() < verifyDeadline) {
-      const frm4Now = getLucaFrame('frm4');
-      const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
-      if (comboNow) {
-        const selText = (comboNow.selectedOptions[0]?.text || '').trim();
-        const selSlug = slugify(selText);
-        const tgtSlug = slugify(targetText);
-        lastSelectedText = selText;
-        if (selSlug && tgtSlug && (selSlug === tgtSlug || selSlug.includes(tgtSlug) || tgtSlug.includes(selSlug))) {
-          verified = true;
-          break;
+    const verifySelection = async (maxMs) => {
+      const verifyDeadline = Date.now() + maxMs;
+      while (Date.now() < verifyDeadline) {
+        const frm4Now = getLucaFrame('frm4');
+        const comboNow = frm4Now?.contentDocument?.getElementById('SirketCombo');
+        if (comboNow) {
+          const selText = (comboNow.selectedOptions[0]?.text || '').trim();
+          const selValue = String(comboNow.value || '').trim();
+          const selSlug = slugify(selText);
+          const tgtSlug = slugify(targetText);
+          lastSelectedText = selText;
+          if (
+            (targetValue && selValue === targetValue) ||
+            (selSlug && tgtSlug && (selSlug === tgtSlug || selSlug.includes(tgtSlug) || tgtSlug.includes(selSlug)))
+          ) {
+            return true;
+          }
         }
+        await sleep(300);
       }
-      await sleep(200);
+      return false;
+    };
+
+    verified = await verifySelection(22000);
+    if (!verified) {
+      await log(`⚠ Firma değişimi ilk kontrolde doğrulanmadı (${lastSelectedText || 'boş'}); ikinci onay/fallback deneniyor`);
+      try {
+        const frm4Retry = getLucaFrame('frm4');
+        const comboRetry = frm4Retry?.contentDocument?.getElementById('SirketCombo');
+        const retryOpt = comboRetry
+          ? [...comboRetry.options].find((opt) => String(opt.value || '').trim() === targetValue)
+          : null;
+        if (frm4Retry?.contentWindow && comboRetry && retryOpt) {
+          const retryWin = frm4Retry.contentWindow;
+          setComboToTarget(comboRetry, retryOpt);
+          try {
+            comboRetry.dispatchEvent(new retryWin.Event('input', { bubbles: true }));
+            comboRetry.dispatchEvent(new retryWin.Event('change', { bubbles: true }));
+          } catch {
+            comboRetry.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          const onChangeRetry = comboRetry.getAttribute('onchange');
+          if (onChangeRetry && onChangeRetry.trim()) {
+            try {
+              const fn = new retryWin.Function('event', onChangeRetry);
+              fn.call(comboRetry, new retryWin.Event('change'));
+            } catch (e) {
+              await log(`⚠ ikinci onchange hatası: ${e?.message || e}`);
+            }
+          }
+          if (typeof retryWin.formsubmit === 'function') {
+            await log('🔧 Luca formsubmit(event, 0) fallback çağrılıyor');
+            try { retryWin.formsubmit(new retryWin.Event('click'), 0); } catch (e) {
+              await log(`⚠ formsubmit fallback hatası: ${e?.message || e}`);
+            }
+          } else {
+            const form = comboRetry.closest('form');
+            if (form) {
+              await log('🔧 Luca firma formu submit fallback ile gönderiliyor');
+              try { form.submit(); } catch {}
+            }
+          }
+        }
+      } catch (e) {
+        await log(`⚠ Firma fallback genel hata: ${e?.message || e}`);
+      }
+      await sleep(3500);
+      verified = await verifySelection(22000);
     }
     if (!verified) {
       throw new Error(
@@ -7128,6 +7304,101 @@
     return result;
   }
 
+  async function findLucaMenuItemAny(labels, _log, maxMs = 8000) {
+    const normalizedLabels = labels
+      .map((label) => ({ label, key: normalizeLucaMenuText(label) }))
+      .filter((item) => item.key);
+    if (normalizedLabels.length === 0) return null;
+
+    const result = await waitUntil(() => {
+      const candidates = ['frm5', 'frm2', 'frm3', 'frm6', 'frm7', 'frm1', 'frm4'];
+      for (const fname of candidates) {
+        const f = getLucaFrame(fname);
+        if (!f || !f.contentDocument) continue;
+        const doc = f.contentDocument;
+        for (const el of doc.querySelectorAll('*')) {
+          const normalized = normalizeLucaMenuText(el.textContent || '');
+          const hit = normalizedLabels.find((item) => normalized === item.key);
+          if (hit && isLikelyLucaMenuElement(el, hit.key)) {
+            return { el: getClickableLucaMenuElement(el), frame: f, frameName: fname, foundLabel: hit.label };
+          }
+        }
+      }
+      for (const el of document.querySelectorAll('*')) {
+        const normalized = normalizeLucaMenuText(el.textContent || '');
+        const hit = normalizedLabels.find((item) => normalized === item.key);
+        if (hit && isLikelyLucaMenuElement(el, hit.key)) {
+          return { el: getClickableLucaMenuElement(el), frame: window, frameName: 'top', foundLabel: hit.label };
+        }
+      }
+      return null;
+    }, maxMs, 250);
+    if (result) cacheLucaMenuHit(result.foundLabel || labels[0], result);
+    return result;
+  }
+
+  function collectLucaMenuTextBrief(filterLabels = [], limit = 28) {
+    const filters = filterLabels
+      .map((label) => normalizeLucaMenuText(label))
+      .filter(Boolean);
+    const out = [];
+    const seen = new Set();
+    const shouldKeep = (text) => {
+      const key = normalizeLucaMenuText(text);
+      if (!key || key.length > 80 || seen.has(key)) return false;
+      if (filters.length === 0) return true;
+      return filters.some((filter) => key.includes(filter) || filter.includes(key)) ||
+        /gider|gelir|rapor|liste|isletme|dokum/.test(key);
+    };
+    const pushText = (text, frameName) => {
+      const clean = String(text || '').replace(/\s+/g, ' ').trim();
+      if (!shouldKeep(clean)) return;
+      const key = normalizeLucaMenuText(clean);
+      seen.add(key);
+      out.push(`${frameName || '?'}:${clean}`);
+    };
+    for (const win of collectLucaWindows()) {
+      let frameName = '';
+      try { frameName = win.frameElement?.name || win.name || 'top'; } catch { frameName = '?'; }
+      let nodes = [];
+      try { nodes = Array.from(win.document.querySelectorAll('[onclick],[href],[role="button"],a,span,font,td,div,li')); } catch { continue; }
+      for (const el of nodes) {
+        pushText(getLucaMenuTextForCache(el), frameName);
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
+  }
+
+  async function openLucaMenuBranch(label, found, childLabels, log, settleMs = 900) {
+    const childReady = async (maxMs = 2500) => {
+      if (findLucaGelirGiderRaporFormNow()) return true;
+      return !!(await findLucaMenuItemAny(childLabels, null, maxMs));
+    };
+
+    if (await childReady(600)) return true;
+
+    await nativeLucaMenuHover(label, log, { exact: true, hoverOnly: true, timeoutMs: 5000, settleMs });
+    if (await childReady(2500)) return true;
+
+    try {
+      const view = found?.frame?.contentWindow || found?.frame || window;
+      await fullActivateWithParents(found.el, view, 4, 160);
+    } catch {}
+    await sleep(settleMs);
+    cacheVisibleLucaMenuIds();
+    if (await childReady(3000)) return true;
+
+    const cached = cacheLucaMenuHit(label, found) || getCachedLucaMenuHit(label);
+    if (cached?.code && await callLucaMenuCode(label, cached.code, log, settleMs)) {
+      if (await childReady(2500)) return true;
+    }
+
+    const visible = collectLucaMenuTextBrief([label, ...childLabels]).slice(0, 12).join(' | ');
+    if (visible && log) await log(`ℹ ${label} sonrasi gorunen isletme menuleri: ${visible}`);
+    return false;
+  }
+
   /**
    * Bir element'e click event dispatch et — hem element.click() hem de
    * MouseEvent dispatch (jQuery handler bubbling için).
@@ -7457,29 +7728,77 @@
       throw new Error('"İşletme Defteri" üst menüsü bulunamadı. Bu mükellef bilanço firması olabilir — Defteri Kebir akışı kullanın.');
     }
     await log(`✓ İşletme Defteri menüsü "${menuFrame.name || '?'}" frame'inde bulundu`);
-    await log('🖱 İşletme Defteri açılıyor (hover+click+onclick)');
-    await activateLucaMenuItem('İşletme Defteri', { el: isletmeEl, frame: menuFrame, frameName: menuFrame.name || 'TOP' }, log, 800);
-    await sleep(800);
+    await log('🖱 İşletme Defteri açılıyor ve alt menü doğrulanıyor');
+    const isletmeFound = { el: isletmeEl, frame: menuFrame, frameName: menuFrame.name || 'TOP' };
+    await openLucaMenuBranch('İşletme Defteri', isletmeFound, [
+      'Gider İşlemleri',
+      'Gider Listesi',
+      'Gelir/Gider Listesi',
+      'Raporlar',
+      'Rapor İşlemleri',
+      'Raporlar ve Listeler',
+      'Listeler',
+      'Dökümler',
+      'Döküm İşlemleri',
+    ], log, 900);
+    await sleep(500);
     if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'İşletme Defteri')) return;
     if (await tryOpenIsletmeReportSubmenus(log)) return;
 
     // 2. "Gider İşlemleri" submenü
     await log('🔍 Gider İşlemleri aranıyor');
-    const giderIslemleri = await findLucaMenuItem('Gider İşlemleri', null, 4000);
+    const giderIslemleri = await findLucaMenuItemAny(['Gider İşlemleri', 'Gider Islemleri'], null, 10000);
     if (!giderIslemleri) {
-      throw new Error('İşletme Defteri menüsü açıldı ama "Gider İşlemleri" görünmedi');
+      await log('ℹ Gider İşlemleri görünmedi; Gider Listesi/Gelir-Gider Listesi doğrudan deneniyor');
+      if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'Gider İşlemleri görünmedi')) return;
+      const directList = await findLucaMenuItemAny(['Gider Listesi', 'Gelir/Gider Listesi'], null, 4000);
+      if (directList) {
+        await log(`🖱 Doğrudan ${directList.foundLabel || 'liste'} açılıyor (${directList.frameName} → ${describeLucaMenuElement(directList.el)})`);
+        await activateLucaMenuItem(directList.foundLabel || 'Gider Listesi', directList, log, 1000);
+        const directReady = await waitUntil(() => findLucaGelirGiderRaporFormNow() || findLucaMenuItem('Gelir/Gider Listesi', null, 100), 15000, 250);
+        if (directReady) {
+          if (findLucaGelirGiderRaporFormNow()) {
+            await log('✓ İşletme Gelir/Gider formu doğrudan liste yoluyla açıldı');
+            return;
+          }
+          if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'doğrudan liste')) return;
+        }
+      }
+      const visible = collectLucaMenuTextBrief([
+        'İşletme Defteri',
+        'Gider İşlemleri',
+        'Gider Listesi',
+        'Gelir/Gider Listesi',
+        'Raporlar',
+      ]).join(' | ');
+      throw new Error(`İşletme Defteri menüsü açıldı ama "Gider İşlemleri" görünmedi. Görünen menüler: ${visible || '(yok)'}`);
     }
-    await log('🖱 Gider İşlemleri açılıyor (hover+click+onclick)');
-    await activateLucaMenuItem('Gider İşlemleri', giderIslemleri, log, 800);
-    await sleep(800);
+    await log('🖱 Gider İşlemleri açılıyor ve alt liste doğrulanıyor');
+    await openLucaMenuBranch('Gider İşlemleri', giderIslemleri, [
+      'Gider Listesi',
+      'Gelir/Gider Listesi',
+      'Raporlar',
+      'Rapor İşlemleri',
+      'Listeler',
+    ], log, 900);
+    await sleep(500);
     if (await tryOpenIsletmeGelirGiderReportFromVisibleMenu(log, 'Gider İşlemleri')) return;
 
     // 3. "Gider Listesi" tıkla
     await log('🔍 Gider Listesi linki aranıyor');
-    const giderListesi = await findLucaMenuItem('Gider Listesi', null, 4000);
-    if (!giderListesi) throw new Error('"Gider Listesi" linki açılmadı');
-    await log('🖱 Gider Listesi tıklanıyor');
-    await activateLucaMenuItem('Gider Listesi', giderListesi, log, 1000);
+    const giderListesi = await findLucaMenuItemAny(['Gider Listesi', 'Gelir/Gider Listesi'], null, 10000);
+    if (!giderListesi) {
+      if (await tryOpenIsletmeReportSubmenus(log)) return;
+      const visible = collectLucaMenuTextBrief(['Gider Listesi', 'Gelir/Gider Listesi', 'Raporlar']).join(' | ');
+      throw new Error(`"Gider Listesi" linki açılmadı. Görünen menüler: ${visible || '(yok)'}`);
+    }
+    await log(`🖱 ${giderListesi.foundLabel || 'Gider Listesi'} tıklanıyor`);
+    await activateLucaMenuItem(giderListesi.foundLabel || 'Gider Listesi', giderListesi, log, 1000);
+    const formAfterListClick = await waitUntil(() => findLucaGelirGiderRaporFormNow(), 6000, 250);
+    if (formAfterListClick) {
+      await log('✓ İşletme Gelir/Gider formu liste tıklamasıyla açıldı');
+      return;
+    }
 
     // 4. Sayfa yüklensin — sağ menüde "Gelir/Gider Listesi" çıksın
     await log('⏳ Gider Listesi sayfası yüklensini bekliyor');
