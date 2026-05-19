@@ -37,6 +37,10 @@ function approx(actual, expected, message) {
   assert(Math.abs(Number(actual) - expected) < 0.005, `${message}: ${actual} != ${expected}`);
 }
 
+function parseTrAmount(value) {
+  return Number(String(value ?? '').replace(/\./g, '').replace(',', '.')) || 0;
+}
+
 loadTsNode();
 
 const { OcrService } = require(path.join(ROOT, 'apps', 'api', 'src', 'kdv-control', 'ocr', 'index.ts'));
@@ -64,6 +68,54 @@ assert(
   Array.isArray(telekomFallbackBreakdown) && telekomFallbackBreakdown.length === 0,
   `Telekom OIV/Telsiz satirlari KDV kirilimi olmamali: ${JSON.stringify(telekomFallbackBreakdown)}`,
 );
+
+const ttnetTaxesTotalText = [
+  'TTNET ANONIM SIRKETI',
+  'E162026030146823',
+  'Fatura Tarihi 30.04.2026',
+  'DEVLETE ODENEN VERGILER TOPLAMI',
+  '148,56',
+  'KDV %20 (Matrah 508.20 )',
+  '101,64',
+  'OIV %10 (Matrah 469.23 )',
+  '46,92',
+  'Telsiz Kullanim Aylik Taksit %4',
+  '0,13',
+].join('\n');
+
+const ttnetKdvOnly = service.extractKdvOnlyFromTelekomAzure(ttnetTaxesTotalText);
+approx(ttnetKdvOnly, 101.64, 'TTNET devlete odenen vergiler toplamindan sadece KDV alinmali');
+
+const ttnetWrongClaudeResult = {
+  rawText: '',
+  belgeNo: 'E162026030146823',
+  date: '30.04.2026',
+  kdvTutari: '148,69',
+  totalTutari: '617,02',
+  fieldConfidence: { belgeNo: 0.9, date: 0.9, kdvTutari: 0.9 },
+  confidence: 0.9,
+  engine: 'test',
+  kdvBreakdown: [
+    { oran: 4, tutar: 0.13, matrah: null },
+    { oran: 10, tutar: 46.92, matrah: null },
+    { oran: 20, tutar: 101.64, matrah: null },
+  ],
+};
+service.crossCheckWithAzure(
+  ttnetWrongClaudeResult,
+  ttnetTaxesTotalText,
+  'E162026030146823.html',
+  'E162026030146823',
+);
+approx(parseTrAmount(ttnetWrongClaudeResult.kdvTutari), 101.64, 'TTNET cross-check KDV tutarini kilitlemeli');
+assert(
+  Array.isArray(ttnetWrongClaudeResult.kdvBreakdown) &&
+    ttnetWrongClaudeResult.kdvBreakdown.length === 1 &&
+    ttnetWrongClaudeResult.kdvBreakdown[0].oran === 20,
+  `TTNET cross-check OIV/Telsiz kirilimini temizlemeli: ${JSON.stringify(ttnetWrongClaudeResult.kdvBreakdown)}`,
+);
+approx(ttnetWrongClaudeResult.kdvBreakdown[0].tutar, 101.64, 'TTNET cross-check breakdown tutari');
+approx(ttnetWrongClaudeResult.kdvBreakdown[0].matrah, 508.2, 'TTNET cross-check KDV matrahi');
 
 const oivOnlyText = [
   '\u00d6zel \u0130leti\u015fim Vergisi (%10)',

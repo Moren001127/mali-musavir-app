@@ -109,6 +109,30 @@ export function crossCheckWithAzure(
     return [0, 1, 8, 10, 18, 20].some((r) => Math.abs(rounded - r) < 0.01);
   };
 
+  const buildTelekomKdvBreakdown = (kdvOnlyAmount: number): KdvBreakdownItem[] => {
+    const normalizedLines = foldTurkishAscii(azureText)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const kdvLabelRe = /KATMA\s*DE.?ER\s*VERGISI|\bK\.?\s*D\.?\s*V\.?\b/i;
+    const otherTaxRe = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
+
+    for (const line of normalizedLines) {
+      if (!kdvLabelRe.test(line) || otherTaxRe.test(line)) continue;
+      const oranMatch = line.match(/%\s*(\d{1,2})(?:[,.]\d{1,2})?/);
+      const matrahMatch = line.match(/\bMATRAH[II]?\s*[:=]?\s*([-\d.,]+)/i);
+      const oran = oranMatch ? parseInt(oranMatch[1], 10) : 20;
+      const matrah = matrahMatch ? parseAmount(matrahMatch[1]) : null;
+      return [{
+        oran: [1, 10, 20].includes(oran) ? oran : 20,
+        tutar: kdvOnlyAmount,
+        matrah: matrah && matrah > 0 ? matrah : null,
+      }];
+    }
+
+    return [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
+  };
+
   // ─── Filename match → belge no cross-check skip ───
   let skipBelgeNoCheck = false;
   if (belgeNoFromFilename && result.belgeNo) {
@@ -251,7 +275,10 @@ export function crossCheckWithAzure(
 
   // ─── TELEKOM faturasi KDV-only override ───
   const normalizedAzureText = foldTurkishAscii(azureText);
-  const isTelekomFatura = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN/i.test(normalizedAzureText);
+  const isTelekomFatura =
+    /TURK\s*TELEKOM|TTNET|TURKCELL|VODAFONE|[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN/i
+      .test(normalizedAzureText);
+  let telekomKdvLocked = false;
   if (isTelekomFatura) {
     const kdvOnlyAmount = extractKdvOnlyFromTelekomAzure(azureText);
     if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
@@ -261,21 +288,35 @@ export function crossCheckWithAzure(
         );
       } else {
         const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
-        if (Math.abs(claudeKdv - kdvOnlyAmount) > 0.05) {
+        const breakdownSum = result.kdvBreakdown?.reduce((s, b) => s + (Number(b.tutar) || 0), 0) ?? 0;
+        const breakdownHasNonKdvTelekomRate = (result.kdvBreakdown || []).some((b) =>
+          ![1, 10, 20].includes(Number(b.oran)) ||
+          Math.abs(Number(b.tutar) - kdvOnlyAmount) > 0.05,
+        );
+        if (
+          Math.abs(claudeKdv - kdvOnlyAmount) > 0.05 ||
+          Math.abs(breakdownSum - kdvOnlyAmount) > 0.05 ||
+          breakdownHasNonKdvTelekomRate
+        ) {
           logger.warn(
-            `Telekom fatura KDV override: Claude=${result.kdvTutari} → Azure "Katma Değer Vergisi" satırı=${formatAmount(kdvOnlyAmount)} (${originalName})`,
+            `Telekom fatura KDV override: Claude=${result.kdvTutari} breakdown=${JSON.stringify(result.kdvBreakdown || [])} -> Azure KDV-only=${formatAmount(kdvOnlyAmount)} (${originalName})`,
           );
-          result.kdvTutari = formatAmount(kdvOnlyAmount);
-          result.fieldConfidence.kdvTutari = 0.92;
-          result.kdvBreakdown = [{ oran: 20, tutar: kdvOnlyAmount, matrah: null }];
-          kdvAlreadyVerifiedByAutoFill.value = true;
+        } else {
+          logger.log(
+            `Telekom fatura KDV-only dogrulandi: ${formatAmount(kdvOnlyAmount)} (${originalName})`,
+          );
         }
+        result.kdvTutari = formatAmount(kdvOnlyAmount);
+        result.fieldConfidence.kdvTutari = 0.95;
+        result.kdvBreakdown = buildTelekomKdvBreakdown(kdvOnlyAmount);
+        kdvAlreadyVerifiedByAutoFill.value = true;
+        telekomKdvLocked = true;
       }
     }
   }
 
   // ─── ACIK KDV satiri override (extractKdvFromInvoiceTotals) ───
-  const invoiceTotalsKdv = azureMentionsTevkifat
+  const invoiceTotalsKdv = azureMentionsTevkifat || telekomKdvLocked
     ? null
     : extractKdvFromInvoiceTotalsAzure(azureText);
   if (invoiceTotalsKdv && invoiceTotalsKdv.kdv > 0) {
@@ -305,7 +346,11 @@ export function crossCheckWithAzure(
   }
 
   // ─── E-FATURA / E-ARSIV COK ORANLI KDV auto-fill ───
-  if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
+  if (telekomKdvLocked || (isTelekomFatura && kdvAlreadyVerifiedByAutoFill.value)) {
+    logger.log(
+      `Multi-rate auto-fill SKIP: telekom KDV-only kilidi aktif (${originalName})`,
+    );
+  } else if (kdvAlreadyVerifiedByAutoFill.value && azureMentionsTevkifat) {
     logger.log(
       `Multi-rate auto-fill SKIP: tevkifatlı fatura (auto-correct çalıştı, ${originalName})`,
     );
