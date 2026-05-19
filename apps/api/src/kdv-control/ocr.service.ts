@@ -39,6 +39,18 @@ import {
   extractKdvFromInvoiceTotals as extractKdvFromInvoiceTotalsPure,
 } from './ocr/providers/azure/kdv-breakdown';
 import { extractZRaporuKdv as extractZRaporuKdvPure } from './ocr/providers/azure/z-raporu';
+import {
+  normalizeAzureText as normalizeAzureTextPure,
+  stripMatrahFragments as stripMatrahFragmentsPure,
+  foldTurkishAscii as foldTurkishAsciiPure,
+  detectBelgeTipi as detectBelgeTipiPure,
+  extractMoneyAmounts as extractMoneyAmountsPure,
+  inferTevkifatFromAzureAmounts as inferTevkifatFromAzureAmountsPure,
+} from './ocr/providers/azure/helpers';
+import {
+  extractKdvOnlyFromTelekom as extractKdvOnlyFromTelekomPure,
+  extractElectricityKdv as extractElectricityKdvPure,
+} from './ocr/providers/azure/sectoral';
 
 /** Çok oranlı KDV kırılımı — Z raporu veya karma oranlı fatura için */
 export interface KdvBreakdownItem {
@@ -1500,36 +1512,19 @@ export class OcrService {
    *     pattern'lı yazıldığı için bu normalize şart.
    *     (Sayılar/virgül/noktaya dokunmaz — parse sonucu aynı kalır.)
    */
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private normalizeAzureText(text: string): string {
-    if (!text) return '';
-    return text
-      .replace(/\u00A0/g, ' ') // NBSP
-      .replace(/\u2007/g, ' ') // figure space
-      .replace(/\u202F/g, ' ') // narrow no-break space
-      .replace(/\uFF05/g, '%') // full-width %
-      .toLocaleUpperCase('tr-TR'); // Türkçe-farkındalıklı büyük harf
+    return normalizeAzureTextPure(text);
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private stripMatrahFragments(text: string): string {
-    if (!text) return '';
-    return text
-      .replace(/\([^)]*MATRAH[^)]*\)/gi, ' ')
-      .replace(/\b(?:KDV\s*)?MATRAH[Iİıi]?\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|[^\s\d.,])?/gi, ' ')
-      .replace(/\bMATRAH\s*[:=]?\s*[-\d.,]+\s*(?:TL|TRY|₺)?/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    return stripMatrahFragmentsPure(text);
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private foldTurkishAscii(text: string): string {
-    return this.normalizeAzureText(text)
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/Ğ/g, 'G')
-      .replace(/Ü/g, 'U')
-      .replace(/Ş/g, 'S')
-      .replace(/İ/g, 'I')
-      .replace(/Ö/g, 'O')
-      .replace(/Ç/g, 'C');
+    return foldTurkishAsciiPure(text);
   }
 
   /** @deprecated Faz 1 — saf fonksiyona delege. */
@@ -1557,17 +1552,9 @@ export class OcrService {
     return isLikelyKdvAmountColumnHeaderPure(lines, index, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private detectBelgeTipiFromAzure(text: string, originalName?: string): string | null {
-    const folded = this.foldTurkishAscii(`${originalName || ''}\n${text || ''}`);
-    const looksOkcFis = /\bFIS\s*NO\b|\bEKU\s*NO\b|\bOKC\b|\bOD[EA]ME\s+KAYDEDICI\b/.test(folded);
-    const explicitZRapor =
-      /\bZ\s*RAPORU\b|\bKUM\s+T[O0]P\s*K\s*D\s*V\b|\bKUM\s+T[O0]PLAM\b/.test(folded);
-    if (looksOkcFis && !explicitZRapor) return 'OKC_FIS';
-    if (explicitZRapor || /\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/.test(folded)) return 'Z_RAPORU';
-    if (/\bE[-\s]?ARSIV\b|\bEARSIVFATURA\b/.test(folded)) return 'EARSIV';
-    if (/\bE[-\s]?FATURA\b|\bTEMELFATURA\b|\bTICARIFATURA\b/.test(folded)) return 'EFATURA';
-    if (looksOkcFis) return 'OKC_FIS';
-    return null;
+    return detectBelgeTipiPure(text, originalName);
   }
 
   /** @deprecated Faz 1 — saf fonksiyona delege ediyor. Yeni kod `extractSaticiVknPure` kullansin. */
@@ -1585,106 +1572,27 @@ export class OcrService {
     return parseTevkifatRatePure(text, (s) => this.foldTurkishAscii(s));
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractMoneyAmountsFromText(text: string): number[] {
-    const amountRe = /(\d{1,3}(?:[.,]\d{3})+[.,]\d{1,2}|\d{4,},\d{1,2}|\d{1,3},\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-    const values: number[] = [];
-    const seen = new Set<string>();
-    for (const m of text.matchAll(amountRe)) {
-      const value = Math.round(this.parseAmount(m[1]) * 100) / 100;
-      if (value <= 0 || value >= 100_000_000) continue;
-      const key = value.toFixed(2);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      values.push(value);
-    }
-    return values;
+    return extractMoneyAmountsPure(text, (s) => this.parseAmount(s));
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private inferTevkifatFromAzureAmounts(text: string, tamKdv: number): {
     tamKdv: number;
     tevkifat: number;
     netKdv: number;
   } | null {
-    if (!text || !(tamKdv > 0)) return null;
-    const folded = this.foldTurkishAscii(text);
-    if (!/TEVK/.test(folded)) return null;
-
-    const round2 = (n: number) => Math.round(n * 100) / 100;
-    const isClose = (a: number, b: number, tolerance = 0.05) => Math.abs(a - b) <= tolerance;
-    const amounts = this.extractMoneyAmountsFromText(folded);
-    let effectiveTamKdv = round2(tamKdv);
-    const kdvRateMatch = folded.match(
-      /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?(?!\s*TEVK)[^\d%]{0,20}\(\s*%?\s*(\d{1,2})(?:[.,]\d+)?\s*\)/,
-    );
-    const kdvRate = kdvRateMatch ? Number(kdvRateMatch[1]) : 0;
-    if ([1, 10, 20].includes(kdvRate)) {
-      const expectedTax = round2(effectiveTamKdv * kdvRate / 100);
-      const taxAmount = amounts.find((n) =>
-        n > 0 &&
-        n < effectiveTamKdv - 0.05 &&
-        isClose(n, expectedTax, Math.max(0.05, expectedTax * 0.01)),
-      );
-      if (taxAmount) {
-        this.logger.warn(
-          `Tevkifat fallback: gelen KDV adayi matrah gibi gorundu, tam KDV ${this.formatAmount(taxAmount)} olarak duzeltildi (matrah=${this.formatAmount(effectiveTamKdv)}, oran=%${kdvRate})`,
-        );
-        effectiveTamKdv = round2(taxAmount);
-      }
-    }
-    const validTevkifat = (n: number) => n > 0 && n < effectiveTamKdv - 0.05;
-    const lines = folded.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
-    const accept = (candidate: number | null | undefined, reason: string) => {
-      const tevkifat = round2(candidate || 0);
-      if (!validTevkifat(tevkifat)) return null;
-      const netKdv = round2(effectiveTamKdv - tevkifat);
-      if (netKdv <= 0) return null;
-      this.logger.log(
-        `Tevkifat fallback OK (${reason}): tam=${effectiveTamKdv} tevkifat=${tevkifat} net=${netKdv}`,
-      );
-      return { tamKdv: effectiveTamKdv, tevkifat, netKdv };
-    };
-
-    // En güvenilir yol: TEVKIFAT geçen satırda veya hemen çevresinde tam KDV'den küçük tutar.
-    for (let i = 0; i < lines.length; i++) {
-      if (!/TEVK/.test(lines[i])) continue;
-      const window = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
-      const candidates = this.extractMoneyAmountsFromText(window)
-        .filter(validTevkifat)
-        .sort((a, b) => b - a);
-      if (candidates.length > 0) {
-        return accept(candidates[0], 'tevkifat-satiri');
-      }
-    }
-
-    // Tevkifat oranı okunuyorsa, tam KDV * oran doğrudan tevkifat tutarıdır.
-    const rate = this.parseTevkifatRate(folded);
-    if (rate > 0 && rate <= 100) {
-      const expected = round2(effectiveTamKdv * rate / 100);
-      const explicit = amounts.find((n) => validTevkifat(n) && isClose(n, expected, Math.max(0.05, expected * 0.01)));
-      return accept(explicit ?? expected, `oran-%${rate}`);
-    }
-
-    // Görsel tablolarda Azure bazen etiketleri ve tutarları ayrı kolon blokları olarak döndürür.
-    // Bu durumda "Vergiler dahil toplam" ile "Ödenecek tutar" farkı tevkifat tutarını verir.
-    const hasTotalsLabels = /VERGILER\s+DAHIL/.test(folded) && /ODENECEK\s+TUTAR/.test(folded);
-    if (hasTotalsLabels && amounts.length >= 2) {
-      for (const high of amounts) {
-        for (const low of amounts) {
-          const diff = round2(high - low);
-          if (!validTevkifat(diff)) continue;
-          if (amounts.some((n) => isClose(n, diff))) {
-            return accept(diff, 'toplam-farki');
-          }
-        }
-      }
-    }
-
-    // Son savunma: %50 tevkifatli belgelerde tutar tam KDV'nin yarısıdır ve çoğu
-    // faturada bu tutar para listesinde ayrıca bulunur.
-    const half = round2(effectiveTamKdv / 2);
-    const halfMatch = amounts.find((n) => validTevkifat(n) && isClose(n, half, Math.max(0.05, half * 0.01)));
-    return accept(halfMatch, 'yarim-kdv');
+    return inferTevkifatFromAzureAmountsPure(text, tamKdv, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+      parseTevkifatRate: (t) => this.parseTevkifatRate(t),
+      logger: {
+        log: (m) => this.logger.log(m),
+        warn: (m) => this.logger.warn(m),
+      },
+    });
   }
 
   /**
@@ -1719,100 +1627,24 @@ export class OcrService {
     });
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractKdvOnlyFromTelekomAzure(text: string): number | null {
-    if (!text) return null;
-    const normalized = this.foldTurkishAscii(text);
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/i;
-    // KDV label varyasyonları:
-    //   "Katma Değer Vergisi"                   — Turkcell, Vodafone
-    //   "KDV (20%)"                             — Türk Telekom "(NN%)"
-    //   "KDV (%20)", "K.D.V. (%20)"             — E-fatura / E-arşiv
-    // Başında "Özel İletişim" gibi başka vergi label'ı varsa YAKALAMA
-    // (çünkü onların içinde de "%NN" geçer ama "KDV" substring'i yok).
-    const kdvLabelRe =
-      /KATMA\s*DE.?ER\s*VERGISI|\bK\.?\s*D\.?\s*V\.?\s*\(?\s*%?\s*\d/i;
-    // Satır başka bir vergi etiketi mi?
-    const otherTaxRe = /[O?]ZEL\s*[I?]LET[I?]S[I?]M|OIV\b|TELSIZ\s*KULLAN|OTV\b|DAMGA|BSMV|KKDF|KONAKLAMA/i;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (!kdvLabelRe.test(line)) continue;
-      if (this.isMatrahOrRateLine(line)) continue;
-
-      // 1) Aynı satırda "Katma Değer Vergisi ... 252,00" olabilir
-      const afterLabel = line.replace(kdvLabelRe, '');
-      // Matrah parantezini atla (Matrah içindeki tutar KDV değil)
-      const noMatrah = this.stripMatrahFragments(afterLabel);
-      const inlineAmount = noMatrah.match(amountRe);
-      if (inlineAmount) {
-        const val = this.parseAmount(inlineAmount[1]);
-        if (val > 0 && val < 10_000_000) return val;
-      }
-
-      // 2) Sonraki 1-5 satıra bak, başka vergi etiketi gelene kadar amount ara
-      for (let j = 1; j <= 5 && i + j < lines.length; j++) {
-        const nextLine = lines[i + j];
-        if (kdvLabelRe.test(nextLine)) break; // başka KDV satırı
-        if (otherTaxRe.test(nextLine)) break; // başka vergi türü → dur
-        if (/MAL\s*HIZMET|GENEL\s*TOPLAM|FATURA\s*TUTARI|ODENECEK\s*TUTAR|TOPLAM\s+TUTAR/i.test(nextLine)) break;
-        // Matrah parantezini skip et
-        if (this.isMatrahOrRateLine(nextLine)) continue;
-        const cleaned = this.stripMatrahFragments(nextLine);
-        if (!cleaned) continue;
-        // "%20", "(Matrah...)" gibi pure marker satırı atla
-        if (/^[%]\s*\d/.test(cleaned) || this.isLikelyStandaloneTaxRate(cleaned)) continue;
-        const m = cleaned.match(amountRe);
-        if (m) {
-          const val = this.parseAmount(m[1]);
-          // Matrah değerlerini (genelde daha büyük) KDV sanmamaya dikkat
-          // Yine de ilk bulunan tutarı al — label'dan hemen sonra geldi.
-          if (val > 0 && val < 10_000_000) return val;
-        }
-      }
-    }
-
-    return null;
+    return extractKdvOnlyFromTelekomPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+      isMatrahOrRateLine: (v) => this.isMatrahOrRateLine(v),
+      isLikelyStandaloneTaxRate: (v) => this.isLikelyStandaloneTaxRate(v),
+    });
   }
 
+  /** @deprecated Faz 2 — saf provider'a delege. */
   private extractElectricityKdvFromAzure(text: string): number | null {
-    if (!text) return null;
-    const normalized = this.foldTurkishAscii(text);
-    const looksElectricityInvoice =
-      /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b|\bELEKTRIK\b/.test(normalized);
-    if (!looksElectricityInvoice) return null;
-
-    const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const amountGlobalRe = /([\d]{1,3}(?:[.,]\d{3})*[.,]\d{1,2})\s*(?:TL|TRY|₺)?/gi;
-    const hardStopRe =
-      /FATURA\s+TUTARI|ODENECEK\s+TUTAR|VERGI\s+VE\s+FONLAR|TOPLAM\s+ENERJI|GUNCEL\s+YUVARLAMA|ONCEKI\s+YUVARLAMA|ELEKT\s+VER|TUKETIM|BEDEL|SON\s+ODEME/i;
-
-    const parseLastKdvAmount = (source: string): number | null => {
-      const withoutMatrah = this.stripMatrahFragments(source);
-      amountGlobalRe.lastIndex = 0;
-      const matches = [...withoutMatrah.matchAll(amountGlobalRe)];
-      if (matches.length === 0) return null;
-      const value = this.parseAmount(matches[matches.length - 1][1]);
-      return value > 0 && value < 10_000_000 ? value : null;
-    };
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(line)) continue;
-      if (/TEVKIFAT/.test(line)) continue;
-
-      const sameLine = parseLastKdvAmount(line.replace(/\bK\.?\s*D\.?\s*V\.?\b/, ' '));
-      if (sameLine != null) return sameLine;
-
-      for (let j = 1; j <= 2 && i + j < lines.length; j++) {
-        const next = lines[i + j];
-        if (hardStopRe.test(next) || /\bK\.?\s*D\.?\s*V\.?\b/.test(next)) break;
-        const nearby = parseLastKdvAmount(next);
-        if (nearby != null) return nearby;
-      }
-    }
-
-    return null;
+    return extractElectricityKdvPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      foldTurkishAscii: (s) => this.foldTurkishAscii(s),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+    });
   }
 
   /** @deprecated Faz 2 — saf provider'a delege. */
