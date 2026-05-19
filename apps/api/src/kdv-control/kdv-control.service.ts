@@ -2055,22 +2055,31 @@ export class KdvControlService {
     ws.getRow(8).height = 20;
 
     const setSummary = (r: number, l1: string, v1: any, l2?: string, v2?: any) => {
-      ws.mergeCells(`A${r}:B${r}`);
+      ws.mergeCells(`A${r}:C${r}`);
       const c1 = ws.getCell(`A${r}`);
       c1.value = l1; c1.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-      c1.alignment = { horizontal: 'left', vertical: 'middle' };
-      ws.mergeCells(`C${r}:D${r}`);
-      const c2 = ws.getCell(`C${r}`);
+      c1.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+      const c2 = ws.getCell(`D${r}`);
       c2.value = v1; c2.font = { size: 11 };
       c2.alignment = { horizontal: 'right', vertical: 'middle' };
       if (l2) {
+        ws.mergeCells(`E${r}:G${r}`);
         const c3 = ws.getCell(`E${r}`);
         c3.value = l2; c3.font = { bold: true, color: { argb: 'FF444444' }, size: 10 };
-        c3.alignment = { horizontal: 'left', vertical: 'middle' };
-        ws.mergeCells(`F${r}:J${r}`);
-        const c4 = ws.getCell(`F${r}`);
+        c3.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+        ws.mergeCells(`H${r}:I${r}`);
+        const c4 = ws.getCell(`H${r}`);
         c4.value = v2; c4.font = { size: 11 };
-        c4.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+        c4.alignment = { horizontal: 'right', vertical: 'middle' };
+      }
+      ws.getRow(r).height = 22;
+      for (let col = 1; col <= 10; col++) {
+        const cell = ws.getCell(r, col);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
       }
     };
     setSummary(9,  'Toplam Satır',                       results.length,                                                    'Luca (tüm satırlar)',       fmtTl(sumLucaAll));
@@ -2085,7 +2094,7 @@ export class KdvControlService {
     const headerRow = ws.getRow(15);
     headerRow.values = [
       '#', 'LUCA TARİHİ', 'LUCA EVRAK NO', 'LUCA KDV (₺)',
-      'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV (₺)', 'FARK', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
+      'FATURA TARİHİ', 'FATURA BELGE NO', 'FATURA KDV PAYI (₺)', 'FARK', 'DURUM', 'AÇIKLAMA / UYUMSUZLUK',
     ];
     headerRow.height = 30;
     headerRow.eachCell((cell) => {
@@ -2113,7 +2122,13 @@ export class KdvControlService {
       const faturaBelgeNo = r.image?.confirmedBelgeNo || r.image?.ocrBelgeNo || '—';
       // Fan-out detayında aynı görsel toplamını her satıra yazma; satır payını göster.
       const faturaKdvNum = getFaturaKdvValue(r, true);
-      const faturaKdv = faturaKdvNum > 0 ? faturaKdvNum : null;
+      const zeroShareMatched =
+        faturaKdvNum === 0 &&
+        lucaKdv === 0 &&
+        !!r.image &&
+        !!r.kdvRecord &&
+        isMatchedStatus(r.status);
+      const faturaKdv = faturaKdvNum !== 0 ? faturaKdvNum : zeroShareMatched ? 0 : null;
       const hasCodexDiff = lucaKdv != null && faturaKdv != null;
       const rawCodexDiff = hasCodexDiff ? Number((lucaKdv - faturaKdvNum).toFixed(2)) : 0;
       const codexDiff = zeroKurusTolerance(rawCodexDiff);
@@ -2159,7 +2174,7 @@ export class KdvControlService {
         rowBg = RED_BG; statusText = RED_TEXT; statusBold = true;
       }
 
-      row.eachCell((cell, colNum) => {
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
         const isStatus = colNum === 9;
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
         cell.font = {
