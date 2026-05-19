@@ -294,7 +294,91 @@ const okcText = [
 const okcResult = okcFis.extractOkcFisKdv(okcText, okcDeps);
 assert(okcResult !== null, 'okc result not null');
 eq(okcResult.kdvTutari, '20,00', 'okc kdv tutari');
-ok('azure/okc-fis.ts (2 assertion)');
+const okcShokText = [
+  'FIS NO',
+  '0159',
+  'MIS BARDAK AYRAN TAM',
+  '%01',
+  '*9,50',
+  'ALISVERIS POSETI',
+  '%20',
+  '*1,00',
+  'MEZZET RUS SALATASI',
+  '401',
+  '*31,50',
+  'CAFE CROWN',
+  '%01',
+  '*11,50',
+  'CAFE CROWN',
+  '%01',
+  '*11,50',
+  'TOPKDV',
+  '*0,80',
+  'TOPLAM',
+  '*65,00',
+].join('\n');
+const okcShok = okcFis.extractOkcFisKdv(okcShokText, okcDeps);
+assert(okcShok !== null, 'okc shok result not null');
+eq(okcShok.kdvTutari, '0,80', 'okc shok topkdv wins');
+approx(okcShok.breakdown.find((b) => b.oran === 1).tutar, 0.63, 0.01, 'okc shok 401 alias as %1');
+approx(okcShok.breakdown.find((b) => b.oran === 20).tutar, 0.17, 0.01, 'okc shok %20 gross to kdv');
+
+const okcCancelText = [
+  'FIS NO: 00016',
+  '%10',
+  '*300,00',
+  '%1',
+  '*71,98',
+  '%1',
+  '*91,80',
+  '%1',
+  '*71,98',
+  '%1',
+  '*- 71,98',
+  '%1',
+  '*138,60',
+  'TOPKDV',
+  '*30,26',
+  'TOPLAM',
+  '*602,38',
+].join('\n');
+const okcCancel = okcFis.extractOkcFisKdv(okcCancelText, okcDeps);
+assert(okcCancel !== null, 'okc cancel result not null');
+eq(okcCancel.kdvTutari, '30,26', 'okc cancel topkdv preserved');
+approx(okcCancel.breakdown.find((b) => b.oran === 1).tutar, 2.99, 0.01, 'okc cancel negative line subtracts');
+approx(okcCancel.breakdown.find((b) => b.oran === 10).tutar, 27.27, 0.01, 'okc cancel %10 gross to kdv');
+
+const okcSuspiciousTopKdvText = [
+  'FIS NO',
+  '13',
+  '/20',
+  '*3.100,00',
+  'TOPKDV',
+  '1516,67',
+  'TOPLAM',
+  '*3.100,00',
+].join('\n');
+const okcSuspicious = okcFis.extractOkcFisKdv(okcSuspiciousTopKdvText, okcDeps);
+assert(okcSuspicious !== null, 'okc suspicious topkdv result not null');
+eq(okcSuspicious.kdvTutari, '516,67', 'okc suspicious topkdv corrected from gross/rate');
+approx(okcSuspicious.breakdown.find((b) => b.oran === 20).tutar, 516.67, 0.01, 'okc slash-rate gross to kdv');
+
+const okcDotRateAliasText = [
+  'FIS NO:',
+  '17',
+  'YEMEK',
+  '7.10',
+  '*620,00',
+  'TOPKDV',
+  '*56,36',
+  'TOPLAM',
+  '*620,00',
+].join('\n');
+const okcDotRate = okcFis.extractOkcFisKdv(okcDotRateAliasText, okcDeps);
+assert(okcDotRate !== null, 'okc dotted 710 rate result not null');
+eq(okcDotRate.kdvTutari, '56,36', 'okc dotted 710 topkdv preserved');
+approx(okcDotRate.breakdown.find((b) => b.oran === 10).tutar, 56.36, 0.01, 'okc dotted 710 alias is not parsed as amount');
+ok('azure/okc-fis.ts (16 assertion)');
 
 // ═══════════════════════════════════════════════════════════
 // SONUC

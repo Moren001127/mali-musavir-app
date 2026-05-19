@@ -318,13 +318,22 @@ export class ReconciliationEngine {
       }
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      await (tx as any).$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`;
-      await tx.reconciliationResult.deleteMany({ where: { sessionId } });
-      for (const data of createData) {
-        await tx.reconciliationResult.create({ data });
-      }
-    });
+    await this.prisma.$transaction(
+      async (tx) => {
+        await (tx as any).$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`;
+        await tx.reconciliationResult.deleteMany({ where: { sessionId } });
+        if (createData.length > 0) {
+          if (typeof (tx.reconciliationResult as any).createMany === 'function') {
+            await tx.reconciliationResult.createMany({ data: createData });
+          } else {
+            for (const data of createData) {
+              await tx.reconciliationResult.create({ data });
+            }
+          }
+        }
+      },
+      { maxWait: 10_000, timeout: 30_000 },
+    );
 
     // İstatistik
     const stats = createData.reduce(
@@ -835,7 +844,7 @@ export class ReconciliationEngine {
 
   private normalizeImageBreakdownRates(image: ReceiptImage, breakdown: BreakdownItem[]): BreakdownItem[] {
     const okcBreakdown = this.extractOkcItemRateBreakdownFromImageText(image);
-    if (okcBreakdown.length >= 2) return okcBreakdown;
+    if (okcBreakdown.length >= 1) return okcBreakdown;
 
     if (breakdown.length !== 1 || !(breakdown[0]?.tutar > 0)) return breakdown;
     const inferred = this.inferSingleBreakdownRateFromImageText(image, breakdown[0].tutar);
@@ -913,8 +922,8 @@ export class ReconciliationEngine {
         .replace(/Ş/g, 'S').replace(/İ/g, 'I')
         .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
         .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
-    const rateRe = /%\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
-    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+    const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
+    const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
     const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTAR|NAKIT|KREDI|KART|KASIYER|MERSIS|EKU|Z\s*NO|FIS\s*NO|TARIH|SAAT|VERGI|V\.?D\.?|T\.?C\.?/i;
     const grossByRate = new Map<number, number>();
     let pendingRate: number | null = null;
@@ -922,13 +931,31 @@ export class ReconciliationEngine {
     const parseLastAmount = (value: string): number => {
       amountRe.lastIndex = 0;
       const values = [...value.matchAll(amountRe)]
-        .map((match) => this.parseTrUsAmount(match[1]))
-        .filter((amount) => Number.isFinite(amount) && amount > 0 && amount < 100_000_000);
+        .map((match) => {
+          const sign = match[1] === '-' || match[2] === '-' ? -1 : 1;
+          return sign * this.parseTrUsAmount(match[3]);
+        })
+        .filter((amount) => Number.isFinite(amount) && Math.abs(amount) > 0 && Math.abs(amount) < 100_000_000);
       return values.length > 0 ? values[values.length - 1] : 0;
     };
     const addGross = (rate: number, gross: number) => {
-      if (!(gross > 0)) return;
+      if (!gross) return;
       grossByRate.set(rate, (grossByRate.get(rate) || 0) + gross);
+    };
+
+    const detectRate = (line: string): { oran: number; index: number; length: number } | null => {
+      const direct = line.match(rateRe);
+      if (direct && direct.index != null) {
+        return { oran: Number(direct[1]), index: direct.index, length: direct[0].length };
+      }
+
+      const compact = fold(line).replace(/[^A-Z0-9/$%]/g, '');
+      if (/^(?:401|4O1|40I)$/.test(compact)) return { oran: 1, index: 0, length: line.length };
+      if (/^(?:710|7IO|7I0)$/.test(compact)) return { oran: 10, index: 0, length: line.length };
+      const loose = compact.match(/^[/$S%]0?(1|8|10|18|20)$/);
+      if (loose) return { oran: Number(loose[1]), index: 0, length: line.length };
+
+      return null;
     };
 
     for (const line of lines) {
@@ -938,12 +965,12 @@ export class ReconciliationEngine {
         continue;
       }
 
-      const rateMatch = line.match(rateRe);
-      if (rateMatch && rateMatch.index != null) {
-        const rate = Number(rateMatch[1]);
-        const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
-        const gross = parseLastAmount(afterRate) || parseLastAmount(line);
-        if (gross > 0) {
+      const detectedRate = detectRate(line);
+      if (detectedRate) {
+        const rate = detectedRate.oran;
+        const afterRate = line.slice(detectedRate.index + detectedRate.length);
+        const gross = parseLastAmount(afterRate) || (afterRate.trim() ? parseLastAmount(line) : 0);
+        if (gross) {
           addGross(rate, gross);
           pendingRate = null;
         } else {
@@ -961,7 +988,7 @@ export class ReconciliationEngine {
       }
     }
 
-    if (grossByRate.size < 2) return [];
+    if (grossByRate.size < 1) return [];
 
     const breakdown = Array.from(grossByRate.entries())
       .map(([oran, gross]) => ({
@@ -970,16 +997,22 @@ export class ReconciliationEngine {
         matrah: Math.round((gross / (1 + oran / 100)) * 100) / 100,
       }))
       .filter((item) => item.tutar > 0);
-    if (breakdown.length < 2) return [];
+    if (breakdown.length < 1) return [];
 
     const topKdv = this.extractTopKdvFromOkcText(rawText);
     if (topKdv && topKdv > 0) {
       const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
+      const grossTotal = Array.from(grossByRate.values()).reduce((total, gross) => total + Math.max(gross, 0), 0);
       const tolerance = Math.max(0.08, topKdv * 0.03);
-      if (Math.abs(sum - topKdv) > tolerance) return [];
+      const topKdvSuspicious =
+        grossTotal > 0 &&
+        topKdv / grossTotal > 0.35 &&
+        sum / grossTotal > 0.005 &&
+        sum / grossTotal < 0.30;
+      if (Math.abs(sum - topKdv) > tolerance && !topKdvSuspicious) return [];
     }
 
-    return breakdown;
+    return topKdv && topKdv > 0 ? breakdown : (breakdown.length >= 2 ? breakdown : []);
   }
 
   private extractTopKdvFromOkcText(rawText: string): number | null {

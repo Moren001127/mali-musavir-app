@@ -46,13 +46,16 @@ export function extractOkcFisKdv(
   const breakdown: KdvBreakdownItem[] = [];
   const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/i;
   const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
-  const amountRe = /[-+]?[\*₺¥]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
+  const amountRe = /([+-])?\s*[\*₺¥]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
 
   const parseLastAmount = (raw: string): number => {
     const clean = stripMatrahFragments(raw);
     const values = [...clean.matchAll(amountRe)]
-      .map((m) => parseAmount(m[1]))
-      .filter((value) => value > 0 && value < 100_000_000);
+      .map((m) => {
+        const sign = m[1] === '-' || m[2] === '-' ? -1 : 1;
+        return sign * parseAmount(m[3]);
+      })
+      .filter((value) => Math.abs(value) > 0 && Math.abs(value) < 100_000_000);
     return values.length > 0 ? values[values.length - 1] : 0;
   };
 
@@ -82,10 +85,12 @@ export function extractOkcFisKdv(
 
   const summarySum = breakdown.reduce((total, item) => total + item.tutar, 0);
   const itemRateBreakdown = extractOkcFisItemRateBreakdown(text, summarySum, deps);
-  if (itemRateBreakdown.length >= 2) {
+  if (itemRateBreakdown.length >= 1) {
     const itemSum = itemRateBreakdown.reduce((total, item) => total + item.tutar, 0);
+    const tolerance = Math.max(0.08, summarySum * 0.03);
+    const summaryMatchesItem = summarySum > 0 && Math.abs(itemSum - summarySum) <= tolerance;
     return {
-      kdvTutari: formatAmount(summarySum > 0 ? summarySum : itemSum),
+      kdvTutari: formatAmount(summaryMatchesItem ? summarySum : itemSum),
       breakdown: itemRateBreakdown,
     };
   }
@@ -117,29 +122,72 @@ export function extractOkcFisItemRateBreakdown(
   if (!text) return [];
   const lines = normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const grossByRate = new Map<number, number>();
-  const rateRe = /%\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
-  const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY)?/g;
+  let pendingRate: number | null = null;
+  const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
+  const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY)?/g;
   const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
 
   const parseLastAmount = (raw: string): number => {
     const values = [...raw.matchAll(amountRe)]
-      .map((m) => parseAmount(m[1]))
-      .filter((value) => value > 0 && value < 100_000_000);
+      .map((m) => {
+        const sign = m[1] === '-' || m[2] === '-' ? -1 : 1;
+        return sign * parseAmount(m[3]);
+      })
+      .filter((value) => Math.abs(value) > 0 && Math.abs(value) < 100_000_000);
     return values.length > 0 ? values[values.length - 1] : 0;
   };
 
+  const fold = (value: string) =>
+    value
+      .toLocaleUpperCase('tr-TR')
+      .replace(/Ş/g, 'S').replace(/İ/g, 'I')
+      .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
+      .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
+
+  const detectRate = (line: string): { oran: number; index: number; length: number } | null => {
+    const direct = line.match(rateRe);
+    if (direct && direct.index != null) {
+      return { oran: Number(direct[1]), index: direct.index, length: direct[0].length };
+    }
+
+    const compact = fold(line).replace(/[^A-Z0-9/$%]/g, '');
+    if (/^(?:401|4O1|40I)$/.test(compact)) return { oran: 1, index: 0, length: line.length };
+    if (/^(?:710|7IO|7I0)$/.test(compact)) return { oran: 10, index: 0, length: line.length };
+    const loose = compact.match(/^[/$S%]0?(1|8|10|18|20)$/);
+    if (loose) return { oran: Number(loose[1]), index: 0, length: line.length };
+
+    return null;
+  };
+
   for (const line of lines) {
-    if (skipRe.test(line)) continue;
-    const rateMatch = line.match(rateRe);
-    if (!rateMatch || rateMatch.index == null) continue;
-    const oran = Number(rateMatch[1]);
-    const afterRate = line.slice(rateMatch.index + rateMatch[0].length);
-    const gross = parseLastAmount(afterRate) || parseLastAmount(line);
-    if (!(gross > 0)) continue;
-    grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
+    if (skipRe.test(line)) {
+      pendingRate = null;
+      continue;
+    }
+    const detectedRate = detectRate(line);
+    if (detectedRate) {
+      const oran = detectedRate.oran;
+      const afterRate = line.slice(detectedRate.index + detectedRate.length);
+      const gross = parseLastAmount(afterRate) || (afterRate.trim() ? parseLastAmount(line) : 0);
+      if (gross) {
+        grossByRate.set(oran, (grossByRate.get(oran) || 0) + gross);
+        pendingRate = null;
+      } else {
+        pendingRate = oran;
+      }
+      continue;
+    }
+
+    if (pendingRate) {
+      const gross = parseLastAmount(line);
+      if (gross) {
+        grossByRate.set(pendingRate, (grossByRate.get(pendingRate) || 0) + gross);
+        pendingRate = null;
+      }
+    }
   }
 
-  if (grossByRate.size < 2) return [];
+  if (grossByRate.size < 1) return [];
   const breakdown = Array.from(grossByRate.entries())
     .sort((a, b) => a[0] - b[0])
     .map(([oran, gross]) => ({
@@ -149,16 +197,27 @@ export function extractOkcFisItemRateBreakdown(
     }))
     .filter((item) => item.tutar > 0);
 
-  if (breakdown.length < 2) return [];
+  if (breakdown.length < 1) return [];
   const sum = breakdown.reduce((total, item) => total + item.tutar, 0);
+  const grossTotal = Array.from(grossByRate.values()).reduce((total, gross) => total + Math.max(gross, 0), 0);
   if (expectedTotal && expectedTotal > 0) {
     const tolerance = Math.max(0.08, expectedTotal * 0.03);
-    if (Math.abs(sum - expectedTotal) > tolerance) {
+    const summarySuspicious =
+      grossTotal > 0 &&
+      expectedTotal / grossTotal > 0.35 &&
+      sum / grossTotal > 0.005 &&
+      sum / grossTotal < 0.30;
+    if (Math.abs(sum - expectedTotal) > tolerance && !summarySuspicious) {
       logger.warn(
         `OKC item-rate breakdown toplamla uyumsuz: item=${formatAmount(sum)} topkdv=${formatAmount(expectedTotal)} - breakdown kullanilmadi`,
       );
       return [];
     }
+    if (summarySuspicious && Math.abs(sum - expectedTotal) > tolerance) {
+      logger.warn(
+        `OKC TOPKDV supheli: topkdv=${formatAmount(expectedTotal)} gross=${formatAmount(grossTotal)} item=${formatAmount(sum)} - item breakdown kullanildi`,
+      );
+    }
   }
-  return breakdown;
+  return expectedTotal && expectedTotal > 0 ? breakdown : (breakdown.length >= 2 ? breakdown : []);
 }
