@@ -180,18 +180,34 @@ export function parseUblXml(xml: string, deps: UblParseDeps): OcrResult | null {
 
   const kdvToplam = kdvBreakdown.reduce((s, b) => s + (b.tutar || 0), 0);
   if (kdvTevkifat <= 0 && kdvToplam > 0) {
-    const xmlMentionsTevkifat = (() => {
-      const normalizedXml = normalizeTaxText(xml.slice(0, 250000));
-      return normalizedXml.includes('TEVK') && normalizedXml.includes('FAT');
-    })();
-    if (xmlMentionsTevkifat) {
+    // BUG FIX (WASH faturasi): Eski heuristic `includes('TEVK') && includes('FAT')`
+    // her faturada false-positive verdi cunku "FATURA" kelimesi "FAT" substring'ini
+    // tasiyor. Tax-inclusive vs payable farki da iskonto/allowance/yuvarlama olabilir.
+    // Yeni kural: sadece XML'de gercek tevkifat XML tag'i (WithholdingTaxTotal,
+    // veya 9xxx tax code) varsa fallback inference yapilir.
+    const hasWithholdingTag = /<(?:[\w.-]+:)?WithholdingTaxTotal\b/i.test(xml);
+    const hasTevkifatCode = /<(?:[\w.-]+:)?(?:TaxTypeCode|ID)[^>]*>\s*9\d{3}\s*</i.test(xml);
+    // Ayrica gercek TEVKIFAT kelimesi gec - "FATURA" eslesmesini engelle.
+    // /i flag ile I/i/İ buyuk-kucuk eslesir; \bTEVK[Iİ]?F ile TEVKIF / TEVKİF / TEVKFAT (rare).
+    const hasTevkifatKeyword = /\bTEVK[Iİ]?F/i.test(xml);
+    const tevkifatStrongSignal = hasWithholdingTag || hasTevkifatCode || hasTevkifatKeyword;
+    if (tevkifatStrongSignal) {
       const taxInclusive = parseXmlAmount(xmlInvoiceLevelOnly, 'TaxInclusiveAmount', parseAmount);
       const payable = parseXmlAmount(xmlInvoiceLevelOnly, 'PayableAmount', parseAmount);
       const inferred = Math.round((taxInclusive - payable) * 100) / 100;
-      if (inferred > 0 && inferred <= kdvToplam + 0.05) {
+      // Inferred tevkifat 'in mantik kontrolu: 0 < inferred <= kdvToplam VE
+      // standart tevkifat orani (1/10, 2/10, ..., 9/10) ile uyumlu olmali.
+      const inferredRate = inferred / kdvToplam;
+      const validTevkifatRates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9];
+      const isValidRate = validTevkifatRates.some((r) => Math.abs(inferredRate - r) < 0.03);
+      if (inferred > 0 && inferred <= kdvToplam + 0.05 && isValidRate) {
         kdvTevkifat = inferred;
         logger.warn(
-          `XML parser: tevkifat toplam farkindan cikarildi - taxInclusive=${taxInclusive} payable=${payable} tevkifat=${kdvTevkifat}`,
+          `XML parser: tevkifat toplam farkindan cikarildi - taxInclusive=${taxInclusive} payable=${payable} tevkifat=${kdvTevkifat} oran=${(inferredRate * 100).toFixed(0)}/100`,
+        );
+      } else if (inferred > 0) {
+        logger.warn(
+          `XML parser: tevkifat inference reddedildi - inferred=${inferred} kdvToplam=${kdvToplam} oran=${(inferredRate * 100).toFixed(1)}% (standart tevkifat oranlarina uymuyor - allowance/iskonto olabilir)`,
         );
       }
     }

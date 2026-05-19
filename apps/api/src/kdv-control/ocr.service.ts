@@ -256,6 +256,10 @@ export class OcrService {
           this.logger.log(
             `XML parse başarılı: ${originalName} · belgeNo=${xmlResult.belgeNo} date=${xmlResult.date} kdv=${xmlResult.kdvTutari} breakdown=${xmlResult.kdvBreakdown?.length || 0}`,
           );
+          // BUG FIX (WASH faturasi): XML path da postProcess pipeline'ina sokulmali.
+          // Salt-rate guard ve KDV/Toplam oran kontrolu XML icin de aktif olmali —
+          // yoksa "20" gibi yanlis okumalar yakalanmiyor.
+          this.postProcessOcrResult(xmlResult, belgeNoFromFilename, originalName);
           return xmlResult;
         }
         // XML parse boş döndü → manuel review için filename only dön (image OCR XML'de işe yaramaz)
