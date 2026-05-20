@@ -103,7 +103,7 @@ export class LucaController {
       'ISLETME_GELIR',
       'ISLETME_GIDER',
     ]);
-    if (tip && lucaBrowserJobTips.has(tip)) return '1.37.89';
+    if (tip && lucaBrowserJobTips.has(tip)) return '1.37.90';
     return null;
   }
 
