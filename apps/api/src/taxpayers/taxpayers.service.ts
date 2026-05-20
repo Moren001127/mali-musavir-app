@@ -150,9 +150,27 @@ export class TaxpayersService {
 
   async create(tenantId: string, dto: any) {
     try {
-      return await this.prisma.taxpayer.create({
+      const created = await this.prisma.taxpayer.create({
         data: { tenantId, ...this.normalizeDefterFields(dto) },
       });
+
+      // Otomasyon event'i: yeni müvekkel kaydı
+      if (this.eventBus) {
+        const t = created as any;
+        const unvan =
+          t.type === 'TUZEL_KISI'
+            ? t.companyName || ''
+            : `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
+        this.eventBus.emit('Taxpayer.Created', {
+          tenantId,
+          taxpayerId: created.id,
+          taxpayerUnvan: unvan || '(isim yok)',
+          taxpayerVkn: t.taxNumber ?? '',
+          taxpayerType: t.type,
+        });
+      }
+
+      return created;
     } catch (e: any) {
       if (e.code === 'P2002') {
         throw new BadRequestException('Bu VKN/TCKN ile kayıtlı mükellef zaten mevcut');

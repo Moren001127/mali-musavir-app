@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Logger, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Optional, Post, Query, Res } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
 import { WhatsAppService } from './whatsapp.service';
+import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 @Controller('whatsapp/webhook')
 export class WhatsAppBotController {
@@ -11,6 +12,7 @@ export class WhatsAppBotController {
     private readonly prisma: PrismaService,
     private readonly morenAi: MorenAiService,
     private readonly whatsapp: WhatsAppService,
+    @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
 
   @Get()
@@ -129,6 +131,23 @@ export class WhatsAppBotController {
     if (!taxpayer) {
       this.logger.warn(`WhatsApp bot: telefon eşleşmedi ${msg.from}`);
       return;
+    }
+
+    // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi
+    if (this.eventBus) {
+      const unvan =
+        taxpayer.type === 'TUZEL_KISI'
+          ? taxpayer.companyName || ''
+          : `${taxpayer.firstName ?? ''} ${taxpayer.lastName ?? ''}`.trim();
+      this.eventBus.emit('WhatsApp.MessageReceived', {
+        tenantId: taxpayer.tenantId,
+        taxpayerId: taxpayer.id,
+        taxpayerUnvan: unvan || '(isim yok)',
+        taxpayerVkn: taxpayer.taxNumber ?? '',
+        from: msg.from,
+        text: msg.text,
+        messageId: msg.id,
+      });
     }
 
     await this.prisma.communicationLog.create({
