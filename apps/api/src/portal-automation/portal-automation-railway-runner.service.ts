@@ -82,7 +82,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private isEnabled() {
     const raw = process.env.PORTAL_AUTOMATION_RAILWAY_RUNNER_ENABLED;
     if (raw != null) return this.envFlag(raw);
-    return !!process.env.RAILWAY_ENVIRONMENT;
+    return false;
   }
 
   private includeNightly() {
