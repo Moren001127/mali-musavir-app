@@ -46,7 +46,9 @@ export function extractOkcFisKdv(
   const breakdown: KdvBreakdownItem[] = [];
   const kdvLineRe = /\bK\.?\s*D\.?\s*V\.?\b(?!\s*(?:MATRAH|ORAN|UYGULANAN))|\bT[O0]P\s*K\s*D\s*V\b|\bT[O0]PKD[UV]\b/i;
   const otherTaxRe = /ÖZEL\s*İLETİŞİM|ÖİV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF|KONAKLAMA|ÇEVRE|STOPAJ/i;
-  const amountRe = /([+-])?\s*[\*₺¥]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY|₺)?/g;
+  // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
+  // Keep the capture broad enough for that form, then let parseAmount remove spaces.
+  const amountRe = /([+-])?\s*[\*₺¥]?\s*([+-])?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})\s*(?:TL|TRY|₺)?/g;
 
   const parseLastAmount = (raw: string): number => {
     const clean = stripMatrahFragments(raw);
@@ -124,7 +126,9 @@ export function extractOkcFisItemRateBreakdown(
   const grossByRate = new Map<number, number>();
   let pendingRate: number | null = null;
   const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
-  const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})\s*(?:TL|TRY)?/g;
+  // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
+  // Keep the capture broad enough for that form, then let parseAmount remove spaces.
+  const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})\s*(?:TL|TRY)?/g;
   const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTARI|KDV\s*TOPLAM|NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|MERS[Iİ]S|EKU|Z\s*NO|F[Iİ][SŞ]\s*NO|TAR[Iİ]H|SAAT|VERG[Iİ]|V\.?D\.?|T\.?C\.?|TE[SŞ]EKK[UÜ]R|M[UÜ][SŞ]TER[Iİ]/i;
 
   const parseLastAmount = (raw: string): number => {

@@ -417,7 +417,7 @@ export class ReconciliationEngine {
     sameDocDateAmbiguous: boolean = false,
     isIsletme: boolean = false,
   ): { score: number; reasons: string[]; strictMatch: boolean } {
-    const imgBelgeNo = image.confirmedBelgeNo || image.ocrBelgeNo;
+    const imgBelgeNo = this.resolveImageBelgeNo(image);
     const imgDate = image.confirmedDate || image.ocrDate;
     const imgKdv = image.confirmedKdvTutari || image.ocrKdvTutari;
     const imgTevkifat = parseMoneyLike(
@@ -548,17 +548,41 @@ export class ReconciliationEngine {
               `%${recordRate} KDV farkı: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(best?.amount ?? matchingItem.tutar)} (${best?.label ?? 'OCR'}, %${Math.round(diff * 100)})`,
             );
           } else {
-            reasons.push(
-              `%${recordRate} KDV uyumsuz: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(best?.amount ?? matchingItem.tutar)} (${best?.label ?? 'OCR'})`,
-            );
+            const imgKdvNum = this.parseTrUsAmount(imgKdv);
+            const totalDiff = Number.isFinite(imgKdvNum)
+              ? Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1)
+              : 1;
+            if (totalDiff < 0.01 && (belgeNoExact || this.isOkcFisImage(image))) {
+              score += 0.3;
+              kdvExact = true;
+              reasons.push(
+                `KDV toplamı eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR kalem kırılımı eksik/hatalı olduğu için TOPKDV toplamı esas alındı`,
+              );
+            } else {
+              reasons.push(
+                `%${recordRate} KDV uyumsuz: Luca ${this.fmtAmt(recordKdv)} ≠ Fatura ${this.fmtAmt(best?.amount ?? matchingItem.tutar)} (${best?.label ?? 'OCR'})`,
+              );
+            }
           }
         } else {
-          // Luca'da %20 var ama OCR breakdown'unda %20 yok — KESİN UYUMSUZ
-          rateMismatched = true;
-          const ranges = rateAwareImageBreakdown.map((b) => `%${b.oran}`).join(', ');
-          reasons.push(
-            `KDV oranı uyumsuz: Luca %${recordRate} → Faturada bulunamadı (faturada: ${ranges || 'yok'})`,
-          );
+          const imgKdvNum = this.parseTrUsAmount(imgKdv);
+          const totalDiff = Number.isFinite(imgKdvNum)
+            ? Math.abs(recordKdv - imgKdvNum) / (recordKdv || 1)
+            : 1;
+          if (totalDiff < 0.01 && (belgeNoExact || this.isOkcFisImage(image) || rateAwareImageBreakdown.length === 1)) {
+            score += 0.3;
+            kdvExact = true;
+            reasons.push(
+              `KDV toplamı eşleşti: Luca ${this.fmtAmt(recordKdv)} = Fatura ${this.fmtAmt(imgKdvNum)}; OCR oran kırılımı güvenilir olmadığı için toplam esas alındı`,
+            );
+          } else {
+            // Luca'da %20 var ama OCR breakdown'unda %20 yok — KESİN UYUMSUZ
+            rateMismatched = true;
+            const ranges = rateAwareImageBreakdown.map((b) => `%${b.oran}`).join(', ');
+            reasons.push(
+              `KDV oranı uyumsuz: Luca %${recordRate} → Faturada bulunamadı (faturada: ${ranges || 'yok'})`,
+            );
+          }
         }
       } else {
         // Klasik toplam karşılaştırması — virtual record veya tek oran + breakdown yok
@@ -839,6 +863,53 @@ export class ReconciliationEngine {
     return { score: Math.min(score, 1), reasons, strictMatch };
   }
 
+  private resolveImageBelgeNo(image: ReceiptImage): string | null {
+    const direct = String(image.confirmedBelgeNo || image.ocrBelgeNo || '').trim();
+    if (direct && !this.isOcrHeaderWordAsBelgeNo(direct)) return direct;
+
+    const fallback = this.extractOkcReceiptNoFromRawText(String((image as any).ocrRawText || ''));
+    return fallback || direct || null;
+  }
+
+  private isOcrHeaderWordAsBelgeNo(value: string): boolean {
+    return /^(SAAT|TARIH|TAR[Iİ]H|TOPKDV|TOPLAM|NAKIT|NAK[Iİ]T|KREDI|KRED[Iİ]|KART)$/i.test(
+      String(value || '').trim(),
+    );
+  }
+
+  private extractOkcReceiptNoFromRawText(rawText: string): string | null {
+    if (!rawText) return null;
+    const folded = rawText
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/ı/g, 'i')
+      .toLocaleUpperCase('tr-TR')
+      .replace(/İ/g, 'I')
+      .replace(/Ş/g, 'S')
+      .replace(/Ğ/g, 'G')
+      .replace(/Ç/g, 'C')
+      .replace(/Ü/g, 'U')
+      .replace(/Ö/g, 'O');
+    if (!/\bTOPKDV\b/.test(folded) && !/\bFIS\s*NO\b/.test(folded)) return null;
+
+    const fisNo = folded.match(/(?:^|\n)\s*FIS\s*NO\s*[:#. \t]*(\d{1,8})\b/im);
+    if (fisNo?.[1]) return this.stripLeadingZeros(fisNo[1]) || fisNo[1];
+
+    // Some card slips print "FIS NO:" empty but include the real receipt number
+    // in the POS line as "ISLEM NO:0003/KP0807".
+    const posIslem = folded.match(/(?:^|\n)\s*ISLEM\s*(?:NO|N)?\s*[:#. \t]*(\d{1,8})\s*\/\s*KP\d{1,8}\b/im);
+    if (posIslem?.[1]) return this.stripLeadingZeros(posIslem[1]) || posIslem[1];
+
+    return null;
+  }
+
+  private isOkcFisImage(image: ReceiptImage): boolean {
+    const belgeTipi = String((image as any).ocrBelgeTipi || '').toLocaleUpperCase('tr-TR');
+    if (belgeTipi === 'OKC_FIS') return true;
+    const rawText = String((image as any).ocrRawText || '').toLocaleUpperCase('tr-TR');
+    return /\bTOPKDV\b/.test(rawText) && /F[Iİ]Ş\s*NO|FIS\s*NO/.test(rawText);
+  }
+
   private companyNameSimilarity(a: string, b: string): number {
     return kdvCompanyNameSimilarity(a, b);
   }
@@ -928,7 +999,9 @@ export class ReconciliationEngine {
         .replace(/Ğ/g, 'G').replace(/Ç/g, 'C')
         .replace(/Ü/g, 'U').replace(/Ö/g, 'O');
     const rateRe = /(?:%|\/)\s*0?(1|8|10|18|20)(?:[,.]00)?\b/i;
-    const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+    // OCR sometimes inserts spaces inside amounts: "* 1. 000, 00".
+    // Keep the capture broad enough for that form, then let parseTrUsAmount remove spaces.
+    const amountRe = /([+-])?\s*[*]?\s*([+-])?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})/g;
     const skipRe = /TOPKDV|TOPLAM|KDV\s*TUTAR|NAKIT|KREDI|KART|KASIYER|MERSIS|EKU|Z\s*NO|FIS\s*NO|TARIH|SAAT|VERGI|V\.?D\.?|T\.?C\.?/i;
     const grossByRate = new Map<number, number>();
     let pendingRate: number | null = null;
@@ -1022,7 +1095,7 @@ export class ReconciliationEngine {
 
   private extractTopKdvFromOkcText(rawText: string): number | null {
     const lines = rawText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/g;
+    const amountRe = /[-+]?[*]?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})/g;
     const fold = (value: string) =>
       value
         .toLocaleUpperCase('tr-TR')

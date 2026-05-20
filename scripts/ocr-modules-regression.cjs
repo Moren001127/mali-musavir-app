@@ -119,7 +119,15 @@ eq(belgeNoParser.extractBelgeNo('Z RAPORU\nZ NO: 666\n', 'Z RAPORU\nZ NO: 666\n'
 eq(belgeNoParser.extractBelgeNo('Z RAPORU\nZ SAYAC: 896', 'Z RAPORU\nZ SAYAC: 896'), '896', 'belgeNo Z SAYAC');
 eq(belgeNoParser.extractBelgeNo('FIS NO 12345', 'FIS NO 12345'), '12345', 'belgeNo FIS NO');
 eq(belgeNoParser.extractBelgeNo('FATURA NO: ABC2026123456', 'FATURA NO: ABC2026123456'), 'ABC2026123456', 'belgeNo FATURA NO');
-ok('belge-no.ts (4 assertion)');
+eq(
+  belgeNoParser.extractBelgeNo(
+    'FIS NO:\nSAAT: 15:28\nTOPKDV\n*85,45\nISLEM NO:0003/KP0807',
+    'FIS NO:\nSAAT: 15:28\nTOPKDV\n*85,45\nISLEM NO:0003/KP0807',
+  ),
+  '3',
+  'belgeNo blank FIS NO POS fallback',
+);
+ok('belge-no.ts (5 assertion)');
 
 // ─── vendor.ts ───
 const foldTr = (s) => azureHelpers.foldTurkishAscii(s);
@@ -378,7 +386,25 @@ const okcDotRate = okcFis.extractOkcFisKdv(okcDotRateAliasText, okcDeps);
 assert(okcDotRate !== null, 'okc dotted 710 rate result not null');
 eq(okcDotRate.kdvTutari, '56,36', 'okc dotted 710 topkdv preserved');
 approx(okcDotRate.breakdown.find((b) => b.oran === 10).tutar, 56.36, 0.01, 'okc dotted 710 alias is not parsed as amount');
-ok('azure/okc-fis.ts (16 assertion)');
+
+const okcSpacedAmountText = [
+  'FIS NO: 7',
+  'YIYECEK',
+  '%10',
+  '* 1. 000, 00',
+  'ICECEK',
+  '%10',
+  '* 290,00',
+  'TOPKDV',
+  '*117,27',
+  'TOPLAM',
+  '*1.290,00',
+].join('\n');
+const okcSpacedAmount = okcFis.extractOkcFisKdv(okcSpacedAmountText, okcDeps);
+assert(okcSpacedAmount !== null, 'okc spaced amount result not null');
+eq(okcSpacedAmount.kdvTutari, '117,27', 'okc spaced gross topkdv preserved');
+approx(okcSpacedAmount.breakdown.find((b) => b.oran === 10).tutar, 117.27, 0.01, 'okc spaced gross amounts summed');
+ok('azure/okc-fis.ts (19 assertion)');
 
 // ═══════════════════════════════════════════════════════════
 // SONUC

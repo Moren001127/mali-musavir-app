@@ -543,10 +543,10 @@ export class ExcelParserService {
     );
   }
 
-  /** "191.01.001" → 1, "191.01.004" → 20, "191.01.005" → 10 */
+  /** "191.01.001" → 1; modern Luca hesap planlarında 002/005 → 10, 003/004 → 20. */
   extractKdvOraniFromHesapKodu(kod: string): number | null {
     const map: Record<string, number> = {
-      '001': 1, '002': 8, '003': 18, '004': 20, '005': 10,
+      '001': 1, '002': 10, '003': 20, '004': 20, '005': 10,
     };
     const suffix = kod.slice(-3);
     return map[suffix] ?? null;

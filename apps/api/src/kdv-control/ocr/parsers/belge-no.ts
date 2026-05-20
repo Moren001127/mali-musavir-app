@@ -41,15 +41,28 @@ export function extractBelgeNo(text: string, foldedText: string): string | null 
     if (zBare?.[1]) return zBare[1].trim();
   }
 
+  const headerWordRe = /^(SAAT|TARIH|TAR[Iİ]H|TOPKDV|TOPLAM|NAKIT|NAK[Iİ]T|KREDI|KRED[Iİ]|KART)$/i;
+
+  const fisNo = foldedText.match(/(?:^|\n)\s*fis\s*no\s*[:#. \t]*([A-Z0-9]{1,12})\b/im);
+  if (fisNo?.[1] && /\d/.test(fisNo[1]) && !headerWordRe.test(fisNo[1])) {
+    return fisNo[1].trim().toUpperCase();
+  }
+
+  // Some OKC slips print "FIS NO:" empty but include the real receipt number
+  // in the POS line as "ISLEM NO:0003/KP0807".
+  const okcPosNo = foldedText.match(/(?:^|\n)\s*islem\s*(?:no|n)?\s*[:#. \t]*(\d{1,8})\s*\/\s*KP\d{1,8}\b/im);
+  if (okcPosNo?.[1] && /\bT[O0]PKDV\b/i.test(foldedText)) {
+    return okcPosNo[1].replace(/^0+(?=\d)/, '').trim();
+  }
+
   const patterns = [
-    /fis\s*no\s*[:\s#.]*([A-Z0-9]{1,12})/i,
     /fatura\s*no\s*:?\s*([A-Z0-9]{10,20})/i,
     /(?:fis|belge|evrak)\s*(?:no|numarasi)?[:\s#.]*([A-Z0-9]{8,20})/i,
     /\b([A-Z0-9]{3}20\d{2}\d{6,12})\b/i,
   ];
   for (const p of patterns) {
     const m = foldedText.match(p);
-    if (m?.[1]) return m[1].trim().toUpperCase();
+    if (m?.[1] && !headerWordRe.test(m[1])) return m[1].trim().toUpperCase();
   }
   return null;
 }
