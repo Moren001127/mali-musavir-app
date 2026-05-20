@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.85';
+  const AGENT_VERSION = '1.37.86';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -917,7 +917,12 @@
       if (!(await ensureLatestAgentRuntime())) return;
       await pingAgentStatus(true);
 
-      const pendingUrl = API + '/agent/luca/jobs/pending' + (DEVICE_ID ? ('?deviceId=' + encodeURIComponent(DEVICE_ID)) : '');
+      const pendingParams = new URLSearchParams({
+        version: AGENT_VERSION,
+        agentVersion: AGENT_VERSION,
+      });
+      if (DEVICE_ID) pendingParams.set('deviceId', DEVICE_ID);
+      const pendingUrl = API + '/agent/luca/jobs/pending?' + pendingParams.toString();
       const r = await fetch(pendingUrl, {
         headers: { 'X-Agent-Token': TOKEN },
       });

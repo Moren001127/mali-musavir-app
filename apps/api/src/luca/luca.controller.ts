@@ -88,7 +88,7 @@ export class LucaController {
   }
 
   private requiredAgentVersionForJobTip(tip?: string | null) {
-    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.85';
+    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.86';
     return null;
   }
 
@@ -390,9 +390,17 @@ export class LucaController {
   async pendingJobs(
     @Headers('x-agent-token') agentToken: string,
     @Query('deviceId') deviceId?: string,
+    @Query('version') version?: string,
+    @Query('agentVersion') agentVersionQuery?: string,
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    return this.luca.pendingJobsForAgent(tenantId, deviceId);
+    const agentVersion = String(version || agentVersionQuery || '').trim();
+    const jobs = await this.luca.pendingJobsForAgent(tenantId, deviceId);
+    return jobs.filter((job: any) => {
+      const requiredVersion = this.requiredAgentVersionForJobTip(job.tip);
+      if (!requiredVersion) return true;
+      return this.compareAgentVersions(agentVersion, requiredVersion) >= 0;
+    });
   }
 
   @Get('agent/luca/jobs/active')
