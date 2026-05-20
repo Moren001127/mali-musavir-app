@@ -622,6 +622,14 @@ export class TaxpayersService {
         const oldValue = existing ? (existing as any)[field] : false;
         const newValue = (result as any)[field];
         if (oldValue !== newValue) {
+          // Müvekkel ismini doğru alandan üret:
+          // - TUZEL_KISI (şirket): companyName
+          // - GERCEK_KISI (kişi): firstName + lastName
+          const t = taxpayer as any;
+          const unvan =
+            t.type === 'TUZEL_KISI'
+              ? t.companyName || ''
+              : `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim();
           this.eventBus!.emit(eventName, {
             tenantId,
             taxpayerId,
@@ -630,9 +638,9 @@ export class TaxpayersService {
             field,
             oldValue,
             newValue,
-            taxpayerUnvan: taxpayer.firstName
-              ? `${taxpayer.firstName} ${taxpayer.lastName ?? ''}`.trim()
-              : (taxpayer as any).title || (taxpayer as any).tradeName || '',
+            taxpayerUnvan: unvan || '(isim yok)',
+            taxpayerVkn: t.taxNumber ?? '',
+            taxpayerType: t.type,
           });
         }
       };
