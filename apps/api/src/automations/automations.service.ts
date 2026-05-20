@@ -259,7 +259,7 @@ export class AutomationsService {
       this.prisma.automation.groupBy({
         by: ['status'],
         where: { tenantId },
-        _count: true,
+        _count: { _all: true },
       }),
       this.prisma.automationRun.groupBy({
         by: ['status'],
@@ -267,7 +267,7 @@ export class AutomationsService {
           automation: { tenantId },
           startedAt: { gte: oneWeekAgo },
         },
-        _count: true,
+        _count: { _all: true },
       }),
       this.prisma.automationRun.aggregate({
         where: {
@@ -279,10 +279,10 @@ export class AutomationsService {
     ]);
 
     const byStatus: Record<string, number> = {};
-    for (const r of counts) byStatus[r.status] = r._count;
+    for (const r of counts) byStatus[r.status] = r._count._all;
 
     const byRunStatus: Record<string, number> = {};
-    for (const r of weeklyRuns) byRunStatus[r.status] = r._count;
+    for (const r of weeklyRuns) byRunStatus[r.status] = r._count._all;
 
     return {
       active: byStatus[AutomationStatus.ACTIVE] || 0,
