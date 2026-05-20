@@ -154,6 +154,24 @@ export class AutomationParserService {
     }
 
     const proposed = toolUseBlock.input;
+    // Defensive normalization — Claude bazen steps'i tek başına dizi olarak verir,
+    // bazen schemaVersion'ı atlar. Geçerli şemaya çekiyoruz.
+    if (!proposed.steps || typeof proposed.steps !== 'object' || Array.isArray(proposed.steps)) {
+      proposed.steps = {
+        schemaVersion: 1,
+        steps: Array.isArray(proposed.steps) ? proposed.steps : [],
+      };
+    }
+    if (proposed.steps.schemaVersion !== 1) {
+      proposed.steps.schemaVersion = 1;
+    }
+    if (!Array.isArray(proposed.steps.steps)) {
+      proposed.steps.steps = [];
+    }
+    // Boş steps durumu — parser yapamıyor demektir, confidence'ı 0'a çek
+    if (proposed.steps.steps.length === 0) {
+      proposed.confidence = 0;
+    }
     this.validateProposed(proposed);
 
     // Maliyet hesabı: her step'in run-time maliyetini topla
@@ -349,9 +367,14 @@ propose_automation tool'unu çağır. JSON şeması zorunlu.`;
       throw new BadRequestException('steps.steps bir dizi olmalı.');
     }
 
+    // "Yapamıyorum" durumu (steps boş veya confidence 0) — tetikleyici detayını kontrol etme
+    // Kullanıcı UI'da "yapamıyorum" mesajını görecek, kayıt yapılmayacak zaten.
+    const isRefusal = proposed.steps.steps.length === 0 || proposed.confidence === 0;
+    if (isRefusal) return;
+
     // Her aksiyon adı kataloğumda olmalı
     const unknownTools = this.collectUnknownTools(proposed.steps.steps);
-    if (unknownTools.length > 0 && proposed.steps.steps.length > 0) {
+    if (unknownTools.length > 0) {
       throw new BadRequestException(
         `Bilinmeyen aksiyon(lar): ${unknownTools.join(', ')}. Parser kataloğa uymayan bir çıktı verdi.`,
       );
