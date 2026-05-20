@@ -23,6 +23,8 @@ interface QrStatus {
   qrDataUrl?: string;
   lastUpdate?: string;
   reconnectAttempts?: number;
+  lastError?: string;
+  initSecondsAgo?: number;
 }
 
 export default function WhatsAppQrPage() {
@@ -130,10 +132,48 @@ export default function WhatsAppQrPage() {
           </div>
         ) : isWaiting ? (
           <div className="text-center text-sm text-stone-600 dark:text-stone-300">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin" />
-            <div className="mt-2">QR hazırlanıyor… birkaç saniye sürebilir.</div>
+            {status.lastError ? (
+              <>
+                <ShieldAlert className="mx-auto h-10 w-10 text-rose-500" />
+                <div className="mt-2 font-medium text-rose-700 dark:text-rose-400">
+                  QR oluşturulamadı
+                </div>
+                <div className="mt-1 text-xs">{status.lastError}</div>
+                <button
+                  onClick={() => connect.mutate()}
+                  className="mt-3 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white shadow-sm"
+                  style={{ backgroundColor: GOLD }}
+                >
+                  <RefreshCw className="h-4 w-4" /> Tekrar Dene
+                </button>
+              </>
+            ) : (status.initSecondsAgo ?? 0) > 30 ? (
+              <>
+                <ShieldAlert className="mx-auto h-10 w-10 text-amber-500" />
+                <div className="mt-2 font-medium text-amber-700 dark:text-amber-400">
+                  QR {status.initSecondsAgo} saniyedir gelmiyor
+                </div>
+                <div className="mt-1 text-xs">
+                  Genelde 5-10 saniye sürer. Sunucu loglarına bakman gerekebilir.
+                </div>
+                <button
+                  onClick={() => connect.mutate()}
+                  className="mt-3 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white shadow-sm"
+                  style={{ backgroundColor: GOLD }}
+                >
+                  <RefreshCw className="h-4 w-4" /> Tekrar Dene
+                </button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="mx-auto h-8 w-8 animate-spin" />
+                <div className="mt-2">
+                  QR hazırlanıyor… {status.initSecondsAgo ?? 0}sn
+                </div>
+              </>
+            )}
             {status.reconnectAttempts && status.reconnectAttempts > 0 && (
-              <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+              <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
                 Yeniden bağlanma denemesi: {status.reconnectAttempts}
               </div>
             )}

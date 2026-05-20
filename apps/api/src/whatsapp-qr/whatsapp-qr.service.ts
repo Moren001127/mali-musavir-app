@@ -16,6 +16,8 @@ interface TenantStatus {
   phone?: string;
   lastUpdate: Date;
   reconnectAttempts: number;
+  lastError?: string;
+  initStartedAt?: Date;
 }
 
 /**
@@ -85,21 +87,46 @@ export class WhatsAppQrService implements OnModuleInit {
   }
 
   private async doConnect(tenantId: string): Promise<void> {
-    const authPath = this.getAuthPath(tenantId);
-    await fs.mkdir(authPath, { recursive: true });
-
-    const { state, saveCreds } = await useMultiFileAuthState(authPath);
-    const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 0] as any }));
-
-    const sock = makeWASocket({
-      version,
-      auth: state,
-      printQRInTerminal: false,
-      browser: ['Moren AI Otomasyon', 'Chrome', '120.0.0'],
-      syncFullHistory: false,
+    // Başlangıç durumunu kaydet — UI hata olursa görebilsin
+    this.statuses.set(tenantId, {
+      connected: false,
+      lastUpdate: new Date(),
+      reconnectAttempts: this.statuses.get(tenantId)?.reconnectAttempts ?? 0,
+      initStartedAt: new Date(),
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    let sock: WASocket;
+    try {
+      const authPath = this.getAuthPath(tenantId);
+      await fs.mkdir(authPath, { recursive: true });
+
+      const { state, saveCreds } = await useMultiFileAuthState(authPath);
+      const { version } = await fetchLatestBaileysVersion().catch((err) => {
+        this.logger.warn(`fetchLatestBaileysVersion hata: ${err.message}, fallback kullanılıyor`);
+        return { version: [2, 3000, 0] as any };
+      });
+
+      sock = makeWASocket({
+        version,
+        auth: state,
+        printQRInTerminal: false,
+        browser: ['Moren AI Otomasyon', 'Chrome', '120.0.0'],
+        syncFullHistory: false,
+      });
+
+      // saveCreds'i sonra ekle (önce sock declared olmalı)
+      sock.ev.on('creds.update', saveCreds);
+    } catch (err: any) {
+      this.logger.error(`baileys init hata tenant=${tenantId}: ${err.message}`, err.stack);
+      const cur = this.statuses.get(tenantId);
+      this.statuses.set(tenantId, {
+        connected: false,
+        lastUpdate: new Date(),
+        reconnectAttempts: cur?.reconnectAttempts ?? 0,
+        lastError: `Baileys başlatılamadı: ${err.message}`,
+      });
+      throw err;
+    }
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -215,6 +242,8 @@ export class WhatsAppQrService implements OnModuleInit {
     qrDataUrl?: string;
     lastUpdate?: Date;
     reconnectAttempts?: number;
+    lastError?: string;
+    initSecondsAgo?: number;
   }> {
     const status = this.statuses.get(tenantId);
     const qr = this.latestQr.get(tenantId);
@@ -227,6 +256,10 @@ export class WhatsAppQrService implements OnModuleInit {
       };
     }
 
+    const initSecondsAgo = status?.initStartedAt
+      ? Math.floor((Date.now() - status.initStartedAt.getTime()) / 1000)
+      : undefined;
+
     if (qr) {
       const qrDataUrl = await QRCode.toDataURL(qr, { width: 320, margin: 1 });
       return {
@@ -234,6 +267,7 @@ export class WhatsAppQrService implements OnModuleInit {
         qrDataUrl,
         lastUpdate: status?.lastUpdate,
         reconnectAttempts: status?.reconnectAttempts,
+        initSecondsAgo,
       };
     }
 
@@ -241,6 +275,8 @@ export class WhatsAppQrService implements OnModuleInit {
       connected: false,
       lastUpdate: status?.lastUpdate,
       reconnectAttempts: status?.reconnectAttempts,
+      lastError: status?.lastError,
+      initSecondsAgo,
     };
   }
 
