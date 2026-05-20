@@ -76,6 +76,22 @@ export class LucaController {
     return 'AYLIK';
   }
 
+  private compareAgentVersions(a?: string | null, b?: string | null) {
+    const pa = String(a || '').split('.').map((n) => Number(n) || 0);
+    const pb = String(b || '').split('.').map((n) => Number(n) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const da = pa[i] || 0;
+      const db = pb[i] || 0;
+      if (da !== db) return da - db;
+    }
+    return 0;
+  }
+
+  private requiredAgentVersionForJobTip(tip?: string | null) {
+    if (tip === 'EDEFTER_FIS_LISTESI') return '1.37.85';
+    return null;
+  }
+
   // ==================== AGENT RUNTIME (LOADER PATTERN) ====================
   // Extension'daki agent.js sadece küçük bir loader. Asıl kod burada.
   // Cache'lenmemesi için Cache-Control: no-store. Sayfa yüklenince yeni kod gelir.
@@ -471,10 +487,29 @@ export class LucaController {
   async startJob(
     @Param('id') id: string,
     @Headers('x-agent-token') agentToken: string,
-    @Body() body: { deviceId?: string },
+    @Body() body: { deviceId?: string; version?: string; agentVersion?: string },
     @Query('deviceId') queryDeviceId?: string,
   ) {
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
+    const existingJob = await this.luca.getJob(id, tenantId);
+    const agentVersion = String(body?.version || body?.agentVersion || '').trim();
+    const requiredVersion = this.requiredAgentVersionForJobTip(existingJob.tip);
+    if (requiredVersion && this.compareAgentVersions(agentVersion, requiredVersion) < 0) {
+      const label = agentVersion || 'bilinmiyor';
+      if (!String(existingJob.errorMsg || '').includes('Ajan surumu eski')) {
+        await this.luca.appendJobLog(
+          id,
+          `Ajan surumu eski (${label}); bu is icin v${requiredVersion}+ gerekli. Luca sekmesini yenileyip Moren Agent'i tekrar baslatin.`,
+        );
+      }
+      return {
+        ok: false,
+        claimed: false,
+        reason: 'STALE_AGENT_VERSION',
+        requiredVersion,
+        agentVersion: agentVersion || null,
+      };
+    }
     const job = await this.luca.markJobRunning(id, {
       tenantId,
       deviceId: body?.deviceId || queryDeviceId,

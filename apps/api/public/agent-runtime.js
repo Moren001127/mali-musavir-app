@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.84';
+  const AGENT_VERSION = '1.37.85';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -48,6 +48,46 @@
 
   function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function compareAgentVersions(a, b) {
+    const pa = String(a || '').split('.').map((n) => Number(n) || 0);
+    const pb = String(b || '').split('.').map((n) => Number(n) || 0);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const da = pa[i] || 0;
+      const db = pb[i] || 0;
+      if (da !== db) return da - db;
+    }
+    return 0;
+  }
+
+  let lastRuntimeVersionCheckAt = 0;
+  async function ensureLatestAgentRuntime() {
+    if (!isCurrentAgentInstance()) return false;
+    const now = Date.now();
+    if (now - lastRuntimeVersionCheckAt < 60000) return true;
+    lastRuntimeVersionCheckAt = now;
+    try {
+      const r = await fetch(API + '/agent/version/latest?ts=' + now, {
+        cache: 'no-store',
+        headers: { 'X-Agent-Token': TOKEN },
+      });
+      if (!r.ok) return true;
+      const data = await r.json().catch(() => null);
+      const latest = data?.runtime || data?.version || '';
+      if (!latest || compareAgentVersions(AGENT_VERSION, latest) >= 0) return true;
+      console.warn(`[Moren] Yeni ajan runtime var: v${latest}. v${AGENT_VERSION} durdurulup yeniden yukleniyor.`);
+      try { setStatus(`Ajan guncelleniyor: v${latest}`); } catch {}
+      try { window.__morenAgent.stopRequested = true; } catch {}
+      try { document.getElementById('moren-agent-panel')?.remove(); } catch {}
+      const script = document.createElement('script');
+      script.src = API + '/agent/runtime.js?v=' + encodeURIComponent(latest) + '&ts=' + Date.now();
+      script.async = true;
+      (document.head || document.documentElement || document.body).appendChild(script);
+      return false;
+    } catch {
+      return true;
+    }
   }
 
   function lucaManualDownloadMode() {
@@ -874,6 +914,7 @@
       if (!isCurrentAgentInstance()) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
+      if (!(await ensureLatestAgentRuntime())) return;
       await pingAgentStatus(true);
 
       const pendingUrl = API + '/agent/luca/jobs/pending' + (DEVICE_ID ? ('?deviceId=' + encodeURIComponent(DEVICE_ID)) : '');
@@ -1201,7 +1242,7 @@
           const claimRes = await fetch(API + `/agent/luca/jobs/${job.id}/start`, {
             method: 'POST',
             headers: { 'X-Agent-Token': TOKEN, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ deviceId: DEVICE_ID }),
+            body: JSON.stringify({ deviceId: DEVICE_ID, version: AGENT_VERSION, agentVersion: AGENT_VERSION }),
           });
           let claim = null;
           try { claim = await claimRes.clone().json(); } catch {}
@@ -8590,6 +8631,128 @@
       }
       return changed;
     };
+    const reportFormatKeys = [
+      'dosya_tipi', 'dosyaTipi', 'DOSYA_TIPI',
+      'format', 'FORMAT',
+      'REPORT_TYPE', 'reportType', 'report_type',
+      'raporTuru', 'RAPOR_TURU', 'rapor_turu',
+      'raporTipi', 'RAPOR_TIPI', 'rapor_tipi',
+      'ciktiTuru', 'CIKTI_TURU', 'cikti_turu',
+      'fileType', 'FILE_TYPE', 'file_type',
+      'outputType', 'OUTPUT_TYPE', 'output_type',
+      'exportType', 'EXPORT_TYPE', 'export_type',
+      'uzanti', 'UZANTI',
+    ];
+    const getExcelReportOption = () => {
+      try {
+        const doc = form.ownerDocument || document;
+        const selects = [
+          ...form.querySelectorAll('select'),
+          ...doc.querySelectorAll('select'),
+        ].filter((sel, i, arr) => arr.indexOf(sel) === i);
+        for (const sel of selects) {
+          const options = [...sel.options];
+          const optionText = options.map((opt) => `${opt.text || ''} ${opt.value || ''}`).join(' ').toLocaleLowerCase('tr-TR');
+          if (!/excel|xlsx|xls/.test(optionText) || !/pdf|word|rtf|odt/.test(optionText)) continue;
+          const excel = options.find((opt) => {
+            const t = `${opt.text || ''} ${opt.value || ''}`.toLocaleLowerCase('tr-TR');
+            return /excel\s*\(xlsx\)|xlsx/.test(t) && !/pdf|word|rtf|odt|liste/.test(t);
+          }) || options.find((opt) => {
+            const t = `${opt.text || ''} ${opt.value || ''}`.toLocaleLowerCase('tr-TR');
+            return /excel|xlsx|xls/.test(t) && !/pdf|word|rtf|odt|liste/.test(t);
+          });
+          if (excel) {
+            return {
+              name: sel.name || '',
+              id: sel.id || '',
+              value: String(excel.value || 'xlsx'),
+              text: String(excel.text || excel.value || 'Excel'),
+            };
+          }
+        }
+      } catch {}
+      return { name: '', id: '', value: 'xlsx', text: 'Excel (xlsx)' };
+    };
+    const excelValueForReportKey = (key, reportOption) => {
+      const k = String(key || '');
+      if (reportOption && (k === reportOption.name || k === reportOption.id)) return reportOption.value;
+      if (/rapor.*tur|rapor.*tip|cikti|çıktı/i.test(k)) return reportOption?.value || 'xlsx';
+      return 'xlsx';
+    };
+    const applyExcelReportParams = (params) => {
+      if (!params || typeof params.set !== 'function' || !options.raporTur) return false;
+      const reportOption = getExcelReportOption();
+      let changed = false;
+      const setParam = (key, value) => {
+        if (!key || key === 'raporTur') return;
+        const next = String(value || 'xlsx');
+        if (params.get(key) !== next) {
+          params.set(key, next);
+          changed = true;
+        }
+      };
+      if (!params.has('raporTur')) {
+        params.set('raporTur', options.raporTur);
+        changed = true;
+      }
+      if (reportOption.name) setParam(reportOption.name, reportOption.value);
+      if (reportOption.id) setParam(reportOption.id, reportOption.value);
+      for (const key of reportFormatKeys) setParam(key, excelValueForReportKey(key, reportOption));
+      return changed;
+    };
+    const forceNestedExcelReportFields = (target, depth = 0) => {
+      if (!options.raporTur || !target || typeof target !== 'object' || depth > 5) return false;
+      let changed = false;
+      const reportOption = getExcelReportOption();
+      const isRoot = depth === 0;
+      if (isRoot && (!target.params || typeof target.params !== 'object')) {
+        target.params = {};
+        changed = true;
+      }
+      if (isRoot && target.params.raporTur !== options.raporTur) {
+        target.params.raporTur = options.raporTur;
+        changed = true;
+      }
+      for (const key of reportFormatKeys) {
+        const value = excelValueForReportKey(key, reportOption);
+        if (target[key] !== value) {
+          target[key] = value;
+          changed = true;
+        }
+        if (isRoot && target.params[key] !== value) {
+          target.params[key] = value;
+          changed = true;
+        }
+      }
+      if (reportOption.name && target[reportOption.name] !== reportOption.value) {
+        target[reportOption.name] = reportOption.value;
+        changed = true;
+      }
+      if (reportOption.id && target[reportOption.id] !== reportOption.value) {
+        target[reportOption.id] = reportOption.value;
+        changed = true;
+      }
+      for (const key of Object.keys(target)) {
+        const val = target[key];
+        if (val && typeof val === 'object') {
+          if (forceNestedExcelReportFields(val, depth + 1)) changed = true;
+          continue;
+        }
+        if (typeof val !== 'string') continue;
+        const trimmed = val.trim();
+        if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) continue;
+        try {
+          const parsed = JSON.parse(trimmed);
+          const nestedChanged = forceNestedExcelReportFields(parsed, depth + 1);
+          const next = JSON.stringify(parsed);
+          if (nestedChanged || next !== val) {
+            target[key] = next;
+            changed = true;
+          }
+        } catch {}
+      }
+      return changed;
+    };
     const forceNestedMizanDates = (target, depth = 0) => {
       if (!target || typeof target !== 'object' || depth > 5) return false;
       let changed = setAllMizanDateKeys(target);
@@ -8622,10 +8785,11 @@
           if (trimmed.startsWith('{')) {
             const parsed = JSON.parse(trimmed);
             const changedNested = forceNestedMizanDates(parsed);
+            const changedReport = forceNestedExcelReportFields(parsed);
             const next = JSON.stringify(parsed);
             return {
               body: next,
-              changed: changedNested || next !== body,
+              changed: changedNested || changedReport || next !== body,
               preview: next.slice(0, 420),
             };
           }
@@ -8633,28 +8797,34 @@
             const params = new URLSearchParams(trimmed);
             for (const k of mizanStartKeys) params.set(k, slashBas);
             for (const k of mizanEndKeys) params.set(k, slashBit);
+            const changedReportParams = applyExcelReportParams(params);
             for (const [key, val] of Array.from(params.entries())) {
               const s = String(val || '').trim();
               if (!s.startsWith('{') && !s.startsWith('[')) continue;
               try {
                 const parsed = JSON.parse(s);
-                if (forceNestedMizanDates(parsed)) params.set(key, JSON.stringify(parsed));
+                const changedDates = forceNestedMizanDates(parsed);
+                const changedReport = forceNestedExcelReportFields(parsed);
+                if (changedDates || changedReport) params.set(key, JSON.stringify(parsed));
               } catch {}
             }
             const next = params.toString();
-            return { body: next, changed: next !== body, preview: next.slice(0, 420) };
+            return { body: next, changed: changedReportParams || next !== body, preview: next.slice(0, 420) };
           }
         }
         if (body && typeof body.set === 'function' && typeof body.entries === 'function') {
           for (const k of mizanStartKeys) body.set(k, slashBas);
           for (const k of mizanEndKeys) body.set(k, slashBit);
+          applyExcelReportParams(body);
           for (const [key, val] of Array.from(body.entries())) {
             if (typeof val !== 'string') continue;
             const s = val.trim();
             if (!s.startsWith('{') && !s.startsWith('[')) continue;
             try {
               const parsed = JSON.parse(s);
-              if (forceNestedMizanDates(parsed)) body.set(key, JSON.stringify(parsed));
+              const changedDates = forceNestedMizanDates(parsed);
+              const changedReport = forceNestedExcelReportFields(parsed);
+              if (changedDates || changedReport) body.set(key, JSON.stringify(parsed));
             } catch {}
           }
           return { body, changed: true, preview: '[FormData/URLSearchParams tarih zorlandi]' };
@@ -8788,10 +8958,7 @@
       // Luca rapor_indir.jq bazen sadece donem_id + raporTur ile POST ediliyor.
       // Bu durumda formdaki Rapor Turu PDF kalsa PDF donuyor. Dosya tipini
       // indirme body seviyesinde de Excel'e zorla.
-      if (options.raporTur && !params.has('raporTur')) params.set('raporTur', options.raporTur);
-      params.set('dosya_tipi', 'xlsx');
-      params.set('format', 'xlsx');
-      params.set('REPORT_TYPE', 'xlsx');
+      applyExcelReportParams(params);
       return params;
     };
 
@@ -8801,14 +8968,7 @@
       if (!trimmed.startsWith('{')) return value;
       try {
         const parsed = JSON.parse(value);
-        parsed.dosya_tipi = 'xlsx';
-        parsed.format = 'xlsx';
-        parsed.REPORT_TYPE = 'xlsx';
-        if (!parsed.params || typeof parsed.params !== 'object') parsed.params = {};
-        parsed.params.raporTur = options.raporTur;
-        parsed.params.dosya_tipi = 'xlsx';
-        parsed.params.format = 'xlsx';
-        parsed.params.REPORT_TYPE = 'xlsx';
+        forceNestedExcelReportFields(parsed);
         return JSON.stringify(parsed);
       } catch {
         return value;
