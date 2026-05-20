@@ -77,6 +77,7 @@ export class EDefterControlController {
         mukellefId: job.mukellefId,
         donem: job.donem,
         tip: 'MIZAN',
+        sessionId: job.id,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -85,6 +86,7 @@ export class EDefterControlController {
       job.mukellefId,
       job.donem,
       job.donemTipi,
+      `edefter-control:${job.id}`,
     );
     return { job, session, mizanJob, mizan };
   }
@@ -186,7 +188,7 @@ export class EDefterControlController {
         donem,
         donemTipi,
         buffer: file.buffer,
-        createdBy: 'luca-agent',
+        createdBy: jobId ? `edefter-control:${jobId}` : 'luca-agent',
       });
       if (jobId) await this.luca.markJobDone(jobId, result.rows).catch(() => undefined);
       return { ok: true, ...result };

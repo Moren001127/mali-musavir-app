@@ -79,7 +79,13 @@ export class EDefterControlService {
         where: { id: session.taxpayerId, tenantId },
         select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
       }),
-      this.findCompanionMizan(tenantId, session.taxpayerId, session.donem, session.donemTipi),
+      this.findCompanionMizan(
+        tenantId,
+        session.taxpayerId,
+        session.donem,
+        session.donemTipi,
+        session.createdBy,
+      ),
     ]);
     return { ...session, taxpayer: taxpayer || null, companionMizan };
   }
@@ -125,7 +131,7 @@ export class EDefterControlService {
 
     const mizanJob = await this.luca.createFetchJob({
       tenantId: params.tenantId,
-      sessionId: undefined as any,
+      sessionId: detailJob.id,
       mukellefId: params.mukellefId,
       donem: params.donem,
       donemTipi: params.donemTipi,
@@ -263,13 +269,18 @@ export class EDefterControlService {
     taxpayerId: string,
     donem: string,
     donemTipi?: string | null,
+    companionMarker?: string | null,
   ) {
+    const marker = String(companionMarker || '').trim();
+    if (!/^edefter-control:/.test(marker)) return null;
+
     const mizan = await (this.prisma as any).mizan.findFirst({
       where: {
         tenantId,
         taxpayerId,
         donem,
         ...(donemTipi ? { donemTipi } : {}),
+        createdBy: marker,
       },
       orderBy: { createdAt: 'desc' },
       include: {

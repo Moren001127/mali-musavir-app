@@ -374,6 +374,8 @@ export class MizanService {
     donemTipi?: MizanDonemTipi;
     buffer: Buffer;
     createdBy?: string;
+    kaynak?: string;
+    replaceExisting?: boolean;
   }) {
     let rows;
     try {
@@ -395,16 +397,18 @@ export class MizanService {
 
     try {
       // Önce eski mizanları sil — aynı dönem için tek mizan kalsın
-      const deleted = await (this.prisma as any).mizan.deleteMany({
-        where: {
-          tenantId: params.tenantId,
-          taxpayerId: params.taxpayerId,
-          donem: params.donem,
-          donemTipi: params.donemTipi || 'AYLIK',
-        },
-      });
-      if (deleted.count > 0) {
-        this.logger.log(`Eski ${deleted.count} mizan silindi (aynı dönem)`);
+      if (params.replaceExisting !== false) {
+        const deleted = await (this.prisma as any).mizan.deleteMany({
+          where: {
+            tenantId: params.tenantId,
+            taxpayerId: params.taxpayerId,
+            donem: params.donem,
+            donemTipi: params.donemTipi || 'AYLIK',
+          },
+        });
+        if (deleted.count > 0) {
+          this.logger.log(`Eski ${deleted.count} mizan silindi (aynı dönem)`);
+        }
       }
 
       // Mizan başlık kaydını oluştur
@@ -414,7 +418,7 @@ export class MizanService {
           taxpayerId: params.taxpayerId,
           donem: params.donem,
           donemTipi: params.donemTipi || 'AYLIK',
-          kaynak: 'EXCEL',
+          kaynak: params.kaynak || 'EXCEL',
           status: 'READY',
           createdBy: params.createdBy || null,
         },
@@ -991,7 +995,7 @@ export class MizanService {
     // include kullanmak yerine ayrı sorgu ile taxpayer bilgilerini çekip enrich
     // ediyoruz. (İleride schema'ya relation eklendiğinde include'a dönülebilir.)
     const results = await (this.prisma as any).mizan.findMany({
-      where: { tenantId, ...(taxpayerId ? { taxpayerId } : {}) },
+      where: { tenantId, kaynak: { not: 'EDEFTER' }, ...(taxpayerId ? { taxpayerId } : {}) },
       orderBy: { createdAt: 'desc' },
       include: {
         _count: { select: { hesaplar: true, anomaliler: true } },

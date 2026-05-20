@@ -618,7 +618,7 @@ export class LucaController {
       throw new BadRequestException('mukellefId ve donem query parametreleri gerekli');
     }
     const tenantId = await this.resolveTenantFromAgentToken(agentToken);
-    await this.assertRunnerUploadJob({
+    const job = await this.assertRunnerUploadJob({
       tenantId,
       jobId,
       allowedTips: ['MIZAN'],
@@ -634,8 +634,11 @@ export class LucaController {
         donem,
         donemTipi: this.normalizeMizanDonemTipi(donem, donemTipi) as any,
         buffer: file.buffer,
-        createdBy: 'extension',
+        createdBy: job?.sessionId ? `edefter-control:${job.sessionId}` : 'extension',
+        kaynak: job?.sessionId ? 'EDEFTER' : 'EXCEL',
+        replaceExisting: !job?.sessionId,
       });
+      if (jobId) await this.luca.markJobDone(jobId, (result as any)?.rows || 0).catch(() => undefined);
       return {
         ok: true,
         mizanId: (result as any)?.id,
