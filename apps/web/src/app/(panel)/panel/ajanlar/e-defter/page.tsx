@@ -24,6 +24,40 @@ function taxpayerName(t?: Taxpayer | null) {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || t.taxNumber || '-';
 }
 
+function apiArray<T>(value: any): T[] {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+}
+
+function quarterLabel(year: number, quarter: number) {
+  const ranges: Record<number, string> = {
+    1: 'Ocak-Mart',
+    2: 'Nisan-Haziran',
+    3: 'Temmuz-Eylül',
+    4: 'Ekim-Aralık',
+  };
+  return `${year} ${quarter}. Dönem (${ranges[quarter] || 'Çeyrek'})`;
+}
+
+function formatDonem(donem?: string | null, donemTipi?: string | null) {
+  const source = `${donem || ''} ${donemTipi || ''}`;
+  const yearMatch = source.match(/\b(20\d{2})\b/);
+  const qMatch = source.match(/Q([1-4])/i);
+  if (yearMatch && qMatch) return quarterLabel(Number(yearMatch[1]), Number(qMatch[1]));
+  return donem || '-';
+}
+
+function cleanLucaStatus(value?: string | null) {
+  const msg = String(value || '').trim();
+  if (!msg) return '';
+  if (/%PDF|application\/pdf|Detay Fis Listesi baslik satiri|Luca raporu PDF/i.test(msg)) {
+    return 'LUCA rapor türünü PDF verdi. Ajan Rapor Türü alanını Excel (xlsx) yapacak; tekrar Luca’dan Çek deneyin.';
+  }
+  return msg.length > 320 ? `${msg.slice(0, 320)}...` : msg;
+}
+
 function fmtDate(value?: string | Date | null) {
   if (!value) return '-';
   return new Date(value).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' });
@@ -49,7 +83,7 @@ export default function EDefterAgentPage() {
 
   const { data: taxpayers = [] } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers'],
-    queryFn: () => api.get('/taxpayers').then((r) => r.data?.data ?? r.data ?? []),
+    queryFn: () => api.get('/taxpayers').then((r) => apiArray<Taxpayer>(r.data)),
   });
 
   useEffect(() => {
@@ -60,7 +94,7 @@ export default function EDefterAgentPage() {
 
   const { data: sessions = [] } = useQuery<any[]>({
     queryKey: ['edefter-control-list', taxpayerId],
-    queryFn: () => edefterControlApi.list(taxpayerId || undefined),
+    queryFn: () => edefterControlApi.list(taxpayerId || undefined).then((data) => apiArray<any>(data)),
     refetchInterval: 5000,
   });
 
@@ -116,7 +150,7 @@ export default function EDefterAgentPage() {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
-    const lastLine = lines[lines.length - 1];
+    const lastLine = cleanLucaStatus(lines[lines.length - 1]);
     if (job.status === 'running') setLucaStatus(lastLine || 'Luca Detay Fis Listesi Excel hazirlaniyor...');
     if (job.status === 'done') {
       setLucaStatus('Detay Fis Listesi alindi ve analiz edildi');
@@ -127,9 +161,10 @@ export default function EDefterAgentPage() {
       toast.success('e-Defter ön kontrol verisi hazır');
     }
     if (job.status === 'failed') {
-      setLucaStatus(lastLine || job.errorMsg || 'Luca job hata verdi');
+      const friendly = lastLine || cleanLucaStatus(job.errorMsg) || 'Luca job hata verdi';
+      setLucaStatus(friendly);
       setLucaJobId(null);
-      toast.error(job.errorMsg || 'Luca job hata verdi');
+      toast.error(friendly);
     }
   }, [jobQuery.data, qc]);
 
@@ -186,7 +221,7 @@ export default function EDefterAgentPage() {
                 className="px-3 text-sm font-semibold"
                 style={{ background: quarter === q ? 'rgba(212,184,118,.18)' : PANEL, color: quarter === q ? GOLD : 'rgba(250,250,249,.65)' }}
               >
-                Q{q}
+                {q}. Dönem
               </button>
             ))}
           </div>
@@ -227,7 +262,7 @@ export default function EDefterAgentPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Kpi label="Mükellef" value={taxpayerName(selectedTp)} />
-        <Kpi label="Dönem" value={donem} />
+        <Kpi label="Dönem" value={quarterLabel(year, quarter)} />
         <Kpi label="Fiş" value={session?.totalVouchers ?? 0} />
         <Kpi label="Satır" value={session?.totalLines ?? 0} />
         <Kpi label="Bulgu" value={session?.findingCount ?? 0} tone={stats.error ? 'red' : stats.warn ? 'amber' : 'green'} />
@@ -251,7 +286,7 @@ export default function EDefterAgentPage() {
                 }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>{s.donem}</span>
+                  <span className="text-sm font-semibold" style={{ color: '#fafaf9' }}>{formatDonem(s.donem, s.donemTipi)}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: s.findingCount ? 'rgba(245,158,11,.14)' : 'rgba(34,197,94,.12)', color: s.findingCount ? '#fbbf24' : '#22c55e' }}>
                     {s.findingCount ? `${s.findingCount} bulgu` : 'temiz'}
                   </span>

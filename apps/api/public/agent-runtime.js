@@ -4,7 +4,7 @@
 */
 (function () {
   // Agent versiyon — UI'da gösterilir, debug için kritik
-  const AGENT_VERSION = '1.37.83';
+  const AGENT_VERSION = '1.37.84';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1307,8 +1307,13 @@
                 .replace(/[^\x20-\x7E\u00C0-\u017F]/g, '?')
                 .slice(0, 140);
               await log(`🧾 Dosya imzasi: type=${blob.type || '-'} magic=${bytes} head="${head}"`);
+              if (/^25 50 44 46/i.test(bytes) || /^%PDF/i.test(head) || /application\/pdf/i.test(blob.type || '')) {
+                throw new Error('Luca raporu PDF olarak verdi. Rapor Turu Excel (xlsx) secilmeden bu dosya yuklenemez; tekrar Excel olarak denenecek.');
+              }
             } catch (e) {
-              await log(`⚠ Dosya imzasi okunamadi: ${String(e?.message || e).slice(0, 120)}`);
+              const msg = String(e?.message || e);
+              if (/Luca raporu PDF/i.test(msg)) throw e;
+              await log(`⚠ Dosya imzasi okunamadi: ${msg.slice(0, 120)}`);
             }
           }
 
@@ -8488,25 +8493,44 @@
   async function preferExcelReportType(form, log, label = 'Rapor') {
     let seenReportSelect = false;
     let changed = false;
-    for (const sel of form.querySelectorAll('select')) {
+    const doc = form.ownerDocument || document;
+    const selects = [
+      ...form.querySelectorAll('select'),
+      ...doc.querySelectorAll('select'),
+    ].filter((sel, i, arr) => arr.indexOf(sel) === i);
+    for (const sel of selects) {
       const nameText = `${sel.name || ''} ${sel.id || ''}`.toLocaleLowerCase('tr-TR');
+      const optionText = [...sel.options].map((opt) => `${opt.text || ''} ${opt.value || ''}`).join(' ').toLocaleLowerCase('tr-TR');
       const isReportSelect =
         /rapor|report|tur|degistir|dosya|format/.test(nameText) ||
-        [...sel.options].some((opt) => /excel|xlsx|xls|pdf/i.test(`${opt.text || ''} ${opt.value || ''}`));
+        /excel|xlsx|xls|pdf|word|rtf|odt/.test(optionText);
       if (!isReportSelect) continue;
       seenReportSelect = true;
-      const option = [...sel.options].find((opt) => {
+      const options = [...sel.options];
+      const option = options.find((opt) => {
         const text = `${opt.text || ''} ${opt.value || ''}`.toLocaleLowerCase('tr-TR');
-        return /excel|xlsx|xls/.test(text);
+        return /excel\s*\(xlsx\)|xlsx/.test(text) && !/pdf|word|rtf|odt|liste/.test(text);
+      }) || options.find((opt) => {
+        const text = `${opt.text || ''} ${opt.value || ''}`.toLocaleLowerCase('tr-TR');
+        return /excel|xlsx|xls/.test(text) && !/pdf|word|rtf|odt/.test(text);
       });
       if (!option) continue;
       if (sel.value !== option.value) {
+        const idx = options.indexOf(option);
+        if (idx >= 0) sel.selectedIndex = idx;
         sel.value = option.value;
         sel.dispatchEvent(new Event('input', { bubbles: true }));
         sel.dispatchEvent(new Event('change', { bubbles: true }));
+        const onChangeAttr = sel.getAttribute('onchange');
+        if (onChangeAttr) {
+          try {
+            const win = sel.ownerDocument.defaultView || window;
+            new win.Function('event', onChangeAttr).call(sel, new win.Event('change'));
+          } catch {}
+        }
         changed = true;
       }
-      await log(`📊 ${label} rapor turu: ${String(option.text || option.value).trim()}`);
+      await log(`📊 ${label} rapor turu Excel yapildi: ${String(option.text || option.value).trim()} (select#${sel.name || sel.id || '?'})`);
       break;
     }
     if (seenReportSelect && !changed) {
@@ -8699,6 +8723,9 @@
       await log(`🧷 Mizan tarih ID kontrolü (${dateLikeChanged}/${dateLikeInputs.length} set): ${state}`);
       await preferExcelReportType(form, log, options.label || 'Mizan');
     }
+    if (options.raporTur) {
+      await setRaporTuruExcel(form, log);
+    }
 
     // Mizan formunun "Rapor" butonunu bul (sağ altta — exact text "Rapor")
     // DİKKAT: "Kümülatif Rapor" butonunu seçme — sadece "Rapor".
@@ -8753,7 +8780,74 @@
     let capturedUrl = null;
     let jasperBody = null;
     let jasperUrl = null;
+    let rejectedBlobReason = '';
     const seenUrls = [];
+
+    const forceExcelParams = (params) => {
+      if (!params || typeof params.set !== 'function') return params;
+      // Luca rapor_indir.jq bazen sadece donem_id + raporTur ile POST ediliyor.
+      // Bu durumda formdaki Rapor Turu PDF kalsa PDF donuyor. Dosya tipini
+      // indirme body seviyesinde de Excel'e zorla.
+      if (options.raporTur && !params.has('raporTur')) params.set('raporTur', options.raporTur);
+      params.set('dosya_tipi', 'xlsx');
+      params.set('format', 'xlsx');
+      params.set('REPORT_TYPE', 'xlsx');
+      return params;
+    };
+
+    const forceExcelJsonPayload = (value) => {
+      if (!options.raporTur || typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      if (!trimmed.startsWith('{')) return value;
+      try {
+        const parsed = JSON.parse(value);
+        parsed.dosya_tipi = 'xlsx';
+        parsed.format = 'xlsx';
+        parsed.REPORT_TYPE = 'xlsx';
+        if (!parsed.params || typeof parsed.params !== 'object') parsed.params = {};
+        parsed.params.raporTur = options.raporTur;
+        parsed.params.dosya_tipi = 'xlsx';
+        parsed.params.format = 'xlsx';
+        parsed.params.REPORT_TYPE = 'xlsx';
+        return JSON.stringify(parsed);
+      } catch {
+        return value;
+      }
+    };
+
+    const blobSignature = async (blob) => {
+      try {
+        const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+        const ascii = String.fromCharCode(...head).replace(/[^\x20-\x7E]/g, '?');
+        const hex = [...head].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+        return { head, ascii, hex };
+      } catch {
+        return { head: new Uint8Array(), ascii: '', hex: '' };
+      }
+    };
+
+    const acceptSpreadsheetBlob = async (blob, source, ct = '', filename = '') => {
+      if (!blob || blob.size <= 1500 || capturedBlob) return false;
+      const sig = await blobSignature(blob);
+      const meta = `${ct || blob.type || ''} ${filename || ''}`;
+      const isPdf = sig.ascii.startsWith('%PDF') || /application\/pdf|\.pdf\b/i.test(meta);
+      if (isPdf) {
+        rejectedBlobReason = `${source}: Luca PDF verdi. Rapor Turu Excel secilmeden import yapilamaz.`;
+        await log(`❌ ${rejectedBlobReason} magic=${sig.hex}`);
+        return false;
+      }
+      const isZip = sig.head[0] === 0x50 && sig.head[1] === 0x4b;
+      const isOleXls = sig.head[0] === 0xd0 && sig.head[1] === 0xcf && sig.head[2] === 0x11 && sig.head[3] === 0xe0;
+      const looksExcel = isZip || isOleXls || /xlsx|xls|spreadsheet|excel|officedocument|octet-stream|binary/i.test(meta);
+      if (!looksExcel) {
+        await log(`⚠ ${source}: Excel disi blob reddedildi (${Math.round(blob.size / 1024)} KB, ct=${String(ct).slice(0, 40)}, magic=${sig.hex})`);
+        return false;
+      }
+      capturedBlob = blob;
+      window.__morenCapturedBlob = blob;
+      await log(`✅ Excel blob alindi: ${source} (${Math.round(blob.size / 1024)} KB, ct=${String(ct || blob.type || '').slice(0, 40)}, magic=${sig.hex})`);
+      return true;
+    };
 
     const isExcelResponse = (ct, blob) => {
       if (!ct) return false;
@@ -8768,10 +8862,7 @@
         const cloned = res.clone();
         const blob = await cloned.blob();
         if (blob.size > 1500 && (isExcelResponse(ct, blob) || isExcelUrl(url))) {
-          if (!capturedBlob) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Blob yakalandı: ${url.split('/').pop().slice(0, 60)} (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-          }
+          await acceptSpreadsheetBlob(blob, url.split('/').pop().slice(0, 60) || 'fetch', ct, url);
         }
       } catch (e) {}
     };
@@ -8816,11 +8907,12 @@
         let args = arguments;
         if (/jasper\.jq/i.test(url || '') && init && init.body != null) {
           const fixed = forceMizanDatesBody(init.body);
-          jasperBody = String(fixed.body || init.body || '');
+          const nextBody = forceExcelJsonPayload(String(fixed.body || init.body || ''));
+          jasperBody = String(nextBody || '');
           jasperUrl = url;
-          if (fixed.changed) {
-            args = [input, { ...init, body: fixed.body }];
-            log(`🧷 jasper.jq fetch tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+          if (fixed.changed || nextBody !== init.body) {
+            args = [input, { ...init, body: nextBody }];
+            log(`🧷 jasper.jq fetch Excel/tarih zorlandi: ${slashBas}→${slashBit}; body=${String(nextBody).slice(0, 420)}`).catch(() => {});
           }
         }
         // PASIF: Luca akışını engelleme, sadece izle. Background script
@@ -8848,11 +8940,11 @@
         let sendBody = body;
         if (/jasper\.jq/i.test(url || '')) {
           const fixed = forceMizanDatesBody(body);
-          sendBody = fixed.body;
+          sendBody = forceExcelJsonPayload(String(fixed.body || body || ''));
           jasperBody = String(sendBody || '');
           jasperUrl = url;
-          if (fixed.changed) {
-            log(`🧷 jasper.jq XHR tarihi zorlandı: ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
+          if (fixed.changed || sendBody !== body) {
+            log(`🧷 jasper.jq XHR Excel/tarih zorlandi: ${slashBas}→${slashBit}; body=${String(sendBody).slice(0, 420)}`).catch(() => {});
           } else {
             log(`🧷 jasper.jq XHR tarih kontrolü: beklenen ${slashBas}→${slashBit}; body=${fixed.preview}`).catch(() => {});
           }
@@ -8867,11 +8959,7 @@
             // 1) XHR response Blob ise (Excel) — Luca'nın rapor_indir.jq response'unu yakalama şansı
             if (this.response && this.response instanceof Blob) {
               if (this.response.size > 1500 && (isExcelResponse(ct) || isExcelUrl(url))) {
-                if (!capturedBlob) {
-                  capturedBlob = this.response;
-                  await log(`✅ XHR blob yakalandı (${Math.round(capturedBlob.size / 1024)} KB) url=${url.split('/').pop().slice(0, 40)}`);
-                  return;
-                }
+                if (await acceptSpreadsheetBlob(this.response, `XHR ${url.split('/').pop().slice(0, 40)}`, ct, url)) return;
               }
             }
             // Tanı için: rapor_indir veya jasper.jq XHR'ı görüldüyse logla
@@ -8892,8 +8980,7 @@
                         ? new Blob([this.responseText], { type: ct || 'application/vnd.ms-excel' })
                         : null);
                   if (data && data.size > 1500) {
-                    capturedBlob = data;
-                    await log(`✅ ${url.split('/').pop().slice(0, 30)} → Blob yakalandı (${Math.round(data.size / 1024)} KB)`);
+                    await acceptSpreadsheetBlob(data, url.split('/').pop().slice(0, 30), ct, url);
                   }
                 } catch (e) {
                   await log(`⚠ ${url.split('/').pop()} blob convert hata: ${e.message}`);
@@ -8991,12 +9078,13 @@
                 // Multipart yerine application/x-www-form-urlencoded'a çevir — Luca genelde bunu bekler
                 const params = new URLSearchParams();
                 fd.forEach((v, k) => params.append(k, String(v)));
+                forceExcelParams(params);
 
                 const fullUrl = action.startsWith('http')
                   ? action
                   : new URL(action, win.location.href).toString();
                 const bodyPreview = params.toString().slice(0, 200);
-                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte) body: ${bodyPreview}`);
+                await log(`🎯 form intercept: ${method} ${fullUrl.split('/').pop().slice(0, 50)} (${params.toString().length} byte) Excel body: ${bodyPreview}`);
 
                 const fetchOpts = {
                   method,
@@ -9016,10 +9104,7 @@
                 const ct = r.headers.get('content-type') || '';
                 const blob = await r.blob();
                 if (blob.size > 1500) {
-                  if (!capturedBlob) {
-                    capturedBlob = blob; window.__morenCapturedBlob = blob; window.__morenCapturedBlob = blob;
-                    await log(`✅ form intercept Blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
-                  }
+                  await acceptSpreadsheetBlob(blob, 'form intercept', ct, fullUrl);
                 } else {
                   const txt = await blob.text();
                   await log(`⚠ form fetch küçük (${blob.size}B): ${txt.slice(0, 120)}`);
@@ -9081,10 +9166,10 @@
       try {
         const r = await fetch(dlUrl, { credentials: 'include' });
         if (r.ok) {
+          const ct = r.headers.get('content-type') || '';
           const blob = await r.blob();
           if (blob.size > 1500) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Bridge URL fetch ile blob yakalandı (${Math.round(blob.size / 1024)} KB)`);
+            await acceptSpreadsheetBlob(blob, 'Bridge URL fetch', ct, dlUrl);
           } else {
             await log(`⚠ Bridge URL fetch küçük dosya (${blob.size}B)`);
           }
@@ -9112,8 +9197,7 @@
       const blob = detail.blob;
       if (capturedBlob) return;
       if (blob && blob.size > 1500) {
-        capturedBlob = blob; window.__morenCapturedBlob = blob;
-        await log(`✅ Background'tan Excel disk'ten alındı (${Math.round(blob.size / 1024)} KB, dosya: ${(detail.filename || '').split(/[\\/]/).pop()})`);
+        await acceptSpreadsheetBlob(blob, 'Background disk', blob.type || '', detail.filename || '');
       } else if (detail.filename) {
         await log(`⚠ Background dosyayı diskten okuyamadı: ${detail.filename}. file:// permission yok olabilir.`);
       }
@@ -9179,7 +9263,15 @@
         if (!donemId) {
           donemId = form.querySelector('input[name="DONEM_ID"], input[name="donem_id"]')?.value || '';
         }
-        const takipBody = JSON.stringify({ donem_id: donemId, params: { raporTur: options.raporTur || 'mizan' } });
+        const takipBody = JSON.stringify({
+          donem_id: donemId,
+          params: {
+            raporTur: options.raporTur || 'mizan',
+            dosya_tipi: 'xlsx',
+            format: 'xlsx',
+            REPORT_TYPE: 'xlsx',
+          },
+        });
         const baseGenelUrl = `${form.ownerDocument.defaultView.location.origin}/Luca/genel`;
 
         for (let i = 0; i < 30; i++) {
@@ -9220,8 +9312,7 @@
           const ct = r3.headers.get('content-type') || '';
           const blob = await r3.blob();
           if (blob.size > 1500) {
-            capturedBlob = blob; window.__morenCapturedBlob = blob;
-            await log(`✅ Paralel flow ile blob yakalandı (${Math.round(blob.size / 1024)} KB, ct=${ct.slice(0, 30)})`);
+            await acceptSpreadsheetBlob(blob, 'Paralel flow', ct, `${baseGenelUrl}/rapor_indir.jq`);
           } else {
             const t = await blob.text();
             await log(`⚠ rapor_indir POST küçük (${blob.size}B): ${t.slice(0, 150)}`);
@@ -9231,20 +9322,19 @@
               body: takipBody,
             }).catch(() => null);
             if (rTakipBody?.ok) {
+              const takipCt = rTakipBody.headers.get('content-type') || '';
               const blobTakip = await rTakipBody.blob();
               if (blobTakip.size > 1500) {
-                capturedBlob = blobTakip;
-                await log(`✅ rapor_indir takip body ile blob (${Math.round(blobTakip.size / 1024)} KB)`);
-                return;
+                if (await acceptSpreadsheetBlob(blobTakip, 'rapor_indir takip body', takipCt, `${baseGenelUrl}/rapor_indir.jq`)) return;
               }
             }
             // GET fallback
             const r4 = await directFetch(`${baseGenelUrl}/rapor_indir.jq`, {});
             if (r4.ok) {
+              const ct4 = r4.headers.get('content-type') || '';
               const blob4 = await r4.blob();
               if (blob4.size > 1500) {
-                capturedBlob = blob4;
-                await log(`✅ rapor_indir GET ile blob (${Math.round(blob4.size / 1024)} KB)`);
+                await acceptSpreadsheetBlob(blob4, 'rapor_indir GET', ct4, `${baseGenelUrl}/rapor_indir.jq`);
               }
             }
           }
@@ -9266,10 +9356,11 @@
           await log(`🌐 Yakalanan URL fetch ediliyor: ${capturedUrl.split('/').pop().slice(0, 60)}`);
           const r = await fetch(capturedUrl, { credentials: 'include' });
           if (r.ok) {
+            const ct = r.headers.get('content-type') || '';
             const blob = await r.blob();
             if (blob.size > 1500) {
-              capturedBlob = blob; window.__morenCapturedBlob = blob;
-              break;
+              await acceptSpreadsheetBlob(blob, 'Yakalanan URL', ct, capturedUrl);
+              if (capturedBlob) break;
             }
           }
         } catch (e) {
@@ -9290,7 +9381,7 @@
     }
 
     if (!capturedBlob) {
-      throw new Error(`Excel yakalanamadı (90sn). İstekler: ${seenUrls.slice(-20).join(' | ')}`);
+      throw new Error(`${rejectedBlobReason || 'Excel yakalanamadı (90sn).' } İstekler: ${seenUrls.slice(-20).join(' | ')}`);
     }
 
     return capturedBlob;
