@@ -36,6 +36,7 @@ model Tenant {
   officeBudgetPlans      OfficeBudgetPlan[]
   officeFinancialAccounts OfficeFinancialAccount[]
   officeAccountTransfers  OfficeAccountTransfer[]
+  automations             Automation[]
 
   @@map("tenants")
 }
@@ -65,6 +66,9 @@ model User {
   taskNotes          TaskNote[]
   taskAttachments    TaskAttachment[]
   pushSubscriptions  PushSubscription[]
+
+  // Moren AI Otomasyon Motoru
+  createdAutomations Automation[]       @relation("AutomationCreator")
 
   @@unique([tenantId, email])
   @@map("users")
@@ -2816,4 +2820,105 @@ model ToolCallLog {
   @@index([tenantId, tool])
   @@index([tenantId, caller, callerRef])
   @@map("tool_call_logs")
+}
+
+// ============================================================
+// MOREN AI OTOMASYON MOTORU (Faz 1)
+// ------------------------------------------------------------
+// Kullanıcının doğal dilde tanımladığı, AI tarafından workflow JSON'a
+// çevrilen ve arka planda çalışan otomasyonlar. Detay için:
+// MOREN_AI_OTOMASYON_MOTORU_PLAN.md
+// ============================================================
+model Automation {
+  id          String   @id @default(cuid())
+  tenantId    String
+  createdById String
+
+  // Kullanıcının yazdığı orijinal cümle (örn. "Her ayın 22'sinde KDV gecikenlere WhatsApp at")
+  prompt      String   @db.Text
+
+  // Moren AI'nın cümleden çıkardığı insan-okur özet
+  title       String
+  description String?  @db.Text
+
+  // Tetikleyici
+  triggerType   AutomationTriggerType
+  triggerConfig Json    // { cron: "0 10 22 * *" } | { eventName: "WhatsApp.MessageReceived", filters: {...} } | { secret: "..." }
+
+  // Aksiyon adımları — sıralı liste (workflow JSON)
+  // Şema versiyonlu: { schemaVersion: 1, steps: [...] }
+  steps       Json
+
+  // Durum yönetimi
+  status        AutomationStatus  @default(DRAFT)
+  lastRunAt     DateTime?
+  lastRunStatus String?           // "success" | "failure" | "partial"
+  nextRunAt     DateTime?
+  totalRuns     Int               @default(0)
+  successRuns   Int               @default(0)
+  failureRuns   Int               @default(0)
+
+  // Hata politikası: "notify" | "pause_after_3" | "ignore"
+  failurePolicy String   @default("notify")
+
+  // Tahmini run başına Claude maliyeti (USD, kurulurken hesaplanır)
+  estimatedCostPerRun Float?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdBy   User     @relation("AutomationCreator", fields: [createdById], references: [id])
+  runs        AutomationRun[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, triggerType])
+  @@index([nextRunAt])
+  @@map("automations")
+}
+
+enum AutomationTriggerType {
+  CRON
+  EVENT
+  WEBHOOK
+  MANUAL
+}
+
+enum AutomationStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ERROR
+  ARCHIVED
+}
+
+model AutomationRun {
+  id           String   @id @default(cuid())
+  automationId String
+
+  startedAt    DateTime @default(now())
+  finishedAt   DateTime?
+
+  // "running" | "success" | "failure" | "partial"
+  status       String   @default("running")
+
+  // Tetikleyici payload'ı (event verisi, webhook body, manuel input)
+  triggerPayload Json?
+
+  // Adım adım yürütme logu
+  // [{ stepId: "step_1", tool: "...", input: {...}, output: {...}, error: null, ms: 1240 }, ...]
+  stepLogs     Json     @default("[]")
+
+  // Kullanıcının liste sayfasında göreceği kısa özet (örn. "12 müvekkile mesaj atıldı, 0 hata")
+  summary      String?  @db.Text
+  errorMessage String?  @db.Text
+
+  // Bu run'da harcanan Claude maliyeti (USD)
+  costUsd      Float?
+
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, startedAt])
+  @@index([status, startedAt])
+  @@map("automation_runs")
 }

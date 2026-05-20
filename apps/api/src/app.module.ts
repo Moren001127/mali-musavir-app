@@ -34,6 +34,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { FaturaMuhasebelestirmeModule } from './fatura-muhasebelestirme/fatura-muhasebelestirme.module';
 import { EDefterControlModule } from './edefter-control/edefter-control.module';
 import { PortalAutomationModule } from './portal-automation/portal-automation.module';
+import { AutomationsModule } from './automations/automations.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 
@@ -74,6 +75,7 @@ import { HgsCron } from './schedule/hgs.cron';
     FaturaMuhasebelestirmeModule,
     EDefterControlModule,
     PortalAutomationModule,
+    AutomationsModule,
   ],
   providers: [ReminderCron, HgsCron],
 })
