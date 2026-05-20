@@ -1033,7 +1033,7 @@
         return;
       }
 
-      const classicReady = await waitForClassicLucaReady(12000);
+      const classicReady = await waitForClassicLucaReady(25000);
       if (!classicReady) {
         const repairState = noteClassicLucaNotReady();
         const url = location.href.slice(0, 120);
@@ -6608,12 +6608,21 @@
     }
   }
 
-  async function waitForClassicLucaReady(maxMs = 12000) {
+  async function waitForClassicLucaReady(maxMs = 25000) {
     const started = Date.now();
+    // Daha sık polling (150ms) — frame yüklenmesini erken yakala.
+    // Eski 300ms ile Luca'nın seçenekler async yüklemesi ile race condition
+    // oluyor ve frame ready olduğu halde "yok" diye dönüyordu.
     while (Date.now() - started < maxMs) {
       const combo = getLucaFirmaCombo();
       if (combo && combo.options && combo.options.length > 0) return combo;
-      await sleep(300);
+      await sleep(150);
+    }
+    // Timeout sonrası son bir kontrol — race condition fix.
+    // Frame son anda yüklenmiş olabilir, ama polling kaçırmıştır.
+    const finalCheck = getLucaFirmaCombo();
+    if (finalCheck && finalCheck.options && finalCheck.options.length > 0) {
+      return finalCheck;
     }
     return null;
   }
